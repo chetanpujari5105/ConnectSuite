@@ -3550,3 +3550,204 @@ failures**:
 Recorded as **untestable-with-proof plus automated coverage**, not as deferred: the behaviour is
 verified, on the side that implements it, and the reason hardware cannot reach it is a guard this
 project put there on purpose.
+
+## Steps 63 and 61 — run 2026-08-28, both **PASS**
+
+Run together on one call, which is possible because an *outgoing* call raises a card:
+`CallWatcher` maps off-hook-without-prior-ringing to `begin(server, "dialing")` (`CallWatcher.kt:156`).
+That is what makes 61 runnable without a second person.
+
+### Step 63 — **PASS**
+
+Two clicks, one call. The first click armed and placed nothing (`callPlaced: false`, button read
+`Confirm — call +919800000003`); the number was confirmed with the user before the second click.
+
+```
+Mac    I [calls] call.dial placed to +919800000003 — 0 rang / 0 ended / 1 acted on / 0 refused
+phone  I [calls] call.dial delivered (dialled) — 7 delivered / 0 refused since start
+phone  I [calls] Call c1 dialing (1 episodes since start)
+```
+
+The card appeared within 3.5s in state `dialing`, the notice read "Calling +919800000003 from the
+phone.", and the button **disarmed itself back to `Call`** after use — a confirmation that stayed
+armed would be a second call waiting to happen.
+
+### Step 61 — **PASS**
+
+```
+16:18:54.413  W [calls] stallCallEnded: swallowing call.ended for c1 — the card is now stale on purpose
+16:18:58.098  W [calls] call.reject refused by the phone for c1: There is no call to reject —
+                        the phone is not ringing and no call is in progress.
+                        — 1 rang / 0 ended / 1 acted on / 1 refused since launch
+```
+
+**The clause that matters is `for c1`.** The request named the call the card was showing. The
+protocol allows an omitted `callId` meaning "the call in progress", and this client never sends
+that shape — which is the entire mechanism by which a stale Reject cannot land on somebody else's
+call.
+
+**Honest limit on this run.** The step's second clause — *"It must not reject the next call that
+comes in"* — was **not** demonstrated on hardware, because no second call existed to be wrongly
+rejected. What was demonstrated is the mechanism that prevents it: the id is sent, and the phone
+refused on that id. The retargeting itself is covered by `calls.test.ts`
+(`a stale card rejects the call it shows, not the one now ringing`), mutation-checked against the
+omitted-id implementation, where it fails. Recorded this way rather than claiming the hardware run
+proved something it did not.
+
+The pane also behaved correctly afterwards: the `NO_ACTIVE_CALL` refusal took the stale card down,
+so the same dead id cannot be clicked again, and the call log reloaded (`50 entries, 43 with a
+contact name`).
+
+### Defect 35 — an outgoing call's card is labelled with nothing at all — **open**
+
+**Found inside step 63's own log line, 2026-08-28.** Severity: Low-Medium.
+
+```
+I [calls] call.incoming c1 (dialing) from , no contact name
+```
+
+Note `from ,` — the number is the empty string. Android reports no identity for an *outgoing* call
+through `PHONE_STATE`, so `CallWatcher` has nothing to put there, and the phone sends `number: ""`.
+
+The Mac then draws it blank. `CallsView.renderLive` uses
+`this.call.contactName ?? this.call.number ?? 'Unknown number'`, and `?? ` does not catch an empty
+string — `"" ?? x` is `""` — so the fallback chain that exists precisely to prevent a blank label
+walks straight past it. This is the same "never blank" rule the SMS pane enforces for step 59, and
+it fails here for a reason step 59 could not have caught: an *empty* value rather than an absent one.
+
+Both halves want fixing, and they are independent:
+
+- **Mac:** the fallback must test for emptiness, not just nullishness. A one-line change, and it
+  makes the pane honest against any phone.
+- **Phone:** `call.dial` knows the number it just dialled and could pass it into the episode, so a
+  Mac-initiated call could show who is being called rather than "Unknown number". A genuinely
+  unknown inbound number would still fall back.
+
+Fixing only the Mac turns a blank into "Unknown number", which is honest but poor: the Mac dialled
+that number seconds earlier and is the one machine that certainly knows it.
+
+## Step 60 — **PARTIAL** — 2026-08-28
+
+Run on a real inbound call from a second person, with `stallCallEnded` confirmed disarmed by
+reading the running process's environment (`ps eww`, 53 vars readable, `HOME` found by the same
+grep, `CONNECTSUITE_DEBUG_SWITCHES` absent) rather than by trusting the log.
+
+| Clause | Result |
+|---|---|
+| `call.incoming` on the Mac | **PASS** — `c3`, `state: "ringing"`, card shown with both `call-answer` and `call-reject` drawn |
+| reject ends it | **PASS** — clicked by name; phone logged `call.reject delivered (rejected)`; card cleared in **609 ms** and the live card hid itself |
+| `call.ended` with disposition **`rejected`** | **FAIL** — the Mac received `call.ended c3 **missed** after 0s` |
+
+The audio disclaimer was drawn on the card as intended: *"Audio stays on the phone — pair the Mac to
+it over Bluetooth to listen through the Mac."*
+
+### Defect 36 — a call rejected from the Mac is reported as `missed` — **open**
+
+Severity: Medium. The action succeeds and is then described wrongly, which is worse than a visible
+failure: the call log the user reads afterwards disagrees with what they did.
+
+`CallWatcher` derives the disposition from the state transition alone — a call that was `ringing`
+and became idle without being answered is recorded as `missed`. It has no way to know a
+`call.reject` was the cause, because `CallFeature.onReject` calls `telecom.endCall()` and never
+tells the watcher that it did.
+
+**The platform had the right answer and was not asked.** Android's own call log recorded the same
+call as `type=5`, which is `CallLog.Calls.REJECTED_TYPE`:
+
+```
+16:33:45  type=5  number=+919800000003      <- platform: REJECTED
+Mac       call.ended c3 missed after 0s     <- ConnectSuite: missed
+```
+
+That contrast is the whole defect, and it is only visible because both were read.
+
+**Fix direction:** `CallFeature.onReject` should mark the episode as rejected before ending it —
+a flag on `CallWatcher` set at the moment the reject is issued and consumed by `end()`, mirroring
+the `answered = phase == "dialing"` flag that already exists there for the outgoing case.
+
+**The wrong fix** is to read the disposition back out of the call log after the fact. It looks
+authoritative — the platform's own value — and it is a race: `call.ended` is emitted from the state
+transition, and the provider row may not be written yet, so it would work in testing and return
+`missed` or nothing under load. The watcher knows why the call ended at the moment it ends; that is
+where the fact belongs.
+
+### Defect 35, widened — the call card has **no number in either direction**
+
+Recorded first against an outgoing call, where Android genuinely supplies no identity. The inbound
+call proves it is broader than that:
+
+```
+Mac    I [calls] call.incoming c3 (ringing) from , no contact name
+card   who: ""    lines: ["Ringing · ", …]
+log    16:33:45  type=5  number=+919800000003        <- the platform had it
+```
+
+So an **inbound** ringing call also arrives with `number: ""`, and the card renders blank — while
+the platform's call log holds the number, and `READ_CALL_LOG` and `READ_PHONE_STATE` are both
+granted. This is not "Android will not say"; it is the phone not asking. On API 31+ the number is
+delivered through `TelephonyCallback`/`onCallStateChanged`'s number parameter only for a caller
+holding `READ_CALL_LOG`, and it is empty otherwise.
+
+Both halves of the earlier note still hold, and the inbound case adds a third:
+
+- **Mac:** the fallback must test emptiness, not nullishness — `"" ?? x` is `""`, which is why
+  `contactName ?? number ?? 'Unknown number'` produces a blank rather than the fallback it was
+  written for.
+- **Phone, outgoing:** `call.dial` knows the number it dialled and should pass it into the episode.
+- **Phone, inbound:** the number must be read where the platform will give it, so `contactName`
+  resolution through `ContactsFeature.nameFor` has something to resolve — the whole reason contacts
+  was pulled forward into this phase.
+
+**The wrong fix** is Mac-only. It turns a blank into "Unknown number" on every call, which reads as
+honest and is in fact a regression in disguise: it hides a phone-side data gap behind a plausible
+label, and the contacts integration — the thing this phase moved a feature forward to enable —
+silently never fires.
+
+## Steps 62 and 55 — run 2026-08-28, both **PASS**
+
+### Step 62 — **PASS**
+
+Real inbound call from a second person, answered from the Mac by its named button.
+
+| Clause | Result |
+|---|---|
+| answers **on the phone** | **PASS** — phone: `call.answer delivered (answered — audio stays on the phone)` |
+| the Mac says so | **PASS** — card moved `ringing → active` in **614 ms**; card cleared when the call ended 18.7 s later |
+| disposition | **PASS** — `call.ended c7 **answered** after 5s` |
+| platform control | `type=1 (INCOMING) dur=3s` and `dur=18s` — the calls genuinely connected |
+
+**This is the contrast that proves defect 36's fix direction.** `answered` is reported correctly
+because `CallWatcher` already carries a flag for that path (`answered = phase == "dialing"`, plus
+the ringing→offhook transition). `rejected` is reported as `missed` because it has no equivalent
+flag. The mechanism that works for one is exactly the mechanism missing for the other.
+
+The card was captured as drawn while ringing — both buttons present, and the audio disclaimer
+below them. `cardWhileActive` came back empty in the probe output only because it was read after
+the loop exited, by which time the call had ended; that is a probe artifact and not a finding.
+
+### Step 55 — **PASS**
+
+Thread `1401`, chosen by counting the provider: **2,117 messages**, one of 4 threads over 500 and
+16 over 200, out of 2,804 threads and 22,175 messages.
+
+| Clause | Result |
+|---|---|
+| pages of ≤200 | **PASS** — `limit: 500` refused with `BAD_REQUEST`, *"limit must be between 1 and 200"* |
+| `hasMore` true until the end | **PASS** — 4 consecutive pages, all `count: 200`, all `hasMore: true` |
+| paging actually advances | **PASS** — oldest timestamp strictly decreasing: 1670509415286 → 1661768921003 → 1649168376242 → 1635330750915 |
+| no 16 MiB frame | **PASS** — the cap makes one unconstructable |
+
+The third row is the one that matters and is easy to omit: four pages of 200 with `hasMore: true`
+would look identical if `before` were ignored and the same first page returned each time. The
+strictly decreasing timestamps are what distinguish real paging from a loop.
+
+### Step 54 — remains **PARTIAL**
+
+The `ongoing` dimming rule is proven (`.notif-row.ongoing { opacity: 0.62 }`, charging notification
+renders dimmed rather than hidden). A true media-player notification was still never captured: at
+the close of this run the shade held **25 notifications across 6 categories with 6 ongoing** — so
+the field is alive — but `categoriesPresent` was `call, sys, none, service, msg, reminder`, with no
+`transport` entry, because the media apps had been stopped for step 66 and not relaunched.
+
+Recorded as partial rather than passed. The control is the 25-notification enumeration: the query
+can see the shade, and there is genuinely no media notification in it.
