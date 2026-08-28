@@ -3874,6 +3874,94 @@ This is `CLAUDE.md`'s Mac rule — *prefer making the code testable over mocking
 out to apply unchanged on the phone, with `Telephony` in the place of Electron. `src/shared/` and
 `SmsPayloads` are the same idea.
 
+
+### Defect 37 — a re-granted notification listener never turns its capabilities back on — **open, found blocking step 67 on 2026-08-28**
+
+**Found by the user reading a caps line, not by the step it interrupted.** Severity: **High.** Two
+working features are advertised as unavailable, and nothing ever corrects it.
+
+Revoking and re-granting notification access — precondition 2 of step 67, the case defect 31's fix
+exists for — leaves the phone advertising five capabilities when seven are live:
+
+```
+17:14:50.163 I [notif]  Notification listener detached; notifications capability is off
+17:14:50.169 I [caps]   Capabilities now: calls,contacts,input,mirror,sms
+17:14:50.170 I [remote] Media session listener detached: notification access went away
+17:14:57.000 I [notif]  Notification listener attached to the link
+17:14:57.002 I [caps]   Capabilities unchanged (calls,contacts,input,mirror,sms); reason changed:
+                        notifications — missing Notification access; remote — missing Notification access
+17:14:57.003 I [remote] Media session listener attached; phone-side changes will now reach the Mac
+```
+
+Read `.002` against `.000` and `.003`. The listener **is** bound and the media-session listener
+**is** attached — defect 31's fix working exactly as designed — and the capability line says
+`missing Notification access` for both. **This is defect 31 inverted**: 31 was a lit chip over dead
+wiring, this is a dark chip over live wiring. Both are the capability set disagreeing with reality,
+and a user sees a greyed pane over a feature that works.
+
+**It is stuck, not slow.** Nothing corrected it in the 3 minutes 6 seconds to the next reading, and
+the setting the detector reads was correct the whole time:
+
+```
+$ adb shell settings get secure enabled_notification_listeners
+  com.chetan.connectsuite.debug/…NotificationMirrorService      <- position 1, exact prefix match
+```
+
+`CapabilityDetector.isNotificationListenerEnabled()` splits that string on `:` and matches
+`packageName + "/"`. A fresh read returns **true**. The value it acted on at `.002` did not.
+
+**The control, taken because this is an absence claim.** The log holds **107** `[caps]` lines and
+**71** `Capabilities now:` lines, so the query can see capability lines; this is not an empty
+window read as silence. The last one is `.002` and there is no later one.
+
+#### Why nothing corrected it — the part that makes this its own defect
+
+`CapabilityDetector.startWatching` registers a `ContentObserver` on
+`enabled_notification_listeners` for precisely this case; its own comment calls itself the belt to
+the lifecycle callback's braces. It logs `A Settings toggle changed; re-checking capabilities` when
+it fires. **It has fired 15 times in this log, and not once in this process** — the last was
+`14:01:44`, and the process started at `17:05:40`.
+
+Because it is registered from **`LinkServer.start()` and nowhere else** (`LinkServer.kt:188`), and
+the server was not running:
+
+```
+$ grep "Listening on" link.log | tail -1     -> 15:35:24, before the 17:05 reinstall  (control: 14 such lines exist)
+$ ports 42501/42502/42503 bound              -> none
+```
+
+So the belt is scoped to the link being up, and a user toggling grants in Settings is most likely
+to be doing it precisely when it is **not** up. That is the defect, and it is structural rather
+than a race.
+
+**Two findings, and only the second is pinned.**
+
+1. *Not pinned:* why the explicit `refreshCapabilities()` at `.002` read stale, ~2 ms after
+   `cmd notification allow_listener` wrote the setting. A read-after-write race on the settings
+   provider is the obvious candidate and is **not proven here**. It is also not the important half:
+   a race that self-heals costs nothing.
+2. **Pinned:** there was no backstop to self-heal it, because the observer does not exist outside
+   `LinkServer.start()`. This is why a millisecond race became a permanent wrong answer.
+
+**Fix direction** — for its own sitting, not folded into the step it interrupted:
+
+- Move `startWatching` out of `LinkServer.start()` so the observer's lifetime is the process, not
+  the server's. It is two URIs and no polling; its own comment already argues it is free.
+- Have `NotificationMirrorService.onListenerConnected` refresh from the **bound service's own
+  state** (`NotificationRelay.isListening()`, which was already true at `.000`) rather than from a
+  secure setting that may not have landed. The service being bound is the stronger fact — the
+  setting is what the platform used to decide to bind it.
+- Do **not** fix this by re-reading the setting on a delay. That is the same shape as defect 36's
+  shipped wrong fix: a plausible value, a timer instead of a fact, and a wrong answer under load.
+
+**Workaround, and it is also the unblock for step 67:** start the link. `LinkServer.start()` calls
+`capabilities.refresh()` and then `startWatching`, so bringing the server up both recomputes the
+set correctly and installs the observer for the rest of the process.
+
+**Step 67 could not run while this stood** — no server was bound, so there was no Mac session to
+observe a push arriving at. Recorded here rather than as a step 67 failure, because step 67 has not
+yet been given a chance to fail.
+
 ---
 
 ## Re-verification steps 67-70 — to run on hardware
