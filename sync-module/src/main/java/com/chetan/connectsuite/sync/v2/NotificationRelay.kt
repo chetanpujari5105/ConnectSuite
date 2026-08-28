@@ -107,7 +107,7 @@ object NotificationRelay {
         return buildJsonObject {
             put("key", sbn.key)
             put("package", sbn.packageName)
-            put("appName", appNameFor(context, sbn.packageName))
+            put("appName", AppLabels.of(context, sbn.packageName))
             extras.text(Notification.EXTRA_TITLE)?.let { put("title", it) }
             // BIG_TEXT is the expanded form and is what the user actually reads when they pull a
             // notification down. Preferring it means a mirrored message is the whole message
@@ -177,14 +177,5 @@ object NotificationRelay {
     private fun Bundle.text(key: String): String? =
         getCharSequence(key)?.toString()?.takeIf { it.isNotBlank() }
 
-    private fun appNameFor(context: Context, packageName: String): String = runCatching {
-        val packages = context.packageManager
-        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            packages.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(0))
-        } else {
-            @Suppress("DEPRECATION")
-            packages.getApplicationInfo(packageName, 0)
-        }
-        packages.getApplicationLabel(info).toString()
-    }.getOrDefault(packageName)
+
 }

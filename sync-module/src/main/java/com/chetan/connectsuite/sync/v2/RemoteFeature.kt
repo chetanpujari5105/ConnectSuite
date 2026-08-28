@@ -147,7 +147,7 @@ object RemoteFeature {
         return buildJsonObject {
             put("active", true)
             put("package", controller.packageName)
-            put("appName", appNameFor(context, controller.packageName))
+            put("appName", AppLabels.of(context, controller.packageName))
             put("playing", playback?.state == PlaybackState.STATE_PLAYING)
             metadata?.getString(android.media.MediaMetadata.METADATA_KEY_TITLE)?.let { put("title", it) }
             metadata?.getString(android.media.MediaMetadata.METADATA_KEY_ARTIST)?.let { put("artist", it) }
@@ -289,17 +289,6 @@ object RemoteFeature {
     }
 
     // ---- plumbing -----------------------------------------------------------------------------
-
-    private fun appNameFor(context: Context, packageName: String): String = runCatching {
-        val packages = context.packageManager
-        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            packages.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(0))
-        } else {
-            @Suppress("DEPRECATION")
-            packages.getApplicationInfo(packageName, 0)
-        }
-        packages.getApplicationLabel(info).toString()
-    }.getOrDefault(packageName)
 
     private fun refuse(session: ControlSession, request: Envelope, failure: RemoteFailure) {
         refused.incrementAndGet()

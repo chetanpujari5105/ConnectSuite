@@ -6,6 +6,23 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
 
+    <!--
+        Defect 28. Without this, Android 11+ package visibility hides almost every other app from
+        `getApplicationInfo`, so the notification and media-remote panes labelled rows with a raw
+        package name — `com.google.android.apps.messaging` where `Messages` belonged.
+
+        Matching the launcher intent rather than declaring `QUERY_ALL_PACKAGES`: the permission
+        would also work and is flagged by Play policy for anything that is not a launcher or a
+        security tool. An app with a launcher icon is exactly the set that posts notifications and
+        holds media sessions, so this is the right set and not a lesser one. See AppLabels.kt.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application>
         <service
             android:name=".notifications.NotificationMirrorService"

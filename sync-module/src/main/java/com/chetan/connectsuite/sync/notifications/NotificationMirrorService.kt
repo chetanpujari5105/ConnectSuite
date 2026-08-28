@@ -16,6 +16,7 @@ import android.util.Log
 import com.chetan.connectsuite.core.data.ConnectSuiteDatabase
 import com.chetan.connectsuite.core.data.SettingsStore
 import com.chetan.connectsuite.core.protocol.NetworkPacket
+import com.chetan.connectsuite.sync.v2.AppLabels
 import com.chetan.connectsuite.core.protocol.PacketType
 import com.chetan.connectsuite.core.transport.ConnectionManager
 import com.chetan.connectsuite.sync.v2.NotificationFeature
@@ -154,7 +155,7 @@ class NotificationMirrorService : NotificationListenerService() {
         val packet = NetworkPacket.of(PacketType.NOTIFICATION_POSTED) {
             put("key", JsonPrimitive(sbn.key))
             put("packageName", JsonPrimitive(sbn.packageName))
-            put("appName", JsonPrimitive(appNameFor(sbn.packageName)))
+            put("appName", JsonPrimitive(AppLabels.of(this@NotificationMirrorService, sbn.packageName)))
             put("title", JsonPrimitive(title))
             put("text", JsonPrimitive(text))
             put("postedAt", JsonPrimitive(sbn.postTime))
@@ -181,19 +182,6 @@ class NotificationMirrorService : NotificationListenerService() {
         }
         return true
     }
-
-    private fun appNameFor(packageName: String): String = runCatching {
-        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            packageManager.getApplicationInfo(
-                packageName,
-                PackageManager.ApplicationInfoFlags.of(0),
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            packageManager.getApplicationInfo(packageName, 0)
-        }
-        packageManager.getApplicationLabel(info).toString()
-    }.getOrDefault(packageName)
 
     /** Small icon as a downscaled PNG; a full-size icon per notification is not worth the bytes. */
     private fun encodeIcon(sbn: StatusBarNotification): String? = runCatching {

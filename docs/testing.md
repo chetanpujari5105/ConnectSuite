@@ -2338,7 +2338,7 @@ access → **Notification access**, toggle **ConnectSuite** off, confirm the pho
 If no log line appears, you are on the wrong screen — stop and check the title says "Notification
 access" and the list is short.
 
-### Defect 28 — a notification row can be labelled with a raw package name — **open**
+### Defect 28 — a notification row can be labelled with a raw package name — **fixed and verified 2026-08-28**
 
 **Found while checking the shade for step 54, 2026-08-28.** Severity: Low-Medium. Cosmetic, but the
 label is the app's *identity* in a list someone scans, and `com.google.android.apps.messaging`
@@ -3046,3 +3046,106 @@ expectation from the module. Adding the fourth and fifth switches each touched e
 One test was added that the restructure made possible: `bypassReplyGuard` and `bypassRemoteGuard`
 differ by two letters, and a matcher written with `startsWith` or `includes` would enable one from
 a typo of the other. Mutation-checked against exactly that implementation.
+
+## Defect 28 closed, and a third copy nobody had found — 2026-08-28
+
+Fixed before the media-remote steps rather than after, because step 64 *is* the card showing the
+playing app's name: the defect would have landed on the first hardware step of the run.
+
+### The fix
+
+A `<queries>` element in `sync-module/src/main/AndroidManifest.xml`, matching the launcher intent:
+
+```xml
+<queries>
+    <intent>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+    </intent>
+</queries>
+```
+
+Not `QUERY_ALL_PACKAGES`, which would also work and is Play-policy flagged for anything that is not
+a launcher or a security tool. An app with a launcher icon is exactly the set that posts
+notifications and holds media sessions, so the narrow filter is the right set rather than a lesser
+one. Confirmed present in the merged manifest before installing, since a `<queries>` that failed to
+merge and one that did not exist look identical from the app's side.
+
+`EXTRA_SUBSTITUTE_APP_NAME` was tried as a second source and **removed**: the constant is not in
+the public SDK, and setting it requires `SUBSTITUTE_NOTIFICATION_APP_NAME`, which is
+signature-or-privileged. No ordinary app can set it, so it would have been a hidden-API dependency
+bought for nothing. It cost one failed compile to find out, which is cheaper than shipping it.
+
+### There were three copies, not two
+
+`appNameFor` existed byte-for-byte identically in `NotificationRelay` and `RemoteFeature`, and a
+third sat on the v1 Android-to-Android path in `NotificationMirrorService`. The third was found
+only *after* the first two were fixed, by grepping for the leftover pattern rather than by
+remembering it existed.
+
+That is the argument for `AppLabels.kt` being a file rather than two careful edits: **a duplicated
+helper is fixed as many times as somebody happens to grep, and the count is never obviously
+complete.** All three now call one function. The v1 copy was rerouted rather than left — it is the
+same bug, and leaving it would have made the new file's own claim false.
+
+### The fallback is kept and no longer silent
+
+A package with no launcher icon still resolves to its own name, which remains the honest answer.
+What changed is that `getOrDefault(packageName)` — which turned a visibility problem into a
+cosmetic one and logged nothing — is now a `w:` line carrying the ratio, per CLAUDE.md:
+
+```
+W [applabel] No label for <pkg>; showing the package name — 7 resolved / 3 fell back since start
+```
+
+Successful lookups are cached; **failures deliberately are not**. Visibility can change under the
+app, and a cached failure would pin a package name into the pane for the life of the process — the
+same defect with a longer fuse.
+
+### Proof on hardware
+
+Rebuilt, installed with `adb install -r`, app foregrounded. Phone log:
+
+```
+I [applabel] com.android.systemui resolves to "System UI" — 1 resolved / 0 fell back since start
+I [applabel] com.whatsapp resolves to "WhatsApp" — 3 resolved / 0 fell back since start
+I [applabel] com.google.android.googlequicksearchbox resolves to "Google" — 5 resolved / 0 fell back
+I [applabel] com.samsung.android.app.smartcapture resolves to "Samsung capture" — 7 resolved / 0 fell back
+```
+
+**7 resolved / 0 fell back.** The denominator is the point: "7 resolved" alone would not distinguish
+this from a run where seven worked and thirty did not.
+
+On the Mac, over the live link, with the control taken first — 20 notifications drawn, so the query
+had something to be wrong about:
+
+| Probe | Result |
+|---|---|
+| notifications drawn (control) | 20 |
+| `appName === package` | **0** |
+| `appName` matching a package-id shape | **0** |
+| distinct labels | System UI, ConnectSuite, WhatsApp, Android System, Google, StackUp, Samsung capture |
+
+The `appName === package` check is the discriminating one: a label that still equals its own package
+id is the defect, and it is the one comparison that cannot be satisfied by a lookalike.
+
+**The reinstall inconsistency in the original report is now explained.** The observation was
+`Messages | AZ-AIRTEL-S` before a reinstall and `com.google.android.apps.messaging | AZ-AIRTEL-S`
+after it, which "static visibility rules should not change across a reinstall" made puzzling. They
+do not — but the *cache* did. Labels resolved while a package was still visible survived in
+process memory and kept rendering correctly until the process was replaced. The reinstall did not
+change visibility; it cleared the memory that was hiding the failure.
+
+### An adb win: the notification listener does not need Settings either
+
+Recorded here because `docs/testing.md` has five attempts' worth of the opposite. A reinstall drops
+the notification-listener grant, and it can be restored from the terminal:
+
+```sh
+adb shell cmd notification allow_listener \
+  com.chetan.connectsuite.debug/com.chetan.connectsuite.sync.notifications.NotificationMirrorService
+```
+
+Verified with `adb shell settings get secure enabled_notification_listeners`. All eight runtime
+permissions survived `adb install -r` untouched, so the whole grant surface for Phase 4 is now
+reachable without opening Settings once.
