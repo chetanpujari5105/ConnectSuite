@@ -74,6 +74,16 @@ object CallWatcher {
     @Volatile
     private var state: String? = null
 
+    /**
+     * True when [number] was put there by `call.dial` for the episode about to begin.
+     *
+     * Defect 42. [number] outlives an episode, and an outgoing call placed on the phone has no
+     * source for one, so without provenance `begin` cannot distinguish "the Mac dialled this" from
+     * "this is left over from the last call". See [CallNumberRules].
+     */
+    @Volatile
+    private var numberFromDial = false
+
     @Volatile
     private var startedAt = 0L
 
@@ -154,11 +164,18 @@ object CallWatcher {
      */
     fun expectOutgoing(dialled: String) {
         number = dialled
+        // Defect 42: an outgoing episode may only keep a number that came from here. Nothing else
+        // supplies one — a call placed on the phone by hand has no source at all — so without this
+        // flag `begin` cannot tell a dialled number from the previous call's residue.
+        numberFromDial = true
     }
 
     /** Undoes [expectOutgoing] when the dial never happened. */
     fun forgetOutgoing() {
-        if (state == null) number = ""
+        if (state == null) {
+            number = ""
+            numberFromDial = false
+        }
     }
 
     /**
@@ -230,9 +247,12 @@ object CallWatcher {
                 if (intent?.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
                 @Suppress("DEPRECATION")
                 val incoming = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
-                // Only ever fills a blank. An outgoing call's number came from `call.dial` and
-                // this broadcast carries no number for it — an empty extra must not erase it.
-                if (!incoming.isNullOrBlank() && number.isBlank()) number = incoming
+                val stateExtra = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
+                // Only ever fills a blank, and never from an IDLE transition — see
+                // CallNumberRules. Defect 42: the previous call's trailing IDLE broadcast arrives
+                // after end() has blanked the field, finds it blank, and refills it with a number
+                // belonging to a call that is over.
+                number = CallNumberRules.numberAfterBroadcast(stateExtra, incoming, number)
             }
         }
         val filter = IntentFilter(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
@@ -301,6 +321,11 @@ object CallWatcher {
         startedAt = System.currentTimeMillis()
         answered = phase == "dialing"
         rejectRequested = false
+        // Defect 42, and this is the invariant rather than the mechanism: an episode may not begin
+        // with a number it did not obtain for itself. A `dialing` episode with no preceding
+        // `call.dial` has no source, so whatever is in the field is the previous call's — and a
+        // card naming the wrong person is worse than one saying it does not know.
+        number = CallNumberRules.numberAtEpisodeStart(phase, numberFromDial, number)
         // An inbound call's number came from the PHONE_STATE broadcast, which fires alongside this
         // transition; an outgoing one's came from `call.dial` before it dialled. Either way it is
         // in the field by now, and this is the one moment worth paying a contacts lookup for.
@@ -354,6 +379,7 @@ object CallWatcher {
         answered = false
         rejectRequested = false
         number = ""
+        numberFromDial = false
         contactName = null
         LinkLog.i("calls", "Call $id ended $disposition after ${duration}ms")
     }

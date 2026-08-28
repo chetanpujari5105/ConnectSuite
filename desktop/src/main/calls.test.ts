@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { CallClient } from './calls';
+import { CallClient, whoLine } from './calls';
 import { resetDebugSwitchesForTests } from './debugSwitches';
 import type { LinkClient } from './link';
 
@@ -260,4 +260,29 @@ test('hasMore comes from the phone even when the page is empty', async () => {
 
   assert.equal(result.ok === true && result.data.calls.length, 0);
   assert.equal(result.ok === true && result.data.hasMore, true, 'a contradiction worth surfacing');
+});
+
+/**
+ * Defect 43 — a call with no number logged as `from ,`.
+ *
+ * Reached for the first time on 2026-08-29, minutes after defect 42 was fixed. Until then a
+ * phone-placed outgoing call always arrived carrying the previous call's number, so the branch
+ * never ran; the honest blank that 42's fix produces walked straight into it. The observed line:
+ *
+ *   call.incoming c2 (dialing) from , no contact name — 26 rang / 18 ended / …
+ *
+ * `from ,` is the string defect 35 is named for, in a different file, eleven defects later.
+ */
+test('a call with no number is named, not left as "from ,"', () => {
+  assert.equal(whoLine({ contactName: 'Contact D', number: '8800000004' }), 'from Contact D (8800000004)');
+  assert.equal(whoLine({ number: '8800000004' }), 'from 8800000004, no contact name');
+  assert.equal(whoLine({ contactName: 'Contact D' }), 'from Contact D, no number');
+
+  // The one that was broken. Both the empty-string and the absent-field shapes, because the phone
+  // sends `put("number", "")` and an older build could omit the key entirely.
+  assert.equal(whoLine({ number: '', contactName: '' }), 'with no number from the platform');
+  assert.equal(whoLine({}), 'with no number from the platform');
+  for (const shape of [{ number: '', contactName: '' }, {}, { number: '   ' }]) {
+    assert.ok(!whoLine(shape).includes('from ,'), `must never render "from ,": ${whoLine(shape)}`);
+  }
 });

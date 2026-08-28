@@ -4929,3 +4929,168 @@ the wrong number this defect is about, by a second route, while looking like a f
 **What this does not affect.** Inbound calls where the previous episode carried a different number,
 and any call the Mac dialled — `expectOutgoing` gives those a real source. Step 69's readings stand:
 its number came from `call.dial`.
+
+---
+
+## Defect 42 fixed and verified; defect 43 found behind it; step 70 re-armed — 2026-08-29
+
+### Defect 42 — fixed
+
+Two writers of `CallWatcher.number` had no rule about who may write it or when. Both now go through
+`CallNumberRules`, which is pure and therefore testable on the JVM:
+
+1. **`numberAfterBroadcast`** — the `PHONE_STATE` receiver may not fill the field from an **IDLE**
+   broadcast. That is the refill path: the previous call's trailing IDLE arrives *after* `end()` has
+   blanked the field, finds it blank, and puts a finished call's number back. Phrased as "ignore
+   IDLE" rather than "accept only RINGING" on purpose — which transitions carry
+   `EXTRA_INCOMING_NUMBER` varies by OEM, and an allowlist could silently discard the inbound number
+   35c depends on. Excluding the one state that is provably wrong cannot break the inbound path.
+2. **`numberAtEpisodeStart`** — an episode may not begin with a number it did not obtain for itself.
+   An outgoing call has exactly one legitimate source (`call.dial` → `expectOutgoing`), tracked by a
+   new `numberFromDial` flag, because nothing supplies a number for a call placed on the phone by
+   hand. Such an episode now starts blank.
+
+Rule 1 is the mechanism, rule 2 is the invariant. Rule 1 alone would fix the sighting; rule 2 makes
+the class impossible whatever else learns to write that field later.
+
+**Tests: `CallNumberRulesTest`, eight of them.** The defect was reintroduced in both rules at once
+and exactly the two that name it went red:
+
+```
+FAILED  an IDLE broadcast may not fill the number
+        expected:<[]> but was:<[+919800000001]>
+FAILED  defect 42 - a phone-placed outgoing episode starts blank, not with the last number
+        expected:<[]> but was:<[+919800000001]>
+```
+
+The other six pass in both states and are labelled as guards. **One of them is the most important
+test in the file**: `an inbound ringing episode keeps the number the broadcast gave it`. 35c depends
+entirely on that path, this fix is landing immediately before step 70 runs, and the failure it
+guards against would otherwise be discovered by wasting a second person's time.
+
+Full phone suite: **175 tests, 0 failures.**
+
+#### Verified on hardware, with a design that cannot pass by coincidence
+
+The trap in testing this is that the obvious experiment is ambiguous: if the previous call and the
+test call share a number, residue and a correct read produce the same string — the exact problem
+that made the first step 70 attempt unreadable. So the test was built so that **the fixed answer
+differs from both the residue and the true number**:
+
+| | Episode | Expected under the fix | Would have been, before |
+|---|---|---|---|
+| A | Mac dials `+919800000001` (`call.dial` present) | the number, from its real source | same |
+| B | `am start -a android.intent.action.CALL` to the same number — **no `call.dial`** | **blank**, because no source exists | `+919800000001`, the residue |
+
+```
+00:42:37.386 I [calls] Call c1 dialing from +919800000001 (Chetan) — 1 of 1 episodes with a number since start
+00:42:54.847 I [calls] Call c2 dialing number withheld by the platform — 1 of 2 episodes with a number since start
+```
+
+`number withheld by the platform` on c2 is the fix. Blank is not what a residue produces and not
+what a correct read of a real source produces, so this reading cannot be a coincidence. The
+denominator moved to `1 of 2` in the same line, which is the count-with-its-denominator rule doing
+exactly the job it was written for.
+
+Both calls were to the user's own number, on standing authorisation. Nobody else's phone was rung.
+
+### Defect 43 — `from ,` in the Mac's log, found by fixing 42 — **fixed same sitting**
+
+The honest blank that 42 produces walked straight into an unguarded ternary on the Mac:
+
+```
+00:42:55.032 I [calls] call.incoming c2 (dialing) from , no contact name — 26 rang / 18 ended / …
+```
+
+**`from ,` is the exact string defect 35 is named for** — "Defect 35 was found in this line reading
+`from ,`" — in a different file, eleven defects later.
+
+It had never been reachable: until 42 was fixed, a phone-placed outgoing call always arrived
+carrying the previous call's number, so the empty branch never ran. The renderer was already
+correct — `callWho` falls back to `Unknown number` and `callStatus` drops the bullet, both from
+defect 35's fix — so the **card** was right and only the log was wrong, which is why nothing caught
+it. `whoLine()` in `desktop/src/main/calls.ts` now has four cases, the fourth being
+`with no number from the platform`, matching what the phone says about the same state.
+
+Test in `calls.test.ts`, shown to fail against the two-branch version. Mac suite: **55 tests, 0
+failures**; `tsc --noEmit` clean. The Mac app was rebuilt and relaunched with
+`--force-renderer-accessibility --remote-debugging-port=9222` and reconnected on its own.
+
+### 35c's pass condition is now **Contact D**, and that is stricter than what was written
+
+`docs/testing.md` originally wrote step 70's headline clause as "their **name** if they are in
+contacts, else their **number**" — a disjunction, which passes either way and therefore tests less
+than it appears to. The caller was checked against the phone's book before the ring was arranged:
+
+```
+content://com.android.contacts/data/phones → Row: 574 display_name=Contact D, data1=8800000004
+```
+
+So the disjunction collapses. **The headline must read `Contact D`.** The bare number is now a
+failure, not an acceptable branch.
+
+This matters beyond tightening a clause. `ContactsFeature.nameFor` is called from
+`CallWatcher.begin`, once per episode, and **contacts was pulled forward into Phase 4 specifically
+so that call and SMS surfaces would not be columns of phone numbers.** A number-only headline on a
+caller who *is* in the book means that lookup did not fire — which is a working feature reported as
+a working feature while the integration it was built for is dead. That is defect 31's shape (a lit
+chip over dead wiring) and step 68's shape (a row that could have come from either path), and it is
+the reason the stricter clause is worth having: it is the only version that can tell the two apart.
+
+Recorded for the run: the phone's line must read `ringing from 8800000004 (Contact D)` — the
+parenthesised name is the lookup's own output — and the Mac card's headline must be `Contact D`,
+with `Ringing · 8800000004` beneath it.
+
+### The gate, readable before anyone's phone is involved
+
+The predicate now lives in `scripts/step70-gate.mjs`, imported by the watcher and exercised by
+`scripts/step70-gate.test.mjs`, so it can be inspected without a call. It returns *reasons to
+refuse*; an empty list is the only thing that authorises a click, so an unfamiliar card shape
+defaults to refusing rather than to acting. It is re-evaluated immediately before the click, and
+aborts if the card changed underneath the read.
+
+`node scripts/step70-gate.test.mjs` prints the whole table. The two conditions are: the status must
+say **Ringing**, and the card must carry the expected digits (compared digits-only, so `8800000004`
+and `+91 88000 00004` match).
+
+| Card | Decision |
+|---|---|
+| `who="Contact D" status="Ringing · 8800000004"` | **CLICK** |
+| `who="Contact D" status="Ringing · +91 88000 00004"` | **CLICK** |
+| `who="Chetan" status="Dialling · +919800000001"` — the card it wrongly hung up | REFUSE, both reasons |
+| `who="Contact D" status="Dialling · 8800000004"` — right person, outgoing | REFUSE |
+| `who="Mother" status="Ringing · +918300000006"` — a real call arriving mid-test | REFUSE |
+| `who="Contact D" status="In progress · 8800000004"` — already answered | REFUSE |
+| `who="Unknown number" status="Ringing"` — withheld caller ID | REFUSE |
+| no live card | REFUSE |
+
+Two of those rows are not hypothetical. The third is the exact card from the failed attempt. The
+fifth is somebody's real call — the phone took two of those during this sitting — and rejecting one
+would be dropping a stranger's conversation from a test script.
+
+When it refuses it logs, once per distinct card:
+
+```
+SKIPPING a live card, not touching it — state is "Dialling · +919800000001", not Ringing; card does not carry 8800000004
+    who="Chetan" status="Dialling · +919800000001"
+```
+
+and on timeout it says how many cards it left alone, so a run that saw the wrong calls and did
+nothing is distinguishable from a run that saw nothing at all.
+
+### Step 70 preconditions, re-verified against the post-42, post-43 build
+
+Build installed `2026-08-29 00:41:12`; Mac rebuilt and relaunched at 00:46.
+
+| # | Precondition | Reading | Control |
+|---|---|---|---|
+| 1 | link up | 3 ports bound; `Connected to Samsung SM-S938B` 00:46:13 | — |
+| 2 | `READ_CALL_LOG` | `granted=true` | the other seven Phase 4 permissions read true in the same dump |
+| 3 | `Watching PHONE_STATE for the inbound number` | present, 00:41:13 | `Could not watch PHONE_STATE` count: **0**, same grep |
+| 4 | call-log tail noted | `type=2, +919800000001, date=1787944374680` | the step 70 row must be a **different** number with `type=1` then `type=5` |
+| 5 | episode denominator | `1 of 2 episodes with a number` | must become `2 of 3` |
+| 6 | caller is in contacts | `Contact D / 8800000004` | this is what makes clause 35c strict |
+| 7 | no live call, nothing armed | `#call-live` hidden, `#call-answer`/`#call-reject` absent, `#call-dial` reads `Call`, input empty | **173 buttons enumerated** in the same DOM |
+| 8 | capabilities | `calls: available`, `contacts: available` | 12 chips enumerated, 7 on |
+
+**Ready.** The command for the ring is `node scripts/step70-watch.mjs 8800000004`.

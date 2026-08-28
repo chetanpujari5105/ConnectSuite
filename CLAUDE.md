@@ -206,6 +206,33 @@ damage on the user's own device or nearly recorded a false result.
   works — 27 samples read "grant revoked", the control column read 0 in the same rows, and a defect
   that did not exist stayed out of this repo.
 
+- **A check that does not gate the action is decoration.** If code reads a target and then acts
+  regardless of what it read, the read is not a safety measure — it is a log line that makes the
+  eventual accident harder to explain, because the transcript will show the right value being
+  observed immediately before the wrong thing was done.
+
+  Written on 2026-08-29, after it cost the user a phone call. The step 70 watcher waited for the
+  live call card, read it **six times** — `who="Chetan"`, `status="Dialling · +919800000001"` — and
+  then clicked **Reject**, because the click was the next statement and nothing stood between them.
+  `Dialling` is not `Ringing` and that number is not the caller's; the readings said plainly that
+  this was not the call under test. It hung up the user's own outgoing call to the second person,
+  two seconds in, and the real ring arrived 32 seconds later with nothing watching.
+
+  This is the same shape as the two rules above it, which is why it belongs beside them rather than
+  inside one defect's record. The coordinate rule says do not act on a target you have not
+  identified. The control rule says do not accept a reading you cannot trust. This one closes the
+  gap between them: **having identified the target correctly is worth nothing if the action does
+  not depend on the identification.**
+
+  Concretely, for anything that drives a real device: the predicate that decides *whether* to act is
+  the same expression that decides *what was seen*, evaluated at the moment of acting — not earlier,
+  and not in a comment. Re-check it immediately before the irreversible call, since the card can
+  change underneath a slow read. And when it refuses, **say what it refused and why**, or the next
+  person debugging a silent no-op will remove the gate to find out. `scripts/step70-watch.mjs` is
+  the worked example: it will not click unless the card reads `Ringing` *and* carries the expected
+  number, it re-tests both immediately before the click, and it logs every card it declines to
+  touch.
+
 - **A rule that matters enough to write down is a rule that needs an enforcement point.** Writing
   it in a doc is the start of the job, not the end of it. Ask, in the same sitting: what would have
   stopped this? A hook, a script that does the safe thing, a check in CI, a lint. If the answer is

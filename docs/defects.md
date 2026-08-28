@@ -55,7 +55,8 @@ own heading there, and its own row here.
 | **39** | A message sent from the Mac is missing from the thread it was sent into | **deferred** | — | see below |
 | **40** | `call.reject delivered` named a disposition the disposition logic then overrode | **closed** | hardware, 2026-08-29 | `docs/testing.md` |
 | **41** | The force-stop hook denies prose that merely mentions the rule | **closed** | hook fixture tests, 2026-08-29 | see below |
-| **42** | An outgoing call placed on the phone is labelled with the previous call's number and name | **open** | — | see below |
+| **42** | An outgoing call placed on the phone was labelled with the previous call's number and name | **closed** | hardware, 2026-08-29 | see below |
+| **43** | A call with no number logged as `from ,` on the Mac — the string defect 35 is named for | **closed** | `calls.test.ts`, 2026-08-29 | see below |
 
 ---
 
@@ -160,6 +161,54 @@ on a good build and a broken one.
 disposition when the call ends, and answered outranks the flag)` followed by `Call c1 ended answered
 after 4113ms` — the first line now explains the second instead of denying it.
 
+### 42 — an outgoing call placed on the phone was labelled with the previous call's number → **closed**
+
+`CallWatcher.number` outlived its episode with no rule about who could write it. The platform
+recorded `00:28:55 type=2 → 8800000004`; the app announced `Call c2 dialing from +919800000001
+(Chetan)` — the previous episode's number, and a name the user would have believed.
+
+**Fix:** both writers now go through the pure `CallNumberRules`. The `PHONE_STATE` receiver may not
+fill the field from an **IDLE** broadcast (that was the refill path — the previous call's trailing
+IDLE arriving after `end()` blanked it), and an episode may not begin with a number it did not
+obtain for itself (`numberFromDial` tracks the one legitimate outgoing source, `call.dial`).
+
+**Evidence, designed so it cannot pass by coincidence.** A phone-placed call to a number the
+*previous* episode also used: residue and a correct read would both produce that number, so the
+discriminator is that the fix produces **neither** —
+
+```
+00:42:37 Call c1 dialing from +919800000001 (Chetan) — 1 of 1 episodes with a number since start
+00:42:54 Call c2 dialing number withheld by the platform — 1 of 2 episodes with a number since start
+```
+
+Eight tests in `CallNumberRulesTest`; the defect was reintroduced in both rules and exactly the two
+naming it went red. The most important of the six guards is `an inbound ringing episode keeps the
+number the broadcast gave it` — 35c depends on that path and this fix landed immediately before
+step 70.
+
+### 43 — a call with no number logged as `from ,` on the Mac → **closed**
+
+Found minutes after 42, by 42. The honest blank walked into an unguarded two-branch ternary:
+
+```
+00:42:55 I [calls] call.incoming c2 (dialing) from , no contact name — 26 rang / 18 ended / …
+```
+
+`from ,` is **the exact string defect 35 is named for**, in a different file, eleven defects later.
+It had never been reachable, because before 42 a phone-placed outgoing call always carried the
+previous call's number. The renderer was already correct — `callWho` and `callStatus` both handle
+the blank, from 35's fix — so the card was right and only the log was wrong, which is why nothing
+caught it sooner.
+
+**Fix:** `whoLine()` in `desktop/src/main/calls.ts`, four cases, the fourth being `with no number
+from the platform` — the same sentence the phone uses for the same state. Test shown to fail
+against the two-branch version.
+
+**The lesson worth keeping:** a formatter branch that has never been reachable is untested code
+wearing the appearance of tested code. Fixing an upstream defect is exactly when such a branch
+becomes reachable, so the question to ask after any fix that makes a value newly possible is *which
+formatters have never seen this value*.
+
 ### 41 — the force-stop hook denies prose that merely mentions the rule → **closed**
 
 Found on 2026-08-29 while writing this file: the attempt to create it was **denied by the hook**,
@@ -203,39 +252,6 @@ eviction/selection behaviour is worth having well before any concurrent-connecti
 paired slot and the TLS identity live under `app.getPath('userData')` and there is no
 `requestSingleInstanceLock`, so they do not collide:
 `cd desktop && npm start -- --user-data-dir=/tmp/connectsuite-s25`.
-
-### 42 — an outgoing call placed on the phone is labelled with the previous call's number and name · **open**
-
-Severity: **High**, and higher than defect 35 which it resembles: 35 drew a blank, and a blank is
-obviously missing. This draws a **name**, and a name is believed.
-
-**Proof, independent of any theory of cause.** The platform recorded `00:28:55 type=2, number=
-8800000004`. The app pushed, one second later, `Call c2 dialing from +919800000001 (Chetan)`. Two
-different numbers for one call, and the app's choice is the *previous* episode's number.
-
-**Mechanism, as a hypothesis.** `CallWatcher.number` persists between episodes. It is written by
-`expectOutgoing()` when the Mac dials and by the `PHONE_STATE` receiver when `EXTRA_INCOMING_NUMBER`
-is present and the field is blank. **Nothing writes it for an outgoing call placed on the phone.**
-`end()` does clear it, so the residue is most likely the previous call's trailing IDLE broadcast
-arriving after `end()` and refilling the blank. Not proven; the fix does not depend on it.
-
-**Fix direction — the first part is the one that matters:**
-
-1. An episode must not begin with a number it did not obtain for itself. Clear `number` at the start
-   of `begin()` for any episode with no explicit source, so a phone-placed outgoing call reports
-   `number withheld by the platform` — the honest blank — instead of someone else's name.
-2. Separately, look for a legitimate source for that number. `NEW_OUTGOING_CALL` is restricted;
-   `newestLogged` is legitimate at `end()` and cannot help at `begin()`.
-
-**Wrong fix to avoid: reading the call log in `begin()`.** The row for a call that is only now
-dialling has not been written yet, so the read returns the previous call's row — reproducing this
-exact defect by a second route while looking like a fix. That is `dispositionOf`'s rejected shape and
-defect 36's shipped wrong fix, for the third time in this codebase.
-
-**Blocks step 70.** Not because it breaks the inbound path, but because it destroys the run's ability
-to discriminate: a stale carry and a correct `EXTRA_INCOMING_NUMBER` read produce the same string
-whenever the previous episode touched the same number, which is what happened on 2026-08-29. Fix 42,
-then run 70.
 
 ### 30 — the Mac cannot start a new SMS conversation · **deferred**
 

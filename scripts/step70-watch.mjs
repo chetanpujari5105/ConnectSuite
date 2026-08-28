@@ -17,6 +17,7 @@
 // decoration.** So this script will not click unless the card says `Ringing` and carries the number
 // it was told to expect, and it says out loud what it is skipping and why.
 import { argv, exit } from 'node:process';
+import { gateReasons, skipLine, digits } from './step70-gate.mjs';
 
 const expected = argv[2];
 const minutes = Number(argv[3] ?? 9);
@@ -24,7 +25,6 @@ if (!expected) {
   console.error('usage: node step70-watch.mjs <expected-number-fragment> [minutes]');
   exit(2);
 }
-const digits = (s) => (s ?? '').replace(/\D/g, '');
 const wantDigits = digits(expected);
 
 const targets = await (await fetch('http://localhost:9222/json')).json();
@@ -62,14 +62,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const now = () => new Date().toLocaleTimeString('en-GB', { hour12: false }) +
   '.' + String(new Date().getMilliseconds()).padStart(3, '0');
 
-/** The gate. Both halves, and each is a separate reason so the log says which one failed. */
-const isTheCallUnderTest = (card) => {
-  const reasons = [];
-  const text = `${card.who ?? ''} ${card.status ?? ''}`;
-  if (!/ringing/i.test(card.status ?? '')) reasons.push(`state is ${JSON.stringify(card.status)}, not Ringing`);
-  if (!digits(text).includes(wantDigits)) reasons.push(`number does not contain ${wantDigits}`);
-  return reasons;
-};
+// The gate lives in step70-gate.mjs so it can be read and tested without a phone ringing.
 
 console.log(`${now()}  waiting up to ${minutes} min for an inbound ring from …${wantDigits}`);
 console.log(`${now()}  will NOT click unless the card reads Ringing AND carries that number`);
@@ -81,13 +74,12 @@ let target = null;
 while (Date.now() < deadline) {
   const card = await evaluate(READ);
   if (!card.hidden) {
-    const why = isTheCallUnderTest(card);
+    const why = gateReasons(card, wantDigits);
     if (why.length === 0) { target = card; break; }
     const key = JSON.stringify([card.who, card.status]);
     if (!skipped.includes(key)) {
       skipped.push(key);
-      console.log(`${now()}  SKIPPING a live card, not touching it — ${why.join('; ')}`);
-      console.log(`${now()}    who=${JSON.stringify(card.who)} status=${JSON.stringify(card.status)}`);
+      console.log(`${now()}  ${skipLine(card, why)}`);
     }
   }
   await sleep(250);
@@ -112,7 +104,7 @@ for (let i = 0; i < 6; i++) {
 
 // STEP 3 — one click, by id, and only after the gate passed.
 const before = await evaluate(READ);
-if (isTheCallUnderTest(before).length > 0) {
+if (gateReasons(before, wantDigits).length > 0) {
   console.log(`${now()}  ABORT — the card changed under us; not clicking.`);
   ws.close();
   exit(4);

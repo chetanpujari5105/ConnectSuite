@@ -48,10 +48,9 @@ first test suite the same day, after six of the phase's defects turned out to be
 | **35c** | the inbound card's headline is the caller's name or number, and the second line is `Ringing · +…` | the phone logged `Call c4 ringing from 8800000004 (Contact D)`, which is the right answer — but the two episodes before it involved the same number and defect 42 shows a number can carry over, so the run **cannot tell a correct read from a stale one** |
 | **36** | `call.ended cN rejected`, with `type=5` in the call log as the control | **untested.** No reject was sent; the call was answered on the phone and ran 33 s |
 
-**Open and blocking:** **42** — an outgoing call placed on the phone is labelled with the previous
-call's number and contact name. High severity on its own (it puts the wrong person's name on a live
-card), and it is what makes step 70 unreadable: while a number can carry between episodes, a correct
-`EXTRA_INCOMING_NUMBER` read and a stale carry produce the same string.
+**Closed since:** **42** (an outgoing call labelled with the previous call's number — the blocker)
+and **43** (`from ,` in the Mac's log, found behind 42). Step 70 is unblocked and re-armed against
+the post-42 build; see the last section.
 
 **Deferred out of Phase 4, with fix directions recorded:** 17, 30, 32, 33, 38, 39. See
 `docs/defects.md`; each carries its fix direction and, where one exists, the wrong fix to avoid.
@@ -114,13 +113,16 @@ The attempt is written up in full in `docs/testing.md`. The short version:
 3. **Defect 42 was found**, and it is the reason a re-run needs sequencing rather than just another
    ring.
 
-**Order for the next attempt, and the first item is not optional:**
+**Done since, in that order:** 42 fixed and verified on hardware (and 43 found behind it), phone
+rebuilt and installed, Mac rebuilt and relaunched, all eight preconditions re-read against that
+build. Step 70 is armed and waiting on one ring, driven by
+`node scripts/step70-watch.mjs 8800000004`.
 
-1. Fix **defect 42** — clear `number` at the start of an episode that has no source of its own, so a
-   phone-placed outgoing call reports the honest blank instead of the previous call's name. This is
-   what makes step 70's reading mean what it says.
-2. Rebuild, install, and re-verify preconditions against *that* build.
-3. Then ask for the one ring, driven by `scripts/step70-watch.mjs 8800000004`.
+**35c's clause is now stricter than as first written.** The caller is in the phone's contacts as
+`Contact D`, so the original "their name, else their number" disjunction collapses: the headline
+must read **Contact D**, and the bare number is a failure. That is deliberate — it is the only
+version of the clause that proves `ContactsFeature.nameFor` fired, which is the integration contacts
+was pulled forward into Phase 4 to enable.
 
 If the second person cannot be asked again soon, the alternative that preserves the control without
 fixing 42 first is a ring from a number **no preceding episode touched**, with the preceding

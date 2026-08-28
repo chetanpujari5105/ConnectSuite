@@ -32,6 +32,33 @@ import { log } from './logger';
  * Naming the call turns a silent misfire into a refusal with a sentence. That is the whole trade,
  * and it is why the convenience shape is left unused rather than merely discouraged.
  */
+/**
+ * How a call is named in this Mac's log. Three cases, and the fourth one is the point.
+ *
+ * Defect 43. This was a ternary with two branches, so a call carrying no number at all rendered as
+ * `from , no contact name` — a comma with nothing before it, which is *the exact string defect 35
+ * is named for*: "Defect 35 was found in this line reading `from ,`".
+ *
+ * It had never been reached, because until defect 42 was fixed a phone-placed outgoing call always
+ * arrived carrying the previous call's number. Fixing 42 made the honest blank reachable for the
+ * first time, and this line was waiting for it. The renderer already handled the case correctly —
+ * `callWho` falls back to "Unknown number" and `callStatus` drops the bullet — so the card was
+ * right and only the log was wrong, which is why nothing caught it sooner.
+ *
+ * Exported for its test.
+ */
+export function whoLine(call: { contactName?: string; number?: string }): string {
+  const number = (call.number ?? '').trim();
+  const name = (call.contactName ?? '').trim();
+  if (name && number) return `from ${name} (${number})`;
+  if (name) return `from ${name}, no number`;
+  if (number) return `from ${number}, no contact name`;
+  // The phone says the same thing in its own log, and for the same reason: this is a real state —
+  // a withheld caller ID, or an outgoing call the platform gives us no number for — and naming it
+  // is what stops a reader hunting for a bug in the formatter.
+  return 'with no number from the platform';
+}
+
 export class CallClient extends EventEmitter {
   /** The call the Mac is currently showing, or null. Set by `call.incoming`, cleared by `call.ended`. */
   private current: IncomingCall | null = null;
@@ -63,12 +90,7 @@ export class CallClient extends EventEmitter {
     }
     this.current = call;
     this.incoming += 1;
-    log.info(
-      'calls',
-      `call.incoming ${call.callId} (${call.state}) from ` +
-        `${call.contactName ? `${call.contactName} (${call.number})` : `${call.number}, no contact name`}` +
-        ` — ${this.tally()}`,
-    );
+    log.info('calls', `call.incoming ${call.callId} (${call.state}) ${whoLine(call)} — ${this.tally()}`);
     this.emit('changed', this.current);
   }
 
