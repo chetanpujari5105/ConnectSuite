@@ -57,6 +57,7 @@ own heading there, and its own row here.
 | **41** | The force-stop hook denies prose that merely mentions the rule | **closed** | hook fixture tests, 2026-08-29 | see below |
 | **42** | An outgoing call placed on the phone was labelled with the previous call's number and name | **closed** | hardware, 2026-08-29 | see below |
 | **43** | A call with no number logged as `from ,` on the Mac — the string defect 35 is named for | **closed** | `calls.test.ts`, 2026-08-29 | see below |
+| **44** | A message sent on the phone never reaches the Mac — no observer on outgoing rows | **open** | — | see below |
 
 ---
 
@@ -252,6 +253,28 @@ eviction/selection behaviour is worth having well before any concurrent-connecti
 paired slot and the TLS identity live under `app.getPath('userData')` and there is no
 `requestSingleInstanceLock`, so they do not collide:
 `cd desktop && npm start -- --user-data-dir=/tmp/connectsuite-s25`.
+
+### 44 — a message sent on the phone never reaches the Mac · **open**
+
+Found by reading during Phase 5 preparation, 2026-08-29. `SmsFeature` pushes exactly one event
+(`SMS_RECEIVED`, from the inbound broadcast) and `MessageType` declares four SMS types and no fifth.
+Nothing observes outgoing provider rows, so a message typed on the handset is invisible to the Mac
+until an unrelated refresh happens to redraw the thread.
+
+**Numbered separately from 39 deliberately.** Same symptom — the Mac's thread is missing a message —
+and a different cause. 39 is a race the Mac loses against its own provider read; 44 is a mechanism
+that does not exist. A fix for 39 alone would close the visible bug and leave the phone's keyboard
+diverging from the Mac forever, which is exactly why this is not a note inside 39.
+
+**Fix direction:** the `sms.sent` event in `docs/phase-5-proposals.md` — accepted 2026-08-29 —
+emitted on any new outgoing row regardless of origin, reusing defect 34's bounded retry and its
+`after N lookup(s)` line. The genuinely new work is the trigger: `sms.received` rides an inbound
+broadcast and there is no outgoing equivalent, so this needs a `ContentObserver` on the sent
+mailbox.
+
+**Wrong fix to avoid:** enriching `sms.send`'s ack and stopping. The ack reaches only the client that
+asked, so a message typed on the phone still never arrives — and the visible half being fixed is
+what makes that the tempting place to stop.
 
 ### 30 — the Mac cannot start a new SMS conversation · **deferred**
 

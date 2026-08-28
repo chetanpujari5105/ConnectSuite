@@ -5094,3 +5094,54 @@ Build installed `2026-08-29 00:41:12`; Mac rebuilt and relaunched at 00:46.
 | 8 | capabilities | `calls: available`, `contacts: available` | 12 chips enumerated, 7 on |
 
 **Ready.** The command for the ring is `node scripts/step70-watch.mjs 8800000004`.
+
+---
+
+### Defect 44 — a message sent on the phone never reaches the Mac — **open, found by reading during Phase 5 preparation on 2026-08-29**
+
+Severity: **Medium.** Numbered separately from defect 39 at the user's instruction, and the reason is
+worth keeping: **39 and 44 have the same symptom and different causes, and an unnumbered 44 gets
+folded into 39 and half-fixed.** A fix for 39 alone — making the Mac's own send appear in its own
+pane — would look complete, close the visible bug, and leave the phone's keyboard silently
+diverging from the Mac's thread forever.
+
+**Found by reading, not by a step.** No test covers it because every SMS test so far has sent from
+the Mac.
+
+`SmsFeature` pushes exactly one event:
+
+```
+SmsFeature.kt:134   link.broadcast { session -> session.send(Envelope(type = MessageType.SMS_RECEIVED, …)) }
+```
+
+and `MessageType` declares exactly four SMS types — `sms.threads`, `sms.messages`, `sms.send`,
+`sms.received`. There is no observer on outgoing provider rows and no event that could carry one. So
+a message typed on the handset is invisible to the Mac until something else causes a full
+`sms.threads` or `sms.messages` refresh.
+
+**Control on that absence, since it is an absence claim:** the same grep over the same file finds
+the one push that does exist, at `SmsFeature.kt:134`, and `grep -n "SMS_" Messages.kt` returns four
+constants and no fifth. The query can see pushes and can see type declarations; there is genuinely
+no second one.
+
+**Distinguished from defect 39.** 39 is a race: the Mac's composer re-fetches 30 ms after its own
+send, before the provider has written the row, and nothing appends it afterwards. 44 is a missing
+feature: there is no mechanism at all, and no amount of retrying on the Mac would produce one,
+because the Mac is never told. 39 is fixable on the Mac alone; 44 is not.
+
+**Fix direction — one mechanism closes both, and that is why the shape matters.** The `sms.sent`
+event proposed in `docs/phase-5-proposals.md`, emitted on *any* new outgoing provider row regardless
+of origin. It must reuse defect 34's bounded retry (`PROVIDER_LOOKS` = 3 at 150 ms) and its
+`after N lookup(s)` success line, because it faces the same asynchronous provider write that
+`sms.received` does — `SmsFeature.onSend` already documents that the thread id "can still be null on
+the first message to a new number".
+
+**Wrong fix to avoid:** fixing 39 by enriching `sms.send`'s ack and stopping there. The ack answers
+only the client that asked, so a message typed on the phone still never arrives — and the visible
+half of the problem would be gone, which is what makes it the tempting stopping point.
+
+**Also needs an observer.** `sms.received` is driven by the inbound broadcast; there is no equivalent
+broadcast for an outgoing message. The likely mechanism is a `ContentObserver` on
+`content://sms/sent` (and the MMS equivalent), which is a *different* trigger from the one
+`sms.received` uses and is the part of this that is genuinely new work rather than a second caller
+of an existing path.

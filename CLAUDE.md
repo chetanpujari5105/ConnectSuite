@@ -12,7 +12,9 @@
 > whole log instead of today's window.
 >
 > **Do not reinstall the phone build** before running it; a reinstall resets grants and bindings.
-> **Do not start Phase 5** until it has run.
+> **Do not start Phase 5** until it has run — its first act claims `bulkChannelSink`, and a failed
+> ring must not be debugged through a transport change. Phase 5's decisions are already taken and
+> recorded in `docs/phase-5-proposals.md`; nothing there is implemented.
 
 
 Two apps that connect an Android phone to a Mac over the local network with no cloud, no account, and no relay server.
@@ -248,6 +250,31 @@ damage on the user's own device or nearly recorded a false result.
   the worked example: it will not click unless the card reads `Ringing` *and* carries the expected
   number, it re-tests both immediately before the click, and it logs every card it declines to
   touch.
+
+- **A package id may appear as a machine handle, never as the only thing a user reads.** Any payload
+  carrying a package name carries a resolved label beside it, and any human-readable `message`
+  mentioning an app names the app rather than the package. `remote.state` already obeys this — it
+  sends `package` **and** `appName` — and so does the notification relay.
+
+  This is defect 28 and defect 33, which are the same mistake found twice: a raw
+  `com.techmash.playo` in a sentence somebody reads. 28 was believed to be two copies of it and
+  turned out to be **three**, found only by enumerating rather than fixing the one on screen — so
+  the practical half of this rule is *grep for every package name reaching a string, not the ones a
+  screenshot showed you*.
+
+  Resolution goes through `AppLabels.of`, always, including when it fails. It returns the package
+  name as its honest fallback for a package with no launcher icon, logs at warning level, and keeps
+  `resolved / fell back` on the line — so "12 fallbacks" can be told from "12 of 12 fallbacks". The
+  fallback is correct and must not be "fixed"; what matters is that it is *reached through*
+  `AppLabels` and therefore counted, rather than a raw id being interpolated somewhere that never
+  asks.
+
+  Written into the rules on 2026-08-29, before `fs.*` and `media.*` are specified, because that is
+  when it is cheap. Those two namespaces have no payload spec yet and will meet package ids in at
+  least five places — `MediaStore` bucket names, `OWNER_PACKAGE_NAME`, `Android/data/com.foo`
+  directory entries, transfer completion text, and error `message` strings, which is where 28 was
+  actually found. A path component stays the real path — prettifying it breaks navigation — and only
+  the label is a sentence. See `docs/phase-5-proposals.md` §4.
 
 - **A rule that matters enough to write down is a rule that needs an enforcement point.** Writing
   it in a doc is the start of the job, not the end of it. Ask, in the same sitting: what would have

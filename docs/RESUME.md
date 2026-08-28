@@ -6,21 +6,28 @@ Phase 4 is closed. **Do not open Phase 5** until step 70 has run.
 Written because step 67 passed on hardware and went unrecorded for a full sitting, and a session
 that ends at 00:50 with "we'll do it tomorrow" is the same failure with a longer gap.
 
+**Phase 5 preparation happened after this note was first written, and none of it is implemented.**
+`docs/phase-5-proposals.md` holds four prose pieces and a box of decisions already taken — read that
+box before writing any Phase 5 code, and do not start until step 70 has run. `docs/protocol.md` is
+deliberately unmodified.
+
 ---
 
 ## The state as of tonight
 
 | | |
 |---|---|
-| Last commit | `f0c6286` |
+| Build fingerprint | the load-bearing fact is the APK below, not a commit hash — hashes go stale every sitting |
 | Phone build under test | `lastUpdateTime=2026-08-29 00:41:12` — **do not reinstall**; a reinstall resets grants and bindings and invalidates the preconditions below |
 | Mac | rebuilt and relaunched 00:46 with `--force-renderer-accessibility --remote-debugging-port=9222` |
 | Phone suite | 175 tests, 0 failures |
 | Mac suite | 55 tests, 0 failures, `tsc --noEmit` clean |
 | Outstanding | **step 70 only** — it proves defect **36** and defect **35c**, the last two things in Phase 4 not verified on hardware |
 
-Defects 31, 34, 35 (outgoing), 37, 40, 41, 42, 43 are closed. 17, 30, 32, 33, 38, 39 are deferred
-with fix directions in `docs/defects.md`.
+Defects 31, 34, 35 (outgoing), 37, 40, 41, 42, 43 are closed. **17, 30, 32, 33, 38, 39 and 44** are
+open with fix directions in `docs/defects.md` — 44 was added on 2026-08-29 and is the newest.
+`scripts/check-defects.sh` will tell you if that list has drifted from the register; trust it over
+this sentence.
 
 ---
 
@@ -139,9 +146,43 @@ Ask for **one** ring.
 1. Mark 35c and 36 closed in `docs/defects.md` with their evidence.
 2. Update `docs/phase-4-closeout.md` — it currently says Phase 4 is not closed.
 3. Run `scripts/check-defects.sh` before committing; the commit hook runs it anyway.
-4. Then, and only then, Phase 5. Its shape is in the close-out: start with the protocol decision for
-   **30/32/39**, which all three share, and fold **33** in wherever `fs.*` and `media.*` put a
-   package id into a user-visible string.
+4. Then, and only then, Phase 5 — see below.
+
+---
+
+## Phase 5, when it opens — what is already decided
+
+**Do not start before step 70.** Its first act claims `bulkChannelSink`, and a failed ring must not
+be debugged through a transport change. That is the whole reason for the gate.
+
+Everything below is in `docs/phase-5-proposals.md`, which was reviewed on 2026-08-29. **These are
+decisions, not options** — the arguments are in the file; do not re-litigate them, and do not
+implement an alternative without saying why the recorded reasoning is wrong.
+
+| Decided | What |
+|---|---|
+| **`sms.sent` as an event**, ack left alone | The ack keeps meaning "the radio accepted this". One event closes **39 and 44** together. |
+| **The delay-before-re-fetch is rejected** | Three reaches for the same wrong shape (36 shipped it, 37 declined it, 39 named it) is enough. It stays written down. |
+| **The `before` cursor: option (a)** | Optional `beforeId`, ordering `dateMs DESC` then `id DESC` byte-wise, backward compatible. Chosen because it is the only option that can advance *inside* a shared timestamp; the others stall unboundedly. Applies to `sms.threads`, `sms.messages` and `call.log`. |
+| **Bug 6 at 1 MB** | Separate small header cap, write-side enforcement in `Framing`, no resync, denominator on the refusal line. |
+| **The package-id rule** | Now in `CLAUDE.md` beside the gate rule, not only in the proposal. |
+
+**The finding that changes the size of the SMS work:** only **one** of 30/32/39 needs a protocol
+change. The phone already implements `sms.send` with no `threadId` (defect 30 is a Mac with no
+recipient field) and already pages threads by `before` (defect 32 is a missing button). So the SMS
+sitting is one protocol change plus two Mac features.
+
+**Defect 44 is new and must not be folded into 39.** Same symptom, different cause: 39 is a race the
+Mac loses against its own provider read and is fixable on the Mac alone; 44 is that nothing observes
+outgoing rows at all, and no Mac-side retry can invent an event it is never sent. The tempting wrong
+fix — enrich the ack and stop — closes the visible half and leaves the phone's keyboard diverging
+from the Mac forever.
+
+**Suggested order inside Phase 5:** `sms.sent` first (it closes 39 and 44, and 30/32 can proceed in
+parallel), then Bug 6's caps before `fs.*` has a first consumer, then the package-id rule written
+into `docs/protocol.md` as `fs.*` and `media.*` are specified, then the transfer itself — borrowing
+v1's absolute offsets, adaptive chunking, streaming digest and offer/accept, and none of its
+transport.
 
 ## If it fails
 

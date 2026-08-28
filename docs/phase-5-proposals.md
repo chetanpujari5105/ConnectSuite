@@ -4,6 +4,26 @@ Written 2026-08-29, before step 70 has run and before Phase 5 has opened. **Noth
 committed to `docs/protocol.md`.** The protocol is the contract; this is the argument for changing
 it, kept separate so it can be read, disagreed with, and reverted on its own.
 
+> ### Decisions taken 2026-08-29 — read before implementing
+>
+> Reviewed and **accepted**:
+>
+> - **`sms.sent` as an event, ack left alone.** The ack keeps meaning "the radio accepted this".
+> - **The delay-before-re-fetch stays rejected**, and stays written down. Three reaches for the same
+>   wrong shape is enough.
+> - **Bug 6 at 1 MB**, with a separate small header cap, write-side enforcement in `Framing`, no
+>   resync, and the denominator on the refusal line.
+> - **The package-id rule is codified in `CLAUDE.md`**, alongside the gate rule — not only here.
+> - **The `before` cursor is decided now rather than discovered twice.** The decision is written into
+>   §1 below; it was the one open question and it is no longer open.
+>
+> One thing changed since this was written: the unrecorded gap in §1 is now **defect 44**, with its
+> own record in `docs/defects.md`, because it shares a symptom with 39 and would otherwise be folded
+> into it and half-fixed.
+>
+> **Still gated on step 70.** Phase 5's first act claims `bulkChannelSink`, and a failed ring must
+> not be debugged through a transport change.
+
 Four pieces, all prose:
 
 1. [The protocol decision for defects 30, 32 and 39](#1-the-protocol-decision-for-defects-30-32-and-39)
@@ -32,7 +52,8 @@ without touching the wire at all, and could ship before the protocol change if t
 
 ### The one real change, and the shape I recommend
 
-There is a second, unrecorded gap that the same change closes, and it is the reason for the shape:
+There is a second gap that the same change closes — now **defect 44** — and it is the reason for the
+shape:
 
 > **A message sent from the phone itself never reaches the Mac.** `SmsFeature` pushes exactly one
 > event — `SMS_RECEIVED`, from the inbound broadcast — and there is no observer on outgoing
@@ -109,14 +130,69 @@ a thread will be merged by the provider into that thread. The pane should theref
 **32 — a thread pager.** `loadThreads` takes `before`, and `renderList` grows a "Load older
 conversations" button when `threadsHasMore`, mirroring `loadOlder` on the message list.
 
-**A hazard both pagers share, worth fixing while the second one is written.** `before` is a
-millisecond timestamp and is exclusive. Two threads with an identical `dateMs` — plausible for
-bulk-delivered messages — will either be skipped or repeated at a page boundary depending on the
-comparison the provider uses. The message pager already has this and nobody has hit it. The options
-are a compound cursor (`dateMs` plus the last id) or an inclusive `before` with client-side
-de-duplication by id. **Recommendation: decide this in the same sitting as the pager**, because
-it is a protocol-visible choice and it is cheaper to make once for both pagers than to discover
-twice.
+### The `before` cursor — **decided 2026-08-29**, not left to be discovered twice
+
+**The hazard is in three pagers, not two, and it is not theoretical.** `before` is an exclusive
+millisecond timestamp and every query orders by date alone, with no tiebreaker:
+
+| Pager | Query |
+|---|---|
+| `SmsStore.threads` | `date < ?`, `ORDER BY date DESC` |
+| `SmsStore.messages` | `DATE < ?`, `DATE DESC`, over **two tables merged** |
+| `CallLogStore.entries` | `DATE < ?`, `DATE DESC` |
+
+Rows sharing a `dateMs` at a page boundary are skipped or repeated depending on the provider's
+tie-break, which is not specified. **And MMS makes it certain rather than unlucky**: the MMS table
+stores dates in *seconds* (`SmsStore` divides by 1000 going in and multiplies coming out), so every
+MMS in the same second collides exactly.
+
+Three options were weighed:
+
+| | How | Why not |
+|---|---|---|
+| **(a) compound cursor** | add `beforeId`; order by `(dateMs, id)` | needs a wire field and a documented total ordering |
+| (b) inclusive `before` + client de-dup by id | no wire change | **unbounded failure**: if more rows share one timestamp than the page size, the cursor never advances and the pager loops forever |
+| (c) widen each page to include its whole boundary timestamp | no wire change | same unbounded failure in a different costume — a page cannot advance *within* a timestamp group, so a large enough group stalls it, and the page size stops being bounded |
+
+**Decision: (a).** The deciding property is not exactness, it is that **(a) can advance inside a
+shared timestamp and the other two cannot.** Options (b) and (c) both make progress depend on
+eventually finding a timestamp boundary, which a bulk import or a burst of MMS in one second can
+deny indefinitely. That is a stall with no upper bound, and it would present as "the pager stops
+working on exactly one person's phone".
+
+**The shape, and it is backward compatible:**
+
+```json
+{"limit":50,"before":1756300000000,"beforeId":"9911"}
+```
+
+- `before` stays what it is: an exclusive millisecond timestamp, and the coarse filter the provider
+  query uses.
+- `beforeId` is **optional**. Absent, behaviour is exactly today's — so nothing that exists breaks,
+  and the Mac's message pager can adopt it independently of the thread pager.
+- Ordering is documented as **`dateMs` descending, then `id` descending compared byte-wise as a
+  string**. The comparison does not need to be semantically meaningful; it needs to be *total,
+  deterministic and agreed by both sides*, and a byte-wise string compare is all three even across
+  the `sms` and `mms` id spaces.
+- The phone filters `date <= before` and then drops everything at or before `(before, beforeId)` in
+  that ordering.
+
+**Two consequences worth stating now rather than meeting later.**
+
+1. **The phone must over-read past the boundary group.** Fetching `limit + 1` is not enough when the
+   boundary timestamp holds more rows than that. The rule: read `limit + 1`; if the last row shares
+   its `dateMs` with the boundary, keep reading that timestamp. Bound it, and when the bound is hit
+   return what was read with `hasMore: true` — **the cursor still advances**, because the id
+   tiebreaker resumes inside the timestamp. That is option (a)'s whole advantage, and it is only
+   real if the over-read rule exists.
+2. **Message ids are asymmetric today** — MMS rows are `"mms:$id"` and SMS rows are a bare `_ID`.
+   The byte-wise ordering is total regardless, so the cursor works as-is. Normalising SMS to
+   `"sms:$id"` would be tidier and is **not** proposed here: it would invalidate every id the Mac
+   currently holds, for cosmetics, in the same sitting as a paging change. Recorded as a separate
+   question, not folded in.
+
+**Applies to `call.log` too.** Same optional `beforeId`, same ordering rule. It has one table and no
+id-space complication, so it is the cheapest place to implement the pattern first and prove it.
 
 ### Summary of the proposed protocol diff
 
@@ -129,7 +205,8 @@ Against `docs/protocol.md`, SMS section:
   declares 18 of 53 types; this is a good moment to close some of that drift, but that is a separate
   argument.)
 - **Unchanged**: `sms.send`'s request shape, the recipient rule, `sms.threads`, `sms.messages`.
-- **Possibly changed**: the `before` cursor on both pagers, if the compound-cursor option wins.
+- **Changed, decided**: an optional `beforeId` on `sms.threads`, `sms.messages` and `call.log`, with
+  the ordering rule above. Backward compatible; absent means today's behaviour.
 
 ---
 
@@ -345,8 +422,8 @@ so it is counted, rather than a raw id being interpolated somewhere that never a
 None of this is implemented, and none of it should be until step 70 has run and Phase 4 is closed.
 The order inside Phase 5, if the proposals survive review:
 
-1. The `sms.sent` decision, because 30 and 32 are Mac-side and can proceed in parallel once it is
-   settled — and because the `before` cursor question should be answered with it.
+1. `sms.sent` — it closes **39 and 44 together**, and 44 is the half that cannot be fixed on the Mac.
+   30 and 32 are Mac-side and can proceed in parallel. The cursor question is already answered above.
 2. Bug 6's caps, before `fs.*` has a first consumer.
 3. The package-id rule written into `docs/protocol.md` as `fs.*` and `media.*` are specified.
 4. The transfer implementation, borrowing v1's offsets, adaptive chunking, streaming digest and
