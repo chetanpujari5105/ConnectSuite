@@ -3943,7 +3943,13 @@ than a race.
 2. **Pinned:** there was no backstop to self-heal it, because the observer does not exist outside
    `LinkServer.start()`. This is why a millisecond race became a permanent wrong answer.
 
-**Fix direction** — for its own sitting, not folded into the step it interrupted:
+**Fixed in this sitting**, decided 2026-08-28 after it was found. It is not deferred with 30, 32
+and 33, and the reason is Phase 6: that phase measures recovery after the service dies, which is
+precisely the window where a capability granted with the link down goes permanently stale. Shipping
+37 into Phase 6 means measuring recovery through a broken detector — the same argument that put 34
+on the phone rather than making the Mac lenient.
+
+**Fix direction:**
 
 - Move `startWatching` out of `LinkServer.start()` so the observer's lifetime is the process, not
   the server's. It is two URIs and no polling; its own comment already argues it is free.
@@ -3954,7 +3960,7 @@ than a race.
 - Do **not** fix this by re-reading the setting on a delay. That is the same shape as defect 36's
   shipped wrong fix: a plausible value, a timer instead of a fact, and a wrong answer under load.
 
-**Workaround, and it is also the unblock for step 67:** start the link. `LinkServer.start()` calls
+**Workaround until the fix lands, and also the unblock for step 67:** start the link. `LinkServer.start()` calls
 `capabilities.refresh()` and then `startWatching`, so bringing the server up both recomputes the
 set correctly and installs the observer for the rest of the process.
 
