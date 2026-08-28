@@ -55,6 +55,7 @@ own heading there, and its own row here.
 | **39** | A message sent from the Mac is missing from the thread it was sent into | **deferred** | — | see below |
 | **40** | `call.reject delivered` named a disposition the disposition logic then overrode | **closed** | hardware, 2026-08-29 | `docs/testing.md` |
 | **41** | The force-stop hook denies prose that merely mentions the rule | **closed** | hook fixture tests, 2026-08-29 | see below |
+| **42** | An outgoing call placed on the phone is labelled with the previous call's number and name | **open** | — | see below |
 
 ---
 
@@ -202,6 +203,39 @@ eviction/selection behaviour is worth having well before any concurrent-connecti
 paired slot and the TLS identity live under `app.getPath('userData')` and there is no
 `requestSingleInstanceLock`, so they do not collide:
 `cd desktop && npm start -- --user-data-dir=/tmp/connectsuite-s25`.
+
+### 42 — an outgoing call placed on the phone is labelled with the previous call's number and name · **open**
+
+Severity: **High**, and higher than defect 35 which it resembles: 35 drew a blank, and a blank is
+obviously missing. This draws a **name**, and a name is believed.
+
+**Proof, independent of any theory of cause.** The platform recorded `00:28:55 type=2, number=
+8800000004`. The app pushed, one second later, `Call c2 dialing from +919800000001 (Chetan)`. Two
+different numbers for one call, and the app's choice is the *previous* episode's number.
+
+**Mechanism, as a hypothesis.** `CallWatcher.number` persists between episodes. It is written by
+`expectOutgoing()` when the Mac dials and by the `PHONE_STATE` receiver when `EXTRA_INCOMING_NUMBER`
+is present and the field is blank. **Nothing writes it for an outgoing call placed on the phone.**
+`end()` does clear it, so the residue is most likely the previous call's trailing IDLE broadcast
+arriving after `end()` and refilling the blank. Not proven; the fix does not depend on it.
+
+**Fix direction — the first part is the one that matters:**
+
+1. An episode must not begin with a number it did not obtain for itself. Clear `number` at the start
+   of `begin()` for any episode with no explicit source, so a phone-placed outgoing call reports
+   `number withheld by the platform` — the honest blank — instead of someone else's name.
+2. Separately, look for a legitimate source for that number. `NEW_OUTGOING_CALL` is restricted;
+   `newestLogged` is legitimate at `end()` and cannot help at `begin()`.
+
+**Wrong fix to avoid: reading the call log in `begin()`.** The row for a call that is only now
+dialling has not been written yet, so the read returns the previous call's row — reproducing this
+exact defect by a second route while looking like a fix. That is `dispositionOf`'s rejected shape and
+defect 36's shipped wrong fix, for the third time in this codebase.
+
+**Blocks step 70.** Not because it breaks the inbound path, but because it destroys the run's ability
+to discriminate: a stale carry and a correct `EXTRA_INCOMING_NUMBER` read produce the same string
+whenever the previous episode touched the same number, which is what happened on 2026-08-29. Fix 42,
+then run 70.
 
 ### 30 — the Mac cannot start a new SMS conversation · **deferred**
 

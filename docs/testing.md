@@ -4799,3 +4799,133 @@ the dial button, which is not involved here.
 2026-08-28 — a Mac-initiated hang-up of a connected call reported `answered`, not `rejected`, with
 two `type=2` rows as its control. The negative control is therefore **satisfied off-device**, and
 the second person is asked for exactly one ring.
+
+---
+
+## Step 70 — **DID NOT RUN.** What happened instead, and defect 42 — 2026-08-29
+
+Recorded in full because the run consumed a second person's time and produced a result that looks
+like a pass and is not one. Nothing below should be read as evidence for 35c or 36.
+
+### The timeline, from the platform's own call log rather than from the app's
+
+`content://call_log/calls`, which is the arbiter here because the app's account of these calls is
+the thing under suspicion:
+
+| Platform row | What it is |
+|---|---|
+| `00:12:40 type=2 → +919800000001 dur=0` | the defect 40 verification self-call |
+| `00:28:55 type=2 → 8800000004 dur=0` | **the user calling the second person** to ask them to ring |
+| `00:29:08 type=2 → 8800000004 dur=0` | the same call attempted again |
+| `00:29:31 type=1 ← +918800000004 dur=27` | **the step 70 inbound ring** |
+
+And what ConnectSuite said about the same four:
+
+```
+00:12:40  Call c1 dialing from +919800000001 (Chetan)     <- correct
+00:28:56  Call c2 dialing from +919800000001 (Chetan)     <- WRONG. the platform says this call
+                                                             went to 8800000004
+00:29:08  Call c3 dialing from 8800000004 (Contact D)     <- correct
+00:29:31  Call c4 ringing from 8800000004 (Contact D)     <- correct, and see the control problem
+00:30:05  Call c4 ended answered after 33241ms
+```
+
+### What I did wrong, first, because it cost the user something real
+
+**The watcher rejected a call it had already read as not being the call under test.** It was written
+to wait for `#call-live`, take its readings, and then click `#call-reject` — unconditionally. At
+00:28:56 the card appeared reading `who="Chetan"`, `status="Dialling · +919800000001"`, and six
+consecutive readings said so. `Dialling` is not `Ringing` and `+919800000001` is not the second
+person's number: the reading itself said this was not step 70's call. The script clicked anyway,
+because there was no gate between reading and acting.
+
+**So the user's own outgoing call to the second person was hung up from the Mac at 00:28:58**, two
+seconds in, which is almost certainly why there is a second identical attempt at 00:29:08.
+
+This is the coordinate-clicking rule in a new costume. That rule is about not acting on a control
+whose target you have not confirmed; automating the read and then ignoring what it said is the same
+failure with an extra step. **The check must gate the action, or it is decoration.** The watcher now
+refuses to click unless the card reads `Ringing` *and* carries the expected number — see
+`scripts/step70-watch.mjs`.
+
+The one thing that went right: no call was placed. `call.dial` appears three times in the Mac's
+whole log — 23:52, 23:53 and 00:12 — and not after. The 00:28:55 and 00:29:08 outgoing calls were
+placed on the phone by hand.
+
+### Why step 70 did not run
+
+The watcher exited at 00:28:59, after rejecting the wrong call. **The real ring arrived at 00:29:31,
+32 seconds later, with nothing watching.** It was answered on the phone and ran for 33 seconds.
+
+- **36 is untested.** No `call.reject` was ever sent for c4. `call.ended c4 answered after 33s` is
+  the disposition of an answered call, which is correct and says nothing about the `rejected`
+  branch.
+- **35c is not proven either** — and this is the more interesting half, because the log *looks*
+  like a pass.
+
+### Why c4 is not evidence for 35c, even though it reads correctly
+
+`Call c4 ringing from 8800000004 (Contact D)` is exactly the line 35c wants. It cannot be used,
+because **the run cannot tell that answer apart from a stale one.**
+
+`CallWatcher.number` is a field that persists between episodes, and defect 42 below shows it can
+carry a number from one episode into the next. The two episodes immediately before c4 both involved
+`8800000004`. So a correct read of `EXTRA_INCOMING_NUMBER` and a stale carry of the previous
+episode's number produce **the identical string**, and nothing in this run separates them.
+
+This is the discrimination rule, and it is the third time it has bitten in this project: *when the
+target and its lookalike share every attribute you are matching on, stop and find one that separates
+them.* Here the separator is obvious and was not arranged — the ring has to come from a number that
+is **not** the number of the call before it.
+
+A correct step 70 therefore needs one of:
+
+- **defect 42 fixed first**, which removes the stale path and makes the reading mean what it says; or
+- a ring from a number no preceding episode touched, with the preceding episode's number recorded
+  beforehand as the control.
+
+The first is better and is the one to do: it turns step 70 back into a test of 35c rather than a
+test of 35c *and* an assumption about what happened before it.
+
+### Defect 42 — an outgoing call placed on the phone is labelled with the previous call's number and contact name — **open, found during the step 70 attempt on 2026-08-29**
+
+Severity: **High.** It puts the wrong person's name on a live call card. It is worse than defect 35,
+which drew a blank: a blank is obviously missing, and a name is believed.
+
+**Proof, and it does not depend on any theory of the mechanism.** At 00:28:55 the platform recorded
+`type=2, number=8800000004`. At 00:28:56 the app pushed `Call c2 dialing from +919800000001
+(Chetan)`. Those are two different numbers for one call, and the one the app chose is the number of
+the **previous** episode.
+
+**Mechanism — the likely one, stated as a hypothesis because its exact ordering is not proven.**
+`number` is a `CallWatcher` field. It is set by `expectOutgoing()` when the *Mac* dials, and by the
+`PHONE_STATE` receiver when `EXTRA_INCOMING_NUMBER` is non-blank and `number` is blank. **Nothing
+supplies it for an outgoing call placed on the phone itself** — there is no `call.dial` in that
+path. `end()` does clear it (`number = ""`), so the residue has to be written after that: the
+trailing `PHONE_STATE` broadcast for the previous call's IDLE transition arriving *after* `end()`
+has run, finding `number` blank, and filling it with the number that call carried. It then sits
+there until the next `begin()` reads it.
+
+That fits every line above, including why c3 and c4 look right: c2 and c3 both went to
+`8800000004`, so the residue happened to match. **Not proven** — pinning the broadcast ordering
+needs an instrumented build, and the fix does not depend on which way it resolves.
+
+**Fix direction.** Two parts, and the first matters more:
+
+1. **An episode must not begin with a number it did not obtain for itself.** Clear `number` at the
+   *start* of `begin()` for any episode that has no explicit source, rather than relying on `end()`
+   having cleared it. An outgoing call the phone placed has no source today, so it should report
+   `number withheld by the platform` — the honest blank — rather than the previous call's number.
+   A blank is recoverable by the reader; a wrong name is not.
+2. Then, separately, find a legitimate source for a phone-initiated outgoing number.
+   `NEW_OUTGOING_CALL` is restricted and `EXTRA_INCOMING_NUMBER` is not documented to carry it.
+   `end()`'s existing `newestLogged` fallback is legitimate **at end** and cannot help at begin.
+
+**Wrong fix to avoid:** reading the call log in `begin()`. The row for a call that is only now
+dialling has not been written, so the read returns the previous call's row — which produces exactly
+the wrong number this defect is about, by a second route, while looking like a fix. That is
+`dispositionOf`'s own rejected shape and defect 36's shipped wrong fix, for the third time.
+
+**What this does not affect.** Inbound calls where the previous episode carried a different number,
+and any call the Mac dialled — `expectOutgoing` gives those a real source. Step 69's readings stand:
+its number came from `call.dial`.
