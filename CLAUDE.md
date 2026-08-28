@@ -1,5 +1,20 @@
 # ConnectSuite
 
+> ## ⏸ Resume here: **`docs/RESUME.md`** — one thing is outstanding (2026-08-29)
+>
+> **Step 70 has not run.** It needs a second person to ring the phone once, takes about thirty
+> seconds of their time, and is the last hardware evidence Phase 4 is waiting on — it proves defect
+> **36** and defect **35c**. Everything else in Phase 4 is closed.
+>
+> `docs/RESUME.md` has the command, the one line to give the second person, what a pass looks like,
+> and **which preconditions went stale overnight** — five of the eight must be re-read rather than
+> trusted, and one of them (`Watching PHONE_STATE`) will produce a false positive if you grep the
+> whole log instead of today's window.
+>
+> **Do not reinstall the phone build** before running it; a reinstall resets grants and bindings.
+> **Do not start Phase 5** until it has run.
+
+
 Two apps that connect an Android phone to a Mac over the local network with no cloud, no account, and no relay server.
 
 ## Layout
@@ -17,6 +32,7 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   direction and the wrong fix to avoid. `docs/testing.md` holds the evidence; this is the index.
   Kept in sync by `scripts/check-defects.sh`, wired to `PreToolUse` on `git commit`.
 - `docs/phase-4-closeout.md` — what Phase 4 proved, what it deferred, and what Phase 5 inherits.
+- `docs/RESUME.md` — the one outstanding piece of work and how to pick it up. Read it first.
 - `docs/phase-3-input.md` — the current phase brief: input injection via AccessibilityService.
 
 minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK 17-21 (`JAVA_HOME=/Applications/Android Studio.app/Contents/jbr/Contents/Home`), the system JDK 25 will not run AGP 8.13.
