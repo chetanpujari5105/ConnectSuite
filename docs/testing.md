@@ -3220,7 +3220,7 @@ point of using the app's own reply action rather than simulating one.
 **Step 46 therefore passes on the clause that matters**: *"Reply appears in the app exactly as one
 typed on the phone would."*
 
-### Defect 31 — the media card never learns about changes made on the phone — **fixed 2026-08-28, awaiting step 67**
+### Defect 31 — the media card never learns about changes made on the phone — **fixed and verified 2026-08-28 (step 67)**
 
 **Found during step 64, 2026-08-28.** Severity: Medium. The remote works; it is only ever *right*
 about state the Mac itself caused.
@@ -3442,7 +3442,7 @@ enforcement point, and this is what living with one looks like — it will occas
 writing *about* the thing it guards. Worth tightening only if it starts costing more than a
 rewrite; matching a command's argument vector rather than its raw text would do it.
 
-### Defect 34 — `sms.received` is dropped by the Mac: the phone sends a shape the contract does not describe — **fixed 2026-08-28, awaiting step 68**
+### Defect 34 — `sms.received` is dropped by the Mac: the phone sends a shape the contract does not describe — **fixed and verified 2026-08-28 (step 68, both contact states)**
 
 **Found during step 58, 2026-08-28.** Severity: **High.** Inbound SMS never reaches the Mac's pane.
 This is the one Phase 4 defect that breaks a feature outright rather than degrading it.
@@ -3619,7 +3619,7 @@ The pane also behaved correctly afterwards: the `NO_ACTIVE_CALL` refusal took th
 so the same dead id cannot be clicked again, and the call log reloaded (`50 entries, 43 with a
 contact name`).
 
-### Defect 35 — an outgoing call's card is labelled with nothing at all — **fixed 2026-08-28, awaiting steps 69 and 70**
+### Defect 35 — an outgoing call's card is labelled with nothing at all — **fixed; outgoing verified 2026-08-28 (step 69), inbound (35c) still awaiting step 70**
 
 **Found inside step 63's own log line, 2026-08-28.** Severity: Low-Medium.
 
@@ -3662,7 +3662,7 @@ grep, `CONNECTSUITE_DEBUG_SWITCHES` absent) rather than by trusting the log.
 The audio disclaimer was drawn on the card as intended: *"Audio stays on the phone — pair the Mac to
 it over Bluetooth to listen through the Mac."*
 
-### Defect 36 — a call rejected from the Mac is reported as `missed` — **fixed 2026-08-28, awaiting step 70**
+### Defect 36 — a call rejected from the Mac is reported as `missed` — **fixed, awaiting step 70; its `answered outranks rejected` precedence verified 2026-08-28 (step 69)**
 
 Severity: Medium. The action succeeds and is then described wrongly, which is worse than a visible
 failure: the call log the user reads afterwards disagrees with what they did.
@@ -4213,3 +4213,268 @@ branches and this control can be recorded as satisfied off-device.
 
 **What step 70 does not need**: an answered call. Step 62 already passes and the `answered` branch
 is untouched by this fix — it is the mechanism that was copied, not changed.
+
+---
+
+## Steps 67, 68, 69 — run 2026-08-28, all three **PASS**
+
+Step 67 was run by the user before the session dropped; 68 and 69 were run after it was picked up
+again. The session dropped between them, and the recovery is recorded first because it turned out
+to be defect 37's own shape happening in the wild.
+
+### The drop, and what it actually was
+
+The user's reading was *"likely my hotspot, not you"*, and the Mac's log agrees for the first half
+and not the second:
+
+```
+22:49:47  W [link] 10.173.69.248 failed: connect ENETUNREACH      <- hotspot gone: no route at all
+23:01:41  W [link] 10.173.69.248 failed: connect ECONNREFUSED     <- route back; nothing listening
+```
+
+`ENETUNREACH` → `ECONNREFUSED` is two different failures wearing one symptom. The network came back
+at **23:01:40** (`Immediate retry: network interfaces changed`) and the Mac then retried **77 times
+over 41 minutes** against a phone that was reachable and had no server on 42501.
+
+The phone side says why, and it is worth reading closely:
+
+```
+18:46:19  W [control] Chetans-MacBook-Pro socket dropped :: SocketException
+18:46:35  I [caps]   Capabilities now: calls,contacts,mirror,sms
+18:46:35  I [notif]  Notification listener attached to the link
+18:46:35  I [caps]   Capabilities now: calls,contacts,mirror,notifications,remote,sms
+18:46:35  I [remote] Media session listener attached … (0 unsolicited pushes since start)
+                     … and then nothing. No `Listening on 42501/42502/42503`, ever.
+```
+
+A **fresh process with every feature installed and no server in it.** The process was started by
+the platform rebinding `NotificationMirrorService`, not by `MainActivity`, and `LinkService.start`
+is only ever called from `MainActivity` (`MainActivity.kt:51`) and the Link screen
+(`LinkRoute.kt:63,133`). So the phone sat for five hours with notifications, SMS, calls, contacts
+and the media listener all live and nothing to serve them to.
+
+**This is defect 37's structural half, observed a second time and from the other side.** 37 says
+the capability observer is scoped to `LinkServer.start()` and so is absent exactly when a user
+toggles grants with the link down. Here is the same scoping producing the window: a process can be
+fully alive, fully granted, and serverless, for hours. Recorded here rather than as a new defect
+because it is the same root — `LinkServer.start()` is load-bearing for things that are not the
+server — and 37's fix is the one that addresses it.
+
+Control on the "nothing listening" claim, since it is an absence: `/proc/net/tcp6` filtered to
+state `0A` (LISTEN) returned **6 sockets** and none of them were A605/A606/A607. The same query
+after launching the app returned those three. An empty query was never read as silence.
+
+Recovery was one `monkey -p … -c android.intent.category.LAUNCHER 1`; the Mac reconnected on its
+next scheduled retry with no action on the Mac at all.
+
+### Step 67 — **PASS**
+
+Run by the user. The Mac's rotated log (`connectsuite.log.1`) still holds it, and the two controls
+the step names are both readable in it.
+
+**Line-count control — the counter rises.** `[remote]` lines over the run: **861**, and the state
+counter climbs from `466 states` to `591 states` across the window below. Contrast the run this
+step exists to prevent, where it was 93 → 93.
+
+**Direction + no-command control — `delivered` is frozen while the state flips.** Four flips, both
+directions, with the delivered counter unmoved at 29:
+
+```
+17:58:05.397 I [remote] paused  Spotify — 482 states / 29 delivered / 0 refused since launch
+17:58:06.422 I [remote] playing Spotify — 508 states / 29 delivered / 0 refused since launch
+17:58:35.525 I [remote] paused  Spotify — 532 states / 29 delivered / 0 refused since launch
+17:58:36.805 I [remote] playing Spotify — 558 states / 29 delivered / 0 refused since launch
+```
+
+`delivered` counts `remote.command`s the Mac sent. It does not move, so **no Mac command caused any
+of these**, which is the whole clause. And because the flips alternate, each one inverts the state
+the Mac was showing a second earlier — the direction control is satisfied by the alternation
+itself, not by an assumption about the starting state.
+
+The later window (`18:44:07 → 18:44:18`, states 626 → 656, delivered frozen at 38) is metadata
+pushes only — `untitled` → `Ordinary` — and is *not* where the play/pause clause was met. Noting
+this because it is the window a `tail` lands on, and reading it alone would credit the step with
+something it did not show.
+
+**What is not recoverable and is therefore not claimed.** The phone's `link.log` has rotated past
+this window, and no `dumpsys media_session` reading from the run survives. The Mac-side clauses
+above are proven from the log; the phone-truth comparison rests on the run's own observation at the
+time. The step is recorded PASS on that basis, with the split stated rather than smoothed over.
+
+Defect 31 is therefore **closed**: `awaiting step 67` → verified. Defect 38 was found in this same
+run and stays open.
+
+### Step 68 — **PASS**, both contact states, read as two runs
+
+Run against thread **594**, the self-thread, whose address `+919800000001` is the phone's own Jio
+line (`defaultSmsSubId=2`) and is in the phone's contact book as **Chetan**
+(`content://com.android.contacts/data/phones` → `display_name=Chetan, data1=9800000001`). Both
+facts were read off the device before anything was sent, because the whole step turns on them.
+
+The trigger each time was one message sent from the Mac's composer into 594, which the phone
+delivers to itself, so one action exercises the send path and produces the inbound event under
+test.
+
+**Enumeration control, taken before each run.** The pane's own query for the thread returned the
+messages already known to be in it — 10 before state A, 12 before state B — so an empty pane and a
+working pane could not have looked alike.
+
+| | **State A — contacts granted** | **State B — `READ_CONTACTS` revoked** |
+|---|---|---|
+| capability chip | `contacts: available` | `contacts: unavailable, missing Contacts` |
+| thread list note | `50 conversations, 2 showing a contact name` | `50 conversations, 0 showing a contact name` |
+| phone | `sms.received pushed after 1 lookup(s) — 1 pushed / 0 dropped since start` | same, on reset denominators |
+| Mac | `sms.received in thread 594 from Chetan (+919800000001)` | `sms.received in thread 594 from +919800000001, no contact name` |
+| **row drawn** | `STEP68A-234720 inbound attribution check`, inbound, 11:47 PM | `STEP68B-235009 inbound attribution check`, inbound |
+| **attribution** | **Chetan** | **+919800000001** |
+| blank? | no | no |
+
+Read as two runs because the revoke restarts the app process and resets every `since start`
+counter; carrying one denominator across the revoke would have made both halves unreadable.
+
+**The row came from the push, not from a re-read — and this is the part that separates step 68 from
+step 59.** In state A the drawn count went 10 → 11 at **+1404ms while the pane's own note still
+read "10 messages on the phone"**. The note is `thread.messageCount` from `sms.threads`; the list
+is `this.messages`. The composer's success path re-fetches, and that re-fetch is in the log
+answering **10**:
+
+```
+23:47:32.859 I [sms] sms.messages thread 594 → 10 messages … hasMore=false
+23:47:33.549 I [sms] sms.received in thread 594 from Chetan (+919800000001)
+```
+
+So the provider re-read did not contain the new message, and the row is on screen anyway. The only
+path that can have drawn it is `SmsView`'s `onSmsReceived` append. Had the re-fetch returned 11,
+this step would have been unable to tell a working push from a lucky re-read — the same
+lookalike problem as step 59's regex, and the reason the timing was recorded rather than just the
+final state.
+
+#### 68a — the retry path was **not exercised**, and is not claimed
+
+Two messages received across the run, **both `after 1 lookup(s)`**. That is the denominator, and it
+says the retry did no work here. `after 2` and `after 3` were never seen; deliberately forcing them
+needs a debug switch that is not in this build. The line that must never appear —
+`E [sms] sms.received NOT pushed: no provider row for … after 3 lookups` — **did not appear**.
+
+Defect 34 is therefore **closed**: `awaiting step 68` → verified on the drawn row, in both states.
+
+### Step 69 — **PASS**, every clause
+
+Dialled `+919800000001` — the phone's own number, on the user's standing authorisation — from the
+Mac's dialler, by element id, never by coordinate.
+
+**The two-step confirm was read between the clicks**, which is the point of it:
+
+| Click | `#call-dial` label | `#call-live` |
+|---|---|---|
+| before | `Call` | hidden |
+| **first** | `Confirm — call +919800000001`, `.danger` | **still hidden — nothing was placed** |
+| second | — | card appears |
+
+| Clause | Expected | Observed |
+|---|---|---|
+| phone log | number in the line | `call.dial delivered (dialled +919800000001)` |
+| phone log | never `from ,` | `Call c1 dialing from +919800000001 (Chetan)` |
+| Mac headline | not `Unknown number` | **`Chetan`** |
+| Mac second line | ` · ` present, number after it | **`Dialling · +919800000001`** |
+| denominator | `M of N episodes with a number` | `1 of 1`, then `2 of 2` on the second dial |
+
+**The hang-up half needed a second dial, and that is worth recording.** The first call was
+**answered by the carrier** — a phone dialling its own line reaches an announcement — and ended on
+its own at 19.6 s before a hang-up could be sent. Ending observed, but not *caused*, so the clause
+was not met. A second dial was placed and `#call-reject` clicked once at 4 s:
+
+```
+phone  23:53:58.243 I [calls] call.reject delivered (rejected — the episode is flagged, so call.ended will say rejected)
+phone  23:53:58.585 I [calls] Call c2 ended answered after 4078ms
+Mac    23:53:58.807 I [calls] call.ended c2 answered after 4s
+```
+
+`answered`, not `rejected` — which is exactly what step 69 asks for: *a Mac-initiated hang-up of a
+call you placed is not a rejection.* Defect 36's `answered outranks rejected` precedence is what
+produces it, working as designed.
+
+**Platform control**, since `answered` is a presence claim: `content://call_log/calls` holds two
+new rows for `+919800000001`, both **`type=2`** (`OUTGOING_TYPE`), neither `type=5`. The platform
+and the Mac agree, and nothing was recorded as a rejection.
+
+Defect 35 is **half closed**: the outgoing direction (`awaiting steps 69 and 70`) is verified here —
+headline, number, and the ` · ` separator. The inbound direction (35c) still needs step 70.
+
+### Defect 39 — a message sent from the Mac is missing from the conversation it was sent into, while the pane's own note counts it — **open, found during step 68 on 2026-08-28**
+
+Severity: **Medium.** Found because step 68's timing control made the two numbers visible side by
+side. Reproduced in **both** state A and state B, so it is not a one-off race.
+
+After sending from the composer, the open thread draws **one fewer message than its own header
+claims**, and the missing one is the message the user just sent:
+
+| | after state A's send | after state B's send |
+|---|---|---|
+| note | `Chetan — 12 messages on the phone.` | `+919800000001 — 14 messages on the phone.` |
+| rows drawn | **11** | **13** |
+| which one is missing | the outbound copy | the outbound copy |
+
+Leaving the thread and reopening it draws all 12 (verified: `count: 12`, note `12`, and the last
+three rows are `out / in` of the sent body plus the previous message). So it is a display gap, not
+a lost message.
+
+**Mechanism, and it is the send-side twin of defect 34.** `submit()` calls `openThread(threadId)`
+on success, which re-fetches from the provider — **30 ms** after the phone reported the send:
+
+```
+phone 23:47:32.673 I [sms] sms.send delivered (to 1 verified recipient(s))
+phone 23:47:32.703 I [sms] sms.messages delivered (thread 594, 10 messages, hasMore=false)
+```
+
+The provider had not written the sent row yet, so the re-read answers 10 and nothing ever appends
+it afterwards. The note updates later from `sms.threads` (`thread.messageCount` = 12) and the list
+does not, which is why the two disagree on screen.
+
+Defect 34 fixed exactly this race on the **receive** path, on the phone, with a bounded retry that
+reports which lookup won. Nothing equivalent guards the **send** path.
+
+**Fix direction, and one shape to avoid.** The wrong fix is a delay before the re-fetch — same
+shape as defect 36's shipped wrong fix and as defect 37's rejected `re-read on a timer`: a
+plausible value, a timer instead of a fact, wrong under load. Two honest options:
+
+- have the phone answer `sms.send` with the written row (it knows when its own write landed), and
+  have the pane append that, the way it appends a pushed `sms.received`; or
+- give the send path the same bounded-lookup retry defect 34 gave the receive path, with the same
+  `after N lookup(s)` line so the denominator is visible.
+
+The first is better: it removes the race rather than surviving it, and it makes the sent message
+arrive by the same mechanism as the received one.
+
+**Not fixed in this sitting** — the sitting's scope is defect 37, and this needs a protocol
+decision about what `sms.send`'s ack carries, which belongs with `docs/protocol.md` open.
+
+### Defect 40 — `call.reject delivered` states a disposition the disposition logic then overrides — **open, found during step 69 on 2026-08-28**
+
+Severity: **Low**, and recorded only because of what it would do to whoever runs step 70.
+
+The phone logs, in this order, 342 ms apart:
+
+```
+23:53:58.243 I [calls] call.reject delivered (rejected — the episode is flagged, so call.ended will say rejected)
+23:53:58.585 I [calls] Call c2 ended answered after 4078ms
+```
+
+The second line is **correct** — step 69 requires `answered` here, and defect 36's `answered
+outranks rejected` precedence is what produces it. The first line is a confident prediction that is
+simply wrong, written by code that cannot see the precedence rule that will overrule it.
+
+This is the failure mode CLAUDE.md's second driving rule names: a clean, specific, confident wrong
+answer that nothing downstream can distinguish from a real one. Step 70 turns on reading `rejected`
+versus `missed` in these very lines, and it hands the reader `rejected` in a run whose answer is
+`answered`.
+
+**Fix direction:** the line should state what it did, not what will follow — *"call.reject
+delivered (episode flagged; the disposition is decided when the call ends)"* — or be emitted after
+the disposition is known. It must not name a disposition it does not decide.
+
+**Also seen, not a defect:** the Mac logs `call.dial placed to +919800000001 (null)` at dial time,
+because the Mac has only the number it typed and no name yet. The very next line resolves it
+(`call.incoming c1 (dialing) from Chetan (+919800000001)`). Nothing user-visible is blank, so this
+is a log-cosmetics note rather than a defect — but `(null)` in a line that elsewhere reads
+`(name)` is one grep away from being misread as a resolution failure.
