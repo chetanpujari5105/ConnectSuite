@@ -2968,7 +2968,7 @@ class — no coordinates, per the rule. Every check took its control first.
 | Contacts empty state | as above | **PASS** — "No contact on the phone matches …", not a blank pane |
 | Contact expands with photo | row opened by its named button | **PASS** — labelled fields, photo, `aria-expanded="true"` on the open row only |
 | SMS thread list | 50 threads from the wire | **PASS** — 50 drawn, 635 unread, 45 badges |
-| **Step 59, both states** | see below | **PASS** — 1 row drew `contactName`, 49 drew `addresses[0]`, **0 matched neither** |
+| ~~**Step 59, both states**~~ **(mislabelled — see defect 34)** | see below | This row measured `sms.threads` attribution, **not** `sms.received`. The measurement stands (1 row drew `contactName`, 49 drew `addresses[0]`, **0 matched neither**) but it is not step 59, which is about the received *event*. Step 59 **FAILS** — see defect 34. |
 | SMS thread opens | 3 messages, 2 in / 1 out | **PASS** — composer has exactly **one** input, and no recipient field |
 | Step 56 — MMS attachment marker | `kind` and `hasAttachments` populated on all 176 messages read | **NOT RUNNABLE** — 20 threads, 176 messages, zero MMS on this phone |
 | Step 66 first half — nothing playing | remote card visible, not hidden | **PASS** — "Nothing is playing on the phone.", empty body, no error styling |
@@ -3213,3 +3213,340 @@ point of using the app's own reply action rather than simulating one.
 
 **Step 46 therefore passes on the clause that matters**: *"Reply appears in the app exactly as one
 typed on the phone would."*
+
+### Defect 31 — the media card never learns about changes made on the phone — **open**
+
+**Found during step 64, 2026-08-28.** Severity: Medium. The remote works; it is only ever *right*
+about state the Mac itself caused.
+
+`RemoteFeature.attachSessionListener` registers the `OnActiveSessionsChangedListener` and the
+controller callback that produce every unsolicited `remote.state`. It runs **inside `install()`**
+and returns early when `available(context)` is false — that is, when the notification listener is
+not bound. It is never retried. So on any run where the app starts before notification access is
+granted, the push path is silently absent for the life of the process.
+
+That is exactly what a reinstall produces, and the phone said so at the time:
+
+```
+15:35:07 I [remote] Media remote installed; listener is not bound; capabilities now: [calls, contacts, mirror, sms]
+```
+
+`cmd notification allow_listener` re-enabled the grant a moment later, `remote` began being
+advertised, and the capability chip lit — over a feature whose push half was already dead. **The
+capability is honest about the grant and silent about the wiring behind it**, which is the same
+shape as a green chip over a `call.dial` that cannot work, one gate up.
+
+**Proof, with the control taken first.** The phone was made to change state with no Mac command in
+play, using media key events rather than the UI:
+
+| | Phone (truth, `dumpsys media_session`) | Mac (belief) | Mac `[remote]` log lines |
+|---|---|---|---|
+| before | `PAUSED(2)` | `playing: false` | 93 |
+| after `KEYCODE_MEDIA_PLAY` | **`PLAYING(3)`** | **`playing: false`, "Paused in Spotify."** | **93** |
+
+The line count is the control that makes the divergence mean something: it is unchanged, so this is
+not a slow push or a dropped frame — **no push was ever sent**. The first half of the test, pausing
+on the phone, was deliberately not treated as evidence: the Mac already believed "paused", so
+agreement there would have been a coincidence rather than a result.
+
+**Why step 64 still passes.** The step asks that the card follow *the Mac's transport controls*,
+and it does — 16 commands, 0 refused, worst command-to-card latency 5.0 ms against a 1000 ms
+budget. Every one of those pushes comes from the explicit `pushState(context)` at the end of
+`onCommand`, which does not go through the session listener at all. That is why the feature looks
+completely healthy from the Mac side and is half-wired underneath.
+
+**The fix is small and is not being made mid-run.** `NotificationFeature` already knows the moment
+the listener binds — it is what flips the capability — so `attachSessionListener` needs calling
+again from there, and `install()` needs to stop being the only place it can happen. Deferred to its
+own sitting with the same reasoning as defect 30: a change to the phone's session wiring wants its
+own build, its own reinstall, and its own re-verification of the grant surface, not a rebuild in
+the middle of a hardware run that is measuring something else.
+
+**Workaround while it stands:** reconnect the link. The phone replays `remote.state` to each
+session as it becomes ready (`addSessionReadyListener`), which is a different path and works — it
+is what populated the card for step 64 in the first place.
+
+### Defect 32 — the SMS pane cannot reach a conversation older than its first page — **open, deferred**
+
+**Found 2026-08-28 setting up step 58.** Severity: Low-Medium. Honest, and still a dead end.
+
+`sms.threads` is requested with `limit: 50` and the pane draws what comes back, newest first. When
+`hasMore` is true the note says so — *"Older conversations are not shown."* — which is the honest
+thing to print and is exactly where it stops: **there is no affordance to load the next page.**
+`loadOlder` exists for messages *within* a thread and has no counterpart for the thread list
+itself.
+
+Found the way gaps like this usually are, by needing it. Step 58 was to be run by sending to the
+user's own number. The self-thread does exist:
+
+```
+Row: 18198  thread_id=594, address=919800000001, type=1, date=1614582239661   → 2021-03-01
+```
+
+with **18,198 of 22,167 messages newer than it**. So it sits thousands of rows below a 50-row
+first page, the pane cannot page down to it, and `SmsClient.send` correctly refuses a thread it has
+not listed — the send-rule guard doing its job on a thread that is real and simply unreachable.
+
+Note this is a *different* hole from defect 30, and the two together are worse than either alone:
+30 says a conversation that does not exist cannot be started, 32 says one that does exist cannot be
+reached if it is old. Between them, the set of conversations the Mac can send to is exactly "the
+50 most recent".
+
+**Deferred.** The fix is a pager on the thread list — `before` is already in the protocol and
+already implemented on the phone (`sms.threads` takes it), and `SmsClient.listThreads` already
+accepts it and already merges rather than replaces, which was tested for this reason. It is a
+renderer affordance and nothing more, but it is not being added mid-run.
+
+**Workaround, used for step 58:** send one SMS to the number from the phone, which moves its thread
+to the top of the list where the pane can see it.
+
+### Step 65 — **PASS**, run against Previous rather than Next — 2026-08-28
+
+**The deviation, and why it is not a weaker test.** Step 65 asks for Next in an app that does not
+allow it. No session on this device advertises a missing `SKIP_TO_NEXT`. Read live and stable
+across three samples two seconds apart:
+
+| Session | `actions` | `SKIP_NEXT` | `SKIP_PREV` |
+|---|---|---|---|
+| `com.spotify.music` | 404403 | allowed | allowed |
+| `com.sec.android.app.music` | 2481023 | allowed | allowed |
+| `com.google.android.youtube` | 8615 | **allowed** | **NOT allowed** |
+
+So Next-as-written is **untestable on this device**, and the control above is what proves it rather
+than an assumption. YouTube forbidding `SKIP_TO_PREVIOUS` exercises the identical guard: the same
+`RemoteFailure.Unsupported`, the same `FEATURE_UNAVAILABLE`, the same three-layer chain, differing
+only in which bit of `PlaybackState.actions` is read.
+
+A first pass at this decoded a **stale** bitmask — `404403` hardcoded from an earlier read while the
+live value had momentarily become `141827` mid-track-change, which would have reported "Spotify
+forbids skip" and been wrong. Reading it live, three times, is what caught it. A bitmask copied out
+of a previous command's output is a remembered pixel by another name.
+
+**All three layers of the guard, exercised:**
+
+1. **Renderer.** The Previous button is drawn `disabled`, carrying its reason in the accessible
+   name rather than in colour alone (defect 26's rule):
+   `" — unavailable: YouTube does not allow skipping to the previous track from a remote."`
+2. **Main process.** `RemoteClient.command` refuses on `canSkipPrevious === false`. Reached by
+   calling `window.connect.remoteCommand('previous')` directly, past the disabled button — the same
+   technique step 49b used — with `bypassRemoteGuard` on so the request could continue.
+3. **Phone.** Answered:
+   `{ ok: false, code: "FEATURE_UNAVAILABLE", reason: "com.google.android.youtube does not let anything skip to the previous track from outside the app." }`
+
+**The positive control, taken in the same breath.** A refusal proves nothing if every command is
+failing, so an *allowed* command went over the same channel to the same session at the same moment:
+
+```
+previous     -> { ok: false, code: FEATURE_UNAVAILABLE }
+play_pause   -> { ok: true }      <- control
+play_pause   -> { ok: true }      <- control
+```
+
+1 refused / 2 delivered. The refusal is specific to the action, not to the link.
+
+**Card correctness noted in passing.** Before the reconnect the card said Spotify; after it, YouTube
+— defect 31 demonstrating itself again, since the phone's switch to YouTube produced no push.
+
+### Defect 33 — the phone names packages where it means apps, in sentences users read — **open, deferred**
+
+**Found inside step 65's own result, 2026-08-28.** Severity: Low-Medium. Same family as defect 28,
+different mechanism, and not fixed by 28's fix.
+
+Defect 28 was `appNameFor` failing to resolve a label. This is the opposite: sites that never asked
+for a label at all. The failure constructors interpolate the raw package straight into the sentence:
+
+```kotlin
+class Unsupported(what: String, packageName: String) : RemoteFailure(
+    reason = "$packageName does not let anything $what from outside the app.",
+)
+```
+
+Known sites, all of them user-facing:
+
+| Site | Call sites |
+|---|---|
+| `RemoteFailure.Unsupported` | 3 — next, previous, seek |
+| `NotificationFailure.NoReplyAction` | 2 |
+| `NotificationFailure.IntentRefused` | 2 |
+| the target-stale sentence, `"$seen" but ${sbn.packageName} now has "$now"` | 1 |
+
+**This was already in the record and went unread.** Step 49b's own recorded pass, from earlier the
+same day, quotes the phone answering:
+
+> `reason: "That notification from com.android.shell does not offer a reply, so there is nothing
+> for the phone to type into."`
+
+It was recorded as a pass — correctly, since the step was about the refusal code — and the package
+name sat in the quoted sentence with nobody reading it as a defect. Evidence in hand is not the
+same as evidence read.
+
+**Mostly invisible in normal use, which is why it will survive.** The Mac composes its own sentence
+from the card's `appName` and refuses first, so a user sees "YouTube does not allow…". The phone's
+version surfaces only when the Mac's guard is bypassed or its card is stale — exactly the moments
+when the Mac's copy is the thing not to be trusted.
+
+**Deferred**, with 30, 31 and 32: it is a phone change wanting its own build, reinstall and grant
+re-verification, not a rebuild in the middle of a run measuring something else. The fix is to pass
+`AppLabels.of(context, packageName)` at each site, which now exists precisely for this.
+
+### Step 66 — **PASS** — 2026-08-28
+
+**Control first.** "Nothing is playing" is only evidence if something was playing a moment earlier.
+`dumpsys media_session` reported **3 sessions with a playback state** before, and **0** after the
+three media apps were stopped. Note that a *paused* session still counts — `activeController` falls
+back to `sessions.first()` — so all three had to go, not only the playing one.
+
+| Clause | Result |
+|---|---|
+| phone answers `NO_MEDIA_SESSION` | **PASS** — `{ ok: false, code: "NO_MEDIA_SESSION", reason: "Nothing is playing on the phone, so there is nothing to control." }` |
+| empty remote card, **not** an error state | **PASS** — card visible, note "Nothing is playing on the phone.", body empty, notice hidden, no error styling |
+| the feature is not marked broken | **PASS** — the `remote` chip stayed lit before and after the refusal |
+
+Reached with `bypassRemoteGuard`, because the Mac refuses a transport command with no session
+before it can cross the link. Worth noting what that means for a real user: with the switch off
+there is no way to reach this path at all, since an inactive card draws **no transport buttons**.
+That is the step's own expectation satisfied structurally rather than by a message — there is
+nothing to press, so there is nothing to be refused.
+
+#### Method note — the no-force-stop hook fired on prose, not on a command
+
+Writing the paragraph above was refused by `scripts/hooks/no-force-stop.sh`, because the heredoc
+carrying it contained the phrase the hook matches. The three real stops in this step were on
+`com.google.android.youtube`, `com.spotify.music` and `com.sec.android.app.music` — third-party
+packages, correctly allowed — and the blocked call executed no `adb` at all.
+
+A false positive, and a cheap one: the cost was rewording a sentence, and the failure mode is the
+safe direction. Recorded because the hook's own section in this file argues that a rule needs an
+enforcement point, and this is what living with one looks like — it will occasionally catch you
+writing *about* the thing it guards. Worth tightening only if it starts costing more than a
+rewrite; matching a command's argument vector rather than its raw text would do it.
+
+### Defect 34 — `sms.received` is dropped by the Mac: the phone sends a shape the contract does not describe — **open**
+
+**Found during step 58, 2026-08-28.** Severity: **High.** Inbound SMS never reaches the Mac's pane.
+This is the one Phase 4 defect that breaks a feature outright rather than degrading it.
+
+`docs/protocol.md` specifies the event as *"carrying exactly one `messages[]` entry plus its
+`threadId`"*:
+
+```json
+{"threadId":"42","messages":[{"id":"…","address":"…","body":"…","inbound":true, …}]}
+```
+
+`SmsStore.receivedPayload` builds it **flat** instead — `threadId`, `address`, `body`, `dateMs`,
+`inbound`, `read`, `kind`, `hasAttachments`, `contactName` all at the top level, with no `messages`
+array and no `id`. `SmsClient.onReceived` reads `rows(payload, 'messages')[0]`, finds nothing, and
+drops the event with a line:
+
+```
+phone  I [sms] sms.received pushed (2 since start) — 9 delivered / 0 refused since start
+Mac    W [sms] Dropped an sms.received with no thread or no message
+```
+
+**Both sides logged, and that is the only reason this was caught** — exactly as with defect 29. The
+phone says it pushed; the Mac says it dropped. Either line alone reads as normal.
+
+**Who is wrong.** `CLAUDE.md` is explicit that `docs/protocol.md` is the contract and that changes
+go there first, then to both sides. The doc and the Mac agree; **the phone does not implement the
+documented shape.** The fix belongs on the phone: wrap the message object in a `messages` array and
+add the `id`. The Mac must *not* be made lenient — that is precisely the leniency defect 29's second
+test exists to forbid, and it would leave the two sides permanently disagreeing about a shape while
+appearing to work.
+
+A second, smaller thing in the same function: `threadId` is deliberately omitted when the provider
+has not yet written the row (`threadIdFor(context, address)?.let { … }`), with a comment explaining
+that an absent id is more honest than a fabricated one. That reasoning is sound, but the Mac's
+`onReceived` requires `threadId` and drops the event without one, so the honest omission is also
+unhandled. Whoever fixes the shape should decide what the Mac does with a thread-less received
+message rather than leave it dropping silently — showing it against the address is the obvious
+answer, since the address is always present.
+
+**Step 59 fails on this.** *"Receive an SMS while connected → `sms.received` arrives with the
+contact's name when contacts is granted, and the bare number when it is not — never blank."* The
+event never arrives at all, so neither state can be observed.
+
+**A correction to this file.** An earlier row in the steps-45-54 table recorded "Step 59, both
+states — PASS" on the strength of 50 thread rows attributing correctly (1 by `contactName`, 49 by
+`addresses[0]`, 0 by neither). That measurement is real and still stands, but it measured
+`sms.threads`, **not** `sms.received` — a different message, a different code path, and not what
+step 59 asks about. The row has been struck through and corrected in place rather than deleted, so
+the mistake stays visible. It is the same error class this file keeps recording: a query that
+could not tell its target from something resembling it, answered confidently.
+
+## Steps 58, 58a, 58b, 58c — run 2026-08-28
+
+Run against the user's own number, so one step exercises the send path and the receive path.
+Reaching the thread at all needed the workaround from defect 32: the self-thread existed but sat
+thousands of rows below the pane's 50-row first page, so an SMS sent from the phone moved it to
+position 0.
+
+### Step 58 — **PASS**, both halves
+
+| Half | Evidence |
+|---|---|
+| ordinary send | provider rows `_id=22183 type=2` (sent) and `_id=22184 type=1` (delivered back), same body. Phone: `sms.send delivered (to 1 verified recipient(s))` |
+| **over 160 characters** | body **329 chars = 3 GSM segments**, and the provider holds **1 sent row and 1 inbox row, not 3 of each** |
+
+The second row is the clause: *one message sent, one message reported*. `divideMessage` split it for
+the radio and it reassembled into a single provider row on both sides. Counting the rows is what
+distinguishes that from three separate messages, which is the failure the step exists to catch.
+
+### Step 58a — **PASS**, and nothing reached the radio
+
+`forceRecipientMismatch` on, so the Mac sent thread 594 paired with the reserved probe number.
+
+```
+{ ok: false, code: "RECIPIENT_MISMATCH",
+  reason: "That message was not sent: it named +15550100 but that conversation is with
+           +919800000001, 919800000001.",
+  fixHint: "Nothing was sent to anyone. …" }
+```
+
+**The refusal names both numbers**, which is the clause — only the user can tell which of the two
+is the stranger.
+
+**Severity, checked on both sides.** The step requires an `e:` line, because every other refusal in
+this project is a feature declining and this one is a prevented harm:
+
+```
+phone  E [sms] REFUSED a send that would have gone to the wrong recipient: thread 594 holds
+                +919800000001,919800000001 but the request named +15550100
+phone  W [sms] sms.send refused: recipient-mismatch — 16 delivered / 1 refused since start
+Mac    E [sms] sms.send REFUSED as a recipient mismatch in thread 594 — nothing was sent to anyone.
+```
+
+Note the `w:` line beside the `e:` one carries the ratio, so the severity and the denominator are
+both present.
+
+**Nothing was sent — proven, with the control first.** The provider was read whole and counted:
+
+| Query | Rows |
+|---|---|
+| **CONTROL** — provider rows parsed | **22,175** |
+| **CONTROL** — rows for the step-58 sends that *did* go | **4** (2 sent, 2 received) |
+| rows containing the 58a body | **0** |
+| rows addressed to `+15550100`, ever | **0** |
+
+The two control rows are what make the two zeros mean something: the same query, over the same
+data, finds four messages it should find. Without them "0 rows" is indistinguishable from a query
+that cannot see the provider at all — which it briefly was, when `ugrep`'s `-c` returned empty
+strings and the first attempt at this table printed three blanks. Counting in Python fixed it.
+
+### Steps 58b and 58c — **untestable through the Mac, covered by the phone's suite**
+
+Neither is reachable from this build: `SmsClient.send` takes no addresses, so the Mac cannot
+construct a send whose recipients are unreadable (58b) or differently formatted (58c). That is the
+send rule working as designed and it is also what puts these two out of hardware reach.
+
+Both are covered by `SmsSendRuleTest` in `:sync-module`, **run for this record: 11 tests, 0
+failures**:
+
+| Step | Test |
+|---|---|
+| 58b | `a thread whose recipients cannot be read is refused, not trusted` |
+| 58c | `the same number written two ways is one recipient` · `normalisation strips formatting and nothing else` |
+| — | `two numbers that merely end alike are two numbers` — the over-lenient direction 58c must not cause |
+
+Recorded as **untestable-with-proof plus automated coverage**, not as deferred: the behaviour is
+verified, on the side that implements it, and the reason hardware cannot reach it is a guard this
+project put there on purpose.
