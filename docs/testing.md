@@ -3875,7 +3875,7 @@ out to apply unchanged on the phone, with `Telephony` in the place of Electron. 
 `SmsPayloads` are the same idea.
 
 
-### Defect 37 — a re-granted notification listener never turns its capabilities back on — **open, found blocking step 67 on 2026-08-28**
+### Defect 37 — a re-granted notification listener never turns its capabilities back on — **fixed and verified 2026-08-29**
 
 **Found by the user reading a caps line, not by the step it interrupted.** Severity: **High.** Two
 working features are advertised as unavailable, and nothing ever corrects it.
@@ -4478,3 +4478,143 @@ because the Mac has only the number it typed and no name yet. The very next line
 (`call.incoming c1 (dialing) from Chetan (+919800000001)`). Nothing user-visible is blank, so this
 is a log-cosmetics note rather than a defect — but `(null)` in a line that elsewhere reads
 `(name)` is one grep away from being misread as a resolution failure.
+
+---
+
+## Defect 37 fixed and verified on hardware — 2026-08-29
+
+Two things were wrong, they had different shapes, and the fix has one part for each. The record of
+what was wrong is in defect 37's own entry above; this is what changed and how it was checked.
+
+### Part 1 — a bound component is proof of its own grant
+
+`CapabilityDetector.specialAccessGranted()` read `enabled_notification_listeners` and nothing else.
+It now reads the setting **and** the set of components the feature modules report as bound, through
+a new pure helper `SpecialAccessReading.granted(namedInSettings, bound)` in `Capabilities.kt`.
+
+The argument, which is narrower than it may look: the secure setting is not the grant, it is the
+platform's *record* of the grant, and the platform reads it to decide whether to bind. So a bound
+component is that same fact arriving by a shorter and more reliable route — a bind cannot happen
+without the grant, whereas a read of the setting can land before the write that caused the bind is
+visible. That is what defect 37 was: a read that lost a race with itself, 2 ms wide, and then
+never corrected.
+
+**This is deliberately not "running implies granted" as a general rule**, and it does not loosen
+the both-halves invariant. `CapabilityContract.advertisable` still takes `granted intersect
+running`; a grant with nothing behind it still advertises nothing, which is `RunningGateTest`'s
+whole subject and all seven of its tests still pass untouched. What changed is one input to that
+intersection, not the intersection.
+
+The consequence is worth saying out loud rather than leaving to be discovered: for these two
+accesses the advertised set now reduces to what is bound. That is intended. The setting keeps the
+one job it cannot be replaced for — `CapabilityStatus.permitted`, which is what produces "granted
+in Settings, but Android has not started the service" instead of sending someone back to a switch
+they have already set.
+
+### Part 2 — the observer's lifetime is the process, not the server
+
+`capabilities.startWatching(::refreshCapabilities)` moved from the last lines of
+`LinkServer.start()` into `LinkServer`'s `init`, and `capabilities.stopWatching()` was removed from
+`stop()`. `LinkServer` is built once per process by `LinkController.get`, which
+`ConnectSuiteApp.onCreate` calls — so the observer now exists from the first moment any component
+starts the process, including the platform rebinding the notification listener.
+
+`stopWatching()` is now called by nothing, and its doc comment says so and says why it is kept.
+
+**The fix direction that was rejected, restated because it will look tempting again**: re-reading
+the setting on a delay. Defect 37's own entry rules it out, and defect 36's shipped wrong fix is
+the precedent — a plausible value, a timer instead of a fact, and a wrong answer under load.
+Neither part of this fix contains a timer.
+
+### The tests, each shown to fail against the defect
+
+`core/src/test/java/com/chetan/connectsuite/core/SpecialAccessReadingTest.kt`, six tests. The
+defect was reintroduced (`granted = namedInSettings` alone), the suite re-run, and the four tests
+that name it went red with the right messages:
+
+```
+FAILED  defect 37 - a bound listener whose setting reads stale-false is still granted
+        expected:<[NOTIFICATION_LISTENER]> but was:<[]>
+FAILED  defect 37 - notifications and remote come back on with the listener bound
+        expected:<[notifications, remote]> but was:<[]>
+FAILED  defect 37 - the reason must not read 'missing Notification access' over a bound service
+        must be advertised
+FAILED  a bound listener does not carry the accessibility service with it
+        expected:<[notifications, remote]> but was:<[]>
+```
+
+The other two — `a grant with nothing bound still advertises nothing` and `unbinding takes the
+capabilities away again` — pass in **both** states and are labelled in the file as guards, not as
+evidence. They exist so the fix cannot quietly turn "granted" back into "advertised", which is the
+direction it would be most costly to be wrong in. A test that cannot fail is not evidence; a test
+that is *declared* to be a guard is honest about being one.
+
+Part 2 is a lifetime rather than a value and has no unit test. It is verified on hardware below,
+which is the only place a `ContentObserver`'s scope is observable.
+
+Full phone suite after the fix: **164 tests, 0 failures, 0 errors.**
+
+### Hardware verification — the grant is made with the link **DOWN**, which is the broken case
+
+Build installed with `adb install -r` at 00:02. The reinstall tears the bound components down; the
+platform rebound `NotificationMirrorService`, which started the process, which ran
+`ConnectSuiteApp.onCreate` — and **`LinkService` never ran**, so this is the exact serverless state
+that hid the defect.
+
+**Control on "the link is down", taken first, because everything below is an absence claim.**
+`/proc/net/tcp6` filtered to state `0A` returned **7 listening sockets** and none of them were
+A605/A606/A607 (42501/2/3). The same query later, after the link was deliberately brought up,
+returned those three. And `grep -c "Listening on"` over the current process's window returned
+**0**, while the same grep over the whole file returned **2** — so the query can see server starts,
+it is simply that this process had none.
+
+**Control on the observer, which is the denominator that makes part 2 readable.**
+`grep -c "A Settings toggle changed"` **before** the toggle: **0**. Not "few" — none, across a log
+holding 37 `[caps]` lines, which is also the control that the log can see capability lines at all.
+
+Then notification access was revoked and re-granted with `cmd notification
+disallow_listener` / `allow_listener`, no server at any point:
+
+```
+00:03:47.351 I [notif]  Notification listener detached; notifications capability is off
+00:03:47.353 I [caps]   Capabilities now: calls,contacts,input,mirror,sms
+00:03:47.353 I [remote] Media session listener detached: notification access went away
+00:03:47.619 I [caps]   A Settings toggle changed; re-checking capabilities        <- part 2, no server
+00:03:47.628 I [caps]   Capabilities unchanged (calls,contacts,input,mirror,sms); reason changed:
+                        notifications — missing Notification access; remote — missing Notification access
+00:03:51.434 I [notif]  Notification listener attached to the link
+00:03:51.435 I [caps]   Capabilities now: calls,contacts,input,mirror,notifications,remote,sms
+00:03:51.435 I [remote] Media session listener attached; phone-side changes will now reach the Mac
+00:03:51.695 I [caps]   A Settings toggle changed; re-checking capabilities
+```
+
+**Read `00:03:51.435` against defect 37's `17:14:57.002`. That one line is the whole fix:**
+
+| | attached | one millisecond later |
+|---|---|---|
+| before | `17:14:57.000 Notification listener attached` | `17:14:57.002 … missing Notification access` — and it never changed again |
+| after | `00:03:51.434 Notification listener attached` | `00:03:51.435 Capabilities now: …,notifications,remote,…` |
+
+The revoke half matters as much as the re-grant half and is easy to skip: at `.353` the set drops
+to five and at `.628` the reason reads `missing Notification access` — **correctly**, because
+nothing is bound then. A build that reported seven capabilities in both directions would have
+passed a re-grant test and be worse than the defect. The set has to be wrong when the feature is
+gone and right when it is back, and both were observed in the same four seconds.
+
+The observer fired again at `00:03:51.695` and once more at `00:04:02.686` with no
+`Capabilities now:` line following either — `refresh()` returning false because the set had not
+moved, which is the "a spurious onChange broadcasts nothing" behaviour its comment claims.
+
+**Then the link was brought up**, and the Mac drew all seven as `cap on`: `mirror`, `input`,
+`notifications`, `sms`, `calls`, `contacts`, `remote`. The remaining five read `unavailable` with
+their specific reasons (`files`, `photos`, `clipboard`, `apps`, `mic`) — locked decision #6 intact.
+
+### What this does not fix
+
+The five-hour serverless window recorded at the top of the steps 67-69 section — a process fully
+alive with every feature installed and no `LinkService` — is **unchanged**. Part 2 means the
+capability set is now correct throughout such a window, which is what defect 37 was about, but
+nothing here makes the server come up. A process started by the platform rebinding a listener
+still has no listening sockets until something calls `LinkService.start`, and the Mac still sees
+`ECONNREFUSED` until then. That is Phase 6's subject (background reliability, surviving the OEM's
+process management) and it is named here so it is not mistaken for having been handled.

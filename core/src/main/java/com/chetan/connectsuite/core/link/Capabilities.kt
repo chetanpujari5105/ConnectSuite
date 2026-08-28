@@ -110,6 +110,60 @@ data class CapabilityStatus(
  * registered or unregistered, and whenever one of those components binds or unbinds; a change
  * emits `capabilities.changed` on every live session.
  */
+/**
+ * How the two Settings-toggle grants are read. Pure, and separate from [CapabilityDetector] so it
+ * can be tested on the JVM — the detector itself cannot be, because `Settings.Secure` and
+ * `ContextCompat` are Android statics. Same seam as `SmsPayloads` and `CallWatcher.dispositionOf`.
+ *
+ * ### Defect 37, and why a bound component answers the grant question better than the setting does
+ *
+ * The secure setting is not the grant. It is the platform's record of the grant, and the platform
+ * reads it to decide whether to bind the component. So when the component **is** bound, that is
+ * the same fact arriving by a shorter route, and by the more reliable one: a bind cannot happen
+ * without the grant, whereas a read of the setting can land before the write that caused the bind
+ * has become visible.
+ *
+ * That is not a hypothesis. On 2026-08-28, ~2 ms after `cmd notification allow_listener`:
+ *
+ * ```
+ * 17:14:57.000 I [notif]  Notification listener attached to the link
+ * 17:14:57.002 I [caps]   Capabilities unchanged (calls,contacts,input,mirror,sms); reason changed:
+ *                         notifications - missing Notification access; remote - missing Notification access
+ * 17:14:57.003 I [remote] Media session listener attached; phone-side changes will now reach the Mac
+ * ```
+ *
+ * Bound at `.000`, bound at `.003`, and `missing Notification access` at `.002` between them. The
+ * setting read stale-false while the service it names was already running, and nothing corrected
+ * it for the remaining life of the process: a dark chip over live wiring, which is defect 31
+ * inverted.
+ *
+ * **This is deliberately not the rule "running implies granted" in general.** It is the narrower
+ * one that a component the platform has bound was necessarily allowed to be bound. The
+ * both-halves invariant `RunningGateTest` guards is untouched and lives one layer up, in
+ * `CapabilityContract.advertisable`, which still takes `granted intersect running` — a grant with
+ * nothing behind it advertises nothing, exactly as before.
+ *
+ * The consequence is worth stating plainly: for these two accesses the advertised set now reduces
+ * to what is bound. That is the intended reading. The setting keeps one job it cannot be replaced
+ * for — [CapabilityStatus.permitted], which is what produces "granted in Settings, but Android has
+ * not started the service" rather than sending a user back to a switch they already turned on.
+ */
+internal object SpecialAccessReading {
+
+    /**
+     * The grants held right now: what Settings names, plus what is demonstrably bound.
+     *
+     * @param namedInSettings read from `enabled_notification_listeners` /
+     *   `enabled_accessibility_services`; authoritative when true, not trustworthy when false.
+     * @param bound reported by the module that holds the service reference, via
+     *   [CapabilityDetector.requireRunning]. True here is proof.
+     */
+    fun granted(
+        namedInSettings: Set<CapabilityContract.SpecialAccess>,
+        bound: Set<CapabilityContract.SpecialAccess>,
+    ): Set<CapabilityContract.SpecialAccess> = namedInSettings + bound
+}
+
 class CapabilityDetector(
     private val context: Context,
     /** Message types with a live handler. Supplied by [LinkServer]. */
@@ -230,6 +284,11 @@ class CapabilityDetector(
      *
      * Cheap to the point of being free: two URIs, no polling, and [refresh] already does nothing
      * when the computed set has not changed.
+     *
+     * **Called from `LinkServer`'s `init`, once per process — not from `start()`.** It used to be
+     * the last line of `start()`, which scoped the belt to the server being up and so removed it
+     * from the exact window it exists for. That is defect 37; the long version is on the `init`
+     * block itself.
      */
     fun startWatching(onChanged: () -> Unit) {
         if (settingsObserver != null) return
@@ -256,6 +315,12 @@ class CapabilityDetector(
         }.onFailure { LinkLog.w("caps", "Could not watch the Settings toggles: ${it.message}") }
     }
 
+    /**
+     * Unregisters the observer. **Nothing in this app calls it, and that is the point** — see
+     * defect 37. It is kept because an observer with no way to be removed is a leak waiting for
+     * the first caller who does need one (a test, or a second `LinkServer` in some future
+     * process), not because the server should be calling it on `stop()`.
+     */
     fun stopWatching() {
         val observer = settingsObserver ?: return
         settingsObserver = null
@@ -315,10 +380,18 @@ class CapabilityDetector(
         CapabilityContract.allDeclaredPermissions().filterTo(mutableSetOf()) { granted(it) }
 
     /** The two Settings toggles, which are not runtime permissions and cannot be requested. */
-    private fun specialAccessGranted(): Set<CapabilityContract.SpecialAccess> = buildSet {
-        if (isAccessibilityServiceEnabled()) add(CapabilityContract.SpecialAccess.ACCESSIBILITY_SERVICE)
-        if (isNotificationListenerEnabled()) add(CapabilityContract.SpecialAccess.NOTIFICATION_LISTENER)
-    }
+    private fun specialAccessGranted(): Set<CapabilityContract.SpecialAccess> =
+        SpecialAccessReading.granted(
+            namedInSettings = buildSet {
+                if (isAccessibilityServiceEnabled()) {
+                    add(CapabilityContract.SpecialAccess.ACCESSIBILITY_SERVICE)
+                }
+                if (isNotificationListenerEnabled()) {
+                    add(CapabilityContract.SpecialAccess.NOTIFICATION_LISTENER)
+                }
+            },
+            bound = specialAccessRunning(),
+        )
 
     /** The same two, but actually bound. See [requireRunning] and the class comment. */
     private fun specialAccessRunning(): Set<CapabilityContract.SpecialAccess> =

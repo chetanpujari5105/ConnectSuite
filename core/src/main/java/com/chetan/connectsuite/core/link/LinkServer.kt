@@ -142,6 +142,37 @@ class LinkServer(
         sessionReadyListeners.remove(listener)
     }
 
+    /**
+     * Watch the two Settings toggles for the life of the **process**, not the life of the server.
+     *
+     * ### Defect 37: this used to be the last line of `start()`, and that was the whole bug
+     *
+     * `CapabilityDetector.startWatching` calls itself the belt to the lifecycle callbacks' braces,
+     * and it is — but a belt registered by `LinkServer.start()` is only worn while the server is
+     * up. A user toggling a grant in Settings is, if anything, *more* likely to be doing it while
+     * the link is down: that is when a feature looks broken and someone goes looking for a switch.
+     *
+     * It cost exactly that. In the process that found the defect the observer had fired 15 times
+     * across the log and **not once in that process** — last at 14:01:44, process started 17:05:40
+     * — because `Listening on 42501/42502/42503` never appeared and the ports were never bound.
+     * A millisecond-scale stale read of the settings provider therefore became a permanent wrong
+     * answer, with no backstop to correct it.
+     *
+     * The same scoping was seen again from the other side on 2026-08-28: the platform rebound
+     * `NotificationMirrorService`, which started the process, which installed every feature — and
+     * `LinkService` never ran, so the phone sat for five hours fully granted and serverless. Both
+     * are `LinkServer.start()` being load-bearing for things that are not the server.
+     *
+     * Registered from `init` so it is tied to the one `LinkServer` the process builds
+     * (`LinkController.get`). It costs two URIs and no polling, and `refresh()` already returns
+     * false when the computed set has not moved, so a spurious `onChange` broadcasts nothing.
+     * There is no matching `stopWatching` call anywhere: the observer is meant to outlive every
+     * connection, and the process ending is what removes it.
+     */
+    init {
+        capabilities.startWatching(::refreshCapabilities)
+    }
+
     // ---- pairing ------------------------------------------------------------------------
 
     private data class ArmedPairing(val fingerprint: String, val token: String, val expiresAt: Long)
@@ -183,9 +214,8 @@ class LinkServer(
         LinkLog.init(appContext)
         trustStore.reload()
         capabilities.refresh()
-        // A grant taken away in Settings has to reach the Mac even when the component's own
-        // lifecycle callback does not arrive. See CapabilityDetector.startWatching.
-        capabilities.startWatching(::refreshCapabilities)
+        // The Settings observer is *not* installed here. It is installed in this class's `init`,
+        // because its lifetime is the process and not the server's. See defect 37 below.
 
         try {
             controlSocket = LinkTls.serverSocket(identity, trustStore, Link.PORT_CONTROL)
@@ -213,7 +243,9 @@ class LinkServer(
     }
 
     fun stop() {
-        capabilities.stopWatching()
+        // The Settings observer deliberately survives stop(): see the `init` block. Stopping the
+        // server does not stop the user from changing grants, and it is that window the observer
+        // exists for.
         acceptJobs.forEach(Job::cancel)
         acceptJobs.clear()
         liveSessions.keys.forEach { it.close("service stopping") }
