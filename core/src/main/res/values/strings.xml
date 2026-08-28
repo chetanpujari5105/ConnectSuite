@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_display_name">ConnectSuite</string>
+
+    <string name="connection_service_starting">Starting…</string>
+    <string name="connection_service_scanning">Looking for devices…</string>
+    <string name="connection_service_idle">No devices nearby</string>
+    <string name="connection_service_connected_one">Connected to %1$s</string>
+    <plurals name="connection_service_connected_many">
+        <item quantity="one">Connected to %1$d device</item>
+        <item quantity="other">Connected to %1$d devices</item>
+    </plurals>
+
+    <string name="action_stop">Stop</string>
+    <string name="action_accept">Accept</string>
+    <string name="action_reject">Reject</string>
+
+    <string name="pairing_request_title">%1$s wants to pair</string>
+    <string name="pairing_request_text">Key %1$s — open ConnectSuite to confirm</string>
+    <string name="pairing_request_big_text">%1$s wants to pair with this device.\n\nKey: %2$s\n\nOpen ConnectSuite and check this key matches the one shown on the other device before accepting.</string>
+    <string name="link_service_starting">Starting…</string>
+    <string name="link_service_waiting">Waiting for your Mac</string>
+    <string name="link_service_stopped">Not listening</string>
+    <string name="link_service_connected">Connected to %1$s</string>
+    <plurals name="link_service_connected_many">
+        <item quantity="one">Connected to %1$d Mac</item>
+        <item quantity="other">Connected to %1$d Macs</item>
+    </plurals>
+</resources>

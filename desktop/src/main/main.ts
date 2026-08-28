@@ -1,0 +1,640 @@
+import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor, Tray, Menu } from 'electron';
+import { networkInterfaces } from 'node:os';
+import { join } from 'node:path';
+import QRCode from 'qrcode';
+import { ErrorCode, MessageType, type ConnectionStatus } from '../shared/protocol';
+import { loadIdentity } from './identity';
+import { InputClient } from './input';
+import { ContactsClient } from './contacts';
+import { NotificationClient } from './notifications';
+import { RemoteClient } from './remote';
+import { CallClient } from './calls';
+import { SmsClient } from './sms';
+import { LinkClient } from './link';
+import { initLogger, log, tailLog } from './logger';
+import { debugSwitches } from './debugSwitches';
+import { store } from './store';
+import { VideoClient, type VideoFrame } from './video';
+
+let window: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let link: LinkClient | null = null;
+let video: VideoClient | null = null;
+/** Serialises input so two gestures never overlap on the phone. See input.ts. */
+const input = new InputClient(() => link);
+
+/** The live notification set, built from events. See notifications.ts. */
+const notifications = new NotificationClient(() => link);
+
+/**
+ * Contacts: the phone's search, and a number→name cache for the panes that draw numbers.
+ *
+ * Holds no contact book — see contacts.ts. The cache is cleared on disconnect alongside the
+ * notification set, for the same reason: a name resolved against a phone this Mac is no longer
+ * talking to is a claim it cannot still stand behind.
+ */
+const contacts = new ContactsClient(() => link);
+
+/**
+ * What is playing on the phone. Pushed by the phone, asked for once on connect.
+ *
+ * Cleared on disconnect with the rest: a card claiming a song is playing on a phone this Mac is
+ * not talking to is a claim it cannot stand behind, and its Pause button would reach nothing.
+ */
+const remote = new RemoteClient(() => link);
+
+/**
+ * The previous status, reduced to the two facts that decide whether to ask the phone for state.
+ *
+ * `status` is emitted on every heartbeat, so anything that acts on "is connected" acts five times
+ * a minute. These two make the difference between an edge and a level.
+ */
+/**
+ * SMS. Holds the thread rows a send resolves its recipients from — see sms.ts, and the send rule
+ * in docs/protocol.md. Cleared on disconnect, because a cached recipient is the stale copy that
+ * rule exists to guard against.
+ */
+const sms = new SmsClient(() => link);
+
+/**
+ * Calls. Holds the one call that can be acted on, and sends its id explicitly on every action —
+ * see calls.ts and step 61. Cleared on disconnect: a call this Mac cannot act on must not look
+ * actionable.
+ */
+const calls = new CallClient(() => link);
+
+let wasConnected = false;
+let couldRemote = false;
+
+/**
+ * The phone's last `mirror.stats`, kept because two of its numbers cannot be observed from here.
+ *
+ * Frames dropped on the phone were never sent to this Mac, and `ptsUs`/`monoUs` are the anchor
+ * that turns a frame's PTS into a latency. See docs/protocol.md.
+ */
+let lastPhoneMirrorStats: Record<string, number> | null = null;
+
+/**
+ * When the phone was last asked to mirror, so time-to-first-frame is measured from the request
+ * rather than from whichever event happened to arrive first.
+ */
+let mirrorRequestedAt: number | null = null;
+
+/**
+ * How long `mirror.start` gets to be *acknowledged*.
+ *
+ * Not how long consent gets — that is the phone's 30 second deadline, reported as
+ * CONSENT_TIMEOUT. This covers only the round trip to a phone that is already connected, which
+ * the phone budgets at 2 seconds; the rest is slack for a busy Wi-Fi link.
+ */
+const MIRROR_ACK_TIMEOUT_MS = 5_000;
+
+/** The `mirror.state` payload from docs/protocol.md. */
+type MirrorStatePayload = {
+  state?: string;
+  message?: string;
+  fixHint?: string;
+  requestId?: string;
+  width?: number;
+  height?: number;
+  dpi?: number;
+  bitrate?: number;
+  frameRate?: number;
+  maxResolution?: number;
+  rotation?: number;
+  /** The stamp every coordinate-bearing input message must echo. See docs/protocol.md. */
+  geometryId?: number;
+};
+let lastStatus: ConnectionStatus | null = null;
+
+function createWindow(): void {
+  window = new BrowserWindow({
+    width: 720,
+    height: 820,
+    title: 'ConnectSuite',
+    backgroundColor: '#101014',
+    titleBarStyle: 'hiddenInset',
+    webPreferences: {
+      preload: join(__dirname, '..', 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  void window.loadFile(join(__dirname, '..', 'renderer', 'index.html'));
+  window.on('closed', () => {
+    window = null;
+  });
+}
+
+function statusLabel(status: ConnectionStatus | null): string {
+  if (!status) return 'Starting…';
+  switch (status.phase) {
+    case 'connected':
+      return `Connected to ${status.deviceName ?? 'phone'}`;
+    case 'connecting':
+    case 'handshaking':
+      return `Connecting to ${status.address ?? 'phone'}…`;
+    case 'searching':
+      return 'Looking for the phone…';
+    case 'reconnecting':
+      return `Reconnecting${status.lastError ? ` — ${status.lastError}` : '…'}`;
+    case 'failed':
+      return status.lastError ?? 'Disconnected';
+    default:
+      return status.paired ? 'Disconnected' : 'Not paired';
+  }
+}
+
+function refreshTray(): void {
+  if (!tray) return;
+  // A text-only tray item: the connection state is the whole point of the icon, and a glyph
+  // reads at a glance without shipping a bitmap that has to be redrawn per theme.
+  const connected = lastStatus?.phase === 'connected';
+  tray.setTitle(connected ? '● CS' : '○ CS');
+  tray.setToolTip(statusLabel(lastStatus));
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: statusLabel(lastStatus), enabled: false },
+      { type: 'separator' },
+      {
+        label: 'Open ConnectSuite',
+        click: () => {
+          if (!window) createWindow();
+          window?.show();
+        },
+      },
+      {
+        label: 'Reconnect now',
+        enabled: !connected,
+        click: () => link?.retryNow('tray'),
+      },
+      {
+        label: connected ? 'Disconnect' : 'Connect',
+        click: () => (connected ? link?.stop('tray') : link?.start()),
+      },
+      { type: 'separator' },
+      { label: 'Quit', click: () => app.quit() },
+    ]),
+  );
+}
+
+/** The address the phone would see us on, for the QR payload. */
+function localAddress(): string {
+  for (const [, addresses] of Object.entries(networkInterfaces())) {
+    for (const address of addresses ?? []) {
+      if (address.family === 'IPv4' && !address.internal) return address.address;
+    }
+  }
+  return '0.0.0.0';
+}
+
+/** Signature of every non-internal interface, so a Wi-Fi change can trigger an immediate retry. */
+function interfaceSignature(): string {
+  return Object.entries(networkInterfaces())
+    .flatMap(([name, addresses]) =>
+      (addresses ?? [])
+        .filter((address) => address.family === 'IPv4' && !address.internal)
+        .map((address) => `${name}:${address.address}`),
+    )
+    .sort()
+    .join(',');
+}
+
+function send(channel: string, payload: unknown): void {
+  if (window && !window.isDestroyed()) window.webContents.send(channel, payload);
+}
+
+/**
+ * Every phase the phone reports, forwarded to the canvas — and the one place the video socket is
+ * opened.
+ *
+ * Opening on `running` rather than on the `mirror.start` ack is the point: the ack now comes back
+ * before consent has even been asked for, so a socket opened there would be a socket opened for a
+ * session the user has not permitted and may never permit.
+ *
+ * `awaiting-foreground` is not a failure and is deliberately not treated as one: the phone is
+ * telling us to send the user to their phone, and the message and hint say exactly that.
+ */
+async function onMirrorState(state: MirrorStatePayload): Promise<void> {
+  log.info('video', `Phone mirror state: ${state.state ?? 'unknown'} — ${state.message ?? ''}`);
+  send('mirror-state', state);
+
+  if (state.state === 'running') {
+    const token = link?.token();
+    const address = link?.status().address;
+    if (!token || !address) {
+      log.warn('video', 'Phone reports mirroring but there is no live session to open video on');
+      send('mirror-stopped', {
+        reason: 'The phone started mirroring but the link had already dropped.',
+        fixHint: 'Reconnect the phone and start mirroring again.',
+      });
+      return;
+    }
+    if (!video!.isOpen()) {
+      try {
+        await video!.open(address, token);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        log.warn('video', `Could not open the video socket: ${reason}`);
+        send('mirror-stopped', {
+          reason: `The phone is mirroring but the Mac could not open the video connection (${reason}).`,
+          fixHint: 'Check that the Mac and phone are on the same network, then try again.',
+        });
+        return;
+      }
+    }
+    const waited = mirrorRequestedAt ? `${Date.now() - mirrorRequestedAt}ms after asking` : 'unprompted';
+    log.info(
+      'video',
+      `Mirroring started: ${state.width ?? '?'}x${state.height ?? '?'} ` +
+        `cap ${state.maxResolution ?? '?'} @${state.frameRate ?? '?'}fps ` +
+        `${Math.round((state.bitrate ?? 0) / 1000)}kbps; ${waited}`,
+    );
+    return;
+  }
+
+  if (state.state === 'stopped') {
+    video?.close('the phone stopped mirroring');
+    send('mirror-stopped', { reason: state.message, fixHint: state.fixHint });
+  }
+}
+
+app.whenReady().then(() => {
+  initLogger();
+  log.info('app', `ConnectSuite ${app.getVersion()} starting`);
+  // Read here, and only here, so a weakened guard announces itself in the first lines of the log
+  // rather than when it first bites — by which time a confusing result has already happened and
+  // would be blamed on the feature. Packaged builds never reach this.
+  if (!app.isPackaged) debugSwitches();
+
+  const identity = loadIdentity();
+  link = new LinkClient(identity);
+  video = new VideoClient(identity);
+
+  // Access units go straight to the renderer, which owns the WebCodecs decoder and the canvas.
+  // Buffer -> Uint8Array because a Node Buffer does not survive structured cloning as one.
+  video.on('frame', (frame: VideoFrame) => {
+    send('video-frame', {
+      keyframe: frame.keyframe,
+      config: frame.config,
+      ptsUs: frame.ptsUs,
+      data: new Uint8Array(frame.data),
+      arrivedAt: frame.arrivedAt,
+    });
+  });
+  video.on('closed', (reason: string) => send('mirror-stopped', { reason }));
+  link.on('status', (status: ConnectionStatus) => {
+    lastStatus = status;
+    refreshTray();
+    // The session token dies with the control connection, so a video socket outliving it would
+    // just be refused on its next frame.
+    if (status.phase !== 'connected' && video?.isOpen()) {
+      video.close('the control link dropped');
+      send('mirror-stopped', { reason: 'The link to the phone dropped, so mirroring stopped.' });
+    }
+    // A notification set that outlives its connection is a set of things that may already have
+    // been dealt with on the phone — see notifications.ts. Cleared rather than kept.
+    if (status.phase !== 'connected') {
+      notifications.clear();
+      contacts.clear();
+      remote.clear();
+      sms.clear();
+      calls.clear();
+    }
+    // One `remote.state` request, on exactly one edge: `remote` becoming advertised while the link
+    // is already up.
+    //
+    // Not on connect — the phone replays `remote.state` to every session as it becomes ready
+    // (`RemoteFeature.addSessionReadyListener`), so asking there is a second request for something
+    // already on its way. And not on every status: `status` is re-emitted on each heartbeat
+    // because `rttMs` changes, so a plain `phase === 'connected'` test made this a request every
+    // five seconds — a poll, in the one client whose design note says it does not poll.
+    //
+    // The remaining edge is the one the phone does *not* cover. `RemoteFeature.attachSessionListener`
+    // runs inside `install()` and returns early unless the notification listener is already bound,
+    // so a grant made mid-session lights the capability without necessarily attaching the media
+    // listener behind it. A request is answered from `stateOf()` directly and works either way,
+    // which makes this the one place the card can be made right without a reconnect.
+    const canRemote = status.capabilities?.includes('remote') ?? false;
+    const nowConnected = status.phase === 'connected';
+    if (nowConnected && canRemote && wasConnected && !couldRemote) void remote.refresh();
+    wasConnected = nowConnected;
+    couldRemote = canRemote;
+    send('status', status);
+  });
+  link.on('phone-error', (payload: unknown) => {
+    // A mirror failure arrives here as an ordinary error with feature "mirror". It is the only
+    // thing standing between the user and an idle canvas, so it is forwarded verbatim.
+    const error = payload as { code?: string; feature?: string; message?: string; fixHint?: string };
+    if (error?.feature === 'mirror') {
+      // SECURE_SURFACE is the one failure that does not end the session — docs/protocol.md says so
+      // in as many words, and the phone keeps capturing throughout: the user walks out of the
+      // banking app and frames resume. Closing the socket here made that impossible to observe.
+      // The session survived on the phone and there was no longer anything on the Mac to receive
+      // it, so "frames resume" became "mirroring is over" and only a restart brought it back.
+      const transient = error.code === ErrorCode.SECURE_SURFACE;
+      log.warn(
+        'video',
+        `Mirror ${transient ? 'interrupted' : 'failed'} on the phone: ` +
+          `${error.message ?? 'no reason given'}`,
+      );
+      if (!transient) video?.close('the phone reported a mirror failure');
+      // Either way the sentence goes on the canvas — and `transient` goes with it, because this is
+      // the only place that knows the difference. The renderer used to infer it from frames still
+      // arriving, which for a secure surface is precisely backwards: the frames still arriving are
+      // the black ones the sentence is about, and they wiped it 16ms after it appeared (defect 23).
+      // A transient failure ends when there is real content again; everything else ends the session.
+      send('mirror-stopped', { reason: error.message, fixHint: error.fixHint, transient });
+    }
+    send('phone-error', payload);
+  });
+  link.on('message', (envelope: unknown) => {
+    const message = envelope as { type?: string; payload?: Record<string, unknown> };
+    // Phase 4 events. The phone pushes these; nothing here ever requests them, which is why they
+    // are handled beside the mirror's events rather than inside a client that owns a request.
+    if (message?.type === MessageType.NOTIF_POSTED && message.payload) {
+      notifications.onPosted(message.payload);
+    }
+    if (message?.type === MessageType.NOTIF_REMOVED && message.payload) {
+      notifications.onRemoved(message.payload);
+    }
+    if (message?.type === MessageType.CALL_INCOMING && message.payload) {
+      calls.onIncoming(message.payload);
+    }
+    if (message?.type === MessageType.CALL_ENDED && message.payload) {
+      calls.onEnded(message.payload);
+    }
+    if (message?.type === MessageType.SMS_RECEIVED && message.payload) {
+      sms.onReceived(message.payload);
+    }
+    if (message?.type === MessageType.REMOTE_STATE && message.payload) {
+      remote.onState(message.payload);
+    }
+    if (message?.type === MessageType.MIRROR_STATS && message.payload) {
+      lastPhoneMirrorStats = message.payload as Record<string, number>;
+      // Pushed rather than polled: the renderer needs the clock anchor to time *every* frame it
+      // paints, and a once-a-second poll would leave frames measured against a stale mapping.
+      send('mirror-telemetry', {
+        clockOffsetMs: link?.clockOffset(),
+        phone: message.payload,
+      });
+    }
+    if (message?.type === MessageType.MIRROR_STATE && message.payload) {
+      void onMirrorState(message.payload as MirrorStatePayload);
+    }
+    if (message?.type === MessageType.MIRROR_ROTATE && message.payload) {
+      // Phone-to-Mac only: the phone turned. It arrives on the control channel just ahead of the
+      // new SPS/PPS on the video channel, so the canvas knows the shape it is about to be handed
+      // rather than inferring it from the first frame that happens to decode.
+      const rotate = message.payload as {
+        width?: number;
+        height?: number;
+        rotation?: number;
+        geometryId?: number;
+      };
+      log.info(
+        'video',
+        `Phone rotated to ${rotate.rotation ?? '?'}°: capture ` +
+          `${rotate.width ?? '?'}x${rotate.height ?? '?'} (screen #${rotate.geometryId ?? '?'})`,
+      );
+      send('mirror-rotate', message.payload);
+    }
+    send('message', envelope);
+  });
+
+  // One subscription, not one per window: the client is the source of truth and `send` already
+  // fans out to whatever window exists.
+  notifications.on('changed', (list) => send('notif-changed', list));
+  remote.on('changed', (state) => send('remote-changed', state));
+  sms.on('received', (event) => send('sms-received', event));
+  calls.on('changed', (call) => send('call-changed', call));
+
+  tray = new Tray(nativeImage.createEmpty());
+  refreshTray();
+  createWindow();
+
+  if (store.get('autoConnect')) link.start();
+
+  // The lid-open case: the sockets are already dead but nothing has told us yet, so waiting out
+  // the backoff would add half a minute of "connected but not".
+  powerMonitor.on('resume', () => link?.retryNow('system resumed'));
+  powerMonitor.on('unlock-screen', () => link?.retryNow('screen unlocked'));
+
+  let signature = interfaceSignature();
+  setInterval(() => {
+    const current = interfaceSignature();
+    if (current !== signature) {
+      signature = current;
+      link?.retryNow('network interfaces changed');
+    }
+  }, 3_000);
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+// Closing the window keeps the tray alive: notifications and clipboard sync are the reason the
+// app exists, and both need the link up.
+app.on('window-all-closed', () => {
+  /* stay running */
+});
+
+app.on('before-quit', () => {
+  video?.close('app quit');
+  link?.stop('app quit');
+});
+
+/**
+ * Asks the phone to start mirroring, and returns as soon as it has answered *that it heard*.
+ *
+ * It does not wait for a picture. The phone acks `mirror.start` with the phase the request
+ * entered — see docs/protocol.md — and everything after that arrives as `mirror.state` events,
+ * because consent is a person picking up a phone and no request timeout can tell "still reaching
+ * for it" from "the prompt was never shown". Holding the request open across that is what left
+ * this canvas blank for a full minute with nothing said.
+ *
+ * The video socket is therefore opened by {@link onMirrorState} on `running`, not here.
+ */
+ipcMain.handle('mirror-start', async (_event, options: Record<string, unknown> = {}) => {
+  if (!link || !link.isConnected()) throw new Error('Not connected to the phone');
+  if (!link.token() || !link.status().address) throw new Error('No live session with the phone');
+
+  lastPhoneMirrorStats = null;
+
+  // `requestedAt` is taken here, on the wire, and handed back so the renderer can report time to
+  // first frame against the moment the phone was actually asked — not the moment a button was
+  // clicked, which includes however long the user took to reach for the phone.
+  const requestedAt = Date.now();
+  mirrorRequestedAt = requestedAt;
+
+  let ack: unknown;
+  try {
+    ack = await link.request('mirror.start', options, MIRROR_ACK_TIMEOUT_MS);
+  } catch (error) {
+    // The old code logged nothing on this path, so a failed start left no trace on either side.
+    const reason = error instanceof Error ? error.message : String(error);
+    log.warn('video', `mirror.start was not acknowledged: ${reason}`);
+    throw error;
+  }
+
+  const state = ((ack as { payload?: MirrorStatePayload })?.payload ?? {}) as MirrorStatePayload;
+  log.info(
+    'video',
+    `mirror.start acknowledged in ${Date.now() - requestedAt}ms as "${state.state ?? 'unknown'}"`,
+  );
+  send('mirror-state', state);
+  return { ok: true, requestedAt, state };
+});
+
+ipcMain.handle('mirror-stop', async () => {
+  video?.close('stopped by the user');
+  if (link?.isConnected()) {
+    await link.request('mirror.stop', {}, 10_000).catch(() => undefined);
+  }
+  return { ok: true };
+});
+
+/**
+ * `mirror.config`. Bitrate changes on the live encoder; a resolution cap change rebuilds it.
+ *
+ * Either way the phone keeps its MediaProjection, so raising the cap mid-session costs the user
+ * nothing — no second consent tap. The new SPS/PPS that follows makes the renderer's decoder
+ * reconfigure itself.
+ */
+ipcMain.handle('mirror-config', async (_event, options: Record<string, unknown> = {}) => {
+  if (!link?.isConnected()) throw new Error('Not connected to the phone');
+  await link.request('mirror.config', options, 10_000);
+  log.info('video', `Mirror reconfigured: ${JSON.stringify(options)}`);
+  return { ok: true };
+});
+
+ipcMain.handle('mirror-keyframe', async () => {
+  if (link?.isConnected()) await link.request('mirror.keyframe', {}, 5_000).catch(() => undefined);
+});
+
+ipcMain.handle('mirror-stats', () => ({
+  ...(video?.stats() ?? { frames: 0, bytes: 0, kbps: 0, framesPerSecond: 0 }),
+  clockOffsetMs: link?.clockOffset(),
+  phone: lastPhoneMirrorStats,
+}));
+
+/**
+ * Input. Six thin handlers: the renderer has already worked out where on the picture it clicked,
+ * and everything else — ordering, the queue bound, the timeout — belongs to {@link InputClient}.
+ *
+ * The payloads are passed through unaltered on purpose. The Mac does not clamp a coordinate,
+ * substitute a geometry stamp, or retry a refusal: the phone is the only side that knows what it
+ * is capturing right now, and second-guessing it here is how a tap ends up somewhere the user did
+ * not click. A rejection carries the phone's own sentence, which the canvas shows verbatim.
+ */
+ipcMain.handle('input-tap', (_event, payload: Record<string, unknown>) => input.tap(payload));
+ipcMain.handle('input-swipe', (_event, payload: Record<string, unknown>) => input.swipe(payload));
+ipcMain.handle('input-scroll', (_event, payload: Record<string, unknown>) => input.scroll(payload));
+ipcMain.handle('input-key', (_event, key: string) => input.key(key));
+ipcMain.handle('input-text', (_event, payload: { text: string; mode?: 'replace' | 'append' }) =>
+  input.text(payload.text, payload.mode ?? 'replace'),
+);
+ipcMain.handle('input-global', (_event, action: string) => input.global(action));
+
+// ---- Phase 4: notifications ------------------------------------------------------------------
+ipcMain.handle('notif-list', () => notifications.all());
+ipcMain.handle('notif-reply', (_event, payload: { key: string; text: string }) =>
+  notifications.reply(payload.key, payload.text),
+);
+ipcMain.handle('notif-action', (_event, payload: { key: string; index: number }) =>
+  notifications.action(payload.key, payload.index),
+);
+ipcMain.handle('notif-dismiss', (_event, key: string) => notifications.dismiss(key));
+
+ipcMain.handle(
+  'contacts-list',
+  (_event, options: { query?: string; limit?: number } = {}) => contacts.list(options),
+);
+ipcMain.handle(
+  'contacts-get',
+  (_event, options: { id?: string; number?: string; withPhoto?: boolean }) => contacts.get(options),
+);
+
+ipcMain.handle('call-current', () => calls.currentCall());
+ipcMain.handle('call-log', (_event, options: { limit?: number; before?: number } = {}) =>
+  calls.log(options),
+);
+// No arguments, deliberately: the call acted on is the one the main process holds, and its id is
+// sent explicitly. See calls.ts and step 61.
+ipcMain.handle('call-answer', () => calls.answer());
+ipcMain.handle('call-reject', () => calls.reject());
+ipcMain.handle('call-dial', (_event, number: string) => calls.dial(number));
+
+ipcMain.handle(
+  'sms-threads',
+  (_event, options: { limit?: number; before?: number } = {}) => sms.listThreads(options),
+);
+ipcMain.handle(
+  'sms-messages',
+  (_event, payload: { threadId: string; options?: { limit?: number; before?: number } }) =>
+    sms.listMessages(payload.threadId, payload.options ?? {}),
+);
+// No recipient parameter, deliberately. See sms.ts and the send rule in docs/protocol.md.
+ipcMain.handle('sms-send', (_event, payload: { threadId: string; body: string }) =>
+  sms.send(payload.threadId, payload.body),
+);
+
+ipcMain.handle('remote-state', () => remote.current());
+ipcMain.handle(
+  'remote-command',
+  (_event, payload: { action: string; extra?: Record<string, unknown> }) =>
+    remote.command(payload.action, payload.extra ?? {}),
+);
+
+ipcMain.handle('status', () => link?.status() ?? null);
+
+ipcMain.handle('pairing-qr', async (_event, rotate?: boolean) => {
+  if (!link) throw new Error('Link not ready');
+  const payload = link.armPairing(localAddress(), rotate === true);
+  const dataUrl = await QRCode.toDataURL(JSON.stringify(payload), {
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 320,
+  });
+  log.info('pairing', `QR armed for ${payload.host}`);
+  // Arming a code is the user saying "pair now", and the Mac is the only side that dials out.
+  // forget-device leaves the client stopped, so without this the phone scans a code that nothing
+  // is dialling for: it trusts us, we never call, and pairing can never complete. start() is a
+  // no-op when already running; retryNow cuts a backoff that could be 30s long.
+  link.start();
+  link.retryNow('pairing QR armed');
+  return { payload, dataUrl };
+});
+
+ipcMain.handle('connect', () => link?.start());
+ipcMain.handle('disconnect', () => link?.stop('user disconnected'));
+ipcMain.handle('retry-now', () => link?.retryNow('user'));
+
+ipcMain.handle('set-manual-address', (_event, address: string) => {
+  const trimmed = address.trim();
+  store.set('manualAddress', trimmed.length > 0 ? trimmed : null);
+  link?.retryNow('manual address changed');
+});
+
+ipcMain.handle('set-tailscale-address', (_event, address: string) => {
+  const trimmed = address.trim();
+  store.set('tailscaleAddress', trimmed.length > 0 ? trimmed : null);
+});
+
+ipcMain.handle('forget-device', () => {
+  store.set('paired', null);
+  store.set('lastAddress', null);
+  link?.stop('device forgotten');
+  log.info('pairing', 'Forgot the paired phone');
+});
+
+ipcMain.handle('settings', () => ({
+  paired: store.get('paired'),
+  lastAddress: store.get('lastAddress'),
+  manualAddress: store.get('manualAddress'),
+  tailscaleAddress: store.get('tailscaleAddress'),
+  lastDiscoveryVia: store.get('lastDiscoveryVia'),
+}));
+
+ipcMain.handle('log-tail', (_event, lines: number) => tailLog(lines ?? 200));

@@ -1,0 +1,333 @@
+package com.chetan.connectsuite.core.link
+
+import com.chetan.connectsuite.core.protocol.Envelope
+import com.chetan.connectsuite.core.protocol.ErrorCode
+import com.chetan.connectsuite.core.protocol.FeatureOf
+import com.chetan.connectsuite.core.protocol.Link
+import com.chetan.connectsuite.core.protocol.MessageType
+import com.chetan.connectsuite.core.protocol.ProtocolException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.IOException
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLSocket
+
+/** A feature module's handler for one message type. Registered on [LinkServer]. */
+fun interface MessageHandler {
+    suspend fun handle(session: ControlSession, request: Envelope)
+}
+
+/**
+ * One authenticated control connection, from the TLS handshake to the socket closing.
+ *
+ * The session owns the session token that the video and bulk sockets have to present, so when
+ * this connection dies those channels lose their authorisation with it.
+ */
+class ControlSession(
+    private val socket: SSLSocket,
+    val peerFingerprint: String,
+    private val server: LinkServer,
+) {
+    private val input = BufferedInputStream(socket.getInputStream())
+    private val output = BufferedOutputStream(socket.getOutputStream())
+    private val scope = CoroutineScope(Dispatchers.IO)
+
+    /**
+     * The one thread allowed to write to this socket.
+     *
+     * [send] used to write on whatever thread called it, which was fine while every caller was a
+     * message handler on [Dispatchers.IO] and fatal the moment one was not: the Mirror tab's
+     * buttons call into the engine from a Compose click, the engine reports its phase, and the
+     * write landed on the main thread as a `NetworkOnMainThreadException` that killed the process.
+     * Moving the write here fixes that for every caller at once rather than asking each one to
+     * remember which thread it is on.
+     *
+     * Single-threaded, so frames keep the order they were sent in — an ack must not overtake the
+     * event that follows it. The queue is unbounded, which is safe only because control frames are
+     * small and rare and a peer that stops reading is disconnected by the heartbeat within ~15s.
+     */
+    private val sender = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "control-tx-${socket.inetAddress?.hostAddress ?: "?"}").apply {
+            isDaemon = true
+        }
+    }
+
+    var token: String? = null
+        private set
+    var peerName: String = "Mac"
+        private set
+    var isHandshakeComplete: Boolean = false
+        private set
+
+    val remoteAddress: String? get() = socket.inetAddress?.hostAddress
+
+    /**
+     * Set when the peer stops answering; surfaced to the user as the disconnect reason.
+     *
+     * Volatile because the sender thread can now be the one that discovers the socket is dead,
+     * and the read loop is what reports this.
+     */
+    @Volatile
+    var closeReason: String = DEFAULT_CLOSE_REASON
+        private set
+
+    /**
+     * Queues one frame for the peer. Never blocks the caller on the socket, and never throws.
+     *
+     * Safe to call from any thread, including the main one — that is the whole point of it.
+     */
+    fun send(envelope: Envelope) {
+        // Encoding stays on the caller's thread: it is pure CPU, and it keeps a payload stamped at
+        // the moment of the call rather than whenever the queue happens to drain. The pong's
+        // monotonic clock reading is the one that would go wrong if this moved.
+        val frame = Envelope.encode(envelope)
+        val type = envelope.type
+        try {
+            sender.execute {
+                try {
+                    Framing.writeFrame(output, frame)
+                } catch (e: IOException) {
+                    LinkLog.w("control", "Send failed for $type", e)
+                    // Not close(): this *is* the sender, the write has already failed, and there
+                    // is nothing left to drain. Closing the socket unblocks the read loop, which
+                    // reports the reason set here.
+                    //
+                    // Only when nothing better has been said already: a send that fails *because*
+                    // someone closed the session would otherwise replace "service stopping" with
+                    // "send failed: Socket closed", which names the symptom instead of the cause.
+                    if (closeReason == DEFAULT_CLOSE_REASON) {
+                        closeReason = "send failed: ${e.message}"
+                    }
+                    runCatching { socket.close() }
+                }
+            }
+        } catch (e: RejectedExecutionException) {
+            // The session is already shutting down. Saying so beats a frame vanishing quietly.
+            LinkLog.w("control", "Dropped $type: the session is closing")
+        }
+    }
+
+    fun sendError(
+        requestId: String,
+        code: String,
+        message: String,
+        feature: String? = null,
+        fixHint: String? = null,
+    ) = send(Envelope.error(requestId, code, feature, message, fixHint))
+
+    /** Blocking read loop. Returns when the peer disconnects or violates the protocol. */
+    fun run() {
+        socket.soTimeout = Link.CONTROL_IDLE_TIMEOUT_MS.toInt()
+        try {
+            while (true) {
+                val frame = Framing.readFrame(input, Link.MAX_CONTROL_FRAME) ?: break
+                val envelope = try {
+                    Envelope.decode(frame)
+                } catch (e: Exception) {
+                    throw ProtocolException("Undecodable control frame: ${e.message}")
+                }
+                dispatch(envelope)
+            }
+            closeReason = "peer closed the connection"
+        } catch (e: java.net.SocketTimeoutException) {
+            closeReason = "no traffic for ${Link.CONTROL_IDLE_TIMEOUT_MS / 1000}s"
+            LinkLog.w("control", "$peerName idle timeout")
+        } catch (e: ProtocolException) {
+            closeReason = "protocol error: ${e.message}"
+            LinkLog.e("control", "Protocol error from $peerName", e)
+        } catch (e: IOException) {
+            closeReason = "socket error: ${e.message}"
+            LinkLog.w("control", "$peerName socket dropped", e)
+        } catch (e: Exception) {
+            // Without this, anything unchecked thrown out of dispatch() left closeReason at its
+            // "closed" default — the exact symptom docs/testing.md calls out as a path that has
+            // forgotten to name its cause, surfaced to the user as "Last disconnect: closed".
+            closeReason = "unexpected ${e.javaClass.simpleName}: ${e.message ?: "no detail"}"
+            LinkLog.e("control", "Unexpected failure in session with $peerName", e)
+        } finally {
+            server.sessions.revoke(token)
+            flushAndStopSender()
+            runCatching { socket.close() }
+            server.onSessionEnded(this)
+            LinkLog.i("control", "Session with $peerName ended: $closeReason")
+        }
+    }
+
+    /**
+     * Lets whatever is already queued reach the wire, then stops the sender thread.
+     *
+     * The protocol-mismatch and pre-hello paths send their error frame and throw in the same
+     * breath, so closing the socket the instant the read loop unwinds would take the reason with
+     * it and leave the Mac with a bare disconnect — the unnamed failure this project keeps ruling
+     * out. Bounded, because a peer that has stopped reading must not hold the session open.
+     */
+    private fun flushAndStopSender() {
+        sender.shutdown()
+        val drained = runCatching {
+            sender.awaitTermination(SENDER_DRAIN_MS, TimeUnit.MILLISECONDS)
+        }.getOrDefault(false)
+        if (!drained) {
+            LinkLog.w("control", "Unsent frames dropped: sender did not drain in ${SENDER_DRAIN_MS}ms")
+            sender.shutdownNow()
+        }
+    }
+
+    private fun dispatch(envelope: Envelope) {
+        if (envelope.v != Link.PROTOCOL_MAJOR) {
+            sendError(
+                envelope.id,
+                ErrorCode.PROTOCOL_MISMATCH,
+                "This phone speaks protocol v${Link.PROTOCOL_MAJOR}, the Mac sent v${envelope.v}. " +
+                    "Update whichever app is older.",
+            )
+            throw ProtocolException("Protocol major mismatch: ${envelope.v}")
+        }
+
+        when (envelope.type) {
+            MessageType.HELLO -> onHello(envelope)
+            // The pong carries the phone's monotonic clock — the same clock that stamps video
+            // frame PTS — so the Mac can work out the offset between the two machines and read a
+            // frame's PTS as a latency rather than as a number from somewhere else.
+            MessageType.PING -> send(
+                Envelope.of(MessageType.PONG, envelope.id) {
+                    put("monoUs", System.nanoTime() / 1_000)
+                },
+            )
+            else -> {
+                if (!isHandshakeComplete) {
+                    sendError(
+                        envelope.id,
+                        ErrorCode.UNAUTHORIZED,
+                        "Send hello before ${envelope.type}",
+                    )
+                    throw ProtocolException("${envelope.type} before hello")
+                }
+                val handler = server.handlerFor(envelope.type)
+                if (handler == null) {
+                    // Unimplemented rather than unknown: later phases fill these in, and the Mac
+                    // needs a definite answer either way instead of a silent drop.
+                    sendError(
+                        envelope.id,
+                        ErrorCode.FEATURE_UNAVAILABLE,
+                        "${envelope.type} is not implemented on this phone build yet",
+                        feature = FeatureOf.of(envelope.type),
+                    )
+                    return
+                }
+                scope.launch {
+                    try {
+                        handler.handle(this@ControlSession, envelope)
+                    } catch (e: Exception) {
+                        LinkLog.e("control", "Handler for ${envelope.type} threw", e)
+                        sendError(
+                            envelope.id,
+                            ErrorCode.FEATURE_UNAVAILABLE,
+                            e.message ?: "Handler failed",
+                            feature = FeatureOf.of(envelope.type),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun onHello(envelope: Envelope) {
+        val payload = envelope.payload
+        peerName = payload["deviceName"]?.jsonPrimitive?.content ?: "Mac"
+
+        // A QR scan arms a one-time token; the first Mac to connect after it must present it.
+        // Fingerprint pinning already proved the certificate, so this only closes the window
+        // where a QR photographed off someone's screen could be replayed by a third machine.
+        val pairToken = payload["pairToken"]?.jsonPrimitive?.content
+        if (!server.acceptPairToken(peerFingerprint, pairToken)) {
+            sendError(
+                envelope.id,
+                ErrorCode.UNAUTHORIZED,
+                "Pairing token missing or expired. Show a fresh QR code on the Mac and scan it again.",
+            )
+            throw ProtocolException("bad pair token")
+        }
+
+        val sessionToken = server.sessions.issue(this)
+        token = sessionToken
+        isHandshakeComplete = true
+
+        send(
+            Envelope.of(MessageType.HELLO_ACK, envelope.id) {
+                put("protocolVersion", Link.PROTOCOL_MAJOR)
+                put("appVersion", server.appVersion)
+                put("deviceName", server.identity.deviceName)
+                put("deviceId", server.identity.deviceId)
+                put("fingerprint", server.identity.fingerprint)
+                put("sessionToken", sessionToken)
+                put("capabilities", capabilitiesJson())
+                put("unavailable", unavailableJson())
+            },
+        )
+        server.onSessionReady(this)
+        LinkLog.i("control", "Handshake complete with $peerName at $remoteAddress")
+    }
+
+    /** Pushed whenever a permission flips, so the Mac's greyed-out panes update live. */
+    fun sendCapabilities() {
+        if (!isHandshakeComplete) return
+        send(
+            Envelope.of(MessageType.CAPABILITIES_CHANGED) {
+                put("capabilities", capabilitiesJson())
+                put("unavailable", unavailableJson())
+            },
+        )
+    }
+
+    private fun capabilitiesJson() =
+        JsonArray(server.capabilities.current().sorted().map { JsonPrimitive(it) })
+
+    /**
+     * The capabilities that are *not* on offer, each with the sentence saying why.
+     *
+     * The reason has always been computed — [CapabilityStatus.reason] is what the phone's own
+     * diagnostics screen renders — and until now it stopped at the phone's edge, so the Mac could
+     * name what was missing and never say why (defect 24). This is the success case's denominator
+     * in wire form: `capabilities` alone is a count without one.
+     */
+    private fun unavailableJson() = JsonArray(
+        server.capabilities.unavailable().entries
+            .sortedBy { it.key }
+            .map { (name, reason) ->
+                buildJsonObject {
+                    put("name", JsonPrimitive(name))
+                    put("reason", JsonPrimitive(reason))
+                }
+            },
+    )
+
+    fun close(reason: String) {
+        closeReason = reason
+        runCatching { socket.close() }
+    }
+
+    /** Convenience for handlers that just need to answer "done". */
+    fun ack(request: Envelope, build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit = {}) =
+        send(Envelope.ack(request.id, build))
+
+    fun event(type: String, build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit = {}) =
+        send(Envelope(type = type, payload = buildJsonObject(build)))
+
+    private companion object {
+        /** How long a closing session waits for already-queued frames to reach the wire. */
+        const val SENDER_DRAIN_MS = 1_000L
+
+        /** The stand-in that means "nothing has named this disconnect yet". */
+        const val DEFAULT_CLOSE_REASON = "closed"
+    }
+}

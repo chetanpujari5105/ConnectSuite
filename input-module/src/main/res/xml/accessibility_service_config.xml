@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What this service is allowed to do, and — more to the point — what it is not.
+
+  `accessibilityEventTypes` is deliberately absent, which means this service subscribes to no
+  events at all. It never sees a window change, a click, or the text of anything the user reads.
+  It only acts when the Mac asks it to. An accessibility service that receives content events sees
+  everything on the phone, and this one has no reason to, so it does not ask.
+
+  `canRetrieveWindowContent` is on because it is the only way to reach the focused text field:
+  `ACTION_SET_TEXT` needs a node, and finding the focused node needs this flag. Backspace and
+  append also read that field's current text, which is the same permission.
+
+  `canPerformGestures` is what makes `dispatchGesture` legal, and is the whole of tap, swipe and
+  scroll.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/input_service_description"
+    android:notificationTimeout="100"
+    android:summary="@string/input_service_summary" />

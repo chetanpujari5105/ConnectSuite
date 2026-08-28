@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">ConnectSuite</string>
+    <string name="tab_sync">Sync</string>
+    <string name="tab_mirror">Mirror</string>
+</resources>

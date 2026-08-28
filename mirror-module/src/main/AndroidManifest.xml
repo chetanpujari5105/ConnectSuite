@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Declared here rather than only in :app because this module is what starts the capture
+      service; a consumer that forgets the permission should fail at merge time, not at runtime.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
+    <application>
+
+        <!--
+          Transparent, no-history shim that carries the system consent prompt's result back to
+          MirrorEngine. excludeFromRecents so a mirror prompt never leaves a card behind, and
+          noHistory so a stale instance cannot answer a later request.
+
+          configChanges is load-bearing, not tidiness. Without it, rotating the phone while the
+          consent prompt is up destroys and recreates this activity: onDestroy runs with no result
+          delivered, reports ConsentDismissed, and consumes the pending callback — so the real
+          result that arrives moments later has nowhere to go and is dropped. That was observed on
+          2026-08-25 (see docs/testing.md): a spurious "prompt closed before it was answered"
+          followed 2s later by a denied and a granted result 5ms apart, both discarded, and the
+          user had to start over. Handling these configs ourselves keeps the one instance alive
+          across a turn, which matters because the activity is transparent and has no layout to
+          re-lay-out anyway.
+        -->
+        <activity
+            android:name=".v2.MirrorConsentActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!--
+          From Android 14 a MediaProjection is granted to a running mediaProjection-typed
+          foreground service, not to the process, so this must be in the foreground before
+          getMediaProjection() is called. Separate from LinkService on purpose: it lives only
+          while pixels are being captured and carries its own "your screen is being recorded"
+          notification.
+        -->
+        <service
+            android:name=".v2.MirrorService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection"
+            android:stopWithTask="false" />
+    </application>
+</manifest>

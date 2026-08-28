@@ -1,0 +1,232 @@
+import { contextBridge, ipcRenderer } from 'electron';
+import type {
+  ConnectionStatus,
+  GeometryStamp as InputGeometry,
+  InputResult,
+  PairingQrPayload,
+  PhoneAck,
+  PhoneContact,
+  PhoneNotification,
+  PhoneResult,
+  CallLogEntry,
+  IncomingCall,
+  RemoteState,
+  SmsMessage,
+  SmsThread,
+} from './shared/protocol';
+
+/**
+ * The only bridge between the renderer and the sockets. Everything here is an intent — the
+ * renderer never holds a socket, a file handle, or a certificate.
+ */
+contextBridge.exposeInMainWorld('connect', {
+  status: (): Promise<ConnectionStatus | null> => ipcRenderer.invoke('status'),
+  pairingQr: (rotate?: boolean): Promise<{ payload: PairingQrPayload; dataUrl: string }> =>
+    ipcRenderer.invoke('pairing-qr', rotate === true),
+  connect: () => ipcRenderer.invoke('connect'),
+  disconnect: () => ipcRenderer.invoke('disconnect'),
+  retryNow: () => ipcRenderer.invoke('retry-now'),
+  setManualAddress: (address: string) => ipcRenderer.invoke('set-manual-address', address),
+  setTailscaleAddress: (address: string) => ipcRenderer.invoke('set-tailscale-address', address),
+  forgetDevice: () => ipcRenderer.invoke('forget-device'),
+  settings: () => ipcRenderer.invoke('settings'),
+  logTail: (lines?: number): Promise<string[]> => ipcRenderer.invoke('log-tail', lines),
+
+  mirrorStart: (options?: Record<string, unknown>) => ipcRenderer.invoke('mirror-start', options ?? {}),
+  mirrorStop: () => ipcRenderer.invoke('mirror-stop'),
+  mirrorKeyframe: () => ipcRenderer.invoke('mirror-keyframe'),
+  mirrorStats: () => ipcRenderer.invoke('mirror-stats'),
+  /** `mirror.config` at runtime: raise the resolution cap or change bitrate without a restart. */
+  mirrorConfig: (options: Record<string, unknown>) => ipcRenderer.invoke('mirror-config', options),
+
+  /**
+   * Input, as intents. The renderer works out *where on the picture* it clicked and nothing more;
+   * the main process owns the socket, the rate limit, and the one-request-at-a-time rule.
+   *
+   * Every one of these resolves to an [InputResult] and none of them rejects. A tap that did not
+   * happen still has to say so — the user is looking at a phone that did not react — but it says
+   * so as `{ ok: false, reason, fixHint }` rather than as a rejection, because `invoke` rewraps a
+   * rejection as `Error invoking remote method 'input-key': Error: …` and puts nine words of
+   * Electron internals in front of a sentence the phone wrote for a person to read. Defect 22.
+   */
+  inputTap: (point: {
+    x: number;
+    y: number;
+    durationMs?: number;
+    geom: InputGeometry;
+  }): Promise<InputResult> => ipcRenderer.invoke('input-tap', point),
+  inputSwipe: (swipe: {
+    points: Array<{ x: number; y: number }>;
+    durationMs?: number;
+    geom: InputGeometry;
+  }): Promise<InputResult> => ipcRenderer.invoke('input-swipe', swipe),
+  inputScroll: (scroll: {
+    x: number;
+    y: number;
+    dx: number;
+    dy: number;
+    durationMs?: number;
+    geom: InputGeometry;
+  }): Promise<InputResult> => ipcRenderer.invoke('input-scroll', scroll),
+  inputKey: (key: string): Promise<InputResult> => ipcRenderer.invoke('input-key', key),
+  inputText: (text: string, mode?: 'replace' | 'append'): Promise<InputResult> =>
+    ipcRenderer.invoke('input-text', { text, mode }),
+  inputGlobal: (action: string): Promise<InputResult> => ipcRenderer.invoke('input-global', action),
+
+  /** Encoded H.264 access units. The renderer decodes; the main process never touches pixels. */
+  onVideoFrame: (
+    callback: (frame: {
+      keyframe: boolean;
+      config: boolean;
+      ptsUs: number;
+      data: Uint8Array;
+      arrivedAt: number;
+    }) => void,
+  ) => ipcRenderer.on('video-frame', (_event, frame) => callback(frame)),
+  /**
+   * The phone's stats plus the measured clock offset, pushed as they arrive.
+   *
+   * The renderer needs the clock anchor to time every frame it paints, which is why this is a
+   * push and not part of the once-a-second stats poll.
+   */
+  onMirrorTelemetry: (
+    callback: (telemetry: { clockOffsetMs?: number; phone: Record<string, number> }) => void,
+  ) => ipcRenderer.on('mirror-telemetry', (_event, telemetry) => callback(telemetry)),
+  /**
+   * Phase changes from the phone: waiting on the user, prompting, starting, running, stopped.
+   *
+   * `mirror.start` acks before consent is even asked for, so these are the only thing that says
+   * what is happening between the click and the first frame. The canvas shows the newest one.
+   */
+  onMirrorState: (
+    callback: (state: {
+      state?: string;
+      message?: string;
+      fixHint?: string;
+      width?: number;
+      height?: number;
+      bitrate?: number;
+      frameRate?: number;
+    }) => void,
+  ) => ipcRenderer.on('mirror-state', (_event, state) => callback(state)),
+  /**
+   * The phone turned, with the geometry it now captures at.
+   *
+   * Separate from `onMirrorState` because a rotation is not a phase change: the session never
+   * stopped running. It arrives just before the new parameter sets on the video channel.
+   */
+  onMirrorRotate: (
+    callback: (rotate: { width?: number; height?: number; dpi?: number; rotation?: number }) => void,
+  ) => ipcRenderer.on('mirror-rotate', (_event, rotate) => callback(rotate)),
+  /**
+   * Carries the phone's own reason string, which is what goes on the canvas.
+   *
+   * `transient` is true only for a secure surface — the one failure that leaves the session
+   * running. It is here because the renderer cannot tell the two apart from the frame stream: a
+   * blanked screen keeps producing frames, so "frames are still arriving" means nothing. See
+   * defect 23 and [OverlayEnds] in renderer/mirror.ts.
+   */
+  onMirrorStopped: (
+    callback: (info: { reason?: string; fixHint?: string; transient?: boolean }) => void,
+  ) => ipcRenderer.on('mirror-stopped', (_event, info) => callback(info)),
+
+  /**
+   * Notifications: a live set the phone pushes, and three things you can do to one.
+   *
+   * `notifList` exists for a window that opens after notifications have already arrived — the
+   * events are pushed, so a late subscriber would otherwise see an empty pane until something new
+   * happened. It is a read of state the main process already holds, not a request to the phone.
+   *
+   * The three verbs resolve to `{ ok }` or `{ ok: false, reason, fixHint }` and never reject, for
+   * the reason in the input block above.
+   */
+  notifList: (): Promise<PhoneNotification[]> => ipcRenderer.invoke('notif-list'),
+  notifReply: (key: string, text: string): Promise<PhoneAck> =>
+    ipcRenderer.invoke('notif-reply', { key, text }),
+  notifAction: (key: string, index: number): Promise<PhoneAck> =>
+    ipcRenderer.invoke('notif-action', { key, index }),
+  notifDismiss: (key: string): Promise<PhoneAck> => ipcRenderer.invoke('notif-dismiss', key),
+  onNotifChanged: (callback: (list: PhoneNotification[]) => void) =>
+    ipcRenderer.on('notif-changed', (_event, list) => callback(list)),
+
+  /**
+   * Contacts: a search the phone runs, and one contact fetched in full.
+   *
+   * Both resolve to `{ ok: true, data }` or `{ ok: false, reason, fixHint }` and neither rejects,
+   * for the reason in the input block above — `invoke` would rewrap a rejection and put Electron
+   * internals in front of a sentence the phone wrote for a person to read (defect 22).
+   *
+   * There is no `contactsRefresh` and no local book: the `query` goes to the phone because the
+   * phone has the indexes, and the number matching that makes `+1 555-123-4567` and `5551234567`
+   * the same person lives there and only there.
+   */
+  contactsList: (options: { query?: string; limit?: number } = {}): Promise<
+    PhoneResult<{ contacts: PhoneContact[]; hasMore: boolean }>
+  > => ipcRenderer.invoke('contacts-list', options),
+  contactsGet: (
+    options: { id?: string; number?: string; withPhoto?: boolean },
+  ): Promise<PhoneResult<PhoneContact>> => ipcRenderer.invoke('contacts-get', options),
+
+  /**
+   * The media remote: one state the phone pushes, and one verb.
+   *
+   * `remoteState` reads the state the main process already holds — like `notifList`, it is for a
+   * window that opened after the phone connected, not a request to the phone. The state carries
+   * `receivedAtMs`, this Mac's clock at arrival, which is the anchor the progress bar runs from;
+   * see remote.ts for why the phone's own `positionAtMs` is not used as one.
+   */
+  remoteState: (): Promise<RemoteState & { receivedAtMs: number }> =>
+    ipcRenderer.invoke('remote-state'),
+  remoteCommand: (action: string, extra: Record<string, unknown> = {}): Promise<PhoneAck> =>
+    ipcRenderer.invoke('remote-command', { action, extra }),
+  onRemoteChanged: (callback: (state: RemoteState & { receivedAtMs: number }) => void) =>
+    ipcRenderer.on('remote-changed', (_event, state) => callback(state)),
+
+  /**
+   * SMS: a thread list, a page of messages, and one send.
+   *
+   * `smsSend` takes a thread id and a body and **no recipient**, which is the send rule expressed
+   * as a signature: the renderer is the layer most likely to be stale, so it is the layer that
+   * cannot name who a message goes to. The main process resolves the addresses from the thread
+   * rows the phone sent it, and the phone re-checks them against the provider before the radio
+   * sees anything. See docs/protocol.md, "The send rule".
+   */
+  smsThreads: (options: { limit?: number; before?: number } = {}): Promise<
+    PhoneResult<{ threads: SmsThread[]; hasMore: boolean }>
+  > => ipcRenderer.invoke('sms-threads', options),
+  smsMessages: (
+    threadId: string,
+    options: { limit?: number; before?: number } = {},
+  ): Promise<PhoneResult<{ threadId: string; messages: SmsMessage[]; hasMore: boolean }>> =>
+    ipcRenderer.invoke('sms-messages', { threadId, options }),
+  smsSend: (threadId: string, body: string): Promise<PhoneAck> =>
+    ipcRenderer.invoke('sms-send', { threadId, body }),
+  onSmsReceived: (
+    callback: (event: { threadId: string; message: SmsMessage }) => void,
+  ) => ipcRenderer.on('sms-received', (_event, payload) => callback(payload)),
+
+  /**
+   * Calls: the one call that can be acted on, the log, and dialling.
+   *
+   * `callAnswer` and `callReject` take **no arguments**. The call they act on is the one the main
+   * process is holding, and it sends that call's id explicitly rather than the protocol's
+   * "whatever is in progress" shape — see calls.ts and step 61. A renderer that could name a call
+   * could name the wrong one, so it cannot name one at all.
+   */
+  callCurrent: (): Promise<IncomingCall | null> => ipcRenderer.invoke('call-current'),
+  callLog: (options: { limit?: number; before?: number } = {}): Promise<
+    PhoneResult<{ calls: CallLogEntry[]; hasMore: boolean }>
+  > => ipcRenderer.invoke('call-log', options),
+  callAnswer: (): Promise<PhoneAck> => ipcRenderer.invoke('call-answer'),
+  callReject: (): Promise<PhoneAck> => ipcRenderer.invoke('call-reject'),
+  callDial: (number: string): Promise<PhoneAck> => ipcRenderer.invoke('call-dial', number),
+  onCallChanged: (callback: (call: IncomingCall | null) => void) =>
+    ipcRenderer.on('call-changed', (_event, call) => callback(call)),
+
+  onStatus: (callback: (status: ConnectionStatus) => void) =>
+    ipcRenderer.on('status', (_event, status) => callback(status)),
+  onPhoneError: (callback: (payload: unknown) => void) =>
+    ipcRenderer.on('phone-error', (_event, payload) => callback(payload)),
+  onMessage: (callback: (envelope: unknown) => void) =>
+    ipcRenderer.on('message', (_event, envelope) => callback(envelope)),
+});

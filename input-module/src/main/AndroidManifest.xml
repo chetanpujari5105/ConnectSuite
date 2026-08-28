@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+
+        <!--
+          The one component that can touch the phone's screen on the Mac's behalf.
+
+          BIND_ACCESSIBILITY_SERVICE is held by the *system*, not by us: declaring it here is how
+          Android knows only it may bind this service. There is no runtime permission to request
+          and no way to enable this from code — the user does it by hand in Settings, once, and
+          can revoke it there at any time. That is the whole onboarding cost of Phase 3 and it is
+          a platform wall, not a gap (see CLAUDE.md).
+
+          The service is enabled but not exported: it is reachable only through the accessibility
+          framework.
+        -->
+        <service
+            android:name=".ConnectSuiteInputService"
+            android:exported="false"
+            android:label="@string/input_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+    </application>
+</manifest>

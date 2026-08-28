@@ -1,0 +1,125 @@
+import { log } from './logger';
+
+/**
+ * Switches that let a test reach a path the Mac's own guards make unreachable.
+ *
+ * Two error paths in the notification pane are real, worth testing, and impossible to reach from
+ * the UI, because the Mac refuses the request before it can cross the link:
+ *
+ *  - **`NOT_FOUND` (step 51).** The step asks for a Dismiss click that *races* `notif.removed`.
+ *    The Mac clears the row about 100ms after the phone drops it, and no human can swipe a phone
+ *    and click a Mac inside that window — `cmd notification` has no cancel subcommand either, so
+ *    it cannot be driven from adb. Stalling `notif.removed` makes the window as wide as you like.
+ *  - **`NO_MEDIA_SESSION` and `FEATURE_UNAVAILABLE` (steps 66 and 65).** The remote card draws
+ *    only the buttons the playing session says it supports, and draws none at all when nothing is
+ *    playing — so the phone's own two refusals sit behind a Mac that has already declined. Both
+ *    are the correct UI and both make the last check in the chain untestable.
+ *  - **`NO_ACTIVE_CALL` on a stale card (step 61).** The Mac clears its call card the moment
+ *    `call.ended` arrives, so a Reject aimed at a finished call is unreachable by hand for the
+ *    same reason step 51's stale dismiss was: no human wins that race. Swallowing `call.ended`
+ *    makes the window as wide as you like, and lets the clause that actually matters be checked —
+ *    that the stale Reject does **not** land on the next call instead.
+ *  - **`RECIPIENT_MISMATCH` (step 58a).** `SmsClient.send` takes no recipient parameter at all —
+ *    it resolves the addresses from the thread rows it holds, which is what makes a mismatched
+ *    pair unconstructable from the UI. That guard is the point, and it is also why the phone's own
+ *    check, the one guarding a message delivered to the wrong person, can never otherwise run.
+ *    This substitutes a reserved fiction number so the probe cannot reach anybody real.
+ *  - **`NO_REPLY_ACTION` (step 49).** The phone's guard exists (`NotificationFeature.kt:437`) and
+ *    the Mac's `canReply` check refuses first, so the phone branch never runs. That ordering is
+ *    correct — three checks for one rule, because replying is the verb whose failure is visible to
+ *    somebody else — and it means the last of the three is untested without this.
+ *
+ * Both are **off unless `CONNECTSUITE_DEBUG_SWITCHES` names them**, and the whole module is inert
+ * in a packaged build. They weaken guards; they must never be reachable by a user who did not type
+ * them on a command line.
+ *
+ *     CONNECTSUITE_DEBUG_SWITCHES=stallRemoved,bypassReplyGuard npm start
+ *
+ * Every switch that is *on* announces itself once, at warning level, in the first lines of the log
+ * — `main.ts` reads them at startup for exactly that reason. A guard that is quietly disabled is
+ * worse than no guard: the next confusing test result would be blamed on the feature.
+ */
+export interface DebugSwitches {
+  /** Drop `notif.removed` instead of applying it, so rows go stale on purpose. Step 51. */
+  stallRemoved: boolean;
+  /** Let a reply past the Mac's `canReply` refusal so the phone can answer. Step 49. */
+  bypassReplyGuard: boolean;
+  /**
+   * Send a transport command the state says is impossible, so the phone answers. Steps 65 and 66.
+   *
+   * One switch for two steps because it is one guard: the Mac refuses a command when the session
+   * has said it cannot do it (`canSkipNext` false — step 65) and when there is no session at all
+   * (step 66). Both refusals happen in `RemoteClient.command` before anything crosses the link.
+   */
+  bypassRemoteGuard: boolean;
+  /**
+   * Send an `sms.send` whose addresses disagree with its `threadId`, so the phone refuses. Step 58a.
+   *
+   * The most dangerous switch here, and the one whose guard matters most: it deliberately breaks
+   * the send rule the Mac enforces structurally. It substitutes a documentation-reserved number
+   * (`MISMATCH_PROBE_NUMBER`) rather than a real one, so a phone that wrongly *accepted* the pair
+   * would still not deliver a message to a person.
+   */
+  forceRecipientMismatch: boolean;
+  /**
+   * Drop `call.ended` instead of applying it, so the call card goes stale on purpose. Step 61.
+   *
+   * The sibling of `stallRemoved`, one feature over, and for the same reason: the interesting
+   * behaviour is what an action does when the thing it names is already gone.
+   */
+  stallCallEnded: boolean;
+}
+
+const NAMES: readonly (keyof DebugSwitches)[] = [
+  'stallRemoved',
+  'bypassReplyGuard',
+  'bypassRemoteGuard',
+  'forceRecipientMismatch',
+  'stallCallEnded',
+];
+
+function read(): DebugSwitches {
+  const off: DebugSwitches = {
+    stallRemoved: false,
+    bypassReplyGuard: false,
+    bypassRemoteGuard: false,
+    forceRecipientMismatch: false,
+    stallCallEnded: false,
+  };
+  // `app.isPackaged` is not consulted here because this module must stay importable by tests with
+  // no Electron present; main.ts guards the startup read instead.
+  const raw = process.env.CONNECTSUITE_DEBUG_SWITCHES;
+  if (!raw) return off;
+
+  const asked = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  const on = { ...off };
+  const unknown: string[] = [];
+  for (const name of asked) {
+    if ((NAMES as readonly string[]).includes(name)) on[name as keyof DebugSwitches] = true;
+    else unknown.push(name);
+  }
+  if (unknown.length > 0) {
+    // Loudly, because a typo'd switch is silently *off*, and the test that needed it would then
+    // fail for a reason that has nothing to do with the feature.
+    log.warn('debug', `Unknown debug switch(es) ignored: ${unknown.join(', ')} — known: ${NAMES.join(', ')}`);
+  }
+  return on;
+}
+
+let cached: DebugSwitches | null = null;
+
+/** The switches for this run. Read once; announced once. */
+export function debugSwitches(): DebugSwitches {
+  if (cached) return cached;
+  cached = read();
+  const on = NAMES.filter((n) => cached![n]);
+  if (on.length > 0) {
+    log.warn('debug', `DEBUG SWITCHES ON: ${on.join(', ')} — guards are weakened, this is not a normal run`);
+  }
+  return cached;
+}
+
+/** Test seam. Never called by the app. */
+export function resetDebugSwitchesForTests(): void {
+  cached = null;
+}

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'" />
+    <title>ConnectSuite</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>ConnectSuite</h1>
+      <div id="state" class="pill">Starting…</div>
+    </header>
+
+    <section id="pairing" class="card hidden">
+      <h2>Pair with your phone</h2>
+      <p class="muted">
+        Open ConnectSuite on the phone, go to the <strong>Mac</strong> tab, tap
+        <strong>Scan pairing code</strong>, and point it at this code.
+      </p>
+      <img id="qr" alt="Pairing QR code" width="320" height="320" />
+      <p class="muted small" id="qr-note"></p>
+      <button id="new-qr">Show a fresh code</button>
+    </section>
+
+    <section class="card">
+      <h2>Connection</h2>
+      <dl class="hud">
+        <dt>State</dt><dd id="hud-phase">—</dd>
+        <dt>Found via</dt><dd id="hud-via">—</dd>
+        <dt>Address</dt><dd id="hud-address">—</dd>
+        <dt>Round trip</dt><dd id="hud-rtt">—</dd>
+        <dt>Phone</dt><dd id="hud-device">—</dd>
+        <dt>Capture</dt><dd id="hud-capture">—</dd>
+        <dt>Rotation</dt><dd id="hud-rotation">—</dd>
+        <dt>Frame rate</dt><dd id="hud-fps">—</dd>
+        <dt>Bitrate</dt><dd id="hud-bitrate">—</dd>
+        <dt>Dropped</dt><dd id="hud-dropped">—</dd>
+        <dt>Latency</dt><dd id="hud-latency">—</dd>
+        <dt>&nbsp;&nbsp;phone → Mac</dt><dd id="hud-latency-link">—</dd>
+        <dt>&nbsp;&nbsp;Mac → painted</dt><dd id="hud-latency-decode">—</dd>
+        <dt>First frame</dt><dd id="hud-ttff">—</dd>
+        <dt>Last error</dt><dd id="hud-error">—</dd>
+      </dl>
+      <div class="row">
+        <button id="connect">Connect</button>
+        <button id="disconnect">Disconnect</button>
+        <button id="retry">Retry now</button>
+        <button id="forget" class="danger">Forget phone</button>
+      </div>
+    </section>
+
+    <section class="card" id="mirror-card">
+      <h2>Screen mirror</h2>
+      <div class="row">
+        <button id="mirror-start">Start mirroring</button>
+        <button id="mirror-stop" class="secondary">Stop</button>
+        <label class="small" for="mirror-resolution">Capture</label>
+        <!-- A cap on the short edge, not a resolution: the phone scales its own panel to fit.
+             1080 is the default because a native 1440p capture outruns a phone hotspot. -->
+        <select id="mirror-resolution">
+          <option value="720">720p</option>
+          <option value="1080" selected>1080p</option>
+          <option value="1440">1440p</option>
+          <option value="2160">Native</option>
+        </select>
+        <span id="mirror-stats" class="muted small"></span>
+      </div>
+      <div class="mirror-stage">
+        <canvas id="mirror-canvas"></canvas>
+        <!-- Never left blank and silent: every failure path writes its reason here. -->
+        <div id="mirror-overlay" class="mirror-overlay">Not mirroring.</div>
+        <!--
+          Input feedback, which is a different kind of message from the overlay above and must not
+          share it. The overlay means "there is no picture, here is why", and any painted frame
+          takes it down — that is what makes a secure surface recoverable. An input refusal happens
+          *while frames are flowing*, so putting it there would wipe it within one frame at 60fps
+          and leave the user with the silent no-op this project keeps ruling out.
+        -->
+        <div id="mirror-notice" class="mirror-notice" hidden></div>
+      </div>
+      <!-- The six actions an accessibility service can genuinely perform. There is no power
+           button here and there cannot be one: no app on Android can press it. -->
+      <div class="row" id="input-row">
+        <button id="input-back" class="secondary">Back</button>
+        <button id="input-home" class="secondary">Home</button>
+        <button id="input-recents" class="secondary">Recents</button>
+        <button id="input-notifications" class="secondary">Notifications</button>
+        <button id="input-quick-settings" class="secondary">Quick settings</button>
+        <button id="input-lock" class="secondary">Lock screen</button>
+      </div>
+      <p class="muted small" id="input-note">
+        Click the picture to tap, drag to swipe, scroll to scroll, and type to enter text into
+        whichever field is selected on the phone.
+      </p>
+    </section>
+
+    <!--
+      Notifications. Hidden entirely until the phone advertises the capability, rather than shown
+      empty and greyed: an empty list and an ungranted permission look identical, and the note
+      inside says which one this is.
+    -->
+    <section class="card hidden" id="notif-card">
+      <h2>Notifications</h2>
+      <p class="muted small" id="notif-note"></p>
+      <div id="notif-list" class="notif-list"></div>
+      <!-- One line, over the list, for whatever the phone last refused. Times itself out. -->
+      <div id="notif-notice" class="mirror-notice" hidden></div>
+    </section>
+
+    <!--
+      Calls. The live card appears only while a call exists; the Answer button says "on phone"
+      because there is no audio path between the phone and this Mac and there never will be.
+      Dialling takes two clicks: there is no dialler screen to cancel on.
+    -->
+    <section class="card hidden" id="calls-card">
+      <h2>Calls</h2>
+      <div id="call-live" class="call-live hidden"></div>
+      <div class="row">
+        <input id="call-number" type="tel" placeholder="Number to call" />
+        <button id="call-dial">Call</button>
+      </div>
+      <p class="muted small" id="calls-note"></p>
+      <div id="calls-body"></div>
+      <div id="calls-notice" class="mirror-notice" hidden></div>
+    </section>
+
+    <!--
+      SMS. The compose box sends a thread id and a body and never a recipient — the send rule in
+      docs/protocol.md, expressed in the markup by there being nowhere to type one.
+    -->
+    <section class="card hidden" id="sms-card">
+      <h2>Messages</h2>
+      <p class="muted small" id="sms-note"></p>
+      <div id="sms-body"></div>
+      <div id="sms-notice" class="mirror-notice" hidden></div>
+    </section>
+
+    <!--
+      Media remote. Hidden until the phone advertises `remote` — which is the notification-listener
+      grant, not a permission of its own, which is why this card and the notifications card appear
+      together. `active: false` fills the card with a sentence rather than hiding it: nothing
+      playing is a normal state of a phone, not a failure.
+    -->
+    <section class="card hidden" id="remote-card">
+      <h2>Media remote</h2>
+      <p class="muted small" id="remote-note"></p>
+      <div id="remote-body" class="remote-body"></div>
+      <div id="remote-notice" class="mirror-notice" hidden></div>
+    </section>
+
+    <!--
+      Contacts. Hidden until the phone advertises the capability, like the notifications card and
+      for the same reason: an empty book and an ungranted permission look identical on screen.
+      The search box sends its query to the phone rather than filtering anything held here — the
+      phone has the indexes, and the number matching lives there.
+    -->
+    <section class="card hidden" id="contacts-card">
+      <h2>Contacts</h2>
+      <div class="row">
+        <input id="contacts-search" type="search" placeholder="Search name or number" />
+      </div>
+      <p class="muted small" id="contacts-note"></p>
+      <div id="contacts-list" class="contact-list"></div>
+      <div id="contacts-notice" class="mirror-notice" hidden></div>
+    </section>
+
+    <section class="card">
+      <h2>Capabilities</h2>
+      <p class="muted small">
+        What the phone can do right now. Anything missing needs a permission granting on the phone.
+      </p>
+      <div id="caps" class="caps"></div>
+    </section>
+
+    <section class="card">
+      <h2>Manual address</h2>
+      <p class="muted small">
+        Used only when the last known address, the default gateway, and mDNS all fail.
+      </p>
+      <div class="row">
+        <input id="manual" type="text" placeholder="192.168.1.42" />
+        <button id="save-manual">Save</button>
+      </div>
+      <div class="row">
+        <input id="tailscale" type="text" placeholder="Tailscale 100.x address (optional)" />
+        <button id="save-tailscale">Save</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Connection health</h2>
+      <pre id="logs" class="logs"></pre>
+      <button id="refresh-logs">Refresh</button>
+    </section>
+
+    <script src="mirror.js"></script>
+    <script src="chips.js"></script>
+    <script src="notifications.js"></script>
+    <script src="contacts.js"></script>
+    <script src="remote.js"></script>
+    <script src="sms.js"></script>
+    <script src="calls.js"></script>
+    <script src="renderer.js"></script>
+  </body>
+</html>

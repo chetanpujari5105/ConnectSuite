@@ -1,0 +1,440 @@
+:root {
+  color-scheme: dark;
+  --bg: #101014;
+  --card: #191922;
+  --text: #e8e8ef;
+  --muted: #9a9aae;
+  --accent: #6ea8fe;
+  --danger: #ff6b6b;
+  --ok: #5ad18f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 24px 28px 48px;
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 24px 0 20px;
+  -webkit-app-region: drag;
+}
+
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 14px; margin: 0 0 8px; }
+
+.pill {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #23232f;
+  color: var(--muted);
+  font-size: 12px;
+}
+.pill.connected { color: var(--ok); }
+.pill.error { color: var(--danger); }
+
+.card {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.hidden { display: none; }
+
+.hud {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+}
+.hud dt { color: var(--muted); }
+.hud dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+.row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+
+button {
+  background: #262633;
+  color: var(--text);
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 12px;
+}
+button:hover { background: #313142; }
+button.danger { color: var(--danger); }
+
+input {
+  flex: 1;
+  background: #0e0e14;
+  border: 1px solid #2b2b38;
+  border-radius: 8px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+img#qr {
+  display: block;
+  border-radius: 8px;
+  background: #fff;
+  margin: 12px 0;
+}
+
+.caps { display: flex; flex-wrap: wrap; gap: 6px; }
+.cap {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #23232f;
+  color: var(--muted);
+}
+.cap.on { background: #1d3a2b; color: var(--ok); }
+
+/*
+ * Off screen, still in the accessibility tree. Not `display: none` and not `visibility: hidden` —
+ * both of those remove the node from the tree, which is the exact failure this class exists to
+ * fix. Clip-rect rather than a negative text-indent so it works regardless of writing direction.
+ */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.logs {
+  max-height: 200px;
+  overflow: auto;
+  background: #0e0e14;
+  border-radius: 8px;
+  padding: 10px;
+  font: 11px/1.5 "SF Mono", Menlo, monospace;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+/* ---- screen mirror ---------------------------------------------------------------- */
+
+.mirror-stage {
+  position: relative;
+  margin-top: 12px;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#mirror-canvas {
+  max-width: 100%;
+  max-height: 60vh;
+  display: block;
+}
+
+/* The reason sits over the canvas rather than replacing it, so a transient failure such as a
+   secure surface can be explained without tearing down a stream that is about to resume. What
+   takes it down again is not "a frame arrived" — a blanked secure surface keeps sending frames,
+   black ones — but the arrival of the specific thing the reason says is missing. See OverlayEnds
+   in mirror.ts. */
+.mirror-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #d7d7de;
+  background: rgba(16, 16, 20, 0.82);
+}
+
+.mirror-overlay[hidden] { display: none; }
+
+.mirror-overlay .hint {
+  font-size: 12px;
+  color: #9a9aa6;
+}
+
+/* Input feedback over a live picture. Unlike .mirror-overlay this is not tied to the state of the
+   video at all — it is about an action that did not happen, not about the absence of one — so it
+   times itself out instead. Anchored to the bottom so it never covers what was just clicked. */
+.mirror-notice {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: rgba(20, 20, 26, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #f2f2f5;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.mirror-notice[hidden] { display: none; }
+
+.mirror-notice .hint {
+  margin-top: 4px;
+  color: #a9a9b6;
+}
+
+/* ---- Notifications ------------------------------------------------------------------------
+   A list of rows, not a table: every row has a different number of buttons and a title that may
+   be absent, and a grid would leave holes where the phone simply had nothing to send. */
+.notif-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.notif-row {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Ongoing notifications — the media player, navigation, our own foreground notice — are dimmed
+   rather than hidden. The phone deliberately does not filter them (a phone deciding what the user
+   may see on their own Mac has stopped being a mirror), so the Mac de-emphasises instead. */
+.notif-row.ongoing { opacity: 0.62; }
+
+.notif-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.notif-app { font-weight: 600; font-size: 12px; color: #c9c9d4; }
+.notif-when { flex: none; }
+.notif-title { margin-top: 2px; font-size: 13px; color: #f2f2f5; }
+.notif-text {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #b9b9c6;
+  line-height: 1.4;
+  /* Long messages are common and a shade row that grows to twelve lines pushes everything else
+     off screen. Four lines is enough to read a text message and see there is more. */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.notif-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.notif-actions button.small {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.notif-reply {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.notif-reply input {
+  flex: 1;
+  min-width: 0;
+}
+
+#notif-card { position: relative; }
+
+/* ---- Contacts ------------------------------------------------------------------------------
+   Shares the notification pane's row vocabulary rather than inventing a second one: same border,
+   same spacing, same muted sub-line. Two lists that behave alike should look alike. */
+.contact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.contact-row {
+  border: 1px solid #2a2a33;
+  border-radius: 8px;
+  background: #17171d;
+}
+/* A button, not a div: the row expands, so it has to be reachable and operable by keyboard. The
+   capability chips were rebuilt for the same reason (defect 26) — a control that only a mouse can
+   reach is not a control everybody has. */
+.contact-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.contact-head:hover { background: #1d1d25; }
+.contact-name { font-size: 13px; color: #f2f2f5; }
+.contact-sub { flex: none; }
+.contact-detail {
+  display: flex;
+  gap: 12px;
+  padding: 0 10px 10px;
+}
+.contact-photo {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex: none;
+}
+.contact-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 12px;
+}
+.contact-fields dt { color: #8c8c99; }
+.contact-fields dd { margin: 0; color: #d8d8e0; }
+#contacts-card { position: relative; }
+#contacts-search { flex: 1; }
+
+/* ---- Media remote --------------------------------------------------------------------------
+   No album art: `remote.state` carries none, by design — docs/protocol.md keeps images off the
+   control channel. The card is text and controls, and says so honestly rather than leaving a grey
+   square where art would be. */
+.remote-body { display: flex; flex-direction: column; gap: 10px; }
+.remote-track { display: flex; flex-direction: column; gap: 2px; }
+.remote-title { font-size: 14px; color: #f2f2f5; }
+.remote-scrub { display: flex; align-items: center; gap: 10px; }
+.remote-seek { flex: 1; }
+.remote-elapsed, .remote-total {
+  /* Tabular figures so the clock does not jitter as the digits change width four times a second. */
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+}
+.remote-total { text-align: right; }
+.remote-transport { gap: 8px; }
+.remote-volume { gap: 10px; align-items: center; }
+.remote-volume input[type='range'] { flex: 1; max-width: 180px; }
+/* A disabled transport button is a statement, not a dead control: it keeps its shape and carries
+   its reason in `title` and in a visually hidden span. See defect 26. */
+.remote-transport button:disabled { opacity: 0.45; cursor: not-allowed; }
+#remote-card { position: relative; }
+
+/* ---- Messages ------------------------------------------------------------------------------ */
+.sms-list { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
+.sms-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #2a2a33;
+  border-radius: 8px;
+  background: #17171d;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.sms-thread:hover { background: #1d1d25; }
+.sms-thread.unread { border-color: #3a4a63; }
+.sms-thread-head { display: flex; align-items: baseline; gap: 8px; }
+.sms-who { font-size: 13px; color: #f2f2f5; flex: 1; }
+.sms-snippet { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sms-unread {
+  flex: none;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #2f4a7a;
+  color: #e8eefc;
+  font-size: 11px;
+  text-align: center;
+}
+.sms-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+.sms-message { max-width: 80%; padding: 6px 9px; border-radius: 10px; }
+.sms-message.inbound { align-self: flex-start; background: #1f1f27; }
+.sms-message.outbound { align-self: flex-end; background: #24384f; }
+.sms-body { font-size: 13px; color: #f0f0f4; white-space: pre-wrap; word-break: break-word; }
+/* An attachment marker is content, not decoration: it is the only thing saying the message on
+   screen is not the whole message. Phase 5 fetches these over the bulk channel. */
+.sms-attachment { margin-top: 3px; color: #cbb98a; }
+.sms-when { margin-top: 2px; }
+.sms-compose { display: flex; gap: 6px; margin-top: 8px; }
+.sms-compose input { flex: 1; }
+#sms-card { position: relative; }
+
+/* ---- Calls --------------------------------------------------------------------------------- */
+/* The live card is bordered and the log is not: one of them can be acted on and the other is
+   history, and that difference has to be visible before a button is pressed. */
+.call-live {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  margin-bottom: 10px;
+  border: 1px solid #4a6a4a;
+  border-radius: 8px;
+  background: #1a231a;
+}
+.call-live.hidden { display: none; }
+.call-who { font-size: 15px; color: #f2f2f5; }
+.call-log { display: flex; flex-direction: column; gap: 3px; max-height: 260px; overflow-y: auto; }
+.call-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #17171d;
+}
+.call-log-who { font-size: 13px; color: #f0f0f4; }
+/* Missed is the one type worth colouring, because it is the one people scan for. It keeps its
+   text label too — the colour is not the only carrier of the state. */
+.call-row.missed .call-log-who { color: #e0a0a0; }
+#call-number { flex: 1; max-width: 220px; }
+#calls-card { position: relative; }
