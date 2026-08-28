@@ -56,6 +56,23 @@ object RemoteFeature {
     @Volatile
     private var watched: MediaController? = null
 
+    /**
+     * The manager listener, held so it can be removed — and so attaching twice is a no-op.
+     *
+     * Defect 31. This used to be an anonymous lambda created inside [attachSessionListener], which
+     * ran only from [install] and returned early when the notification listener was not yet bound.
+     * It was never retried, so on any run where the app started before notification access was
+     * granted — which is what every reinstall produces — the entire unsolicited-push path was
+     * absent for the life of the process.
+     *
+     * The feature looked completely healthy from the Mac: every `remote.state` the Mac ever saw
+     * came from the explicit `pushState` at the end of `onCommand`, so the card followed the Mac's
+     * own buttons perfectly and was simply never told about anything the *phone* did. A capability
+     * chip honest about the grant and silent about the wiring behind it.
+     */
+    @Volatile
+    private var sessionsListener: MediaSessionManager.OnActiveSessionsChangedListener? = null
+
     private val delivered = AtomicLong(0)
     private val refused = AtomicLong(0)
     private val pushes = AtomicLong(0)
@@ -83,9 +100,8 @@ object RemoteFeature {
 
     fun uninstall(link: LinkServer) {
         if (!installed) return
+        onListenerUnbound()
         installed = false
-        watched?.unregisterCallback(controllerCallback)
-        watched = null
         link.removeSessionReadyListener(::replayTo)
         handledTypes.forEach(link::unregister)
         server = null
@@ -260,13 +276,64 @@ object RemoteFeature {
      * OEM keeps alive means a push per background app whenever any of them ticks.
      */
     private fun attachSessionListener(context: Context) {
-        if (!available(context)) return
+        if (sessionsListener != null) return
+        if (!available(context)) {
+            // Not an error and not the end of it: [onListenerBound] runs this again the moment the
+            // notification listener binds. Said out loud so a log read afterwards can tell "not
+            // yet" from "never", which is the distinction defect 31 turned on.
+            LinkLog.i("remote", "Media session listener not attached yet: notification listener is not bound")
+            return
+        }
         val manager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager ?: return
         val component = ComponentName(context, NotificationMirrorService::class.java)
+        val listener = MediaSessionManager.OnActiveSessionsChangedListener { repoint(context) }
         runCatching {
-            manager.addOnActiveSessionsChangedListener({ _ -> repoint(context) }, component)
+            manager.addOnActiveSessionsChangedListener(listener, component)
+            sessionsListener = listener
             repoint(context)
         }.onFailure { LinkLog.w("remote", "Could not follow media sessions: ${it.message}") }
+        if (sessionsListener != null) {
+            // The success case, at the same volume as the failure above it, with the push count
+            // beside it. That counter is the only thing that distinguishes a live push path from a
+            // dead one, and its absence is precisely what let this defect hide behind a step-64
+            // pass where every push came from the command handler instead.
+            LinkLog.i(
+                "remote",
+                "Media session listener attached; phone-side changes will now reach the Mac " +
+                    "(${pushes.get()} unsolicited pushes since start)",
+            )
+        }
+    }
+
+    /**
+     * Called by [NotificationMirrorService] the moment the listener binds.
+     *
+     * This is the fix for defect 31. `NotificationFeature.refreshCapabilities` is invoked from the
+     * same line of the same callback — so the wiring behind the capability and the chip announcing
+     * it now turn on together, rather than the chip lighting over a half-dead feature.
+     */
+    fun onListenerBound(context: Context) {
+        if (!installed) return
+        attachSessionListener(context.applicationContext)
+    }
+
+    /**
+     * Called when notification access goes away, so a revoke-and-regrant re-attaches cleanly.
+     *
+     * Without this, [attachSessionListener]'s `sessionsListener != null` guard would refuse to
+     * re-attach after the platform had already dropped the registration with the service — the
+     * feature would look attached and be dead, which is the shape of the defect this pair fixes.
+     */
+    fun onListenerUnbound() {
+        val context = appContext ?: return
+        sessionsListener?.let { held ->
+            val manager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
+            runCatching { manager?.removeOnActiveSessionsChangedListener(held) }
+        }
+        sessionsListener = null
+        watched?.unregisterCallback(controllerCallback)
+        watched = null
+        LinkLog.i("remote", "Media session listener detached: notification access went away")
     }
 
     private fun repoint(context: Context) {

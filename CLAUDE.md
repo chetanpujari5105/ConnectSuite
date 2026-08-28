@@ -126,6 +126,19 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
   of the defects found in Phase 3 and 4 — 19, 22, 23, 24, 25 and 26 — were all Mac-side. Four more
   panes are coming in Phases 4 and 5.
 
+  The renderer is loaded as plain `<script>` tags and cannot use `export`, so a renderer rule is
+  made testable by hanging the pure half on `globalThis` at the bottom of the file — see
+  `src/renderer/calls.ts` and its test. That is still the "testable seam" rule, not an exception to
+  it: the test runs the code that draws the card, rather than a second copy of the rule that can
+  drift from it.
+
+  **The same rule applies on the phone, with `Telephony` in the place of Electron.** A JVM unit
+  test that merely *references* an object holding an Android static in a field initializer dies
+  with `ExceptionInInitializerError` — `SmsStore` does, via `CONTENT_CONVERSATIONS_URI`. The answer
+  is not `returnDefaultValues = true`, which makes every Android call in the module silently return
+  null; it is to move the pure part out. `SmsPayloads` and `CallWatcher.dispositionOf` came out
+  that way, for defects 34 and 36.
+
   Two rules for what goes in it. First, **a new test must be shown to fail against the defect it
   is named for** — reintroduce the bug, watch it go red, put it back. A test that cannot fail is
   the same shape as an empty accessibility query: it reads as evidence and is not. Second, prefer

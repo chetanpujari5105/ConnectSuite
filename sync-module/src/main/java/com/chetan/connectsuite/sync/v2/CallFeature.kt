@@ -161,6 +161,15 @@ object CallFeature {
         val telecom = telecom(context)
             ?: return refuse(session, request, CallFailure.NoTelephony)
 
+        // Defect 35. Android reports no identity at all for an outgoing call — not through the
+        // callback, not through PHONE_STATE — so the card was labelled with nothing. This Mac
+        // asked for this number a millisecond ago and is the one machine that certainly knows it,
+        // so it is handed to the watcher rather than looked for somewhere it will never be.
+        //
+        // Before placeCall, not after: the OFFHOOK transition can land inside the call, and an
+        // episode minted before this line would carry the blank all over again.
+        CallWatcher.expectOutgoing(number)
+
         // placeCall, not ACTION_DIAL. The protocol says this places the call rather than opening
         // the dialler with the number typed in, and the Mac is required to confirm before sending
         // it — there is no second chance on the phone, and a mis-click that rings someone is not
@@ -169,13 +178,16 @@ object CallFeature {
             telecom.placeCall(Uri.fromParts("tel", number, null), null)
         }
         if (placed.isFailure) {
+            // Nothing was dialled, so nothing should be labelled with it. Without this, a refused
+            // dial would put its number on whichever call rang next.
+            CallWatcher.forgetOutgoing()
             return refuse(
                 session,
                 request,
                 CallFailure.TelecomRefused("dial", placed.exceptionOrNull()?.message ?: "no reason given"),
             )
         }
-        deliver(session, request, "dialled")
+        deliver(session, request, "dialled $number")
     }
 
     private fun onAnswer(session: ControlSession, request: Envelope, context: Context) {
@@ -212,18 +224,30 @@ object CallFeature {
         }
         if (!matchesRequestedCall(session, request)) return
 
+        // Defect 36. The watcher derives the disposition from the state transition, which cannot
+        // tell a reject from a call left to ring out — so it reported `rejected` as `missed` and
+        // the call log the user read afterwards disagreed with what they had just done.
+        //
+        // Set before endCall, because endCall can drive the call to idle before it returns and
+        // `end()` would then read the flag before it was written. This mirrors the `answered`
+        // flag, which has always been set at the moment it becomes true and has always been right.
+        CallWatcher.markRejected()
+
         val ended = runCatching {
             @Suppress("DEPRECATION")
             telecom.endCall()
         }
         if (ended.isFailure) {
+            // The call is still live and was not rejected. Leaving the flag set would mislabel
+            // however it does end.
+            CallWatcher.forgetRejected()
             return refuse(
                 session,
                 request,
                 CallFailure.TelecomRefused("reject", ended.exceptionOrNull()?.message ?: "no reason given"),
             )
         }
-        deliver(session, request, "rejected")
+        deliver(session, request, "rejected — the episode is flagged, so call.ended will say rejected")
     }
 
     // ---- plumbing -------------------------------------------------------------------------

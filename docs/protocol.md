@@ -756,6 +756,15 @@ would hang the request on networks that never send them.
 
 `sms.received` — **event**, carrying exactly one `messages[]` entry plus its `threadId`.
 
+**Both are required, and a phone that cannot supply them sends nothing.** The inbound broadcast can
+arrive before the provider has written the row, so the message id and thread id may not exist yet;
+the phone retries the lookup and, if it still has neither, **drops the event on its own side with
+an `e:` line** rather than emitting a partial shape. A receiver must therefore treat an
+`sms.received` with an empty or absent `messages[]`, or no `threadId`, as a **malformed event from
+a misbehaving or outdated peer** — drop it, log it with its cause, and do not attempt to
+reconstruct a message from top-level fields. Being lenient here is how the two sides came to
+disagree about this event's shape for two sessions while both logged success (defect 34).
+
 **MMS is partial, on purpose, and says so.** `kind` is `"sms"` or `"mms"`, and for an MMS the
 `body` is its text parts joined. Attachments are reported by `hasAttachments` and are **not
 delivered** by these messages: fetching an image out of `content://mms` is a bulk transfer, and the
@@ -793,6 +802,14 @@ here will ever carry audio.
 `call.incoming` — **event**. `{"callId":"c17","number":"+15551234567","contactName":"Ada Lovelace",
 "startedAtMs":1756300000000,"state":"ringing"}`. `state` is `ringing`, `active` or `dialing`.
 Replayed on connect if a call is in progress.
+
+**`number` is always present and may be the empty string.** A private caller, an OEM that declines
+to fill the platform's extra, or an outgoing call the Mac did not place will all produce `""`.
+`contactName` is absent rather than empty when there is no name. A Mac must therefore fall back on
+**emptiness, not nullishness** — `"" ?? x` is `""`, and a chain written as
+`contactName ?? number ?? 'Unknown number'` draws a blank card for every one of those cases
+(defect 35). Any separator between a label and the number belongs to the number: with no number
+there is no ` · ` either.
 
 `call.ended` — **event**. `{"callId":"c17","number":"...","durationMs":42000,
 "disposition":"answered"}`. `disposition` is `answered`, `missed`, `rejected` or `declined`

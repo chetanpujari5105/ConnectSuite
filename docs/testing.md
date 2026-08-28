@@ -3150,7 +3150,7 @@ Verified with `adb shell settings get secure enabled_notification_listeners`. Al
 permissions survived `adb install -r` untouched, so the whole grant surface for Phase 4 is now
 reachable without opening Settings once.
 
-### Defect 30 — the Mac cannot start a new SMS conversation — **open, deferred**
+### Defect 30 — the Mac cannot start a new SMS conversation — **open, deferred again 2026-08-28**
 
 **Found 2026-08-28 while planning step 58.** Severity: Medium. Not a bug in what is built; a hole
 in what is built.
@@ -3177,6 +3177,12 @@ implemented deliberately rather than by loosening the existing path.
 Whoever picks it up: the danger is implementing it by making `send` tolerate a missing thread,
 which would reopen the exact hole clause 2 closes. The correct shape is a *separate* entry point
 that takes addresses and no `threadId`, so the two cases cannot be confused by a caller.
+
+**Deferred again 2026-08-28**, deliberately and explicitly, when 34, 35, 36 and 31 were fixed in
+one sitting. It was left out because it is the only one of the seven that is a *feature* rather
+than a repair: nothing it touches is currently wrong, and the guard it must relax is the one guard
+in Phase 4 protecting an outcome that cannot be undone. The fix direction above is unchanged and
+is the whole brief — a separate entry point taking addresses and no `threadId`.
 
 ## Step 46 — **PASS**, closed 2026-08-28
 
@@ -3214,7 +3220,7 @@ point of using the app's own reply action rather than simulating one.
 **Step 46 therefore passes on the clause that matters**: *"Reply appears in the app exactly as one
 typed on the phone would."*
 
-### Defect 31 — the media card never learns about changes made on the phone — **open**
+### Defect 31 — the media card never learns about changes made on the phone — **fixed 2026-08-28, awaiting step 67**
 
 **Found during step 64, 2026-08-28.** Severity: Medium. The remote works; it is only ever *right*
 about state the Mac itself caused.
@@ -3266,7 +3272,7 @@ the middle of a hardware run that is measuring something else.
 session as it becomes ready (`addSessionReadyListener`), which is a different path and works — it
 is what populated the card for step 64 in the first place.
 
-### Defect 32 — the SMS pane cannot reach a conversation older than its first page — **open, deferred**
+### Defect 32 — the SMS pane cannot reach a conversation older than its first page — **open, deferred again 2026-08-28**
 
 **Found 2026-08-28 setting up step 58.** Severity: Low-Medium. Honest, and still a dead end.
 
@@ -3299,6 +3305,12 @@ renderer affordance and nothing more, but it is not being added mid-run.
 
 **Workaround, used for step 58:** send one SMS to the number from the phone, which moves its thread
 to the top of the list where the pane can see it.
+
+**Deferred again 2026-08-28**, alongside 30 and 33, while 34/35/36/31 were fixed. Left out because
+it is renderer work with no phone half, so it does not need — and cannot share — the APK build that
+sitting was for. The fix direction is unchanged and is already half-built: `before` is in the
+protocol, the phone implements it on `sms.threads`, and `SmsClient.listThreads` already merges
+rather than replaces. What is missing is the affordance.
 
 ### Step 65 — **PASS**, run against Previous rather than Next — 2026-08-28
 
@@ -3347,7 +3359,7 @@ play_pause   -> { ok: true }      <- control
 **Card correctness noted in passing.** Before the reconnect the card said Spotify; after it, YouTube
 — defect 31 demonstrating itself again, since the phone's switch to YouTube produced no push.
 
-### Defect 33 — the phone names packages where it means apps, in sentences users read — **open, deferred**
+### Defect 33 — the phone names packages where it means apps, in sentences users read — **open, deferred again 2026-08-28**
 
 **Found inside step 65's own result, 2026-08-28.** Severity: Low-Medium. Same family as defect 28,
 different mechanism, and not fixed by 28's fix.
@@ -3389,6 +3401,15 @@ when the Mac's copy is the thing not to be trusted.
 re-verification, not a rebuild in the middle of a run measuring something else. The fix is to pass
 `AppLabels.of(context, packageName)` at each site, which now exists precisely for this.
 
+**Deferred again 2026-08-28.** This one *could* have ridden the 34/35/36/31 build — it is a phone
+change and that sitting produced a phone build — so the reason it did not is worth stating rather
+than leaving as an omission. It is eight call sites across three files with no test that would go
+red for any of them, in sentences a user sees only when the Mac's own guard has been bypassed. Put
+into a build whose four other changes each needed a specific hardware step, it would have added
+surface to re-verify and nothing to measure. The fix direction is unchanged: `AppLabels.of` at all
+eight sites listed in the table above, and it wants a test that a failure sentence contains no
+`.`-separated package-shaped token, or it will regress the same way twice.
+
 ### Step 66 — **PASS** — 2026-08-28
 
 **Control first.** "Nothing is playing" is only evidence if something was playing a moment earlier.
@@ -3421,7 +3442,7 @@ enforcement point, and this is what living with one looks like — it will occas
 writing *about* the thing it guards. Worth tightening only if it starts costing more than a
 rewrite; matching a command's argument vector rather than its raw text would do it.
 
-### Defect 34 — `sms.received` is dropped by the Mac: the phone sends a shape the contract does not describe — **open**
+### Defect 34 — `sms.received` is dropped by the Mac: the phone sends a shape the contract does not describe — **fixed 2026-08-28, awaiting step 68**
 
 **Found during step 58, 2026-08-28.** Severity: **High.** Inbound SMS never reaches the Mac's pane.
 This is the one Phase 4 defect that breaks a feature outright rather than degrading it.
@@ -3598,7 +3619,7 @@ The pane also behaved correctly afterwards: the `NO_ACTIVE_CALL` refusal took th
 so the same dead id cannot be clicked again, and the call log reloaded (`50 entries, 43 with a
 contact name`).
 
-### Defect 35 — an outgoing call's card is labelled with nothing at all — **open**
+### Defect 35 — an outgoing call's card is labelled with nothing at all — **fixed 2026-08-28, awaiting steps 69 and 70**
 
 **Found inside step 63's own log line, 2026-08-28.** Severity: Low-Medium.
 
@@ -3641,7 +3662,7 @@ grep, `CONNECTSUITE_DEBUG_SWITCHES` absent) rather than by trusting the log.
 The audio disclaimer was drawn on the card as intended: *"Audio stays on the phone — pair the Mac to
 it over Bluetooth to listen through the Mac."*
 
-### Defect 36 — a call rejected from the Mac is reported as `missed` — **open**
+### Defect 36 — a call rejected from the Mac is reported as `missed` — **fixed 2026-08-28, awaiting step 70**
 
 Severity: Medium. The action succeeds and is then described wrongly, which is worse than a visible
 failure: the call log the user reads afterwards disagrees with what they did.
@@ -3671,6 +3692,27 @@ transition, and the provider row may not be written yet, so it would work in tes
 `missed` or nothing under load. The watcher knows why the call ended at the moment it ends; that is
 where the fact belongs.
 
+> **The wrong fix was not hypothetical. It had shipped.** Noted on 2026-08-28 while deleting it.
+>
+> `CallWatcher.loggedDisposition(context)` was already in the tree, called from `end()`'s
+> `wasRinging` branch, doing exactly what the paragraph above forbids: a fresh
+> `CallLogStore.entries(context, 1, null)` mapping `"rejected" -> "rejected"` and everything else
+> to `"missed"`. It was reachable, it ran on every rejected call, and **`missed` is what it
+> returned on hardware** — the row was not written yet, so it read the previous call or nothing
+> and fell through its own `else`.
+>
+> This matters for how the defect reads. It was recorded as "the watcher has no way to know a
+> `call.reject` was the cause", which is true of the *transition* and reads as though nobody had
+> tried. Somebody had, with the answer that looks right, and the failure is the more interesting
+> one: a value taken from the platform's own records, correct in every offline test, wrong at the
+> only moment it is consulted. A racy read does not fail loudly — it returns a plausible answer,
+> which is why it survived a code review and a hardware run.
+>
+> It is deleted, not repaired. `dispositionOf(answered, rejected, wasRinging)` is pure, takes no
+> `Context`, and cannot reach a provider. `newestLogged` stays, because reading the *number* from
+> the log at the same moment is safe — the fallback only has to be right eventually, and a wrong
+> number shows as an unknown caller rather than as a false fact about what the user did.
+
 ### Defect 35, widened — the call card has **no number in either direction**
 
 Recorded first against an outgoing call, where Android genuinely supplies no identity. The inbound
@@ -3684,9 +3726,25 @@ log    16:33:45  type=5  number=+919800000003        <- the platform had it
 
 So an **inbound** ringing call also arrives with `number: ""`, and the card renders blank — while
 the platform's call log holds the number, and `READ_CALL_LOG` and `READ_PHONE_STATE` are both
-granted. This is not "Android will not say"; it is the phone not asking. On API 31+ the number is
-delivered through `TelephonyCallback`/`onCallStateChanged`'s number parameter only for a caller
-holding `READ_CALL_LOG`, and it is empty otherwise.
+granted. This is not "Android will not say"; it is the phone not asking.
+
+> **Correction, made while fixing this on 2026-08-28.** The sentence that stood here said the
+> number arrives "through `TelephonyCallback`/`onCallStateChanged`'s number parameter only for a
+> caller holding `READ_CALL_LOG`". **There is no such parameter.**
+> `TelephonyCallback.CallStateListener.onCallStateChanged(int)` — the API 31+ path this app
+> registers, and the only one that runs above API 30 — takes a state and nothing else. A session
+> reading the original sentence would go looking for an argument that does not exist, find the
+> deprecated `PhoneStateListener.onCallStateChanged(int, String)` overload that does take one,
+> and wire up a listener that never fires on this device.
+>
+> The real path is the `android.intent.action.PHONE_STATE` broadcast's `EXTRA_INCOMING_NUMBER`,
+> which the platform fills only for a receiver holding `READ_CALL_LOG` — which the `calls`
+> capability already requires, along with the other three. That is what the fix registers, at
+> runtime in `CallWatcher.start` rather than in the manifest.
+>
+> The correction is left in place rather than swapped for the right sentence, because the wrong
+> one was written confidently from a plausible memory of the deprecated API and would be written
+> again the same way.
 
 Both halves of the earlier note still hold, and the inbound case adds a third:
 
@@ -3751,3 +3809,257 @@ the field is alive — but `categoriesPresent` was `call, sys, none, service, ms
 
 Recorded as partial rather than passed. The control is the 25-notification enumeration: the query
 can see the shade, and there is genuinely no media notification in it.
+
+
+## Fix sitting — defects 34, 35, 36 and 31 — 2026-08-28
+
+One Android build, four defects, plus two Mac files. Nothing else was touched and **Phase 5 was not
+started.** Defects 30, 32 and 33 stay deferred with their fix directions unchanged — see their own
+sections, each now marked *deferred again 2026-08-28*.
+
+Two records were corrected in place rather than rewritten, both quoted in their own sections: the
+mechanism 35c was blamed on (`TelephonyCallback` has no number parameter), and the fact that
+defect 36's *wrong fix* was already shipped in the tree rather than hypothetical.
+
+### What changed
+
+| Defect | Phone | Mac |
+|---|---|---|
+| **34** | `SmsStore.receivedPayload` builds the contract shape — `{threadId, messages:[{id, …}]}` — from a **single** provider query returning `_ID` and `THREAD_ID` together. `SmsFeature.onReceived` is now `suspend` and looks **3× at 150 ms** for the row before giving up, and **refuses to push at all** if it never appears. The pure builder moved to a new `SmsPayloads` object. | The drop path stays strict. Its log line splits into three causes with the tally beside it. |
+| **35** | `call.dial` hands its number to `CallWatcher.expectOutgoing` **before** placing the call; a runtime `PHONE_STATE` receiver supplies the inbound one; `contactName` is resolved once per episode. The three hardcoded `put("number", "")` sites collapse into one `incoming()` builder. | `firstNonEmpty` replaces `??` in both the live card and the log rows, and the status line drops its ` · ` when there is no number. |
+| **36** | `CallWatcher.rejectRequested`, set by `CallFeature.onReject` before `endCall()` and cleared if it throws. `loggedDisposition` **deleted**. `dispositionOf` is pure and ordered `answered → rejected → missed → declined`. | — |
+| **31** | The media-session listener is held in a field, is idempotent, and is attached from `NotificationMirrorService.onListenerConnected` beside the capability refresh — and detached on disconnect so a regrant re-attaches. | — |
+
+### Tests added, and each shown to fail against its defect
+
+The rule is that a new test must be watched going red against the bug it is named for. All five
+were, by reintroducing the defect and reverting:
+
+| Test | Reintroduced defect | Result |
+|---|---|---|
+| `sms received carries its message inside a messages array` | flat payload restored | `AssertionError: sms.received must carry a messages[] array` |
+| `a call rejected from the Mac is reported as rejected, not missed` | `rejected ->` branch removed | `ComparisonFailure: expected:<[reject]ed> but was:<[miss]ed>` — **the exact symptom from step 60** |
+| `an empty number falls through to Unknown number, as ?? never did` | `??` chain restored | red |
+| `whitespace is empty, because a card of spaces is still blank` | same | red |
+| `the status line drops its separator when there is no number` | unconditional `${label} · ${number}` restored | red |
+
+**And the controls held.** `a real number or name still wins over the fallback` and `the status
+line keeps its separator when there is one` stayed **green** through both reintroductions. A
+fallback that fires for everything would satisfy the first three tests perfectly and be a worse
+pane than the blank; the controls are what separate "fixed" from "always says Unknown number".
+
+Two more phone tests exist purely as controls and were never expected to move:
+`every other disposition still answers, and answered outranks rejected` pins all four branches, so
+"rejected now works" cannot be bought by breaking `answered` or `missed`.
+
+Suite totals after the fix: **158 phone unit tests, 0 failures** (`core` 58, `sync-module` 25,
+`mirror-module` 31, `input-module` 44) and **54 Mac tests, 0 failures**, up from 48 — the six new
+ones are the five above plus `firstNonEmpty is the rule the rest of the pane can reuse`.
+
+### A note on where the two new test seams came from
+
+Both were forced by the same wall, on both sides of the link, and it is worth recording because it
+will happen again.
+
+`Phase4ContractTest` could not call `SmsStore.receivedEnvelope` at all: `SmsStore` holds
+`Telephony.MmsSms.CONTENT_CONVERSATIONS_URI` in a field initializer, so a JVM unit test merely
+*referencing* the object throws `ExceptionInInitializerError` off the Android stubs. The first run
+of the new test failed that way rather than on its assertion. The answer was not
+`returnDefaultValues = true` — which would have made every Android call in the module silently
+return null — but moving the pure builder to `SmsPayloads`, an object with nothing Android in it.
+
+`CallWatcher.dispositionOf` is `internal` and pure for the identical reason.
+
+This is `CLAUDE.md`'s Mac rule — *prefer making the code testable over mocking Electron* — turning
+out to apply unchanged on the phone, with `Telephony` in the place of Electron. `src/shared/` and
+`SmsPayloads` are the same idea.
+
+---
+
+## Re-verification steps 67-70 — to run on hardware
+
+Ordered so that the three that need only one person come first. **Step 70 needs a second person**
+and is the only one that does; see its own note for what to ask them for, once.
+
+Grant surface after `adb install -r`: all eight Phase 4 permissions still show a `granted=true`
+row on this device. Note the dump also shows `granted=false` rows for a second user profile the
+shell cannot query (`SecurityException: Shell does not have permission to access user 150`), so
+**this reading is not on its own sufficient** — step 67's first line is the phone's own capability
+log, which is the authoritative control for every step below it.
+
+### Step 67 — a phone-side media change reaches the Mac with no reconnect and no Mac command first
+
+**This is defect 31's exact dead path, and the one step 64 could not see.** Step 64 passed at 16
+commands / 0 refused with 5.0 ms worst latency over a feature whose push half was dead, because
+every push it measured came from the command handler. So this step forbids the thing that made
+step 64 healthy.
+
+**Preconditions, in order — none of them optional:**
+
+1. Connect the link, then read the phone's own log for `Media session listener attached; phone-side
+   changes will now reach the Mac (N unsolicited pushes since start)`. If instead it says *"not
+   attached yet: notification listener is not bound"* and never follows with the attach line, the
+   fix did not take and nothing below is worth running.
+2. **Confirm the harder case, which is the one that was broken.** Revoke notification access, watch
+   for `Media session listener detached`, then re-grant it and watch the attach line appear a
+   second time. The bug was that this only ever ran at install; a single attach at startup proves
+   the easy path only.
+3. Start a media app and let the card populate.
+
+**Then, and this is the whole step: touch nothing on the Mac.**
+
+| | How |
+|---|---|
+| **Change state on the phone only** | `adb shell input keyevent KEYCODE_MEDIA_PLAY` (or pause, whichever inverts the current state). A key event, not the phone's UI — a tap is a coordinate guess, and the media app's own buttons move. |
+| **Read the phone's truth** | `adb shell dumpsys media_session`, `PLAYING(3)` vs `PAUSED(2)` |
+| **Read the Mac's belief** | the card's `playing` and its note text, by accessible name |
+
+**Both controls are required, because the last run of this produced a clean wrong answer:**
+
+- **Line-count control.** Record the Mac's `[remote]` log line count **before and after**. Last
+  time it was **93 → 93** across a state change, which is what proved no push was sent rather than
+  a slow one. A pass needs the count to *rise* on the phone-side change alone.
+- **Direction control.** Do **not** start from a state the Mac already believes. Last time the
+  pause half of the test was discarded for exactly this: the Mac already read "paused", so
+  agreement proved nothing. Invert the state the Mac is currently showing.
+
+**Pass** requires: `[remote]` line count rises, the card's `playing` flips to match
+`dumpsys media_session`, and **no `remote.command` was sent** — check the Mac's log for the absence,
+with the enumeration control (the same window must still show the other `[remote]` lines it always
+shows, or you are reading an empty log and calling it silence).
+
+**Then, and only then, the regression check:** press one transport button on the Mac by its
+accessible name and confirm step 64's path still works. Never double-click an armed control — the
+dial button is the confirming one and is not involved here, but the same rule applies to any
+button whose first click arms.
+
+### Step 68 — an inbound SMS reaches the pane
+
+**The clause is that the message is drawn in the Mac's SMS pane**, not that the phone emitted the
+right shape. The phone emitting a correct-looking payload is what step 59 was previously credited
+with and is precisely the evidence that was not enough: defect 34 lived between a phone that logged
+a successful push and a Mac that logged a silent drop, and **only both logs together found it.**
+
+**Both sides logged is the method, not a nicety. Have both open before the message arrives.**
+
+Send one SMS to the phone. Then:
+
+| Layer | Expected | Where |
+|---|---|---|
+| phone | `sms.received pushed after 1 lookup(s) — N pushed / 0 dropped since start — …` | phone `link.log` |
+| Mac | `sms.received in thread <id> from <name or number> — …` | Mac `link.log` |
+| **Mac pane** | **the message body is drawn as a row in the thread**, located by its own text | renderer |
+| attribution | a name with contacts granted, the bare number without — **never blank** | the drawn row |
+
+The third row is the step. The first two are how you will know *where* it broke if the third fails,
+which is the entire lesson of this defect.
+
+**Control for the pane check.** A row found is a presence claim, so judge it on what matched, not
+on a count: quote the matched row. And enumerate the thread first — the same query must return the
+messages you already know are in it, or an empty pane and a working pane look identical.
+
+**Run it twice, in both contact states**, since step 59 asks for both and has never actually been
+observed on the received event:
+
+- with `READ_CONTACTS` granted, from a number that is in contacts → row shows the **name**
+- with it revoked, or from a number that is not → row shows the **number**
+- neither state may draw a blank
+
+#### 68a — the retry path, and how to be honest about it
+
+The fix looks for the provider row up to three times at 150 ms. **The success line says which look
+won**, which is the point: `pushed after 1 lookup(s)` is the common case, and `after 2` or `after 3`
+means the retry is doing real work.
+
+**This is not reachable on demand.** The race depends on whether the platform's write beats a
+broadcast delivered at priority 500, and nothing here can force the losing order. So:
+
+- **Do not** report the retry as verified because a message arrived. Every message arriving on the
+  first look exercises none of it.
+- **Do** record the observed distribution across however many messages the run produces — e.g.
+  "6 received, all `after 1 lookup(s)`" — which is a denominator, and states plainly that the retry
+  path was **not exercised** rather than implying it passed.
+- The `E [sms] sms.received NOT pushed: no provider row for … after 3 lookups` line is the one that
+  must **never** appear. If it does, the retry is too short and that is a finding with its own
+  number, not a step failure.
+
+If you want the retry deliberately exercised, that is a code change (a debug switch forcing the
+first N lookups to miss), not something to fake on hardware. It is not in this build and is not
+claimed to be.
+
+### Step 69 — an outgoing call's card carries the number the Mac dialled
+
+One person. Dial a number **you own** — the second phone, or a speaking-clock service — from the
+Mac's dialler.
+
+⚠️ **The dial button arms on the first click and places the call on the second.** Click it once,
+read the armed label, then click once more. Never double-click it. `call.dial` places the call
+immediately; there is no dialler screen to cancel on and nobody holding the phone.
+
+| Clause | Expected |
+|---|---|
+| phone log | `call.dial delivered (dialled +…)` — the number is now *in the line*, which it was not before |
+| phone log | `Call cN dialing from +… (Name)` or `from +…, no contact name` — **never** `from ,` |
+| Mac card headline | the name, or the number — **not** `Unknown number`, because the Mac dialled it and knows |
+| Mac card second line | `Dialling · +…` — with the ` · ` present, which is the control for step 70's version of this |
+| denominator | the phone's episode line reads `M of N episodes with a number since start` |
+
+Hang up from the Mac and confirm `call.ended cN …` — the disposition here will be `declined` or
+`answered` depending on whether it connected, **not** `rejected`; a Mac-initiated hang-up of a call
+you placed is not a rejection.
+
+### Step 70 — one inbound ring, proving 35c and 36 together — **needs a second person**
+
+**This is the only step that needs anyone else, and one ring covers both defects.** Do not schedule
+two calls. The number must be a real one from a real handset — 35c's whole point is that the
+platform fills `EXTRA_INCOMING_NUMBER`, and that does not happen for a simulated call.
+
+**Before they call — the preconditions, all on your side:**
+
+1. The link is connected and the `calls` chip is lit.
+2. `READ_CALL_LOG` is granted. Confirm it; without it the extra is empty by design and this step
+   measures nothing. This is the control that distinguishes "the fix does not work" from "the
+   permission that feeds it is off".
+3. The phone's log shows `Watching PHONE_STATE for the inbound number`. If it instead shows
+   `Could not watch PHONE_STATE; inbound calls will have no number`, stop — 35c cannot pass and
+   you would be spending someone's time to learn that.
+4. Note the current call-log tail (`adb shell content query --uri content://call_log/calls
+   --projection "type:number:date" --sort "date DESC" ...`, one row) so the new row is identifiable
+   as new rather than assumed to be.
+5. Have the Mac's calls pane visible and both logs open.
+
+**The exact sequence to give them — one sentence:** *"Call me once, let it ring, and don't hang up
+until I say."* That is all. They do not need to answer anything, wait for a tone, or call twice.
+You will reject it from the Mac while it is still ringing.
+
+**What you do, in order:**
+
+| # | Action | Reads |
+|---|---|---|
+| 1 | let it ring, do not touch the phone | Mac card appears |
+| 2 | **read the card before pressing anything** | headline = their **name** if they are in contacts, else their **number**; second line = `Ringing · +…` — this is 35c |
+| 3 | press **Reject** on the Mac **by its accessible name** (`call-reject`), once | phone: `call.reject delivered (rejected — the episode is flagged, so call.ended will say rejected)` |
+| 4 | read the ended event | Mac: `call.ended cN **rejected** after Ns` — this is 36 |
+| 5 | read the platform's own row | `type=5` (`REJECTED_TYPE`) for the same number and minute |
+
+**The pass conditions, and what each proves:**
+
+- **35c** — step 2's headline is **not** `Unknown number` and the second line is **not** `Ringing · `
+  with nothing after it. Both were blank on the last run and both are quoted in defect 35's record.
+- **36** — step 4 says `rejected`. Last run it said `missed` while row 5 said `type=5`, and that
+  contrast *is* the defect. **Read row 5 anyway**: it is the control. `rejected` on the Mac with no
+  `type=5` on the platform would mean the flag is being set on episodes that were not rejected,
+  which is a different bug wearing the right answer.
+- **The denominator** — the phone's episode line must read `M of N episodes with a number`, with M
+  incremented by this call.
+
+**The negative control, which costs nothing extra and closes 36 properly.** After they hang up,
+ask them to ring **once more** only if you want it — otherwise let the next real call do it: a call
+you let ring out untouched must still report `missed`. `rejected` is only meaningful if `missed`
+still exists; a build that reports every ended call as `rejected` would pass step 70 as written
+above and be worse than the defect. If you would rather not ask for a second ring, the phone-side
+unit test `every other disposition still answers, and answered outranks rejected` covers all four
+branches and this control can be recorded as satisfied off-device.
+
+**What step 70 does not need**: an answered call. Step 62 already passes and the `answered` branch
+is untouched by this fix — it is the mechanism that was copied, not changed.

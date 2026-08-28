@@ -14,6 +14,7 @@ import com.chetan.connectsuite.core.protocol.Capability
 import com.chetan.connectsuite.core.protocol.Envelope
 import com.chetan.connectsuite.core.protocol.ErrorCode
 import com.chetan.connectsuite.core.protocol.MessageType
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.jsonArray
@@ -48,9 +49,14 @@ object SmsFeature {
     @Volatile
     private var appContext: Context? = null
 
+    /** Three looks at 150 ms: about as long as a provider write takes, and bounded. */
+    private const val PROVIDER_LOOKS = 3
+    private const val PROVIDER_LOOK_DELAY_MS = 150L
+
     private val delivered = AtomicLong(0)
     private val refused = AtomicLong(0)
     private val received = AtomicLong(0)
+    private val dropped = AtomicLong(0)
 
     private fun tally(): String = "${delivered.get()} delivered / ${refused.get()} refused since start"
 
@@ -87,15 +93,52 @@ object SmsFeature {
      * that got a text reads identically to "0 received" on a phone that did not — unless the
      * number of *delivered replies* is sitting next to it.
      */
-    fun onReceived(context: Context, address: String, body: String, dateMs: Long) {
+    suspend fun onReceived(context: Context, address: String, body: String, dateMs: Long) {
         val link = server ?: return
         if (!granted(context)) return
-        val payload = runCatching { SmsStore.receivedPayload(context, address, body, dateMs) }
-            .onFailure { LinkLog.w("sms", "Could not build sms.received: ${it.message}") }
-            .getOrNull() ?: return
+
+        // The provider row and the broadcast are a race. We are not the default SMS app, so the
+        // platform writes the row and tells us at priority 500, and the two orders are both
+        // legal — on most messages the row is already there, on some it lands a moment later.
+        //
+        // Three short looks rather than one, because the alternative used to be shipping a
+        // payload with no thread id and no message id, which is a shape docs/protocol.md does
+        // not describe. The Mac dropped every one of those (defect 34).
+        var built: kotlinx.serialization.json.JsonObject? = null
+        var looks = 0
+        while (looks < PROVIDER_LOOKS) {
+            looks += 1
+            built = runCatching { SmsStore.receivedPayload(context, address, body, dateMs) }
+                .onFailure { LinkLog.w("sms", "Could not build sms.received: ${it.message}") }
+                .getOrNull()
+            if (built != null) break
+            if (looks < PROVIDER_LOOKS) delay(PROVIDER_LOOK_DELAY_MS)
+        }
+
+        if (built == null) {
+            dropped.incrementAndGet()
+            // An `e:` line, not a `w:`, and with the denominator beside it. This is a message a
+            // person received on their phone that their Mac will never be told about — the exact
+            // silent failure this feature exists to rule out — and the count is what separates
+            // "one unlucky race" from "the provider lookup is broken".
+            LinkLog.e(
+                "sms",
+                "sms.received NOT pushed: no provider row for $address after $looks lookups — " +
+                    "${received.get()} pushed / ${dropped.get()} dropped since start",
+            )
+            return
+        }
+
+        val payload = built
         received.incrementAndGet()
         link.broadcast { session -> session.send(Envelope(type = MessageType.SMS_RECEIVED, payload = payload)) }
-        LinkLog.i("sms", "sms.received pushed (${received.get()} since start) — ${tally()}")
+        // The success case carries the same denominator as the failure, and the look count, so a
+        // build where the retry is doing all the work is visible without a second run.
+        LinkLog.i(
+            "sms",
+            "sms.received pushed after $looks lookup(s) — " +
+                "${received.get()} pushed / ${dropped.get()} dropped since start — ${tally()}",
+        )
     }
 
     fun granted(context: Context): Boolean =

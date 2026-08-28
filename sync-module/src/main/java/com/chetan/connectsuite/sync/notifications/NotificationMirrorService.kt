@@ -20,6 +20,7 @@ import com.chetan.connectsuite.sync.v2.AppLabels
 import com.chetan.connectsuite.core.protocol.PacketType
 import com.chetan.connectsuite.core.transport.ConnectionManager
 import com.chetan.connectsuite.sync.v2.NotificationFeature
+import com.chetan.connectsuite.sync.v2.RemoteFeature
 import com.chetan.connectsuite.sync.v2.NotificationRelay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -72,6 +73,12 @@ class NotificationMirrorService : NotificationListenerService() {
         // waiting for a reconnect — the same live behaviour `input` has.
         NotificationRelay.attach(this)
         NotificationFeature.refreshCapabilities()
+        // Defect 31. The media remote's push path is gated on this same grant, and it used to be
+        // wired only inside RemoteFeature.install() — which runs before this callback on any run
+        // that starts without notification access, and was never retried. The result was a lit
+        // `remote` chip over a feature that could only ever report state the Mac itself caused.
+        // The wiring and the capability that announces it now turn on from the same two lines.
+        RemoteFeature.onListenerBound(this)
         // A paired device can ask us to dismiss a notification it is showing in its mirror feed.
         commandJob = scope.launch {
             connections.packets.collect { routed ->
@@ -93,6 +100,9 @@ class NotificationMirrorService : NotificationListenerService() {
         // feature that has stopped working.
         NotificationRelay.detach()
         NotificationFeature.refreshCapabilities()
+        // The platform has already dropped our media-session registration with this service. Say
+        // so, or the re-attach on the next bind will see a stale listener and decline to run.
+        RemoteFeature.onListenerUnbound()
         super.onListenerDisconnected()
     }
 

@@ -55,6 +55,11 @@ class SmsMirrorReceiver : BroadcastReceiver() {
             try {
                 // v2 first, and guarded on its own: a failure putting this on the link must not
                 // stop the v1 mirror, and vice versa. Its own permission check lives inside.
+                //
+                // It suspends: the provider row for an inbound message is written by the platform
+                // and may land after this broadcast, so `onReceived` looks for it up to three
+                // times. `goAsync()` above is what buys the time — without it the receiver would
+                // be torn down mid-wait.
                 runCatching { SmsFeature.onReceived(appContext, sender, body, timestamp) }
                     .onFailure { Log.w(TAG, "Could not put SMS on the link", it) }
 

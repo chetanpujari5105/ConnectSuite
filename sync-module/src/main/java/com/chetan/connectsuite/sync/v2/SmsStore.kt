@@ -280,20 +280,50 @@ object SmsStore {
         address: String,
         body: String,
         dateMs: Long,
-    ): JsonObject = buildJsonObject {
+    ): JsonObject? {
         // The broadcast arrives before the provider has necessarily written the row, so the id and
-        // thread are looked up rather than assumed — and are simply absent when the write has not
-        // landed yet. An absent id is honest; a fabricated one would be a token the Mac could hand
-        // back and get NOT_FOUND for.
-        threadIdFor(context, address)?.let { put("threadId", it) }
-        put("address", address)
-        put("body", body)
-        put("dateMs", dateMs)
-        put("inbound", true)
-        put("read", false)
-        put("kind", "sms")
-        put("hasAttachments", false)
-        ContactsFeature.nameFor(context, address)?.let { put("contactName", it) }
+        // thread are looked up rather than assumed. An absent id is honest; a fabricated one would
+        // be a token the Mac could hand back and get NOT_FOUND for — which is why a lookup that
+        // comes back empty produces *no payload at all* rather than a partial one. See the
+        // retry in SmsFeature.onReceived, which is what makes that outcome rare.
+        val row = newestRowFor(context, address) ?: return null
+        return SmsPayloads.receivedEnvelope(
+            threadId = row.threadId,
+            id = row.id,
+            address = address,
+            body = body,
+            dateMs = dateMs,
+            contactName = ContactsFeature.nameFor(context, address),
+        )
+    }
+
+    /** The `_id` and `thread_id` of one provider row, read together. */
+    data class ReceivedRow(val id: String, val threadId: String)
+
+    /**
+     * Both ids in **one** query.
+     *
+     * Two queries could straddle the provider write — the thread found, the id not, or the row
+     * replaced between them — and produce a message stamped with an id belonging to a different
+     * row. The pair is only meaningful read together.
+     */
+    fun newestRowFor(context: Context, address: String): ReceivedRow? {
+        var row: ReceivedRow? = null
+        query(
+            context,
+            Telephony.Sms.CONTENT_URI,
+            arrayOf(Telephony.Sms._ID, Telephony.Sms.THREAD_ID),
+            "${Telephony.Sms.ADDRESS} = ?",
+            arrayOf(address),
+            "${Telephony.Sms.DATE} DESC",
+        ) { cursor ->
+            if (cursor.moveToFirst()) {
+                val id = cursor.getString(0)
+                val thread = cursor.getString(1)
+                if (!id.isNullOrBlank() && !thread.isNullOrBlank()) row = ReceivedRow(id, thread)
+            }
+        }
+        return row
     }
 
     private fun smsRow(cursor: Cursor, threadId: String): JsonObject = buildJsonObject {
@@ -439,4 +469,60 @@ object SmsStore {
     /** PDU address types, from the MMS spec. There is no platform constant for either. */
     private const val MMS_ADDR_FROM = 137
     private const val MMS_ADDR_TO = 151
+}
+
+/**
+ * The `sms.received` payload, built with no [Context] and no content provider anywhere near it.
+ *
+ * Its own object rather than a method on [SmsStore] for one concrete reason: `SmsStore` holds
+ * `Telephony.MmsSms.CONTENT_CONVERSATIONS_URI` in a field initializer, so merely *referencing* it
+ * from a JVM unit test throws `ExceptionInInitializerError` off the Android stubs. A shape defined
+ * by `docs/protocol.md` deserves a test that reads the contract, and that test cannot run against
+ * a function it cannot load.
+ *
+ * This is the phone-side version of the rule `CLAUDE.md` states for the Mac — prefer making the
+ * code testable over mocking the platform — and `src/shared/session.ts` came out of `link.ts` the
+ * same way.
+ */
+object SmsPayloads {
+
+    /**
+     * The `sms.received` payload, with no [Context] in sight.
+     *
+     * Split out so the *shape* can be tested off-device. docs/protocol.md specifies this event as
+     * "carrying exactly one `messages[]` entry plus its `threadId`", and defect 34 was this
+     * function building it flat instead — every field at the top level, no array, no id — which
+     * the Mac dropped on the floor for two sessions while the phone logged a successful push.
+     * A shape defined by a contract deserves a test that reads the contract, and that test cannot
+     * run against a function that needs a content provider.
+     */
+    fun receivedEnvelope(
+        threadId: String,
+        id: String,
+        address: String,
+        body: String,
+        dateMs: Long,
+        contactName: String?,
+    ): JsonObject = buildJsonObject {
+        put("threadId", threadId)
+        put(
+            "messages",
+            kotlinx.serialization.json.buildJsonArray {
+                add(
+                    buildJsonObject {
+                        put("id", id)
+                        put("threadId", threadId)
+                        put("address", address)
+                        put("body", body)
+                        put("dateMs", dateMs)
+                        put("inbound", true)
+                        put("read", false)
+                        put("kind", "sms")
+                        put("hasAttachments", false)
+                        contactName?.let { put("contactName", it) }
+                    },
+                )
+            },
+        )
+    }
 }

@@ -42,6 +42,7 @@ export class SmsClient extends EventEmitter {
   private sent = 0;
   private refused = 0;
   private received = 0;
+  private dropped = 0;
 
   constructor(private readonly link: () => LinkClient | null) {
     super();
@@ -49,7 +50,10 @@ export class SmsClient extends EventEmitter {
 
   /** Sends beside refusals, per CLAUDE.md: a refusal count with no denominator says nothing. */
   private tally(): string {
-    return `${this.sent} sent / ${this.refused} refused / ${this.received} received since launch`;
+    return (
+      `${this.sent} sent / ${this.refused} refused / ` +
+      `${this.received} received / ${this.dropped} dropped since launch`
+    );
   }
 
   async listThreads(options: { limit?: number; before?: number } = {}): Promise<
@@ -119,9 +123,29 @@ export class SmsClient extends EventEmitter {
   /** One `sms.received`. Carries exactly one message plus its thread id. */
   onReceived(payload: Record<string, unknown>): void {
     const threadId = typeof payload.threadId === 'string' ? payload.threadId : null;
-    const message = (rows(payload, 'messages')[0] as unknown as SmsMessage) ?? null;
+    const messages = rows(payload, 'messages');
+    const message = (messages[0] as unknown as SmsMessage) ?? null;
     if (!threadId || !message) {
-      log.warn('sms', 'Dropped an sms.received with no thread or no message');
+      this.dropped += 1;
+      // Three separate causes, three separate sentences, and the denominator beside them.
+      //
+      // This used to be one line reading "no thread or no message", which is why defect 34 took
+      // both sides' logs to find: the phone said it pushed, the Mac said it dropped, and neither
+      // sentence said *what shape had arrived*. After the phone fix these mean genuinely
+      // different things — an empty array is a phone bug, a missing array is a phone running an
+      // older build than this Mac, and a missing thread id is the provider race the phone now
+      // retries through.
+      //
+      // The Mac stays strict in all three cases. Drawing a row out of a top-level `address` would
+      // be the leniency defect 29 forbids: the two sides would disagree about the shape forever
+      // while appearing to work.
+      const why =
+        Array.isArray(payload.messages) && messages.length === 0
+          ? 'messages[] arrived empty — the phone built an event with no message in it'
+          : !Array.isArray(payload.messages)
+            ? 'no messages[] at all — the phone is sending a shape docs/protocol.md does not describe'
+            : `no threadId for the message in thread-less event from ${String((message as SmsMessage).address ?? 'an unknown address')}`;
+      log.warn('sms', `Dropped an sms.received: ${why} — ${this.tally()}`);
       return;
     }
     this.received += 1;

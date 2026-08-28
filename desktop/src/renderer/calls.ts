@@ -147,17 +147,15 @@ class CallsView {
     who.className = 'call-who';
     // Name when contacts can supply one, number when it cannot, never blank — the same rule as
     // the SMS thread list, and the reason contacts was brought forward into this phase.
-    who.textContent = this.call.contactName ?? this.call.number ?? 'Unknown number';
+    //
+    // Defect 35: this was `??`, which does not catch an empty string. `"" ?? x` is `""`, so a
+    // phone that reported `number: ""` walked straight past the fallback chain written to
+    // prevent exactly this, and the card drew a blank. Emptiness, not nullishness.
+    who.textContent = callWho(this.call);
 
     const state = document.createElement('div');
     state.className = 'muted small';
-    const label =
-      this.call.state === 'ringing'
-        ? 'Ringing'
-        : this.call.state === 'dialing'
-          ? 'Dialling'
-          : 'In progress';
-    state.textContent = `${label} · ${this.call.number}`;
+    state.textContent = callStatus(this.call);
 
     const bar = document.createElement('div');
     bar.className = 'row';
@@ -218,7 +216,7 @@ class CallsView {
 
     const who = document.createElement('span');
     who.className = 'call-log-who';
-    who.textContent = entry.contactName ?? entry.number ?? 'Unknown number';
+    who.textContent = firstNonEmpty(entry.contactName, entry.number) ?? 'Unknown number';
 
     const kind = document.createElement('span');
     kind.className = 'muted small';
@@ -308,6 +306,41 @@ class CallsView {
   }
 }
 
+/**
+ * The first of these that is actually a string with something in it.
+ *
+ * Defect 35 in one function. The chain was written as `contactName ?? number ?? 'Unknown number'`
+ * and the phone sent `number: ""`, which `??` passes straight through — `"" ?? x` is `""` — so the
+ * fallback that existed precisely to prevent a blank label produced one. Nullish coalescing tests
+ * for absence; this pane needs a test for emptiness, because an empty string is what a platform
+ * that has no answer actually sends.
+ */
+function firstNonEmpty(...values: Array<string | undefined | null>): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) return value;
+  }
+  return undefined;
+}
+
+/** The live card's headline. Never blank — that is the whole rule. */
+function callWho(call: { contactName?: string; number?: string }): string {
+  return firstNonEmpty(call.contactName, call.number) ?? 'Unknown number';
+}
+
+/**
+ * The live card's second line: what the call is doing, and who with.
+ *
+ * The separator belongs to the number, not to the label. With an empty number this read
+ * "Ringing · " — a bullet over nothing — which is the same blank as [callWho] and is quoted in
+ * defect 35's own recorded evidence. A call with no number says "Ringing" and stops.
+ */
+function callStatus(call: { state: string; number?: string }): string {
+  const label =
+    call.state === 'ringing' ? 'Ringing' : call.state === 'dialing' ? 'Dialling' : 'In progress';
+  const number = firstNonEmpty(call.number);
+  return number ? `${label} · ${number}` : label;
+}
+
 function timeOfCall(whenMs: number): string {
   if (!whenMs) return '';
   const at = new Date(whenMs);
@@ -328,3 +361,9 @@ function duration(ms: number): string {
   const seconds = total % 60;
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
+
+// The renderer is loaded as a plain <script> and cannot use `export`, so the pure label rules are
+// hung on the global for src/renderer/calls.test.ts to reach. In the browser this is one property
+// nobody reads; in the test it is what makes defect 35 assertable against the code that draws it,
+// rather than against a second copy of the rule that could drift from it.
+(globalThis as Record<string, unknown>).__callLabels = { firstNonEmpty, callWho, callStatus };
