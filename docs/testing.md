@@ -3149,3 +3149,67 @@ adb shell cmd notification allow_listener \
 Verified with `adb shell settings get secure enabled_notification_listeners`. All eight runtime
 permissions survived `adb install -r` untouched, so the whole grant surface for Phase 4 is now
 reachable without opening Settings once.
+
+### Defect 30 — the Mac cannot start a new SMS conversation — **open, deferred**
+
+**Found 2026-08-28 while planning step 58.** Severity: Medium. Not a bug in what is built; a hole
+in what is built.
+
+`SmsClient.send(threadId, body)` resolves its recipients from the thread rows it already holds and
+refuses any thread it has not listed. The phone independently refuses a send carrying a `threadId`
+with no `addresses` (`SmsFeature.kt:173-177`). Both refusals are correct and are the send rule
+doing its job — see the send-rule section in `docs/protocol.md`, clause 2.
+
+The consequence is that **there is no path to a conversation that does not already exist.** The
+pane has no compose-new affordance, `send` has no signature that accepts a bare address, and
+`docs/protocol.md` clause 5 explicitly allows the shape that would support it — *"`threadId` may be
+omitted only for a genuinely new conversation, where `addresses` is the only source of truth and
+there is nothing to disagree with"* — which this build does not implement.
+
+So the protocol already anticipated this and the Mac has not caught up. That is the honest framing:
+not a defect in the send rule, an unimplemented branch of it.
+
+**Deferred, not fixed.** Building a compose-new flow mid-hardware-run is scope creep, and the
+guard it would have to relax is the one guard in Phase 4 protecting an outcome that cannot be
+undone. It deserves its own sitting, with its own tests, and with the `threadId`-omitted shape
+implemented deliberately rather than by loosening the existing path.
+
+Whoever picks it up: the danger is implementing it by making `send` tolerate a missing thread,
+which would reopen the exact hole clause 2 closes. The correct shape is a *separate* entry point
+that takes addresses and no `threadId`, so the two cases cannot be confused by a caller.
+
+## Step 46 — **PASS**, closed 2026-08-28
+
+Open for two sessions as "the reply crossed the link, but nobody confirmed it arrived in the app".
+Closed by reading the phone rather than the Mac, which is the only side that can settle it.
+
+**What was found.** WhatsApp's self-chat, via `uiautomator dump` — no coordinate guessing, the
+message located by its own node:
+
+```
+text   : 'Step 46 reply sent from the Mac'
+bounds : [449,2236][1362,2344]
+sibling: text='11:07 AM'  desc='Read'
+```
+
+**The control, for a presence claim.** Per the rule, a presence is judged on what matched, not on
+a count: the matched node is quoted above in full. The surrounding surface was checked too — the
+dump held 4 `message_text` nodes and 109 nodes overall, so the query was reading a live chat rather
+than a single lucky hit.
+
+**The discrimination that actually closes it.** "The text is in the chat" does not prove the *Mac*
+put it there; anybody could have typed that sentence on the phone. Two independent facts do:
+
+| Fact | Source |
+|---|---|
+| `notif.reply delivered (reply to com.whatsapp) — 1 delivered / 0 refused` at **11:07:36** | phone `link.log` |
+| the message carries **11:07 AM** | WhatsApp UI dump |
+| the row is **outgoing** — right-aligned at x=449 and carrying a delivery `status` of `Read`, where the incoming row in the same chat sits at x=63 with no status | WhatsApp UI dump |
+
+Same minute, same package, and the row has the shape only a sent message has. An inline reply
+delivered through the notification's own `RemoteInput` and `PendingIntent` appears exactly this
+way — as a message from the account, indistinguishable from one typed on the phone, which is the
+point of using the app's own reply action rather than simulating one.
+
+**Step 46 therefore passes on the clause that matters**: *"Reply appears in the app exactly as one
+typed on the phone would."*
