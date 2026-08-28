@@ -4188,7 +4188,7 @@ You will reject it from the Mac while it is still ringing.
 |---|---|---|
 | 1 | let it ring, do not touch the phone | Mac card appears |
 | 2 | **read the card before pressing anything** | headline = their **name** if they are in contacts, else their **number**; second line = `Ringing · +…` — this is 35c |
-| 3 | press **Reject** on the Mac **by its accessible name** (`call-reject`), once | phone: `call.reject delivered (rejected — the episode is flagged, so call.ended will say rejected)` |
+| 3 | press **Reject** on the Mac **by its accessible name** (`call-reject`), once | phone: `call.reject delivered (rejected — the episode is flagged; call.ended decides the disposition when the call ends, and answered outranks the flag)` — **this line is not the disposition**, see defect 40 |
 | 4 | read the ended event | Mac: `call.ended cN **rejected** after Ns` — this is 36 |
 | 5 | read the platform's own row | `type=5` (`REJECTED_TYPE`) for the same number and minute |
 
@@ -4449,7 +4449,7 @@ arrive by the same mechanism as the received one.
 **Not fixed in this sitting** — the sitting's scope is defect 37, and this needs a protocol
 decision about what `sms.send`'s ack carries, which belongs with `docs/protocol.md` open.
 
-### Defect 40 — `call.reject delivered` states a disposition the disposition logic then overrides — **open, found during step 69 on 2026-08-28**
+### Defect 40 — `call.reject delivered` states a disposition the disposition logic then overrides — **fixed and verified 2026-08-29**
 
 Severity: **Low**, and recorded only because of what it would do to whoever runs step 70.
 
@@ -4618,3 +4618,184 @@ nothing here makes the server come up. A process started by the platform rebindi
 still has no listening sockets until something calls `LinkService.start`, and the Mac still sees
 `ECONNREFUSED` until then. That is Phase 6's subject (background reliability, surviving the OEM's
 process management) and it is named here so it is not mistaken for having been handled.
+
+---
+
+## Defect 40 fixed, and what it did and did not put at risk — 2026-08-29
+
+Fixed before step 70 was scheduled, on the reasoning below rather than because it blocked the step.
+
+### Could step 70's disposition read be trusted with 40 open? Yes — and it was still worth fixing
+
+**The measurement was never corrupted.** Step 70's clause reads `call.ended cN <disposition>`, which
+is computed by `CallWatcher.dispositionOf(answered, rejected, wasRinging)` from the episode's own
+state. The defective sentence was built in `CallFeature.reject`, is passed to `deliver()` as a log
+string, and reaches nothing else — the ack that goes on the wire carries `callId` and nothing more
+(`CallFeature.deliver`, `session.ack { put("callId", …) }`). It cannot move a disposition.
+
+**And step 70's own case is the one where the two agree anyway.** An inbound call rejected while
+ringing never sets `answered`, so `dispositionOf` returns `rejected` and the old prediction would
+have been right. The prediction is only wrong when `answered` outranks the flag, which is step
+**69**'s case — a call that connected first.
+
+**So why fix it.** Because the line sat inside step 70's own instruction table, told the reader an
+outcome, and would answer a `grep rejected` identically whether the fix worked or not. That is the
+count-without-matched-lines failure CLAUDE.md names, aimed at the one defect step 70 exists to
+verify. A reader who checked the cheap line instead of the real one would get the right answer for
+the wrong reason on a good build and the *same* answer on a broken one.
+
+The honest summary: **not a blocker, and not worth carrying into someone else's time when it costs
+one string and a rebuild that had to happen before the ring regardless.**
+
+### The change
+
+`CallFeature`'s three delivery sentences moved into `CallAckWording` — a file with no Android
+imports, so a JVM test can reach them. Only the reject line changed:
+
+```
+before  rejected — the episode is flagged, so call.ended will say rejected
+after   rejected — the episode is flagged; call.ended decides the disposition when the call ends,
+        and answered outranks the flag
+```
+
+It now reports the fact it owns (the flag is set) and names the rule that settles the rest, which
+is also the sentence a step-70 reader needs in order not to mistake this line for the disposition.
+
+### Tests, shown to fail against the defect
+
+`CallAckWordingTest`, three tests. The old string was put back and two went red:
+
+```
+FAILED  the reject ack does not promise an outcome dispositionOf can overrule
+        the reject ack must not forecast the disposition: found "will say" in "…will say rejected"
+FAILED  the reject ack still says what it did, and names the precedence
+        must name the precedence: rejected — the episode is flagged, so call.ended will say rejected
+```
+
+The first test asserts both halves in one place on purpose — that
+`dispositionOf(answered = true, rejected = true, …)` is `"answered"`, **and** that the wording does
+not contradict it. The sentence and the rule lived in different files with no relationship between
+them, which is how the wrong sentence got written; the test is that relationship. The third test is
+a guard over the dial and answer wordings, labelled as one.
+
+Full phone suite after the fix: **167 tests, 0 failures, 0 errors.**
+
+### Verified on hardware
+
+Second install of the sitting, then one self-call dialled and hung up from the Mac at 4 s:
+
+```
+00:12:44.825 I [calls] call.reject delivered (rejected — the episode is flagged; call.ended decides
+                       the disposition when the call ends, and answered outranks the flag)
+00:12:45.063 I [calls] Call c1 ended answered after 4113ms
+```
+
+The two lines no longer contradict each other, and the first now explains the second instead of
+denying it.
+
+**Defect 37's fix was re-verified on this build too**, since it is a different APK from the one
+that verified it. With the link **down** after the install — `A605/A606/A607` bound: **0** — the
+listener rebound and the set came straight back to all seven:
+
+```
+00:11:26.707 I [notif] Notification listener attached to the link
+00:11:26.709 I [caps]  Capabilities now: calls,contacts,mirror,notifications,remote,sms
+00:11:26.755 I [caps]  Capabilities now: calls,contacts,input,mirror,notifications,remote,sms
+```
+
+### Does defect 39 affect step 70? **No.**
+
+Recorded because the question was asked and a "no" with no reasoning is worth as little here as an
+unqualified count. Defect 39 is confined to `SmsView`'s open-thread message list after a send from
+the Mac's composer. Step 70 sends no SMS, opens no thread, and reads no SMS pane: its surfaces are
+the calls card (`#call-live`, `.call-who`), the phone's `[calls]` log lines, and
+`content://call_log/calls`. There is no shared state between them — different pane, different
+feature, different provider. 39 stays open and deferred to the Phase 4 SMS sitting with 30 and 32,
+as agreed.
+
+---
+
+## Step 70 — preconditions re-verified against the post-37, post-40 build — 2026-08-29
+
+**Re-taken, not carried forward.** Everything below was read after the second install of the sitting
+(`lastUpdateTime=2026-08-29 00:11:25`), because the readings from before the rebuild describe a
+different APK. This matters more than usual here: a reinstall tears down both bound components, and
+the whole of defect 37 was about what the capability set does afterwards.
+
+| # | Precondition | Reading | Control |
+|---|---|---|---|
+| 1 | link connected, `calls` chip lit | `Listening on 42501/42502/42503, 1 paired device(s)` 00:11:47; `Handshake complete with Chetans-MacBook-Pro` 00:12:05; chip `calls: available` | the chip row was enumerated, not grepped — 12 chips read, 7 `cap on` and 5 `unavailable` with specific reasons |
+| 2 | `READ_CALL_LOG` granted | `granted=true` for user 0 | the other seven Phase 4 permissions read `granted=true` in the same dump, so the query is not returning true for everything or nothing |
+| 3 | `Watching PHONE_STATE for the inbound number` | present, 00:11:26.669 | the failure text `Could not watch PHONE_STATE; inbound calls will have no number` is absent, and it is the same grep |
+| 4 | call-log tail noted, so the new row is identifiable | `type=2, number=+919800000001, date=1787942560788` | this is the self-call from the defect 40 verification; the step-70 row must be a **different** number with `type=5` |
+| 5 | both logs open, calls pane visible | `calls-card` not hidden; note reads `50 recent calls, 47 showing a contact name, 5 missed` | — |
+| 6 | no live call, no armed control | `#call-live` hidden, `#call-answer` and `#call-reject` **absent**, `#call-dial` reads `Call` | **173 buttons enumerated in the same DOM** — the absence is meaningful because the query found everything else |
+
+Precondition 6's control is the one worth keeping. "The reject button is absent" was reported once
+in this project by a query that could not see any buttons at all; 173 is what makes this reading
+different from that one.
+
+**Also confirmed on this build, since it is a different APK from the one that verified it:** defect
+37's fix holds. With the link **down** after the install — `A605/A606/A607` bound: 0 — the listener
+rebound and the set came back to all seven at `00:11:26.709` / `.755`.
+
+**Defect 40's wording is live on this build**, which matters because step 70's row 3 quotes it:
+
+```
+call.reject delivered (rejected — the episode is flagged; call.ended decides the disposition when
+the call ends, and answered outranks the flag)
+```
+
+### The one line to give the second person
+
+> **"Call me once, let it ring, and don't hang up until I say."**
+
+That is the whole of it. They do not answer anything, wait for a tone, listen for anything, or call
+twice. The call must come from a real handset — 35c turns on the platform filling
+`EXTRA_INCOMING_NUMBER`, which does not happen for a simulated call.
+
+### The exact sequence, so they ring once and only once
+
+Before saying the line, have preconditions 1-6 above green and both logs open. Then:
+
+| # | Who | Action | What is read, and why it cannot wait |
+|---|---|---|---|
+| 0 | you | say the line | — |
+| 1 | them | ring, and **leave it ringing** | — |
+| 2 | you | **touch nothing**; read the Mac card first | headline = their **name** if in contacts, else their **number** — must not be `Unknown number`; second line = `Ringing · +…` — must not end at `Ringing · `. **This is 35c, and it is only readable while the call is live.** |
+| 3 | you | press **Reject** on the Mac by its accessible name (`call-reject`), **once** | phone logs `call.reject delivered (rejected — the episode is flagged; …)`. **This line is not the disposition** — see defect 40. Do not read it as the answer. |
+| 4 | you | read the ended event | Mac: `call.ended cN rejected after Ns`. **This is 36**, and this line is the answer. |
+| 5 | you | read the platform's own row | `content://call_log/calls` → **`type=5`** (`REJECTED_TYPE`) for their number, this minute, and a row that is not the `type=2` one noted in precondition 4 |
+| 6 | you | tell them they can stop | — |
+
+**Why step 2 comes before step 3 and cannot be swapped.** The live card exists only between the ring
+and the reject. Pressing Reject first destroys the only surface 35c can be read from, and the run
+would have to be repeated — which means asking a second time for something you were told once would
+be enough.
+
+**Do not double-click Reject.** It is not an arming control; one click acts. The arming control is
+the dial button, which is not involved here.
+
+### What each reading proves, and the two ways this can produce a wrong answer
+
+- **35c passes** when step 2's headline is not `Unknown number` and the second line has a number
+  after the ` · `. Both were blank on the run that found the defect and both are quoted in its
+  record.
+- **36 passes** when step 4 says `rejected`. Step 5 is its control and is not optional: `rejected`
+  on the Mac with **no** `type=5` on the platform would mean the flag is being set on episodes that
+  were not rejected — a different bug wearing the right answer.
+- **The denominator** — the phone's episode line must read `M of N episodes with a number`, with M
+  incremented by this call. It currently reads `1 of 1` from the defect 40 verification, so after
+  the ring it must read `2 of 2`.
+
+### The negative control, and how to satisfy it without a second call
+
+`rejected` only means something if `missed` still exists. A build that reported every ended call as
+`rejected` would pass everything above and be worse than the defect.
+
+**This does not require asking for a second ring.** The phone-side unit test
+`every other disposition still answers, and answered outranks rejected` covers all four branches of
+`CallWatcher.dispositionOf`, and step 69 exercised the `answered` branch against a live call on
+2026-08-28 — a Mac-initiated hang-up of a connected call reported `answered`, not `rejected`, with
+two `type=2` rows as its control. The negative control is therefore **satisfied off-device**, and
+the second person is asked for exactly one ring.

@@ -12,7 +12,11 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
 - `mirror-module/` — screen mirroring (v2, MediaProjection). All of it is under `v2/`; the v1 ADB mirror and the `:mirror-server` dex module were deleted on 2026-08-26.
 - `desktop/` — Electron + TypeScript. Main process owns sockets; the renderer only draws.
 - `docs/protocol.md` — the wire protocol. It is the contract. Change it there first, then both sides.
-- `docs/testing.md` — acceptance steps, appended as each phase lands.
+- `docs/testing.md` — acceptance steps and the evidence behind every result, appended as each phase lands.
+- `docs/defects.md` — **the defect register.** Every defect, its status, and for the open ones a fix
+  direction and the wrong fix to avoid. `docs/testing.md` holds the evidence; this is the index.
+  Kept in sync by `scripts/check-defects.sh`, wired to `PreToolUse` on `git commit`.
+- `docs/phase-4-closeout.md` — what Phase 4 proved, what it deferred, and what Phase 5 inherits.
 - `docs/phase-3-input.md` — the current phase brief: input injection via AccessibilityService.
 
 minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK 17-21 (`JAVA_HOME=/Applications/Android Studio.app/Contents/jbr/Contents/Home`), the system JDK 25 will not run AGP 8.13.
@@ -218,6 +222,25 @@ damage on the user's own device or nearly recorded a false result.
   the safe alternatives. It denies only our own package. Prose in `docs/testing.md` still explains
   *why*, because a hook can carry a sentence but not an argument — the two are a pair, and the hook
   is the half that actually holds.
+
+  **That hook has its own fixtures now, and it needed them** (defect 41). Its first matcher looked
+  for `force-stop` and `connectsuite` anywhere in the command, independently — so it denied every
+  command that merely *talked* about the rule, including writing the doc that carries the argument.
+  A hook that forbids writing its own other half has broken the pair it is supposed to be. It now
+  strips heredoc bodies and `-m` message values before matching the real invocation shape, and
+  `scripts/hooks/no-force-stop.test.sh` holds six fixtures: three that must still be denied, three
+  that must pass and were denied before. **A matcher without fixtures is a rule you are guessing
+  about.**
+
+  The second enforcement point is `scripts/check-defects.sh`, wired through
+  `scripts/hooks/defects-in-sync.sh` on `git commit`. It refuses a commit that leaves
+  `docs/defects.md` and `docs/testing.md` disagreeing about which defects exist, or an open defect
+  with no fix direction. It exists because step 67 passed on hardware, went unrecorded for a full
+  sitting, and nothing in the build could tell — while defect 31 sat reading "awaiting step 67"
+  after it had been verified. It fails **open** on its own errors: a checker that can wedge the repo
+  gets deleted by the first person it wedges. It checks *existence*, not status wording, and says so
+  — the statuses are prose, and a checker that forced them into four buckets would either reject
+  honest rows or quietly accept wrong ones.
 
   This does not mean every rule gets a hook; most do not warrant one. It means the question gets
   asked, and "documented" is not recorded as "handled".

@@ -187,7 +187,7 @@ object CallFeature {
                 CallFailure.TelecomRefused("dial", placed.exceptionOrNull()?.message ?: "no reason given"),
             )
         }
-        deliver(session, request, "dialled $number")
+        deliver(session, request, CallAckWording.DIAL_DELIVERED_PREFIX + number)
     }
 
     private fun onAnswer(session: ControlSession, request: Envelope, context: Context) {
@@ -214,7 +214,7 @@ object CallFeature {
                 CallFailure.TelecomRefused("answer", answered.exceptionOrNull()?.message ?: "no reason given"),
             )
         }
-        deliver(session, request, "answered — audio stays on the phone")
+        deliver(session, request, CallAckWording.ANSWER_DELIVERED)
     }
 
     private fun onReject(session: ControlSession, request: Envelope, context: Context) {
@@ -247,7 +247,9 @@ object CallFeature {
                 CallFailure.TelecomRefused("reject", ended.exceptionOrNull()?.message ?: "no reason given"),
             )
         }
-        deliver(session, request, "rejected — the episode is flagged, so call.ended will say rejected")
+        // Defect 40: this sentence must report the flag, not forecast the disposition.
+        // See CallAckWording.
+        deliver(session, request, CallAckWording.REJECT_DELIVERED)
     }
 
     // ---- plumbing -------------------------------------------------------------------------

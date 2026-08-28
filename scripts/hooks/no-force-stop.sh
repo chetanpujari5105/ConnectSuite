@@ -11,12 +11,64 @@
 # 2026-08-28 and broken four sections later by the person who wrote it, inside the same day.
 #
 # Only this project's package is denied. Force-stopping anything else is not our business.
+#
+# ---------------------------------------------------------------------------------------------
+# Defect 41, 2026-08-29: this used to grep the whole command for `force-stop` and `connectsuite`
+# independently, anywhere, in any order. That denied every command that merely *talked* about the
+# rule — a heredoc writing docs/defects.md, `grep -rn force-stop docs/`, a commit message
+# explaining a fix to this file. It was found by being denied while writing the register.
+#
+# CLAUDE.md says of the hook-and-prose pairing: "a hook can carry a sentence but not an argument —
+# the two are a pair". A matcher that forbids writing the argument breaks its own half of that.
+#
+# So the matching is now in two steps, and both matter:
+#
+#   1. Remove the parts of the command that are *content* rather than instruction — heredoc
+#      bodies, which is how files get written here. Text inside them is being saved, not run.
+#   2. Require the real invocation shape in what is left: `am` immediately followed by
+#      `force-stop`, and our package as a following argument on the same command, rather than the
+#      two words appearing somewhere in a few kilobytes of prose.
+#
+# The deny is unchanged for every form that actually reaches the device. See the fixtures in
+# no-force-stop.test.sh, which are the reason this is a rewrite rather than a loosening.
 set -euo pipefail
 
 command=$(jq -r '.tool_input.command // ""')
 
-if printf '%s' "$command" | grep -q 'force-stop' &&
-   printf '%s' "$command" | grep -qi 'connectsuite'; then
+# 1. Drop heredoc bodies. `<<EOF`, `<<'EOF'`, `<<"EOF"` and `<<-EOF` all delimit content that is
+#    being written somewhere, not executed. A force-stop hidden inside one cannot run the phone;
+#    it can only end up in a file, which is exactly what documenting the rule looks like.
+executable=$(printf '%s' "$command" | awk '
+  BEGIN { skipping = 0 }
+  skipping == 1 {
+    line = $0
+    gsub(/^[ \t]+/, "", line)
+    if (line == terminator) { skipping = 0 }
+    next
+  }
+  {
+    if (match($0, /<<-?[ \t]*['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/)) {
+      tag = substr($0, RSTART, RLENGTH)
+      gsub(/^<<-?[ \t]*/, "", tag)
+      gsub(/['"'"'"]/, "", tag)
+      terminator = tag
+      skipping = 1
+    }
+    print
+  }
+')
+
+# 1b. Drop `-m`/`--message` values for the same reason: a commit message describing this rule is
+#     content being written, not an instruction being run. Only the quoted value is removed, so a
+#     real command chained after it with `;` or `&&` still survives to be matched.
+executable=$(printf '%s' "$executable" | sed -E \
+  -e 's/(-m|--message)[ \t]+"[^"]*"/\1 <message>/g' \
+  -e "s/(-m|--message)[ \t]+'[^']*'/\1 <message>/g")
+
+# 2. The real shape: `am force-stop` (allowing `adb shell` and quoting around it) with the package
+#    as an argument that follows, not merely a word that co-occurs.
+if printf '%s' "$executable" |
+   grep -Eq 'am[[:space:]]+force-stop[[:space:]]+[^;&|]*com\.chetan\.connectsuite'; then
   jq -n '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
