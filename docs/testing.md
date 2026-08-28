@@ -3968,6 +3968,62 @@ set correctly and installs the observer for the rest of the process.
 observe a push arriving at. Recorded here rather than as a step 67 failure, because step 67 has not
 yet been given a chance to fail.
 
+
+### Defect 38 — a volume change made on the phone never reaches the Mac — **open, found during step 67 on 2026-08-28**
+
+**Found by the user while setting up step 67**, and correctly separated from 31 before it was
+reported: *"volume is a separate stream and depends on whether the session reports local or remote
+volume."* Severity: Low-Medium. It is the same *shape* as defect 31 and a different mechanism, so
+it gets its own number rather than being folded into 31's re-verification.
+
+`stateOf` puts volume on the wire:
+
+```kotlin
+controller.playbackInfo?.let {
+    put("volume", it.currentVolume)
+    put("volumeMax", it.maxVolume)
+}
+```
+
+and `remote.command volume_set` works — 3 delivered to YouTube at 17:34:42-45, 0 refused. So the
+Mac can *set* volume and is *told* volume. What it is never told is that volume changed underneath
+it, because `controllerCallback` overrides exactly three things:
+
+| Override | Present |
+|---|---|
+| `onPlaybackStateChanged` | yes |
+| `onMetadataChanged` | yes |
+| `onSessionDestroyed` | yes |
+| **`onAudioInfoChanged`** | **no** |
+
+`onAudioInfoChanged` is the callback for a volume change, and nothing listens to it. Playback state
+and metadata push (proven in step 67); volume does not.
+
+**Distinguished from defect 31.** 31 was the session listener never attaching, so *nothing* pushed.
+31's fix is working — the same run proves it — and volume still does not, which is what shows this
+to be a separate missing override rather than the same hole.
+
+**Fix direction:** override `onAudioInfoChanged` in `controllerCallback` and call `pushState`, the
+same one line the other three callbacks use.
+
+**And the caveat the user raised, which is why this is not simply a one-line fix.**
+`MediaController.PlaybackInfo` has two types. For `PLAYBACK_TYPE_REMOTE` — a cast or external
+renderer — the session owns its volume and `onAudioInfoChanged` fires. For `PLAYBACK_TYPE_LOCAL`,
+which is what a phone playing through its own speaker reports, the "volume" is the device's music
+stream, and changing it with the hardware keys **may not fire the session callback at all**. In
+that case the override is necessary and not sufficient, and the local case needs an `AudioManager`
+path or a `ContentObserver` on the stream volume instead.
+
+So whoever picks this up must **check which type this device reports before claiming a fix** —
+`controller.playbackInfo.playbackType` — and must test with the phone's own volume keys rather than
+with `volume_set` from the Mac, because `volume_set` produces a push through `onCommand` and would
+make a still-broken build look fixed. That is defect 31's exact trap: the feature following the
+Mac's own commands perfectly while being deaf to the phone.
+
+**Not fixed in this sitting.** The sitting's scope is 34, 35, 36, 31 and now 37, all of which are
+either regressions or structural. This is a missing feature in a working one, it needs a device
+capability checked before the fix shape is even known, and the note above is the whole brief.
+
 ---
 
 ## Re-verification steps 67-70 — to run on hardware
