@@ -274,11 +274,19 @@ API 29 and is not delivered to an app that is neither the default dialer nor an 
 the grant is necessary and not sufficient. Both grants were present and the receiver was registered
 in-process, and c1 and c3 still arrived blank.
 
-**The wider finding: this mechanism has never been observed working here.** Every inbound number the
+**Diagnosis corrected 2026-08-29:** the extra *is* delivered, just after the state callback — see
+`docs/testing.md`. "Never in time", not "never at all", and the difference opens a repair option.
+
+**The wider finding, unchanged: this mechanism has never been observed working here.** Every inbound number the
 app has displayed correctly is explainable as residue — c2 is proven residue, and last night's c4
 (`ringing from 8800000004 (Contact D)`) followed two episodes involving that same number and was
 recorded at the time as unusable for exactly that reason. Same shape as defect 31: a plausible
 output over dead wiring.
+
+**A decision brief is written and the decision is not taken: `docs/decision-45-inbound-caller-id.md`.**
+It costs the options out, answers whether this is a wall or a configuration (it is a *toll* — the
+number is available to an app holding a call-handling role, so `CLAUDE.md`'s platform-walls section
+must not absorb it as-is), and says which clauses of 35c and 36 survive each choice.
 
 **Fix direction — a decision is needed before code:**
 

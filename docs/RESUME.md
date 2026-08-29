@@ -1,5 +1,22 @@
 # Resume here — step 70, written 2026-08-29 00:50
 
+> ## Superseded in part, 2026-08-29 morning — read this box first
+>
+> **Step 70 ran and 35c FAILED.** The ring came in at 09:52 before the watcher was armed and was
+> decisive; **nobody needs to be asked to ring again for 35c.** It exposed defect **45** — the
+> mechanism 35c depends on has never worked here — and reopened defect **42**, whose inbound half is
+> now fixed and shipped.
+>
+> **Defect 45 is an open product decision, deliberately not taken.** The brief is
+> `docs/decision-45-inbound-caller-id.md`. It needs one reading from the new `PHONE_STATE`
+> instrumentation, which the next real inbound call produces at no cost to anyone.
+>
+> **Step 70 should be re-scoped to defect 36 alone** — 36 never needed the caller's number and is
+> provable on today's build with one ring. The step-70 mechanics below (the watcher, the gate, the
+> one line to give the second person, the order of reads) all still stand for that.
+>
+> **Phase 4 stays open. Phase 5 stays shut.**
+
 One thing is outstanding and it needs a second person for about thirty seconds. Everything else in
 Phase 4 is closed. **Do not open Phase 5** until step 70 has run.
 
