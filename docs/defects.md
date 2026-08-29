@@ -55,9 +55,10 @@ own heading there, and its own row here.
 | **39** | A message sent from the Mac is missing from the thread it was sent into | **deferred** | — | see below |
 | **40** | `call.reject delivered` named a disposition the disposition logic then overrode | **closed** | hardware, 2026-08-29 | `docs/testing.md` |
 | **41** | The force-stop hook denies prose that merely mentions the rule | **closed** | hook fixture tests, 2026-08-29 | see below |
-| **42** | An outgoing call placed on the phone was labelled with the previous call's number and name | **closed** | hardware, 2026-08-29 | see below |
+| **42** | An episode is labelled with the previous call's number — outgoing half fixed, **inbound half reopened** | **open (reopened)** | outgoing verified 2026-08-29; inbound broken, same day | see below |
 | **43** | A call with no number logged as `from ,` on the Mac — the string defect 35 is named for | **closed** | `calls.test.ts`, 2026-08-29 | see below |
 | **44** | A message sent on the phone never reaches the Mac — no observer on outgoing rows | **open** | — | see below |
+| **45** | `EXTRA_INCOMING_NUMBER` never arrives on Android 16, so no inbound call has a number | **open** | — | see below |
 
 ---
 
@@ -162,31 +163,6 @@ on a good build and a broken one.
 disposition when the call ends, and answered outranks the flag)` followed by `Call c1 ended answered
 after 4113ms` — the first line now explains the second instead of denying it.
 
-### 42 — an outgoing call placed on the phone was labelled with the previous call's number → **closed**
-
-`CallWatcher.number` outlived its episode with no rule about who could write it. The platform
-recorded `00:28:55 type=2 → 8800000004`; the app announced `Call c2 dialing from +919800000001
-(Chetan)` — the previous episode's number, and a name the user would have believed.
-
-**Fix:** both writers now go through the pure `CallNumberRules`. The `PHONE_STATE` receiver may not
-fill the field from an **IDLE** broadcast (that was the refill path — the previous call's trailing
-IDLE arriving after `end()` blanked it), and an episode may not begin with a number it did not
-obtain for itself (`numberFromDial` tracks the one legitimate outgoing source, `call.dial`).
-
-**Evidence, designed so it cannot pass by coincidence.** A phone-placed call to a number the
-*previous* episode also used: residue and a correct read would both produce that number, so the
-discriminator is that the fix produces **neither** —
-
-```
-00:42:37 Call c1 dialing from +919800000001 (Chetan) — 1 of 1 episodes with a number since start
-00:42:54 Call c2 dialing number withheld by the platform — 1 of 2 episodes with a number since start
-```
-
-Eight tests in `CallNumberRulesTest`; the defect was reintroduced in both rules and exactly the two
-naming it went red. The most important of the six guards is `an inbound ringing episode keeps the
-number the broadcast gave it` — 35c depends on that path and this fix landed immediately before
-step 70.
-
 ### 43 — a call with no number logged as `from ,` on the Mac → **closed**
 
 Found minutes after 42, by 42. The honest blank walked into an unguarded two-branch ternary:
@@ -253,6 +229,70 @@ eviction/selection behaviour is worth having well before any concurrent-connecti
 paired slot and the TLS identity live under `app.getPath('userData')` and there is no
 `requestSingleInstanceLock`, so they do not collide:
 `cd desktop && npm start -- --user-data-dir=/tmp/connectsuite-s25`.
+
+### 42 — an episode is labelled with the previous call's number · **open (reopened 2026-08-29)**
+
+**Outgoing half: fixed and verified.** `CallNumberRules.numberAtEpisodeStart` makes a `dialing`
+episode refuse a number it did not obtain for itself, proven on hardware — a phone-placed call now
+reports `number withheld by the platform` where the old build reported the previous call's name.
+
+**Inbound half: reopened the same day, by a real call.** The fix deliberately let a `ringing`
+episode keep whatever the field held, on the stated premise that *"the PHONE_STATE broadcast is the
+source, and it fires alongside this transition"*. **That premise is false on this device** — see
+defect 45 — so for inbound calls the field holds residue:
+
+| App episode | Displayed | Platform row |
+|---|---|---|
+| `c1` 08:29 | *(blank)* | `MISSED +919900000002` |
+| `c2` 09:40 | **`+919900000002 (Contact B)`** | `INCOMING` **`+918200000005`** |
+
+c2 showed the user the previous caller's name and number. Timestamps and the 344 s duration confirm
+the pairing.
+
+**Fix direction:** no exception for the inbound path. An episode begins with a number only when the
+value was written *for that episode* — the provenance flag `numberFromDial` already does this for
+outgoing; the broadcast needs one too — and blank otherwise. On this device that makes every inbound
+card read `Unknown number`, which is correct and far better than a stranger's name.
+
+**Do this before defect 45's mechanism work.** A blank is recoverable and a confidently wrong name
+is not, and this fix needs no design decision while 45's does.
+
+**Note the guard test still passes and is still right.** `an inbound ringing episode keeps the
+number the broadcast gave it` encodes the assumption; the assumption is what broke, not the test.
+It should be rewritten alongside the fix, not deleted as though it had been wrong.
+
+### 45 — `EXTRA_INCOMING_NUMBER` never arrives on Android 16, so no inbound call has a number · **open**
+
+Severity: **High.** It invalidates a claim written in the code and the premise of step 70's 35c
+clause at the same time.
+
+`CallWatcher.registerPhoneState` asserts the extra *"is populated whenever the pane is lit"* given
+`READ_CALL_LOG`. On this device — **Android 16, SDK 36** — it is not. The extra was deprecated at
+API 29 and is not delivered to an app that is neither the default dialer nor an `InCallService`;
+the grant is necessary and not sufficient. Both grants were present and the receiver was registered
+in-process, and c1 and c3 still arrived blank.
+
+**The wider finding: this mechanism has never been observed working here.** Every inbound number the
+app has displayed correctly is explainable as residue — c2 is proven residue, and last night's c4
+(`ringing from 8800000004 (Contact D)`) followed two episodes involving that same number and was
+recorded at the time as unusable for exactly that reason. Same shape as defect 31: a plausible
+output over dead wiring.
+
+**Fix direction — a decision is needed before code:**
+
+1. **`CallScreeningService`** — gives `Call.Details.getHandle()` for incoming calls, is public API,
+   and does not require being the default dialer. Costs the call-screening role: another onboarding
+   grant that can be revoked. Most likely answer.
+2. **`InCallService`** — requires becoming the default phone app. Disproportionate for showing a
+   caller's name.
+3. **Accept it as a platform wall and say so**, the way call audio is documented in
+   `docs/permissions.md`. Locked decision #6 requires a specific reason, not a blank — so this is
+   the honest fallback if option 1 is rejected, not "do nothing".
+
+**Wrong fix to avoid: reading the call log at ring time.** The row for a still-ringing call has not
+been written, so the read returns the previous call's row — reproducing defect 42 by a second route
+while looking like a fix. That is `dispositionOf`'s rejected shape, defect 36's shipped wrong fix
+and defect 39's open temptation, for the fourth time in this codebase.
 
 ### 44 — a message sent on the phone never reaches the Mac · **open**
 

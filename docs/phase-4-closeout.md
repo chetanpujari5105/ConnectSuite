@@ -1,8 +1,9 @@
 # Phase 4 close-out — notifications, calls, SMS/MMS, contacts, media remote
 
-Status as of **2026-08-29**. Phase 4 is **not closed.** Step 70 was attempted and **did not run**;
-35c and 36 remain unproven, and the attempt turned up **defect 42**, which has to be fixed before a
-re-run can mean anything. See the last section.
+Status as of **2026-08-29 morning**. Phase 4 is **not closed, and the reason changed**: step 70 ran
+on a real inbound ring and **35c FAILED**. 36 is still untested. The failure exposed **defect 45** —
+the mechanism 35c depends on has never worked on this device — and **reopened defect 42** on the
+inbound path. Phase 4 cannot close on a re-run alone; it needs code. See the last section.
 
 The evidence behind every claim here is in `docs/testing.md`, in dated sections. The defect index is
 `docs/defects.md`. This file is the summary a person reads before deciding whether Phase 5 can open;
@@ -41,12 +42,14 @@ first test suite the same day, after six of the phase's defects turned out to be
 | **40** | hardware | the reject ack now explains the `answered` that follows instead of denying it |
 | 41 | hook fixtures | the force-stop hook no longer denies prose that documents it |
 
-**Fixed in code, still unproven — and now blocked behind defect 42:**
+**Failed or unproven, and no longer a matter of arranging a phone call:**
 
-| # | What step 70 must show | State after the 2026-08-29 attempt |
-|---|---|---|
-| **35c** | the inbound card's headline is the caller's name or number, and the second line is `Ringing · +…` | the phone logged `Call c4 ringing from 8800000004 (Contact D)`, which is the right answer — but the two episodes before it involved the same number and defect 42 shows a number can carry over, so the run **cannot tell a correct read from a stale one** |
-| **36** | `call.ended cN rejected`, with `type=5` in the call log as the control | **untested.** No reject was sent; the call was answered on the phone and ran 33 s |
+| # | State after 2026-08-29 09:52 |
+|---|---|
+| **35c** | **FAILED.** A real ring from `+918800000004` produced `ringing number withheld by the platform`; the card would have read `Unknown number`. Fails the strict clause and the original disjunction alike. |
+| **36** | **Still untested.** No Mac-initiated reject happened. The `missed` / `type=5` pair observed is the *phone-rejected* case, which is documented and correct, not defect 36. |
+| **45** | **New, High.** `EXTRA_INCOMING_NUMBER` is not delivered on Android 16 to an app that is not the default dialer, so no inbound call carries a number. The code asserts the opposite. |
+| **42** | **Reopened.** Its inbound half rested on 45's false premise; `c2` displayed the previous caller's name to the user. |
 
 **Closed since:** **42** (an outgoing call labelled with the previous call's number — the blocker)
 and **43** (`from ,` in the Mac's log, found behind 42). Step 70 is unblocked and re-armed against
@@ -113,10 +116,20 @@ The attempt is written up in full in `docs/testing.md`. The short version:
 3. **Defect 42 was found**, and it is the reason a re-run needs sequencing rather than just another
    ring.
 
-**Done since, in that order:** 42 fixed and verified on hardware (and 43 found behind it), phone
-rebuilt and installed, Mac rebuilt and relaunched, all eight preconditions re-read against that
-build. Step 70 is armed and waiting on one ring, driven by
-`node scripts/step70-watch.mjs 8800000004`.
+**Superseded 2026-08-29 09:52.** The ring happened, 35c failed, and the blocker is no longer
+scheduling — it is code. **Do not ask anyone for another ring**: the experiment has run and produced
+a clean negative, and repeating it under the same conditions produces the same blank.
+
+Order now:
+
+1. **Defect 42's inbound half** — an episode may not begin with a number it did not obtain for
+   itself, with no exception for `ringing`. Needs no design decision; makes every inbound card read
+   `Unknown number`, which is correct and far better than a stranger's name.
+2. **Defect 45** — decide between `CallScreeningService`, `InCallService`, or documenting it as a
+   platform wall with a specific reason per locked decision #6. This is a design decision and should
+   be taken deliberately, not while holding a phone.
+3. **Then** step 70, which will need one ring to prove 35c and 36 together, on a build where the
+   inbound number can actually arrive.
 
 **35c's clause is now stricter than as first written.** The caller is in the phone's contacts as
 `Contact D`, so the original "their name, else their number" disjunction collapses: the headline

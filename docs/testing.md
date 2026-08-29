@@ -5145,3 +5145,131 @@ broadcast for an outgoing message. The likely mechanism is a `ContentObserver` o
 `content://sms/sent` (and the MMS equivalent), which is a *different* trigger from the one
 `sms.received` uses and is the part of this that is genuinely new work rather than a second caller
 of an existing path.
+
+---
+
+## Step 70 — **35c FAILS**, 36 still untested; defect 45 found, defect 42 reopened — 2026-08-29 09:52
+
+The ring happened before the watcher was armed, during precondition checks, and it is decisive
+anyway. **Nobody needs to be asked for another one** — the experiment this needed has already run,
+and it produced a clean negative.
+
+### The three inbound episodes of this process, against the platform's own log
+
+The app's account is the thing under test, so `content://call_log/calls` is the arbiter.
+
+| App episode | The app said | Platform row | Verdict |
+|---|---|---|---|
+| `c1` 08:29:44 | `ringing number withheld by the platform` | `08:29:43 MISSED +919900000002` | **blank** — the number existed |
+| `c2` 09:40:24 | `ringing from +919900000002 (Contact B)` | `09:40:23 INCOMING` **`+918200000005`** dur=344 s | **wrong number — and it is exactly c1's** |
+| `c3` 09:52:11 | `ringing number withheld by the platform` | `09:52:11 REJECTED` **`+918800000004`** | **blank** — and this is the step 70 ring |
+
+c2's identification is not a guess: the timestamps match to a second and its `answered after 350620ms`
+matches the platform's 344 s duration plus ring time. The number it displayed is the number of the
+episode before it.
+
+### 35c — **FAIL**
+
+`c3` is the step 70 call: an inbound ring from Contact D's handset, `+918800000004`, with
+`READ_CALL_LOG` and `READ_PHONE_STATE` both granted and the receiver registered **in this process**
+(`01:39:49.122 Watching PHONE_STATE for the inbound number`, with `Could not watch PHONE_STATE` = 0
+in the same window).
+
+```
+phone 09:52:11.705 I [calls] Call c3 ringing number withheld by the platform — 1 of 3 episodes with a number
+Mac   09:52:11.407 I [calls] call.incoming c3 (ringing) with no number from the platform
+```
+
+The Mac card's headline would have read **`Unknown number`**. That fails the strict clause
+(`Contact D`) and it fails the original disjunction too — it is neither a name nor a number.
+
+Two things about that Mac line are worth separating from the failure. It is defect 43's wording
+doing its job: the honest sentence rather than `from ,`. And it is **not** a Mac defect — the phone
+genuinely had nothing to send.
+
+### 36 — still untested
+
+No `call.reject` was sent for `c3`; the Mac's counter reads `0 acted on`. The phone reported
+`ended missed after 11235ms` while the platform recorded `type=5 REJECTED`, and **that combination
+is correct here, not defect 36**: the call was rejected on the handset, and `dispositionOf`'s own
+comment says the platform does not tell a third-party app whether a ring that went straight to idle
+was declined or ignored, so `missed` is the honest answer for both. Defect 36 is about a
+**Mac-initiated** reject, which did not happen. It remains fixed-but-unproven.
+
+Note the asymmetry the step's control was written for: *`rejected` on the Mac with no `type=5`*
+would be the alarming direction. `type=5` with `missed` is the documented, expected one.
+
+### Defect 45 — `EXTRA_INCOMING_NUMBER` never arrives on this device, and 35c's mechanism rests on it — **open**
+
+Severity: **High**, because it invalidates a claim in the code and a step's premise at once.
+
+`CallWatcher.registerPhoneState`'s comment asserts:
+
+> *"`EXTRA_INCOMING_NUMBER` is filled only for a receiver holding `READ_CALL_LOG`, which the `calls`
+> capability already requires all of, so it is populated whenever the pane is lit."*
+
+**That assertion is false on this phone.** The device is **Android 16, SDK 36**. The extra was
+deprecated at API 29 and is not delivered to an app that is not the default dialer or an
+`InCallService`; holding `READ_CALL_LOG` is necessary and not sufficient. Both grants are present
+and the receiver is registered, and the extra still did not arrive for c1 or c3.
+
+**And the finding that makes this worse than "one step failed": there is no confirmed instance of
+this mechanism ever having worked here.** Every inbound number the app has ever displayed correctly
+is explainable as residue from a previous episode:
+
+- `c2` today is **proven** residue — the number shown belonged to the previous call.
+- Last night's `c4` at 00:29:31 read `ringing from 8800000004 (Contact D)` and was recorded at the
+  time as unusable for exactly this reason: *"the two episodes before it involved the same number
+  … a correct read and a stale carry produce the identical string."* It is now clear which it was.
+
+So the honest position is that the inbound-number path has **never been observed working**, and was
+believed to work because residue kept producing plausible answers. That is the same shape as defect
+31 (a lit chip over dead wiring) and step 64 (a feature passing on its own commands while its push
+half was dead).
+
+**Fix direction — and the shape to avoid is the one already rejected three times.**
+
+The tempting fix is to read the call log at ring time. **Do not**: the row for a call that is still
+ringing has not been written — `c3`'s row exists now only because the call ended — so the read
+returns the previous call's row and reproduces defect 42 by a second route. That is
+`dispositionOf`'s rejected shape, defect 36's shipped wrong fix, and defect 39's open temptation,
+for the fourth time.
+
+The real options, none of them small, and this needs a decision before code:
+
+1. **`CallScreeningService`** — receives `Call.Details.getHandle()` for incoming calls, is a
+   documented public API, and does not require being the default dialer. It does require the user to
+   grant the *call screening* role, which is another onboarding step and another thing that can be
+   revoked. This is the most likely answer.
+2. **`InCallService`** — full call control, requires becoming the default phone app. Far too much
+   for showing a caller's name, and it would make ConnectSuite responsible for the entire dialer UI.
+3. **Accept the platform wall and say so.** Report inbound calls with no number and a specific
+   reason, the way `docs/permissions.md` documents the call-audio wall. This is the honest fallback
+   and should be what ships if option 1 is rejected — locked decision #6 requires a reason string,
+   not a blank.
+
+**What must not happen is 35c being quietly reclassified as passed on the strength of a residue
+reading.** It has failed, the mechanism behind it has never been seen to work, and the record says
+so.
+
+### Defect 42 — **reopened**: the fix is incomplete on the inbound path
+
+42's fix made a `dialing` episode refuse a number it did not obtain for itself, and deliberately let
+a `ringing` episode keep whatever the field held, on this reasoning in `CallNumberRules`:
+
+> *"Inbound: the PHONE_STATE broadcast is the source, and it fires alongside this transition."*
+
+**That premise is false here** — see defect 45 — so for inbound calls the field's contents are
+residue, and `c2` displayed the previous caller's name and number to the user. The guard test
+`an inbound ringing episode keeps the number the broadcast gave it` still passes and is still
+correct as written; it encodes the assumption, and the assumption is what broke.
+
+**Fix direction:** an episode must not begin with a number it did not obtain *for itself*, with no
+exception for the inbound path. `numberAtEpisodeStart` should return `carried` only when the value
+was written for this episode — the same provenance flag `numberFromDial` provides for outgoing, one
+for the broadcast — and otherwise blank. On this device that makes every inbound card read
+`Unknown number`, which is **correct and much better than a stranger's name**, and it is what makes
+defect 45's fallback honest rather than silently wrong.
+
+Do this **before** any work on 45's mechanism: a blank is recoverable, a confidently wrong name is
+not, and 45's real fix needs a design decision while this one does not.
