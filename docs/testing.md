@@ -5273,3 +5273,98 @@ defect 45's fallback honest rather than silently wrong.
 
 Do this **before** any work on 45's mechanism: a blank is recoverable, a confidently wrong name is
 not, and 45's real fix needs a design decision while this one does not.
+
+---
+
+## Defect 42's inbound half — fixed 2026-08-29, and a correction to yesterday's diagnosis
+
+### The correction first, because it changes what defect 45 is
+
+Yesterday's record said `EXTRA_INCOMING_NUMBER` "never arrives on this device". **That is not what
+the evidence shows, and the more precise statement matters.**
+
+Only three lines in `CallWatcher` can write `number`: `expectOutgoing` (needs a `call.dial`), the
+`PHONE_STATE` receiver, and the two clearing assignments. Between `c1` at 08:29 and `c2` at 09:40
+the link was **down** — the Mac did not connect until 09:51 — so no `call.dial` happened. The only
+writer left is the broadcast. Therefore:
+
+> **The extra is delivered. It arrives *after* the state callback**, so `begin()` has already
+> published a blank card — and on `c1`, a call that lasted **197 ms**, it arrived after `end()` had
+> blanked the field, filled it, and sat there for 71 minutes until `c2` read it as its own.
+
+Both stories produce the identical symptom, which is why the logs alone could not separate them:
+**every non-empty inbound number this app has ever displayed was residue.** That statement is
+unchanged and is the one to carry forward. What changes is the cause — "never in time" rather than
+"never at all" — and it opens a repair option that "never at all" would have ruled out. See the
+defect 45 brief.
+
+**This was never a working feature that regressed.** There is no earlier state to get back to. The
+inbound-number path has not once been observed delivering a number to the episode it belongs to;
+the readings that looked correct were the previous caller's number arriving late enough to be
+mistaken for the next one's. Anyone reading the earlier `ringing from …` lines as evidence of a
+working state is reading residue.
+
+### The fix
+
+Two rules in `CallNumberRules`, and the second got simpler because the first got stronger.
+
+1. **`numberAfterBroadcast` gains `episodeLive`.** The receiver may fill the field only while an
+   episode is in progress. A broadcast arriving between episodes belongs to a call that has ended,
+   and is dropped. This makes the residue **structurally impossible** rather than unlikely.
+2. **`numberAtEpisodeStart` loses its `phase` parameter entirely.** With rule 1 keeping the field
+   empty between episodes, there is exactly one way an episode can hold a number at `begin()`: a
+   `call.dial` this Mac placed. The inbound special case — *"the broadcast is the source and it
+   fires alongside this transition"* — was the bug, so it is gone rather than adjusted. The question
+   is provenance, not direction.
+
+**The trade, made deliberately.** On a device that delivers the extra *before* the state callback,
+this discards it and the card reads `Unknown number`. That is a real cost and it is the right way
+round: a blank is visibly missing and recoverable; a stranger's name on a live call is neither.
+Defect 42 showed a user someone else's name, and buying a number back on an untested OEM is not
+worth making that possible again.
+
+### Tests
+
+Nine in `CallNumberRulesTest`. The inbound half was reintroduced and **four** went red, including
+both that name the reopening:
+
+```
+FAILED  defect 42 reopened - nothing may be written between episodes
+        expected:<[]> but was:<[+919900000002]>
+FAILED  defect 42 reopened - an inbound episode starts blank too, with no exception
+        expected:<[]> but was:<[8800000004]>
+```
+
+**The falsified guard was rewritten, not deleted.** `an inbound ringing episode keeps the number the
+broadcast gave it` passed for the entire life of this bug, because it encoded the assumption that
+anything in the field belonged to the current episode. Its successor —
+`an inbound number arriving during its own episode is kept, and is not lost by this fix` — guards
+the property that is still worth guarding, and asserts it *where the number is written*, which is
+the only place that can tell "mine" from "left over". Deleting it would have removed the protection
+against this fix over-correcting; keeping it as written would have kept asserting the false premise.
+
+Full phone suite: **176 tests, 0 failures.** Installed 10:01; link up, all seven capabilities.
+
+### Instrumentation added for the defect 45 decision — data, not a decision
+
+The receiver now logs every `PHONE_STATE` broadcast with three facts and a ratio:
+
+```
+PHONE_STATE RINGING: number present, episode live — taken — 4 with a number / 11 without since start
+```
+
+state, whether the extra was there, whether an episode was open, whether the value was taken, and
+both counts. That is exactly what separates "never arrives" from "never arrives in time", which is
+the question the 45 decision turns on and which no existing log can answer. Both cases are logged at
+the same volume with the ratio on each line, per CLAUDE.md.
+
+**No one needs to be asked to ring for this.** The phone took three real inbound calls this morning
+unprompted; the next one produces the reading.
+
+### Verification status — honest
+
+- **Outgoing half:** verified on hardware yesterday and untouched by this change.
+- **Inbound half:** unit-tested and **not yet verified on hardware**, because it needs a real
+  inbound call. It will be verified by the next one to arrive on its own. The reading to look for is
+  an inbound episode whose card is blank rather than carrying the previous caller's identity, and a
+  `PHONE_STATE` line showing whether the extra arrived and whether it was taken.

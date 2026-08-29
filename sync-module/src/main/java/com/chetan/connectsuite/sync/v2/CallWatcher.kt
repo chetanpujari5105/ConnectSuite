@@ -84,6 +84,10 @@ object CallWatcher {
     @Volatile
     private var numberFromDial = false
 
+    /** Defect 45's instrumentation. Both halves, so the ratio is readable — see the receiver. */
+    private val broadcastsWithNumber = AtomicLong(0)
+    private val broadcastsWithoutNumber = AtomicLong(0)
+
     @Volatile
     private var startedAt = 0L
 
@@ -248,11 +252,31 @@ object CallWatcher {
                 @Suppress("DEPRECATION")
                 val incoming = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
                 val stateExtra = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
-                // Only ever fills a blank, and never from an IDLE transition — see
-                // CallNumberRules. Defect 42: the previous call's trailing IDLE broadcast arrives
-                // after end() has blanked the field, finds it blank, and refills it with a number
-                // belonging to a call that is over.
-                number = CallNumberRules.numberAfterBroadcast(stateExtra, incoming, number)
+                val live = state != null
+                val before = number
+                number = CallNumberRules.numberAfterBroadcast(stateExtra, incoming, number, live)
+
+                // Instrumentation for defect 45, which is an open product decision and needs data
+                // rather than inference to settle. The question it answers is not "does the extra
+                // arrive" but "does it arrive while the episode it belongs to is still open" — the
+                // two imply different fixes and the logs to date cannot tell them apart.
+                //
+                // Both cases logged at the same volume with the ratio on each line, per CLAUDE.md:
+                // a count of broadcasts carrying a number means nothing without the count that did
+                // not, and this is precisely a question about which of two paths is being taken.
+                if (incoming.isNullOrBlank()) {
+                    broadcastsWithoutNumber.incrementAndGet()
+                } else {
+                    broadcastsWithNumber.incrementAndGet()
+                }
+                LinkLog.i(
+                    "calls",
+                    "PHONE_STATE $stateExtra: number ${if (incoming.isNullOrBlank()) "absent" else "present"}, " +
+                        "episode ${if (live) "live" else "none"} — " +
+                        (if (number != before) "taken" else "not taken") +
+                        " — ${broadcastsWithNumber.get()} with a number / " +
+                        "${broadcastsWithoutNumber.get()} without since start",
+                )
             }
         }
         val filter = IntentFilter(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
@@ -325,7 +349,7 @@ object CallWatcher {
         // with a number it did not obtain for itself. A `dialing` episode with no preceding
         // `call.dial` has no source, so whatever is in the field is the previous call's — and a
         // card naming the wrong person is worse than one saying it does not know.
-        number = CallNumberRules.numberAtEpisodeStart(phase, numberFromDial, number)
+        number = CallNumberRules.numberAtEpisodeStart(numberFromDial, number)
         // An inbound call's number came from the PHONE_STATE broadcast, which fires alongside this
         // transition; an outgoing one's came from `call.dial` before it dialled. Either way it is
         // in the field by now, and this is the one moment worth paying a contacts lookup for.

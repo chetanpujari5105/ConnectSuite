@@ -22,25 +22,50 @@ package com.chetan.connectsuite.sync.v2
  *
  * Two writers, two rules, and they close different halves of it.
  *
- * 1. [numberAfterBroadcast] — the `PHONE_STATE` receiver may not fill the field from an **IDLE**
- *    broadcast. An IDLE broadcast means no call is in progress, so a number arriving with one
- *    cannot belong to an episode that has not started. This is the refill path that put the
- *    residue there: the previous call's trailing IDLE arrives *after* `end()` has blanked the
- *    field, finds it blank, and fills it.
- *
- *    Deliberately phrased as "ignore IDLE" rather than "accept only RINGING". The extra is
- *    documented for the ringing case, but which transitions actually carry it varies by OEM, and
- *    an allowlist risks discarding the inbound number this project needs for 35c. Excluding the
- *    one state that is provably wrong is the change that cannot break the inbound path.
+ * 1. [numberAfterBroadcast] — the `PHONE_STATE` receiver may fill the field **only while an episode
+ *    is live**, and never from an **IDLE** broadcast.
  *
  * 2. [numberAtEpisodeStart] — an episode may not begin with a number it did not obtain for itself.
- *    An outgoing call has exactly one legitimate source, `call.dial` via `expectOutgoing`, because
- *    nothing supplies a number for a call placed on the phone by hand. So a `dialing` episode that
- *    was not preceded by a dial from the Mac starts blank, and the card honestly reads
- *    "Unknown number" instead of the last person who was called.
+ *    With rule 1 in place there is exactly one way it can have obtained one: `call.dial` via
+ *    `expectOutgoing`, for an outgoing call the Mac placed. Everything else starts blank.
  *
- * Rule 2 is the invariant and rule 1 is the mechanism. Rule 1 alone would fix the sighting; rule 2
- * makes the class of bug impossible whatever else learns to write that field later.
+ * ### Why rule 1 grew a second clause on 2026-08-29 — the reopening
+ *
+ * The first version of rule 1 excluded only IDLE, on the reasoning that "which transitions actually
+ * carry the extra varies by OEM, and an allowlist risks discarding the inbound number 35c needs".
+ * That was too narrow, and a real inbound call showed why:
+ *
+ * ```
+ * platform  08:29:43  MISSED   +919900000002
+ * app       08:29:44  Call c1 ringing number withheld by the platform    <- begin() ran first
+ * app       08:29:44  Call c1 ended missed after 197ms                   <- 197ms later, end() blanked it
+ * ...71 minutes pass...
+ * platform  09:40:23  INCOMING +918200000005
+ * app       09:40:24  Call c2 ringing from +919900000002 (Contact B)   <- c1's number, on c2's card
+ * ```
+ *
+ * The extra **is** delivered on this device. It simply arrives *after* the state callback, so
+ * `begin()` has already published a blank card — and on a call as short as 197 ms it arrives after
+ * `end()` too, where it finds the field blank, fills it, and waits for the next episode to read it.
+ * Only three lines in `CallWatcher` write this field and the other two are ruled out for that
+ * window, so this is the path.
+ *
+ * **So the phrase to hold on to is not "the extra never arrives" but "it has never arrived in time
+ * to be used by the episode it belongs to".** Both produce the same symptom — every non-empty
+ * inbound number this app has ever shown was residue — and they imply different fixes, which is why
+ * the distinction is written down here rather than left as a detail. See defect 45.
+ *
+ * Rule 1's "only while live" clause makes the residue **structurally impossible** rather than
+ * merely unlikely, and that is why rule 2 could then be simplified: with no way for a stale value
+ * to be sitting there, `begin()` no longer needs to special-case the inbound path.
+ *
+ * ### The trade this makes, deliberately
+ *
+ * On a device that delivers the extra *before* the state callback, this discards it and the card
+ * reads "Unknown number". That is a real cost and it is the right way round: a blank is visibly
+ * missing and recoverable, and a stranger's name on a live call is neither. Defect 42 showed a user
+ * someone else's name; that must not be possible again to buy back a number on an OEM nobody has
+ * tested.
  *
  * ### The wrong fix, which is the third appearance of one shape in this codebase
  *
@@ -62,8 +87,19 @@ internal object CallNumberRules {
      * @param incoming `EXTRA_INCOMING_NUMBER`, which is blank or absent for most transitions.
      * @param current what the field holds now. Only ever a blank is filled — an outgoing call's
      *   number came from `call.dial` and an empty extra must not erase it.
+     * @param episodeLive whether a call episode is in progress right now. False means anything
+     *   arriving belongs to a call that has ended, or to one that has not started.
      */
-    fun numberAfterBroadcast(stateExtra: String?, incoming: String?, current: String): String {
+    fun numberAfterBroadcast(
+        stateExtra: String?,
+        incoming: String?,
+        current: String,
+        episodeLive: Boolean,
+    ): String {
+        // Defect 42, reopened. Nothing may be written into the field between episodes: a broadcast
+        // arriving after end() would otherwise be read by the *next* begin() as though it were its
+        // own. This is the clause that makes residue impossible rather than unlikely.
+        if (!episodeLive) return current
         // No call is in progress, so any number here belongs to an episode that has ended.
         if (stateExtra.equals(STATE_IDLE, ignoreCase = true)) return current
         if (incoming.isNullOrBlank()) return current
@@ -74,16 +110,13 @@ internal object CallNumberRules {
     /**
      * The number an episode is allowed to start with.
      *
-     * @param phase "ringing", "dialing" — the phase [CallWatcher.begin] was called with.
      * @param fromDial true when `call.dial` set the number for this episode, via `expectOutgoing`.
      * @param carried whatever the field happens to hold at this moment.
      */
-    fun numberAtEpisodeStart(phase: String, fromDial: Boolean, carried: String): String = when {
-        // Inbound: the PHONE_STATE broadcast is the source, and it fires alongside this transition.
-        phase == "ringing" -> carried
-        // Outgoing from the Mac: `call.dial` is the source and it ran before the dial.
-        fromDial -> carried
-        // Outgoing placed on the phone: no source exists. Anything in the field is residue.
-        else -> ""
-    }
+    fun numberAtEpisodeStart(fromDial: Boolean, carried: String): String =
+        // One legitimate source, now that rule 1 keeps the field empty between episodes: a dial
+        // this Mac placed, recorded before the dial by `expectOutgoing`. There is deliberately no
+        // longer a `phase` parameter — the question is provenance, not direction, and the inbound
+        // special case that used to live here is exactly what defect 42's reopening was.
+        if (fromDial) carried else ""
 }

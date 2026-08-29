@@ -55,7 +55,7 @@ own heading there, and its own row here.
 | **39** | A message sent from the Mac is missing from the thread it was sent into | **deferred** | — | see below |
 | **40** | `call.reject delivered` named a disposition the disposition logic then overrode | **closed** | hardware, 2026-08-29 | `docs/testing.md` |
 | **41** | The force-stop hook denies prose that merely mentions the rule | **closed** | hook fixture tests, 2026-08-29 | see below |
-| **42** | An episode is labelled with the previous call's number — outgoing half fixed, **inbound half reopened** | **open (reopened)** | outgoing verified 2026-08-29; inbound broken, same day | see below |
+| **42** | An episode is labelled with the previous call's number | **fixed** (outgoing verified; inbound awaits the next real inbound call) | outgoing hardware 2026-08-29; inbound unit-tested only | see below |
 | **43** | A call with no number logged as `from ,` on the Mac — the string defect 35 is named for | **closed** | `calls.test.ts`, 2026-08-29 | see below |
 | **44** | A message sent on the phone never reaches the Mac — no observer on outgoing rows | **open** | — | see below |
 | **45** | `EXTRA_INCOMING_NUMBER` never arrives on Android 16, so no inbound call has a number | **open** | — | see below |
@@ -249,7 +249,9 @@ defect 45 — so for inbound calls the field holds residue:
 c2 showed the user the previous caller's name and number. Timestamps and the 344 s duration confirm
 the pairing.
 
-**Fix direction:** no exception for the inbound path. An episode begins with a number only when the
+**Fixed 2026-08-29** along these lines, and the diagnosis was corrected in the same sitting: the extra *is* delivered, just after the state callback, so on a 197 ms call it lands after `end()` and poisons the next episode. `numberAfterBroadcast` now takes `episodeLive` and refuses to write between episodes, which made the second rule simpler — `numberAtEpisodeStart` lost its `phase` parameter, because with the field empty between episodes there is only one legitimate source left. Inbound verification awaits the next real inbound call; nobody needs to be asked to ring.
+
+**Original fix direction, kept for the record:** no exception for the inbound path. An episode begins with a number only when the
 value was written *for that episode* — the provenance flag `numberFromDial` already does this for
 outgoing; the broadcast needs one too — and blank otherwise. On this device that makes every inbound
 card read `Unknown number`, which is correct and far better than a stranger's name.

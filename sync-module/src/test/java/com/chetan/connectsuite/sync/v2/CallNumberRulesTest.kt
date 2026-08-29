@@ -17,11 +17,28 @@ import org.junit.Test
  * Two numbers for one call, and the one the app chose belonged to the episode before it. Worse than
  * defect 35, which drew a blank: a blank is visibly missing, and a name is believed.
  *
- * The tests are split the way the fix is. The first group is the mechanism — the trailing IDLE
- * broadcast that put the residue there. The second is the invariant — an episode may not begin with
- * a number it did not obtain for itself. **The third group is the one that matters most**, because
- * this fix is being made immediately before step 70 runs: it pins that the inbound path, which 35c
- * depends on entirely, is untouched.
+ * ### Reopened 2026-08-29, on the inbound path
+ *
+ * The first fix covered outgoing calls and deliberately left inbound alone, on the premise that the
+ * `PHONE_STATE` broadcast supplies the number alongside the transition. A real inbound call showed
+ * the premise is false here:
+ *
+ * ```
+ * platform  08:29:43  MISSED   +919900000002
+ * app       08:29:44  Call c1 ringing number withheld by the platform
+ * app       08:29:44  Call c1 ended missed after 197ms
+ * platform  09:40:23  INCOMING +918200000005
+ * app       09:40:24  Call c2 ringing from +919900000002 (Contact B)   <- c1's number
+ * ```
+ *
+ * The extra arrives *after* the state callback, so on a 197 ms call it lands after `end()`, fills
+ * the blanked field, and waits 71 minutes for the next episode to read it. See defect 45 for why
+ * that distinction — "never arrives" versus "never arrives in time" — decides a different question.
+ *
+ * The tests are split the way the fix is: the mechanism (who may write the field, and when), the
+ * invariant (what an episode may start with), and last the guard whose assumption was falsified —
+ * **rewritten rather than deleted**, because the property it meant to protect is still worth
+ * protecting and only its location was wrong.
  */
 class CallNumberRulesTest {
 
@@ -29,64 +46,76 @@ class CallNumberRulesTest {
 
     @Test
     fun `an IDLE broadcast may not fill the number`() {
-        // The refill that caused it: the previous call's trailing IDLE arrives after end() has
-        // blanked the field, finds it blank, and puts a finished call's number back.
         assertEquals(
             "",
             CallNumberRules.numberAfterBroadcast(
                 stateExtra = "IDLE",
                 incoming = "+919800000001",
                 current = "",
+                episodeLive = true,
             ),
         )
     }
 
     @Test
-    fun `a RINGING broadcast still fills a blank, which is the whole inbound path`() {
+    fun `defect 42 reopened - nothing may be written between episodes`() {
+        // The path that put c1's number on c2's card. c1 ended after 197ms, its RINGING broadcast
+        // arrived afterwards, found the field blank, and filled it; 71 minutes later c2 read it.
         assertEquals(
-            "8800000004",
+            "",
             CallNumberRules.numberAfterBroadcast(
                 stateExtra = "RINGING",
-                incoming = "8800000004",
+                incoming = "+919900000002",
                 current = "",
+                episodeLive = false,
             ),
+        )
+    }
+
+    @Test
+    fun `a RINGING broadcast during a live episode still fills a blank`() {
+        // The path that must survive, or a device delivering the extra in time gains nothing.
+        assertEquals(
+            "8800000004",
+            CallNumberRules.numberAfterBroadcast("RINGING", "8800000004", "", episodeLive = true),
         )
     }
 
     @Test
     fun `a broadcast never overwrites a number already held`() {
-        // An outgoing call's number came from call.dial; an empty or later extra must not erase it.
         assertEquals(
             "+919800000001",
-            CallNumberRules.numberAfterBroadcast("OFFHOOK", null, "+919800000001"),
+            CallNumberRules.numberAfterBroadcast("OFFHOOK", null, "+919800000001", episodeLive = true),
         )
         assertEquals(
             "+919800000001",
-            CallNumberRules.numberAfterBroadcast("RINGING", "8800000004", "+919800000001"),
+            CallNumberRules.numberAfterBroadcast("RINGING", "8800000004", "+919800000001", episodeLive = true),
         )
     }
 
     @Test
-    fun `an unknown or absent state is still allowed to fill a blank`() {
-        // "Ignore IDLE" rather than "accept only RINGING", deliberately: which transition carries
-        // the extra varies by OEM, and an allowlist could silently discard the inbound number that
-        // 35c depends on. Only the state that is provably wrong is excluded.
-        assertEquals("8800000004", CallNumberRules.numberAfterBroadcast(null, "8800000004", ""))
+    fun `an unknown or absent state is still allowed to fill a blank while live`() {
+        // "Ignore IDLE" rather than "accept only RINGING": which transition carries the extra
+        // varies by OEM, and an allowlist could discard a number that did arrive in time.
+        assertEquals(
+            "8800000004",
+            CallNumberRules.numberAfterBroadcast(null, "8800000004", "", episodeLive = true),
+        )
     }
 
     // ---- the invariant: what an episode may start with --------------------------------------
 
     @Test
     fun `defect 42 - a phone-placed outgoing episode starts blank, not with the last number`() {
-        // The c2 case exactly: a dialing episode, no call.dial before it, residue in the field.
-        assertEquals(
-            "",
-            CallNumberRules.numberAtEpisodeStart(
-                phase = "dialing",
-                fromDial = false,
-                carried = "+919800000001",
-            ),
-        )
+        assertEquals("", CallNumberRules.numberAtEpisodeStart(fromDial = false, carried = "+919800000001"))
+    }
+
+    @Test
+    fun `defect 42 reopened - an inbound episode starts blank too, with no exception`() {
+        // This is the case the first fix deliberately allowed, on the premise that the broadcast
+        // supplies the number alongside the transition. The premise is false on this device (see
+        // defect 45), so the exception was the bug.
+        assertEquals("", CallNumberRules.numberAtEpisodeStart(fromDial = false, carried = "8800000004"))
     }
 
     @Test
@@ -94,28 +123,28 @@ class CallNumberRulesTest {
         // Step 69's path, which must not regress: call.dial is a real source.
         assertEquals(
             "+919800000001",
-            CallNumberRules.numberAtEpisodeStart("dialing", fromDial = true, carried = "+919800000001"),
+            CallNumberRules.numberAtEpisodeStart(fromDial = true, carried = "+919800000001"),
         )
     }
 
-    // ---- the guard that matters most, because step 70 runs next -----------------------------
+    // ---- the guard whose assumption was falsified, rewritten rather than deleted -------------
 
     @Test
-    fun `an inbound ringing episode keeps the number the broadcast gave it`() {
-        // 35c depends on this and nothing else. The fix must not clear a number on the one path
-        // that legitimately has one waiting when begin() runs. This test passes before and after —
-        // it is a guard, not evidence — and it is here because the failure it guards against would
-        // be discovered by wasting a second person's time.
-        assertEquals(
-            "8800000004",
-            CallNumberRules.numberAtEpisodeStart("ringing", fromDial = false, carried = "8800000004"),
-        )
-    }
+    fun `an inbound number arriving during its own episode is kept, and is not lost by this fix`() {
+        // The previous version of this test asserted that a *ringing episode keeps whatever the
+        // field holds at begin()*, and it passed for the whole life of the bug — because it
+        // encoded the assumption that anything in the field belonged to this episode. That
+        // assumption is defect 45.
+        //
+        // Rewritten, not deleted: the property still worth guarding is that a number arriving
+        // while its own episode is open is not discarded. It is now expressed where the number is
+        // actually written, which is the only place that can tell "mine" from "left over".
+        val duringOwnEpisode =
+            CallNumberRules.numberAfterBroadcast("RINGING", "8800000004", "", episodeLive = true)
+        assertEquals("8800000004", duringOwnEpisode)
 
-    @Test
-    fun `an inbound episode with no number still reports nothing rather than the last call's`() {
-        // A withheld caller ID. The honest blank, which CallWatcher turns into "number withheld by
-        // the platform" and the Mac into "Unknown number".
-        assertEquals("", CallNumberRules.numberAtEpisodeStart("ringing", fromDial = false, carried = ""))
+        val betweenEpisodes =
+            CallNumberRules.numberAfterBroadcast("RINGING", "8800000004", "", episodeLive = false)
+        assertEquals("", betweenEpisodes)
     }
 }
