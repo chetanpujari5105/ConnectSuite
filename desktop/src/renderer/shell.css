@@ -844,12 +844,32 @@ body {
  * this block is chosen to keep it distinguishable from the other three nothing-here states:
  * elevation 2 rather than 3, neutral rather than warning, and a mono handle at the foot.
  */
+/*
+ * The card is centred in the pane, and the pane is given the height to centre it in.
+ *
+ * It used to sit hard against the top-left: 340px wide and ~300 tall, at x=0 y=0, filling 30% of a
+ * 1151px content row with nothing beside or below it. At 1440x920 that does not read as a note —
+ * it reads as a pane that failed to load, which is the exact thing the "~300px" in the state-A
+ * note was written to prevent. The note fixed a width without fixing a window, and at this size
+ * the width alone does not carry the intent.
+ *
+ * 420px rather than 340 because the headline is the one line a reader is guaranteed to take in and
+ * it was wrapping on two of the five ("The phone has no way to send a thumbnail", "Nothing carries
+ * a clipboard between the two"), and because Activity's mono handle was breaking across two lines
+ * mid-phrase — a handle has to read as one unit.
+ */
+.unbuilt-host {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 420px;
+}
+
 .unbuilt-screen {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  /* ~300px, so it reads as a note rather than as a pane that failed to fill its column. */
-  max-width: 340px;
+  max-width: 420px;
   padding: var(--space-10);
   border-radius: var(--radius-panel);
   /* Elevation **2**. A screen with nothing on it must not hold the heaviest surface in the app. */

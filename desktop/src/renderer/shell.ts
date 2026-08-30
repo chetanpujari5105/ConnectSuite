@@ -404,7 +404,14 @@ class ShellView {
     handle.textContent = screen.unbuiltHandle ?? '';
 
     card.append(mark, tag, headline, why, handle);
-    host.replaceChildren(card);
+
+    // The card is centred by a host that has a height to centre it in; see `.unbuilt-host`. The
+    // section itself shrink-wraps to its content, so centring the card against the section alone
+    // would centre it against its own height and move nothing.
+    const centred = document.createElement('div');
+    centred.className = 'unbuilt-host';
+    centred.appendChild(card);
+    host.replaceChildren(centred);
   }
 
   // ---- The status island ------------------------------------------------------------------------
