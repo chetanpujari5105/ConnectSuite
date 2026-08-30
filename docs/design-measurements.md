@@ -387,3 +387,148 @@ layout work needing nothing new on the wire.
 brief for this pass, which is measurement plus the unrouted panes, and two of the eight gaps need
 protocol that does not exist. Recorded here and carried into `docs/design-departures.md` so it is
 scheduled rather than rediscovered by the next person who measures an anchor and finds it unpairable.
+
+---
+
+# Section 3 — The five unrouted panes
+
+**They are already routed, and already state A.** This was built in `3f8b90f` ("State A rebuilt to
+its own specification") and the brief for this pass was written against the state before it. Nothing
+needed building, so nothing was built — verified instead, against the four-state model in
+`docs/mac-ui-design-proposals.md` §3 rather than against a screenshot.
+
+`index.html` carries a `<section class="screen">` for each of the five, `shell.route()` reaches them,
+and `drawUnbuilt()` fills them from `navModel`.
+
+## 3.1 Verified, per pane, against state A's own specification
+
+Read live over CDP, not from the source:
+
+| Pane | Card | Surface | Tag colour | Icon | Other content |
+|---|---|---|---|---|---|
+| Files | 340×280 | `rgba(22,24,34,.82)` = **elev-2** | `rgb(91,94,110)` = `--text-meta` | 1 shape | **0 siblings** |
+| Photos | 340×296 | elev-2 | `--text-meta` | 3 shapes | 0 siblings |
+| Clipboard | 340×336 | elev-2 | `--text-meta` | 3 shapes | 0 siblings |
+| Camera | 340×280 | elev-2 | `--text-meta` | 2 shapes | 0 siblings |
+| Activity | 340×296 | elev-2 | `--text-meta` | 1 shape | 0 siblings |
+
+Every clause of state A holds:
+
+- **elev-2, never elev-3** — a pane with nothing in it does not claim the screen's heaviest surface.
+- **Neutral, never `--warning`** — `rgb(91,94,110)` is `--text-meta`. Warning here would make five
+  screens read as "something is wrong" rather than "this was never written".
+- **A headline that says what is missing**, not a restatement of the tag: *"Nothing moves files
+  yet"*, *"The phone has no way to send a thumbnail"*, *"There is no virtual camera on this Mac"*.
+- **A reason naming the phase and the missing piece** — Phase 5 and the silent bulk socket for
+  Files; a macOS Camera Extension as a distribution problem before a code problem for Camera.
+- **A mono handle**, honest where nothing has been designed: `fs.* — not in this build`,
+  `media.* — not in this build`, and for the three with no proposed namespace,
+  `no namespace proposed yet` rather than an invented one. A made-up namespace is worse than none —
+  it sends a reader looking for something that was never designed.
+- **The icon draws.** Counted as shapes, not as an element — the build once shipped with `.tool-glyph`
+  spans that had a border and no contents, and "the icon element exists" would have passed then too.
+- **Nothing false is drawn**: each section holds the card and **zero** other children.
+
+And the routing clause, "nothing routes to it that implies it works":
+
+| | Built rows | Unbuilt rows |
+|---|---|---|
+| sidebar colour | `rgb(156,159,176)` = `--text-body` | `rgb(91,94,110)` = **`--text-meta`** |
+| badge | Notifications: 22 | **none** |
+| `aria-label` | "Files" | **"Files — not built yet"** |
+| ⌘K palette | listed | listed, **marked `Not built yet`** |
+
+## 3.2 The one real gap this check found
+
+`shell.ts`'s dock builder carries a comment ending:
+
+> *"Recorded as a deliberate deviation from my own state-A note in docs/design-departures.md."*
+
+**It is not recorded there.** `grep` over that file returns nothing about the dock, the palette, or
+this deviation.
+
+The deviation itself is sound and is being kept: state A says *"no dock tile, no ⌘K command"*, and
+the build keeps both and **marks** them — a desaturated tile whose tooltip reads "Files — not built
+yet", and a palette row that says "Not built yet" where its group would go. Removing two of five
+dock tiles would change the design's own composition for a reason that expires as each phase lands,
+and hiding unbuilt screens from the palette would make the palette disagree with the sidebar about
+which screens exist.
+
+What is wrong is the pointer. A comment claiming a record exists, where none does, is the same shape
+as a count with no denominator: it reads as evidence and is not, and the next person to check will
+find the claim and stop. **Now actually written into `docs/design-departures.md`.**
+
+## 3.3 What was deliberately left alone
+
+**Overview stays as it is**, as instructed. It is the one screen the state-A note also lists
+("Overview-until-telemetry") and it is not being converted — it has real data behind it today.
+
+---
+
+# Section 4 — The two carry-overs
+
+**Both verified live rather than by reading the code that claims them fixed.**
+
+## 4.1 Defect 28 — **closed**, and its class is **open elsewhere** (new defect 46)
+
+**One line: closed in notifications, including the guard hole; found live in the media remote, filed
+as defect 46.**
+
+The guard is an enumeration (`userVisibleStringsOf`), and its failure mode is a string composed
+outside it — which is exactly what escaped once, when three functions were added to the pane and not
+to the enumeration. Checked rather than assumed:
+
+- All **ten** enumerated functions are called by `notifications.ts`; the count moved 7 → 10 with the
+  escape fix, and a count that does not move when the enumeration grows has stopped measuring.
+- `notifications.ts` touches `.package` **nowhere**.
+- Its one composed sentence — `` `Nothing matches “${active.label}”` `` — draws from `FILTERS`,
+  whose labels are the four literals `All` / `Messages` / `Can reply` / `Muted`. Never a package.
+- All 10 tests pass, including *"the three strings that escaped the guard are inside it now"*.
+
+Then the rule's practical half was actually run — *grep for every package name reaching a string,
+not the ones a screenshot showed you* — across the whole Mac source, and it found **two live sites
+in a pane the guard does not cover**:
+
+| Site | With no `appName` |
+|---|---|
+| `renderer/remote.ts:134` | "Paused in **com.spotify.music**." |
+| `main/remote.ts:185` | "**com.spotify.music** does not allow skipping to the next track…" |
+
+`RemoteState.appName` is optional on the wire, and both read `appName ?? package ?? '…'` — reaching
+the id *before* the generic. The tell that this is a slip rather than a decision is that the same
+file disagrees with itself: `renderer/remote.ts:188` and `:247` write `appName ?? 'This app'` and
+skip the package. Three sites, one convention, two of them wrong — defect 28's own 2-of-3 shape.
+
+**Filed as defect 46, not fixed here.** The fix wants one resolver in `src/shared/`, because the
+renderer is plain `<script>` tags and `main/` is a module, and the tempting three-line version is a
+second copy of `notifyLabels.ts` — the copy that does not get the next fix. Fix direction and two
+wrong fixes recorded in `docs/defects.md`.
+
+## 4.2 The `.pill-tab` specificity collision — **closed**, and it surfaced a second one
+
+**One line: closed — the Muted pill measures 13.72:1 selected, against the 2.23:1 it was; and the
+*unselected* half of the same pill was still 2.75:1, now 6.73:1.**
+
+The collision is fixed with `.pill-tab.unbuilt:not(.selected)`, which says what was meant instead of
+depending on file order — `.pill-tab.unbuilt` and `.pill-tab.selected` are both (0,2,0), so the
+original fix-by-ordering would break the next time someone sorted the file. Measured live by
+pressing the pill itself and compositing its translucent fill over the surface behind it:
+
+| Pill | State | Text on surface | Ratio |
+|---|---|---|---|
+| Muted | `.unbuilt.selected` | `#f4f4f7` on `rgb(39,34,66)` | **13.72:1** — was 2.23:1 |
+| All | `.selected` | `#f4f4f7` on `rgb(39,34,66)` | 13.72:1 |
+| Messages / Can reply | unselected | `#e7e7ee` on `rgb(22,24,34)` | 14.36:1 |
+| Muted | `.unbuilt`, unselected | `#5b5e6e` on `rgb(22,24,34)` | **2.75:1** ← still failing |
+
+**Measuring the fix found the other half of the same pill.** The `:not()` corrected the tab you are
+*on*; the tab you are *not* on was `--text-meta` at the pill's 13px. The handoff scopes that colour
+explicitly — *"`#5B5E6E` … 10–11px meta only, never body copy"* — and 13px control text is neither.
+WCAG's exemption for disabled controls does not apply: it is an enabled `<button>` with
+`disabled === false`, no `aria-disabled`, and pressing it does select the filter.
+
+Now `--text-body`, measured at **6.73:1**, and the dimming survives — 6.73 against the other
+unselected pills' 14.36 — while the `::after` dot carries the shape half of the state regardless,
+which is the half a screen-reader user gets either way.
+
+**Verdict: both carry-overs closed. One new defect filed (46), one adjacent contrast bug fixed.**

@@ -59,6 +59,7 @@ own heading there, and its own row here.
 | **43** | A call with no number logged as `from ,` on the Mac — the string defect 35 is named for | **closed** | `calls.test.ts`, 2026-08-29 | see below |
 | **44** | A message sent on the phone never reaches the Mac — no observer on outgoing rows | **open** | — | see below |
 | **45** | `EXTRA_INCOMING_NUMBER` never arrives on Android 16, so no inbound call has a number | **open** | — | see below |
+| **46** | The media remote puts a raw package id in a sentence — defect 28's class, on the Mac, in two places | **open** | enumerated 2026-08-30 | see below |
 
 ---
 
@@ -420,3 +421,48 @@ someone who had already read the rule against it.
 The family resemblance: **each substitutes a plausible value for a known one.** The test is whether
 the code can name the fact it is waiting for. If it can, wait for that fact; if it cannot, the fix is
 in the wrong place.
+
+### 46 — the media remote puts a raw package id in a sentence · **open**
+
+Found by running defect 28's own rule rather than by a screenshot: *grep for every package name
+reaching a string, not the ones a screenshot showed you*. Defect 28 is closed and its guard is
+sound; this is the same class of bug in a pane the guard does not cover.
+
+`RemoteState.appName` is **optional on the wire** (`src/shared/protocol.ts:407`), and two call sites
+fall through to the package id before they fall through to a generic:
+
+| Site | String | With no `appName` |
+|---|---|---|
+| `src/renderer/remote.ts:134` | `` `${playing ? 'Playing' : 'Paused'} in ${app}.` `` | "Paused in com.spotify.music." |
+| `src/main/remote.ts:185` | `` `${app} does not allow ${what} from a remote, so nothing was sent.` `` | "com.spotify.music does not allow skipping…" |
+
+Both read `appName ?? package ?? '…'`. The package is reached **before** the generic, so a missing
+label produces an id rather than "an app".
+
+The same file disagrees with itself, which is the tell: `renderer/remote.ts:188` and `:247` write
+`appName ?? 'This app'` and skip the package entirely. Three sites, one convention, two of them
+wrong — the same 2-of-3 / 3-of-3 shape defect 28 had.
+
+**Not a wrong fallback — a missing mark.** `AppLabels.of` returning the package is correct and must
+not be "repaired" by inventing a name. What is missing is the other half of the rule: when the label
+*is* the package, it must not be presented as though it were a name. `notifyLabels.ts` already does
+this correctly — it marks `isPackageFallback`, renders the mono face with a "package id" chip, and
+puts a clause in the accessible name.
+
+**Fix direction:** one pure resolver returning `{ label, isPackageFallback }`, in `src/shared/` —
+the electron-free layer, where a testable seam belongs — with both remote call sites composing a
+marking clause from it rather than interpolating a bare string. Then extend the enumeration idea:
+a `userVisibleStringsOf` for the remote, so the guard covers a pane instead of a line.
+
+**Wrong fix to avoid — two of them.**
+
+1. **Dropping the package from the fallback chain** (`appName ?? 'an app'`). It makes the sentence
+   safe and throws away the only identifying information there is, so "Paused in an app" is all a
+   user gets when a label fails to resolve — and nothing then tells anyone the resolution failed.
+   The handle should appear; it must not appear *alone*.
+2. **Copying `notifyLabels.ts` into `remote.ts`.** It is the closest working code and the wrong
+   shape to duplicate: the renderer is plain `<script>` tags and `main/` is a module, so a second
+   copy is the copy that does not get the next fix. That boundary is exactly why this needs a
+   `src/shared/` seam and is not a three-line edit — and why it is recorded here rather than
+   patched in a measurement pass.
+

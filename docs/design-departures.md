@@ -268,3 +268,26 @@ The handoff's colour table assigns `#32E58A` no threshold, and the prototype con
 latency value, so nothing in the design distinguishes *"latency is always green"* from *"10 ms is
 green"*. **What figure does it stop at, and is there an amber band before red?** Measured in
 `docs/design-measurements.md` section 1.6.
+
+---
+
+## State A — two routes are kept and marked, where the note said remove them (2026-08-30)
+
+`docs/mac-ui-design-proposals.md` §3, state A, says of a screen with nothing behind it:
+*"Nothing routes to it that implies it works. No dock tile, no Overview quick-action tile, no ⌘K
+command."* The build keeps two of those three routes and **marks** them instead. Recorded here
+because `shell.ts` has claimed since `3f8b90f` that it was, and it was not — a comment pointing at a
+record that does not exist is the same shape as a claim with no evidence behind it.
+
+| Route | The note says | The build does | Why |
+|---|---|---|---|
+| **Dock tile** (Files, Camera — 2 of the design's 5) | remove | keep, desaturated, tooltip and `aria-label` read *"Files — not built yet"* | Removing two leaves a three-tile dock. That is a change to the design's own composition made for a reason that **expires as each phase lands**, and it reflows the dock every time a feature ships. A marked tile carries the same information and the dock stops moving |
+| **⌘K palette row** | remove | keep, with `Not built yet` in place of the group name | A palette that hides five screens **disagrees with the sidebar about which screens exist**, which is a worse lie than a marked row. Someone who has seen these mockups will type "Files" and deserves a sentence rather than no result |
+| Overview quick-action tile | remove | **not applicable** — the build has no quick-actions grid (departure S10; the dock is that grid, once) | — |
+
+The clause is honoured where it costs nothing: the sidebar row drops from `--text-body` to
+`--text-meta`, carries no badge, and its accessible name ends *"— not built yet"*.
+
+**What would change this:** the note's reasoning is about implying a feature works. If a marked
+tile still reads as working to someone who has not hovered it, the tiles should go. That is a
+question for the designer, and it is the only part of state A the build takes a different view on.
