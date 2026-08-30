@@ -294,3 +294,96 @@ The 24 that remain, all classified, none outstanding as build work:
 | `stylesheets.test.ts` | a new guard: every class sharing an element with `button` must be declared later in the cascade than the base rule. **Shown to fail** — moving `.primary-action` back to shell.css reports it by name and by both files — and carrying both controls |
 
 112 tests, `tsc` clean.
+
+---
+
+# Section 2 — Messages and Calls, compared by role rather than by surface
+
+The previous pass left ten rows on these two screens as "untestable", on the correct observation
+that the elevation-3 anchor matches by *weight* and not by *role*: on Messages the design's primary
+surface is a message thread and ours was the conversation list; on Calls the design's is a live-call
+card and ours the dialer and log.
+
+That was right about the anchors and wrong to stop there. The anchors being unpairable **is itself
+the finding** — two screens whose primary surfaces are different components are not two screens with
+a styling difference. Compared by structure instead:
+
+**Both screens are a different layout from the design's. Not a different weight, not a different
+token — a different arrangement of different regions.**
+
+## 2.0 First, the control: two absences that are not absences
+
+Measured from a default snapshot, the build appears to have no message thread, no composer and no
+live-call card. All three exist. Reporting them missing would have been three false absences in one
+section, so each was driven into its live state before anything was written down:
+
+| Claimed missing | How it was checked | What was actually there |
+|---|---|---|
+| the open thread + composer | pressed the first conversation **by its own element** (`button.sms-thread`), never a coordinate | `div.sms-messages` + `div.sms-compose` — both real |
+| the live-call card | drove `calls.renderLive()` with a **synthetic** active call through the pane's own field | `div.call-who`, status line, Hang up, audio-routing note |
+
+The calls pane was put back on the phone's real data with `calls.refresh()` and the messages pane
+returned to its list; the synthetic call never left the renderer.
+
+## 2.1 Messages — two panes with a master-detail swap, against three side-by-side columns
+
+| | Design | Build |
+|---|---|---|
+| shape | `grid(280px 539px 300px)` — three columns, 1151 wide | `grid(815px 320px)` — two panes |
+| conversation list | column 1, **always visible** beside the thread | pane 1 — **replaced by the thread** when one opens, reached back via a `← All conversations` link |
+| open thread | column 2, 539px, beside the list | the *same* pane 1, instead of the list |
+| composer | in column 2 | present, in the thread |
+| filter tabs | **All / SMS / Chat** above the list | **none** |
+| third region | **this conversation's** detail: avatar, three actions, a shared-media grid (`+12`), Mute notifications, Block contact | a **global Contacts directory** with a search field and 50 rows, unrelated to the open thread |
+
+The two differences that matter are not sizes:
+
+1. **List-or-thread, against list-and-thread.** The design never takes the conversation list away.
+   The build swaps it out and offers a back link, which is a phone's navigation model on a 1151px
+   Mac window with 815px of room for both.
+2. **The third column is a different feature.** The design's is scoped to the conversation in view;
+   ours is a directory of every contact on the phone, which answers a question nobody on this screen
+   asked and does not change when the open thread changes.
+
+## 2.2 Calls — one full-width pane against three columns
+
+| | Design | Build |
+|---|---|---|
+| shape | `grid(300px 519px 300px)` | one `div.pane.primary`, 1151 wide |
+| call list | column 1, 300px, with **All / Missed 1 / Contacts** tabs | full-width, 50 rows, **no tabs** |
+| live call | column 2, 519px: "End-to-end encrypted", name, number, **`00:02:18` running timer**, **Mute / Keypad / Speaker** | inside the same pane: name, number, status, Hang up — **no timer, no Mute / Keypad / Speaker** |
+| dialer | column 3: a **12-key keypad** (1–9, ✳, 0, #) plus **Frequently called** | a **text input and a Call button** |
+| audio routing | "Audio is routed through Galaxy S26 Ultra" | "Audio stays on the phone — pair the Mac to it over Bluetooth" |
+
+The last row is the one place the build is **ahead of the design** and should not be changed to
+match it: both state the platform wall, and ours names the remedy. Keep it.
+
+## 2.3 What each gap would actually cost — because they are not one size
+
+Classified against `docs/protocol.md`, so this reads as work rather than as a list of complaints:
+
+| Gap | Needs | Cost |
+|---|---|---|
+| Messages: three columns, list stays visible | nothing on the wire — `sms.threads`, `sms.messages`, `sms.send`, `sms.received` all exist | **Mac-side layout only** |
+| Messages: All / SMS / Chat tabs | nothing — the thread rows already carry what a filter needs | **Mac-side only** |
+| Calls: All / Missed / Contacts tabs | nothing — `call.log` rows carry the disposition already | **Mac-side only** |
+| Calls: running timer | nothing — the Mac knows when the call started; `call.ended` already carries `durationMs` | **Mac-side only** |
+| Calls: three columns + keypad + Frequently called | `call.dial` exists; a keypad is a different way to reach it | **Mac-side only** |
+| Calls: **Mute / Speaker** | **no wire messages exist.** `call.*` is `incoming`, `ended`, `log`, `dial`, `answer`, `reject` — nothing for mute or audio route, and the phone half needs an `InCallService` | **new protocol + new phone code** |
+| Calls: **Keypad DTMF tones during a call** | same — no message carries a DTMF digit | **new protocol** |
+| Messages: shared media, Mute notifications, Block contact | no wire support; shared media overlaps `media.*`, which Phase 5 has not specified | **new protocol, and it belongs with Phase 5** |
+
+## 2.4 The judgement, plainly
+
+**Our Messages and Calls are different screens wearing the same tokens.** The tokens are right —
+that is what section 1 measured and what makes the difference easy to miss in a screenshot. The
+structure is not: the design puts list, subject and detail side by side on both screens, and the
+build puts one region at a time in a wide pane with a directory bolted to the side of one of them.
+
+**This is a build-side finding, not an untestable row.** Six of the eight gaps above are Mac-side
+layout work needing nothing new on the wire.
+
+**Not done in this run, deliberately.** Rebuilding both screens is a larger piece of work than the
+brief for this pass, which is measurement plus the unrouted panes, and two of the eight gaps need
+protocol that does not exist. Recorded here and carried into `docs/design-departures.md` so it is
+scheduled rather than rediscovered by the next person who measures an anchor and finds it unpairable.

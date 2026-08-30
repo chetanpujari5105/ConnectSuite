@@ -225,3 +225,46 @@ is the silent-no-op shape this project keeps ruling out, on the very first scree
 design does not draw. They are the ones most worth a designer's time, because everything else here
 is us declining to draw a thing that would be false, and those two are us needing a thing that would
 be true.
+
+---
+
+## Structural — Messages and Calls are a different layout from the design's (2026-08-30)
+
+Measured in `docs/design-measurements.md` section 2. Recorded here because it is **scheduled work,
+not a decision**: unlike every row above, nothing here is us declining to draw something. The
+tokens are right on both screens, which is exactly why it reads as a styling near-miss instead of
+what it is.
+
+| Screen | Design | Build |
+|---|---|---|
+| Messages | `grid(280px 539px 300px)` — list, open thread, and *this conversation's* detail, side by side | `grid(815px 320px)` — list **or** thread with a back link, plus a global contacts directory |
+| Calls | `grid(300px 519px 300px)` — list, live-call card, dialer keypad | one full-width pane holding all three, with no keypad and no in-call controls |
+
+**Six of the eight gaps need nothing on the wire** and are Mac-side layout: the three-column shapes,
+the All/SMS/Chat and All/Missed/Contacts filter tabs, the running call timer, and the keypad
+(`call.dial` already exists).
+
+**Two need protocol that does not exist**, and are the designer's to confirm before they are built:
+
+| Design element | What is missing | Question for the designer |
+|---|---|---|
+| **Mute / Speaker** on the live-call card | `call.*` is `incoming`, `ended`, `log`, `dial`, `answer`, `reject`. Nothing carries a mute or an audio route, and the phone half needs an `InCallService` | Are these worth an `InCallService` and two new messages, or should the card say the call is controlled on the phone? |
+| **Keypad during a call** (DTMF) | no message carries a DTMF digit | Same question — an IVR is the only real use, and the phone is an arm's length away |
+| Messages third column: shared media, Mute notifications, Block contact | no wire support; shared media overlaps `media.*`, unspecified until Phase 5 | Should this column wait for Phase 5, or ship without the media grid? |
+
+**One row where the build is ahead and the design should follow.** The live-call card's audio line:
+the design says *"Audio is routed through Galaxy S26 Ultra"*, the build says *"Audio stays on the
+phone — pair the Mac to it over Bluetooth"*. Both state the platform wall; only ours names the
+remedy. The design's copy should adopt it.
+
+## Open question — when does latency stop being green?
+
+The prototype draws the Overview latency figure in `#32E58A`, the success colour. The build draws it
+neutral, and is **deliberately not being changed** until this is answered: colouring it green
+unconditionally would have the card report a 600ms link in the success colour, on the one card whose
+job is to say whether the link is healthy.
+
+The handoff's colour table assigns `#32E58A` no threshold, and the prototype contains a single
+latency value, so nothing in the design distinguishes *"latency is always green"* from *"10 ms is
+green"*. **What figure does it stop at, and is there an amber band before red?** Measured in
+`docs/design-measurements.md` section 1.6.
