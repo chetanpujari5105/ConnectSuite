@@ -4,6 +4,10 @@
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'" />
     <title>ConnectSuite</title>
+    <!-- tokens.css first: it defines the custom properties styles.css reads. Both are copied
+         by scripts/copy-assets.mjs, which holds a hard-coded array — a third sheet that is not
+         added there builds clean and ships unstyled. -->
+    <link rel="stylesheet" href="tokens.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -50,61 +54,161 @@
       </div>
     </section>
 
-    <section class="card" id="mirror-card">
-      <h2>Screen mirror</h2>
-      <div class="row">
-        <button id="mirror-start">Start mirroring</button>
-        <button id="mirror-stop" class="secondary">Stop</button>
-        <label class="small" for="mirror-resolution">Capture</label>
-        <!-- A cap on the short edge, not a resolution: the phone scales its own panel to fit.
-             1080 is the default because a native 1440p capture outruns a phone hotspot. -->
-        <select id="mirror-resolution">
-          <option value="720">720p</option>
-          <option value="1080" selected>1080p</option>
-          <option value="1440">1440p</option>
-          <option value="2160">Native</option>
-        </select>
-        <span id="mirror-stats" class="muted small"></span>
-      </div>
-      <div class="mirror-stage">
-        <canvas id="mirror-canvas"></canvas>
-        <!-- Never left blank and silent: every failure path writes its reason here. -->
-        <div id="mirror-overlay" class="mirror-overlay">Not mirroring.</div>
+    <!--
+      Mirror — slice 2, rebuilt in the design language (handoff §2, "the approved reference
+      layout — do not restructure it").
+
+      The layout is the handoff's: a primary card holding the tool rail beside the phone preview
+      with the global-action row under it, and a 300px right column carrying quality, advanced and
+      Stop mirroring. What is inside those slots differs, and every difference is a row in
+      docs/design-departures.md with its reason — the short version is that of the design's five
+      tool-rail items and four Advanced toggles, one item is a phone command we can honestly send.
+
+      The canvas, overlay and notice keep their ids and their behaviour: this is a restyle of a
+      pane that passed on hardware, not a rewrite of it. The overlay/notice split in particular is
+      unchanged — the overlay means "there is no picture, here is why" and any painted frame takes
+      it down; the notice is a refusal that happens while frames are flowing and would be wiped
+      within one frame at 60fps if it shared the overlay.
+    -->
+    <section class="card pane pane-mirror" id="mirror-card">
+      <header class="pane-head">
+        <div>
+          <h2 class="pane-title">Screen mirror</h2>
+          <p class="pane-sub">Control your phone from your Mac in real time.</p>
+        </div>
         <!--
-          Input feedback, which is a different kind of message from the overlay above and must not
-          share it. The overlay means "there is no picture, here is why", and any painted frame
-          takes it down — that is what makes a secure surface recoverable. An input refusal happens
-          *while frames are flowing*, so putting it there would wipe it within one frame at 60fps
-          and leave the user with the silent no-op this project keeps ruling out.
+          The handoff's "Floating window" button, drawn now that the window it opens exists. It was
+          deliberately withheld from slice 2a, because a button that does nothing is the silent
+          no-op this project keeps ruling out.
+
+          Two states, per §2: "Floating window" by default, and "Show floating window" with a 6px
+          green dot once the window is open — which only refocuses it. It never creates a second
+          instance, and that check is enforced in main/float.ts rather than here, because a button
+          is not the only thing that can ask.
         -->
-        <div id="mirror-notice" class="mirror-notice" hidden></div>
+        <button type="button" id="mirror-float" class="toolbar-button" aria-label="Open mirror in floating window" title="Open mirror in floating window">
+          <span class="float-dot hidden" id="mirror-float-dot" aria-hidden="true"></span>
+          <span id="mirror-float-label">Floating window</span>
+        </button>
+      </header>
+
+      <div class="mirror-grid">
+        <div class="mirror-primary">
+          <div class="mirror-stage-row">
+            <!--
+              The tool rail. Two commands and one readout, where the handoff draws five commands.
+
+              Power is gone and cannot come back: there is no public API for an AccessibilityService
+              to synthesise a KeyEvent. Rotate is gone because `mirror.rotate` is phone-to-Mac only —
+              the Mac cannot turn a phone, and a button claiming otherwise would desynchronise the
+              geometry stamp that every input coordinate is checked against. So the rail shows the
+              rotation instead of offering to change it. Record and Transfer are unbuilt.
+            -->
+            <div class="tool-rail">
+              <button type="button" id="mirror-capture" class="tool">
+                <span class="tool-glyph" aria-hidden="true"></span>
+                <span class="tool-label">Capture</span>
+              </button>
+              <!-- `mirror.keyframe`: asks the encoder for an IDR. What to press when the picture
+                   has torn and is not recovering on its own. -->
+              <button type="button" id="mirror-refresh" class="tool">
+                <span class="tool-glyph" aria-hidden="true"></span>
+                <span class="tool-label">Refresh</span>
+              </button>
+              <div class="tool readout">
+                <span class="tool-value mono" id="mirror-rotation-readout">—</span>
+                <span class="tool-label">Rotation</span>
+              </div>
+            </div>
+
+            <div class="mirror-stage">
+              <canvas id="mirror-canvas"></canvas>
+              <!-- Never left blank and silent: every failure path writes its reason here. -->
+              <div id="mirror-overlay" class="mirror-overlay">Not mirroring.</div>
+              <div id="mirror-notice" class="mirror-notice" hidden></div>
+            </div>
+          </div>
+
+          <!-- The six actions an accessibility service can genuinely perform. There is no power
+               button here and there cannot be one: no app on Android can press it. The handoff
+               draws five; the sixth (Quick settings) is real and is kept. -->
+          <div class="global-row" id="input-row">
+            <button type="button" id="input-back" class="global"><span class="global-label">Back</span></button>
+            <button type="button" id="input-home" class="global"><span class="global-label">Home</span></button>
+            <button type="button" id="input-recents" class="global"><span class="global-label">Recents</span></button>
+            <button type="button" id="input-notifications" class="global"><span class="global-label">Alerts</span></button>
+            <button type="button" id="input-quick-settings" class="global"><span class="global-label">Quick settings</span></button>
+            <button type="button" id="input-lock" class="global"><span class="global-label">Lock</span></button>
+          </div>
+
+          <p class="pane-sub" id="input-note">
+            Click the picture to tap, drag to swipe, scroll to scroll, and type to enter text into
+            whichever field is selected on the phone.
+          </p>
+          <p class="pane-meta mono" id="mirror-stats"></p>
+        </div>
+
+        <aside class="mirror-side">
+          <div class="side-card">
+            <h3 class="side-title">Mirroring quality</h3>
+            <div id="mirror-quality" class="quality-rows" role="radiogroup" aria-label="Mirroring quality"></div>
+            <!--
+              What the phone actually captured, beside what was asked for. `maxResolution` is a cap
+              on the short edge, not a resolution: a 1440x3120 panel under the 1080 cap captures
+              1080x2340. So the preset name is an honest request and a misleading fact, and this
+              line is the fact. Fed from the same mirror.state the HUD reads.
+            -->
+            <p class="side-meta mono" id="mirror-actual">Not capturing.</p>
+          </div>
+
+          <div class="side-card">
+            <h3 class="side-title">Advanced</h3>
+            <!--
+              The handoff draws four toggles here. None of them can be honestly wired today, and
+              two of them can never be, so none is drawn as a control: a greyed toggle is a promise
+              that it might one day light up. Each is listed with the reason instead. Filled from
+              ADVANCED_LIMITS in renderer.ts so the reasons live beside the code that knows them.
+            -->
+            <div id="mirror-advanced" class="limit-list"></div>
+          </div>
+
+          <button type="button" id="mirror-stop" class="stop-button">Stop mirroring</button>
+          <button type="button" id="mirror-start" class="start-button">Start mirroring</button>
+        </aside>
       </div>
-      <!-- The six actions an accessibility service can genuinely perform. There is no power
-           button here and there cannot be one: no app on Android can press it. -->
-      <div class="row" id="input-row">
-        <button id="input-back" class="secondary">Back</button>
-        <button id="input-home" class="secondary">Home</button>
-        <button id="input-recents" class="secondary">Recents</button>
-        <button id="input-notifications" class="secondary">Notifications</button>
-        <button id="input-quick-settings" class="secondary">Quick settings</button>
-        <button id="input-lock" class="secondary">Lock screen</button>
-      </div>
-      <p class="muted small" id="input-note">
-        Click the picture to tap, drag to swipe, scroll to scroll, and type to enter text into
-        whichever field is selected on the phone.
-      </p>
     </section>
 
     <!--
-      Notifications. Hidden entirely until the phone advertises the capability, rather than shown
-      empty and greyed: an empty list and an ungranted permission look identical, and the note
-      inside says which one this is.
+      Notifications — the first pane rebuilt in the design language (handoff §7).
+
+      Still hidden entirely until the phone advertises the capability, rather than shown greyed:
+      an empty list and an ungranted permission look identical, and the difference is the whole of
+      what the user needs to know. The new layout adds the distinction the old one could not draw —
+      an empty shade, an unbuilt filter and an ungranted permission now look like three different
+      things instead of one blank list. See docs/mac-ui-design-proposals.md §3.
+
+      Grid is `1fr 380px` per the handoff: the list is a panel at elevation 2, the detail is the
+      ONE primary card at elevation 3. That asymmetry is the rule being tested by this slice —
+      "surfaces must not all read at the same weight" — and it is why the list is not also elev-3.
     -->
-    <section class="card hidden" id="notif-card">
-      <h2>Notifications</h2>
-      <p class="muted small" id="notif-note"></p>
-      <div id="notif-list" class="notif-list"></div>
-      <!-- One line, over the list, for whatever the phone last refused. Times itself out. -->
+    <section class="card hidden pane pane-notifications" id="notif-card">
+      <header class="pane-head">
+        <div>
+          <h2 class="pane-title">Notifications</h2>
+          <p class="pane-sub" id="notif-note"></p>
+        </div>
+      </header>
+
+      <!-- Counts come from the live list, never from a constant. A pill reading a number nobody
+           can reconcile against the pane's own note is the denominator problem in miniature. -->
+      <div class="pill-row" id="notif-filters" role="tablist" aria-label="Filter notifications"></div>
+
+      <div class="pane-grid">
+        <div class="pane-list" id="notif-list" role="list"></div>
+        <aside class="pane-detail" id="notif-detail" aria-live="polite"></aside>
+      </div>
+
+      <!-- One line, over the pane, for whatever the phone last refused. Times itself out. -->
       <div id="notif-notice" class="mirror-notice" hidden></div>
     </section>
 
@@ -195,7 +299,10 @@
     </section>
 
     <script src="mirror.js"></script>
+    <!-- The float button's two states, tested in floatButton.test.ts. -->
+    <script src="floatButton.js"></script>
     <script src="chips.js"></script>
+    <script src="notifyLabels.js"></script>
     <script src="notifications.js"></script>
     <script src="contacts.js"></script>
     <script src="remote.js"></script>

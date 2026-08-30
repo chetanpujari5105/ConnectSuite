@@ -438,3 +438,823 @@ img#qr {
 .call-row.missed .call-log-who { color: #e0a0a0; }
 #call-number { flex: 1; max-width: 220px; }
 #calls-card { position: relative; }
+
+/* ================================================================================================
+ * The design language, scoped to `.pane`.
+ *
+ * Everything above this line is the pre-redesign stylesheet and still dresses every pane that has
+ * not migrated. Nothing below reaches outside `.pane`, on purpose: this slice is meant to be one
+ * pane's worth of risk, not a big-bang restyle of a working app. The legacy block and the legacy
+ * half of tokens.css get deleted together by the last pane to migrate.
+ *
+ * Source: design_handoff_connectsuite/README.md §7 (Notifications) and its Design Tokens section.
+ * ============================================================================================== */
+
+.pane {
+  background: var(--elev-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+  padding: var(--space-10);
+  font-family: var(--font-ui);
+  color: var(--text-body);
+}
+
+.pane .mono,
+.pane .pill-count,
+.pane .notif-when,
+.pane .detail-when,
+.pane .state-handle {
+  font-family: var(--font-mono);
+  /* The handoff's one reason for a second face: proportional figures jitter as values update. */
+  font-variant-numeric: tabular-nums;
+}
+
+.pane-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-7);
+  margin-bottom: var(--space-7);
+}
+
+.pane-title {
+  font: var(--text-card-title);
+  letter-spacing: var(--tracking-title);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2);
+}
+
+.pane-sub {
+  font: var(--text-body-size);
+  color: var(--text-body);
+  margin: 0;
+}
+
+/* ---- Filter pills ---------------------------------------------------------------------------- */
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-7);
+}
+
+.pill-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  color: var(--text-on-control);
+  font: var(--text-control);
+  cursor: pointer;
+  transition: transform var(--dur-press) var(--ease), opacity var(--dur-hover) var(--ease);
+}
+
+.pill-tab:hover { border-color: var(--hairline-hover); }
+.pill-tab:active { transform: scale(0.98); }
+
+/* Selection is a tint plus a border plus the count's colour — never colour alone. */
+.pill-tab.selected {
+  background: var(--accent-tint-strong);
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+  box-shadow: 0 0 22px var(--accent-glow);
+}
+
+.pill-count {
+  font-size: 11px;
+  color: var(--text-meta);
+}
+.pill-tab.selected .pill-count { color: var(--accent-text); }
+
+/*
+ * A pill with nothing behind it. Dimmed, and carrying a dot rather than a count — a `0` would read
+ * as "nothing is muted", which is a claim the wire cannot support.
+ */
+.pill-tab.unbuilt { color: var(--text-meta); }
+.pill-tab.unbuilt::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--text-meta);
+}
+
+/* ---- The two-column body --------------------------------------------------------------------- */
+
+.pane-grid {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: var(--space-7);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .pane-grid { grid-template-columns: 1fr; }
+}
+
+.pane-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+/* ---- Rows ------------------------------------------------------------------------------------ */
+
+.notif-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: var(--space-5);
+  align-items: start;
+  padding: var(--space-6);
+  border-radius: var(--radius-tile);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  cursor: pointer;
+  transition: transform var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease);
+}
+
+.notif-row:hover {
+  transform: translateY(-2px);
+  border-color: var(--hairline-hover);
+}
+
+.notif-row.selected {
+  background: var(--accent-tint);
+  border-color: var(--accent-border);
+}
+
+/* An app-pinned notification. A left edge, not a colour swap — see the hue note in the pane. */
+.notif-row.ongoing { border-left: 2px solid var(--secondary); }
+
+.app-tile {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-control);
+  background: hsl(var(--tile-hue, 260) 60% 62% / 0.16);
+  color: hsl(var(--tile-hue, 260) 70% 78%);
+  font: 600 14px/1 var(--font-ui);
+  transition: transform var(--dur-hover) var(--ease);
+}
+.notif-row:hover .app-tile { transform: scale(1.06); }
+
+.notif-body { min-width: 0; }
+
+.notif-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.notif-app {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font: 600 13px/1.3 var(--font-ui);
+  color: var(--text-primary);
+}
+
+/*
+ * A package id that reached the label because `AppLabels.of` could not resolve one. Rendered as a
+ * handle — mono, dimmer, and truncated from the left so the distinctive tail survives — so it does
+ * not masquerade as a name. The chip beside it is what stops it being the only thing a user reads.
+ */
+.notif-app .handle {
+  font-size: 12px;
+  color: var(--text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.handle-chip {
+  flex: none;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  background: var(--elev-2);
+  font: var(--text-meta-size);
+  letter-spacing: var(--tracking-meta);
+  color: var(--text-meta);
+}
+
+.notif-when {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-meta);
+}
+
+.notif-title {
+  margin-top: var(--space-1);
+  font: var(--text-body-size);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notif-text {
+  margin-top: 2px;
+  font: var(--text-body-size);
+  color: var(--text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Row actions: opacity 0→1 and translateX(6px)→0 in 200ms, per the handoff.
+ *
+ * Revealed on `:focus-within` as well as `:hover`. A control that exists only under a pointer is a
+ * control a keyboard user does not have, and `visibility` rather than `display` keeps it in the tab
+ * order so focus can reach it in the first place.
+ */
+.row-actions {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  display: flex;
+  gap: var(--space-2);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(6px);
+  transition: opacity var(--dur-hover) var(--ease), transform var(--dur-hover) var(--ease);
+}
+
+.notif-row:hover .row-actions,
+.notif-row:focus-within .row-actions {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+}
+
+.icon-button {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: var(--elev-3);
+  color: var(--text-body);
+  font-size: 11px;
+  cursor: pointer;
+}
+.icon-button:hover { color: var(--text-primary); border-color: var(--hairline-hover); }
+
+/* ---- The detail card — the ONE primary surface on this pane ----------------------------------- */
+
+.pane-detail { min-width: 0; }
+
+.detail-card {
+  background: var(--elev-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-primary);
+  padding: var(--space-9);
+}
+
+.detail-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  margin-bottom: var(--space-7);
+}
+.detail-head > div { min-width: 0; }
+
+.detail-when {
+  font-size: 11px;
+  color: var(--text-meta);
+}
+
+.state-pill {
+  margin-left: auto;
+  flex: none;
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  background: rgba(34, 211, 238, 0.1);
+  color: var(--secondary);
+  font: var(--text-meta-size);
+  letter-spacing: var(--tracking-meta);
+}
+
+.detail-title {
+  font: var(--text-section);
+  letter-spacing: var(--tracking-section);
+  color: var(--text-primary);
+  margin-bottom: var(--space-5);
+}
+
+/* The message quoted in an inset panel, per the handoff. */
+.detail-quote {
+  padding: var(--space-6);
+  border-radius: var(--radius-tile);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  font: var(--text-body-size);
+  color: var(--text-on-control);
+}
+
+.detail-sub,
+.detail-note {
+  margin: var(--space-5) 0 0;
+  font: var(--text-body-size);
+  color: var(--text-body);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-7);
+}
+
+.chip {
+  height: 28px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  color: var(--text-on-control);
+  font: var(--text-control);
+  cursor: pointer;
+  transition: transform var(--dur-press) var(--ease), border-color var(--dur-hover) var(--ease);
+}
+.chip:hover { border-color: var(--accent-border); color: var(--text-primary); }
+.chip:active { transform: scale(0.98); }
+
+.notif-reply {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+.notif-reply input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  color: var(--text-primary);
+  font: var(--text-body-size);
+}
+.notif-reply input::placeholder { color: var(--text-meta); }
+
+.notif-reply .send {
+  flex: none;
+  height: 38px;
+  padding: 0 var(--space-7);
+  border-radius: var(--radius-pill);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font: var(--text-control);
+  cursor: pointer;
+  transition: transform var(--dur-press) var(--ease);
+}
+.notif-reply .send:active { transform: scale(0.98); }
+.notif-reply .send:disabled { opacity: 0.45; cursor: default; }
+
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-top: var(--space-7);
+}
+
+.action {
+  height: 36px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  color: var(--text-on-control);
+  font: var(--text-control);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: transform var(--dur-press) var(--ease), border-color var(--dur-hover) var(--ease);
+}
+.action:hover { border-color: var(--hairline-hover); }
+.action:active { transform: scale(0.98); }
+
+/*
+ * The only red on this pane, and the only destructive verb on it. `--destructive` means destructive
+ * or failed and nothing else — never an accent, never a selected state.
+ */
+.action.destructive {
+  background: var(--destructive-fill);
+  border-color: var(--destructive-border);
+  color: var(--destructive);
+}
+
+.detail-placeholder {
+  padding: var(--space-9);
+  border-radius: var(--radius-panel);
+  border: 1px dashed var(--hairline);
+  font: var(--text-body-size);
+  color: var(--text-meta);
+  text-align: center;
+}
+
+/* ---- The designed nothing-here states --------------------------------------------------------
+ * Three of them, and they must not look alike — that similarity is defect 24/26's shape. They
+ * differ in glyph, in colour, and in whether they carry a machine handle.
+ */
+
+.state-block {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  max-width: 300px;
+  margin: var(--space-11) auto;
+  text-align: center;
+}
+
+.state-glyph {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-tile);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+}
+
+.state-title {
+  margin: 0;
+  font: var(--text-section);
+  letter-spacing: var(--tracking-section);
+  color: var(--text-primary);
+}
+
+.state-explain {
+  margin: 0;
+  font: var(--text-body-size);
+  color: var(--text-body);
+}
+
+/*
+ * State A's handle. Mono, meta-sized, and it names the thing that does not exist. The sentence
+ * above it is what a person reads; this is the machine half, which is the whole of the package-id
+ * rule applied in the direction it points.
+ */
+.state-handle {
+  margin: var(--space-1) 0 0;
+  font-size: 11px;
+  letter-spacing: var(--tracking-meta);
+  color: var(--text-meta);
+}
+
+/* State B. `--warning`, never `--destructive`: an ungranted permission is not a failure. */
+.state-banner {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+  padding: var(--space-6);
+  border-radius: var(--radius-tile);
+  border: 1px solid var(--warning-border);
+  background: var(--warning-fill);
+}
+
+.state-banner-glyph {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--warning);
+  color: #1a1206;
+  font: 600 11px/1 var(--font-ui);
+}
+
+.state-banner-title {
+  font: 600 13.5px/1.4 var(--font-ui);
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+/* The phone's own sentence, rendered verbatim. Never paraphrased, never cached — defect 27. */
+.state-banner-reason {
+  font: var(--text-body-size);
+  color: var(--text-on-control);
+}
+
+/* The handoff's kicker slot: a small uppercase label naming what the block below it does. */
+.detail-kicker {
+  margin: var(--space-7) 0 0;
+  font: var(--text-meta-size);
+  letter-spacing: var(--tracking-group);
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+.detail-kicker + .chip-row { margin-top: var(--space-3); }
+
+/* ================================================================================================
+ * Mirror pane — handoff §2, the approved reference layout.
+ * ============================================================================================== */
+
+.pane-toolbar { display: flex; gap: var(--space-3); align-items: center; }
+
+/*
+ * The Floating window button. Matches the handoff's toolbar buttons exactly — 32px, 10px radius,
+ * --control, hairline — and must read as clearly less important than Stop mirroring.
+ */
+.toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  color: var(--text-on-control);
+  font: var(--text-control);
+  cursor: pointer;
+  transition: border-color var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
+}
+.toolbar-button:hover { border-color: rgba(139, 107, 255, 0.34); }
+.toolbar-button:active { transform: scale(0.98); }
+
+/* Present only once the window is open, per the handoff's two-state spec for this button. */
+.float-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--live);
+}
+
+.mirror-grid {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: var(--space-7);
+  align-items: start;
+}
+@media (max-width: 1000px) { .mirror-grid { grid-template-columns: 1fr; } }
+
+/* The one primary card on this pane. */
+.mirror-primary {
+  background: var(--elev-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-primary);
+  padding: var(--space-9);
+}
+
+.mirror-stage-row {
+  display: flex;
+  gap: var(--space-7);
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* ---- Tool rail ------------------------------------------------------------------------------- */
+
+.tool-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-tile);
+  background: #111219;
+  border: 1px solid var(--hairline);
+}
+
+.tool {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  width: 64px;
+  padding: var(--space-4) 0;
+  border: none;
+  background: none;
+  border-radius: var(--radius-control);
+  color: var(--text-body);
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
+}
+.tool:hover { background: var(--control); color: var(--text-primary); }
+.tool:active { transform: scale(0.98); }
+
+/* The rotation slot is a readout, not a control — no hover, no pointer, nothing to press. */
+.tool.readout { cursor: default; }
+.tool.readout:hover { background: none; color: var(--text-body); }
+
+.tool-glyph {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-control);
+  border: 1.5px solid currentColor;
+  opacity: 0.85;
+}
+.tool-label { font: var(--text-meta-size); letter-spacing: var(--tracking-meta); }
+.tool-value { font-size: 15px; color: var(--text-primary); }
+
+/* ---- The global-action row -------------------------------------------------------------------- */
+
+.global-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: center;
+  margin-top: var(--space-9);
+}
+
+.global {
+  min-width: 78px;
+  height: 44px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  color: var(--text-on-control);
+  font: var(--text-control);
+  cursor: pointer;
+  transition: border-color var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
+}
+.global:hover { border-color: var(--hairline-hover); }
+.global:active { transform: scale(0.98); }
+.global:disabled { opacity: 0.45; cursor: default; }
+
+.pane-meta {
+  margin: var(--space-5) 0 0;
+  font-size: 11px;
+  color: var(--text-meta);
+  text-align: center;
+}
+
+/* ---- Right column ----------------------------------------------------------------------------- */
+
+.mirror-side { display: flex; flex-direction: column; gap: var(--space-6); }
+
+.side-card {
+  background: var(--elev-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+  padding: var(--space-7);
+}
+
+.side-title {
+  margin: 0 0 var(--space-5);
+  font: var(--text-section);
+  letter-spacing: var(--tracking-section);
+  color: var(--text-primary);
+}
+
+.side-meta { margin: var(--space-5) 0 0; font-size: 11px; color: var(--text-meta); }
+
+.quality-rows { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.quality-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-tile);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
+}
+.quality-row:hover { border-color: var(--hairline-hover); }
+.quality-row:active { transform: scale(0.98); }
+.quality-row.selected { background: var(--accent-tint); border-color: var(--accent-border); }
+
+.quality-row > span:first-child { display: grid; gap: 2px; }
+.quality-title { font: 600 13px/1.3 var(--font-ui); color: var(--text-primary); }
+.quality-sub { font: var(--text-meta-size); color: var(--text-meta); }
+
+/* Selection is the dot *and* the tint *and* aria-checked — never colour on its own. */
+.quality-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--text-meta);
+  transition: background var(--dur-hover) var(--ease);
+}
+.quality-row.selected .quality-dot { background: var(--accent); }
+
+/* ---- The Advanced limits list ------------------------------------------------------------------
+ * Where the handoff draws four toggles. None is drawn as a control, because a greyed toggle is a
+ * promise it might one day light up — and for the two walls that promise is false forever.
+ */
+
+.limit-list { display: flex; flex-direction: column; gap: var(--space-6); }
+
+.limit-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.limit-name { font: var(--text-control); color: var(--text-body); }
+
+.limit-tag {
+  flex: none;
+  padding: 1px var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  font: var(--text-meta-size);
+  letter-spacing: var(--tracking-meta);
+  color: var(--text-meta);
+}
+
+/*
+ * "Not possible" and "Not yet" are different facts and are coloured apart. Neither is red: an
+ * unbuilt feature has not failed, and a platform wall is not a fault of this link. The wall is the
+ * more final of the two and gets the warning tint; the unbuilt one stays neutral.
+ */
+.limit-tag.wall { color: var(--warning); border-color: var(--warning-border); background: var(--warning-fill); }
+.limit-tag.unbuilt { color: var(--text-meta); }
+
+.limit-why {
+  margin: var(--space-2) 0 0;
+  font: var(--text-meta-size);
+  line-height: 1.5;
+  color: var(--text-meta);
+}
+
+/* ---- The two session buttons -------------------------------------------------------------------
+ * Stop is the strongest-signal action on the page, per the handoff, and it is the only red here.
+ */
+
+.stop-button,
+.start-button {
+  height: 44px;
+  border-radius: var(--radius-control);
+  border: 1px solid;
+  font: var(--text-control);
+  cursor: pointer;
+  transition: transform var(--dur-press) var(--ease);
+}
+.stop-button:active,
+.start-button:active { transform: scale(0.98); }
+.stop-button:disabled,
+.start-button:disabled { opacity: 0.45; cursor: default; }
+
+.stop-button {
+  background: var(--destructive-fill);
+  border-color: var(--destructive-border);
+  color: var(--destructive);
+}
+
+.start-button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ---- The stage -------------------------------------------------------------------------------- */
+
+.pane-mirror .mirror-stage {
+  position: relative;
+  width: 268px;
+  aspect-ratio: 9 / 19.5;
+  border-radius: var(--radius-window);
+  overflow: hidden;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+}
+
+.pane-mirror .mirror-stage canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.pane-mirror .mirror-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-9);
+  text-align: center;
+  background: rgba(7, 7, 10, 0.78);
+  font: var(--text-body-size);
+  color: var(--text-body);
+}

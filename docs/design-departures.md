@@ -1,0 +1,86 @@
+# Where the built UI departs from `ConnectSuite.dc.html`, and why
+
+**For the designer.** One page, one row per departure. Nothing here is a complaint about the
+design — every row exists because the *wire* cannot currently support what the design draws, or
+because Android cannot. Each row says what would have to become true for the design's version to be
+built as drawn.
+
+**Design authority.** `design_handoff_connectsuite/ConnectSuite.dc.html` plus its `README.md` is the
+final design for this app. Where a screenshot disagrees with those two, they win. This file is the
+only place a *deliberate* deviation from them is recorded; if a difference is not in this table, it
+is a bug, not a decision.
+
+**Status column.**
+
+- **wall** — Android forbids it. It will not become true; the design's version cannot be built by
+  anyone. The control is *removed* and one line of copy replaces it, because a greyed control is a
+  promise it might one day light up.
+- **unbuilt** — nothing on the wire yet, but nothing stops it. The named change would make it real.
+- **reshaped** — built, but not in the shape drawn, because the underlying thing is not what the
+  design assumed.
+
+Last updated **2026-08-29**.
+
+---
+
+## Notifications (§7) — shipped
+
+| # | Design draws | Built instead | Status | Why | What would make the design's version correct |
+|---|---|---|---|---|---|
+| N1 | **Muted** filter with a designed empty state | A designed state that says muting is decided on the phone and is not sent to the Mac, with `notif.posted — no mute field in this build` in mono beneath. Its pill carries a **dot, not a count** | **unbuilt** | There is no mute concept anywhere in the protocol — no field, no message, no capability. Drawn as an *empty* state it would be an empty state over nothing: it would read "no apps are muted", which the Mac has no way to know. A `0` on the pill would make the same claim | A `muted: boolean` on `notif.posted`, or a `notif.muted` list. The phone knows; it just does not say |
+| N2 | **UNREAD** pill on the detail card | **ONGOING** pill, shown only where `ongoing` is true | **unbuilt** | There is no read/unread state in the protocol. `ongoing` is real — the app pinned the notification and it cannot be swiped away — so the pill slot carries something true instead of something invented | A read/unread field on `notif.posted`. Android does not model this either, so it would have to be a Mac-side notion of "seen in this pane" |
+| N3 | **Chat** and **Messages** as two filter pills | One **Messages** pill (`category === "msg"`); the freed slot is **Can reply** (`canReply`) | **reshaped** | Android has a single `CATEGORY_MESSAGE`. Two pills over one category would split the same rows arbitrarily or leave one permanently empty. `Can reply` is real and is already the denominator the pane publishes | Nothing on the wire — this is Android's category set, not ours. A Chat/SMS split would need the Mac to classify by package, which is guessing |
+| N4 | Pane **hidden** when the capability is absent (implied — the design has no unavailable state at all) | Pane **stays** and renders the phone's own `reason` verbatim in a `--warning` banner | **reshaped** | The design has no drawn state for "the phone has this feature and is not offering it right now", which is a normal daily state of this product. Hiding the pane leaves the user hunting for a feature that silently stopped existing | A drawn *unavailable* state in the design language. This is the one row where the **design is missing something**, rather than the wire being missing something — worth a screen |
+| N5 | Unresolved app label rendered like any other app name | A fallback label (`appName === package`) is set in the **mono** face with a `package id` chip, and announces as `"com.… — app name unavailable"` | **reshaped** | Defect 28. `AppLabels.of` correctly returns the package name when an app has no launcher icon; that fallback is right and must not be "fixed". But a package id must never be *the only thing a user reads* | Nothing — this is the rule working. Worth a drawn treatment in the design so it is not invented per-pane |
+
+## Mirror (§2) — embedded layout **built 2026-08-29**; detached window **built 2026-08-30**
+
+The Mirror page is the approved reference layout and is not being restructured. Every row below is a
+control *inside* it.
+
+| # | Design draws | Built instead | Status | Why | What would make the design's version correct |
+|---|---|---|---|---|---|
+| M1 | Tool rail: **Power** | Removed | **wall** | There is no public API for an AccessibilityService to synthesise a `KeyEvent`. `INJECT_EVENTS` is signature-level and will never be available to this app. No app on Android can press the power button | Nothing. This is in `CLAUDE.md`'s platform walls and will not change |
+| M2 | Tool rail: **Rotate** | Removed as a button. The pane *displays* the current rotation, which is real | **wall** | `mirror.rotate` is **phone → Mac only**, and `MirrorContractTest` asserts it is never registered as a request. `docs/protocol.md`: *"the Mac cannot turn a phone, so a `mirror.rotate` in the other direction could only be the Mac claiming a rotation that had not happened."* A Rotate button would desynchronise the geometry the encoder is producing from the geometry the Mac is drawing against — and input coordinates are checked against that stamp | Nothing on our side. Forcing a phone's orientation from another device needs `WRITE_SETTINGS` plus per-app override and would fight the phone's own sensor |
+| M3 | Tool rail: **Capture** | **Kept, and built Mac-side** | — | Not a departure in the end, but worth the designer knowing it is not a phone command: the Mac already holds the decoded frames, so a capture is `canvas` → file with **no protocol change at all**. It is the one tool-rail item that is real today | — |
+| M4 | Tool rail: **Record** | Not drawn | **unbuilt** | Same mechanism as Capture — Mac-side, from the canvas stream — so it is genuinely possible with no wire change. It is left out of this slice because it is a new feature rather than design work, not because it cannot be done | Nothing on the wire. It is a Mac-side feature waiting for a phase |
+| M5 | Tool rail: **Transfer** | Not drawn | **unbuilt** | `fs.*` has no payload spec yet. Phase 5 | The `fs.*` namespace being specified and built |
+| M6 | Advanced toggle: **Phone screen off** | Removed, replaced by copy | **wall** | `mirror.screenoff` is deliberately absent from the protocol: turning the phone's display off while mirroring needs a **system-signed permission this app cannot hold**. `MirrorContractTest` asserts the type is never registered, so the constant cannot quietly grow a handler | Nothing. This is the reason the constant exists but is unregistered |
+| M7 | Advanced toggle: **Sound from phone** | Not drawn | **unbuilt** | No audio message exists anywhere in the protocol. Unlike M6 this is **not** a wall: `AudioPlaybackCapture` is public API on Android 10+ and would carry media audio. (Call audio is separately walled and always will be — `CAPTURE_AUDIO_OUTPUT` is system-only) | An audio channel in the protocol, plus phone-side capture. Worth noting apps can opt out of being captured, so it will be "sound from most apps" |
+| M8 | Advanced toggle: **Show touches** | Not drawn | **wall** | It is `Settings.Global.SHOW_TOUCHES`, which needs `WRITE_SECURE_SETTINGS` — signature-level | Nothing, unless the *Mac* draws its own touch indicator over the canvas from the input it is already sending. That is a real alternative and would look identical to the user |
+| M9 | Advanced toggle: **Keep screen on** | Not drawn | **unbuilt** | Nothing on the wire. Not a wall — the phone can hold a wake lock while a session is running | A `mirror.start` field, or simply doing it unconditionally while mirroring, which is arguably the right behaviour anyway |
+| M10 | Quality rows: **1080p · 60 FPS** / 720p · 30 / 480p · 30 | Kept, with the **actual captured geometry shown beside the chosen row** | **reshaped** | `maxResolution` is a cap on the **short edge**, not a resolution to capture at. A 1440×3120 panel with the 1080 cap captures 1080×2340; the same cap on a 1080p phone changes nothing. So "1080p" is honest as a *request* and misleading as a *fact* — and the phone reports what it actually captured in `mirror.state: running` | Nothing — the design's labels are fine as preset names. The addition is showing the truth beside them |
+
+### Mirror — additional, found while building the pane
+
+| # | Design draws | Built instead | Status | Why | What would make the design's version correct |
+|---|---|---|---|---|---|
+| M11 | A five-item tool rail | Three slots: **Capture**, **Refresh**, and a **Rotation readout** | **reshaped** | With Power, Rotate, Record and Transfer removed (M1, M2, M4, M5), Capture alone would leave a one-item rail. **Refresh** sends `mirror.keyframe`, which is real and is what to press when the picture has torn and is not recovering. The third slot shows the rotation rather than offering to change it — the honest version of M2, in the slot the design gave it | Nothing. `mirror.keyframe` is already in the protocol and simply was not drawn |
+| M12 | **Start mirroring** as a violet button inside the stopped-state overlay | Kept in the right column beside Stop | **reshaped** | The design's overlay assumes one stopped state. Ours has several — secure surface, consent denied, encoder failed, phone locked — and each writes its own reason into that overlay. A button living inside it would either be wiped by the next reason or force every reason to carry one. The overlay stays a place where the app explains itself; the control stays where controls are | A separate "stopped" state distinct from "failed, here is why", so the overlay could hold a control without competing with an explanation |
+
+### Detached mirror window (§3) — built 2026-08-30
+
+| # | Design draws | Built instead | Status | Why | What would make the design's version correct |
+|---|---|---|---|---|---|
+| M13 | A hover dock over a screen the user can also **tap and swipe**, with "both views feed one gesture queue" | Dock only: **Back, Home, Recents, Screenshot**. The canvas takes **no pointer input** | **unbuilt** | The three global actions are `performGlobalAction` and carry no coordinates, so they need no geometry stamp and shipped. A tap does: every coordinate-bearing message must quote the `geometryId` the frame was captured against, cancel an in-flight drag when the phone turns (defect 19) and refuse a gesture older than the staleness window (defect 20). That logic lives in `mirror.ts`, and a second copy of it is the copy that does not get the next fix — which for input means a stroke landing on the wrong app on somebody's real phone, which is what defect 20 already cost | A shared input seam — the coordinate mapping and the drag/stale rules lifted out of `mirror.ts` into `src/renderer/` or `src/shared/` with its own tests, the way `notifyLabels.ts` came out of `notifications.ts`. Then both views call one queue, as the README says. **This is the named follow-up; it is not a wall and not a wire gap** |
+| M14 | The phone screen, drawn once | Decoded **twice** — the embedded canvas and the float window each run their own `VideoDecoder` over one broadcast stream | **reshaped** | "Two views of one session" is one *session*, not one decoder. The main process broadcasts access units and each window decodes; opening the float window replays the retained SPS/PPS and asks for an IDR, so it can start mid-stream. Handing decoded frames between renderers would mean a readback and a copy per frame at 60fps, which costs more than a second decode | Nothing on the wire. It is a Mac-side trade and the cheap direction was taken |
+| M15 | — | `src/renderer/h264Canvas.ts` holds the decode-and-paint rule; **`mirror.ts` still holds its own copy** | **reshaped** | The float window's decoder was extracted rather than copied, but the Mirror pane was not moved onto it: its version interleaves latency stamps, keyframe sizing and the overlay decision into the same callbacks, and untangling a pane that passed on hardware in Phase 2 needs its own hardware pass. **Recorded here rather than left to be discovered** — this is the two-copies-of-one-rule shape the code rules warn about, and it is live | `mirror.ts` moved onto `H264Canvas`, with the pane's extras as hooks. Wants a hardware re-run of Phase 2's acceptance steps, so it is a step inside whatever sitting can afford one |
+
+## Cross-cutting — decided, not yet built
+
+| # | Design draws | Decision | Status | Why | What would make the design's version correct |
+|---|---|---|---|---|---|
+| X1 | **"Encrypted"** badge on the Messages thread header (§6) | Cut | **reshaped** | Our *link* is TLS 1.3. An **SMS is not encrypted**, and a badge on a message thread reads as a claim about the message. It is the only place in the mockups that makes a security claim the transport cannot back | Nothing could. The badge would be correct on the *connection* strip, where it is already true |
+| X2 | **Two-factor**, **Sign out everywhere** (§12 Security); account email and **PRO** pill in the sidebar | Cut. **Trusted devices is kept** | **reshaped** | `CLAUDE.md` line 1: no cloud, no account, no relay server. There is no account to sign out of, no tier, and no second factor. `TrustedDeviceEntity` is real, so that row stays | An account system, which is explicitly not this product |
+| X3 | **Connection-state cycler** (§12 Advanced) | Cut from shipping. May live behind a debug flag | **reshaped** | A control that makes the UI claim a connection state the link is not in — a lie-generator wired to the exact surface this project uses to tell the truth. It is genuinely useful for demoing the state machine, which is what the flag is for | Nothing. It is a review tool and should be labelled as one in the design |
+| X4 | **Archivo** throughout | **SF Pro** (`-apple-system`), mono is `SF Mono` | **reshaped** | Taken under the handoff's own sanction: *"SF Pro is an acceptable native swap."* The page's CSP is `style-src 'self'`, so a `fonts.googleapis.com` import is blocked, and vendoring woff2 puts a webfont in an app whose first line is *no cloud* | Nothing needed — this is the design's own permitted substitution |
+| X5 | Media remote, Contacts, QR pairing / first run, the capability list, manual address, log tail | **No pane in the design** | — | Not a departure yet, because nothing is built against it. Recorded here because these are **shipped, working features with nowhere to live** — pairing especially: the design's first screen assumes a paired phone, and a Mac with no phone paired has no drawn state at all | Screens for them. Pairing is the urgent one |
+
+---
+
+## How to read the two "missing from the design" rows
+
+**N4** and **X5** are the only rows where the gap runs the other way — the wire has something the
+design does not draw. They are the ones most worth a designer's time, because everything else here
+is us declining to draw a thing that would be false, and those two are us needing a thing that would
+be true.

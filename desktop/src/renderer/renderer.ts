@@ -44,6 +44,15 @@ interface ConnectBridge {
   mirrorStop(): Promise<{ ok: boolean }>;
   mirrorKeyframe(): Promise<void>;
   mirrorConfig(options: Record<string, unknown>): Promise<{ ok: boolean }>;
+  mirrorCapture(dataUrl: string): Promise<{ ok: boolean; path?: string; reason?: string }>;
+
+  /**
+   * The detached mirror window. Lifecycle only — this pane opens it and is told when it changes,
+   * and never reads or writes its coordinates. See main/float.ts.
+   */
+  floatOpen(): Promise<{ open: boolean } | null>;
+  onFloatChanged(callback: (state: { open: boolean }) => void): void;
+  floatState(): Promise<{ open: boolean } | null>;
   mirrorStats(): Promise<{
     frames: number;
     bytes: number;
@@ -166,7 +175,16 @@ function render(status: RendererStatus | null): void {
   // The same rule for input: no button for a promise the phone has not made. Unlike the mirror
   // buttons, the canvas cannot be "disabled" — so the view is told, and it answers a click with
   // the reason and the way to fix it rather than doing nothing.
-  notifications.setAdvertised(status?.capabilities?.includes('notifications') ?? false);
+  // The phone's own sentence for anything it is not offering. Hoisted above its two consumers —
+  // the pane below and the capability chips further down — rather than built twice: defect 27 was
+  // this reason going stale, and one map read at one moment cannot disagree with itself.
+  const reasons = new Map((status?.unavailable ?? []).map((u) => [u.name, u.reason]));
+  // The pane now stays and explains itself rather than vanishing. It is handed the reason verbatim
+  // and never a Mac-side paraphrase — see NotificationsView.setAdvertised.
+  notifications.setAdvertised(
+    status?.capabilities?.includes('notifications') ?? false,
+    reasons.get('notifications'),
+  );
   // Same rule for contacts, and the pane loads its first page the moment it is advertised — which
   // is what makes granting READ_CONTACTS mid-session visible without a reconnect.
   contacts.setAdvertised(status?.capabilities?.includes('contacts') ?? false);
@@ -189,7 +207,6 @@ function render(status: RendererStatus | null): void {
 
   const caps = el('caps');
   caps.replaceChildren();
-  const reasons = new Map((status?.unavailable ?? []).map((u) => [u.name, u.reason]));
   for (const capability of ALL_CAPABILITIES) {
     const chip = document.createElement('span');
     const on = status?.capabilities?.includes(capability) ?? false;
@@ -281,15 +298,17 @@ const mirror = new MirrorView(
   connect,
 );
 
-// Notifications. Same rule as the mirror one line up: the pane exists only where the phone has
-// promised the feature. Unlike the mirror it is hidden outright rather than greyed, because an
-// empty list and an ungranted permission look identical and the capability chip already explains
-// the second one.
+// Notifications. The pane exists where the phone has promised the feature, and where it has not,
+// it now stays and says why in the phone's own words rather than disappearing — the first pane
+// rebuilt in the design language, and the first to draw the "unavailable, here is why" state as a
+// designed surface instead of an absence. See docs/mac-ui-design-proposals.md §3.
 const notifications = new NotificationsView(
   el('notif-card'),
   el('notif-note'),
   el('notif-list'),
   el('notif-notice'),
+  el('notif-filters'),
+  el('notif-detail'),
   connect,
 );
 
@@ -357,24 +376,166 @@ for (const button of INPUT_BUTTONS) {
   el(`input-${button.id}`).addEventListener('click', () => void mirror.global(button.action));
 }
 
-el('mirror-start').addEventListener('click', () =>
-  void mirror.start({ maxResolution: selectedResolution() }),
-);
+el('mirror-start').addEventListener('click', () => void mirror.start(selectedQuality()));
 el('mirror-stop').addEventListener('click', () => void mirror.stop());
 
 /**
- * Changing the cap mid-session goes over `mirror.config`, which rebuilds the phone's encoder
- * without asking for consent again. Before a session it is just the value the next start sends.
+ * The three quality presets from the handoff, carrying the two fields `mirror.start` and
+ * `mirror.config` actually accept.
+ *
+ * `maxResolution` is a **cap on the short edge**, not a resolution to capture at — the phone reads
+ * its own panel, scales to fit the cap with the aspect preserved, and rounds both edges even. So
+ * "1080p" is an honest name for the request and a misleading claim about the result, which is why
+ * the pane draws what the phone actually captured beside it rather than trusting the label. See
+ * docs/design-departures.md, M10.
  */
-el('mirror-resolution').addEventListener('change', () => {
-  void mirror.setMaxResolution(selectedResolution()).catch(() => {
-    /* Not mirroring yet: the value is picked up by the next start. */
-  });
-});
+const QUALITY_PRESETS = [
+  { id: 'high', title: '1080p · 60 FPS', sub: 'Recommended', maxResolution: 1080, frameRate: 60 },
+  { id: 'mid', title: '720p · 30 FPS', sub: 'Smooth on weak links', maxResolution: 720, frameRate: 30 },
+  { id: 'low', title: '480p · 30 FPS', sub: 'Battery saving', maxResolution: 480, frameRate: 30 },
+] as const;
 
-function selectedResolution(): number {
-  return Number(el<HTMLSelectElement>('mirror-resolution').value);
+let quality: (typeof QUALITY_PRESETS)[number] = QUALITY_PRESETS[0];
+
+function selectedQuality(): { maxResolution: number; frameRate: number } {
+  return { maxResolution: quality.maxResolution, frameRate: quality.frameRate };
 }
+
+function drawQuality(): void {
+  const host = el('mirror-quality');
+  host.replaceChildren();
+  for (const preset of QUALITY_PRESETS) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = preset.id === quality.id ? 'quality-row selected' : 'quality-row';
+    row.setAttribute('role', 'radio');
+    row.setAttribute('aria-checked', String(preset.id === quality.id));
+
+    const text = document.createElement('span');
+    const title = document.createElement('span');
+    title.className = 'quality-title';
+    title.textContent = preset.title;
+    const sub = document.createElement('span');
+    sub.className = 'quality-sub';
+    sub.textContent = preset.sub;
+    text.append(title, sub);
+
+    const dot = document.createElement('span');
+    dot.className = 'quality-dot';
+    dot.setAttribute('aria-hidden', 'true');
+
+    row.append(text, dot);
+    row.addEventListener('click', () => {
+      quality = preset;
+      drawQuality();
+      // Mid-session this goes over `mirror.config`, which rebuilds the phone's encoder without a
+      // second consent tap. Before a session it is simply the value the next start will send.
+      void mirror.setQuality(selectedQuality()).catch(() => {
+        /* Not mirroring yet: the value is picked up by the next start. */
+      });
+    });
+    host.appendChild(row);
+  }
+}
+drawQuality();
+
+/**
+ * The four Advanced toggles the handoff draws, and why not one of them is drawn as a toggle.
+ *
+ * A greyed control is a promise that it might one day light up, and for the two walls below that
+ * promise is false forever — so the control is removed and the reason replaces it. Each row says
+ * which kind it is, because "Android forbids this" and "we have not built it yet" are different
+ * facts and a user deciding whether to go looking in Settings needs to know which one they have.
+ *
+ * These strings live here rather than in the markup so they sit beside the code that knows them,
+ * and so a change to the protocol that makes one real is a change in one place.
+ */
+const ADVANCED_LIMITS = [
+  {
+    name: 'Sound from phone',
+    kind: 'unbuilt' as const,
+    why: 'No audio channel exists in the protocol yet. Media audio is possible on Android 10+; ' +
+      'call audio never will be.',
+  },
+  {
+    name: 'Show touches',
+    kind: 'wall' as const,
+    why: 'It is a secure system setting, and changing it needs a signature-level permission this ' +
+      'app cannot hold.',
+  },
+  {
+    name: 'Keep screen on',
+    kind: 'unbuilt' as const,
+    why: 'Nothing on the wire carries it. The phone could hold a wake lock while mirroring.',
+  },
+  {
+    name: 'Phone screen off',
+    kind: 'wall' as const,
+    why: 'Blanking the phone while it mirrors needs a system-signed permission. `mirror.screenoff` ' +
+      'is deliberately unimplemented, and a test asserts it is never registered.',
+  },
+];
+
+function drawAdvancedLimits(): void {
+  const host = el('mirror-advanced');
+  host.replaceChildren();
+  for (const limit of ADVANCED_LIMITS) {
+    const row = document.createElement('div');
+    row.className = 'limit-row';
+    const head = document.createElement('div');
+    head.className = 'limit-head';
+    const name = document.createElement('span');
+    name.className = 'limit-name';
+    name.textContent = limit.name;
+    const tag = document.createElement('span');
+    tag.className = `limit-tag ${limit.kind}`;
+    // The two words are the whole point of the row. "Not possible" closes the question; "Not yet"
+    // leaves it open, and a user who reads the wrong one either goes hunting through Settings for
+    // something that is not there, or stops asking for something we should build.
+    tag.textContent = limit.kind === 'wall' ? 'Not possible' : 'Not yet';
+    head.append(name, tag);
+    const why = document.createElement('p');
+    why.className = 'limit-why';
+    why.textContent = limit.why;
+    row.append(head, why);
+    host.appendChild(row);
+  }
+}
+drawAdvancedLimits();
+
+/** A still of what is on screen now. Taken from the Mac's own decoded frames — no phone command. */
+el('mirror-capture').addEventListener('click', () => void mirror.saveStill());
+
+/** `mirror.keyframe`. What to press when the picture has torn and is not recovering. */
+el('mirror-refresh').addEventListener('click', () => void connect.mirrorKeyframe());
+
+/*
+ * The "Floating window" button.
+ *
+ * One call in both states. `floatOpen` is `isOpen ? focus() : open()` in the main process, so this
+ * button does not decide which of the two it is doing — it cannot create a second instance even if
+ * it is pressed twice before the window has finished loading, which a check up here would not
+ * survive. See main/float.ts:openFloat.
+ */
+el('mirror-float').addEventListener('click', () => void connect.floatOpen());
+
+/**
+ * The button's two states, from the one place that owns all three of its strings.
+ *
+ * Driven by the main process's own view of the window rather than by what this pane last did, so
+ * closing the window from its own red light reverts the button here too — the two are not in the
+ * same renderer and cannot be kept in step by the click handler.
+ */
+function drawFloatButton(open: boolean): void {
+  const labels = floatButtonLabelsFor(open);
+  el('mirror-float-label').textContent = labels.label;
+  el('mirror-float').setAttribute('aria-label', labels.description);
+  el('mirror-float').setAttribute('title', labels.description);
+  el('mirror-float-dot').classList.toggle('hidden', !labels.dot);
+}
+
+connect.onFloatChanged((state) => drawFloatButton(state.open));
+void connect.floatState().then((state) => drawFloatButton(state?.open ?? false));
 
 /**
  * The debug HUD, once a second.
@@ -406,6 +567,17 @@ setInterval(() => {
     // Blank until the phone has actually turned once: "0°" would claim a measurement that has not
     // been made, and the phone only sends `mirror.rotate` when its rotation changes.
     el('hud-rotation').textContent = decoded.rotation === null ? '—' : `${decoded.rotation}°`;
+
+    // The Mirror pane's own two readouts, from the same source as the HUD rows above so the two
+    // cannot disagree. The rail shows the rotation rather than offering to change it: `mirror.rotate`
+    // is phone-to-Mac only and the Mac cannot turn a phone — docs/design-departures.md, M2.
+    el('mirror-rotation-readout').textContent =
+      decoded.rotation === null ? '—' : `${decoded.rotation}°`;
+    // What the phone actually captured, beside the preset that asked for it. `maxResolution` is a
+    // cap on the short edge, so the preset name is a request and this is the result — M10.
+    el('mirror-actual').textContent = capture?.width
+      ? `Capturing ${capture.width}×${capture.height} · cap ${capture.maxResolution} on the short edge`
+      : 'Not capturing.';
     // Both sides: a phone encoding 60 and a Mac painting 30 is a link problem, and one number
     // alone cannot tell you that.
     el('hud-fps').textContent =

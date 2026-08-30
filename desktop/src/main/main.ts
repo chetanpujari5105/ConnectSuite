@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor, Tray, Menu } from 'electron';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
+import { writeFile } from 'node:fs/promises';
 import QRCode from 'qrcode';
 import { ErrorCode, MessageType, type ConnectionStatus } from '../shared/protocol';
 import { loadIdentity } from './identity';
@@ -15,8 +16,16 @@ import { initLogger, log, tailLog } from './logger';
 import { debugSwitches } from './debugSwitches';
 import { store } from './store';
 import { VideoClient, type VideoFrame } from './video';
+import { FloatMirrorWindow } from './float';
 
 let window: BrowserWindow | null = null;
+/**
+ * The detached mirror window — the second of the *two views of one session*.
+ *
+ * Constructed lazily in `whenReady` because it needs `app.getAppPath()`-relative paths and a
+ * `screen` module that does not exist before then.
+ */
+let float: FloatMirrorWindow | null = null;
 let tray: Tray | null = null;
 let link: LinkClient | null = null;
 let video: VideoClient | null = null;
@@ -205,6 +214,24 @@ function send(channel: string, payload: unknown): void {
 }
 
 /**
+ * The same payload to every window that is open.
+ *
+ * Two views of one session means two decoders over one stream, not two sessions: the access units
+ * are broadcast and each window decodes what it needs. It is deliberately *not* the default —
+ * `send` stays main-window-only — because most channels describe a pane the float window does not
+ * have, and a second window quietly receiving `sms-received` is how a "second view" becomes a
+ * second app.
+ *
+ * The float window opens mid-stream with no parameter sets of its own, which is why opening it
+ * replays the retained config frame and asks for an IDR. See [openFloatWindow].
+ */
+function sendAll(channel: string, payload: unknown): void {
+  send(channel, payload);
+  const detached = float?.webContents();
+  if (detached && !detached.isDestroyed()) detached.webContents.send(channel, payload);
+}
+
+/**
  * Every phase the phone reports, forwarded to the canvas — and the one place the video socket is
  * opened.
  *
@@ -217,14 +244,14 @@ function send(channel: string, payload: unknown): void {
  */
 async function onMirrorState(state: MirrorStatePayload): Promise<void> {
   log.info('video', `Phone mirror state: ${state.state ?? 'unknown'} — ${state.message ?? ''}`);
-  send('mirror-state', state);
+  sendAll('mirror-state', state);
 
   if (state.state === 'running') {
     const token = link?.token();
     const address = link?.status().address;
     if (!token || !address) {
       log.warn('video', 'Phone reports mirroring but there is no live session to open video on');
-      send('mirror-stopped', {
+      sendAll('mirror-stopped', {
         reason: 'The phone started mirroring but the link had already dropped.',
         fixHint: 'Reconnect the phone and start mirroring again.',
       });
@@ -236,7 +263,7 @@ async function onMirrorState(state: MirrorStatePayload): Promise<void> {
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         log.warn('video', `Could not open the video socket: ${reason}`);
-        send('mirror-stopped', {
+        sendAll('mirror-stopped', {
           reason: `The phone is mirroring but the Mac could not open the video connection (${reason}).`,
           fixHint: 'Check that the Mac and phone are on the same network, then try again.',
         });
@@ -255,7 +282,7 @@ async function onMirrorState(state: MirrorStatePayload): Promise<void> {
 
   if (state.state === 'stopped') {
     video?.close('the phone stopped mirroring');
-    send('mirror-stopped', { reason: state.message, fixHint: state.fixHint });
+    sendAll('mirror-stopped', { reason: state.message, fixHint: state.fixHint });
   }
 }
 
@@ -271,10 +298,45 @@ app.whenReady().then(() => {
   link = new LinkClient(identity);
   video = new VideoClient(identity);
 
+  /*
+   * The detached mirror window.
+   *
+   * `onReady` is the answer to the one problem a second view has and the first does not: it opens
+   * into a stream that is already running. Nothing will arrive marked `config` again on its own, so
+   * the retained SPS/PPS are replayed to the new window and the phone is asked for an IDR. Without
+   * both, the window shows a black rectangle for however long the encoder takes to keyframe on its
+   * own — which on a still screen can be a very long time.
+   */
+  float = new FloatMirrorWindow(
+    join(__dirname, '..', 'preload.js'),
+    join(__dirname, '..', 'renderer', 'float.html'),
+    (state) => sendAll('float-changed', state),
+    (target) => {
+      const config = video?.configFrame();
+      if (config) {
+        target.webContents.send('video-frame', {
+          keyframe: config.keyframe,
+          config: config.config,
+          ptsUs: config.ptsUs,
+          data: new Uint8Array(config.data),
+          arrivedAt: config.arrivedAt,
+        });
+      }
+      // Asked for even when there was no retained config: a window with a decoder and no reference
+      // frame is the same black rectangle either way, and `mirror.keyframe` costs one small message.
+      if (link?.isConnected()) {
+        void link.request('mirror.keyframe', {}, 5_000).catch(() => undefined);
+      }
+      // The window missed every `status` sent before it existed, so it starts with no device name
+      // and no idea whether input is advertised. Replay the last one rather than leaving it blank.
+      if (lastStatus) target.webContents.send('status', lastStatus);
+    },
+  );
+
   // Access units go straight to the renderer, which owns the WebCodecs decoder and the canvas.
   // Buffer -> Uint8Array because a Node Buffer does not survive structured cloning as one.
   video.on('frame', (frame: VideoFrame) => {
-    send('video-frame', {
+    sendAll('video-frame', {
       keyframe: frame.keyframe,
       config: frame.config,
       ptsUs: frame.ptsUs,
@@ -282,7 +344,7 @@ app.whenReady().then(() => {
       arrivedAt: frame.arrivedAt,
     });
   });
-  video.on('closed', (reason: string) => send('mirror-stopped', { reason }));
+  video.on('closed', (reason: string) => sendAll('mirror-stopped', { reason }));
   link.on('status', (status: ConnectionStatus) => {
     lastStatus = status;
     refreshTray();
@@ -290,7 +352,7 @@ app.whenReady().then(() => {
     // just be refused on its next frame.
     if (status.phase !== 'connected' && video?.isOpen()) {
       video.close('the control link dropped');
-      send('mirror-stopped', { reason: 'The link to the phone dropped, so mirroring stopped.' });
+      sendAll('mirror-stopped', { reason: 'The link to the phone dropped, so mirroring stopped.' });
     }
     // A notification set that outlives its connection is a set of things that may already have
     // been dealt with on the phone — see notifications.ts. Cleared rather than kept.
@@ -320,7 +382,7 @@ app.whenReady().then(() => {
     if (nowConnected && canRemote && wasConnected && !couldRemote) void remote.refresh();
     wasConnected = nowConnected;
     couldRemote = canRemote;
-    send('status', status);
+    sendAll('status', status);
   });
   link.on('phone-error', (payload: unknown) => {
     // A mirror failure arrives here as an ordinary error with feature "mirror". It is the only
@@ -344,7 +406,7 @@ app.whenReady().then(() => {
       // arriving, which for a secure surface is precisely backwards: the frames still arriving are
       // the black ones the sentence is about, and they wiped it 16ms after it appeared (defect 23).
       // A transient failure ends when there is real content again; everything else ends the session.
-      send('mirror-stopped', { reason: error.message, fixHint: error.fixHint, transient });
+      sendAll('mirror-stopped', { reason: error.message, fixHint: error.fixHint, transient });
     }
     send('phone-error', payload);
   });
@@ -483,11 +545,21 @@ ipcMain.handle('mirror-start', async (_event, options: Record<string, unknown> =
     'video',
     `mirror.start acknowledged in ${Date.now() - requestedAt}ms as "${state.state ?? 'unknown'}"`,
   );
-  send('mirror-state', state);
+  sendAll('mirror-state', state);
   return { ok: true, requestedAt, state };
 });
 
+/*
+ * Stopping the session closes the detached window — the README's own row: *"Stop mirroring
+ * (inspector or ⌘⇧.) → isMirroring = false, isOpen = false."*
+ *
+ * The asymmetry with `float-close` is the point and is worth stating, because it looks like an
+ * inconsistency until you read it the right way round: closing the *window* never stops the
+ * session, and stopping the *session* always closes the window. A detached window over a stopped
+ * mirror would be a frame with nothing in it and no way to explain itself.
+ */
 ipcMain.handle('mirror-stop', async () => {
+  float?.closeFloat();
   video?.close('stopped by the user');
   if (link?.isConnected()) {
     await link.request('mirror.stop', {}, 10_000).catch(() => undefined);
@@ -512,6 +584,70 @@ ipcMain.handle('mirror-config', async (_event, options: Record<string, unknown> 
 ipcMain.handle('mirror-keyframe', async () => {
   if (link?.isConnected()) await link.request('mirror.keyframe', {}, 5_000).catch(() => undefined);
 });
+
+/**
+ * Writes a still of the mirror to the Desktop.
+ *
+ * File IO lives in the main process — the renderer draws and sends intents — so the renderer hands
+ * over a PNG data URL and gets back the path it landed at. The path is returned rather than
+ * assumed, because "Screenshot saved to Desktop" is a claim, and a toast that says it without
+ * knowing is the kind of confident wrong sentence this project keeps finding.
+ *
+ * The name carries a second-resolution timestamp so two captures a second apart cannot collide and
+ * silently overwrite each other.
+ */
+ipcMain.handle('mirror-capture', async (_event, dataUrl: string) => {
+  // A data URL is the only shape accepted. Anything else is a bug or a hostile renderer, and
+  // either way it must not reach `writeFile` with a path in it.
+  const prefix = 'data:image/png;base64,';
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith(prefix)) {
+    log.warn('video', 'Capture refused: not a PNG data URL');
+    return { ok: false, reason: 'That capture was not a PNG and was not saved.' };
+  }
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const path = join(app.getPath('desktop'), `ConnectSuite ${stamp}.png`);
+  try {
+    await writeFile(path, Buffer.from(dataUrl.slice(prefix.length), 'base64'));
+    // Logged at the same volume as the failure below, with the same tally, because a count of
+    // failures with no successes beside it is not evidence — see CLAUDE.md.
+    captures.saved += 1;
+    log.info('video', `Capture saved to ${path} — ${captureTally()}`);
+    return { ok: true, path };
+  } catch (error) {
+    captures.failed += 1;
+    log.warn('video', `Capture failed: ${String(error)} — ${captureTally()}`);
+    return { ok: false, reason: `The capture could not be written (${String(error)}).` };
+  }
+});
+
+const captures = { saved: 0, failed: 0 };
+const captureTally = (): string =>
+  `${captures.saved} saved / ${captures.failed} failed since start`;
+
+/*
+ * The detached mirror window's IPC.
+ *
+ * Every handler is a lifecycle call or a *pointer position* — never a window rectangle. The
+ * geometry is resolved in `float.ts` through `shared/floatGeometry.ts`, so there is no channel a
+ * renderer could use to set a width without re-clamping Y. That is the isolation the README asks
+ * for, expressed as the shape of the wire rather than as a rule someone has to remember.
+ */
+ipcMain.handle('float-open', () => {
+  float?.openFloat();
+  return float?.state() ?? null;
+});
+ipcMain.handle('float-close', () => float?.closeFloat());
+ipcMain.handle('float-minimize', () => float?.minimize());
+ipcMain.handle('float-smart-fit', () => float?.smartFit());
+ipcMain.handle('float-set-width', (_event, width: number) => float?.setWidth(width));
+ipcMain.handle('float-set-pinned', (_event, pinned: boolean) => float?.setPinned(pinned === true));
+ipcMain.handle(
+  'float-move',
+  (_event, drag: { pointer: { x: number; y: number }; grab: { x: number; y: number } }) =>
+    float?.moveTo(drag.pointer, drag.grab),
+);
+ipcMain.handle('float-resize', (_event, pointer: { x: number }) => float?.resizeCorner(pointer));
+ipcMain.handle('float-state', () => float?.state() ?? null);
 
 ipcMain.handle('mirror-stats', () => ({
   ...(video?.stats() ?? { frames: 0, bytes: 0, kbps: 0, framesPerSecond: 0 }),

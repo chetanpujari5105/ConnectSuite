@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- The same CSP the main page runs under. A second entry point is a second place to get this
+         wrong, and a window with a laxer policy than the app it belongs to is worse than no policy
+         at all — it is the one an attacker would aim at. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'" />
+    <title>Phone screen</title>
+    <!-- tokens.css first, exactly as index.html does: this window is a second view of the same
+         design system, not a place with colours of its own. All three sheets are in the
+         copy-assets array — a stylesheet missing from it builds clean and ships unstyled. -->
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="float.css" />
+  </head>
+  <body class="float-body">
+    <!--
+      Handoff §3: "Contains only the title bar and the phone screen — no sidebar, dashboard,
+      inspector cards, dock, or tool rail." The hover dock below is the one thing that appears over
+      the screen, and it appears only on hover.
+    -->
+    <div class="float-frame" id="float-frame">
+      <!-- 34px, and that 34 is TITLE in shared/floatGeometry.ts. The two must agree: the window's
+           height is `width * 19.5/9 + TITLE`, so a title bar that is not 34 tall makes the phone
+           screen the wrong aspect and no amount of CSS below fixes it. -->
+      <header class="float-title" id="float-title">
+        <div class="lights">
+          <button type="button" class="light close" id="float-close" aria-label="Close the floating window" title="Close the floating window"></button>
+          <button type="button" class="light min" id="float-minimize" aria-label="Minimise the floating window" title="Minimise"></button>
+          <!-- Green is smart-fit, not full screen. A ratio-locked window has no full screen to go
+               to, and the handoff binds the green light to the same 300pt default a double-click
+               on the bar goes to. -->
+          <button type="button" class="light zoom" id="float-smart-fit" aria-label="Fit the window back to its default size" title="Fit to default size"></button>
+        </div>
+
+        <div class="float-device">
+          <span class="live-dot" id="float-dot" aria-hidden="true"></span>
+          <span class="mono" id="float-device-name">Phone</span>
+        </div>
+
+        <button type="button" class="pin" id="float-pin" aria-pressed="false" aria-label="Keep this window in front of other apps" title="Keep in front">
+          <span class="pin-glyph" aria-hidden="true"></span>
+        </button>
+      </header>
+
+      <div class="float-screen" id="float-screen">
+        <canvas id="float-canvas" aria-label="The phone's screen"></canvas>
+
+        <!--
+          The same overlay/notice rule the Mirror pane established, for the same reason: this means
+          "there is no picture, here is why", and any painted frame takes it down. It is not a place
+          for a refusal that happens while frames are flowing — that would be wiped inside one frame
+          at 60fps. See docs/testing.md, defect 23.
+        -->
+        <div class="float-overlay" id="float-overlay">
+          <p class="float-reason" id="float-reason">Waiting for the phone's next keyframe…</p>
+        </div>
+
+        <!--
+          Hover dock. Back / Home / Recents are `input.global` — `performGlobalAction`, which carries
+          no coordinates and therefore needs no geometry stamp. Screenshot is a canvas readback on
+          this Mac and needs nothing from the phone at all.
+
+          There is deliberately no tap or swipe on this canvas in this slice. Pointer input has to
+          quote the geometry stamp the frame was captured against, and that logic — with defect 19's
+          drag cancellation and defect 20's staleness window — lives in mirror.ts. A second copy of
+          it is exactly the drift this project keeps paying for, so it waits for a shared seam
+          rather than being retyped here. See docs/design-departures.md, row M13.
+        -->
+        <div class="float-dock" id="float-dock">
+          <button type="button" class="dock-button" data-global="back">Back</button>
+          <button type="button" class="dock-button" data-global="home">Home</button>
+          <button type="button" class="dock-button" data-global="recents">Recents</button>
+          <button type="button" class="dock-button" id="float-shot">Screenshot</button>
+        </div>
+      </div>
+
+      <!-- Width is the only input this handle produces; height and Y follow inside resolveBounds. -->
+      <div class="float-resize" id="float-resize" role="separator" aria-label="Resize the floating window" title="Drag to resize"></div>
+    </div>
+
+    <div class="float-toast" id="float-toast" role="status" aria-live="polite"></div>
+
+    <script src="h264Canvas.js"></script>
+    <script src="float.js"></script>
+  </body>
+</html>

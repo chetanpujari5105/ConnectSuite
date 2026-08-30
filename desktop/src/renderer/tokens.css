@@ -1,0 +1,161 @@
+/*
+ * The design system, as tokens. Nothing here draws anything.
+ *
+ * Source: `Mac app UI mockups (1)/design_handoff_connectsuite/README.md`, the written handoff, and
+ * `ConnectSuite.dc.html`, the prototype it documents. Where a screenshot disagrees with those two,
+ * they win — the `9.09.05 PM` capture draws a gradient CTA that the handoff forbids in writing, and
+ * the `4.23 PM` / `4.24 PM` captures are the superseded green iteration.
+ *
+ * Two things this file is NOT:
+ *
+ *  - It is not `_ds/modernist-…/styles.css`, which rode along in the same export and is a different
+ *    design system for a different product — light #f3f2f2 ground, red #ec3013 accent, radius 0,
+ *    "do not round a corner anywhere". Its red-as-accent is the exact thing our handoff forbids by
+ *    name. Take nothing from it.
+ *  - It is not yet the whole app. The old `--bg` / `--card` / `--accent` block below still dresses
+ *    every pane that has not migrated. It is deliberately kept so this slice is one pane's worth of
+ *    risk rather than a big-bang restyle, and it gets deleted by the last pane to migrate.
+ *
+ * Loaded before styles.css. If you add a third stylesheet, add it to `scripts/copy-assets.mjs`
+ * too — that script copies a hard-coded array, and a missing entry builds clean, typechecks clean,
+ * and ships an unstyled app.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- Colour -------------------------------------------------------------------------------
+   * Red is reserved. `--destructive` means destructive or failed, and nothing else: never an
+   * accent, never a selected state, never brand. In a connection product red reads as "the link is
+   * down", which is why the handoff says so and why it is repeated here where someone reaching for
+   * a colour will actually see it.
+   */
+  --canvas: #07070a;
+
+  /* Elevation is hairline + shadow + inner highlight, never a heavier fill. */
+  --elev-1: rgba(14, 15, 21, 0.72);          /* chrome: sidebar, status island, ⌘K panel */
+  --elev-2: rgba(22, 24, 34, 0.82);          /* the default panel surface */
+  --elev-3: #1c1f2b;                         /* the ONE primary card per screen, at most */
+  --control: #161822;                        /* buttons, inputs, tiles */
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-hover: rgba(255, 255, 255, 0.14);
+  --inner-highlight: rgba(255, 255, 255, 0.05);
+
+  --text-primary: #f4f4f7;                   /* headings, values          — 15.4:1 on --elev-2 */
+  --text-body: #9c9fb0;                      /* body copy, secondary      —  6.6:1, clears AA  */
+  --text-meta: #5b5e6e;                      /* 10–11px meta ONLY         —  2.6:1, never body */
+  --text-on-control: #e7e7ee;                /* button labels, list rows */
+
+  --accent: #8b6bff;                         /* selected state, primary action fill */
+  --accent-text: #8b7aff;                    /* accent text and icons — lighter, for contrast */
+  --accent-tint: rgba(139, 107, 255, 0.13);
+  --accent-tint-strong: rgba(139, 107, 255, 0.18);
+  --accent-border: rgba(139, 107, 255, 0.28);
+  --accent-glow: rgba(139, 107, 255, 0.18);
+
+  --secondary: #22d3ee;                      /* secondary data accent */
+  --live: #32e58a;                           /* connection state, LIVE badge, success */
+  --warning: #f5b23d;                        /* weak link, paused, and capability-unavailable */
+  --warning-fill: rgba(245, 178, 61, 0.1);
+  --warning-border: rgba(245, 178, 61, 0.3);
+  --destructive: #ff5d5d;                    /* destructive actions and failure states ONLY */
+  --destructive-fill: rgba(255, 93, 93, 0.1);
+  --destructive-border: rgba(255, 93, 93, 0.3);
+
+  /* ---- Type ---------------------------------------------------------------------------------
+   * The handoff specifies Archivo and then sanctions the swap we take: "substitute the codebase's
+   * native UI face if it has one — SF Pro is an acceptable native swap". Taken deliberately, not
+   * as a shortcut: the page's CSP is `style-src 'self'`, so a fonts.googleapis.com @import is
+   * blocked outright, and vendoring woff2 would mean a webfont in an app whose first line of
+   * description is "no cloud, no account, no relay server".
+   *
+   * Every numeric goes in --font-mono with tabular figures. The handoff's reason — proportional
+   * figures jitter as values update — is stronger here than in the mockups, because our HUD
+   * updates rtt, fps, bitrate, dropped and two latency splits against a real link.
+   */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+
+  --text-page-title: 600 31px/1.15 var(--font-ui);
+  --text-section: 600 15px/1.3 var(--font-ui);
+  --text-card-title: 600 21px/1.25 var(--font-ui);
+  --text-body-size: 500 13.5px/1.5 var(--font-ui);
+  --text-control: 500 13px/1.2 var(--font-ui);
+  --text-meta-size: 500 11px/1.3 var(--font-ui);
+  --tracking-title: -0.02em;
+  --tracking-section: -0.015em;
+  --tracking-meta: 0.02em;
+  --tracking-group: 0.12em;
+
+  /* ---- Spacing ------------------------------------------------------------------------------ */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-7: 16px;
+  --space-8: 18px;
+  --space-9: 20px;
+  --space-10: 24px;
+  --space-11: 28px;
+
+  /* ---- Radius ------------------------------------------------------------------------------- */
+  --radius-control: 10px;                    /* controls, chips */
+  --radius-tile: 14px;                       /* tiles, inner cards */
+  --radius-panel: 18px;                      /* panels */
+  --radius-window: 24px;                     /* app window, phone body */
+  --radius-pill: 999px;
+
+  /* ---- Elevation ---------------------------------------------------------------------------- */
+  --shadow-panel: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --shadow-primary: 0 24px 56px rgba(0, 0, 0, 0.5);
+  --shadow-float: 0 20px 48px rgba(0, 0, 0, 0.5);
+
+  /* ---- Motion -------------------------------------------------------------------------------
+   * Only `transform` and `opacity` animate. See the reduced-motion block at the foot of this file.
+   */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-float: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-hover: 200ms;
+  --dur-pill: 200ms;
+  --dur-toggle: 160ms;
+  --dur-float: 220ms;
+  --dur-route: 260ms;
+  --dur-press: 100ms;
+
+  /* ---- Legacy, deleted by the last pane to migrate ------------------------------------------
+   * Every pane except Notifications still reads these. Not one of them is a handoff value.
+   */
+  --bg: #101014;
+  --card: #191922;
+  --text: #e8e8ef;
+  --muted: #9a9aae;
+  --danger: #ff6b6b;
+  --ok: #5ad18f;
+}
+
+/*
+ * Focus, on every interactive element, everywhere. The handoff states this as a hard requirement
+ * rather than as polish: "Never leave a browser/system default ring."
+ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * The other hard requirement. Not optional polish — it sits beside :focus-visible in the handoff,
+ * and it is why every animation in this codebase is expressed as a transition on transform or
+ * opacity rather than as a keyframed layout change: there is one place to switch them all off.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

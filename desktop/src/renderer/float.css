@@ -1,0 +1,353 @@
+/*
+ * The detached mirror window. Handoff §3, and nothing else.
+ *
+ * Its own sheet rather than a section of styles.css: styles.css is the main window's component
+ * layer, ~1200 lines of panes this window does not have, and loading it here would ship a sidebar's
+ * worth of rules to a page that is a title bar and a canvas. Tokens are shared — this window is a
+ * second view of one design system, not a place with colours of its own — so tokens.css is loaded
+ * by both and this file adds only what §3 draws.
+ *
+ * Every value below is the handoff's. Where one is repeated from `shared/floatGeometry.ts` it is
+ * marked, because the two have to agree: the window's height is `width * 19.5/9 + 34`, and a title
+ * bar that is not 34 tall makes the phone screen the wrong shape.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+.float-body {
+  margin: 0;
+  /* The window is frameless, so the page *is* the window. A background here would sit outside the
+     14px radius and square off the corners macOS is rounding for us. */
+  background: transparent;
+  color: var(--text-primary);
+  font: var(--text-body-size);
+  font-family: var(--font-ui);
+  overflow: hidden;
+  /* Nothing in this window is a document. Selecting the device name by dragging the title bar is
+     never what someone meant, and a text caret over a phone screen reads as a broken control. */
+  user-select: none;
+  cursor: default;
+}
+
+.float-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0b0c12;
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-float);
+  transition: border-color var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease);
+}
+
+/*
+ * Focused. The handoff is explicit that this is restrained — "no bloom" — because a window that
+ * lights up whenever you click it competes with the picture it exists to show.
+ */
+.float-frame.focused {
+  border-color: rgba(139, 107, 255, 0.34);
+  box-shadow: 0 0 0 1px rgba(139, 107, 255, 0.14), 0 26px 60px rgba(0, 0, 0, 0.56);
+}
+
+/* ---- Title bar ---------------------------------------------------------------------------- */
+
+/*
+ * 34px is TITLE in shared/floatGeometry.ts. Changing one without the other silently breaks the
+ * 9:19.5 lock, because the window's height is computed from this number in the main process and
+ * the remaining space is what the phone screen gets.
+ */
+.float-title {
+  flex: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 var(--space-4);
+  background: rgba(18, 20, 28, 0.94);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.lights {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.light {
+  width: 11px;
+  height: 11px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  opacity: 0.9;
+  transition: opacity var(--dur-hover) var(--ease);
+}
+.light:hover { opacity: 1; }
+.close { background: #ff5f57; }
+.min { background: #febc2e; }
+.zoom { background: #28c840; }
+
+/*
+ * Centred on the *window*, not between the lights and the pin. Absolute rather than a flex spacer
+ * because the two flanking controls are different widths, and a centred label that drifts by a few
+ * pixels depending on its neighbours reads as a layout bug.
+ */
+.float-device {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 60%;
+  font: var(--text-meta-size);
+  font-family: var(--font-mono);
+  color: var(--text-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--live);
+}
+/* Disconnected is a state, not a failure: the dot goes quiet rather than red. Red in a connection
+   product is reserved for destructive and failed — see tokens.css. */
+.float-frame.offline .live-dot { background: var(--text-meta); }
+
+.pin {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--text-meta);
+  cursor: pointer;
+  transition: color var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease);
+}
+.pin:hover { background: var(--control); }
+/* Violet when always-on-top is on, meta when off — the handoff's two states for this control. */
+.pin[aria-pressed='true'] { color: var(--accent-text); }
+
+.pin-glyph {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px 2px 50% 50%;
+}
+
+/* ---- The phone screen --------------------------------------------------------------------- */
+
+.float-screen {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--canvas);
+}
+
+.float-screen canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* `contain` rather than `cover`: the window is ratio-locked to the phone, so these should agree
+     exactly — and on the frame where they do not, letterboxing is honest and cropping is not. */
+  object-fit: contain;
+}
+
+/*
+ * "There is no picture, here is why." Any painted frame takes it down. This is the overlay half of
+ * the split defect 23 established; the toast below is where anything that happens *while* frames
+ * are flowing goes, because this would be wiped inside one frame at 60fps.
+ */
+.float-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-7);
+  background: rgba(7, 7, 10, 0.78);
+  text-align: center;
+  transition: opacity var(--dur-hover) var(--ease);
+}
+.float-overlay[hidden] { display: none; }
+
+.float-reason {
+  margin: 0;
+  max-width: 300px;
+  font: var(--text-body-size);
+  color: var(--text-body);
+}
+
+/* ---- Hover dock --------------------------------------------------------------------------- */
+
+/*
+ * Appears on window hover, bottom-centre. Only `transform` and `opacity` animate, per the handoff.
+ *
+ * Hidden with `opacity` plus `pointer-events: none`, not with `display` or `visibility`. Each of the
+ * three does something different here and only this combination is right:
+ *
+ *  - `display: none` and `visibility: hidden` both take the buttons out of the tab order, and a
+ *    control that exists only under a pointer is a control a keyboard user does not have. The dock
+ *    carries `:focus-within` for exactly that reason — tabbing into it reveals it.
+ *  - `opacity: 0` alone leaves an invisible pill sitting over the middle-bottom of the phone screen
+ *    that still swallows clicks. Harmless while the canvas takes no input and a silent dead zone
+ *    the moment it does, which is the kind of thing that gets found by someone tapping a phone and
+ *    wondering why one strip of it is dead.
+ */
+.float-dock {
+  position: absolute;
+  left: 50%;
+  /*
+   * The handoff says "bottom-centre **above the nav bar**", and the nav bar in question is the
+   * *phone's* — this window is ratio-locked to the phone's screen, so Android's gesture bar lands
+   * in a fixed proportion of the height no matter how the window is sized. At 14px the dock sat
+   * directly on it, and pressing Home meant reaching across the phone's own Home. Measured on a
+   * 300x650 screen area, where the gesture bar occupies roughly the bottom 24px.
+   */
+  bottom: 36px;
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  background: var(--elev-1);
+  backdrop-filter: blur(30px) saturate(140%);
+  box-shadow: var(--shadow-panel);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(8px);
+  transition: opacity var(--dur-pill) var(--ease-float), transform var(--dur-pill) var(--ease-float);
+}
+
+.float-frame:hover .float-dock,
+.float-dock:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.dock-button {
+  height: 26px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-on-control);
+  font: var(--text-meta-size);
+  letter-spacing: var(--tracking-meta);
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
+}
+.dock-button:hover { background: var(--control); color: var(--text-primary); }
+.dock-button:disabled { opacity: 0.45; cursor: default; }
+.dock-button:disabled:hover { background: none; color: var(--text-on-control); }
+
+/* ---- Resize handle ------------------------------------------------------------------------ */
+
+/*
+ * The only path to a width. Native resizing is off on this window (`resizable: false` in
+ * main/float.ts) precisely so this is true: a native resize would set a height directly, and a
+ * height that did not come from the width is the one way out of the 9:19.5 lock.
+ */
+.float-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity var(--dur-hover) var(--ease);
+}
+.float-frame:hover .float-resize { opacity: 1; }
+
+.float-resize::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 9px;
+  height: 9px;
+  border-right: 1.5px solid var(--text-meta);
+  border-bottom: 1.5px solid var(--text-meta);
+}
+
+/* ---- Toast -------------------------------------------------------------------------------- */
+
+/*
+ * Where a refusal that happens *while frames are flowing* goes, and where "Screenshot saved to…"
+ * goes. Deliberately not the overlay: see the note on .float-overlay.
+ */
+.float-toast {
+  position: fixed;
+  left: 50%;
+  /* Clear of the hover dock above it — the two can be on screen at once, because a refused global
+     action is announced here while the dock that refused it is still under the pointer. */
+  bottom: 82px;
+  transform: translateX(-50%) translateY(6px);
+  max-width: 86%;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  background: var(--elev-1);
+  backdrop-filter: blur(30px) saturate(140%);
+  color: var(--text-on-control);
+  font: var(--text-meta-size);
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-pill) var(--ease-float), transform var(--dur-pill) var(--ease-float);
+}
+.float-toast.shown {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ---- Drag ---------------------------------------------------------------------------------- */
+
+/*
+ * The handoff's "transition dropped mid-gesture so it tracks the cursor exactly". Without this the
+ * window lags the pointer by the transition duration, which reads as the app being slow rather than
+ * as a deliberate ease. `scale(1.008)` is the lift it asks for while held.
+ */
+.float-frame.dragging {
+  transition: none;
+  transform: scale(1.008);
+  box-shadow: 0 30px 68px rgba(0, 0, 0, 0.6);
+}
+
+/* ---- Accessibility ------------------------------------------------------------------------- */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * Not optional polish. The handoff states this as a hard requirement beside :focus-visible, and a
+ * window that grows out of a preview and lifts under a drag is exactly the motion someone with
+ * vestibular sensitivity turns this on to stop.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .float-frame.dragging { transform: none; }
+}

@@ -14,6 +14,7 @@ import type {
   SmsMessage,
   SmsThread,
 } from './shared/protocol';
+import type { FloatState } from './main/float';
 
 /**
  * The only bridge between the renderer and the sockets. Everything here is an intent — the
@@ -38,6 +39,7 @@ contextBridge.exposeInMainWorld('connect', {
   mirrorStats: () => ipcRenderer.invoke('mirror-stats'),
   /** `mirror.config` at runtime: raise the resolution cap or change bitrate without a restart. */
   mirrorConfig: (options: Record<string, unknown>) => ipcRenderer.invoke('mirror-config', options),
+  mirrorCapture: (dataUrl: string) => ipcRenderer.invoke('mirror-capture', dataUrl),
 
   /**
    * Input, as intents. The renderer works out *where on the picture* it clicked and nothing more;
@@ -222,6 +224,31 @@ contextBridge.exposeInMainWorld('connect', {
   callDial: (number: string): Promise<PhoneAck> => ipcRenderer.invoke('call-dial', number),
   onCallChanged: (callback: (call: IncomingCall | null) => void) =>
     ipcRenderer.on('call-changed', (_event, call) => callback(call)),
+
+  /**
+   * The detached mirror window.
+   *
+   * Every one of these is a *lifecycle or a pointer position*, never a window rectangle. The
+   * geometry invariant lives in `shared/floatGeometry.ts` and is applied in the main process, so a
+   * renderer is never in a position to set a width without re-clamping Y — there is no channel that
+   * would let it. The README asks for the lifecycle to sit behind four methods precisely so the
+   * window can become an `NSWindow` later without a renderer change; this is the wire that keeps
+   * that true.
+   */
+  floatOpen: () => ipcRenderer.invoke('float-open'),
+  floatClose: () => ipcRenderer.invoke('float-close'),
+  floatMinimize: () => ipcRenderer.invoke('float-minimize'),
+  floatSmartFit: () => ipcRenderer.invoke('float-smart-fit'),
+  floatSetWidth: (width: number) => ipcRenderer.invoke('float-set-width', width),
+  floatSetPinned: (pinned: boolean) => ipcRenderer.invoke('float-set-pinned', pinned),
+  /** Title-bar drag. `pointer` is in screen points; `grab` is its offset inside the window. */
+  floatMove: (pointer: { x: number; y: number }, grab: { x: number; y: number }) =>
+    ipcRenderer.invoke('float-move', { pointer, grab }),
+  /** Corner drag. X only — see `boundsForCornerDrag` for why Y is not offered. */
+  floatResize: (pointer: { x: number }) => ipcRenderer.invoke('float-resize', pointer),
+  floatState: (): Promise<FloatState> => ipcRenderer.invoke('float-state'),
+  onFloatChanged: (callback: (state: FloatState) => void) =>
+    ipcRenderer.on('float-changed', (_event, state) => callback(state)),
 
   onStatus: (callback: (status: ConnectionStatus) => void) =>
     ipcRenderer.on('status', (_event, status) => callback(status)),

@@ -262,7 +262,8 @@ damage on the user's own device or nearly recorded a false result.
   the practical half of this rule is *grep for every package name reaching a string, not the ones a
   screenshot showed you*.
 
-  Resolution goes through `AppLabels.of`, always, including when it fails. It returns the package
+  Resolution goes through `AppLabels.of` (`sync-module/.../sync/v2/AppLabels.kt` — not `core/`,
+  which is where it is looked for first), always, including when it fails. It returns the package
   name as its honest fallback for a package with no launcher icon, logs at warning level, and keeps
   `resolved / fell back` on the line — so "12 fallbacks" can be told from "12 of 12 fallbacks". The
   fallback is correct and must not be "fixed"; what matters is that it is *reached through*

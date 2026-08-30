@@ -138,6 +138,8 @@ interface MirrorBridge {
   mirrorStop: () => Promise<{ ok: boolean }>;
   mirrorKeyframe: () => Promise<void>;
   mirrorConfig: (options: Record<string, unknown>) => Promise<{ ok: boolean }>;
+  /** Hands a PNG data URL to the main process, which owns file IO. Returns where it landed. */
+  mirrorCapture: (dataUrl: string) => Promise<{ ok: boolean; path?: string; reason?: string }>;
   mirrorStats: () => Promise<{
     frames: number;
     bytes: number;
@@ -408,9 +410,41 @@ class MirrorView {
     this.showReason('Mirroring stopped.', undefined, 'session');
   }
 
-  /** Raises or lowers the capture cap on a live session. No new consent tap on the phone. */
-  async setMaxResolution(maxResolution: number): Promise<void> {
-    await this.bridge.mirrorConfig({ maxResolution });
+  /**
+   * Applies a quality preset to a live session. No new consent tap on the phone.
+   *
+   * Both fields are `mirror.config`'s own. `maxResolution` cannot be changed on the live encoder —
+   * MediaCodec cannot be resized in place — so the phone builds a new encoder and points its
+   * existing VirtualDisplay at it. The MediaProjection is never touched, which is what keeps this
+   * from needing a second consent tap and from tripping Android 14's one-display-per-projection
+   * rule.
+   */
+  async setQuality(quality: { maxResolution: number; frameRate: number }): Promise<void> {
+    await this.bridge.mirrorConfig({ ...quality });
+  }
+
+  /**
+   * A still of the current frame, written from the Mac's own canvas.
+   *
+   * Deliberately not a phone command, and there is no message for it: the Mac already holds every
+   * decoded frame, so a capture costs one readback and no round trip. It is therefore the one item
+   * on the handoff's five-item tool rail that works today — see docs/design-departures.md, M3.
+   *
+   * Refuses rather than writing a black rectangle when nothing has been painted. A file that
+   * silently contains nothing is the same failure as a silent no-op, one directory over.
+   */
+  async saveStill(): Promise<void> {
+    if (this.framesDecoded === 0 || this.canvas.width === 0) {
+      this.showNotice('There is no picture to capture yet.');
+      return;
+    }
+    const data = this.canvas.toDataURL('image/png');
+    const result = await this.bridge.mirrorCapture(data);
+    this.showNotice(
+      result.ok && result.path
+        ? `Saved to ${result.path}`
+        : (result.reason ?? 'The capture was not saved.'),
+    );
   }
 
   stats(): MirrorReadout {
