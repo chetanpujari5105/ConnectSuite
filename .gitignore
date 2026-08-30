@@ -21,3 +21,8 @@ captures/
 # Desktop build output
 desktop/dist/
 desktop/node_modules/
+
+# The design handoff is committed extracted, under "Mac app UI mockups (1)/".
+# The zip is a byte-for-byte archive of that same directory — 23M of duplicate
+# in every clone, and not the copy anyone reads. Ignore the archive, keep the tree.
+Mac app UI mockups (1).zip
