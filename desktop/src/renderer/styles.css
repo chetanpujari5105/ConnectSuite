@@ -104,6 +104,35 @@ button:active,
 button.danger { color: var(--destructive); border-color: var(--destructive-border); }
 button.danger:hover { background: var(--destructive-fill); }
 
+/*
+ * The one primary fill on the Overview screen. Flat violet — the handoff forbids gradient CTAs by
+ * name, and the mockup screenshot that draws one is the superseded iteration.
+ *
+ * **This lives here, immediately after the base `button` rule, and not in shell.css.** It was in
+ * shell.css and drew as a plain secondary control on every build: the element is
+ * `class="button primary-action"`, so the base rule matches it through `.button` at specificity
+ * (0,1,0) — a tie with `.primary-action`, broken by document order, and styles.css loads last.
+ * The later sheet took `background` and `color`, and took `font-weight` as well, because `font:`
+ * is a shorthand and resets the weight this rule sets.
+ *
+ * Nothing reported it: no error, no failing test, a clean tsc, and a screen whose one call to
+ * action looked like a deliberate choice. `stylesheets.test.ts` guards a selector declared in two
+ * sheets and could not see this, because the two selectors are different and collide only on the
+ * element. It now carries a check derived from index.html for exactly this shape — see
+ * `buttonModifiersLoseToTheBaseRule` there, and docs/design-measurements.md section 1.4.
+ */
+.primary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-on-fill);
+  font-weight: 600;
+}
+.primary-action:hover { background: #7d5cf6; border-color: #7d5cf6; }
+.primary-action:disabled:hover { background: var(--accent); }
+
 button:disabled {
   opacity: 0.45;
   cursor: default;
@@ -1243,7 +1272,7 @@ img#qr {
 .quality-row.selected { background: var(--accent-tint); border-color: var(--accent-border); }
 
 .quality-row > span:first-child { display: grid; gap: 2px; }
-.quality-title { font: 600 13px/1.3 var(--font-ui); color: var(--text-primary); }
+.quality-title { font: 600 13px/var(--leading-13) var(--font-ui); color: var(--text-primary); }
 .quality-sub { font: var(--text-meta-size); color: var(--text-meta); }
 
 /* Selection is the dot *and* the tint *and* aria-checked — never colour on its own. */

@@ -654,15 +654,23 @@ class ShellView {
      * certificates on both ends, and no plaintext fallback exists. It is the one claim on this
      * card that is true before the phone answers.
      */
-    const facts: [string, string][] = [
-      ['Connected via', status?.via ?? '—'],
-      ['Latency', latency],
-      ['Encryption', 'TLS 1.3, pinned'],
-      ['Address', status?.address ?? '—'],
+    /*
+     * The third field is whether the value is a *numeric* in the handoff's sense — "latency, byte
+     * sizes, percentages, timestamps, IPs, window geometry, dialer digits, file names" — and it is
+     * the only thing that puts a value in the mono face. It is a closed list with a stated reason
+     * (proportional figures jitter as the value updates), so `last-known` and `TLS 1.3, pinned`
+     * are prose and belong in the UI face. All four carried `.fact-value` and therefore the mono
+     * face until docs/design-measurements.md section 1.3.
+     */
+    const facts: [label: string, value: string, numeric: boolean][] = [
+      ['Connected via', status?.via ?? '—', false],
+      ['Latency', latency, true],
+      ['Encryption', 'TLS 1.3, pinned', false],
+      ['Address', status?.address ?? '—', true],
     ];
     const host = $('hero-facts');
     host.replaceChildren();
-    for (const [label, value] of facts) {
+    for (const [label, value, numeric] of facts) {
       // The pair is one grid cell. A bare dt/dd pair in a two-column grid separates the label from
       // its value by the width of the card, which is a table, not a fact.
       const cell = document.createElement('div');
@@ -671,7 +679,7 @@ class ShellView {
       dt.className = 'fact-label';
       dt.textContent = label;
       const dd = document.createElement('dd');
-      dd.className = 'fact-value';
+      dd.className = numeric ? 'fact-value mono' : 'fact-value';
       dd.textContent = value;
       cell.append(dt, dd);
       host.appendChild(cell);

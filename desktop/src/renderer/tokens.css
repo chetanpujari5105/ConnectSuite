@@ -75,6 +75,13 @@
   --accent-tint-strong: rgba(139, 107, 255, 0.18);
   --accent-border: rgba(139, 107, 255, 0.28);
   --accent-glow: rgba(139, 107, 255, 0.18);
+  /*
+   * Text and glyphs sitting *on* the accent fill. Near-black, not white: the design draws
+   * `#0b0b12` on `#8b6bff`, which is **5.27:1** and clears AA. White on the same fill is
+   * **3.72:1** and fails it at the 13.5px/600 the CTA is set in — 3.72 would only pass as large
+   * text, which starts at 18.66px bold. Measured off the prototype's Start-mirroring button.
+   */
+  --accent-on-fill: #0b0b12;
 
   --secondary: #22d3ee;                      /* secondary data accent */
   --live: #32e58a;                           /* connection state, LIVE badge, success */
@@ -99,12 +106,39 @@
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
 
-  --text-page-title: 600 31px/1.15 var(--font-ui);
-  --text-section: 600 15px/1.3 var(--font-ui);
-  --text-card-title: 600 21px/1.25 var(--font-ui);
+  /*
+   * The line-height half of each token is the design's *rendered* leading, in px, not a ratio.
+   *
+   * The handoff gives a line-height for exactly one role — Body, 1.5 — and the prototype behaves
+   * accordingly: an explicit value on the page title and on body copy, and `normal` on everything
+   * else. Copying `normal` here would reproduce the intent and lose the geometry, because SF Pro's
+   * natural leading runs 1-2px looser than Archivo's at every size (21px: 25 against 23; 15px:
+   * 17.5 against 16). The face is the sanctioned variable — the handoff offers the swap — while
+   * the artboard's measured heights are the contract, so the numbers below are Archivo's leading
+   * and the residual is nothing.
+   *
+   * Measured over CDP against ConnectSuite.dc.html; see docs/design-measurements.md section 1.2.
+   * Before this, four ratios here plus the body's inherited 1.5 put fourteen anchors out by up to
+   * 8.5px, in both directions.
+   */
+  --text-page-title: 600 31px/35.65px var(--font-ui);
+  --text-section: 600 15px/16px var(--font-ui);
+  --text-card-title: 600 21px/23px var(--font-ui);
   --text-body-size: 500 13.5px/1.5 var(--font-ui);
-  --text-control: 500 13px/1.2 var(--font-ui);
-  --text-meta-size: 500 11px/1.3 var(--font-ui);
+  --text-control: 500 13px/14px var(--font-ui);
+  --text-meta-size: 500 11px/12px var(--font-ui);
+
+  /*
+   * The design's leading at the sizes that are not a type-scale role, for the handful of elements
+   * that set their own font-size. Same source, same reason as above.
+   */
+  --leading-10: 11px;
+  --leading-11: 12px;
+  --leading-13: 14px;
+  --leading-12: 13px;
+  --leading-12-5: 13.5px;
+  --leading-13-5: 15px;
+  --leading-15: 16px;
   --tracking-title: -0.02em;
   --tracking-section: -0.015em;
   --tracking-meta: 0.02em;
@@ -171,6 +205,28 @@
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/*
+ * The third global, and it is the same defect as the focus ring one line up: a system default
+ * drawing itself where the design specified a colour.
+ *
+ * A native `<input type=range>` fills its track with `accent-color: auto`, which on macOS is the
+ * **user's own System Settings accent** — blue by default, and pink or graphite or whatever else on
+ * someone else's Mac. The Overview media remote's two sliders were drawing that blue, on a screen
+ * whose every other accent is `#8b6bff`, and nothing in this repo could see it: it is not a token,
+ * not a rule, and not a value any stylesheet mentions.
+ *
+ * That makes it the third instance of the pattern this file already records twice — a colour the
+ * design never chose, drawn confidently, invisible to `tsc` and to every test, and found by
+ * looking at a screenshot. It is scoped to the controls that have an accent rather than set on
+ * `*`, so it cannot leak into anything that inherits.
+ */
+input[type='range'],
+input[type='checkbox'],
+input[type='radio'],
+progress {
+  accent-color: var(--accent);
 }
 
 /*

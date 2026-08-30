@@ -220,3 +220,88 @@ test('only tokens.css declares a colour token', () => {
     );
   }
 });
+
+/**
+ * Where a selector is declared, as one comparable position in the single cascade the three sheets
+ * form. Sheet order first, then line — which is exactly how the browser breaks a specificity tie.
+ */
+function declarationPosition(selector: string): { sheet: string; line: number } | null {
+  for (let i = 0; i < SHEETS.length; i += 1) {
+    const name = SHEETS[i]!;
+    const lines = topLevelSelectorLines(read(name)).get(selector.toLowerCase());
+    if (lines && lines.length) return { sheet: name, line: i * 1_000_000 + Math.min(...lines) };
+  }
+  return null;
+}
+
+/** Every class that shares an element with the `button` class, read from the markup. */
+function buttonModifierClasses(html: string): string[] {
+  const found = new Set<string>();
+  for (const match of html.matchAll(/class="([^"]*)"/g)) {
+    const classes = match[1]!.trim().split(/\s+/).filter(Boolean);
+    if (!classes.includes('button')) continue;
+    for (const c of classes) if (c !== 'button') found.add(c);
+  }
+  return [...found];
+}
+
+test('a .button modifier is declared after the base button rule', () => {
+  /*
+   * The between-sheets rule above catches *the same selector* in two sheets. This catches the
+   * other half of the same defect: two **different** selectors that collide on one element at
+   * equal specificity, where document order decides and the later sheet wins silently.
+   *
+   * It is named for `.primary-action`, the Overview screen's call to action. It was declared in
+   * shell.css with `background: var(--accent); color: #fff; font-weight: 600`, and none of it ever
+   * reached the screen. The element is `class="button primary-action"`, so the base rule
+   * `button, .button` in styles.css matched it through `.button` — specificity (0,1,0), a tie with
+   * `.primary-action`, broken by load order in styles.css's favour. It took `background` and
+   * `color`, and `font-weight` too, since `font:` is a shorthand that resets the weight.
+   *
+   * The result was a primary CTA that drew as a plain secondary control, on the first screen of the
+   * app, looking entirely deliberate. `tsc` was clean and 110 tests were green.
+   *
+   * The invariant, derived from the markup rather than from a hand-kept list: **every class that
+   * shares an element with `button` must be declared later in the cascade than the base rule**, so
+   * that its intent survives the tie. Adding a new modifier to index.html and putting it in
+   * shell.css turns this red.
+   *
+   * **Shown to fail**: moving `.primary-action` back to shell.css reports
+   * `.primary-action is declared in shell.css, before the base button rule in styles.css`. Put back.
+   */
+  const html = read('index.html');
+  const base = declarationPosition('.button');
+  assert.ok(base, 'the base `button, .button` rule was not found in any sheet');
+
+  const offences: string[] = [];
+  for (const modifier of buttonModifierClasses(html)) {
+    const at = declarationPosition(`.${modifier}`);
+    if (!at) continue; // a class used only as a JS hook declares no rule and cannot lose a tie
+    if (at.line < base!.line) {
+      offences.push(
+        `.${modifier} is declared in ${at.sheet}, before the base button rule in ${base!.sheet} — ` +
+          'at equal specificity the base rule wins and this modifier draws nothing',
+      );
+    }
+  }
+  assert.deepEqual(offences, [], offences.join('\n  '));
+});
+
+test('control_the modifier check can see a modifier, and a losing position', () => {
+  // Both halves, per the control rule. An empty offence list is only evidence once the same
+  // predicate has been shown to find a modifier at all and to judge an order wrong.
+  assert.deepEqual(
+    buttonModifierClasses('<button class="button primary-action">x</button>').sort(),
+    ['primary-action'],
+    'the reader failed to find a modifier sharing an element with `button`',
+  );
+  assert.deepEqual(
+    buttonModifierClasses('<button class="nav-row">x</button>'),
+    [],
+    'a button element without the `button` class has no tie to lose and must not be reported',
+  );
+  // shell.css is earlier in SHEETS than styles.css, so any line in it must lose to any line here.
+  const inShell = 1 * 1_000_000 + 9_999;
+  const inStyles = 2 * 1_000_000 + 1;
+  assert.ok(inShell < inStyles, 'sheet order must dominate line number in the cascade position');
+});

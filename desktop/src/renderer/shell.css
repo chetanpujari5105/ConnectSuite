@@ -254,9 +254,11 @@ body {
 .brand-glyph { display: flex; flex: none; }
 
 .brand-name {
-  /* `normal` in the design, which is 16px on a 15px face; the body's 1.5 made it 22.5 and pushed
-   * the brand row 6px taller than the artboard. */
-  line-height: 1.05;
+  /* The design leaves this `normal`, which under Archivo is 16px on a 15px face. This was 1.05 —
+   * a ratio picked to land near 16 after the body's 1.5 made it 22.5 and pushed the brand row 6px
+   * taller than the artboard. The token carries the design's number now; see design-measurements
+   * section 1.2 for why the whole build moved off ratios. */
+  line-height: var(--leading-15);
   font-size: 15px;
   font-weight: 600;
   letter-spacing: var(--tracking-section);
@@ -267,6 +269,7 @@ body {
 
 .group-header {
   font-size: 10px;
+  line-height: var(--leading-10);
   font-weight: 600;
   letter-spacing: var(--tracking-group);
   text-transform: uppercase;
@@ -309,7 +312,7 @@ body {
  */
 .device-name {
   font-size: 12px;
-  line-height: 1.25;
+  line-height: var(--leading-12);
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -321,7 +324,7 @@ body {
   display: flex;
   align-items: center;
   gap: 5px;
-  line-height: 1.3;
+  line-height: var(--leading-11);
   font-size: 11px;
   color: var(--text-body);
 }
@@ -404,7 +407,7 @@ body {
   background: transparent;
   border-radius: var(--radius-control);
   color: var(--text-body);
-  font: 500 13.5px/1 var(--font-ui);
+  font: 500 13.5px/var(--leading-13-5) var(--font-ui);
   text-align: left;
   cursor: pointer;
   transition: color var(--dur-hover) var(--ease);
@@ -564,7 +567,7 @@ body {
   background: var(--control);
   border: 1px solid var(--hairline);
   color: var(--text-on-control);
-  font: 500 12.5px/1 var(--font-ui);
+  font: 500 12.5px/var(--leading-12-5) var(--font-ui);
   cursor: pointer;
   transition: background 180ms var(--ease), border-color 180ms var(--ease),
     transform var(--dur-press) var(--ease);
@@ -573,7 +576,7 @@ body {
 .toolbar-button:hover { background: var(--elev-3); border-color: var(--hairline-hover); }
 .toolbar-button:active { transform: scale(0.98); }
 .toolbar-button.icon-only { width: 32px; padding: 0; justify-content: center; color: var(--text-body); }
-.toolbar-button .tb-key { font-size: 11px; color: var(--text-meta); }
+.toolbar-button .tb-key { font-size: 11px; line-height: var(--leading-11); color: var(--text-meta); }
 .tb-icon { display: flex; flex: none; }
 .tb-icon.accent { color: var(--accent-text); }
 
@@ -688,6 +691,7 @@ body {
   transform: translateX(-50%) translateY(4px);
   white-space: nowrap;
   font-size: 11px;
+  line-height: var(--leading-11);
   color: var(--text-on-control);
   background: rgba(12, 13, 18, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -948,8 +952,7 @@ body {
 
 .hero-name {
   margin: 0;
-  font-size: 21px;
-  font-weight: 600;
+  font: var(--text-card-title);
   letter-spacing: var(--tracking-title);
   color: var(--text-primary);
 }
@@ -998,19 +1001,6 @@ body {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* The one primary fill on the Overview screen. Flat violet — the handoff forbids gradient CTAs by
- * name, and the mockup screenshot that draws one is the superseded iteration. */
-.primary-action {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-3);
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  font-weight: 600;
-}
-.primary-action:hover { background: #7d5cf6; border-color: #7d5cf6; }
-.primary-action:disabled:hover { background: var(--accent); }
 .hero-key { font-size: 11px; opacity: 0.75; }
 
 .fact-grid {
@@ -1024,17 +1014,28 @@ body {
 
 .fact-label {
   font-size: 11px;
+  line-height: var(--leading-11);
   font-weight: 500;
   letter-spacing: var(--tracking-meta);
   color: var(--text-meta);
 }
 
+/*
+ * The handoff's mono list is closed: "latency, byte sizes, percentages, timestamps, IPs, window
+ * geometry, dialer digits, file names". Two of this card's four facts are prose — `last-known` and
+ * `TLS 1.3, pinned` — and were being set in a monospace face because the class was applied to all
+ * four. The UI face is the default here and `.mono` is the opt-in, decided per fact in shell.ts.
+ */
 .fact-value {
   margin: var(--space-1) 0 0;
+  font-size: 13.5px;
+  line-height: var(--leading-13-5);
+  color: var(--text-primary);
+}
+
+.fact-value.mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 14px;
-  color: var(--text-primary);
 }
 
 /* ---- Messages layout --------------------------------------------------------------------------- */
