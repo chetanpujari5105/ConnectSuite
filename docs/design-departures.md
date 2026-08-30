@@ -19,7 +19,7 @@ is a bug, not a decision.
 - **reshaped** — built, but not in the shape drawn, because the underlying thing is not what the
   design assumed.
 
-Last updated **2026-08-29**.
+Last updated **2026-08-30** — the app shell landed; see the new §"App shell" below.
 
 ---
 
@@ -65,6 +65,50 @@ control *inside* it.
 | M13 | A hover dock over a screen the user can also **tap and swipe**, with "both views feed one gesture queue" | Dock only: **Back, Home, Recents, Screenshot**. The canvas takes **no pointer input** | **unbuilt** | The three global actions are `performGlobalAction` and carry no coordinates, so they need no geometry stamp and shipped. A tap does: every coordinate-bearing message must quote the `geometryId` the frame was captured against, cancel an in-flight drag when the phone turns (defect 19) and refuse a gesture older than the staleness window (defect 20). That logic lives in `mirror.ts`, and a second copy of it is the copy that does not get the next fix — which for input means a stroke landing on the wrong app on somebody's real phone, which is what defect 20 already cost | A shared input seam — the coordinate mapping and the drag/stale rules lifted out of `mirror.ts` into `src/renderer/` or `src/shared/` with its own tests, the way `notifyLabels.ts` came out of `notifications.ts`. Then both views call one queue, as the README says. **This is the named follow-up; it is not a wall and not a wire gap** |
 | M14 | The phone screen, drawn once | Decoded **twice** — the embedded canvas and the float window each run their own `VideoDecoder` over one broadcast stream | **reshaped** | "Two views of one session" is one *session*, not one decoder. The main process broadcasts access units and each window decodes; opening the float window replays the retained SPS/PPS and asks for an IDR, so it can start mid-stream. Handing decoded frames between renderers would mean a readback and a copy per frame at 60fps, which costs more than a second decode | Nothing on the wire. It is a Mac-side trade and the cheap direction was taken |
 | M15 | — | `src/renderer/h264Canvas.ts` holds the decode-and-paint rule; **`mirror.ts` still holds its own copy** | **reshaped** | The float window's decoder was extracted rather than copied, but the Mirror pane was not moved onto it: its version interleaves latency stamps, keyframe sizing and the overlay decision into the same callbacks, and untangling a pane that passed on hardware in Phase 2 needs its own hardware pass. **Recorded here rather than left to be discovered** — this is the two-copies-of-one-rule shape the code rules warn about, and it is live | `mirror.ts` moved onto `H264Canvas`, with the pane's extras as hooks. Wants a hardware re-run of Phase 2's acceptance steps, so it is a step inside whatever sitting can afford one |
+
+## App shell (§"App Shell") — built 2026-08-30
+
+The shell is the frame every screen sits in: window, sidebar, nav pill, status island, page header
+and toolbar, dock, ⌘K palette, toast, connected-device strip. Before it existed the app was one
+scrolling column of cards and a Connection debug panel; there was no arrangement of pane-level
+styling that could have made that read as this design.
+
+| # | Design draws | Built instead | Status | Why | What would make the design's version correct |
+|---|---|---|---|---|---|
+| S1 | Three 12px **traffic-light circles** drawn in the sidebar at a 20px inset, 52px row | The **real macOS traffic lights**, positioned into that exact row by `titleBarStyle: 'hidden'` + `trafficLightPosition: {x:20,y:20}`. The markup for the row is empty | **reshaped** | Three divs would have needed their own close, minimise and zoom; would not draw the system's hover glyphs; and would not go translucent when the window loses focus. The design's *pixels* are met by the system's *buttons*, which is strictly better than a lookalike | Nothing. This is the native translation the README's own "Native translation notes" section asks for |
+| S2 | Window **24px radius**, hairline border, deep drop shadow | The system's window: macOS draws its own corner radius and its own shadow behind whatever we paint | **reshaped** | Painting a second 24px radius inside the OS's own produces a rounded rectangle floating in a squared one, which is worse than either. The radius is real, it is just not ours to set | Nothing on macOS. The mockup's 24px is the artboard presenting a window, not an instruction to draw one |
+| S3 | Window **1440 × 920** | 1440 × 920 requested; **this display gives 865 of height** and macOS clamps it | — | Not a departure, a fact worth recording so the next screenshot comparison is not read as a layout bug: `screen.availHeight` is 865 on the machine this was built on, so the window opens 55px shorter than the artboard and the page scrolls that much sooner | A taller display |
+| S4 | Device card, connected-device strip and Overview hero each carry a **battery percentage** ("79%") | The slot is **removed** from all three, and Settings → Advanced carries `battery: not subscribed on this build (battery.state is unhandled)` | **unbuilt** | `battery.state` is declared in `docs/protocol.md` and **nothing on the Mac subscribes to it**. A lone "—" between "Connected" and a divider is a glyph with no label — a reader has to decode it rather than read it — so the fact moves to where facts live and says what is actually true | Handling `battery.state` on the Mac. The message exists; nothing listens |
+| S5 | Overview hero's four facts: Connected via / Latency / **Encryption** / **Signal** | Connected via / Latency / Encryption / **Address** | **reshaped** | Encryption is kept and is *true* — "TLS 1.3, pinned" is the transport, and it is the one claim on this card that holds before the phone answers. **Signal is cut**: nothing on the wire reports link quality, and a made-up "Excellent" beside three measured values is the one lie that would make the other three unreadable. Its slot goes to the address, which locked decision #4's discovery order makes the most useful fact when something is wrong | An RSSI or link-quality field on the wire |
+| S6 | Status island cycling **"Clipboard synced"**, **"Transfer complete · 4.2 MB"** | A rota of **real session events only** — the connection phase and its latency, and any refusal the phone sent, deduplicated against the last | **reshaped** | Both of the design's example strings name features that do not exist (Phase 5). An island narrating transfers this app cannot perform is the most visible possible version of what decision 6 forbids, at 5.2-second intervals | Phase 5. The rota takes any string; the events simply have to happen |
+| S7 | Eleven sidebar rows, all live | Eleven rows; **five draw a "Not built yet" state** naming the phase and the missing piece — Files, Photos, Clipboard, Camera, Activity | **unbuilt** | The design assumes all eleven work. A nav row that opens a blank page is decision 6 failing at the largest possible scale: the user cannot tell "nothing has arrived" from "this was never written". `navModel.test.ts` asserts every unbuilt screen carries a reason and that no built one does | Phases 5–7 |
+| S8 | No **pairing / first-run** screen anywhere; the first screen assumes a paired phone | A `pairing` **route with no sidebar row**, forced whenever `paired` is false and released the moment the phone is trusted | **unbuilt** | This is departures row X5's sharpest case, now answered rather than only recorded. A twelfth nav row would invent something the designer did not draw; a route without a row keeps the sidebar the design's eleven and still means a fresh Mac cannot land on a dashboard describing a phone it has never met | **A designed pairing screen.** This is still the most useful hour a designer could spend on this app |
+| S9 | Sidebar footer: account email + **PRO** pill. Settings: Two-factor, Sign out everywhere, "You are up to date" | Footer: "This Mac" + **LOCAL** pill. Settings → About: a "Where your data goes" row reading `local network only` | **reshaped** | Restates X2 at the place it is now visible. There is no account, no tier, no second factor and no update server — CLAUDE.md's first line. The footer still has the design's shape; it says what is true in it | An account system, which is explicitly not this product |
+| S10 | Overview right column: **Quick actions** tiles, a **Device** card, **Recent activity** | "What this phone can do" (the capability list) and **Media remote** | **reshaped** | Quick actions is the dock, twice. Recent activity needs a session store nothing writes yet (that is the Activity screen, S7). The two panes that took the space are X5's homeless features — the capability list is the pane that answers "why can't I do X", and the media remote had no pane, no row and no tile anywhere in the design | Recent activity needs a session log. Quick actions needs nothing and is deliberately not duplicated |
+| S11 | Mirror **tool rail**: Power, Rotate, Capture, Record, Transfer | Capture, Refresh, and a **Rotation readout** | **reshaped** | Unchanged from M-rows; recorded here because the rail is now generated from `navModel.TOOL_RAIL` rather than hand-written, which is what puts Capture and Refresh inside the icon guard | See M2 |
+| S12 | ⌘K palette rows carry a **coloured icon tile** per result | Same, with the screen's own icon in it; a command gets the Mirror glyph | — | Not a departure. Noted because the design's tile is a blank coloured square and ours carries the icon, which is the design's own intent read forwards | — |
+
+### Three shell bugs found by screenshotting the shell against the design, and what they cost
+
+Recorded because each was invisible to `tsc`, to `npm test`, and to every check in the repo, and
+each was found by looking at a picture:
+
+1. **The ⌘K palette rendered over every screen, permanently.** `.palette-backdrop { display: flex }`
+   is a class selector; the UA stylesheet's `[hidden] { display: none }` is an attribute selector.
+   Equal specificity, later sheet wins. `el.hidden` was `true` the whole time. Fixed with one
+   `[hidden] { display: none !important }` in shell.css, which is the correct single use of it.
+2. **The whole app rendered at 0.72 zoom.** Chromium persists a per-origin zoom level into the user
+   data directory, so a stray ⌘- at some point had every size in a design specified to the
+   half-pixel drawn at 72%, silently, across launches. `webPreferences.zoomFactor` is only the
+   initial value and did **not** hold; `setZoomLevel(0)` on `did-finish-load` does.
+3. **The Floating window button drew on all eleven screens.** styles.css redefined
+   `.toolbar-button` and loads after shell.css, so it beat `.mirror-only { display: none }`.
+
+The third is the same shape as the `:root` collision that made the accent blue, so it has an
+enforcement point rather than a third fix: `stylesheets.test.ts` asserts no selector is declared in
+two of the three sheets, and that only tokens.css declares custom properties.
+
+---
 
 ## Cross-cutting — decided, not yet built
 

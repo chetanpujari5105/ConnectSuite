@@ -12,13 +12,14 @@
  *    design system for a different product — light #f3f2f2 ground, red #ec3013 accent, radius 0,
  *    "do not round a corner anywhere". Its red-as-accent is the exact thing our handoff forbids by
  *    name. Take nothing from it.
- *  - It is not yet the whole app. The old `--bg` / `--card` / `--accent` block below still dresses
- *    every pane that has not migrated. It is deliberately kept so this slice is one pane's worth of
- *    risk rather than a big-bang restyle, and it gets deleted by the last pane to migrate.
+ *  - It is not a place to draw. Every value here is read by shell.css or styles.css and by nothing
+ *    else, and neither of those sheets defines a colour of its own. That rule is new: styles.css
+ *    used to carry its own `:root` block, loaded second, and silently won every name the two
+ *    shared — including `--accent`, which meant this file's violet was never once drawn.
  *
- * Loaded before styles.css. If you add a third stylesheet, add it to `scripts/copy-assets.mjs`
- * too — that script copies a hard-coded array, and a missing entry builds clean, typechecks clean,
- * and ships an unstyled app.
+ * Loaded first, before shell.css and styles.css. If you add a fourth stylesheet, add it to
+ * `scripts/copy-assets.mjs` too — that script copies a hard-coded array, and a missing entry
+ * builds clean, typechecks clean, and ships an unstyled app.
  */
 
 :root {
@@ -124,15 +125,21 @@
   --dur-route: 260ms;
   --dur-press: 100ms;
 
-  /* ---- Legacy, deleted by the last pane to migrate ------------------------------------------
-   * Every pane except Notifications still reads these. Not one of them is a handoff value.
+  /* ---- The legacy block is gone, and this note is what replaced it ---------------------------
+   * `--bg` `--card` `--text` `--muted` `--danger` `--ok` lived here until the shell landed on
+   * 2026-08-30, kept so each pane's migration was one pane's worth of risk. They are deleted
+   * because nothing reads them any more — `grep -rn 'var(--bg)' src/renderer/` returns nothing.
+   *
+   * Their going was not cosmetic. styles.css carried its own `:root` copy of the same names and
+   * loaded *after* this file, so at equal specificity it won: `--accent: #6ea8fe`, a blue,
+   * overrode the design's violet on the nav pill, the selected filter, the primary fill and the
+   * focus ring. And `body` painted `--bg` (#101014) rather than `--canvas` (#07070a), which every
+   * translucent surface here composites over — nine steps of lightness on the ground lifts every
+   * elevation in the design at once.
+   *
+   * If a component needs a value that is not below, the token is missing. Add it here rather than
+   * defining a second `:root` anywhere else; that is the mistake this note exists to prevent.
    */
-  --bg: #101014;
-  --card: #191922;
-  --text: #e8e8ef;
-  --muted: #9a9aae;
-  --danger: #ff6b6b;
-  --ok: #5ad18f;
 }
 
 /*

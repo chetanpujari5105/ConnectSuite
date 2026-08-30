@@ -114,6 +114,45 @@ function replyButtonLabelOf(one: LabelSource): string {
 }
 
 /**
+ * The accessible name of the row's dismiss button.
+ *
+ * Was composed inline in `notifications.ts` as `` `Dismiss this notification from ${appLabelOf(one).label}` ``
+ * — correct, and outside the guard. See the note on [noReplyActionNoteOf].
+ */
+function dismissButtonNameOf(one: LabelSource): string {
+  return `Dismiss this notification from ${appLabelOf(one).label}`;
+}
+
+/**
+ * The sentence drawn where an app attached no reply action.
+ *
+ * ### Why these three functions exist, when the inline versions were already correct
+ *
+ * All three read `appLabelOf(one).label`, which is the right call. None of them was in
+ * [userVisibleStringsOf], and that is the defect: defect 28's guard is an **enumeration**, and a
+ * string composed outside it is a string the test cannot see. The file's own docblock predicted
+ * exactly this — "a string added to the pane later is covered the day it is added, *provided it
+ * comes from here*" — and then three were added to the pane and not to here.
+ *
+ * That is worth being precise about. Nothing user-visible was wrong; a raw package id was not on
+ * screen. What was wrong is that the *guard had a hole in it*, so the next edit to any of these
+ * three lines had nothing checking it. The count assertion moves from 7 to 10 in the same change,
+ * because a number that does not move when the enumeration grows is a number that stopped
+ * measuring anything.
+ */
+function noReplyActionNoteOf(one: LabelSource): string {
+  return (
+    `${appLabelOf(one).label} did not attach a reply action to this notification, so there is ` +
+    'nothing for the Mac to reply through. Opening it on the phone still works.'
+  );
+}
+
+/** The accessible name of the reply field's Send button. */
+function sendButtonNameOf(one: LabelSource): string {
+  return `Send this reply to ${appLabelOf(one).label}`;
+}
+
+/**
  * The meta chip drawn beside a fallback label, and nothing at all beside a resolved one.
  *
  * Empty string rather than null so [userVisibleStringsOf] can enumerate it unconditionally: a
@@ -144,6 +183,9 @@ function userVisibleStringsOf(one: LabelSource): string[] {
     repliedNoticeOf(one),
     replyButtonLabelOf(one),
     fallbackChipOf(one),
+    dismissButtonNameOf(one),
+    noReplyActionNoteOf(one),
+    sendButtonNameOf(one),
   ];
 }
 
@@ -158,6 +200,9 @@ if (typeof module !== 'undefined') {
     repliedNoticeOf,
     replyButtonLabelOf,
     fallbackChipOf,
+    dismissButtonNameOf,
+    noReplyActionNoteOf,
+    sendButtonNameOf,
     userVisibleStringsOf,
   };
 }

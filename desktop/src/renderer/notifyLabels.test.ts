@@ -24,6 +24,9 @@ const {
   replyPlaceholderOf,
   repliedNoticeOf,
   fallbackChipOf,
+  dismissButtonNameOf,
+  noReplyActionNoteOf,
+  sendButtonNameOf,
   userVisibleStringsOf,
 } = require('./notifyLabels.ts');
 
@@ -108,15 +111,41 @@ test('control_the assertion can distinguish a package id from a name', () => {
   assert.ok(caught, 'the predicate failed to catch a package id it was handed directly');
 });
 
+test('the three strings that escaped the guard are inside it now', () => {
+  // Named individually as well as counted, because a count going 7 → 10 says three arrived and
+  // not which three — and these three are the ones a reviewer will want to see by name.
+  const drawn = userVisibleStringsOf(resolved);
+  assert.ok(drawn.includes(dismissButtonNameOf(resolved)));
+  assert.ok(drawn.includes(noReplyActionNoteOf(resolved)));
+  assert.ok(drawn.includes(sendButtonNameOf(resolved)));
+});
+
+test('all three name the app and none of them leaks the package id', () => {
+  for (const drawn of [
+    dismissButtonNameOf(resolved),
+    noReplyActionNoteOf(resolved),
+    sendButtonNameOf(resolved),
+  ]) {
+    assert.ok(drawn.includes('Playo'), `"${drawn}" should name the app`);
+    assert.ok(!drawn.includes(resolved.package), `"${drawn}" leaks the package id`);
+  }
+});
+
 test('the enumeration covers every label function the pane can call', () => {
   // The guard on the guard. `userVisibleStringsOf` is only worth asserting over if it is actually
   // complete, and completeness is the thing that rots: someone adds a string to the pane, wires it
   // to a new function here, and forgets the enumeration. Then the defect-28 test above still passes
   // and no longer covers the new string.
   //
-  // Counting is what makes that visible. Seven strings, and the number is asserted rather than
-  // described, so adding an eighth function without listing it fails here with a diff instead of
+  // Counting is what makes that visible. Ten strings, and the number is asserted rather than
+  // described, so adding an eleventh function without listing it fails here with a diff instead of
   // silently narrowing the coverage above.
-  assert.equal(userVisibleStringsOf(resolved).length, 7);
-  assert.equal(userVisibleStringsOf(fellBack).length, 7);
+  //
+  // It went 7 → 10 on 2026-08-30. The three that were missing — the dismiss button's accessible
+  // name, the no-reply-action sentence, and the Send button's accessible name — were composed
+  // inline in notifications.ts, correctly, and so were never covered here. That is the exact rot
+  // this test is named for, caught in the file it was predicted in: nothing on screen was wrong,
+  // and the guard was three strings smaller than it read as being.
+  assert.equal(userVisibleStringsOf(resolved).length, 10);
+  assert.equal(userVisibleStringsOf(fellBack).length, 10);
 });

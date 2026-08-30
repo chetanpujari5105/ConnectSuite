@@ -4,300 +4,465 @@
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'" />
     <title>ConnectSuite</title>
-    <!-- tokens.css first: it defines the custom properties styles.css reads. Both are copied
-         by scripts/copy-assets.mjs, which holds a hard-coded array — a third sheet that is not
-         added there builds clean and ships unstyled. -->
+    <!-- tokens.css first: it defines the custom properties the other two sheets read. shell.css is
+         the app frame — window, sidebar, nav pill, island, dock, palette, toast. styles.css is the
+         component layer for what lives inside a screen. All three are copied by
+         scripts/copy-assets.mjs, which holds a hard-coded array — a fourth sheet that is not added
+         there builds clean, typechecks clean, and ships unstyled. -->
     <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="shell.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header>
-      <h1>ConnectSuite</h1>
-      <div id="state" class="pill">Starting…</div>
-    </header>
-
-    <section id="pairing" class="card hidden">
-      <h2>Pair with your phone</h2>
-      <p class="muted">
-        Open ConnectSuite on the phone, go to the <strong>Mac</strong> tab, tap
-        <strong>Scan pairing code</strong>, and point it at this code.
-      </p>
-      <img id="qr" alt="Pairing QR code" width="320" height="320" />
-      <p class="muted small" id="qr-note"></p>
-      <button id="new-qr">Show a fresh code</button>
-    </section>
-
-    <section class="card">
-      <h2>Connection</h2>
-      <dl class="hud">
-        <dt>State</dt><dd id="hud-phase">—</dd>
-        <dt>Found via</dt><dd id="hud-via">—</dd>
-        <dt>Address</dt><dd id="hud-address">—</dd>
-        <dt>Round trip</dt><dd id="hud-rtt">—</dd>
-        <dt>Phone</dt><dd id="hud-device">—</dd>
-        <dt>Capture</dt><dd id="hud-capture">—</dd>
-        <dt>Rotation</dt><dd id="hud-rotation">—</dd>
-        <dt>Frame rate</dt><dd id="hud-fps">—</dd>
-        <dt>Bitrate</dt><dd id="hud-bitrate">—</dd>
-        <dt>Dropped</dt><dd id="hud-dropped">—</dd>
-        <dt>Latency</dt><dd id="hud-latency">—</dd>
-        <dt>&nbsp;&nbsp;phone → Mac</dt><dd id="hud-latency-link">—</dd>
-        <dt>&nbsp;&nbsp;Mac → painted</dt><dd id="hud-latency-decode">—</dd>
-        <dt>First frame</dt><dd id="hud-ttff">—</dd>
-        <dt>Last error</dt><dd id="hud-error">—</dd>
-      </dl>
-      <div class="row">
-        <button id="connect">Connect</button>
-        <button id="disconnect">Disconnect</button>
-        <button id="retry">Retry now</button>
-        <button id="forget" class="danger">Forget phone</button>
-      </div>
-    </section>
-
     <!--
-      Mirror — slice 2, rebuilt in the design language (handoff §2, "the approved reference
-      layout — do not restructure it").
+      The app shell (handoff §"App Shell").
 
-      The layout is the handoff's: a primary card holding the tool rail beside the phone preview
-      with the global-action row under it, and a 300px right column carrying quality, advanced and
-      Stop mirroring. What is inside those slots differs, and every difference is a row in
-      docs/design-departures.md with its reason — the short version is that of the design's five
-      tool-rail items and four Advanced toggles, one item is a phone command we can honestly send.
+      Everything that repeats on every screen lives here; everything screen-specific is a
+      `<section class="screen">` inside `#page`. Before this existed the window was one scrolling
+      column of cards and no amount of pane-level restyling could have made it read as the design.
 
-      The canvas, overlay and notice keep their ids and their behaviour: this is a restyle of a
-      pane that passed on hardware, not a rewrite of it. The overlay/notice split in particular is
-      unchanged — the overlay means "there is no picture, here is why" and any painted frame takes
-      it down; the notice is a refusal that happens while frames are flowing and would be wiped
-      within one frame at 60fps if it shared the overlay.
+      The sidebar rows, the dock tiles, the palette and the page header are all *generated* by
+      shell.ts from `navModel.ts` rather than written out here. That is deliberate: the sidebar
+      order, the palette order and the eleven page titles are one list with one set of tests over
+      it, and a hand-written copy in this file is the second copy that stops matching.
     -->
-    <section class="card pane pane-mirror" id="mirror-card">
-      <header class="pane-head">
-        <div>
-          <h2 class="pane-title">Screen mirror</h2>
-          <p class="pane-sub">Control your phone from your Mac in real time.</p>
-        </div>
-        <!--
-          The handoff's "Floating window" button, drawn now that the window it opens exists. It was
-          deliberately withheld from slice 2a, because a button that does nothing is the silent
-          no-op this project keeps ruling out.
+    <div class="app-window">
+      <!--
+        The ambient ground: a radial violet-to-black field with three blurred blobs drifting behind
+        the chrome. The handoff calls this "the only place gradient appears as a field" — there are
+        no gradient buttons anywhere in this app, and the one screenshot that drew one is the
+        superseded iteration. pointer-events:none so it never eats a click.
+      -->
+      <div class="ambient" aria-hidden="true">
+        <span class="blob blob-violet"></span>
+        <span class="blob blob-cyan"></span>
+        <span class="blob blob-teal"></span>
+      </div>
 
-          Two states, per §2: "Floating window" by default, and "Show floating window" with a 6px
-          green dot once the window is open — which only refocuses it. It never creates a second
-          instance, and that check is enforced in main/float.ts rather than here, because a button
-          is not the only thing that can ask.
-        -->
-        <button type="button" id="mirror-float" class="toolbar-button" aria-label="Open mirror in floating window" title="Open mirror in floating window">
-          <span class="float-dot hidden" id="mirror-float-dot" aria-hidden="true"></span>
-          <span id="mirror-float-label">Floating window</span>
-        </button>
-      </header>
+      <!--
+        The status island. Top-centre, over the chrome, which is why the content column reserves a
+        60px title-bar band beneath it — without that reservation the island lands on the 31px page
+        title. Its text comes from real session events only; see ShellView.setIsland.
+      -->
+      <div class="status-island" id="status-island" role="status" aria-live="polite">
+        <span class="island-dot" id="island-dot" aria-hidden="true"></span>
+        <span class="island-text" id="island-text">Starting…</span>
+      </div>
 
-      <div class="mirror-grid">
-        <div class="mirror-primary">
-          <div class="mirror-stage-row">
+      <div class="app-body">
+        <aside class="sidebar">
+          <!--
+            The traffic-light row. 52px tall, and deliberately *empty* markup: the buttons are the
+            real macOS ones, positioned into this row by `trafficLightPosition` in main.ts rather
+            than drawn as three coloured divs. Three divs would have needed their own close,
+            minimise and zoom implementations, would not have matched the system's hover glyphs,
+            and would not have gone translucent when the window loses focus. See
+            docs/design-departures.md, row S1.
+
+            It is also the window's drag handle, which is what -webkit-app-region: drag buys.
+          -->
+          <div class="traffic-row" aria-hidden="true"></div>
+
+          <div class="brand">
+            <span class="brand-glyph" id="brand-glyph"></span>
+            <span class="brand-name">ConnectSuite</span>
+          </div>
+
+          <div class="sidebar-group">
+            <div class="group-header">Device</div>
             <!--
-              The tool rail. Two commands and one readout, where the handoff draws five commands.
-
-              Power is gone and cannot come back: there is no public API for an AccessibilityService
-              to synthesise a KeyEvent. Rotate is gone because `mirror.rotate` is phone-to-Mac only —
-              the Mac cannot turn a phone, and a button claiming otherwise would desynchronise the
-              geometry stamp that every input coordinate is checked against. So the rail shows the
-              rotation instead of offering to change it. Record and Transfer are unbuilt.
+              The device card. Every field is live: the name is the phone's own, the dot and the
+              word beside it are the link phase, and the battery is mono because it changes. When
+              nothing is paired it says so rather than drawing a phone that does not exist.
             -->
-            <div class="tool-rail">
-              <button type="button" id="mirror-capture" class="tool">
-                <span class="tool-glyph" aria-hidden="true"></span>
-                <span class="tool-label">Capture</span>
-              </button>
-              <!-- `mirror.keyframe`: asks the encoder for an IDR. What to press when the picture
-                   has torn and is not recovering on its own. -->
-              <button type="button" id="mirror-refresh" class="tool">
-                <span class="tool-glyph" aria-hidden="true"></span>
-                <span class="tool-label">Refresh</span>
-              </button>
-              <div class="tool readout">
-                <span class="tool-value mono" id="mirror-rotation-readout">—</span>
-                <span class="tool-label">Rotation</span>
+            <div class="device-card" id="device-card">
+              <span class="device-icon" id="device-icon" aria-hidden="true"></span>
+              <div class="device-lines">
+                <div class="device-name" id="device-name">No phone paired</div>
+                <div class="device-status">
+                  <span class="state-dot" id="device-dot" aria-hidden="true"></span>
+                  <span id="device-state">Not paired</span>
+                  <span class="mono device-battery" id="device-battery"></span>
+                </div>
               </div>
             </div>
+          </div>
 
-            <div class="mirror-stage">
-              <canvas id="mirror-canvas"></canvas>
-              <!-- Never left blank and silent: every failure path writes its reason here. -->
-              <div id="mirror-overlay" class="mirror-overlay">Not mirroring.</div>
-              <div id="mirror-notice" class="mirror-notice" hidden></div>
+          <!--
+            The nav. Rows are generated from navModel.SCREENS; the pill is the one element here
+            that is written by hand, because it is absolutely positioned over them and its Y offset
+            is *measured* from the live row rather than computed from a pitch. Group headers and
+            the notification badge change the rhythm, so an assumed pitch desynchronises — the
+            handoff says so explicitly and this is the element it is talking about.
+          -->
+          <nav class="nav" id="nav" aria-label="Screens">
+            <div class="nav-pill" id="nav-pill" aria-hidden="true"></div>
+          </nav>
+
+          <div class="sidebar-footer">
+            <div class="account-row">
+              <span class="avatar" aria-hidden="true">CP</span>
+              <div class="account-lines">
+                <div class="account-name">Chetan Pujari</div>
+                <!--
+                  The handoff draws an account email and a PRO tier here. There is no account and no
+                  tier — CLAUDE.md's first line is "no cloud, no account, no relay server" — so the
+                  second line is what this Mac actually is on the network, and the pill says what
+                  the product actually is. Departures row X2 records the cut and its reason.
+                -->
+                <div class="account-sub mono" id="account-sub">This Mac</div>
+              </div>
+              <span class="pro-pill">LOCAL</span>
             </div>
           </div>
-
-          <!-- The six actions an accessibility service can genuinely perform. There is no power
-               button here and there cannot be one: no app on Android can press it. The handoff
-               draws five; the sixth (Quick settings) is real and is kept. -->
-          <div class="global-row" id="input-row">
-            <button type="button" id="input-back" class="global"><span class="global-label">Back</span></button>
-            <button type="button" id="input-home" class="global"><span class="global-label">Home</span></button>
-            <button type="button" id="input-recents" class="global"><span class="global-label">Recents</span></button>
-            <button type="button" id="input-notifications" class="global"><span class="global-label">Alerts</span></button>
-            <button type="button" id="input-quick-settings" class="global"><span class="global-label">Quick settings</span></button>
-            <button type="button" id="input-lock" class="global"><span class="global-label">Lock</span></button>
-          </div>
-
-          <p class="pane-sub" id="input-note">
-            Click the picture to tap, drag to swipe, scroll to scroll, and type to enter text into
-            whichever field is selected on the phone.
-          </p>
-          <p class="pane-meta mono" id="mirror-stats"></p>
-        </div>
-
-        <aside class="mirror-side">
-          <div class="side-card">
-            <h3 class="side-title">Mirroring quality</h3>
-            <div id="mirror-quality" class="quality-rows" role="radiogroup" aria-label="Mirroring quality"></div>
-            <!--
-              What the phone actually captured, beside what was asked for. `maxResolution` is a cap
-              on the short edge, not a resolution: a 1440x3120 panel under the 1080 cap captures
-              1080x2340. So the preset name is an honest request and a misleading fact, and this
-              line is the fact. Fed from the same mirror.state the HUD reads.
-            -->
-            <p class="side-meta mono" id="mirror-actual">Not capturing.</p>
-          </div>
-
-          <div class="side-card">
-            <h3 class="side-title">Advanced</h3>
-            <!--
-              The handoff draws four toggles here. None of them can be honestly wired today, and
-              two of them can never be, so none is drawn as a control: a greyed toggle is a promise
-              that it might one day light up. Each is listed with the reason instead. Filled from
-              ADVANCED_LIMITS in renderer.ts so the reasons live beside the code that knows them.
-            -->
-            <div id="mirror-advanced" class="limit-list"></div>
-          </div>
-
-          <button type="button" id="mirror-stop" class="stop-button">Stop mirroring</button>
-          <button type="button" id="mirror-start" class="start-button">Start mirroring</button>
         </aside>
+
+        <main class="main">
+          <header class="page-head">
+            <div class="page-head-text">
+              <h1 class="page-title" id="page-title">ConnectSuite</h1>
+              <p class="page-sub" id="page-sub"></p>
+            </div>
+            <div class="toolbar" id="toolbar">
+              <button type="button" class="toolbar-button" id="open-palette">
+                <span class="tb-icon" id="tb-search-icon" aria-hidden="true"></span>
+                <span>Search</span>
+                <span class="mono tb-key">⌘K</span>
+              </button>
+              <button type="button" class="toolbar-button" id="open-device-settings">
+                <span class="tb-icon" id="tb-device-icon" aria-hidden="true"></span>
+                <span>Device settings</span>
+              </button>
+              <!--
+                The handoff's "Floating window" button, drawn only on the Mirror screen — which is
+                what the design says and is now enforceable, because there are screens.
+
+                Two states, per §2: "Floating window" by default, and "Show floating window" with a
+                6px green dot once the window is open, which only refocuses it. It never creates a
+                second instance, and that check is enforced in main/float.ts rather than here,
+                because a button is not the only thing that can ask.
+              -->
+              <button type="button" id="mirror-float" class="toolbar-button mirror-only" aria-label="Open mirror in floating window" title="Open mirror in floating window">
+                <span class="float-dot hidden" id="mirror-float-dot" aria-hidden="true"></span>
+                <span class="tb-icon accent" id="tb-detach-icon" aria-hidden="true"></span>
+                <span id="mirror-float-label">Floating window</span>
+              </button>
+              <button type="button" class="toolbar-button icon-only" id="open-overflow" aria-label="More">
+                <span class="tb-icon" id="tb-dots-icon" aria-hidden="true"></span>
+              </button>
+            </div>
+          </header>
+
+          <div class="page cs-scroll" id="page">
+            <!--
+              The connected-device strip. On every screen except Overview, per the handoff — the
+              Overview's own hero card already says all of this at four times the size, and two
+              copies of a battery percentage on one screen is how they start disagreeing.
+            -->
+            <div class="device-strip" id="device-strip">
+              <span class="strip-thumb" aria-hidden="true"></span>
+              <span class="strip-name" id="strip-name">No phone paired</span>
+              <span class="strip-state">
+                <span class="state-dot" id="strip-dot" aria-hidden="true"></span>
+                <span id="strip-state-label">Not paired</span>
+              </span>
+              <span class="strip-spacer"></span>
+              <span class="mono strip-value" id="strip-latency">—</span>
+              <span class="strip-divider" id="strip-divider-battery" aria-hidden="true"></span>
+              <span class="mono strip-value" id="strip-battery"></span>
+            </div>
+
+            <!-- ======================= Pairing — a route with no sidebar row ==================
+              The design has no unpaired state at all: its first screen assumes a paired phone
+              (docs/design-departures.md, row X5). Rather than invent a twelfth nav row nobody
+              drew, the shell forces this screen whenever `paired` is false and releases it the
+              moment the phone is trusted.
+            -->
+            <section class="screen" data-screen="pairing" hidden>
+              <div class="card primary pair-card">
+                <h2 class="card-title">Scan this with your phone</h2>
+                <p class="card-sub">
+                  Open ConnectSuite on the phone, go to the <strong>Mac</strong> tab, tap
+                  <strong>Scan pairing code</strong>, and point it at this code. You only do this
+                  once — after it, the Mac finds the phone on its own.
+                </p>
+                <img id="qr" alt="Pairing QR code" width="320" height="320" />
+                <p class="card-meta mono" id="qr-note"></p>
+                <button type="button" id="new-qr" class="button">Show a fresh code</button>
+              </div>
+            </section>
+
+            <!-- ============================== Overview ==================================== -->
+            <section class="screen" data-screen="overview" hidden>
+              <div class="overview-grid">
+                <!-- The ONE primary card on this screen. Nothing else here is elev-3. -->
+                <div class="card primary hero">
+                  <div class="hero-body">
+                    <div class="hero-phone" aria-hidden="true"></div>
+                    <div class="hero-facts">
+                      <div class="hero-head">
+                        <h2 class="hero-name" id="hero-name">No phone paired</h2>
+                        <span class="state-chip" id="hero-chip">
+                          <span class="state-dot" id="hero-dot" aria-hidden="true"></span>
+                          <span id="hero-state">Not paired</span>
+                        </span>
+                      </div>
+                      <dl class="fact-grid" id="hero-facts"></dl>
+                      <!--
+                        The handoff's two hero actions. `Start mirroring` is the design's one
+                        primary fill on this screen and is the same call the Mirror pane's own
+                        button makes; `Device info` opens Settings → Connection, which is where
+                        the facts it would have shown actually live.
+                      -->
+                      <div class="hero-actions">
+                        <button type="button" id="hero-mirror" class="button primary-action">
+                          Start mirroring<span class="mono hero-key">⌘⇧M</span>
+                        </button>
+                        <button type="button" id="hero-info" class="button">Device info</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!--
+                  Capabilities. The design has no home for this list at all (departures X5) and it
+                  is the pane that answers "why can't I do X", so it sits on the dashboard rather
+                  than being buried. Each chip carries the phone's own reason, verbatim.
+                -->
+                <div class="card">
+                  <h3 class="card-title">What this phone can do</h3>
+                  <p class="card-sub">
+                    Anything missing needs a permission granting on the phone. Hover a dimmed one
+                    for the phone's own reason.
+                  </p>
+                  <div id="caps" class="caps"></div>
+                </div>
+
+                <!--
+                  Media remote. Shipped and working since step 67, and the design draws no pane,
+                  no sidebar row and no dock tile for it (departures X5). It lands here because it
+                  rides the notification-listener grant and because "what is playing" belongs on a
+                  dashboard. Hidden until the phone advertises `remote`.
+                -->
+                <div class="card hidden" id="remote-card">
+                  <h3 class="card-title">Media remote</h3>
+                  <p class="card-sub" id="remote-note"></p>
+                  <div id="remote-body" class="remote-body"></div>
+                  <div id="remote-notice" class="mirror-notice" hidden></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ============================== Mirror ====================================== -->
+            <!--
+              Slice 2a, unchanged below the header. The pane's own <header> is gone: the shell's
+              page header carries the title, the subtitle and the Floating window button now, which
+              is what the design draws and what the pane was standing in for.
+            -->
+            <section class="screen" data-screen="mirror" hidden>
+              <div class="pane pane-mirror" id="mirror-card">
+                <div class="mirror-grid">
+                  <div class="mirror-primary">
+                    <div class="mirror-stage-row">
+                      <!--
+                        The tool rail. Two commands and one readout, where the handoff draws five
+                        commands. Generated from navModel.TOOL_RAIL so the icon names are inside the
+                        enumeration `navModel.test.ts` asserts over — these two are the glyphs that
+                        shipped as empty rings.
+
+                        Power is gone and cannot come back: there is no public API for an
+                        AccessibilityService to synthesise a KeyEvent. Rotate is gone because
+                        `mirror.rotate` is phone-to-Mac only — the Mac cannot turn a phone, and a
+                        button claiming otherwise would desynchronise the geometry stamp every input
+                        coordinate is checked against. So the rail shows the rotation instead of
+                        offering to change it. Record and Transfer are unbuilt.
+                      -->
+                      <div class="tool-rail" id="tool-rail">
+                        <div class="tool readout">
+                          <span class="tool-value mono" id="mirror-rotation-readout">—</span>
+                          <span class="tool-label">Rotation</span>
+                        </div>
+                      </div>
+
+                      <div class="mirror-stage">
+                        <canvas id="mirror-canvas"></canvas>
+                        <!-- Never left blank and silent: every failure path writes its reason here. -->
+                        <div id="mirror-overlay" class="mirror-overlay">Not mirroring.</div>
+                        <div id="mirror-notice" class="mirror-notice" hidden></div>
+                      </div>
+                    </div>
+
+                    <!-- The six actions an accessibility service can genuinely perform, generated
+                         from navModel.GLOBAL_ACTIONS. There is no power button here and there
+                         cannot be one: no app on Android can press it. -->
+                    <div class="global-row" id="input-row"></div>
+
+                    <p class="pane-sub" id="input-note">
+                      Click the picture to tap, drag to swipe, scroll to scroll, and type to enter
+                      text into whichever field is selected on the phone.
+                    </p>
+                    <p class="pane-meta mono" id="mirror-stats"></p>
+                  </div>
+
+                  <aside class="mirror-side">
+                    <div class="side-card">
+                      <h3 class="side-title">Mirroring quality</h3>
+                      <div id="mirror-quality" class="quality-rows" role="radiogroup" aria-label="Mirroring quality"></div>
+                      <!--
+                        What the phone actually captured, beside what was asked for.
+                        `maxResolution` is a cap on the short edge, not a resolution: a 1440x3120
+                        panel under the 1080 cap captures 1080x2340. So the preset name is an
+                        honest request and a misleading fact, and this line is the fact.
+                      -->
+                      <p class="side-meta mono" id="mirror-actual">Not capturing.</p>
+                    </div>
+
+                    <div class="side-card">
+                      <h3 class="side-title">Advanced</h3>
+                      <!--
+                        The handoff draws four toggles here. None can be honestly wired today and
+                        two never can, so none is drawn as a control: a greyed toggle is a promise
+                        that it might one day light up. Each is listed with its reason instead.
+                      -->
+                      <div id="mirror-advanced" class="limit-list"></div>
+                    </div>
+
+                    <button type="button" id="mirror-stop" class="stop-button">Stop mirroring</button>
+                    <button type="button" id="mirror-start" class="start-button">Start mirroring</button>
+                  </aside>
+                </div>
+              </div>
+            </section>
+
+            <!-- ============================== Messages ==================================== -->
+            <!--
+              The design puts contacts inside Messages rather than giving it a pane, so that is
+              where it goes — one of the six shipped features the mockups had no home for.
+
+              The compose box sends a thread id and a body and never a recipient: the send rule in
+              docs/protocol.md, expressed in the markup by there being nowhere to type one.
+            -->
+            <section class="screen" data-screen="messages" hidden>
+              <div class="messages-grid">
+                <div class="pane" id="sms-card">
+                  <p class="pane-sub" id="sms-note"></p>
+                  <div id="sms-body"></div>
+                  <div id="sms-notice" class="mirror-notice" hidden></div>
+                </div>
+                <aside class="side-card" id="contacts-card">
+                  <h3 class="side-title">Contacts</h3>
+                  <div class="row">
+                    <input id="contacts-search" type="search" placeholder="Search name or number" />
+                  </div>
+                  <p class="side-meta" id="contacts-note"></p>
+                  <div id="contacts-list" class="contact-list"></div>
+                  <div id="contacts-notice" class="mirror-notice" hidden></div>
+                </aside>
+              </div>
+            </section>
+
+            <!-- ============================ Notifications ================================= -->
+            <!--
+              Still explains itself rather than vanishing when the capability is absent: an empty
+              list and an ungranted permission look identical, and the difference is the whole of
+              what the user needs to know.
+
+              Grid is `1fr 380px` per the handoff: the list is a panel at elevation 2, the detail is
+              the ONE primary card at elevation 3. That asymmetry is the rule this pane tests —
+              "surfaces must not all read at the same weight".
+            -->
+            <section class="screen" data-screen="notifications" hidden>
+              <div class="pane pane-notifications" id="notif-card">
+                <p class="pane-sub" id="notif-note"></p>
+                <!-- Counts come from the live list, never from a constant. -->
+                <div class="pill-row" id="notif-filters" role="tablist" aria-label="Filter notifications"></div>
+                <div class="pane-grid">
+                  <div class="pane-list" id="notif-list" role="list"></div>
+                  <aside class="pane-detail" id="notif-detail" aria-live="polite"></aside>
+                </div>
+                <div id="notif-notice" class="mirror-notice" hidden></div>
+              </div>
+            </section>
+
+            <!-- ============================== Calls ======================================= -->
+            <!--
+              The live card appears only while a call exists; the Answer button says "on phone"
+              because there is no audio path between the phone and this Mac and there never will
+              be. Dialling takes two clicks: there is no dialler screen to cancel on.
+            -->
+            <section class="screen" data-screen="calls" hidden>
+              <div class="pane" id="calls-card">
+                <div id="call-live" class="call-live hidden"></div>
+                <div class="row">
+                  <input id="call-number" type="tel" placeholder="Number to call" />
+                  <button type="button" id="call-dial" class="button">Call</button>
+                </div>
+                <p class="pane-sub" id="calls-note"></p>
+                <div id="calls-body"></div>
+                <div id="calls-notice" class="mirror-notice" hidden></div>
+              </div>
+            </section>
+
+            <!-- ================= Files, Photos, Clipboard, Camera, Activity ================
+              Drawn in the sidebar, with nothing behind them. The empty state is generated by
+              shell.ts from `navModel`'s `unbuiltReason`, which is a sentence naming the phase and
+              the missing piece — never "coming soon", which is indistinguishable from broken.
+            -->
+            <section class="screen" data-screen="files" hidden></section>
+            <section class="screen" data-screen="photos" hidden></section>
+            <section class="screen" data-screen="clipboard" hidden></section>
+            <section class="screen" data-screen="camera" hidden></section>
+            <section class="screen" data-screen="activity" hidden></section>
+
+            <!-- ============================== Settings ==================================== -->
+            <!--
+              Three columns in the handoff; two here, because the right-hand column is an About
+              card, an Account card and an update card, and two of those three describe a product
+              with accounts and an update server. See departures X2.
+
+              Advanced is where the old "Connection" debug card's content now lives. The design has
+              a mono diagnostics block there and the handoff names its four lines — link, codec,
+              session, reconnects — so the HUD was moved into that shape rather than deleted.
+            -->
+            <section class="screen" data-screen="settings" hidden>
+              <div class="settings-grid">
+                <nav class="settings-rail" id="settings-rail" aria-label="Settings sections"></nav>
+                <div class="settings-body" id="settings-body"></div>
+              </div>
+            </section>
+          </div>
+
+          <!-- The dock. Five 36px tiles, generated from navModel.DOCK. -->
+          <div class="dock" id="dock" role="toolbar" aria-label="Quick access"></div>
+        </main>
       </div>
-    </section>
 
-    <!--
-      Notifications — the first pane rebuilt in the design language (handoff §7).
+      <!-- Bottom-centre, above the dock. One line, auto-dismissed at 2.4s. -->
+      <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+        <span class="toast-dot" aria-hidden="true"></span>
+        <span class="toast-text" id="toast-text"></span>
+      </div>
 
-      Still hidden entirely until the phone advertises the capability, rather than shown greyed:
-      an empty list and an ungranted permission look identical, and the difference is the whole of
-      what the user needs to know. The new layout adds the distinction the old one could not draw —
-      an empty shade, an unbuilt filter and an ungranted permission now look like three different
-      things instead of one blank list. See docs/mac-ui-design-proposals.md §3.
-
-      Grid is `1fr 380px` per the handoff: the list is a panel at elevation 2, the detail is the
-      ONE primary card at elevation 3. That asymmetry is the rule being tested by this slice —
-      "surfaces must not all read at the same weight" — and it is why the list is not also elev-3.
-    -->
-    <section class="card hidden pane pane-notifications" id="notif-card">
-      <header class="pane-head">
-        <div>
-          <h2 class="pane-title">Notifications</h2>
-          <p class="pane-sub" id="notif-note"></p>
+      <!--
+        ⌘K. Commands rank above navigation — the handoff's one explicit instruction about this
+        control, and `navModel.test.ts` asserts it, because a palette that lists eleven screens
+        before "Stop mirroring" makes the fastest way to stop a live capture slower than the
+        sidebar.
+      -->
+      <div class="palette-backdrop" id="palette" hidden>
+        <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+          <div class="palette-field">
+            <span class="palette-icon" id="palette-icon" aria-hidden="true"></span>
+            <input id="palette-input" type="text" placeholder="Jump to a screen or run a command" autocomplete="off" spellcheck="false" />
+            <span class="mono palette-esc">esc</span>
+          </div>
+          <div class="palette-results" id="palette-results" role="listbox"></div>
         </div>
-      </header>
-
-      <!-- Counts come from the live list, never from a constant. A pill reading a number nobody
-           can reconcile against the pane's own note is the denominator problem in miniature. -->
-      <div class="pill-row" id="notif-filters" role="tablist" aria-label="Filter notifications"></div>
-
-      <div class="pane-grid">
-        <div class="pane-list" id="notif-list" role="list"></div>
-        <aside class="pane-detail" id="notif-detail" aria-live="polite"></aside>
       </div>
+    </div>
 
-      <!-- One line, over the pane, for whatever the phone last refused. Times itself out. -->
-      <div id="notif-notice" class="mirror-notice" hidden></div>
-    </section>
-
-    <!--
-      Calls. The live card appears only while a call exists; the Answer button says "on phone"
-      because there is no audio path between the phone and this Mac and there never will be.
-      Dialling takes two clicks: there is no dialler screen to cancel on.
-    -->
-    <section class="card hidden" id="calls-card">
-      <h2>Calls</h2>
-      <div id="call-live" class="call-live hidden"></div>
-      <div class="row">
-        <input id="call-number" type="tel" placeholder="Number to call" />
-        <button id="call-dial">Call</button>
-      </div>
-      <p class="muted small" id="calls-note"></p>
-      <div id="calls-body"></div>
-      <div id="calls-notice" class="mirror-notice" hidden></div>
-    </section>
-
-    <!--
-      SMS. The compose box sends a thread id and a body and never a recipient — the send rule in
-      docs/protocol.md, expressed in the markup by there being nowhere to type one.
-    -->
-    <section class="card hidden" id="sms-card">
-      <h2>Messages</h2>
-      <p class="muted small" id="sms-note"></p>
-      <div id="sms-body"></div>
-      <div id="sms-notice" class="mirror-notice" hidden></div>
-    </section>
-
-    <!--
-      Media remote. Hidden until the phone advertises `remote` — which is the notification-listener
-      grant, not a permission of its own, which is why this card and the notifications card appear
-      together. `active: false` fills the card with a sentence rather than hiding it: nothing
-      playing is a normal state of a phone, not a failure.
-    -->
-    <section class="card hidden" id="remote-card">
-      <h2>Media remote</h2>
-      <p class="muted small" id="remote-note"></p>
-      <div id="remote-body" class="remote-body"></div>
-      <div id="remote-notice" class="mirror-notice" hidden></div>
-    </section>
-
-    <!--
-      Contacts. Hidden until the phone advertises the capability, like the notifications card and
-      for the same reason: an empty book and an ungranted permission look identical on screen.
-      The search box sends its query to the phone rather than filtering anything held here — the
-      phone has the indexes, and the number matching lives there.
-    -->
-    <section class="card hidden" id="contacts-card">
-      <h2>Contacts</h2>
-      <div class="row">
-        <input id="contacts-search" type="search" placeholder="Search name or number" />
-      </div>
-      <p class="muted small" id="contacts-note"></p>
-      <div id="contacts-list" class="contact-list"></div>
-      <div id="contacts-notice" class="mirror-notice" hidden></div>
-    </section>
-
-    <section class="card">
-      <h2>Capabilities</h2>
-      <p class="muted small">
-        What the phone can do right now. Anything missing needs a permission granting on the phone.
-      </p>
-      <div id="caps" class="caps"></div>
-    </section>
-
-    <section class="card">
-      <h2>Manual address</h2>
-      <p class="muted small">
-        Used only when the last known address, the default gateway, and mDNS all fail.
-      </p>
-      <div class="row">
-        <input id="manual" type="text" placeholder="192.168.1.42" />
-        <button id="save-manual">Save</button>
-      </div>
-      <div class="row">
-        <input id="tailscale" type="text" placeholder="Tailscale 100.x address (optional)" />
-        <button id="save-tailscale">Save</button>
-      </div>
-    </section>
-
-    <section class="card">
-      <h2>Connection health</h2>
-      <pre id="logs" class="logs"></pre>
-      <button id="refresh-logs">Refresh</button>
-    </section>
-
+    <script src="icons.js"></script>
+    <script src="navModel.js"></script>
     <script src="mirror.js"></script>
     <!-- The float button's two states, tested in floatButton.test.ts. -->
     <script src="floatButton.js"></script>
@@ -308,6 +473,7 @@
     <script src="remote.js"></script>
     <script src="sms.js"></script>
     <script src="calls.js"></script>
+    <script src="shell.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

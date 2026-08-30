@@ -145,8 +145,8 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
   from `tsc`'s emit, so nothing test-shaped reaches `dist/`.
 
   It was added on 2026-08-28 because the Mac had **zero** tests against the phone's ~300, and six
-  of the defects found in Phase 3 and 4 — 19, 22, 23, 24, 25 and 26 — were all Mac-side. Four more
-  panes are coming in Phases 4 and 5.
+  of the defects found in Phase 3 and 4 — 19, 22, 23, 24, 25 and 26 — were all Mac-side. It stood at
+  **106** when the app shell landed on 2026-08-30. Four more panes are coming in Phases 4 and 5.
 
   The renderer is loaded as plain `<script>` tags and cannot use `export`, so a renderer rule is
   made testable by hanging the pure half on `globalThis` at the bottom of the file — see
@@ -166,6 +166,41 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
   the same shape as an empty accessibility query: it reads as evidence and is not. Second, prefer
   making the code testable over mocking Electron. `src/shared/` is the electron-free layer and is
   where a testable seam belongs; `session.ts` came out of `link.ts` that way.
+- **One selector belongs to exactly one stylesheet.** `tokens.css`, `shell.css` and `styles.css`
+  load in that order into one cascade, so two rules at equal specificity are resolved by document
+  order and **the later sheet silently wins**. Silently is the whole problem: nothing errors,
+  nothing logs, `tsc` is clean, the tests are green, and the app renders wrong in a way that looks
+  like a design decision.
+
+  It cost three bugs in one sitting on 2026-08-30, all found by eye rather than by any check:
+  styles.css's own `:root` block overrode `--accent` with a blue, so the design's violet was never
+  once drawn; the same block's `--bg` painted the window ground nine steps too light, so every
+  translucent surface composited wrong; and a duplicated `.toolbar-button` beat
+  `.mirror-only { display: none }`, so the Mirror-only Floating window button drew on all eleven
+  screens.
+
+  The division: **tokens.css owns colour** and the two global requirements (`:focus-visible`, the
+  reduced-motion block); **shell.css owns the frame** — window, sidebar, nav, island, dock, palette,
+  toast; **styles.css owns what lives inside a screen**. A component that needs a value which is not
+  a token means the token is missing — add it to tokens.css rather than defining a second `:root`.
+
+  Enforced by `src/renderer/stylesheets.test.ts`, which parses all three and fails on any selector
+  declared in two of them, or on a custom property declared outside tokens.css. It carries both
+  controls: one proving it can see a collision, one proving it does not mistake an `@media` body
+  for a top-level rule.
+
+- **An icon name that is not in an enumeration is an icon nobody can check.** `icons.ts` holds the
+  geometry and `navModel.iconNamesUsedByTheShell()` holds every name the app asks for; `icons.test.ts`
+  asserts none is empty and `navModel.test.ts` asserts every name resolves.
+
+  This exists because the build shipped with **no icons at all** and nothing noticed: the Mirror
+  tool rail drew a `.tool-glyph` span with a border and no contents, so Capture and Refresh
+  rendered as empty rings — visible in a screenshot and invisible to every check in the repo.
+  The first version of the guard enumerated only the sidebar and the dock and **passed with
+  `capture` deleted**, which is the same defect one layer up: a guard that does not cover the thing
+  it is named for. The tool rail and the six global actions moved into `navModel.ts` so they are
+  inside it.
+
 - Write the acceptance test steps into `docs/testing.md` as you complete each phase.
 - Do not rewrite working code from v1 unless the phase says to. (The one exception is already done: the v1 ADB mirror, its `LEGACY_ADB_MIRROR` flag, and `:mirror-server` were deleted on 2026-08-26 once v2 mirroring passed on hardware. No ADB remains in the repo.)
 

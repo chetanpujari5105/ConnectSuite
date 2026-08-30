@@ -74,10 +74,18 @@ interface NotifBridge {
   onNotifChanged(callback: (list: Notif[]) => void): void;
 }
 
-// `appLabelOf`, `tileInitialOf`, `appTileNameOf`, `replyPlaceholderOf`, `repliedNoticeOf`,
-// `replyButtonLabelOf` and `fallbackChipOf` come from notifyLabels.ts. Both files are plain
-// scripts in one global scope, so they are simply in scope here — no import, and no `declare`
-// re-statement of a signature that could drift from the real one.
+// Every string this pane puts in front of a person comes from notifyLabels.ts — `appLabelOf`,
+// `tileInitialOf`, `appTileNameOf`, `replyPlaceholderOf`, `repliedNoticeOf`, `replyButtonLabelOf`,
+// `fallbackChipOf`, `dismissButtonNameOf`, `noReplyActionNoteOf`, `sendButtonNameOf`. Both files
+// are plain scripts in one global scope, so they are simply in scope here — no import, and no
+// `declare` re-statement of a signature that could drift from the real one.
+//
+// The last three arrived late. They were composed inline in this file, correctly, and therefore
+// outside `userVisibleStringsOf` — which is the enumeration defect 28's test asserts over. A
+// string composed here rather than there is invisible to that test, so the guard had a hole in it
+// even while nothing on screen was wrong. **Compose nothing in this file.** If a new sentence
+// needs the app's name, it gets a function in notifyLabels.ts and a slot in the enumeration, and
+// the count assertion moves.
 
 type FilterId = 'all' | 'messages' | 'reply' | 'muted';
 
@@ -218,6 +226,7 @@ class NotificationsView {
 
     if (!this.advertised) {
       this.note.textContent = '';
+      shell.setNotificationCount(0);
       if (this.unavailableReason !== null) {
         this.container.appendChild(this.unavailableBanner(this.unavailableReason));
       }
@@ -232,6 +241,11 @@ class NotificationsView {
     const visible = this.list.filter((one) => !one.isGroupSummary);
     const hidden = this.list.length - visible.length;
     const headers = `${hidden} group ${hidden === 1 ? 'header' : 'headers'}`;
+
+    // The sidebar badge counts what this pane counts — `visible`, not `this.list`. The design
+    // draws a "3" here, and a badge that includes group summaries would send someone to a pane
+    // showing a different number than the row that sent them.
+    shell.setNotificationCount(visible.length);
 
     this.drawFilters(visible);
 
@@ -509,7 +523,7 @@ class NotificationsView {
       dismiss.type = 'button';
       dismiss.className = 'icon-button';
       dismiss.textContent = '✕';
-      dismiss.setAttribute('aria-label', `Dismiss this notification from ${appLabelOf(one).label}`);
+      dismiss.setAttribute('aria-label', dismissButtonNameOf(one));
       dismiss.addEventListener('click', (event) => {
         event.stopPropagation();
         void this.run(this.bridge.notifDismiss(one.key));
@@ -586,9 +600,7 @@ class NotificationsView {
       // did not build a reply action has not failed at anything.
       const why = document.createElement('p');
       why.className = 'detail-note';
-      why.textContent =
-        `${appLabelOf(one).label} did not attach a reply action to this notification, so there is ` +
-        'nothing for the Mac to reply through. Opening it on the phone still works.';
+      why.textContent = noReplyActionNoteOf(one);
       card.appendChild(why);
     }
 
@@ -667,7 +679,7 @@ class NotificationsView {
     send.type = 'button';
     send.className = 'send';
     send.textContent = 'Send';
-    send.setAttribute('aria-label', `Send this reply to ${appLabelOf(one).label}`);
+    send.setAttribute('aria-label', sendButtonNameOf(one));
 
     const submit = async (): Promise<void> => {
       const text = input.value.trim();

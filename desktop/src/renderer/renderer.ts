@@ -7,6 +7,12 @@
 
 declare function chipLabel(capability: string, available: boolean, reason?: string): string;
 
+/*
+ * `shell` (shell.ts), `GLOBAL_ACTIONS` (navModel.ts) and `chipLabel` (chips.ts) need no import and
+ * no `declare`: these are plain scripts in one global TypeScript scope, so the real definitions are
+ * already visible here — and a `declare` would be a second signature free to drift from the first.
+ */
+
 interface UnavailableCapability {
   name: string;
   reason: string;
@@ -148,38 +154,35 @@ const ALL_CAPABILITIES = [
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
+/**
+ * One pass over everything the link's state changes.
+ *
+ * The shell owns the chrome — device card, connected-device strip, Overview hero, status island —
+ * and is handed the status once. It is deliberately *one* call: those four are four views of one
+ * fact, and the last time two views of one fact were fed separately in this codebase it was
+ * defect 27, a reason going stale in one place and not the other.
+ */
 function render(status: RendererStatus | null): void {
-  const state = el<HTMLDivElement>('state');
-  const connected = status?.phase === 'connected';
-  state.textContent = status ? describe(status) : 'Starting…';
-  state.className = `pill${connected ? ' connected' : status?.lastError ? ' error' : ''}`;
+  shell.setStatus(status);
 
-  el('hud-phase').textContent = status?.phase ?? '—';
-  el('hud-via').textContent = status?.via ?? '—';
-  el('hud-address').textContent = status?.address ?? '—';
-  el('hud-rtt').textContent = status?.rttMs === undefined ? '—' : `${status.rttMs} ms`;
-  el('hud-device').textContent = status?.deviceName ?? '—';
-  el('hud-error').textContent = status?.lastError ?? '—';
-
-  // The pairing panel is only useful before there is a paired phone; hiding it afterwards keeps
-  // a stale QR from being scanned into a second, conflicting pairing.
-  el('pairing').classList.toggle('hidden', Boolean(status?.paired));
+  setDiag('state', status?.phase ?? '—');
+  setDiag('via', status?.via ?? '—');
+  setDiag('address', status?.address ?? '—');
+  setDiag('rtt', status?.rttMs === undefined ? '—' : `${status.rttMs} ms`);
+  setDiag('device', status?.deviceName ?? '—');
+  setDiag('error', status?.lastError ?? 'none');
 
   // The button is enabled only while the phone advertises `mirror`. Anything else would offer
   // the user an action the phone has already said it cannot perform.
   const canMirror = status?.capabilities?.includes('mirror') ?? false;
   el<HTMLButtonElement>('mirror-start').disabled = !canMirror;
   el<HTMLButtonElement>('mirror-stop').disabled = !canMirror;
-  el('mirror-card').classList.toggle('hidden', !status?.paired);
 
-  // The same rule for input: no button for a promise the phone has not made. Unlike the mirror
-  // buttons, the canvas cannot be "disabled" — so the view is told, and it answers a click with
-  // the reason and the way to fix it rather than doing nothing.
   // The phone's own sentence for anything it is not offering. Hoisted above its two consumers —
-  // the pane below and the capability chips further down — rather than built twice: defect 27 was
+  // the panes below and the capability chips further down — rather than built twice: defect 27 was
   // this reason going stale, and one map read at one moment cannot disagree with itself.
   const reasons = new Map((status?.unavailable ?? []).map((u) => [u.name, u.reason]));
-  // The pane now stays and explains itself rather than vanishing. It is handed the reason verbatim
+  // The pane stays and explains itself rather than vanishing. It is handed the reason verbatim
   // and never a Mac-side paraphrase — see NotificationsView.setAdvertised.
   notifications.setAdvertised(
     status?.capabilities?.includes('notifications') ?? false,
@@ -188,15 +191,18 @@ function render(status: RendererStatus | null): void {
   // Same rule for contacts, and the pane loads its first page the moment it is advertised — which
   // is what makes granting READ_CONTACTS mid-session visible without a reconnect.
   contacts.setAdvertised(status?.capabilities?.includes('contacts') ?? false);
-  // The media remote rides the notification-listener grant, so this chip lights together with
+  // The media remote rides the notification-listener grant, so this lights together with
   // `notifications` — one grant, two features. See docs/protocol.md.
   remote.setAdvertised(status?.capabilities?.includes('remote') ?? false);
   sms.setAdvertised(status?.capabilities?.includes('sms') ?? false);
   calls.setAdvertised(status?.capabilities?.includes('calls') ?? false);
 
+  // The same rule for input: no button for a promise the phone has not made. Unlike the mirror
+  // buttons the canvas cannot be "disabled" — so the view is told, and it answers a click with the
+  // reason and the way to fix it rather than doing nothing.
   const canInput = status?.capabilities?.includes('input') ?? false;
   mirror.setInputAdvertised(canInput);
-  for (const button of INPUT_BUTTONS) {
+  for (const button of GLOBAL_ACTIONS) {
     el<HTMLButtonElement>(`input-${button.id}`).disabled = !canInput;
   }
   el('input-note').textContent = canInput
@@ -268,26 +274,23 @@ async function keepPairingArmed(): Promise<void> {
   await showQr();
 }
 
+/**
+ * The log tail, held here because the node it draws into only exists while Settings \u2192 Advanced
+ * is on screen. Keeping the text and painting it on build is what lets the 15s refresh keep
+ * running whether or not anybody is looking at it.
+ */
+let lastLogTail = '';
+
 async function refreshLogs(): Promise<void> {
-  el('logs').textContent = (await connect.logTail(120)).join('\n');
+  lastLogTail = (await connect.logTail(120)).join('\n');
+  const node = document.getElementById('logs');
+  if (node) node.textContent = lastLogTail;
 }
 
+// Connect / Disconnect / Retry / Forget / the two addresses / Refresh log all moved into the
+// Settings panes registered further down. Only the pairing screen's own button is bound here,
+// because the pairing screen is static markup rather than a built pane.
 el('new-qr').addEventListener('click', () => void showQr(true));
-el('connect').addEventListener('click', () => void connect.connect());
-el('disconnect').addEventListener('click', () => void connect.disconnect());
-el('retry').addEventListener('click', () => void connect.retryNow());
-el('forget').addEventListener('click', async () => {
-  await connect.forgetDevice();
-  render(await connect.status());
-  await showQr();
-});
-el('save-manual').addEventListener('click', async () => {
-  await connect.setManualAddress(el<HTMLInputElement>('manual').value);
-});
-el('save-tailscale').addEventListener('click', async () => {
-  await connect.setTailscaleAddress(el<HTMLInputElement>('tailscale').value);
-});
-el('refresh-logs').addEventListener('click', () => void refreshLogs());
 
 // Mirroring is only offered when the phone actually advertises it, which is the capability
 // contract doing its job at the UI layer: no button for a promise the phone has not made.
@@ -363,16 +366,13 @@ const calls = new CallsView(
  * power button, and the power *menu* it can open is one stray click away from switching off the
  * phone this Mac is talking to. See docs/protocol.md.
  */
-const INPUT_BUTTONS = [
-  { id: 'back', action: 'back' },
-  { id: 'home', action: 'home' },
-  { id: 'recents', action: 'recents' },
-  { id: 'notifications', action: 'notifications' },
-  { id: 'quick-settings', action: 'quick_settings' },
-  { id: 'lock', action: 'lock_screen' },
-] as const;
-
-for (const button of INPUT_BUTTONS) {
+/*
+ * The six global actions, wired from navModel.GLOBAL_ACTIONS — the same table shell.ts draws the
+ * buttons from, so a seventh action is one edit rather than two that can disagree about which
+ * buttons exist. There is no power button here and there cannot be one: no app on Android can
+ * press it.
+ */
+for (const button of GLOBAL_ACTIONS) {
   el(`input-${button.id}`).addEventListener('click', () => void mirror.global(button.action));
 }
 
@@ -471,8 +471,11 @@ const ADVANCED_LIMITS = [
   {
     name: 'Phone screen off',
     kind: 'wall' as const,
-    why: 'Blanking the phone while it mirrors needs a system-signed permission. `mirror.screenoff` ' +
-      'is deliberately unimplemented, and a test asserts it is never registered.',
+    // No backticks. This string is set with `textContent`, so markdown does not render — it
+    // renders as backticks, which is what shipped. Wire message names are written plainly here;
+    // the mono treatment they deserve is a span, and this row has no room for one.
+    why: 'Blanking the phone while it mirrors needs a system-signed permission. The mirror.screenoff ' +
+      'message is deliberately unimplemented, and a test asserts it is never registered.',
   },
 ];
 
@@ -537,6 +540,279 @@ function drawFloatButton(open: boolean): void {
 connect.onFloatChanged((state) => drawFloatButton(state.open));
 void connect.floatState().then((state) => drawFloatButton(state?.open ?? false));
 
+/* ================================================================================================
+ * Settings, and where the Connection debug card went
+ *
+ * The old top-of-window "Connection" card had fifteen HUD rows, four link buttons, a manual
+ * address, a Tailscale address and a log tail. It exists nowhere in the design, and the shell had
+ * no honest place to put a debug card on every screen — but the information behind it is the only
+ * thing on this Mac that answers "why is it not connecting", so **none of it was deleted**.
+ *
+ * The design does have a home for it: §12 Settings → Advanced, "a mono diagnostics block (link,
+ * codec, session, reconnects) with a violet caret". So the HUD was reshaped into that block —
+ * those four lines are the headline, and every reading that does not fit one of them is listed
+ * under it rather than dropped. The buttons and the two addresses went to Settings → Connection,
+ * which is where the handoff puts connection controls.
+ *
+ * `DIAGNOSTICS` is the store. The HUD interval writes into it through [setDiag]; the Advanced pane
+ * reads it when it is drawn. That indirection is what lets the readings keep updating once a
+ * second whether or not anybody is looking at Settings, without the interval needing to know
+ * whether the nodes it writes to exist.
+ * ============================================================================================ */
+
+const DIAGNOSTICS: Record<string, string> = {};
+
+/**
+ * Record one reading, and update it on screen if the Advanced pane happens to be open.
+ *
+ * `getElementById` rather than `el()` on purpose: `el()` casts a null into an HTMLElement and the
+ * caller finds out one property access later. Here the node genuinely may not exist — the pane is
+ * rebuilt on every Settings draw — and "not on screen" is the normal case, not an error.
+ */
+function setDiag(key: string, value: string): void {
+  DIAGNOSTICS[key] = value;
+  const node = document.getElementById(`diag-${key}`);
+  if (node) node.textContent = value;
+}
+
+/** One `label: value` line in the block, carrying the id [setDiag] writes to. */
+function diagLine(key: string, label: string): HTMLElement {
+  const line = document.createElement('div');
+  line.className = 'diagnostics-line';
+  line.append(document.createTextNode(`${label}: `));
+  const value = document.createElement('span');
+  value.id = `diag-${key}`;
+  value.textContent = DIAGNOSTICS[key] ?? '—';
+  line.appendChild(value);
+  return line;
+}
+
+function settingRow(label: string, sub: string, control: HTMLElement): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'setting-row';
+  const text = document.createElement('span');
+  text.className = 'setting-row-text';
+  const name = document.createElement('span');
+  name.className = 'setting-label';
+  name.textContent = label;
+  const note = document.createElement('span');
+  note.className = 'setting-sub';
+  note.textContent = sub;
+  text.append(name, note);
+  const slot = document.createElement('span');
+  slot.className = 'setting-control';
+  slot.appendChild(control);
+  row.append(text, slot);
+  return row;
+}
+
+/** The two saved addresses, held here because the pane that shows them is rebuilt on every draw. */
+let savedManual = '';
+let savedTailscale = '';
+
+function addressControl(
+  value: string,
+  placeholder: string,
+  save: (next: string) => Promise<void>,
+  onSaved: (next: string) => void,
+): HTMLElement {
+  const wrap = document.createElement('span');
+  wrap.className = 'row';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = value;
+  input.placeholder = placeholder;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = 'Save';
+  button.addEventListener('click', () => {
+    void (async () => {
+      await save(input.value.trim());
+      onSaved(input.value.trim());
+      // Said out loud rather than left to be inferred from a field that looks the same after a
+      // save as before one.
+      shell.toast(input.value.trim() === '' ? 'Address cleared.' : `Saved ${input.value.trim()}.`);
+    })();
+  });
+  wrap.append(input, button);
+  return wrap;
+}
+
+shell.addSettingsPane(
+  'connection',
+  'Connection',
+  'How this Mac finds the phone, and what to do when it cannot.',
+  () => {
+    const body = document.createElement('div');
+
+    const links = document.createElement('div');
+    links.className = 'row';
+    for (const [label, run] of [
+      ['Connect', () => void connect.connect()],
+      ['Disconnect', () => void connect.disconnect()],
+      ['Retry now', () => void connect.retryNow()],
+    ] as [string, () => void][]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.addEventListener('click', run);
+      links.appendChild(button);
+    }
+    body.appendChild(
+      settingRow('Link', 'Discovery order: last known address, then the default gateway, then mDNS.', links),
+    );
+
+    body.appendChild(
+      settingRow(
+        'Manual address',
+        'Used only when the last known address, the default gateway and mDNS all fail.',
+        addressControl('', '192.168.1.42', (next) => connect.setManualAddress(next), (next) => {
+          savedManual = next;
+        }),
+      ),
+    );
+    body.appendChild(
+      settingRow(
+        'Tailscale address',
+        'Optional. Nothing works outside the local network without one; this is the documented path.',
+        addressControl('', '100.x.y.z', (next) => connect.setTailscaleAddress(next), (next) => {
+          savedTailscale = next;
+        }),
+      ),
+    );
+
+    const forget = document.createElement('button');
+    forget.type = 'button';
+    forget.className = 'danger';
+    forget.textContent = 'Forget this phone';
+    forget.addEventListener('click', () => {
+      void (async () => {
+        await connect.forgetDevice();
+        render(await connect.status());
+        await showQr();
+      })();
+    });
+    body.appendChild(
+      settingRow(
+        'Trusted device',
+        'Removes the phone\u2019s certificate from the trust store. You will pair again from scratch.',
+        forget,
+      ),
+    );
+
+    // The saved values are filled in after construction so the two inputs above stay one helper.
+    const inputs = body.querySelectorAll('input');
+    if (inputs[0]) inputs[0].value = savedManual;
+    if (inputs[1]) inputs[1].value = savedTailscale;
+    return body;
+  },
+);
+
+shell.addSettingsPane(
+  'advanced',
+  'Advanced',
+  'Diagnostics. This is where the Connection debug card went — nothing it showed was dropped.',
+  () => {
+    const body = document.createElement('div');
+
+    /*
+     * The handoff's four lines, in its order. They are a *summary*: `link` is the transport and
+     * address, `codec` is what the video pipeline settled on, `session` is what this link has
+     * managed, `reconnects` is what it has cost. Everything the HUD measured that does not fit one
+     * of the four is in the full list below rather than thrown away — a summary that quietly drops
+     * the peak latency is the same shape as a failure count with no success count.
+     */
+    const headline = document.createElement('div');
+    headline.className = 'diagnostics';
+    headline.append(
+      diagLine('link', 'link'),
+      diagLine('codec', 'codec'),
+      diagLine('session', 'session'),
+    );
+    const reconnects = diagLine('reconnects', 'reconnects');
+    const caret = document.createElement('span');
+    caret.className = 'diagnostics-caret';
+    caret.textContent = '\u258c';
+    reconnects.appendChild(caret);
+    headline.appendChild(reconnects);
+    body.appendChild(headline);
+
+    const detail = document.createElement('div');
+    detail.className = 'diagnostics';
+    for (const [key, label] of [
+      ['state', 'state'],
+      ['via', 'found via'],
+      ['address', 'address'],
+      ['device', 'phone'],
+      ['rtt', 'round trip'],
+      ['capture', 'capture'],
+      ['rotation', 'rotation'],
+      ['fps', 'frame rate'],
+      ['bitrate', 'bitrate'],
+      ['dropped', 'dropped'],
+      ['latency', 'latency'],
+      ['latency-link', '  phone \u2192 Mac'],
+      ['latency-decode', '  Mac \u2192 painted'],
+      ['ttff', 'first frame'],
+      ['battery', 'battery'],
+      ['error', 'last error'],
+    ] as [string, string][]) {
+      detail.appendChild(diagLine(key, label));
+    }
+    body.appendChild(detail);
+
+    const log = document.createElement('pre');
+    log.className = 'log-tail';
+    log.id = 'logs';
+    log.textContent = lastLogTail;
+    body.appendChild(log);
+
+    const refresh = document.createElement('button');
+    refresh.type = 'button';
+    refresh.textContent = 'Refresh log';
+    refresh.addEventListener('click', () => void refreshLogs());
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.appendChild(refresh);
+    body.appendChild(row);
+
+    return body;
+  },
+);
+
+shell.addSettingsPane(
+  'about',
+  'About',
+  'ConnectSuite for macOS. No cloud, no account, no relay server.',
+  () => {
+    const body = document.createElement('div');
+    const version = document.createElement('span');
+    version.className = 'setting-value';
+    version.textContent = '2.0.0';
+    body.appendChild(settingRow('Version', 'The Electron app in desktop/.', version));
+
+    /*
+     * The handoff's About column also carries an Account card, a two-factor row, "Sign out
+     * everywhere" and "You are up to date". All four describe a product with accounts and an
+     * update server, and this one has neither — CLAUDE.md's first line. Rather than draw them
+     * greyed, which is a promise they might light up, the pane says what is actually true.
+     * Departures row X2.
+     */
+    const scope = document.createElement('span');
+    scope.className = 'setting-value';
+    scope.textContent = 'local network only';
+    body.appendChild(
+      settingRow(
+        'Where your data goes',
+        'Nowhere. There is no account, no telemetry and no relay: the Mac talks to the phone over ' +
+          'TLS 1.3 on your own network, and to nothing else.',
+        scope,
+      ),
+    );
+    return body;
+  },
+);
+
 /**
  * The debug HUD, once a second.
  *
@@ -561,16 +837,17 @@ setInterval(() => {
           : `${decoded.framesDecoded} frames · ${decoded.fps} fps`;
 
     const capture = decoded.capture;
-    el('hud-capture').textContent = capture?.width
-      ? `${capture.width}x${capture.height} (cap ${capture.maxResolution}p)`
-      : '—';
+    setDiag(
+      'capture',
+      capture?.width ? `${capture.width}x${capture.height} (cap ${capture.maxResolution}p)` : '—',
+    );
     // Blank until the phone has actually turned once: "0°" would claim a measurement that has not
     // been made, and the phone only sends `mirror.rotate` when its rotation changes.
-    el('hud-rotation').textContent = decoded.rotation === null ? '—' : `${decoded.rotation}°`;
+    setDiag('rotation', decoded.rotation === null ? '—' : `${decoded.rotation}°`);
 
-    // The Mirror pane's own two readouts, from the same source as the HUD rows above so the two
-    // cannot disagree. The rail shows the rotation rather than offering to change it: `mirror.rotate`
-    // is phone-to-Mac only and the Mac cannot turn a phone — docs/design-departures.md, M2.
+    // The Mirror pane's own two readouts, from the same source as the diagnostics above so the two
+    // cannot disagree. The rail shows the rotation rather than offering to change it:
+    // `mirror.rotate` is phone-to-Mac only and the Mac cannot turn a phone — departures M2.
     el('mirror-rotation-readout').textContent =
       decoded.rotation === null ? '—' : `${decoded.rotation}°`;
     // What the phone actually captured, beside the preset that asked for it. `maxResolution` is a
@@ -580,36 +857,112 @@ setInterval(() => {
       : 'Not capturing.';
     // Both sides: a phone encoding 60 and a Mac painting 30 is a link problem, and one number
     // alone cannot tell you that.
-    el('hud-fps').textContent =
+    setDiag(
+      'fps',
       decoded.fps === null && link.framesPerSecond === null
         ? '—'
-        : `${decoded.fps ?? '—'} painted · ${link.framesPerSecond ?? '—'} received`;
-    el('hud-bitrate').textContent =
-      link.kbps === null || link.kbps === 0 ? '—' : `${(link.kbps / 1000).toFixed(1)} Mbps`;
-    el('hud-dropped').textContent =
-      phone?.droppedFrames === undefined ? '—' : `${phone.droppedFrames} on the phone`;
+        : `${decoded.fps ?? '—'} painted · ${link.framesPerSecond ?? '—'} received`,
+    );
+    setDiag(
+      'bitrate',
+      link.kbps === null || link.kbps === 0 ? '—' : `${(link.kbps / 1000).toFixed(1)} Mbps`,
+    );
+    setDiag(
+      'dropped',
+      phone?.droppedFrames === undefined ? '—' : `${phone.droppedFrames} on the phone`,
+    );
     // Three figures, not one. The total is what the mirror feels like; the two halves are what
     // say which machine to look at when it feels wrong — the phone's encoder and the network, or
     // this Mac's IPC, decoder and canvas. A single number cannot separate them, which is the
     // whole reason the split exists.
-    el('hud-latency').textContent =
+    setDiag(
+      'latency',
       decoded.latencyMs === null
         ? '—'
-        : `${decoded.latencyMs} ms (peak ${decoded.latencyPeakMs} ms)`;
-    el('hud-latency-link').textContent =
-      decoded.latencyLinkMs === null ? '—' : `${decoded.latencyLinkMs} ms`;
-    el('hud-latency-decode').textContent =
-      decoded.latencyDecodeMs === null ? '—' : `${decoded.latencyDecodeMs} ms`;
-    el('hud-ttff').textContent =
-      decoded.timeToFirstFrameMs === null ? '—' : `${decoded.timeToFirstFrameMs} ms`;
+        : `${decoded.latencyMs} ms (peak ${decoded.latencyPeakMs} ms)`,
+    );
+    setDiag('latency-link', decoded.latencyLinkMs === null ? '—' : `${decoded.latencyLinkMs} ms`);
+    setDiag(
+      'latency-decode',
+      decoded.latencyDecodeMs === null ? '—' : `${decoded.latencyDecodeMs} ms`,
+    );
+    setDiag('ttff', decoded.timeToFirstFrameMs === null ? '—' : `${decoded.timeToFirstFrameMs} ms`);
+
+    /*
+     * The handoff's four summary lines, composed from the readings above rather than measured
+     * separately — so a summary line can never disagree with the detail line under it.
+     *
+     * `session` is frames beside elapsed time and `codec` is a resolution beside a rate, both
+     * because a count with no denominator reads as whichever story the reader already believes.
+     * `reconnects` is the one figure nothing on this Mac counts yet, and it says so: `not counted`
+     * rather than `0`, which would be a claim that the link has never dropped.
+     */
+    setDiag('link', `${DIAGNOSTICS.via ?? '—'} · ${DIAGNOSTICS.address ?? '—'} · ${DIAGNOSTICS.rtt ?? '—'}`);
+    setDiag(
+      'codec',
+      capture?.width
+        ? `h264 · ${capture.width}x${capture.height} · ${DIAGNOSTICS.bitrate ?? '—'}`
+        : 'h264 · not capturing',
+    );
+    setDiag(
+      'session',
+      decoded.framesDecoded === 0
+        ? 'no frames this session'
+        : `${decoded.framesDecoded} frames · ${decoded.fps ?? '—'} fps · first frame ${DIAGNOSTICS.ttff ?? '—'}`,
+    );
+    setDiag('reconnects', 'not counted on this build');
+    // The reading the device card and the strip have no room to explain. `battery.state` is in
+    // docs/protocol.md and nothing on this Mac subscribes to it, so the honest value is the
+    // sentence rather than a number.
+    setDiag('battery', 'not subscribed on this build (battery.state is unhandled)');
   })();
 }, 1_000);
 
 connect.onStatus(render);
 connect.onPhoneError((payload) => {
-  el('hud-error').textContent = payload.fixHint
+  const text = payload.fixHint
     ? `${payload.code}: ${payload.message} — ${payload.fixHint}`
     : `${payload.code}: ${payload.message}`;
+  setDiag('error', text);
+  // A phone-side refusal is a session event and belongs in the island's rota: the diagnostics
+  // block is where you go to *look* for it, and the island is what tells you to go and look.
+  shell.note(text);
+});
+
+/* ================================================================================================
+ * ⌘K commands
+ *
+ * The four the handoff names, wired to the same functions the buttons call rather than to copies
+ * of them. `shell.ts` ranks them above navigation and refuses to swallow a keystroke for a command
+ * nothing is wired to — it says which one, in the island — so an unwired id is visible rather than
+ * a dead Enter key.
+ * ============================================================================================ */
+
+/*
+ * The Overview hero's two actions. `Start mirroring` is the same call the Mirror pane's button
+ * makes — one function, not a second copy that can drift — and it routes first, so the user ends
+ * up looking at the picture they just asked for rather than at a dashboard that says nothing
+ * happened.
+ */
+el('hero-mirror').addEventListener('click', () => {
+  shell.route('mirror');
+  void mirror.start(selectedQuality());
+});
+el('hero-info').addEventListener('click', () => shell.route('settings', 'connection'));
+
+shell.onCommand('mirror.start', () => {
+  shell.route('mirror');
+  void mirror.start(selectedQuality());
+});
+shell.onCommand('mirror.stop', () => void mirror.stop());
+shell.onCommand('float.toggle', () => void connect.floatOpen());
+shell.onCommand('mirror.capture', () => {
+  void (async () => {
+    await mirror.saveStill();
+    // The handoff's toast, on the handoff's trigger. Said only after the save returns, so it is a
+    // report rather than an intention.
+    shell.toast('Screenshot saved to Desktop');
+  })();
 });
 
 void (async () => {
@@ -620,8 +973,9 @@ void (async () => {
   await notifications.refresh();
   await remote.refresh();
   const settings = await connect.settings();
-  el<HTMLInputElement>('manual').value = settings.manualAddress ?? '';
-  el<HTMLInputElement>('tailscale').value = settings.tailscaleAddress ?? '';
+  savedManual = settings.manualAddress ?? '';
+  savedTailscale = settings.tailscaleAddress ?? '';
+  shell.refreshSettings();
   if (!status?.paired) await showQr();
   await refreshLogs();
   setInterval(() => void refreshLogs(), 15_000);

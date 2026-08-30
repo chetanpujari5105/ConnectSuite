@@ -116,19 +116,57 @@ type MirrorStatePayload = {
 };
 let lastStatus: ConnectionStatus | null = null;
 
+/**
+ * The app window.
+ *
+ * 1440 x 920 is the handoff's canvas, and the shell's grid is laid out against it — a 232px
+ * sidebar, a 60px title-bar band, `1fr 380px` on Notifications and `1.04fr 1fr` on Overview. The
+ * minimums are what those grids stop being honest below rather than round numbers: under 1100 the
+ * Notifications detail column and the Mirror side column start fighting, and under 700 the dock
+ * and the page header collide.
+ *
+ * `titleBarStyle: 'hidden'` with `trafficLightPosition` puts the **real** macOS traffic lights
+ * into the 52px row the sidebar reserves for them, at the handoff's 20px inset. Three coloured
+ * divs would have matched the mockup more literally and would have needed their own close,
+ * minimise and zoom, would not have drawn the system's hover glyphs, and would not have gone
+ * translucent when the window loses focus — so the design's pixels are met with the system's
+ * buttons. See docs/design-departures.md, row S1.
+ *
+ * `backgroundColor` is `--canvas`, the token every translucent surface in the app composites over.
+ * It was `#101014` — the legacy `--bg` — which is nine steps lighter and lifted every elevation in
+ * the design at once, including the flash of window ground before the first paint.
+ */
 function createWindow(): void {
   window = new BrowserWindow({
-    width: 720,
-    height: 820,
+    width: 1440,
+    height: 920,
+    minWidth: 1100,
+    minHeight: 700,
     title: 'ConnectSuite',
-    backgroundColor: '#101014',
-    titleBarStyle: 'hiddenInset',
+    backgroundColor: '#07070a',
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 20, y: 20 },
     webPreferences: {
       preload: join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      /*
+       * Pinned to 1, and it had drifted. Chromium persists a per-origin zoom level into the user
+       * data directory, so a stray ⌘- at some point had left this window rendering `file://` at
+       * **0.72** — every size in a design specified to the half-pixel (31px titles, 13.5px body,
+       * a 232px sidebar) drawn at 72%, silently, across launches. Nothing in this app offers a
+       * zoom control, so a factor other than 1 can only have arrived by accident.
+       */
+      zoomFactor: 1,
     },
   });
+  /*
+   * `zoomFactor` in webPreferences is only the *initial* value, and Chromium's persisted per-origin
+   * zoom level is applied over the top of it once the page commits — which is why the pin above was
+   * not enough on its own and this Mac kept rendering at 0.72 after it was added. Setting the level
+   * after the load is what actually holds. Level 0 is factor 1.
+   */
+  window.webContents.on('did-finish-load', () => window?.webContents.setZoomLevel(0));
   void window.loadFile(join(__dirname, '..', 'renderer', 'index.html'));
   window.on('closed', () => {
     window = null;

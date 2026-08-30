@@ -10,6 +10,6 @@ await mkdir(resolve(root, 'dist/renderer'), { recursive: true });
 // array builds clean, typechecks clean, and ships an unstyled — or missing — window. float.html and
 // float.css are the detached mirror window's page and its own sheet; it deliberately does not load
 // styles.css, which is the main window's component layer for panes it does not have.
-for (const asset of ['index.html', 'tokens.css', 'styles.css', 'float.html', 'float.css']) {
+for (const asset of ['index.html', 'tokens.css', 'shell.css', 'styles.css', 'float.html', 'float.css']) {
   await cp(resolve(root, 'src/renderer', asset), resolve(root, 'dist/renderer', asset));
 }

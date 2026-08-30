@@ -1,104 +1,161 @@
-:root {
-  color-scheme: dark;
-  --bg: #101014;
-  --card: #191922;
-  --text: #e8e8ef;
-  --muted: #9a9aae;
-  --accent: #6ea8fe;
-  --danger: #ff6b6b;
-  --ok: #5ad18f;
-}
+/*
+ * The component layer: what lives *inside* a screen. The frame — window, sidebar, nav, island,
+ * dock, palette, toast — is shell.css, and the ground and tokens are tokens.css, which loads
+ * before both.
+ *
+ * ### The `:root` block that used to be at the top of this file is gone, and it mattered
+ *
+ * It redefined `--bg`, `--card`, `--text`, `--muted` and — the expensive one — `--accent: #6ea8fe`,
+ * a blue. Because this sheet loads *after* tokens.css and the two blocks had equal specificity,
+ * that blue silently won every `var(--accent)` in the app: the nav pill, the selected filter, the
+ * primary button fill, the focus ring. The design's violet was defined, documented, tested against
+ * a contrast table, and never once drawn.
+ *
+ * `body` also painted `--bg` (#101014) rather than `--canvas` (#07070a). Every translucent surface
+ * in this design composites over the window ground, so nine steps of lightness there lifts
+ * elevation 1, elevation 2 and every hairline at once — which is why the app read as "dark but
+ * wrong" rather than as any specific mistake.
+ *
+ * Both are now in one place. tokens.css owns colour; this file owns components and reads tokens.
+ * If a component needs a value that is not a token, the token is missing — add it there.
+ */
 
-* { box-sizing: border-box; }
-
-body {
-  margin: 0;
-  padding: 24px 28px 48px;
-  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  background: var(--bg);
-  color: var(--text);
-}
-
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 24px 0 20px;
-  -webkit-app-region: drag;
-}
-
-h1 { font-size: 20px; margin: 0; }
-h2 { font-size: 14px; margin: 0 0 8px; }
-
-.pill {
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: #23232f;
-  color: var(--muted);
-  font-size: 12px;
-}
-.pill.connected { color: var(--ok); }
-.pill.error { color: var(--danger); }
-
-.card {
-  background: var(--card);
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.muted { color: var(--muted); }
+.muted { color: var(--text-body); }
 .small { font-size: 12px; }
 .hidden { display: none; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-.hud {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 4px 12px;
-  margin: 0 0 12px;
+/* ---- Cards ------------------------------------------------------------------------------------
+ * Elevation is hairline + shadow + inner highlight, never a heavier fill, and **one primary card
+ * per screen at most**. `.card` is elevation 2, the default panel; `.card.primary` is elevation 3
+ * and there is exactly one on Overview and one on Pairing.
+ */
+.card {
+  padding: var(--space-9);
+  border-radius: var(--radius-panel);
+  background: var(--elev-2);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+  transition: transform var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease);
 }
-.hud dt { color: var(--muted); }
-.hud dd { margin: 0; font-variant-numeric: tabular-nums; }
 
-.row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.card:hover { border-color: var(--hairline-hover); }
 
-button {
-  background: #262633;
-  color: var(--text);
-  border: 0;
-  border-radius: 8px;
-  padding: 7px 14px;
-  font-size: 12px;
+.card.primary {
+  background: var(--elev-3);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07) inset, var(--shadow-primary);
 }
-button:hover { background: #313142; }
-button.danger { color: var(--danger); }
 
-input {
+.card-title {
+  margin: 0;
+  font: var(--text-section);
+  letter-spacing: var(--tracking-section);
+  color: var(--text-primary);
+}
+
+.card-sub {
+  margin: var(--space-2) 0 var(--space-7);
+  font: var(--text-body-size);
+  color: var(--text-body);
+}
+
+.card-meta {
+  margin: var(--space-3) 0 0;
+  font-size: 11px;
+  color: var(--text-meta);
+}
+
+.pair-card { max-width: 460px; }
+
+/* ---- Controls ---------------------------------------------------------------------------------
+ * The design's control surface: 32px tall, 10px radius, --control fill, hairline border. Nothing
+ * here is a gradient; the handoff forbids gradient CTAs by name, and the one mockup screenshot
+ * that drew one is the superseded iteration.
+ */
+.row { display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-3); }
+
+/*
+ * `min-height`, not `height`. The bare `button` selector catches every button in every pane —
+ * the tool rail's 64px grid tiles, the quality rows, the global-action row — and a hard 32px
+ * squeezed those into a third of their layout and clipped the contents. 32px is the design's
+ * control height and the floor everything sits on; anything that needs to be taller simply is.
+ */
+button,
+.button {
+  min-height: 32px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-control);
+  background: var(--control);
+  border: 1px solid var(--hairline);
+  color: var(--text-on-control);
+  font: var(--text-control);
+  cursor: pointer;
+  transition: background 180ms var(--ease), border-color 180ms var(--ease),
+    transform var(--dur-press) var(--ease);
+}
+
+button:hover,
+.button:hover { background: var(--elev-3); border-color: var(--hairline-hover); }
+button:active,
+.button:active { transform: scale(0.98); }
+
+/* Red is reserved: it means destructive or failed, and nothing else. */
+button.danger { color: var(--destructive); border-color: var(--destructive-border); }
+button.danger:hover { background: var(--destructive-fill); }
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+}
+
+input,
+input[type='search'],
+input[type='tel'],
+input[type='text'] {
   flex: 1;
-  background: #0e0e14;
-  border: 1px solid #2b2b38;
-  border-radius: 8px;
-  color: var(--text);
-  padding: 7px 10px;
-  font-size: 12px;
+  height: 32px;
+  background: var(--control);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  padding: 0 var(--space-5);
+  font: var(--text-control);
+  font-family: var(--font-ui);
 }
+
+input::placeholder { color: var(--text-meta); }
+input:hover { border-color: var(--hairline-hover); }
 
 img#qr {
   display: block;
-  border-radius: 8px;
+  border-radius: var(--radius-tile);
   background: #fff;
-  margin: 12px 0;
+  margin: var(--space-5) 0;
 }
 
-.caps { display: flex; flex-wrap: wrap; gap: 6px; }
+/* ---- Capability chips -------------------------------------------------------------------------
+ * The state is a fill *and* a border *and* a hidden sentence in the accessible name — never the
+ * background colour alone, which is defect 26: a screen reader announced twelve capability names
+ * with no indication which were on.
+ */
+.caps { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
 .cap {
-  padding: 3px 10px;
-  border-radius: 999px;
+  padding: 3px var(--space-4);
+  border-radius: var(--radius-pill);
   font-size: 12px;
-  background: #23232f;
-  color: var(--muted);
+  background: var(--control);
+  border: 1px solid var(--hairline);
+  color: var(--text-meta);
 }
-.cap.on { background: #1d3a2b; color: var(--ok); }
+
+.cap.on {
+  background: rgba(50, 229, 138, 0.1);
+  border-color: rgba(50, 229, 138, 0.24);
+  color: var(--live);
+}
 
 /*
  * Off screen, still in the accessibility tree. Not `display: none` and not `visibility: hidden` —
@@ -116,17 +173,6 @@ img#qr {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
-}
-
-.logs {
-  max-height: 200px;
-  overflow: auto;
-  background: #0e0e14;
-  border-radius: 8px;
-  padding: 10px;
-  font: 11px/1.5 "SF Mono", Menlo, monospace;
-  color: var(--muted);
-  white-space: pre-wrap;
 }
 
 /* ---- screen mirror ---------------------------------------------------------------- */
@@ -535,14 +581,35 @@ img#qr {
 /*
  * A pill with nothing behind it. Dimmed, and carrying a dot rather than a count — a `0` would read
  * as "nothing is muted", which is a claim the wire cannot support.
+ *
+ * ### The order of these two rules was a contrast bug, not a style preference
+ *
+ * `.pill-tab.unbuilt` and `.pill-tab.selected` are both (0,2,0). This one was written second, so
+ * at equal specificity it won — and the Muted tab, which is *both*, drew `--text-meta` (#5b5e6e)
+ * on the selected violet tint. That is **2.23:1**: below the 3:1 floor for large text, far below
+ * the 4.5:1 for body, and it made the tab you were looking at read as the disabled one. The tab
+ * bar's whole job is to say which filter is active, so the one state that has to be unmistakable
+ * was the one rendered least legible.
+ *
+ * `:not(.selected)` fixes it by *saying what was meant* rather than by reordering the file or
+ * reaching for `!important`. Dimming means "this pill has nothing behind it and you are not on
+ * it"; a selected pill is never dim, whatever else is true of it. Reordering would work today and
+ * break the next time someone sorts this file; the `:not()` cannot be broken by moving it.
  */
-.pill-tab.unbuilt { color: var(--text-meta); }
+.pill-tab.unbuilt:not(.selected) { color: var(--text-meta); }
+
+/*
+ * The dot stays on the selected-and-unbuilt pill — it is the *shape* half of the state, and it is
+ * the half a screen reader's user never had. Only the dimming is dropped, and the dot takes
+ * `currentColor` so it follows whichever of the two colours won.
+ */
 .pill-tab.unbuilt::after {
   content: "";
   width: 5px;
   height: 5px;
   border-radius: var(--radius-pill);
-  background: var(--text-meta);
+  background: currentColor;
+  opacity: 0.7;
 }
 
 /* ---- The two-column body --------------------------------------------------------------------- */
@@ -972,36 +1039,20 @@ img#qr {
  * Mirror pane — handoff §2, the approved reference layout.
  * ============================================================================================== */
 
-.pane-toolbar { display: flex; gap: var(--space-3); align-items: center; }
-
 /*
- * The Floating window button. Matches the handoff's toolbar buttons exactly — 32px, 10px radius,
- * --control, hairline — and must read as clearly less important than Stop mirroring.
+ * `.toolbar-button`, `.float-dot` and `.pane-toolbar` used to be defined here, for the pane header
+ * this file drew before the shell existed. They are in shell.css now, where the toolbar lives.
+ *
+ * They were not merely redundant. styles.css loads **after** shell.css, so this file's
+ * `.toolbar-button { display: inline-flex }` beat shell.css's `.mirror-only { display: none }` at
+ * equal specificity — and the Floating window button, which the handoff draws on the Mirror screen
+ * only, rendered on all eleven. That is the second time in one sitting that a duplicated selector
+ * in this file silently overrode the sheet above it; the first was the `:root` block that turned
+ * the accent blue.
+ *
+ * The rule that follows from both: **this file must not redefine a selector shell.css owns.** If a
+ * shell component needs changing, change it there.
  */
-.toolbar-button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: 32px;
-  padding: 0 var(--space-5);
-  border-radius: var(--radius-control);
-  border: 1px solid var(--hairline);
-  background: var(--control);
-  color: var(--text-on-control);
-  font: var(--text-control);
-  cursor: pointer;
-  transition: border-color var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
-}
-.toolbar-button:hover { border-color: rgba(139, 107, 255, 0.34); }
-.toolbar-button:active { transform: scale(0.98); }
-
-/* Present only once the window is open, per the handoff's two-state spec for this button. */
-.float-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--live);
-}
 
 .mirror-grid {
   display: grid;
@@ -1044,6 +1095,7 @@ img#qr {
   justify-items: center;
   gap: var(--space-2);
   width: 64px;
+  height: auto;
   padding: var(--space-4) 0;
   border: none;
   background: none;
@@ -1059,11 +1111,18 @@ img#qr {
 .tool.readout { cursor: default; }
 .tool.readout:hover { background: none; color: var(--text-body); }
 
+/*
+ * The icon's box. It used to carry `border: 1.5px solid currentColor` and no contents, which is
+ * **the empty ring** — the visible half of "there are no icons in the build". The border is gone
+ * because there is a glyph inside it now; a ring around an icon would be a second frame nothing
+ * in the design has.
+ */
 .tool-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 18px;
   height: 18px;
-  border-radius: var(--radius-control);
-  border: 1.5px solid currentColor;
   opacity: 0.85;
 }
 .tool-label { font: var(--text-meta-size); letter-spacing: var(--tracking-meta); }
@@ -1080,6 +1139,11 @@ img#qr {
 }
 
 .global {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* The icon and its word are one label, not two things that happen to be adjacent. */
+  gap: var(--space-2);
   min-width: 78px;
   height: 44px;
   padding: 0 var(--space-5);

@@ -5368,3 +5368,107 @@ unprompted; the next one produces the reading.
   inbound call. It will be verified by the next one to arrive on its own. The reading to look for is
   an inbound episode whose card is blank rather than carrying the previous caller's identity, and a
   `PHONE_STATE` line showing whether the extra arrived and whether it was taken.
+
+---
+
+# The app shell — 2026-08-30
+
+**Not a phase.** The shell is Phase 7's territory (Mac UX and polish) built early, because every
+pane landed so far had nowhere to live: the window was one scrolling column of `<section class=
+"card">` with a Connection debug panel at the top that appears nowhere in the design. No amount of
+pane-level restyling could have made that read as `ConnectSuite.dc.html`.
+
+## What was built
+
+Window, ambient ground, sidebar (traffic-light row, brand, device card, eleven nav rows in two
+groups, footer), the measured nav pill, the 60px title-bar band, the status island, the page header
+and its toolbar, the dock, the ⌘K palette, the toast, and the connected-device strip. Eleven screens
+plus a pairing route with no sidebar row.
+
+New files: `src/renderer/icons.ts`, `navModel.ts`, `shell.ts`, `shell.css`, and three test files.
+`docs/design-departures.md` §"App shell" holds every deliberate difference from the design, S1–S12.
+
+## Where the Connection debug card went
+
+**Nothing it showed was deleted.** The handoff has a home for it — §12 Settings → Advanced, "a mono
+diagnostics block (link, codec, session, reconnects) with a violet caret" — so the HUD was reshaped
+into that block. The four named lines are the headline; the eleven readings that do not fit one of
+them (capture geometry, rotation, both latency splits, time to first frame, dropped, last error)
+are listed underneath rather than dropped. The four link buttons, the manual address, the Tailscale
+address and Forget phone went to Settings → Connection. The log tail is under the diagnostics.
+
+`reconnects` reads `not counted on this build` rather than `0`. Nothing on the Mac counts them, and
+`0` is a claim that the link has never dropped.
+
+## Evidence
+
+Driven over CDP on port 9222 against the running app, phone connected (Samsung SM-S938B, 7–14 ms).
+
+| Check | Control | Result |
+|---|---|---|
+| The shell exists | — | 12 screens, 11 nav rows, 5 dock tiles in the DOM |
+| Icons are drawn | 31 `<svg>` in the document; the same query returned **0** before `icons.ts` | pass |
+| Window ground is `--canvas` | `getComputedStyle(body).backgroundColor` | `rgb(7, 7, 10)` — was `#101014` |
+| Accent is the design's violet | `--accent` read from `:root` on the live page | `#8b6bff` — was `#6ea8fe`, silently overridden |
+| Window and type are the design's | measured, not requested | `innerWidth` 1440, sidebar 232px, page title 31px |
+| Nav pill is measured, not computed | `transform` read from the live pill | `matrix(1,0,0,1,0,22)` on Overview |
+| Muted pill contrast | composited in-page: text over the violet tint over the panel over the ground | **13.28:1**, was 2.23:1 |
+| Sidebar badge matches the pane | badge vs the pane's own note | both read 23 |
+| Floating window button is Mirror-only | read on two routes | `none` on Overview, `flex` on Mirror |
+| Diagnostics carry every HUD reading | screenshot of Settings → Advanced | 4 headline + 15 detail lines |
+
+### Three bugs the screenshots found that no check could
+
+Each was invisible to `tsc`, to `npm test`, and to every hook in the repo.
+
+1. **The ⌘K palette drew over every screen, permanently**, with `el.hidden === true`.
+   `.palette-backdrop { display: flex }` and the UA's `[hidden] { display: none }` are both
+   `(0,1,0)`, so the later sheet won. Fixed with `[hidden] { display: none !important }`.
+2. **The whole app rendered at 0.72 zoom.** Chromium persists a per-origin zoom level into the user
+   data directory; a stray ⌘- at some point had every size in this design drawn at 72% across
+   launches. `webPreferences.zoomFactor` is only the initial value and did not hold —
+   `setZoomLevel(0)` on `did-finish-load` does. **Worth knowing before any future screenshot
+   comparison is trusted.**
+3. **The Floating window button drew on all eleven screens**, because styles.css redefined
+   `.toolbar-button` and loads after shell.css.
+
+The third is the same shape as the `:root` collision behind the blue accent, so it got an
+enforcement point instead of a third fix — `stylesheets.test.ts`, below.
+
+## Tests: 81 → 106
+
+| File | What it holds | Shown to fail by |
+|---|---|---|
+| `icons.test.ts` | no icon is empty; every icon is on the 24px grid; stroke stays in 1.5–1.7 and grows as size shrinks; only `dots` is filled; no icon carries its own colour | blanking `refresh`'s geometry |
+| `navModel.test.ts` | **commands rank above navigation** in ⌘K; every icon the shell asks for exists; every unbuilt screen carries a reason and no built one does; pairing is a route with no row | reversing the palette arrays; deleting `capture`; dropping Files' `unbuiltReason` |
+| `stylesheets.test.ts` | no selector is declared in two of the three sheets; only tokens.css declares custom properties | re-adding `.toolbar-button` to styles.css; re-adding `:root { --accent }` |
+| `notifyLabels.test.ts` | count assertion **7 → 10** | — |
+
+Two of the new assertions were themselves wrong first and are worth recording, because they are the
+control rule biting inside a test file rather than outside one. The grid check read the `-2.5` in
+`a2.5 2.5 0 0 1-2.5 2.5` as a coordinate off the left edge and failed the `mirror` icon; corrected
+to check magnitude, it then read `-.45` as the integer 45 and failed `messages`. Both were false
+positives from a regex deciding something only a path parser can decide, and the assertion is now
+narrowed to what a regex genuinely can decide — and says so, rather than being dressed up as the
+stronger check it is not.
+
+The icon guard was also wrong first, in the direction that matters more: it enumerated the sidebar
+and the dock only, and **passed with `capture` deleted from `icons.ts`** — a guard that did not
+cover the two glyphs the defect was actually about. `TOOL_RAIL` and `GLOBAL_ACTIONS` moved into
+`navModel.ts` so they are inside the enumeration, and there is now an assertion naming both.
+
+## Defect 28, again
+
+`notifications.ts` composed three strings inline — the dismiss button's accessible name, the
+no-reply-action sentence, the Send button's accessible name. All three called `appLabelOf` and were
+**correct**; none was in `userVisibleStringsOf`, which is the enumeration the defect-28 test asserts
+over. Nothing user-visible was wrong; the guard had a three-string hole in it, so the next edit to
+any of those lines had nothing checking it. They moved into `notifyLabels.ts`, the count assertion
+went 7 → 10, and `notifications.ts` now carries the rule at the top: **compose nothing in this file.**
+
+## Not verified here
+
+The pairing route has not been driven, because the phone is paired and unpairing it to see a screen
+would cost a re-pair on hardware for a cosmetic check. The dock's magnify falloff, the palette's
+arrow-key selection and the toast's 2.4s dismiss were exercised in the DOM but not screenshotted
+mid-animation.
