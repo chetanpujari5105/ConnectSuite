@@ -317,6 +317,19 @@
                       <p class="side-meta mono" id="mirror-actual">Not capturing.</p>
                     </div>
 
+                    <!--
+                      The two actions sit **above** Advanced, where the design puts Stop mirroring.
+
+                      The design's Advanced is four toggles and ours is four reasons, and a reason
+                      is four lines where a toggle is one — so with the original order the primary
+                      action of the whole pane fell below the fold at the design's own 920px window
+                      height. Measured, not guessed: it was off-screen in the side-by-side capture.
+                      The departure that pushed it there is documented; the button following it
+                      down was not a decision.
+                    -->
+                    <button type="button" id="mirror-stop" class="stop-button">Stop mirroring</button>
+                    <button type="button" id="mirror-start" class="start-button">Start mirroring</button>
+
                     <div class="side-card">
                       <h3 class="side-title">Advanced</h3>
                       <!--
@@ -326,9 +339,6 @@
                       -->
                       <div id="mirror-advanced" class="limit-list"></div>
                     </div>
-
-                    <button type="button" id="mirror-stop" class="stop-button">Stop mirroring</button>
-                    <button type="button" id="mirror-start" class="start-button">Start mirroring</button>
                   </aside>
                 </div>
               </div>
