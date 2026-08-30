@@ -211,17 +211,31 @@ class ShellView {
       const slot = document.createElement('div');
       slot.className = 'dock-slot';
 
+      /*
+       * Two of the design's five dock tiles — Files and Camera — lead to screens with nothing
+       * behind them. State A says "nothing routes to it that implies it works", and a full-colour
+       * dock tile is the strongest such implication in the app.
+       *
+       * The tile is kept and **marked** rather than removed. Removing two would leave a three-tile
+       * dock, which is a change to the design's own composition for a reason that expires as each
+       * phase lands; a desaturated tile whose tooltip reads "Files — not built yet" carries the
+       * same information without reflowing the dock every time a feature ships. Recorded as a
+       * deliberate deviation from my own state-A note in docs/design-departures.md.
+       */
+      const target = screenById(tile.id);
+      const unbuilt = target?.state === 'unbuilt';
+
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'dock-tile';
+      button.className = `dock-tile${unbuilt ? ' unbuilt' : ''}`;
       button.style.setProperty('--dock-tint', tile.tint);
-      button.setAttribute('aria-label', tile.label);
+      button.setAttribute('aria-label', unbuilt ? `${tile.label} — not built yet` : tile.label);
       button.appendChild(iconSvg(tile.icon, 17));
       button.addEventListener('click', () => this.route(tile.id));
 
       const tip = document.createElement('span');
       tip.className = 'dock-tip';
-      tip.textContent = tile.label;
+      tip.textContent = unbuilt ? `${tile.label} — not built yet` : tile.label;
 
       slot.append(button, tip);
       dock.appendChild(slot);
@@ -342,6 +356,26 @@ class ShellView {
    * spinner, or nothing, or "coming soon", is indistinguishable from one that is broken — which is
    * decision 6 failing at the largest possible scale, a whole screen at a time.
    */
+  /**
+   * **State A — unbuilt**, per `docs/mac-ui-design-proposals.md` §3.
+   *
+   * The four nothing-here states must not look alike; using one pattern for all four is defect
+   * 24/26's shape one layer up, where an empty list and an ungranted permission are indistinguishable.
+   * This is the one for "the feature has no protocol in this build", and its distinguishing marks
+   * are deliberate:
+   *
+   * - **Elevation 2, never 3.** One primary card per screen is the handoff's rule, and a pane with
+   *   nothing in it must not claim the screen's heaviest surface. The nothing reads lighter than
+   *   the something next door.
+   * - **Neutral, never `--warning` and never `--destructive`.** An unwritten feature has not failed
+   *   and is not a permission problem. The first version of this card used `--warning` on its tag,
+   *   which is state B's colour — it would have made five screens read as "something is wrong"
+   *   rather than "this was never written".
+   * - **A mono handle at the foot** naming the wire namespace that does not exist. That is the
+   *   package-id rule applied in the direction it points: a handle may appear, never as the only
+   *   thing a user reads. The sentence above it is what a person reads.
+   * - **~300px**, so it reads as a note rather than as a pane that failed to fill.
+   */
   private drawUnbuilt(screen: NavScreen): void {
     const host = document.querySelector<HTMLElement>(`.screen[data-screen="${screen.id}"]`);
     if (!host) return;
@@ -349,19 +383,27 @@ class ShellView {
     const card = document.createElement('div');
     card.className = 'unbuilt-screen';
 
-    const mark = document.createElement('div');
+    const mark = document.createElement('span');
     mark.className = 'unbuilt-mark';
-    mark.appendChild(iconSvg(screen.icon, 22));
+    mark.appendChild(iconSvg(screen.icon, 40));
 
     const tag = document.createElement('div');
     tag.className = 'unbuilt-tag';
     tag.textContent = 'Not built yet';
 
+    const headline = document.createElement('h2');
+    headline.className = 'unbuilt-headline';
+    headline.textContent = screen.unbuiltHeadline ?? '';
+
     const why = document.createElement('p');
     why.className = 'unbuilt-why';
     why.textContent = screen.unbuiltReason ?? '';
 
-    card.append(mark, tag, why);
+    const handle = document.createElement('p');
+    handle.className = 'unbuilt-handle mono';
+    handle.textContent = screen.unbuiltHandle ?? '';
+
+    card.append(mark, tag, headline, why, handle);
     host.replaceChildren(card);
   }
 

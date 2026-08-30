@@ -421,7 +421,23 @@ img#qr {
 .sms-thread:hover { background: #1d1d25; }
 .sms-thread.unread { border-color: #3a4a63; }
 .sms-thread-head { display: flex; align-items: baseline; gap: 8px; }
-.sms-who { font-size: 13px; color: #f2f2f5; flex: 1; }
+/*
+ * `min-width: 0` is the whole fix for a 1602px horizontal overflow.
+ *
+ * A flex child defaults to `min-width: auto`, which means "never shrink below max-content". This
+ * span holds a contact name, so the thread button grew to its longest name, the list grew to the
+ * button, and the `1fr` grid column grew to the list — the Messages screen scrolled sideways by
+ * 1602px. The page body must never scroll horizontally; wide content scrolls inside its own box.
+ */
+.sms-who {
+  font-size: 13px;
+  color: #f2f2f5;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .sms-snippet { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sms-unread {
   flex: none;
@@ -496,12 +512,28 @@ img#qr {
  * Source: design_handoff_connectsuite/README.md §7 (Notifications) and its Design Tokens section.
  * ============================================================================================== */
 
+/*
+ * The default panel. `.pane.primary` is the ONE elevation-3 surface a screen is allowed.
+ *
+ * Measured against the prototype, the handoff puts exactly one elev-3 card on Overview, Messages,
+ * Notifications, Calls and Settings, and **none** on Mirror. This build had one on Overview and
+ * Notifications, an extra on Mirror, and none at all on Messages, Calls or Settings — so on three
+ * screens every surface read at the same weight and nothing was primary.
+ */
+.pane.primary {
+  background: var(--elev-3);
+  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+  border-color: var(--hairline-primary);
+}
+
 .pane {
   background: var(--elev-2);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-panel);
   box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
-  padding: var(--space-10);
+  /* 20px, measured off the prototype's Calls and Settings cards. The handoff's prose gives a
+   * 16–24px range for card padding and this build had taken the top of it; the drawn value is 20. */
+  padding: var(--space-9);
   font-family: var(--font-ui);
   color: var(--text-body);
 }
@@ -789,10 +821,12 @@ img#qr {
 
 .detail-card {
   background: var(--elev-3);
-  border: 1px solid var(--hairline);
+  /* The elevation-3 pair, not the panel pair — measured; this card was carrying a panel's hairline
+   * and lit edge under a primary card's fill and shadow. */
+  border: 1px solid var(--hairline-primary);
   border-radius: var(--radius-panel);
-  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-primary);
-  padding: var(--space-9);
+  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+  padding: var(--space-8);
 }
 
 .detail-head {
@@ -1063,12 +1097,25 @@ img#qr {
 @media (max-width: 1000px) { .mirror-grid { grid-template-columns: 1fr; } }
 
 /* The one primary card on this pane. */
+/*
+ * Elevation **2**, not 3, and it was 3 until it was measured.
+ *
+ * The Mirror screen is the one screen in the handoff with **no elevation-3 surface at all** — its
+ * main card reads `rgba(22,24,34,.82)` at 18px radius and 22px padding in the prototype, and the
+ * phone preview inside it is what carries the eye. Building it at elev-3 made the card compete
+ * with the picture, which is the "surfaces must not all read at the same weight" rule failing in
+ * the direction that is hardest to see: everything looked deliberate.
+ *
+ * Padding is the design's 22px, which is not on the spacing scale (4/6/8/10/12/14/16/18/20/24/28)
+ * and is written literally rather than rounded to 20 or 24 — the scale is the handoff's and so is
+ * this number, and where they disagree the drawn value wins.
+ */
 .mirror-primary {
-  background: var(--elev-3);
+  background: var(--elev-2);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-panel);
-  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-primary);
-  padding: var(--space-9);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+  padding: 22px;
 }
 
 .mirror-stage-row {

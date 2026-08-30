@@ -19,7 +19,9 @@ is a bug, not a decision.
 - **reshaped** — built, but not in the shape drawn, because the underlying thing is not what the
   design assumed.
 
-Last updated **2026-08-30** — the app shell landed; see the new §"App shell" below.
+Last updated **2026-08-30** — the app shell landed (§"App shell", S1–S12), every routed screen was
+measured against the prototype at a matched 1440 × 920 viewport, and there is now a **pairing screen
+proposal** below, which is a request rather than a decision.
 
 ---
 
@@ -107,6 +109,90 @@ each was found by looking at a picture:
 The third is the same shape as the `:root` collision that made the accent blue, so it has an
 enforcement point rather than a third fix: `stylesheets.test.ts` asserts no selector is declared in
 two of the three sheets, and that only tokens.css declares custom properties.
+
+---
+
+## A request, not a departure: **the pairing screen**
+
+Every other row in this file is us declining to draw something the design asks for. This one runs
+the other way: **the handoff has no unpaired state at all**, and a Mac with no phone paired is the
+first thing every new user sees. It has been recorded as a gap since row X5 and is the one screen
+whose absence is a hole rather than a difference.
+
+There is a route for it in the build now (`pairing`, forced while `paired` is false, no sidebar
+row — row S8) and it draws a QR on a primary card. **That is a placeholder standing in for a
+design, and it should be replaced rather than blessed.** What follows is a proposal in the
+handoff's own language so there is something concrete to react to, not a decision.
+
+### What it has to do
+
+Phase 1 works like this, and the screen is constrained by it rather than by taste. The Mac mints a
+QR carrying `{ host, fp, token, name }` — its address, its certificate fingerprint, a 16-byte
+pairing token, and its name. The phone scans it, trusts that fingerprint, and **starts listening**;
+the Mac dials *out* to the phone (locked decision #2), finds it by the discovery order in locked
+decision #4, and completes a TLS 1.3 handshake pinned to the fingerprint on both sides. The token
+has a TTL, so the code goes stale on its own.
+
+The screen therefore has to carry four things at once: a code to scan, an instruction, a live
+account of how far the pairing has got, and a way out when the network will not cooperate.
+
+### Proposed layout — 1440 × 920, the shell as it already is
+
+The sidebar renders, dimmed: there is no phone, so the device card reads its empty state and the
+eleven nav rows are all `--text-meta` and inert. That is deliberate — the app should look like
+itself with nothing in it, not like a different app. Title-bar band, island and dock render as
+normal; the island carries the pairing state.
+
+- **Page header** — title "Pair your phone" 31px/600/-0.02em; subtitle "Scan once. After that this
+  Mac finds your phone on its own." 13.5px `--text-body`.
+- **One primary card**, `--elev-3`, `--radius-panel`, 20px padding, **centred, 560px wide** — the
+  only elevation-3 surface on the screen, per the one-primary-card rule. Two columns inside,
+  `280px 1fr`, 24px gap:
+  - **Left: the code.** 240px QR on a white `--radius-tile` plate with 12px of quiet zone. Under
+    it, 11px `--text-meta` mono: the Mac's name and address, e.g. `Chetan's MacBook Pro ·
+    10.108.253.63`. Under that, a `--text-meta` countdown — `code refreshes in 4:12` — and a
+    `--accent-text` text button, "Show a fresh code".
+  - **Right: the four steps.** A vertical list, 38px rows, each a 6px state dot + a 13.5px label,
+    with the reached ones at `--text-primary` and the rest at `--text-meta`:
+    1. *Waiting for a scan* — armed, nothing found
+    2. *Found your phone* — an address answered (carries the mono address and how it was found:
+       `mdns` / `gateway` / `last-known`)
+    3. *Verifying certificates* — TLS handshake in flight
+    4. *Paired* — `--live`, and the screen releases to Overview
+    The dot on the **current** step pulses; the ones behind it are solid `--live`; the ones ahead
+    are `--text-meta`. Never more than one pulsing dot, so the screen always answers "where is it
+    stuck" without being read.
+- **Below the card, `--elev-2`, full 560px**: "Not finding it?" with three 13.5px lines — same
+  Wi-Fi network; the phone's hotspot works too; and a manual-address field with a Save button,
+  which is locked decision #4's last resort surfaced at the one moment it is needed rather than
+  buried in Settings.
+- **Failure** is state B's banner, inset in the primary card: `rgba(245,178,61,.10)` on
+  `rgba(245,178,61,.30)`, warning glyph, and the reason **verbatim**. Never `--destructive` — a
+  phone that has not been paired yet has not failed.
+
+### Copy, as drawn
+
+> **Pair your phone** / Scan once. After that this Mac finds your phone on its own.
+> **On your phone:** open ConnectSuite → **Mac** tab → **Scan pairing code**.
+> Waiting for a scan · Found your phone · Verifying certificates · Paired
+> **Not finding it?** Both devices must be on the same Wi-Fi. Your phone's hotspot works too.
+
+### What it needs from the wire
+
+Three things, in the order they matter. **Two of the four steps above are already derivable and one
+is not**, which is the honest state of it:
+
+| # | Need | Status today | Ask |
+|---|---|---|---|
+| P1 | Step 2, *Found your phone* | **Already derivable.** The phone publishes `_connectsuite._tcp` and the Mac's discovery reports `via`, so "found, at this address, by this method" is on hand | Nothing |
+| P2 | Step 3, *Verifying* | **Already derivable.** The link exposes a `handshaking` phase | Nothing |
+| P3 | Distinguishing *"nobody has scanned"* from *"scanned, and the connection is failing"* | **Not possible.** The phone is the listener and the Mac dials out, so before mDNS resolves there is no signal that a scan happened at all. The screen would sit on step 1 through a genuine failure | A scan-time announcement, or an accepted-then-closed signal. mDNS publication at scan time is the cheapest and needs no protocol change — only that the phone registers the service the moment the code is scanned rather than when the listener is ready |
+| P4 | A reason when pairing is refused — token expired, fingerprint mismatch, user declined on the phone | **Not possible.** The Mac sees a closed socket and nothing else, so the banner would have nothing verbatim to render and would have to paraphrase, which is exactly what defect 27 was | `pair.reject { reason }` sent before the close, written for a person, never parsed. One message |
+| P5 | The countdown | Mac-side only — `armPairing` already holds `expiresAt`; the renderer is simply not told | Expose it on the status payload. No wire change |
+
+**P4 is the one worth a protocol line.** Without it the most common real failure — a code that went
+stale while the user walked to their phone — renders as an indefinite "Waiting for a scan", which
+is the silent-no-op shape this project keeps ruling out, on the very first screen a new user sees.
 
 ---
 

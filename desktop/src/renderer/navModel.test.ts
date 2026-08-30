@@ -107,6 +107,42 @@ test('every unbuilt screen says why, and no built screen pretends to', () => {
   }
 });
 
+test('state A is complete on every unbuilt screen', () => {
+  // `docs/mac-ui-design-proposals.md` §3 state A asks for four things, and a card missing one of
+  // them degrades into the generic "nothing here" pattern the whole four-state model exists to
+  // avoid. Asserting all four together, because three of four is the failure that looks fine.
+  for (const screen of SCREENS.filter((s: { state: string }) => s.state === 'unbuilt')) {
+    assert.ok(screen.unbuiltHeadline, `${screen.id} has no headline`);
+    assert.ok(screen.unbuiltReason, `${screen.id} has no reason`);
+    assert.ok(screen.unbuiltHandle, `${screen.id} has no wire handle`);
+    // The headline must not simply restate the tag above it — that wastes the one line a reader is
+    // guaranteed to take in.
+    assert.doesNotMatch(screen.unbuiltHeadline, /^not built/i, `${screen.id}'s headline repeats the tag`);
+  }
+});
+
+test('a screen with no proposed namespace says so rather than inventing one', () => {
+  // A plausible-looking `clipboard.*` would send someone to docs/protocol.md looking for something
+  // that was never designed. Only the two namespaces the Phase 5 proposals actually name may appear
+  // as handles; everything else has to admit there is nothing to grep for.
+  const proposed = new Set(['fs.*', 'media.*']);
+  for (const screen of SCREENS.filter((s: { state: string }) => s.state === 'unbuilt')) {
+    const named = /([a-z]+)\.\*/.exec(screen.unbuiltHandle);
+    if (named) {
+      assert.ok(
+        proposed.has(named[0]),
+        `${screen.id} names "${named[0]}", which no proposal defines`,
+      );
+    } else {
+      assert.match(
+        screen.unbuiltHandle,
+        /no namespace proposed|no session store/,
+        `${screen.id}'s handle neither names a real namespace nor admits there is none`,
+      );
+    }
+  }
+});
+
 test('the sidebar is the handoff eleven, in its groups', () => {
   assert.equal(SCREENS.length, 11);
   assert.equal(SCREENS.filter((s: { group: string }) => s.group === 'MENU').length, 9);

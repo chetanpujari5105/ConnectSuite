@@ -5472,3 +5472,124 @@ The pairing route has not been driven, because the phone is paired and unpairing
 would cost a re-pair on hardware for a cosmetic check. The dock's magnify falloff, the palette's
 arrow-key selection and the toast's 2.4s dismiss were exercised in the DOM but not screenshotted
 mid-animation.
+
+---
+
+# Measured against the prototype — 2026-08-30
+
+Both pages driven over CDP with `Emulation.setDeviceMetricsOverride` at **1440 × 920**, so nothing
+in the table below is the display's doing. This matters: the first run of this comparison put the
+app window at 1100 and the artboard at 1442 and produced 42 "differences", most of which were the
+viewport.
+
+`ConnectSuite.dc.html` is rendered by pointing a throwaway Electron main at it on port 9333. The
+Chrome extension was not connected; the artboard is the one `div` whose inline width is `1440px`.
+
+## The control that made the numbers usable
+
+Every anchor reports **what it matched** — tag, class, first words — beside every measurement, and
+the diff prints both. It was added after the first run reported a "device strip" departure that was
+the design's *sidebar device card* (same 14px radius, same words in it) and a "primary card"
+departure that was this build's **hidden pairing card**. Both produced clean, specific, confident
+wrong numbers.
+
+Two rows in the final table are still anchor artefacts and are named as such rather than counted:
+the Mirror elevation-3 hit is `button:hover`, whose fill is `#1c1f2b` in **both** (an exact match,
+not a stray card), and the Notifications detail card does not exist until a row is selected, so the
+probe now selects one.
+
+## Shell-level: 19 differences → 3
+
+| Cause | Was | Now |
+|---|---|---|
+| `* { box-sizing: border-box }` against a prototype whose bordered **divs** are content-box (its buttons are not) — nav pill, status island, dock tile, strip thumb all drew 2px short | 40/30/38/42 vs 38/28/36/40 | exact |
+| Sidebar declared 232 with the border inside it; the design's 232 is content plus a 1px border | 8 measurements off by 1px | exact |
+| `MENU` group header `height:22px` swallowed its own 8px of padding | 22 vs 30, and the nav rhythm with it | exact |
+| `SYSTEM` header height, measured by the Camera→Activity pitch | 82 vs 74 | exact |
+| Brand name inheriting the body's 1.5 line-height | 22.5 vs 16 | 15.8 vs 16 |
+| Card padding taken at the top of the handoff's 16–24px range | 24 vs 20 | exact |
+
+**Nothing in the type scale ever differed.** Not one `font-size`, `font-weight`, `letter-spacing` or
+`color` row appeared in any run — the only typographic differences are string *widths*, which are
+Archivo against SF Pro (departure X4) and not fixable without a webfont this product will not ship.
+No `border-radius` row appeared either.
+
+## The one a token check could never have found
+
+The window ground. The design's window measures `rgb(7,7,10)` with `background-image: none`; this
+build was painting `radial-gradient(1200px 700px at 30% 0%, #191134 …)` inside it and every screen
+read visibly violet across the top-right.
+
+Every token in that gradient was correct. The error was reading the README's *"**Outer** page ground
+is a radial violet-to-black gradient"* as the window's fill, when "outer" means the surface the
+artboard sits **on** — the page behind the window in the mockup. A real Mac window has nothing
+behind it, so the gradient does not exist here at all. The three drifting blobs, which genuinely are
+inside the window in the prototype, stay.
+
+Found by putting the two screenshots side by side. It is the third bug in two sittings that was
+invisible to `tsc`, to 108 tests, and to reading the tokens, and visible immediately in a picture.
+
+## Elevation: the one primary card per screen
+
+Counted by querying for `rgb(28, 31, 43)` on both sides, per screen.
+
+| Screen | Design | Before | After |
+|---|---|---|---|
+| Overview | 1 @ 579 | 1 @ **1152** | 1 @ **578.6** — exact |
+| Mirror | **0** | 1 @ 786 | **0** — the design's Mirror card is elevation **2**, measured `rgba(22,24,34,.82)`, 22px padding |
+| Messages | 1 @ 539 | **0** | 1 @ 815 |
+| Notifications | 1 @ 380 | 1 @ 380 | 1 @ **380** — exact |
+| Calls | 1 @ 519 | **0** | 1 @ 1151 |
+| Settings | 1 @ 599 | **0** | 1 @ 927 |
+
+Three screens had **no primary surface at all**, so every card on them read at the same weight —
+the "surfaces must not all read at the same weight" rule failing in the direction that is hardest
+to see, because everything looked deliberate.
+
+Measuring also turned up a token that was missing: elevation 3 carries a **stronger** hairline and
+lit edge than elevation 2 — `rgba(255,255,255,.10)` and `.07` against `.08` and `.05`. It is now
+`--hairline-primary` / `--inner-highlight-primary` rather than four hardcoded values, one of which
+(`.detail-card`) had a panel's hairline under a primary card's fill.
+
+## A real layout bug the measurement caught
+
+**Messages scrolled horizontally by 1602px.** A flex child defaults to `min-width: auto` — never
+smaller than max-content — so the contact-name span sized the thread button, the button sized the
+list, and the list sized the `1fr` grid track. Both halves were needed: `min-width: 0` on the span
+*and* on the grid children. The page body must never scroll horizontally.
+
+## Structural differences that remain, and why
+
+15 across six screens, every one traceable:
+
+- **Messages** (6): the design's elevation-3 is a *thread column* with no padding inside a
+  three-column layout; this build has conversation + contacts, because contacts has no pane of its
+  own in the design and Messages is where the design puts it.
+- **Calls** (4) and **Settings** (2): both are single- or two-column here against the design's
+  multi-column, because the columns that are missing are the ones cut in departures X2 — an account
+  card, two-factor, "sign out everywhere", "you are up to date".
+- **Overview** (1) and **Notifications** (1): 2px of content-driven height.
+- **Mirror**: **0**.
+
+## State A rebuilt to its own specification
+
+The five unbuilt screens were drawing a generic card that violated three points of the state-A note
+in `docs/mac-ui-design-proposals.md` §3 — the tag was `--warning`, which is **state B's colour** and
+would have made five screens read as "something is wrong" rather than "this was never written";
+there was no 15px/600 headline; and there was no mono handle naming the wire namespace that does not
+exist. All three are now drawn, at ~340px on `--elev-2`.
+
+`navModel.test.ts` gained two assertions, both shown to fail: every unbuilt screen carries a
+headline, a reason and a handle, and the headline does not merely restate the tag; and a screen with
+no proposed namespace **says so** rather than inventing a plausible `clipboard.*` that would send a
+reader to `docs/protocol.md` looking for something never designed. Only `fs.*` and `media.*` are
+real, and only because `docs/phase-5-proposals.md` names them.
+
+The two dock tiles that lead to unbuilt screens (Files, Camera) are desaturated and their tooltips
+say so. That is a deliberate deviation from the state-A note's "no dock tile": removing two would
+leave a three-tile dock, changing the design's composition for a reason that expires as each phase
+lands.
+
+## Suite
+
+108 tests, 0 failures, `tsc --noEmit` clean.

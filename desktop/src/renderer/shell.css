@@ -52,14 +52,27 @@ body {
  */
 [hidden] { display: none !important; }
 
+/*
+ * Flat `--canvas`, with **no gradient**. Measured off the prototype, where the window reads
+ * `rgb(7,7,10)` and `background-image: none`.
+ *
+ * The README says "**Outer** page ground is a radial violet-to-black gradient", and outer is the
+ * load-bearing word: in the mockup that gradient is the surface the artboard *sits on* — the page
+ * behind the window — not the window's own fill. Reading it as the window's fill put a
+ * `radial-gradient(1200px 700px at 30% 0%, #191134 …)` inside the app and washed every screen
+ * violet across the top-right, which is the single most visible difference in the first
+ * side-by-side and the one thing no amount of token-checking would have found: every token in it
+ * was correct.
+ *
+ * A real Mac window has nothing behind it, so the gradient simply does not exist here. The three
+ * drifting blobs below are the part that *is* inside the window in the prototype, and they stay.
+ */
 .app-window {
   position: relative;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  /* The radial violet-to-black field. The handoff: "This is the only place gradient appears as a
-   * field" — there is no gradient button anywhere in this app. */
-  background: radial-gradient(1200px 700px at 30% 0%, #191134 0%, #0a0a12 55%, var(--canvas) 100%);
+  background: var(--canvas);
 }
 
 /* ---- Ambient blobs ---------------------------------------------------------------------------
@@ -132,7 +145,8 @@ body {
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 28px;
+  /* 30px drawn: 28px of content plus the 1px border top and bottom. See the note on .nav-pill. */
+  height: 30px;
   padding: 0 var(--space-6);
   border-radius: var(--radius-pill);
   background: rgba(12, 13, 18, 0.72);
@@ -202,9 +216,17 @@ body {
 }
 
 /* ---- Sidebar (232px, fixed) ------------------------------------------------------------------ */
+/*
+ * 233px, so the *content* is the handoff's 232.
+ *
+ * The design's aside is 232px wide on `content-box` with a 1px right border, so it occupies 233
+ * and leaves the content column 1207. This build is `border-box`, so a declared 232 put the border
+ * inside it — one pixel narrower everywhere in the sidebar and one pixel wider in every screen. It
+ * is a single pixel and it moved eight measured values, which is the argument for measuring.
+ */
 .sidebar {
   position: relative;
-  width: 232px;
+  width: 233px;
   flex: none;
   display: flex;
   flex-direction: column;
@@ -232,6 +254,9 @@ body {
 .brand-glyph { display: flex; flex: none; }
 
 .brand-name {
+  /* `normal` in the design, which is 16px on a 15px face; the body's 1.5 made it 22.5 and pushed
+   * the brand row 6px taller than the artboard. */
+  line-height: 1.05;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: var(--tracking-section);
@@ -277,8 +302,14 @@ body {
 
 .device-lines { min-width: 0; }
 
+/*
+ * The card measures 52px in the prototype and came out 56.5 here: its two text lines are `normal`
+ * line-height in the design and were inheriting the body's 1.5 here, which is 4.5px of extra stack
+ * on a card whose height is set by that stack rather than by the 30px icon beside it.
+ */
 .device-name {
   font-size: 12px;
+  line-height: 1.25;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -290,6 +321,7 @@ body {
   display: flex;
   align-items: center;
   gap: 5px;
+  line-height: 1.3;
   font-size: 11px;
   color: var(--text-body);
 }
@@ -307,8 +339,16 @@ body {
   scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
 }
 
-.nav .group-header { height: 22px; }
+/*
+ * 30px, measured. The prototype's MENU header is `height:22px` with `padding-bottom:8px` on a
+ * content-box div, so it draws 30 — and this build's border-box 22 swallowed the 8px of padding
+ * and pulled every nav row up with it. The pill is measured from `offsetTop`, so it followed the
+ * rows and stayed correct; the *rhythm* was the thing that was wrong.
+ */
+.nav .group-header { height: 30px; }
 .nav .group-header + .nav-row { margin-top: 0; }
+/* 36px total, measured: it is what makes the Camera→Activity pitch 74px, as the design draws it.
+ * The pill is measured from `offsetTop` so it tracked this either way — the rhythm was what moved. */
 .nav .group-header.system { padding-top: var(--space-6); height: 36px; }
 
 /*
@@ -320,12 +360,25 @@ body {
  * between Camera and Activity, and the Notifications row carries a badge. A hard-coded pitch is
  * correct for the first nine rows and wrong for the last two.
  */
+/*
+ * Height **40**, not 38, and that is measured rather than reasoned.
+ *
+ * The prototype loads a reset that puts `<button>` on `border-box` and leaves plain `<div>`s on
+ * `content-box`. So its pill, its status island and its dock tiles — all divs with a 1px border —
+ * draw 2px larger than the number in their inline style, while its buttons draw exactly their
+ * stated height. This build is `border-box` throughout, so every one of those three came out 2px
+ * short while every button matched.
+ *
+ * The README's prose ("Rows are 38px", "28px pill", "5 × 36px app tiles") gives the *content*
+ * halves of those pairs. The instruction is "recreate pixel-for-pixel", so the drawn value wins
+ * and the border is added on top of it here.
+ */
 .nav-pill {
   position: absolute;
   left: var(--space-6);
   right: var(--space-6);
-  top: 0;
-  height: 38px;
+  top: -1px;
+  height: 40px;
   border-radius: var(--radius-control);
   background: rgba(139, 107, 255, 0.15);
   border: 1px solid var(--accent-border);
@@ -579,9 +632,10 @@ body {
 .app-window[data-screen='overview'] .device-strip,
 .app-window[data-screen='pairing'] .device-strip { display: none; }
 
+/* 28 × 42 drawn: the design's 26 × 40 plus its 1px border. Same content-box cause as .nav-pill. */
 .strip-thumb {
-  width: 26px;
-  height: 40px;
+  width: 28px;
+  height: 42px;
   flex: none;
   border-radius: 7px;
   background: linear-gradient(150deg, #2b1f52, #123043);
@@ -607,8 +661,9 @@ body {
 .dock-slot { position: relative; display: flex; justify-content: center; }
 
 .dock-tile {
-  width: 36px;
-  height: 36px;
+  /* 38px drawn: 36px of content plus the 1px border. See the note on .nav-pill. */
+  width: 38px;
+  height: 38px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 11px;
   display: flex;
@@ -780,48 +835,80 @@ body {
   text-align: center;
 }
 
-/* ---- The unbuilt-screen state ------------------------------------------------------------------
- * Five of the eleven sidebar rows have nothing behind them. This is what they draw: the reason
- * from navModel, in the design's language, at panel weight — not a spinner, not a blank page, and
- * not "coming soon". Decision 6 applied to a whole screen instead of one control.
+/* ---- State A: the unbuilt screen ---------------------------------------------------------------
+ * `docs/mac-ui-design-proposals.md` §3. Five of the eleven sidebar rows land here. Every value in
+ * this block is chosen to keep it distinguishable from the other three nothing-here states:
+ * elevation 2 rather than 3, neutral rather than warning, and a mono handle at the foot.
  */
 .unbuilt-screen {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--space-6);
-  max-width: 560px;
-  padding: var(--space-11);
+  /* ~300px, so it reads as a note rather than as a pane that failed to fill its column. */
+  max-width: 340px;
+  padding: var(--space-10);
   border-radius: var(--radius-panel);
+  /* Elevation **2**. A screen with nothing on it must not hold the heaviest surface in the app. */
   background: var(--elev-2);
   border: 1px solid var(--hairline);
   box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
 }
 
+/* A 40px line icon at --text-meta. No tile behind it: a filled tile is the treatment the *built*
+ * panes use for a live thing, and this is not one. */
 .unbuilt-mark {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-tile);
-  background: var(--control);
-  border: 1px solid var(--hairline);
-  color: var(--text-meta);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  color: var(--text-meta);
+  margin-bottom: var(--space-7);
 }
 
+/*
+ * Neutral, **not** `--warning`. An unwritten feature has not failed and is not a permission
+ * problem; `--warning` is state B's colour and using it here would make five screens read as
+ * "something is wrong" instead of "this was never written". This rule is the one most likely to be
+ * "fixed" by someone who thinks the tag looks flat — it is meant to.
+ */
 .unbuilt-tag {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: var(--tracking-group);
   text-transform: uppercase;
-  color: var(--warning);
+  color: var(--text-meta);
+}
+
+.unbuilt-headline {
+  margin: var(--space-3) 0 0;
+  font: var(--text-section);
+  letter-spacing: var(--tracking-section);
+  color: var(--text-primary);
 }
 
 .unbuilt-why {
-  margin: 0;
+  margin: var(--space-3) 0 0;
   font: var(--text-body-size);
   color: var(--text-body);
+}
+
+/*
+ * The wire namespace that does not exist, as a machine handle. Mono because it is a handle; the
+ * sentence above it is what a person reads. Never the only thing on the card — that is the
+ * package-id rule, applied in the direction it points.
+ */
+.unbuilt-handle {
+  margin: var(--space-7) 0 0;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--hairline);
+  align-self: stretch;
+  font-size: 11px;
+  color: var(--text-meta);
+}
+
+/* A dock tile for a screen with nothing behind it: desaturated, and named in its tooltip. It keeps
+ * the design's five-tile dock without implying that all five work. */
+.dock-tile.unbuilt {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--hairline);
+  color: var(--text-meta);
 }
 
 /* ---- Overview --------------------------------------------------------------------------------- */
@@ -832,7 +919,16 @@ body {
   align-items: start;
 }
 
-.hero { grid-column: 1 / -1; }
+/*
+ * The hero is **column one**, not the full width.
+ *
+ * The design lays Overview out as `1.04fr 1fr` with the hero on the left; this build spanned it
+ * across both, which measured 1152 against the design's 579 and left the four facts floating in
+ * half a card of empty space. The right column holds what the design puts nearest it — the
+ * capability list, which is the pane that answers "why can't I do X".
+ */
+.hero { grid-column: 1; }
+.overview-wide { grid-column: 1 / -1; }
 .hero-body { display: flex; gap: var(--space-9); }
 
 .hero-phone {
@@ -949,6 +1045,23 @@ body {
   align-items: start;
 }
 
+/*
+ * `min-width: 0` on the grid children, and it is the second half of one fix.
+ *
+ * A grid item defaults to `min-width: auto` — "never smaller than max-content" — so a `1fr` column
+ * is only 1fr until something inside it is wide. Putting `min-width: 0` on the *span* that held the
+ * contact name was not enough: the track itself still sized to the thread list. Both halves are
+ * needed, and the measured symptom was a Messages screen that scrolled sideways by 1602px.
+ *
+ * Same rule for the two other multi-column screens, before they grow a long string of their own.
+ */
+.messages-grid > *,
+.pane-grid > *,
+.settings-grid > *,
+.overview-grid > * {
+  min-width: 0;
+}
+
 /* ---- Settings ---------------------------------------------------------------------------------- */
 .settings-grid {
   display: grid;
@@ -981,12 +1094,18 @@ body {
   padding: calc(var(--space-4) - 1px) calc(var(--space-5) - 1px);
 }
 
+/*
+ * The centre column is Settings' one elevation-3 card, which is what the prototype draws (599px
+ * wide, `rgb(28,31,43)`). It was elev-2 here, so the screen had no primary surface at all and the
+ * rail and the body read at the same weight.
+ */
 .settings-body {
-  padding: var(--space-10);
+  /* 20px, measured. See the note on .pane. */
+  padding: var(--space-9);
   border-radius: var(--radius-panel);
-  background: var(--elev-2);
-  border: 1px solid var(--hairline);
-  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+  background: var(--elev-3);
+  border: 1px solid var(--hairline-primary);
+  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
 }
 
 .settings-title {

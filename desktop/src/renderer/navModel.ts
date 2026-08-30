@@ -55,6 +55,24 @@ interface NavScreen {
    * makes decision 6 useless — it is indistinguishable from a feature that is broken today.
    */
   unbuiltReason?: string;
+  /**
+   * The one bold line above the reason. 15px/600, per state A in
+   * `docs/mac-ui-design-proposals.md` §3.
+   *
+   * It says *what is missing*, not "Not built yet" — the tag says that. A headline that repeats the
+   * tag wastes the one line a reader is guaranteed to take in.
+   */
+  unbuiltHeadline?: string;
+  /**
+   * The mono footer: the wire namespace that does not exist, as a machine handle.
+   *
+   * This is the package-id rule applied in the direction it points — *a handle may appear, never as
+   * the only thing a user reads.* The sentence above it is what a person reads; this is what
+   * someone grepping `docs/protocol.md` needs. Where no namespace has been proposed at all, it says
+   * so rather than inventing a plausible one, because a made-up namespace is worse than none: it
+   * would send a reader looking for something that was never designed.
+   */
+  unbuiltHandle?: string;
 }
 
 /**
@@ -94,6 +112,8 @@ const SCREENS: NavScreen[] = [
     unbuiltReason:
       'File transfer is Phase 5 and no part of it is written yet — the bulk socket on port 42503 ' +
       'is open and carries nothing. Nothing here is broken; there is nothing here.',
+    unbuiltHeadline: 'Nothing moves files yet',
+    unbuiltHandle: 'fs.* — not in this build',
   },
   {
     id: 'photos',
@@ -107,6 +127,8 @@ const SCREENS: NavScreen[] = [
     unbuiltReason:
       'The photo browser is Phase 5, and it rides the same bulk channel as Files. It has no wire ' +
       'messages yet, so the Mac cannot ask the phone for a thumbnail.',
+    unbuiltHeadline: 'The phone has no way to send a thumbnail',
+    unbuiltHandle: 'media.* — not in this build',
   },
   {
     id: 'messages',
@@ -141,6 +163,8 @@ const SCREENS: NavScreen[] = [
       'Clipboard sync is Phase 5. The phone half is also gated: background clipboard reads have ' +
       'been blocked since Android 10 unless the app holds an enabled AccessibilityService, which ' +
       'Phase 3 gives us — so this is scheduled work, not a platform wall.',
+    unbuiltHeadline: 'Nothing carries a clipboard between the two',
+    unbuiltHandle: 'no namespace proposed yet',
   },
   {
     id: 'calls',
@@ -164,6 +188,8 @@ const SCREENS: NavScreen[] = [
     unbuiltReason:
       'The virtual webcam is not in any phase yet. It needs a macOS Camera Extension, which is a ' +
       'signed system extension and a distribution problem before it is a code problem.',
+    unbuiltHeadline: 'There is no virtual camera on this Mac',
+    unbuiltHandle: 'no namespace proposed yet',
   },
   {
     id: 'activity',
@@ -177,6 +203,8 @@ const SCREENS: NavScreen[] = [
     unbuiltReason:
       'Nothing stores a session history yet. The rotating log file behind Settings → Advanced is ' +
       'the closest thing that exists, and it is a log, not a timeline.',
+    unbuiltHeadline: 'Nothing keeps a history to show',
+    unbuiltHandle: 'no session store — see Settings → Advanced for the log',
   },
   {
     id: 'settings',
