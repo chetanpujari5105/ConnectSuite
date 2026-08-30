@@ -660,7 +660,7 @@ class ShellView {
      * the only thing that puts a value in the mono face. It is a closed list with a stated reason
      * (proportional figures jitter as the value updates), so `last-known` and `TLS 1.3, pinned`
      * are prose and belong in the UI face. All four carried `.fact-value` and therefore the mono
-     * face until docs/design-measurements.md section 1.3.
+     * face until docs/testing.md, "Measurement pass, third run", section 1.3.
      */
     const facts: [label: string, value: string, numeric: boolean][] = [
       ['Connected via', status?.via ?? '—', false],

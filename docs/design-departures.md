@@ -230,7 +230,8 @@ be true.
 
 ## Structural — Messages and Calls are a different layout from the design's (2026-08-30)
 
-Measured in `docs/design-measurements.md` section 2. Recorded here because it is **scheduled work,
+Measured in `docs/testing.md`, "Measurement pass, third run", section 2. Recorded here because it
+is **scheduled work,
 not a decision**: unlike every row above, nothing here is us declining to draw something. The
 tokens are right on both screens, which is exactly why it reads as a styling near-miss instead of
 what it is.
@@ -267,7 +268,7 @@ job is to say whether the link is healthy.
 The handoff's colour table assigns `#32E58A` no threshold, and the prototype contains a single
 latency value, so nothing in the design distinguishes *"latency is always green"* from *"10 ms is
 green"*. **What figure does it stop at, and is there an amber band before red?** Measured in
-`docs/design-measurements.md` section 1.6.
+`docs/testing.md`, "Measurement pass, third run", section 1.6.
 
 ---
 

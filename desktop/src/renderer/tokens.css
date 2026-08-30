@@ -117,7 +117,8 @@
    * the artboard's measured heights are the contract, so the numbers below are Archivo's leading
    * and the residual is nothing.
    *
-   * Measured over CDP against ConnectSuite.dc.html; see docs/design-measurements.md section 1.2.
+   * Measured over CDP against ConnectSuite.dc.html; see docs/testing.md, "Measurement pass,
+   * third run", section 1.2.
    * Before this, four ratios here plus the body's inherited 1.5 put fourteen anchors out by up to
    * 8.5px, in both directions.
    */

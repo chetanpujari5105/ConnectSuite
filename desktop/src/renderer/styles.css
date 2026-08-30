@@ -119,7 +119,8 @@ button.danger:hover { background: var(--destructive-fill); }
  * action looked like a deliberate choice. `stylesheets.test.ts` guards a selector declared in two
  * sheets and could not see this, because the two selectors are different and collide only on the
  * element. It now carries a check derived from index.html for exactly this shape — see
- * `buttonModifiersLoseToTheBaseRule` there, and docs/design-measurements.md section 1.4.
+ * `buttonModifiersLoseToTheBaseRule` there, and docs/testing.md, "Measurement pass, third
+ * run", section 1.4.
  */
 .primary-action {
   display: inline-flex;

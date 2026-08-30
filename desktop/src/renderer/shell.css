@@ -256,8 +256,8 @@ body {
 .brand-name {
   /* The design leaves this `normal`, which under Archivo is 16px on a 15px face. This was 1.05 —
    * a ratio picked to land near 16 after the body's 1.5 made it 22.5 and pushed the brand row 6px
-   * taller than the artboard. The token carries the design's number now; see design-measurements
-   * section 1.2 for why the whole build moved off ratios. */
+   * taller than the artboard. The token carries the design's number now; see docs/testing.md,
+   * "Measurement pass, third run", section 1.2 for why the whole build moved off ratios. */
   line-height: var(--leading-15);
   font-size: 15px;
   font-weight: 600;
