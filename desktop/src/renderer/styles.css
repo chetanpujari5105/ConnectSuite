@@ -424,6 +424,7 @@ img#qr {
  */
 .sms-who {
   font-size: 13px;
+  line-height: var(--leading-13);
   color: #f2f2f5;
   flex: 1;
   min-width: 0;
@@ -487,7 +488,7 @@ img#qr {
   border-radius: 6px;
   background: #17171d;
 }
-.call-log-who { font-size: 13px; color: #f0f0f4; }
+.call-log-who { font-size: 13px; line-height: var(--leading-13); color: #f0f0f4; }
 /* Missed is the one type worth colouring, because it is the one people scan for. It keeps its
    text label too — the colour is not the only carrier of the state. */
 .call-row.missed .call-log-who { color: #e0a0a0; }
@@ -597,7 +598,9 @@ img#qr {
   gap: var(--space-2);
   height: 32px;
   padding: 0 var(--space-5);
-  border-radius: var(--radius-control);
+  /* The handoff is explicit — "Radius: 10 (controls, chips) … **Pills use 999px**" — and the
+   * design draws these fully rounded. This was --radius-control on a class called `.pill-tab`. */
+  border-radius: var(--radius-pill);
   border: 1px solid var(--hairline);
   background: var(--control);
   color: var(--text-on-control);
@@ -611,7 +614,7 @@ img#qr {
 
 /* Selection is a tint plus a border plus the count's colour — never colour alone. */
 .pill-tab.selected {
-  background: var(--accent-tint-strong);
+  background: var(--accent-tint-selected);
   border-color: var(--accent-border);
   color: var(--text-primary);
   box-shadow: 0 0 22px var(--accent-glow);
@@ -754,7 +757,7 @@ img#qr {
   align-items: baseline;
   gap: var(--space-2);
   min-width: 0;
-  font: 600 13px/1.3 var(--font-ui);
+  font: 600 13px/var(--leading-13) var(--font-ui);
   color: var(--text-primary);
 }
 

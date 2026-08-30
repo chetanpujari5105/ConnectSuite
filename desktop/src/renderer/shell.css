@@ -383,7 +383,7 @@ body {
   top: -1px;
   height: 40px;
   border-radius: var(--radius-control);
-  background: rgba(139, 107, 255, 0.15);
+  background: var(--accent-tint-selected);
   border: 1px solid var(--accent-border);
   box-shadow: 0 0 22px var(--accent-glow), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
   transition: transform var(--dur-pill) var(--ease);
@@ -1089,7 +1089,7 @@ body {
 
 .settings-tab:hover { background: rgba(255, 255, 255, 0.04); color: var(--text-on-control); }
 .settings-tab[aria-current='true'] {
-  background: var(--accent-tint);
+  background: var(--accent-tint-selected);
   border: 1px solid var(--accent-border);
   color: var(--text-primary);
   padding: calc(var(--space-4) - 1px) calc(var(--space-5) - 1px);

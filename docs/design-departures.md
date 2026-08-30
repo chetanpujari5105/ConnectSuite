@@ -292,3 +292,29 @@ The clause is honoured where it costs nothing: the sidebar row drops from `--tex
 **What would change this:** the note's reasoning is about implying a feature works. If a marked
 tile still reads as working to someone who has not hovered it, the tiles should go. That is a
 question for the designer, and it is the only part of state A the build takes a different view on.
+
+---
+
+## Structural — Settings is two columns against the handoff's three (2026-08-30)
+
+Measured in `docs/testing.md`, "Measurement pass, third run", section 5.5. Unlike most rows in this
+file this is not read off the prototype — **the handoff states it in prose**: *"Three columns
+`200px 1fr 320px`. Left: eight panes — General, Connection, Notifications, File transfer, Mirror,
+Security, Advanced, About."*
+
+Measured: design `200px 599px 320px`, build `200px 927px`. The rail carries three of the eight panes.
+
+| Missing | Verdict | Blocked on |
+|---|---|---|
+| **General** — start on login, menu bar, appearance, sounds, updates | real, Mac-side | **Phase 7** (needs macOS integration, and it is that phase's subject) |
+| **Notifications** — label + sub + value rows | real, Mac-side | nothing — buildable today |
+| **File transfer** | real | **Phase 5**, ships with the feature |
+| **Mirror** | **already built, elsewhere** — it is the Mirror pane's side panel | a relocation decision, not a gap |
+| **Security** | mostly **cut by X2** — no account means no two-factor and no "Sign out everywhere". Trusted devices is real and lives in Connection | — |
+| the **320px right column** — version, Account, PRO, Manage subscription, Billing history, Help, encryption note | mostly **X2**: subscription and billing do not exist in this product. The real parts (version, the encryption statement) are already our **About** pane | — |
+
+**The question for the designer:** with Security and the account column mostly cut by X2, and Mirror
+already living in the Mirror pane, the design's eight panes reduce to about four for this product —
+General, Connection, Notifications, File transfer — plus Advanced and About. **Is a 320px third
+column still worth drawing** once the account block leaves it, or does Settings become two columns
+by design rather than by omission?

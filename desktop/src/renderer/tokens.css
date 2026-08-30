@@ -72,7 +72,22 @@
   --accent: #8b6bff;                         /* selected state, primary action fill */
   --accent-text: #8b7aff;                    /* accent text and icons — lighter, for contrast */
   --accent-tint: rgba(139, 107, 255, 0.13);
-  --accent-tint-strong: rgba(139, 107, 255, 0.18);
+  /*
+   * The fill behind *the thing you are currently on* — nav pill, Settings rail tab, notification
+   * filter pill. One value, because it is one role.
+   *
+   * The design uses `rgba(139,107,255,.15)` for all three. This build used three different values
+   * from three different sources: the nav pill had **the literal hardcoded** in shell.css (right
+   * number, wrong place — tokens.css owns colour, and `stylesheets.test.ts` only catches a stray
+   * `--token:` declaration, not a raw rgba), the Settings tab took `--accent-tint` (.13) and the
+   * filter pill took `--accent-tint-strong` (.18). Nothing was obviously wrong on any one screen;
+   * the three only disagree when you measure them side by side.
+   *
+   * `--accent-tint-strong` was deleted with that change: the filter pill was its only reader, so
+   * it became a colour nothing draws. A token kept "in case" is a second answer to a question that
+   * now has one.
+   */
+  --accent-tint-selected: rgba(139, 107, 255, 0.15);
   --accent-border: rgba(139, 107, 255, 0.28);
   --accent-glow: rgba(139, 107, 255, 0.18);
   /*

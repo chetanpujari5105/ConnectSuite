@@ -6216,3 +6216,139 @@ unselected pills' 14.36 — while the `::after` dot carries the shape half of th
 which is the half a screen-reader user gets either way.
 
 **Verdict: both carry-overs closed. One new defect filed (46), one adjacent contrast bug fixed.**
+
+## Section 5 — The census extended, and two anchors that were my own bug
+
+Sections 1–4 left four rows recorded as anchor artefacts and two screens with no content anchors at
+all. Carrying on from there, the anchor set grew from 83 readings to **511** — every anchor now
+reports the **painted box behind it** (fill and radius) as well as the six type properties, because
+the first extension found a radius difference the type columns could not have shown.
+
+### 5.1 Two "differences" that were the harness, not the build
+
+Both were named as artefacts in section 1 and both turn out to be **my selectors**, which is worth
+recording as plainly as a real finding — a harness that manufactures differences costs exactly what
+a harness that hides them does.
+
+**`nav label (active)` — reported a colour difference on five of six screens.** The proto-side
+selector was `T(VIS('aside nav'),'Overview')`, hard-coded, so on Mirror it compared *our active
+Mirror row* against *the design's inactive Overview row*, and duly reported
+`rgb(244,244,247)` against `rgb(156,159,176)`. The prototype does move its active row — the leaf
+goes to `#f4f4f7` and the pill's `top` follows (159 → 197 → 575 across Overview, Mirror, Settings).
+Pointed at `[data-nav="<current screen>"]`, the anchor **matches on all six**.
+
+**`nav label inactive` — unresolved on Settings.** It asked for "the inactive Settings row", which on
+the Settings screen is correctly nothing. The anchor returning null rather than guessing is the
+behaviour wanted; it just measured nothing on that screen. Now it takes Overview, or Mirror when the
+current screen *is* Overview. Resolves on all six.
+
+**Zero unresolved anchors across all six screens**, where the previous run had four artefacts and one
+null.
+
+### 5.2 Result
+
+| | Readings | Matching | Differing | Unresolved |
+|---|---|---|---|---|
+| Section 1 (six properties, 83 anchor rows) | 83 rows | 18 rows | 65 rows | 4 artefacts + 1 null |
+| **Section 5 (eight properties, 73 anchor rows)** | **511** | **474** | **37** | **0** |
+
+All 37 accounted for, **none of them outstanding build work**:
+
+| Count | Class | Rows |
+|---|---|---|
+| **21** | **design-side** — the build follows the handoff and the prototype does not | dock tooltip weight 500/400 (×6 screens); quality row sub size/weight/colour; two card-title tracking rows; primary CTA size/leading/radius; both Settings rail-tab rows; filter pill size/weight |
+| **10** | **artefact of the box-walk**, named not counted | see 5.3 |
+| **6** | **design-side, handoff silent** | the Messages and Calls row names — the design draws 12.5px/600, we draw 13px/500. The handoff's type table has no "list row title" role, so neither is out of spec; recorded because the design is consistent across both screens and a later pass should decide once rather than twice |
+| **0** | **build-side** | — |
+
+### 5.3 The box-walk artefacts, and why they are not differences
+
+Reading the painted box behind a leaf means walking up until something actually fills. That is right
+for a pill and wrong in two situations, both of which appear above:
+
+- **Fill against no fill.** The build's `h3.card-title` sits inside a filled `.card`, the design's
+  `h3` sits directly on the canvas, so the walk compares a card's `rgba(22,24,34,.82)`/18px against
+  `transparent`/0px. Same for the inactive Settings tab, where ours is transparent and the walk
+  reaches the rail.
+- **Selected against unselected.** The first row in our Messages, Calls and Notifications lists is
+  unselected; the design's first row is the *selected* one. The walk faithfully reports
+  `rgb(23,23,29)` against `rgba(139,107,255,.13)` — a state difference, not a style one.
+
+One more: the filter pill's `lh 14 / 28`. The proto's leaf is a `span.sc-interp` inside a 28px line
+box, so 28 is the container's leading and not the label's. The label's own size and weight are real
+and are counted; its line-height is not.
+
+**These are named rather than fixed, and named rather than silently dropped.** A harness that
+quietly discards rows it cannot pair is how ten Messages/Calls rows became "untestable" instead of
+"our layout is different" in the pass before this one.
+
+### 5.4 What the extension found — four fixes, all build-side
+
+**1. The notification filter pills had the wrong radius.** `--radius-control` (10px) on a class
+called `.pill-tab`. The handoff is explicit — *"Radius: 10 (controls, chips) … **Pills use
+`999px`**"* — and the design draws them fully rounded. Now `--radius-pill`.
+
+**2. One role, three selected tints, from three different sources.** The fill behind *the thing you
+are currently on*:
+
+| Surface | Was | Source | Design |
+|---|---|---|---|
+| nav pill | `rgba(139,107,255,.15)` | **hardcoded literal in shell.css** | `.15` |
+| Settings rail tab | `rgba(139,107,255,.13)` | `--accent-tint` | `.15` |
+| notification filter pill | `rgba(139,107,255,.18)` | `--accent-tint-strong` | `.15` |
+
+The design uses `.15` for all three. Nothing looked wrong on any single screen; the three only
+disagree when measured side by side. Now one `--accent-tint-selected`.
+
+The nav pill's value was *correct and in the wrong place* — a raw `rgba()` in shell.css, where
+`tokens.css` owns colour. `stylesheets.test.ts` catches a stray `--token:` declaration outside
+tokens.css and cannot see a raw literal, which is how the right number hid in the wrong file.
+
+`--accent-tint-strong` was deleted in the same change: the filter pill was its only reader, so it
+became a colour nothing draws.
+
+**3. Three more line-heights, in places the shell anchors never reached.** The same inherited-1.5
+defect section 1.2 fixed fourteen of:
+
+| | Was | Design |
+|---|---|---|
+| `.sms-who` — the conversation row's name | 19.5 | 13.5 |
+| `.call-log-who` — the call row's name | 19.5 | 13.5 |
+| `.notif-app` — the notification row's app name | 16.9 | 14 |
+
+Worth noting *why* section 1 missed them: its per-screen anchors covered Overview, Mirror,
+Notifications and Settings, and Messages and Calls had only shell anchors, on the reasoning that
+section 2 was handling those two screens structurally. Structure and type are not the same pass, and
+two screens went unmeasured on the strength of that.
+
+### 5.5 Settings is two columns against the handoff's three, and three panes against eight
+
+Unlike most rows here this is not read off the prototype — **the handoff states it in prose**:
+
+> *"Three columns `200px 1fr 320px`. Left: eight panes — General, Connection, Notifications, File
+> transfer, Mirror, Security, Advanced, About."*
+
+Measured: the design is `200px 599px 320px`; the build is `200px 927px`. **The 320px column does not
+exist**, and the rail carries Connection / Advanced / About.
+
+The five absent panes are not one thing, and the right-hand column is mostly a departure that is
+already decided:
+
+| Missing | What it is | Verdict |
+|---|---|---|
+| **General** | Start on login, Keep in the menu bar, Appearance, Interface sounds, Automatic updates | Real, Mac-side, needs macOS integration — **Phase 7** |
+| **Notifications** | label + sub + value rows | Real, Mac-side, buildable today |
+| **File transfer** | — | **Phase 5**, with the feature |
+| **Mirror** | quality, frame rate | **Already built, elsewhere** — it is the Mirror pane's side panel. A relocation question, not a gap |
+| **Security** | Lock, auto-lock, two-factor, trusted devices, Sign out everywhere | Mostly **cut by departure X2** — no account, so no two-factor and no sign-out-everywhere. Trusted devices is real and lives in Connection |
+| **the 320px column** | version, Account (email, PRO, Manage subscription, Billing history), Help and support, "up to date", encryption note | Mostly **X2** again — subscription and billing do not exist in this product. The parts that are real (version, the encryption statement) are already in our **About** pane, as *Version* and *Where your data goes* |
+
+**Recorded, not built** — same call as Messages and Calls in section 2: two of the five panes are
+blocked on other phases, one is a relocation decision, and one is largely cut. Carried into
+`docs/design-departures.md`.
+
+### 5.6 Suite
+
+112 tests, 0 failures, `tsc` clean. Shell geometry re-verified unchanged against the prototype:
+sidebar 233×920, brand row 232×44, device card 204×52, nav row 204×38, nav pill 204×40, dock tile
+38×38 — all exact on both sides.
