@@ -90,6 +90,17 @@ styling that could have made that read as this design.
 | S11 | Mirror **tool rail**: Power, Rotate, Capture, Record, Transfer | Capture, Refresh, and a **Rotation readout** | **reshaped** | Unchanged from M-rows; recorded here because the rail is now generated from `navModel.TOOL_RAIL` rather than hand-written, which is what puts Capture and Refresh inside the icon guard | See M2 |
 | S12 | ⌘K palette rows carry a **coloured icon tile** per result | Same, with the screen's own icon in it; a command gets the Mirror glyph | — | Not a departure. Noted because the design's tile is a blank coloured square and ours carries the icon, which is the design's own intent read forwards | — |
 
+### A fifth surface the written colour table does not list
+
+The handoff's colour table gives four elevations — canvas, elevation 1, elevation 2, elevation 3 —
+and stops. The prototype draws a fifth: **`#111219`, a recessed well**, on the notification list,
+the Settings rail, the Settings right-hand cards and the Advanced diagnostics block. Four surfaces
+across three screens is a system value, not a one-off, and it is *below* elevation 2 rather than
+above it, so nothing in the existing scale substitutes for it.
+
+Built as `--well`. **Flagged for the designer**: if it belongs in the table it should be named
+there, and if it does not, four drawn surfaces need re-specifying.
+
 ### Three shell bugs found by screenshotting the shell against the design, and what they cost
 
 Recorded because each was invisible to `tsc`, to `npm test`, and to every check in the repo, and

@@ -40,6 +40,56 @@ const SHEETS = ['tokens.css', 'shell.css', 'styles.css'] as const;
  * and do not fight, and treating them as a collision would make this test cry wolf on the one
  * genuinely shared declaration in the codebase.
  */
+/**
+ * Every top-level selector a sheet declares, **with the line it was declared on**.
+ *
+ * Comments are blanked to spaces rather than removed, so line numbers survive.
+ */
+function topLevelSelectorLines(css: string): Map<string, number[]> {
+  const blanked = css.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+  const found = new Map<string, number[]>();
+  let depth = 0;
+  let head = '';
+  let line = 1;
+
+  for (const character of blanked) {
+    if (character === '\n') line += 1;
+    if (character === '{') {
+      depth += 1;
+      if (depth === 1) {
+        const selector = head.trim();
+        if (!selector.startsWith('@')) {
+          for (const part of selector.split(',')) {
+            const normalised = part.trim().replace(/\s+/g, ' ').toLowerCase();
+            if (normalised) {
+              const at = found.get(normalised) ?? [];
+              at.push(line);
+              found.set(normalised, at);
+            }
+          }
+        }
+      }
+      head = '';
+    } else if (character === '}') {
+      depth = Math.max(0, depth - 1);
+      head = '';
+    } else if (depth === 0) {
+      head += character;
+    }
+  }
+  return found;
+}
+
+/**
+ * How far apart two declarations of one selector may sit before the earlier one is presumed dead.
+ *
+ * From the data, not from taste. When this rule was written, every *deliberate* override in the
+ * codebase sat 5–19 lines from what it overrode (`.island-dot`, `body`, `.stop-button`), and a
+ * whole dead pre-redesign notification block sat 408–593 lines from its live replacement. There was
+ * nothing in between, so 100 separates the two populations with an order of magnitude to spare.
+ */
+const DEAD_DECLARATION_GAP = 100;
+
 function topLevelSelectors(css: string): Set<string> {
   const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const found = new Set<string>();
@@ -93,6 +143,50 @@ test('no selector is defined in two sheets', () => {
     [],
     'a duplicated selector is resolved by load order, silently:\n  ' + clashes.join('\n  '),
   );
+});
+
+test('no selector is declared twice in one sheet, far apart', () => {
+  /*
+   * The between-sheets rule above has an inside-one-sheet twin, and it cost a real defect.
+   *
+   * `styles.css` carried the entire pre-redesign notification block — `.notif-row`, `.notif-head`,
+   * `.notif-title` and six more — 400 to 600 lines above their live replacements. The later
+   * declarations silently won, exactly as a later *sheet* does, so the file's own top-down reading
+   * described a row the app had not drawn since the pane was rebuilt. It was found by measuring the
+   * row against the prototype (ours was 28px taller) and then discovering the padding that
+   * explained it was in the second of two declarations.
+   *
+   * Adjacent re-declaration is legitimate and is not flagged: a rule that deliberately overrides
+   * the one above it is readable precisely because it is next to it.
+   */
+  const offences: string[] = [];
+  for (const name of SHEETS) {
+    for (const [selector, lines] of topLevelSelectorLines(read(name))) {
+      if (lines.length < 2) continue;
+      const gap = Math.max(...lines) - Math.min(...lines);
+      if (gap > DEAD_DECLARATION_GAP) {
+        offences.push(`${name}: "${selector}" declared on lines ${lines.join(', ')} (${gap} apart)`);
+      }
+    }
+  }
+  assert.deepEqual(
+    offences,
+    [],
+    'a re-declaration this far from the original is a dead block, not an override:\n  ' +
+      offences.join('\n  '),
+  );
+});
+
+test('control_the dead-declaration check can see a dead block, and lets an override through', () => {
+  // Both halves. A check that only ever says "clean" is the shape this repo keeps recording, and a
+  // check that flags every legitimate override gets deleted by the first person it wakes.
+  const dead = ['.a { color: red }', ...Array(120).fill('/* x */'), '.a { color: blue }'].join('\n');
+  const deadLines = topLevelSelectorLines(dead).get('.a')!;
+  assert.ok(Math.max(...deadLines) - Math.min(...deadLines) > DEAD_DECLARATION_GAP);
+
+  const override = '.a { color: red }\n.a { color: blue }';
+  const overrideLines = topLevelSelectorLines(override).get('.a')!;
+  assert.ok(Math.max(...overrideLines) - Math.min(...overrideLines) <= DEAD_DECLARATION_GAP);
 });
 
 test('control_the collision check can see a collision', () => {

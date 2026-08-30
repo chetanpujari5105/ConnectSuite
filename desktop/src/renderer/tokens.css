@@ -38,6 +38,20 @@
   --elev-2: rgba(22, 24, 34, 0.82);          /* the default panel surface */
   --elev-3: #1c1f2b;                         /* the ONE primary card per screen, at most */
   --control: #161822;                        /* buttons, inputs, tiles */
+
+  /*
+   * The recessed surface — a *well*, below elevation 2 rather than above it.
+   *
+   * Missing from the token set until it was measured. The prototype uses `#111219` for containers
+   * that things sit **inside**: the notification list, the Settings rail, the Settings right-hand
+   * cards, the Advanced diagnostics block. It is not in the handoff's written colour table, which
+   * lists four elevations and stops — but it is drawn on four surfaces across three screens, so it
+   * is part of the system whether or not the table says so.
+   *
+   * This build already used the value, hardcoded, in `.diagnostics` and `.log-tail`. Naming it is
+   * what stops the fifth use inventing `#111218`.
+   */
+  --well: #111219;
   --hairline: rgba(255, 255, 255, 0.08);
   --hairline-hover: rgba(255, 255, 255, 0.14);
   --inner-highlight: rgba(255, 255, 255, 0.05);

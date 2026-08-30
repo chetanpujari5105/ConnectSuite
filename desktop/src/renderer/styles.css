@@ -248,73 +248,36 @@ img#qr {
   color: #a9a9b6;
 }
 
-/* ---- Notifications ------------------------------------------------------------------------
-   A list of rows, not a table: every row has a different number of buttons and a title that may
-   be absent, and a grid would leave holes where the phone simply had nothing to send. */
-.notif-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 46vh;
-  overflow-y: auto;
-}
-
-.notif-row {
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-/* Ongoing notifications — the media player, navigation, our own foreground notice — are dimmed
-   rather than hidden. The phone deliberately does not filter them (a phone deciding what the user
-   may see on their own Mac has stopped being a mirror), so the Mac de-emphasises instead. */
-.notif-row.ongoing { opacity: 0.62; }
-
-.notif-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.notif-app { font-weight: 600; font-size: 12px; color: #c9c9d4; }
-.notif-when { flex: none; }
-.notif-title { margin-top: 2px; font-size: 13px; color: #f2f2f5; }
-.notif-text {
-  margin-top: 2px;
-  font-size: 12px;
-  color: #b9b9c6;
-  line-height: 1.4;
-  /* Long messages are common and a shade row that grows to twelve lines pushes everything else
-     off screen. Four lines is enough to read a text message and see there is more. */
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
+/*
+ * The pre-redesign notification block used to be here — `.notif-list`, `.notif-row`, `.notif-head`,
+ * `.notif-app`, `.notif-when`, `.notif-title`, `.notif-text`, `.notif-reply` and its input. It was
+ * **dead**, and had been since the pane was rebuilt in the design language: every one of those
+ * selectors is declared again 400–600 lines below, and the later declaration silently won.
+ *
+ * Dead is the charitable reading. It was also *live enough to mislead*: `#notif-card` and
+ * `.notif-actions` here were the only declarations of theirs, so the block could not simply be
+ * assumed unused, and reading the file top-down gave a 6px-radius row on a 4% white fill that the
+ * app has not drawn since 2026-08-29. Those two survivors are kept below.
+ *
+ * Found by measurement, not by reading: pairing the notification row against the prototype by role
+ * showed our row 28px taller, and the padding that explained it was in the *second* declaration
+ * while the first was what the file appeared to say.
+ *
+ * `stylesheets.test.ts` now fails on any selector declared twice in one sheet more than 100 lines
+ * apart. The threshold is from the data rather than taste: the deliberate adjacent overrides in
+ * this codebase sit 5–19 lines apart and this dead block sat 408–593 apart, with nothing between.
+ */
 
 .notif-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .notif-actions button.small {
-  padding: 3px 8px;
+  padding: 3px var(--space-3);
   font-size: 11px;
-}
-
-.notif-reply {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.notif-reply input {
-  flex: 1;
-  min-width: 0;
 }
 
 #notif-card { position: relative; }
@@ -526,6 +489,26 @@ img#qr {
   border-color: var(--hairline-primary);
 }
 
+/*
+ * Notifications is a *container*, not a panel: its two columns are a well and the detail card,
+ * both sitting directly on the canvas, which is what the prototype draws. Wrapping them in an
+ * elevation-2 panel put a surface under two surfaces and made the list read as raised.
+ */
+.pane.pane-notifications {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+/* The recessed well the rows sit inside. 18px radius and 10px of padding, measured. */
+.pane-well {
+  background: var(--well);
+  border-radius: var(--radius-panel);
+  padding: var(--space-4);
+  min-width: 0;
+}
+
 .pane {
   background: var(--elev-2);
   border: 1px solid var(--hairline);
@@ -672,8 +655,14 @@ img#qr {
   display: grid;
   grid-template-columns: 34px 1fr;
   gap: var(--space-5);
-  align-items: start;
-  padding: var(--space-6);
+  align-items: center;
+  /*
+   * `0 12px`, measured. The prototype's row is 66px tall with `padding: 0 12px`; ours was 94px with
+   * 14px all round — and the **content box was 66px on both**, so every one of those 28px was our
+   * own vertical padding. At 94px the list showed five rows where the design shows eight.
+   */
+  padding: 0 var(--space-5);
+  min-height: 66px;
   border-radius: var(--radius-tile);
   border: 1px solid var(--hairline);
   background: var(--control);
@@ -1133,7 +1122,7 @@ img#qr {
   gap: var(--space-1);
   padding: var(--space-3);
   border-radius: var(--radius-tile);
-  background: #111219;
+  background: var(--well);
   border: 1px solid var(--hairline);
 }
 

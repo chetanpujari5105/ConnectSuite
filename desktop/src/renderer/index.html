@@ -384,10 +384,22 @@
             <section class="screen" data-screen="notifications" hidden>
               <div class="pane pane-notifications" id="notif-card">
                 <p class="pane-sub" id="notif-note"></p>
-                <!-- Counts come from the live list, never from a constant. -->
-                <div class="pill-row" id="notif-filters" role="tablist" aria-label="Filter notifications"></div>
                 <div class="pane-grid">
-                  <div class="pane-list" id="notif-list" role="list"></div>
+                  <!--
+                    The left column is a recessed **well** holding the filter pills and the rows,
+                    and it is a sibling of the detail card rather than sharing a panel with it.
+
+                    That is the prototype's structure, measured: a `#111219` container at 18px
+                    radius on the left, the elevation-3 detail on the right, both sitting directly
+                    on the canvas. This pane used to wrap both columns in one elevation-2 panel,
+                    which put a well on top of a panel — two surfaces where the design has one, and
+                    the list read as raised rather than as something the rows sit inside.
+                  -->
+                  <div class="pane-well">
+                    <!-- Counts come from the live list, never from a constant. -->
+                    <div class="pill-row" id="notif-filters" role="tablist" aria-label="Filter notifications"></div>
+                    <div class="pane-list" id="notif-list" role="list"></div>
+                  </div>
                   <aside class="pane-detail" id="notif-detail" aria-live="polite"></aside>
                 </div>
                 <div id="notif-notice" class="mirror-notice" hidden></div>

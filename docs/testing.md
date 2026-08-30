@@ -5593,3 +5593,97 @@ lands.
 ## Suite
 
 108 tests, 0 failures, `tsc --noEmit` clean.
+
+---
+
+# Measurement pass, second run — 2026-08-30
+
+Re-taken after the shell fixes, State A and the Stop-button move, because the build had changed
+under the previous numbers. Same harness, both pages at a matched **1440 × 920**. The deliverable
+this time is **per screen**, with the element each number was read from, and every row classified as
+build-side (work), design-side (documented), typeface, live data, or untestable.
+
+## Two controls were wrong before they were right
+
+**1. The scrollbar gutter.** The design's Overview and Mirror columns overflow and claim an **11px**
+gutter; on other screens ours does and theirs does not. Every width in a column moves by 11px for
+that reason, and it is not the design. Rows affected are now marked untestable-in-this-state with
+the overflow flags as evidence, rather than counted.
+
+**2. The control for that control was measuring the wrong element** — `.screen`, a plain block
+inside the scrolling `.page`, whose gutter is 0 whatever is happening. It therefore always said
+"comparable", passed Messages as gutter-matched, and let an 11px artefact through as **the run's
+only build-side row**. A control that cannot fail is the shape this repo keeps recording, and it
+came within one step of being reported as work.
+
+## The elev-3 anchor matches by weight, not by role
+
+Finding the one primary card by querying for `rgb(28,31,43)` guarantees the same *surface weight* on
+both sides and says nothing about it being the same *component*. The identity strings decide it, and
+the decision is now recorded rather than left implicit:
+
+| Screen | design anchor | built anchor | same component? |
+|---|---|---|---|
+| Overview | `section.cs-card "Galaxy S26 Ultra…"` | `div.card.primary "Samsung SM-S938B…"` | yes — device hero |
+| Mirror | none drawn | none drawn | yes — neither draws one |
+| Messages | `section "RS R. Sharma +91 98765 4321"` | `div.pane.primary "50 conversations…"` | **no** — a message thread vs the conversation *list* |
+| Notifications | `aside "Chat Today, 09:42 UNREAD…"` | `div.detail-card "System UI…"` | yes — the detail |
+| Calls | `section "End-to-end encrypted RS R."` | `div.pane.primary "Call 50 recent calls…"` | **no** — a live-call card vs the dialer + log |
+| Settings | `section "General How ConnectSuite…"` | `div.settings-body "Connection How this Mac…"` | yes — the centre pane |
+
+On Messages and Calls no property comparison between those two elements is evidence, so all of them
+are untestable rather than departures. Without that check they read as 10 differences.
+
+## Result, per screen
+
+| Screen | anchors proven | untestable | **build-side** |
+|---|---|---|---|
+| Overview | 16 | 2 | 0 |
+| Mirror | 16 | 1 | 0 |
+| Messages | 17 | 7 | 0 |
+| Notifications | 17 | 1 | **2 — fixed below** |
+| Calls | 17 | 4 | 0 |
+| Settings | 17 | 0 | 0 |
+
+Everything else is typeface (X4 — no `font-size`, `font-weight`, `letter-spacing` or `color` row has
+ever appeared, only string *widths*), live data, or a documented design-side departure.
+
+## What the census found that the anchors could not
+
+The named anchors are shell-level. A per-screen inventory of every surface and every type size —
+**inventory, not a diff; no pairing claimed** — surfaced two things, both then paired by role and
+confirmed:
+
+**1. The notification row was 28px too tall.** Design 66px with `padding: 0 12px`; ours 94px with
+14px all round. The **content box was 66px on both**, so every one of those 28px was our own
+vertical padding. At 94px the list showed five rows where the design shows eight. Now 66×66, radius
+and padding exact.
+
+**2. There is a fifth surface in the design and we had no token for it.** `#111219`, a *recessed*
+well below elevation 2, used by the prototype for the notification list, the Settings rail, the
+Settings right-hand cards and the diagnostics block. It is **not in the handoff's written colour
+table**, which lists four elevations and stops — but it is drawn on four surfaces across three
+screens. Now `--well`, and the two places that already used the value hardcoded read the token.
+
+Notifications was restructured to the prototype's shape while fixing it: the two columns are a well
+and the detail card sitting directly on the canvas, where this build had wrapped both in an
+elevation-2 panel — a surface underneath two surfaces, which made the list read as raised rather
+than as something the rows sit inside.
+
+## A dead stylesheet block, found by measurement
+
+Chasing the row padding turned up **two** `.notif-row` rules in `styles.css`, 408 lines apart. The
+whole pre-redesign notification block was still there — nine selectors, all re-declared 400–600
+lines below, all silently losing. Reading the file top-down described a 6px-radius row on a 4% white
+fill that the app had not drawn since 2026-08-29.
+
+`stylesheets.test.ts` guarded collisions *between* sheets and not *within* one. It now fails on any
+selector declared twice in one sheet more than **100 lines** apart. The threshold is from the data:
+every deliberate override in this codebase sits 5–19 lines from what it overrides (`.island-dot`,
+`body`, `.stop-button`), and the dead block sat 408–593 apart, with nothing in between. Shown to
+fail by re-inserting a `.notif-row` 120 lines above its replacement, and it carries both controls —
+one proving it sees a dead block, one proving it lets an adjacent override through.
+
+## Suite
+
+110 tests, 0 failures, `tsc --noEmit` clean.
