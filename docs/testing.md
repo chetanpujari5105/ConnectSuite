@@ -7059,3 +7059,183 @@ sitting. This pager is no worse than the two already shipped.
 
 Phone **181** tests, 0 failures. Mac **129** tests, 0 failures, `tsc` clean. Every new fixture was
 shown to fail against the defect it is named for and put back.
+
+---
+
+# Step 71 — 44, 39 and 30 on hardware, and defect 51 underneath them — 2026-08-31
+
+The three SMS defects left as **fixed, not verified** were carried to hardware in one sitting: one
+message typed on the handset, one sent from the Mac into a thread that already existed, one sent
+from the Mac to a bare address. All three arrive. The run also produced a defect of its own, which
+is recorded below rather than folded into the three it was found under.
+
+## Two of the run's own premises were wrong, and both were caught before a message was spent
+
+Recorded first because the run's value depends on it.
+
+1. **The handset send had not happened.** The newest row in `content://sms/sent` was `_id=22194`,
+   dated **2026-08-28 23:50** — three days old — and `outbox`, `queued`, `failed` and `draft` were
+   all empty. Had the run started from the log instead of the mailbox, the absent `sms.sent` would
+   have read as defect 44 still broken.
+2. **9850850263 was not the no-thread case.** It carries **thread 593**, `message_count=2` — `Hi`
+   from 2021-03-01 and `Hii this us test of mac to android` from 2026-08-28 — live in
+   `mms-sms/conversations`, not merely present as orphaned `sms` rows. A send there merges into 593.
+
+The second is the one worth keeping: the send would have succeeded, the pane would have drawn the
+message, and **it would have looked exactly like a pass for the half of defect 30 it cannot test.**
+Sent anyway by decision, recorded as the *existing-thread* case, and 30's no-thread half stays open.
+
+## Setup, read rather than assumed
+
+| | |
+|---|---|
+| Phone build | `lastUpdateTime=2026-08-31 14:24:53`, the SMS-sitting APK |
+| Phone server | `link-up.sh` 3/3 — foreground service, `42501/42502/42503` LISTEN under uid 11011, **1 control session ESTABLISHED**. Started by name, not by grepping `Listening on` |
+| Capabilities | `calls,contacts,input,mirror,notifications,remote,sms` — all seven |
+| Mac | rebuilt, **one** Electron instance (two were running at the start of the sitting; both killed, one relaunched), `--force-renderer-accessibility --remote-debugging-port=9222` |
+| Zoom | `innerWidth` 1440 = `outerWidth` 1440 — not zoomed, so drawn evidence is at 1:1 |
+| Observer | `Watching the sent mailbox for outgoing messages; newest already-sent row is 22194 and will not be pushed` — the baseline is *named in the line*, which is what makes every row below identifiable as new |
+
+**A note on the transport, since it cost the first ten minutes.** The Mac read `10.108.253.63 timed
+out` and `ifconfig` showed it on `192.168.43.55` via a gateway that was not the phone. It had not
+failed — it was mid-reassociation, and `ipconfig getsummary en0` already carried the answer
+(`yiaddr = 10.108.253.92`, `router 10.108.253.63`) while `ifconfig` still showed the old lease.
+Two reads of "the same" fact disagreeing, with the *less* obvious one correct.
+
+### Defect 44 — a message typed on the handset reaches the Mac — **closed and verified on hardware 2026-08-31 (step 71)**
+
+One SMS typed in the phone's own Messages app.
+
+```
+phone  14:43:07.352  I [sms] sms.sent pushed after 1 lookup(s) (provider change, row 22212)
+                             — 1 pushed / 0 dropped since start
+Mac    14:43:07.341  I [sms] sms.sent in thread 594 to Chetan (+919800000001)
+                             — 0 sent / 0 refused / 1 received / 0 dropped since launch
+provider           _id=22212, thread_id=594, address=+919800000001, type=2, body=Hiifgchcg
+```
+
+`0 sent` on the Mac is the load-bearing half: the Mac had issued no `sms.send` at that point, so
+nothing it did caused this. The push is the only thing that could have.
+
+**The discriminator is the direction word, and it was checked against a live positive rather than
+assumed.** Thirty and forty-five seconds later two inbound messages arrived on the same thread and
+the Mac wrote `sms.received in thread 594 **from** Chetan`. Same handler, same thread, same contact,
+opposite preposition — so the `to` above is a real classification and not a default. Had `sms.sent`
+been silently ingested through the inbound path, these lines would be indistinguishable.
+
+*(The two clocks differ by ~11 ms in the wrong direction — the Mac's line precedes the phone's.
+Device clock skew, not causality; no latency claim is made from this pair.)*
+
+### Defect 39 — the thread draws the message it just sent, without being reopened — **closed and verified on hardware 2026-08-31 (step 71)**
+
+Thread 594 open, composer present, **17 messages drawn**. Body
+`D39-1449 mac into existing thread` typed into the pane's own composer and Send pressed — the gate
+re-read the open thread's header at the moment of clicking and would have refused a pane that did
+not read as Chetan.
+
+```
+Mac 14:46:04.951 I [sms] sms.send delivered to 1 recipient in thread 594
+                         — 1 sent / 0 refused / 3 received / 0 dropped since launch
+Mac 14:46:06.111 I [sms] sms.sent in thread 594 to Chetan (+919800000001)
+                         — 1 sent / 0 refused / 4 received / 0 dropped since launch
+provider         _id=22215, thread_id=594, body=D39-1449 mac into existing thread
+drawn            17 → 18, last row `sms-message outbound`, "D39-1449 mac into existing thread | 2:46 PM"
+```
+
+**Never left the thread.** The pane was not re-navigated, no thread was reopened, and
+`.sms-compose` was still present in the same read that counted 18 — which is the whole of defect 39,
+whose original symptom was a thread drawing one fewer message than its own header claimed until you
+left and came back. Exactly one copy was drawn: the append and the eventual `sms.threads` refresh
+did not both add it.
+
+### Defect 30 — the Mac can address a number rather than a thread — **explicit-address path closed on hardware 2026-08-31 (step 71); the no-thread half remains open**
+
+`New conversation` → `9850850263` → `D30-1452 mac to a bare address` → Send.
+
+```
+Mac 14:47:17.728 I [sms] sms.messages thread 593 → 2 messages, hasMore=false
+Mac 14:47:17.858 I [sms] sms.sent in thread 593 to Chetan Pujari (9850850263)
+provider         _id=22216, thread_id=593, address=9850850263, type=2
+                 thread 593 message_count 2 → 4
+drawn            "Hi | Mar 1", "Hii this us test of mac to android | Aug 28",
+                 "D30-1452 … | 2:47 PM" outbound, "D30-1452 … | 2:47 PM" inbound
+```
+
+What this **does** prove, and it is the part the pane had no path to before: the Mac addressed a
+number rather than a thread, the phone verified the recipient (`to 1 verified recipient(s)`) rather
+than trusting a bare address off the wire, and the pane opened **the thread the phone named** — 593,
+with its 2021 message visible — rather than one it invented. A pane that had assumed a new thread
+would have drawn an empty conversation here.
+
+What it **does not** prove: that a first message to a genuinely unknown number creates a thread.
+That path was not exercised. Recorded as open in the register with the reason, not as a pass.
+
+## `sms.sent` fires identically on all three origins — and that is more than it sounds
+
+The explicit question this run was asked. It does, and the payload reaches the Mac through the same
+handler each time:
+
+| Origin | Row | Phone line | Mac line |
+|---|---|---|---|
+| handset keyboard | 22212 | `pushed after 1 lookup(s) (provider change, row 22212)` | `sms.sent in thread 594 to Chetan` |
+| Mac → existing thread | 22215 | `pushed after 1 lookup(s) (provider change, row 22215)` | `sms.sent in thread 594 to Chetan` |
+| Mac → bare address | 22216 | `pushed after 1 lookup(s) (provider change, row 22216)` | `sms.sent in thread 593 to Chetan Pujari` |
+
+**Read the trigger column, not just the event.** All three say `provider change` — the
+`ContentObserver` built for 44. Not one of them says `after send`. The Mac-origin sends were carried
+by 44's mechanism, not by 39's, which is how the next defect was found.
+
+### Defect 51 — the after-send retry reports a loss it does not suffer — **open, found during step 71 on 2026-08-31**
+
+Both Mac-origin sends produced this pair, ~700 ms apart:
+
+```
+14:46:04.957 I sms.send delivered (to 1 verified recipient(s))
+14:46:05.298 E sms.sent NOT pushed after 3 lookups following a send — the Mac's thread will be
+               missing the message it just sent — 1 pushed / 1 dropped since start
+14:46:06.097 I sms.sent pushed after 1 lookup(s) (provider change, row 22215) — 2 pushed / 1 dropped
+
+14:47:17.165 I sms.send delivered (to 1 verified recipient(s))
+14:47:17.488 E sms.sent NOT pushed after 3 lookups following a send — … — 2 pushed / 2 dropped
+14:47:17.864 I sms.sent pushed after 1 lookup(s) (provider change, row 22216) — 3 pushed / 2 dropped
+```
+
+`PROVIDER_LOOKS = 3` at `PROVIDER_LOOK_DELAY_MS = 150` gives the after-send trigger ~300 ms. The
+provider wrote at **1140 ms** and **699 ms**. **Two of two** — the after-send path has not won once
+on this device, and the observer rescued both.
+
+Nothing was lost, and that is the defect. The `e:` line **asserts an outcome it does not decide** —
+"the Mac's thread will be missing the message it just sent" was false within a second, both times,
+and the drawn evidence under defect 39 above is the same message being drawn. This is defect **40**
+exactly: a log string naming a disposition that other code overrides. 40 was fixed even though it
+never corrupted a measurement, because it would answer a `grep` identically on a good build and a
+broken one; this line is worse, because it is at `E` and it is emphatic.
+
+The counter compounds it. `3 pushed / 2 dropped` invites the reading that two-fifths of outgoing
+messages are lost. **Zero were.** The rule in `CLAUDE.md` is that a count needs a denominator that
+gives it meaning — here the denominator exists and is *wrong*, which manufactures a failure rather
+than hiding one. The comment above the branch already anticipates half of this ("not necessarily a
+failure … only a look that followed our own send is a miss worth an `e:` line"); the case it did not
+anticipate is that an after-send look can miss while the message is delivered anyway, because there
+are two triggers into one push and only one of them is being scored.
+
+**Fix direction.** Two triggers, two questions, and they need two counters. "Did the after-send look
+find the row in time?" is a tuning fact about one optimistic path; "was this row ever pushed to the
+Mac?" is the only one that describes a message being lost, and `lastSentId` already knows it. The
+after-send miss should be an `i:` line saying the observer will carry it, with its own
+found/not-found tally, and the `e:` reserved for a row that no trigger has pushed.
+
+**Wrong fix to avoid — and it is the tempting one:** raising `PROVIDER_LOOKS` or
+`PROVIDER_LOOK_DELAY_MS` until the after-send path wins. That is the fifth appearance of the
+delay-before-re-read shape this file has now rejected — a plausible value in place of a known fact,
+tuned against one device's provider latency, wrong under load. The message already arrives. The
+reporting is what is broken.
+
+**Not user-visible**, which is why it does not reopen 39 or 44: both are closed on drawn evidence.
+It is a defect in the evidence the next person will read.
+
+## Suite
+
+Phone **189** tests (67 `sync-module` + 122 `core`), 0 failures, 0 errors — re-run with
+`--rerun-tasks` after an up-to-date Gradle run was noticed and rejected as not being a run.
+Mac **129** tests, 0 failures, `tsc --noEmit` clean.

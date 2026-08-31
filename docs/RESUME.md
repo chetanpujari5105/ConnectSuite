@@ -1,223 +1,127 @@
-# Resume here — step 70, written 2026-08-29 00:50
+# Resume here — Phase 5 opening brief, written 2026-08-31
 
-> ## ✅ SUPERSEDED — step 70 ran and PASSED on 2026-08-31 13:43
->
-> Everything below this box was written to get one ring arranged. **The ring happened and both
-> defects closed**: 36 (`Call c7 ended rejected after 8197ms`, platform control `type=5`) and 35c
-> (card read `Chetan` / `Ringing · +919800000001`). 42's inbound half and 45 closed with them —
-> option 4 has corrected 7 of 7 episodes, 16–535 ms into the ring.
->
-> The full record is `docs/testing.md`, "Step 70 — PASSED". The command that ran it was
-> `node scripts/step70-watch.mjs 9800000001 9 --hold=8 --allow-blank-number --require-correction`.
->
-> **Nobody needs to be asked to ring this phone again.** The preconditions, the stale-overnight
-> table and the line to give the second person are all kept below as the record of how it was set
-> up, and none of them is a live instruction any more.
+**Phase 4 is closed.** Step 70 (the ring) and step 71 (the SMS sitting) both passed on hardware.
+Nothing in Phase 4 is waiting on a device, a second person, or a booking. The previous contents of
+this file — the step-70 preconditions, the stale-overnight table, the line to give the second
+person — are all discharged and have been deleted rather than left to be mistaken for live
+instructions. The record of that work is `docs/testing.md`; the summary is
+`docs/phase-4-closeout.md`.
 
-> ## Superseded in part, 2026-08-29 morning — read this box first
->
-> **Step 70 ran and 35c FAILED.** The ring came in at 09:52 before the watcher was armed and was
-> decisive; **nobody needs to be asked to ring again for 35c.** It exposed defect **45** — the
-> mechanism 35c depends on has never worked here — and reopened defect **42**, whose inbound half is
-> now fixed and shipped.
->
-> **Defect 45 is an open product decision, deliberately not taken.** The brief is
-> `docs/decision-45-inbound-caller-id.md`. It needs one reading from the new `PHONE_STATE`
-> instrumentation, which the next real inbound call produces at no cost to anyone.
->
-> **Step 70 should be re-scoped to defect 36 alone** — 36 never needed the caller's number and is
-> provable on today's build with one ring. The step-70 mechanics below (the watcher, the gate, the
-> one line to give the second person, the order of reads) all still stand for that.
->
-> **Phase 4 stays open. Phase 5 stays shut.**
-
-One thing is outstanding and it needs a second person for about thirty seconds. Everything else in
-Phase 4 is closed. **Do not open Phase 5** until step 70 has run.
-
-Written because step 67 passed on hardware and went unrecorded for a full sitting, and a session
-that ends at 00:50 with "we'll do it tomorrow" is the same failure with a longer gap.
-
-**Phase 5 preparation happened after this note was first written, and none of it is implemented.**
-`docs/phase-5-proposals.md` holds four prose pieces and a box of decisions already taken — read that
-box before writing any Phase 5 code, and do not start until step 70 has run. `docs/protocol.md` is
-deliberately unmodified.
+**Phase 5 may open. It has not been started, deliberately.**
 
 ---
 
-## The state as of tonight
+## Start of day, both sides
 
-| | |
-|---|---|
-| Build fingerprint | the load-bearing fact is the APK below, not a commit hash — hashes go stale every sitting |
-| Phone build under test | `lastUpdateTime=2026-08-30 20:26:26` — the option-4 build. **Corrected 2026-08-30: `adb install -r` does *not* reset grants.** Tested on this device — all 11 runtime grants stayed `granted=true`, the notification-listener and accessibility strings were intact, `accessibility_enabled=1`, nothing needed restoring. The old wording described a full uninstall. **What `-r` *does* cost is the server** — see the row below |
-| After any `install -r` | **the phone comes back fully granted and serverless.** The process restarts via the notification-listener rebind and installs every feature — the capability log reads `calls,contacts,input,mirror,notifications,remote,sms`, which is the most reassuring line in the file — while `LinkService` never runs and no port is bound. Nothing in the app's output says so. Start it by name: `adb shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity`, then confirm with **`scripts/link-up.sh`** (exit 0), which is the only thing in the repo that catches this. Observed 2026-08-30 20:26; it is `LinkServer.kt:163`'s scenario |
-| Mac | rebuilt and relaunched 00:46 with `--force-renderer-accessibility --remote-debugging-port=9222` |
-| Phone suite | 175 tests, 0 failures |
-| Mac suite | 55 tests, 0 failures, `tsc --noEmit` clean |
-| Outstanding | **step 70 only** — it proves defect **36** and defect **35c**, the last two things in Phase 4 not verified on hardware |
-
-Defects 31, 34, 35 (outgoing), 37, 40, 41, 42, 43 are closed. **17, 30, 32, 33, 38, 39 and 44** are
-open with fix directions in `docs/defects.md` — 44 was added on 2026-08-29 and is the newest.
-`scripts/check-defects.sh` will tell you if that list has drifted from the register; trust it over
-this sentence.
-
----
-
-## What to do, in order
-
-### 1. Bring both sides up — neither survives the night
+Neither side survives the night, and the phone in particular comes back **fully granted and
+serverless** after any `adb install -r`.
 
 ```bash
 # phone: starts LinkService, which nothing else does
-adb shell monkey -p com.chetan.connectsuite.debug -c android.intent.category.LAUNCHER 1
+adb shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity
+scripts/link-up.sh          # the only thing in the repo that catches a serverless process
 
-# Mac: the two flags are not optional — without --force-renderer-accessibility Chromium
-# exposes one opaque AXGroup, and without the debugging port the watcher cannot read the card
-cd desktop && ./node_modules/.bin/electron . --force-renderer-accessibility --remote-debugging-port=9222
+# Mac: kill every instance first — a second one silently keeps port 9222 and every
+# reading then comes from the stale window
+pkill -f "ConnectSuite/desktop/node_modules/electron"
+cd desktop && npm run build && \
+  nohup ./node_modules/.bin/electron . --force-renderer-accessibility --remote-debugging-port=9222 &
 ```
 
-Give it ~40 s and confirm `Listening on 42501/42502/42503` on the phone and
-`Connected to Samsung SM-S938B` on the Mac.
+`link-up.sh` must reach **3 of 3** — the third reading is an `ESTABLISHED` control session, i.e. a
+Mac actually attached. Do not grep the phone log for `Listening on`; it is written once per
+`onCreate` and is absent by design on a healthy running service.
 
-### 2. Re-verify the preconditions that went stale (next section)
+**If the Mac says the phone timed out, read `ipconfig getsummary en0` before believing it.** In step
+71 `ifconfig` showed a stale lease on the wrong subnet while `getsummary` already carried
+`yiaddr = 10.108.253.92, router 10.108.253.63` — the correct one. Two reads of the same fact
+disagreeing, with the less obvious one right.
 
-### 3. Arm the watcher, then ask for the ring
-
-```bash
-node scripts/step70-watch.mjs 8800000004
-```
-
-It waits up to nine minutes. **Start it before they dial.** Read
-`node scripts/step70-gate.test.mjs` first if you want to see what it will and will not click — it
-refuses anything that is not `Ringing` carrying `8800000004`, logs every card it declines, and
-re-checks immediately before the click.
-
-### The one line to give them
-
-> **"Call me once, let it ring, and don't hang up until I say."**
-
-That is all of it. They do not answer, wait for a tone, listen for anything, or call twice. It must
-be a real handset — 35c turns on the platform filling `EXTRA_INCOMING_NUMBER`, which does not happen
-for a simulated call. Number: **8800000004**.
-
-### 4. The order of reads, which the watcher enforces but you should know
-
-1. **Read the card first** — headline and second line. This is 35c and it exists only while the call
-   is live.
-2. **One click** on `#call-reject`. Never two; it is not an arming control.
-3. **`call.ended`** — this is 36's answer. The `call.reject delivered (…)` line is **not** the
-   disposition; it says so itself since defect 40.
-4. **`content://call_log/calls`** — `type=5` for their number, this minute. This is 36's control.
+Baselines, as of the close of Phase 4: phone **189** tests (67 `sync-module` + 122 `core`), Mac
+**129** tests, `tsc --noEmit` clean. Run Gradle with `--rerun-tasks` when you intend a *run* — an
+up-to-date task writes no new result XML and is not evidence.
 
 ---
 
-## Which of the eight preconditions are stale by morning
+## What `docs/phase-5-proposals.md` has already decided
 
-The build is the same. The link will not be up and the counters will have moved, so five of the
-eight must be re-read and three can be carried forward with a one-line check.
+**These are decisions, not options.** The arguments are in the file. Do not re-litigate them, and do
+not implement an alternative without saying why the recorded reasoning is wrong.
 
-| # | Precondition | Tonight's reading | By morning |
-|---|---|---|---|
-| 1 | link up, 3 ports bound | 3 bound, connected 00:46 | **STALE — re-establish.** Neither the phone's `LinkService` nor the Mac survives the night. |
-| 2 | `READ_CALL_LOG` granted | `granted=true` | **carry forward**, but re-check in one line. Runtime grants survive reboot; they do not survive a reinstall, which is why the build must not be reinstalled. |
-| 3 | `Watching PHONE_STATE for the inbound number` | present 00:41:13 | **STALE, and it is the one with a trap — see below.** |
-| 4 | call-log tail noted | `type=2, +919800000001, date=1787944374680` | **STALE — re-note.** Any real call overnight changes the newest row, and this row is what makes the step 70 row identifiable as *new* rather than assumed to be. |
-| 5 | episode denominator | `1 of 2 episodes with a number` | **STALE, and the expected value changes.** These are `since start` counters on the phone process. A fresh process resets them, so tomorrow the ring should produce `1 of 1`, **not** `2 of 3`. Read the actual pre-ring value and expect it to increment by one; do not carry tonight's arithmetic. |
-| 6 | caller is in contacts as `Contact D` | `Row: 574 display_name=Contact D, data1=8800000004` | **carry forward**, one-line re-check. It is the basis of the strict 35c clause, so confirm it rather than assume it — a contact edited overnight would silently weaken the test back into the disjunction it used to be. |
-| 7 | nothing live, nothing armed, 173 buttons | live card hidden, `#call-dial` reads `Call`, input empty | **STALE — re-read.** New Electron process. The button count is the enumeration control for "`#call-reject` is absent"; take it fresh rather than quoting 173. |
-| 8 | `calls: available`, `contacts: available` | both available, 12 chips, 7 on | **STALE — re-read.** Depends on the link being up and the notification listener bound in the new process. |
-
-### The trap in precondition 3, which is worth reading twice
-
-`Watching PHONE_STATE for the inbound number` is logged **once per process, at feature install**.
-Tonight's line is still in `files/logs/link.log`, and a `grep` over the whole file will find it and
-read as a pass tomorrow morning — for a process that may not have registered the receiver at all.
-
-That is a false positive of exactly the shape this project keeps recording: a query that cannot tell
-its target from a lookalike, answering confidently. **Check it within tomorrow's process window**,
-e.g. filter the log to today's timestamps after the app was launched, and take the failure line's
-count as the control in the same read:
-
-```bash
-adb shell "run-as com.chetan.connectsuite.debug cat files/logs/link.log" | grep -c "Could not watch PHONE_STATE"   # must be 0
-```
-
-The phone log rotates at ~512 KB (`link.log` was 71 KB tonight, `link.log.1` full), so tonight's
-evidence may age out. That is fine — it is all written up in `docs/testing.md`.
-
----
-
-## What a pass looks like, and the one clause that is stricter than it was
-
-**35c** — the headline must read **`Contact D`**, not the number.
-
-The step as first written said "their name if they are in contacts, else their number", which passes
-either way and therefore tests less than it appears to. They *are* in the book, so the disjunction
-collapses. The bare number is now a **failure**: `ContactsFeature.nameFor` is called once per episode
-from `CallWatcher.begin`, and a number-only headline on a caller who is in contacts means that
-lookup did not fire — a working feature reporting success while the integration contacts was pulled
-forward into Phase 4 to enable is dead.
-
-- phone: `Call cN ringing from 8800000004 (Contact D)` — the parenthesised name is the lookup's output
-- Mac card headline: `Contact D`; second line: `Ringing · 8800000004`
-- neither may be `Unknown number`, and the second line may not end at `Ringing · ` with nothing after
-
-**36** — `call.ended cN rejected after Ns` on the Mac, with `type=5` in the platform call log for the
-same number and minute. `rejected` on the Mac with no `type=5` would mean the flag is being set on
-episodes that were not rejected — a different bug wearing the right answer.
-
-**The negative control is already satisfied off-device** and does not need a second ring: step 69
-exercised the `answered` branch against a live call on 2026-08-28, and the phone-side test
-`every other disposition still answers, and answered outranks rejected` covers all four branches.
-Ask for **one** ring.
-
----
-
-## After it passes
-
-1. Mark 35c and 36 closed in `docs/defects.md` with their evidence.
-2. Update `docs/phase-4-closeout.md` — it currently says Phase 4 is not closed.
-3. Run `scripts/check-defects.sh` before committing; the commit hook runs it anyway.
-4. Then, and only then, Phase 5 — see below.
-
----
-
-## Phase 5, when it opens — what is already decided
-
-**Do not start before step 70.** Its first act claims `bulkChannelSink`, and a failed ring must not
-be debugged through a transport change. That is the whole reason for the gate.
-
-Everything below is in `docs/phase-5-proposals.md`, which was reviewed on 2026-08-29. **These are
-decisions, not options** — the arguments are in the file; do not re-litigate them, and do not
-implement an alternative without saying why the recorded reasoning is wrong.
-
-| Decided | What |
+| Decided | What, and where |
 |---|---|
-| **`sms.sent` as an event**, ack left alone | The ack keeps meaning "the radio accepted this". One event closes **39 and 44** together. |
-| **The delay-before-re-fetch is rejected** | Three reaches for the same wrong shape (36 shipped it, 37 declined it, 39 named it) is enough. It stays written down. |
-| **The `before` cursor: option (a)** | Optional `beforeId`, ordering `dateMs DESC` then `id DESC` byte-wise, backward compatible. Chosen because it is the only option that can advance *inside* a shared timestamp; the others stall unboundedly. Applies to `sms.threads`, `sms.messages` and `call.log`. |
-| **Bug 6 at 1 MB** | Separate small header cap, write-side enforcement in `Framing`, no resync, denominator on the refusal line. |
-| **The package-id rule** | Now in `CLAUDE.md` beside the gate rule, not only in the proposal. |
+| **Bug 6's caps** | `MAX_BULK_FRAME = 1 MB` — *smaller* than `MAX_FRAME`'s 8 MB, because the bulk channel moves 256 KB chunks and a bigger frame is a peer that has lost sync, not a bigger transfer. Header frame capped separately at **64 KB**. Enforced **write-side as well as read-side**, inside `Framing` with the cap passed at the call site, never a second check inside `fs.*`. A violation **closes the socket and names the cap and the offending length**; it does not resync. §3 |
+| **The package-id rule** | A package id may appear on the wire as a machine handle, never as the only thing a user reads. Every payload carrying one carries a resolved label beside it. Already codified in `CLAUDE.md`; to be written into `docs/protocol.md` as `fs.*` and `media.*` are specified. §4 |
+| **What survives from v1's `TransferManager`** | The *design*, not the code: absolute offsets per chunk with resume from the partial file, adaptive chunk sizing, streaming SHA-256 with the partial **deleted** on mismatch, progress on the control channel, the offer/accept handshake, Room-backed rows. Everything `NetworkPacket` dies. §2 |
+| **The `before` cursor** | Optional `beforeId`, ordering `dateMs DESC` then `id DESC` byte-wise, backward compatible — the only option that can advance *inside* a shared timestamp. Applies to `sms.threads`, `sms.messages` and `call.log`. **Decided and not implemented.** §1 |
+| **The delay-before-re-fetch** | Permanently rejected. Five reaches for that shape now. §1 |
 
-**The finding that changes the size of the SMS work:** only **one** of 30/32/39 needs a protocol
-change. The phone already implements `sms.send` with no `threadId` (defect 30 is a Mac with no
-recipient field) and already pages threads by `before` (defect 32 is a missing button). So the SMS
-sitting is one protocol change plus two Mac features.
+---
 
-**Defect 44 is new and must not be folded into 39.** Same symptom, different cause: 39 is a race the
-Mac loses against its own provider read and is fixable on the Mac alone; 44 is that nothing observes
-outgoing rows at all, and no Mac-side retry can invent an event it is never sent. The tempting wrong
-fix — enrich the ack and stop — closes the visible half and leaves the phone's keyboard diverging
-from the Mac forever.
+## What it leaves open
 
-**Suggested order inside Phase 5:** `sms.sent` first (it closes 39 and 44, and 30/32 can proceed in
-parallel), then Bug 6's caps before `fs.*` has a first consumer, then the package-id rule written
-into `docs/protocol.md` as `fs.*` and `media.*` are specified, then the transfer itself — borrowing
-v1's absolute offsets, adaptive chunking, streaming digest and offer/accept, and none of its
-transport.
+1. **`fs.*` and `media.*` have no payload specification at all.** `docs/protocol.md` lists the eight
+   `fs.*` and four `media.*` type names in its inventory and specifies nothing else — no request
+   shape, no response shape, no error table. The only concrete text is the bulk-channel header. This
+   is the largest open question in Phase 5 and the proposals deliberately do not answer it.
+2. **What happens to a running transfer when the control session dies.** v1 never had to answer this
+   because the connection and the transfer were the same object; v2's bulk channel is scoped to a
+   session that can end mid-copy. `sessionEndedSink` already exists as the hook — Phase 2 added it
+   when the mirror kept a live `MediaProjection` with no consumer — but the policy is undecided.
+3. **`beforeId` is decided and unbuilt.** All three pagers still cursor on a bare millisecond, so
+   rows sharing one can be skipped at a page boundary. Known limit, recorded, not a new finding.
+4. **The doc contradicts itself on chunk size.** The bulk channel is documented as "raw chunks of
+   256 KB" while adaptive sizing ranges 64 KB–256 KB. It must read *up to* 256 KB, or the first slow
+   link violates the contract.
 
-## If it fails
+---
 
-Do not write code against 35c before diagnosing. The first branch to check is precondition 2 —
-`READ_CALL_LOG` — which exists precisely to separate "the fix does not work" from "the permission
-that feeds it is off". The `EXTRA_INCOMING_NUMBER` extra is populated only for a receiver holding it.
+## The first slice, and what it depends on
+
+**Bug 6's frame caps on the bulk channel.** Proposals §3, item 2 of their order — item 1 (`sms.sent`)
+already shipped inside Phase 4.
+
+**Why this first, in one sentence:** it is a fifteen-line decision *while nothing serves the
+channel*, and after `fs.*` ships, changing a cap means changing what an already-shipped sender
+emits, at which point a too-small cap looks like a transfer bug for large files.
+
+**What it depends on:** nothing that is not already in the repo. It touches `Framing` on both sides
+and the two constants — no new protocol messages, no device, no permissions, no second person. The
+video channel is the worked example: `VideoChannel.kt:95` already refuses to *send* an over-size
+frame, and `video.ts` already documents why a bad length closes the socket instead of resyncing.
+
+**What "done" looks like:**
+
+- the cap lives in `Framing` and is passed at the call site, the way the 128-byte token cap is;
+- the write side refuses too, so our own runaway chunk fails on our side with a clear line;
+- the refusal names **which** cap and the offending length;
+- and it carries a denominator — frames accepted and bytes moved beside frames rejected — or the
+  first over-size frame in a 10,000-frame transfer reads as a broken channel.
+
+**Then**, in order: the package-id rule into `docs/protocol.md` as `fs.*` and `media.*` are
+specified; then the transfer itself.
+
+---
+
+## Carried-over defects — small, and none of them blocks the above
+
+| # | State | What it needs |
+|---|---|---|
+| **30** (half) | open | One send from the Mac to a number with **no** thread on this handset. No code is pending. Prove the absence in `mms-sms/conversations` **and** `content://sms` first — orphaned `sms` rows outlive a deleted conversation, and step 71 lost its no-thread case to exactly that |
+| **51** | open | The after-send SMS retry logs an `E` and increments `dropped` for messages the observer then delivers, 2 of 2. Reporting only. Two triggers need two counters; **do not** raise the retry budget |
+| **17** | deferred | The Mac holds one phone structurally. Felt the first time anyone tests two phones |
+| **33** | deferred | Package ids in user-visible strings on the **phone** side. Lands naturally with the package-id rule above |
+| **38** | deferred | `onAudioInfoChanged` is not overridden. **Its test note must survive**: check `controller.playbackInfo.playbackType` before claiming a fix, and test with the phone's hardware volume keys, never `volume_set` from the Mac — that pushes through `onCommand` and makes a broken build look fixed |
+
+---
+
+## Two things not to rediscover
+
+- **A protocol asymmetry, read in source and never observed.** `CallFeature.replayTo`
+  (`CallFeature.kt:120`) returns silently when no call is live, and `call-current` answers from the
+  Mac's own cache rather than asking the phone — so a missed `call.ended` could not be repaired by
+  any reconnect or refresh. **No instance has ever been seen.** It is a paragraph for
+  `docs/protocol.md` when the call namespace is next revised, not a defect.
+- **The serverless-process window is Phase 6's, not Phase 5's.** A process started by the platform
+  rebinding the notification listener installs every feature and never starts `LinkService`.
+  `scripts/link-up.sh` detects it; nothing fixes it.

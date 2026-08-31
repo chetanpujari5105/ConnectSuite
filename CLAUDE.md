@@ -1,30 +1,34 @@
 # ConnectSuite
 
-> ## ✅ Step 70 ran and **PASSED** on 2026-08-31 13:43. No ring is outstanding.
+> ## ✅ **Phase 4 is CLOSED — 2026-08-31.** Phase 5 may open.
 >
-> One inbound call from a second handset, held 8 s, one reject. It closed **36** (`Call c7 ended
-> rejected`, with the platform's own `type=5` row as the control) and **35c** (the inbound card read
-> `Chetan` / `Ringing · +919800000001`). It also closed **42**'s inbound half and **45**, whose fix —
-> option 4 — has now corrected **7 of 7 episodes**, 16–535 ms into the ring. Evidence:
-> `docs/testing.md`, "Step 70 — PASSED".
+> Step 70 (the ring) and step 71 (the SMS sitting) both passed on hardware. Every Phase 4 feature is
+> proven on the device. The full summary is `docs/phase-4-closeout.md`; the evidence is
+> `docs/testing.md`; the index is `docs/defects.md`.
 >
-> **Nobody needs to be asked to ring this phone again.**
+> **Nobody needs to be asked to ring this phone again, and no second person is needed for anything
+> in Phase 4.**
 >
-> **Phase 4 is not closed yet, and the reason is no longer step 70.** Open: **44**, **46**, and
-> **47** — and 47 is *in question*: `dumpsys telecom` shows its trigger episode `c13` was a
-> self-managed WhatsApp VoIP call, which may mean the card it was filed for was correct. Re-examine
-> before treating it as a defect. `docs/phase-4-closeout.md` still predates all of this.
+> **What is still open, and none of it blocks Phase 5:** **30**'s no-thread half (one send to a
+> number with no thread — prove the absence in `mms-sms/conversations` *and* `content://sms` first;
+> orphaned rows outlive a deleted conversation), and **51** (the after-send SMS retry logs an `E`
+> and counts a `dropped` for messages the observer then delivers — reporting only, nothing is lost).
+> **17, 33 and 38** stay deferred with fix directions.
 >
 > **Reinstalling is safe — but it leaves the phone serverless.** `adb install -r` preserves every
 > runtime grant and both secure-settings bindings (tested on this device: 11 of 11 `granted=true`,
-> listener and accessibility strings intact). The old warning here — *a reinstall resets grants* —
-> described a full uninstall and was wrong for `-r`. What `-r` does cost is `LinkService`: the app
+> listener and accessibility strings intact). What `-r` *does* cost is `LinkService`: the app
 > returns via the notification-listener rebind with every feature installed and no port bound. Start
 > it by name with `am start -n …/MainActivity` and confirm with **`scripts/link-up.sh`**, which is
 > the only thing in the repo that catches it — and never by grepping for `Listening on`, which is
 > written once per `onCreate` and is absent by design on a healthy running service.
 >
-> Phase 5's decisions are recorded in `docs/phase-5-proposals.md`; nothing there is implemented.
+> **The Mac's link state has a second lookalike, found in step 71:** `ifconfig` can show a stale
+> lease while `ipconfig getsummary en0` already carries the new one. If the Mac says the phone
+> "timed out", read `getsummary` before concluding anything about the network.
+>
+> Phase 5's decisions are recorded in `docs/phase-5-proposals.md`; nothing there is implemented, and
+> `docs/protocol.md` is deliberately unmodified.
 
 
 Two apps that connect an Android phone to a Mac over the local network with no cloud, no account, and no relay server.
@@ -44,7 +48,8 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   direction and the wrong fix to avoid. `docs/testing.md` holds the evidence; this is the index.
   Kept in sync by `scripts/check-defects.sh`, wired to `PreToolUse` on `git commit`.
 - `docs/phase-4-closeout.md` — what Phase 4 proved, what it deferred, and what Phase 5 inherits.
-- `docs/RESUME.md` — the one outstanding piece of work and how to pick it up. Read it first.
+- `docs/RESUME.md` — where work resumes and how to pick it up. **Read it first.** It currently holds
+  the Phase 5 opening brief: what the proposals decide, what they leave open, and the first slice.
 - `docs/phase-3-input.md` — the current phase brief: input injection via AccessibilityService.
 
 minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK 17-21 (`JAVA_HOME=/Applications/Android Studio.app/Contents/jbr/Contents/Home`), the system JDK 25 will not run AGP 8.13.
@@ -58,7 +63,7 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 | 1 | Transport, QR pairing, TLS, discovery, auto reconnect | **Done** — passed on hardware 2026-08-25 |
 | 2 | Screen mirroring (MediaProjection capture, H.264, video socket) | **Done** — closed 2026-08-26 |
 | 3 | **Input injection (AccessibilityService)** — see `docs/phase-3-input.md` | **In progress** — opened 2026-08-26 |
-| 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | Not started |
+| 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
 | 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | Not started |
 | 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | Not started |
 | 7 | Mac UX — packaging, distribution, app launching, and the polish pass | Not started |
@@ -156,7 +161,8 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
 
   It was added on 2026-08-28 because the Mac had **zero** tests against the phone's ~300, and six
   of the defects found in Phase 3 and 4 — 19, 22, 23, 24, 25 and 26 — were all Mac-side. It stood at
-  **106** when the app shell landed on 2026-08-30. Four more panes are coming in Phases 4 and 5.
+  **106** when the app shell landed on 2026-08-30 and **129** at the close of Phase 4 on 2026-08-31,
+  against the phone's **189** (67 `sync-module` + 122 `core`).
 
   The renderer is loaded as plain `<script>` tags and cannot use `export`, so a renderer rule is
   made testable by hanging the pure half on `globalThis` at the bottom of the file — see
@@ -241,7 +247,7 @@ damage on the user's own device or nearly recorded a false result.
   produces a clean, specific, confident wrong answer, and nothing downstream can distinguish that
   from a real finding.
 
-  Three in one day, all the same shape:
+  Three in one day, and two more since — all the same shape:
 
   | Query | Reported | Actually |
   |---|---|---|
@@ -249,8 +255,9 @@ damage on the user's own device or nearly recorded a false result.
   | `grep -c remoteinput` on `dumpsys notification` | 2 reply actions present | 2 lines of `android.remoteInputHistory=null` |
   | drawn button labels vs the phone's `isReply` action title (step 49) | 6 of 6 rows leaking | the Mac's own Reply affordance shares the label *and* the CSS class |
   | no platform call-log row for `c13` (defect 47) | the call was over, so the card was stale | a **self-managed** WhatsApp call — `SamsungCallLog.Loggable okayToLog:false`. It was live, and the card was true |
+  | `adb shell content query --where 'date<…'` on `mms-sms/conversations` (defect 50) | the provider honours selections, so the pager's cursor *value* must be wrong | the shell **inlines its literal**; the app **binds a `?`**, and this view answers a bound argument with an empty cursor. The selection was never running |
 
-  Three produced false absences and one a false presence, which is the point: the failure is not
+  Between them, false absences and false presences alike, which is the point: the failure is not
   "empty means broken", it is that **the check could not separate signal from lookalike** and said
   so with full confidence either way.
 
@@ -280,6 +287,38 @@ damage on the user's own device or nearly recorded a false result.
   recorded as a rule rather than as an apology inside a closed defect: the register entry for 47 is
   withdrawn, and this line is what survives it. When you catch yourself leaning on an absence,
   the question is not *am I sure* — it is *what else would look exactly like this*.
+
+  **The fifth entry is defect 50, and it generalises furthest, because there the lookalike was our
+  own tooling.** `SmsStore.threads` paged with `selection = "date < ?"` and a bound argument;
+  `content://mms-sms/conversations` answers that with an **empty cursor** — no exception, nothing
+  for `runCatching` to log — so the phone honestly reported `0 threads, hasMore=false` and the
+  pager stalled at 50 with every layer telling the truth. Asked the obvious way, the provider looked
+  innocent: `adb shell content query --where 'date<…'` returns 2990 rows and honours `--sort` too.
+  **The shell inlines its literal; the app binds a `?`.** Those are two different clients issuing
+  two different queries, and only one of them is the product.
+
+  So the rule, which is not about content providers: **verify a mechanism through the same client
+  the product uses, or you have verified a different mechanism.** A shell tool, a `curl`, a REPL, a
+  test double — each differs from the shipping call path somewhere, and that difference is exactly
+  where this class of bug lives. When a hand probe and the app disagree, **the probe is not the
+  tiebreaker, it is the second suspect.** The corollary for a green suite: a test that reaches the
+  provider by a path the app never takes can pass forever over a feature that has never worked.
+
+  And the diagnostic is worth stealing on its own: **pass a parameter whose correct answer is
+  "everything".** A cursor above the newest row must return every row. It returned zero — and a
+  wrong *value* cannot do that, only a query that never ran. One reading, taken before any tuning,
+  moved this from "the cursor is wrong" to "the selection is dead" and cost nothing. Anything taking
+  a parameter has such a value; send it first.
+
+  **The enforcement question, asked and answered: this one does not get a hook, and here is why.**
+  No unit test can see it — the behaviour belongs to one OEM's content provider, and a JVM test that
+  could reach that provider would be reaching it by a path the app does not take, which is the very
+  mistake above. A grep forbidding `selectionArgs` on this URI would guard the one line we already
+  fixed and nothing else. So the enforcement is a *precondition on the claim* rather than a check on
+  the code: **a provider pager may not be recorded as working on the strength of its control
+  rendering or its first page returning rows — it is recorded on consecutive pages, counted, on
+  hardware.** That is what 32's entry in `docs/testing.md` carries (50 → 89 → 126 → 158 → 183, every
+  entry distinct) and it is what the next pager owes too.
 
   This is the same defect as a failure count with no success count, one section up: a number, or an
   absence, with nothing to give it scale. The 11:00 adb dropout is what the rule looks like when it

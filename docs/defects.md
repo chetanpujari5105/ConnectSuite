@@ -43,7 +43,7 @@ own heading there, and its own row here.
 | **27** | An unavailable capability's reason went stale the moment it was wrong | **closed** | 2026-08-28 | `docs/testing.md` |
 | **28** | A notification row could be labelled with a raw package name | **closed** | 2026-08-28, three copies found | `docs/testing.md` |
 | **29** | The call log read the wrong key and reported an empty log | **closed** | 2026-08-28 | `docs/testing.md` |
-| **30** | The Mac cannot start a new SMS conversation | **fixed** (needs one real send to verify) | `sendNew` + compose surface, 5 fixtures shown to fail, 2026-08-31 | see below |
+| **30** | The Mac cannot start a new SMS conversation | **open** — explicit-address path closed on hardware; the **no-thread half is untested** | hardware 2026-08-31 (**step 71**): Mac → bare address `9850850263`, phone verified the recipient, pane opened the thread the *phone* named | `docs/testing.md` |
 | **31** | The media card never learned about changes made on the phone | **closed** | **step 67**, 2026-08-28 | `docs/testing.md` |
 | **32** | The SMS pane cannot reach a conversation older than its first page | **closed** | on hardware 2026-08-31 — 50 → 89 → 126 → 158 → 183, all distinct | see below |
 | **33** | The phone names packages where it means apps, in sentences users read | **deferred** | — | see below |
@@ -52,18 +52,19 @@ own heading there, and its own row here.
 | **36** | A call rejected from the Mac was reported as `missed` | **closed** | **step 70** on hardware, 2026-08-31 — `ended rejected` with the platform's `type=5` as the control | `docs/testing.md` |
 | **37** | A re-granted notification listener never turned its capabilities back on | **closed** | hardware, link **down**, 2026-08-29 | `docs/testing.md` |
 | **38** | A volume change made on the phone never reaches the Mac | **deferred** | — | see below |
-| **39** | A message sent from the Mac is missing from the thread it was sent into | **fixed** (needs one send to verify) | closed by `sms.sent`, not by a timer, 2026-08-31 | see below |
+| **39** | A message sent from the Mac is missing from the thread it was sent into | **closed** | hardware 2026-08-31 (**step 71**) — 17 → 18 drawn, outbound, **without leaving the thread** | `docs/testing.md` |
 | **40** | `call.reject delivered` named a disposition the disposition logic then overrode | **closed** | hardware, 2026-08-29 | `docs/testing.md` |
 | **41** | The force-stop hook denies prose that merely mentions the rule | **closed** | hook fixture tests, 2026-08-29 | see below |
 | **42** | An episode is labelled with the previous call's number | **closed** | outgoing hardware 2026-08-29; inbound on **step 70**, 2026-08-31 — `c7` drew its own number and contact, not `c6`'s | see below |
 | **43** | A call with no number logged as `from ,` on the Mac — the string defect 35 is named for | **closed** | `calls.test.ts`, 2026-08-29 | see below |
-| **44** | A message sent on the phone never reaches the Mac — no observer on outgoing rows | **fixed** (needs one SMS typed on the handset) | `sms.sent` + a sent-mailbox observer, 2026-08-31 | see below |
+| **44** | A message sent on the phone never reaches the Mac — no observer on outgoing rows | **closed** | hardware 2026-08-31 (**step 71**) — row 22212 pushed, Mac drew `to`, with `from` on the same thread as the control | `docs/testing.md` |
 | **45** | `EXTRA_INCOMING_NUMBER` arrives too late for the card, so no inbound call had a number | **closed** by option 4 | **step 70**, 2026-08-31 — 7 of 7 episodes corrected, 16–535 ms | see below |
 | **46** | The media remote puts a raw package id in a sentence — and drops it entirely in two more | **closed** | `shared/appLabel.ts` + 8 fixtures shown to fail, live in the running app, 2026-08-31 | see below |
 | **47** | ~~A live call card the Mac cannot correct~~ — **WITHDRAWN.** The card was true; `c13` was a 68-minute WhatsApp video call | **withdrawn**, not a defect | `dumpsys telecom`, 2026-08-31 | see below |
 | **48** | Two step-70 locks at two paths excluded nothing — each watcher took its own and both armed | **closed** | reconciled to one path; exclusion fixtures, 2026-08-30 | see below |
 | **49** | The exclusion's refusal overstated its own evidence — one CDP client was counted as two | **closed** | `lsof` fixture and three controls, 2026-08-30 | see below |
 | **50** | The thread cursor was never honoured — the conversations view returns nothing for a *bound* selection argument | **closed** | on hardware 2026-08-31; found while proving 32's pager actually pages | see below |
+| **51** | The after-send retry reports a loss it does not suffer — an `e:` line and a `dropped` counter for messages the observer then delivers | **open** | found during **step 71**, 2026-08-31 — 2 of 2 Mac-origin sends | `docs/testing.md` |
 
 ---
 
@@ -352,20 +353,33 @@ mailbox.
 asked, so a message typed on the phone still never arrives — and the visible half being fixed is
 what makes that the tempting place to stop.
 
-### 30 — the Mac cannot start a new SMS conversation · **deferred**
+### 30 — the Mac cannot start a new SMS conversation · **open, on one half only**
 
-The SMS pane can reply into a thread the phone already knows about and cannot address a number that
-has none. `sms.send` takes recipients from the thread this client holds, deliberately — see the
-`SmsClient` file comment — so there is no path to a first message.
+The SMS pane could reply into a thread the phone already knew about and could not address a number
+that had none. `SmsClient.sendNew`, the compose surface (`#sms-new`, `#sms-new-to`,
+`#sms-new-body`, `#sms-new-send`) and the phone-side recipient check shipped on 2026-08-31, and
+**the explicit-address path is verified on hardware** — step 71: the Mac addressed `9850850263`, the
+phone answered `sms.send delivered (to 1 verified recipient(s))`, and the pane opened the thread the
+*phone* named rather than one it invented.
 
-**Fix direction:** a compose surface that names a recipient, which means `sms.send` growing an
-explicit-address form in `docs/protocol.md` and a phone-side check that the address is real.
+**What is still open is the half the name describes: starting a conversation that does not exist.**
+`9850850263` turned out to carry thread **593** already (`message_count=2`, one message from 2021),
+so the send merged into it. That was known before the send and accepted deliberately — but it means
+the run exercised *merge*, not *create*.
+
+**Fix direction: none pending in the code — what is missing is evidence.** Do not write more code
+against this. Send one message from the Mac to a number that has **no** thread on this handset,
+having first proved the absence: `content query --uri content://mms-sms/conversations` **and**
+`content://sms` for the address, since orphaned `sms` rows can outlive a deleted conversation and a
+clean conversations view alone is the lookalike. The pass is a **new** `thread_id` appearing that
+was in neither read, and the pane opening it.
 
 **Wrong fix to avoid:** letting the Mac pass a bare address into the existing `sms.send` and having
-the phone trust it. That is the leniency defect 29 forbids: the two sides would disagree about the
-shape forever while appearing to work. Whatever ships, `docs/protocol.md` changes first.
+the phone trust it — the leniency defect 29 forbids. Already avoided; `sendNew` is a distinct form
+in `docs/protocol.md` and the phone verifies the recipient. Recorded so it is not undone.
 
-Pairs naturally with 32 and 39 — all three are the Phase 4 SMS sitting.
+**Second wrong move, and this run nearly made it:** accepting a send to a number that already has a
+thread as proof of thread *creation*. It succeeds, it draws, and it looks identical to a pass.
 
 ### 32 — the SMS pane cannot reach a conversation older than its first page · **deferred**
 
@@ -725,3 +739,49 @@ across four pages, every entry distinct, the pager never stalling.
 **Fix direction if it regresses:** do not reach for a larger page size. Read the cursor's own
 behaviour first — one probe with a `before` above the newest row distinguishes a dead selection
 from a wrong value in a single call.
+
+---
+
+## Found during step 71, 2026-08-31
+
+### 51 — the after-send retry reports a loss it does not suffer · **open**
+
+`pushNewestSent` has two triggers: the bounded look after our own `sms.send`
+(`PROVIDER_LOOKS = 3` at `PROVIDER_LOOK_DELAY_MS = 150`, so ~300 ms) and the `ContentObserver` on
+the sent mailbox that defect 44 added. On this device the after-send trigger **has never won** —
+2 of 2 Mac-origin sends in step 71 — because the provider wrote the row at 1140 ms and 699 ms. The
+observer carried both, ~700 ms later, and the Mac drew both messages.
+
+Nothing is lost. What is wrong is what the phone says about it:
+
+```
+14:46:05.298 E sms.sent NOT pushed after 3 lookups following a send — the Mac's thread will be
+               missing the message it just sent — 1 pushed / 1 dropped since start
+14:46:06.097 I sms.sent pushed after 1 lookup(s) (provider change, row 22215) — 2 pushed / 1 dropped
+```
+
+Two faults, both already named elsewhere in this file:
+
+1. **The `e:` line asserts an outcome it does not decide** — the thread was *not* missing the
+   message, twice, and defect 39's drawn evidence in `docs/testing.md` is that same message being
+   drawn. This is **defect 40** exactly, one feature over, and at `E` rather than `I`.
+2. **The `dropped` counter counts deliveries.** `3 pushed / 2 dropped` reads as a two-in-five loss
+   rate over a run that lost nothing. `CLAUDE.md` requires a count to carry a denominator that gives
+   it meaning; here the denominator exists and is **wrong**, which manufactures a failure instead of
+   hiding one — the harder version of the same mistake.
+
+**Fix direction:** two triggers are two questions and need two counters. "Did the after-send look
+find the row in time?" is a tuning fact about one optimistic path and belongs on an `i:` line with
+its own found/not-found tally, saying that the observer will carry it. "Was this row ever pushed?"
+is the only question whose answer is a lost message, `lastSentId` already holds it, and the `e:`
+line belongs there — raised when a row has been seen by no trigger, not when one of two was slow.
+
+**Wrong fix to avoid:** raising `PROVIDER_LOOKS` or `PROVIDER_LOOK_DELAY_MS` until the after-send
+path wins. That is the delay-before-re-read shape this project has now rejected five times (36
+shipped it, 37 declined it, 39 named it, the `sms.sent` design refused it, and here it is again
+wearing a retry budget). It substitutes a plausible value tuned to one device's provider latency for
+a fact the code already has. **The message already arrives — the reporting is what is broken**, and
+tuning the timer would make the misleading line rarer without making it true.
+
+**Not user-visible, and it does not reopen 39 or 44**, both of which are closed on drawn evidence.
+It is a defect in the evidence the next person reads.

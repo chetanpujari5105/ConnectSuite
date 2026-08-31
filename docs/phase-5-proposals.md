@@ -21,8 +21,12 @@ it, kept separate so it can be read, disagreed with, and reverted on its own.
 > own record in `docs/defects.md`, because it shares a symptom with 39 and would otherwise be folded
 > into it and half-fixed.
 >
-> **Still gated on step 70.** Phase 5's first act claims `bulkChannelSink`, and a failed ring must
-> not be debugged through a transport change.
+> **The gate is lifted, 2026-08-31.** Step 70 ran and passed, step 71 closed the SMS work, and
+> **Phase 4 is closed** — see `docs/phase-4-closeout.md`. Phase 5 may open.
+>
+> **Item 1 of the order below has already shipped, inside Phase 4.** `sms.sent` exists, and 39, 44,
+> 30 (explicit-address half), 32 and 50 are closed on hardware. **Phase 5's first slice is therefore
+> item 2, Bug 6's caps.** §1 is kept below as the record of the decision, not as work.
 
 Four pieces, all prose:
 
@@ -419,12 +423,18 @@ so it is counted, rather than a raw id being interpolated somewhere that never a
 
 ## Status of these proposals
 
-None of this is implemented, and none of it should be until step 70 has run and Phase 4 is closed.
-The order inside Phase 5, if the proposals survive review:
+**Updated 2026-08-31, after Phase 4 closed.** §1 is **implemented and proven**; §§2-4 are not
+implemented and remain prose.
 
-1. `sms.sent` — it closes **39 and 44 together**, and 44 is the half that cannot be fixed on the Mac.
-   30 and 32 are Mac-side and can proceed in parallel. The cursor question is already answered above.
-2. Bug 6's caps, before `fs.*` has a first consumer.
+The order inside Phase 5:
+
+1. ~~`sms.sent` — closes **39 and 44 together**.~~ **DONE, in Phase 4.** Shipped 2026-08-31 and
+   proven on hardware in step 71: 39 and 44 closed, 30's explicit-address half closed, 32 and 50
+   closed. The prediction in §1 held — only one of the three needed the wire. Two things it left
+   behind: **`before` is still a bare millisecond timestamp on all three pagers** (the `beforeId`
+   decision in §1 is unimplemented and is Phase 5's first protocol change if paging is touched), and
+   **defect 51**, a reporting fault in the after-send retry.
+2. **Bug 6's caps — this is now the first slice.** Before `fs.*` has a first consumer.
 3. The package-id rule written into `docs/protocol.md` as `fs.*` and `media.*` are specified.
 4. The transfer implementation, borrowing v1's offsets, adaptive chunking, streaming digest and
    offer/accept, and none of its transport.
