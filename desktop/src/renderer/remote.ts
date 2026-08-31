@@ -131,8 +131,10 @@ class RemoteView {
       return;
     }
 
-    const app = this.state.appName ?? this.state.package ?? 'an app';
-    this.note.textContent = `${this.state.playing ? 'Playing' : 'Paused'} in ${app}.`;
+    // Composed in shared/appLabel.ts, never here. Defect 46: this line interpolated
+    // `appName ?? package ?? 'an app'`, so a package with no launcher icon produced
+    // "Paused in com.spotify.music." — a raw handle as the only thing a person reads.
+    this.note.textContent = remoteNowPlayingNoteOf(this.state);
 
     this.body.appendChild(this.nowPlaying());
     this.body.appendChild(this.scrubber());
@@ -185,7 +187,7 @@ class RemoteView {
     if (!seekable) {
       bar.title =
         duration > 0
-          ? `${this.state.appName ?? 'This app'} does not allow seeking from a remote.`
+          ? remoteSeekDisabledTitleOf(this.state)
           : 'This track has no length the phone can report, so there is nothing to seek within.';
     }
     bar.addEventListener('pointerdown', () => {
@@ -244,8 +246,9 @@ class RemoteView {
     button.dataset.action = action;
     button.disabled = unsupported;
     if (unsupported) {
-      const app = this.state.appName ?? 'This app';
-      const why = `${app} does not allow skipping to ${what} from a remote.`;
+      // Was `appName ?? 'This app'`, which is defect 46's *other* wrong fix: safe, and it throws
+      // away the only identifying information there is. The handle appears; it is never alone.
+      const why = remoteSkipTitleOf(this.state, what);
       button.title = why;
       const spoken = document.createElement('span');
       spoken.className = 'visually-hidden';

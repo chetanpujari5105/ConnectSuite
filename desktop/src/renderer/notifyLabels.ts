@@ -57,15 +57,28 @@ interface AppLabel {
 }
 
 /**
+ * The shared resolver, reached the one way that works in both places this file runs.
+ *
+ * In the browser `shared/appLabel.js` is a plain `<script>` loaded before this one, so its function
+ * declarations are already on `globalThis`. Under `node --test` there is no script tag, so it is
+ * `require`d. Same file either way — this is an indirection, not a second implementation, which is
+ * the whole point of defect 46's fix.
+ */
+const sharedLabels: { resolveAppLabel: typeof resolveAppLabel } =
+  typeof module !== 'undefined'
+    ? require('../shared/appLabel')
+    : (globalThis as unknown as { resolveAppLabel: typeof resolveAppLabel });
+
+/**
  * The app's display label, and whether it is really a package id wearing a name's clothes.
  *
  * A blank `appName` counts as a fallback rather than as an empty label: a row headed by nothing at
  * all is the group-summary bug in a different costume, and the package is more use than a gap.
  */
 function appLabelOf(one: LabelSource): AppLabel {
-  const name = one.appName.trim();
-  if (name.length === 0) return { label: one.package, isPackageFallback: true };
-  return { label: name, isPackageFallback: name === one.package };
+  // The package is this pane's `whenUnknown`: a notification always carries one, so the generic
+  // branch is unreachable here and the handle is always the honest floor.
+  return sharedLabels.resolveAppLabel(one, one.package);
 }
 
 /**

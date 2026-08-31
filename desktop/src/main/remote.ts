@@ -10,6 +10,13 @@ import { debugSwitches } from './debugSwitches';
 import type { LinkClient } from './link';
 import { log } from './logger';
 
+// `shared/appLabel.ts` is a plain script, not a module — it has to be loadable by a `<script>` tag
+// in the renderer, which has no module loader. So it is reached by `require` here rather than by
+// `import`, and its types come from the same file's project-global declarations. See its docblock.
+const sharedLabels = require('../shared/appLabel') as {
+  remoteUnsupportedReasonOf: typeof remoteUnsupportedReasonOf;
+};
+
 /**
  * The Mac's half of the media remote: one state the phone pushes, and one verb.
  *
@@ -87,6 +94,11 @@ export class RemoteClient extends EventEmitter {
     this.state = next;
     this.receivedAtMs = Date.now();
     this.pushes += 1;
+    // The raw package here is deliberate and must not be "fixed" into a marked phrase. CLAUDE.md's
+    // rule is that a package id may appear as a machine handle, never as the only thing a *user*
+    // reads — and a rotating log file is the machine-handle case, where the id is more use than a
+    // label. `shared/appLabel.ts`'s enumeration covers user-visible strings and deliberately does
+    // not cover this line.
     log.info(
       'remote',
       next.active
@@ -182,9 +194,10 @@ export class RemoteClient extends EventEmitter {
    * asked to stop making it.
    */
   private unsupportedReason(action: string): { reason: string; log: string } | null {
-    const app = this.state.appName ?? this.state.package ?? 'That app';
+    // The sentence is composed in shared/appLabel.ts, which is also where the renderer's three get
+    // composed — one implementation, and one enumeration a test can assert over. Defect 46.
     const no = (what: string, log: string) => ({
-      reason: `${app} does not allow ${what} from a remote, so nothing was sent.`,
+      reason: sharedLabels.remoteUnsupportedReasonOf(this.state, what),
       log,
     });
     if (action === RemoteAction.NEXT && this.state.canSkipNext === false) {

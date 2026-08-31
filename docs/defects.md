@@ -59,7 +59,7 @@ own heading there, and its own row here.
 | **43** | A call with no number logged as `from ,` on the Mac — the string defect 35 is named for | **closed** | `calls.test.ts`, 2026-08-29 | see below |
 | **44** | A message sent on the phone never reaches the Mac — no observer on outgoing rows | **open** | — | see below |
 | **45** | `EXTRA_INCOMING_NUMBER` arrives too late for the card, so no inbound call had a number | **closed** by option 4 | **step 70**, 2026-08-31 — 7 of 7 episodes corrected, 16–535 ms | see below |
-| **46** | The media remote puts a raw package id in a sentence — defect 28's class, on the Mac, in two places | **open** | enumerated 2026-08-30 | see below |
+| **46** | The media remote puts a raw package id in a sentence — and drops it entirely in two more | **closed** | `shared/appLabel.ts` + 8 fixtures shown to fail, live in the running app, 2026-08-31 | see below |
 | **47** | ~~A live call card the Mac cannot correct~~ — **WITHDRAWN.** The card was true; `c13` was a 68-minute WhatsApp video call | **withdrawn**, not a defect | `dumpsys telecom`, 2026-08-31 | see below |
 | **48** | Two step-70 locks at two paths excluded nothing — each watcher took its own and both armed | **closed** | reconciled to one path; exclusion fixtures, 2026-08-30 | see below |
 | **49** | The exclusion's refusal overstated its own evidence — one CDP client was counted as two | **closed** | `lsof` fixture and three controls, 2026-08-30 | see below |
@@ -446,7 +446,64 @@ The family resemblance: **each substitutes a plausible value for a known one.** 
 the code can name the fact it is waiting for. If it can, wait for that fact; if it cannot, the fix is
 in the wrong place.
 
-### 46 — the media remote puts a raw package id in a sentence · **open**
+### 46 — the media remote puts a raw package id in a sentence · **closed 2026-08-31**
+
+**Fixed by `desktop/src/shared/appLabel.ts`** — one resolver, one marking convention, one
+enumeration. Live in the running app, read back over CDP:
+
+```
+Paused in com.spotify.music (app name unavailable).
+com.spotify.music (app name unavailable) does not allow seeking from a remote.
+com.spotify.music (app name unavailable) does not allow skipping to the next track from a remote.
+…                                                                        (7 strings, all marked)
+Playing in Spotify.                                                       (resolved: nothing marked)
+```
+
+**Enumerating found five occurrences where the record, written from a screenshot of two, said
+three — and it changed the shape of the fix.** Four are user-visible and *all four* were wrong, in
+two opposite ways:
+
+| Site | Was | Produced |
+|---|---|---|
+| `renderer/remote.ts` now-playing note | `appName ?? package ?? 'an app'` | "Paused in com.spotify.music." — the handle alone |
+| `main/remote.ts` refusal reason | `appName ?? package ?? 'That app'` | the same, in a sentence the pane displays |
+| `renderer/remote.ts` seek title | `appName ?? 'This app'` | "This app does not allow seeking…" — the handle **thrown away** |
+| `renderer/remote.ts` skip title | `appName ?? 'This app'` | the same |
+
+The last two were counted as the *correct* convention when this defect was filed. They are not:
+`appName ?? 'an app'` is one of the two wrong fixes this record already named — it makes the
+sentence safe and discards the only identifying information there is, so nothing tells anyone the
+resolution failed. Defect 28's lesson landed a third time: **grep for every package name reaching a
+string, not the ones a screenshot showed you.**
+
+The fifth occurrence, `main/remote.ts:100`, is a **log line** and was deliberately left as a raw
+package id, with a comment saying so. The rule is that a package id may appear as a machine handle,
+never as the only thing a *user* reads; a rotating log file is the machine-handle case, and the
+enumeration deliberately does not cover it.
+
+**Where it lives, and why it is not a copy.** `src/shared/` is the electron-free layer, and this
+seam had to be reachable from both sides of one defect — `main/remote.ts` is a module,
+`renderer/remote.ts` is a plain `<script>` with no module loader. So it is written in the renderer's
+plain-script shape with a `module.exports` shim: loadable by a `<script>` tag, `require`-able from
+main, `require`-able from `node --test`. One implementation, three consumers.
+
+**`notifyLabels.ts` now delegates to it** rather than holding a second copy of the same six lines —
+which the compiler insisted on, since plain scripts share one global scope and two definitions of
+`appLabelOf` collide rather than merely duplicate. That closes defect 28's family at every known
+site with one implementation underneath.
+
+**Proven by fixtures, shown to fail.** `shared/appLabel.test.ts` asserts over
+`remoteUserVisibleStrings` — the whole enumeration — and carries a count assertion and a
+discrimination control. Reintroducing `appName ?? package ?? 'an app'` and `appName ?? 'This app'`
+turns three tests red; both were put back. Mac suite 112 → **120**.
+
+**The original record follows, kept unedited because its miscount is the finding.** It was
+written from what a screenshot showed and said three sites with two wrong; there were five, four of
+them user-visible and all four wrong.
+
+---
+
+
 
 Found by running defect 28's own rule rather than by a screenshot: *grep for every package name
 reaching a string, not the ones a screenshot showed you*. Defect 28 is closed and its guard is
