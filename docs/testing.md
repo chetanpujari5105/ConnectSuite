@@ -7947,3 +7947,133 @@ feature needed one — true until this slice and due for deletion the moment it 
 asserts the two lists agree in both directions, so it keeps its meaning instead of becoming an
 exception. Taken red first by dropping `media.original` from `MediaFeature.handledTypes`: three
 assertions failed, naming the missing verb, the unserved channel, and the drifted set.
+
+## Slice 4 — resume, built digest-first · 2026-09-01
+
+**Resume has been exercised rather than specified**, for the first time. The order was deliberate:
+the digest before the receiver, because it is the one fault in this path that destroys a good file
+and reports corruption while doing it.
+
+### 1. The resumed digest, red before green
+
+`src/shared/transferDigest.ts` is the rule as an object rather than a comment: `primeFrom` is a call
+that has to be made, so a resumed transfer that skips it fails a test instead of a user's file. Six
+tests, and the shape of them matters — the assertion is **a resumed transfer's digest equals a
+whole-file digest of the same source**, never that the transfer reported success, which is the thing
+under test.
+
+Red first, with the bug written as it would really appear (priming silently does nothing):
+
+```
+✖ a resumed digest equals a whole-file digest of the same source
+    actual: 'c2afaa280bc74b0e103dc06501c126b4858c04b8117f094f5dbb83430114de1e'
+✖ a partial shorter than the offset is refused rather than digested
+```
+
+`c2afaa280bc7…` is the digest of the **tail only** — the exact wrong answer the spec describes, and
+the one that would have been reported as `CHECKSUM_MISMATCH` on a byte-perfect file.
+
+Three of the six are guards against lookalikes rather than the happy path: a partial *shorter* than
+the offset is refused rather than digested (digesting what is there gives a wrong digest that looks
+correctly computed, and the blame lands on the transfer); priming *after* bytes have arrived is
+refused; and `the order matters, demonstrated rather than asserted` hashes the same two pieces
+backwards to show that "covers every byte" is not sufficient — it has to cover them in the file's
+order.
+
+### 2. The receiver half, and the three states on disk
+
+Bytes land in `name.part` and are renamed only after the digest verdict. `src/shared/transferFiles.ts`
+owns the two suffixes and the sidecar text; `transferFiles.test.ts` holds the enforceable half of the
+convention.
+
+**The `.part` enforcement question, answered honestly rather than stretched.** The spec split it into
+three claims and the code now matches that split exactly:
+
+| The claim | What enforces it | Where |
+|---|---|---|
+| The suffix is declared in one place per side | A test walking every `.ts` in `src/` and failing on an inline `'.part'` or `'.failed'`, with a control proving the walk can see the literal where it exists | `transferFiles.test.ts` — **enforced** |
+| The receiver never leaves a bare truncated file at the final name | The write path opens `partPathFor(destination)` and the only `rename` is after the digest verdict | code, and the hardware run below — **enforced** |
+| Nothing *else on the phone* leaves a `.part` in a folder we can see | **Nothing, and nothing can.** DCIM and Documents are shared with every downloader on the device | **recorded, not enforced** |
+
+The third row is met the only way it can be: not by constraining other software, which is impossible,
+but by making our own code refuse to act on a filename it has no record of. `isResumable` takes the
+recorded length and returns `another app's file` when there is none — so a stray `.part` is left
+alone and the transfer starts over, rather than our bytes being appended to a stranger's partial.
+That is what keeps the convention a display convenience instead of something load-bearing.
+
+### 3. Resume on hardware — and the defect the first run found
+
+**The first run did not resume, and the reason is worth more than the run.** A 1.4 GB video,
+interrupted at 705,167,360 bytes:
+
+```
+firstHalf.bytes 705167360      partBytes 704643072      offsetOffered 0
+```
+
+Two chunks — 524,288 bytes — were still in the write stream's buffer when `fail()` resolved. The
+caller stat'd the `.part` while it was still being written, recorded a length that then grew, and on
+the next attempt found a partial **longer** than its own record. `isResumable` refused, correctly,
+and the whole gigabyte was re-fetched.
+
+**The guard turned a corruption into a slow success**, which is the right trade and not a reason to
+leave the race in place: without that length check the receiver would have appended to a partial
+whose true length it did not know, and produced a file whose digest could never match. Fixed by
+awaiting the flush before the interruption resolves.
+
+**The second run, after the fix — a 52,437,344 byte video, interrupted at half:**
+
+```
+phone  t-8-25766 failed after 33030144 of 52437344 bytes
+mac    t-8-25766 interrupted after 26476544 of 52437344; the partial is kept at …mp4.part
+mac    t-9-26132 resuming at 26476544; the digest was primed over the bytes already on disk
+phone  t-9-26132 resuming at 26476544 of 52437344; the digest covers the skipped bytes too
+phone  t-9-26132 sent 52437344 of 52437344 bytes, sha256=1b94fea1269a…
+mac    t-9-26132 pulled 52437344 bytes (resumed from 26476544), sha256=1b94fea1269a…
+```
+
+| Reading | Value |
+|---|---|
+| `.part` length after the interruption | 26,476,544 |
+| Offset the resumed attempt was offered | 26,476,544 — **matches exactly** |
+| Bytes carried by the second socket | 25,960,844 in 101 frames — **half the file** |
+| Phone's digest (whole file, skipped bytes included) | `1b94fea1269a…` |
+| Mac's digest (primed from the partial, then appended) | `1b94fea1269a…` |
+| Independent digest of what landed on disk | `1b94fea1269a…` |
+
+**Three independently computed whole-file digests agree over a file that moved in two pieces across
+two sockets, where the second socket carried only half the bytes.** That is the claim the spec asked
+for, and it is the first time any of it has been observed rather than argued.
+
+Note the phone's own line — `the digest covers the skipped bytes too` — is the sender's mirror
+obligation, and it was already correct from slice 3. What did not exist until now was the receiver's
+half, which is where the failure actually bites.
+
+### The probe, and why it is not a second client
+
+Resume cannot be exercised without an interruption, and an interruption cannot be arranged from
+outside a socket `BulkClient` owns. The alternative was a standalone script speaking the protocol
+itself — **defect 50's shape exactly**: a second client, differing from the shipping one somewhere,
+verifying a mechanism the product does not use.
+
+So the *stimulus* is injected (`interruptAfterBytes`) and the *mechanism* stays the product's:
+`photos.original` for the ticket, `BulkClient.pull` for both halves, `TransferDigest` for the digest.
+The handler is registered only when `!app.isPackaged`, beside `debugSwitches`.
+
+### What is still not proven
+
+- **The checksum-mismatch branch has never run**, and cannot yet: `media.original` acks
+  `sha256: null`, so `expectedSha256` is always null and the comparison is skipped. The `.failed`
+  sidecar's *text* is unit-tested; the code path that writes it awaits `fs.transfer.begin`, which is
+  the first thing to agree a digest in advance. Recorded rather than claimed.
+- **Push.** Nothing writes to the phone over this channel. The receiver half built here is the Mac's;
+  the phone's receiver is `fs.*`.
+- **The frame-cap refusal path is still unit-test-only, and this slice did not close it.** It was
+  looked for: every frame in every transfer here was legal, and the only way to produce an over-cap
+  frame on a real socket would be to build a peer that deliberately emits one — which is a second
+  client again, verifying a refusal the product's own writer refuses to produce. Left recorded as
+  **accept-path proven, refusal-path unit-tested**, rather than stretched for.
+
+## Suite
+
+Mac **161** tests (was 147), 0 failures, `tsc --noEmit` clean — 6 for the resumed digest, 8 for the
+on-disk convention. Phone unchanged at **204**.

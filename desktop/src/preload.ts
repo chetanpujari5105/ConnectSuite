@@ -186,6 +186,10 @@ contextBridge.exposeInMainWorld('connect', {
   mediaThumbs: (
     options: { ids: string[]; maxEdge?: number },
   ): Promise<PhoneResult<Array<[string, string]>>> => ipcRenderer.invoke('media-thumbs', options),
+  /** Debug builds only: exercises resume end to end. Absent from a packaged build's handlers. */
+  debugResumeProbe: (options: { id: string }): Promise<unknown> =>
+    ipcRenderer.invoke('debug-resume-probe', options),
+
   /** Pulls one photo at full size over the bulk channel and answers with where it landed. */
   mediaOriginal: (
     options: { id: string },

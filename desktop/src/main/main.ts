@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor, Tray, Menu } from 'electron';
-import { networkInterfaces } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import QRCode from 'qrcode';
@@ -7,7 +7,10 @@ import { ErrorCode, MessageType, type ConnectionStatus } from '../shared/protoco
 import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ContactsClient } from './contacts';
+import { createHash } from 'node:crypto';
+import { promises as fsp } from 'node:fs';
 import { BulkClient } from './bulk';
+import { partPathFor } from '../shared/transferFiles';
 import { PhotosClient } from './photos';
 import { NotificationClient } from './notifications';
 import { RemoteClient } from './remote';
@@ -783,6 +786,80 @@ ipcMain.handle(
 );
 
 ipcMain.handle('media-original', (_event, options: { id: string }) => photos.original(options.id));
+
+/**
+ * The resume probe — **debug builds only**, registered beside `debugSwitches` for the same reason.
+ *
+ * It exists to exercise resume rather than specify it. Everything it drives is the product's own
+ * path: `photos.original` for the ticket, `BulkClient.pull` for both halves, and the same
+ * `TransferDigest` the receiver uses. What it injects is an interruption, which is a stimulus and
+ * not a mechanism — a standalone script speaking the protocol itself would have been a second
+ * client, which is the thing defect 50's rule forbids.
+ *
+ * The reading it produces: the `.part` exists and its length is exactly what the resumed pull is
+ * offered as `offset`, and the resumed transfer's digest equals a whole-file digest of the source.
+ */
+if (!app.isPackaged) {
+  ipcMain.handle('debug-resume-probe', async (_event, options: { id: string }) => {
+    if (!link?.isConnected() || !bulk) return { ok: false, reason: 'not connected' };
+    const host = link.status().address;
+    const token = link.token();
+    if (!host || !token) return { ok: false, reason: 'no live session' };
+
+    const ticket = await link.request(MessageType.MEDIA_ORIGINAL, { id: options.id }, 10_000);
+    const payload = (ticket.payload ?? {}) as Record<string, unknown>;
+    const transferId = String(payload.transferId ?? '');
+    const size = Number(payload.size ?? 0);
+    const name = String(payload.name ?? 'probe.bin');
+    const destination = join(tmpdir(), `connectsuite-resume-${Date.now()}-${name}`);
+
+    // Half of it, then the socket dies. The receiver takes its ordinary interruption path.
+    const first = await bulk.pull({
+      host,
+      token,
+      transferId,
+      destination,
+      expectedBytes: size,
+      interruptAfterBytes: Math.floor(size / 2),
+    });
+
+    const part = partPathFor(destination);
+    const partBytes = await fsp.stat(part).then((s) => s.size).catch(() => null);
+
+    // The second half needs its own ticket: one transferId, one bulk connection, and the first was
+    // consumed when the socket claimed it.
+    const ticket2 = await link.request(MessageType.MEDIA_ORIGINAL, { id: options.id }, 10_000);
+    const payload2 = (ticket2.payload ?? {}) as Record<string, unknown>;
+    const second = await bulk.pull({
+      host,
+      token,
+      transferId: String(payload2.transferId ?? ''),
+      destination,
+      expectedBytes: size,
+      recordedBytes: partBytes,
+    });
+
+    // The control this whole probe turns on: the digest of what landed, computed independently of
+    // the transfer, against the digest the resumed receiver reported.
+    const onDisk = await fsp
+      .readFile(destination)
+      .then((buffer) => createHash('sha256').update(buffer).digest('hex'))
+      .catch(() => null);
+
+    return {
+      ok: true,
+      size,
+      firstHalf: { ok: first.ok, bytes: first.bytes, reason: first.reason },
+      partBytes,
+      offsetOffered: second.resumedFrom ?? 0,
+      offsetMatchesPart: partBytes !== null && second.resumedFrom === partBytes,
+      second: { ok: second.ok, bytes: second.bytes, verified: second.verified, sha256: second.sha256 },
+      wholeFileDigest: onDisk,
+      digestsAgree: onDisk !== null && onDisk === second.sha256,
+      destination,
+    };
+  });
+}
 
 ipcMain.handle('call-current', () => calls.currentCall());
 ipcMain.handle('call-log', (_event, options: { limit?: number; before?: number } = {}) =>

@@ -39,8 +39,8 @@ Mac actually attached. Do not grep the phone log for `Listening on`; it is writt
 `yiaddr = 10.108.253.92, router 10.108.253.63` — the correct one. Two reads of the same fact
 disagreeing, with the less obvious one right.
 
-Baselines, as of Phase 5 slice 3: phone **204** tests (`core` 77, `input-module` 44,
-`sync-module` 52, `mirror-module` 31), Mac **147** tests, `tsc --noEmit` clean. The figure this file
+Baselines, as of Phase 5 slice 4: phone **204** tests (`core` 77, `input-module` 44,
+`sync-module` 52, `mirror-module` 31), Mac **161** tests, `tsc --noEmit` clean. The figure this file
 carried at the close of Phase 4 — *189 (67 `sync-module` + 122 `core`)* — does not reconcile with the
 tree by either counting method and has been corrected rather than restated; see the note at the end
 of `docs/testing.md`. Run Gradle with `--rerun-tasks` when you intend a *run* — an
@@ -88,6 +88,35 @@ not implement an alternative without saying why the recorded reasoning is wrong.
    link violates the contract.
 
 ---
+
+## Slice 4 — resume, built digest-first — **done and exercised on hardware, 2026-09-01**
+
+**Resume works and has been observed.** A 52 MB video interrupted at 26,476,544 bytes: the `.part`
+held exactly that, the resumed attempt was offered exactly that as its offset, the second socket
+carried only half the file, and **three independently computed whole-file digests agree** — the
+phone's, the Mac's resumed one, and an independent hash of what landed. `docs/testing.md` →
+**Slice 4**.
+
+Built in the order the failure demands: the digest first, red before green
+(`src/shared/transferDigest.ts`, six tests), then the receiver's three on-disk states
+(`src/shared/transferFiles.ts`), then the hardware run.
+
+**The first hardware run did not resume, and that finding is the useful part**: `fail()` resolved
+before the write stream flushed, so a caller stat'd a `.part` that was still growing and recorded a
+length that then changed. `isResumable` refused — correctly — and re-fetched a gigabyte. Fixed by
+awaiting the flush. The guard turning a corruption into a slow success is the trade working.
+
+### Still open in the transfer path
+
+1. **The checksum-mismatch branch has never run.** `media.original` acks `sha256: null`, so nothing
+   is compared. The `.failed` sidecar's text is tested; the branch that writes it needs
+   `fs.transfer.begin`, which is the first thing to agree a digest in advance.
+2. **Push.** The receiver built here is the Mac's. The phone's receiver is `fs.*`.
+3. **Whether a pending `MediaStore` item can be resumed across process death** — still unproven, still
+   load-bearing for the default push destination.
+4. **The frame-cap refusal path stays unit-test-only.** Looked for in this slice and not taken: the
+   only way to emit an over-cap frame on a real socket is a peer built to do it, which is a second
+   client verifying a refusal our own writer refuses to produce.
 
 ## Slice 3 — `media.original` and the Mac's first bulk client — **done, 2026-09-01**
 

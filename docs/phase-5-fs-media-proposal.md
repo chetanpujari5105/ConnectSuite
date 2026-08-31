@@ -509,6 +509,10 @@ v1 got this right — `skipBuffer` in `TransferManager` exists for exactly this 
 saying out loud that the sender has the mirror-image obligation on a `pull`: it seeks to `offset` to
 *send* from, while its own digest, if it is computing one, still covers the whole file.
 
+**Built and exercised on 2026-09-01, digest first** — `src/shared/transferDigest.ts`, red before
+green, then resume observed on hardware with three agreeing whole-file digests. See
+`docs/testing.md` → **Slice 4**. What follows is the requirement as it was written; it is met.
+
 **The test, and it is named here so it cannot be skipped:** transfer a file, interrupt it partway,
 resume it, and assert the digest the receiver computes equals a **whole-file digest of the same
 source** — not that the transfer reported success, which is the thing under test. Then **red
