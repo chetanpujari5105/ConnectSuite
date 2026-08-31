@@ -64,10 +64,24 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
 
-    <!-- ==== Storage for received files ==== -->
+    <!--
+      ==== Storage, and the photo browser ====
+
+      Two grants on Android 13+ and one below it, which is why CapabilityContract models photos as
+      permission *alternatives* rather than a flat any-of: READ_MEDIA_IMAGES alone satisfies a flat
+      any-of and leaves every video in `media.list` unreadable behind a green capability chip.
+
+      READ_EXTERNAL_STORAGE keeps its maxSdkVersion="32". The cap is not what was stopping photos —
+      the undeclared READ_MEDIA_* permissions were — and removing it would make
+      CapabilityPermissionTest.grantableToday() report this permission as grantable on Android 16,
+      where the system ignores it entirely. That would put the false reading inside the check that
+      exists to catch false readings.
+    -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
     <uses-feature
         android:name="android.hardware.wifi.direct"

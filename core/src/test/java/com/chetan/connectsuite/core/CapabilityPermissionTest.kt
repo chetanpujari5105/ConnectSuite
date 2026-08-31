@@ -3,6 +3,7 @@ package com.chetan.connectsuite.core
 import com.chetan.connectsuite.core.link.CapabilityContract
 import com.chetan.connectsuite.core.link.CapabilityContract.SpecialAccess
 import com.chetan.connectsuite.core.protocol.Capability
+import com.chetan.connectsuite.core.protocol.MessageType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -79,10 +80,10 @@ class CapabilityPermissionTest {
      * than an omission nobody noticed. Removing an entry here is part of building that phase.
      */
     private val notYetDeclared = mapOf(
-        Capability.PHOTOS to
-            "Phase 5 — the photo browser. READ_MEDIA_IMAGES is not declared, and the " +
-                "READ_EXTERNAL_STORAGE that is declared is capped at maxSdkVersion=32, so " +
-                "photos cannot be granted on any device running Android 13 or later.",
+        // Photos left this list on 2026-08-31, in the same commit that declared READ_MEDIA_IMAGES
+        // and READ_MEDIA_VIDEO — Phase 5 slice 2. The exemption and the declaration move together
+        // on purpose: an entry that outlives its reason is an exemption nobody re-reads, and the
+        // test above would stop asking the question this file exists to ask.
         Capability.MIC to "no phase; docs/protocol.md defines no mic.* messages at all",
     )
 
@@ -104,10 +105,14 @@ class CapabilityPermissionTest {
             contract.permissions.forEach { permission ->
                 if (!grantableToday(permission)) undeclared.add("$capability needs $permission")
             }
-            if (contract.permissionsAnyOf.isNotEmpty() &&
-                contract.permissionsAnyOf.none { grantableToday(it) }
+            if (contract.permissionAlternatives.isNotEmpty() &&
+                contract.permissionAlternatives.none { alt -> alt.all { grantableToday(it) } }
             ) {
-                undeclared.add("$capability needs one of ${contract.permissionsAnyOf}")
+                // `all`, not `any`: an alternative is satisfied only when every permission in it is
+                // declared. Photos' modern alternative needs images *and* video, and a check that
+                // accepted one of them would pass over exactly the gap this shape was introduced
+                // to close.
+                undeclared.add("$capability needs one of ${contract.permissionAlternatives}")
             }
         }
         assertEquals(
@@ -125,8 +130,8 @@ class CapabilityPermissionTest {
         notYetDeclared.forEach { (capability, why) ->
             val contract = CapabilityContract.contracts.getValue(capability)
             val allOfSatisfied = contract.permissions.all { grantableToday(it) }
-            val anyOfSatisfied = contract.permissionsAnyOf.isEmpty() ||
-                contract.permissionsAnyOf.any { grantableToday(it) }
+            val anyOfSatisfied = contract.permissionAlternatives.isEmpty() ||
+                contract.permissionAlternatives.any { alt -> alt.all { grantableToday(it) } }
             assertFalse(
                 "$capability is exempted as \"$why\" but its permissions are now grantable — " +
                     "remove it from notYetDeclared",
@@ -251,8 +256,11 @@ class CapabilityPermissionTest {
     }
 
     @Test
-    fun `photos accepts either storage permission, because only one can exist per device`() {
-        val modern = setOf("android.permission.READ_MEDIA_IMAGES")
+    fun `photos accepts either era's grant, because only one can exist per device`() {
+        val modern = setOf(
+            "android.permission.READ_MEDIA_IMAGES",
+            "android.permission.READ_MEDIA_VIDEO",
+        )
         val legacy = setOf("android.permission.READ_EXTERNAL_STORAGE")
         assertTrue(CapabilityContract.isPermitted(Capability.PHOTOS, modern, emptySet()))
         assertTrue(CapabilityContract.isPermitted(Capability.PHOTOS, legacy, emptySet()))
@@ -261,6 +269,91 @@ class CapabilityPermissionTest {
         // Still never advertisable: photos has no handlers. Both halves, always.
         assertTrue(
             CapabilityContract.advertisable(modern, emptySet(), emptySet(), false, false).isEmpty(),
+        )
+    }
+
+    @Test
+    fun `images alone does not permit photos, because the videos would be invisible`() {
+        // The gap the flat any-of had. `media.list` returns images and videos through one list —
+        // items carry `kind` and `durationMs` — so a grant that covers only half of it is a photo
+        // browser with every video unreadable, behind a chip that says the feature works. This is
+        // the calls-contract mistake, which is why it gets its own test rather than an assertion
+        // inside the one above: the two are different claims and only this one can fail alone.
+        val imagesOnly = setOf("android.permission.READ_MEDIA_IMAGES")
+        val videoOnly = setOf("android.permission.READ_MEDIA_VIDEO")
+        assertFalse(CapabilityContract.isPermitted(Capability.PHOTOS, imagesOnly, emptySet()))
+        assertFalse(CapabilityContract.isPermitted(Capability.PHOTOS, videoOnly, emptySet()))
+
+        // And the sentence a half-granted user reads names one switch, not two permissions.
+        assertEquals(
+            listOf("Photos and videos"),
+            CapabilityContract.missingPermissionsFor(Capability.PHOTOS, imagesOnly, emptySet()),
+        )
+    }
+
+    @Test
+    fun `photos is not implemented while the bulk channel is unserved`() {
+        // Defect 54. `media.original` resolves a MediaStore id to a transfer that runs on the bulk
+        // socket, so photos depends on that socket exactly as files does — and the contract did not
+        // say so. With all four handlers registered and nothing serving 42503, this returned true:
+        // the capability advertised, and `media.original` would have handed back a transferId for a
+        // socket nobody serves.
+        val allFour = setOf(
+            MessageType.MEDIA_BUCKETS,
+            MessageType.MEDIA_LIST,
+            MessageType.MEDIA_THUMB,
+            MessageType.MEDIA_ORIGINAL,
+        )
+        assertFalse(
+            "photos may not be advertised while nothing serves the bulk channel",
+            CapabilityContract.isImplemented(
+                Capability.PHOTOS,
+                registeredTypes = allFour,
+                videoServed = false,
+                bulkServed = false,
+            ),
+        )
+        assertTrue(
+            "with the bulk channel served and every handler registered, photos is implemented",
+            CapabilityContract.isImplemented(
+                Capability.PHOTOS,
+                registeredTypes = allFour,
+                videoServed = false,
+                bulkServed = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `slice 2 leaves photos unavailable, and that is the expected state`() {
+        // Stated positively so it reads as a decision rather than as an unfinished job: the three
+        // read verbs are the slice, `media.original` is slice 3, and `isImplemented` requires all
+        // four. The chip stays grey until the fourth verb and the bulk channel land together.
+        //
+        // The wrong fix, named here because it is the tempting one: loosening `containsAll` to a
+        // subset check to make the chip green. That is the one mechanism preventing a capability
+        // being advertised over dead verbs, and it exists because `calls` did exactly that.
+        val sliceTwo = setOf(
+            MessageType.MEDIA_BUCKETS,
+            MessageType.MEDIA_LIST,
+            MessageType.MEDIA_THUMB,
+        )
+        assertFalse(
+            CapabilityContract.isImplemented(
+                Capability.PHOTOS,
+                registeredTypes = sliceTwo,
+                videoServed = false,
+                bulkServed = true,
+            ),
+        )
+        assertEquals(
+            listOf(MessageType.MEDIA_ORIGINAL),
+            CapabilityContract.missingFor(
+                Capability.PHOTOS,
+                registeredTypes = sliceTwo,
+                videoServed = false,
+                bulkServed = true,
+            ),
         )
     }
 

@@ -89,8 +89,15 @@ object CapabilityContract {
         "android.permission.CALL_PHONE" to "Phone",
         "android.permission.ANSWER_PHONE_CALLS" to "Phone",
         "android.permission.READ_CONTACTS" to "Contacts",
-        "android.permission.READ_MEDIA_IMAGES" to "Photos",
-        "android.permission.READ_EXTERNAL_STORAGE" to "Photos",
+        // All three are one switch on the screen the user opens, which is why they share a label.
+        // Android 13+ shows "Photos and videos" and covers READ_MEDIA_IMAGES and READ_MEDIA_VIDEO
+        // with it; below 13 the same access is READ_EXTERNAL_STORAGE, which some OEMs label
+        // "Storage" or "Files and media". Naming the modern switch for all three is a deliberate
+        // approximation on the older devices: telling them apart needs Build.VERSION, which this
+        // object stays free of so it can be tested on a plain JVM.
+        "android.permission.READ_MEDIA_IMAGES" to "Photos and videos",
+        "android.permission.READ_MEDIA_VIDEO" to "Photos and videos",
+        "android.permission.READ_EXTERNAL_STORAGE" to "Photos and videos",
         "android.permission.RECORD_AUDIO" to "Microphone",
     )
 
@@ -105,17 +112,26 @@ object CapabilityContract {
      * @param permissions runtime permissions that must **all** be granted. Every verb in
      *   [requests] must be covered here: a capability advertised on a subset of the permissions
      *   its own messages need is a promise the OS will break.
-     * @param permissionsAnyOf permissions where **one** is enough, because the platform offers
-     *   different names for the same access at different API levels. Photos is the only case:
-     *   `READ_MEDIA_IMAGES` on API 33+ and `READ_EXTERNAL_STORAGE` below it, of which exactly one
-     *   can ever be granted on a given device. Modelled as any-of rather than with a version check
-     *   so this object stays free of `Build.VERSION` and testable on a plain JVM.
+     * @param permissionAlternatives complete alternative permission sets, of which **one** must be
+     *   granted **in full**. The platform offers different names for the same access at different
+     *   API levels, and — this is the part a flat any-of could not say — an alternative can need
+     *   *more than one* permission. Photos is the case: API 33+ split visual media into
+     *   `READ_MEDIA_IMAGES` **and** `READ_MEDIA_VIDEO`, two separate grants, while API 32 and below
+     *   have the single `READ_EXTERNAL_STORAGE`. Modelled as alternatives rather than with a
+     *   version check so this object stays free of `Build.VERSION` and testable on a plain JVM.
+     *
+     *   It was a flat `permissionsAnyOf: Set<String>` until 2026-08-31, holding
+     *   `{READ_MEDIA_IMAGES, READ_EXTERNAL_STORAGE}` — which is satisfied by images alone, on a
+     *   phone where `media.list` returns `kind:"video"` items with a `durationMs`. That is the
+     *   calls-contract mistake exactly: the chip goes green with part of the feature dead, this
+     *   time by the OS rather than by a missing handler. The type changed rather than the value so
+     *   that every call site had to be revisited instead of quietly inheriting the old meaning.
      * @param specialAccess access granted in Settings rather than by a permission dialog.
      */
     data class Contract(
         val requests: Set<String>,
         val permissions: Set<String> = emptySet(),
-        val permissionsAnyOf: Set<String> = emptySet(),
+        val permissionAlternatives: Set<Set<String>> = emptySet(),
         val specialAccess: SpecialAccess? = null,
         val needsVideoChannel: Boolean = false,
         val needsBulkChannel: Boolean = false,
@@ -214,14 +230,24 @@ object CapabilityContract {
                 MessageType.MEDIA_THUMB,
                 MessageType.MEDIA_ORIGINAL,
             ),
-            // Any-of, not all-of: exactly one of these can be granted on a given device, and which
-            // one depends on the API level. Neither is declared in the manifest yet, so photos is
-            // still permanently un-permitted — that belongs to Phase 5, and the manifest test
-            // knows about it by name rather than by silence.
-            permissionsAnyOf = setOf(
-                "android.permission.READ_MEDIA_IMAGES",
-                "android.permission.READ_EXTERNAL_STORAGE",
+            // Two alternatives, and the first one needs *both* of its permissions. API 33 split
+            // visual media in two, and this capability's own payload spec sends images and videos
+            // through one list — `media.list` items carry `kind` and `durationMs` — so an
+            // images-only grant is a photo browser with every video invisible and a green chip
+            // over it.
+            permissionAlternatives = setOf(
+                setOf(
+                    "android.permission.READ_MEDIA_IMAGES",
+                    "android.permission.READ_MEDIA_VIDEO",
+                ),
+                setOf("android.permission.READ_EXTERNAL_STORAGE"),
             ),
+            // `media.original` resolves a MediaStore id to a transfer that runs on the bulk
+            // channel, exactly as `fs.transfer.begin` does — so photos is as dependent on that
+            // socket as files is. Defect 54: this line was missing, and without it the capability
+            // would have advertised itself with `media.original` handing back a transferId for a
+            // socket nobody serves.
+            needsBulkChannel = true,
         ),
         Capability.CLIPBOARD to Contract(
             requests = setOf(
@@ -294,8 +320,8 @@ object CapabilityContract {
     ): Boolean {
         val contract = contracts[capability] ?: return false
         if (!grantedPermissions.containsAll(contract.permissions)) return false
-        if (contract.permissionsAnyOf.isNotEmpty() &&
-            contract.permissionsAnyOf.none { it in grantedPermissions }
+        if (contract.permissionAlternatives.isNotEmpty() &&
+            contract.permissionAlternatives.none { grantedPermissions.containsAll(it) }
         ) {
             return false
         }
@@ -317,14 +343,22 @@ object CapabilityContract {
         val contract = contracts[capability] ?: return listOf("no contract defined")
         return buildList {
             addAll((contract.permissions - grantedPermissions).map(::label).distinct().sorted())
-            if (contract.permissionsAnyOf.isNotEmpty() &&
-                contract.permissionsAnyOf.none { it in grantedPermissions }
+            if (contract.permissionAlternatives.isNotEmpty() &&
+                contract.permissionAlternatives.none { grantedPermissions.containsAll(it) }
             ) {
-                // Photos is the only any-of case and both of its permissions are the same switch
-                // at different API levels, so "one of Photos or Photos" — and even "one of
-                // Photos" — would be noise. One label means one thing to turn on.
-                val names = contract.permissionsAnyOf.map(::label).distinct().sorted()
-                add(if (names.size == 1) names.single() else "one of ${names.joinToString(" or ")}")
+                // Photos is the only case, and all three of its permissions are the same switch at
+                // different API levels — so every alternative renders to one label, "one of Photos
+                // and videos or Photos and videos" collapses to one name, and the user is told one
+                // thing to turn on. The joins are here rather than hardcoded because a future
+                // alternative needing two *differently labelled* switches must say both.
+                val rendered = contract.permissionAlternatives
+                    .map { alt -> alt.map(::label).distinct().sorted().joinToString(" and ") }
+                    .distinct()
+                    .sorted()
+                add(
+                    if (rendered.size == 1) rendered.single()
+                    else "one of ${rendered.joinToString(" or ")}",
+                )
             }
             contract.specialAccess?.let { if (it !in specialAccessHeld) add(it.label) }
         }
@@ -367,9 +401,10 @@ object CapabilityContract {
     /**
      * Every runtime permission any capability names, for the manifest check in the test.
      *
-     * `permissionsAnyOf` is included: photos names two, neither is declared yet, and the test
-     * knows that by name rather than by silence.
+     * [Contract.permissionAlternatives] is flattened in: every permission in every alternative has
+     * to be declared, because the device decides which alternative applies and a permission missing
+     * from the manifest is one the user can never grant on the device that needs it.
      */
     fun allDeclaredPermissions(): Set<String> =
-        contracts.values.flatMapTo(mutableSetOf()) { it.permissions + it.permissionsAnyOf }
+        contracts.values.flatMapTo(mutableSetOf()) { it.permissions + it.permissionAlternatives.flatten() }
 }

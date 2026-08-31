@@ -39,8 +39,8 @@ Mac actually attached. Do not grep the phone log for `Listening on`; it is writt
 `yiaddr = 10.108.253.92, router 10.108.253.63` — the correct one. Two reads of the same fact
 disagreeing, with the less obvious one right.
 
-Baselines, as of Phase 5 slice 1: phone **190** tests (`core` 73, `input-module` 44,
-`sync-module` 42, `mirror-module` 31), Mac **139** tests, `tsc --noEmit` clean. The figure this file
+Baselines, as of Phase 5 slice 2: phone **202** tests (`core` 76, `input-module` 44,
+`sync-module` 51, `mirror-module` 31), Mac **139** tests, `tsc --noEmit` clean. The figure this file
 carried at the close of Phase 4 — *189 (67 `sync-module` + 122 `core`)* — does not reconcile with the
 tree by either counting method and has been corrected rather than restated; see the note at the end
 of `docs/testing.md`. Run Gradle with `--rerun-tasks` when you intend a *run* — an
@@ -65,6 +65,13 @@ not implement an alternative without saying why the recorded reasoning is wrong.
 
 ## What it leaves open
 
+0. **Settled since this list was written:** the `photos` permission gate now models what the OS
+   actually asks for — `{READ_MEDIA_IMAGES, READ_MEDIA_VIDEO}` **or** `{READ_EXTERNAL_STORAGE}`,
+   one alternative granted in full — and both are declared in the manifest. Defect **54** (photos
+   would have advertised itself with nothing serving the bulk channel `media.original` runs on) was
+   taken red first and closed. The push destination is decided: `Download/ConnectSuite` through
+   `MediaStore`, which needs **no grant at all**, observed on the handset — see
+   `docs/phase-5-fs-media-proposal.md` §4.
 1. ~~**`fs.*` and `media.*` have no payload specification at all.**~~ **Answered as a proposal,
    2026-08-31: `docs/phase-5-fs-media-proposal.md`.** Request and response shapes for all twelve
    types, the error table, the package-id rule written into the wire, and the session-death policy
@@ -82,7 +89,46 @@ not implement an alternative without saying why the recorded reasoning is wrong.
 
 ---
 
-## The first slice — **DONE, 2026-08-31**
+## Slice 2 — the photo browser's three read verbs — **code done, hardware pending, 2026-08-31**
+
+`media.buckets`, `media.list` and `media.thumb` are implemented and unit-tested;
+`docs/testing.md` → **Phase 5 → Slice 2** holds the record. **`media.original` is deliberately not
+here**, so `photos` stays unavailable and the Mac's Photos pane stays grey — that is the expected
+state and it is asserted as a test, not left to be rediscovered. Do not loosen
+`CapabilityContract.isImplemented`'s `containsAll` to turn the chip green.
+
+**The one thing outstanding is a device reading, and it needs a person once:** the photos permission
+must be granted by hand on the handset (Settings > Apps > ConnectSuite > Permissions > *Photos and
+videos* > **Allow all**; "Select photos" is a different grant and leaves `READ_MEDIA_IMAGES`
+denied). Then:
+
+```bash
+adb shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.MediaProbeActivity --ei limit 50
+adb logcat -s MediaProbe:V
+```
+
+It takes the everything-cursor reading first and then pages, printing the running total after each
+page against `media.buckets`' own count for that bucket. **Both preconditions are its pass
+criteria**: consecutive pages counted, and the cursor exercised through the app's own client —
+never `adb shell content query`, which inlines its literal where the app binds a `?`.
+
+### Then, in order
+
+1. **Slice 3 — `media.original` + the Mac's first bulk client.** It turns `photos` green (all four
+   verbs plus a served bulk channel) and it discharges slice 1's outstanding debt: the frame caps
+   are proven by unit tests only, and this is the cheapest thing that proves them on a real socket.
+   `media.original` is pull-only, with no destination, no SAF and no push direction — a fraction of
+   `fs.transfer`'s surface.
+2. **The transfer slice.** Its first obligation is named and must not be brought forward: the
+   resumed-digest test — interrupt, resume, assert the receiver's digest equals a whole-file digest
+   of the source — shown **red first** against a digest started at `offset`. It stays a precondition
+   on that slice rather than being written early against no receiver.
+   Its second is the one §4 leaves open: **whether a pending `MediaStore` item can be resumed across
+   process death.** Unproven, load-bearing for the default push destination, and it gets a hardware
+   reading before code depends on it.
+3. **Then `fs.*`**, which needs the SAF grant surface and the onboarding copy §8 still lists as open.
+
+## Slice 1 — **DONE, 2026-08-31**
 
 **Bug 6's frame caps on the bulk channel shipped.** `MAX_BULK_FRAME` = 1 MB and
 `MAX_BULK_HEADER_FRAME` = 64 KB, enforced read *and* write side inside `Framing` on both ends, with

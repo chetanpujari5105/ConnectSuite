@@ -50,6 +50,21 @@ path. On `targetSdk 36` that is not a design choice we get to make:
 no account, and whole-of-storage is the one permission that makes people uninstall. A file browser
 that asks for everything on the first run has spent the trust the rest of the design is built on.
 
+**What the first draft did instead, kept here because the mistake is the instructive part.** It laid
+out the same two foundations, recommended SAF, and then handed the question back: *"this app is
+sideloaded and is, functionally, a file manager — but that is a decision about distribution and it
+belongs to the user, not to this document."* That sentence sounds like deference and is not. The
+choice is not about distribution — it decides whether `fs.*` addresses a filesystem or a list of
+granted trees, which is the shape of every payload in this document. The draft was **writing wire
+protocol on top of a question it had declined to answer**, and it showed: §2's own example root list
+was still serving a live `all:primary` root while §1 called the whole matter open.
+
+That is the defect, and it is more general than storage. A specification may leave a question open —
+§8 is a list of exactly that — but not a question its own payloads have already silently answered.
+The test is whether anything downstream would have to change if the open question were settled the
+other way. Here it would have: the roots list, `kind`, `grantHint`, the Files pane's first screen and
+the onboarding copy all follow from it. So it was settled first, and the payloads were written after.
+
 | Foundation | What the user does | What `fs.*` can then serve | Status |
 |---|---|---|---|
 | **SAF trees** (`ACTION_OPEN_DOCUMENT_TREE`, persisted URI grants) | Picks a folder, once per folder | That folder and everything under it, read and write | **This is what we build** |
@@ -180,9 +195,15 @@ Raw dumps: `docs/evidence/saf-probe-2026-08-31/saf1.xml` … `saf4.xml`.
 
 **`SafProbeActivity` cannot reach a release build, and this was checked rather than assumed.** It
 lives in `app/src/debug/`, which AGP merges only into debug variants. Proven by grepping the merged
-manifests of both variants: **0 occurrences in all three release manifests, 2 in all three debug
-manifests** — so the grep can see the activity where it exists, and the zero is a reading rather than
-a miss. It is kept as the reproducer for this section; `rm -rf app/src/debug` removes it entirely.
+manifests of both variants — so the grep can see the activity where it exists, and the zero is a
+reading rather than a miss. It is kept as the reproducer for this section; `rm -rf app/src/debug`
+removes it and its siblings entirely.
+
+**Re-checked on 2026-08-31 with three probes in that source set** — this one, `DownloadsProbe` (§4's
+push destination) and `MediaProbe` (slice 2's pager): **0 occurrences in all three release manifests,
+3 in all three debug manifests**, with `MainActivity` returning 1 in the release manifests in the
+same run as the control. The count is expected to move as probes come and go; what must not move is
+the zero.
 
 **The wall is now in `CLAUDE.md`** alongside the others, because it is observed rather than
 documented: *there is no path-based view of the phone's shared storage; SAF grants one tree at a
@@ -583,6 +604,55 @@ Two consequences worth stating rather than meeting later:
 after the digest verdict. Without that, "a corrupt file is worse than a missing one" is enforced for
 the checksum case and quietly broken for every interruption.
 
+### The push destination, and which on-disk convention applies where — **settled on hardware 2026-08-31**
+
+**Decided: a push with no destination named goes to `Download/ConnectSuite` through
+`MediaStore.Downloads`, which needs no grant of any kind; a push into a SAF tree the user chose uses
+the `.part`/`.failed` convention above. Two destinations, two conventions, and the payload says which
+one it got.**
+
+This was nearly missed, because `ReceivedFileStore` has been in the tree since v1 doing something
+adjacent and nobody had read it against this section. The evidence is in `docs/testing.md` under
+**Slice 2 preliminaries**; the three findings that decide it:
+
+- **The write needs no permission at all.** Observed at `targetSdk 36` with
+  `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` all
+  `false` in the same run that wrote 256 MB into `Download/ConnectSuite`. So the push half of `fs.*`
+  needs **no folder pick and no onboarding step**, which is a better answer than the one §1 reached
+  for it — §1's corrected loss (3) proposed granting `Download/ConnectSuite` as a tree during
+  onboarding, and for the push half that grant is unnecessary.
+- **A pending file is never at its final name.** The platform stages it as `.pending-<n>-<name>` and
+  hides it from every other client's `MediaStore` listing. §4's central rule — *partials are never
+  visible at their final name* — is therefore already enforced by the platform on this path, in its
+  own vocabulary rather than ours.
+- **It is not, however, invisible.** An earlier note in this project said `IS_PENDING` "does `.part`'s
+  job invisibly". It does not: the `.pending-` file is plainly there to anything that lists the
+  directory. What is true is only the part that matters, which is the final name.
+
+**What `ReceivedFileStore` does today is not what v2 should do, and the difference is space.** It
+streams into `cacheDir/transfers/<id>.part` and copies into `MediaStore` only after the checksum
+verifies — so the partial is app-private (nobody can see an interrupted transfer at all), and every
+file is written twice and must fit in the cache. A 4 GB video will not. **v2 streams directly into
+the pending `MediaStore` item** and commits on the digest verdict, which makes the platform's
+`.pending-` file the partial and removes the second write.
+
+| Destination | Partial appears as | Corrupt appears as | Resume offset from |
+|---|---|---|---|
+| Default — `Download/ConnectSuite` via `MediaStore` | `.pending-<n>-<name>`, platform-managed, absent from other apps' `MediaStore` queries | pending row deleted; `.failed` sidecar inserted beside it | the Room row, checked against the pending item's length |
+| A granted SAF tree | `name.part` | `name.failed`, no `.part` | the Room row, checked against the `.part`'s length |
+
+**The Room row stays authoritative in both**, for the reason the correction above gives: we do not
+own these directories. That argument only gets stronger on the `MediaStore` path, where the staging
+name is the platform's to choose and could change in an Android release without telling us.
+
+**One thing is deliberately not claimed: that a pending item can be resumed across process death.**
+Reopening `openOutputStream(uri, "wa")` on an own-package pending row and trusting its reported
+length is plausible and **has not been observed**. It is the load-bearing claim of the default push
+path exactly as the picker restriction was §1's, and it gets the same treatment: a reading on
+hardware before any code depends on it, with a control that separates "resumed correctly" from
+"silently started over". Until then the default path is specified as resumable and marked unproven,
+and it is the first thing the transfer slice must settle.
+
 ### `fs.transfer.cancel` — request, either side
 
 ```json
@@ -625,9 +695,16 @@ a resume that `offset` already provides for free.
 
 ## 5. Media
 
-Capability `photos`, gated on `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` (API 33+), falling back to
-`READ_EXTERNAL_STORAGE` below that. Errors report `feature: "photos"`, not `"media"` — the mapping
+Capability `photos`, gated on `READ_MEDIA_IMAGES` **and** `READ_MEDIA_VIDEO` (API 33+), falling back
+to `READ_EXTERNAL_STORAGE` below that. Errors report `feature: "photos"`, not `"media"` — the mapping
 already in `FeatureOf`.
+
+**That sentence was right and the code was wrong, which is why it is worth a note.**
+`CapabilityContract` gated photos on a flat any-of holding `{READ_MEDIA_IMAGES,
+READ_EXTERNAL_STORAGE}` — satisfied by images alone, on a capability whose own list returns
+`kind:"video"` items with a `durationMs`. It is now `permissionAlternatives: Set<Set<String>>`, one
+alternative granted in full: `{images, video}` or `{legacy}`. Both new permissions are declared as of
+2026-08-31 and photos has left `CapabilityPermissionTest`'s `notYetDeclared` list.
 
 **`media.*` is `MediaStore`-backed and has none of §1's problems.** Media is exactly the surface the
 platform still serves by query, which is why the photo browser is buildable while the file browser

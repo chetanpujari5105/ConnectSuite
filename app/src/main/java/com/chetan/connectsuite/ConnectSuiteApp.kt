@@ -10,6 +10,7 @@ import com.chetan.connectsuite.mirror.v2.MirrorEngine
 import com.chetan.connectsuite.mirror.v2.MirrorFeature
 import com.chetan.connectsuite.sync.v2.CallFeature
 import com.chetan.connectsuite.sync.v2.ContactsFeature
+import com.chetan.connectsuite.sync.v2.MediaFeature
 import com.chetan.connectsuite.sync.v2.NotificationFeature
 import com.chetan.connectsuite.sync.v2.RemoteFeature
 import com.chetan.connectsuite.sync.v2.SmsFeature
@@ -60,6 +61,12 @@ class ConnectSuiteApp : Application() {
         NotificationFeature.install(this, link)
         SmsFeature.install(this, link)
         CallFeature.install(this, link)
+        // Phase 5 slice 2: three of photos' four verbs. `media.original` is slice 3, so installing
+        // this does *not* turn the capability on — CapabilityContract requires all four handlers
+        // and a served bulk channel, and neither is true yet. It is installed anyway so the verbs
+        // exist and can be exercised; a Mac asking for one gets an answer rather than
+        // FEATURE_UNAVAILABLE from an unregistered type.
+        MediaFeature.install(this, link)
         // Last, because it reads NotificationRelay: the media remote is gated on the notification
         // listener rather than on a permission of its own. See RemoteFeature.
         RemoteFeature.install(this, link)

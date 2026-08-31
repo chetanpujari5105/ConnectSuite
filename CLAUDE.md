@@ -214,7 +214,22 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
 
   Two rules for what goes in it. First, **a new test must be shown to fail against the defect it
   is named for** — reintroduce the bug, watch it go red, put it back. A test that cannot fail is
-  the same shape as an empty accessibility query: it reads as evidence and is not. Second, prefer
+  the same shape as an empty accessibility query: it reads as evidence and is not.
+
+  **The newest way to write a test that cannot fail is to _model_ the thing under test instead of
+  calling it.** `MediaPayloadsTest` pages over rows in memory to prove the `beforeId` tiebreak spans
+  a burst of photos sharing one `DATE_ADDED` second. Its first version wrote the cursor predicate out
+  a second time, in the test — so deleting the tiebreak from the query left every assertion green.
+  The test was not weak; it was testing a copy. It was fixed by moving the decision into one place
+  (`MediaPayloads.cursorOf`) that the query renders to SQL and the test evaluates in memory, after
+  which the red-first run failed exactly as it should: page two returned `[1000]` where `[1003,
+  1002]` belonged, three rows gone between two pages that each looked perfectly well formed.
+
+  This shape hides where a test cannot reach the real thing — SQL, a wire format, a provider — and
+  the honest test is the one that reaches as far as it can and then **says what it did not reach**.
+  The rule: if a test contains a second expression of the rule it is checking, the two will
+  disagree eventually and the test will be the one that is wrong. Give the rule one home and let the
+  test call it. Second, prefer
   making the code testable over mocking Electron. `src/shared/` is the electron-free layer and is
   where a testable seam belongs; `session.ts` came out of `link.ts` that way.
 - **One selector belongs to exactly one stylesheet.** `tokens.css`, `shell.css` and `styles.css`
@@ -282,7 +297,7 @@ damage on the user's own device or nearly recorded a false result.
   produces a clean, specific, confident wrong answer, and nothing downstream can distinguish that
   from a real finding.
 
-  Three in one day, and two more since — all the same shape:
+  Three in one day, and three more since — all the same shape:
 
   | Query | Reported | Actually |
   |---|---|---|
@@ -291,6 +306,7 @@ damage on the user's own device or nearly recorded a false result.
   | drawn button labels vs the phone's `isReply` action title (step 49) | 6 of 6 rows leaking | the Mac's own Reply affordance shares the label *and* the CSS class |
   | no platform call-log row for `c13` (defect 47) | the call was over, so the card was stale | a **self-managed** WhatsApp call — `SamsungCallLog.Loggable okayToLog:false`. It was live, and the card was true |
   | `adb shell content query --where 'date<…'` on `mms-sms/conversations` (defect 50) | the provider honours selections, so the pager's cursor *value* must be wrong | the shell **inlines its literal**; the app **binds a `?`**, and this view answers a bound argument with an empty cursor. The selection was never running |
+  | a 320 ms shell poll watching for a `MediaStore` pending file (2026-08-31) | *(not reported — the miss was caught first)* | the publish took **263 ms**. The window opened and closed between two samples, so the poll held **no reading at all**, in either direction |
 
   Between them, false absences and false presences alike, which is the point: the failure is not
   "empty means broken", it is that **the check could not separate signal from lookalike** and said
@@ -354,6 +370,22 @@ damage on the user's own device or nearly recorded a false result.
   rendering or its first page returning rows — it is recorded on consecutive pages, counted, on
   hardware.** That is what 32's entry in `docs/testing.md` carries (50 → 89 → 126 → 158 → 183, every
   entry distinct) and it is what the next pager owes too.
+
+  **The sixth entry is the newest and the smallest, and it is a rule about sampling: a window that
+  falls between two samples is a _missing_ reading, not a negative one.** Watching for a file that
+  exists only while a `MediaStore` publish is pending, a shell loop sampled every ~320 ms and the
+  publish finished in **263 ms** — the directory was empty at 19:51:38.993 and held the finished
+  file at 19:51:39.321. Nothing was seen, and "nothing was seen" was one sentence away from being
+  written down as "the pending file is not visible", which is a claim about the platform that the
+  run could not support. The fix is not a faster poll — a faster poll is a smaller window, not a
+  guaranteed one. It is to **hold the state open**: a probe path that performs the same insert and
+  never commits, so the thing being observed stops being a race.
+
+  This is the first of these caught *before* it was written down rather than after — the fourth was
+  caught while writing the record, and the first three were caught by someone else's reading or by
+  the damage. The question that catches it is not *did I see it* but **could I have seen it** — and
+  when the answer is "only if I sampled inside a window I do not control", the reading does not
+  exist yet.
 
   This is the same defect as a failure count with no success count, one section up: a number, or an
   absence, with nothing to give it scale. The 11:00 adb dropout is what the rule looks like when it

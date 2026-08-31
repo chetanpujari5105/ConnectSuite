@@ -67,6 +67,7 @@ own heading there, and its own row here.
 | **51** | The after-send retry reports a loss it does not suffer — an `e:` line and a `dropped` counter for messages the observer then delivers | **open** | found during **step 71**, 2026-08-31 — 2 of 2 Mac-origin sends | `docs/testing.md` |
 | **52** | One `dropped` counter for three different things in `VideoChannel`, and the third never reaches it | **open — fix on next touch of the mirror**, not deferred | source sweep, 2026-08-31 — the counter shape 51 asked to be swept for | see below |
 | **53** | Two of the Mac's four call refusals move the counter without leaving a line | **open** | source sweep, 2026-08-31 | see below |
+| **54** | `photos` would have been advertised with nothing serving the bulk channel its own `media.original` runs on | **closed** | red first, 2026-08-31, before any `media.*` code existed — `CapabilityPermissionTest` | `docs/testing.md` |
 
 ---
 

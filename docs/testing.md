@@ -7373,3 +7373,307 @@ independently by `@Test` annotations in the source — the two agree — the tre
 the 9 added here, so **181 before this slice**, and neither the total nor the per-module split
 reconciles with 189/67/122. The earlier figure is not reproducible from the tree and is recorded
 here as wrong rather than quietly restated. Nothing is missing: every module's suite runs green.
+
+## Slice 2 preliminaries — the push destination, settled on hardware · 2026-08-31
+
+Three things had to be settled before `media.*` code was written, all of them decisions the payload
+spec could not take on documentation alone. Two are in this section; the third — defect 54 — is
+below it.
+
+### The `ReceivedFileStore` question, and what it actually turned out to be
+
+`ReceivedFileStore`'s class comment claims that publishing to `Download/ConnectSuite` through
+`MediaStore.Downloads` is *"the one way to write there on scoped storage without asking for a
+storage permission at all"*. That claim is v1's, written for an older target, and §4 of the payload
+proposal was about to build a `.part`/`.failed` convention next to it without either of them knowing
+about the other. §1 had just spent a hardware run learning what an unobserved claim is worth, so
+this one was observed too.
+
+### A correction, not a new fact — and it was wrong in two separate ways
+
+This section reverses a claim made in this project's own notes one sitting earlier. Recording it as
+a correction rather than quietly stating the truth, because what was asserted was specific, was
+acted on, and would have shaped §4 if it had gone unchecked.
+
+**What was said:** *"`MediaStore.Downloads` with `IS_PENDING` needs no tree grant and hides the file
+until commit — so it does `.part`'s job invisibly and there is no visible `holiday.mov.part` for
+anyone looking at the folder."*
+
+**Both halves of the mechanism were wrong, in opposite directions.**
+
+| | Claimed | Read on the handset |
+|---|---|---|
+| What stages the partial | `MediaStore` with `IS_PENDING` | **`cacheDir/transfers/<id>.part`** — app-private. `ReceivedFileStore` publishes to `MediaStore` only *after* the checksum verifies; `IS_PENDING` brackets the final copy and is not the resume mechanism at all |
+| What a person sees mid-transfer | nothing — "invisibly" | **`.pending-1788791013-<name>`**, plainly present to anything listing the directory. It is hidden from other apps' `MediaStore` *queries*, which is not the same as hidden |
+
+What survives is the part that matters, and it survives for a different reason than the one given:
+the partial is **never at its final name**. On the path v1 uses it is not in the folder at all; on
+the path v2 will use it is in the folder under a name the platform mangles. Either way §4's rule
+holds — but "the rule holds" was being inferred from a mechanism that does not exist, which is the
+same fault as a control that cannot see its target.
+
+The correction is only available because the claim was *specific enough to be wrong*. A vaguer note
+— "MediaStore handles partials sensibly" — would have been unfalsifiable and would have survived
+this run untouched.
+
+**What the code actually does.** `ReceivedFileStore` streams into `cacheDir/transfers/<id>.part`,
+app-private, in nobody's Download folder, and publishes to `MediaStore.Downloads` only after the
+checksum verifies.
+
+**The probe.** `app/src/debug/…/probe/DownloadsProbeActivity.kt`, beside `SafProbeActivity` and
+debug-only for the same reason. It calls the **real** `ReceivedFileStore.publish`, because a
+re-implementation would be a second client issuing what looks like the same request — the mistake
+§1's probe exists to avoid.
+
+**Reading 1 — the write works at `targetSdk 36` with no storage permission, and the permission dump
+is the control.** Logged in the same run, immediately before the write:
+
+```
+DownloadsProbe: --- probe run start; targetSdk=36 sdk=36 ---
+DownloadsProbe: PERMISSIONS: READ_EXTERNAL_STORAGE=false, WRITE_EXTERNAL_STORAGE=false,
+                READ_MEDIA_IMAGES=false, READ_MEDIA_VIDEO=false
+DownloadsProbe: RESULT: published uri=content://media/external_primary/downloads/1000297609 in 263ms for 256 MB
+DownloadsProbe: ROW: name=probe-… size=268435456 pending=0 path=Download/ConnectSuite/
+                owner=com.chetan.connectsuite.debug
+```
+
+Four permissions false and a 256 MB file in the user's `Download/ConnectSuite` anyway. "It worked"
+with no denominator would have been the usual failure; the denominator here is the four `false`s on
+the line above it. The directory did not exist before the run — the poller's first five samples read
+`No such file or directory`, which is also what proves the poller could see the difference.
+
+**Reading 2 — what an interrupted publish leaves in the directory, and the reading that did not
+exist.** The first attempt **produced no reading at all**, and this is the part worth keeping: the
+real 256 MB publish took **263 ms**, the shell poll sampled every ~320 ms, and the window opened and
+closed between two samples. The directory was empty at 19:51:38.993 and held the finished file at
+19:51:39.321.
+
+**A window that falls between two samples is a missing reading, not a negative one.** "Nothing was
+seen" was one sentence away from being written down as *the pending file is not visible* — a claim
+about the platform this run could not support, and one that happens to be **false**, as the held-open
+version below shows. The fix is not a faster poll: a faster poll is a smaller window, not a
+guaranteed one. It is to stop the thing being observed from being a race — hold the state open and
+then look.
+
+This is the sixth entry in `CLAUDE.md`'s control table and the first caught *before* it was written
+down rather than after. The question that catches it is not *did I see it* but **could I have seen
+it**, and when the answer is "only by sampling inside a window I do not control", there is no
+reading yet.
+
+So the window was held open instead: the probe's `--ez abandon true` path issues the same insert —
+same collection, same `RELATIVE_PATH`, same `IS_PENDING=1` — writes the bytes, and never commits.
+Two outside observers, neither of which has seen that code:
+
+```
+$ adb shell ls -la /sdcard/Download/ConnectSuite/
+-rwxrwx--- 1 u0_a326 media_rw  8388608 …  .pending-1788791013-abandoned-1788186213659.bin
+-rwxrwx--- 1 u0_a326 media_rw 268435456 …  probe-probe-1788186098754.bin
+
+$ adb shell content query --uri content://media/external_primary/downloads …
+Row: 159 _display_name=ConnectSuite, is_pending=0, relative_path=Download/
+Row: 160 _display_name=probe-probe-1788186098754.bin, is_pending=0, relative_path=Download/ConnectSuite/
+```
+
+**The answer: the platform already does §4's job, in its own vocabulary.** A pending file is on disk
+under a mangled, dot-prefixed name — `.pending-<n>-<name>` — and **never under its final name**; and
+it is absent from another client's `MediaStore` listing entirely. The absence in that listing carries
+its own control in the same output: the committed 256 MB file and the `ConnectSuite` directory row
+both came back, out of 160 rows, so the query can see this folder and did not see the pending item.
+
+**And the earlier claim is corrected: it is not invisible.** The file is plainly there to anything
+that lists the directory, including any file manager showing hidden files. What is true is the part
+that matters — it is never at the final name, which is exactly what §4 forbids.
+
+The shell is used here only as an *outside observer*, which is the one role it is right for: the
+question is what someone else sees, not whether our own mechanism works. Defect 50's rule is about
+verifying a mechanism through a foreign client, and it is not being broken by asking a foreign
+client what it can see.
+
+**Cleanup.** Both probe files were removed from the handset and the directory with them; `ls` returns
+`No such file or directory` for both the files and the folder. One stale `MediaStore` row for the
+`ConnectSuite` *directory* (row 159, `owner_package_name=NULL`) is left in place — it names a folder
+that no longer exists and the scanner reconciles it. Deleting provider rows this app does not own is
+not something a cleanup step should do.
+
+### Defect 54 — photos would have advertised itself with no bulk channel · **closed**
+
+Taken red first, before any `media.*` code existed, which is the whole reason it was worth taking
+today. `needsBulkChannel = true` was removed from the `photos` contract and
+`CapabilityPermissionTest` run:
+
+```
+15 tests completed, 1 failed
+<failure message="java.lang.AssertionError: photos may not be advertised while nothing serves the bulk channel">
+```
+
+One test, the right one, with the right message — the other fourteen stayed green, so the test is
+discriminating between this defect and everything else the file asserts. The line was then restored
+and `:core` runs **76** tests, 0 failures (`--rerun-tasks`, ten result XMLs, `failures="0"` in all
+ten).
+
+### The contract now models what the OS actually asks for
+
+`permissionsAnyOf: Set<String>` became `permissionAlternatives: Set<Set<String>>` — one alternative
+must be granted **in full**. Photos is `{READ_MEDIA_IMAGES, READ_MEDIA_VIDEO}` or
+`{READ_EXTERNAL_STORAGE}`. The old flat shape was satisfied by images alone on a phone whose
+`media.list` returns `kind:"video"` items with a `durationMs`, which is the calls-contract mistake
+moved one axis over: the chip green, the videos unreadable, and the OS rather than a missing handler
+doing the breaking. `images alone does not permit photos` is the test, and it can fail on its own.
+
+The type changed rather than the value on purpose. A `Set<String>` that quietly gained a third member
+would have let every call site keep its old meaning; changing the type made each one be revisited.
+
+**On the manifest, one thing was decided against the instruction and it is recorded here rather than
+done quietly.** `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` are now declared, and photos is out of
+`CapabilityPermissionTest`'s `notYetDeclared` list in the same commit. `READ_EXTERNAL_STORAGE`
+**keeps** its `maxSdkVersion="32"`. Removing the cap was asked for, and the cap is not what was
+holding photos back — the undeclared `READ_MEDIA_*` permissions were. What removing it would do is
+make `grantableToday()` report `READ_EXTERNAL_STORAGE` as grantable on Android 16, where the system
+ignores the declaration entirely: a false reading placed inside the check that exists to catch false
+readings. The declaration is verified on the device — `granted=false` for both new permissions in
+`dumpsys package`, which is a real reading of an ungranted-but-declarable permission.
+
+## Slice 2 — `media.buckets`, `media.list`, `media.thumb` · 2026-08-31
+
+**The photo browser's three read verbs. `media.original` is not here** — it resolves a `MediaStore`
+id to a transfer on the bulk channel, nothing serves that channel, and it goes with the Mac's first
+bulk client in slice 3.
+
+### The expected outcome is that `photos` stays grey, and that is written down as a test
+
+`CapabilityContract.isImplemented` requires **all** of a capability's requests to have handlers, and
+photos names four. Three handlers and a served bulk channel still leave it unavailable, so the Mac's
+Photos pane stays grey through this slice and says why.
+
+That is a decision, not an unfinished job, and the tempting way to "fix" it is to loosen
+`containsAll` to a subset check. That check is the only thing preventing a capability being
+advertised over dead verbs, and it exists because `calls` was once advertised on two of the four
+permissions its own messages needed. `slice 2 leaves photos unavailable, and that is the expected
+state` asserts both halves: not implemented on three verbs, and `missingFor` naming
+**`media.original`** as the one outstanding.
+
+### What landed
+
+| File | What it holds |
+|---|---|
+| `sync-module/…/v2/MediaPayloads.kt` | the pure half — cursor semantics, ordering, payload shapes, the package-id split |
+| `sync-module/…/v2/MediaStoreReader.kt` | the only file in the feature that names a `MediaStore` symbol |
+| `sync-module/…/v2/MediaFeature.kt` | the three handlers, their refusals, and the counters |
+
+The split is the `SmsPayloads` lesson applied before it could bite: a JVM test that merely
+*references* an object holding an Android static in a field initializer dies in `<clinit>`, which is
+what `SmsStore` does through `CONTENT_CONVERSATIONS_URI`. `MediaPayloadsTest` runs on a plain JVM
+because there is no `MediaStore` symbol anywhere in what it touches.
+
+Two implementation choices worth recording because both look like details and are not:
+
+- **One table, not two.** Images and videos are read from `MediaStore.Files` filtered to
+  `media_type IN (1,3)`, rather than from `Images.Media` and `Video.Media` separately. Two cursors
+  would have to be merged in memory to restore one ordering, and a merged ordering is exactly where
+  a cursor loses rows at a page boundary.
+- **No `LIMIT` in the sort order.** Appending one works on API 29 and is not portable above it, so
+  the page is bounded by stopping the read — what `SmsStore` does — and `hasMore` is the row after
+  the last one taken, seen but not built.
+
+### Red first — the id tiebreak, against a burst
+
+`MediaPayloads.cursorOf` was changed to return `TimestampOnly` even when a `beforeId` was given —
+the bug as it would really appear, a cursor that ignores its tiebreak — over six rows where five
+share one second, paged two at a time:
+
+```
+9 tests completed, 2 failed
+FAIL a page boundary inside a burst loses no rows and repeats none
+     expected:<[1003, 1002]> but was:<[1000]>
+FAIL the cursor advances inside a shared second, which a bare timestamp cannot
+     expected:<…(date_added < ? OR (date_added = ? AND _id < ?))> but was:<…date_added < ?>
+```
+
+**Page two returned one row instead of two, and the three burst frames between them are simply
+gone** — while page two is internally consistent, correctly ordered, and looks like a perfectly good
+page. That is the failure this pager was always going to have: not an error, not an exception, a
+clean answer missing rows only a count can see. The other seven tests stayed green, so the two that
+failed are discriminating between this defect and everything else in the file.
+
+**The first version of that test could not have failed, and the fix is worth recording.** Its
+in-memory pager spelled the cursor predicate out a second time, so deleting the tiebreak from the
+query left it green — an empty accessibility query in a different costume. `cursorOf` and `isBeyond`
+now hold the decision once; `listSelection` renders it to SQL and the test evaluates it in memory,
+so the boundary test and the query cannot disagree about where a page ends.
+
+### What is not proven here, stated rather than glossed
+
+**No hardware yet.** Everything above is a JVM run, and the two preconditions this pager owes are
+both device readings:
+
+1. **Consecutive pages, counted, on hardware** — the `50 → 89 → 126 → 158 → 183` shape defect 32's
+   record carries, against `media.buckets`' own per-bucket `count` as the denominator.
+2. **The cursor exercised through the client the app uses.** `MediaStore.Files` is an ordinary table
+   and *ought* to bind arguments, but "ought" is what defect 50 was made of: the shell inlines its
+   literal where the app binds a `?`, and the two are different clients issuing different queries.
+   `adb shell content query` is therefore not evidence about this pager in either direction.
+
+`app/src/debug/…/probe/MediaProbeActivity.kt` is what takes both, through `MediaStoreReader` — the
+same `ContentResolver` call, the same bound arguments, the same selection string the handler uses.
+It takes the everything-cursor reading **first**: a cursor a year past the newest row must return
+every row, and zero there would mean the selection never ran rather than that the value was wrong.
+
+What that probe does **not** cover is the control channel, the envelope and the handler above it.
+Slice 3 gives the Mac a client and owes that half.
+
+**Awaiting the permission grant on the handset — asked for, attempted, and _not_ present.** The
+grant was made by hand and reported as *Allow all*; read back from the platform it is not there, on
+either copy of the app:
+
+```
+User 0:  android.permission.READ_SMS:                        granted=true   ← control
+         android.permission.READ_MEDIA_IMAGES:               granted=false
+         android.permission.READ_MEDIA_VIDEO:                granted=false
+         android.permission.READ_MEDIA_VISUAL_USER_SELECTED: granted=false  ← discriminator
+User 95: (Samsung DUAL_APP clone) all three false
+User 150:(Secure Folder) installed=false
+```
+
+**Three things make this a reading rather than a failed query.** `READ_SMS` comes back `granted=true`
+from the same dump, the same package and the same user, so the query can see a granted permission.
+`READ_MEDIA_VISUAL_USER_SELECTED` is the discriminator that was asked for and it separates the two
+ways a grant can be wrong: *Select photos* would show it **true** with images false. It is false, so
+this is not a partial grant — it is no grant. And the flags carry no `USER_SET` on any of the three,
+while `POST_NOTIFICATIONS` — a permission this user did act on — does; the package manager has no
+record of anyone touching photos for this package.
+
+**A second, independent client agrees.** The app's own `checkSelfPermission` through
+`MediaFeature.granted`, logged by the probe: `PERMISSION: photos read granted=false`, followed by
+`BUCKETS: none`. That last line is deliberately *not* worded as an absence of media — with the
+permission off, an empty bucket list carries no information about what the phone holds, and a probe
+that said "no photos found" would be manufacturing exactly the confident wrong answer this file
+exists to prevent.
+
+So the pager's two hardware preconditions remain **unrun**, and nothing about the cursor has been
+observed on this device. That is the honest state; the JVM evidence above stands on its own and does
+not reach it.
+
+### The grey chip, observed on the device rather than only asserted
+
+The build is on the handset and the three verbs are registered. `link-up.sh` reads **3 of 3**
+(service foregrounded, all three ports LISTEN under uid 11011, one control session ESTABLISHED), and
+the feature's own install line and the capability set agree:
+
+```
+[media] Media feature installed with 3 of photos' 4 verbs (media.original is slice 3);
+        read permission not granted; capabilities now: [calls, contacts, mirror, sms]
+[caps]  Capabilities now: calls,contacts,input,mirror,notifications,remote,sms
+```
+
+**`photos` is absent, and the absence has its control in the same line**: six other capabilities are
+present in that set, so this is a reading of a capability that did not advertise rather than an empty
+list or a feature that failed to install. Both halves are false here at once — the permission is not
+granted *and* the fourth verb is missing — which is what the next reading separates: after the grant,
+photos must still be absent, and then only the fourth verb and the bulk channel are holding it.
+
+## Suite
+
+Phone **202** tests (`core` 76, `sync-module` 51, `input-module` 44, `mirror-module` 31), 0 failures,
+`--rerun-tasks`. Was 190 at slice 1: +3 in `core` (the photos alternatives, defect 54's bulk-channel
+guard, and the slice-2 expectation) and +9 in `sync-module` (`MediaPayloadsTest`). Mac **139**,
+untouched by this slice.
