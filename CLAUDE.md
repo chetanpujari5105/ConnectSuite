@@ -151,6 +151,21 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
 - An AccessibilityService cannot be granted programmatically. `ACTION_ACCESSIBILITY_SETTINGS` is a
   deep link into Settings and nothing more; the user enables it by hand, once, and can revoke it
   the same way. That is the onboarding cost of Phase 3 and it is unavoidable.
+- **There is no path-based view of the phone's shared storage.** Scoped storage is not optional at
+  `targetSdk 36`, so `fs.*` browses **SAF trees the user granted**, one folder at a time. Observed on
+  this handset (SM-S938B, Android 16, 2026-08-31), through our own package at `targetSdk 36` because
+  the restriction is applied against the *calling package*: `ACTION_OPEN_DOCUMENT_TREE` refuses the
+  **root of internal storage** and refuses **`Download` itself**, in both cases by listing the folder
+  normally and **disabling** `USE THIS FOLDER` with *"Can't use this folder — to protect your privacy,
+  choose another folder"*. Folders **inside** `Download` are grantable, which is why the "send to
+  phone" default is `Download/ConnectSuite` rather than app-private storage. `Android/data` and
+  `Android/obb` are unreachable by any route, for any app.
+
+  The consequence to state to users rather than let them discover: **a file sitting directly in
+  `Download/` can never be reached by this app.** `MANAGE_EXTERNAL_STORAGE` would lift all of it and
+  **we are deliberately not asking for it** — whole-of-storage is the one permission that makes
+  people uninstall an app whose entire pitch is no cloud and no account. The reasoning, the readings
+  with their controls, and the recorded upgrade path are in `docs/phase-5-fs-media-proposal.md` §1.
 - Nothing works outside the local network without a relay. Out of scope for v2 core; Tailscale is the documented optional path.
 
 ## Code rules

@@ -75,11 +75,26 @@ slower. Three, and the first two are the same platform restriction:
    actually want from a Mac, and under SAF it is unreachable as a browsable tree — so
    *"drag a file the phone downloaded into Finder"* does not work by browsing.
 
-3. **A default destination for "send to phone" cannot be the platform `Download` folder**, for the
-   same reason. The push destination has to be a tree the user granted, so the first push needs a
-   folder pick before it can go anywhere. The app-private root (`kind: "app"`) is always writable and
-   is the honest fallback — but a file put there is not in the phone's `Download` folder and the user
-   will look for it there.
+   **This one survives the correction to (3) below, and it is worth being blunt about why.** A
+   browser, a chat app or Quick Share drops its file **directly into `Download/`**, not into a
+   subfolder — so the fact that `Download/ConnectSuite` can be granted does nothing for files the
+   phone has already downloaded. Anything that lands in `Download/` itself is invisible to this app,
+   permanently, and the only ways to reach it are the user moving the file on the phone or the
+   all-files access we are not asking for. **This is a real, permanent hole in the file browser** and
+   it should be stated to the user in the Files pane rather than discovered.
+
+3. ~~**A default destination for "send to phone" cannot be the platform `Download` folder.**~~
+   **This was wrong, and the hardware run corrected it.** The restriction is scoped to `Download`
+   **itself**, not to its subtree: `Download/Music` was offered `USE THIS FOLDER` **enabled**, with
+   the refusal message absent entirely. So "send to phone" *does* get a real default —
+   **`Download/ConnectSuite`, created and granted once during onboarding**, which is a folder the
+   user's other apps and file manager can see, in the place they already look for arriving files. The
+   picker even proposes the move itself: on a refused folder it disables `USE THIS FOLDER` and offers
+   `CREATE NEW FOLDER` in its place.
+
+   The app-private root (`kind: "app"`) stays as the fallback for a user who grants nothing, and is
+   still worse — a file put there is not somewhere the user will look — but it is no longer the
+   *expected* destination.
 
 **The workaround is named and rejected, because working around it is exactly what was asked
 against.** `ACTION_OPEN_DOCUMENT` — the single-file picker — reaches `Download` and reaches anything
@@ -108,24 +123,71 @@ can be re-taken on facts rather than re-argued:
   "Browse all files" row in the Files pane that deep-links to Settings, alongside a sentence saying
   what it grants. Never a runtime prompt on first run.
 
-### One factual claim in this section to verify before building
+### Verified on hardware, 2026-08-31 — SM-S938B, Android 16 / SDK 36
 
-The Android 11 restriction — root of internal storage and `Download` both unavailable to
-`ACTION_OPEN_DOCUMENT_TREE` — is stated here from the platform documentation and **has not been
-observed on this handset.** It is load-bearing: losses (1), (2) and (3) all follow from it, and if
-this device's picker in fact allows the storage root, most of this section is wrong.
+This section was written from the platform documentation and its central claim was **unverified**,
+which the first draft said in as many words. It has now been observed, and one of the three losses
+turned out to be wrong — which is the argument for running it before building rather than after.
 
-It is cheap to settle and the phone is on the wire, so it should be settled before any of `fs.*` is
-built rather than after: launch the picker, try to select internal storage's root and try to select
-`Download`, and record what the picker does with a control — a folder that *is* selectable, chosen in
-the same run — so an empty result cannot be mistaken for a blocked one. That is the enumerate-first
-rule from `CLAUDE.md` applied to a claim rather than to a query, and this section is exactly the kind
-of confident absence it exists to catch.
+**The method matters more than usual here, and `adb shell am start` would have given a wrong
+answer.** The restriction is applied by DocumentsUI against the **calling package's** target SDK, and
+a shell-launched intent has no calling package at all. The shell and the app are two different
+clients issuing what looks like the same request — defect 50's shape exactly, and the rule it left
+behind is *verify a mechanism through the same client the product uses, or you have verified a
+different mechanism.* So a debug-only `SafProbeActivity` (`app/src/debug/`, see below) was built to
+make our own package the caller. **The run log carries `targetSdk=36`**, which is what makes these
+readings evidence about the product rather than a shell artefact.
 
-**If accepted, the wall belongs in `CLAUDE.md` alongside the others:** *there is no path-based view
-of the phone's shared storage; SAF grants one tree at a time, the storage root and `Download` cannot
-be granted as trees, and `Android/data` and `Android/obb` are unreachable by any route.* The current
-wall list has no entry for storage and the omission would be read as "nobody checked".
+Four readings, one run, `com.google.android.documentsui/…picker.PickActivity`:
+
+| # | Target | `USE THIS FOLDER` | Refusal message | Elements in dump |
+|---|---|---|---|---|
+| 1 | Root of internal storage | **`enabled=false`** | `Can't use this folder` / *To protect your privacy, choose another folder* | 32 |
+| 2 | `Download` | **`enabled=false`** | same message present | 28 |
+| 3 | `Download/Music` | `enabled=true` | **absent** | 15 |
+| 4 | `DCIM` (top level) | `enabled=true` | **absent** | 34 |
+
+**The element counts are the control and that is why they are in the table.** Every refusal here is
+an absence — a disabled button, a missing grant — and an absence counts only beside a known positive.
+Readings 3 and 4 are that positive: the same query, in the same run, against the same picker,
+returned an *enabled* button twice. A picker that was broken, or a dump that was empty, would have
+produced two more refusals and looked identical to a real finding. Readings 1 and 2 also enumerate
+the whole surface — 32 and 28 elements including the full folder listing — so "the button is
+disabled" is a reading rather than a miss.
+
+**The failure mode is now named precisely, because the three candidates are different bugs.** It is
+**not** absent-from-the-list and **not** selectable-but-the-grant-fails-afterwards. It is: *the folder
+is fully browsable, its contents are listed, and the confirm button is disabled with an explicit
+in-picker sentence.* Reading 2's dump listed `Download`'s files with sizes and dates while refusing
+to grant it, which is the clearest statement of that distinction available.
+
+**The grant on reading 4 was then confirmed from the platform's side**, not from the app's own report
+and not from the tap:
+
+```
+UriPermission{61d3ce4 content://com.android.externalstorage.documents/tree/primary%3ADCIM [user 0] [prefix]}
+  targetUserId=0  sourcePkg=com.android.externalstorage  targetPkg=com.chetan.connectsuite.debug
+  mode=0x3  owned=0x0  global=0x0  persistable=0x3  persisted=0x3  persistedCreate=1788183861135
+```
+
+`mode=0x3` is `READ|WRITE`, `persisted=0x3` is both flags persisted, `[prefix]` is the subtree. **And
+that query carries its own control too:** the same dump shows this package holding other URI grants
+at `persisted=0x0`, so it can tell a persisted grant from a non-persisted one and is not reporting
+everything as persisted. That closes the third failure mode — a selection the picker accepted but
+that did not survive — which is the one nobody can see by watching the screen.
+
+Raw dumps: `docs/evidence/saf-probe-2026-08-31/saf1.xml` … `saf4.xml`.
+
+**`SafProbeActivity` cannot reach a release build, and this was checked rather than assumed.** It
+lives in `app/src/debug/`, which AGP merges only into debug variants. Proven by grepping the merged
+manifests of both variants: **0 occurrences in all three release manifests, 2 in all three debug
+manifests** — so the grep can see the activity where it exists, and the zero is a reading rather than
+a miss. It is kept as the reproducer for this section; `rm -rf app/src/debug` removes it entirely.
+
+**The wall is now in `CLAUDE.md`** alongside the others, because it is observed rather than
+documented: *there is no path-based view of the phone's shared storage; SAF grants one tree at a
+time; the storage root and `Download` itself cannot be granted, though folders inside `Download`
+can; and `Android/data` and `Android/obb` are unreachable by any route.*
 
 ---
 
@@ -663,11 +725,12 @@ is one row in a table; the cost of a missing one is a Mac that greys out a worki
 3. **Clipboard.** `clip.push`, `clip.request` and `clip.history` are Phase 5 and are **not** specified
    here. They share none of this machinery and they have their own platform wall — background
    clipboard reads need the accessibility service or default-IME status.
-4. ~~**Whether to ask for `MANAGE_EXTERNAL_STORAGE` at all.**~~ **Decided 2026-08-31: no.** SAF trees
-   only; the special access is recorded in §1 as an upgrade path with its trade-off, and is not
-   built. What remains open is only the **verification** named at the end of §1 — that this handset's
-   picker really does refuse the storage root and `Download` — which is load-bearing for three stated
-   losses and should be settled on the device before `fs.*` is built.
+4. ~~**Whether to ask for `MANAGE_EXTERNAL_STORAGE` at all.**~~ **Decided 2026-08-31: no**, and the
+   restriction it would have lifted is now **observed on hardware** rather than assumed — see the
+   end of §1. SAF trees only; the special access is recorded as an upgrade path with its trade-off
+   and is not built. What remains genuinely open is smaller: the **onboarding copy** for a Files pane
+   whose first screen is a list of granted folders rather than a filesystem, and which has to say
+   plainly that files sitting directly in `Download/` cannot be reached.
 5. **Multi-file jobs as a protocol concept.** A folder copy is the Mac's loop over *n* transfers.
    If that turns out to be too chatty over a real link, a job wrapper is an addition, not a rewrite.
 
