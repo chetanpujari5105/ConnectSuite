@@ -26,3 +26,14 @@ desktop/node_modules/
 # The zip is a byte-for-byte archive of that same directory — 23M of duplicate
 # in every clone, and not the copy anyone reads. Ignore the archive, keep the tree.
 Mac app UI mockups (1).zip
+
+# Chat transcripts and future drops into the mockups directory.
+#
+# A chat transcript was swept into a commit by `git add -A` on 2026-08-31 and untracked again.
+# This ignores NEW files under that path so the same thing cannot happen twice. It does not
+# untrack what is already there: the 33 files of the design handoff — `ConnectSuite.dc.html`,
+# `_ds/`, `uploads/` — stay tracked and versioned, because `docs/testing.md`'s measurement passes
+# are written against them and a prototype nobody can check out is not a reference.
+#
+# To add something here deliberately: `git add -f "Mac app UI mockups (1)/<file>"`.
+Mac app UI mockups*/

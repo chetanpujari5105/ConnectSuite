@@ -248,8 +248,9 @@ damage on the user's own device or nearly recorded a false result.
   | `Reply` button absent from the accessibility tree (step 47) | feature missing | the tree was empty; Chromium builds none without `--force-renderer-accessibility` |
   | `grep -c remoteinput` on `dumpsys notification` | 2 reply actions present | 2 lines of `android.remoteInputHistory=null` |
   | drawn button labels vs the phone's `isReply` action title (step 49) | 6 of 6 rows leaking | the Mac's own Reply affordance shares the label *and* the CSS class |
+  | no platform call-log row for `c13` (defect 47) | the call was over, so the card was stale | a **self-managed** WhatsApp call — `SamsungCallLog.Loggable okayToLog:false`. It was live, and the card was true |
 
-  Two produced false absences and one a false presence, which is the point: the failure is not
+  Three produced false absences and one a false presence, which is the point: the failure is not
   "empty means broken", it is that **the check could not separate signal from lookalike** and said
   so with full confidence either way.
 
@@ -263,6 +264,22 @@ damage on the user's own device or nearly recorded a false result.
     lines are.
   - *Discrimination* — when the target and its lookalike share every attribute you are matching on,
     stop and find one that separates them. For the chips that was a count, not a name.
+
+  **An absence in a platform store is the easiest of these to get wrong, and the fourth row is the
+  worked example.** A row that is not in a provider is not evidence that the thing did not happen —
+  it is evidence that *this provider does not hold it*, and those are different sentences. Before an
+  absence counts, **name at least one other thing that produces the same absence** and say why it is
+  ruled out. For `c13` the unnamed lookalike was "a call the platform does not log", which is an
+  entire ordinary category — every WhatsApp, Signal and Meet call on the device — and naming it
+  would have taken one sentence and killed a defect a day earlier. `dumpsys telecom` was the query
+  that separated them and it was never run, because the absence already looked like an answer.
+
+  The fourth row is also the first one this project caught **before** it cost anything and **while
+  writing the record that made the claim** — the earlier three were each found by someone else's
+  reading, or after the damage. That is the direction this rule is supposed to travel, and it is
+  recorded as a rule rather than as an apology inside a closed defect: the register entry for 47 is
+  withdrawn, and this line is what survives it. When you catch yourself leaning on an absence,
+  the question is not *am I sure* — it is *what else would look exactly like this*.
 
   This is the same defect as a failure count with no success count, one section up: a number, or an
   absence, with nothing to give it scale. The 11:00 adb dropout is what the rule looks like when it
