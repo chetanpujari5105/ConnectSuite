@@ -422,6 +422,18 @@ length is judged.
 250 ms, plus one final one at completion, so a progress bar is smooth and the control channel is not
 carrying 800 events for a 200 MB file.
 
+**A file that finishes inside one window emits exactly one event: the final one.** This is stated
+because the alternative reading is worse than the behaviour. Most transfers in normal use — a photo,
+a screenshot, a PDF — complete in well under 250 ms on a LAN, so **the common case is a transfer with
+no intermediate progress at all**, and a Mac that expects a stream before it will believe a transfer
+started would show every small file as stalled. The final event is not optional and is not throttled:
+it is emitted on completion regardless of how little time has passed, so `bytes == total` always
+arrives. **No progress events is a normal, successful shape**, and it means fast, never stuck.
+
+The corollary for the Mac: a transfer is live from its `fs.transfer.begin` ack, not from its first
+progress event. Nothing may treat the absence of progress as evidence of anything — which is the
+absence rule from `CLAUDE.md` in its smallest form.
+
 The Mac derives fraction and ETA itself. It is not sent, because a fraction with no bytes beside it
 is a number with nothing to check it against, and the ETA is a guess the drawing side is better
 placed to smooth.
@@ -446,9 +458,47 @@ counter rule in a boolean: a pass with no denominator is not evidence.
 
 **On a checksum mismatch the partial is deleted.** v1's comment is the reasoning and it should be
 carried over verbatim in spirit: *a corrupt file is worse than a missing one — drop the partial so a
-retry is clean.* Note the one thing that is easy to get wrong and that v1 got right: when resuming,
-the digest must be computed over the **skipped** region too, or every resumed transfer reports a
-checksum failure on a perfectly good file.
+retry is clean.*
+
+### The resumed digest must cover the skipped bytes — the worst failure in this section
+
+This was a footnote in the first draft and it should not have been, because it is the only fault here
+that **destroys a good file and reports corruption while doing it.**
+
+**The failure, spelled out.** A resumed transfer opens the partial at `offset` and streams the
+remainder. If the digest is started at that moment, it covers only the bytes that arrived *this*
+time — say the last 50 MB of a 200 MB file. It is then compared against `sha256`, which is the digest
+of the **whole** file. They cannot match. So:
+
+1. every resumed transfer fails, always, on a file that is perfectly correct;
+2. `fs.transfer.done` reports `CHECKSUM_MISMATCH` — corruption where there is none;
+3. and the deletion rule immediately above then **deletes the partial**, throwing away the 150 MB
+   already on disk;
+4. so the retry starts from zero, resumes again after the next interruption, and fails again the
+   same way. Resume does not merely stop working — it becomes worse than having no resume at all,
+   because each attempt destroys the progress of the last.
+
+Nothing in the log says "the digest was started in the wrong place". It says the file was corrupt,
+confidently, every time. It is the same shape as every other entry in this project's control table: a
+clean, specific, wrong answer that nothing downstream can tell from a real finding.
+
+**The rule:** the receiver digests from byte 0. On resume it reads the existing `.part` from the
+start, feeding it through the digest without writing it, and only then appends the arriving bytes.
+v1 got this right — `skipBuffer` in `TransferManager` exists for exactly this — and it is worth
+saying out loud that the sender has the mirror-image obligation on a `pull`: it seeks to `offset` to
+*send* from, while its own digest, if it is computing one, still covers the whole file.
+
+**The test, and it is named here so it cannot be skipped:** transfer a file, interrupt it partway,
+resume it, and assert the digest the receiver computes equals a **whole-file digest of the same
+source** — not that the transfer reported success, which is the thing under test. Then **red
+first**, per `CLAUDE.md`: reintroduce the bug by starting the digest at `offset`, and watch that test
+report `CHECKSUM_MISMATCH` on a byte-identical file. A resume test that only asserts `ok: true` would
+pass over this bug in the one direction that matters, since a digest computed the same wrong way on
+both ends would agree with itself.
+
+This is also the reason `verified` is a field of its own. A build with this bug and no digest at all
+reports `ok: true, verified: false` — visibly unverified — while the same build *with* a digest
+reports a mismatch. Those are the two honest answers, and neither is "success".
 
 ### What is left on disk, and how to tell the two failures apart by looking
 
@@ -465,8 +515,41 @@ Three states, three appearances, on **both** sides since transfers go both ways:
 | Verified complete | `holiday.mov` | Done. Any stale `.part` and any stale `.failed` sidecar for this name are removed as part of the rename. |
 | Checksum mismatch | `holiday.mov.failed`, and **no** `.part` | The bytes were wrong and have been deleted. **Retry from zero**, not resume. |
 
-**`.part` presence alone is the resumable signal**, which is why nothing else may ever be left with
-that suffix. A `.part` file is a promise that its bytes are good.
+**Correction to the first draft: `.part` presence alone is _not_ the resumable signal, and saying so
+was a mistake.** It was written as though these were our directories. They are not — a granted SAF
+tree is `DCIM` or `Documents`, shared with every other app on the phone, and browser downloaders,
+sync clients and torrent apps all write `.part` files as a matter of course. "Resume from any `.part`
+we find" means offering to resume some other program's half-finished download, and on a `push` it
+means **appending our bytes to a file we did not create**.
+
+So the rule is two-part: **a `.part` is resumable only when a transfer row in our own Room table
+matches it** — same destination, same name, and a recorded length that the file on disk is
+consistent with. `.part` is the *human-readable* signal, for someone looking at the folder; the Room
+row is the *authoritative* one, for the code. Where they disagree, the file is treated as a stranger's
+and left alone: a `push` to a name with an unmatched `.part` beside it is refused with `STALE_TARGET`
+rather than resumed or overwritten.
+
+### What would actually catch a violation of this convention — and what would not
+
+Per `CLAUDE.md`: a rule that matters enough to write down needs an enforcement point, and "someone
+remembering" is not one. Asked honestly, this convention splits into three parts with three
+different answers.
+
+| The claim | What enforces it | Verdict |
+|---|---|---|
+| The suffix is defined in exactly one place per side, not spelled inline wherever a path is built | A test asserting the literal `".part"` / `".failed"` appears in exactly one module in each tree — the same shape as `stylesheets.test.ts`, which fails on a selector declared twice | **Enforceable, and should be written with the code** |
+| The receiver's every exit either renames, or leaves a `.part`, or leaves a `.failed` — never a bare truncated file at the final name | Receiver unit tests over all four exits: verified, digest mismatch, cancelled, session died. The fourth is the one that gets forgotten, because it is the only one with no message to assert on | **Enforceable** |
+| Nothing *else on the phone* leaves a `.part` in a folder we can see | **Nothing. There is no enforcement and there cannot be.** | **Recorded, not enforced** |
+
+The third row is the honest one and it is the reason for the correction above. We do not own these
+directories and cannot constrain what other software writes into them, so the convention is a display
+convenience that must never be load-bearing. Anything that decides to *append to*, *delete* or
+*overwrite* a file consults the Room row, not the filename.
+
+This is deliberately the same answer defect 50's rule reached rather than a hook: the enforceable
+parts get tests, the unenforceable part gets written down as a precondition on the claim, and the
+distinction between them is stated instead of papered over with a check that would look like coverage
+and provide none.
 
 **The mismatch case is a sidecar, not a rename, and that is the whole point of the design.**
 Renaming the bad partial to `holiday.mov.corrupt` would be simpler and is wrong: it keeps the corrupt
@@ -507,8 +590,9 @@ request  {"transferId":"t-8f21","reason":"user"}
 ack      {"transferId":"t-8f21","stopped":true}
 ```
 
-The partial is **kept** as `name.part`, and the next `fs.transfer.begin` for the same file resumes
-from it. That is the opposite policy from a checksum mismatch, and the difference is the point: an
+The partial is **kept** as `name.part` with its Room row intact, and the next `fs.transfer.begin` for
+the same file resumes from it — the row is what makes it resumable, the suffix is what makes it
+legible. That is the opposite policy from a checksum mismatch, and the difference is the point: an
 interrupted partial is a resumable artifact, a checksum-failed partial is corrupt. Two states that
 both look like "half a file on disk" and want opposite treatment — which is why they are given
 different appearances on disk rather than being told apart by inference.
@@ -526,8 +610,9 @@ partial is kept for resume.**
 - **The socket is closed at once, not left to time out.** A bulk socket authorised by a token whose
   session has ended is a socket with no authorisation behind it. The token dies with its control
   connection — the protocol already says so — and this makes that statement operational.
-- **The partial is kept**, as `name.part`. It is the interruption case, not the corruption case, and
-  the directory says so without anyone having to open a log.
+- **The partial is kept**, as `name.part`, with its Room row — which is what makes it resumable; the
+  suffix is what makes it legible to a person. It is the interruption case, not the corruption case,
+  and the directory says so without anyone having to open a log.
 - **`fs.transfer.done` is not emitted**, because there is no session to emit it on. The Mac learns
   from the disconnect and shows the transfer as interrupted; it must not show it as failed, and it
   must not show it as complete.
