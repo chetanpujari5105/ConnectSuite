@@ -42,25 +42,90 @@ path. On `targetSdk 36` that is not a design choice we get to make:
 - **`MANAGE_EXTERNAL_STORAGE`** ("All files access") does restore a broad path-based view. It is a
   special access the user grants by hand in Settings, exactly like the accessibility service and the
   notification listener this project already asks for, and it is **Play-policy restricted** to file
-  managers and similar. This app is sideloaded and is, functionally, a file manager — but that is a
-  decision about distribution and it belongs to the user, not to this document.
+  managers and similar. **We are not asking for it** — see the decision immediately below.
 
-So there are two credible foundations, and the spec is written to make them the **same wire
-protocol**:
+### The decision: **SAF trees only. `MANAGE_EXTERNAL_STORAGE` is not requested.**
 
-| Foundation | What the user does | What `fs.*` can then serve |
-|---|---|---|
-| **SAF trees** (`ACTION_OPEN_DOCUMENT_TREE`, persisted URI grants) | Picks a folder, once per folder | That folder and everything under it, read and write |
-| **All files access** (`MANAGE_EXTERNAL_STORAGE`) | One Settings toggle | Shared storage, minus `Android/data` and `Android/obb`, which stay unreadable regardless |
+**Taken 2026-08-31, and it is a decision rather than a recommendation.** This app has no cloud and
+no account, and whole-of-storage is the one permission that makes people uninstall. A file browser
+that asks for everything on the first run has spent the trust the rest of the design is built on.
 
-**Recommendation: build SAF first and treat all-files access as an upgrade the user may grant.** SAF
-needs no special access, survives Play policy, and its per-tree grants are honest about what the Mac
-can reach. All-files access then presents as one more root rather than as a different feature.
+| Foundation | What the user does | What `fs.*` can then serve | Status |
+|---|---|---|---|
+| **SAF trees** (`ACTION_OPEN_DOCUMENT_TREE`, persisted URI grants) | Picks a folder, once per folder | That folder and everything under it, read and write | **This is what we build** |
+| **All files access** (`MANAGE_EXTERNAL_STORAGE`) | One Settings toggle | Shared storage, minus `Android/data` and `Android/obb`, which stay unreadable regardless | **Recorded, not built** — see below |
 
-**This is a platform wall and belongs in `CLAUDE.md` alongside the others** if it is accepted:
-*there is no path-based view of the phone's shared storage without a special access, and
-`Android/data` and `Android/obb` are unreachable with or without it.* The current wall list has no
-entry for storage and the omission would be read as "nobody checked".
+The wire protocol in this document is written so that all-files access, if it is ever added, is
+**one more root with `kind: "all"`** and not a different feature. That is the only accommodation made
+for it: the shape is left open, nothing is requested, and no code asks.
+
+### What SAF actually costs, named rather than worked around
+
+The instruction was to say plainly which named features SAF makes *impossible* rather than merely
+slower. Three, and the first two are the same platform restriction:
+
+1. **"Browse the phone's storage" is not a thing this app can offer.** Since Android 11,
+   `ACTION_OPEN_DOCUMENT_TREE` **cannot grant the root directory of internal storage.** The user
+   grants folder by folder. The Mac's Files pane therefore opens on a list of granted folders, not on
+   a filesystem, and there is no view from which the whole phone is visible. This is not a slower
+   path to the same place — the place does not exist.
+
+2. **The `Download` folder cannot be granted as a tree at all.** The same Android 11 restriction
+   names it specifically, alongside the storage root. `Download` is one of the two folders people
+   actually want from a Mac, and under SAF it is unreachable as a browsable tree — so
+   *"drag a file the phone downloaded into Finder"* does not work by browsing.
+
+3. **A default destination for "send to phone" cannot be the platform `Download` folder**, for the
+   same reason. The push destination has to be a tree the user granted, so the first push needs a
+   folder pick before it can go anywhere. The app-private root (`kind: "app"`) is always writable and
+   is the honest fallback — but a file put there is not in the phone's `Download` folder and the user
+   will look for it there.
+
+**The workaround is named and rejected, because working around it is exactly what was asked
+against.** `ACTION_OPEN_DOCUMENT` — the single-file picker — reaches `Download` and reaches anything
+else, and is not blocked. It is not a fix: it requires a person holding the phone to tap the file,
+which defeats the entire premise of browsing from the Mac. Offering it as the answer to (2) would be
+a feature that only works when the user is already at the device.
+
+**What SAF does not cost.** The photo and video browser is untouched — `media.*` is `MediaStore`, not
+paths, and needs no tree grant at all. `Android/data` and `Android/obb` are unreadable to every app
+by any API since Android 11, so nothing is lost there that all-files access would have recovered.
+Read and write inside a granted tree, resume, and drag-to-Finder all work normally.
+
+### The recorded upgrade path, with the trade-off stated
+
+If `MANAGE_EXTERNAL_STORAGE` is ever wanted, this is what it buys and what it costs, so the decision
+can be re-taken on facts rather than re-argued:
+
+- **Buys:** one Settings toggle replaces every folder pick; the storage root and `Download` become
+  browsable; "send to phone" gets a real default destination. All three losses above disappear.
+- **Costs:** the app is asking to read every file on the phone, including other apps' shared data,
+  chat exports, and documents it will never touch. It is Play-policy restricted to file managers and
+  similar, so it also forecloses a Play listing. And it is the permission a user is most likely to
+  read as *"why does this need that?"* — on a product whose entire pitch is no cloud, no account, no
+  relay.
+- **If it is ever added it belongs behind an explicit opt-in**, never in onboarding: a disabled
+  "Browse all files" row in the Files pane that deep-links to Settings, alongside a sentence saying
+  what it grants. Never a runtime prompt on first run.
+
+### One factual claim in this section to verify before building
+
+The Android 11 restriction — root of internal storage and `Download` both unavailable to
+`ACTION_OPEN_DOCUMENT_TREE` — is stated here from the platform documentation and **has not been
+observed on this handset.** It is load-bearing: losses (1), (2) and (3) all follow from it, and if
+this device's picker in fact allows the storage root, most of this section is wrong.
+
+It is cheap to settle and the phone is on the wire, so it should be settled before any of `fs.*` is
+built rather than after: launch the picker, try to select internal storage's root and try to select
+`Download`, and record what the picker does with a control — a folder that *is* selectable, chosen in
+the same run — so an empty result cannot be mistaken for a blocked one. That is the enumerate-first
+rule from `CLAUDE.md` applied to a claim rather than to a query, and this section is exactly the kind
+of confident absence it exists to catch.
+
+**If accepted, the wall belongs in `CLAUDE.md` alongside the others:** *there is no path-based view
+of the phone's shared storage; SAF grants one tree at a time, the storage root and `Download` cannot
+be granted as trees, and `Android/data` and `Android/obb` are unreachable by any route.* The current
+wall list has no entry for storage and the omission would be read as "nobody checked".
 
 ---
 
@@ -100,13 +165,20 @@ fs.list  — request   {}
    "freeBytes":48192880640},
   {"rootId":"saf:primary%3ADCIM","label":"DCIM","kind":"tree","writable":true,
    "freeBytes":48192880640},
-  {"rootId":"all:primary","label":"Internal storage","kind":"all","writable":true,
+  {"rootId":"saf:primary%3ADocuments","label":"Documents","kind":"tree","writable":true,
    "freeBytes":48192880640}],
  "grantHint":"Add a folder in ConnectSuite > Files to browse more of this phone"}
 ```
 
-`kind` is `app` | `tree` | `all`. `grantHint` is present only when more could be granted, and is a
-sentence for a person — it is not parsed, the same rule the capability `unavailable` strings carry.
+`kind` is `app` | `tree` | `all`. What this build serves is `app` and `tree`; **`all` is reserved and
+unused**, held open so that the upgrade path recorded in §1 would be one more root rather than a
+protocol change. A Mac must handle a `kind` it does not recognise by showing the root with its label
+and no special treatment, not by discarding it.
+
+`grantHint` is present only when more could be granted, and is a sentence for a person — it is not
+parsed, the same rule the capability `unavailable` strings carry. Under SAF it is almost always
+present, because there is always another folder that has not been granted; that is the honest state
+of this design rather than a defect in it.
 
 ---
 
@@ -316,6 +388,52 @@ retry is clean.* Note the one thing that is easy to get wrong and that v1 got ri
 the digest must be computed over the **skipped** region too, or every resumed transfer reports a
 checksum failure on a perfectly good file.
 
+### What is left on disk, and how to tell the two failures apart by looking
+
+**Decided 2026-08-31: an interrupted transfer and a corrupt one must be distinguishable in the
+directory itself, without consulting a log.** They are opposite states that both amount to "something
+went wrong with a file" and they want opposite responses — one resumes, one retries from zero — so a
+person or a script looking at the folder has to be able to tell which happened.
+
+Three states, three appearances, on **both** sides since transfers go both ways:
+
+| State | On disk | Means |
+|---|---|---|
+| In flight, or interrupted | `holiday.mov.part` | Bytes are good as far as they go. **Resumable** — the next `fs.transfer.begin` for this file offers its length as `offset`. |
+| Verified complete | `holiday.mov` | Done. Any stale `.part` and any stale `.failed` sidecar for this name are removed as part of the rename. |
+| Checksum mismatch | `holiday.mov.failed`, and **no** `.part` | The bytes were wrong and have been deleted. **Retry from zero**, not resume. |
+
+**`.part` presence alone is the resumable signal**, which is why nothing else may ever be left with
+that suffix. A `.part` file is a promise that its bytes are good.
+
+**The mismatch case is a sidecar, not a rename, and that is the whole point of the design.**
+Renaming the bad partial to `holiday.mov.corrupt` would be simpler and is wrong: it keeps the corrupt
+bytes, which is precisely what *a corrupt file is worse than a missing one* forbids, and it leaves
+something that can be renamed back by a hopeful user. The sidecar carries the **fact** without
+carrying the bytes. It is a small text file, human-readable when opened, holding what happened, when,
+the expected digest and the one that arrived:
+
+```
+ConnectSuite transfer failed — checksum mismatch
+file      holiday.mov
+when      2026-08-31T18:22:04.117+05:30
+size      214748364 bytes received
+expected  6f3b9c1a…
+actual    b81e04d7…
+The partial file was deleted because the bytes that arrived were wrong.
+A retry starts from zero; there is nothing here to resume.
+```
+
+Two consequences worth stating rather than meeting later:
+
+- **A `.failed` sidecar is cleared by the next successful transfer of the same name**, at the same
+  moment the `.part` is renamed. Otherwise a folder accumulates gravestones for files that are now
+  fine, which is its own kind of misleading directory.
+- **`fs.list` returns both `.part` and `.failed` entries like any other file** rather than hiding
+  them. Hiding them would put the Mac's rendering and the phone's directory into disagreement about
+  what is there, and the pane is better off drawing them as what they are. This also means the
+  convention survives a Mac that has never heard of it.
+
 **Partials are never visible at their final name.** The receiver writes `name.part` and renames only
 after the digest verdict. Without that, "a corrupt file is worse than a missing one" is enforced for
 the checksum case and quietly broken for every interruption.
@@ -327,10 +445,11 @@ request  {"transferId":"t-8f21","reason":"user"}
 ack      {"transferId":"t-8f21","stopped":true}
 ```
 
-The partial is **kept**, and the next `fs.transfer.begin` for the same file resumes from it. That is
-the opposite policy from a checksum mismatch, and the difference is the point: an interrupted partial
-is a resumable artifact, a checksum-failed partial is corrupt. Two states that both look like "half a
-file on disk" and want opposite treatment.
+The partial is **kept** as `name.part`, and the next `fs.transfer.begin` for the same file resumes
+from it. That is the opposite policy from a checksum mismatch, and the difference is the point: an
+interrupted partial is a resumable artifact, a checksum-failed partial is corrupt. Two states that
+both look like "half a file on disk" and want opposite treatment — which is why they are given
+different appearances on disk rather than being told apart by inference.
 
 ### What happens when the control session dies — **open question 2, answered**
 
@@ -345,7 +464,8 @@ partial is kept for resume.**
 - **The socket is closed at once, not left to time out.** A bulk socket authorised by a token whose
   session has ended is a socket with no authorisation behind it. The token dies with its control
   connection — the protocol already says so — and this makes that statement operational.
-- **The partial is kept.** It is the interruption case, not the corruption case.
+- **The partial is kept**, as `name.part`. It is the interruption case, not the corruption case, and
+  the directory says so without anyone having to open a log.
 - **`fs.transfer.done` is not emitted**, because there is no session to emit it on. The Mac learns
   from the disconnect and shows the transfer as interrupted; it must not show it as failed, and it
   must not show it as complete.
@@ -543,9 +663,11 @@ is one row in a table; the cost of a missing one is a Mac that greys out a worki
 3. **Clipboard.** `clip.push`, `clip.request` and `clip.history` are Phase 5 and are **not** specified
    here. They share none of this machinery and they have their own platform wall — background
    clipboard reads need the accessibility service or default-IME status.
-4. **Whether to ask for `MANAGE_EXTERNAL_STORAGE` at all.** §1 recommends SAF first and leaves the
-   special access as the user's decision. It is the one thing in this document that is a product
-   choice rather than a protocol one.
+4. ~~**Whether to ask for `MANAGE_EXTERNAL_STORAGE` at all.**~~ **Decided 2026-08-31: no.** SAF trees
+   only; the special access is recorded in §1 as an upgrade path with its trade-off, and is not
+   built. What remains open is only the **verification** named at the end of §1 — that this handset's
+   picker really does refuse the storage root and `Download` — which is load-bearing for three stated
+   losses and should be settled on the device before `fs.*` is built.
 5. **Multi-file jobs as a protocol concept.** A folder copy is the Mac's loop over *n* transfers.
    If that turns out to be too chatty over a real link, a job wrapper is an addition, not a rewrite.
 

@@ -65,7 +65,7 @@ own heading there, and its own row here.
 | **49** | The exclusion's refusal overstated its own evidence — one CDP client was counted as two | **closed** | `lsof` fixture and three controls, 2026-08-30 | see below |
 | **50** | The thread cursor was never honoured — the conversations view returns nothing for a *bound* selection argument | **closed** | on hardware 2026-08-31; found while proving 32's pager actually pages | see below |
 | **51** | The after-send retry reports a loss it does not suffer — an `e:` line and a `dropped` counter for messages the observer then delivers | **open** | found during **step 71**, 2026-08-31 — 2 of 2 Mac-origin sends | `docs/testing.md` |
-| **52** | One `dropped` counter for three different things in `VideoChannel`, and the third never reaches it | **open** | source sweep, 2026-08-31 — the counter shape 51 asked to be swept for | see below |
+| **52** | One `dropped` counter for three different things in `VideoChannel`, and the third never reaches it | **open — fix on next touch of the mirror**, not deferred | source sweep, 2026-08-31 — the counter shape 51 asked to be swept for | see below |
 | **53** | Two of the Mac's four call refusals move the counter without leaving a line | **open** | source sweep, 2026-08-31 | see below |
 
 ---
@@ -817,7 +817,7 @@ Multiple call sites are not the defect. **A cause the number cannot be separated
 
 Two survived.
 
-### 52 — one `dropped` counter for three different things, one of which never reaches it · **open**
+### 52 — one `dropped` counter for three different things, one of which never reaches it · **open — fix on next touch of the mirror**
 
 `VideoChannel` (`mirror-module/.../v2/VideoChannel.kt`) drops frames for three reasons and has one
 counter:
@@ -857,6 +857,29 @@ shape 51 warns about, wearing a queue: it makes a misleading number rarer withou
 and it trades a brief stutter for growing latency, which the class comment already argues against at
 length. Also do not "fix" trigger 3 by raising `MAX_FRAME` — a frame past 8 MB is an encoder fault
 and the refusal is correct.
+
+**Disposition: fix on the next touch of the mirror, not deferred** — set 2026-08-31, and the
+distinction is deliberate. **Deferred** in this register means *open and deliberately not this
+sitting's work*, which is where 17, 33 and 38 sit and where they may sit indefinitely. This one is
+not that. It is not scheduled for its own sitting either, because it is a reporting fault behind a
+feature that is closed and working. It is **owed by whoever next opens `mirror-module` for any
+reason** — a Phase 6 reliability change, a codec change, anything — and it is small enough that
+opening the file and not fixing it is the more expensive choice.
+
+**And within it, trigger 3 is the half that matters.** Triggers 1 and 2 are conflated, which is
+51's shape and is a legibility fault: the number is real and cannot be decomposed. Trigger 3 is
+**absent**, which is worse and is a different fault. The mirror's only channel-level *correctness*
+event — the encoder produced a frame the wire cannot carry — increments nothing, so it is missing
+from `droppedCount()` and therefore from `droppedFrames` in `mirror.stats`, the one field through
+which a Mac could ever see it. A fault that never reaches a counter cannot be noticed, cannot be
+trended, and cannot be told from never having happened. That is the same shape as defect 18's 187
+refusals with no success count and as the empty accessibility tree: a reading that looks like an
+answer and is the absence of one.
+
+So the order inside the fix is fixed too: **`oversize` gets its own counter first**, and it earns a
+`w:` line of its own because it cannot be caused by a slow link. Splitting `evicted` from
+`shedNewest` is the second half and can follow in the same edit, but if only one thing is done, it
+is not that one.
 
 ### 53 — two of the Mac's four call refusals move the counter without leaving a line · **open**
 
