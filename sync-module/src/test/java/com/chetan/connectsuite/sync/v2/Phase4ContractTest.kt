@@ -4,6 +4,7 @@ import com.chetan.connectsuite.core.link.CapabilityContract
 import com.chetan.connectsuite.core.protocol.Capability
 import com.chetan.connectsuite.core.protocol.FeatureOf
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -30,7 +31,30 @@ class Phase4ContractTest {
         Capability.CALLS to CallFeature.handledTypes,
         Capability.CONTACTS to ContactsFeature.handledTypes,
         Capability.REMOTE to RemoteFeature.handledTypes,
+        // Phase 5's photo browser joins the same table. It is the case this test was written to
+        // catch: `handledTypes` and the contract were edited in two different slices, three verbs
+        // then four, and the only thing that can see them drift apart is an assertion that reads
+        // both. It also earns the last test below — a sixth feature that did not appear here would
+        // be invisible to every check in this file.
+        Capability.PHOTOS to MediaFeature.handledTypes,
     )
+
+    /**
+     * The features that serve a side channel, and which one.
+     *
+     * A second list next to [features] rather than a flag on it, because the question it answers is
+     * different: [features] is about handlers, this is about sockets, and a capability needs both
+     * before it may be advertised. `photos` is the first entry — `media.original` hands back a
+     * `transferId` that is worthless unless something is serving 42503.
+     *
+     * **What this cannot check, stated rather than implied:** that `MediaFeature.install` really
+     * assigns `link.bulkChannelSink`. That needs a `LinkServer`, which needs a `Context`, which is
+     * the JVM wall this module keeps meeting. This asserts the *declaration* is coherent — a
+     * contract that needs a channel is matched by a feature that claims to serve it — and the
+     * assignment itself is proven on hardware, where the capability appearing in `hello.ack` is the
+     * observable consequence of it.
+     */
+    private val servesBulkChannel: Set<String> = setOf(Capability.PHOTOS)
 
     @Test
     fun `each feature registers exactly what its contract requires`() {
@@ -69,26 +93,53 @@ class Phase4ContractTest {
         // because SEND_SMS was declared in no manifest in the repo.
         val registered = features.values.flatten().toSet()
         features.keys.forEach { capability ->
+            val bulk = capability in servesBulkChannel
             assertTrue(
                 "$capability is still missing " +
-                    CapabilityContract.missingFor(capability, registered, false, false),
-                CapabilityContract.isImplemented(capability, registered, false, false),
+                    CapabilityContract.missingFor(capability, registered, false, bulk),
+                CapabilityContract.isImplemented(capability, registered, false, bulk),
             )
         }
     }
 
     @Test
     fun `no feature needs a side channel it does not open`() {
-        // Notifications, SMS, calls, contacts and the remote all ride the control channel. If one
-        // of them ever gains a bulk requirement — MMS attachments are the obvious candidate, and
-        // docs/protocol.md defers them to Phase 5 — this test is what stops the capability going
+        // Notifications, SMS, calls, contacts and the remote all ride the control channel. `photos`
+        // is the first here that does not, and the test changed shape rather than gaining an
+        // exception: it used to assert *no* feature needs a side channel, which was true until
+        // slice 3 and would have had to be deleted the moment it stopped being. Now it asserts the
+        // two lists agree — a contract that needs a channel is matched by a feature that serves
+        // one, in both directions.
+        //
+        // MMS attachments are the next candidate, and this is what stops that capability going
         // green while the channel behind it is unserved.
         features.keys.forEach { capability ->
             val contract = CapabilityContract.contracts.getValue(capability)
+            assertFalse(
+                "$capability needs the video channel, which no feature in this module serves",
+                contract.needsVideoChannel,
+            )
+            assertEquals(
+                "$capability's contract and its feature disagree about the bulk channel",
+                contract.needsBulkChannel,
+                capability in servesBulkChannel,
+            )
+        }
+    }
+
+    @Test
+    fun `the side-channel list names only capabilities this module actually serves`() {
+        // The other direction, so a stale entry cannot sit here claiming a socket nobody opens —
+        // the same failure shape as CapabilityPermissionTest's notYetDeclared exemptions going
+        // stale, one layer over.
+        servesBulkChannel.forEach { capability ->
             assertTrue(
-                "$capability now needs a side channel; its feature must serve one before it can " +
-                    "be advertised",
-                !contract.needsVideoChannel && !contract.needsBulkChannel,
+                "$capability is listed as serving the bulk channel but is not a feature here",
+                capability in features.keys,
+            )
+            assertTrue(
+                "$capability serves the bulk channel but its contract does not require one",
+                CapabilityContract.contracts.getValue(capability).needsBulkChannel,
             )
         }
     }

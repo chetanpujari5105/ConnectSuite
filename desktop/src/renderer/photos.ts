@@ -76,6 +76,9 @@ interface PhotosBridge {
   mediaThumbs(options: { ids: string[]; maxEdge?: number }): Promise<
     PhotosResult<Array<[string, string]>>
   >;
+  mediaOriginal(options: { id: string }): Promise<
+    PhotosResult<{ path: string; bytes: number; elapsedMs: number }>
+  >;
 }
 
 /**
@@ -88,18 +91,25 @@ interface PhotosBridge {
 const PHOTOS_PAGE = 120;
 
 /**
- * What the pane can and cannot do, as one sentence each.
+ * What the pane can and cannot do, as one sentence each — or null when it can do all of it.
+ *
+ * **Driven by the capability, not by a constant**, which is the whole point. `photos` goes green at
+ * the moment the phone has all four verbs *and* serves the bulk channel; this notice must disappear
+ * in that same moment, because a banner saying "thumbnails only" over a pane that opens originals
+ * is the stale-copy defect this pane replaced on its way in. One condition, one source of truth: if
+ * the phone is advertising `photos`, full-size works and the banner is gone.
  *
  * Pure, and hung on the global, because it is the copy this pane exists to get right and a test
  * that asserted a second copy of it would be asserting nothing. See `photos.test.ts`.
  */
-function partialNotice(): { headline: string; detail: string } {
+function partialNotice(advertised: boolean): { headline: string; detail: string } | null {
+  if (advertised) return null;
   return {
     headline: 'Thumbnails only, for now',
     detail:
       'Albums and thumbnails come from the phone over the control channel. Full-size originals ' +
-      'need the file channel, which is the next slice — so opening a photo at full size is not ' +
-      'here yet.',
+      'need the file channel, which this phone is not offering — so opening a photo at full size ' +
+      'is not available right now.',
   };
 }
 
@@ -178,6 +188,15 @@ class PhotosView {
   private repeats = 0;
   private failure: { reason: string; fixHint?: string } | null = null;
 
+  /** True when the phone advertises `photos` — all four verbs and a served bulk channel. */
+  private advertised = false;
+
+  /** The id currently being pulled at full size, so the button can say so and not be pressed twice. */
+  private pulling: string | null = null;
+
+  /** Where the last pull landed, for the one line that tells the user their file exists. */
+  private lastPull: { path: string; bytes: number; elapsedMs: number } | null = null;
+
   constructor(
     private readonly bridge: PhotosBridge,
     private readonly card: HTMLElement,
@@ -199,6 +218,18 @@ class PhotosView {
         this.tiles.scrollTop + this.tiles.clientHeight >= this.tiles.scrollHeight - 400;
       if (nearBottom) void this.loadMore();
     });
+  }
+
+  /**
+   * Called by the renderer whenever the phone's capability set changes.
+   *
+   * Only redraws — it never refetches. The three read verbs answer whether or not `photos` is
+   * advertised, so a capability change alters what the pane *says about itself*, not what it holds.
+   */
+  setAdvertised(advertised: boolean): void {
+    if (this.advertised === advertised) return;
+    this.advertised = advertised;
+    this.render();
   }
 
   /** Loads albums, then the first page of the biggest one. Safe to call again. */
@@ -324,7 +355,13 @@ class PhotosView {
       }
       return;
     }
-    const notice = partialNotice();
+    const notice = partialNotice(this.advertised);
+    if (!notice) {
+      // Full capability: no banner at all. The pane says nothing about itself because there is
+      // nothing left to explain.
+      this.banner.hidden = true;
+      return;
+    }
     this.banner.hidden = false;
     this.banner.className = 'photos-banner partial';
     this.banner.appendChild(photoLine('photos-banner-headline', notice.headline));
@@ -418,6 +455,32 @@ class PhotosView {
     }
   }
 
+  /**
+   * Pulls one photo at full size, over the bulk channel.
+   *
+   * Sequential by construction — the button is disabled while `pulling` is set. One bulk socket per
+   * file is the protocol's own shape, and letting a user start six at once would open six sockets
+   * to move six photos, which is what the control channel's `transferId` handshake exists to avoid.
+   */
+  private async pull(item: MediaItemRow): Promise<void> {
+    if (this.pulling) return;
+    this.pulling = item.id;
+    this.render();
+    try {
+      const result = await this.bridge.mediaOriginal({ id: item.id });
+      if (result.ok && result.data) {
+        this.lastPull = result.data;
+      } else {
+        // The phone's own sentence, not a generic one. A failed transfer is the case where a
+        // specific reason matters most: "no space" and "the socket dropped" want opposite responses.
+        this.failure = { reason: result.reason ?? 'The transfer did not finish.' };
+      }
+    } finally {
+      this.pulling = null;
+      this.render();
+    }
+  }
+
   private renderDetail(): void {
     this.detail.textContent = '';
     const item = this.items.find((one) => one.id === this.selectedItem);
@@ -447,15 +510,37 @@ class PhotosView {
       this.detail.appendChild(photoLine('photos-detail-owner', `Saved by ${item.ownerAppName}`));
     }
 
-    // Said here as well as in the banner, because this is the moment someone reaches for it: the
-    // detail card is where an "Open" button would live, and its absence needs a sentence rather
-    // than an empty space.
-    this.detail.appendChild(
-      photoLine(
-        'photos-detail-limit',
-        'The full-size original stays on the phone until the file channel lands.',
-      ),
-    );
+    if (this.advertised) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'button photos-detail-save';
+      const busy = this.pulling === item.id;
+      button.disabled = this.pulling !== null;
+      button.textContent = busy ? 'Saving…' : 'Save to Mac';
+      button.addEventListener('click', () => void this.pull(item));
+      this.detail.appendChild(button);
+
+      if (this.lastPull && !busy) {
+        // Where the file went, in full. A "saved" toast that does not say where leaves someone
+        // hunting through Finder for a file they were told they already have.
+        this.detail.appendChild(
+          photoLine(
+            'photos-detail-saved',
+            `Saved ${fileSize(this.lastPull.bytes)} to ${this.lastPull.path}`,
+          ),
+        );
+      }
+    } else {
+      // Said here as well as in the banner, because this is the moment someone reaches for it: the
+      // detail card is where the Save button lives, and its absence needs a sentence rather than an
+      // empty space.
+      this.detail.appendChild(
+        photoLine(
+          'photos-detail-limit',
+          'The full-size original stays on the phone — this phone is not offering the file channel.',
+        ),
+      );
+    }
   }
 }
 

@@ -39,8 +39,8 @@ Mac actually attached. Do not grep the phone log for `Listening on`; it is writt
 `yiaddr = 10.108.253.92, router 10.108.253.63` — the correct one. Two reads of the same fact
 disagreeing, with the less obvious one right.
 
-Baselines, as of Phase 5 slice 2b: phone **202** tests (`core` 76, `input-module` 44,
-`sync-module` 51, `mirror-module` 31), Mac **146** tests, `tsc --noEmit` clean. The figure this file
+Baselines, as of Phase 5 slice 3: phone **204** tests (`core` 77, `input-module` 44,
+`sync-module` 52, `mirror-module` 31), Mac **147** tests, `tsc --noEmit` clean. The figure this file
 carried at the close of Phase 4 — *189 (67 `sync-module` + 122 `core`)* — does not reconcile with the
 tree by either counting method and has been corrected rather than restated; see the note at the end
 of `docs/testing.md`. Run Gradle with `--rerun-tasks` when you intend a *run* — an
@@ -89,6 +89,30 @@ not implement an alternative without saying why the recorded reasoning is wrong.
 
 ---
 
+## Slice 3 — `media.original` and the Mac's first bulk client — **done, 2026-09-01**
+
+**Port 42503 carries bytes.** Three photos pulled phone → Mac with digests compared on both ends,
+frame tallies on both sides, and `photos` advertised — the capability and the feature arriving in
+the same moment, which is what `CapabilityContract` was written to enforce. Slice 1's on-socket debt
+for the frame caps is discharged on the accept path; the *refusal* path is still unit-test-only.
+
+Evidence: `docs/testing.md` → **Slice 3**. Two things it leaves unproven and names: **resume** (the
+phone honours an `offset` and digests the skipped bytes, but nothing has ever sent a non-zero one)
+and **push** (nothing writes to the phone yet).
+
+### Next: the transfer slice — `fs.*`
+
+Its obligations are already written and must not be brought forward or skipped:
+
+1. **The resumed-digest test, red first.** Interrupt a transfer, resume it, assert the receiver's
+   digest equals a whole-file digest of the source — then reintroduce the bug by starting the digest
+   at `offset` and watch it report `CHECKSUM_MISMATCH` on a byte-identical file. The sender's half
+   exists (`BulkTransfers.digestSkipped`); the receiver's does not, and neither does the test.
+2. **Whether a pending `MediaStore` item can be resumed across process death.** Unproven,
+   load-bearing for the default push destination, and it gets a hardware reading before code depends
+   on it — `docs/phase-5-fs-media-proposal.md` §4.
+3. **The SAF grant surface and the onboarding copy**, which §8 still lists as open.
+
 ## Slice 2b — the Mac's Photos pane — **built and running, 2026-08-31**
 
 The pane is real: 149 albums, 35,755 items, thumbnails, paging by scroll, all through the control
@@ -97,8 +121,9 @@ combination is deliberate, it is the four-state model's *partly offering* state,
 what makes it a designed inconsistency rather than an accidental one. Departures are in
 `docs/design-departures.md` → **Photos** (P1–P6); the evidence is `docs/testing.md` → **Slice 2b**.
 
-**Do not "fix" the grey chip by loosening `CapabilityContract.isImplemented`.** It goes green when
-`media.original` and the bulk channel land, and not before.
+**The grey chip was never a defect** — it went green in slice 3 when `media.original` and the bulk
+channel landed together, which is the mechanism working. Nobody loosened
+`CapabilityContract.isImplemented`, and nobody should.
 
 ## Slice 2 — the photo browser's three read verbs — **done on hardware, 2026-08-31**
 

@@ -186,6 +186,11 @@ contextBridge.exposeInMainWorld('connect', {
   mediaThumbs: (
     options: { ids: string[]; maxEdge?: number },
   ): Promise<PhoneResult<Array<[string, string]>>> => ipcRenderer.invoke('media-thumbs', options),
+  /** Pulls one photo at full size over the bulk channel and answers with where it landed. */
+  mediaOriginal: (
+    options: { id: string },
+  ): Promise<PhoneResult<{ path: string; bytes: number; elapsedMs: number }>> =>
+    ipcRenderer.invoke('media-original', options),
 
   /**
    * The media remote: one state the phone pushes, and one verb.

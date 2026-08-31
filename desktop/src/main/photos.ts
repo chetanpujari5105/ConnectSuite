@@ -1,10 +1,15 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { promises as fs } from 'node:fs';
 import {
   MessageType,
   type MediaBucket,
   type MediaItem,
+  type MediaOriginalTicket,
   type MediaThumb,
   type PhoneResult,
 } from '../shared/protocol';
+import type { BulkClient } from './bulk';
 import { ask, rows } from './feature';
 import type { LinkClient } from './link';
 import { log } from './logger';
@@ -39,7 +44,11 @@ export class PhotosClient {
   private thumbsFailed = 0;
   private cacheHits = 0;
 
-  constructor(private readonly link: () => LinkClient | null) {}
+  constructor(
+    private readonly link: () => LinkClient | null,
+    private readonly bulk: () => BulkClient | null,
+    private readonly session: () => { host: string | null; token: string | null },
+  ) {}
 
   /** Every album, newest first. */
   async buckets(): Promise<PhoneResult<MediaBucket[]>> {
@@ -143,6 +152,71 @@ export class PhotosClient {
   }
 
   /**
+   * Fetches one photo at full size: `media.original`, then the bulk channel.
+   *
+   * Two steps because they are two different things. The control channel agrees *what* is being
+   * moved and hands back a `transferId`; the bulk socket moves the bytes. Nothing about the second
+   * step is specific to photos, which is the point — `fs.transfer.begin` will hand this same client
+   * the same shape.
+   *
+   * The file lands in `~/Downloads/ConnectSuite`, created on demand. A name collision is resolved by
+   * suffixing rather than overwriting: two photos really can share a display name across buckets,
+   * and silently replacing someone's file to avoid a dialog is the wrong trade.
+   */
+  async original(id: string): Promise<PhoneResult<{ path: string; bytes: number; elapsedMs: number }>> {
+    const ticket = await ask(
+      this.link(),
+      'photos',
+      MessageType.MEDIA_ORIGINAL,
+      { id },
+      (payload): MediaOriginalTicket => ({
+        transferId: String(payload.transferId ?? ''),
+        size: Number(payload.size ?? 0),
+        mime: String(payload.mime ?? 'application/octet-stream'),
+        name: String(payload.name ?? `photo-${id}`),
+        sha256: payload.sha256 == null ? null : String(payload.sha256),
+        chunkMax: Number(payload.chunkMax ?? 0),
+      }),
+    );
+    if (!ticket.ok) return ticket;
+
+    const { host, token } = this.session();
+    const bulk = this.bulk();
+    if (!host || !token || !bulk) {
+      return {
+        ok: false,
+        feature: 'photos',
+        type: MessageType.MEDIA_ORIGINAL,
+        reason: 'There is no live session with the phone.',
+      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number }>;
+    }
+
+    const folder = join(homedir(), 'Downloads', 'ConnectSuite');
+    await fs.mkdir(folder, { recursive: true });
+    const destination = await freeName(folder, ticket.data.name);
+
+    const result = await bulk.pull({
+      host,
+      token,
+      transferId: ticket.data.transferId,
+      destination,
+      expectedBytes: ticket.data.size,
+    });
+    if (!result.ok) {
+      return {
+        ok: false,
+        feature: 'photos',
+        type: MessageType.MEDIA_ORIGINAL,
+        reason: result.reason ?? 'The transfer did not finish.',
+      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number }>;
+    }
+    return {
+      ok: true,
+      data: { path: result.path!, bytes: result.bytes, elapsedMs: result.elapsedMs },
+    };
+  }
+
+  /**
    * Drops everything on disconnect.
    *
    * Same reasoning as the contact cache: a thumbnail resolved against a phone that has since been
@@ -161,6 +235,28 @@ export class PhotosClient {
 
 /** The phone's own cap on `ids`, mirrored so a batch is never refused as BAD_REQUEST. */
 const THUMB_BATCH = 32;
+
+/**
+ * `name`, or `name (2)`, `name (3)` — the first that does not exist.
+ *
+ * Overwriting would be simpler and is wrong: two photos can share a display name across buckets,
+ * and replacing a file someone already pulled to avoid asking them is a decision that belongs to
+ * them.
+ */
+async function freeName(folder: string, name: string): Promise<string> {
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const extension = dot > 0 ? name.slice(dot) : '';
+  for (let n = 1; n < 1000; n += 1) {
+    const candidate = join(folder, n === 1 ? name : `${stem} (${n})${extension}`);
+    try {
+      await fs.access(candidate);
+    } catch {
+      return candidate;
+    }
+  }
+  return join(folder, `${stem}-${Date.now()}${extension}`);
+}
 
 function toBucket(row: Record<string, unknown>): MediaBucket {
   return {

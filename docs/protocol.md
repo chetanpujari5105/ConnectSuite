@@ -964,9 +964,27 @@ out.
 ## Bulk channel (42503)
 
 Client sends session token, then a JSON header frame:
-`{"transferId":"...","direction":"push|pull","path":"...","size":<bytes>,"mtime":<epoch_ms>,"sha256":"..."}`
-then raw chunks of 256 KB. Progress is reported on the control channel, not here.
-Resume: a `pull` header may include `"offset":<bytes>`. The sender seeks and continues.
+`{"transferId":"...","offset":<bytes>}`
+then raw chunks of **up to** 256 KB. Progress is reported on the control channel, not here.
+
+**The header names the transfer and nothing else.** Everything about *what* is moving — size, name,
+mime, digest — was agreed on the control channel when the `transferId` was issued, by
+`media.original` today and `fs.transfer.begin` when it lands. Repeating those fields here would be a
+second copy of the same facts, free to disagree with the first, and the shorter header is what makes
+the 64 KB cap comfortable rather than tight.
+
+**Chunks are *up to* 256 KB, not exactly 256 KB.** The last chunk of any file is short, and the
+design calls for adaptive sizing between 64 KB and 256 KB on a slow link. `chunkMax` is carried in
+the `media.original` ack so the number is negotiated rather than a constant two implementations have
+to agree about silently. (This sentence used to read "raw chunks of 256 KB", which the first short
+final chunk would have violated — open question 4 in `docs/RESUME.md`, now closed.)
+
+**Resume: the header may carry a non-zero `offset`.** The sender seeks there to *send* from, and its
+digest still covers the whole file, from byte 0 — those are two different positions and conflating
+them makes every resumed transfer report `CHECKSUM_MISMATCH` on a file that is perfectly correct.
+The receiver has the mirror obligation: read its own partial back through the digest before appending.
+**As of 2026-09-01 nothing has ever sent a non-zero offset**, so this path is specified and
+unexercised.
 
 ### Frame caps
 

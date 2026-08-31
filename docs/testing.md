@@ -7838,3 +7838,99 @@ Mac **146** tests (was 139), 0 failures, `tsc --noEmit` clean. The seven new one
 half through the same `globalThis` seam `calls.ts` uses — the copy of the partial notice, the
 package-id rule at its landing point on this pane, sizes, clock, and the summary's behaviour when
 the phone sends no dimensions. Phone unchanged at **202**.
+
+## Slice 3 — `media.original` and the Mac's first bulk client · 2026-09-01
+
+**Port 42503 carries bytes for the first time.** Slice 1 built the frame caps on both ends and could
+only unit-test them; this section is the on-socket evidence that slice recorded as owed.
+
+### The capability and the feature arrive together, which is what the contract was written for
+
+`photos` went from absent to advertised at the moment the fourth verb and the served socket landed
+in the same install:
+
+```
+[media] Media feature installed with all 4 photos verbs and the bulk channel served;
+        read permission granted; capabilities now: [calls, contacts, mirror, photos, sms]
+```
+
+On the Mac the amber banner disappeared in the same moment, from the same fact — `photos.setAdvertised`
+takes the capability list and `partialNotice(advertised)` returns null when it is on. That is
+deliberate wiring rather than a coincidence of timing: a banner reading *"thumbnails only"* over a
+pane that saves originals would be the stale-copy defect this pane replaced on its way in, and
+`the notice disappears the moment the capability is advertised` is that written as a test.
+
+### Three transfers, phone → Mac, digests compared on both ends
+
+| Transfer | File | Bytes | Mac | Phone | Frames accepted / rejected |
+|---|---|---|---|---|---|
+| `t-1-13756` | `20260831_153657.jpg` | 2,522,538 | 161 ms, 125.3 Mbit/s | 62 ms, 325.5 Mbit/s | 11 / 0 |
+| `t-2-43839` | `IMG_3466.MOV` | 23,604,812 | 285 ms, 662.6 Mbit/s | 209 ms, 903.5 Mbit/s | 92 / 0 |
+| `t-3-27213` | `Screenshot_…_Google.jpg` | 858,102 | 98 ms, 70.0 Mbit/s | 16 ms, 429.1 Mbit/s | 5 / 0 |
+
+**The digests were compared rather than assumed.** The phone digests while streaming and reports
+what it sent; `shasum -a 256` on the Mac's copy agrees for every one:
+
+```
+phone f4c0d81ffcef…   mac f4c0d81ffcef3abbd120890670b5de61a7f37076bec7b2389aaaec5a5a0cf6dc
+phone bd74376627ed…   mac bd74376627ede58408aa0a321ff62435f80a2a7b9b51c8d4e09787e2a2a379c9
+phone 6c339f67d305…   mac 6c339f67d305…
+```
+
+That is a comparison of two independently computed digests over the same bytes, which is what makes
+it evidence. It is **not** the same thing as `verified: true` on the wire, and the field stays
+`false` on purpose: nothing agreed a digest *in advance*, because `media.original` acks `sha256:
+null` rather than reading every file twice before sending it. A success nobody checked must not look
+like a success that was — which is exactly why `verified` is a separate field from `ok`.
+
+**The frame tally is the caps' first denominator on a real socket.** `11 frames / 2522575 bytes
+accepted, 0 rejected` — the refusal count with the accepted count beside it, which is the thing slice
+1 could only assert in a unit test. Nothing was refused, and now "nothing was refused" is a reading
+rather than an absence of one.
+
+### A defect the tally caught, in the tally itself
+
+After two transfers the Mac logged **`3 transfers / 0 failed`**. Two transfers, three counted.
+
+`complete()` guarded on `if (settled) return` and then set `settled = true` **after** an `await` on
+`file.end`. Two callers race to finish a transfer — the frame reader when the agreed length arrives,
+and the socket's `close` handler when the phone hangs up — and both could pass the guard in the
+window the await opened. Fixed by claiming the flag before yielding, never after.
+
+**This is the same defect as the renderer's duplicate page fetch, one layer down**, and it was found
+the same way: two numbers that had to agree and did not. Nothing about the transfers was wrong — the
+files are byte-perfect — so a build without that counter would have shipped this and the first
+person to notice would have been someone reading a transfer count that drifted upward over a long
+session. It now reads `1 transfers / 0 failed` for one transfer.
+
+### The gate refused once, correctly, and said so
+
+Driving the pane, a check refused to press Save because `photos.selectedItem` had changed between
+reading the target and acting on it — the user was clicking in the app at the same time. It answered
+`the selection moved: 1000297632` rather than pressing the button anyway. That is the gate rule
+working in its intended shape: **the predicate that decides whether to act is evaluated at the moment
+of acting**, and a refusal says what it refused and why.
+
+### What is not proven here
+
+- **Resume.** The phone honours an `offset` in the header and digests the skipped bytes through
+  `digestSkipped` so the digest still covers the whole file, but **nothing has ever sent a non-zero
+  offset.** The code path is unexercised and is recorded as such; the resumed-digest test stays a
+  precondition on the transfer slice, where a receiver exists to interrupt.
+- **Push.** Nothing writes to the phone over this channel yet. `fs.*` owns that, along with SAF
+  destinations and the `.part`/`.failed` convention.
+- **A refused frame on a live socket.** Every frame in every transfer above was legal. The caps'
+  refusal path is still unit-test-only; what is now proven on hardware is the *accept* path and its
+  tally.
+
+## Suite
+
+Phone **204** tests (`core` 77, `sync-module` 52, `input-module` 44, `mirror-module` 31), 0 failures.
+Mac **147** tests, 0 failures, `tsc --noEmit` clean.
+
+The phone gained the capability-turns-on assertion and the reshaped side-channel guard. That guard
+used to read *"no feature needs a side channel it does not open"* and asserted, literally, that **no**
+feature needed one — true until this slice and due for deletion the moment it stopped being. It now
+asserts the two lists agree in both directions, so it keeps its meaning instead of becoming an
+exception. Taken red first by dropping `media.original` from `MediaFeature.handledTypes`: three
+assertions failed, naming the missing verb, the unserved channel, and the drifted set.

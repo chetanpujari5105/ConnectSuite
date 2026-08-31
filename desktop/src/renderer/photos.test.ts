@@ -13,7 +13,7 @@ import '../renderer/photos';
  * is to explain that it works and does not entirely work.
  */
 const labels = (globalThis as Record<string, unknown>).__photoLabels as {
-  partialNotice(): { headline: string; detail: string };
+  partialNotice(advertised: boolean): { headline: string; detail: string } | null;
   albumCount(count: number): string;
   itemSummary(item: {
     kind: 'image' | 'video';
@@ -29,7 +29,7 @@ const labels = (globalThis as Record<string, unknown>).__photoLabels as {
 };
 
 test('the partial notice names the missing half and what still works', () => {
-  const notice = labels.partialNotice();
+  const notice = labels.partialNotice(false)!;
   // Not "limited functionality" and not "coming soon": a user who is about to double-click a photo
   // has to learn, before they do, that the full-size original is the part that is not here.
   assert.match(notice.detail, /full-size originals/i);
@@ -40,8 +40,16 @@ test('the partial notice names the missing half and what still works', () => {
   // error, and the vocabulary of failure here would say "the link is down" to someone whose link
   // is fine.
   for (const text of [notice.headline, notice.detail]) {
-    assert.doesNotMatch(text, /error|failed|unavailable|broken|cannot connect/i);
+    assert.doesNotMatch(text, /error|failed|broken|cannot connect/i);
   }
+});
+
+test('the notice disappears the moment the capability is advertised', () => {
+  // The banner and the chip are driven by one fact, so they cannot disagree. This is the stale-copy
+  // defect the pane replaced on its way in — text describing the build, going stale where nothing
+  // could see it — turned into an assertion instead of a habit.
+  assert.equal(labels.partialNotice(true), null);
+  assert.notEqual(labels.partialNotice(false), null);
 });
 
 test('an album owned by an app is labelled with the app, never the package id', () => {

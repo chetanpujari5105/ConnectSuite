@@ -24,22 +24,24 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * The photo and video browser's three read verbs — Phase 5 slice 2.
  *
- * ### What this slice deliberately does not do
+ * ### All four verbs, as of slice 3
  *
- * `media.original` is **not** here. It resolves a `MediaStore` id to a transfer that runs on the
- * bulk channel, and nothing serves that channel yet, so it belongs to slice 3 alongside the Mac's
- * first bulk client.
+ * Slice 2 shipped three of them and left `photos` deliberately unadvertised, because
+ * `CapabilityContract.isImplemented` requires *every* request in a contract to have a handler and
+ * `media.original` had none. Slice 3 adds the fourth **and** serves the bulk channel it runs on, so
+ * the capability turns on — both halves in one moment, which is what the contract was written to
+ * enforce.
  *
- * The consequence is that **the `photos` capability stays unavailable through this slice, and that
- * is the expected outcome rather than an unfinished job.** `CapabilityContract.isImplemented`
- * requires *all* of a capability's requests to have handlers, and photos' contract names four. The
- * Mac's Photos pane therefore stays grey and says why.
+ * That the chip stayed grey for a slice was the mechanism working, not a defect in it. The tempting
+ * fix at the time was to loosen `containsAll` to a subset check; doing so would have advertised a
+ * capability over a dead verb, which is what `calls` once did across two of its four permissions.
  *
- * The tempting fix is to loosen that `containsAll` to a subset check so the chip goes green with
- * three verbs live. That check is the one mechanism preventing a capability being advertised over
- * dead verbs, and it exists because `calls` was once advertised on two of the four permissions its
- * own messages needed. `slice 2 leaves photos unavailable` in `CapabilityPermissionTest` is that
- * decision written as a test, so nobody has to rediscover the argument.
+ * ### `media.original` is not a fifth transfer mechanism
+ *
+ * It resolves a `MediaStore` id to a `transferId` and hands it back. The bytes then move on the bulk
+ * channel exactly as `fs.transfer.begin`'s will, reported by `fs.transfer.progress` and
+ * `fs.transfer.done`. The only thing it does that `fs.*` cannot is address a `MediaStore` id, which
+ * is the whole reason it exists as its own type rather than as a second addressing mode on `begin`.
  */
 object MediaFeature {
 
@@ -47,6 +49,7 @@ object MediaFeature {
         MessageType.MEDIA_BUCKETS,
         MessageType.MEDIA_LIST,
         MessageType.MEDIA_THUMB,
+        MessageType.MEDIA_ORIGINAL,
     )
 
     @Volatile
@@ -62,11 +65,24 @@ object MediaFeature {
         installed = true
         val app = context.applicationContext
         handledTypes.forEach { type -> link.register(type, handlerFor(type, app)) }
+
+        // Serving the bulk channel is the other half of what turns `photos` on: the contract
+        // requires every verb to have a handler **and** this socket to have a consumer, because
+        // `media.original` hands back a transferId that is worthless without it. Assigning the sink
+        // and registering the fourth verb in the same install is what makes the chip and the
+        // feature arrive together.
+        link.bulkChannelSink = { channel -> BulkTransfers.serve(app, channel) }
+        val previousSessionEnded = link.sessionEndedSink
+        link.sessionEndedSink = { session ->
+            previousSessionEnded?.invoke(session)
+            session.token?.let { BulkTransfers.forgetSession(it) }
+        }
+
         link.refreshCapabilities()
         LinkLog.i(
             "media",
-            "Media feature installed with ${handledTypes.size} of photos' 4 verbs " +
-                "(media.original is slice 3); read permission " +
+            "Media feature installed with all ${handledTypes.size} photos verbs and the bulk " +
+                "channel served; read permission " +
                 (if (granted(app)) "granted" else "not granted") +
                 "; capabilities now: ${link.capabilities.current().sorted()}",
         )
@@ -76,6 +92,7 @@ object MediaFeature {
         if (!installed) return
         installed = false
         handledTypes.forEach(link::unregister)
+        link.bulkChannelSink = null
         link.refreshCapabilities()
     }
 
@@ -103,6 +120,7 @@ object MediaFeature {
         MessageType.MEDIA_BUCKETS -> MessageHandler { session, request -> onBuckets(session, request, context) }
         MessageType.MEDIA_LIST -> MessageHandler { session, request -> onList(session, request, context) }
         MessageType.MEDIA_THUMB -> MessageHandler { session, request -> onThumb(session, request, context) }
+        MessageType.MEDIA_ORIGINAL -> MessageHandler { session, request -> onOriginal(session, request, context) }
         else -> error("MediaFeature.handledTypes lists $type with no handler")
     }
 
@@ -183,6 +201,40 @@ object MediaFeature {
         }
     }
 
+    /**
+     * Resolves a media id to a transfer the Mac then claims on the bulk channel.
+     *
+     * `sha256` is **null** here and that is deliberate rather than unfinished: hashing before
+     * sending means reading the file twice, and a 4 GB video would stall this ack for the length of
+     * a full read with no progress reporting. The phone digests as it streams and reports the result
+     * on `fs.transfer.done`, where `verified: false` says plainly that nothing compared it against a
+     * digest agreed in advance. A success nobody checked must not look like a success that was.
+     */
+    private fun onOriginal(session: ControlSession, request: Envelope, context: Context) {
+        if (!granted(context)) return refuse(session, request, MediaFailure.NotGranted)
+        val id = request.str("id")?.toLongOrNull()
+            ?: return refuse(session, request, MediaFailure.BadRequest("id is required"))
+
+        val sessionId = session.token
+            ?: return refuse(session, request, MediaFailure.BadRequest("this session has no token"))
+        val pending = BulkTransfers.registerMediaPull(context, id, sessionId)
+            ?: return refuse(session, request, MediaFailure.NoSuchItem(id.toString()))
+
+        delivered.incrementAndGet()
+        LinkLog.i(
+            "media",
+            "media.original $id → ${pending.transferId}, ${pending.size} bytes — ${tally()}",
+        )
+        session.ack(request) {
+            put("transferId", pending.transferId)
+            put("size", pending.size)
+            put("mime", pending.mime)
+            put("name", pending.name)
+            put("sha256", null as String?)
+            put("chunkMax", BulkTransfers.chunkMax())
+        }
+    }
+
     private fun refuse(session: ControlSession, request: Envelope, failure: MediaFailure) {
         refused.incrementAndGet()
         LinkLog.w("media", "${request.type} refused: ${failure.label} — ${tally()}")
@@ -224,6 +276,12 @@ sealed class MediaFailure(
         reason = "This phone is not sharing its photos and videos.",
         fixHint = "On the phone: Settings > Apps > ConnectSuite > Permissions > Photos and videos, " +
             "and choose Allow.",
+    )
+
+    class NoSuchItem(what: String) : MediaFailure(
+        label = "no-such-item",
+        code = ErrorCode.NOT_FOUND,
+        reason = "That photo is no longer on the phone.",
     )
 
     class BadRequest(detail: String) : MediaFailure(

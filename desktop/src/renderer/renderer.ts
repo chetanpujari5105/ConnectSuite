@@ -128,6 +128,10 @@ interface ConnectBridge {
   mediaThumbs(options: { ids: string[]; maxEdge?: number }): Promise<
     { ok: true; data: Array<[string, string]> } | { ok: false; reason?: string; fixHint?: string }
   >;
+  mediaOriginal(options: { id: string }): Promise<
+    { ok: true; data: { path: string; bytes: number; elapsedMs: number } }
+    | { ok: false; reason?: string; fixHint?: string }
+  >;
 
   // Phase 4: the media remote. `RemoteStateView` comes from remote.ts, a plain script in the same
   // global scope rather than a module.
@@ -210,6 +214,11 @@ function render(status: RendererStatus | null): void {
   // Same rule for contacts, and the pane loads its first page the moment it is advertised — which
   // is what makes granting READ_CONTACTS mid-session visible without a reconnect.
   contacts.setAdvertised(status?.capabilities?.includes('contacts') ?? false);
+  // Photos is the one pane whose *content* does not depend on this. The three read verbs answer
+  // either way; what the capability decides is whether full-size originals work, which is exactly
+  // what the pane's banner says — so this call turns the banner off and the Save button on in the
+  // same moment the chip goes green, from the same fact.
+  photos.setAdvertised(status?.capabilities?.includes('photos') ?? false);
   // The media remote rides the notification-listener grant, so this lights together with
   // `notifications` — one grant, two features. See docs/protocol.md.
   remote.setAdvertised(status?.capabilities?.includes('remote') ?? false);
@@ -343,6 +352,7 @@ const photos = new PhotosView(
     mediaBuckets: () => connect.mediaBuckets(),
     mediaList: (options) => connect.mediaList(options),
     mediaThumbs: (options) => connect.mediaThumbs(options),
+    mediaOriginal: (options) => connect.mediaOriginal(options),
   },
   el('photos-card'),
   el('photos-banner'),

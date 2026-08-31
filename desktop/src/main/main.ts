@@ -7,6 +7,7 @@ import { ErrorCode, MessageType, type ConnectionStatus } from '../shared/protoco
 import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ContactsClient } from './contacts';
+import { BulkClient } from './bulk';
 import { PhotosClient } from './photos';
 import { NotificationClient } from './notifications';
 import { RemoteClient } from './remote';
@@ -53,7 +54,19 @@ const contacts = new ContactsClient(() => link);
  * `media.thumb` all answer today. A client that refused to ask because the chip is grey would turn
  * a partly-working feature into a dead one.
  */
-const photos = new PhotosClient(() => link);
+/**
+ * The bulk channel client, built with the identity once it exists.
+ *
+ * Lazy for the same reason `link` and `video` are: the identity is loaded inside `whenReady`, and
+ * every socket client has to be constructed after it.
+ */
+let bulk: BulkClient | null = null;
+
+const photos = new PhotosClient(
+  () => link,
+  () => bulk,
+  () => ({ host: link?.status().address ?? null, token: link?.token() ?? null }),
+);
 
 /**
  * What is playing on the phone. Pushed by the phone, asked for once on connect.
@@ -346,6 +359,7 @@ app.whenReady().then(() => {
   const identity = loadIdentity();
   link = new LinkClient(identity);
   video = new VideoClient(identity);
+  bulk = new BulkClient(identity);
 
   /*
    * The detached mirror window.
@@ -767,6 +781,8 @@ ipcMain.handle(
     return result.ok ? { ok: true as const, data: [...result.data.entries()] } : result;
   },
 );
+
+ipcMain.handle('media-original', (_event, options: { id: string }) => photos.original(options.id));
 
 ipcMain.handle('call-current', () => calls.currentCall());
 ipcMain.handle('call-log', (_event, options: { limit?: number; before?: number } = {}) =>

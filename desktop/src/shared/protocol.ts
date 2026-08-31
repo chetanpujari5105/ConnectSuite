@@ -70,6 +70,17 @@ export interface MediaItem {
   ownerAppName?: string;
 }
 
+/** What `media.original` hands back: a transfer to claim on the bulk channel. */
+export interface MediaOriginalTicket {
+  transferId: string;
+  size: number;
+  mime: string;
+  name: string;
+  /** Always null today — the phone digests while streaming rather than reading the file twice. */
+  sha256: string | null;
+  chunkMax: number;
+}
+
 /** One thumbnail, or one per-item failure. A deleted photo must not lose the other 31. */
 export interface MediaThumb {
   id: string;
@@ -141,6 +152,15 @@ export const MessageType = {
   MEDIA_BUCKETS: 'media.buckets',
   MEDIA_LIST: 'media.list',
   MEDIA_THUMB: 'media.thumb',
+  /**
+   * Slice 3. Resolves a MediaStore id to a transfer that then runs on the bulk channel, reported by
+   * the `fs.transfer.*` events — not a fifth transfer mechanism, just the one addressing mode
+   * `fs.transfer.begin` cannot express.
+   */
+  MEDIA_ORIGINAL: 'media.original',
+
+  FS_TRANSFER_PROGRESS: 'fs.transfer.progress',
+  FS_TRANSFER_DONE: 'fs.transfer.done',
 
   REMOTE_STATE: 'remote.state',
   REMOTE_COMMAND: 'remote.command',

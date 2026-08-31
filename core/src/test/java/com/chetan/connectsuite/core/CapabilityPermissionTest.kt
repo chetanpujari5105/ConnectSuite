@@ -325,10 +325,51 @@ class CapabilityPermissionTest {
     }
 
     @Test
-    fun `slice 2 leaves photos unavailable, and that is the expected state`() {
-        // Stated positively so it reads as a decision rather than as an unfinished job: the three
-        // read verbs are the slice, `media.original` is slice 3, and `isImplemented` requires all
-        // four. The chip stays grey until the fourth verb and the bulk channel land together.
+    fun `photos turns on only when the fourth verb and the bulk channel arrive together`() {
+        // Slice 3's whole shape, as one assertion. Neither half alone is enough, and that is the
+        // contract doing its job rather than an inconvenience to work around: a fourth verb with no
+        // socket hands back a transferId nobody can claim, and a served socket with no verb has
+        // nothing to carry.
+        val allFour = setOf(
+            MessageType.MEDIA_BUCKETS,
+            MessageType.MEDIA_LIST,
+            MessageType.MEDIA_THUMB,
+            MessageType.MEDIA_ORIGINAL,
+        )
+        val granted = setOf(
+            "android.permission.READ_MEDIA_IMAGES",
+            "android.permission.READ_MEDIA_VIDEO",
+        )
+        assertEquals(
+            setOf(Capability.PHOTOS),
+            CapabilityContract.advertisable(
+                grantedPermissions = granted,
+                specialAccessHeld = emptySet(),
+                registeredTypes = allFour,
+                videoServed = false,
+                bulkServed = true,
+            ),
+        )
+        // And neither half on its own.
+        assertTrue(
+            CapabilityContract.advertisable(granted, emptySet(), allFour, false, false).isEmpty(),
+        )
+        assertTrue(
+            CapabilityContract.advertisable(
+                granted,
+                emptySet(),
+                allFour - MessageType.MEDIA_ORIGINAL,
+                false,
+                true,
+            ).isEmpty(),
+        )
+    }
+
+    @Test
+    fun `three verbs leave photos unavailable, and that was the expected state in slice 2`() {
+        // Slice 2's expected state, kept as a test after slice 3 shipped because it is the
+        // mechanism rather than the moment: a capability is never advertised over a verb that has
+        // no handler. The chip stayed grey for a slice and that was the contract working.
         //
         // The wrong fix, named here because it is the tempting one: loosening `containsAll` to a
         // subset check to make the chip green. That is the one mechanism preventing a capability
