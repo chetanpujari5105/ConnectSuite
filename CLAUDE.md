@@ -297,7 +297,7 @@ damage on the user's own device or nearly recorded a false result.
   produces a clean, specific, confident wrong answer, and nothing downstream can distinguish that
   from a real finding.
 
-  Three in one day, and three more since — all the same shape:
+  Three in one day, and four more since — all the same shape:
 
   | Query | Reported | Actually |
   |---|---|---|
@@ -307,6 +307,7 @@ damage on the user's own device or nearly recorded a false result.
   | no platform call-log row for `c13` (defect 47) | the call was over, so the card was stale | a **self-managed** WhatsApp call — `SamsungCallLog.Loggable okayToLog:false`. It was live, and the card was true |
   | `adb shell content query --where 'date<…'` on `mms-sms/conversations` (defect 50) | the provider honours selections, so the pager's cursor *value* must be wrong | the shell **inlines its literal**; the app **binds a `?`**, and this view answers a bound argument with an empty cursor. The selection was never running |
   | a 320 ms shell poll watching for a `MediaStore` pending file (2026-08-31) | *(not reported — the miss was caught first)* | the publish took **263 ms**. The window opened and closed between two samples, so the poll held **no reading at all**, in either direction |
+  | a pager probe capped at 200 pages, over a 16,369-item album (2026-08-31) | `10000 of 16369, match=false` — read as a pager that stops early | the **probe's own cap**. The pager was fine; the instrument ended the run and then reported the ending as the finding |
 
   Between them, false absences and false presences alike, which is the point: the failure is not
   "empty means broken", it is that **the check could not separate signal from lookalike** and said
@@ -371,6 +372,19 @@ damage on the user's own device or nearly recorded a false result.
   hardware.** That is what 32's entry in `docs/testing.md` carries (50 → 89 → 126 → 158 → 183, every
   entry distinct) and it is what the next pager owes too.
 
+  **And there is a third precondition, learned from `media.list` on 2026-08-31: pages that sum and
+  never repeat do not prove the _tiebreaker_ ran.** A cursor ordered `date DESC, id DESC` only needs
+  its id half when a page boundary lands inside a group sharing a timestamp. If no boundary does,
+  the run passes **identically** with the tiebreak deleted — so a green pager is not evidence for
+  the thing most likely to be removed as redundant later.
+
+  What makes it evidence is counting the boundaries that landed in a tie group. Camera's 16,369
+  items paged 33 times to `16,369 == 16,369` with zero repeats, and **6 of those 32 boundaries fell
+  inside a tie group, carrying 10 rows a bare-millisecond cursor would have dropped.** That number,
+  not the clean total, is what says the tiebreak is load-bearing on this data. Publish it beside the
+  totals: it is the denominator for the totals in exactly the way a failure count needs a success
+  count, and without it someone reads a green pager and deletes the clause that made it green.
+
   **The sixth entry is the newest and the smallest, and it is a rule about sampling: a window that
   falls between two samples is a _missing_ reading, not a negative one.** Watching for a file that
   exists only while a `MediaStore` publish is pending, a shell loop sampled every ~320 ms and the
@@ -386,6 +400,42 @@ damage on the user's own device or nearly recorded a false result.
   the damage. The question that catches it is not *did I see it* but **could I have seen it** — and
   when the answer is "only if I sampled inside a window I do not control", the reading does not
   exist yet.
+
+  **The seventh is that rule's mirror image, and the pair is the useful thing.** A probe paging a
+  16,369-item album stopped at its own `MAX_PAGES = 200` and printed
+  `10000 of 16369, match=false` — a clean, specific, confident claim that the pager stops early.
+  Nothing was wrong with the pager. The instrument ended the run, and then reported its ending as
+  the finding.
+
+  So: **the sixth missed a window and held no reading; the seventh invented an ending and held a
+  wrong one.** Both are the instrument contaminating the result, from opposite directions, and both
+  are invisible in the output unless the instrument reports its own limits. The fix in each case is
+  the same shape — the probe now prints `stopped=exhausted` or `stopped=page cap`, and says
+  `sums=not tested — capped` rather than `NO`, because **a run that hit a cap has proven the pager
+  advances and has proven nothing about the total.**
+
+  The general form, worth applying to anything that measures: **every bound the instrument imposes —
+  a timeout, a page cap, a sample interval, a buffer size, a `head -20` — must appear in what it
+  reports, or a result shaped by that bound will be read as a result about the thing measured.**
+
+- **The instrument gets a control before the reading does — and the DOM is an instrument.**
+  The rule above is usually applied to a device or a provider. It applies unchanged to the thing
+  drawing the UI, and it was broken twice in one sitting on 2026-08-31, in both directions:
+
+  - **A false negative.** Scrolling a photo grid to load its next page appeared to do nothing:
+    `clientHeight` and `scrollHeight` both `0`, no page fetched. That was one sentence from
+    *"paging does not work"*. The pane had routed itself away and the section was `hidden` — a
+    hidden element cannot scroll and reports no height, so the run measured **nothing at all**. The
+    control is one line: assert the thing you are measuring is visible, before believing what it
+    reports about itself.
+  - **A false positive, from the eye rather than a query.** The same grid's tiles were reported —
+    confidently, from a screenshot — as "tall, not square". Measured, they are **126 × 126** with
+    `aspect-ratio: 1` applied. A screenshot is a reading like any other and carries no scale unless
+    something in it does.
+
+  Both directions matter, which is why they are one rule: **a negative impression is no more
+  evidence than a negative reading.** Before a look at a screenshot becomes a defect, measure the
+  thing; before an empty result becomes a finding, prove the surface was there to be read.
 
   This is the same defect as a failure count with no success count, one section up: a number, or an
   absence, with nothing to give it scale. The 11:00 adb dropout is what the rule looks like when it
