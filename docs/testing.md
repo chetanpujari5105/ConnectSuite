@@ -7911,6 +7911,19 @@ reading the target and acting on it — the user was clicking in the app at the 
 working in its intended shape: **the predicate that decides whether to act is evaluated at the moment
 of acting**, and a refusal says what it refused and why.
 
+### One layout defect, found by measuring what the screenshot showed
+
+The detail card's preview drew a **180 × 367 thumbnail at 320 × 652** — `width: 100%` on a 320px
+column, upscaling a thumbnail two and a half times. The measured consequence was a 792px detail
+column inside a 562px panel, running past the bottom of a 920px window: the metadata and the Save
+button were below the fold on a portrait photo.
+
+It was noticed by eye and then **measured before being believed**, which is the rule from the
+previous sitting applied in the direction it usually is not — the eye was right this time, and the
+measurement is what turned "looks wrong" into a number. Fixed with `max-height` and `width: auto`
+so a thumbnail is never enlarged: now `108 × 220` drawn from `180 × 367` natural, `upscaled: false`,
+a 372px card inside the 562px panel, and the whole thing inside the window.
+
 ### What is not proven here
 
 - **Resume.** The phone honours an `offset` in the header and digests the skipped bytes through

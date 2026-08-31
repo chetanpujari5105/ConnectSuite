@@ -1597,8 +1597,17 @@ img#qr {
   margin-top: var(--space-2);
 }
 
+/* The preview is a **thumbnail**, so it must never be upscaled.
+   `width: 100%` stretched a 180 x 367 portrait thumbnail to 320 x 652 — two and a half times its
+   real size, blurry, and tall enough to push the metadata below the window: measured at a 792px
+   detail column inside a 562px panel. `max-*` with `width: auto` lets a small image stay small,
+   and `object-fit: contain` keeps the aspect ratio whatever shape arrives. */
 .photos-detail-preview {
-  width: 100%;
+  max-width: 100%;
+  max-height: 220px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
   border-radius: var(--radius-tile);
   display: block;
   margin-bottom: var(--space-5);
@@ -1625,6 +1634,17 @@ img#qr {
   font: var(--text-body-size);
   color: var(--text-body);
   margin-top: var(--space-3);
+}
+
+.photos-detail-save {
+  margin-top: var(--space-5);
+}
+
+.photos-detail-saved {
+  font: var(--text-meta-size);
+  color: var(--text-body);
+  margin-top: var(--space-3);
+  word-break: break-all;
 }
 
 .photos-detail-limit {
