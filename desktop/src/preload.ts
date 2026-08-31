@@ -3,6 +3,8 @@ import type {
   ConnectionStatus,
   GeometryStamp as InputGeometry,
   InputResult,
+  MediaBucket,
+  MediaItem,
   PairingQrPayload,
   PhoneAck,
   PhoneContact,
@@ -168,6 +170,22 @@ contextBridge.exposeInMainWorld('connect', {
   contactsGet: (
     options: { id?: string; number?: string; withPhoto?: boolean },
   ): Promise<PhoneResult<PhoneContact>> => ipcRenderer.invoke('contacts-get', options),
+
+  /**
+   * The photo browser. Three verbs, because the fourth needs a socket nothing serves yet.
+   *
+   * `mediaThumbs` answers with entries rather than a Map — see the handler for why — and the
+   * renderer rebuilds the Map. Batching against the phone's 32-id cap happens in the main process,
+   * so a caller here may ask for as many ids as it likes.
+   */
+  mediaBuckets: (): Promise<PhoneResult<MediaBucket[]>> => ipcRenderer.invoke('media-buckets'),
+  mediaList: (
+    options: { bucketId?: string; limit?: number; before?: number; beforeId?: string } = {},
+  ): Promise<PhoneResult<{ items: MediaItem[]; hasMore: boolean }>> =>
+    ipcRenderer.invoke('media-list', options),
+  mediaThumbs: (
+    options: { ids: string[]; maxEdge?: number },
+  ): Promise<PhoneResult<Array<[string, string]>>> => ipcRenderer.invoke('media-thumbs', options),
 
   /**
    * The media remote: one state the phone pushes, and one verb.

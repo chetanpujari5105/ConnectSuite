@@ -7,6 +7,7 @@ import { ErrorCode, MessageType, type ConnectionStatus } from '../shared/protoco
 import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ContactsClient } from './contacts';
+import { PhotosClient } from './photos';
 import { NotificationClient } from './notifications';
 import { RemoteClient } from './remote';
 import { CallClient } from './calls';
@@ -43,6 +44,16 @@ const notifications = new NotificationClient(() => link);
  * talking to is a claim it cannot still stand behind.
  */
 const contacts = new ContactsClient(() => link);
+
+/**
+ * The photo browser's three working verbs.
+ *
+ * Not gated on the `photos` capability, and that is deliberate: the capability is not advertised
+ * because `media.original` needs the bulk channel, while `media.buckets`, `media.list` and
+ * `media.thumb` all answer today. A client that refused to ask because the chip is grey would turn
+ * a partly-working feature into a dead one.
+ */
+const photos = new PhotosClient(() => link);
 
 /**
  * What is playing on the phone. Pushed by the phone, asked for once on connect.
@@ -397,6 +408,7 @@ app.whenReady().then(() => {
     if (status.phase !== 'connected') {
       notifications.clear();
       contacts.clear();
+      photos.clear();
       remote.clear();
       sms.clear();
       calls.clear();
@@ -737,6 +749,23 @@ ipcMain.handle(
 ipcMain.handle(
   'contacts-get',
   (_event, options: { id?: string; number?: string; withPhoto?: boolean }) => contacts.get(options),
+);
+
+ipcMain.handle('media-buckets', () => photos.buckets());
+ipcMain.handle(
+  'media-list',
+  (_event, options: { bucketId?: string; limit?: number; before?: number; beforeId?: string } = {}) =>
+    photos.list(options),
+);
+ipcMain.handle(
+  'media-thumbs',
+  async (_event, options: { ids: string[]; maxEdge?: number }) => {
+    const result = await photos.thumbsFor(options.ids, options.maxEdge);
+    // A Map does not survive the structured clone across the bridge as anything the renderer can
+    // read back by key, so it crosses as entries and is rebuilt there. Defect 22's family: the
+    // renderer must receive a shape it asked for, not Electron's idea of one.
+    return result.ok ? { ok: true as const, data: [...result.data.entries()] } : result;
+  },
 );
 
 ipcMain.handle('call-current', () => calls.currentCall());

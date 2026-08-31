@@ -39,6 +39,48 @@ export const SERVICE_TYPE = 'connectsuite';
 export const PING_INTERVAL_MS = 5_000;
 export const MISSED_PONGS_BEFORE_DEAD = 3;
 
+/**
+ * One album on the phone — a `MediaStore` bucket, with the count that makes its pager checkable.
+ *
+ * `count` is not decoration. It is the denominator a page-by-page fetch has to sum to, and it is
+ * the only number that can tell a working pager from one that stalls after its first page.
+ */
+export interface MediaBucket {
+  bucketId: string;
+  bucketName: string;
+  count: number;
+  newestMs: number;
+  coverId: string;
+  /** Present only when the bucket's path holds an app's package id. Never sent without appName. */
+  packageName?: string;
+  appName?: string;
+}
+
+/** One photo or video. `id` is a string because a MediaStore id outruns a JS safe integer. */
+export interface MediaItem {
+  id: string;
+  kind: 'image' | 'video';
+  mime: string;
+  size: number;
+  width: number | null;
+  height: number | null;
+  dateMs: number;
+  durationMs: number | null;
+  ownerPackage?: string;
+  ownerAppName?: string;
+}
+
+/** One thumbnail, or one per-item failure. A deleted photo must not lose the other 31. */
+export interface MediaThumb {
+  id: string;
+  mime?: string;
+  width?: number;
+  height?: number;
+  /** Base64 JPEG, no data: prefix. Absent when `error` is set. */
+  data?: string;
+  error?: string;
+}
+
 export const MessageType = {
   HELLO: 'hello',
   HELLO_ACK: 'hello.ack',
@@ -90,6 +132,15 @@ export const MessageType = {
 
   CONTACTS_LIST: 'contacts.list',
   CONTACTS_GET: 'contacts.get',
+
+  /**
+   * Phase 5 slice 2. Three of the photo browser's four verbs; `media.original` is slice 3 and
+   * needs the bulk channel, which is why the `photos` capability is not advertised even though
+   * these three answer. See renderer/photos.ts for what the pane does about that.
+   */
+  MEDIA_BUCKETS: 'media.buckets',
+  MEDIA_LIST: 'media.list',
+  MEDIA_THUMB: 'media.thumb',
 
   REMOTE_STATE: 'remote.state',
   REMOTE_COMMAND: 'remote.command',

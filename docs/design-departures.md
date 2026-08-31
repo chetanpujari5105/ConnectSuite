@@ -35,6 +35,35 @@ proposal** below, which is a request rather than a decision.
 | N4 | Pane **hidden** when the capability is absent (implied — the design has no unavailable state at all) | Pane **stays** and renders the phone's own `reason` verbatim in a `--warning` banner | **reshaped** | The design has no drawn state for "the phone has this feature and is not offering it right now", which is a normal daily state of this product. Hiding the pane leaves the user hunting for a feature that silently stopped existing | A drawn *unavailable* state in the design language. This is the one row where the **design is missing something**, rather than the wire being missing something — worth a screen |
 | N5 | Unresolved app label rendered like any other app name | A fallback label (`appName === package`) is set in the **mono** face with a `package id` chip, and announces as `"com.… — app name unavailable"` | **reshaped** | Defect 28. `AppLabels.of` correctly returns the package name when an app has no launcher icon; that fallback is right and must not be "fixed". But a package id must never be *the only thing a user reads* | Nothing — this is the rule working. Worth a drawn treatment in the design so it is not invented per-pane |
 
+## Photos — **built 2026-08-31**, on three of the feature's four verbs
+
+The canvas's structure is kept exactly: a **188px `ALBUMS` rail** and the grid inside one panel, with
+a **320px detail card** beside it as a sibling on the canvas. What departs is the *content* of the
+rail and one state the design does not contain.
+
+| # | Design draws | Built instead | Status | Why | What would make the design's version correct |
+|---|---|---|---|---|---|
+| P1 | A curated rail of six smart albums — All photos, Camera, Screenshots, Downloads, Videos, **Favourites** | **All photos** (synthetic) followed by every `MediaStore` bucket the phone reports, newest first. On this handset that is **149 albums** | **reshaped** | The phone has buckets, not smart albums. Four of the design's six happen to exist as buckets, `Videos` is a *type* spanning every bucket, and **Favourites does not exist on the wire at all** — there is no favourite flag in `MediaStore` that a non-gallery app can read. Drawing the design's six would mean inventing two of them | A `favourite` field on `media.list`, and a type filter distinct from the bucket filter. The first is a platform question, not a protocol one |
+| P2 | The rail's first row is a smart album | **All photos** is synthetic, not a bucket — it sends `media.list` with **no `bucketId`**, which the phone already answers with every bucket merged under one ordering | **reshaped** | It costs nothing on the wire and it is a better default than "whichever bucket holds the newest file", which on this handset opened the pane on `Download` — 108 items, and not what anyone means by *my photos* | Nothing. This is the design's intent expressed in the phone's vocabulary |
+| P3 | Album counts as fixed strings (`12,456`) | The phone's own `count` per bucket, grouped for the locale | **shipped** | `media.buckets` publishes the count, and it is the denominator `media.list`'s pages have to sum to — the number that tells a working pager from one that stalls after its first page | Nothing |
+| P4 | A photo opens at full size | **No full-size open.** The detail card carries the metadata and one sentence: *the full-size original stays on the phone until the file channel lands* | **unbuilt** | `media.original` runs on the bulk channel and nothing serves it yet. A tile that did nothing when double-clicked would be the worse answer — the user finds out by trying | `media.original` plus the Mac's bulk client. That is the next slice |
+| P5 | No state for *the phone has this and is not fully offering it* | A `--warning` banner above a **working** grid: **Thumbnails only, for now** | **reshaped** | This is N4's gap in its sharper form. N4 was a feature the phone was not offering *at all*; this is the first feature in the app that is **half offered** — three verbs answer, the fourth does not exist — so the `photos` capability is correctly not advertised while the pane works. The banner is what makes that a designed inconsistency rather than an accidental one | A drawn *partial* state in the design language, distinct from both `unavailable` and `empty`. Second row in this file where the **design is missing something** rather than the wire |
+| P6 | Tiles at the design's size | Tiles at `minmax(112px, 1fr)`, square, `object-fit: cover` | **shipped** | Measured at 126 × 126 in a 1440-wide window, four columns beside a 320px detail card | Nothing |
+
+**P5 is the row to read if you read one.** The pane deliberately does **not** gate on the `photos`
+capability. Gating would have turned a partly-working feature into a dead one and told the user
+"unavailable" about something they can watch working. The rule the pane follows instead: say which
+half is missing, in the words of the thing they are about to try, and use `--warning` rather than
+`--destructive` — a feature arriving in two halves is not a failure, and red in a connection product
+reads as *the link is down*.
+
+The genuinely-unavailable state is still separate and still drawn: with the photos permission
+ungranted the phone answers `PERMISSION_DENIED`, and the banner carries the phone's own sentence and
+its fix hint **instead of** the grid. Those two must not look alike — one says *this works, but not
+all of it*, the other says *this does not work yet, and here is the switch*. **The unavailable branch
+is drawn but has not been seen on hardware**: exercising it means revoking a grant the user made by
+hand, which is not something to do to someone's phone for a screenshot.
+
 ## Mirror (§2) — embedded layout **built 2026-08-29**; detached window **built 2026-08-30**
 
 The Mirror page is the approved reference layout and is not being restructured. Every row below is a

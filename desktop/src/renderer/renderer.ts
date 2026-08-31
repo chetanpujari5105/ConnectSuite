@@ -116,6 +116,19 @@ interface ConnectBridge {
     { ok: true; data: Contact } | { ok: false; reason?: string; fixHint?: string }
   >;
 
+  // Phase 5 slice 2: the photo browser's three working verbs. Shapes mirror photos.ts, which is a
+  // plain script in the same global scope rather than a module. `mediaThumbs` answers with entries
+  // rather than a Map — a Map does not survive the bridge as something readable by key.
+  mediaBuckets(): Promise<
+    { ok: true; data: MediaBucketRow[] } | { ok: false; reason?: string; fixHint?: string }
+  >;
+  mediaList(options: { bucketId?: string; limit?: number; before?: number; beforeId?: string }): Promise<
+    { ok: true; data: { items: MediaItemRow[]; hasMore: boolean } } | { ok: false; reason?: string; fixHint?: string }
+  >;
+  mediaThumbs(options: { ids: string[]; maxEdge?: number }): Promise<
+    { ok: true; data: Array<[string, string]> } | { ok: false; reason?: string; fixHint?: string }
+  >;
+
   // Phase 4: the media remote. `RemoteStateView` comes from remote.ts, a plain script in the same
   // global scope rather than a module.
   remoteState(): Promise<RemoteStateView>;
@@ -320,6 +333,27 @@ const notifications = new NotificationsView(
   el('notif-detail'),
   connect,
 );
+
+// Photos. Fetches when the screen is opened rather than at launch — 12 albums and a page of
+// thumbnails is a round trip and a megabyte, and nobody has looked at the screen yet. It is the
+// one pane that does **not** consult the capability list: `photos` is not advertised because
+// `media.original` needs the bulk channel, while the three verbs this pane uses all answer today.
+const photos = new PhotosView(
+  {
+    mediaBuckets: () => connect.mediaBuckets(),
+    mediaList: (options) => connect.mediaList(options),
+    mediaThumbs: (options) => connect.mediaThumbs(options),
+  },
+  el('photos-card'),
+  el('photos-banner'),
+  el('photos-note'),
+  el('photos-albums'),
+  el('photos-tiles'),
+  el('photos-detail'),
+);
+shell.onRoute((id) => {
+  if (id === 'photos') void photos.refresh();
+});
 
 // Contacts. Same hidden-not-greyed rule as the notifications card above. The search box is wired
 // inside the view because the debounce belongs with the thing it debounces.

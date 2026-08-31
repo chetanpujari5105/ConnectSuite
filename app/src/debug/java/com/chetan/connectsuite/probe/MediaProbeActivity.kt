@@ -47,17 +47,18 @@ class MediaProbeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val limit = intent.getIntExtra("limit", 50)
+        val bucket = intent.getStringExtra("bucket")
         Log.i(TAG, "--- media probe start; targetSdk=${applicationInfo.targetSdkVersion} limit=$limit ---")
         Log.i(TAG, "PERMISSION: photos read granted=${MediaFeature.granted(this)}")
 
         thread(name = "media-probe") {
-            runCatching { probe(limit) }
+            runCatching { probe(limit, bucket) }
                 .onFailure { Log.e(TAG, "probe failed", it) }
             finish()
         }
     }
 
-    private fun probe(limit: Int) {
+    private fun probe(limit: Int, wantedBucket: String?) {
         val buckets = MediaStoreReader.buckets(this)
         if (buckets.isEmpty()) {
             Log.w(TAG, "BUCKETS: none. Either nothing is granted or this phone holds no media.")
@@ -72,7 +73,8 @@ class MediaProbeActivity : ComponentActivity() {
             )
         }
 
-        val largest = buckets.maxByOrNull { it.str("count")?.toIntOrNull() ?: 0 }!!
+        val largest = wantedBucket?.let { id -> buckets.firstOrNull { it.str("bucketId") == id } }
+            ?: buckets.maxByOrNull { it.str("count")?.toIntOrNull() ?: 0 }!!
         val bucketId = largest.str("bucketId")!!
         val declared = largest.str("count")?.toIntOrNull() ?: 0
         Log.i(TAG, "PAGING bucket=$bucketId (${largest.str("bucketName")}), declared count=$declared")
@@ -94,6 +96,13 @@ class MediaProbeActivity : ComponentActivity() {
         var beforeId: Long? = null
         var pages = 0
         var duplicates = 0
+        // Rows on the far side of a boundary that share the previous page's last second. These are
+        // precisely the rows a bare-millisecond cursor would have skipped, so this number is the
+        // hardware measure of what the id tiebreak is holding on to. Zero would mean the pager was
+        // never asked the question this cursor exists to answer.
+        var rescuedByTiebreak = 0
+        var boundariesInsideATieGroup = 0
+        var previousLastDateMs: Long? = null
 
         while (pages < MAX_PAGES) {
             val page = MediaStoreReader.list(this, bucketId, limit, before, beforeId)
@@ -102,9 +111,17 @@ class MediaProbeActivity : ComponentActivity() {
                 break
             }
             pages++
+            previousLastDateMs?.let { boundary ->
+                val shared = page.items.count { it.str("dateMs")!!.toLong() == boundary }
+                if (shared > 0) {
+                    boundariesInsideATieGroup++
+                    rescuedByTiebreak += shared
+                }
+            }
             val newThisPage = page.items.count { seen.add(it.str("id")!!) }
             duplicates += page.items.size - newThisPage
             val last = page.items.last()
+            previousLastDateMs = last.str("dateMs")!!.toLong()
             before = last.str("dateMs")!!.toLong()
             beforeId = last.str("id")!!.toLong()
             Log.i(
@@ -116,10 +133,19 @@ class MediaProbeActivity : ComponentActivity() {
             if (!page.hasMore) break
         }
 
+        // Why it stopped matters as much as where it stopped. A run that hits the page cap has
+        // proven the pager advances and has proven **nothing** about the total, and printing
+        // `match=false` for that would be the probe reporting its own limit as a defect.
+        val exhausted = pages < MAX_PAGES
         Log.i(
             TAG,
             "RESULT: $pages pages, ${seen.size} distinct ids, $duplicates repeats, " +
-                "declared count=$declared, match=${seen.size == declared}",
+                "declared count=$declared, stopped=" + (if (exhausted) "exhausted" else "page cap") +
+                ", boundaries inside a tie group=$boundariesInsideATieGroup " +
+                "(rows a bare-ms cursor would have dropped: $rescuedByTiebreak)" +
+                ", sums=" + (if (!exhausted) "not tested — capped at $MAX_PAGES pages"
+                    else if (seen.size == declared) "yes, ${seen.size} == $declared"
+                    else "NO, ${seen.size} != $declared"),
         )
     }
 
@@ -128,6 +154,6 @@ class MediaProbeActivity : ComponentActivity() {
 
     private companion object {
         const val TAG = "MediaProbe"
-        const val MAX_PAGES = 200
+        const val MAX_PAGES = 2000
     }
 }

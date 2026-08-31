@@ -1405,3 +1405,232 @@ img#qr {
   font: var(--text-body-size);
   color: var(--text-body);
 }
+
+/* ---- Photos ----------------------------------------------------------------------------------
+   Phase 5 slice 2. The design canvas's layout: a 188px ALBUMS rail and the grid inside one panel,
+   with the detail card beside it as a sibling on the canvas — the same structure the notifications
+   pane uses, and for the same reason (two surfaces where the design has one reads as raised).
+
+   Every selector here is declared in this sheet and nowhere else, per the one-selector-one-sheet
+   rule that `stylesheets.test.ts` enforces. Colour comes from tokens; there is no `:root` block
+   here and there must never be one.
+------------------------------------------------------------------------------------------------ */
+
+.photos-grid-wrap {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: var(--space-7);
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .photos-grid-wrap { grid-template-columns: 1fr; }
+}
+
+.photos-panel {
+  display: grid;
+  grid-template-columns: 188px 1fr;
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  background: var(--elev-3);
+  border: 1px solid var(--hairline-primary);
+  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+}
+
+@media (max-width: 700px) {
+  .photos-panel { grid-template-columns: 1fr; }
+}
+
+.photos-rail {
+  border-right: 1px solid var(--hairline);
+  padding: var(--space-6) var(--space-4);
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.photos-rail-title {
+  font: var(--text-meta-size);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text-meta);
+  padding: 0 var(--space-3) var(--space-4);
+}
+
+.photos-album {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-3);
+  margin-bottom: var(--space-1);
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-on-control);
+  cursor: pointer;
+}
+
+.photos-album:hover { background: var(--control); }
+
+.photos-album.on {
+  background: var(--accent-tint-selected);
+  border-color: var(--accent-border);
+}
+
+.photos-album-name {
+  font: var(--text-control);
+  color: var(--text-primary);
+}
+
+.photos-album-count {
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+  margin-top: 2px;
+}
+
+.photos-album-source {
+  font: var(--text-meta-size);
+  color: var(--accent-text);
+  margin-top: 2px;
+}
+
+.photos-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-6);
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.photos-tile {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  cursor: pointer;
+}
+
+.photos-tile.on {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.photos-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* A tile whose thumbnail has not arrived. Deliberately flat rather than a shimmer: a grid of
+   animated placeholders on a 16,000-item album is a lot of motion for a wait measured in
+   milliseconds. */
+.photos-thumb-pending {
+  width: 100%;
+  height: 100%;
+  background: var(--well);
+}
+
+.photos-tile-badge {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-2);
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(7, 7, 10, 0.72);
+  color: var(--text-on-control);
+  font: var(--text-meta-size);
+}
+
+.photos-empty {
+  grid-column: 1 / -1;
+  padding: var(--space-11) var(--space-7);
+  text-align: center;
+}
+
+.photos-empty-headline {
+  font: var(--text-section);
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.photos-empty-detail {
+  font: var(--text-body-size);
+  color: var(--text-body);
+}
+
+/* ---- The banner, which carries two different states and must not blur them ---------------------
+   `.partial` is the state the four-state model names and this app had never drawn: the phone has
+   the feature and is not fully offering it. `--warning`, never `--destructive` — a feature arriving
+   in two halves is not a failure, and red here reads as "the link is down".
+   `.unavailable` is the genuinely-off state and replaces the grid rather than sitting above it.
+------------------------------------------------------------------------------------------------ */
+
+.photos-banner {
+  border-radius: var(--radius-tile);
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-6);
+  border: 1px solid var(--warning-border);
+  background: var(--warning-fill);
+}
+
+.photos-banner[hidden] { display: none; }
+
+.photos-banner-headline {
+  font: var(--text-control);
+  color: var(--warning);
+  margin-bottom: var(--space-2);
+}
+
+.photos-banner-detail {
+  font: var(--text-body-size);
+  color: var(--text-body);
+}
+
+.photos-banner-fix {
+  font: var(--text-body-size);
+  color: var(--text-meta);
+  margin-top: var(--space-2);
+}
+
+.photos-detail-preview {
+  width: 100%;
+  border-radius: var(--radius-tile);
+  display: block;
+  margin-bottom: var(--space-5);
+}
+
+.photos-detail-title {
+  font: var(--text-card-title);
+  color: var(--text-primary);
+}
+
+.photos-detail-meta {
+  font: var(--text-body-size);
+  color: var(--text-body);
+  margin-top: var(--space-2);
+}
+
+.photos-detail-mime {
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+  margin-top: var(--space-2);
+}
+
+.photos-detail-owner {
+  font: var(--text-body-size);
+  color: var(--text-body);
+  margin-top: var(--space-3);
+}
+
+.photos-detail-limit {
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--hairline);
+}

@@ -123,12 +123,15 @@ const SCREENS: NavScreen[] = [
     icon: 'photos',
     group: 'MENU',
     shortcut: '⌘4',
-    state: 'unbuilt',
-    unbuiltReason:
-      'The photo browser is Phase 5, and it rides the same bulk channel as Files. It has no wire ' +
-      'messages yet, so the Mac cannot ask the phone for a thumbnail.',
-    unbuiltHeadline: 'The phone has no way to send a thumbnail',
-    unbuiltHandle: 'media.* — not in this build',
+    // Built on three verbs of four, 2026-08-31. The pane works and the `photos` capability is
+    // still not advertised, because `media.original` needs the bulk channel — so this row is
+    // `built` while its chip is grey, which is the one combination the four-state model names and
+    // the app had never drawn. The pane says which half is missing; see renderer/photos.ts.
+    //
+    // The copy this replaced said *"It has no wire messages yet, so the Mac cannot ask the phone
+    // for a thumbnail"*, which stopped being true the moment media.thumb shipped. User-visible
+    // text describing the build is a claim like any other and goes stale the same way.
+    state: 'built',
   },
   {
     id: 'messages',

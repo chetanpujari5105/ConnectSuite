@@ -7649,9 +7649,96 @@ permission off, an empty bucket list carries no information about what the phone
 that said "no photos found" would be manufacturing exactly the confident wrong answer this file
 exists to prevent.
 
-So the pager's two hardware preconditions remain **unrun**, and nothing about the cursor has been
-observed on this device. That is the honest state; the JVM evidence above stands on its own and does
-not reach it.
+**Granted on the second attempt, and read back before anything ran.** The first attempt did not
+reach this package at all; the second, from an App info screen opened directly at
+`package:com.chetan.connectsuite.debug --user 0` so no entry had to be identified by eye:
+
+```
+User 0 | READ_SMS:                        granted=true   flags=[…]            ← positive control
+User 0 | POST_NOTIFICATIONS:              granted=true   flags=[ USER_SET|…]
+User 0 | READ_MEDIA_VISUAL_USER_SELECTED: granted=true   flags=[ USER_SET|…]  ← discriminator
+User 0 | READ_MEDIA_IMAGES:               granted=true   flags=[ USER_SET|…]
+User 0 | READ_MEDIA_VIDEO:                granted=true   flags=[ USER_SET|…]
+User 95| (DUAL_APP clone) all five false
+```
+
+**Reading the discriminator correctly matters here, because "Allow all" grants three permissions,
+not two.** `READ_MEDIA_VISUAL_USER_SELECTED` is `true` in both modes; what separates them is that
+*Select photos* leaves `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` **false**. Both are true, so this
+is full access. `USER_SET` on all three is the evidence a person acted — it was absent on all three
+after the first attempt, which is how "no grant" was told from "a grant I misread". And the clone at
+user 95 reading false on everything confirms the grant landed on the copy under test.
+
+### The pager, on hardware, through the app's own client
+
+`MediaProbeActivity` drives `MediaStoreReader` — the same `ContentResolver` call, the same bound
+arguments and the same selection string the `media.list` handler uses. Not `adb shell content query`,
+which inlines its literal and would be a different client answering a different question.
+
+**`media.buckets` first, because it publishes the denominator everything else is measured against:**
+
+```
+BUCKET -1829889111 WhatsApp Images  count=5774  pkg=com.whatsapp  app=WhatsApp
+BUCKET -1739773001 Camera           count=16369 pkg=-            app=-
+BUCKET -1313584517 Screenshots      count=3748  pkg=-            app=-
+BUCKET -1441264713 Edits            count=93    pkg=-            app=-
+BUCKET -1432612566 WhatsApp Video   count=170   pkg=com.whatsapp app=WhatsApp
+… 12 buckets
+```
+
+The package-id rule is visible in that output and so is its negative case: the WhatsApp buckets
+carry `packageName` **and** a resolved `appName`, and `Camera`, `Screenshots`, `Edits` and `Download`
+carry neither, because their paths hold no package segment. A rule that labelled everything would be
+indistinguishable from one that labelled nothing.
+
+**Reading 1 — the everything-cursor, taken before any paging.** A cursor a year past the newest row
+returned **50 items, `hasMore=true`**. Not zero. A wrong cursor *value* cannot return zero on this
+query; only a selection that never ran can, which is defect 50's signature — so that possibility is
+excluded before the counting starts rather than after.
+
+**Reading 2 — consecutive pages, counted, to exhaustion, against the declared count.**
+
+*Edits, 93 items, 20 per page — a whole bucket, small enough to see whole:*
+
+```
+20 → 40 → 60 → 80 → 93     every entry distinct, 0 repeats
+PAGE 5: 13 items, hasMore=false
+RESULT: 5 pages, 93 distinct ids, 0 repeats, declared count=93, stopped=exhausted, sums=yes, 93 == 93
+```
+
+*Camera, 16,369 items, 500 per page — the largest bucket on the device:*
+
+```
+500 → 1000 → 1500 → … → 16000 → 16369    0 repeats at any boundary
+PAGE 33: 369 items, hasMore=false
+RESULT: 33 pages, 16369 distinct ids, 0 repeats, declared count=16369,
+        stopped=exhausted, sums=yes, 16369 == 16369
+```
+
+**`stopped=exhausted` is in that line because the first Camera run was not.** It stopped at the
+probe's own 200-page cap with `10000 of 16369` and printed `match=false` — which is the probe
+reporting its own limit as though it were a pager fault. The probe now distinguishes the two and
+says `not tested — capped` rather than `NO`, because a run that hits a cap has proven the pager
+advances and has proven **nothing** about the total.
+
+**Reading 3 — what the tiebreak actually caught, which is the reading that makes the other two mean
+something.** Pages summing correctly proves a pager works; it does not prove the *tiebreak* was ever
+exercised, and a run where no boundary fell inside a shared second would have passed identically with
+the tiebreak deleted. So the probe counts, on the far side of each boundary, the rows sharing the
+previous page's second — exactly the rows a bare-millisecond cursor would have skipped:
+
+```
+boundaries inside a tie group=6 (rows a bare-ms cursor would have dropped: 10)
+```
+
+**6 of the 32 boundaries in the Camera bucket landed inside a tie group, and 10 photographs would
+have gone missing.** Not a hypothetical burst on a contrived fixture — this phone's own camera roll,
+at 500 per page. The JVM red-first run showed the cursor *can* lose rows; this shows it *would have*,
+here, today.
+
+The layer this does not reach is stated rather than glossed: the control channel, the envelope and
+the handler sit above `MediaStoreReader` and are not exercised by a probe. The Mac's Photos pane is
+what exercises those.
 
 ### The grey chip, observed on the device rather than only asserted
 
@@ -7677,3 +7764,77 @@ Phone **202** tests (`core` 76, `sync-module` 51, `input-module` 44, `mirror-mod
 `--rerun-tasks`. Was 190 at slice 1: +3 in `core` (the photos alternatives, defect 54's bulk-channel
 guard, and the slice-2 expectation) and +9 in `sync-module` (`MediaPayloadsTest`). Mac **139**,
 untouched by this slice.
+
+## Slice 2b — the Mac's Photos pane · 2026-08-31
+
+Built on the three verbs slice 2 shipped, ahead of `media.original`, so there is something to look
+at before the bulk channel exists. **The `photos` capability is still not advertised** and the pane
+works anyway; that combination is the point rather than an oversight, and it is drawn deliberately —
+see `docs/design-departures.md` → **Photos**, row P5.
+
+### End to end, on the device — the layer the phone-side probe could not reach
+
+`MediaProbeActivity` drives `MediaStoreReader` and stops below the envelope. This is the same pager
+run through the **whole** path: renderer → preload → IPC → main → control channel → phone handler →
+`MediaStore`, and back.
+
+Paging by scrolling the grid, counting distinct `data-id` attributes on the tiles:
+
+```
+page 1   120 tiles, 120 distinct, 120 thumbnails drawn
+scroll   240 tiles, 240 distinct,   repeats counter: 0
+scroll   360 tiles, 360 distinct,   repeats counter: 0
+scroll   480 tiles, 480 distinct,   repeats counter: 0
+```
+
+`media.buckets` came back with **149 albums, 35,755 items**, the largest being Camera at 16,369 —
+the same numbers the phone-side probe read, now through the wire.
+
+### Two defects of my own, found by counting rather than by looking
+
+The screenshot looked correct in both cases. What found them was reading two numbers that had to
+agree and did not.
+
+**The grid loaded pages forever.** The tile count went 240 → 360 with `scrollTop` still at 0. The
+scroll trigger was `scrollTop + clientHeight >= scrollHeight - 400`, which is **permanently true for
+a grid shorter than its own viewport** — so the pane fetched, rendered, satisfied the condition
+again, and fetched again. Fixed by requiring `hasMore`, `!loading`, and *something to scroll*
+(`scrollHeight > clientHeight`). A trigger that fires when there is nothing to scroll is not a
+scroll trigger.
+
+**The same page was fetched twice, with the same cursor.** 360 tiles carried **248 distinct**
+aria-labels. `this.loading = false` ran *before* `this.items` was extended, so a scroll arriving in
+that window started a second fetch from the same cursor and the same 120 rows came back. Fixed by
+clearing the flag in `finally`, after the state is updated.
+
+**The duplicate check stayed, as a counter rather than a de-duplication.** A pane that silently
+dropped repeated ids would have hidden both defects and would hide a genuinely broken cursor later.
+It now counts them and logs the tally beside the distinct total; `repeats` reads **0** across every
+page above. A count that never moves is the evidence.
+
+**And a third thing, which was a measurement fault rather than a defect:** the first scroll test
+reported nothing loading, because the app had routed itself to Mirror and the section was `hidden` —
+`clientHeight` and `scrollHeight` both `0`. A hidden element cannot be scrolled and cannot report a
+height, so that run was measuring nothing. It is the sampling rule from this morning in a different
+costume: **the reading did not exist**, and it was one sentence from being written down as "paging
+does not work". The fix was to assert the pane was visible first, which is now the first thing every
+reading in this section checks.
+
+Similarly, the tiles were reported by eye as "tall, not square" from the screenshot. Measured, they
+are **126 × 126** with `aspect-ratio: 1` applied and four columns in a 1440-wide window. The eye was
+wrong and the measurement is what counts — recorded because it is the same rule pointing the other
+way: a *negative* impression is no more evidence than a negative reading.
+
+### What is drawn and not yet seen
+
+The **unavailable** branch — the phone answering `PERMISSION_DENIED`, banner replacing the grid,
+carrying the phone's own sentence and fix hint — is implemented and has **not** been observed. Seeing
+it means revoking a grant the user made by hand, which is not something to do to someone's phone for
+a screenshot. Recorded as drawn-but-unobserved rather than claimed.
+
+## Suite
+
+Mac **146** tests (was 139), 0 failures, `tsc --noEmit` clean. The seven new ones are the pane's pure
+half through the same `globalThis` seam `calls.ts` uses — the copy of the partial notice, the
+package-id rule at its landing point on this pane, sizes, clock, and the summary's behaviour when
+the phone sends no dimensions. Phone unchanged at **202**.

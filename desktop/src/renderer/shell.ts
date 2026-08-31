@@ -88,6 +88,16 @@ const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) 
 
 class ShellView {
   private current = 'overview';
+
+  /**
+   * Called after a screen becomes visible, with its id.
+   *
+   * Exists so a pane can fetch when it is opened rather than at launch. Photos is the first that
+   * needs it: pulling 12 albums and a page of thumbnails on startup would spend a round trip and a
+   * megabyte on a screen nobody has looked at. The shell still decides nothing about the feature —
+   * it says *this screen is now showing*, and the view decides what that means.
+   */
+  private routeListeners: Array<(id: string) => void> = [];
   private status: ShellStatus | null = null;
   private paletteIndex = 0;
   private paletteRows: PaletteResult[] = [];
@@ -337,6 +347,12 @@ class ShellView {
 
     this.movePill();
     this.replayEntrance();
+    for (const listener of this.routeListeners) listener(id);
+  }
+
+  /** Register a listener for [route]. See [routeListeners]. */
+  onRoute(listener: (id: string) => void): void {
+    this.routeListeners.push(listener);
   }
 
   /** Re-trigger the 260ms page-in. Removing and re-adding the class in two frames is what makes

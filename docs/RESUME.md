@@ -39,8 +39,8 @@ Mac actually attached. Do not grep the phone log for `Listening on`; it is writt
 `yiaddr = 10.108.253.92, router 10.108.253.63` — the correct one. Two reads of the same fact
 disagreeing, with the less obvious one right.
 
-Baselines, as of Phase 5 slice 2: phone **202** tests (`core` 76, `input-module` 44,
-`sync-module` 51, `mirror-module` 31), Mac **139** tests, `tsc --noEmit` clean. The figure this file
+Baselines, as of Phase 5 slice 2b: phone **202** tests (`core` 76, `input-module` 44,
+`sync-module` 51, `mirror-module` 31), Mac **146** tests, `tsc --noEmit` clean. The figure this file
 carried at the close of Phase 4 — *189 (67 `sync-module` + 122 `core`)* — does not reconcile with the
 tree by either counting method and has been corrected rather than restated; see the note at the end
 of `docs/testing.md`. Run Gradle with `--rerun-tasks` when you intend a *run* — an
@@ -89,7 +89,18 @@ not implement an alternative without saying why the recorded reasoning is wrong.
 
 ---
 
-## Slice 2 — the photo browser's three read verbs — **code done, hardware pending, 2026-08-31**
+## Slice 2b — the Mac's Photos pane — **built and running, 2026-08-31**
+
+The pane is real: 149 albums, 35,755 items, thumbnails, paging by scroll, all through the control
+channel. It is built on three verbs and **the `photos` capability is still not advertised** — that
+combination is deliberate, it is the four-state model's *partly offering* state, and the banner is
+what makes it a designed inconsistency rather than an accidental one. Departures are in
+`docs/design-departures.md` → **Photos** (P1–P6); the evidence is `docs/testing.md` → **Slice 2b**.
+
+**Do not "fix" the grey chip by loosening `CapabilityContract.isImplemented`.** It goes green when
+`media.original` and the bulk channel land, and not before.
+
+## Slice 2 — the photo browser's three read verbs — **done on hardware, 2026-08-31**
 
 `media.buckets`, `media.list` and `media.thumb` are implemented and unit-tested;
 `docs/testing.md` → **Phase 5 → Slice 2** holds the record. **`media.original` is deliberately not
@@ -97,20 +108,21 @@ here**, so `photos` stays unavailable and the Mac's Photos pane stays grey — t
 state and it is asserted as a test, not left to be rediscovered. Do not loosen
 `CapabilityContract.isImplemented`'s `containsAll` to turn the chip green.
 
-**The one thing outstanding is a device reading, and it needs a person once:** the photos permission
-must be granted by hand on the handset (Settings > Apps > ConnectSuite > Permissions > *Photos and
-videos* > **Allow all**; "Select photos" is a different grant and leaves `READ_MEDIA_IMAGES`
-denied). Then:
+**Both preconditions are discharged on hardware.** Edits paged `20 → 40 → 60 → 80 → 93` and Camera
+paged 33 pages to `16,369 == 16,369`, every id distinct, through the app's own client. **6 of
+Camera's 32 page boundaries fell inside a tie group and 10 photographs would have been dropped by a
+bare-millisecond cursor** — the `beforeId` decision earning itself on a real camera roll rather than
+on a fixture.
+
+The probe is still there and takes a bucket now:
 
 ```bash
-adb shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.MediaProbeActivity --ei limit 50
+adb shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.MediaProbeActivity \
+  --ei limit 500 --es bucket -1739773001
 adb logcat -s MediaProbe:V
 ```
 
-It takes the everything-cursor reading first and then pages, printing the running total after each
-page against `media.buckets`' own count for that bucket. **Both preconditions are its pass
-criteria**: consecutive pages counted, and the cursor exercised through the app's own client —
-never `adb shell content query`, which inlines its literal where the app binds a `?`.
+It reads `stopped=exhausted` versus `page cap` and will not claim a sum it did not reach.
 
 ### Then, in order
 

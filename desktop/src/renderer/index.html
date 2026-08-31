@@ -431,7 +431,29 @@
               the missing piece — never "coming soon", which is indistinguishable from broken.
             -->
             <section class="screen" data-screen="files" hidden></section>
-            <section class="screen" data-screen="photos" hidden></section>
+            <!-- ============================== Photos ====================================== -->
+            <!--
+              Built on three verbs of four. `media.original` needs the bulk channel, so full-size
+              originals are not here and the pane says so in a banner rather than by a tile that
+              does nothing when clicked. Layout follows the design canvas: a 188px ALBUMS rail and
+              the grid inside one panel, with a 320px detail card beside it.
+            -->
+            <section class="screen" data-screen="photos" hidden>
+              <div class="pane pane-photos" id="photos-card">
+                <div id="photos-banner" class="photos-banner" hidden></div>
+                <p class="pane-sub" id="photos-note"></p>
+                <div class="photos-grid-wrap">
+                  <div class="photos-panel">
+                    <div class="photos-rail">
+                      <div class="photos-rail-title">ALBUMS</div>
+                      <div id="photos-albums" role="listbox" aria-label="Albums"></div>
+                    </div>
+                    <div class="photos-tiles" id="photos-tiles" role="grid" aria-label="Photos"></div>
+                  </div>
+                  <aside class="pane-detail" id="photos-detail" aria-live="polite"></aside>
+                </div>
+              </div>
+            </section>
             <section class="screen" data-screen="clipboard" hidden></section>
             <section class="screen" data-screen="camera" hidden></section>
             <section class="screen" data-screen="activity" hidden></section>
@@ -498,6 +520,7 @@
     <script src="remote.js"></script>
     <script src="sms.js"></script>
     <script src="calls.js"></script>
+    <script src="photos.js"></script>
     <script src="shell.js"></script>
     <script src="renderer.js"></script>
   </body>
