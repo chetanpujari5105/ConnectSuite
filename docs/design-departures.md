@@ -19,7 +19,7 @@ is a bug, not a decision.
 - **reshaped** — built, but not in the shape drawn, because the underlying thing is not what the
   design assumed.
 
-Last updated **2026-08-30** — the app shell landed (§"App shell", S1–S12), every routed screen was
+Last updated **2026-09-01** — the Files pane landed (§Files, F1–F7). Before that, 2026-08-30: the app shell landed (§"App shell", S1–S12), every routed screen was
 measured against the prototype at a matched 1440 × 920 viewport, and there is now a **pairing screen
 proposal** below, which is a request rather than a decision.
 
@@ -69,6 +69,54 @@ its fix hint **instead of** the grid. Those two must not look alike — one says
 all of it*, the other says *this does not work yet, and here is the switch*. **The unavailable branch
 is drawn but has not been seen on hardware**: exercising it means revoking a grant the user made by
 hand, which is not something to do to someone's phone for a screenshot.
+
+## Files — **built 2026-09-01**, on the read half
+
+The canvas's structure is kept: a left rail, a `NAME` / `DATE MODIFIED` / `SIZE` table, and a 320px
+detail card beside it. What departs is almost everything the rail and the drop tiles *contain*,
+because the design draws a path-based filesystem and `targetSdk 36` does not have one.
+
+Three of these are **walls** — Android forbids them and no version of this app can draw them. They
+are grouped here rather than spread through the table because they are one fact: `fs.*` browses the
+SAF trees a user has granted, one folder at a time, and there is no view of the whole of storage.
+
+| # | Design draws | Built instead | Status | Why | What would make the design's version correct |
+|---|---|---|---|---|---|
+| F1 | **Internal storage** as a root, with `Alarms`, `Android`, `DCIM`, `Downloads`, `Music` beneath it | The roots `fs.list` returns: `ConnectSuite`, plus one row per granted tree | **wall** | There is no path-based view of shared storage at `targetSdk 36`, and the **root of internal storage cannot be granted to anyone** — the picker lists it and disables `USE THIS FOLDER`. Drawn as the design has it, four of those five rows would open on an error | `MANAGE_EXTERNAL_STORAGE`, which is **deliberately not requested**: whole-of-storage is the one permission that makes people uninstall an app whose pitch is no cloud and no account |
+| F2 | **Downloads** as a browsable folder | Absent, and named in the pane's own copy as the folder that cannot be reached | **wall** | `Download` itself is refused by the picker, observed through our own package. It is also the folder a user is most likely to go looking for, which is why it gets a sentence rather than silence — the copy is in the rail in every state, and in the M2 card's body | Same as F1 |
+| F3 | **Android** as a browsable folder | Absent, and named on the phone's Folders screen | **wall** | `Android/data` and `Android/obb` are unreachable by any route, for any app, since Android 11 — including through the document picker, which blocks those two trees explicitly | Nothing. This one is not even a permission |
+| F4 | **"Drop files to send to phone / or click to choose"** and **"Drop here to download to Mac / or pick a folder"** | Neither tile is drawn. A `--warning` banner says copying to the Mac works and sending to the phone does not yet | **unbuilt** | `direction: "push"` answers `FEATURE_UNAVAILABLE`. `docs/protocol.md` and `docs/RESUME.md` both forbid the affordance against this build, deliberately in two places, because this is exactly the row someone builds from the mockup. `uploadAffordance(pushAvailable)` is the one condition and it is driven by the capability, so the tiles return in the same moment push ships | Push served on `fs.transfer.begin`. The tile is then one flag |
+| F5 | Footer reading **"1 selected · 3.2 MB"** and **"1,245 items"** | `28 items`, or `200 loaded · more on the phone` while a directory is still paging | **reshaped** | `fs.list` has no total, and getting one means paging to exhaustion — defect 55's 16,377 entries, 33 pages. `1,245` would be a number with nothing behind it, which is the rule `CLAUDE.md` opens with. What the pane can honestly say is how much it holds and whether there is more | A `total` on the `fs.list` ack. The phone would have to count the directory to send it, which is the same cost moved |
+| F6 | Breadcrumb **"Internal storage / DCIM / Camera"** | The root's own label, then the path — **`DCIM › Camera`** | **reshaped** | The first segment is a fiction under SAF: there is no parent above a granted tree that this app can address. The rest of the breadcrumb is real and is exactly what `(rootId, path)` names | Nothing. This is the design's intent in the phone's vocabulary |
+| F7 | **No state for *this failed to load*** — the canvas has none, anywhere | Five drawn states, and the two that matter differ four ways: colour, glyph, headline verb, and whether a retry exists | **reshaped** | A pane showing no folders and a pane whose request died are the same picture. This is the **third** row in this file reading *the design is missing something* rather than *the wire is missing something*, after N4 (unavailable) and P5 (partial) | A drawn failure state in the design's language. `#FF5D5D` already exists as the failure colour, so the palette is there — what is missing is the state |
+
+**F7 is the row to hand the designer, and it is now three rows deep.** N4, P5 and F7 are one gap
+seen from three angles: the canvas draws features that work and features that are empty, and nothing
+else. A product whose whole subject is a link to a device that goes in and out of range spends a
+meaningful part of its life in states the design does not contain, and each pane has now invented
+its own version of them.
+
+**What the four differences are, and why four.** Measured in the running app, in one window, minutes
+apart — `M2` (one root) against a real `M4` produced by revoking the folder on the phone while the
+Mac still had it selected:
+
+| | M2 — shared one folder | M4 — couldn't open |
+|---|---|---|
+| Headline colour | `rgb(244, 244, 247)` — `--text-primary` | `rgb(255, 93, 93)` — `--destructive` |
+| Border | `rgba(255, 255, 255, 0.08)` — hairline | `rgba(255, 93, 93, 0.3)` — `--destructive-border` |
+| Headline | *"This phone has shared one folder"* — what **is** | *"Couldn't open this folder"* — what **happened** |
+| Retry | none | **Try again**, and the phone's code (`ROOT_NOT_GRANTED`) in mono |
+
+One difference is a bug away from none: colour alone fails for a reader who cannot distinguish it,
+the glyph alone fails at a glance, the headline alone fails the moment someone reuses a component.
+Each of the four was deleted in turn and the guard went red for each — `filesRoots.test.ts`.
+
+**Not a departure, and worth saying so: there is no "Add folder" control on the Mac and there will
+never be one.** There is no `fs.grant` message; the inventory is fixed at twelve types, and a
+thirteenth that made the phone open a picker would be the Mac reaching for a consent surface only a
+person holding the phone can answer. The phone's own `grantHint` is rendered verbatim in the rail
+instead. The canvas does not draw such a button, so nothing is being removed — this is here so that
+nobody adds one.
 
 ## Mirror (§2) — embedded layout **built 2026-08-29**; detached window **built 2026-08-30**
 
@@ -254,12 +302,26 @@ is the silent-no-op shape this project keeps ruling out, on the very first scree
 
 ---
 
-## How to read the two "missing from the design" rows
+## How to read the "missing from the design" rows — now three of them
 
-**N4** and **X5** are the only rows where the gap runs the other way — the wire has something the
-design does not draw. They are the ones most worth a designer's time, because everything else here
-is us declining to draw a thing that would be false, and those two are us needing a thing that would
-be true.
+**N4**, **P5/X5** and **F7** are the rows where the gap runs the other way — the wire has something
+the design does not draw. They are the ones most worth a designer's time, because everything else
+here is us declining to draw a thing that would be false, and these are us needing a thing that
+would be true.
+
+They are also, read together, one request rather than three:
+
+| Row | The state the wire has | The pane that had to invent it |
+|---|---|---|
+| N4 | *the phone has this feature and is not offering it right now* | Notifications, 2026-08-30 |
+| P5 | *the phone is offering **half** of it* | Photos, 2026-08-31 |
+| F7 | *asking failed, and that is not the same as there being nothing* | Files, 2026-09-01 |
+
+Three panes have now each drawn their own version of the same missing vocabulary. A fourth will
+invent a fourth, and they will not match. **The ask is small: unavailable, partial, and failed, in
+the design's language, once.** The palette already carries the colours — `--warning` for the first
+two and `#FF5D5D`, documented as failure-only, for the third — so what is missing is the drawing and
+not the tokens.
 
 ---
 

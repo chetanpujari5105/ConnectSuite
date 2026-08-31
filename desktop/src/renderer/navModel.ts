@@ -108,12 +108,7 @@ const SCREENS: NavScreen[] = [
     icon: 'files',
     group: 'MENU',
     shortcut: '⌘3',
-    state: 'unbuilt',
-    unbuiltReason:
-      'File transfer is Phase 5 and no part of it is written yet — the bulk socket on port 42503 ' +
-      'is open and carries nothing. Nothing here is broken; there is nothing here.',
-    unbuiltHeadline: 'Nothing moves files yet',
-    unbuiltHandle: 'fs.* — not in this build',
+    state: 'built',
   },
   {
     id: 'photos',

@@ -79,7 +79,7 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 | 2 | Screen mirroring (MediaProjection capture, H.264, video socket) | **Done** — closed 2026-08-26 |
 | 3 | **Input injection (AccessibilityService)** — see `docs/phase-3-input.md` | **Done** — passed on hardware 2026-08-27; closed retroactively 2026-08-31 |
 | 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
-| 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **In progress** — photos done; `fs.*` reads, delete and pull done on hardware 2026-09-01; the phone's **Folders screen** done 2026-09-01, so a release build can grant a folder; push and the Mac's Files pane outstanding |
+| 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **In progress** — photos done; `fs.*` reads, delete and pull done on hardware 2026-09-01; the phone's **Folders screen** and the Mac's **Files pane** both done 2026-09-01. Outstanding: **push** (both halves of "both directions" are not done), clipboard, contacts, drag to Finder |
 | 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | Not started |
 | 7 | Mac UX — packaging, distribution, app launching, and the polish pass | Not started |
 
@@ -318,6 +318,8 @@ damage on the user's own device or nearly recorded a false result.
   | `adb shell content query --where 'date<…'` on `mms-sms/conversations` (defect 50) | the provider honours selections, so the pager's cursor *value* must be wrong | the shell **inlines its literal**; the app **binds a `?`**, and this view answers a bound argument with an empty cursor. The selection was never running |
   | a 320 ms shell poll watching for a `MediaStore` pending file (2026-08-31) | *(not reported — the miss was caught first)* | the publish took **263 ms**. The window opened and closed between two samples, so the poll held **no reading at all**, in either direction |
   | a pager probe capped at 200 pages, over a 16,369-item album (2026-08-31) | `10000 of 16369, match=false` — read as a pager that stops early | the **probe's own cap**. The pager was fine; the instrument ended the run and then reported the ending as the finding |
+  | `KEYCODE_BACK` in DocumentsUI, waiting for the cancel branch's log line (2026-09-01) | *(not reported — caught first)* | BACK **navigates up** in the picker, it does not cancel. The activity was still resumed and the branch had not run. The absent line was a reading that did not exist yet |
+  | `dumpsys activity permissions \| grep -c documents/tree` after a revoke (2026-09-01) | 2 tree grants — read as *"Remove did nothing"* | the released grant **is still a row**, at `persisted=0x0`. The real grant is the one at `persisted=0x3`. Row presence is not grant persistence |
 
   Between them, false absences and false presences alike, which is the point: the failure is not
   "empty means broken", it is that **the check could not separate signal from lookalike** and said
@@ -438,6 +440,36 @@ damage on the user's own device or nearly recorded a false result.
   The general form, worth applying to anything that measures: **every bound the instrument imposes —
   a timeout, a page cap, a sample interval, a buffer size, a `head -20` — must appear in what it
   reports, or a result shaped by that bound will be read as a result about the thing measured.**
+
+  **The eighth and ninth entries are one rule on two different tools, and neither of them is about
+  folders.** They were found in the same hour, from opposite directions, and both would have been
+  written down as facts about the product:
+
+  - **A missing reading is not a negative one, again — this time because the action had not
+    happened.** Waiting for the cancel branch's log line after pressing `KEYCODE_BACK` in
+    DocumentsUI, nothing appeared, and *"the silent branch does not run"* was one sentence away.
+    BACK **navigates up** inside the picker; it does not cancel. `dumpsys activity activities` still
+    named `PickActivity` as resumed. This is the 263 ms window with a different cause — there the
+    window closed between samples, here the window had not opened — and the same fix: **establish
+    that the thing you are waiting for has actually been triggered before reading its absence.**
+  - **A row's presence is not the property you are counting.** After
+    `releasePersistableUriPermission`, `dumpsys activity permissions` **still lists the released
+    grant** — with `persisted=0x0`, beside `mode=0x1 owned=0x1` transient entries. Counting rows
+    matching `documents/tree` returns 2 and reads as a failed remove. The discriminator is
+    `persisted=`, **never the row's presence**.
+
+  **The part that will catch someone is that the same query gave two different answers an hour
+  apart, honestly.** An earlier revoke in the same sitting left *no* row, because that grant had
+  been created by a process that had since died, so there was no transient entry to linger. Same
+  command, same package, same provider: clean absence once, a misleading presence the next time, and
+  **nothing in the output announces which situation you are in.** A reading taken only in the first
+  situation would have established "revoke removes the row" as a fact, and the second reading would
+  then have looked like a bug in the revoke.
+
+  So: when a tool reports an aggregate — a count, a presence, an exit code — **name the attribute
+  that distinguishes the thing you mean from the thing that merely matches**, and check that the
+  attribute is in the output at all. `grep -c` was the second entry in this table and it is the
+  ninth as well; the failure has not changed since.
 
 - **The instrument gets a control before the reading does — and the DOM is an instrument.**
   The rule above is usually applied to a device or a provider. It applies unchanged to the thing

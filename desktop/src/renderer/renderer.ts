@@ -116,6 +116,24 @@ interface ConnectBridge {
     { ok: true; data: Contact } | { ok: false; reason?: string; fixHint?: string }
   >;
 
+  // Phase 5 slice 7: Files, reads only. There is no `fsPush` and its absence is deliberate —
+  // `push` answers FEATURE_UNAVAILABLE and a bridge method that always failed is what a drop tile
+  // would eventually be wired to.
+  fsRoots(): Promise<
+    | { ok: true; data: { roots: FsRootRow[]; grantHint: string | null } }
+    | { ok: false; reason?: string; fixHint?: string; code?: string }
+  >;
+  fsList(options: {
+    rootId: string;
+    path?: string;
+    limit?: number;
+    afterName?: string;
+    afterId?: string;
+  }): Promise<
+    | { ok: true; data: { entries: FsEntryRow[]; hasMore: boolean } }
+    | { ok: false; reason?: string; fixHint?: string; code?: string }
+  >;
+
   // Phase 5 slice 2: the photo browser's three working verbs. Shapes mirror photos.ts, which is a
   // plain script in the same global scope rather than a module. `mediaThumbs` answers with entries
   // rather than a Map — a Map does not survive the bridge as something readable by key.
@@ -219,6 +237,12 @@ function render(status: RendererStatus | null): void {
   // what the pane's banner says — so this call turns the banner off and the Save button on in the
   // same moment the chip goes green, from the same fact.
   photos.setAdvertised(status?.capabilities?.includes('photos') ?? false);
+  // The phone's own `reason` is passed straight through — a Mac-side paraphrase would be this side
+  // guessing which grant is missing, which is the thing it cannot know.
+  files?.setAdvertised(
+    status?.capabilities?.includes('files') ?? false,
+    reasons.get('files') ?? null,
+  );
   // The media remote rides the notification-listener grant, so this lights together with
   // `notifications` — one grant, two features. See docs/protocol.md.
   remote.setAdvertised(status?.capabilities?.includes('remote') ?? false);
@@ -364,6 +388,20 @@ const photos = new PhotosView(
 shell.onRoute((id) => {
   if (id === 'photos') void photos.refresh();
 });
+// Files. Fetches on open, like Photos, and for the same reason — the roots are a round trip nobody
+// has asked for until the screen is looked at.
+//
+// Unlike Photos, this pane **does** consult the capability: `files` is advertised (all six verbs
+// answer; `push` degrades), so an absent capability here means the phone genuinely is not offering
+// the feature, and the honest drawing is the phone's own sentence rather than an empty rail.
+const files = createFilesView({
+  fsRoots: () => connect.fsRoots(),
+  fsList: (options) => connect.fsList(options),
+});
+shell.onRoute((id) => {
+  if (id === 'files') void files?.refresh();
+});
+
 
 // Contacts. Same hidden-not-greyed rule as the notifications card above. The search box is wired
 // inside the view because the debounce belongs with the thing it debounces.

@@ -8458,6 +8458,22 @@ there was nothing to survive.
    lived: **the reading and the thing being measured differ, and the difference is invisible unless
    you name the attribute that separates them.**
 
+### The reading that killed the quick-pick chips
+
+The proposal drew a row of `Camera` / `Documents` / `Pictures` chips. They are **not shipped**, and
+the reason is a reading rather than a scheduling call.
+
+`EXTRA_INITIAL_URI` is left unset (`docs/phase-5-files-onboarding-proposal.md` §8.3). The assumption
+that makes chips look harmless is that an unaimed picker starts at the top of storage. **It does
+not — it chooses.** Observed here: with no initial URI, DocumentsUI **restored its own last
+location** and opened inside `DCIM`, listing that folder's 30-odd albums. On a second run that
+location is wherever the previous pick ended.
+
+A chip is a promise about where the picker opens. This app cannot make that promise, so the label
+would be right by coincidence and wrong by default, with nothing on screen telling the user which.
+That is the same shape as any other confident wrong answer in this file. Chips return only if §8.3's
+reading shows the picker can be aimed reliably.
+
 ### The release-shaped claim, checked in both directions
 
 The screen is in `sync-module/src/main`, so it ships. Proven rather than assumed, and with its
@@ -8496,3 +8512,123 @@ adding a variant *and* rendering it, which is the actual way an unreachable stat
 One persisted tree grant, `primary:DCIM`, `persisted=0x3` — the same folder the device started with.
 `cs-gone-test` deleted from `/sdcard/DCIM` and its grant released. `scripts/link-up.sh` **3 of 3**
 after the final install, and the phone left on the Folders screen.
+
+---
+
+## Slice 7 — the Mac's Files pane · 2026-09-01
+
+**The read half of Files, on the Mac, against the phone side proven in slices 5 and 6.** Phone first
+was the gate and it paid twice over: the roots this pane opens on can now be created by a shipping
+build, and the wire had already been exercised to exhaustion before anything was drawn on top of it.
+
+Specified before it was built: `docs/phase-5-files-onboarding-proposal.md` §3.3, §3.4 and §6. The
+departures from the canvas are `docs/design-departures.md` → **Files, F1–F7**.
+
+### The states, measured in the running app
+
+`M2` and `M4` are the pair this pane exists to keep apart, and both were produced against the real
+phone rather than a stub — `contextBridge` freezes the bridge, so there is no way to fake one from
+the renderer, which is the right constraint to be under.
+
+**`M4` was produced by revoking the folder on the phone while the Mac still had it selected**, then
+clicking that root. A genuine refusal, from the phone's own code path:
+
+```
+stateId: M4   classes: files-state-card files-state--destructive
+headline: "Couldn’t open this folder"    headlineColour: rgb(255, 93, 93)
+borderColour: rgba(255, 93, 93, 0.3)     retry: true
+code: ROOT_NOT_GRANTED                   body: "This phone has not shared that folder."
+```
+
+**`M2` followed in the same window**, with the grant still removed so the phone returned exactly one
+root:
+
+```
+stateId: M2   classes: files-state-card files-state--neutral
+headline: "This phone has shared one folder"    headlineColour: rgb(244, 244, 247)
+borderColour: rgba(255, 255, 255, 0.08)         retry: false    code: null
+body: ConnectSuite’s own folder is always here… / Folders are added on the phone… /
+      Files saved straight into the phone's Download folder can't be reached from here at all…
+```
+
+**Four differences, each shown to be load-bearing.** Colour, glyph, headline verb, and the retry.
+Each was deleted in turn:
+
+| Mutation | Went red |
+|---|---|
+| `M4` tone → `neutral` | *empty and failed differ in four independent ways* |
+| `M4` icon → `folder` | *empty and failed differ in four independent ways* |
+| `M4` headline → `M2`'s | that test **and** *the failed state states what happened* |
+| `retry: true` on the ready state | that test **and** *only the failed state offers a retry* |
+
+One difference is a bug away from none, which is the whole reason there are four.
+
+### The wall is in the pane, and drawn exactly once
+
+`DOWNLOAD_WALL` is one constant with two homes on screen and a rule that picks between them: the
+`M2` card's body carries it as written, and the rail carries it in every other state, hidden while
+the card is showing it. Read live with two roots present: rail copy visible, full sentence, card
+absent.
+
+This was wrong first. The state card only renders when there is at most one root, so the first
+build drew the wall **only in the almost-empty case** — a user with folders, which is everyone the
+feature is for, would never have seen it. Caught by reading the live DOM for the sentence rather
+than by trusting that the copy existed somewhere.
+
+### No upload affordance, checked against the pane and not the page
+
+With the pane visible, 28 rows loaded: **3 buttons in the whole pane** — two root rows and one
+breadcrumb — and **0 `input[type=file]`**. The canvas draws two drop tiles (F4) and neither exists.
+
+**The first version of this check was wrong in a way worth recording.** `document.querySelector('[data-screen="files"]')` matches **two** elements: the app window carries
+the attribute as its current-route marker, and the section is the pane. `querySelector` returns the
+window, so the check counted every button in the app — sidebar included — and separately reported
+`paneVisible: true` for a pane that was in fact hidden on the next launch. Both readings were about
+the wrong element and both looked plausible. The fix is `section[data-screen="files"]`, plus
+asserting the element is visible before believing anything it reports about itself — the DOM-is-an-
+instrument rule, which this repo already carries and which still caught nothing until it was applied
+deliberately.
+
+A second false positive from the same sitting: a regex for `/drop|upload|send to phone/` matched the
+degraded banner's own sentence — *"Sending files to the phone from here does not yet"*. Searching
+text for an affordance finds the copy that explains its absence. Counting **controls** is the check;
+counting words is not.
+
+### A concurrency defect the pane would have hidden
+
+The route opening and the `files` capability arriving are both correct reasons to refresh, and on a
+cold start they land within a frame of each other. Both ran: the first fetched the roots and listed
+28 entries, the second reset the listing underneath it, and its own `fs.list` then timed out after
+10 s. **The pane settled on an empty table with no error at all** — the exact confusion this pane was
+built to prevent, arriving through concurrency rather than through copy.
+
+Visible in the desktop log as one success and one timeout seconds apart:
+
+```
+02:55:13 I [files] fs.list saf:primary%3ADCIM/ → 28 entries, hasMore=false, 53 ms — 1 ok / 0 failed
+02:55:31 W [files] fs.list saf:primary%3ADCIM failed: fs.list timed out after 10000ms
+```
+
+Fixed by serialising `refresh()` — a second caller joins the run in flight rather than starting
+another. Worth keeping in mind for the next pane: **a state machine that cannot represent an
+ambiguous state can still be driven into one by two callers**, and no amount of care in the type
+prevents it.
+
+### A second reading on the picker, and it strengthens the quick-pick decision
+
+Re-granting the folder at the end of this sitting, the picker — same unaimed intent, same device,
+same day — opened at the **root of internal storage**, showing `Can’t use this folder` /
+`To protect your privacy, choose another folder` with `USE THIS FOLDER` `enabled="false"`. An hour
+earlier the same call restored its previous location and opened inside `DCIM`.
+
+So the picker's starting point is not merely "not the top" — it is **not stable**. A chip promising
+`Camera` would have been wrong in one of these two runs and right in the other, with nothing on
+screen distinguishing them. `EXTRA_INITIAL_URI` stays unset and the chips stay unbuilt;
+`docs/phase-5-files-onboarding-proposal.md` §8.3 holds the reading that would settle it.
+
+### Baseline
+
+Mac **172** tests, up from 161; `tsc --noEmit` clean; `stylesheets.test.ts` green, so no selector
+collides across the three sheets. The phone's grant was removed and re-granted during the run and is
+restored: one persisted tree grant on `primary:DCIM`, `persisted=0x3`. `scripts/link-up.sh` **3 of
+3**, and the pane is showing 28 entries from `DCIM`.

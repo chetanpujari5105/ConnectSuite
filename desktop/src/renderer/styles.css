@@ -1654,3 +1654,302 @@ img#qr {
   padding-top: var(--space-4);
   border-top: 1px solid var(--hairline);
 }
+
+/* ================================================================================================
+   FILES — the folders the phone has shared, and what is inside them.
+
+   The canvas's Files screen is a left rail, a name/date/size table and a detail card, and that
+   structure is kept exactly. What is not kept is F1-F3: the canvas draws `Internal storage` with
+   `Alarms`, `Android`, `Downloads`, `Music` beneath it, and none of those can exist under SAF. The
+   rail lists the roots `fs.list` returns and nothing else. See `docs/design-departures.md`.
+
+   The state card below is the one part of this pane that is load-bearing rather than decorative.
+   `.files-state--neutral` and `.files-state--destructive` are the empty and failed states, and they
+   differ here in **colour and glyph**; the other two of the four differences — the headline's verb
+   and the presence of a retry — live in `filesRoots.ts` where a test can see them. A stylesheet can
+   guard two of the four and no more, which is why the rule does not live here.
+================================================================================================ */
+
+.pane-files { display: flex; flex-direction: column; min-height: 0; }
+
+.files-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--space-6);
+  min-height: 0;
+  flex: 1;
+}
+
+.files-panel {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 0;
+  background: var(--elev-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.files-rail {
+  border-right: 1px solid var(--hairline);
+  padding: var(--space-5);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.files-rail-title {
+  font: var(--text-meta-size);
+  letter-spacing: 0.08em;
+  color: var(--text-meta);
+  margin-bottom: var(--space-4);
+}
+
+/* The rail rows are the roots and nothing else — there is no "Add folder" here, deliberately.
+   There is no `fs.grant` message and there will not be one: the Mac cannot open a consent surface
+   that only a person holding the phone can answer. `.files-rail-hint` is what stands in its place,
+   and it renders the phone's own `grantHint` verbatim. */
+.files-root {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-2);
+  cursor: pointer;
+}
+
+.files-root:hover { border-color: var(--hairline-hover); }
+
+.files-root.is-selected {
+  background: var(--accent-tint-selected);
+  border-color: var(--accent-border);
+}
+
+.files-root-name { display: block; font: var(--text-control); color: var(--text-primary); }
+
+.files-root-meta { display: block; font: var(--text-meta-size); color: var(--text-meta); }
+
+.files-rail-hint {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--hairline);
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+}
+
+.files-rail-hint[hidden] { display: none; }
+
+/* The `Download` wall, kept where the user will meet the gap rather than in a document. Standing
+   copy on both sides of the product: the phone's Folders screen carries the same sentence as a
+   permanent card. Hidden here only when the state card above is already saying it. */
+.files-rail-wall {
+  margin-top: var(--space-4);
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+}
+
+.files-rail-wall[hidden] { display: none; }
+
+.files-listing {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-5);
+}
+
+.files-crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.files-crumb {
+  background: none;
+  border: none;
+  padding: 0;
+  font: var(--text-control);
+  color: var(--text-body);
+  cursor: pointer;
+}
+
+.files-crumb:hover { color: var(--text-primary); }
+
+.files-crumb-sep { color: var(--text-meta); }
+
+.files-table { overflow-y: auto; min-height: 0; flex: 1; }
+
+.files-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px 90px;
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  cursor: default;
+}
+
+.files-row:hover { background: var(--well); }
+
+.files-row.is-selected {
+  background: var(--accent-tint-selected);
+}
+
+.files-row--head {
+  font: var(--text-meta-size);
+  letter-spacing: 0.08em;
+  color: var(--text-meta);
+  position: sticky;
+  top: 0;
+  background: var(--elev-2);
+  cursor: default;
+}
+
+.files-row--head:hover { background: var(--elev-2); }
+
+.files-cell-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font: var(--text-body-size);
+  color: var(--text-on-control);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The resolved app label beside a package-shaped folder name — never in place of it. The name is
+   the real path component and is what the Mac sends back to navigate. */
+.files-cell-app { font: var(--text-meta-size); color: var(--text-meta); }
+
+.files-glyph { color: var(--text-meta); }
+
+.files-cell-date,
+.files-cell-size {
+  font: var(--text-meta-size);
+  color: var(--text-body);
+}
+
+.files-cell-size { text-align: right; }
+
+.files-loading,
+.files-footer {
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+  padding: var(--space-3) var(--space-4);
+}
+
+/* The footer never claims a total: `fs.list` has no count, and getting one means paging to
+   exhaustion — defect 55's 16,377 entries. The canvas's `1,245 items` would be a number with
+   nothing behind it. */
+.files-footer { border-top: 1px solid var(--hairline); }
+
+/* ---- The state card: empty and failed, kept apart -------------------------------------------- */
+
+.files-state[hidden] { display: none; }
+
+.files-state-card {
+  border-radius: var(--radius-tile);
+  border: 1px solid var(--hairline);
+  padding: var(--space-6);
+  margin-bottom: var(--space-5);
+}
+
+.files-state--neutral { background: var(--elev-2); border-color: var(--hairline); }
+
+.files-state--warning { background: var(--warning-fill); border-color: var(--warning-border); }
+
+.files-state--destructive {
+  background: var(--destructive-fill);
+  border-color: var(--destructive-border);
+}
+
+.files-state-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.files-state-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  border: 1px solid currentColor;
+  font: var(--text-meta-size);
+}
+
+.files-state-glyph--folder { color: var(--text-meta); }
+.files-state-glyph--spinner { color: var(--text-meta); }
+.files-state-glyph--lock { color: var(--warning); }
+.files-state-glyph--alert { color: var(--destructive); }
+
+.files-state-headline { margin: 0; font: var(--text-control); color: var(--text-primary); }
+
+.files-state--destructive .files-state-headline { color: var(--destructive); }
+.files-state--warning .files-state-headline { color: var(--warning); }
+
+.files-state-body {
+  margin: 0 0 var(--space-3);
+  font: var(--text-body-size);
+  color: var(--text-body);
+}
+
+/* The phone's own code, in mono. Diagnosable beats tidy: a generic "something went wrong" carries
+   the same information as a blank pane. */
+.files-state-code {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-meta);
+}
+
+.files-retry {
+  display: block;
+  margin-top: var(--space-4);
+}
+
+/* M6 — advertised, and one direction degraded. A banner over a working pane, `--warning` and never
+   `--destructive`: a feature arriving in halves is not a failure. This is also the only thing on
+   this pane that mentions sending files to the phone, because there is no affordance for it. */
+.files-banner {
+  border-radius: var(--radius-tile);
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-6);
+  border: 1px solid var(--warning-border);
+  background: var(--warning-fill);
+  font: var(--text-body-size);
+  color: var(--text-body);
+}
+
+.files-banner[hidden] { display: none; }
+
+.files-detail-empty,
+.files-detail-title { margin: 0 0 var(--space-4); }
+
+.files-detail-empty { font: var(--text-body-size); color: var(--text-meta); }
+
+.files-detail-title {
+  font: var(--text-control);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.files-detail-facts {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font: var(--text-meta-size);
+}
+
+.files-detail-facts dt { color: var(--text-meta); }
+.files-detail-facts dd { margin: 0; color: var(--text-body); overflow-wrap: anywhere; }

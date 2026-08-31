@@ -430,7 +430,28 @@
               shell.ts from `navModel`'s `unbuiltReason`, which is a sentence naming the phase and
               the missing piece — never "coming soon", which is indistinguishable from broken.
             -->
-            <section class="screen" data-screen="files" hidden></section>
+            <section class="screen" data-screen="files" hidden>
+              <div class="pane pane-files" id="files-card">
+                <div id="files-banner" class="files-banner" hidden></div>
+                <div class="files-body">
+                  <div class="files-panel">
+                    <div class="files-rail">
+                      <div class="files-rail-title">SHARED FOLDERS</div>
+                      <div id="files-roots" role="listbox" aria-label="Shared folders"></div>
+                      <div class="files-rail-hint" id="files-grant-hint"></div>
+                      <div class="files-rail-wall" id="files-wall"></div>
+                    </div>
+                    <div class="files-listing">
+                      <div class="files-crumbs" id="files-crumbs" aria-label="Location"></div>
+                      <div class="files-state" id="files-state"></div>
+                      <div class="files-table" id="files-table" role="grid" aria-label="Files"></div>
+                      <div class="files-footer" id="files-footer"></div>
+                    </div>
+                  </div>
+                  <aside class="pane-detail" id="files-detail" aria-live="polite"></aside>
+                </div>
+              </div>
+            </section>
             <!-- ============================== Photos ====================================== -->
             <!--
               Built on three verbs of four. `media.original` needs the bulk channel, so full-size
@@ -520,6 +541,8 @@
     <script src="remote.js"></script>
     <script src="sms.js"></script>
     <script src="calls.js"></script>
+    <script src="../shared/filesRoots.js"></script>
+    <script src="files.js"></script>
     <script src="photos.js"></script>
     <script src="shell.js"></script>
     <script src="renderer.js"></script>

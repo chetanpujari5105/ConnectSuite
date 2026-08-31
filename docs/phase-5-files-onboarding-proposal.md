@@ -16,8 +16,10 @@ surface makes.
 > **§2, §3.1–§3.2, §3.5, §4 and §5 are no longer proposals.** The Folders screen ships in
 > `sync-module/.../ui/folders/`, all four states were observed on hardware, and a real folder was
 > granted through it on a release-shaped path and read back from the platform. The evidence is
-> `docs/testing.md` → **Slice 6**. §3.3, §3.4 and §6 — the Mac's six states and its Files pane —
-> remain proposals and are deliberately unbuilt.
+> `docs/testing.md` → **Slice 6**. §3.3, §3.4 and §6 — the Mac's states and its Files pane — were
+> built the same day as **Slice 7**, with `M2` and `M4` measured in the running app and each of the
+> four differences shown to be load-bearing. F1–F7 have moved to `docs/design-departures.md` now
+> that there is a pane that can deviate.
 >
 > Two things changed in the building, both recorded below rather than quietly: the **quick picks are
 > not shipped** (§4), and **`EXTRA_INITIAL_URI` is left unset** with the reading that would settle it
@@ -268,12 +270,28 @@ Material 3, `Card` and `PermissionCard` as the rest of the app uses them. Three 
 └────────────────────────────────────────────────┘
 ```
 
-**Quick picks are not built, and that follows from leaving `EXTRA_INITIAL_URI` unset.** A chip
-labelled `Camera` that opens the same unaimed picker as the plain button is a label making a promise
-the code does not keep — the user reads it as *go to Camera* and lands wherever DocumentsUI last
-was. Observed in this sitting: with no initial URI the picker **restored its previous location**
-(it opened inside `DCIM`), so "unset" does not mean "starts at the top" — it means *the picker
-chooses*. Chips return with §8.3, or not at all.
+**Quick picks are not shipped. That is a decision with a reason, not a deferral.**
+
+A chip is a promise about where the picker opens, and **this app cannot make that promise.** With
+`EXTRA_INITIAL_URI` unset — which §8.3 decides deliberately — the picker does not start at the top
+of storage: **it chooses.** Observed on this handset, 2026-09-01: with no initial URI it **restored
+its own last location** and opened inside `DCIM`. So a chip labelled `Camera` would open wherever
+DocumentsUI happened to be, which on a second run is wherever the *previous pick* ended. The label
+would be right by coincidence and wrong by default, and the user has no way to tell which.
+
+**A second reading, taken the same day, makes it worse and settles it.** Re-granting a folder later
+that evening — same device, same unaimed intent — the picker opened at the **root of internal
+storage**, showing `Can’t use this folder` with `USE THIS FOLDER` `enabled="false"`. An hour earlier
+the identical call had restored its last location and opened inside `DCIM`.
+
+So the starting point is not merely *not the top*: it is **not stable between runs**. A chip
+labelled `Camera` would have been correct in one of those two runs and wrong in the other, with
+nothing on screen to tell a user which they were in — and in the second run it would have dropped
+them on the one refusal §3.5 exists to keep them away from.
+
+"Unset" reading as "starts at the top" is the assumption that makes chips look safe, and it is
+false twice over. A chip returns only if §8.3's reading says the picker can be aimed reliably — not
+before, and not as a cosmetic addition.
 
 **The one sentence that is dated.** *"Sending files to this phone already works"* is true of v1's
 transfer path and not yet of `fs.*` push. Until push lands the empty card reads *"Add a folder to

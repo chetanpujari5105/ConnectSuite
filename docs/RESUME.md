@@ -39,8 +39,8 @@ Mac actually attached. Do not grep the phone log for `Listening on`; it is writt
 `yiaddr = 10.108.253.92, router 10.108.253.63` — the correct one. Two reads of the same fact
 disagreeing, with the less obvious one right.
 
-Baselines, as of Phase 5 slice 6: phone **247** tests (`core` 77, `input-module` 44,
-`sync-module` 95, `mirror-module` 31), Mac **161** tests, `tsc --noEmit` clean. The figure this file
+Baselines, as of Phase 5 slice 7: phone **247** tests (`core` 77, `input-module` 44,
+`sync-module` 95, `mirror-module` 31), Mac **172** tests, `tsc --noEmit` clean. The figure this file
 carried at the close of Phase 4 — *189 (67 `sync-module` + 122 `core`)* — does not reconcile with the
 tree by either counting method and has been corrected rather than restated; see the note at the end
 of `docs/testing.md`. Run Gradle with `--rerun-tasks` when you intend a *run* — an
@@ -89,6 +89,33 @@ not implement an alternative without saying why the recorded reasoning is wrong.
 
 ---
 
+## Slice 7 — the Mac's Files pane — **built and running, 2026-09-01**
+
+The read half, against a phone side proven first. Evidence: `docs/testing.md` → **Slice 7**;
+departures from the canvas: `docs/design-departures.md` → **Files, F1–F7**.
+
+`M2` (one root) and `M4` (a real `ROOT_NOT_GRANTED`, produced by revoking the folder on the phone
+while the Mac had it selected) were both measured in the running app, minutes apart, and differ four
+ways — colour, glyph, headline verb, retry. Each difference was deleted in turn and the guard went
+red for each.
+
+Three things to carry forward:
+
+1. **A tagged union does not protect you from two callers.** The route opening and the capability
+   arriving both refreshed, the second reset the listing under the first, and the pane settled on an
+   **empty table with no error** — the confusion the whole design prevents, reached through
+   concurrency. `refresh()` is serialised now.
+2. **`[data-screen="files"]` matches two elements** — the app window carries it as a route marker,
+   and the section is the pane. `querySelector` returns the window, so a check written that way
+   counts the sidebar's buttons and reports a hidden pane as visible. Use
+   `section[data-screen="…"]`, and assert visibility before believing a measurement.
+3. **Searching text for an affordance finds the copy explaining its absence.** A `/drop|upload/`
+   regex matched the degraded banner's own sentence. Count controls, not words.
+
+**Not built:** push, and anything that writes. The pane has no `Copy to Mac` button yet either — the
+pull path belongs with the transfer queue rather than bolted onto a detail card the day the pane
+lands.
+
 ## Slice 6 — the Folders screen — **done on hardware, 2026-09-01**
 
 **A release build can grant a folder for the first time.** Until this slice the only route to a SAF
@@ -116,17 +143,17 @@ Three things worth carrying forward:
    process lets go. Counting `documents/tree` rows says a removal did nothing. The discriminator is
    `persisted=`, not the row's presence.
 
-**Not built, deliberately:** the Mac's Files pane, quick-pick chips (they would claim a destination
-the picker does not honour while `EXTRA_INITIAL_URI` is unset), and push.
+**Not built, deliberately:** the Mac's Files pane, push, and **quick-pick chips — which is a
+decision, not a deferral.** A chip is a promise about where the picker opens and this app cannot
+make it: with `EXTRA_INITIAL_URI` unset the picker does not start at the top of storage, it
+*chooses*, and on this handset it **restored its last location** and opened inside `DCIM`. A chip
+labelled `Camera` would be right by coincidence and wrong by default.
 
 ### Next, in order
 
-1. ~~**The Folders screen**~~ — **done, slice 6, 2026-09-01.** See below.
-2. **The Mac's Files pane**, unblocked twice over — the wire was proven in slice 5 and a shipping
-   build can now create the roots it opens on. The six states, the four-way empty/failed
-   distinction, and the F1–F7 departures from the canvas are all specified in
-   `docs/phase-5-files-onboarding-proposal.md` §3.3, §3.4 and §6.2. **It must not draw an upload
-   affordance** while push answers `FEATURE_UNAVAILABLE`.
+1. ~~**The Folders screen**~~ — **done, slice 6, 2026-09-01.**
+2. ~~**The Mac's Files pane**~~ — **done, slice 7, 2026-09-01.** Read half only; no upload
+   affordance, by three separate statements and one test.
 3. **Push**, which is the phone as receiver: `.part`/`.failed` in a SAF tree, the `MediaStore`
    pending item for `Download/ConnectSuite`, and the Room row that is authoritative for resume. It
    also owes the reading §4 of the payload proposal still lists as unproven — **whether a pending

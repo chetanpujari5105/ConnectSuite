@@ -172,6 +172,24 @@ contextBridge.exposeInMainWorld('connect', {
   ): Promise<PhoneResult<PhoneContact>> => ipcRenderer.invoke('contacts-get', options),
 
   /**
+   * Files — reads only.
+   *
+   * There is no `fsPush` here and that is the point: `direction: "push"` answers
+   * `FEATURE_UNAVAILABLE`, and a bridge method that always failed is the thing a drop tile would
+   * eventually be wired to. The affordance returns when the verb does.
+   */
+  fsRoots: (): Promise<PhoneResult<{ roots: FsRootRow[]; grantHint: string | null }>> =>
+    ipcRenderer.invoke('fs-roots'),
+  fsList: (options: {
+    rootId: string;
+    path?: string;
+    limit?: number;
+    afterName?: string;
+    afterId?: string;
+  }): Promise<PhoneResult<{ entries: FsEntryRow[]; hasMore: boolean }>> =>
+    ipcRenderer.invoke('fs-list', options),
+
+  /**
    * The photo browser. Three verbs, because the fourth needs a socket nothing serves yet.
    *
    * `mediaThumbs` answers with entries rather than a Map — see the handler for why — and the

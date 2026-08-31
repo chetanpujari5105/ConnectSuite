@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { BulkClient } from './bulk';
 import { partPathFor } from '../shared/transferFiles';
+import { FilesClient } from './files';
 import { PhotosClient } from './photos';
 import { NotificationClient } from './notifications';
 import { RemoteClient } from './remote';
@@ -70,6 +71,13 @@ const photos = new PhotosClient(
   () => bulk,
   () => ({ host: link?.status().address ?? null, token: link?.token() ?? null }),
 );
+
+/**
+ * Files — the read verbs only. There is no upload method here, deliberately: `push` answers
+ * `FEATURE_UNAVAILABLE` and `docs/protocol.md` forbids the affordance, so the decision lives in the
+ * client rather than in the renderer where the canvas's drop tile would find it.
+ */
+const files = new FilesClient(() => link);
 
 /**
  * What is playing on the phone. Pushed by the phone, asked for once on connect.
@@ -766,6 +774,15 @@ ipcMain.handle(
 ipcMain.handle(
   'contacts-get',
   (_event, options: { id?: string; number?: string; withPhoto?: boolean }) => contacts.get(options),
+);
+
+ipcMain.handle('fs-roots', () => files.roots());
+ipcMain.handle(
+  'fs-list',
+  (
+    _event,
+    options: { rootId: string; path?: string; limit?: number; afterName?: string; afterId?: string },
+  ) => files.list(options),
 );
 
 ipcMain.handle('media-buckets', () => photos.buckets());
