@@ -569,7 +569,11 @@ export class LinkClient extends EventEmitter {
   private write(envelope: Envelope): void {
     const socket = this.socket;
     if (!socket || socket.destroyed) return;
-    writeFrame(socket, Buffer.from(JSON.stringify(envelope), 'utf8'));
+    // The cap is named rather than defaulted: this channel reads at MAX_CONTROL_FRAME, and a
+    // write side silently defaulting to MAX_FRAME would refuse frames the phone would happily
+    // have accepted. A write cap that disagrees with its own read cap is the bug the write side
+    // is there to catch.
+    writeFrame(socket, Buffer.from(JSON.stringify(envelope), 'utf8'), MAX_CONTROL_FRAME);
   }
 
   private setPhase(phase: ConnectionStatus['phase'], nextRetryInMs?: number): void {

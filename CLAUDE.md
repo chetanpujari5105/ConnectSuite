@@ -48,9 +48,14 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   direction and the wrong fix to avoid. `docs/testing.md` holds the evidence; this is the index.
   Kept in sync by `scripts/check-defects.sh`, wired to `PreToolUse` on `git commit`.
 - `docs/phase-4-closeout.md` — what Phase 4 proved, what it deferred, and what Phase 5 inherits.
+- `docs/phase-5-fs-media-proposal.md` — the `fs.*` / `media.*` payload specification, **proposed and
+  not implemented**. Prose against `docs/protocol.md`, which stays unmodified except for the bulk
+  channel's frame caps. Read it before building any of Phase 5's file or photo work.
 - `docs/RESUME.md` — where work resumes and how to pick it up. **Read it first.** It currently holds
   the Phase 5 opening brief: what the proposals decide, what they leave open, and the first slice.
-- `docs/phase-3-input.md` — the current phase brief: input injection via AccessibilityService.
+- `docs/phase-3-input.md` — the Phase 3 brief: input injection via AccessibilityService. **Phase 3
+  is closed** (2026-08-31); this is the record of what it built, not a live brief. The current brief
+  is `docs/RESUME.md`.
 
 minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK 17-21 (`JAVA_HOME=/Applications/Android Studio.app/Contents/jbr/Contents/Home`), the system JDK 25 will not run AGP 8.13.
 
@@ -62,7 +67,7 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 |---|---|---|
 | 1 | Transport, QR pairing, TLS, discovery, auto reconnect | **Done** — passed on hardware 2026-08-25 |
 | 2 | Screen mirroring (MediaProjection capture, H.264, video socket) | **Done** — closed 2026-08-26 |
-| 3 | **Input injection (AccessibilityService)** — see `docs/phase-3-input.md` | **In progress** — opened 2026-08-26 |
+| 3 | **Input injection (AccessibilityService)** — see `docs/phase-3-input.md` | **Done** — passed on hardware 2026-08-27; closed retroactively 2026-08-31 |
 | 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
 | 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | Not started |
 | 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | Not started |
@@ -75,6 +80,21 @@ forbids. Read it for feature intent only. Where it and this table disagree, this
 
 Phases 4-7 are a working order, not a commitment; 3 is fixed. Deletion of superseded code is a
 cleanup step inside whatever phase makes it safe, never a phase of its own.
+
+**Phase 3 was closed on paper on 2026-08-31, three days after it closed in fact.** The steps ran on
+2026-08-27 (`docs/testing.md`, "Phase 3 step results"), defects 18-21 were fixed and closed with
+them, and Phase 4 was then built on top of the input path and closed in its own right — so the table
+read "in progress" for a phase whose successor was already done. The only Phase 3 step not marked
+PASS is **33**, recorded as *not runnable as written* on this hardware: locking the phone stops
+MediaProjection before any input can be attempted, so the canvas is dead before the sentence the
+step asks for could be produced. `InputFailure.PhoneLocked` is unit-tested and correct; the route to
+it is unreachable here. That is an observation about the step, not an open item.
+
+The lesson is the one this file already carries about defect 31 — a phase's state lives in a table
+that nothing in the build can check, so it goes stale silently. `scripts/check-defects.sh` guards
+defect rows and has no opinion about phase rows; that gap is named here rather than fixed, because a
+checker that parses this table would be guarding one sentence against no known failure mode beyond
+the one now corrected.
 
 **Why 4-7 are grouped this way** (revised 2026-08-26, replacing the first cut of the same table):
 

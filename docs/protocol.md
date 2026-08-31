@@ -968,6 +968,35 @@ Client sends session token, then a JSON header frame:
 then raw chunks of 256 KB. Progress is reported on the control channel, not here.
 Resume: a `pull` header may include `"offset":<bytes>`. The sender seeks and continues.
 
+### Frame caps
+
+Every frame on this channel is length-prefixed like every other channel, and this channel has **two
+caps**, both enforced on the read side *and* the write side by both peers:
+
+| Frame | Cap | Constant |
+|---|---|---|
+| The JSON header | **64 KB** | `Link.MAX_BULK_HEADER_FRAME` / `MAX_BULK_HEADER_FRAME` |
+| Every chunk | **1 MB** | `Link.MAX_BULK_FRAME` / `MAX_BULK_FRAME` |
+
+**1 MB is deliberately smaller than the 8 MB `MAX_FRAME` the video channel uses.** This channel
+moves chunks, and the largest legitimate chunk is 256 KB. A frame bigger than a chunk is not a
+bigger transfer — it is a peer that has lost sync or is lying. `MAX_FRAME` is sized for a video
+keyframe, and inheriting it here would let a peer make the other end allocate 8 MB per frame to move
+256 KB of payload: 32x the memory for no capability. The header is capped far lower again, for the
+same reason the session-token frame is capped at 128 bytes — a malformed first frame must not be
+able to claim the payload budget on a connection that has proved nothing beyond its token.
+
+**A frame past its cap closes the socket.** It is not resynchronised and not skipped: a length
+prefix is either right or the stream is desynchronised, and there is no third case worth guessing
+at. This is the rule the video channel has followed since Phase 2. The refusal names which cap was
+exceeded, the offending length, and the frames and bytes the channel had already accepted — a
+refusal count with no denominator cannot distinguish the first frame of a broken channel from the
+ten-thousandth frame of a transfer that has moved 2 GB.
+
+The write side is capped too, and it catches a different fault: the read side catches a peer that
+has lost sync, the write side catches an adaptive chunk size that has run away on *this* end, before
+it becomes a frame the far end has to close the socket over.
+
 ## Session tokens
 
 `hello.ack` carries a 32-byte random token, hex encoded. The video and bulk sockets must present

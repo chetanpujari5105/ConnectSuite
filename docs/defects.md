@@ -65,6 +65,8 @@ own heading there, and its own row here.
 | **49** | The exclusion's refusal overstated its own evidence — one CDP client was counted as two | **closed** | `lsof` fixture and three controls, 2026-08-30 | see below |
 | **50** | The thread cursor was never honoured — the conversations view returns nothing for a *bound* selection argument | **closed** | on hardware 2026-08-31; found while proving 32's pager actually pages | see below |
 | **51** | The after-send retry reports a loss it does not suffer — an `e:` line and a `dropped` counter for messages the observer then delivers | **open** | found during **step 71**, 2026-08-31 — 2 of 2 Mac-origin sends | `docs/testing.md` |
+| **52** | One `dropped` counter for three different things in `VideoChannel`, and the third never reaches it | **open** | source sweep, 2026-08-31 — the counter shape 51 asked to be swept for | see below |
+| **53** | Two of the Mac's four call refusals move the counter without leaving a line | **open** | source sweep, 2026-08-31 | see below |
 
 ---
 
@@ -785,3 +787,102 @@ tuning the timer would make the misleading line rarer without making it true.
 
 **Not user-visible, and it does not reopen 39 or 44**, both of which are closed on drawn evidence.
 It is a defect in the evidence the next person reads.
+
+**Swept for elsewhere, 2026-08-31 — see the section at the end of this file.** Two more instances:
+**52** (`VideoChannel.dropped`, three triggers and one of them uncounted) and **53** (`calls.ts`,
+two of four refusals silent). Neither is fixed and neither is this sitting's work; 51's own code is
+untouched.
+
+---
+
+## The sweep 51 asked for, 2026-08-31 — and what it found
+
+51 is defect 40's shape one feature over, and twice is a pattern rather than a coincidence, so
+**every counter in the repo was enumerated** rather than the two already known being fixed. That is
+the practical half of the rule 28 wrote: grep for all of them, not the ones a screenshot showed you.
+
+**Method, and its control.** Every `++`, `+= 1` and `incrementAndGet()` on a field in both trees —
+33 sites on the phone, 29 on the Mac. Each was read for two things: how many distinct causes reach
+it, and whether every cause leaves a line that says which one it was. The control is the negative:
+`AppLabels` (`resolved` / `fellBack`) and `CallWatcher` (`broadcastsWithNumber` /
+`broadcastsWithoutNumber`, `episodes` / `episodesWithNumber`) already split exactly this way, so the
+sweep can tell a conflated counter from a correctly split one, and returned both answers.
+
+**Cleared, and why.** The `delivered` / `refused` pairs in `CallFeature`, `ContactsFeature`,
+`RemoteFeature`, `NotificationFeature`, `SmsFeature` and `InputFeature` are each fed from more than
+one site, but they answer **one** question — "was this request answered or declined" — and every
+line names the request type or action, so the aggregate decomposes in the log. `sms.ts` reaches
+`refused` from seven places and all seven carry a distinct sentence; `remote.ts` from three, same.
+Multiple call sites are not the defect. **A cause the number cannot be separated into is.**
+
+Two survived.
+
+### 52 — one `dropped` counter for three different things, one of which never reaches it · **open**
+
+`VideoChannel` (`mirror-module/.../v2/VideoChannel.kt`) drops frames for three reasons and has one
+counter:
+
+| Trigger | Line | What it means | Counted? |
+|---|---|---|---|
+| A stale P-frame evicted to make room | `:58` | the Mac is briefly behind; the queue is doing its job | `dropped++` |
+| The queue holds only keyframes and config, so the **newcomer** is dropped | `:64` | the Mac is badly behind and the mirror is visibly stalling | `dropped++` |
+| The frame is larger than `Link.MAX_FRAME` and is refused by the writer | `:95` | the **encoder** produced something impossible — a correctness fault, not congestion | **nothing** |
+
+The first two are the ones 51 describes: two questions sharing an answer. Evicting a P-frame is the
+design working, and shedding the newest frame because nothing sheddable is left is the design out of
+room; a run of 120 of the first and a run of 120 of the second are the same number and want opposite
+responses.
+
+The third is worse than conflated, it is **absent**. An over-size frame is dropped with a `w:` line
+and no increment, so it appears in neither `droppedCount()` nor the `droppedFrames` field
+`mirror.stats` puts on the wire (`MirrorEngine.kt:1242`) — the one place a Mac could see it. The
+only channel-level correctness fault the mirror has is invisible to the mirror's own statistics.
+
+**And the reporting line asserts a cause it does not decide, which is defect 40 exactly, third
+instance.** `MirrorEngine.kt:235` fires `Dropped $dropped frames; the Mac is behind` every 60
+drops — a sentence that is a fair guess for trigger 1, an understatement for trigger 2, and simply
+wrong for trigger 3, where the Mac is not behind and never saw the frame. It also carries no
+denominator, while the same numbers *do* get one on the wire: `mirror.stats` publishes
+`encodedFrames` beside `droppedFrames`. So the rule is kept where a machine reads it and broken
+where a person does, which is backwards.
+
+**Fix direction:** three counters, named for their causes — `evicted`, `shedNewest`, `oversize` —
+and `droppedCount()` returns their sum so the wire field keeps its meaning. The `MirrorEngine` line
+states the split and the denominator instead of a cause: `dropped N of M encoded (E evicted, S shed,
+O over-size)`. `oversize` is the one that should log at `w:` on its own, because it cannot be caused
+by a slow link.
+
+**Wrong fix to avoid:** raising `QUEUE_DEPTH` so the counter moves less. That is the retry-budget
+shape 51 warns about, wearing a queue: it makes a misleading number rarer without making it true,
+and it trades a brief stutter for growing latency, which the class comment already argues against at
+length. Also do not "fix" trigger 3 by raising `MAX_FRAME` — a frame past 8 MB is an encoder fault
+and the refusal is correct.
+
+### 53 — two of the Mac's four call refusals move the counter without leaving a line · **open**
+
+`desktop/src/main/calls.ts` increments `refused` from four places. Two log a sentence naming the
+cause (`:174` no call is showing, `:196` refused by the phone for a live call). Two do not:
+
+- `:217` — `dial` with an empty number. Refused locally, counter moved, nothing logged.
+- `:232` — `dial` refused **by the phone**. Counter moved, nothing logged; the reason is returned to
+  the caller and then only rendered.
+
+The tally in the log therefore says `N refused` where some unknown part of `N` has no line anywhere
+above it. It is the same fault as 51 read from the other end: 51's number is wrong about what it
+counted, this one is silent about it. Both leave a reader unable to decompose the figure, which is
+what the counter is for.
+
+Milder than 52 — nothing here asserts a false cause, and a dial refusal does reach the user's screen
+— but it is the same family and was found by the same sweep, so it is recorded rather than folded
+into 52.
+
+**Fix direction:** give both sites the `log.warn('calls', … — ${this.tally()})` line the other two
+have, naming the cause: `dial refused here: no number was given` and `call.dial refused by the
+phone: ${result.reason}`. No new counter is needed; the four causes are one question ("a call action
+did not happen") and the lines are what decompose it.
+
+**Wrong fix to avoid:** splitting `refused` into four counters. That is the opposite error and 52 is
+the reason it is worth naming — 52's triggers are different *questions* about the mirror's health,
+so they need different numbers; these four are one question with four reasons, so they need
+different *lines*. The test is whether two causes want opposite responses, not whether they arrive
+from different call sites.

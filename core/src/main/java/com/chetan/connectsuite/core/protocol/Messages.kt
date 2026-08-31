@@ -27,6 +27,31 @@ object Link {
     const val MAX_CONTROL_FRAME: Int = 16 * 1024 * 1024
     const val MAX_FRAME: Int = 8 * 1024 * 1024
 
+    /**
+     * The bulk channel's cap, and it is deliberately *smaller* than [MAX_FRAME].
+     *
+     * The instinct with file transfer is to raise the limit; the opposite is right. The bulk
+     * channel moves chunks, and the largest legitimate chunk is `ChunkSizes.MAX` at 256 KB. A
+     * frame bigger than a chunk is not a bigger transfer, it is a peer that has lost sync or is
+     * lying. [MAX_FRAME]'s 8 MB is sized for a video keyframe; inheriting it here would let a peer
+     * allocate 8 MB per frame to move 256 KB of payload, 32x the memory for no capability.
+     *
+     * 1 MB is 4x the largest chunk, which leaves room for the JSON header and for a future chunk
+     * size without leaving room for an attack.
+     */
+    const val MAX_BULK_FRAME: Int = 1 * 1024 * 1024
+
+    /**
+     * The bulk channel's header frame, capped separately and far lower — the same pattern as the
+     * 128-byte session-token frame.
+     *
+     * The header is a small JSON object (`transferId`, `direction`, `path`, `size`, `mtime`,
+     * `sha256`, optional `offset`). A path can be long; nothing in it justifies a megabyte. Reading
+     * it under [MAX_BULK_FRAME] would let a malformed first frame claim the whole chunk budget on a
+     * connection that has proved nothing beyond its token.
+     */
+    const val MAX_BULK_HEADER_FRAME: Int = 64 * 1024
+
     /** A video or bulk socket must present its session token this fast or it is dropped. */
     const val TOKEN_GRACE_MS: Long = 10_000
 

@@ -95,7 +95,11 @@ class ControlSession(
         try {
             sender.execute {
                 try {
-                    Framing.writeFrame(output, frame)
+                    // The cap is named here rather than defaulted: this channel reads at
+                    // MAX_CONTROL_FRAME, and a write side silently defaulting to MAX_FRAME would
+                    // refuse frames the far end would happily have accepted. A write cap that
+                    // disagrees with its own read cap is the bug the write side is meant to catch.
+                    Framing.writeFrame(output, frame, Link.MAX_CONTROL_FRAME)
                 } catch (e: IOException) {
                     LinkLog.w("control", "Send failed for $type", e)
                     // Not close(): this *is* the sender, the write has already failed, and there

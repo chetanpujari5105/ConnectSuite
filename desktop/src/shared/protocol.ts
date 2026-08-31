@@ -13,6 +13,26 @@ export const PORT_BULK = 42503;
 export const MAX_CONTROL_FRAME = 16 * 1024 * 1024;
 export const MAX_FRAME = 8 * 1024 * 1024;
 
+/**
+ * The bulk channel's cap, and it is deliberately *smaller* than MAX_FRAME.
+ *
+ * The bulk channel moves chunks, and the largest legitimate chunk is 256 KB. A frame bigger than a
+ * chunk is not a bigger transfer, it is a peer that has lost sync or is lying. MAX_FRAME's 8 MB is
+ * sized for a video keyframe; inheriting it here would let a peer make us allocate 8 MB per frame
+ * to move 256 KB of payload.
+ *
+ * Twin of Link.MAX_BULK_FRAME on the phone.
+ */
+export const MAX_BULK_FRAME = 1 * 1024 * 1024;
+
+/**
+ * The bulk channel's JSON header frame, capped separately and far lower — the same pattern as the
+ * 128-byte session-token frame. Reading the header under MAX_BULK_FRAME would let a malformed
+ * first frame claim the whole chunk budget on a connection that has proved nothing beyond its
+ * token. Twin of Link.MAX_BULK_HEADER_FRAME.
+ */
+export const MAX_BULK_HEADER_FRAME = 64 * 1024;
+
 export const SERVICE_TYPE = 'connectsuite';
 
 /** Heartbeat: a ping every 5s, three unanswered pings and the link is considered dead. */

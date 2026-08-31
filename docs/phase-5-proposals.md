@@ -434,7 +434,14 @@ The order inside Phase 5:
    behind: **`before` is still a bare millisecond timestamp on all three pagers** (the `beforeId`
    decision in §1 is unimplemented and is Phase 5's first protocol change if paging is touched), and
    **defect 51**, a reporting fault in the after-send retry.
-2. **Bug 6's caps — this is now the first slice.** Before `fs.*` has a first consumer.
+2. ~~**Bug 6's caps — this is now the first slice.**~~ **DONE, 2026-08-31.** Shipped as specified
+   here: 1 MB, a 64 KB header cap, write-side enforcement inside `Framing` with the cap passed at
+   the call site, no resync, and the denominator on the refusal line. Both suites were shown failing
+   against the missing cap first. `docs/protocol.md` now carries it under **Bulk channel → Frame
+   caps**; the evidence is `docs/testing.md` under **Phase 5 → Slice 1**. §3 stands as written and
+   nothing in it was overruled. One thing it did not predict: the write-side cap immediately exposed
+   the **control** channel writing under `MAX_FRAME` while reading under `MAX_CONTROL_FRAME`, latent
+   since Phase 1.
 3. The package-id rule written into `docs/protocol.md` as `fs.*` and `media.*` are specified.
 4. The transfer implementation, borrowing v1's offsets, adaptive chunking, streaming digest and
    offer/accept, and none of its transport.

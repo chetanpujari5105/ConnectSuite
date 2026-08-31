@@ -7,7 +7,9 @@ person — are all discharged and have been deleted rather than left to be mista
 instructions. The record of that work is `docs/testing.md`; the summary is
 `docs/phase-4-closeout.md`.
 
-**Phase 5 may open. It has not been started, deliberately.**
+**Phase 5 is open.** Slice 1 (Bug 6's frame caps) shipped on 2026-08-31; the `fs.*` / `media.*`
+payload specification is written as a proposal and is the next thing to read —
+`docs/phase-5-fs-media-proposal.md`. Nothing in `fs.*` or `media.*` is implemented.
 
 ---
 
@@ -37,8 +39,11 @@ Mac actually attached. Do not grep the phone log for `Listening on`; it is writt
 `yiaddr = 10.108.253.92, router 10.108.253.63` — the correct one. Two reads of the same fact
 disagreeing, with the less obvious one right.
 
-Baselines, as of the close of Phase 4: phone **189** tests (67 `sync-module` + 122 `core`), Mac
-**129** tests, `tsc --noEmit` clean. Run Gradle with `--rerun-tasks` when you intend a *run* — an
+Baselines, as of Phase 5 slice 1: phone **190** tests (`core` 73, `input-module` 44,
+`sync-module` 42, `mirror-module` 31), Mac **139** tests, `tsc --noEmit` clean. The figure this file
+carried at the close of Phase 4 — *189 (67 `sync-module` + 122 `core`)* — does not reconcile with the
+tree by either counting method and has been corrected rather than restated; see the note at the end
+of `docs/testing.md`. Run Gradle with `--rerun-tasks` when you intend a *run* — an
 up-to-date task writes no new result XML and is not evidence.
 
 ---
@@ -60,10 +65,11 @@ not implement an alternative without saying why the recorded reasoning is wrong.
 
 ## What it leaves open
 
-1. **`fs.*` and `media.*` have no payload specification at all.** `docs/protocol.md` lists the eight
-   `fs.*` and four `media.*` type names in its inventory and specifies nothing else — no request
-   shape, no response shape, no error table. The only concrete text is the bulk-channel header. This
-   is the largest open question in Phase 5 and the proposals deliberately do not answer it.
+1. ~~**`fs.*` and `media.*` have no payload specification at all.**~~ **Answered as a proposal,
+   2026-08-31: `docs/phase-5-fs-media-proposal.md`.** Request and response shapes for all twelve
+   types, the error table, the package-id rule written into the wire, and the session-death policy
+   that was open question 2. It is prose against `docs/protocol.md` and nothing in it is
+   implemented — read it and disagree with it before any of it is built.
 2. **What happens to a running transfer when the control session dies.** v1 never had to answer this
    because the connection and the transfer were the same object; v2's bulk channel is scoped to a
    session that can end mid-copy. `sessionEndedSink` already exists as the hook — Phase 2 added it
@@ -76,7 +82,25 @@ not implement an alternative without saying why the recorded reasoning is wrong.
 
 ---
 
-## The first slice, and what it depends on
+## The first slice — **DONE, 2026-08-31**
+
+**Bug 6's frame caps on the bulk channel shipped.** `MAX_BULK_FRAME` = 1 MB and
+`MAX_BULK_HEADER_FRAME` = 64 KB, enforced read *and* write side inside `Framing` on both ends, with
+the cap passed at the call site, a refusal that names the cap and the offending length, and the
+accepted frames/bytes on the same line. The contract is in `docs/protocol.md` under
+**Bulk channel → Frame caps**; the evidence, including both suites shown failing against the missing
+cap first, is `docs/testing.md` under **Phase 5 → Slice 1**.
+
+Two things it turned up in passing. **The control channel wrote under the wrong cap** — it reads at
+`MAX_CONTROL_FRAME` and would have written at the `MAX_FRAME` default, latent since Phase 1, fixed
+in both `ControlSession.kt:98` and `link.ts:572`. And **the caps are proven by unit tests only**,
+because nothing serves the bulk channel yet; the first `fs.*` transfer owes the on-socket evidence.
+
+**Next: the `fs.*` / `media.*` payload specification** — written, not implemented. It is
+`docs/phase-5-fs-media-proposal.md`, a proposal against `docs/protocol.md`, which stays unmodified
+apart from the frame-caps section above.
+
+The original framing of this slice is kept below.
 
 **Bug 6's frame caps on the bulk channel.** Proposals §3, item 2 of their order — item 1 (`sms.sent`)
 already shipped inside Phase 4.
@@ -109,6 +133,8 @@ specified; then the transfer itself.
 |---|---|---|
 | **30** (half) | open | One send from the Mac to a number with **no** thread on this handset. No code is pending. Prove the absence in `mms-sms/conversations` **and** `content://sms` first — orphaned `sms` rows outlive a deleted conversation, and step 71 lost its no-thread case to exactly that |
 | **51** | open | The after-send SMS retry logs an `E` and increments `dropped` for messages the observer then delivers, 2 of 2. Reporting only. Two triggers need two counters; **do not** raise the retry budget |
+| **52** | open | Found by the sweep 51 asked for, 2026-08-31. `VideoChannel` drops frames for three reasons into one counter, and the third — a frame past `MAX_FRAME`, refused by the writer — increments nothing, so the mirror's only correctness fault is absent from its own `droppedFrames`. The `Dropped N frames; the Mac is behind` line also asserts a cause it does not decide, which is defect 40's shape a third time |
+| **53** | open | Same sweep. Two of `calls.ts`'s four `refused` increments log nothing, so part of the tally has no line above it. One question, four reasons — it needs lines, not more counters |
 | **17** | deferred | The Mac holds one phone structurally. Felt the first time anyone tests two phones |
 | **33** | deferred | Package ids in user-visible strings on the **phone** side. Lands naturally with the package-id rule above |
 | **38** | deferred | `onAudioInfoChanged` is not overridden. **Its test note must survive**: check `controller.playbackInfo.playbackType` before claiming a fix, and test with the phone's hardware volume keys, never `volume_set` from the Mac — that pushes through `onCommand` and makes a broken build look fixed |

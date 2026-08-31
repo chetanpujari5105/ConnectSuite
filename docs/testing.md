@@ -7239,3 +7239,137 @@ It is a defect in the evidence the next person will read.
 Phone **189** tests (67 `sync-module` + 122 `core`), 0 failures, 0 errors — re-run with
 `--rerun-tasks` after an up-to-date Gradle run was noticed and rejected as not being a run.
 Mac **129** tests, 0 failures, `tsc --noEmit` clean.
+
+---
+
+# Phase 5 — files, media, clipboard, contacts
+
+Opened 2026-08-31, immediately after Phase 4 closed. The opening brief is `docs/RESUME.md`; the
+decisions it must not re-litigate are `docs/phase-5-proposals.md`.
+
+## Slice 1 — Bug 6's frame caps on the bulk channel · 2026-08-31
+
+**No hardware, and none is possible.** Nothing serves the bulk channel — `bulkChannelSink` is still
+unassigned and `acceptSideChannel` refuses the socket with `FEATURE_UNAVAILABLE` before any framing
+runs — so there is no device path that could exercise a cap. This slice is unit-tested on both
+sides and recorded as such. Saying so plainly matters more than usual here: a cap proven only by
+its own unit tests is exactly the "verified a different mechanism" trap defect 50 records, and the
+honest statement is that these tests prove the framing layer refuses, not that a transfer over a
+real socket refuses. The first `fs.*` transfer is what proves the second thing, and it owes that
+evidence.
+
+**Why now rather than with `fs.*`:** it is a fifteen-line decision while nothing serves the channel.
+After `fs.*` ships, changing a cap changes what an already-shipped sender emits, and a cap that
+turns out to be too small then presents as a transfer bug for large files.
+
+### What landed
+
+| | Where |
+|---|---|
+| `MAX_BULK_FRAME` = 1 MB, `MAX_BULK_HEADER_FRAME` = 64 KB | `Messages.kt` (`Link`), `shared/protocol.ts` |
+| Read **and write** enforcement, cap passed at the call site | `core/.../link/Framing.kt`, `desktop/src/main/framing.ts` |
+| The two caps chosen per frame, over one shared tally | `BulkFraming` in both files |
+| The denominator on every refusal | `core/.../link/FrameTally.kt`, `desktop/src/shared/frameTally.ts` |
+| The contract | `docs/protocol.md`, "Bulk channel → Frame caps" |
+
+Enforcement is inside `Framing` on both sides, never inside a feature — `BulkFraming` performs no
+comparison of its own, it only decides *which* cap applies to the frame in hand, which is transfer
+state the framing layer cannot know. `FrameTally` is deliberately free of `LinkLog` and of Android:
+it sits on the framing path, and one `android.util.Log` reference there takes the JVM tests with it.
+This is the same "move the pure part out" that `SmsPayloads` and `CallWatcher.dispositionOf` came
+out of, applied before the fact rather than after a red suite.
+
+### The refusal line
+
+```
+Bulk chunk frame length 3145728 exceeds the 1048576-byte cap on the bulk channel — closing the
+socket; 812 frames / 207286272 bytes accepted, 2 rejected
+```
+
+Both sides emit the same sentence, word for word, so the phone's `link.log` and the Mac's read alike
+when they are put side by side — the same reasoning that put an explicit UTC offset on both.
+
+### The write side found something on its own
+
+Adding a cap to the write path immediately caught a real asymmetry in code that has shipped since
+Phase 1: **the control channel reads at `MAX_CONTROL_FRAME` (16 MB) and would have written at the
+`MAX_FRAME` default (8 MB)**, so a large control frame would have been refused by its own sender
+while the far end was willing to accept it. Both write sites now name `MAX_CONTROL_FRAME`
+(`ControlSession.kt:98`, `link.ts:572`) and a test holds it on the Mac side. Nothing had ever sent a
+control frame near 8 MB, so this was latent — which is the argument for the write side in one line:
+it catches us, not a hostile peer.
+
+### Evidence — shown failing first, both sides
+
+Per `CLAUDE.md`, a new test must be shown to fail against the thing it is named for. The caps were
+removed from `Framing` on each side in turn — the write-side check deleted outright, and the bulk
+frames read and written under `MAX_FRAME` instead, which is precisely the repo's state before this
+slice — and the suites re-run.
+
+**Phone — `core/src/test/.../BulkFramingTest.kt`, 9 tests.**
+
+```
+BulkFramingTest > a chunk length prefix past the bulk cap is refused, named and closed FAILED
+    java.lang.AssertionError ... Caused by: java.io.EOFException
+BulkFramingTest > a header frame is judged by the header cap, not the chunk cap FAILED
+BulkFramingTest > our own oversized chunk fails on our side and nothing is emitted FAILED
+BulkFramingTest > our own oversized header fails on our side too FAILED
+BulkFramingTest > the refusal carries what the channel had already accepted FAILED
+9 tests completed, 5 failed
+```
+
+The `EOFException` under the first one is the defect itself rather than noise: with no cap the
+reader believed a 3 MB length prefix, allocated for it, and ran off the end of a four-byte stream —
+"a peer that claims a 3 GB frame gets its socket closed rather than an OutOfMemoryError" is what the
+framing comment promises, and without the cap on this channel it was not being kept.
+
+**Mac — `desktop/src/main/framing.test.ts`, 10 tests.**
+
+```
+✖ a chunk length prefix past the bulk cap is refused, named and closed
+✖ a header frame is judged by the header cap, not the chunk cap
+✖ our own oversized chunk fails on our side and nothing is emitted
+✖ our own oversized header fails on our side too
+✖ the refusal carries what the channel had already accepted
+✖ the control channel writes under its own cap, not the video cap
+ℹ pass 133   ℹ fail 6
+```
+
+Caps restored: 9 of 9 and 10 of 10 green, `tsc --noEmit` clean.
+
+**The four that stayed green under the neutered build are the controls, and that is the point.** The
+constants test asserts the *decision* (1 MB < 8 MB, 64 KB < 1 MB) and is unaffected by enforcement;
+the at-the-cap test writes and reads a frame of exactly `MAX_BULK_HEADER_FRAME` and one of exactly
+`MAX_BULK_FRAME` and requires both to arrive; the partial-frame test requires a length prefix whose
+payload has not arrived yet to be waited for rather than refused; the clean-EOF test requires end of
+stream to read as `null` and not as a violation. Every other assertion in the file is an absence —
+"this was refused" — and an absence counts only beside a known positive. If an off-by-one made the
+caps refuse *everything*, all five refusal tests would still pass and these are the ones that would
+not.
+
+### The discrimination case, stated explicitly
+
+A 100 KB frame is a **legal chunk** and an **illegal header**. The test reads the identical bytes
+twice, once under each cap, and requires opposite outcomes — because the failure this cap exists to
+prevent is a malformed first frame allocating the chunk budget, and a single channel-wide cap cannot
+tell those two frames apart at all.
+
+### Not done here, and deliberately
+
+`docs/protocol.md` still says the bulk channel carries "raw chunks of 256 KB" while the design calls
+for adaptive sizing between 64 KB and 256 KB. It should read *up to* 256 KB. That contradiction is
+listed as open question 4 in `docs/RESUME.md`, it is bound to how `fs.*` chunks, and it is answered
+in the `fs.*` payload proposal rather than patched here.
+
+## Suite
+
+Phone **190** tests across four modules (`core` 73, `input-module` 44, `sync-module` 42,
+`mirror-module` 31), 0 failures, run with `--rerun-tasks`. Mac **139** tests (was 129), 0 failures,
+`tsc --noEmit` clean.
+
+**The phone figure disagrees with the one this file recorded at the close of Phase 4**, which read
+*189 (67 `sync-module` + 122 `core`)*. Counted now, by `<testcase>` elements in the result XML and
+independently by `@Test` annotations in the source — the two agree — the tree holds 190 including
+the 9 added here, so **181 before this slice**, and neither the total nor the per-module split
+reconciles with 189/67/122. The earlier figure is not reproducible from the tree and is recorded
+here as wrong rather than quietly restated. Nothing is missing: every module's suite runs green.
