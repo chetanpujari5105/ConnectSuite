@@ -1,5 +1,19 @@
 # Resume here — step 70, written 2026-08-29 00:50
 
+> ## ✅ SUPERSEDED — step 70 ran and PASSED on 2026-08-31 13:43
+>
+> Everything below this box was written to get one ring arranged. **The ring happened and both
+> defects closed**: 36 (`Call c7 ended rejected after 8197ms`, platform control `type=5`) and 35c
+> (card read `Chetan` / `Ringing · +919800000001`). 42's inbound half and 45 closed with them —
+> option 4 has corrected 7 of 7 episodes, 16–535 ms into the ring.
+>
+> The full record is `docs/testing.md`, "Step 70 — PASSED". The command that ran it was
+> `node scripts/step70-watch.mjs 9800000001 9 --hold=8 --allow-blank-number --require-correction`.
+>
+> **Nobody needs to be asked to ring this phone again.** The preconditions, the stale-overnight
+> table and the line to give the second person are all kept below as the record of how it was set
+> up, and none of them is a live instruction any more.
+
 > ## Superseded in part, 2026-08-29 morning — read this box first
 >
 > **Step 70 ran and 35c FAILED.** The ring came in at 09:52 before the watcher was armed and was
@@ -35,7 +49,8 @@ deliberately unmodified.
 | | |
 |---|---|
 | Build fingerprint | the load-bearing fact is the APK below, not a commit hash — hashes go stale every sitting |
-| Phone build under test | `lastUpdateTime=2026-08-29 00:41:12` — **do not reinstall**; a reinstall resets grants and bindings and invalidates the preconditions below |
+| Phone build under test | `lastUpdateTime=2026-08-30 20:26:26` — the option-4 build. **Corrected 2026-08-30: `adb install -r` does *not* reset grants.** Tested on this device — all 11 runtime grants stayed `granted=true`, the notification-listener and accessibility strings were intact, `accessibility_enabled=1`, nothing needed restoring. The old wording described a full uninstall. **What `-r` *does* cost is the server** — see the row below |
+| After any `install -r` | **the phone comes back fully granted and serverless.** The process restarts via the notification-listener rebind and installs every feature — the capability log reads `calls,contacts,input,mirror,notifications,remote,sms`, which is the most reassuring line in the file — while `LinkService` never runs and no port is bound. Nothing in the app's output says so. Start it by name: `adb shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity`, then confirm with **`scripts/link-up.sh`** (exit 0), which is the only thing in the repo that catches this. Observed 2026-08-30 20:26; it is `LinkServer.kt:163`'s scenario |
 | Mac | rebuilt and relaunched 00:46 with `--force-renderer-accessibility --remote-debugging-port=9222` |
 | Phone suite | 175 tests, 0 failures |
 | Mac suite | 55 tests, 0 failures, `tsc --noEmit` clean |

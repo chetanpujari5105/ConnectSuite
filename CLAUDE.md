@@ -1,20 +1,30 @@
 # ConnectSuite
 
-> ## ⏸ Resume here: **`docs/RESUME.md`** — one thing is outstanding (2026-08-29)
+> ## ✅ Step 70 ran and **PASSED** on 2026-08-31 13:43. No ring is outstanding.
 >
-> **Step 70 has not run.** It needs a second person to ring the phone once, takes about thirty
-> seconds of their time, and is the last hardware evidence Phase 4 is waiting on — it proves defect
-> **36** and defect **35c**. Everything else in Phase 4 is closed.
+> One inbound call from a second handset, held 8 s, one reject. It closed **36** (`Call c7 ended
+> rejected`, with the platform's own `type=5` row as the control) and **35c** (the inbound card read
+> `Chetan` / `Ringing · +919800000001`). It also closed **42**'s inbound half and **45**, whose fix —
+> option 4 — has now corrected **7 of 7 episodes**, 16–535 ms into the ring. Evidence:
+> `docs/testing.md`, "Step 70 — PASSED".
 >
-> `docs/RESUME.md` has the command, the one line to give the second person, what a pass looks like,
-> and **which preconditions went stale overnight** — five of the eight must be re-read rather than
-> trusted, and one of them (`Watching PHONE_STATE`) will produce a false positive if you grep the
-> whole log instead of today's window.
+> **Nobody needs to be asked to ring this phone again.**
 >
-> **Do not reinstall the phone build** before running it; a reinstall resets grants and bindings.
-> **Do not start Phase 5** until it has run — its first act claims `bulkChannelSink`, and a failed
-> ring must not be debugged through a transport change. Phase 5's decisions are already taken and
-> recorded in `docs/phase-5-proposals.md`; nothing there is implemented.
+> **Phase 4 is not closed yet, and the reason is no longer step 70.** Open: **44**, **46**, and
+> **47** — and 47 is *in question*: `dumpsys telecom` shows its trigger episode `c13` was a
+> self-managed WhatsApp VoIP call, which may mean the card it was filed for was correct. Re-examine
+> before treating it as a defect. `docs/phase-4-closeout.md` still predates all of this.
+>
+> **Reinstalling is safe — but it leaves the phone serverless.** `adb install -r` preserves every
+> runtime grant and both secure-settings bindings (tested on this device: 11 of 11 `granted=true`,
+> listener and accessibility strings intact). The old warning here — *a reinstall resets grants* —
+> described a full uninstall and was wrong for `-r`. What `-r` does cost is `LinkService`: the app
+> returns via the notification-listener rebind with every feature installed and no port bound. Start
+> it by name with `am start -n …/MainActivity` and confirm with **`scripts/link-up.sh`**, which is
+> the only thing in the repo that catches it — and never by grepping for `Listening on`, which is
+> written once per `onCreate` and is absent by design on a healthy running service.
+>
+> Phase 5's decisions are recorded in `docs/phase-5-proposals.md`; nothing there is implemented.
 
 
 Two apps that connect an Android phone to a Mac over the local network with no cloud, no account, and no relay server.
@@ -285,6 +295,35 @@ damage on the user's own device or nearly recorded a false result.
   the worked example: it will not click unless the card reads `Ringing` *and* carries the expected
   number, it re-tests both immediately before the click, and it logs every card it declines to
   touch.
+
+- **A registration line is not an execution line.** "The receiver is running" is not "the branch
+  fired", and "the feature is installed" is not "the code path ran". Both are true statements about
+  a different layer than the one being asked about, and offering one in place of the other is how a
+  build gets called proven on evidence that could not have distinguished it from a build where the
+  change was never made.
+
+  This is the third member of the family above and it fails in the same way as the other two: the
+  reading is real, the confidence is warranted for what was actually read, and the conclusion is
+  about something else. The control rule asks whether a query can tell its target from a lookalike;
+  this one asks whether the reading is *about* the target at all.
+
+  The worked example is defect 45's option 4. Its only log line —
+  `Call cN card corrected in place: …` — is written inside the correction branch, which needs a live
+  episode whose `EXTRA_INCOMING_NUMBER` changes from blank to a number. Outgoing calls carry no such
+  extra; the receiver is registered `RECEIVER_NOT_EXPORTED`, so a synthetic `am broadcast` cannot
+  reach it, and `PHONE_STATE` is system-only regardless. **Option 4 is therefore unprovable before a
+  ring, by construction.** `Watching PHONE_STATE for the inbound number` and `Call watcher started`
+  prove the receiver hosting it is registered and nothing more; a checksum match on the installed
+  APK proves the code is on the phone and nothing more. Neither is a substitute and neither should
+  be offered as one.
+
+  The constructive form, which is what to do rather than what to avoid: when the proof cannot
+  precede the act, **make it the act's pass criterion instead of its precondition.**
+  `card corrected in place` is what step 70 is watching *for*, not what authorises it to run — and
+  `scripts/step70-watch.mjs --require-correction` is that written as code: it holds the ring, waits
+  for the line, and refuses the reject if it never comes, so a build whose visible change did not
+  happen does not get a call spent on it. Anyone asking for pre-ring proof of option 4 should be
+  pointed here.
 
 - **A package id may appear as a machine handle, never as the only thing a user reads.** Any payload
   carrying a package name carries a resolved label beside it, and any human-readable `message`

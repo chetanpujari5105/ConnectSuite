@@ -147,4 +147,58 @@ class CallNumberRulesTest {
             CallNumberRules.numberAfterBroadcast("RINGING", "8800000004", "", episodeLive = false)
         assertEquals("", betweenEpisodes)
     }
+
+    // ---- rule 3: correcting the card in place, defect 45 option 4 ----------------------------
+
+    @Test
+    fun `the card is corrected when the number arrives during the ring`() {
+        // The defect itself: begin() published "" at +0ms, the extra landed 8-111ms later on all
+        // six episodes measured on 2026-08-30, and nothing re-published, so the card read
+        // "Unknown number" for the whole ring. This is the moment that has to return true.
+        assertEquals(
+            true,
+            CallNumberRules.shouldCorrectCard(before = "", after = "8800000004", episodeLive = true),
+        )
+    }
+
+    @Test
+    fun `a broadcast that changed nothing does not re-publish the card`() {
+        // OFFHOOK and IDLE both re-deliver the same extra. Without this clause one call sends three
+        // identical cards and pays three contacts lookups for one answer. Reintroduce the bug by
+        // dropping `after != before` from rule 3 and this is the assertion that goes red.
+        assertEquals(
+            false,
+            CallNumberRules.shouldCorrectCard(
+                before = "8800000004",
+                after = "8800000004",
+                episodeLive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `a number arriving after the call ended draws no card`() {
+        // c1's shape: a 197ms call where the extra lands after end(). There is no card on screen to
+        // correct, and publishing call.incoming here would draw a live card for a finished call —
+        // the same class of mistake rule 1 exists to prevent, one layer up.
+        assertEquals(
+            false,
+            CallNumberRules.shouldCorrectCard(
+                before = "",
+                after = "8800000004",
+                episodeLive = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `a still-blank number corrects nothing`() {
+        // Nothing to correct the card *to*. Without this clause a withheld-number call would log a
+        // correction that did not happen — a success line with no success behind it, which is the
+        // failure this project keeps writing rules about.
+        assertEquals(
+            false,
+            CallNumberRules.shouldCorrectCard(before = "", after = "", episodeLive = true),
+        )
+    }
 }

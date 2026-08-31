@@ -108,6 +108,33 @@ internal object CallNumberRules {
     }
 
     /**
+     * Rule 3 — whether the arrival of a number should re-publish the card that is already on screen.
+     *
+     * Defect 45, option 4. [numberAfterBroadcast] decides what the field holds; this decides whether
+     * that change is worth telling the Mac about. Separated for the reason the other two are: the
+     * predicate is the interesting part and it can be read and tested without a phone ringing.
+     *
+     * The card is corrected only when **the number genuinely arrived just now, for an episode that
+     * is still open**. Every clause is load-bearing:
+     *
+     * - `after != before` — a broadcast that changed nothing must not re-publish. OFFHOOK and IDLE
+     *   both re-deliver the same extra, and republishing on each would send three identical cards
+     *   per call and pay three contacts lookups for one answer.
+     * - `after.isNotBlank()` — there is nothing to correct a card *to* if the number is still empty.
+     *   A blank re-publish would overwrite nothing with nothing and log a correction that did not
+     *   happen.
+     * - `episodeLive` — the card being corrected must still exist. After `end()` there is no card
+     *   on screen, and a `call.incoming` arriving then would draw a live card for a call that is
+     *   over. This is the same clause as rule 1's and for a closely related reason.
+     *
+     * There is deliberately **no timer and no delay**. This returns true on the event, or never;
+     * "wait a moment for the number before publishing" is the shape defect 36 shipped, 37 declined,
+     * 39 tempts and 45 names, and it is not to be reintroduced here as an optimisation.
+     */
+    fun shouldCorrectCard(before: String, after: String, episodeLive: Boolean): Boolean =
+        episodeLive && after.isNotBlank() && after != before
+
+    /**
      * The number an episode is allowed to start with.
      *
      * @param fromDial true when `call.dial` set the number for this episode, via `expectOutgoing`.

@@ -48,18 +48,21 @@ own heading there, and its own row here.
 | **32** | The SMS pane cannot reach a conversation older than its first page | **deferred** | — | see below |
 | **33** | The phone names packages where it means apps, in sentences users read | **deferred** | — | see below |
 | **34** | `sms.received` dropped by the Mac: the phone sent a shape the contract does not describe | **closed** | **step 68**, both contact states, 2026-08-28 | `docs/testing.md` |
-| **35** | An outgoing call's card was labelled with nothing at all | **closed (outgoing)** / **open (35c, inbound)** | **step 69**, 2026-08-28; 35c needs **step 70** | `docs/testing.md` |
-| **36** | A call rejected from the Mac was reported as `missed` | **fixed, awaiting step 70** | precedence verified by **step 69**, 2026-08-28 | `docs/testing.md` |
+| **35** | An outgoing call's card was labelled with nothing at all | **closed**, both halves | **step 69** (outgoing) 2026-08-28; **step 70** (35c, inbound) 2026-08-31 | `docs/testing.md` |
+| **36** | A call rejected from the Mac was reported as `missed` | **closed** | **step 70** on hardware, 2026-08-31 — `ended rejected` with the platform's `type=5` as the control | `docs/testing.md` |
 | **37** | A re-granted notification listener never turned its capabilities back on | **closed** | hardware, link **down**, 2026-08-29 | `docs/testing.md` |
 | **38** | A volume change made on the phone never reaches the Mac | **deferred** | — | see below |
 | **39** | A message sent from the Mac is missing from the thread it was sent into | **deferred** | — | see below |
 | **40** | `call.reject delivered` named a disposition the disposition logic then overrode | **closed** | hardware, 2026-08-29 | `docs/testing.md` |
 | **41** | The force-stop hook denies prose that merely mentions the rule | **closed** | hook fixture tests, 2026-08-29 | see below |
-| **42** | An episode is labelled with the previous call's number | **fixed** (outgoing verified; inbound awaits the next real inbound call) | outgoing hardware 2026-08-29; inbound unit-tested only | see below |
+| **42** | An episode is labelled with the previous call's number | **closed** | outgoing hardware 2026-08-29; inbound on **step 70**, 2026-08-31 — `c7` drew its own number and contact, not `c6`'s | see below |
 | **43** | A call with no number logged as `from ,` on the Mac — the string defect 35 is named for | **closed** | `calls.test.ts`, 2026-08-29 | see below |
 | **44** | A message sent on the phone never reaches the Mac — no observer on outgoing rows | **open** | — | see below |
-| **45** | `EXTRA_INCOMING_NUMBER` never arrives on Android 16, so no inbound call has a number | **open** | — | see below |
+| **45** | `EXTRA_INCOMING_NUMBER` arrives too late for the card, so no inbound call had a number | **closed** by option 4 | **step 70**, 2026-08-31 — 7 of 7 episodes corrected, 16–535 ms | see below |
 | **46** | The media remote puts a raw package id in a sentence — defect 28's class, on the Mac, in two places | **open** | enumerated 2026-08-30 | see below |
+| **47** | ~~A live call card the Mac cannot correct~~ — **WITHDRAWN.** The card was true; `c13` was a 68-minute WhatsApp video call | **withdrawn**, not a defect | `dumpsys telecom`, 2026-08-31 | see below |
+| **48** | Two step-70 locks at two paths excluded nothing — each watcher took its own and both armed | **closed** | reconciled to one path; exclusion fixtures, 2026-08-30 | see below |
+| **49** | The exclusion's refusal overstated its own evidence — one CDP client was counted as two | **closed** | `lsof` fixture and three controls, 2026-08-30 | see below |
 
 ---
 
@@ -231,7 +234,13 @@ paired slot and the TLS identity live under `app.getPath('userData')` and there 
 `requestSingleInstanceLock`, so they do not collide:
 `cd desktop && npm start -- --user-data-dir=/tmp/connectsuite-s25`.
 
-### 42 — an episode is labelled with the previous call's number · **open (reopened 2026-08-29)**
+### 42 — an episode is labelled with the previous call's number · **closed by step 70, 2026-08-31**
+
+**Inbound half verified on hardware.** `c7` at 13:43:01 drew `+919800000001 (Chetan)` — its own
+caller — while the immediately preceding episode `c6` was a *different* call from the same number
+three minutes earlier and `c5` before that was `+919700000007 (Contact G)`. The
+card carried the current episode's number and contact, which is the whole of 42. The outgoing half
+closed on 2026-08-29; the inbound half was unit-tested only until this ring.
 
 **Outgoing half: fixed and verified.** `CallNumberRules.numberAtEpisodeStart` makes a `dialing`
 episode refuse a number it did not obtain for itself, proven on hardware — a phone-placed call now
@@ -264,7 +273,22 @@ is not, and this fix needs no design decision while 45's does.
 number the broadcast gave it` encodes the assumption; the assumption is what broke, not the test.
 It should be rewritten alongside the fix, not deleted as though it had been wrong.
 
-### 45 — `EXTRA_INCOMING_NUMBER` never arrives on Android 16, so no inbound call has a number · **open**
+### 45 — `EXTRA_INCOMING_NUMBER` arrives, but after the card is published · **closed by option 4, step 70, 2026-08-31**
+
+**The heading's original claim — *never arrives on Android 16* — is wrong and is left visible
+rather than deleted, because the correction is the finding.** The extra arrives; it arrives *after*
+`begin()` has already published a blank card, which on a build that never re-published looked
+identical to never arriving. Measured on hardware: **7 of 7 episodes corrected**, arrival offsets
+**16 ms to 535 ms** into the ringing, spanning 2026-08-30 22:47 to 2026-08-31 13:43.
+
+Option 4 — re-publish `call.incoming` for the same `callId` when the number changes on a live
+episode — is the shipped fix and is proven on hardware by step 70. See `docs/testing.md`, "Step 70
+— PASSED".
+
+**The residual is a platform property, not an open defect.** A self-managed VoIP call (`c13`,
+2026-08-30, WhatsApp) carries no `EXTRA_INCOMING_NUMBER` at all, so no correction is published and
+the card honestly reads `Unknown number`. That is the green test *a still-blank number corrects
+nothing* doing its job, and it is the documented degradation the option was chosen for.
 
 Severity: **High.** It invalidates a claim written in the code and the premise of step 70's 35c
 clause at the same time.
@@ -466,3 +490,146 @@ a `userVisibleStringsOf` for the remote, so the guard covers a pane instead of a
    `src/shared/` seam and is not a three-line edit — and why it is recorded here rather than
    patched in a measurement pass.
 
+
+---
+
+## Found on 2026-08-30, before a ring was spent — 47, 48, 49
+
+All three were found by inspection or by running a check, not by an accident. Nothing was armed and
+no call was touched to establish any of them.
+
+### 47 — **WITHDRAWN. There was never a stale card.** · **not a defect**
+
+Filed 2026-08-30, narrowed twice, withdrawn 2026-08-31 on `dumpsys telecom` evidence. The number is
+kept, and this record with it, because the reasoning failed in a way worth being able to find again.
+
+## What it claimed
+
+That episode `c13` never ended, that the Mac's card therefore said *Unknown number · In progress*
+about a call that was over, and that nothing could clear it.
+
+## What actually happened
+
+`c13` was an **incoming WhatsApp video call**, answered, that ran for **67 m 47 s**. Telecom's own
+analytics for the call:
+
+```
+Call e385bde0-9d12-44b5-8057-c84b7341e582: {
+    startTime: 1788097496071          → 19:14:56.071   (the moment it went ACTIVE)
+    endTime:   1788101562695          → 20:22:42.695
+    direction: INCOMING
+    isVideoCall: true
+    callTerminationReason: DisconnectCause [ Code: (LOCAL) … ]
+}
+SelfMgd Call e385bde0… [Aug 30, 2026 7:14:41 PM](MT - incoming)
+    >>>Target PhoneAccount: ComponentInfo{com.whatsapp/com.whatsapp} (WhatsApp)
+CommSess{… created=Aug 30, 2026 7:14:41 PM, callId=e385bde0…, duration=4080}
+```
+
+State transitions, in the same dump: `RINGING` at 19:14:41.86, `ACTIVE` at 19:14:56.07 with audio
+routed to the speaker, `DISCONNECTED` at 20:22:42.71 via `EndCallTransaction`. The phone's own
+`Call c13 ended answered after 4080849ms` and telecom's 4066.6 s of active time differ by exactly
+the 14.2 s of ringing, which is the two clocks agreeing.
+
+**So the Mac's card was correct for every one of those 67 minutes.** It said a call was in progress;
+a call was in progress. There was no stale card, nothing was stranded, and the "card the Mac cannot
+correct" did not exist.
+
+## Why the number never arrived, which was the other half of the puzzle
+
+A **self-managed** call (`PROPERTY_SELF_MANAGED`, `voip=true`, target account `com.whatsapp`) is not
+a cellular call. It produces `PHONE_STATE` transitions but carries no `EXTRA_INCOMING_NUMBER`, so
+`shouldCorrectCard` correctly returns false and the card honestly reads `Unknown number`. That is
+option 4's documented degradation working, and it is the green test *a still-blank number corrects
+nothing*.
+
+## The reasoning failure, which is the part worth keeping
+
+The control this record leaned on — **"the platform call log has no row for c13, and a real
+67-minute call writes a row"** — was promoted to the top of the section as *"the whole difference
+between a defect and a long phone call"*. **It was not discriminating.** The same dump says why:
+
+```
+SamsungCallLog.Loggable { state : UNKNOWN / okayToLog : false }
+```
+
+Self-managed calls are logged by the app that owns them, not by the platform provider. So the
+absence of a row separates *cellular* from *not cellular* and says nothing at all about whether a
+call was real or how long it lasted — which is exactly the distinction the record used it to make.
+
+This is the same failure the rest of `CLAUDE.md` is about, committed while writing a defect record
+that cites those rules: a query that could not tell its target from a lookalike, producing a clean,
+specific, confident wrong answer. The lookalike here was *a call the platform does not log*. The
+right control was available the whole time and was never asked: `dumpsys telecom`, which names the
+owning app, the state transitions and the duration.
+
+## Do not resurrect it
+
+Three revisions, each narrower — *never ends* → *67 minutes* → *withdrawn*. A defect that keeps
+shrinking under evidence is usually not a defect that needs a fourth wording. **There is no observed
+failure here.** The protocol asymmetry it was heading towards is real and is recorded separately
+below, on its own evidence, and is not this.
+
+### The two structural gaps, stated independently of `c13`
+
+Both were read in source, not observed, and neither depends on anything above. They are recorded
+as a **known protocol asymmetry**, not as a defect, because no instance of either has ever been
+seen:
+
+1. **The phone cannot say "no call".** `CallFeature.replayTo`
+   (`sync-module/.../v2/CallFeature.kt:117-123`) sends `call.incoming` when a call is live and
+   returns silently when one is not — `val live = CallWatcher.current() ?: return` at `:120`. A
+   reconnecting Mac is told what *is* happening and never told what is *not*.
+2. **The Mac's refresh does not reconcile.** `ipcMain.handle('call-current', …)`
+   (`desktop/src/main/main.ts:733`) resolves to `calls.currentCall()`
+   (`desktop/src/main/calls.ts:81-82`), which is `return this.current` — the Mac's own cache. No
+   request asks the phone what is actually happening.
+
+Together they mean that **if** a `call.ended` were ever missed, no reconnect and no refresh would
+repair the card. Whether that can happen is unknown: `call.ended` fires from the IDLE transition and
+every episode observed to date has produced one. Worth a paragraph in `docs/protocol.md` when the
+call namespace is next revised, and worth nothing more than that until something is seen.
+
+### 48 — two locks at two paths excluded nothing · **closed**
+
+Two sessions independently added a step-70 arming lock within the same hour. Both were correct in
+isolation and the pair was worse than either: one took `os.tmpdir()` (on macOS a per-user
+`/var/folders/…` path), the other `/tmp/connectsuite-step70-watch.lock`. **Two watchers, one per
+implementation, would each take "their" lock, each find it free, and both arm.** The exclusion
+excluded nothing, and `CLAUDE.md`'s *"one click on `#call-reject`. Never two"* was still enforced by
+nobody while appearing to be enforced twice.
+
+This is filed with its own number rather than as a line in the exclusion's changelog because it is
+not a bug in a lock — both locks worked. It is the failure mode of two agents each doing the
+correct thing without a shared claim, and the only reason it was caught is that the two edits
+collided in the same file. Collision is not a control; it is luck, and it is not repeatable.
+
+**Fixed** by reconciling to one implementation at `/tmp/connectsuite-step70-watch.lock` — chosen
+because it is also the path the refusal message names, and a refusal that names a path a person
+cannot find is half a refusal. `--require-correction` is kept intact and unweakened. Taken with
+`O_EXCL` so the check and the claim are one operation rather than a read and a write two watchers
+can interleave inside; a lock whose owner is dead is stale and taken over loudly. Proven by
+disabling the lock clause and watching four fixtures in `scripts/step70-exclusion.test.mjs` go red,
+including `a second watcher, with the first one still alive`, then restoring it.
+
+**The standing lesson, since the fix does not carry it:** one enforcement point per rule, at one
+path. A second implementation of a mutual-exclusion rule is not redundancy, it is a second door.
+
+### 49 — the exclusion's refusal stated a wrong number · **closed**
+
+The CDP client count in `scripts/step70-exclusion.mjs` counted `lsof` rows and halved them, assuming
+each loopback connection appears twice. It does — but **one CDP client holds two connections**, a
+keep-alive socket for `GET /json` and the WebSocket, so a single attached watcher was reported as
+`2 other clients are attached`.
+
+Filed separately from 48 because a refusal that overstates its own evidence is exactly the shape
+this project files, whether or not the refusal was correct: the number was wrong, it was in a
+sentence a person acts on, and a check that cannot count what it is counting cannot be trusted at
+the boundary where it says *pass*. It caught its own — the count was proved against live `lsof`
+output rather than read, which is the only reason the inflation was visible.
+
+**Fixed** by counting distinct pids on `ESTABLISHED` rows, excluding the listener and the caller,
+with the real captured `lsof` output as a fixture and three controls: one client holding two sockets
+reads as **1**, a bare listener reads as **0**, and the caller is excluded from its own count. The
+live end-to-end control reads 0 with nothing attached and 1 with one attached — a check that reports
+a client when there is none, and also when there is one, is not discriminating.

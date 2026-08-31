@@ -133,6 +133,16 @@ object CallWatcher {
     /** Episodes that carried a number, beside the ones that did not. A count needs a denominator. */
     private val episodesWithNumber = AtomicLong(0)
 
+    /**
+     * Episodes whose card was corrected in place after the number arrived (defect 45, option 4).
+     *
+     * Published against [episodes] rather than alone: "4 corrected" is the same shape as defect 18's
+     * 187 refusals with no success count. Corrected-of-total is the ratio that can be read, and a
+     * zero here beside a non-zero [episodes] is the signal that the correction path has stopped
+     * firing — which is what a silent regression of this feature would look like.
+     */
+    private val episodesCorrected = AtomicLong(0)
+
     fun currentId(): String? = callId
 
     fun currentState(): String? = state
@@ -277,6 +287,51 @@ object CallWatcher {
                         " — ${broadcastsWithNumber.get()} with a number / " +
                         "${broadcastsWithoutNumber.get()} without since start",
                 )
+
+                // Defect 45, option 4: correct the card in place, driven by the extra *arriving*.
+                //
+                // `begin()` publishes ~10-110 ms before this broadcast carries the number, so the
+                // card is already on screen reading "Unknown number". Measured on six episodes on
+                // 2026-08-30 — the delays are in docs/decision-45-inbound-caller-id.md — the extra
+                // always lands during the ring, which is the whole reason this option exists.
+                //
+                // **Driven by the event, never by a timer.** There is no wait-then-publish here and
+                // there must never be: a delay before the first publish is the shape this codebase
+                // has rejected four times (36 shipped it, 37 declined it, 39 tempts it, 45 names
+                // it). Blank goes out immediately; this corrects it when the fact arrives.
+                //
+                // The mechanism is not new. The ringing→active transition already re-publishes
+                // `call.incoming` for the same `callId` and the Mac's card handles it — that is
+                // what made c12's card read the number at +11.4 s on 2026-08-30, eleven seconds
+                // after the number was actually known. This fires the same publish on the event
+                // that matters instead of the one that happened to come next.
+                val server = link
+                if (server != null &&
+                    CallNumberRules.shouldCorrectCard(before, number, state != null)
+                ) {
+                    val id = callId
+                    val phase = state
+                    if (id != null && phase != null) {
+                        // Resolved here rather than reused, because `begin` had nothing to resolve
+                        // from. Once per episode, like begin's own lookup, not once per broadcast:
+                        // the guard above only passes when the number actually changed.
+                        contactName = ContactsFeature.nameFor(ctx ?: context, number)
+                        episodesCorrected.incrementAndGet()
+                        push(server, MessageType.CALL_INCOMING, incoming(id, phase))
+                        // Beside the denominator, per CLAUDE.md: "3 corrected" says nothing without
+                        // how many episodes went without one. `episodes` is the denominator that
+                        // gives it scale, and the name is on the line so a wrong lookup is visible
+                        // rather than merely counted.
+                        LinkLog.i(
+                            "calls",
+                            "Call $id card corrected in place: number $number" +
+                                (contactName?.let { " ($it)" } ?: ", no contact name") +
+                                " arrived ${System.currentTimeMillis() - startedAt}ms into the " +
+                                "$phase — ${episodesCorrected.get()} of ${episodes.get()} episodes " +
+                                "corrected since start",
+                        )
+                    }
+                }
             }
         }
         val filter = IntentFilter(TelephonyManager.ACTION_PHONE_STATE_CHANGED)

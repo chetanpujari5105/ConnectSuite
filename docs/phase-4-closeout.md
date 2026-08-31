@@ -1,13 +1,16 @@
 # Phase 4 close-out — notifications, calls, SMS/MMS, contacts, media remote
 
-Status as of **2026-08-29 morning**. Phase 4 is **not closed, and the reason changed**: step 70 ran
-on a real inbound ring and **35c FAILED**. 36 is still untested. The failure exposed **defect 45** —
-the mechanism 35c depends on has never worked on this device — and **reopened defect 42** on the
-inbound path. Phase 4 cannot close on a re-run alone; it needs code. See the last section.
+Rewritten **2026-08-31**, against `docs/defects.md` as it stands. The previous version was dated
+2026-08-29 and every claim in its status sections has since moved: it said 35c had failed, 36 was
+untested, 45 was a new High, 42 was reopened, and step 70 still needed arranging. All five are now
+closed. It also carried the instruction *"Do not ask anyone for another ring"*, which is discharged
+rather than contradicted — the ring happened.
 
-The evidence behind every claim here is in `docs/testing.md`, in dated sections. The defect index is
-`docs/defects.md`. This file is the summary a person reads before deciding whether Phase 5 can open;
-it is deliberately short on narrative and specific about what is proven and what is not.
+**Phase 4 has no hardware work left.** Every feature in its scope is proven on the device. Two code
+defects remain open and neither needs a phone in anyone's hand.
+
+The evidence behind every claim here is in `docs/testing.md`, in dated sections. The index is
+`docs/defects.md`. This file is the summary a person reads before deciding whether Phase 5 can open.
 
 ---
 
@@ -17,127 +20,122 @@ it is deliberately short on narrative and specific about what is proven and what
 |---|---|---|---|
 | Notification mirroring + reply | done | done | steps 42-49b, 52 |
 | SMS / MMS threads | done | done | steps 55, 58, 58a, 65, 66, **68** |
-| Call events, dialing, answer/reject | done | done | steps 60-63, **69**; **70 outstanding** |
-| Contacts | done | done | contacts pane run, 2026-08-28 |
+| Call events, dialing, answer/reject | done | done | steps 60-63, **69**, **70** |
+| Contacts | done | done | contacts pane run, 2026-08-28; and `nameFor` firing on an inbound ring in step 70 |
 | Media remote | done | done | steps 64, 66, **67** |
 
-Four Mac panes landed on 2026-08-28 (contacts, media remote, SMS, calls) and the Mac gained its
-first test suite the same day, after six of the phase's defects turned out to be Mac-side.
+Four Mac panes landed on 2026-08-28 and the Mac gained its first test suite the same day, after six
+of the phase's defects turned out to be Mac-side.
+
+---
+
+## Step 70 — ran and passed, 2026-08-31 13:43
+
+One inbound cellular call from a second handset, held 8 s, one reject on `#call-reject`.
+
+| | |
+|---|---|
+| **36** | `Call c7 ended rejected after 8197ms` — **`rejected`, not `missed`.** Control: the platform's own row `_id=11717, type=5 (REJECTED), +919800000001`. Our disposition and Android's agree on the same call |
+| **35c** | card read `who="Chetan"`, `status="Ringing · +919800000001"` — number **and** resolved contact on an inbound ring |
+| **42** (inbound) | `c7` drew its own caller, three minutes after `c6` from the same number and after `c5` from a different one. The card carries the current episode's number, which is the whole of 42 |
+| **45** | closed by option 4 — **7 of 7 episodes corrected**, arrival offsets **16 ms to 535 ms** |
+
+The gate was exercised in both directions across two days: it aborted at exit 4 on 2026-08-30 when
+a card changed under it, and authorised this one after re-checking the same predicate immediately
+before the click. A gate that has only ever refused is not yet known to be a gate.
 
 ---
 
 ## Verification state of every defect this phase touched
 
-**Closed — fixed and proven on hardware:**
+**Closed — fixed and proven:**
 
 | # | Closed by | The evidence in one line |
 |---|---|---|
 | 27 | 2026-08-28 | the unavailable reason recomputes with the set that produced it |
-| 28 | 2026-08-28 | app names resolved, not package ids — and a third copy found by enumerating |
+| 28 | 2026-08-28 | app names resolved, not package ids — a third copy found by enumerating |
 | 29 | 2026-08-28 | the call log reads the right key; 50 entries, four distinct types drawn |
 | **31** | **step 67** | `[remote]` states 466 → 591 while `delivered` stays frozen at 29 |
 | **34** | **step 68** | row drawn from the push while the pane's own note still read the pre-send count |
-| **35** (outgoing) | **step 69** | headline `Chetan`, second line `Dialling · +919800000001` |
+| **35** | **steps 69 + 70** | outgoing `Dialling · +919800000001`; inbound `Chetan` / `Ringing · +919800000001` |
+| **36** | **step 70** | `ended rejected`, with the platform's `type=5` row as the control |
 | **37** | hardware, link down | `Capabilities now: …,notifications,remote,…` 1 ms after the listener attached |
-| **40** | hardware | the reject ack now explains the `answered` that follows instead of denying it |
+| **40** | hardware | the reject ack explains the `answered` that follows instead of denying it |
 | 41 | hook fixtures | the force-stop hook no longer denies prose that documents it |
+| **42** | 2026-08-29 + **step 70** | outgoing on hardware; inbound on `c7` |
+| 43 | `calls.test.ts` | the `from ,` string defect 35 was named for |
+| **45** | **step 70**, by option 4 | 7 of 7 corrected, 16–535 ms — the extra arrives, just after the card is published |
+| 48 | exclusion fixtures | two locks at two paths reconciled to one; four fixtures shown to fail |
+| 49 | `lsof` fixture + 3 controls | one CDP client no longer counted as two |
 
-**Failed or unproven, and no longer a matter of arranging a phone call:**
+**Withdrawn:**
 
-| # | State after 2026-08-29 09:52 |
+| # | Why |
 |---|---|
-| **35c** | **FAILED.** A real ring from `+918800000004` produced `ringing number withheld by the platform`; the card would have read `Unknown number`. Fails the strict clause and the original disjunction alike. |
-| **36** | **Still untested.** No Mac-initiated reject happened. The `missed` / `type=5` pair observed is the *phone-rejected* case, which is documented and correct, not defect 36. |
-| **45** | **New, High.** `EXTRA_INCOMING_NUMBER` is not delivered on Android 16 to an app that is not the default dialer, so no inbound call carries a number. The code asserts the opposite. |
-| **42** | **Reopened.** Its inbound half rested on 45's false premise; `c2` displayed the previous caller's name to the user. |
+| **47** | Not a defect. Its trigger episode `c13` was an incoming **WhatsApp video call**, answered, active 67 m 47 s — `dumpsys telecom` gives start, end, owning app and `LOCAL` termination. The Mac's card was true the whole time. The control the record leaned on (*no platform call-log row*) could not tell a phantom from a self-managed call, which is the failure the register now carries as its lesson |
 
-**Closed since:** **42** (an outgoing call labelled with the previous call's number — the blocker)
-and **43** (`from ,` in the Mac's log, found behind 42). Step 70 is unblocked and re-armed against
-the post-42 build; see the last section.
+**Open — code, no hardware, no second person:**
 
-**Deferred out of Phase 4, with fix directions recorded:** 17, 30, 32, 33, 38, 39. See
-`docs/defects.md`; each carries its fix direction and, where one exists, the wrong fix to avoid.
+| # | What it needs |
+|---|---|
+| **44** | An `sms.sent` event. `SmsFeature` pushes exactly one event (`SMS_RECEIVED`, from the inbound broadcast); `registerContentObserver` appears **nowhere** outside `Capabilities.kt`, so nothing watches outgoing rows. Needs: a protocol addition, a `ContentObserver` on the sent mailbox, defect 34's bounded retry, and a Mac handler. Verified by typing one SMS on the handset — the phone alone, nobody else involved |
+| **46** | One pure resolver in `src/shared/` returning `{ label, isPackageFallback }`, with `renderer/remote.ts:134` and `main/remote.ts:185` composing a marking clause instead of interpolating `appName ?? package ?? '…'`. Both sites are unchanged and two other sites in the same file already do it correctly. Mac-only, fully unit-testable, no device at all |
+
+**Deferred out of Phase 4, with fix directions recorded:** 17, 30, 32, 33, 38, 39.
 
 ---
 
 ## What Phase 5 inherits, and what it must not assume
 
-- **Three SMS defects travel together** — 30 (cannot start a conversation), 32 (cannot reach a
-  thread past the first page), 39 (a sent message is missing from the thread until reopened). They
-  are one sitting's work and share one protocol decision: what `sms.send` accepts and what its ack
-  carries. `docs/protocol.md` changes first.
-- **Defect 38 has a test note that must survive** — check `controller.playbackInfo.playbackType`
-  before claiming a fix, and test with the phone's own hardware volume keys, never with `volume_set`
-  from the Mac. `volume_set` pushes through `onCommand` and makes a broken build look fixed.
-- **Defect 17 is a Mac storage shape, not a Phase 4 feature** — one paired slot, structurally. It
-  will be felt the first time anyone tests with two phones, and the workaround is a second instance
-  with `--user-data-dir`.
-- **The serverless-process window is not fixed and is Phase 6's** — a process started by the
-  platform rebinding the notification listener runs `ConnectSuiteApp.onCreate`, installs every
-  feature, and never starts `LinkService`. Observed for five hours on 2026-08-28. Defect 37's fix
-  keeps the *capability set* correct throughout such a window; nothing makes the server come up.
+- **Three SMS defects travel together** — 30, 32, 39 — one sitting's work sharing one protocol
+  decision about what `sms.send` accepts and what its ack carries. **44 belongs with them**: 39 is a
+  race the Mac loses against its own provider read, 44 is a mechanism that does not exist, and
+  fixing 39 alone leaves the phone's keyboard diverging from the Mac forever. `docs/protocol.md`
+  changes first.
+- **Defect 38's test note must survive** — check `controller.playbackInfo.playbackType` before
+  claiming a fix, and test with the phone's hardware volume keys, never `volume_set` from the Mac,
+  which pushes through `onCommand` and makes a broken build look fixed.
+- **Defect 17 is a Mac storage shape** — one paired slot, structurally. Felt the first time anyone
+  tests two phones; workaround is a second instance with `--user-data-dir`.
+- **A protocol asymmetry, read in source and never observed** — `CallFeature.replayTo`
+  (`CallFeature.kt:120`) returns silently when no call is live, so a reconnecting Mac is told what
+  *is* happening and never what is *not*; and `call-current` (`main.ts:733` → `calls.ts:81-82`)
+  answers from the Mac's own cache rather than asking the phone. Together they mean a missed
+  `call.ended` could not be repaired by any reconnect or refresh. **No instance has ever been seen**
+  — this is a paragraph for `docs/protocol.md` when the call namespace is next revised, not a
+  defect, and it is written down here so it is not rediscovered as one.
+- **The serverless-process window is not fixed and is Phase 6's.** A process started by the platform
+  rebinding the notification listener installs every feature and never starts `LinkService`.
+  Reproduced again on 2026-08-30 after `adb install -r`: capabilities read
+  `calls,contacts,input,mirror,notifications,remote,sms` with no port bound. Defect 37's fix keeps
+  the capability set correct through such a window; nothing makes the server come up.
+  **`scripts/link-up.sh` now detects it** — three readings, uid-matched — which is detection, not a
+  fix.
 
 ---
 
-## Two rules this phase produced, both now enforced rather than documented
+## What this phase learned, and where each lesson is enforced
 
-Both are in CLAUDE.md as prose, and prose was not enough in either case.
+Prose was not enough in any of these cases; each has an enforcement point or is explicitly marked as
+lacking one.
 
-1. **Never drive the UI by coordinates when a named target exists.** Written after a blind click
-   pressed **Share** on a screenshot notification and opened a share sheet on the user's phone — the
-   second coordinate-guessed click to do something unintended. Every Mac interaction in steps 67-69
-   was driven by element id over the DevTools protocol, and every phone interaction by `adb`.
-2. **Before a negative result becomes evidence, prove the query returns a known positive.** Three
-   confident wrong answers in one day produced it. Every check in this phase's later steps carries
-   its control, and they are recorded beside the results: the 173-button enumeration behind
-   "`#call-reject` is absent", the 7-listening-socket enumeration behind "the link is down", the
-   `grep -c "Listening on"` returning 0 in the window and 2 over the file.
-
-The enforcement points that now exist: `scripts/hooks/no-force-stop.sh` (with fixtures in
-`no-force-stop.test.sh`), and `scripts/check-defects.sh` wired through
-`scripts/hooks/defects-in-sync.sh` so a commit cannot leave the defect register and the evidence
-disagreeing. The second one exists because step 67 went unrecorded for a full sitting and nothing
-in the build could tell.
+| Lesson | Enforced by |
+|---|---|
+| Never drive the UI by coordinates when a named target exists | practice in steps 67-70 — every Mac interaction by element id over CDP, every phone interaction by `adb` and named component |
+| Prove the query returns a known positive before a negative becomes evidence | controls recorded beside every result in `docs/testing.md` |
+| A check that does not gate the action is decoration | `scripts/step70-gate.mjs` + `step70-gate.test.mjs`; observed refusing and authorising on hardware |
+| A rule that matters needs an enforcement point | `scripts/hooks/no-force-stop.sh` (+ fixtures), `scripts/check-defects.sh` via `hooks/defects-in-sync.sh` |
+| One click, and only one — exclusion between sessions | `scripts/step70-exclusion.mjs` + 8 fixtures; defects 48 and 49 came out of building it |
+| `Listening on` is written once per `onCreate`; its absence is not evidence | **`scripts/link-up.sh`** — `createTime` + `LISTEN` under the app's uid + an `ESTAB` peer |
+| A registration line is not an execution line | `--require-correction`, which makes the proof a pass criterion rather than a precondition; `isCorrectionFor` checks it is *this* call |
 
 ---
 
-## Step 70 — what is actually left, after the 2026-08-29 attempt
+## Can Phase 5 open?
 
-The attempt is written up in full in `docs/testing.md`. The short version:
+**Not yet, and the remaining condition is small and specific.** 44 and 46 are Phase 4's own scope
+and neither needs a device in anyone's hand: 46 is Mac-only and unit-testable today; 44 is a
+protocol addition plus a `ContentObserver`, verified by typing one SMS on the handset.
 
-1. **The watcher rejected a call it had already read as the wrong one.** It waited for the live card,
-   read it six times — `Dialling · +919800000001`, which is neither `Ringing` nor the second person's
-   number — and clicked Reject anyway, because nothing gated the action on the reading. That hung up
-   the user's own outgoing call to the second person. The gate now exists
-   (`scripts/step70-watch.mjs`) and refuses to click unless the card reads `Ringing` **and** carries
-   the expected number.
-2. **The real ring arrived 32 seconds later with nothing watching**, was answered on the phone, and
-   ran 33 seconds. 36 was never exercised.
-3. **Defect 42 was found**, and it is the reason a re-run needs sequencing rather than just another
-   ring.
-
-**Superseded 2026-08-29 09:52.** The ring happened, 35c failed, and the blocker is no longer
-scheduling — it is code. **Do not ask anyone for another ring**: the experiment has run and produced
-a clean negative, and repeating it under the same conditions produces the same blank.
-
-Order now:
-
-1. **Defect 42's inbound half** — an episode may not begin with a number it did not obtain for
-   itself, with no exception for `ringing`. Needs no design decision; makes every inbound card read
-   `Unknown number`, which is correct and far better than a stranger's name.
-2. **Defect 45** — decide between `CallScreeningService`, `InCallService`, or documenting it as a
-   platform wall with a specific reason per locked decision #6. This is a design decision and should
-   be taken deliberately, not while holding a phone.
-3. **Then** step 70, which will need one ring to prove 35c and 36 together, on a build where the
-   inbound number can actually arrive.
-
-**35c's clause is now stricter than as first written.** The caller is in the phone's contacts as
-`Contact D`, so the original "their name, else their number" disjunction collapses: the headline
-must read **Contact D**, and the bare number is a failure. That is deliberate — it is the only
-version of the clause that proves `ContactsFeature.nameFor` fired, which is the integration contacts
-was pulled forward into Phase 4 to enable.
-
-If the second person cannot be asked again soon, the alternative that preserves the control without
-fixing 42 first is a ring from a number **no preceding episode touched**, with the preceding
-episode's number recorded beforehand. That is strictly worse: it makes the result depend on
-remembering to arrange it.
+Phase 5's decisions are recorded in `docs/phase-5-proposals.md` and nothing there is implemented.
+Its first act claims `bulkChannelSink`; `docs/protocol.md` is deliberately unmodified.

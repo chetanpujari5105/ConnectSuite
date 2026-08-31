@@ -1,7 +1,12 @@
 # Decision brief — defect 45: inbound caller identity
 
-**Status: undecided. This brief exists to be read before the decision, not to record one.**
-Written 2026-08-29. Nothing in it is implemented.
+**Status: decided 2026-08-30 — option 4, on the measurement recorded below. Do not re-open it
+without reading that measurement first.**
+
+Written 2026-08-29 as an undecided brief. The one reading it was waiting on arrived on 2026-08-30 and
+settled it: the extra lands **during** the ring, ~8–111 ms in, on all six episodes measured. Option 4
+was gated on exactly that and is therefore available; no call-handling role is taken, so options 1
+and 2 stay unbuilt and their costs to the user stay unpaid.
 
 ---
 
@@ -32,12 +37,47 @@ start with a number it did not obtain for itself, so no card will show a strange
 consequence is that **every inbound call now reads `Unknown number`**, honestly, because nothing
 supplies the number in time. That is the current shipped behaviour and it is correct-but-empty.
 
-**One number that is not yet in hand.** Whether the extra arrives *during* a normal-length ring
-(early enough to be usable if we chose to use it) or only after the call ends is not established —
-c1 was 197 ms and c3 was 11 s, and neither log can tell us where in that window it landed. The
-instrumentation added with 42's fix answers it on the next real inbound call, at no cost to anyone.
-**That reading should be in hand before this decision is taken**, because it decides whether option 4
-below exists at all.
+**The number that was missing is now in hand — measured 2026-08-30. The extra arrives during the
+ring, every time, within ~110 ms.** Option 4 exists. This paragraph replaces the open question that
+stood here, and the correction below matters more than the answer.
+
+**First, the misreading this brief itself invited.** The sentence above said "c1 was 197 ms and c3
+was 11 s, and neither log can tell us where in that window it landed" — which puts a *call length*
+and a *latency* in one list and invites the reader to treat 197 ms as how long the extra takes.
+It is not. 197 ms was how long **c1 itself lasted**; it is a fact about that call, not about the
+broadcast. The two numbers are unrelated, and the latency is roughly one twentieth of the figure
+anyone would have carried away. Do not re-derive a conclusion from the 197 ms; it never measured
+this.
+
+**The evidence.** Six inbound episodes on the build with 42's instrumentation
+(`lastUpdateTime=2026-08-29 10:01:54`), measured as the interval between the `Call cN ringing` line
+that publishes the blank card and the `PHONE_STATE RINGING: number present … taken` line:
+
+| Episode | `begin()` published | extra taken | delay |
+|---|---|---|---|
+| c9 | 2026-08-30 18:27:15.783 | 18:27:15.791 | **+8 ms** |
+| c10 | 2026-08-30 18:38:42.492 | 18:38:42.503 | **+11 ms** |
+| c12 | 2026-08-30 19:09:43.867 | 19:09:43.880 | **+13 ms** |
+| c11 | 2026-08-30 18:56:46.097 | 18:56:46.168 | **+71 ms** |
+| c7 | 2026-08-30 17:37:04.045 | 17:37:04.118 | **+73 ms** |
+| c8 | 2026-08-30 17:47:14.574 | 17:47:14.685 | **+111 ms** |
+
+Every one lands while the state is `RINGING` and the episode is `live`, and every one is logged
+`taken` — so `CallWatcher.number` holds the caller's number from ~10 ms into the ring onward. The
+control is on the same lines: the `number absent` broadcast that precedes each one is logged `not
+taken`, so "taken" is discriminating between the two paths rather than labelling everything.
+
+**The direct visual confirmation, c12.** The card was watched continuously through that ring. At
++0.0 s it read `who="Unknown number" status="Ringing"`; at +11.4 s, when the call was answered, it
+became `who="+918800000004" status="In progress · +918800000004"`. Nothing fetched the number at
++11.4 s — it had been sitting in `CallWatcher.number` since +13 ms. **The only thing that happened
+at +11.4 s was a re-publish**, triggered incidentally by the ringing→active transition. That is
+option 4's entire mechanism, already working, firing on the wrong event. Option 4 is not new
+machinery; it is one more call to the publish that already exists.
+
+**The honest limit is unchanged.** A call shorter than the extra's arrival still ends unknown, and a
+missed call from an unknown number stays unknown on the card. c1's 197 ms is the example of that
+case — which is the one thing the 197 ms figure is genuinely evidence for.
 
 ---
 

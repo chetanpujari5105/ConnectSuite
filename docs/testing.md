@@ -6352,3 +6352,626 @@ blocked on other phases, one is a relocation decision, and one is largely cut. C
 112 tests, 0 failures, `tsc` clean. Shell geometry re-verified unchanged against the prototype:
 sidebar 233×920, brand row 232×44, device card 204×52, nav row 204×38, nav pill 204×40, dock tile
 38×38 — all exact on both sides.
+
+---
+
+# Step 70 — the arming sitting: the gate proven on hardware, and one line that cannot be attributed from the log — 2026-08-30
+
+Step 70 has still **not run**. No ring was spent this sitting. What follows is evidence produced
+while arming, and it stands on its own.
+
+## The session identified as `bb9391` was the user, in a second terminal
+
+Established directly by the user on 2026-08-30, not inferred. The session
+`Step 70 defect 36 phone test [bb9391]` was a second terminal of this project's own user; it has
+been told so and has stood down for good. Its two judgement calls were correct and are recorded as
+such rather than as friction: it **refused a second-hand reassignment** — it would not accept, from
+a peer session, the claim that its user had handed the ring to somebody else — and it **escalated
+the question of who drives the ring to its own user** instead. Refusing to take instruction about a
+real phone call through an unverified channel is the behaviour this project wants, and it cost
+nothing but a round trip.
+
+Its runs are therefore this project's runs. Two of them matter.
+
+## Run c is the gate's hardware evidence
+
+| Run | Time | Outcome |
+|---|---|---|
+| a | 18:55:36 | rehearsal against an injected card; `CallsView` re-rendered and wiped the injection; timed out 18:56:36. **No click.** |
+| b | 18:59:24 | rehearsal with the injector holding a synthetic card present; matched, held 6 s, clicked at 18:59:31 on an **injected** `#call-reject` whose only listener incremented a window global. **No reject reached the phone.** |
+| **c** | **19:06:07** | **the real arm**, pid 34699. Matched real episode **`c12`** at 19:09:43.938, held, and at **19:10:02.305 aborted with exit 4 without clicking** — the pre-click re-check read **`In progress`**, not `Ringing`. |
+
+Run c is a real arm against a real inbound call that ended without a click, and it is the first
+hardware evidence for the gate rather than for the feature.
+
+**Why it counts as evidence and not as a run that happened to do nothing.** The 2026-08-29 accident
+was a watcher that read the live card six times — `who="Chetan"`, `status="Dialling · +91…"` — and
+clicked Reject anyway, because the click was the next statement and nothing stood between the
+reading and the action. It hung up the user's own outgoing call. Here **the same situation arose on
+its own**: the card changed underneath the watcher when `c12` was answered at +11.4 s, so the
+target at the moment of acting was no longer the target that had been identified. The re-check
+immediately before the irreversible call caught exactly that, refused, said what it refused and
+why, and exited 4.
+
+That is `CLAUDE.md`'s *"a check that does not gate the action is decoration"* working on live
+hardware, against the precise failure it was written for, on a call nobody had to arrange. The
+distinguishing detail is the **re-check**, not the first read: the first read at 19:09:43.938 said
+`Ringing` and was correct when taken. A gate that had trusted it would have clicked. The predicate
+that decided whether to act was re-evaluated at the moment of acting, and that is the whole
+difference between run c and 2026-08-29.
+
+## The `call.reject delivered` line at 19:10:20.602 was a manual Hang up
+
+The link log carries `call.reject delivered` at **19:10:20.602**, eighteen seconds after run c
+exited. **It was the user's own Hang up press in the Mac UI. No watcher clicked it.**
+
+**From the log alone the two are indistinguishable, and that is recorded here because it is the
+finding, not a caveat on it.** `call.reject` arrives at the phone as the same message with the same
+fields whichever way it was sent: the Mac's reject path is one path, and the log line names the
+message, not its origin. A reader with only `link.log` in front of them — which is the reader this
+project keeps producing, one sitting later — sees a watcher exit and a reject eighteen seconds
+apart and has nothing in the file that separates *"the watcher clicked late"* from *"a person
+pressed the button"*.
+
+What actually separated them was **outside the log**: the user said so. The nearest thing to an
+in-file discriminator is negative — run c logged its exit-4 refusal at 19:10:02.305 and logged no
+click, and a watcher that refuses does not later click. That is real but it is an argument from
+the watcher's own record, and it fails the moment the watcher is not the thing under suspicion.
+
+**Consequence, unfixed:** `call.reject` has no provenance on the wire or in the log. The message
+carries no field saying whether it originated from a user gesture, a script, or a replay, so no
+post-hoc reading of a reject can attribute it. This is not filed as a defect because nothing
+behaves wrongly; it is recorded as a **known limit of the evidence**, and the honest handling is
+the one used here — when a reject's origin matters, it is attributed by testimony and the testimony
+is named, or it is left unattributed. Do not attribute a reject from timing.
+
+## `c13`'s cause is open and unattributed — retraction, written in on purpose
+
+**`c13` has no explanation and no attribution. Do not derive one from timestamps.**
+
+`c13` is the inbound episode that began 19:14:41.873, produced `RINGING` and `OFFHOOK` with the
+number absent on **all four** broadcasts, left **no row in the platform call log**, and was followed
+by no further log line of any kind. It is the trigger that exposed defect 47. Why the process
+stopped between OFFHOOK and IDLE is **not known**.
+
+Two attributions were made in this project's own records earlier the same day and **both are
+retracted**:
+
+1. That `c13` was caused by, or coincided with the activity of, the `bb9391` session.
+2. That it was *not*, because that session's window "spans" `c13` rather than post-dating it.
+
+Both were derived the same way — off a relative uptime string (`ListAgents` reporting *"started
+29m ago"*) subtracted from a wall-clock reading, then compared against `c13`'s timestamps. **The
+second retraction matters more than the first.** Reversing a wrong inference with the same
+technique produces a second wrong inference that reads as a correction and is therefore harder to
+dislodge; the record ended up more confident and no better supported. A relative uptime is not
+evidence of what a session did, an overlapping window is not causation, and a non-overlapping one
+is not exoneration.
+
+The record is: **cause unexplained, unattributed, open.** Anyone tempted to close it by lining up
+session start times against `19:14:41.873` is repeating the exact step being retracted here — that
+is what this paragraph exists to stop. What would actually settle it is a phone-side artefact
+(a `tombstone`, a `logcat` death line, a system `am_kill`/`am_proc_died` record from that minute),
+and none was captured before the window passed.
+
+`c13` weakens nothing in the defect-45 decision, which is the one place it might have. Option 4 was
+chosen because it degrades honestly, and `c13` is that degradation working: `shouldCorrectCard`
+returns false when the number never arrives, no correction is published, and the card stays
+`Unknown number`, which is the true answer. The test named *a still-blank number corrects nothing*
+is `c13`'s case and is green. What `c13` does change is the brief's prose — the extra lands
+*"every time … on all six episodes measured"* is now **six of seven**, and the seventh is a
+non-arrival.
+
+## Defects filed this sitting
+
+**47** (open), **48** and **49** (both closed) — see `docs/defects.md`. 48 and 49 both came out of
+the arming exclusion: two locks at two paths that excluded nothing, and a refusal that stated a
+wrong client count. Neither cost a ring; 48 survived only because two edits collided in the same
+file, which is luck and not a control.
+
+## How to check whether `LinkService` is up — and why grepping for `Listening on` is defect 29's shape
+
+**Written 2026-08-30 after the check was got wrong, in the direction that reads as a finding.** The
+reasoning was: the last `Listening on 42501/42502/42503` in `link.log` is 16:12:41, a launch was
+issued at 19:14, no line followed it, therefore the service did not start. Every step is true and
+the conclusion is false. The service had been up since **16:12:04** and all three ports were bound
+the whole time.
+
+**The line is written once per `onCreate`, and nowhere else.** `LinkServer.start()` logs it, and
+`LinkService.onCreate()` is its only caller. A second `startForegroundService` on a service that is
+already running never reaches `onCreate` — it runs `onStartCommand`, which handles `ACTION_STOP` and
+`ACTION_REFRESH_CAPABILITIES` and returns `START_STICKY`. So **on a healthy, already-running
+service the line is absent by design**, and its absence after a launch is the *expected* reading,
+not a symptom.
+
+This is defect 29's shape — a query that cannot tell its target from something resembling it,
+answering confidently. There the call log read the wrong key and reported an empty log; here a grep
+read a once-per-lifetime line and reported a dead service. In both cases the absence was the
+lookalike, and nothing downstream could tell it from the real thing.
+
+**The presence check for `LinkService` is three readings together, none of them a log grep:**
+
+| # | Reading | Command | What "up" looks like |
+|---|---|---|---|
+| 1 | the service exists and when it was created | `adb shell dumpsys activity services <pkg>` | a `ServiceRecord` for `core.link.LinkService` with `isForeground=true foregroundId=2001` and a `createTime` you can date |
+| 2 | the ports are actually bound | `adb shell ss -ltnp` (or `/proc/net/tcp6`, ports `A605`/`A606`/`A607`) | three `LISTEN` rows on 42501/42502/42503 **under the app's uid** |
+| 3 | a peer is actually attached | the same dump, `ESTAB` rows | a session on 42501 from the Mac's address, same uid |
+
+Read on 2026-08-30 at 20:11:56, all three agreed:
+
+```
+ServiceRecord{1203f0a …/core.link.LinkService}  isForeground=true foregroundId=2001
+                                                 createTime=-3h59m52s022ms      → 16:12:04
+LISTEN  *:42501  *:42502  *:42503                                       uid 11011
+ESTAB   [10.108.253.63]:42501 ← [10.108.253.92]:51206                   uid 11011
+```
+
+and the `Listening on …` line at **16:12:41.382** is the record of that same start, not of a
+missing one. `createTime` and the log line corroborate each other to within the bind time; either
+alone would have been enough, and the grep alone was worse than nothing.
+
+**The uid column in rows 2 and 3 is the control, not decoration.** A `LISTEN` on 42501 with no uid
+check cannot separate our server from anything else that has taken the port — which is precisely the
+case `LinkServer` already logs `Could not bind listeners` for, *"almost always address already in
+use from a previous process that has not died yet"*. Match the uid or the reading proves only that
+somebody is listening.
+
+**And an absence still needs its own positive control.** `link.log` was silent for 56 minutes, which
+could equally mean a quiet phone or a dead writer. One shell notification, posted and then snoozed
+away, settled it: three fresh lines at 20:15:41 — two `[applabel] … "Shell" — 41 / 42 resolved / 0
+fell back` and one `[sms] sms.messages delivered (thread 2550, 50 messages, hasMore=true) — 21
+delivered / 0 refused`. The `[applabel]` pair proves the writer and the listener binding; the
+`[sms]` line proves the control session is live and serving Mac requests, which no phone-side
+reading could have shown.
+
+## Defect 47 read live, 65 minutes on — and it is **not** across a reconnect
+
+Read over CDP on 9222 against the running Electron (**pid 28715**, the instance holding the control
+socket), read-only. No relaunch: a relaunch clears the card through `setAdvertised(false)` and would
+have destroyed the evidence before it was read.
+
+**Control first**, so an absence or a presence here means something: the page is
+`dist/renderer/index.html` with **1698 elements, 226 buttons, 106 ids** — the same shape as the
+census taken before any of this, plus the notification row the liveness probe added.
+
+### The card, at 2026-08-30 20:19:34.766 IST
+
+```json
+{ "cardPresent": true, "cardClass": "call-live", "cardHidden": false,
+  "who": "Unknown number",
+  "mutedLines": ["In progress",
+                 "Audio stays on the phone — pair the Mac to it over Bluetooth to listen…"],
+  "buttons": [ { "id": "call-reject", "label": "Hang up", "hidden": false } ],
+  "callObject": { "callId": "c13", "number": "", "startedAtMs": 1788097481871, "state": "active" } }
+```
+
+`#call-answer` resolves to **0**, which is correct for `state: "active"` and is the control that the
+card is being read in its real state rather than a synthetic ringing one.
+
+### The timestamps
+
+| What | When | Source |
+|---|---|---|
+| app process started | **14:38:23** | `ps`, pid 14728, still alive |
+| `LinkService` created, ports bound | **16:12:04** / `Listening on …` 16:12:41.382 | `ServiceRecord.createTime`, `link.log:3857` |
+| control session established | **18:53:17.705** | `link.log` — `Handshake complete with Chetans-MacBook-Pro at 10.108.253.92` |
+| c13 began, on the phone | **19:14:41.873** | `link.log` — `Call c13 ringing number withheld by the platform` |
+| c13, as the Mac recorded it | **19:14:41.871** | `startedAtMs: 1788097481871` |
+| c13's last phone-side event | **19:14:56.173** | `PHONE_STATE OFFHOOK` ×2, both `number absent` |
+| card still drawn | **20:19:34.766** | this reading |
+
+**Card age at the reading: 1 h 05 m 03 s**, against a call whose last observed event was 64 minutes
+earlier and which never produced a call-log row at all.
+
+**The 2 ms between the phone's `19:14:41.873` and the Mac's `19:14:41.871` is the identity control.**
+It is what separates *"the Mac is showing the phone's c13"* from *"the Mac is showing leftover
+synthetic data from a rehearsal"* — which is exactly the mistake made when this card was first
+noticed. Two independent clocks, one episode, agreeing to within the round trip.
+
+### It is not a reconnect. It is one unbroken session.
+
+This was expected to be defect 47 reproducing **across** a reconnect, on the assumption that the app
+had just been launched. It was not launched — it was already up — so the reconnect never happened,
+and saying "47 across a reconnect" would have been a false positive of the exact kind the rest of
+this file is about.
+
+Every control-session line in the log, in order, is a handshake or an ending. The last one is:
+
+```
+4179: 2026-08-30T18:53:17.705+05:30 I [control] Handshake complete with Chetans-MacBook-Pro at 10.108.253.92
+```
+
+**and there is nothing after it** — no `Session with … ended`, no `idle timeout`, no second
+handshake. The session that carried c13 was established **21 m 24 s before c13 began** and is the
+same session that served `sms.messages` at 20:15:42 and is still `ESTAB` on 42501 now. The Mac's
+device card reads `Samsung SM-S938B … Connected` in the same breath.
+
+**So what is actually demonstrated is stronger in one way and weaker in another, and both halves
+matter.** Stronger: the card is wrong for 65 minutes on a link that never faltered — this needs no
+disconnection, no process death and no reconnect to go wrong, which rules out every explanation of
+the form *"the Mac missed the `call.ended` because the link was down."* The link was up the entire
+time and the `call.ended` was never sent, because the phone never generated one. Weaker: the
+reconnect path — `replayTo` returning silently when no call is live, which is the gap that makes a
+reconnecting Mac *keep* a stale card — is still **unexercised on hardware**. It is read in source
+(`CallFeature.kt:117-123`) and is not yet observed.
+
+**That test is one step away and comes for free.** `adb install -r` restarts the app process and
+drops the link; the Mac then reconnects on its own. Whichever of the two things happens next is the
+answer, and both are worth having:
+
+- the card **survives** the reconnect → `replayTo`'s silent return is confirmed on hardware, and 47
+  is proven irrecoverable rather than argued to be;
+- the card **clears** → it was cleared by `setAdvertised(false)` (`renderer/calls.ts:94-101`), the
+  one path known to blank the pane, and the mechanism is recorded as such rather than guessed at.
+
+Read the card immediately after the reinstall, before anything else, or the answer is lost.
+
+# Step 70 — the reinstall, and what it settled — 2026-08-30
+
+Still no ring. This is `adb install -r`, the grants question, and what the install did and did not
+prove.
+
+## The reconnect test did not happen, because the card cleared first
+
+It was set up as a free test: reinstall, drop the link, and see whether the stale c13 card survives
+the reconnect. It could not run. **c13 ended at 20:22:42.883 — 3 m 35 s before the install started
+— and the card cleared correctly.** Forty samples taken from 20:26:17 through 20:27:47, spanning the
+install and the reconnect, all read `class="call-live hidden"`, `call: null`. There was no stale
+card to carry across, so nothing was demonstrated either way.
+
+**`replayTo`'s silent return on no-call (`CallFeature.kt:117-123`) therefore remains read in source
+and unexercised on hardware**, exactly as it was before the install. Recording this as "not tested"
+rather than folding it into the reinstall's successes, because a test that could not run is not a
+test that passed.
+
+## What c13's ending settled, and what it corrected
+
+```
+2026-08-30T20:22:42.883  I [calls] Call c13 ended answered after 4080849ms
+2026-08-30T20:22:42.960  I [calls] PHONE_STATE IDLE: number absent, episode none — not taken …
+```
+
+**67 m 47 s.** The terminal event arrived, `call.ended` went to the Mac, `onEnded` blanked the pane.
+Defect 47's first wording — *an episode that never ends*, *forever*, *nothing can clear it* — is
+corrected in the register: the card was cleared, by the one fact that clears it, an hour late.
+
+The defect survives the correction and is narrower for it: for 67 minutes the Mac stated something
+it could not check, and **no action available to anyone could correct it**. Its duration was set by
+the phone's eventual generosity, not by anything the Mac owns.
+
+**The call log still has no row for c13, read after it ended.** The newest row remains `_id=11710,
++918800000004, type=1, date=1788097183428, duration=25` — c12 at 19:09:43. A real 67-minute call
+writes a row with a matching duration on ending. This is the control that separates *"c13 was a
+genuine long call and the card was right all along"* from *"c13 was anomalous"*, and it comes down
+on anomalous. It also re-confirms the wrong fix: a liveness check that consulted the call log would
+have called c13 dead throughout, for the wrong reason, and been right by luck.
+
+**Why the IDLE arrived at 20:22:42 is unknown and is left unattributed.** Nothing touched the phone
+between 20:16:50 and 20:24:02, and the install began at 20:26:17 — after. Reconstructing a cause
+from those timestamps is the step already retracted once for c13, and it is not repeated.
+
+## `adb install -r` preserves everything. `docs/RESUME.md` is wrong about it.
+
+Tested rather than trusted, per the standing instruction. Verified **individually, printed one per
+line**, against `docs/evidence/step70-grants-snapshot-2026-08-30T1917.txt`:
+
+```
+versionCode=1   lastUpdateTime=2026-08-30 20:26:26        ← the new build
+
+PASS  ANSWER_PHONE_CALLS   granted=true      PASS  READ_CONTACTS      granted=true
+PASS  CALL_PHONE           granted=true      PASS  READ_PHONE_STATE   granted=true
+PASS  CAMERA               granted=true      PASS  READ_SMS           granted=true
+PASS  NEARBY_WIFI_DEVICES  granted=true      PASS  RECEIVE_SMS        granted=true
+PASS  POST_NOTIFICATIONS   granted=true      PASS  SEND_SMS           granted=true
+PASS  READ_CALL_LOG        granted=true
+
+PASS  notification listener present in enabled_notification_listeners
+PASS  accessibility service present: …/com.chetan.connectsuite.input.ConnectSuiteInputService
+PASS  accessibility_enabled=1
+```
+
+**11 of 11, plus both secure-settings strings and the master switch. Nothing was lost and nothing
+needed restoring.** `docs/RESUME.md:38`'s *"a reinstall resets grants"* describes a full uninstall
+and is wrong for `-r`; both sessions suspected this and neither had tested it. It is tested now, on
+this device, on this build.
+
+### The 19:17 snapshot is thinner than its own record claims
+
+`docs/ground-truth-2026-08-30.md` §11 describes it as holding *"11 runtime grants, all `granted=true`
+before any install, plus the notification-listener and accessibility-service secure settings
+values"*. It does not. It is 360 bytes and holds **the eleven permission names, one per line, and
+nothing else** — no values, no listener string, no accessibility string.
+
+That is enough to know *what to check* and useless as a baseline to *restore from*: had the install
+dropped a grant, the file could not have said what to put back, and the two secure-settings strings
+— the ones that genuinely cannot be re-granted programmatically — were never captured at all. A
+snapshot that records the questions and not the answers reads as insurance and is not, which is this
+project's recurring shape in a new place.
+
+A real one was taken at 20:25, before the install, and is at
+**`docs/evidence/step70-grants-preinstall-2026-08-30T2025.txt`**: every permission with its
+`granted=` value and flags, both secure-settings strings in full, `accessibility_enabled`, and the
+outgoing build's `versionCode`/`lastUpdateTime`. The 19:17 file is kept as the list of what to
+check, which is what it actually is.
+
+## What the reinstall *did* break: the phone came back fully granted and serverless
+
+`link-up.sh` was run immediately after the install and failed all three readings:
+
+```
+uid      com.chetan.connectsuite.debug = 11011   ← the control for readings 2 and 3
+FAIL     1. no foreground ServiceRecord for core.link.LinkService
+FAIL     2. 0 of 3 ports LISTEN under uid 11011
+FAIL     3. no control session on 42501
+exit 1
+```
+
+The new process (pid 22222) had started — via the platform rebinding `NotificationMirrorService` —
+and had installed **every feature**, ending at `Capabilities now:
+calls,contacts,input,mirror,notifications,remote,sms` at 20:26:27.065. Notification listener
+attached, accessibility service connected, all grants present. And no ports bound, because
+`LinkService` never ran.
+
+**This is `LinkServer.kt:163`'s scenario reproduced exactly**, the one recorded on 2026-08-28 where
+*"the platform rebound `NotificationMirrorService`, which started the process, which installed every
+feature — and `LinkService` never ran, so the phone sat for five hours fully granted and
+serverless."* It is worth its own line here because of how it presents: the capability log at
+20:26:26 is the most reassuring output in the file, and it is printed by a phone no Mac can reach.
+Reading capabilities to decide whether the phone is up is the same error as grepping for
+`Listening on` to decide whether the service is up, from the opposite direction — a true statement
+about one layer, read as a statement about another.
+
+Fixed by starting the launcher activity **by name**, never by coordinates:
+
+```
+$ adb shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity
+2026-08-30T20:28:36.956  I [server] Listening on 42501/42502/42503, 1 paired device(s)
+2026-08-30T20:28:42.250  I [control] Handshake complete with Chetans-MacBook-Pro at 10.108.253.92
+$ scripts/link-up.sh    →  OK / OK / OK, exit 0
+```
+
+**So `adb install -r` needs a launch after it.** The install preserves every grant and every binding
+and does not restore the server, and nothing in the app's own output says so.
+
+### `link-up.sh` earned its place on first use
+
+The project's rule is that a check must be shown to fail against the thing it is named for. This one
+was not shown to fail by a contrived fixture — it failed on its first real run, on a real serverless
+phone, on all three readings, and passed six seconds after the fix. The negative and the positive
+were both taken on hardware, minutes apart, with the uid control reading 11011 in both.
+
+## Option 4 is in the running build. No log line can prove it is *live* before a ring, and here is why
+
+**The installed APK is byte-identical to the one verified by dex strings:**
+
+```
+/data/app/~~Wtue0m9tPmH6hdr2dxE1uQ==/…/base.apk   md5 6aae37591fd9d610a8fbbcf0f3eb830c
+app/build/outputs/apk/debug/app-debug.apk         md5 6aae37591fd9d610a8fbbcf0f3eb830c
+
+in that APK:   1 × "card corrected in place"
+               1 × "number withheld by the platform"      (control — a string that must be there)
+               0 × "BUG REINTRODUCED"                     (control — the deliberately-broken build)
+```
+
+**And the receiver that hosts it is registered in the running process** (pid 22222, started
+20:26:26):
+
+```
+2026-08-30T20:26:26.975  I [calls] Watching PHONE_STATE for the inbound number
+2026-08-30T20:26:26.976  I [calls] Call watcher started
+```
+
+**What that is not.** Neither line is option 4's. `git diff` on `CallWatcher.kt` adds **one**
+`LinkLog` call in 55 inserted lines, and it is inside the correction branch:
+
+> `Call $id card corrected in place: number $number … arrived Nms into the $phase — N of M episodes corrected since start`
+
+That branch runs only when `shouldCorrectCard(before, after, episodeLive)` is true — which needs a
+live episode whose `EXTRA_INCOMING_NUMBER` changes from blank to a number. An outgoing call cannot
+produce it: outgoing `PHONE_STATE` carries no `EXTRA_INCOMING_NUMBER`, so `after` stays blank and the
+guard is false. A synthetic broadcast cannot produce it either: the receiver is registered
+`RECEIVER_NOT_EXPORTED`, so `am broadcast` from the shell never reaches it, and `PHONE_STATE` is
+system-only in any case.
+
+**So the line asked for cannot exist before the ring, and saying otherwise by pointing at the two
+lines above would be presenting a registration as an execution.** What is established is: the code
+is in the APK on the phone, the APK is the one that was checked, and the receiver holding it is
+registered in the live process. What is not established is that the branch has ever run — which has
+been the honest limit on option 4 since it was written, and the reason its four green tests are
+described as covering the predicate and not the wiring.
+
+**The constructive form: `card corrected in place` is step 70's pass criterion, not its
+precondition.** If the ring produces it, option 4 is proven on hardware and 35c passes. If the
+number never arrives, the card stays `Unknown number`, no correction is published, and that is
+c13's documented case — the green test named *a still-blank number corrects nothing* — a failure
+that is now explained rather than mysterious. One episode in seven has looked like that.
+
+---
+
+# Step 70 — **PASSED.** Defect 36 and defect 35c both proven on hardware — 2026-08-31 13:43
+
+One ring, one reject, both defects closed. The full transcript is
+`scripts/step70-watch.mjs 9800000001 9 --hold=8 --allow-blank-number --require-correction`.
+
+## Setup, verified before arming rather than assumed
+
+| | |
+|---|---|
+| Device under test | `RZCY12330DT`, SM-S938B — the handset every reading in this file is against |
+| Its line | `gsm.sim.state=[LOADED, ABSENT]` — one SIM, slot 0; subscription id=1, airtel, `number=98508[****]`, `IN_SERVICE`, `IsVoiceCallAvailable=true`. The second subscription (Jio) has `simSlotIndex=-1` and reads `OUT_OF_SERVICE` |
+| Caller | **9800000001**, a second handset |
+| Build | `lastUpdateTime=2026-08-30 20:26:26`, md5 `6aae37591fd9d610a8fbbcf0f3eb830c`, identical to the APK checked by dex strings |
+| Link | `scripts/link-up.sh` → OK / OK / OK, exit 0 |
+| Exclusion | lock free, `countCdpClients()` = **0** on 9222; 9333 is `proto-host/1.0.0` and is invisible to the count by construction |
+
+**The device-number check has a stated limit.** Android redacts the subscription number after five
+digits, so what was confirmed is `98508…`, which is consistent with 9850850263 and decisively
+excludes the caller's 9800000001 — the two differ from the third digit. It does not prove the last
+five. That limit is recorded rather than glossed, because a check whose reach is overstated is the
+thing this file is mostly about.
+
+## The ring
+
+```
+13:43:01.838  MATCHED — inbound ring accepted by the gate
+  +  0.0s  CARD  hidden=false who="Chetan" status="Ringing · +919800000001" answer=true reject="Reject"
+  +  0.0s  PHONE Call c7 ringing number withheld by the platform — 0 of 7 episodes with a number since start
+  +  0.0s  PHONE PHONE_STATE RINGING: number absent, episode live — not taken — 14 with / 15 without
+  +  0.0s  PHONE PHONE_STATE RINGING: number present, episode live — taken  — 15 with / 15 without
+  +  0.0s  PHONE Call c7 card corrected in place: number +919800000001 (Chetan) arrived 16ms into the ringing — 7 of 7 episodes corrected since start
+13:43:09.873  gate re-checked immediately before the click: "Chetan" / "Ringing · +919800000001"
+13:43:09.874  clicked #call-reject once (label was "Reject")
+13:43:10.377  live card cleared
+```
+
+## Defect 35c — **CLOSED.** The inbound card carries the number and the name
+
+`who="Chetan"`, `status="Ringing · +919800000001"`. Not a fallback, not `Unknown number`: the
+platform number resolved to a contact, in the headline, on an inbound ring — which is what 35c has
+been asking for since 2026-08-28 and what failed on 2026-08-29.
+
+**Option 4 is the mechanism and it is proven, not inferred.** The number was absent on the first
+`PHONE_STATE` copy and present on the second, and the correction published **16 ms into the
+ringing**. The `--require-correction` clause held the reject until that line appeared for *this*
+caller.
+
+**And it is not a single sighting.** The process that started at 13:02 has logged **7 of 7 episodes
+corrected**, the oldest at 2026-08-30 22:47, with arrival offsets from **16 ms to 535 ms**:
+
+```
+c5  2026-08-30T22:47:24.651  +919700000007 (Contact G)  535ms   5 of 5
+c6  2026-08-31T13:40:24.926  +919800000001 (Chetan)                       37ms   6 of 6
+c7  2026-08-31T13:43:01.891  +919800000001 (Chetan)                       16ms   7 of 7
+```
+
+Seven corrections, seven episodes, no episode uncorrected. `docs/decision-45-inbound-caller-id.md`
+chose option 4 on a measurement of six arrivals; it now has seven corrections on hardware to go
+with them.
+
+**`--allow-blank-number` was carried but never exercised.** No waiver line was printed: the
+correction landed before the watcher's first poll, so the gate matched the *corrected* card on the
+strict clause. The waiver was insurance against a c13-shaped ring and cost nothing when it was not
+needed.
+
+## Defect 36 — **CLOSED.** A call rejected from the Mac is reported as `rejected`
+
+```
+13:43:09.982  call.reject delivered (rejected — the episode is flagged; call.ended decides the
+              disposition when the call ends, and answered outranks the flag) — 3 delivered / 0 refused
+13:43:10.073  Call c7 ended rejected after 8197ms
+```
+
+**`rejected`, not `missed`.** That is the whole of defect 36, and it is the first time it has been
+observed on hardware — step 69 could only verify the precedence rule.
+
+**The control, and it is the platform's own answer, not ours:**
+
+```
+Row: 0  _id=11717, number=+919800000001, type=5, date=1788163981760, duration=0, name=Chetan
+```
+
+`type=5` is `REJECTED` in the platform call log. The phone's own disposition and Android's agree on
+the same call. A `[calls]` line alone would have been our code agreeing with itself.
+
+**Defect 40's wording is live on this build** and did its job: the `call.reject delivered` line says
+in the sentence that it is *not* the disposition, and the disposition line follows 91 ms later.
+
+## Provenance, since this is the line that could not be attributed last time
+
+The `call.reject delivered` at 13:43:09.982 sits **108 ms** after the watcher's own
+`clicked #call-reject once` at 13:43:09.874, in the same transcript, with the click logged by the
+process that made it. That is what attribution looks like when it exists — contrast 2026-08-30's
+19:10:20.602, which was a manual Hang up and was indistinguishable from a watcher click from the log
+alone. The limit recorded there is unchanged: `call.reject` still carries no provenance on the wire.
+It is attributable **here** because the clicker kept its own record, not because the log improved.
+
+## The gate, on its second hardware outing
+
+Run c on 2026-08-30 aborted at exit 4 because the pre-click re-check read `In progress`. This run
+re-checked the same predicate immediately before the irreversible call, got
+`"Chetan" / "Ringing · +919800000001"`, and proceeded. **The gate has now been observed refusing a
+call it should not touch and authorising one it should**, on real hardware, four days apart. A gate
+that has only ever refused is not yet known to be a gate.
+
+## `isCorrectionFor` — added before this run, and it mattered
+
+`--require-correction` previously matched any `card corrected in place` line, with no check that the
+correction belonged to the call under test; with `--allow-blank-number` that would have let another
+caller's correction authorise the reject. `step70-gate.mjs` now reads the number out of the line and
+**fails closed** if the format moves. Six fixtures, and shown to fail: with the old clause
+reinstated, *a correction for a DIFFERENT caller* and *format moved — fails CLOSED* both went red,
+then green on restore.
+
+It did not fire in anger on this run — the correction was for the right caller — which is the
+correct outcome for a guard and not an argument against having built it.
+
+---
+
+# `c13` explained, and defect 47 withdrawn — 2026-08-31
+
+**This supersedes three earlier sections of this file**: "Step 70 — the arming sitting" (the `c13`
+retraction), "Defect 47 read live, 65 minutes on", and the `c13` paragraphs of "Step 70 — the
+reinstall, and what it settled". Their readings were accurate; the conclusion drawn from them was
+not.
+
+## The artefact that settles it
+
+The arming-sitting section said `c13`'s cause was unexplained, that no phone-side artefact from that
+minute had been captured, and that nobody should derive one from timestamps. The artefact existed
+the whole time, in `dumpsys telecom`, and was found while checking which SIM the handset held:
+
+```
+SelfMgd Call e385bde0-9d12-44b5-8057-c84b7341e582 [Aug 30, 2026 7:14:41 PM](MT - incoming)
+    >>>Target PhoneAccount: ComponentInfo{com.whatsapp/com.whatsapp} (WhatsApp)
+
+Call e385bde0-…: { startTime: 1788097496071   → 19:14:56.071  (went ACTIVE)
+                   endTime:   1788101562695   → 20:22:42.695
+                   direction: INCOMING   isVideoCall: true
+                   callTerminationReason: DisconnectCause [ Code: (LOCAL) … ] }
+```
+
+`RINGING` 19:14:41.86 → `ACTIVE` 19:14:56.07 → `DISCONNECTED` 20:22:42.71, ended locally.
+**`c13` was an incoming WhatsApp video call that was answered and ran 67 m 47 s.** The phone's
+`ended answered after 4080849ms` and telecom's 4066.6 s of active time differ by the 14.2 s of
+ringing — two clocks agreeing, not one of them wrong.
+
+**The Mac's card was true for all 67 minutes.** Defect 47 is withdrawn; see `docs/defects.md`.
+
+## The control that was not a control
+
+This file promoted *"the platform call log has no row for c13, and a real 67-minute call writes a
+row"* to the top of 47's record as the reading that made it a defect rather than a long phone call.
+It was not discriminating. The same dump says why:
+
+```
+SamsungCallLog.Loggable { state : UNKNOWN / okayToLog : false }
+```
+
+Self-managed calls are logged by the app that owns them, not by the platform provider. The absence
+of a row separates *cellular* from *not cellular*; it says nothing about whether a call was real or
+how long it ran. It was used to decide exactly the thing it cannot decide.
+
+**That is this project's own recurring failure, committed inside a defect record that cites the rule
+against it** — a query that cannot tell its target from a lookalike, answering with confidence. The
+lookalike was *a call the platform does not log*. The discriminating query was available all along
+and was never run.
+
+## What this does not change
+
+- **Nothing about step 70.** Different call, different day, cellular, and both defects it proved
+  stand on their own evidence.
+- **Nothing about option 4.** A self-managed VoIP call carries no `EXTRA_INCOMING_NUMBER`, so
+  `shouldCorrectCard` returns false and the card reads `Unknown number`, which is the true answer.
+  `c13` is the green test *a still-blank number corrects nothing*, on hardware.
+- **The two structural gaps still exist and are still unobserved.** `replayTo` returning silently on
+  no-call (`CallFeature.kt:120`) and `call-current` answering from the Mac's cache
+  (`main.ts:733` → `calls.ts:81-82`) were read in source and never depended on `c13`. They are
+  recorded in `docs/defects.md` under 47's withdrawal as a **known protocol asymmetry**, not a
+  defect, because no instance of either has been seen.
+
+## And the standing instruction about `c13` is discharged
+
+Three attributions were made for `c13` from timestamps and all three were withdrawn. The fourth
+answer came from an artefact that names the owning app, the state transitions and the duration.
+`c13` is closed as *explained*: an ordinary WhatsApp video call, behaving exactly as a self-managed
+call is documented to behave. Nothing about it needs deriving from a clock again.

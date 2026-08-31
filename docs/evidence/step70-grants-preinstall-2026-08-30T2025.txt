@@ -1,0 +1,27 @@
+# Pre-install snapshot taken 2026-08-30 20:25 IST, immediately before `adb install -r`.
+# Values, not just names — the 19:17 snapshot holds the 11 permission names and nothing else.
+
+## build installed before this install
+versionCode=1 minSdk=29 targetSdk=36
+lastUpdateTime=2026-08-29 10:01:54
+firstInstallTime=2026-08-24 18:33:34
+firstInstallTime=2026-08-24 18:33:34
+firstInstallTime=2026-08-24 18:33:34
+
+## runtime permissions (value per line)
+android.permission.ANSWER_PHONE_CALLS: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+android.permission.CALL_PHONE: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+android.permission.CAMERA: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+android.permission.NEARBY_WIFI_DEVICES: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+android.permission.POST_NOTIFICATIONS: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+android.permission.READ_CALL_LOG: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+android.permission.READ_CONTACTS: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+android.permission.READ_PHONE_STATE: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+android.permission.READ_SMS: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+android.permission.RECEIVE_SMS: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+android.permission.SEND_SMS: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]
+
+## secure settings
+enabled_notification_listeners=com.chetan.connectsuite.debug/com.chetan.connectsuite.sync.notifications.NotificationMirrorService:com.google.android.projection.gearhead/com.google.android.gearhead.notifications.SharedNotificationListenerManager$ListenerService:com.samsung.systemui.notilus/com.samsung.systemui.notilus.service.NotificationListener:com.sec.android.app.launcher/com.android.launcher3.notification.NotificationListener:com.samsung.android.smartmirroring/com.samsung.android.smartmirroring.controller.NotificationService
+enabled_accessibility_services=com.chetan.connectsuite.debug/com.chetan.connectsuite.input.ConnectSuiteInputService
+accessibility_enabled=1
