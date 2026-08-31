@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Debug-only. This source set is not merged into a release build, so neither probe here can ship.
-  Both are exported so `adb shell am start -n` can launch them; that is the whole reason they exist,
+  Debug-only. This source set is not merged into a release build, so no probe here can ship.
+  All are exported so `adb shell am start -n` can launch them; that is the whole reason they exist,
   and it is why they must not exist outside a debug build.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -20,6 +20,11 @@
             android:name="com.chetan.connectsuite.probe.MediaProbeActivity"
             android:exported="true"
             android:label="Media probe"
+            android:theme="@style/Theme.ConnectSuite" />
+        <activity
+            android:name="com.chetan.connectsuite.probe.FsProbeActivity"
+            android:exported="true"
+            android:label="Fs probe"
             android:theme="@style/Theme.ConnectSuite" />
     </application>
 </manifest>

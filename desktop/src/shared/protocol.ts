@@ -159,6 +159,21 @@ export const MessageType = {
    */
   MEDIA_ORIGINAL: 'media.original',
 
+  /**
+   * The file browser. `fs.list` with no `rootId` enumerates the roots — there is no `fs.roots`,
+   * because the inventory is fixed at twelve names and adding a thirteenth to answer a question the
+   * existing one already answers is how a namespace bloats.
+   */
+  FS_LIST: 'fs.list',
+  FS_STAT: 'fs.stat',
+  FS_MKDIR: 'fs.mkdir',
+  /**
+   * Compare-and-delete. `expectSize` and `expectMtimeMs` are **required**, and a mismatch refuses
+   * with `TARGET_STALE` — the phone holds the truth and re-checks it at the moment of acting.
+   */
+  FS_DELETE: 'fs.delete',
+  FS_TRANSFER_BEGIN: 'fs.transfer.begin',
+  FS_TRANSFER_CANCEL: 'fs.transfer.cancel',
   FS_TRANSFER_PROGRESS: 'fs.transfer.progress',
   FS_TRANSFER_DONE: 'fs.transfer.done',
 
@@ -213,6 +228,17 @@ export const ErrorCode = {
    * refresh.
    */
   TARGET_STALE: 'TARGET_STALE',
+
+  /**
+   * The root the Mac named is not one the phone has been granted.
+   *
+   * **Not PERMISSION_DENIED**, and the difference is what the pane draws: the feature works and
+   * other folders are readable, so this is an "add this folder on the phone" affordance rather than
+   * a dead pane.
+   */
+  ROOT_NOT_GRANTED: 'ROOT_NOT_GRANTED',
+  NO_SPACE: 'NO_SPACE',
+  CHECKSUM_MISMATCH: 'CHECKSUM_MISMATCH',
 } as const;
 
 export const Capability = {

@@ -10,6 +10,7 @@ import com.chetan.connectsuite.mirror.v2.MirrorEngine
 import com.chetan.connectsuite.mirror.v2.MirrorFeature
 import com.chetan.connectsuite.sync.v2.CallFeature
 import com.chetan.connectsuite.sync.v2.ContactsFeature
+import com.chetan.connectsuite.sync.v2.FsFeature
 import com.chetan.connectsuite.sync.v2.MediaFeature
 import com.chetan.connectsuite.sync.v2.NotificationFeature
 import com.chetan.connectsuite.sync.v2.RemoteFeature
@@ -67,6 +68,16 @@ class ConnectSuiteApp : Application() {
         // exist and can be exercised; a Mac asking for one gets an answer rather than
         // FEATURE_UNAVAILABLE from an unregistered type.
         MediaFeature.install(this, link)
+        // Phase 5, the transfer slice: four of `files`' six verbs. `fs.transfer.begin` and
+        // `fs.transfer.cancel` are not here yet, so installing this does **not** turn the
+        // capability on — CapabilityContract requires all six handlers and a served bulk channel.
+        // That is the same designed inconsistency `photos` sat in through slice 2, and the fix to
+        // avoid is the same one: do not loosen `containsAll` to a subset check.
+        //
+        // Installed anyway so the verbs exist and answer. A registered handler can say "this phone
+        // has not shared that folder, add it under Sync > Folders"; an unregistered one can only
+        // say "not implemented on this phone build".
+        FsFeature.install(this, link)
         // Last, because it reads NotificationRelay: the media remote is gated on the notification
         // listener rather than on a permission of its own. See RemoteFeature.
         RemoteFeature.install(this, link)

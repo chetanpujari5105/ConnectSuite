@@ -39,8 +39,8 @@ Mac actually attached. Do not grep the phone log for `Listening on`; it is writt
 `yiaddr = 10.108.253.92, router 10.108.253.63` — the correct one. Two reads of the same fact
 disagreeing, with the less obvious one right.
 
-Baselines, as of Phase 5 slice 4: phone **204** tests (`core` 77, `input-module` 44,
-`sync-module` 52, `mirror-module` 31), Mac **161** tests, `tsc --noEmit` clean. The figure this file
+Baselines, as of Phase 5 slice 6: phone **247** tests (`core` 77, `input-module` 44,
+`sync-module` 95, `mirror-module` 31), Mac **161** tests, `tsc --noEmit` clean. The figure this file
 carried at the close of Phase 4 — *189 (67 `sync-module` + 122 `core`)* — does not reconcile with the
 tree by either counting method and has been corrected rather than restated; see the note at the end
 of `docs/testing.md`. Run Gradle with `--rerun-tasks` when you intend a *run* — an
@@ -89,6 +89,99 @@ not implement an alternative without saying why the recorded reasoning is wrong.
 
 ---
 
+## Slice 6 — the Folders screen — **done on hardware, 2026-09-01**
+
+**A release build can grant a folder for the first time.** Until this slice the only route to a SAF
+tree was `SafProbeActivity`, which cannot ship — so `fs.list` served roots no shipping build could
+create. Proposed first (`docs/phase-5-files-onboarding-proposal.md` rev 2), then built. Evidence:
+`docs/testing.md` → **Slice 6**.
+
+All four states observed on the device, including one that had to be *produced*: a folder was
+created, granted, and deleted underneath its live grant to reach the *"This folder is gone from the
+phone"* row. A real grant was taken through the screen and read back from the platform, and it is
+provably new rather than yesterday's surviving — a different `UriPermission` object id and a
+`persistedCreate` matching our own log line to the millisecond.
+
+Three things worth carrying forward:
+
+1. **A refusal and a cancellation are the same `null`.** Android disables `USE THIS FOLDER` inside
+   its own picker rather than returning an error, so nothing may be explained *after* a pick. The
+   `Download` wall is permanent copy in every state because there is no afterwards to put it in.
+   Now a rule in `CLAUDE.md`, and enforced — `pickMessage` returns `null`, shown to fail red.
+2. **The phone has four states and none is a failure; the Mac gets six.** Reading
+   `persistedUriPermissions` is in-process and cannot fail, so a "couldn't load" card here would be
+   unreachable and indistinguishable from a bug in the empty state. Also a rule now, enforced by an
+   exhaustive `when` plus a source scan for the case the compiler misses.
+3. **`dumpsys activity permissions` lists released grants** with `persisted=0x0` until the owning
+   process lets go. Counting `documents/tree` rows says a removal did nothing. The discriminator is
+   `persisted=`, not the row's presence.
+
+**Not built, deliberately:** the Mac's Files pane, quick-pick chips (they would claim a destination
+the picker does not honour while `EXTRA_INITIAL_URI` is unset), and push.
+
+### Next, in order
+
+1. ~~**The Folders screen**~~ — **done, slice 6, 2026-09-01.** See below.
+2. **The Mac's Files pane**, unblocked twice over — the wire was proven in slice 5 and a shipping
+   build can now create the roots it opens on. The six states, the four-way empty/failed
+   distinction, and the F1–F7 departures from the canvas are all specified in
+   `docs/phase-5-files-onboarding-proposal.md` §3.3, §3.4 and §6.2. **It must not draw an upload
+   affordance** while push answers `FEATURE_UNAVAILABLE`.
+3. **Push**, which is the phone as receiver: `.part`/`.failed` in a SAF tree, the `MediaStore`
+   pending item for `Download/ConnectSuite`, and the Room row that is authoritative for resume. It
+   also owes the reading §4 of the payload proposal still lists as unproven — **whether a pending
+   `MediaStore` item can be resumed across process death** — and the `EXTRA_INITIAL_URI` reading in
+   §8.3 of the onboarding proposal, which needs `Download/ConnectSuite` to exist and so is naturally
+   this sitting's.
+
+### Before Phase 6, and read-only: the single-device audit
+
+**Every hardware reading in this repo came from one handset — SM-S938B, Android 16, One UI.** The
+record does not currently distinguish *platform* behaviour from *vendor* behaviour anywhere, and
+this app is meant to run on every Android phone. A separate sitting, changing no code, goes through
+the findings and marks each **AOSP** (holds anywhere), **Samsung/One UI** (vendor), or — the answer
+that must be available and used — **unknown, single-device**. Guessing is the failure mode here;
+"unknown" is a correct answer and a confident wrong label is not.
+
+The ones that most need it, named so the sitting starts somewhere: the **SAF picker refusals** (the
+storage root and `Download`, and whether the refusal is DocumentsUI-generic or One UI's), the
+**call log** and `SamsungCallLog.Loggable okayToLog`, **DUAL_APP** users, **process management** and
+what survives a background kill, and **defect 55's timings**, which are one provider's
+implementation on one device.
+
+## Slice 5 — `fs.*`, the phone side — **done on hardware, 2026-09-01**
+
+**All six `files` verbs answer, and the capability is advertised for the first time.** Built in the
+order the brief set: read paths (`fs.list` roots, `fs.list` in a tree, `fs.stat`, `fs.mkdir`), then
+`fs.delete`, then `fs.transfer.begin`. Evidence: `docs/testing.md` → **Slice 5**; the contract is now
+in `docs/protocol.md` under **Files**.
+
+Three things worth carrying forward more than the rest:
+
+1. **`verified: true` happened for the first time in this project.** `fs.transfer.begin` pre-hashes
+   below a 64 MB ceiling, so a digest is agreed before a byte moves. Three independently computed
+   digests agreed on a clean pull; then one byte was flipped in flight, deliberately, and the
+   `CHECKSUM_MISMATCH` branch ran for the first time on both ends — partial deleted, `.failed`
+   sidecar written, nothing at the final name.
+2. **Defect 55: the pager was correct and took eight minutes.** 33 pages, 16,377 entries, every id
+   distinct, sums reached — and 490 seconds, because `limit` bounds the frame and never the work.
+   Fixed with a per-directory snapshot (490 s → 21 s). **A green pager needs a clock beside it**;
+   none of the three preconditions in `CLAUDE.md` would have caught this.
+3. **A test of mine was not evidence, and a mutation run said so.** Deleting the id tiebreak left the
+   obvious tie-group paging test green — stable sort, positional cursor. The test that can see it
+   shuffles the listing between pages, which is the real condition: every page is a fresh provider
+   query and the row order is not ours.
+
+### What slice 5 did **not** do, and none of it is a surprise
+
+| | State |
+|---|---|
+| **Push** — `direction: "push"` | Answers `FEATURE_UNAVAILABLE` with a sentence. `files` is advertised anyway, on the argument that all six *verbs* answer and one direction degrades per locked decision 6. **The Mac's Files pane must not draw an upload affordance until this lands.** If that reads as too generous, the fix is a contract knob, not a loosened `containsAll` |
+| **The Mac's Files pane** | Deliberately not built. The phone side is now proven, so it is unblocked |
+| **The Folders screen on the phone** | **Built in slice 6, 2026-09-01.** All four states observed on hardware and a real folder granted through it on a release-shaped path. `docs/testing.md` → Slice 6 |
+| **The id tiebreak on real data** | `tieBoundaries: 0` over 16,377 real entries. Exercised only by the shuffle unit test, and said so rather than implied |
+| **Resume on an `fs.*` pull** | The path is shared with `media.original` and was proven there in slice 4. Nothing has sent a non-zero offset for an `fs.*` transfer specifically |
+
 ## Slice 4 — resume, built digest-first — **done and exercised on hardware, 2026-09-01**
 
 **Resume works and has been observed.** A 52 MB video interrupted at 26,476,544 bytes: the `.part`
@@ -108,10 +201,11 @@ awaiting the flush. The guard turning a corruption into a slow success is the tr
 
 ### Still open in the transfer path
 
-1. **The checksum-mismatch branch has never run.** `media.original` acks `sha256: null`, so nothing
-   is compared. The `.failed` sidecar's text is tested; the branch that writes it needs
-   `fs.transfer.begin`, which is the first thing to agree a digest in advance.
-2. **Push.** The receiver built here is the Mac's. The phone's receiver is `fs.*`.
+1. ~~**The checksum-mismatch branch has never run.**~~ **It ran on 2026-09-01**, in slice 5, on a
+   deliberately flipped byte with `fs.transfer.begin`'s pre-hashed digest. `docs/testing.md` →
+   Slice 5 §7.
+2. **Push.** The receiver built here is the Mac's. The phone's receiver is still not built —
+   `fs.transfer.begin` refuses `direction: "push"` with `FEATURE_UNAVAILABLE`.
 3. **Whether a pending `MediaStore` item can be resumed across process death** — still unproven, still
    load-bearing for the default push destination.
 4. **The frame-cap refusal path stays unit-test-only.** Looked for in this slice and not taken: the

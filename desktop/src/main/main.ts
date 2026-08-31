@@ -859,6 +859,353 @@ if (!app.isPackaged) {
       destination,
     };
   });
+
+  /**
+   * The `fs.*` probe — **debug builds only**, and it drives the product's own client throughout.
+   *
+   * Every request below goes through `link.request`, which is the same call `photos.ts` and every
+   * other feature client makes. Nothing here opens its own socket or speaks the protocol itself:
+   * that would be a second client, differing from the shipping one somewhere, verifying a mechanism
+   * the product does not use — defect 50's rule, and the reason `SafProbeActivity` had to exist on
+   * the phone side rather than an `adb shell am start`.
+   *
+   * ### It reports every bound it imposes
+   *
+   * `pageCap` and `stopped` are in the result because a run that hit a cap has proven the pager
+   * advances and has proven **nothing** about the total. A probe that ended its own run and then
+   * reported the ending as the finding is the seventh row of the control table in `CLAUDE.md`, and
+   * it cost a wrong conclusion about `media.list` on 2026-08-31.
+   *
+   * `tieBoundaries` is the other half of the same honesty: pages that sum and never repeat do not
+   * prove the *tiebreaker* ran. Without that count, a green pager is not evidence for the clause
+   * most likely to be deleted as redundant later.
+   */
+  ipcMain.handle('debug-fs-probe', async (_event, options: {
+    rootId?: string;
+    path?: string;
+    limit?: number;
+    pageCap?: number;
+  } = {}) => {
+    if (!link?.isConnected()) return { ok: false, reason: 'not connected' };
+    const client = link;
+    const ask = async (type: string, payload: Record<string, unknown>) => {
+      try {
+        const reply = await client.request(type, payload, 30_000);
+        return { ok: true as const, payload: (reply.payload ?? {}) as Record<string, unknown> };
+      } catch (error) {
+        return { ok: false as const, reason: error instanceof Error ? error.message : String(error) };
+      }
+    };
+
+    // 1. The discovery call. No rootId at all.
+    const roots = await ask(MessageType.FS_LIST, {});
+    if (!roots.ok) return { ok: false, stage: 'roots', reason: roots.reason };
+
+    const rootId = options.rootId
+      ?? (roots.payload.roots as Array<Record<string, unknown>> | undefined)
+        ?.find((r) => r.kind === 'tree')?.rootId as string | undefined;
+    if (!rootId) return { ok: true, roots: roots.payload, note: 'no tree root to page' };
+
+    // 2. Page the directory to exhaustion, counting everything that makes the count mean something.
+    const limit = options.limit ?? 200;
+    const pageCap = options.pageCap ?? 500;
+    const seen: string[] = [];
+    const names = new Map<string, number>();
+    let pages = 0;
+    let tieBoundaries = 0;
+    let hasMore = true;
+    let afterName: string | undefined;
+    let afterId: string | undefined;
+    let stopped = 'exhausted';
+    let firstPageMs = 0;
+    const startedAt = Date.now();
+
+    while (hasMore) {
+      const at = Date.now();
+      const page = await ask(MessageType.FS_LIST, {
+        rootId,
+        path: options.path ?? '',
+        limit,
+        ...(afterName !== undefined ? { afterName, afterId } : {}),
+      });
+      if (!page.ok) return { ok: false, stage: `page ${pages + 1}`, reason: page.reason, seen: seen.length };
+      if (pages === 0) firstPageMs = Date.now() - at;
+      pages += 1;
+      const entries = (page.payload.entries ?? []) as Array<Record<string, unknown>>;
+      entries.forEach((e) => {
+        seen.push(String(e.id));
+        names.set(String(e.name), (names.get(String(e.name)) ?? 0) + 1);
+      });
+      hasMore = page.payload.hasMore === true;
+      if (entries.length > 0) {
+        const last = entries[entries.length - 1]!;
+        // A boundary lands inside a tie group when the entry it cuts after shares a display name
+        // with another entry — exactly when a name-only cursor could not advance.
+        if (hasMore && (names.get(String(last.name)) ?? 0) > 1) tieBoundaries += 1;
+        afterName = String(last.name);
+        afterId = String(last.id);
+      }
+      if (pages >= pageCap && hasMore) {
+        stopped = 'page cap';
+        break;
+      }
+    }
+
+    const distinct = new Set(seen).size;
+    const duplicateNameGroups = [...names.values()].filter((n) => n > 1).length;
+
+    // 3. Stat the first thing the listing gave us, by the id it gave us.
+    const firstId = seen[0];
+    const stat = firstId ? await ask(MessageType.FS_STAT, { rootId, id: firstId }) : null;
+
+    // 4. A path that tries to escape the root. It must be refused, not normalised.
+    const traversal = await ask(MessageType.FS_LIST, { rootId, path: 'Camera/../../..' });
+
+    // 5. A root the phone has not been granted.
+    const ungranted = await ask(MessageType.FS_LIST, { rootId: 'saf:primary%3ANotGranted' });
+
+    return {
+      ok: true,
+      roots: roots.payload,
+      rootId,
+      pager: {
+        pages,
+        // Every bound this instrument imposes, in what it reports.
+        limit,
+        pageCap,
+        stopped,
+        seen: seen.length,
+        distinct,
+        allDistinct: distinct === seen.length,
+        // A run that hit the cap has proven the pager advances and nothing about the sum.
+        sums: stopped === 'exhausted' ? 'tested' : 'not tested — capped',
+        duplicateNameGroups,
+        tieBoundaries,
+        tiebreakExercised: tieBoundaries > 0,
+        elapsedMs: Date.now() - startedAt,
+        firstPageMs,
+      },
+      stat: stat?.ok ? stat.payload : stat,
+      traversalRefused: !traversal.ok ? traversal.reason : 'ACCEPTED — this is a defect',
+      ungrantedRefused: !ungranted.ok ? ungranted.reason : 'ACCEPTED — this is a defect',
+    };
+  });
+
+  /**
+   * The compare-and-delete guard, exercised on hardware with both halves.
+   *
+   * **A refusal on its own is not evidence.** A guard that refuses everything looks identical to a
+   * guard that works, so this run takes the matching pair too and confirms the file is then gone —
+   * a known positive beside the negative, which is the control rule in its smallest form.
+   */
+  /**
+   * One `fs.*` pull, end to end, with a digest agreed in advance. **Debug builds only.**
+   *
+   * This is the first transfer in the project where `expectedSha256` is not null, so it is the first
+   * one where `verified: true` means anything and the first where `CHECKSUM_MISMATCH` can be reached
+   * at all. Run it once clean and once with `FsProbeActivity` armed; the second run must leave a
+   * `.failed` sidecar and **no** `.part`.
+   *
+   * Everything it drives is the product's: `link.request` for the ticket, `BulkClient.pull` for the
+   * bytes, and the same `TransferDigest` the receiver uses. The corruption is injected on the phone,
+   * inside the shipping sender, for the reason defect 50 left behind — a tool that speaks the
+   * protocol itself is a second client, and the difference between it and the product is where this
+   * class of bug lives.
+   */
+  ipcMain.handle('debug-fs-pull-probe', async (_event, options: {
+    rootId: string;
+    path?: string;
+    name: string;
+  }) => {
+    if (!link?.isConnected() || !bulk) return { ok: false, reason: 'not connected' };
+    const host = link.status().address;
+    const token = link.token();
+    if (!host || !token) return { ok: false, reason: 'no live session' };
+
+    const listing = await link.request(
+      MessageType.FS_LIST,
+      { rootId: options.rootId, path: options.path ?? '', limit: 500 },
+      30_000,
+    );
+    const entries = ((listing.payload ?? {}).entries ?? []) as Array<Record<string, unknown>>;
+    const target = entries.find((e) => e.name === options.name);
+    if (!target) return { ok: false, reason: `no entry named ${options.name}` };
+
+    let ticket;
+    try {
+      ticket = await link.request(
+        MessageType.FS_TRANSFER_BEGIN,
+        { direction: 'pull', rootId: options.rootId, id: target.id },
+        60_000,
+      );
+    } catch (error) {
+      return { ok: false, stage: 'begin', reason: error instanceof Error ? error.message : String(error) };
+    }
+    const agreed = (ticket.payload ?? {}) as Record<string, unknown>;
+    const destination = join(tmpdir(), `connectsuite-fs-${Date.now()}-${options.name}`);
+
+    const result = await bulk.pull({
+      host,
+      token,
+      transferId: String(agreed.transferId ?? ''),
+      destination,
+      expectedBytes: Number(agreed.size ?? 0),
+      // The whole point of this probe: a digest agreed **before** a byte moved.
+      expectedSha256: (agreed.sha256 as string | null) ?? null,
+    });
+
+    // Computed independently of the transfer, so "the digests agree" is not the receiver agreeing
+    // with itself.
+    const onDisk = await fsp
+      .readFile(destination)
+      .then((buffer) => createHash('sha256').update(buffer).digest('hex'))
+      .catch(() => null);
+    const partBytes = await fsp.stat(partPathFor(destination)).then((s) => s.size).catch(() => null);
+    const failed = await fsp.readFile(`${destination}.failed`, 'utf8').catch(() => null);
+
+    return {
+      ok: true,
+      agreed: {
+        transferId: agreed.transferId,
+        size: agreed.size,
+        sha256: agreed.sha256,
+        offset: agreed.offset,
+        chunkMax: agreed.chunkMax,
+        preHashed: agreed.sha256 !== null && agreed.sha256 !== undefined,
+      },
+      transfer: {
+        ok: result.ok,
+        bytes: result.bytes,
+        verified: result.verified,
+        sha256: result.sha256,
+        reason: result.reason,
+      },
+      onDisk: { wholeFileDigest: onDisk, matchesAgreed: onDisk !== null && onDisk === agreed.sha256 },
+      leftBehind: {
+        partBytes,
+        partDeleted: partBytes === null,
+        failedSidecar: failed,
+        sidecarWritten: failed !== null,
+      },
+      destination,
+    };
+  });
+
+  /**
+   * `fs.transfer.cancel` on a transfer that was agreed and never claimed. **Debug builds only.**
+   *
+   * The interesting half is what happens *after*: a bulk socket presenting the cancelled id must be
+   * refused. A cancel that answers `stopped: true` and leaves the transfer claimable is a cancel
+   * that reported success for something it did not do — and nothing in the ack could tell the
+   * difference, which is why the refusal is the assertion rather than the ack.
+   */
+  ipcMain.handle('debug-fs-cancel-probe', async (_event, options: {
+    rootId: string;
+    path?: string;
+    name: string;
+  }) => {
+    if (!link?.isConnected() || !bulk) return { ok: false, reason: 'not connected' };
+    const host = link.status().address;
+    const token = link.token();
+    if (!host || !token) return { ok: false, reason: 'no live session' };
+
+    const listing = await link.request(
+      MessageType.FS_LIST, { rootId: options.rootId, path: options.path ?? '', limit: 500 }, 30_000,
+    );
+    const entries = ((listing.payload ?? {}).entries ?? []) as Array<Record<string, unknown>>;
+    const target = entries.find((e) => e.name === options.name);
+    if (!target) return { ok: false, reason: `no entry named ${options.name}` };
+
+    const ticket = await link.request(
+      MessageType.FS_TRANSFER_BEGIN,
+      { direction: 'pull', rootId: options.rootId, id: target.id },
+      60_000,
+    );
+    const agreed = (ticket.payload ?? {}) as Record<string, unknown>;
+    const transferId = String(agreed.transferId ?? '');
+
+    const cancel = await link.request(
+      MessageType.FS_TRANSFER_CANCEL, { transferId, reason: 'user' }, 20_000,
+    );
+
+    // The assertion. The id was agreed and then withdrawn; a socket claiming it must get nothing.
+    const destination = join(tmpdir(), `connectsuite-cancelled-${Date.now()}.bin`);
+    const afterwards = await bulk.pull({
+      host, token, transferId, destination,
+      expectedBytes: Number(agreed.size ?? 0),
+      expectedSha256: (agreed.sha256 as string | null) ?? null,
+    });
+    const landed = await fsp.stat(destination).then((s) => s.size).catch(() => null);
+
+    return {
+      ok: true,
+      transferId,
+      cancelAck: cancel.payload,
+      claimAfterCancel: { ok: afterwards.ok, bytes: afterwards.bytes, reason: afterwards.reason },
+      refusedAfterCancel: afterwards.ok !== true,
+      nothingLanded: landed === null || landed === 0,
+    };
+  });
+
+  ipcMain.handle('debug-fs-delete-probe', async (_event, options: {
+    rootId: string;
+    path?: string;
+    name: string;
+  }) => {
+    if (!link?.isConnected()) return { ok: false, reason: 'not connected' };
+    const client = link;
+    const ask = async (type: string, payload: Record<string, unknown>) => {
+      try {
+        const reply = await client.request(type, payload, 20_000);
+        return { ok: true as const, payload: (reply.payload ?? {}) as Record<string, unknown> };
+      } catch (error) {
+        return { ok: false as const, reason: error instanceof Error ? error.message : String(error) };
+      }
+    };
+    const findTarget = async () => {
+      const page = await ask(MessageType.FS_LIST, { rootId: options.rootId, path: options.path ?? '', limit: 500 });
+      if (!page.ok) return null;
+      const entries = (page.payload.entries ?? []) as Array<Record<string, unknown>>;
+      return entries.find((e) => e.name === options.name) ?? null;
+    };
+
+    const before = await findTarget();
+    if (!before) return { ok: false, reason: `no entry named ${options.name} to delete` };
+
+    const size = Number(before.size);
+    const mtimeMs = Number(before.mtimeMs);
+
+    // The negative: one fact deliberately wrong. Nothing may be deleted.
+    const wrongSize = await ask(MessageType.FS_DELETE, {
+      rootId: options.rootId, id: before.id, expectSize: size + 1, expectMtimeMs: mtimeMs,
+    });
+    // And the other fact wrong on its own, because a guard checking only the size cannot see a file
+    // rewritten to the same length — which is the case worth having two facts for.
+    const wrongMtime = await ask(MessageType.FS_DELETE, {
+      rootId: options.rootId, id: before.id, expectSize: size, expectMtimeMs: mtimeMs - 1000,
+    });
+    // Missing entirely: there is no unconditional delete to fall back to.
+    const noExpectation = await ask(MessageType.FS_DELETE, { rootId: options.rootId, id: before.id });
+
+    const stillThere = await findTarget();
+
+    // The known positive. Both facts as the listing gave them.
+    const matched = await ask(MessageType.FS_DELETE, {
+      rootId: options.rootId, id: before.id, expectSize: size, expectMtimeMs: mtimeMs,
+    });
+    const afterwards = await findTarget();
+
+    return {
+      ok: true,
+      target: { name: before.name, id: before.id, size, mtimeMs },
+      refusedWrongSize: wrongSize.ok ? 'DELETED — this is a defect' : wrongSize.reason,
+      refusedWrongMtime: wrongMtime.ok ? 'DELETED — this is a defect' : wrongMtime.reason,
+      refusedNoExpectation: noExpectation.ok ? 'DELETED — this is a defect' : noExpectation.reason,
+      survivedAllThreeRefusals: stillThere !== null,
+      matchedPair: matched.ok ? matched.payload : matched,
+      goneAfterwards: afterwards === null,
+    };
+  });
 }
 
 ipcMain.handle('call-current', () => calls.currentCall());

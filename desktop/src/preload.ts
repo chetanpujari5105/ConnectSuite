@@ -189,6 +189,22 @@ contextBridge.exposeInMainWorld('connect', {
   /** Debug builds only: exercises resume end to end. Absent from a packaged build's handlers. */
   debugResumeProbe: (options: { id: string }): Promise<unknown> =>
     ipcRenderer.invoke('debug-resume-probe', options),
+  /** Debug builds only: drives `fs.list`, `fs.stat` and the traversal refusals over the real link. */
+  debugFsProbe: (
+    options: { rootId?: string; path?: string; limit?: number; pageCap?: number } = {},
+  ): Promise<unknown> => ipcRenderer.invoke('debug-fs-probe', options),
+  /** Debug builds only: one fs pull with a digest agreed in advance, and what it left on disk. */
+  debugFsPullProbe: (
+    options: { rootId: string; path?: string; name: string },
+  ): Promise<unknown> => ipcRenderer.invoke('debug-fs-pull-probe', options),
+  /** Debug builds only: cancel an agreed transfer and prove the id can no longer be claimed. */
+  debugFsCancelProbe: (
+    options: { rootId: string; path?: string; name: string },
+  ): Promise<unknown> => ipcRenderer.invoke('debug-fs-cancel-probe', options),
+  /** Debug builds only: the compare-and-delete guard, both halves. */
+  debugFsDeleteProbe: (
+    options: { rootId: string; path?: string; name: string },
+  ): Promise<unknown> => ipcRenderer.invoke('debug-fs-delete-probe', options),
 
   /** Pulls one photo at full size over the bulk channel and answers with where it landed. */
   mediaOriginal: (

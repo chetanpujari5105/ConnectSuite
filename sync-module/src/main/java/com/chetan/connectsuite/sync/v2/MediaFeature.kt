@@ -71,7 +71,7 @@ object MediaFeature {
         // `media.original` hands back a transferId that is worthless without it. Assigning the sink
         // and registering the fourth verb in the same install is what makes the chip and the
         // feature arrive together.
-        link.bulkChannelSink = { channel -> BulkTransfers.serve(app, channel) }
+        link.bulkChannelSink = { channel -> BulkTransfers.serve(channel) }
         val previousSessionEnded = link.sessionEndedSink
         link.sessionEndedSink = { session ->
             previousSessionEnded?.invoke(session)

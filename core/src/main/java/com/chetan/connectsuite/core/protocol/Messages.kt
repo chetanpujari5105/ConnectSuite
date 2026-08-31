@@ -263,6 +263,35 @@ object ErrorCode {
      * Retryable after a refresh, like GEOMETRY_STALE — the Mac has been told the new state.
      */
     const val TARGET_STALE = "TARGET_STALE"
+
+    // ---- Phase 5, files -------------------------------------------------------------------------
+
+    /**
+     * The root the Mac named is not one this phone has been granted.
+     *
+     * **Not [PERMISSION_DENIED]**, and the difference is what the Mac draws. `PERMISSION_DENIED`
+     * greys out the pane, which is right when a capability has no grant at all and wrong here: the
+     * feature works, the user has added two folders, and the Mac asked about a third. The response
+     * is an "add this folder on the phone" affordance, not a dead pane.
+     */
+    const val ROOT_NOT_GRANTED = "ROOT_NOT_GRANTED"
+
+    /**
+     * The receiving side has no room for the file.
+     *
+     * Its own code rather than [TRANSFER_FAILED] because retrying fixes a TRANSFER_FAILED and
+     * cannot fix this one. Only the user can, and they need to be told *which side* is full.
+     */
+    const val NO_SPACE = "NO_SPACE"
+
+    /**
+     * The bytes moved and were wrong. The partial has been deleted; a retry starts from zero.
+     *
+     * Also not [TRANSFER_FAILED], for the opposite reason to [NO_SPACE]: retrying *is* worth it, and
+     * it says something a generic failure does not — bytes arrived and were corrupt, which is a
+     * different fault from bytes that never arrived.
+     */
+    const val CHECKSUM_MISMATCH = "CHECKSUM_MISMATCH"
 }
 
 /**

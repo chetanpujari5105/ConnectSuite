@@ -68,6 +68,7 @@ own heading there, and its own row here.
 | **52** | One `dropped` counter for three different things in `VideoChannel`, and the third never reaches it | **open — fix on next touch of the mirror**, not deferred | source sweep, 2026-08-31 — the counter shape 51 asked to be swept for | see below |
 | **53** | Two of the Mac's four call refusals move the counter without leaving a line | **open** | source sweep, 2026-08-31 | see below |
 | **54** | `photos` would have been advertised with nothing serving the bulk channel its own `media.original` runs on | **closed** | red first, 2026-08-31, before any `media.*` code existed — `CapabilityPermissionTest` | `docs/testing.md` |
+| **55** | `fs.list` re-read and re-sorted the whole directory on every page — correct, and 490 seconds for one folder. **Read the rule, not the fix**: every check this project had ever asked of a pager passed while `limit` bounded the frame and never the work, so *a green pager needs a clock beside it* is now a rule in `CLAUDE.md` and outlives this row | **closed** | on hardware 2026-09-01, in the slice that introduced it; found by paging to exhaustion, not by a first page | `docs/testing.md`; the rule is in `CLAUDE.md` |
 
 ---
 

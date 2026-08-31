@@ -2,7 +2,8 @@
 
 Written 2026-08-31, immediately after Phase 5's first slice (Bug 6's frame caps) landed.
 
-**Nothing here is committed to `docs/protocol.md`, and nothing here is implemented.** The protocol is
+**When this was written, nothing here was committed to `docs/protocol.md` and nothing was
+implemented. Both have since changed — see the box below before reading on.** The protocol is
 the contract; this is the argument for extending it, kept separate so it can be read, disagreed with
 and reverted on its own — the same arrangement as `docs/phase-5-proposals.md`, which decided the
 caps, the `beforeId` cursor, and what survives from v1's `TransferManager`. This document answers
@@ -13,6 +14,33 @@ shape, no error table.
 It also answers open question **2** from `docs/RESUME.md` (what happens to a running transfer when
 the control session dies) and open question **4** (the doc contradicts itself on chunk size),
 because both are decisions this specification cannot avoid taking.
+
+---
+
+> ## Read this first — the contract has moved
+>
+> **Written 2026-08-31 as an argument, before anything was built. `fs.*` and `media.*` are now
+> implemented, and the contract lives in `docs/protocol.md` (Files, Photos).** Read this file for the
+> *reasoning* — the platform wall, the rejected alternatives, why each error code exists. Where this
+> file and `docs/protocol.md` disagree, **`docs/protocol.md` wins**, because it is the contract and
+> this was the case for it.
+>
+> **Two deviations are recorded rather than silently taken:**
+>
+> 1. **The delete refusal ships as `TARGET_STALE`, not `STALE_TARGET`.** Every `STALE_TARGET` below —
+>    §3, §4, §7 — should be read as `TARGET_STALE`. `ErrorCode.TARGET_STALE` has existed since Phase 4
+>    with this meaning word for word, and shipping both would put two codes whose names are anagrams,
+>    and whose meanings are identical, into one protocol: a Mac switching on one would silently miss
+>    the other and nothing would ever fail loudly. That is the same shape as every lookalike
+>    `CLAUDE.md` records. The protocol's bar for a new code is *the Mac reacts differently*, and here
+>    it does not. **The spec was corrected; the code was not.** The note under `fs.delete` in
+>    `docs/protocol.md` carries the same argument.
+> 2. **`push` is not served.** `direction: "push"` answers `FEATURE_UNAVAILABLE` with a sentence.
+>    `files` is advertised anyway — all six verbs answer and one direction degrades, per locked
+>    decision 6 — so **a Files pane must not draw an upload affordance against this build.** That
+>    sentence is in `docs/protocol.md` and in `docs/RESUME.md`'s slice 5 table, deliberately in both.
+
+---
 
 Twelve types, in five groups:
 

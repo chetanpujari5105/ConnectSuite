@@ -60,14 +60,38 @@ object BulkTransfers {
      */
     data class Pending(
         val transferId: String,
-        val uri: Uri,
         val name: String,
         val mime: String,
         val size: Long,
         val sessionId: String,
+        /**
+         * The digest agreed **in advance**, or null when the sender chose not to pre-hash.
+         *
+         * A null here is not a missing feature: `fs.transfer.done` reports `verified: false` and
+         * says plainly that nothing compared the bytes against a digest agreed beforehand. That is
+         * the honest answer, and it is a separate field from `ok` precisely so a success nobody
+         * checked cannot look like a success that was.
+         */
+        val sha256: String?,
+        /**
+         * Opens the source. A supplier rather than a `Uri` because `fs.*` reads through an
+         * [FsStore] — a SAF document or an app-private file — and `media.original` reads through
+         * `MediaStore`. One streaming path, two ways of naming a source.
+         */
+        val open: () -> InputStream?,
     )
 
     private val pending = ConcurrentHashMap<String, Pending>()
+
+    /**
+     * Transfers a `fs.transfer.cancel` has asked to stop, checked once per chunk.
+     *
+     * Cancelling **keeps** the partial, with its record — the opposite policy from a checksum
+     * mismatch, and the difference is the whole point: an interrupted partial is a resumable
+     * artifact, a checksum-failed partial is corrupt. Two states that both look like half a file on
+     * disk and want opposite treatment.
+     */
+    private val cancelled = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
     private val counter = AtomicLong(0)
 
     private val completed = AtomicLong(0)
@@ -106,8 +130,18 @@ object BulkTransfers {
             )
         } ?: return null
 
-        val transferId = "t-${counter.incrementAndGet()}-${System.currentTimeMillis() % 100000}"
-        val entry = Pending(transferId, uri, row.first, row.second, row.third, sessionId)
+        val transferId = nextId()
+        val entry = Pending(
+            transferId = transferId,
+            name = row.first,
+            mime = row.second,
+            size = row.third,
+            sessionId = sessionId,
+            // Deliberately null. Hashing before sending reads the file twice, and a 4 GB video
+            // would stall this ack for the length of a full read with no progress to report.
+            sha256 = null,
+            open = { context.contentResolver.openInputStream(uri) },
+        )
         pending[transferId] = entry
         LinkLog.i(
             "bulk",
@@ -115,6 +149,147 @@ object BulkTransfers {
                 "${pending.size} pending",
         )
         return entry
+    }
+
+    private fun nextId(): String =
+        "t-${counter.incrementAndGet()}-${System.currentTimeMillis() % 100000}"
+
+    /**
+     * The largest file this will digest before answering `fs.transfer.begin`.
+     *
+     * Pre-hashing is what makes `verified: true` possible at all — without a digest agreed in
+     * advance there is nothing for the receiver to compare against, and every transfer in this
+     * project so far has reported `verified: false` for exactly that reason. It is bounded because
+     * the hash happens **inside the ack**, on the control channel, with nothing able to report
+     * progress: a 4 GB video would hold that channel for the length of a full read, which is the
+     * argument `media.original` still stands on.
+     *
+     * 64 MB at the ~250 MB/s this handset reads at is a few hundred milliseconds. Above it the ack
+     * carries `sha256: null` and says so, which is the same honest answer `media.original` gives —
+     * and the log line beside it carries the size and the elapsed time, so the threshold can be
+     * moved on evidence rather than on taste.
+     */
+    private const val PREHASH_MAX_BYTES = 64L * 1024 * 1024
+
+    /**
+     * Registers an `fs.transfer.begin` pull, pre-hashing where the file is small enough.
+     *
+     * The digest is computed **here**, before the ack, over the whole file — never over the part
+     * that will be sent. On a resume the sender seeks to `offset` to send from while its digest
+     * still covers everything from byte 0, which is the mirror image of the receiver's obligation
+     * and the failure the payload spec spends its longest section on.
+     */
+    fun registerFsPull(
+        store: FsStore,
+        entry: FsPaths.Entry,
+        sessionId: String,
+    ): Pending? {
+        if (entry.dir) return null
+        val sha = prehash(store, entry)
+        val transferId = nextId()
+        val pendingEntry = Pending(
+            transferId = transferId,
+            name = entry.name,
+            mime = entry.mime,
+            size = entry.size,
+            sessionId = sessionId,
+            sha256 = sha,
+            open = { store.openStream(entry.id) },
+        )
+        pending[transferId] = pendingEntry
+        LinkLog.i(
+            "bulk",
+            "fs.transfer.begin registered $transferId → ${entry.name}, ${entry.size} bytes, " +
+                "sha256=${sha?.take(12)?.plus("…") ?: "null (not pre-hashed)"}; ${pending.size} pending",
+        )
+        return pendingEntry
+    }
+
+    /**
+     * The whole-file digest, or null when the file is too big to hash inside an ack.
+     *
+     * Both outcomes are logged at the same volume with the size and the elapsed time beside them,
+     * per the counter rule: "12 unhashed" with no hashed count and no denominator of bytes reads as
+     * whichever story the reader already believes.
+     */
+    private fun prehash(store: FsStore, entry: FsPaths.Entry): String? {
+        if (entry.size > PREHASH_MAX_BYTES) {
+            LinkLog.i(
+                "bulk",
+                "not pre-hashing ${entry.name}: ${entry.size} bytes is over the ${PREHASH_MAX_BYTES} " +
+                    "byte ceiling, so the ack carries sha256=null and the transfer will report " +
+                    "verified=false",
+            )
+            return null
+        }
+        val startedAt = System.currentTimeMillis()
+        val digest = MessageDigest.getInstance("SHA-256")
+        val read = runCatching {
+            store.openStream(entry.id)?.use { input ->
+                val buffer = ByteArray(CHUNK)
+                var total = 0L
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n <= 0) break
+                    digest.update(buffer, 0, n)
+                    total += n
+                }
+                total
+            }
+        }.getOrElse {
+            LinkLog.w("bulk", "pre-hash of ${entry.name} failed; the ack will carry sha256=null", it)
+            null
+        } ?: return null
+
+        val sha = digest.digest().joinToString("") { "%02x".format(it) }
+        val elapsed = System.currentTimeMillis() - startedAt
+        LinkLog.i(
+            "bulk",
+            "pre-hashed ${entry.name}: $read bytes in ${elapsed}ms (${rateOf(read, elapsed)}), " +
+                "sha256=${sha.take(12)}… — this is what makes verified=true possible",
+        )
+        return sha
+    }
+
+    /**
+     * Flips one byte of the outgoing stream at this absolute offset. **A probe hook, ships disarmed.**
+     *
+     * The checksum-mismatch branch has never run in this project — `media.original` acks
+     * `sha256: null`, so nothing was ever compared — and it cannot be run without corruption that
+     * the digest does **not** see. So the byte is flipped *after* the digest has taken the true
+     * bytes, which is exactly what a corrupt link does: the sender's digest is right, the receiver's
+     * is not, and the disagreement is the finding.
+     *
+     * It is here rather than in a standalone tool for the reason `BulkClient.interruptAfterBytes` is
+     * in `bulk.ts`: a second client speaking the protocol itself would differ from the shipping one
+     * somewhere, and that difference is where this class of bug lives. **The stimulus is injected;
+     * the mechanism under test stays the product's.**
+     *
+     * Nothing in `src/main` assigns it. `app/src/debug/…/FsProbeActivity` is the only writer, AGP
+     * merges that source set into debug variants only, and every arming writes an `E` line — a hook
+     * that could be on without saying so is a build that reports corruption nobody caused.
+     */
+    @Volatile
+    var debugCorruptAtByte: Long? = null
+
+    /**
+     * Stops a transfer, whether it has been claimed by a socket yet or not.
+     *
+     * Both states have to be handled and they are genuinely different: an unclaimed transfer is a
+     * row in [pending] with no socket, and a live one is a thread inside [streamTo]. Answering
+     * `stopped: true` for the first and forgetting the second would leave a cancelled transfer
+     * still sending.
+     */
+    fun cancel(transferId: String, reason: String): Boolean {
+        val wasPending = pending.remove(transferId) != null
+        cancelled.add(transferId)
+        LinkLog.i(
+            "bulk",
+            "fs.transfer.cancel $transferId (reason=$reason): " +
+                (if (wasPending) "it had not been claimed by a socket yet" else "flagged for the live stream") +
+                "; ${pending.size} pending",
+        )
+        return true
     }
 
     fun chunkMax(): Int = CHUNK
@@ -134,7 +309,7 @@ object BulkTransfers {
      * The stream from [AuthenticatedChannel] is the same one the token was read from and must not be
      * re-wrapped — the header frame is very likely already sitting in that buffer.
      */
-    fun serve(context: Context, channel: AuthenticatedChannel) {
+    fun serve(channel: AuthenticatedChannel) {
         val framing = BulkFraming(
             input = channel.input,
             output = channel.output,
@@ -189,11 +364,10 @@ object BulkTransfers {
             return
         }
 
-        streamTo(context, channel, framing, entry, offset)
+        streamTo(channel, framing, entry, offset)
     }
 
     private fun streamTo(
-        context: Context,
         channel: AuthenticatedChannel,
         framing: BulkFraming,
         entry: Pending,
@@ -205,7 +379,7 @@ object BulkTransfers {
         val digest = MessageDigest.getInstance("SHA-256")
 
         try {
-            context.contentResolver.openInputStream(entry.uri).use { input ->
+            entry.open().use { input ->
                 if (input == null) throw IllegalStateException("the file could not be opened")
 
                 // The digest covers the whole file; the *send* starts at `offset`. Those are two
@@ -224,10 +398,21 @@ object BulkTransfers {
 
                 val buffer = ByteArray(CHUNK)
                 while (true) {
+                    if (entry.transferId in cancelled) {
+                        cancelled.remove(entry.transferId)
+                        throw java.io.InterruptedIOException(
+                            "cancelled by the Mac after $sent of ${entry.size} bytes",
+                        )
+                    }
                     val read = input.read(buffer)
                     if (read <= 0) break
                     val chunk = if (read == buffer.size) buffer else buffer.copyOf(read)
+                    // The digest takes the TRUE bytes first. Anything the probe does below is
+                    // invisible to it, which is the point: a corrupt link leaves the sender's
+                    // digest correct and the receiver's wrong, and that disagreement is the thing
+                    // `CHECKSUM_MISMATCH` exists to report.
                     digest.update(chunk, 0, read)
+                    corruptIfArmed(entry, chunk, offset + sent)
                     framing.writeChunk(chunk)
                     sent += read
 
@@ -241,6 +426,42 @@ object BulkTransfers {
 
             val elapsed = System.currentTimeMillis() - startedAt
             val sha = digest.digest().joinToString("") { "%02x".format(it) }
+
+            // The phone's own verdict, and it is a real check rather than a formality: the digest
+            // was agreed before a byte moved, and this one covers the whole file including any
+            // bytes skipped by a resume. They disagree when the file changed under the read — or
+            // when a resumed digest started in the wrong place, which is the failure that reports
+            // corruption on a perfect file and then deletes it.
+            val expected = entry.sha256
+            if (expected != null && expected != sha) {
+                failed.incrementAndGet()
+                LinkLog.e(
+                    "bulk",
+                    "${entry.transferId} the file changed while it was being sent: agreed " +
+                        "${expected.take(12)}…, read ${sha.take(12)}… over ${offset + sent} bytes — " +
+                        "${tally()}",
+                )
+                channel.session.send(
+                    Envelope(
+                        type = MessageType.FS_TRANSFER_DONE,
+                        payload = buildJsonObject {
+                            put("transferId", entry.transferId)
+                            put("ok", false)
+                            put("code", ErrorCode.CHECKSUM_MISMATCH)
+                            put(
+                                "message",
+                                "${entry.name} changed on the phone while it was being sent, so " +
+                                    "what arrived does not match what was agreed.",
+                            )
+                            put("bytes", offset + sent)
+                            put("elapsedMs", elapsed)
+                            put("verified", false)
+                            put("sha256", sha)
+                        },
+                    ),
+                )
+                return
+            }
             completed.incrementAndGet()
 
             // The final progress event is never throttled. Most transfers on a LAN finish inside one
@@ -256,12 +477,14 @@ object BulkTransfers {
                         put("ok", true)
                         put("bytes", offset + sent)
                         put("elapsedMs", elapsed)
-                        // The phone computed a digest over the whole file, but nothing compared it
-                        // to a digest agreed in advance — `media.original` acks `sha256: null`
-                        // because hashing before sending would read the file twice. So the honest
-                        // report is *sent, not verified*: `verified` is a separate field from `ok`
-                        // precisely so a success nobody checked cannot look like a success that was.
-                        put("verified", false)
+                        // True only when a digest was agreed **before** the transfer and the one
+                        // computed while streaming matches it. `media.original` acks
+                        // `sha256: null`, so it still reports false; `fs.transfer.begin` pre-hashes
+                        // and is the first thing in this project that can report true.
+                        //
+                        // A separate field from `ok` precisely so a success nobody checked cannot
+                        // look like a success that was.
+                        put("verified", expected != null)
                         put("sha256", sha)
                     },
                 ),
@@ -269,7 +492,10 @@ object BulkTransfers {
             LinkLog.i(
                 "bulk",
                 "${entry.transferId} sent ${offset + sent} of ${entry.size} bytes in ${elapsed}ms " +
-                    "(${rateOf(sent, elapsed)}), sha256=${sha.take(12)}…, verified=false — " +
+                    "(${rateOf(sent, elapsed)}), sha256=${sha.take(12)}…, " +
+                    "verified=${expected != null} " +
+                    (if (expected != null) "(agreed in advance and matched)" else "(nothing was agreed in advance)") +
+                    " — " +
                     "${tally()}; ${framing.tally.summary()}",
             )
         } catch (e: Exception) {
@@ -319,6 +545,29 @@ object BulkTransfers {
             digest.update(buffer, 0, read)
             remaining -= read
         }
+    }
+
+    /**
+     * Flips one byte if the probe hook is armed for this transfer. See [debugCorruptAtByte].
+     *
+     * Refuses silently for no offset, and shouts when it does act — an `E` line naming the transfer
+     * and the offset, so a `CHECKSUM_MISMATCH` in a log can always be traced to whether somebody
+     * asked for it.
+     */
+    private fun corruptIfArmed(entry: Pending, chunk: ByteArray, absoluteStart: Long) {
+        val at = debugCorruptAtByte ?: return
+        if (at < absoluteStart || at >= absoluteStart + chunk.size) return
+        val index = (at - absoluteStart).toInt()
+        val was = chunk[index]
+        chunk[index] = (was.toInt() xor 0xFF).toByte()
+        debugCorruptAtByte = null
+        LinkLog.e(
+            "bulk",
+            "PROBE: ${entry.transferId} byte $at deliberately flipped from $was to ${chunk[index]} " +
+                "AFTER the digest took the true value. The receiver must report CHECKSUM_MISMATCH, " +
+                "delete its partial and write a .failed sidecar. Nothing in a release build can " +
+                "reach this line.",
+        )
     }
 
     private fun report(channel: AuthenticatedChannel, entry: Pending, bytes: Long, startedAt: Long) {

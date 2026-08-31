@@ -8077,3 +8077,422 @@ The handler is registered only when `!app.isPackaged`, beside `debugSwitches`.
 
 Mac **161** tests (was 147), 0 failures, `tsc --noEmit` clean — 6 for the resumed digest, 8 for the
 on-disk convention. Phone unchanged at **204**.
+
+## Slice 5 — `fs.*`, the phone side · 2026-09-01
+
+Six verbs, all on hardware, through the Mac's own client. `files` is advertised for the first time.
+The Mac's Files **pane** is deliberately not built — that order is what kept Photos honest, and it
+is what let this slice find a defect that a pane would have hidden behind a spinner.
+
+Built in the order the brief set: read paths first (`fs.list` for roots, `fs.list` in a tree,
+`fs.stat`, `fs.mkdir`), then `fs.delete`, then `fs.transfer.begin`.
+
+### 1. The pure half, red before green
+
+`FsPathsTest` — 22 tests. Each of the three that carries a rule was shown to fail against the defect
+it is named for, by reintroducing the bug and watching it go red:
+
+| Mutation | Test that went red | What it said |
+|---|---|---|
+| `compareBytewise(a.id, b.id)` → `0` in `ENTRY_ORDER` | `two entries sharing a name are separated by their ids` | `expected:<[msf%3A1, msf%3A2]> but was:<[msf%3A2, msf%3A1]>` |
+| `compareBytewise` → `a.compareTo(b)` | `byte-wise ordering is not the platform's string ordering` | UTF-16 and UTF-8 disagree on U+1F600 vs U+E000, in opposite directions |
+| the `mtimeMs` clause deleted from `deleteVerdict` | `a delete is refused when only the modified time disagrees` | a file rewritten to the same length passes a size-only guard |
+
+**And one of those runs found that a test of mine was not evidence.** Deleting the id tiebreak left
+`a page boundary inside a group of identical names` **green**: `sortedWith` is stable and the cursor
+resolves positionally, so a tie group keeps its input order and the boundary lands in the same place
+either way. That is the `MediaPayloadsTest` trap one layer along — a pager test that passes
+identically with the clause it is named for removed.
+
+What actually makes the tiebreak load-bearing is that **the input order is not ours**: every page is
+a fresh `DocumentsProvider` query and nothing guarantees two return rows in the same order. So the
+test that can see it shuffles the listing between pages —
+`pages survive the provider returning rows in a different order each time` — and with the tiebreak
+deleted it reports `no entry may be seen twice expected:<20> but was:<17>`. **Three rows lost
+between two pages that each looked perfectly well formed.**
+
+### 2. The compare-and-delete guard has an enforcement point, not a comment
+
+`FsDeleteGuardTest` — 7 tests, scanning the module's own source:
+
+- `DocumentsContract.deleteDocument` appears in **exactly one** file, and `file.delete()` in exactly
+  one. Adding a second `deleteDocument` call site made it red:
+  `must appear in exactly one file — found {SafTreeStore.kt=2}`.
+- `FsStore` declares **no** `fun delete(` — there is no unguarded deletion for a future caller to
+  reach for.
+- Both stores evaluate `FsPaths.deleteVerdict` **twice**: once to answer, once more on a freshly
+  read row with nothing between it and the irreversible call. That is `scripts/step70-watch.mjs`'s
+  shape, and it is here for the reason that script exists.
+- The guard's reads never come from the directory snapshot (§5) — `Snapshots.hit(` appears once, and
+  inside `childrenOf`. A guard answerable from a 30-second-old cache re-checks a copy.
+
+It carries its own fixtures, per the `no-force-stop.sh` lesson: one proving the scan sees a second
+call site, one proving it does not count a mention in prose as one.
+
+### 3. The read verbs, on hardware — `fs.list`, `fs.stat`, and two refusals
+
+Through `link.request`, the same call `photos.ts` makes. One granted tree on this handset,
+`primary:DCIM`, persisted since the 2026-08-31 SAF probe run.
+
+```
+roots      app:files      "ConnectSuite"  kind=app   writable  freeBytes=27233689600
+           saf:primary%3ADCIM  "DCIM"     kind=tree  writable  freeBytes=27233681408
+grantHint  "Add a folder in ConnectSuite on the phone, under Sync › Folders, to browse more of it"
+
+DCIM root  28 entries, 1 page, stopped=exhausted
+fs.stat    primary%3ADCIM%2FAjanta%20instgram → dir, mime=inode/directory, sha256=null
+```
+
+**Both refusals are readings, not absences:** `path: 'Camera/../../..'` came back
+`BAD_REQUEST: … (path may not contain a \`..\` segment)` — refused, never normalised — and
+`rootId: 'saf:primary%3ANotGranted'` came back `ROOT_NOT_GRANTED: This phone has not shared that
+folder.` In the same run, the same client, two other `fs.list` calls returned rows. A refusal with
+no accepted call beside it cannot tell a working guard from a dead feature.
+
+### 4. Defect 55 — the pager was correct and took eight minutes
+
+Paging `DCIM/Camera` to exhaustion, first run:
+
+```
+pages 33   limit 500   stopped=exhausted
+seen 16376   distinct 16376   allDistinct=true   sums=tested
+elapsedMs 490328   firstPageMs 17632
+```
+
+Every entry distinct, every page summing, and **490 seconds**. `limit` bounds the frame and never
+the work: a `DocumentsProvider` honours neither a sort order nor a limit, so each of the 33 pages
+listed all 16,376 rows again to hand back 500 of them.
+
+This is only visible by running the pager **to exhaustion on real data**. A first page returning 500
+rows in 17 seconds reads as a slow phone; 33 of them reads as an unusable feature. It is also
+exactly what the Mac pane would have hidden — a scroll that loads more, slowly, is indistinguishable
+from a network hiccup.
+
+**The fix is a snapshot, and it is a correctness fix first.** Re-reading the directory on every page
+is *also* wrong: two queries a second apart can return different rows, and the cursor's sorted
+position then shifts underneath the pager. A snapshot held for the length of a run is the consistent
+view the cursor was always assuming it had. Sliding 30 s idle TTL so an active run keeps its view,
+absolute 120 s ceiling because these are not our directories, invalidated by every write we make.
+
+After:
+
+```
+pages 33   limit 500   stopped=exhausted
+seen 16377   distinct 16377   allDistinct=true   sums=tested
+elapsedMs 21033   firstPageMs 15676
+```
+
+**490,328 ms → 21,033 ms**, of which 15,676 ms is the one unavoidable read. The phone's own line
+names the cause rather than leaving it to be inferred:
+
+```
+[fs] snapshot of primary:DCIM/Camera in saf:primary%3ADCIM: 16377 entries read in 15391ms;
+     0 hits / 2 misses since start, 2 directories held
+```
+
+**Two things this run does not prove, stated rather than left to be assumed.**
+
+1. **The id tiebreak is not exercised by this data.** `duplicateNameGroups: 0`,
+   `tieBoundaries: 0`, `tiebreakExercised: false` — no two entries in Camera share a display name, so
+   the run passes identically with the tiebreak deleted. The shuffle test in §1 is the only place it
+   is exercised, and that is said here because a green 33-page run is exactly what would persuade
+   someone the clause is redundant.
+2. **16,377 is not `media.list`'s 16,369.** Different denominators, not a discrepancy: `media.list`
+   counted images and videos in the Camera *bucket*; `fs.list` counts *directory entries*, including
+   subfolders such as `Cshot` and any non-media file. The count also moved by one between two runs
+   an hour apart, which is the live directory the snapshot exists for.
+
+### 5. `fs.delete` — the guard, both halves, on both stores
+
+Run against the app-private root and against the SAF tree, because they are two different deletion
+calls. Each run makes three refusals and then one accepted delete, in that order.
+
+**A refusal on its own is not evidence** — a guard that refuses everything looks identical to one
+that works — so the accepted delete is the control, and the file being gone afterwards is checked
+independently.
+
+| | `app:files` / `delete-probe.txt` (51 bytes) | `saf:primary%3ADCIM` / `connectsuite-delete-probe.txt` (28 bytes) |
+|---|---|---|
+| `expectSize` off by one | `TARGET_STALE` — *"It now holds 51 bytes… the Mac asked about 52"* | `TARGET_STALE` — *"It now holds 28 bytes… the Mac asked about 29"* |
+| `expectMtimeMs` off by one second, size correct | `TARGET_STALE` | `TARGET_STALE` |
+| neither field sent | `BAD_REQUEST: expectSize is required — this phone will not delete a file the Mac has not just seen` | same |
+| survived all three | **yes** | **yes** |
+| both facts as listed | `{"deleted": 1}` | `{"deleted": 1}` |
+| gone afterwards | yes | yes, **and confirmed from the platform's side**: `ls: No such file or directory` |
+
+The last cell is the one that matters. The SAF delete is confirmed by the shell, not by the app's
+own report of what it did.
+
+The second row is why there are two facts rather than one: a file rewritten to the same length
+passes a size-only guard, and nothing about the request would look wrong.
+
+### 6. `fs.transfer.begin` — `verified: true`, for the first time in this project
+
+`media.original` acks `sha256: null`, so **nothing in this repo had ever compared a transfer against
+a digest agreed in advance.** Every `fs.transfer.done` so far reported `verified: false`, and the
+`CHECKSUM_MISMATCH` branch on both ends had never executed — the `.failed` sidecar's *text* was unit
+tested and the code that writes it had never once run.
+
+`fs.transfer.begin` pre-hashes below a 64 MB ceiling. Above it the ack still carries `sha256: null`
+and reports `verified: false`, which is the same honest answer rather than a silent downgrade.
+
+**Clean pull**, 819,200 bytes from `app:files`:
+
+```
+agreed    sha256 97b1c8f272a38726f557e97ed8fb71cdb47472f9fb8c42f75478d4dbd8c29118
+          offset 0   chunkMax 262144   preHashed true
+transfer  ok true   bytes 819200   verified true
+          sha256 97b1c8f2…                       ← the Mac's streaming digest
+onDisk    wholeFileDigest 97b1c8f2…              ← hashed independently of the transfer
+          matchesAgreed true
+```
+
+Three digests, computed by three different pieces of code, agreeing.
+
+### 7. The checksum-mismatch branch, made to run
+
+One byte flipped **after** the sender's digest has taken the true value — which is what a corrupt
+link does: the sender's digest stays right, the receiver's goes wrong, and the disagreement is the
+finding. Flipping before the digest would make both ends agree on corrupt bytes and prove nothing.
+
+The stimulus is injected inside the shipping sender (`BulkTransfers.debugCorruptAtByte`, armed only
+by `FsProbeActivity` in `app/src/debug/`), for the reason defect 50 left behind: a tool that speaks
+the protocol itself is a second client, and the difference between it and the product is where this
+class of bug lives.
+
+**The first attempt at this proved nothing and nearly read as if it had.** `am start` returned
+`Activity class … does not exist` — the probe had no manifest entry — and the transfer that followed
+came back `ok: true, verified: true`, which is exactly what a *working* corruption test would not
+produce and exactly what an unarmed one does. The arming is now read back before anything is claimed
+about the run:
+
+```
+W FsProbe: ARMED: the next bulk transfer covering byte 300000 will have that byte flipped
+           after the sender's digest has taken the true value.
+```
+
+Then, with it armed:
+
+```
+transfer   ok false   verified false
+           reason "The file arrived with a different checksum, so the partial was deleted."
+           expected 97b1c8f272a38726f557e97ed8fb71cdb47472f9fb8c42f75478d4dbd8c29118
+           actual   de54fd827c4406ef83b9ba5daadc88c5f82e32e645ee476ad7f389b52bde58cc
+leftBehind partDeleted true   sidecarWritten true
+onDisk     wholeFileDigest null            ← nothing at the final name
+```
+
+and the sidecar, read back off the disk:
+
+```
+ConnectSuite transfer failed — checksum mismatch
+file      connectsuite-fs-1788207386734-pull-probe.bin
+when      2026-08-31T20:16:26.834Z
+size      819200 bytes received
+expected  97b1c8f272a38726f557e97ed8fb71cdb47472f9fb8c42f75478d4dbd8c29118
+actual    de54fd827c4406ef83b9ba5daadc88c5f82e32e645ee476ad7f389b52bde58cc
+The partial file was deleted because the bytes that arrived were wrong.
+A retry starts from zero; there is nothing here to resume.
+```
+
+matched to the phone's own line, by transfer id:
+
+```
+E [bulk] PROBE: t-1-86703 byte 300000 deliberately flipped from -17 to 16 AFTER the digest took
+         the true value.
+```
+
+**And the control on the control:** the hook disarms itself after one flip, and the very next pull
+came back `ok: true, verified: true, matchesAgreed: true, sidecar: false`. Without that, "the
+transfer failed" is not evidence that the *corruption* failed it.
+
+### 8. `fs.transfer.cancel`
+
+The interesting half is not the ack. A cancel that answers `stopped: true` and leaves the transfer
+claimable has reported success for something it did not do, and nothing in the ack could tell.
+
+```
+cancelAck          {"transferId":"t-3-39151","stopped":true}
+claimAfterCancel   ok false — "the phone closed after 0 of 819200 bytes"
+refusedAfterCancel true      nothingLanded true
+```
+
+### 9. `files` turns on, and one thing it promises that this build does not do
+
+```
+[fs]   Files feature installed with 4 of 6 verbs; 2 root(s): app:files, saf:primary%3ADCIM;
+       capabilities now: [calls, contacts, mirror, photos, sms]        ← before the transfer verbs
+[caps] Capabilities now: calls,contacts,files,input,mirror,notifications,photos,remote,sms
+```
+
+The first line is the contract working: four handlers of six, and `files` stays off. It went on only
+when `fs.transfer.begin` and `fs.transfer.cancel` were registered and the bulk channel served.
+
+**`fs.transfer.begin` with `direction: "push"` answers `FEATURE_UNAVAILABLE`** — *"This phone build
+can send files to the Mac but cannot receive them yet."* That is locked decision 6's designed
+degradation rather than a dead verb, and it is recorded here rather than left for the Mac to find:
+**the Files pane must not draw an upload affordance until push lands.** Anyone reading the green chip
+as "both directions" should read this paragraph instead.
+
+### Suite
+
+Phone **233** tests (`core` 77, `sync-module` 81, `input-module` 44, `mirror-module` 31), 0 failures,
+run with `--rerun-tasks`. Mac **161**, 0 failures, `tsc --noEmit` clean. The phone's figure was 204 at
+the close of slice 4; the 29 new ones are `FsPathsTest` (22) and `FsDeleteGuardTest` (7).
+
+The debug probes' merged-manifest count, re-checked because a fourth probe was added:
+**4 in the debug manifest, 0 in the release manifest**, with `MainActivity` returning 1 in both in
+the same run as the control. The count is expected to move as probes come and go; the zero is not.
+
+### Defect 55 — `fs.list` re-read the whole directory on every page
+
+**Status: closed, in the slice that introduced it.** Found by running the pager to exhaustion on a
+16,377-entry directory rather than by looking at a first page. 490,328 ms over 33 pages, 17.6 s each,
+because `limit` bounds the frame and never the work — a `DocumentsProvider` honours neither a sort
+order nor a limit, so every page listed every row again.
+
+Fixed with a per-directory snapshot: sliding 30 s idle TTL, absolute 120 s ceiling, invalidated by
+every write. **490,328 ms → 21,033 ms**, 15,676 ms of which is the one unavoidable read.
+
+**Fix direction (applied):** `SafTreeStore.Snapshots`, read only from `childrenOf` and never from the
+delete guard's `readRow` — asserted by `FsDeleteGuardTest`.
+
+**Wrong fix to avoid:** raising `MAX_LIMIT` so fewer pages are needed. It does reduce the number of
+full re-reads and it makes the worst case worse — one `fs.list` ack for a large directory is exactly
+the frame `MAX_CONTROL_FRAME` is obliged to refuse, and a refused frame closes the socket. The cap is
+not the problem; re-reading is.
+
+**The general lesson, which is the reason this is a numbered defect rather than a commit message:**
+the pager was *correct* on every measure the project had asked a pager for — consecutive pages,
+counted, every id distinct, sums reached, `stopped=exhausted`. It passed all three of the
+preconditions in `CLAUDE.md` and was still unusable. Those preconditions test whether a pager loses
+rows; none of them tests whether it can be afforded. **A green pager needs a clock beside it.**
+
+---
+
+## Slice 6 — the Folders screen, the phone's grant surface · 2026-09-01
+
+**A release build can grant a folder for the first time.** Until this slice the only route to a SAF
+tree was `SafProbeActivity`, which lives in `app/src/debug/` and by construction cannot ship — so
+`fs.list` could serve roots that no shipping build had any way to create. That was the blocker
+holding the Mac's Files pane, and it is gone.
+
+Proposed before it was built: `docs/phase-5-files-onboarding-proposal.md` rev 2. The Mac's Files
+pane is still deliberately not built. Phone proven first.
+
+### What was built
+
+`sync-module/.../ui/folders/` — three files, and the split is the one `CLAUDE.md` asks for:
+
+| File | What it is |
+|---|---|
+| `FoldersModel.kt` | **Pure.** The state type, the row, `foldersStateOf`, `pickMessage`. No Android, no Compose, so a JVM test reaches the real thing rather than a copy |
+| `FoldersViewModel.kt` | Re-reads the platform on every resume. Nothing cached |
+| `FoldersScreen.kt` | Material 3, the empty card, the rows, and the wall card |
+
+`FsRoots.grantedFolders` is the one reader of `contentResolver.persistedUriPermissions`. The Folders
+tab is a fourth `SyncTab`, and its **name is fixed by the wire**: `FsRoots.GRANT_HINT` already tells
+every Mac to look under *Sync › Folders*, and a screen called anything else makes the phone a liar
+in a sentence the Mac renders verbatim.
+
+### The four states, all four observed on the device
+
+The screen has four states and **none of them is a failure**, which is the decision this slice is
+built around — `persistedUriPermissions` is read in-process and synchronously and cannot fail, so a
+"couldn't load" card here would be unreachable and indistinguishable from a bug in the empty state.
+`CLAUDE.md` now carries that as a rule.
+
+| # | State | Observed | Log line, with its denominator |
+|---|---|---|---|
+| 1 | **Folders** — one row | `DCIM` / `read and write` / `Remove` | `Folders screen: 1 folder(s) shared, 1 resolving, 0 gone` |
+| 2 | **No folders** | `No folders yet`, both explanatory lines, wall card still drawn | `Folders screen: 0 folder(s) shared, 0 resolving, 0 gone` |
+| 3 | **A grant whose folder is gone** | `DCIM › cs-gone-test` / *"This folder is gone from the phone"*, dimmed, Remove only | `Folders screen: 2 folder(s) shared, 1 resolving, 1 gone` |
+| 4 | **A pick that returned nothing** | **no message drawn at all** | `folder pick returned nothing — cancelled or refused, indistinguishable` |
+
+State 3 was produced rather than waited for: `mkdir /sdcard/DCIM/cs-gone-test`, granted through the
+screen, then `rmdir` underneath the live grant. Both the folder and the grant were removed
+afterwards and the baseline restored.
+
+**State 4 is the finding, not the feature.** Android refuses a folder by disabling `USE THIS FOLDER`
+inside DocumentsUI; the user backs out and `OpenDocumentTree` returns `null` — and so does a user
+who changed their mind. One result, two intents. Anything this app said about it would be right
+about half the time, so it says nothing, and the `Download` wall is drawn as **permanent copy in
+every state** because there is no afterwards to explain it in. The control for "no message": the
+same dump held **18** other texts, so the absence is a reading and not an empty dump.
+
+### The grant, read back from the platform rather than from our own report
+
+Granted through the release-shaped screen — the picker, `USE THIS FOLDER` (`enabled="true"`,
+checked before the tap), then `ALLOW`:
+
+```
+UriPermission{7de024f content://com.android.externalstorage.documents/tree/primary%3ADCIM [user 0] [prefix]}
+  targetUserId=0 sourcePkg=com.android.externalstorage targetPkg=com.chetan.connectsuite.debug
+  mode=0x3 owned=0x3 global=0x0 persistable=0x3 persisted=0x3 persistedCreate=1788209971068
+```
+
+**It is provably a new grant and not yesterday's surviving.** The probe's grant was object `61d3ce4`
+with `persistedCreate=1788183861135` (2026-08-31 19:14:21); this is object `7de024f` at
+`1788209971068` — **2026-09-01 02:29:31.068, matching our own log line `granted tree
+saf:primary%3ADCIM` to the millisecond.** The grant was released first and verified released, so
+there was nothing to survive.
+
+### Two instrument findings, both of which would have been read as product faults
+
+1. **`KEYCODE_BACK` in DocumentsUI navigates up, it does not cancel.** The first attempt at state 4
+   pressed BACK once, saw no log line, and was one sentence from *"the silent branch does not run"*.
+   The picker was still the resumed activity — `dumpsys activity activities` said so. **A missing
+   reading, not a negative one**, caught by asking where the foreground was rather than by trusting
+   an absence. The check that settles it is one line and is now in the loop that backs out.
+
+2. **`dumpsys activity permissions` lists released grants until the owning process lets them go.**
+   After `releasePersistableUriPermission`, `primary%3ADCIM%2Fcs-gone-test` was **still present** as
+   a row — with `persisted=0x0`, twice, beside `mode=0x1 owned=0x1` transient entries. Counting rows
+   that match `documents/tree` returns **2** and reads as *"Remove did nothing"*. The discriminating
+   attribute is `persisted=`, not the row's presence: the real grant carries `persisted=0x3`.
+   Yesterday's removal looked clean only because that grant was created by a process that had since
+   died, so no transient entry lingered — the same query, two different answers, for a reason
+   nothing in the output announces.
+
+   This is the control rule again with our own tooling as the lookalike, which is where defect 50
+   lived: **the reading and the thing being measured differ, and the difference is invisible unless
+   you name the attribute that separates them.**
+
+### The release-shaped claim, checked in both directions
+
+The screen is in `sync-module/src/main`, so it ships. Proven rather than assumed, and with its
+negative control in the same run:
+
+```
+sync-module/build/tmp/kotlin-classes/release/.../ui/folders/  →  FoldersScreenKt.class, FolderRow.class,
+                                                                 FoldersUiState$Folders.class, …
+app/build/tmp/kotlin-classes/release/.../probe/                →  No such file or directory
+```
+
+The thing that must ship does; the thing that must not, does not.
+
+### Tests — 95 in `sync-module`, up from 81, and every new guard shown to fail first
+
+| Guard | Mutation it was shown to fail against | Result |
+|---|---|---|
+| `foldersStateOf` keeps unresolvable rows | made all-gone collapse into `NoFolders` | **red**, 2 tests, on the sentence *"the user has grants to remove"* |
+| `pickMessage` says nothing after a cancelled pick | returned *"That folder cannot be added"* | **red** — `expected:<null> but was:<That folder cannot be added>` |
+| `FoldersUiState` has exactly two variants | added `Loading` **and drew it** | **red**, naming the variant |
+| Only `FsRoots` reads `persistedUriPermissions` | a second read in the view model | **red**, naming both files |
+
+**The single-source guard failed on its own first run, correctly, for the wrong reason** — it
+matched the token inside `FoldersModel.kt`'s KDoc, which is prose explaining why that file does
+*not* read the list. That is defect 41 exactly: a matcher that forbids documenting the rule it
+enforces has broken the pair it belongs to. It now strips comments before matching and carries
+fixtures in both directions — one proving it removes prose and keeps the call, one proving it does
+not eat the call itself, plus a `://` case so a URL in a string does not truncate a line.
+
+Adding a variant to `FoldersUiState` without drawing it is caught earlier and harder, by the
+compiler: `FoldersScreen`'s `when` is exhaustive. The test covers what the compiler cannot — someone
+adding a variant *and* rendering it, which is the actual way an unreachable state gets drawn.
+
+### Baseline restored
+
+One persisted tree grant, `primary:DCIM`, `persisted=0x3` — the same folder the device started with.
+`cs-gone-test` deleted from `/sdcard/DCIM` and its grant released. `scripts/link-up.sh` **3 of 3**
+after the final install, and the phone left on the Folders screen.

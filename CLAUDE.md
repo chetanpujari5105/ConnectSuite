@@ -48,9 +48,19 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   direction and the wrong fix to avoid. `docs/testing.md` holds the evidence; this is the index.
   Kept in sync by `scripts/check-defects.sh`, wired to `PreToolUse` on `git commit`.
 - `docs/phase-4-closeout.md` — what Phase 4 proved, what it deferred, and what Phase 5 inherits.
-- `docs/phase-5-fs-media-proposal.md` — the `fs.*` / `media.*` payload specification, **proposed and
-  not implemented**. Prose against `docs/protocol.md`, which stays unmodified except for the bulk
-  channel's frame caps. Read it before building any of Phase 5's file or photo work.
+- `docs/phase-5-files-onboarding-proposal.md` — the SAF grant surface: the phone's Folders screen,
+  the copy that states the `Download` wall plainly, and — **rev 2, and the part to read** — every
+  state each side can be in, drawn before either is built. A pane showing zero folders and a pane
+  that failed to load are the same picture, so §3 separates them in four independent ways and names
+  the one place the platform makes them genuinely indistinguishable (a refused folder and a
+  cancelled pick both arrive as `null`). **The phone half is built — 2026-09-01, all four states on
+  hardware**; the Mac's Files pane (§3.3, §3.4, §6) is still a proposal.
+- `docs/phase-5-fs-media-proposal.md` — the `fs.*` / `media.*` payload specification. **`fs.*` and
+  `media.*` are now implemented and the contract has moved to `docs/protocol.md`** (Files, Photos);
+  read this for the *arguments*, and note two recorded deviations: the delete refusal ships as
+  `TARGET_STALE` rather than `STALE_TARGET`, and `push` is not served yet. It was written as prose
+  against `docs/protocol.md` while nothing was built; where the two now disagree, `docs/protocol.md`
+  wins, because it is the contract and this was the argument for it.
 - `docs/RESUME.md` — where work resumes and how to pick it up. **Read it first.** It currently holds
   the Phase 5 opening brief: what the proposals decide, what they leave open, and the first slice.
 - `docs/phase-3-input.md` — the Phase 3 brief: input injection via AccessibilityService. **Phase 3
@@ -69,7 +79,7 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 | 2 | Screen mirroring (MediaProjection capture, H.264, video socket) | **Done** — closed 2026-08-26 |
 | 3 | **Input injection (AccessibilityService)** — see `docs/phase-3-input.md` | **Done** — passed on hardware 2026-08-27; closed retroactively 2026-08-31 |
 | 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
-| 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | Not started |
+| 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **In progress** — photos done; `fs.*` reads, delete and pull done on hardware 2026-09-01; the phone's **Folders screen** done 2026-09-01, so a release build can grant a folder; push and the Mac's Files pane outstanding |
 | 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | Not started |
 | 7 | Mac UX — packaging, distribution, app launching, and the polish pass | Not started |
 
@@ -385,6 +395,17 @@ damage on the user's own device or nearly recorded a false result.
   totals: it is the denominator for the totals in exactly the way a failure count needs a success
   count, and without it someone reads a green pager and deletes the clause that made it green.
 
+  **`fs.list` is the same discipline with the opposite result, and it is why this is a rule rather
+  than a boast.** Paging a 16,377-entry directory to exhaustion on the same handset: 33 pages, every
+  id distinct, sums reached, `stopped=exhausted` — and **`tieBoundaries: 0`**. Not one page boundary
+  landed inside a group of entries sharing a display name, so that run proves the pager advances and
+  proves **nothing whatever** about the `id` tiebreak. Deleting the tiebreak would have left it
+  identically green. The tiebreak is load-bearing here for a reason the totals cannot show — a
+  `DocumentsProvider` does not guarantee unique display names, and the row order is not ours, so
+  every page is a fresh query — and the only test that can see it shuffles the listing between
+  pages. **Publish the boundary count whether it is 6 or 0**; the 0 is the more important number,
+  because it is the one that says a clean run is not the evidence someone will take it for.
+
   **The sixth entry is the newest and the smallest, and it is a rule about sampling: a window that
   falls between two samples is a _missing_ reading, not a negative one.** Watching for a file that
   exists only while a `MediaStore` publish is pending, a shell loop sampled every ~320 ms and the
@@ -498,6 +519,28 @@ damage on the user's own device or nearly recorded a false result.
   happen does not get a call spent on it. Anyone asking for pre-ring proof of option 4 should be
   pointed here.
 
+- **A green pager needs a clock beside it.** The three preconditions above all ask whether a pager
+  *loses rows*. None of them asks whether it can be afforded, and a pager can pass every one of them
+  and still be unusable.
+
+  Defect 55 is the worked example and it is worth the four numbers. `fs.list` paged a 16,377-entry
+  directory in 33 pages, every id distinct, every page summing, `stopped=exhausted` — a clean sweep
+  of every check this project had ever asked a pager for. It took **490 seconds**, because `limit`
+  bounds the *frame* and never the *work*: a `DocumentsProvider` honours neither a sort order nor a
+  limit, so all 16,377 rows were read and sorted again on each of the 33 pages to hand back 500.
+
+  Two things make it belong here rather than in its own defect record. First, **it is only visible by
+  running to exhaustion on real data**: one page returning 500 rows in 17 seconds reads as a slow
+  phone, and thirty-three of them read as a broken product. Second, **the UI would have hidden it** —
+  a grid that loads more when you scroll, slowly, is indistinguishable from a bad moment on the
+  network, which is one more reason to prove a phone-side pager before drawing anything on top of it.
+
+  So the rule: a pager is recorded as working on consecutive pages, counted, **with elapsed time per
+  page reported beside the counts**. The fix was a per-directory snapshot held for the length of a
+  run (490 s → 21 s), and that turned out to be a *correctness* fix too — re-reading between pages
+  lets the cursor's sorted position shift underneath the pager, so a snapshot is the consistent view
+  the cursor was always assuming it had.
+
 - **A package id may appear as a machine handle, never as the only thing a user reads.** Any payload
   carrying a package name carries a resolved label beside it, and any human-readable `message`
   mentioning an app names the app rather than the package. `remote.state` already obeys this — it
@@ -523,6 +566,53 @@ damage on the user's own device or nearly recorded a false result.
   directory entries, transfer completion text, and error `message` strings, which is where 28 was
   actually found. A path component stays the real path — prettifying it breaks navigation — and only
   the label is a sentence. See `docs/phase-5-proposals.md` §4.
+
+- **When the platform returns one result for two intents, nothing may be explained afterwards.**
+  The explanation has to be standing copy, placed before the action, because there is no afterwards
+  to put it in.
+
+  The worked example is the folder picker, and it is exact. Android refuses a folder by **disabling
+  the confirm button inside DocumentsUI** — the storage root and `Download` list normally and cannot
+  be confirmed (`docs/evidence/saf-probe-2026-08-31/`, `enabled="false"` with the refusal strings,
+  against `enabled="true"` on two grantable folders in the same run). There is no error, no result
+  code, no extra. The user backs out and `OpenDocumentTree` hands back `null` — and a user who
+  simply changed their mind hands back **the same `null`**.
+
+  So *"that folder can't be added"* would be a coin flip rendered as a fact, which is every
+  lookalike in the table above with the confidence turned up. The Folders screen therefore carries
+  the `Download` wall as a **permanent card in every state**, and `pickMessage(rootId = null,
+  persisted = true)` returns `null` — enforced by a test shown to fail when it returns a sentence.
+  The distinction it preserves is real: a pick that *succeeded* and then failed to persist is
+  unambiguous and does get a sentence.
+
+  The general form: before writing a message that explains an outcome, ask **what else produces this
+  exact result**. When the answer is "an entirely ordinary other intent", the message is a guess and
+  the honest response is silence plus copy that arrived earlier. This is the absence rule pointed at
+  the user interface rather than at a probe — *what else would look exactly like this* — and the
+  answer here is not obscure, it is half the people who open the picker.
+
+- **A state that cannot be reached must not be drawn beside states that can.** Symmetry between two
+  surfaces is not a virtue when the surfaces have different failure modes; matching them invents an
+  unreachable state, and an unreachable state is the decoration rule wearing a design.
+
+  The phone's Folders screen reads `contentResolver.persistedUriPermissions` — in-process,
+  synchronous, no IPC, no network, no provider that can answer a bound argument with an empty
+  cursor. **It cannot fail to load.** So it has four states and none of them is a failure:
+  no-folders, folders, a row whose grant outlived its folder, and a pick that returned nothing —
+  which is not a screen state at all. The Mac's Files pane asks over a link that drops, and gets six,
+  four of which the phone has no use for.
+
+  Drawing a "couldn't load folders" card on the phone would cost nothing to write and would be
+  unfalsifiable forever: nobody could ever tell it from a bug in the empty state, because the only
+  way to see it is a bug in the empty state. Enforced two ways — the exhaustive `when` in
+  `FoldersScreen` makes the compiler refuse a new variant, and `FoldersModelTest` catches the case
+  the compiler cannot, someone adding a variant *and* rendering it.
+
+  The counterpart rule is the one this is often confused with, so both are stated: **the empty state
+  and the failure state must be visibly different wherever both are reachable** — four independent
+  differences on the Mac (colour role, icon, headline verb, and whether a retry exists), because one
+  difference is a bug away from none. Reachable: distinguish them four ways. Unreachable: do not
+  draw it at all.
 
 - **A rule that matters enough to write down is a rule that needs an enforcement point.** Writing
   it in a doc is the start of the job, not the end of it. Ask, in the same sitting: what would have

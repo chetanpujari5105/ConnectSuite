@@ -36,6 +36,8 @@ import com.chetan.connectsuite.core.model.Device
 import com.chetan.connectsuite.sync.ui.devices.DevicesSection
 import com.chetan.connectsuite.sync.ui.devices.DevicesViewModel
 import com.chetan.connectsuite.sync.ui.devices.PairingRequestDialog
+import com.chetan.connectsuite.sync.ui.folders.FoldersSection
+import com.chetan.connectsuite.sync.ui.folders.FoldersViewModel
 import com.chetan.connectsuite.sync.ui.transfers.IncomingOfferDialog
 import com.chetan.connectsuite.sync.ui.transfers.TransfersSection
 import com.chetan.connectsuite.sync.ui.notifications.NotificationsSection
@@ -45,6 +47,7 @@ import com.chetan.connectsuite.sync.ui.transfers.TransfersViewModel
 private enum class SyncTab(val label: String) {
     Devices("Devices"),
     Transfers("Transfers"),
+    Folders("Folders"),
     Notifications("Feed"),
 }
 
@@ -54,6 +57,7 @@ fun SyncRoute(
     devicesViewModel: DevicesViewModel = viewModel(),
     transfersViewModel: TransfersViewModel = viewModel(),
     notificationsViewModel: NotificationsViewModel = viewModel(),
+    foldersViewModel: FoldersViewModel = viewModel(),
     onOpenSettings: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -62,9 +66,15 @@ fun SyncRoute(
     val deviceMessage by devicesViewModel.message.collectAsStateWithLifecycle()
     val transferMessage by transfersViewModel.message.collectAsStateWithLifecycle()
     val notificationsState by notificationsViewModel.uiState.collectAsStateWithLifecycle()
+    val foldersState by foldersViewModel.uiState.collectAsStateWithLifecycle()
+    val foldersMessage by foldersViewModel.message.collectAsStateWithLifecycle()
 
     // Notification access is granted in system Settings, so re-check whenever we come back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { notificationsViewModel.refreshListenerState() }
+
+    // A folder grant can be taken away in system Settings, and the picker is another activity, so
+    // the list is re-read on every return rather than cached. `FsRoots` is the only holder.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { foldersViewModel.refresh() }
 
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
@@ -83,6 +93,18 @@ fun SyncRoute(
         }
     }
 
+    // `StartActivityForResult` rather than the `OpenDocumentTree` contract, so that the intent —
+    // including its persistable-grant flags — is built in exactly one place, `FsRoots.pickerIntent`.
+    //
+    // A cancel and a refusal both land here as a null uri. That is not a gap in this code: Android
+    // refuses a folder by disabling the confirm button inside the picker and returns nothing either
+    // way. `FoldersViewModel.onPicked` says why nothing may be reported from it.
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        foldersViewModel.onPicked(result.data?.data)
+    }
+
     LaunchedEffect(deviceMessage) {
         val text = deviceMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(text)
@@ -92,6 +114,11 @@ fun SyncRoute(
         val text = transferMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(text)
         transfersViewModel.consumeMessage()
+    }
+    LaunchedEffect(foldersMessage) {
+        val text = foldersMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(text)
+        foldersViewModel.consumeMessage()
     }
 
     // A device that just reconnected may have transfers waiting to pick up where they stopped.
@@ -148,6 +175,12 @@ fun SyncRoute(
                 SyncTab.Transfers -> TransfersSection(
                     state = transfersState,
                     onCancel = transfersViewModel::cancel,
+                )
+
+                SyncTab.Folders -> FoldersSection(
+                    state = foldersState,
+                    onAddFolder = { folderPicker.launch(foldersViewModel.pickerIntent()) },
+                    onRemove = foldersViewModel::remove,
                 )
 
                 SyncTab.Notifications -> NotificationsSection(

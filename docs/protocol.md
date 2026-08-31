@@ -969,13 +969,13 @@ then raw chunks of **up to** 256 KB. Progress is reported on the control channel
 
 **The header names the transfer and nothing else.** Everything about *what* is moving — size, name,
 mime, digest — was agreed on the control channel when the `transferId` was issued, by
-`media.original` today and `fs.transfer.begin` when it lands. Repeating those fields here would be a
+`media.original` and by `fs.transfer.begin`. Repeating those fields here would be a
 second copy of the same facts, free to disagree with the first, and the shorter header is what makes
 the 64 KB cap comfortable rather than tight.
 
 **Chunks are *up to* 256 KB, not exactly 256 KB.** The last chunk of any file is short, and the
 design calls for adaptive sizing between 64 KB and 256 KB on a slow link. `chunkMax` is carried in
-the `media.original` ack so the number is negotiated rather than a constant two implementations have
+the `media.original` and `fs.transfer.begin` acks so the number is negotiated rather than a constant two implementations have
 to agree about silently. (This sentence used to read "raw chunks of 256 KB", which the first short
 final chunk would have violated — open question 4 in `docs/RESUME.md`, now closed.)
 
@@ -983,8 +983,9 @@ final chunk would have violated — open question 4 in `docs/RESUME.md`, now clo
 digest still covers the whole file, from byte 0 — those are two different positions and conflating
 them makes every resumed transfer report `CHECKSUM_MISMATCH` on a file that is perfectly correct.
 The receiver has the mirror obligation: read its own partial back through the digest before appending.
-**As of 2026-09-01 nothing has ever sent a non-zero offset**, so this path is specified and
-unexercised.
+**Resume was observed on 2026-09-01** — a 52 MB video interrupted at 26,476,544 bytes, resumed from
+exactly that offset, with three independently computed whole-file digests agreeing. See
+`docs/testing.md` → Slice 4.
 
 ### Frame caps
 
@@ -1014,6 +1015,283 @@ ten-thousandth frame of a transfer that has moved 2 GB.
 The write side is capped too, and it catches a different fault: the read side catches a peer that
 has lost sync, the write side catches an adaptive chunk size that has run away on *this* end, before
 it becomes a frame the far end has to close the socket over.
+
+## Files (42501, with bytes on 42503)
+
+Capability `files`. Eight types, and they address a **`(rootId, path)` pair — never a bare absolute
+path.** The reasoning, the platform wall it starts from and the rejected alternatives are in
+`docs/phase-5-fs-media-proposal.md`; this is the contract.
+
+### The wall this namespace is built on
+
+**There is no path-based view of the phone's shared storage, and there is not going to be one.**
+Scoped storage is not optional at `targetSdk 36`, so `fs.*` browses **SAF trees the user granted**,
+one folder at a time. Observed on hardware (SM-S938B, Android 16, through our own package, because
+the restriction is applied against the *calling* package):
+
+- the **root of internal storage** cannot be granted;
+- **`Download` itself** cannot be granted, though folders **inside** it can;
+- `Android/data` and `Android/obb` are unreachable by any route, for any app.
+
+`MANAGE_EXTERNAL_STORAGE` would lift the first two and is **deliberately not requested**. The
+consequence a Mac must be able to state rather than let a user discover: **a file sitting directly in
+`Download/` can never be reached by this app.**
+
+### Roots — `fs.list` with no `rootId`
+
+There is no `fs.roots`. The inventory is fixed at twelve names, and adding a thirteenth to answer a
+question the existing one already answers is how a namespace bloats.
+
+```json
+request  {}
+ack
+{"roots":[
+  {"rootId":"app:files","label":"ConnectSuite","kind":"app","writable":true,
+   "freeBytes":27233689600},
+  {"rootId":"saf:primary%3ADCIM","label":"DCIM","kind":"tree","writable":true,
+   "freeBytes":27233681408}],
+ "grantHint":"Add a folder in ConnectSuite on the phone, under Sync › Folders, to browse more of it"}
+```
+
+`rootId` is opaque to the Mac and stable across sessions — it is **derived from the tree URI**, not
+assigned, so nothing has to store it and a revoked grant disappears on its own.
+
+`kind` is `app` | `tree` | `all`. This build serves `app` and `tree`; **`all` is reserved and
+unused**, held open so that all-files access, if it is ever added, is one more root rather than a
+protocol change. **A Mac must handle a `kind` it does not recognise by showing the root with its
+label and no special treatment, never by discarding it.**
+
+**The app-private root is always present, even with nothing granted.** An empty roots array would be
+indistinguishable from a phone with nothing on it. One root plus a `grantHint` says both things at
+once: the feature works, and there is more that has not been shared.
+
+`grantHint` is a sentence for a person, present only when more could be granted — which under SAF is
+almost always. **It is not parsed**, the same standing the capability `unavailable` strings have.
+
+### `fs.list` inside a root
+
+```json
+request  {"rootId":"saf:primary%3ADCIM","path":"Camera","limit":200,
+          "afterName":"IMG_2041.jpg","afterId":"msf%3A1000012345"}
+ack      {"rootId":"saf:primary%3ADCIM","path":"Camera","hasMore":true,
+          "entries":[{"id":"msf%3A1000012345","name":"IMG_2041.jpg","dir":false,
+                      "size":3874112,"mtimeMs":1756298000000,"mime":"image/jpeg"}]}
+```
+
+**`name` is always the real path component** and is what the Mac sends back to navigate. Where a
+component is a package id *and an app by that name is actually installed*, `packageName` and
+`displayName` go beside it — never instead of it. Prettifying `name` would break navigation: the
+path is data, only the label is a sentence.
+
+**`id` is the phone's stable handle** — a SAF document id or a relative path, percent-encoded. It is
+what `fs.stat`, `fs.delete` and `fs.transfer.begin` name, so a rename between two calls produces a
+`NOT_FOUND` rather than acting on a different file with the same name.
+
+**`path` is `/`-separated, relative to the root, and may not contain a `..` segment.** The phone
+refuses one with `BAD_REQUEST` rather than normalising it: normalising an escape attempt and then
+serving the result is how a traversal gets served politely.
+
+**Ordering is `dir` descending (folders first), then `name` ascending compared byte-wise, then `id`
+ascending byte-wise.** The cursor is the `(afterName, afterId)` pair from the last entry received.
+Byte-wise means **UTF-8 bytes**, not the platform's string comparison — UTF-16 and UTF-8 order
+supplementary characters differently, and two ends that agree on "byte-wise" while one uses its
+language's `compareTo` will land the cursor in different places for any name containing an emoji.
+
+The `id` tiebreak is load-bearing even though display names look unique: a `DocumentsProvider` does
+not guarantee unique display names, and — the part that actually decides it — **the row order is not
+ours.** Every page is a fresh provider query, and without a total ordering the tie group sorts
+differently on page two than on page one.
+
+**`limit` is capped at 500 and defaults to 200.** An `fs.list` ack is a control frame; an uncapped
+listing of a 100,000-file directory builds a frame the far side is obliged to refuse, and a refused
+frame closes the socket — so the symptom would be *"this folder disconnects the app"*.
+
+**A cursor whose entry has vanished is resolved approximately, and it over-returns on purpose.** The
+page then starts at the first entry after it, with the vanished entry assumed to have been a folder,
+so the failure is a repeated row and never a gap. A repeat is cosmetic; a skipped row is a file the
+user cannot see and has no way to discover.
+
+**The phone snapshots a directory for the length of a paging run.** This is a correctness property,
+not only a speed one: re-reading between pages lets the cursor's sorted position shift underneath the
+pager. Sliding 30 s idle TTL, 120 s absolute ceiling, dropped by any write the phone makes. It cannot
+see a change made by anything else on the device, and nothing can — these are not our directories.
+
+### `fs.stat`
+
+```json
+request  {"rootId":"saf:primary%3ADCIM","id":"msf%3A1000012345"}
+ack      {"id":"msf%3A1000012345","name":"IMG_2041.jpg","dir":false,"size":3874112,
+          "mtimeMs":1756298000000,"mime":"image/jpeg","sha256":null}
+```
+
+`sha256` is `null` unless the phone already holds one and is **never** computed here: digesting a
+4 GB video to answer a stat would block the control channel for a minute with nothing able to report
+progress. A directory reports `size: 0` and `mime: "inode/directory"`.
+
+### `fs.mkdir`
+
+```json
+request  {"rootId":"saf:primary%3ADCIM","path":"Camera","name":"trip"}
+ack      {"id":"msf%3A1000012500","path":"Camera/trip"}
+```
+
+Creates one directory, not a chain. `name` may not contain `/`.
+
+### `fs.delete` — compare-and-delete
+
+```json
+request  {"rootId":"saf:primary%3ADCIM","id":"msf%3A1000012345",
+          "expectSize":3874112,"expectMtimeMs":1756298000000}
+ack      {"deleted":1}
+```
+
+**`expectSize` and `expectMtimeMs` are required, and a mismatch refuses the delete with
+`TARGET_STALE`.** They are the facts the Mac last saw in `fs.list`; the phone holds the truth and
+checks them **at the moment of acting** — it re-reads the row immediately before the delete, with
+nothing between the check and the call.
+
+They are required rather than optional-with-a-default, because a default would be a way to ask for an
+unconditional delete and no such request exists. The phone offers no unguarded deletion internally
+either.
+
+This is the same shape as the SMS recipient rule — *both facts named, verified on the side that holds
+the truth, nothing done on a mismatch* — and it is `TARGET_STALE` for the same reason `sms.send` has
+`RECIPIENT_MISMATCH`: **it reports a prevented harm rather than a refused convenience.** Any
+occurrence is worth investigating on the Mac.
+
+Two facts and not one: a file rewritten to the same length passes a size-only guard, and nothing
+about the request would look wrong.
+
+`deleted` is a count so a future recursive delete has somewhere to report; today it is `0` or `1`.
+**Directory deletion is not part of this protocol** — a directory is refused.
+
+> **A note on the name.** `docs/phase-5-fs-media-proposal.md` calls this `STALE_TARGET`.
+> `ErrorCode.TARGET_STALE` has existed since Phase 4 with this meaning word for word, and shipping
+> both would put two codes whose names are anagrams, and whose meanings are identical, into one
+> protocol — a Mac switching on one would silently miss the other and nothing would ever fail
+> loudly. The protocol's bar for a new code is *the Mac reacts differently*, and here it does not.
+> The existing name wins; the proposal's is the deviation.
+
+### `fs.transfer.begin`
+
+```json
+request  {"direction":"pull","rootId":"saf:primary%3ADCIM","id":"msf%3A1000012345"}
+ack      {"transferId":"t-8f21","direction":"pull","size":3874112,"mtimeMs":1756298000000,
+          "name":"IMG_2041.jpg","mime":"image/jpeg",
+          "sha256":"97b1c8f2…","offset":0,"chunkMax":262144}
+```
+
+`direction` is from the **Mac's** point of view: `pull` moves phone → Mac, `push` moves Mac → phone.
+**This build serves `pull` only**; `push` answers `FEATURE_UNAVAILABLE` with a sentence saying so.
+A Files pane must not draw an upload affordance against this build.
+
+**`sha256` is non-null when the phone pre-hashed**, which it does below a 64 MB ceiling. That is what
+makes `verified: true` reachable at all — `media.original` acks `null` because hashing before sending
+reads the file twice, and a large file would hold the control channel for the length of a full read
+with no progress to report. Above the ceiling this ack also carries `null` and the transfer reports
+`verified: false`, which is the honest answer rather than a silent downgrade.
+
+**`offset` is the resume point and is decided by the receiver**, the side that knows what it already
+holds. On a `pull` that is the Mac, which sends the offset it wants in the **bulk header**, so this
+field is `0`. On a `push` the phone is the receiver and the offset it already has belongs here.
+
+**One `transferId`, one file, one bulk connection.** A folder copy is the Mac's loop over *n* of
+these, not a protocol feature.
+
+### `fs.transfer.progress` — event, phone → Mac
+
+```json
+{"transferId":"t-8f21","bytes":52428800,"total":214748364,"bytesPerSecond":11534336}
+```
+
+Throttled to at most one every 250 ms, **plus a final one at completion that is never throttled**.
+
+**A file that finishes inside one window emits exactly one event: the final one.** Most transfers on
+a LAN — a photo, a screenshot, a PDF — complete in well under 250 ms, so **the common case is a
+transfer with no intermediate progress at all.** A Mac that waits for a stream before believing a
+transfer started would show every small file as stalled. A transfer is live from its
+`fs.transfer.begin` ack, not from its first progress event, and **no progress events is a normal,
+successful shape** meaning fast, never stuck.
+
+Fraction and ETA are not sent. The Mac derives them: a fraction with no bytes beside it is a number
+with nothing to check it against.
+
+### `fs.transfer.done` — event
+
+```json
+{"transferId":"t-8f21","ok":true,"bytes":214748364,"elapsedMs":18400,
+ "verified":true,"sha256":"97b1c8f2…"}
+```
+
+**`verified` is a separate field from `ok`, and this is deliberate.** A transfer that completed with
+no digest to compare against is a *success that was not verified*, and collapsing it into `ok: true`
+means the one case worth knowing about looks identical to the one that was checked. It is true only
+when a digest was agreed **before** the transfer and the one computed while streaming matches it.
+
+**On a checksum mismatch the receiver deletes the partial** — *a corrupt file is worse than a missing
+one; drop the partial so a retry is clean* — and leaves a `name.failed` sidecar in its place. See the
+on-disk convention below.
+
+### `fs.transfer.cancel` — either side
+
+```json
+request  {"transferId":"t-8f21","reason":"user"}
+ack      {"transferId":"t-8f21","stopped":true}
+```
+
+**The partial is kept** as `name.part` with its record intact, and the next `fs.transfer.begin` for
+the same file resumes from it. That is the opposite policy from a checksum mismatch, and the
+difference is the point: an interrupted partial is a resumable artifact, a checksum-failed partial is
+corrupt. Two states that both look like half a file on disk and want opposite treatment.
+
+A cancelled `transferId` can no longer be claimed by a bulk socket.
+
+### What is left on disk, on both sides
+
+| State | On disk | Means |
+|---|---|---|
+| In flight, or interrupted | `holiday.mov.part` | Bytes are good as far as they go. **Resumable.** |
+| Verified complete | `holiday.mov` | Done. Any stale `.part` and `.failed` for this name are removed. |
+| Checksum mismatch | `holiday.mov.failed`, and **no** `.part` | The bytes were wrong and have been deleted. **Retry from zero.** |
+
+**Partials are never visible at their final name.** Without that, *a corrupt file is worse than a
+missing one* is enforced for the checksum case and quietly broken for every interruption.
+
+**A `.part` is a display convenience and must never be load-bearing.** These are not our
+directories — a granted tree is `DCIM` or `Documents`, shared with every downloader on the device,
+all of which write `.part` files as a matter of course. Anything that decides to append to, delete or
+overwrite consults the transfer **record**, not the filename. A `.part` with no record of ours beside
+it is a stranger's file and is left alone.
+
+**`fs.list` returns `.part` and `.failed` entries like any other file** rather than hiding them.
+Hiding them would put the Mac's rendering and the phone's directory into disagreement about what is
+there, and it means the convention survives a Mac that has never heard of it.
+
+### When a file operation cannot be done
+
+| Cause | `code` |
+|---|---|
+| The root is not one the phone has been granted | `ROOT_NOT_GRANTED` |
+| The tree was shared read-only, or the provider refused a write | `PERMISSION_DENIED` |
+| The file, directory or id no longer exists | `NOT_FOUND` |
+| `expectSize`/`expectMtimeMs` disagree with the file on disk | `TARGET_STALE` |
+| The receiver has no room | `NO_SPACE` |
+| Digest mismatch on arrival; the partial was deleted | `CHECKSUM_MISMATCH` |
+| The socket dropped, a read failed, a write failed | `TRANSFER_FAILED` |
+| A `..` segment, `limit` out of range, a missing required field, a `/` in a mkdir name | `BAD_REQUEST` |
+| `direction: "push"` against a build that only pulls | `FEATURE_UNAVAILABLE` |
+
+**`ROOT_NOT_GRANTED` is not `PERMISSION_DENIED`.** `PERMISSION_DENIED` greys out the pane, which is
+right when a capability has no grant at all and **wrong** here: the feature works, the user has added
+two folders, and the Mac asked about a third. The response is an "add this folder on the phone"
+affordance, not a dead pane.
+
+**`NO_SPACE` is not `TRANSFER_FAILED`.** Retrying fixes a `TRANSFER_FAILED` and cannot fix this one.
+Only the user can, and they need to be told which side is full.
+
+**`CHECKSUM_MISMATCH` is not `TRANSFER_FAILED` either**, for the opposite reason: retrying *is* worth
+it, the partial has already been deleted so a retry is clean, and it says something a generic failure
+does not — the bytes moved and were wrong, which is a different fault from bytes that never moved.
 
 ## Session tokens
 
@@ -1050,7 +1328,7 @@ Codes: `PERMISSION_DENIED`, `FEATURE_UNAVAILABLE`, `SECURE_SURFACE`, `ENCODER_FA
 `DEVICE_LOCKED`, `CONSENT_TIMEOUT`, `GEOMETRY_STALE`, `GESTURE_FAILED`, `NO_EDITABLE_FOCUS`,
 `UNSUPPORTED_KEY`, `TRANSFER_FAILED`, `PROTOCOL_MISMATCH`, `UNAUTHORIZED`, `BAD_REQUEST`,
 `NOT_FOUND`, `NO_REPLY_ACTION`, `NO_TELEPHONY`, `SEND_FAILED`, `NO_ACTIVE_CALL`,
-`NO_MEDIA_SESSION`
+`NO_MEDIA_SESSION`, `TARGET_STALE`, `ROOT_NOT_GRANTED`, `NO_SPACE`, `CHECKSUM_MISMATCH`
 
 `feature` is a **capability name** — see [the namespace rule](#namespace-rule) — or absent for the
 system messages, which belong to no feature.
@@ -1068,6 +1346,13 @@ collapsed into something vaguer:
   gets `FEATURE_UNAVAILABLE` greys out a pane, which is exactly the wrong response to a
   notification the user dismissed on the phone half a second ago. The right response is to refresh
   the list.
+The three added for files are described under [Files](#files-42501-with-bytes-on-42503) and exist
+for the same reason — `ROOT_NOT_GRANTED` is an "add this folder" affordance where
+`PERMISSION_DENIED` would grey the pane out, `NO_SPACE` is the one failure a retry cannot fix, and
+`CHECKSUM_MISMATCH` is the one where a retry is *worth* it because the partial is already gone.
+`TARGET_STALE` is reused rather than duplicated as `STALE_TARGET`; the note under `fs.delete` says
+why.
+
 - **`BAD_REQUEST` is a fault on the Mac's side**, and the only code here that is. Nothing the user
   can do affects it and nothing the phone can do fixes it; it is in the protocol so that a Mac bug
   looks like a Mac bug in the log rather than like a phone that has stopped working.
