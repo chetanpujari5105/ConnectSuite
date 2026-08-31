@@ -122,6 +122,23 @@ export class SmsClient extends EventEmitter {
 
   /** One `sms.received`. Carries exactly one message plus its thread id. */
   onReceived(payload: Record<string, unknown>): void {
+    this.ingest('sms.received', payload);
+  }
+
+  /**
+   * One `sms.sent` — defects 39 and 44.
+   *
+   * Deliberately the *same* path as `sms.received`, because `docs/protocol.md` specifies the two
+   * payloads as identical but for `inbound`, and the phone builds them with one builder so they
+   * cannot drift. A second validator here would be a second thing to keep in step, and the shape
+   * checks below — the ones defect 34 produced — are exactly as necessary for this event as for
+   * its twin. The direction is carried by the message's own `inbound` field, where it belongs.
+   */
+  onSent(payload: Record<string, unknown>): void {
+    this.ingest('sms.sent', payload);
+  }
+
+  private ingest(event: 'sms.received' | 'sms.sent', payload: Record<string, unknown>): void {
     const threadId = typeof payload.threadId === 'string' ? payload.threadId : null;
     const messages = rows(payload, 'messages');
     const message = (messages[0] as unknown as SmsMessage) ?? null;
@@ -145,7 +162,7 @@ export class SmsClient extends EventEmitter {
           : !Array.isArray(payload.messages)
             ? 'no messages[] at all — the phone is sending a shape docs/protocol.md does not describe'
             : `no threadId for the message in thread-less event from ${String((message as SmsMessage).address ?? 'an unknown address')}`;
-      log.warn('sms', `Dropped an sms.received: ${why} — ${this.tally()}`);
+      log.warn('sms', `Dropped an ${event}: ${why} — ${this.tally()}`);
       return;
     }
     this.received += 1;
@@ -155,10 +172,12 @@ export class SmsClient extends EventEmitter {
     const name = this.threads.get(threadId)?.contactName;
     log.info(
       'sms',
-      `sms.received in thread ${threadId} from ${name ? `${name} (${who})` : `${who}, no contact name`}` +
-        ` — ${this.tally()}`,
+      `${event} in thread ${threadId} ${event === 'sms.sent' ? 'to' : 'from'} ` +
+        `${name ? `${name} (${who})` : `${who}, no contact name`} — ${this.tally()}`,
     );
-    this.emit('received', { threadId, message });
+    // One event for both directions: the pane's job is the same either way — append it to the open
+    // thread, refresh the list otherwise — and the row's own `inbound` says which way it went.
+    this.emit('message', { threadId, message });
   }
 
   /**
@@ -253,6 +272,84 @@ export class SmsClient extends EventEmitter {
       );
     }
     return result;
+  }
+
+  /**
+   * Starts a conversation with a number that has no thread yet — defect 30.
+   *
+   * **A separate method from [send], on purpose.** The two obey different halves of the send rule
+   * and conflating them is how the rule gets eroded. `send` may never take a recipient from its
+   * caller: it resolves one from the thread it is sending into, because a number read off a pane is
+   * a guess that happens to be right most of the time. Here there *is* no thread, `addresses` is
+   * genuinely the only source of truth, and `docs/protocol.md` rule 5 says `threadId` may be
+   * omitted for exactly this case. One method taking an optional recipient would let a caller pass
+   * one for an existing thread and quietly bypass the check that exists to stop a message reaching
+   * the wrong person.
+   *
+   * The phone remains the authority. The check here is a sanity check on the shape of what was
+   * typed, not a verification — there is nothing to verify against — and it exists so that a
+   * fat-fingered field fails in front of the person who typed it rather than at the radio.
+   *
+   * The ack's `threadId` is returned because it is **authoritative and may not be new**: sending to
+   * a number that already has a thread is merged into that thread by the provider, so the pane must
+   * open what the phone says rather than assume it created something.
+   */
+  async sendNew(addresses: string[], body: string): Promise<PhoneAck & { threadId?: string }> {
+    if (body.trim().length === 0) {
+      this.refused += 1;
+      log.warn('sms', `new conversation refused here: empty body — ${this.tally()}`);
+      return {
+        ok: false,
+        reason: 'An empty message was not sent.',
+        fixHint: 'A blank message appears in the conversation and cannot be taken back.',
+      };
+    }
+
+    const wanted = addresses.map((one) => one.trim()).filter((one) => one.length > 0);
+    const unusable = wanted.filter((one) => !/\d/.test(one));
+    if (wanted.length === 0 || unusable.length > 0) {
+      this.refused += 1;
+      log.warn(
+        'sms',
+        `new conversation refused here: ${wanted.length === 0 ? 'no recipient given' : `no digits in ${unusable.join(', ')}`}` +
+          ` — ${this.tally()}`,
+      );
+      return {
+        ok: false,
+        reason:
+          wanted.length === 0
+            ? 'No recipient was given, so nothing was sent.'
+            : `${unusable.join(', ')} has no digits in it, so nothing was sent.`,
+        fixHint: 'Type the number to send to. The phone checks it again before anything goes out.',
+      };
+    }
+
+    const result = await ask(
+      this.link(),
+      'sms',
+      MessageType.SMS_SEND,
+      // No threadId. Shape two of `sms.send`, already specified and already implemented on the
+      // phone — this Mac simply had no surface that could name a recipient until now.
+      { addresses: wanted, body },
+      (ack) => ({
+        threadId: typeof ack.threadId === 'string' ? ack.threadId : null,
+        recipients: typeof ack.recipients === 'number' ? ack.recipients : wanted.length,
+      }),
+    );
+
+    if (result.ok) {
+      this.sent += 1;
+      log.info(
+        'sms',
+        `sms.send opened a conversation with ${result.data.recipients} recipient` +
+          `${result.data.recipients === 1 ? '' : 's'}, phone says thread ` +
+          `${result.data.threadId ?? 'not yet assigned'} — ${this.tally()}`,
+      );
+      return result.data.threadId ? { ok: true, threadId: result.data.threadId } : { ok: true };
+    }
+    this.refused += 1;
+    log.warn('sms', `sms.send refused by the phone: ${result.reason} — ${this.tally()}`);
+    return { ok: false, reason: result.reason, fixHint: result.fixHint };
   }
 
   /** Drops the thread copy on disconnect, with the rest of the session-scoped state. */

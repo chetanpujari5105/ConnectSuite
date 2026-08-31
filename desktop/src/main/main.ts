@@ -467,6 +467,12 @@ app.whenReady().then(() => {
     if (message?.type === MessageType.SMS_RECEIVED && message.payload) {
       sms.onReceived(message.payload);
     }
+    // Defect 44: a message typed on the handset, or sent by another client, reaches the Mac here
+    // and nowhere else. Before this there was no outgoing equivalent of the inbound broadcast, so
+    // the phone's own keyboard diverged from the Mac until a thread was reopened.
+    if (message?.type === MessageType.SMS_SENT && message.payload) {
+      sms.onSent(message.payload);
+    }
     if (message?.type === MessageType.REMOTE_STATE && message.payload) {
       remote.onState(message.payload);
     }
@@ -506,7 +512,10 @@ app.whenReady().then(() => {
   // fans out to whatever window exists.
   notifications.on('changed', (list) => send('notif-changed', list));
   remote.on('changed', (state) => send('remote-changed', state));
-  sms.on('received', (event) => send('sms-received', event));
+  // The channel keeps its name because the renderer's contract is unchanged: to the pane, an
+  // inbound and an outbound message are the same event — a message entered a thread — and the
+  // row's `inbound` field says which. Defects 39 and 44.
+  sms.on('message', (event) => send('sms-received', event));
   calls.on('changed', (call) => send('call-changed', call));
 
   tray = new Tray(nativeImage.createEmpty());
@@ -752,6 +761,12 @@ ipcMain.handle(
 // No recipient parameter, deliberately. See sms.ts and the send rule in docs/protocol.md.
 ipcMain.handle('sms-send', (_event, payload: { threadId: string; body: string }) =>
   sms.send(payload.threadId, payload.body),
+);
+// The one channel that carries a recipient, and it carries no thread id — defect 30. Two channels
+// rather than one optional field, so a send into an existing thread cannot supply its own
+// recipient and skip the check that stops a message reaching the wrong person.
+ipcMain.handle('sms-send-new', (_event, payload: { addresses: string[]; body: string }) =>
+  sms.sendNew(payload.addresses, payload.body),
 );
 
 ipcMain.handle('remote-state', () => remote.current());

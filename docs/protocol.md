@@ -67,7 +67,7 @@ fails before `hello` is read.
 ### Message types
 
 Notifications: `notif.posted`, `notif.removed`, `notif.reply`, `notif.action`, `notif.dismiss`
-SMS: `sms.threads`, `sms.messages`, `sms.send`, `sms.received`
+SMS: `sms.threads`, `sms.messages`, `sms.send`, `sms.received`, `sms.sent`
 Calls: `call.incoming`, `call.ended`, `call.log`, `call.dial`, `call.answer`, `call.reject`
 Contacts: `contacts.list`, `contacts.get`
 Clipboard: `clip.push`, `clip.request`, `clip.history`
@@ -764,6 +764,37 @@ an `e:` line** rather than emitting a partial shape. A receiver must therefore t
 a misbehaving or outdated peer** — drop it, log it with its cause, and do not attempt to
 reconstruct a message from top-level fields. Being lenient here is how the two sides came to
 disagree about this event's shape for two sessions while both logged success (defect 34).
+
+`sms.sent` — **event**, payload **identical to `sms.received` with `inbound: false`**.
+
+```json
+{"threadId":"42",
+ "messages":[{"id":"9912","address":"+15551234567","body":"on my way",
+              "dateMs":1756299100000,"inbound":false,"read":true,
+              "kind":"sms","hasAttachments":false}]}
+```
+
+Emitted whenever the provider gains an outgoing row — **whether the send came from this Mac,
+another client, or the phone's own keyboard**. Every rule stated for `sms.received` above applies
+unchanged: exactly one entry plus its `threadId`, both required, the same bounded retry when the
+provider write has not landed, and **drop it rather than emit a partial shape**. A receiver treats a
+malformed one the same way, for the same reason.
+
+`read` is `true`: a message the user sent has by definition been seen by them.
+
+**Why an event and not a richer ack on `sms.send`.** An ack reaches only the client that asked, so a
+message typed on the handset would still never appear — that is defect 44, and it cannot be fixed
+on the Mac at all. It also keeps the ack meaning exactly one thing, *"the radio accepted this"*,
+rather than a statement that can be both late and wrong. And it survives more than one client:
+when a phone serves two Macs, an ack reaches one and the other's thread silently diverges.
+
+Defect **39** — the message a Mac just sent missing from the thread it was sent into — is closed by
+the same event, because the pane appends it the way it appends an inbound one instead of re-reading
+the provider before the row exists. **A delay before that re-read is explicitly rejected** and has
+been four times in this project: it substitutes a plausible value for a known one. The phone knows
+when its own write landed and says so.
+
+`sms.send`'s request shape, its ack, and the recipient rule above are **unchanged** by this.
 
 **MMS is partial, on purpose, and says so.** `kind` is `"sms"` or `"mms"`, and for an MMS the
 `body` is its text parts joined. Attachments are reported by `hasAttachments` and are **not

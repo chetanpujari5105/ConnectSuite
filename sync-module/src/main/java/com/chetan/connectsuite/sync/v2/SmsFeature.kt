@@ -3,6 +3,11 @@ package com.chetan.connectsuite.sync.v2
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.database.ContentObserver
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.provider.Telephony
 import android.telephony.SmsManager
 import android.telephony.TelephonyManager
 import androidx.core.content.ContextCompat
@@ -14,7 +19,13 @@ import com.chetan.connectsuite.core.protocol.Capability
 import com.chetan.connectsuite.core.protocol.Envelope
 import com.chetan.connectsuite.core.protocol.ErrorCode
 import com.chetan.connectsuite.core.protocol.MessageType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.jsonArray
@@ -53,10 +64,42 @@ object SmsFeature {
     private const val PROVIDER_LOOKS = 3
     private const val PROVIDER_LOOK_DELAY_MS = 150L
 
+    /**
+     * The reason string that marks a look we expect to succeed.
+     *
+     * A provider observer fires for reads, deletes and status changes as well as for writes, so
+     * most looks legitimately find nothing new and must not be counted as drops. A look that
+     * followed our own send is the one where finding nothing is a real failure — the Mac's thread
+     * will be missing the message it just sent — and only that one gets an `e:` line.
+     */
+    private const val AFTER_SEND = "after our own send"
+
     private val delivered = AtomicLong(0)
     private val refused = AtomicLong(0)
     private val received = AtomicLong(0)
     private val dropped = AtomicLong(0)
+    private val sentPushed = AtomicLong(0)
+    private val sentDropped = AtomicLong(0)
+
+    /**
+     * The id of the newest outgoing row already pushed, so one write seen three times pushes once.
+     *
+     * Seeded at install from whatever the provider already holds, because the alternative is
+     * replaying the user's entire sent history to the Mac the moment the link comes up.
+     */
+    @Volatile
+    private var lastSentId: String? = null
+
+    private var sentObserver: ContentObserver? = null
+
+    /**
+     * One push at a time. The observer can fire on several threads for one write, and `sms.send`
+     * kicks a look of its own, so without this two coroutines can both read the same new row
+     * before either records it and the Mac gets the message twice.
+     */
+    private val sentLock = Mutex()
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private fun tally(): String = "${delivered.get()} delivered / ${refused.get()} refused since start"
 
@@ -67,6 +110,7 @@ object SmsFeature {
         appContext = app
         server = link
         handledTypes.forEach { type -> link.register(type, handlerFor(type, app)) }
+        watchSentMailbox(app)
         link.refreshCapabilities()
         LinkLog.i(
             "sms",
@@ -80,10 +124,121 @@ object SmsFeature {
         if (!installed) return
         installed = false
         handledTypes.forEach(link::unregister)
+        appContext?.let { app ->
+            sentObserver?.let { runCatching { app.contentResolver.unregisterContentObserver(it) } }
+        }
+        sentObserver = null
+        lastSentId = null
         server = null
         appContext = null
         link.refreshCapabilities()
     }
+
+    /**
+     * Watch the sent mailbox, so a message typed on the handset reaches the Mac — defect 44.
+     *
+     * `sms.received` rides an inbound broadcast; **there is no outgoing equivalent**, and that
+     * absence was the whole of defect 44: nothing in this repo observed outgoing rows, so a message
+     * typed on the phone was invisible to the Mac until an unrelated refresh happened to redraw the
+     * thread. `registerContentObserver` appeared nowhere outside `Capabilities.kt`.
+     *
+     * Registered on the whole `sms` table rather than on `content://sms/sent`, with `notifyForDescendants`,
+     * because the platform notifies on the row's own URI and a message moves *into* the sent box
+     * (outbox → sent) rather than being written there. Filtering to `type = sent` happens at read
+     * time in [SmsStore.newestSentRow], which is where the truth is anyway.
+     *
+     * Seeded before registering. A fresh observer with no high-water mark treats the newest row in
+     * the user's history as new and pushes it, and a Mac that lights up with last Tuesday's message
+     * every time the app restarts is worse than one that misses nothing.
+     */
+    private fun watchSentMailbox(context: Context) {
+        if (!granted(context)) {
+            LinkLog.i("sms", "Not watching the sent mailbox: SMS permissions not granted")
+            return
+        }
+        lastSentId = runCatching { SmsStore.newestSentRow(context)?.id }.getOrNull()
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean, uri: Uri?) {
+                scope.launch { pushNewestSent(context, "provider change") }
+            }
+        }
+        runCatching {
+            context.contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
+        }.onSuccess {
+            sentObserver = observer
+            LinkLog.i(
+                "sms",
+                "Watching the sent mailbox for outgoing messages; newest already-sent row is " +
+                    "${lastSentId ?: "none"} and will not be pushed",
+            )
+        }.onFailure {
+            // Named as the user-visible consequence, not as an API failure. "registerContentObserver
+            // threw" tells the next reader nothing about what stopped working.
+            LinkLog.w(
+                "sms",
+                "Could not watch the sent mailbox; messages typed on the phone will not reach " +
+                    "the Mac until the thread is reopened: ${it.message}",
+            )
+        }
+    }
+
+    /**
+     * Push `sms.sent` for the newest outgoing row, if it is one the Mac has not been told about.
+     *
+     * Defects **39** and **44** in one mechanism, which is why it is an event and not a richer ack:
+     * an ack only answers the client that asked, so a message typed on the handset would still
+     * never appear, and a Mac that is one of two would silently diverge.
+     *
+     * The retry is defect 34's, unchanged and deliberately not a new one — three looks at 150 ms.
+     * The provider write is asynchronous and `onSend` already documents that; the answer is to look
+     * again for a fact, never to sleep and assume. A delay before re-reading is the shape this
+     * codebase has rejected four times and it is not being introduced here through a side door.
+     */
+    private suspend fun pushNewestSent(context: Context, why: String) {
+        val link = server ?: return
+        if (!granted(context)) return
+        sentLock.withLock {
+            var found: Pair<kotlinx.serialization.json.JsonObject, String>? = null
+            var looks = 0
+            while (looks < PROVIDER_LOOKS) {
+                looks += 1
+                found = runCatching { SmsStore.sentPayload(context, lastSentId) }
+                    .onFailure { LinkLog.w("sms", "Could not build sms.sent: ${it.message}") }
+                    .getOrNull()
+                if (found != null) break
+                if (looks < PROVIDER_LOOKS) delay(PROVIDER_LOOK_DELAY_MS)
+            }
+
+            val hit = found
+            if (hit == null) {
+                // Not necessarily a failure: an observer fires for reads, deletes and status
+                // changes too, and most of those genuinely have no new outgoing row behind them.
+                // Only a look that followed our own send is a miss worth an `e:` line, and the
+                // caller says which it was — hence `why` on the line rather than a bare count.
+                if (why == AFTER_SEND) {
+                    sentDropped.incrementAndGet()
+                    LinkLog.e(
+                        "sms",
+                        "sms.sent NOT pushed after $looks lookups following a send — the Mac's " +
+                            "thread will be missing the message it just sent — " +
+                            "${sentPushed.get()} pushed / ${sentDropped.get()} dropped since start",
+                    )
+                }
+                return
+            }
+
+            val (payload, id) = hit
+            lastSentId = id
+            sentPushed.incrementAndGet()
+            link.broadcast { session -> session.send(Envelope(type = MessageType.SMS_SENT, payload = payload)) }
+            LinkLog.i(
+                "sms",
+                "sms.sent pushed after $looks lookup(s) ($why, row $id) — " +
+                    "${sentPushed.get()} pushed / ${sentDropped.get()} dropped since start",
+            )
+        }
+    }
+
 
     /**
      * Pushes one `sms.received`. Called by `SmsMirrorReceiver` on the broadcast.
@@ -288,6 +443,16 @@ object SmsFeature {
             resolved?.let { put("threadId", it) }
             put("recipients", recipients.size)
         }
+
+        // Defect 39. The ack says "the radio accepted this" and deliberately still says only that
+        // — enriching it would make it a statement that can be late or wrong, and it would still
+        // only reach the client that asked. The message itself arrives as `sms.sent`, which every
+        // attached Mac gets, including one that did not send it.
+        //
+        // The observer will fire for this write too; the high-water mark means whichever gets
+        // there first wins and the other finds nothing. This look exists so the Mac is not waiting
+        // on a provider notification that is not guaranteed to be prompt.
+        scope.launch { pushNewestSent(context, AFTER_SEND) }
     }
 
     // ---- plumbing -------------------------------------------------------------------------

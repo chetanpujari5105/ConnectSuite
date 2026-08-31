@@ -205,6 +205,58 @@ class Phase4ContractTest {
     }
 
     /**
+     * Defects 39 and 44. `docs/protocol.md` specifies `sms.sent` as "payload identical to
+     * `sms.received` with `inbound: false`".
+     *
+     * Asserted as *identity except for two fields* rather than field by field, deliberately. A test
+     * that listed the keys it expected would pass against a `sms.sent` that had quietly lost
+     * `hasAttachments`, or gained one `sms.received` does not have — and two events whose shapes are
+     * supposed to be the same drifting apart by one field is exactly defect 34 with the arrow
+     * reversed. The Mac handles both with one code path on the strength of this sentence in the
+     * contract; if it stops being true the Mac breaks, silently, on the half that is rarer.
+     */
+    @Test
+    fun `sms sent is sms received with inbound false and read true`() {
+        val received = SmsPayloads.receivedEnvelope(
+            threadId = "594", id = "22184", address = "+919800000001",
+            body = "on my way", dateMs = 1756300000000L, contactName = "Ada Lovelace",
+        )
+        val sent = SmsPayloads.sentEnvelope(
+            threadId = "594", id = "22184", address = "+919800000001",
+            body = "on my way", dateMs = 1756300000000L, contactName = "Ada Lovelace",
+        )
+
+        assertEquals("threadId sits beside the array in both", "594", sent["threadId"]?.jsonPrimitive?.content)
+        val sentMessage = sent["messages"]!!.jsonArray[0].jsonObject
+        val receivedMessage = received["messages"]!!.jsonArray[0].jsonObject
+
+        assertEquals(
+            "the two events must carry the same fields — the Mac handles them with one path",
+            receivedMessage.keys.sorted(),
+            sentMessage.keys.sorted(),
+        )
+
+        assertEquals("false", sentMessage["inbound"]?.jsonPrimitive?.content)
+        assertEquals("a sent message has by definition been seen", "true", sentMessage["read"]?.jsonPrimitive?.content)
+
+        // Everything except those two is byte-identical, which is what "identical payload shape"
+        // in the contract actually means.
+        val differing = receivedMessage.keys.filter { key -> receivedMessage[key] != sentMessage[key] }
+        assertEquals(
+            "only inbound and read may differ between the two events",
+            listOf("inbound", "read"),
+            differing.sorted(),
+        )
+
+        // And the flat-shape guard again, because sms.sent is new and would regress into it just
+        // as easily as its twin did.
+        assertTrue(
+            "the message fields must not also sit at the top level",
+            sent["address"] == null && sent["body"] == null && sent["id"] == null,
+        )
+    }
+
+    /**
      * Defect 36. A call rejected from the Mac was reported as `missed`, because the disposition
      * was derived from the state transition alone — ringing to idle without going off-hook — and
      * the transition cannot tell a reject from a call left to ring out.

@@ -59,6 +59,13 @@ object MessageType {
     const val SMS_SEND = "sms.send"
     const val SMS_RECEIVED = "sms.received"
 
+    /**
+     * An outgoing message appeared in the provider — from this Mac, another client, or the
+     * handset's own keyboard. Same payload shape as [SMS_RECEIVED] with `inbound: false`.
+     * Defects 39 and 44.
+     */
+    const val SMS_SENT = "sms.sent"
+
     const val CALL_INCOMING = "call.incoming"
     const val CALL_ENDED = "call.ended"
     const val CALL_LOG = "call.log"

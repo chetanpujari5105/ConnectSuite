@@ -43,26 +43,27 @@ own heading there, and its own row here.
 | **27** | An unavailable capability's reason went stale the moment it was wrong | **closed** | 2026-08-28 | `docs/testing.md` |
 | **28** | A notification row could be labelled with a raw package name | **closed** | 2026-08-28, three copies found | `docs/testing.md` |
 | **29** | The call log read the wrong key and reported an empty log | **closed** | 2026-08-28 | `docs/testing.md` |
-| **30** | The Mac cannot start a new SMS conversation | **deferred** | — | see below |
+| **30** | The Mac cannot start a new SMS conversation | **fixed** (needs one real send to verify) | `sendNew` + compose surface, 5 fixtures shown to fail, 2026-08-31 | see below |
 | **31** | The media card never learned about changes made on the phone | **closed** | **step 67**, 2026-08-28 | `docs/testing.md` |
-| **32** | The SMS pane cannot reach a conversation older than its first page | **deferred** | — | see below |
+| **32** | The SMS pane cannot reach a conversation older than its first page | **closed** | on hardware 2026-08-31 — 50 → 89 → 126 → 158 → 183, all distinct | see below |
 | **33** | The phone names packages where it means apps, in sentences users read | **deferred** | — | see below |
 | **34** | `sms.received` dropped by the Mac: the phone sent a shape the contract does not describe | **closed** | **step 68**, both contact states, 2026-08-28 | `docs/testing.md` |
 | **35** | An outgoing call's card was labelled with nothing at all | **closed**, both halves | **step 69** (outgoing) 2026-08-28; **step 70** (35c, inbound) 2026-08-31 | `docs/testing.md` |
 | **36** | A call rejected from the Mac was reported as `missed` | **closed** | **step 70** on hardware, 2026-08-31 — `ended rejected` with the platform's `type=5` as the control | `docs/testing.md` |
 | **37** | A re-granted notification listener never turned its capabilities back on | **closed** | hardware, link **down**, 2026-08-29 | `docs/testing.md` |
 | **38** | A volume change made on the phone never reaches the Mac | **deferred** | — | see below |
-| **39** | A message sent from the Mac is missing from the thread it was sent into | **deferred** | — | see below |
+| **39** | A message sent from the Mac is missing from the thread it was sent into | **fixed** (needs one send to verify) | closed by `sms.sent`, not by a timer, 2026-08-31 | see below |
 | **40** | `call.reject delivered` named a disposition the disposition logic then overrode | **closed** | hardware, 2026-08-29 | `docs/testing.md` |
 | **41** | The force-stop hook denies prose that merely mentions the rule | **closed** | hook fixture tests, 2026-08-29 | see below |
 | **42** | An episode is labelled with the previous call's number | **closed** | outgoing hardware 2026-08-29; inbound on **step 70**, 2026-08-31 — `c7` drew its own number and contact, not `c6`'s | see below |
 | **43** | A call with no number logged as `from ,` on the Mac — the string defect 35 is named for | **closed** | `calls.test.ts`, 2026-08-29 | see below |
-| **44** | A message sent on the phone never reaches the Mac — no observer on outgoing rows | **open** | — | see below |
+| **44** | A message sent on the phone never reaches the Mac — no observer on outgoing rows | **fixed** (needs one SMS typed on the handset) | `sms.sent` + a sent-mailbox observer, 2026-08-31 | see below |
 | **45** | `EXTRA_INCOMING_NUMBER` arrives too late for the card, so no inbound call had a number | **closed** by option 4 | **step 70**, 2026-08-31 — 7 of 7 episodes corrected, 16–535 ms | see below |
 | **46** | The media remote puts a raw package id in a sentence — and drops it entirely in two more | **closed** | `shared/appLabel.ts` + 8 fixtures shown to fail, live in the running app, 2026-08-31 | see below |
 | **47** | ~~A live call card the Mac cannot correct~~ — **WITHDRAWN.** The card was true; `c13` was a 68-minute WhatsApp video call | **withdrawn**, not a defect | `dumpsys telecom`, 2026-08-31 | see below |
 | **48** | Two step-70 locks at two paths excluded nothing — each watcher took its own and both armed | **closed** | reconciled to one path; exclusion fixtures, 2026-08-30 | see below |
 | **49** | The exclusion's refusal overstated its own evidence — one CDP client was counted as two | **closed** | `lsof` fixture and three controls, 2026-08-30 | see below |
+| **50** | The thread cursor was never honoured — the conversations view returns nothing for a *bound* selection argument | **closed** | on hardware 2026-08-31; found while proving 32's pager actually pages | see below |
 
 ---
 
@@ -690,3 +691,37 @@ with the real captured `lsof` output as a fixture and three controls: one client
 reads as **1**, a bare listener reads as **0**, and the caller is excluded from its own count. The
 live end-to-end control reads 0 with nothing attached and 1 with one attached — a check that reports
 a client when there is none, and also when there is one, is not discriminating.
+
+### 50 — the thread cursor was never honoured, because the conversations view ignores bound arguments · **closed 2026-08-31**
+
+**Found by refusing to accept a drawn control as a working one.** Defect 32's pager rendered, the
+button appeared, the button was pressed — and the list stayed at 50. It would have been very easy to
+record 32 as fixed on the strength of the button existing.
+
+`SmsStore.threads` paged with `selection = "date < ?"` and `selectionArgs = [beforeMs]`. Against
+`content://mms-sms/conversations` that returns **zero rows** — no exception, no error, an empty
+cursor, so the `runCatching` in `query` had nothing to log and the phone honestly reported
+`0 threads, hasMore=false`.
+
+**The reading that separated the two candidate causes**, and it is the whole method here: every
+`before` value returned 0, *including one above the newest row*, which should have returned
+everything. A wrong cursor value cannot do that. That moved it from "the cursor is wrong" to "the
+selection never ran".
+
+**Why it looked like a working provider.** `adb shell content query --uri … --where 'date<…'`
+returns 2990 rows, and with `--sort 'date DESC'` returns the same 2990 — so the view *does* honour
+selections. It does not bind `?` arguments on this URI, and the shell tool inlines its literal.
+Testing through the shell and concluding the provider was fine is the lookalike that hid this.
+
+**Fix:** inline the value — `"date < $beforeMs"`, no args. Safe **because the type makes it safe**:
+`beforeMs` is a `Long?`, so no caller can put a string near it. If it ever becomes a `String` this
+has to go back to a bound argument and page some other way, and there is a comment at the site
+saying so.
+
+**Verified on hardware**, which is the only place this could be verified — no unit test can see it,
+because the behaviour belongs to one OEM's content provider. 50 → 89 → 126 → 158 → 183 threads
+across four pages, every entry distinct, the pager never stalling.
+
+**Fix direction if it regresses:** do not reach for a larger page size. Read the cursor's own
+behaviour first — one probe with a `before` above the newest row distinguishes a dead selection
+from a wrong value in a single call.

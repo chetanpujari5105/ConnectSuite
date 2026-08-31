@@ -203,6 +203,13 @@ contextBridge.exposeInMainWorld('connect', {
     ipcRenderer.invoke('sms-messages', { threadId, options }),
   smsSend: (threadId: string, body: string): Promise<PhoneAck> =>
     ipcRenderer.invoke('sms-send', { threadId, body }),
+  /**
+   * Defect 30. The *only* call that names a recipient, and it names no thread — shape two of
+   * `sms.send`, for a conversation that does not exist yet. `smsSend` above still takes no
+   * recipient, so the send rule cannot be bypassed by passing one for an existing thread.
+   */
+  smsSendNew: (addresses: string[], body: string): Promise<PhoneAck & { threadId?: string }> =>
+    ipcRenderer.invoke('sms-send-new', { addresses, body }),
   onSmsReceived: (
     callback: (event: { threadId: string; message: SmsMessage }) => void,
   ) => ipcRenderer.on('sms-received', (_event, payload) => callback(payload)),

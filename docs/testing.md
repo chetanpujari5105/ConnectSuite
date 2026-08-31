@@ -6975,3 +6975,87 @@ Three attributions were made for `c13` from timestamps and all three were withdr
 answer came from an artefact that names the owning app, the state transitions and the duration.
 `c13` is closed as *explained*: an ordinary WhatsApp video call, behaving exactly as a self-managed
 call is documented to behave. Nothing about it needs deriving from a clock again.
+
+---
+
+# The Phase 4 SMS sitting — 30, 32, 39, 44, and a fifth found underneath them — 2026-08-31
+
+Four defects were meant to travel together. They do, and a fifth came out of insisting that the
+fix for 32 be *shown* to work rather than shown to render.
+
+## What each needed, against what the proposals predicted
+
+`docs/phase-5-proposals.md` §1 got this right and saved the sitting a redesign: **only one of the
+four needed the wire.** 30 and 32 were already possible on the protocol and were Mac-side gaps.
+
+| # | Change | Verified |
+|---|---|---|
+| **44** | `sms.sent` event + a `ContentObserver` on the sent mailbox | code + fixtures; **needs one SMS typed on the handset** |
+| **39** | the same event; the pane appends instead of re-reading the provider | code + fixtures; **needs one send from the Mac** |
+| **30** | `SmsClient.sendNew` + a compose surface that names a recipient | code + 5 fixtures; **needs one real send to a new number** |
+| **32** | a thread pager | **on hardware: 50 → 89 → 126 → 158 → 183** |
+| **50** | the thread cursor was never honoured at all | **on hardware**, same run |
+
+## `sms.sent` — one mechanism, two defects
+
+Emitted whenever the provider gains an outgoing row, whoever wrote it. Payload identical to
+`sms.received` with `inbound: false`, **built by the same builder** — `SmsPayloads.envelope` — so
+the two shapes cannot drift. That is defect 34's lesson applied before the fact rather than after:
+34 was this event's twin having a shape the contract did not describe, and the cheapest guarantee it
+does not recur is that there is only one place the shape exists. `Phase4ContractTest` asserts the
+two payloads differ in exactly `inbound` and `read` and in nothing else, and it was shown to fail
+against a second builder that had quietly lost `hasAttachments`.
+
+The retry is defect 34's, unchanged: three looks at 150 ms, the same counters, the same refusal to
+emit a partial shape. A look that follows our own send is the only one whose failure is an `e:`
+line — an observer fires for reads and deletes too, and counting those as drops would bury the
+denominator that makes the line worth reading.
+
+**A delay before the composer's re-fetch stays rejected**, for the fifth time in this project. The
+phone knows when its own write landed; the Mac is told.
+
+## Defect 50 — and how it was nearly recorded as a pass
+
+The pager rendered. The button appeared. The button was pressed. The list stayed at 50.
+
+```
+noCursor        : 5 threads, hasMore=true
+aboveNewest     : 0 threads          ← a value that should return EVERYTHING
+page1Oldest     : 0 threads
+small           : 0 threads
+```
+
+**That second row is the whole diagnosis.** A wrong cursor value cannot return zero for a bound
+above the newest row, so the fault was not the value — the selection was never running.
+`content://mms-sms/conversations` returns an empty cursor for a selection carrying a `?`
+placeholder: no exception, so `query`'s `runCatching` had nothing to log, and the phone honestly
+reported `0 threads, hasMore=false` all the way up.
+
+**And the provider looked innocent when asked directly**, which is the lookalike:
+`adb shell content query --where 'date<…'` returns 2990 rows and honours `--sort` as well. The
+shell inlines its literal; the app binds an argument. Testing through the shell and concluding "the
+provider handles selections" is exactly the shape of every other entry in this file's control table.
+
+Fixed by inlining the `Long`, with the type — not the trust — as the safety argument.
+
+## And the pager still repeated itself
+
+With the cursor working, page 2 returned 50 threads of which **11 were already on page 1**. The
+conversations view yields a row per *message*, so a conversation with messages either side of a
+boundary arrives on both pages. De-duplicated on append, first occurrence kept because the pages
+walk newest-first and the first row carries the snippet and unread count a person expects.
+
+`dedupeByThread` is hung on `globalThis` and tested directly, so the test runs the function the pane
+runs. Its fixtures use the device's own numbers — 50 + 50 with 11 repeats is 89 — and go red without
+the rule.
+
+**Recorded as a known limit, not fixed here:** `before` is a millisecond timestamp with no
+tiebreaker, so rows sharing one to the millisecond can still be skipped at a boundary.
+`docs/phase-5-proposals.md` decided the answer — an optional `beforeId` and a documented total
+ordering — and it is a protocol change across three pagers. It is not being smuggled into a Phase 4
+sitting. This pager is no worse than the two already shipped.
+
+## Suite
+
+Phone **181** tests, 0 failures. Mac **129** tests, 0 failures, `tsc` clean. Every new fixture was
+shown to fail against the defect it is named for and put back.

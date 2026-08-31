@@ -49,7 +49,29 @@ interface SmsBridge {
     SmsResult<{ threadId: string; messages: SmsMessageRow[]; hasMore: boolean }>
   >;
   smsSend(threadId: string, body: string): Promise<{ ok: boolean; reason?: string; fixHint?: string }>;
+  /** Defect 30. Names a recipient and no thread — the only call in this pane that may. */
+  smsSendNew(
+    addresses: string[],
+    body: string,
+  ): Promise<{ ok: boolean; reason?: string; fixHint?: string; threadId?: string }>;
   onSmsReceived(callback: (event: { threadId: string; message: SmsMessageRow }) => void): void;
+}
+
+/**
+ * One entry per conversation, keeping the first seen.
+ *
+ * Exported onto `globalThis` at the foot of this file like the rest of the pane's pure rules, so
+ * the test runs the function the pane runs rather than a second copy of the same idea.
+ */
+function dedupeByThread<T extends { threadId: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const row of rows) {
+    if (seen.has(row.threadId)) continue;
+    seen.add(row.threadId);
+    out.push(row);
+  }
+  return out;
 }
 
 const PAGE = 50;
@@ -57,6 +79,10 @@ const PAGE = 50;
 class SmsView {
   private threads: SmsThreadRow[] = [];
   private threadsHasMore = false;
+  /** Defect 30: the pane is composing a message to a number that has no thread yet. */
+  private composingNew = false;
+  private newRecipient = '';
+  private newBody = '';
   private loaded = false;
 
   private openThreadId: string | null = null;
@@ -105,8 +131,20 @@ class SmsView {
     await this.loadThreads();
   }
 
-  private async loadThreads(): Promise<void> {
-    const result = await this.bridge.smsThreads({ limit: PAGE }).catch(
+  /**
+   * Defect 32. `before` is the exclusive timestamp of the oldest thread held, exactly as the
+   * message pager on the same screen already does it — the phone has always paged
+   * (`SmsStore.threads(context, limit, before)`); this Mac simply never passed a cursor and said so
+   * in prose the reader could not act on.
+   *
+   * Known limit, recorded rather than hidden: `before` is a millisecond timestamp with no
+   * tiebreaker, so threads sharing one to the millisecond can be skipped or repeated at a page
+   * boundary. `docs/phase-5-proposals.md` decided the fix — an optional `beforeId` and a documented
+   * total ordering — and it is a protocol change across three pagers, so it is not being smuggled
+   * in here. This pager is no worse than the two shipped ones and closes the defect it is named for.
+   */
+  private async loadThreads(before?: number): Promise<void> {
+    const result = await this.bridge.smsThreads(before === undefined ? { limit: PAGE } : { limit: PAGE, before }).catch(
       (error): SmsResult<{ threads: SmsThreadRow[]; hasMore: boolean }> => ({
         ok: false,
         reason: `The Mac could not reach its own SMS channel (${String(error)}).`,
@@ -117,9 +155,28 @@ class SmsView {
       return;
     }
     this.loaded = true;
-    this.threads = result.data.threads;
+    // A cursor page is appended; a fresh load replaces. Appending on a refresh would double every
+    // thread already held the first time anyone pressed refresh after paging.
+    //
+    // **And the append de-duplicates by thread id, which is not defensive tidying — it is
+    // required.** `content://mms-sms/conversations` yields a row per *message*, not per thread, so
+    // a conversation with messages either side of a page boundary comes back on both pages. Page 2
+    // repeated 11 of page 1's 50 threads on this device before this line existed. The first
+    // occurrence is kept because the pages walk newest-first, so it is the one carrying the
+    // thread's most recent snippet, date and unread count.
+    this.threads =
+      before === undefined
+        ? result.data.threads
+        : dedupeByThread([...this.threads, ...result.data.threads]);
     this.threadsHasMore = result.data.hasMore;
     this.render();
+  }
+
+  /** Pages backwards from the oldest thread held, which is what `before` means on the wire. */
+  private async loadOlderThreads(): Promise<void> {
+    const oldest = this.threads[this.threads.length - 1];
+    if (!oldest) return;
+    await this.loadThreads(oldest.dateMs);
   }
 
   private async openThread(threadId: string): Promise<void> {
@@ -170,8 +227,93 @@ class SmsView {
 
   private render(): void {
     this.body.textContent = '';
-    if (this.openThreadId) this.renderThread();
+    if (this.composingNew) this.renderNewConversation();
+    else if (this.openThreadId) this.renderThread();
     else this.renderList();
+  }
+
+  /**
+   * Defect 30 — the surface that can name a recipient.
+   *
+   * The pane could reply into a thread the phone already knew about and could not address a number
+   * that had none, so there was no path to a first message. `docs/protocol.md` has specified the
+   * shape for this the whole time (`{"addresses":[…],"body":"…"}` with no `threadId`) and the phone
+   * has always implemented it; what was missing was here.
+   *
+   * On success the pane opens **the thread the phone names**, not one it assumes it created: a
+   * first message to a number that already has a thread is merged into that thread by the provider.
+   */
+  private renderNewConversation(): void {
+    this.note.textContent = 'A new conversation. The phone checks the number before anything is sent.';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'sms-compose sms-compose-new';
+
+    const to = document.createElement('input');
+    to.type = 'text';
+    to.id = 'sms-new-to';
+    to.placeholder = 'Phone number';
+    to.value = this.newRecipient;
+    to.addEventListener('input', () => {
+      this.newRecipient = to.value;
+    });
+
+    const body = document.createElement('input');
+    body.type = 'text';
+    body.id = 'sms-new-body';
+    body.placeholder = 'Message';
+    body.value = this.newBody;
+    body.addEventListener('input', () => {
+      this.newBody = body.value;
+    });
+
+    const send = document.createElement('button');
+    send.id = 'sms-new-send';
+    send.textContent = 'Send';
+
+    const cancel = document.createElement('button');
+    cancel.className = 'secondary small';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => {
+      this.composingNew = false;
+      this.render();
+    });
+
+    const submit = async (): Promise<void> => {
+      send.disabled = true;
+      to.disabled = true;
+      body.disabled = true;
+      const result = await this.bridge
+        .smsSendNew([this.newRecipient], this.newBody)
+        .catch((error): { ok: boolean; reason?: string; fixHint?: string; threadId?: string } => ({
+          ok: false,
+          reason: `The Mac could not reach its own SMS channel (${String(error)}).`,
+        }));
+      send.disabled = false;
+      to.disabled = false;
+      body.disabled = false;
+      if (!result.ok) {
+        this.showNotice(result.reason ?? 'The message was not sent.', result.fixHint);
+        return;
+      }
+      this.newRecipient = '';
+      this.newBody = '';
+      this.composingNew = false;
+      this.showNotice('Sent.');
+      await this.loadThreads();
+      // The phone's threadId, not an assumption. A number that already had a thread is merged
+      // into it by the provider, and opening a thread we invented would show an empty pane.
+      if (result.threadId) await this.openThread(result.threadId);
+      else this.render();
+    };
+
+    send.addEventListener('click', () => void submit());
+    body.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') void submit();
+    });
+
+    wrap.append(to, body, send, cancel);
+    this.body.appendChild(wrap);
   }
 
   private renderList(): void {
@@ -190,12 +332,36 @@ class SmsView {
     this.note.textContent =
       `${this.threads.length} conversation${this.threads.length === 1 ? '' : 's'}, ` +
       `${named} showing a contact name, ${unread} unread.` +
-      (this.threadsHasMore ? ' Older conversations are not shown.' : '');
+      (this.threadsHasMore ? ' Older conversations are not shown yet.' : '');
+
+    const bar = document.createElement('div');
+    bar.className = 'sms-bar';
+    const compose = document.createElement('button');
+    compose.className = 'secondary small';
+    compose.id = 'sms-new';
+    compose.textContent = 'New conversation';
+    compose.addEventListener('click', () => {
+      this.composingNew = true;
+      this.render();
+    });
+    bar.appendChild(compose);
+    this.body.appendChild(bar);
 
     const list = document.createElement('div');
     list.className = 'sms-list';
     for (const thread of this.threads) list.appendChild(this.threadRow(thread));
     this.body.appendChild(list);
+
+    // Defect 32. The prose above used to end here and the reader had nowhere to go. A sentence
+    // describing a limit is not the same as a control that lifts it.
+    if (this.threadsHasMore) {
+      const older = document.createElement('button');
+      older.className = 'secondary small';
+      older.id = 'sms-older-threads';
+      older.textContent = 'Load older conversations';
+      older.addEventListener('click', () => void this.loadOlderThreads());
+      this.body.appendChild(older);
+    }
   }
 
   private threadRow(thread: SmsThreadRow): HTMLElement {
@@ -333,7 +499,12 @@ class SmsView {
         this.drafts.delete(threadId);
         input.value = '';
         this.showNotice('Sent.');
-        void this.openThread(threadId);
+        // Defect 39. This used to re-read the thread here — about 30 ms after the phone reported
+        // the send, and before the provider had written the row — so the pane redrew without the
+        // message it had just sent and nothing appended it afterwards. The message now arrives as
+        // `sms.sent` and is appended by the same handler that appends an inbound one. Waiting
+        // longer before re-reading was the tempting fix and is rejected: a timer substitutes a
+        // plausible value for a known one, and the phone knows when its own write landed.
       } else {
         this.showNotice(result.reason ?? 'The message was not sent.', result.fixHint);
       }
@@ -379,3 +550,7 @@ function timeOfSms(whenMs: number): string {
     ? at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     : at.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
+
+// The testable seam: the pane is a plain script, so the pure rule is hung on globalThis and the
+// test runs *this* function rather than a second copy that can drift. See CLAUDE.md.
+(globalThis as unknown as { dedupeByThread: typeof dedupeByThread }).dedupeByThread = dedupeByThread;

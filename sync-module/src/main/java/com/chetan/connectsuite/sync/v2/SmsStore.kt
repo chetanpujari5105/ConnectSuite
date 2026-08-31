@@ -52,8 +52,24 @@ object SmsStore {
         val rows = mutableListOf<JsonObject>()
         var hasMore = false
 
-        val selection = if (beforeMs != null) "date < ?" else null
-        val args = if (beforeMs != null) arrayOf(beforeMs.toString()) else null
+        // **The bound argument is inlined here, and that is the fix for defect 50.**
+        //
+        // `content://mms-sms/conversations` is not a table, it is a union the provider assembles,
+        // and on this device it silently returns **zero rows** when the selection carries a `?`
+        // placeholder — not an error, not an exception, an empty cursor. Every `before` value
+        // behaved identically, including one above the newest row, which is what separated "the
+        // cursor is wrong" from "the selection never ran": a value that should have returned
+        // everything returned nothing.
+        //
+        // The same query works from `adb shell content query --where 'date<…'`, which is what made
+        // it look like a provider that honours selections. It does — it just does not bind
+        // arguments on this URI, and the shell tool inlines its literal.
+        //
+        // Inlining is safe **because the type makes it safe**, not because the value is trusted:
+        // `beforeMs` is a `Long?`, so no caller can put a string anywhere near this. If it ever
+        // becomes a String, this has to go back to a bound argument and page some other way.
+        val selection = if (beforeMs != null) "date < $beforeMs" else null
+        val args: Array<String>? = null
 
         query(
             context,
@@ -300,6 +316,82 @@ object SmsStore {
     /** The `_id` and `thread_id` of one provider row, read together. */
     data class ReceivedRow(val id: String, val threadId: String)
 
+    /** One outgoing provider row, whole. Defects 39 and 44. */
+    data class SentRow(
+        val id: String,
+        val threadId: String,
+        val address: String,
+        val body: String,
+        val dateMs: Long,
+    )
+
+    /**
+     * The newest row in the sent mailbox, or null if there is none.
+     *
+     * `type = MESSAGE_TYPE_SENT` and not the outbox: a message in the outbox has been handed to the
+     * radio and has not gone anywhere yet, and telling the Mac about it would draw a message in the
+     * thread that may still fail. A send that fails should leave nothing behind, which is what
+     * filtering on `sent` gives for free.
+     *
+     * Every field the payload needs comes out of **one** query, for the same reason
+     * [newestRowFor] reads its pair together: two queries can straddle a provider write and produce
+     * a message stamped with one row's id and another row's body.
+     */
+    fun newestSentRow(context: Context): SentRow? {
+        var row: SentRow? = null
+        query(
+            context,
+            Telephony.Sms.CONTENT_URI,
+            arrayOf(
+                Telephony.Sms._ID,
+                Telephony.Sms.THREAD_ID,
+                Telephony.Sms.ADDRESS,
+                Telephony.Sms.BODY,
+                Telephony.Sms.DATE,
+            ),
+            "${Telephony.Sms.TYPE} = ?",
+            arrayOf(Telephony.Sms.MESSAGE_TYPE_SENT.toString()),
+            "${Telephony.Sms.DATE} DESC",
+        ) { cursor ->
+            if (cursor.moveToFirst()) {
+                val id = cursor.getString(0)
+                val thread = cursor.getString(1)
+                if (!id.isNullOrBlank() && !thread.isNullOrBlank()) {
+                    row = SentRow(
+                        id = id,
+                        threadId = thread,
+                        address = cursor.getString(2).orEmpty(),
+                        body = cursor.getString(3).orEmpty(),
+                        dateMs = cursor.getLong(4),
+                    )
+                }
+            }
+        }
+        return row
+    }
+
+    /**
+     * The `sms.sent` payload for the newest outgoing row, if it is one we have not already pushed.
+     *
+     * Returning null for *both* "no row yet" and "the same row as last time" is deliberate and is
+     * what makes the caller's retry loop correct: after a send, the row we are waiting for is a
+     * **new** one, and "the provider still shows the previous message" is indistinguishable from
+     * "the write has not landed" — because for our purposes it is the same thing. The high-water
+     * mark is the caller's, so one observer firing three times for one write pushes once.
+     */
+    fun sentPayload(context: Context, lastPushedId: String?): Pair<JsonObject, String>? {
+        val row = newestSentRow(context) ?: return null
+        if (row.id == lastPushedId) return null
+        return SmsPayloads.sentEnvelope(
+            threadId = row.threadId,
+            id = row.id,
+            address = row.address,
+            body = row.body,
+            dateMs = row.dateMs,
+            contactName = ContactsFeature.nameFor(context, row.address),
+        ) to row.id
+    }
+
     /**
      * Both ids in **one** query.
      *
@@ -503,6 +595,39 @@ object SmsPayloads {
         body: String,
         dateMs: Long,
         contactName: String?,
+    ): JsonObject = envelope(threadId, id, address, body, dateMs, contactName, inbound = true)
+
+    /**
+     * The `sms.sent` payload — defects 39 and 44.
+     *
+     * **The same builder as [receivedEnvelope], deliberately.** `docs/protocol.md` specifies this
+     * event as "payload identical to `sms.received` with `inbound: false`", and two builders that
+     * are supposed to produce identical shapes are two shapes that will differ by one field the
+     * first time either is edited. Defect 34 was this event's twin having a shape the contract did
+     * not describe; the cheapest guarantee that it cannot happen again is that there is only one
+     * place the shape exists.
+     *
+     * `read` is `true` because the person sending it has by definition seen it. That is the only
+     * field whose *value* differs beyond `inbound`, and it is derived from `inbound` here rather
+     * than passed in, so a caller cannot supply an unread sent message.
+     */
+    fun sentEnvelope(
+        threadId: String,
+        id: String,
+        address: String,
+        body: String,
+        dateMs: Long,
+        contactName: String?,
+    ): JsonObject = envelope(threadId, id, address, body, dateMs, contactName, inbound = false)
+
+    private fun envelope(
+        threadId: String,
+        id: String,
+        address: String,
+        body: String,
+        dateMs: Long,
+        contactName: String?,
+        inbound: Boolean,
     ): JsonObject = buildJsonObject {
         put("threadId", threadId)
         put(
@@ -515,8 +640,9 @@ object SmsPayloads {
                         put("address", address)
                         put("body", body)
                         put("dateMs", dateMs)
-                        put("inbound", true)
-                        put("read", false)
+                        put("inbound", inbound)
+                        // Inbound arrives unread; outbound was written by the person reading it.
+                        put("read", !inbound)
                         put("kind", "sms")
                         put("hasAttachments", false)
                         contactName?.let { put("contactName", it) }

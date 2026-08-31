@@ -220,7 +220,7 @@ test('the switch substitutes a reserved number so the phone can refuse the pair'
 test('a received message is attributed, with a name or with a number', async () => {
   const named = await clientHolding(ADA_THREAD);
   const seen: Array<{ threadId: string; message: { address: string } }> = [];
-  named.sms.on('received', (event) => seen.push(event));
+  named.sms.on('message', (event) => seen.push(event));
 
   named.sms.onReceived({
     threadId: '42',
@@ -236,10 +236,119 @@ test('a received message is attributed, with a name or with a number', async () 
 test('a received event with no message is dropped rather than drawn', async () => {
   const { sms } = await clientHolding(ADA_THREAD);
   const seen: unknown[] = [];
-  sms.on('received', (event) => seen.push(event));
+  sms.on('message', (event) => seen.push(event));
 
   sms.onReceived({ threadId: '42', messages: [] });
   sms.onReceived({ messages: [{ id: '1', address: '+1', body: 'x', dateMs: 1, inbound: true, read: false, kind: 'sms', hasAttachments: false }] });
 
   assert.equal(seen.length, 0, 'a row with no sender is worse than no row');
+});
+
+/**
+ * Defects 39 and 44: an outgoing message reaches the pane by the same path as an inbound one.
+ *
+ * 39 is the message this Mac just sent going missing from the thread it was sent into — the
+ * composer re-read the provider 30 ms after the send, before the row existed, and nothing appended
+ * it afterwards. 44 is a message typed on the *handset* never arriving at all, because nothing
+ * observed outgoing provider rows. One event closes both, which is why it is an event and not a
+ * richer ack: an ack only answers the client that asked.
+ *
+ * Shown to fail: deleting the `SMS_SENT` dispatch in `main.ts` leaves the phone pushing and the Mac
+ * silent, which is defect 44 exactly; making `onSent` its own validator and dropping the
+ * `messages[]` check turns the malformed case below green, which is defect 34.
+ */
+test('a sent message reaches the pane the same way a received one does', async () => {
+  const { sms } = await clientHolding(ADA_THREAD);
+  const seen: Array<{ threadId: string; message: { address: string; inbound: boolean } }> = [];
+  sms.on('message', (event) => seen.push(event));
+
+  sms.onSent({
+    threadId: '42',
+    messages: [{ id: '9912', address: '+15551234567', body: 'on my way', dateMs: 2, inbound: false, read: true, kind: 'sms', hasAttachments: false }],
+  });
+
+  assert.equal(seen.length, 1, 'an outgoing message must reach the pane, whoever typed it');
+  assert.equal(seen[0]!.message.address, '+15551234567');
+  assert.equal(seen[0]!.message.inbound, false, 'the direction rides on the row, not on the channel');
+});
+
+/** The strictness defect 34 produced applies to the new event too, not only to its twin. */
+test('a malformed sms.sent is dropped exactly as a malformed sms.received is', async () => {
+  const { sms } = await clientHolding(ADA_THREAD);
+  const seen: unknown[] = [];
+  sms.on('message', (event) => seen.push(event));
+
+  sms.onSent({ threadId: '42', messages: [] });
+  sms.onSent({ messages: [{ id: '1', address: '+1', body: 'x', dateMs: 1, inbound: false, read: true, kind: 'sms', hasAttachments: false }] });
+  sms.onSent({ threadId: '42', id: '1', address: '+1', body: 'flat', dateMs: 1, inbound: false });
+
+  assert.equal(seen.length, 0, 'being lenient here is how the two sides disagreed for two sessions');
+});
+
+/**
+ * Defect 30: the one call that may name a recipient, and the shape it must put on the wire.
+ *
+ * `sms.send` shape two — `addresses` and **no** `threadId` — has been in `docs/protocol.md` and
+ * implemented on the phone the whole time. What was missing was a Mac that could express it.
+ *
+ * Shown to fail: putting `threadId: null` into the payload turns the deepEqual red, which matters
+ * because rule 5 says the field may be *omitted*, and a phone reading a present-but-null threadId
+ * takes the verification branch and refuses a conversation that does not exist yet.
+ */
+test('a new conversation names its recipient and no thread', async () => {
+  const { sms, sent } = await clientHolding(ADA_THREAD);
+
+  const result = await sms.sendNew(['+15559876543'], 'first message');
+
+  assert.equal(result.ok, true);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]!.type, 'sms.send');
+  assert.deepEqual(
+    sent[0]!.payload,
+    { addresses: ['+15559876543'], body: 'first message' },
+    'threadId must be absent, not null — rule 5 says omitted',
+  );
+});
+
+/**
+ * The recipient field is the one place in this pane where a typo becomes an SMS to a stranger, so
+ * a value with no digits in it fails in front of the person who typed it.
+ *
+ * This is a sanity check on shape and deliberately not a verification: there is nothing to verify
+ * against for a conversation that does not exist, and the phone remains the authority.
+ */
+test('a new conversation refuses a recipient with no digits, and sends nothing', async () => {
+  const { sms, sent } = await clientHolding(ADA_THREAD);
+
+  const nonsense = await sms.sendNew(['who?'], 'hello');
+  const blank = await sms.sendNew(['   '], 'hello');
+  const empty = await sms.sendNew(['+15559876543'], '   ');
+
+  assert.equal(nonsense.ok, false);
+  assert.match(String(nonsense.reason), /no digits/);
+  assert.equal(blank.ok, false);
+  assert.equal(empty.ok, false);
+  assert.equal(sent.length, 0, 'nothing may reach the wire from a refusal');
+});
+
+/**
+ * The pane must open the thread the **phone** names.
+ *
+ * A first message to a number that already has a thread is merged into that thread by the provider,
+ * so a Mac that assumed it had created a new one would open something empty. The ack is
+ * authoritative and is returned for exactly this.
+ */
+test('the phone\'s threadId comes back from a new conversation', async () => {
+  const merged = fakePhone({ threadId: '42', recipients: 1 });
+  const result = await new SmsClient(() => merged.link).sendNew(['+15551234567'], 'hello');
+  assert.equal(result.ok, true);
+  assert.equal(result.threadId, '42', 'the pane must open the thread the phone names, not one it invented');
+
+  // And when the phone cannot name one yet — the provider write is asynchronous, so a first
+  // message to a genuinely new number legitimately acks without a thread — nothing is fabricated.
+  // A made-up id is a token the Mac would hand back and get NOT_FOUND for.
+  const unassigned = fakePhone({ recipients: 1 });
+  const pending = await new SmsClient(() => unassigned.link).sendNew(['+15559876543'], 'hello');
+  assert.equal(pending.ok, true);
+  assert.equal(pending.threadId, undefined);
 });

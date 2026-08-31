@@ -54,6 +54,12 @@ export const MessageType = {
   SMS_MESSAGES: 'sms.messages',
   SMS_SEND: 'sms.send',
   SMS_RECEIVED: 'sms.received',
+  /**
+   * An outgoing message entered the provider — sent from this Mac, from another client, or
+   * typed on the handset. Payload is identical to `sms.received` with `inbound: false`.
+   * Defects 39 and 44.
+   */
+  SMS_SENT: 'sms.sent',
 
   CALL_INCOMING: 'call.incoming',
   CALL_ENDED: 'call.ended',

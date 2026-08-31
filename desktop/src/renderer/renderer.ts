@@ -122,7 +122,8 @@ interface ConnectBridge {
   remoteCommand(action: string, extra?: Record<string, unknown>): Promise<InputResult>;
   onRemoteChanged(callback: (state: RemoteStateView) => void): void;
 
-  // Phase 4: SMS. Note `smsSend` takes no recipient — the send rule, as a signature.
+  // Phase 4: SMS. `smsSend` takes no recipient — the send rule, as a signature. `smsSendNew`
+  // takes one and no thread, which is the only shape where a recipient is the source of truth.
   smsThreads(options: { limit?: number; before?: number }): Promise<
     { ok: true; data: { threads: SmsThreadRow[]; hasMore: boolean } } | { ok: false; reason?: string; fixHint?: string }
   >;
@@ -130,6 +131,11 @@ interface ConnectBridge {
     { ok: true; data: { threadId: string; messages: SmsMessageRow[]; hasMore: boolean } } | { ok: false; reason?: string; fixHint?: string }
   >;
   smsSend(threadId: string, body: string): Promise<InputResult>;
+  /**
+   * Defect 30. The one call that names a recipient — and it names no thread, which is what makes
+   * it safe: it cannot be used to supply a recipient for a conversation that already has one.
+   */
+  smsSendNew(addresses: string[], body: string): Promise<InputResult & { threadId?: string }>;
   onSmsReceived(callback: (event: { threadId: string; message: SmsMessageRow }) => void): void;
 
   // Phase 4: calls. `callAnswer`/`callReject` take no arguments — see calls.ts and step 61.
