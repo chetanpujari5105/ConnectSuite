@@ -279,15 +279,17 @@ its own last location** and opened inside `DCIM`. So a chip labelled `Camera` wo
 DocumentsUI happened to be, which on a second run is wherever the *previous pick* ended. The label
 would be right by coincidence and wrong by default, and the user has no way to tell which.
 
-**A second reading, taken the same day, makes it worse and settles it.** Re-granting a folder later
-that evening — same device, same unaimed intent — the picker opened at the **root of internal
-storage**, showing `Can’t use this folder` with `USE THIS FOLDER` `enabled="false"`. An hour earlier
-the identical call had restored its last location and opened inside `DCIM`.
+**Four readings the same day settle it, and the accurate claim is stronger than the first one
+written here.** Same handset, same unaimed intent, `FsRoots.pickerIntent()` unchanged between them:
+the picker restored its previous location and opened **inside `DCIM`** at 02:27, 02:29 and 02:30,
+then at 03:02 opened at the **root of internal storage** with `Can’t use this folder` and
+`USE THIS FOLDER` `enabled="false"`. Timestamps and their anchoring log lines are in
+`docs/testing.md` → Slice 7.
 
-So the starting point is not merely *not the top*: it is **not stable between runs**. A chip
-labelled `Camera` would have been correct in one of those two runs and wrong in the other, with
-nothing on screen to tell a user which they were in — and in the second run it would have dropped
-them on the one refusal §3.5 exists to keep them away from.
+So the starting point is not merely *not the top of storage*: **it is not stable between runs on one
+device.** A chip labelled `Camera` would have been right three times and wrong the fourth, with
+nothing on screen to tell a user which run they were in — and the fourth would have delivered them
+onto the exact refusal §3.5 exists to keep them away from.
 
 "Unset" reading as "starts at the top" is the assumption that makes chips look safe, and it is
 false twice over. A chip returns only if §8.3's reading says the picker can be aimed reliably — not

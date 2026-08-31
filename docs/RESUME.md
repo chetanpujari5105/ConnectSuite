@@ -154,6 +154,24 @@ labelled `Camera` would be right by coincidence and wrong by default.
 1. ~~**The Folders screen**~~ — **done, slice 6, 2026-09-01.**
 2. ~~**The Mac's Files pane**~~ — **done, slice 7, 2026-09-01.** Read half only; no upload
    affordance, by three separate statements and one test.
+3. ~~**The single-device audit**~~ — **done, read-only, 2026-09-01.** See below.
+4. **Push — the phone as receiver.** The next thing built, and the last thing standing between Files
+   and complete. It turns the canvas's drop tile real and closes **F4** in
+   `docs/design-departures.md`; the Mac's pane already has one condition
+   (`uploadAffordance(pushAvailable)`) waiting for it, so the tiles appear in the same moment the
+   verb answers. What it owes:
+
+   - `.part` / `.failed` in a SAF tree, and the `MediaStore` pending item for `Download/ConnectSuite`
+     — the mechanism is proven (`DownloadsProbeActivity`, four storage permissions `false`), the verb
+     is not served.
+   - The Room row that is authoritative for resume, per `phase-5-fs-media-proposal.md` §4.
+   - **The reading §4 still lists as unproven: whether a pending `MediaStore` item can be resumed
+     across process death.** Hold the state open rather than sampling for it — the `--ez abandon`
+     path already exists for exactly this.
+   - **The `EXTRA_INITIAL_URI` reading**, `phase-5-files-onboarding-proposal.md` §8.3. It needs
+     `Download/ConnectSuite` to exist, which push is what creates. Until it is taken, no chip or
+     button in this app may claim a destination — the picker's starting location is **not stable
+     between runs**, measured four times on 2026-09-01.
 3. **Push**, which is the phone as receiver: `.part`/`.failed` in a SAF tree, the `MediaStore`
    pending item for `Download/ConnectSuite`, and the Room row that is authoritative for resume. It
    also owes the reading §4 of the payload proposal still lists as unproven — **whether a pending
@@ -161,20 +179,29 @@ labelled `Camera` would be right by coincidence and wrong by default.
    §8.3 of the onboarding proposal, which needs `Download/ConnectSuite` to exist and so is naturally
    this sitting's.
 
-### Before Phase 6, and read-only: the single-device audit
+### The single-device audit — **done, read-only, 2026-09-01**
 
-**Every hardware reading in this repo came from one handset — SM-S938B, Android 16, One UI.** The
-record does not currently distinguish *platform* behaviour from *vendor* behaviour anywhere, and
-this app is meant to run on every Android phone. A separate sitting, changing no code, goes through
-the findings and marks each **AOSP** (holds anywhere), **Samsung/One UI** (vendor), or — the answer
-that must be available and used — **unknown, single-device**. Guessing is the failure mode here;
-"unknown" is a correct answer and a confident wrong label is not.
+**`docs/single-device-audit.md`.** No code changed, no device state modified. Every hardware finding
+is marked **contract**, **AOSP/Mainline**, **vendor**, or **unknown, single-device**.
 
-The ones that most need it, named so the sitting starts somewhere: the **SAF picker refusals** (the
-storage root and `Download`, and whether the refusal is DocumentsUI-generic or One UI's), the
-**call log** and `SamsungCallLog.Loggable okayToLog`, **DUAL_APP** users, **process management** and
-what survives a background kill, and **defect 55's timings**, which are one provider's
-implementation on one device.
+Four things to carry from it:
+
+1. **The method is one command.** `pm list packages -f | grep <component>` — ask who ships the code
+   behind the reading and where its APK lives. On one device that is the strongest available proxy
+   for portability, and it answered most of the audit.
+2. **`com.android.providers.telephony` is `/system/priv-app/SecTelephonyProvider/SecTelephonyProvider.apk`.**
+   Defect 50 is **vendor**, with evidence beyond the package name — and *a package name is not
+   provenance* is defect 50's own rule one layer down.
+3. **The SAF picker is Google's and Play-updated** (`/data/app`, versionName 17), so the wall is more
+   portable than assumed **and** can change on this very device with no OS upgrade. Re-run
+   `SafProbeActivity` after a DocumentsUI update. §6.4.
+4. **The `DUAL_APP` user 95 control is Samsung-only.** Several permission readings in
+   `docs/testing.md` used *user 95 reads `false` on everything* as their control. Anyone reproducing
+   those elsewhere will find the control absent — that is not a failure.
+
+**Nothing in the current build fails dangerously if a verdict is wrong** (§4). Every vendor-dependent
+decision so far went the conservative way. The one exception to watch is the Folders screen's wall
+copy, the only place a vendor assumption is asserted to a user as fact.
 
 ## Slice 5 — `fs.*`, the phone side — **done on hardware, 2026-09-01**
 

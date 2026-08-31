@@ -8626,6 +8626,46 @@ So the picker's starting point is not merely "not the top" — it is **not stabl
 screen distinguishing them. `EXTRA_INITIAL_URI` stays unset and the chips stay unbuilt;
 `docs/phase-5-files-onboarding-proposal.md` §8.3 holds the reading that would settle it.
 
+### The picker's starting location is not stable between runs on one device
+
+**Four opens of `ACTION_OPEN_DOCUMENT_TREE`, same handset, same day, same code path, no
+`EXTRA_INITIAL_URI` on any of them.** The intent is built in exactly one place — `FsRoots.pickerIntent()` — and nothing about it changed between these:
+
+| Open | Where the picker landed | `USE THIS FOLDER` | Anchored by |
+|---|---|---|---|
+| ~02:27 | **inside `DCIM`**, listing its 30-odd albums | `enabled="true"` | `folder pick returned nothing` at **02:27:44.693** |
+| ~02:29 | **inside `DCIM`** | `enabled="true"` | `granted tree saf:primary%3ADCIM` at **02:29:31.068** |
+| ~02:30 | **inside `DCIM`** | `enabled="true"` | `granted tree saf:primary%3ADCIM%2Fcs-gone-test` at **02:30:54.127** |
+| ~03:02 | **the root of internal storage**, showing `Can’t use this folder` / `To protect your privacy, choose another folder` | **`enabled="false"`** | `granted tree saf:primary%3ADCIM` at **03:02:50.788**, after navigating down to `DCIM` by hand |
+
+Three opens restored the previous location. The fourth, **thirty-two minutes after the third**,
+opened at the one folder on the device that can never be granted, with the confirm button already
+disabled. Nothing in the app differed; the only change between them is that the DCIM grant had been
+released at **03:01:14.601** — which is a plausible cause and is **not established**, because a
+single transition is one observation and DocumentsUI's location memory is not documented.
+
+**What this settles, and it is the stronger version of the earlier claim.** The proposal previously
+recorded *"unset does not mean the picker starts at the top — it means the picker chooses."* That is
+true and too weak. The accurate statement is: **unset is not stable between runs on one device.**
+A chip labelled `Camera` would have been right in the first three opens and wrong in the fourth,
+with nothing on screen telling a user which they were in — and in the fourth it would have delivered
+them onto the exact refusal that `docs/phase-5-files-onboarding-proposal.md` §3.5 exists to keep
+them away from.
+
+**So the chips are not shipped, and this is the reason.** Not "deferred", not "later": a chip is a
+promise about where the picker opens, and on the only device we have measured, that promise cannot
+be kept three times out of four and then broken.
+
+**What would settle `EXTRA_INITIAL_URI`** is in §8.3 of the proposal and is unchanged by this — the
+question there is whether *aiming* the picker works, and these four readings are all about what it
+does when **not** aimed. They make the reading more necessary, not less: an unaimed picker that
+wanders is the argument for aiming it, and the argument against shipping anything that claims a
+destination until aiming is proven.
+
+**Vendor or AOSP: unknown, single-device.** DocumentsUI is `com.google.android.documentsui` here,
+which is the AOSP package name, but this is One UI on an SM-S938B and the location memory could be
+either. One handset cannot tell them apart. See the single-device audit.
+
 ### Baseline
 
 Mac **172** tests, up from 161; `tsc --noEmit` clean; `stylesheets.test.ts` green, so no selector

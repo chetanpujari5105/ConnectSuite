@@ -61,6 +61,13 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   `TARGET_STALE` rather than `STALE_TARGET`, and `push` is not served yet. It was written as prose
   against `docs/protocol.md` while nothing was built; where the two now disagree, `docs/protocol.md`
   wins, because it is the contract and this was the argument for it.
+- `docs/single-device-audit.md` — **every hardware reading in this repo came from one SM-S938B.**
+  Which findings are AOSP, which are Samsung, and which are honestly *unknown, single-device*. The
+  method that answered most of it is one command — ask which package implements the thing you
+  measured and where its APK lives — and it produced two surprises: the SAF picker is **Google's,
+  Play-updated**, and `com.android.providers.telephony` is **Samsung's `SecTelephonyProvider.apk`
+  behind an AOSP package name**. Read §4 before assuming a vendor claim is safe, and §6.4 for the
+  one wall in this app with an expiry date nobody controls.
 - `docs/RESUME.md` — where work resumes and how to pick it up. **Read it first.** It currently holds
   the Phase 5 opening brief: what the proposals decide, what they leave open, and the first slice.
 - `docs/phase-3-input.md` — the Phase 3 brief: input injection via AccessibilityService. **Phase 3
@@ -176,6 +183,15 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
   **we are deliberately not asking for it** — whole-of-storage is the one permission that makes
   people uninstall an app whose entire pitch is no cloud and no account. The reasoning, the readings
   with their controls, and the recorded upgrade path are in `docs/phase-5-fs-media-proposal.md` §1.
+
+  **This wall has an expiry date nobody controls, and that is a maintenance obligation rather than a
+  worry.** The refusal is `com.google.android.documentsui`'s, and on this handset that package lives
+  in `/data/app` at versionName 17 — **it updates itself from the Play Store**, on a schedule neither
+  Samsung nor we control, and it is not pinned to the OS version. So the most-cited platform fact in
+  this repo — written into `docs/protocol.md`, the phone's Folders screen and the Mac's Files pane —
+  can change under a running install with no OS upgrade to signal it. `SafProbeActivity` is the only
+  thing that would notice. Re-run it when DocumentsUI updates, and do not re-argue the wall from
+  documentation. `docs/single-device-audit.md` §6.4.
 - Nothing works outside the local network without a relay. Out of scope for v2 core; Tailscale is the documented optional path.
 
 ## Code rules
@@ -470,6 +486,73 @@ damage on the user's own device or nearly recorded a false result.
   that distinguishes the thing you mean from the thing that merely matches**, and check that the
   attribute is in the output at all. `grep -c` was the second entry in this table and it is the
   ninth as well; the failure has not changed since.
+
+- **A tagged union is a rule about what can be represented, not about who may write it.** Making an
+  ambiguous state unrepresentable does nothing about two callers racing to set an unambiguous one,
+  and the second writer is free to move the machine back to a state the first had already left.
+
+  The worked example is as sharp as it gets: **the pane whose entire design exists to keep "no
+  folders" apart from "couldn't read folders" reached exactly that confusion through a race.** The
+  Files pane's state is one tagged union in `src/shared/`, `empty` and `failed` cannot both be true
+  or both be false, the render switches on `kind` and the compiler checks it is exhaustive — and on
+  a cold start the route opening and the `files` capability arriving both called `refresh()` within
+  a frame of each other. The first fetched the roots and listed 28 entries. The second reset the
+  listing underneath it and its own `fs.list` then timed out. **The pane settled on an empty table
+  with no error at all**, which is the one outcome the type was built to make impossible:
+
+  ```
+  02:55:13 I [files] fs.list saf:primary%3ADCIM/ → 28 entries, hasMore=false, 53 ms — 1 ok / 0 failed
+  02:55:31 W [files] fs.list saf:primary%3ADCIM failed: fs.list timed out after 10000ms
+  ```
+
+  Both triggers were *correct*. Neither is a bug on its own, and neither could be removed. That is
+  what makes this a rule rather than a defect: the guarantee was never violated — every intermediate
+  value was a legal state — and the wrong picture was assembled out of legal states in the wrong
+  order.
+
+  So: **anything that can be triggered by more than one event needs its concurrency stated, not just
+  its type.** The fix here is one line of intent — a second caller *joins the run in flight* rather
+  than starting another — and the question that finds it is *who else calls this, and what happens
+  if they both do*. Ask it of every fetch that a route, a capability, a reconnect and a retry can all
+  begin, which on this Mac is all of them.
+
+  The corollary worth keeping: a type system reasons about one thread's values, a race is about two
+  threads' order, and no amount of care in the first buys anything in the second.
+
+- **The instrument gets its own control before the reading counts — third sitting, and now from
+  three directions at once.** The rule above this one is about a device or a provider lying; the one
+  below it is about the DOM. This is the same rule again, and it is here because three *different*
+  measurement faults landed in one afternoon, each read plausibly and each was about the wrong
+  thing:
+
+  | The instrument | What it reported | What it was actually measuring |
+  |---|---|---|
+  | `document.querySelector('[data-screen="files"]')` | the pane: `visible: true`, and its buttons | **the app window** — which carries the same attribute as its route marker and comes first in document order. The button list was the sidebar's, and a pane that was hidden reported itself visible |
+  | a `/drop\|upload\|send to phone/` regex over the pane's text | an upload affordance is present | the **degraded banner's own sentence** — *"Sending files to the phone from here does not yet"*. The copy explaining an absence contains the words for the thing that is absent |
+  | reading the `Download` wall's copy from the state card | the wall is in the pane | the card only renders with **at most one root**, so the wall drew only in the almost-empty case — the state nobody with folders is ever in. Present in the code, invisible to every real user |
+
+  **Each of the three is a different failure and they share one cause.** The first measured a
+  superset of the target. The second matched a lookalike made of the target's own words. The third
+  measured a real thing in the one situation that does not occur. None produced an error, none
+  looked wrong, and two of them produced *confirming* answers — the most expensive kind.
+
+  The controls, in the same order, and all three are one line each:
+
+  - **Narrow the selector until it can only be the thing**, then assert what you narrowed to is the
+    thing: `section[data-screen="files"]`, and a check that it is visible before believing anything
+    it says about itself. When an attribute can appear on two elements, `querySelector` picks the
+    document order, not the meaning.
+  - **Count controls, never words.** An affordance is a `button`, an `input[type=file]`, a drop
+    handler — things you can enumerate. Text search finds the sentence apologising for its absence.
+  - **Check a state in the situation the user is in**, not in the situation that makes it easy to
+    render. "Is the copy present?" is the wrong question; "is it present *with two folders
+    granted*?" is the one that found this.
+
+  This is now the third sitting where the reading was fine and the instrument was not — the probe
+  cap, the hidden grid, and these three — so the general form is worth stating without a device in
+  it: **a measurement has two halves, what you measured and what you measured it on, and only the
+  first one ever gets checked.** Before a reading becomes a finding, say out loud what element, what
+  rows, what window it came from, and what else would have satisfied that description.
 
 - **The instrument gets a control before the reading does — and the DOM is an instrument.**
   The rule above is usually applied to a device or a provider. It applies unchanged to the thing
