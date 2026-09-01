@@ -78,7 +78,8 @@ Input: `input.tap`, `input.swipe`, `input.scroll`, `input.key`, `input.text`, `i
 (back/home/recents/notifications/quick-settings/lock-screen — **not** power; see [Input](#input-42501))
 Apps: `apps.list`, `apps.launch`, `apps.icon`
 Media remote: `remote.state`, `remote.command`
-System: `battery.state`, `net.state`, `ping`, `pong`, `error`, `capabilities.changed`
+Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`
+System: `ping`, `pong`, `capabilities.changed`, `battery.state`, `net.state`
 
 #### Namespace rule
 
@@ -209,6 +210,23 @@ A new config frame (SPS/PPS) therefore follows every resolution change, ahead of
 the new size, with an IDR immediately behind it. **The Mac must reconfigure its decoder whenever a
 config frame arrives**, not only on the one at connect: the parameter sets describe a different
 geometry and a decoder still configured for the old one produces nothing.
+
+### `mirror.stop` and `mirror.keyframe`
+
+`mirror.stop` — **request**, Mac to phone. `{}` in, an empty ack out. It stops the encoder and the
+foreground service, and it **acks whether or not a session was running**: the Mac's idea of the
+session state can lag a phone that has already ended one — a `SECURE_SURFACE` refusal, a revoked
+projection, a rotation that failed to swap — and turning that lag into an error would report a
+failure for a stop that succeeded in every sense the user cares about.
+
+`mirror.keyframe` — **request**, Mac to phone. `{}` in, an empty ack out. It asks the live encoder
+for a sync frame, which is what a Mac sends when its decoder has been reset or has been fed a stream
+it cannot resolve into a picture.
+
+**The ack says the request reached the encoder, not that a keyframe was produced.** The frame, if
+one is produced, arrives on the video channel afterwards; a Mac that treats this ack as the picture
+being fixed has confused a registration line for an execution line. With no session running there is
+nothing to ask, and the ack is still empty and still not a promise.
 
 ### `mirror.state`
 
@@ -1180,10 +1198,17 @@ fs.list  id: "primary%3ADCIM%2FCamera%2FIMG_2041.jpg"   ← a SAF document id
 media.*  id: "1000012345"                                ← a MediaStore _ID
 ```
 
-Asked for a thumbnail of an `fs.*` id, `media.thumb` answers **`ok: true` with zero entries** — a
-silent empty, which is an absence with no reason attached and exactly the shape this project keeps
-writing rules about. So the Files pane could not borrow the photo browser's thumbnails, and a
-selected photo drew `Kind`/`Size`/`Modified` and no image, ever.
+Asked for a thumbnail of an `fs.*` id, the Files pane saw **`ok: true` and an empty map** — a silent
+empty, which is an absence with no reason attached and exactly the shape this project keeps writing
+rules about. So the pane could not borrow the photo browser's thumbnails, and a selected photo drew
+`Kind`/`Size`/`Modified` and no image, ever.
+
+**That sentence used to say the *wire* answered with zero entries, and it was wrong by one layer.**
+On the wire `media.thumb` answers one item per id and every one of them carries
+`error: "BAD_REQUEST"`, because a SAF document id is not a number. It is the Mac's client that drops
+errored ids from the map it returns, so the emptiness is the client's and the reason existed all
+along one layer below it. Corrected here on 2026-09-01 while `media.*` was written into this
+contract: a claim about a protocol has to name which end it was read at.
 
 **Why a separate type rather than teaching `media.thumb` a second id space.** The same reason
 `media.original` is not `fs.transfer.begin` with a media id: two mutually exclusive addressing modes
@@ -1401,6 +1426,185 @@ Only the user can, and they need to be told which side is full.
 **`CHECKSUM_MISMATCH` is not `TRANSFER_FAILED` either**, for the opposite reason: retrying *is* worth
 it, the partial has already been deleted so a retry is clean, and it says something a generic failure
 does not — the bytes moved and were wrong, which is a different fault from bytes that never moved.
+
+## Photos (42501, with bytes on 42503)
+
+Capability `photos`. Four types, addressing **`MediaStore` ids that are global to the device** — no
+root, no path, no grant per folder. The arguments are in `docs/phase-5-fs-media-proposal.md` §5;
+this is the contract, and where the two disagree this wins.
+
+**This namespace was named in the message-type list for a full phase and specified nowhere.** It was
+found on 2026-09-01 while `fs.thumb` was written deliberately in the shape of a `media.thumb` the
+contract did not describe, and `scripts/check-protocol-spec.mjs` exists so that the next one is
+caught by the build rather than by somebody noticing.
+
+**`photos` is gated on `{READ_MEDIA_IMAGES, READ_MEDIA_VIDEO}` (API 33+) *or* `{READ_EXTERNAL_STORAGE}`
+below it — one alternative granted in full, never a mixture.** Images alone is refused, because
+`media.list` returns videos through the same list and a browser with every video silently missing is
+worse than one that says it has no permission. Errors report `feature: "photos"`, never `"media"`.
+
+**None of the Files wall applies here.** `MediaStore` is the surface the platform still serves by
+query, which is why the photo browser was buildable before a single folder had been granted. The
+converse is the part to remember: **`media.*` cannot see a file that is not in `MediaStore`**, and
+`fs.*` cannot address one by its `MediaStore` id. The two id spaces are disjoint and nothing bridges
+them — see [`fs.thumb`](#fsthumb).
+
+### `media.buckets`
+
+```json
+request  {}
+ack
+{"buckets":[
+  {"bucketId":"-1739773001","bucketName":"Camera","count":16369,
+   "newestMs":1756298000000,"coverId":"1000012345"},
+  {"bucketId":"-1829889111","bucketName":"WhatsApp Images","count":5774,
+   "newestMs":1756100000000,"coverId":"1000009912",
+   "appName":"WhatsApp","packageName":"com.whatsapp"}]}
+```
+
+`bucketId` is the handle and `bucketName` is what a person reads. Where the bucket's relative path
+carries a package segment — `Android/media/com.whatsapp/WhatsApp Images` — `packageName` and
+`appName` are sent **together**, resolved through `AppLabels.of` including when it fails. Neither
+appears without the other, and a bucket whose path holds no package segment carries neither: a rule
+that labelled everything would be indistinguishable from one that labelled nothing.
+
+**`count` is not decoration and must be kept.** It is the denominator `media.list`'s pages have to
+sum to, and the only number on this feature that can tell a working pager from one that stalls after
+its first page.
+
+**There is no cursor and no `limit`.** A bucket list is bounded by the number of folders on the
+device, not by the number of photographs — 149 albums over 35,755 items on the handset this was
+measured on. But **the phone reads every visual row to build it**: the count and the cover are
+aggregated in memory over one ordered scan, because `MediaStore` strips a `GROUP BY` appended to the
+sort order and `QUERY_ARG_SQL_GROUP_BY` is honoured unevenly across OEM providers. So this request
+costs time proportional to the *library*, not to the answer, and a Mac must not send it on a timer.
+
+### `media.list`
+
+```json
+request  {"bucketId":"-1739773001","limit":200,
+          "before":1756298000000,"beforeId":"1000012345"}
+ack
+{"bucketId":"-1739773001","hasMore":true,
+ "items":[
+  {"id":"1000012345","kind":"image","mime":"image/jpeg","size":3874112,
+   "width":4032,"height":3024,"dateMs":1756298000000,"durationMs":null,
+   "ownerPackage":"com.whatsapp","ownerAppName":"WhatsApp"}]}
+```
+
+**`bucketId` is optional, and omitting it is a real mode rather than a degenerate one: every bucket,
+merged under one ordering.** That is what the Mac's *All photos* view is, and it is why there is no
+`media.list` for one bucket and a second type for all of them. The ack echoes `bucketId` only when
+the request carried one, so an "all" page cannot be mistaken for a page of a bucket named `null`.
+
+`id` and `coverId` are **strings on the wire** because a `MediaStore` id outruns a JavaScript safe
+integer. `kind` is `image` or `video`; `durationMs` is null for an image; `width` and `height` are
+null when the provider has not filled them in, which is a real and ordinary state for a file written
+by another app.
+
+**`limit` defaults to 200 and is capped at 500**, refused with `BAD_REQUEST` outside 1–500. The cap
+is the frame, not the work: `MAX_CONTROL_FRAME` is what an uncapped listing would breach, and a
+breached frame closes the socket.
+
+**The cursor is `before` + `beforeId`, ordering `dateMs` descending then `id` descending**, and on
+this pager the tiebreak carries the common path rather than an edge case. `MediaStore.DATE_ADDED` is
+in **seconds** while every timestamp on this wire is in milliseconds, so converting a cursor back
+puts *every row in that whole second* into the tie group — a burst of camera frames or a bulk import
+shares a second by construction, not by bad luck. Measured on the handset: 6 of Camera's 32 page
+boundaries fell inside a tie group, carrying 10 photographs a bare-millisecond cursor would have
+dropped.
+
+**A `before` sent without a `beforeId` is answered, and it is answered lossily.** The phone falls
+back to `date_added < s`, which skips the rest of the second the previous page ended in; it logs the
+degradation rather than hiding it. That shape exists so an older Mac pages instead of looping
+forever, and it is **not** what our own client sends: a Mac echoes back the last item it received,
+both fields, untouched. Inventing a cursor or rounding a timestamp here is how a page boundary starts
+skipping rows inside a burst.
+
+**A `media.list` with no `before` at all is the diagnostic whose correct answer is *everything*.**
+Its pages must sum to the bucket's declared `count`. Zero rows from that request cannot be produced
+by a wrong cursor *value*; only by a selection that never ran, which is defect 50's signature. Send
+it first, before any tuning.
+
+### `media.thumb`
+
+```json
+request  {"ids":["1000012345","1000012399"],"maxEdge":256}
+ack
+{"thumbs":[
+  {"id":"1000012345","mime":"image/jpeg","width":256,"height":192,
+   "data":"/9j/4AAQSkZJRgABAQ…"},
+  {"id":"1000012399","error":"NOT_FOUND"}]}
+```
+
+**Base64 JPEG on the control channel, batched and bounded**, for the reason [`fs.thumb`](#fsthumb)
+repeats: a grid needs hundreds of thumbnails within a second of the pane opening, a bulk socket per
+tile is absurd, and a bulk socket for the batch is a second transfer state machine serving something
+that is not a transfer. A thumbnail is small by construction — a 256 px JPEG is 10–25 KB, about 33 KB
+base64 — and one that is not is a bug in thumbnail generation that should be visible as one.
+
+- **`ids` is capped at 32 per request**, refused with `BAD_REQUEST` above it and for an empty array.
+  32 × ~33 KB ≈ 1 MB, well inside `MAX_CONTROL_FRAME`. The cap bounds head-of-line blocking on the
+  channel that also carries `ping`.
+- **`maxEdge` defaults to 256 and is capped at 512**, refused below 32 or above 512. Above 512 it is
+  a preview, not a thumbnail, and it belongs on the bulk channel like the original.
+- **A per-item `error`, never a failed ack.** One deleted photo in a batch of 32 must not lose the
+  other 31. `width` and `height` are the **produced** bitmap's, not the request's — the phone fits
+  inside `maxEdge` and preserves the aspect ratio, so a 4:3 photo at `maxEdge: 256` comes back
+  256 × 192.
+
+**The per-item errors are `BAD_REQUEST` and `NOT_FOUND`, and `NOT_FOUND` is wider than its name.**
+An id that is not a number is `BAD_REQUEST`; everything else is `NOT_FOUND` — the row is gone, *or*
+the row is there and the platform could not produce a thumbnail from it. `loadThumbnail` fails
+identically for both, so the phone does not claim to know which, and a Mac must not tell a user a
+photo was deleted on the strength of this code. That is a genuine imprecision rather than a
+simplification, it is **defect 57**, and it is the one place this namespace is less honest than
+`fs.thumb`, which separates `NO_THUMBNAIL` from `NOT_FOUND` precisely because the two want different
+sentences on screen.
+
+**Asked for an `fs.*` id, every item comes back `BAD_REQUEST`** — a SAF document id is not a number —
+and the Mac's client drops errored ids from the map it returns, which is why the Files pane observed
+an empty answer rather than a refusal. The wire says something; the client's map says nothing. Both
+are true about different layers, and neither is a reason to teach this type a second id space.
+
+### `media.original`
+
+```json
+request  {"id":"1000012345"}
+ack      {"transferId":"t-9c04","size":3874112,"mime":"image/jpeg",
+          "name":"IMG_2041.jpg","sha256":null,"chunkMax":262144}
+```
+
+**This is not a fifth transfer mechanism.** It resolves a `MediaStore` id to a transfer and hands
+back a `transferId` that runs on the bulk channel exactly as `fs.transfer.begin`'s does —
+`fs.transfer.progress` reports it, `fs.transfer.done` completes it, `fs.transfer.cancel` cancels it,
+and `chunkMax` is negotiated in this ack for the same reason it is negotiated there. The only thing
+it does that `fs.*` cannot is address a `MediaStore` id.
+
+Deliberately **not** `fs.transfer.begin` with a media id: that would give `begin` two mutually
+exclusive addressing modes and an error table that has to explain which fields go together. One
+type, one addressing mode, one shared execution.
+
+**`sha256` is always `null` here, and that is a decision rather than an omission.** Hashing before
+sending means reading the file twice, and a 4 GB video would stall this ack for the length of a full
+read with nothing able to report progress. The phone digests as it streams and reports the result on
+`fs.transfer.done` with **`verified: false`**, which says plainly that nothing compared the bytes
+against a digest agreed in advance. A success nobody checked must not look like a success that was —
+`fs.transfer.begin` pre-hashes below its 64 MB ceiling and is where `verified: true` comes from.
+
+### When a photo request cannot be answered
+
+| Cause | `code` |
+|---|---|
+| The photos permission alternative is not granted in full | `PERMISSION_DENIED`, with a `fixHint` naming the phone's *Photos and videos* toggle |
+| The media id no longer exists | `NOT_FOUND` |
+| `limit` outside 1–500, `ids` empty or over 32, `maxEdge` outside 32–512, a missing or non-numeric `id`, a control session with no token | `BAD_REQUEST` |
+
+**The permission `fixHint` names the switch, not the permission.** Android 13 splits this into two
+grants and shows the user a single *Photos and videos* toggle, so telling somebody to grant
+`READ_MEDIA_VIDEO` describes a screen that does not exist on their phone.
+
+There is no `ROOT_NOT_GRANTED` here and there never will be: this namespace has no roots.
 
 ## Session tokens
 

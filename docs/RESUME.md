@@ -12,11 +12,23 @@ screen with aimed quick picks, the Mac's Files pane, push with resume, the grant
 `Download/ConnectSuite` destination, and drag to Finder — all on hardware. **What is left in Phase 5
 is clipboard and contacts.**
 
-**Clipboard is spec'd and unbuilt, and its first obligation is a measurement, not a keystroke.**
-`docs/phase-5-clipboard-proposal.md` §2: the background-read wall is inherited from documentation and
-has never been observed on this device. Two readings with their controls go into `docs/testing.md`
-before any code — and if the first fails, the proposal is rewritten, because the feature it describes
-would not be the feature that is possible.
+**Clipboard is spec'd and unbuilt, its instrument is built and unrun, and clipboard is now the
+phase's *only* remaining feature.** `docs/phase-5-clipboard-proposal.md` §2: the background-read wall
+is inherited from documentation and has never been observed on this device. **Five** readings with
+their controls go into `docs/testing.md` before any code, and §2 carries a **pre-registered decision
+table** — the product shape for each possible answer, written before the reading, so nothing can be
+rationalised afterwards. The probe is
+`app/src/debug/java/com/chetan/connectsuite/probe/ClipProbeActivity.kt`; its class comment is the
+operating manual.
+
+**Contacts is not outstanding.** It shipped in Phase 4 and is proven there — `ContactsFeature` on the
+phone, `ContactsClient` and the pane on the Mac, specified in `docs/protocol.md`, run 2026-08-28. The
+Phase 5 row groups it by permission surface, not by work left. `docs/phase-5-closeout.md` carries the
+argument; do not start it as though it were greenfield.
+
+**The ledger for the phase is `docs/phase-5-closeout.md`** — what passes, what is unproven *with the
+control each one needs*, and what is deferred by number. Phase 5 closes on two conditions and they
+are both in its banner.
 
 ---
 
@@ -46,8 +58,10 @@ Mac actually attached. Do not grep the phone log for `Listening on`; it is writt
 `yiaddr = 10.108.253.92, router 10.108.253.63` — the correct one. Two reads of the same fact
 disagreeing, with the less obvious one right.
 
-Baselines, as of Phase 5 slice 9: phone **278** tests (`core` 77, `input-module` 44,
-`sync-module` **126**, `mirror-module` 31), Mac **176** tests, `tsc --noEmit` clean. The figure this file
+Baselines, as of Phase 5 slice 10: phone **294** tests (`core` 77, `input-module` 44,
+`sync-module` **142**, `mirror-module` 31), Mac **192** tests, `tsc --noEmit` clean. Plus **14**
+guard fixtures under `scripts/`, which belong to neither suite:
+`node --test scripts/check-protocol-spec.test.mjs` and `node --test scripts/probe.test.mjs`. The figure this file
 carried at the close of Phase 4 — *189 (67 `sync-module` + 122 `core`)* — does not reconcile with the
 tree by either counting method and has been corrected rather than restated; see the note at the end
 of `docs/testing.md`. Run Gradle with `--rerun-tasks` when you intend a *run* — an
@@ -110,19 +124,44 @@ not implement an alternative without saying why the recorded reasoning is wrong.
 | **The aimed picker and the quick-pick chips** | done, slice 9 — `EXTRA_INITIAL_URI` measured, chips ship with one enforced constraint |
 | **Drag to Finder** | done, slice 9 — copy-then-drag, with the ordering stated to the user |
 | **Defect 56** | closed, and guarded — `FsArrivalTest`, shown red three ways |
+| The **`media.*` contract** | migrated into `docs/protocol.md` → Photos, slice 10 — and guarded by `scripts/check-protocol-spec.mjs` |
+| **Contacts** | **served since Phase 4**, not outstanding — `docs/phase-5-closeout.md` carries the argument |
+| **Clipboard** | spec'd, decided, instrument built — **and not one reading taken**. The only feature left in the phase |
 
-### Next — and it is clipboard, then contacts
+### Next — and it is clipboard, and only clipboard
 
-**Files is complete.** The three items slice 8 left open are all closed, and so is §4's last unproven
-claim: a pending `MediaStore` item **can** be resumed across process death, measured on hardware.
+**Files is complete** and **contacts was never outstanding** (see the head of this file). What is
+left in Phase 5 is one feature and it starts with a measurement.
 
-1. **Clipboard.** Spec'd in `docs/phase-5-clipboard-proposal.md`, nothing built. **Do not start with
-   code.** §2 names two readings and their controls; §8 gives the build order. The two decisions most
-   likely to be argued with, both already argued: the Mac's clipboard is **not** written
-   automatically (a single-slot store with no undo — an arriving entry is offered), and images are
-   out of scope in version one with `kind` carrying the reason.
-2. **Contacts.** The one Phase 5 feature with no proposal at all. `contacts` is already advertised
-   and `ContactsStore` exists — check what it actually serves before assuming this is greenfield.
+**The first thing to do when the phone is attached**, before any clipboard code:
+
+```bash
+# reading 1 (control) + 2 + 3 + 5, accessibility service ON
+adb shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ClipProbeActivity \
+  --es mode foreign --ei seconds 45
+adb logcat -s ClipProbe:V ClipboardService:V
+#  …while it samples: copy any text in any other app on the phone…
+adb shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ClipProbeActivity \
+  --es mode verify
+
+# reading 4: turn the accessibility service OFF in Settings, repeat both commands, turn it back on
+# the write direction: --es mode write, then --es mode verify
+```
+
+Three things about that run, all of which are in the probe and none of which should be re-derived:
+
+1. **`stopped=no-stimulus` means the run holds no reading**, not a negative one. If nobody copied
+   anything in another app during the window, a silent window says nothing at all.
+2. **Reading 4 is not optional.** Without the service-disabled run, "it worked" is a fact about this
+   build, not about the mechanism.
+3. **Nothing is logged but lengths and MIME types.** Do not add clipboard text to any log line while
+   debugging it — `LinkLog` writes to a rotating file on disk, and §6 of the proposal is about
+   exactly that.
+
+Then §2's pre-registered table names the product, §8 gives the build order, and the two decisions
+most likely to be argued with are both already argued: the Mac's clipboard is **not** written
+automatically (a single-slot store with no undo — an arriving entry is offered), and images are out
+of scope in version one with `kind` carrying the reason.
 
 **Phase 6 is not open.** `docs/single-device-audit.md` is its input and is committed; do not start it.
 
@@ -149,6 +188,32 @@ Four things to carry from it:
 **Nothing in the current build fails dangerously if a verdict is wrong** (§4). Every vendor-dependent
 decision so far went the conservative way. The one exception to watch is the Folders screen's wall
 copy, the only place a vendor assumption is asserted to a user as fact.
+
+## Slice 10 — the Photos contract, the specification guard, the clipboard instrument — **no hardware, 2026-09-01**
+
+A docs-and-guards sitting, taken while the phone was elsewhere. Evidence: `docs/testing.md` →
+**Slice 10**. Nothing here was measured on a device and nothing claims to have been.
+
+1. **`media.*` is in `docs/protocol.md` at last** — the Photos section, all four types. It had been
+   named in the inventory and specified nowhere for a whole phase. Reading the handlers against the
+   prose turned up three things the proposal never said: **`bucketId` is optional on `media.list`**
+   (omitting it is the Mac's *All photos*), the `media.original` ack carries **`chunkMax`**, and
+   `media.thumb`'s `NOT_FOUND` covers a failed render as well as a missing row — **defect 57**.
+2. **The gap has a guard now: `scripts/check-protocol-spec.mjs`**, on `PreToolUse` for `git commit`.
+   A type counts as specified only where it **opens a heading or a paragraph**, because the obvious
+   check passes on a passing mention — `media.thumb` was named five times in prose about `fs.thumb`.
+   It found two gaps nobody was looking for: **`mirror.stop` and `mirror.keyframe`**, implemented
+   since Phase 2 and documented nowhere. 14 fixtures, each with its opposite; the hook was shown to
+   deny on a real mutation and the file restored byte-identical.
+3. **The clipboard instrument is built and has never been run.** `ClipProbeActivity`, five readings,
+   each with the lookalike it excludes — including the one that would otherwise sink the run: with
+   reads blocked, *nobody copied* and *every read refused* are the same silence, so the probe reports
+   `stopped=no-stimulus` and refuses to conclude.
+4. **Two harness faults caught in the sitting**, both mine. `${PIPESTATUS[0]}` is empty in zsh, so
+   two Gradle runs printed a blank exit code beside `BUILD SUCCESSFUL` — use `${pipestatus[1]}`. And
+   `:app:compileDebugKotlin` reported `UP-TO-DATE` on a run containing a brand-new source file:
+   `BUILD SUCCESSFUL` there proves the task did not run. Both are `docs/RESUME.md`'s own
+   `--rerun-tasks` warning, one layer earlier than it was written for.
 
 ## Slice 9 — the grant-free destination, the aimed picker, drag to Finder — **done on hardware, 2026-09-01**
 
@@ -463,6 +528,7 @@ specified; then the transfer itself.
 | **51** | open | The after-send SMS retry logs an `E` and increments `dropped` for messages the observer then delivers, 2 of 2. Reporting only. Two triggers need two counters; **do not** raise the retry budget |
 | **52** | open — **fix on next touch of the mirror** | Found by the sweep 51 asked for, 2026-08-31. `VideoChannel` drops frames for three reasons into one counter, and the third — a frame past `MAX_FRAME`, refused by the writer — increments nothing, so the mirror's only correctness fault is absent from its own `droppedFrames`. The `Dropped N frames; the Mac is behind` line also asserts a cause it does not decide, which is defect 40's shape a third time. **Not deferred**: owed by whoever next opens `mirror-module` for any reason. The `oversize` counter is the half that matters and comes first |
 | **53** | open | Same sweep. Two of `calls.ts`'s four `refused` increments log nothing, so part of the tally has no line above it. One question, four reasons — it needs lines, not more counters |
+| **57** | open — new, slice 10 | `media.thumb` answers `NOT_FOUND` both for a photo that is gone and for one that is there and could not be rendered. Reporting only; the Mac already treats both the same way. **It needs the state produced before it is fixed** — truncate a file's bytes under its `MediaStore` row |
 | **17** | deferred | The Mac holds one phone structurally. Felt the first time anyone tests two phones |
 | **33** | deferred | Package ids in user-visible strings on the **phone** side. Lands naturally with the package-id rule above |
 | **38** | deferred | `onAudioInfoChanged` is not overridden. **Its test note must survive**: check `controller.playbackInfo.playbackType` before claiming a fix, and test with the phone's hardware volume keys, never `volume_set` from the Mac — that pushes through `onCommand` and makes a broken build look fixed |

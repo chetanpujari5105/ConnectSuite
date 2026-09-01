@@ -737,6 +737,13 @@ a resume that `offset` already provides for free.
 
 ## 5. Media
 
+> **Superseded by `docs/protocol.md` → Photos, 2026-09-01.** This section is the argument; that is
+> the contract, and it wins where the two disagree. Three things it says that this section did not:
+> `bucketId` is **optional** on `media.list` and omitting it merges every bucket under one ordering
+> (the Mac's *All photos*), the `media.original` ack carries **`chunkMax`**, and `media.thumb`'s
+> per-item `NOT_FOUND` covers a failed render as well as a missing row — defect 57.
+
+
 Capability `photos`, gated on `READ_MEDIA_IMAGES` **and** `READ_MEDIA_VIDEO` (API 33+), falling back
 to `READ_EXTERNAL_STORAGE` below that. Errors report `feature: "photos"`, not `"media"` — the mapping
 already in `FeatureOf`.

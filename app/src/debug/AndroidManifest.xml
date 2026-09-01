@@ -22,6 +22,12 @@
             android:label="Media probe"
             android:theme="@style/Theme.ConnectSuite" />
         <activity
+            android:name="com.chetan.connectsuite.probe.ClipProbeActivity"
+            android:exported="true"
+            android:label="Clip probe"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.ConnectSuite" />
+        <activity
             android:name="com.chetan.connectsuite.probe.FsProbeActivity"
             android:exported="true"
             android:label="Fs probe"

@@ -48,6 +48,11 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   direction and the wrong fix to avoid. `docs/testing.md` holds the evidence; this is the index.
   Kept in sync by `scripts/check-defects.sh`, wired to `PreToolUse` on `git commit`.
 - `docs/phase-4-closeout.md` — what Phase 4 proved, what it deferred, and what Phase 5 inherits.
+- `docs/phase-5-closeout.md` — **the Phase 5 ledger, and the phase is not closed.** What passes and
+  what proved it; what is unproven **with the control each one needs** rather than as a list of gaps;
+  and every deferral by number. Two conditions close the phase and both are in its banner. Read the
+  *untestable or unproven* table before claiming anything in Phase 5 is finished — row 1 is that
+  clipboard has never been measured on this device at all.
 - `docs/phase-5-files-onboarding-proposal.md` — the SAF grant surface: the phone's Folders screen,
   the copy that states the `Download` wall plainly, and — **rev 2, and the part to read** — every
   state each side can be in, drawn before either is built. A pane showing zero folders and a pane
@@ -55,25 +60,39 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   the one place the platform makes them genuinely indistinguishable (a refused folder and a
   cancelled pick both arrive as `null`). **The phone half is built — 2026-09-01, all four states on
   hardware**; the Mac's Files pane (§3.3, §3.4, §6) is still a proposal.
-- `docs/phase-5-fs-media-proposal.md` — the `fs.*` / `media.*` payload specification. **`fs.*` is
-  implemented and its contract has moved to `docs/protocol.md`** (the Files section, plus `fs.thumb`
-  as of 2026-09-01). **`media.*` is implemented and its contract has NOT moved**: `media.buckets`,
-  `media.list`, `media.thumb` and `media.original` appear in `docs/protocol.md`'s message-type list
-  and are specified nowhere in it, so §5 here is still their only spec. This line used to claim both
-  had moved; the gap was found on 2026-09-01 while writing `fs.thumb` deliberately in the shape of a
-  `media.thumb` the contract does not describe. Migrating it is owed by whoever next touches
-  `media.*`.
+- `docs/phase-5-fs-media-proposal.md` — the `fs.*` / `media.*` payload specification. **Both halves
+  are implemented and both contracts have now moved to `docs/protocol.md`** — Files (plus `fs.thumb`)
+  and Photos, the latter migrated on 2026-09-01. Read this file for the *arguments*; the contract is
+  `docs/protocol.md` and it wins wherever the two disagree.
+
+  **The gap that produced the Photos migration is worth more than the migration.** `media.buckets`,
+  `media.list`, `media.thumb` and `media.original` sat in the contract's message-type list, specified
+  nowhere in it, for a whole phase — and the note left behind said the migration was *owed by
+  whoever next touches `media.*`*, which is a rule enforced by someone remembering. Two of the four
+  were *mentioned* — five times and four times — in prose about `fs.thumb`, so the document read as though they
+  were covered. It is a hook now: `scripts/check-protocol-spec.mjs`, wired to `PreToolUse` on
+  `git commit`, which counts a type as specified only where it opens a heading or a paragraph, and
+  which found two more gaps nobody had noticed — `mirror.stop` and `mirror.keyframe`, both
+  implemented and both undocumented since Phase 2.
   Read this for the *arguments*, and note two recorded deviations: the delete refusal ships as
   `TARGET_STALE` rather than `STALE_TARGET`, and `push` is not served yet. It was written as prose
   against `docs/protocol.md` while nothing was built; where the two now disagree, `docs/protocol.md`
   wins, because it is the contract and this was the argument for it.
 - `docs/phase-5-clipboard-proposal.md` — the clipboard spec pass, **written before any code and
-  implementing none of it.** Payloads for the three reserved names, and the two things worth reading
-  first: the **background-read wall is inherited from documentation and has never been measured on
-  this device** (§2 names the reading *and its control*, and nothing may be built before both are
-  recorded), and the Mac's clipboard is **not** written automatically — a clipboard is a single-slot
-  store with no undo, so an arriving entry is offered rather than applied (§5). `EXTRA_IS_SENSITIVE`
-  is honoured and the history is memory-only.
+  implementing none of it.** Four things worth reading first:
+  - the **background-read wall is inherited from documentation and has never been measured on this
+    device.** §2 names five readings, each with the lookalike it excludes, and **the instrument is
+    built** — `ClipProbeActivity`, debug-only, never run. Nothing below §2 may be built first;
+  - §2's **pre-registered decision table**: the product shape for every answer the readings can
+    give, written *before* the reading so nothing can be rationalised afterwards. A refusal makes
+    this a foreground-only feature, which is a different product, and that is decided already;
+  - the Mac's clipboard is **not** written automatically — a single-slot store with no undo, so an
+    arriving entry is offered rather than applied (§5);
+  - §6 is **the first at-rest storage decision in this project**: memory only, 20 entries, 64 KB
+    each, cleared on disconnect, gone on restart, and **no clipboard text in any log line** —
+    `LinkLog` writes to a rotating file, so a handler written the way every other handler in this
+    repo is written would put people's passwords on disk while the history was scrupulously
+    in-memory.
 - `docs/single-device-audit.md` — **every hardware reading in this repo came from one SM-S938B.**
   Which findings are AOSP, which are Samsung, and which are honestly *unknown, single-device*. The
   method that answered most of it is one command — ask which package implements the thing you
@@ -99,7 +118,7 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 | 2 | Screen mirroring (MediaProjection capture, H.264, video socket) | **Done** — closed 2026-08-26 |
 | 3 | **Input injection (AccessibilityService)** — see `docs/phase-3-input.md` | **Done** — passed on hardware 2026-08-27; closed retroactively 2026-08-31 |
 | 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
-| 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **In progress** — photos done; **Files is complete** as of 2026-09-01: both directions with resume, the phone's Folders screen with aimed quick picks, the Mac's Files pane, the grant-free `Download/ConnectSuite` destination, and drag to Finder. Outstanding: **clipboard** (spec written, no code) and **contacts** |
+| 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **In progress** — photos done; **Files is complete** as of 2026-09-01 (both directions with resume, the Folders screen, the Files pane, the grant-free `Download/ConnectSuite` destination, drag to Finder); **contacts shipped in Phase 4** and is not outstanding — see `docs/phase-5-closeout.md`. Outstanding: **clipboard**, and only clipboard — spec'd and decided, its instrument built, **not one reading taken** |
 | 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | Not started |
 | 7 | Mac UX — packaging, distribution, app launching, and the polish pass | Not started |
 
@@ -962,6 +981,28 @@ damage on the user's own device or nearly recorded a false result.
   gets deleted by the first person it wedges. It checks *existence*, not status wording, and says so
   — the statuses are prose, and a checker that forced them into four buckets would either reject
   honest rows or quietly accept wrong ones.
+
+  **The third enforcement point is `scripts/check-protocol-spec.mjs`**, wired through
+  `scripts/hooks/protocol-spec-in-sync.sh` on `git commit`, and it is this rule catching itself.
+  `media.buckets`, `media.list`, `media.thumb` and `media.original` were named in
+  `docs/protocol.md`'s inventory and specified nowhere in it for a whole phase — and what this file
+  carried instead of a check was the sentence *migrating it is owed by whoever next touches
+  `media.*`*, which is a rule enforced by someone remembering, written in the very file that says
+  what that is worth.
+
+  **Its discriminator is the interesting part, and a weaker one would have been worse than none.**
+  The obvious check — does the type name appear in the document — **passes on a passing mention**:
+  `media.thumb` is named five times in the `fs.thumb` section, in sentences about something else, so
+  a checker counting occurrences would have reported the namespace documented on the day it was not.
+  A type counts as specified only where it is the **subject** of a heading or a paragraph. That
+  distinction is the whole guard, it has 14 fixtures each carrying its opposite, and its control is a
+  test rather than a memory: run against the contract as it stood before the migration it must report
+  exactly the six real gaps.
+
+  It found two nobody was looking for — `mirror.stop` and `mirror.keyframe`, implemented since Phase
+  2 and described nowhere. And its debt list is **printed on every run with a reason per entry**, so
+  a deliberately-unspecified type stays visible; an entry that becomes specified without leaving the
+  list fails the check, because an allowlist nobody prunes is how a guard stops guarding.
 
   This does not mean every rule gets a hook; most do not warrant one. It means the question gets
   asked, and "documented" is not recorded as "handled".

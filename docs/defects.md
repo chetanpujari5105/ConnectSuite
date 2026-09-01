@@ -70,6 +70,7 @@ own heading there, and its own row here.
 | **54** | `photos` would have been advertised with nothing serving the bulk channel its own `media.original` runs on | **closed** | red first, 2026-08-31, before any `media.*` code existed — `CapabilityPermissionTest` | `docs/testing.md` |
 | **55** | `fs.list` re-read and re-sorted the whole directory on every page — correct, and 490 seconds for one folder. **Read the rule, not the fix**: every check this project had ever asked of a pager passed while `limit` bounded the frame and never the work, so *a green pager needs a clock beside it* is now a rule in `CLAUDE.md` and outlives this row | **closed** | on hardware 2026-09-01, in the slice that introduced it; found by paging to exhaustion, not by a first page | `docs/testing.md`; the rule is in `CLAUDE.md` |
 | **56** | **A truncated push was committed as the finished file.** Above the 64 MB pre-hash ceiling no digest is agreed, so nothing but the length agreed on the control channel could tell an interruption from a completion — and nothing was checking it. **The most serious defect found in Phase 5**: reachable by any interrupted push of a large file, and its symptom is a file that looks whole and is half there, which is exactly what `.part` exists to prevent, defeated on the last step | **closed** | on hardware 2026-09-01, in the slice that introduced it; the guard is `FsArrivalTest`, shown red three ways 2026-09-01 | `docs/testing.md` |
+| **57** | `media.thumb` answers `NOT_FOUND` both for a photo that is gone and for one that is there and could not be rendered — one code for two facts, on the namespace whose sibling `fs.thumb` separates them deliberately | **open** | source, 2026-09-01, found by reading the handler against the contract while `media.*` was written into `docs/protocol.md` | see below |
 
 ---
 
@@ -912,3 +913,36 @@ the reason it is worth naming — 52's triggers are different *questions* about 
 so they need different numbers; these four are one question with four reasons, so they need
 different *lines*. The test is whether two causes want opposite responses, not whether they arrive
 from different call sites.
+
+### 57 — `media.thumb` calls a failed render a missing photo · **open**
+
+`MediaStoreReader.thumbs` maps every id to one of three answers: a JPEG, `BAD_REQUEST` when the id
+is not a number, and `NOT_FOUND` for **everything else**. That last branch is reached by
+`loadThumbnail` returning null or throwing, which it does for a row that has been deleted *and* for
+a row that is still there and cannot be decoded — a truncated download, a codec the device has no
+decoder for, a file whose bytes were replaced underneath its `MediaStore` entry.
+
+The two want different sentences. "That photo is no longer on the phone" is a claim about the user's
+library, and this code cannot support it: the pane is told a photograph was deleted on the strength
+of a decoder failing. `fs.thumb` was specified two days later with `NO_THUMBNAIL` separate from
+`NOT_FOUND` for exactly this reason, and it names it in `docs/protocol.md` — so the older namespace
+is the less honest one, which is the wrong way round.
+
+Found by reading the handler against the spec while `media.*` was migrated into the contract, not by
+a failure: nothing on this device has produced an undecodable row. The consequence is bounded — the
+Mac drops errored ids into a `missing` set and stops asking, which is the right behaviour for both
+causes — so this is a **reporting** defect, and it is recorded rather than fixed in the same sitting
+because the fix touches the phone and the phone is not attached.
+
+**Fix direction:** on the failure path only, ask whether the row still exists — one `_ID` count
+against the same collection — and answer `NOT_FOUND` when it does not, `NO_THUMBNAIL` when it does.
+`NO_THUMBNAIL` needs no new code: `fs.thumb` already carries it and the Mac already renders it as a
+tile with no image rather than as a deletion. Log the three outcomes on one line — `made /
+no-thumbnail / gone` — because "4 failed" with no decomposition is what made this invisible in the
+first place.
+
+**Wrong fix to avoid:** two of them. Answering `NO_THUMBNAIL` for the whole branch just moves the
+false claim to the other side and hides real deletions from a pane that uses this to prune. And
+verifying existence on the **success** path — every thumbnail paying for a second query so that an
+error message can be better — doubles the cost of the common case for the rare one; the extra query
+belongs on the branch that has already failed and is already off the fast path.

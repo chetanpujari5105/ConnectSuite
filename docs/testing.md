@@ -9754,3 +9754,141 @@ sits inside the button — so an exact-match on the label found nothing and the 
 to. The absence was my selector, not the pane. Matched on prefix, it renders at 608.*
 
 join, and renderer work.
+
+## Slice 10 — the Photos contract, the specification guard, and the clipboard instrument · 2026-09-01
+
+**No hardware reading was taken in this sitting and none is claimed.** The phone was not attached.
+Everything below is source, docs, unit tests and one mutation run — and the clipboard instrument that
+was built here has **never been run**, which is stated in its own class comment as well as here so
+nobody reads its existence as evidence.
+
+### 1. `media.*` moved into the contract, and the reason it had not
+
+`docs/protocol.md` gained a **Photos** section: `media.buckets`, `media.list`, `media.thumb`,
+`media.original`, their caps, their cursor, their error table. Until today those four were named in
+the document's message-type inventory and specified **nowhere in it**, for the whole of Phase 5.
+
+Three things the migration recorded that the proposal it came from did not say, all found by reading
+`MediaFeature`/`MediaStoreReader` against the prose rather than by trusting it:
+
+| Found | Where it matters |
+|---|---|
+| **`bucketId` is optional on `media.list`**, and omitting it merges every bucket under one ordering | It is what the Mac's *All photos* view is built on. A contract without it describes a client that could not exist |
+| **The `media.original` ack carries `chunkMax`** | The bulk channel's chunk size is negotiated, not a constant two implementations agree about silently — the same correction `fs.transfer.begin` already carries |
+| **`media.thumb`'s `NOT_FOUND` covers two different facts** | Defect **57**, below |
+
+### 2. Defect 57 — one code for two facts
+
+`MediaStoreReader.thumbs` answers `NOT_FOUND` when `loadThumbnail` returns null, which happens for a
+row that is **gone** and for a row that is **there and cannot be decoded**. The Mac is told a
+photograph was deleted on the strength of a decoder failing. `fs.thumb`, specified two days later,
+separates `NO_THUMBNAIL` from `NOT_FOUND` precisely because the two want different sentences — so the
+older namespace is the less honest one, which is the wrong way round.
+
+Found by reading the handler against the spec while writing the spec. **Not** found by a failure:
+nothing on this device has ever produced an undecodable row, which is also why it is deferred rather
+than fixed here — see the control it needs in §6.
+
+### 3. The guard: `scripts/check-protocol-spec.mjs`
+
+The note this migration discharged said it was *owed by whoever next touches `media.*`*, which is a
+rule enforced by someone remembering. `CLAUDE.md` is explicit about what that is worth, so the rule
+is a hook now — `scripts/hooks/protocol-spec-in-sync.sh`, `PreToolUse` on `git commit`, failing open
+on its own errors exactly as `defects-in-sync.sh` does.
+
+**The discriminator is the whole design.** The obvious check — does the type name appear in the
+document — **passes on a passing mention**, and two of the four missing types did appear:
+`media.thumb` is named five times in the `fs.thumb` section, in sentences about something else. A
+checker counting those would have reported the namespace documented on the day it was not. So a type
+counts as specified only where it is the **subject** of a heading or of a paragraph.
+
+**The control, and it is the reading that matters here.** Run against `docs/protocol.md` as it stood
+before this sitting, with the same `Messages.kt`:
+
+```
+media.buckets   is on the wire and is not the subject of any heading or paragraph
+media.list      is on the wire and is not the subject of any heading or paragraph
+media.thumb     is on the wire and is not the subject of any heading or paragraph   ← mentioned 5×
+media.original  is on the wire and is not the subject of any heading or paragraph   ← mentioned 4×
+mirror.stop     is on the wire and is not the subject of any heading or paragraph
+mirror.keyframe is on the wire and is not the subject of any heading or paragraph
+```
+
+Against the tree as it now stands: **0 unaccounted for, 54 of 62 specified, 8 on the debt list.**
+That control is a test (`scripts/check-protocol-spec.test.mjs`), not a one-off command, so it fails
+if the checker is ever loosened enough to stop seeing the defect it was built for.
+
+**It found two gaps nobody was looking for.** `mirror.stop` and `mirror.keyframe` are implemented,
+shipped since Phase 2, and were described nowhere. Both are specified now, including the thing that
+mattered enough to write down: **`mirror.keyframe`'s ack says the request reached the encoder, not
+that a keyframe was produced** — a registration line, not an execution line.
+
+**The debt list is printed on every run, with a reason per entry**, so a deliberately-unspecified
+type stays visible instead of becoming invisible: `clip.push`, `clip.request`, `clip.history` (§2's
+reading is not taken), `apps.list`, `apps.launch`, `apps.icon` (Phase 7, no handler either side),
+`battery.state`, `net.state` (unscheduled, no handler, no capability). An entry that turns out to be
+specified after all **fails** the check rather than passing quietly — an allowlist nobody prunes is
+how a guard stops guarding.
+
+**Fixtures: 14, all passing, each with its opposite.** A paragraph subject passes and a five-times
+mention fails; a heading passes and a wrapped continuation line fails; a debt entry passes and a
+*stale* debt entry fails; a `SPECIFIED_UNDER` heading passes and the same entry fails once the
+heading is renamed; an empty parse is an `INSTRUMENT FAILURE` rather than a clean zero-findings pass.
+
+**The hook was shown to deny.** `### \`media.thumb\`` was renamed to a heading that does not name the
+type, the hook ran, and it emitted `permissionDecision: "deny"` naming exactly that type; the file
+was then restored and confirmed **byte-identical by SHA-256** to the pre-mutation copy.
+
+### 4. The clipboard instrument — built, and deliberately not run
+
+`app/src/debug/java/com/chetan/connectsuite/probe/ClipProbeActivity.kt`. Five readings, each with
+the lookalike it exists to exclude, documented in `docs/phase-5-clipboard-proposal.md` §2. What is
+worth repeating here is the design decision that is not obvious:
+
+**With reads blocked, *nobody copied anything* and *every read was refused* produce identical
+silence.** That is the `KEYCODE_BACK` row of `CLAUDE.md`'s table — an absent line that was a reading
+which did not exist yet. So the probe does not conclude from its own window: `--es mode verify` takes
+a **foreground** read afterwards, and reports `stopped=no-stimulus` — *no reading at all* — when the
+clipboard still holds the probe's own marker.
+
+It reports its sample interval, its window, `stopped=`, and **the process importance at every
+sample**, because `moveTaskToBack` is a request to background and importance is the measurement of
+whether it happened. It logs **no clipboard text at any level**, ever: length, MIME, label,
+`EXTRA_IS_SENSITIVE`, and whether the clip is still its own marker.
+
+**The pre-registered decision table is in the proposal, written before the reading.** Whatever comes
+back, the product shape is already decided; a reading landing outside that table needs a new
+argument rather than a quiet reinterpretation.
+
+### 5. Two instrument faults caught in this sitting, both mine, both about the harness
+
+Neither cost a wrong claim, and both are the same family as the stale-XML row in `CLAUDE.md`:
+
+1. **`${PIPESTATUS[0]}` is empty in zsh** — the exit line printed `gradle exit:` with nothing after
+   it, twice, while the build's own output said `BUILD SUCCESSFUL`. A verdict with a blank exit code
+   is a verdict with no provenance; `${pipestatus[1]}` is the zsh spelling and every Gradle line
+   below carries it.
+2. **`:app:compileDebugKotlin` reported `UP-TO-DATE` on a run that had a brand-new source file in
+   it.** `BUILD SUCCESSFUL` there proves nothing about the new file; it proves the task did not run.
+   Re-run with `--rerun-tasks`, `78 executed`, and the class file exists with a fresh timestamp. This
+   is `docs/RESUME.md`'s own warning about result XML, in the compile task rather than the test task.
+
+### 6. What this sitting owes the next hardware session
+
+| Owed | The control that makes it a reading |
+|---|---|
+| Clipboard readings 1–5 | Reading 1 is the precondition and the run stops without it; reading 4 (accessibility service **off**) is what says reading 3 was about the grant; `verify` is what separates a refusal from an absent stimulus |
+| Defect 57's branch | Manufacture an undecodable row — truncate a file's bytes under its `MediaStore` entry — and confirm `media.thumb` says `NOT_FOUND` for a row `media.list` still returns. Without that, the fix would be written against a state nobody has produced |
+| Nothing else | Files, Photos and the transfer path are proven on hardware and unchanged by this sitting |
+
+### Suite
+
+Phone **294** tests (`core` 77, `sync-module` 142, `input-module` 44, `mirror-module` 31), **0
+failures** — `gradle exit: 0`, `--rerun-tasks`, every result XML written seconds before it was read.
+Mac **192** tests, 0 failures, `tsc --noEmit` clean. Plus **14** guard fixtures under `scripts/`,
+run with `node --test scripts/check-protocol-spec.test.mjs`, which is where `probe.test.mjs` lives
+too and is not part of either suite.
+
+No new unit test was added to either suite in this sitting, which is the honest shape of a docs and
+guards pass: the new checks are the 14 fixtures, and the code that changed is one debug-only probe
+that no test can reach without a clipboard.
