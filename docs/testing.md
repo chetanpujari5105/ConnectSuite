@@ -10582,3 +10582,55 @@ Two things worth keeping, and the second is the one that generalises:
   is deleted. The general form: when a decision is reversed, the automation built to serve it is part
   of what gets reverted — otherwise the next person to reach for a familiar script re-executes the
   old decision, which is the force-stop failure with a different command.
+
+---
+
+## Phase 6 opening readings · 2026-09-02
+
+No code written. Four `dumpsys` reads and one static finding, taken while writing
+`docs/phase-6-brief.md`, and recorded here because the first one changes what every later Phase 6
+reading is allowed to claim.
+
+### Defect 60 — `RECEIVE_BOOT_COMPLETED` is declared and nothing receives it
+
+Static, no device needed.
+
+```
+$ grep -rn "<receiver" --include=AndroidManifest.xml .        # the control
+sync-module/src/main/AndroidManifest.xml:42:        <receiver
+sync-module/src/main/AndroidManifest.xml:46:        <receiver
+$ grep -rn "BOOT_COMPLETED" --include=AndroidManifest.xml . | grep -v uses-permission
+(nothing)
+```
+
+The control matters: an empty grep proves nothing on its own, and *"the project declares exactly two
+receivers and both are in `sync-module` with no boot filter"* is what makes the absence a finding
+rather than a failed search. The phone binds the sockets, so after a reboot nothing binds them until
+somebody opens the app.
+
+### The device under test is not in the default state
+
+```
+$ adb shell dumpsys deviceidle whitelist | grep connectsuite
+user,com.chetan.connectsuite.debug,11011
+$ adb shell am get-standby-bucket com.chetan.connectsuite.debug
+5                                              # EXEMPTED
+$ adb shell dumpsys deviceidle get deep / get light
+ACTIVE / ACTIVE
+$ adb shell cmd appops get com.chetan.connectsuite.debug RUN_ANY_IN_BACKGROUND
+RUN_ANY_IN_BACKGROUND: allow
+```
+
+Control on the first line: this device has **10** `user,` whitelist entries and ours is one of them,
+listed beside Samsung's own launcher and Notes — a system entry or a temporary allowance would read
+differently. And it is not an artefact of testing: `OnboardingScreen.kt:258` asks for the exemption,
+so this is the state the product intends.
+
+**What that forbids.** Any Phase 6 run on this handset as-is measures the **exempt** path. A run that
+survives the night and gets written down as *"the service survives"* would be the instrument's own
+state contaminating the reading — the same family as the concealed-marker check validating itself
+through Chromium, in the phase where it is most expensive, because the users this phase exists for
+are precisely the ones who declined that prompt.
+
+`am set-standby-bucket` is the cheap, reversible approximation and is to be tried before anyone is
+asked to change their phone's real posture.

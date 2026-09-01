@@ -116,6 +116,13 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   one wall in this app with an expiry date nobody controls.
 - `docs/RESUME.md` — where work resumes and how to pick it up. **Read it first.** It currently holds
   the Phase 5 opening brief: what the proposals decide, what they leave open, and the first slice.
+- `docs/phase-6-brief.md` — **the Phase 6 brief, and no code is written.** What needs the user's
+  hands, what this handset can prove alone, and the three things that genuinely need a second device.
+  Its §0 is the one to read first: the phone under test is **already exempt from battery
+  optimisation**, so the obvious experiment measures the wrong path — the instrument's own state
+  contaminating the reading, in the phase where that is most expensive. It also carries the first
+  Phase 6 defect, found statically: `RECEIVE_BOOT_COMPLETED` is declared and **nothing receives it**,
+  so the link does not come back after a reboot.
 - `docs/phase-3-input.md` — the Phase 3 brief: input injection via AccessibilityService. **Phase 3
   is closed** (2026-08-31); this is the record of what it built, not a live brief. The current brief
   is `docs/RESUME.md`.
@@ -133,7 +140,7 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 | 3 | **Input injection (AccessibilityService)** — see `docs/phase-3-input.md` | **Done** — passed on hardware 2026-08-27; closed retroactively 2026-08-31 |
 | 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
 | 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **Done** — closed 2026-09-02 against both its conditions (`docs/phase-5-closeout.md`); photos done; **Files is complete** as of 2026-09-01 (both directions with resume, the Folders screen, the Files pane, the grant-free `Download/ConnectSuite` destination, drag to Finder); **contacts shipped in Phase 4** and is not outstanding — see `docs/phase-5-closeout.md`. **Clipboard is built in both directions** — the wall measured (Slice 11, 2026-09-01), the feature landed, and Handoff-style auto-apply added on the Mac with a setting on the phone (Slice 12, 2026-09-02). Both directions are as automatic as their platforms allow — the Mac watches its own clipboard, the phone cannot and no Android app can. Outstanding: the phone has not been reinstalled with the latest copy change |
-| 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | **Open** — Phase 5 closed 2026-09-02. Read `docs/single-device-audit.md` §4 first: this is the phase where one-handset findings stop being a footnote, because battery management is the most vendor-specific surface on Android |
+| 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | **Open** — brief written, no code: `docs/phase-6-brief.md`. Read its §0 before running anything: **this handset is already battery-optimisation exempt** (`user,com.chetan.connectsuite.debug` in the deviceidle whitelist, standby bucket `5`), so every reading taken on it as-is describes the *exempt* path. Onboarding asks for that exemption, so it is the intended state, not an accident |
 | 7 | Mac UX — packaging, distribution, app launching, and the polish pass | Not started |
 
 `android-connect-suite-claude-code-prompt.md` is the **v1 plan and is superseded**. Its phases are

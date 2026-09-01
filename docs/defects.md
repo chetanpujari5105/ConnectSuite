@@ -73,6 +73,7 @@ own heading there, and its own row here.
 | **57** | `media.thumb` answers `NOT_FOUND` both for a photo that is gone and for one that is there and could not be rendered — one code for two facts, on the namespace whose sibling `fs.thumb` separates them deliberately | **deferred to Phase 6** — the second option Phase 5's closing condition offers, taken deliberately. The branch has never been produced: it needs an undecodable `MediaStore` row, which means truncating a file's bytes under its own entry on somebody's real phone, and a phase of ordinary use produced none. Reporting only — the Mac already drops errored ids into a `missing` set and stops asking, which is correct for both causes | source, 2026-09-01, found by reading the handler against the contract while `media.*` was written into `docs/protocol.md` | see below |
 | **58** | **The clipboard undo was reachable and not visible.** With auto-apply on, the Mac captures the clipboard it overwrites as a `displaced` entry so Restore is an undo — the condition `docs/protocol.md` set for removing the confirmation. `onClipArrived` carries the arriving entry and **not** the displaced one created beside it, so the pane's mirror learned about the new clip and never about what it replaced; the Restore row appeared only on the next `refresh()`, which a button click triggers — the click auto-apply exists to remove. **Every test was green**, because no test reads the renderer's list | **closed** | on hardware 2026-09-02, in the slice that introduced it. Found by reading the pane's rows structurally after an auto-apply and noticing the arrival at 1:21:08 had no Restore row while one from 1:17:13 did — not by any failure | `docs/testing.md` → Slice 12 §9 |
 | **59** | **A watcher send was invisible in the Mac's clipboard pane.** The pane refreshed only on its own button clicks, and the watcher clicks nothing — so after copying on the Mac the list still rendered *"Nothing yet. Copy something on either machine."* over a history with entries in it. The probe step that should have caught it **had no assertion**: it sliced the first 60 characters of the list and printed them, so a list full of rows was reported under the heading *"The pane starts with an empty history and says so"* | **closed** | on hardware 2026-09-02, in the slice that introduced it; fixed with a `clip-changed` event on any history mutation, re-measured as 2 rows drawn with nothing touched | `docs/testing.md` → Slice 13 |
+| **60** | **The link does not come back after a reboot.** `RECEIVE_BOOT_COMPLETED` is declared in `app/src/main/AndroidManifest.xml:35` and **nothing receives it** — the control is that the whole project declares two `<receiver>` elements, both in `sync-module`, and neither carries a `BOOT_COMPLETED` filter. The phone binds the sockets, so after a restart nothing binds them until somebody opens the app. Same shape as `adb install -r` leaving the app serverless, by a second route nobody had written down; a declared permission with no implementation is the manifest version of a message type in the inventory and specified nowhere | **open** | source, 2026-09-02, found statically while writing `docs/phase-6-brief.md`; needs no device to establish, only to confirm | `docs/phase-6-brief.md` → P1 |
 
 ---
 
@@ -948,3 +949,37 @@ false claim to the other side and hides real deletions from a pane that uses thi
 verifying existence on the **success** path — every thumbnail paying for a second query so that an
 error message can be better — doubles the cost of the common case for the rare one; the extra query
 belongs on the branch that has already failed and is already off the fast path.
+
+---
+
+### 60 — the link does not come back after a reboot · **open**
+
+`RECEIVE_BOOT_COMPLETED` is declared in `app/src/main/AndroidManifest.xml:35`. Nothing receives it.
+
+The control, because an empty grep is not a finding: the whole project declares **two** `<receiver>`
+elements, both in `sync-module/src/main/AndroidManifest.xml`, and neither carries a `BOOT_COMPLETED`
+intent-filter. So the absence is enumerated rather than searched for.
+
+Android binds the listening sockets on the phone (locked decision #2), so after a restart there is
+nothing for the Mac to connect to until somebody opens the app by hand. This is the same failure as
+`adb install -r` leaving the app serverless — already documented in `CLAUDE.md` — reached by a second
+route that nobody had written down, which is why it survived four phases.
+
+Found statically while writing `docs/phase-6-brief.md`, not by a failure. It costs nothing to
+establish and a reboot only to confirm.
+
+**Fix direction:** a `BootReceiver` with `RECEIVE_BOOT_COMPLETED` **and** `QUICKBOOT_POWERON`
+(Samsung ships the latter and does not always send the former on a fast restart — verify on this
+device rather than trusting that sentence), starting `LinkService` through
+`ContextCompat.startForegroundService`, gated on there being a paired device: an app that has never
+been paired must not start a foreground service at boot, because a persistent notification on a phone
+that has nothing to connect to is how an app gets uninstalled. The pass criterion is
+`scripts/link-up.sh` returning all three OKs after a reboot with nothing tapped — the same instrument
+that catches the post-install case, which is the point.
+
+**Wrong fix to avoid:** two. **Do not use `START_STICKY` as the answer** — it is already set
+(`LinkService.kt:72`) and it governs a *killed* service in a running system, not a boot; relying on
+it here would be a registration line offered as an execution line. And **do not start the service
+unconditionally at boot to be safe**; the gate on a paired device is the whole difference between a
+background app and a nuisance, and it is also what keeps the unpaired install off Samsung's radar in
+the phase whose entire subject is Samsung's radar.

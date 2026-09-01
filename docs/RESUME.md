@@ -1,5 +1,11 @@
 # Resume here — Phase 5 opening brief, written 2026-08-31
 
+> **Where work resumes, 2026-09-02: Phase 5 is closed and Phase 6 is open with a brief and no code.**
+> Read `docs/phase-6-brief.md` §0 first — this handset is **already battery-optimisation exempt**, so
+> the obvious first experiment measures the exempt path and reports it as the general one. The first
+> Phase 6 defect is already found and needs no device: `RECEIVE_BOOT_COMPLETED` is declared and
+> nothing receives it.
+
 **Phase 4 is closed.** Step 70 (the ring) and step 71 (the SMS sitting) both passed on hardware.
 Nothing in Phase 4 is waiting on a device, a second person, or a booking. The previous contents of
 this file — the step-70 preconditions, the stale-overnight table, the line to give the second
