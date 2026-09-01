@@ -9394,6 +9394,120 @@ contains the vocabulary of the thing it says is absent, which is how a text matc
 upload affordance that does not exist.
 
 
+### `scripts/probe.mjs` — the DOM-as-instrument rule stops being a rule (2026-09-01)
+
+Three sittings, three faults, all of them the instrument rather than the product, and all of them
+caught by someone re-reading rather than by anything in the build:
+
+| Fault | What was wrong |
+|---|---|
+| a 2.5 s wait against a 16 s page | the **wait** was shorter than the operation |
+| an exact match on a nav labelled `"Notifications27"` | the **selector** matched nothing |
+| a photo grid measured while its section was `hidden` | the **target** was not there to be read |
+
+Not three kinds of carelessness. Three ways of **reading zero and reporting it as a fact**, each
+producing a plausible number with no way to separate *the thing is false* from *I could not see it*.
+`CLAUDE.md` already carried the rule, with worked examples, and it kept being broken by whoever had
+most recently written it — because taking a control is a separate voluntary act from taking a
+reading, and nobody feels the need for one while reading a number that looks right.
+
+**So the control is now an argument, not a habit.**
+
+- `control` is required and has no default. It must come back truthy; if it does not, the read never
+  runs and `ProbeControlFailure` is thrown instead of a value.
+- There is no way to express a fixed sleep. `settle: { until, within }` polls to a predicate with a
+  deadline, and a run that hits it returns `stopped: 'deadline'` with `reportable: false`.
+- No result is a scalar: every one carries `{ value, control, polls, waitedMs, stopped, reportable,
+  source }`, so reviewing a probe's output is mechanical.
+- The read resolves its element through `__probe.one(sel)`, which throws `PROBE_NO_MATCH`,
+  `PROBE_AMBIGUOUS` or `PROBE_NOT_VISIBLE` rather than returning the first of two matches or a
+  hidden node's zero.
+- A `text:` matcher is refused outright for presence questions; `presence({ controls })` counts
+  elements. The copy explaining an absence contains the words for the thing that is absent.
+- `act({ what, run, expect })` requires `expect` — a stimulus reported without its effect is a
+  request, and an absence read before the action happened is no reading at all.
+
+**Run against the three faults that produced it**, on the live app, each paired with its corrected
+form so that a probe which merely refuses everything would be visible:
+
+```
+FAULT 1  2.5 s deadline  → 0    [polls=8  waited=2504ms  stopped=deadline]  NOT REPORTABLE
+         45 s deadline   → 200  [polls=13 waited=12041ms stopped=settled]
+FAULT 2  exact match     → CONTROL FAILED: the control returned 0. The reading was not taken.
+         prefix          → 1    [control=1 stopped=immediate]
+FAULT 3  hidden section  → PROBE_NOT_VISIBLE: section[data-screen="photos"] (hidden=true, height=0)
+         bare attribute  → PROBE_AMBIGUOUS: 2 nodes match [data-screen="files"]
+         narrowed        → "SECTION"
+```
+
+The last pair also settles a claim `CLAUDE.md` had been asserting from memory: `[data-screen="files"]`
+really does match **2 nodes** in this build, so the app window does carry the same attribute as the
+route marker.
+
+#### The enforcement point
+
+`scripts/probe.test.mjs`, 18 tests. Three fixtures — a failing control must throw, a deadline must be
+unreportable, an ambiguous or hidden or absent selector must error — each with a control proving the
+opposite case still passes. Plus the scan: **nothing under `scripts/` may call `Runtime.evaluate`
+except `probe.mjs`.**
+
+Shown failing before it passed, twice over. It named the real pre-existing violation on its first
+run, and then a planted one alongside it:
+
+```
+these call Runtime.evaluate directly instead of going through probe.mjs:
+  step70-watch.mjs                              ← real, found by the scan
+  _planted-violation.mjs, step70-watch.mjs      ← after planting one
+```
+
+The matcher is `/method\s*:\s*['"]Runtime\.evaluate['"]/` — the method name in the position a CDP
+call puts it — with a fixture proving it does **not** fire on prose about the rule. `no-force-stop.sh`
+shipped a matcher that denied every command mentioning the rule, including the doc carrying its own
+argument, and a matcher without fixtures is a rule you are guessing about.
+
+`step70-watch.mjs` is converted, **transport only**. Its reading loop and its gate are untouched:
+that script hangs up a real call, its predicate lives in `step70-gate.mjs` with its own fixtures so
+it can be read without a phone ringing, and adopting a new helper is not a reason to rewrite a
+safety-critical loop. It uses `rawEvaluate`, which is named so it can be grepped — the scan's point
+is one transport, not one caller.
+
+#### What was converted, with the denominator
+
+| | |
+|---|---|
+| ad-hoc CDP probes written this sitting | **17** (16 in `/tmp`, one in the scratchpad; two more `/tmp` files have ambiguous provenance and are excluded rather than counted) |
+| of those, produced a number written into this file | **15** |
+| now have a standing instrument in `scripts/files-pane-probe.mjs` | **12** |
+| in-repo scripts calling `Runtime.evaluate`, converted | **1 of 1** |
+
+The three not converted, named rather than quietly dropped: the 68 px page-head measurement (a
+one-off diagnosis of a bug that is now fixed — its current-state equivalent is the *page does not
+scroll* check), the `0 B` size verification (a fact about two files on this phone, not a product
+claim), and the scroll-event confirmation (superseded by the paging check, which proves the handler
+fires by its effect rather than by counting events).
+
+Everything else stays ad-hoc on purpose. The scope is **reads that feed a claim in this file**; poking
+at a running app to see what is there does not need a control, and requiring one would make the
+mechanism something people route around.
+
+#### It caught its own author twice while being written
+
+Neither was a product bug, and both are the reason it exists:
+
+- The `layout` section reported `386/386 scrollable: false` and **FAIL** on a pane that was working
+  perfectly. The app was sitting on a 28-row folder, where there is nothing to scroll — a reading
+  that looks exactly like the bug F-4b describes. The probe had not established its own precondition.
+  It now opens a large folder first and checks the row count before believing anything else.
+- The `wall` section reported **zero** homes carrying the `Download` wall, which reads as *the wall
+  vanished*. It had not: `#files-wall` was `hidden: false, height: 60` moments later. Routing to
+  Files re-triggers `refresh()`, and while `fetch.kind === 'loading'` the pane is in neither steady
+  home. The invariant is *eventually exactly one, and then stably*, and it is now asserted with a
+  deadline — which is the sampling fault one layer up: not a window missed, but a window caught
+  mid-swing.
+
+Full run, after both fixes: **12 checks, 0 failures, 10 readings, 0 not reportable.**
+
+
 ### F-3 fixed · Multi-select and multi-file drag, with the 104 ms ceiling applied (2026-09-01)
 
 Measured on hardware in `DCIM/Camera`, 200 rows loaded of 16,377:

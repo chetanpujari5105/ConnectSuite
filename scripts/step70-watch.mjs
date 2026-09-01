@@ -22,6 +22,7 @@ import {
   refusalsFor, refusalText, readLock, pidAlive, countCdpClients,
   acquireLock, releaseLock, clearStaleLock, LOCK_PATH, CDP_PORT,
 } from './step70-exclusion.mjs';
+import { openProbe } from './probe.mjs';
 
 const flags = argv.slice(2).filter((a) => a.startsWith('--'));
 const positional = argv.slice(2).filter((a) => !a.startsWith('--'));
@@ -118,25 +119,25 @@ async function phoneCallLines() {
   });
 }
 
-const targets = await (await fetch('http://localhost:9222/json')).json();
-const page = targets.find((t) => t.type === 'page');
-if (!page) { console.error('no Electron page target on :9222'); exit(2); }
-const ws = new WebSocket(page.webSocketDebuggerUrl);
-await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
-
-const evaluate = (expression) => new Promise((resolve, reject) => {
-  const id = Math.floor(Math.random() * 1e9);
-  const onMsg = (ev) => {
-    const m = JSON.parse(ev.data);
-    if (m.id !== id) return;
-    ws.removeEventListener('message', onMsg);
-    if (m.result?.exceptionDetails) reject(new Error(String(m.result.exceptionDetails.exception?.description)));
-    else resolve(m.result.result.value);
-  };
-  ws.addEventListener('message', onMsg);
-  ws.send(JSON.stringify({ id, method: 'Runtime.evaluate',
-    params: { expression, returnByValue: true, awaitPromise: true, userGesture: true } }));
-});
+// The transport comes from `probe.mjs`, which is the only place in this repo that speaks CDP.
+//
+// **Only the transport.** The reading loop and the gate below are untouched, deliberately: this
+// script hangs up a real call on a real phone, its predicate lives in `step70-gate.mjs` with its
+// own fixtures so it can be read and tested without a phone ringing, and rewriting a
+// safety-critical loop to adopt a new helper is not a refactor anyone should do casually.
+// `rawEvaluate` is used rather than `probe.read` for the same reason — the control here is the
+// gate, which is stronger than a probe control and already tested.
+//
+// `userGesture` is required: the reject is a real click and Chromium treats gestureless clicks
+// differently.
+let probe;
+try {
+  probe = await openProbe({ port: 9222, userGesture: true });
+} catch (error) {
+  console.error(`no Electron page target on :9222 — ${error.message}`);
+  exit(2);
+}
+const evaluate = probe.rawEvaluate;
 
 const READ = `(() => {
   const live = document.getElementById('call-live');

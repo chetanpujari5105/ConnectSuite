@@ -665,6 +665,26 @@ damage on the user's own device or nearly recorded a false result.
   first one ever gets checked.** Before a reading becomes a finding, say out loud what element, what
   rows, what window it came from, and what else would have satisfied that description.
 
+- **The DOM-as-instrument rule has a mechanism now: `scripts/probe.mjs`. Use it, do not re-derive it.**
+  Every CDP read that feeds a claim in `docs/testing.md` goes through it. `control` is a required
+  argument with no default; a fixed sleep cannot be expressed (`settle: {until, within}` returns
+  `stopped: 'deadline'` and `reportable: false` when it gives up); no result is a scalar; the element
+  is resolved by `__probe.one()`, which throws on no match, on two matches, and on a hidden node; and
+  a `text:` matcher is refused for presence questions in favour of counting controls.
+
+  It exists because the rule below was written three times and broken three times, each time by
+  whoever had most recently written it — a control is a separate voluntary act from a reading, and
+  nobody feels the need for one while reading a number that looks right. It was run against all three
+  faults that produced it and catches all three; the evidence is in `docs/testing.md`.
+
+  **The enforcement point is `scripts/probe.test.mjs`**: three fixtures, each with a control for the
+  opposite case, plus a scan that fails when anything under `scripts/` calls `Runtime.evaluate`
+  outside `probe.mjs`. It found a real violation on its first run. `scripts/files-pane-probe.mjs` is
+  the worked example — and it caught its own author twice while being written, once reading a
+  28-row folder as a scroll-containment failure and once reading a mid-`refresh()` transient as a
+  vanished wall. **Scope: reads whose numbers get written down.** Ad-hoc poking stays ad-hoc, and
+  widening it further is how people start routing around it.
+
 - **The instrument gets a control before the reading does — and the DOM is an instrument.**
   The rule above is usually applied to a device or a provider. It applies unchanged to the thing
   drawing the UI, and it was broken twice in one sitting on 2026-08-31, in both directions:
