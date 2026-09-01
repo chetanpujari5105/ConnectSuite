@@ -415,3 +415,30 @@ already living in the Mirror pane, the design's eight panes reduce to about four
 General, Connection, Notifications, File transfer — plus Advanced and About. **Is a 320px third
 column still worth drawing** once the account block leaves it, or does Settings become two columns
 by design rather than by omission?
+
+
+---
+
+## Files, added 2026-09-01 (Slice 9) — F8 and F9
+
+**F8 — the canvas drags a file straight from the phone to Finder; this copies first.**
+`webContents.startDrag` needs a path that exists at the instant the gesture begins, and a `dragstart`
+handler cannot await a network copy — the gesture is over long before the bytes are. macOS *has* file
+promises for exactly this and Electron does not expose them.
+
+So a row is draggable **after** it has been copied, the detail card carries a **Copy to Mac** button
+(`#files-copy-to-mac`), and a drag of an uncopied row cancels itself and starts the copy — so the
+second drag works and nobody has to read anything to discover the order. The one sentence in the
+detail card says why rather than leaving it to be inferred. **This is the platform, not a
+simplification**, and it will stop being a departure only if Electron exposes promised files.
+
+**F9 — the canvas's left rail lists only folders the user shared; this leads with two they did not.**
+`Received files` and `ConnectSuite` are on every phone before anything is granted, and `Received
+files` is where a push lands with no grant at all — so it is the most useful row in the rail and it
+sorts first. The canvas had no equivalent because the grant-free destination did not exist when it
+was drawn.
+
+The consequence, and it bit immediately: **anything counting "how many folders has this phone
+shared" must count `kind === 'tree'`.** The rail's length is not that number, and reading it as one
+made the pane's almost-empty state — where the `Download` wall lives — unreachable for everyone.
+`sharedFolderCount` is the one home for it.

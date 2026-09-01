@@ -677,7 +677,17 @@ the pending `MediaStore` item** and commits on the digest verdict, which makes t
 own these directories. That argument only gets stronger on the `MediaStore` path, where the staging
 name is the platform's to choose and could change in an Android release without telling us.
 
-**One thing is deliberately not claimed: that a pending item can be resumed across process death.**
+**~~One thing is deliberately not claimed: that a pending item can be resumed across process
+death.~~ Measured on hardware 2026-09-01 — it can.** `docs/testing.md` → Slice 9 §2. A 24 MB push was
+cut at 12,058,624 bytes in pid 2766; the process was killed with `am crash` (`am kill` does nothing
+to a foreground service, which was caught by reading the pid rather than trusting the command); pid
+6191 found the pending row, answered `starting at 12058624` from **the item's own file descriptor
+rather than the row's `SIZE`**, and 11,941,420 bytes crossed the wire to a `verified=true` finish
+with three digests agreeing. The original caution is kept below because the control it asks for is
+the one that made the reading worth anything.
+
+**(superseded, and answered) One thing is deliberately not claimed: that a pending item can be
+resumed across process death.**
 Reopening `openOutputStream(uri, "wa")` on an own-package pending row and trusting its reported
 length is plausible and **has not been observed**. It is the load-bearing claim of the default push
 path exactly as the picker restriction was §1's, and it gets the same treatment: a reading on

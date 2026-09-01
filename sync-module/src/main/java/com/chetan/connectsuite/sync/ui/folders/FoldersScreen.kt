@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -48,6 +49,8 @@ fun FoldersSection(
     onAddFolder: () -> Unit,
     onRemove: (String) -> Unit,
     modifier: Modifier = Modifier,
+    quickPicks: List<FolderQuickPicks.Pick> = emptyList(),
+    onQuickPick: (FolderQuickPicks.Pick) -> Unit = {},
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -64,6 +67,16 @@ fun FoldersSection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+
+        // The quick picks, drawn in every state — a phone with two folders shared still has a
+        // third worth adding, and hiding the shortcuts once the list is non-empty would make them
+        // an onboarding decoration rather than a control.
+        //
+        // Empty is a legitimate state and draws nothing: every chip already granted is every chip
+        // hidden, and an empty rail with a heading over it would be a label for nothing.
+        if (quickPicks.isNotEmpty()) {
+            item { QuickPickRow(quickPicks, onQuickPick) }
         }
 
         when (state) {
@@ -86,6 +99,43 @@ fun FoldersSection(
         }
 
         item { WallCard() }
+    }
+}
+
+/**
+ * The chips: one tap into a folder the picker will actually open in.
+ *
+ * **What makes these honest is a hardware reading, not a hope** — `EXTRA_INITIAL_URI` is honoured on
+ * this handset, and a chip aimed at a folder that does not exist lands in its parent rather than in
+ * `Download`'s refusal. [FolderQuickPicks] holds both readings and the constraint that falls out of
+ * them. Neither is re-argued here.
+ *
+ * Each chip carries its own accessibility label rather than relying on the text, because the label
+ * a driver presses is the one thing about this row that must not move.
+ */
+@Composable
+private fun QuickPickRow(
+    picks: List<FolderQuickPicks.Pick>,
+    onQuickPick: (FolderQuickPicks.Pick) -> Unit,
+) {
+    Column {
+        Text(
+            "Quick picks",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            picks.forEach { pick ->
+                AssistChip(
+                    onClick = { onQuickPick(pick) },
+                    label = { Text(pick.label) },
+                    modifier = Modifier.semantics {
+                        contentDescription = "Share the ${pick.label} folder"
+                    },
+                )
+            }
+        }
     }
 }
 

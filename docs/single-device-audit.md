@@ -187,3 +187,19 @@ Files pane — rests on the behaviour of an app that **updates itself from the P
 schedule Samsung does not control and we do not either. It is not fixed by the OS version, and
 re-running `SafProbeActivity` after a DocumentsUI update is the only thing that would notice a
 change. That is a maintenance obligation and it is recorded here rather than assumed.
+
+
+---
+
+## Added 2026-09-01, from Slice 9 — three readings and what each is safe to claim
+
+| Reading | Verdict | Why |
+|---|---|---|
+| **`EXTRA_INITIAL_URI` is honoured, and a bad aim degrades to the parent** | **unknown, single-device — but the picker is Google's** | The refusal and the aiming both belong to `com.google.android.documentsui`, which §6.4 establishes lives in `/data/app` and **updates from the Play Store**. So this is more portable than a Samsung reading *and* it can change on this very device with no OS upgrade. `SafProbeActivity` now takes an `initial` extra; re-run it both ways after a DocumentsUI update. The quick-pick chips are the code that depends on it |
+| **`am kill` does nothing to a foreground service; `am crash` kills it and reports a permission refusal while doing so** | **AOSP for the first, unknown for the second** | `am kill` skipping non-"safe to kill" processes is documented AOSP behaviour. The `Shell does not have permission to crash packages for user 150` line over a *successful* crash is this device's multi-user configuration talking, and user 150 is not a user this project has otherwise met — user 95 is the `DUAL_APP` one. **The lesson is portable even if the message is not: read the pid, not the exit line** |
+| **`/sdcard` stat-by-name goes stale after a `MediaStore` publish, as it does after a SAF replace** | **unknown, single-device — now on two independent observations** | Slice 8 saw it after a SAF delete-plus-rename; Slice 9 saw it after a `MediaStore` `IS_PENDING` publish. Two different mechanisms underneath emulated storage, the same symptom: `ls` and `sha256sum` disagreeing milliseconds apart, and **listing the directory** answering correctly both times. That it reproduces across two different write paths makes it a property of the FUSE layer rather than of either path |
+
+**Nothing in the current build fails dangerously if any of these is wrong**, which §4 asks about
+every entry. A chip that opens somewhere unexpected costs one tap; the `Download` constraint is the
+only place a wrong verdict would cost more, and it is enforced by a test rather than by the reading
+holding.

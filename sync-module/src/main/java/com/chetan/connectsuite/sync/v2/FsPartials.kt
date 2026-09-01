@@ -88,6 +88,92 @@ object FsPartials {
     }
 
     /**
+     * How a received transfer ended, decided from the two numbers and the two digests and nothing
+     * else.
+     *
+     * ### This function exists because defect 56 had no test
+     *
+     * The receive path compared digests and, when the Mac had agreed none, committed whatever had
+     * arrived. **A stream that ends early is an interruption, and with no digest nothing else
+     * knows that** — the length agreed on the control channel is the only thing that can tell. A
+     * push interrupted above the 64 MB pre-hash ceiling therefore committed a half file at its
+     * final name, which is precisely what `.part` exists to prevent, defeated on the last step.
+     *
+     * The fix landed inline in [BulkTransfers] and was guarded by nothing. It is here now so a
+     * test can reach it, because the rule this project already carries is that a guard living only
+     * in the branch it guards is one refactor away from absent.
+     *
+     * ### The order is the rule, not an implementation detail
+     *
+     * **Length is decided before digest, and inverting the two is the subtle way to bring the
+     * defect back.** A truncated arrival *also* fails its digest, so a digest-first reading
+     * reports [Corrupt] — and [Corrupt]'s disk policy is to **destroy the partial**, which is the
+     * opposite of what a resumable interruption needs. The visible symptom would not be a corrupt
+     * file; it would be a 2 GB push that restarts from zero every time the network blinks, with a
+     * `.failed` sidecar explaining a corruption that never happened. `FsArrivalTest` pins the
+     * order with a case whose two readings disagree.
+     *
+     * @param received total bytes on disk, including any resumed from a previous attempt
+     * @param agreed the size named on the control channel before a byte moved
+     * @param expectedSha the digest agreed in advance, or null when the sender did not pre-hash
+     * @param actualSha the digest of what actually landed, over the whole file
+     */
+    fun arrivalVerdict(
+        received: Long,
+        agreed: Long,
+        expectedSha: String?,
+        actualSha: String,
+    ): Arrival = when {
+        received < agreed -> Arrival.Short(received, agreed)
+        received > agreed -> Arrival.Overrun(received, agreed)
+        expectedSha == null -> Arrival.Complete(verified = false)
+        expectedSha != actualSha -> Arrival.Corrupt(expectedSha, actualSha)
+        else -> Arrival.Complete(verified = true)
+    }
+
+    /**
+     * The four ways a received transfer can end, and the disk policy each one carries.
+     *
+     * The policy is written here beside the verdict rather than left to the caller, because the
+     * whole defect was a caller that had a verdict and no policy for one of the cases.
+     */
+    sealed interface Arrival {
+        /** Keep the partial or destroy it. The single question the receive path asks of a verdict. */
+        val keepsPartial: Boolean
+
+        /**
+         * Everything agreed arrived.
+         *
+         * [verified] false is not a failure and is not hidden: it says a digest was never agreed,
+         * so nothing compared the bytes. It is a separate field from `ok` precisely so a success
+         * nobody checked cannot look like a success that was.
+         */
+        data class Complete(val verified: Boolean) : Arrival {
+            override val keepsPartial: Boolean get() = false
+        }
+
+        /** Fewer bytes than agreed. **Resumable**, so the partial and its record both survive. */
+        data class Short(val received: Long, val agreed: Long) : Arrival {
+            override val keepsPartial: Boolean get() = true
+        }
+
+        /**
+         * More bytes than agreed.
+         *
+         * Destroyed rather than kept: an overrun cannot be resumed into anything sensible, and
+         * there is no offset a next attempt could be given that means "unsend those bytes".
+         */
+        data class Overrun(val received: Long, val agreed: Long) : Arrival {
+            override val keepsPartial: Boolean get() = false
+        }
+
+        /** The right number of bytes and the wrong ones. Destroyed: a corrupt file is worse than a missing one. */
+        data class Corrupt(val expected: String, val actual: String) : Arrival {
+            override val keepsPartial: Boolean get() = false
+        }
+    }
+
+    /**
      * The sidecar's contents — a small text file, readable by whoever opens the folder.
      *
      * **A sidecar rather than a rename**, for the reason the Mac's copy gives: renaming the bad

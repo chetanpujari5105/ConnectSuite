@@ -55,12 +55,22 @@ object FsRoots {
             .filter { runCatching { DocumentsContract.getTreeDocumentId(it) }.isSuccess }
 
     /**
-     * Every root, app-private first.
+     * Every root, the two that need no grant first.
+     *
+     * **Two roots exist on every phone**, before anything is granted: `Received files`
+     * ([DownloadsStore]) and the app's own folder ([AppFilesStore]). Anything counting roots to
+     * decide whether the user has shared anything must count `kind == "tree"`, not the list length —
+     * the Mac's Files pane learned that the hard way when its `Download` wall was gated on
+     * `roots.length <= 1` and stopped drawing the moment a second grant-free root existed.
      *
      * A grant that no longer resolves is **kept in the list**, because dropping it silently is an
      * absence the user cannot act on — the folder row is the only place they can remove it.
      */
     fun all(context: Context): List<FsStore> = buildList {
+        // Ordered by what a user is most likely to want. `Received files` is where the Mac's own
+        // pushes land and needs no grant, so it leads; the app-private root is the fallback beneath
+        // everything and is a poor destination by design.
+        add(DownloadsStore(context))
         add(AppFilesStore(context))
         grantedTrees(context).forEach { uri ->
             val documentId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()

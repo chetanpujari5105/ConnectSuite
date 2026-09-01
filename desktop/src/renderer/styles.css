@@ -1976,3 +1976,38 @@ img#qr {
 
 /* A refused push keeps the phone's own sentence, in the colour reserved for failure. */
 .files-drop.is-error { border-color: var(--destructive-border); color: var(--destructive); }
+
+/* A file already copied to this Mac. The only rows Finder will take a drag from, so the affordance
+   is a cursor rather than a decoration — `grab` says draggable in the one place it is true. */
+.files-row.is-local { cursor: grab; }
+
+.files-row.is-local:active { cursor: grabbing; }
+
+/* Copy to Mac. Named `files-copy-to-mac` in the DOM so a driver can press it by name — a
+   coordinate is a guess about a layout that is still moving. */
+.files-detail-action {
+  margin-top: var(--space-4);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--hairline-hover);
+  border-radius: var(--radius-control);
+  background: var(--elev-2);
+  color: var(--text-body);
+  font: var(--text-body-size);
+  cursor: pointer;
+}
+
+.files-detail-action:hover:not(:disabled) { background: var(--well); }
+
+.files-detail-action:disabled { color: var(--text-meta); cursor: default; }
+
+/* Two sentences whose difference is the whole state: where the file is, or why the drag needs a
+   copy first. Never red for the second — not having copied a file yet is not a failure. */
+.files-detail-note {
+  margin: var(--space-3) 0 0;
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+  overflow-wrap: anywhere;
+}
+
+.files-detail-note.is-error { color: var(--destructive); }

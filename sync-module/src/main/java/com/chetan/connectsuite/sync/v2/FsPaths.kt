@@ -44,9 +44,33 @@ object FsPaths {
 
     const val DIR_MIME = "inode/directory"
 
+    /**
+     * The grant-free destination: `Download/ConnectSuite`, through `MediaStore`.
+     *
+     * Not a SAF tree and not app-private, so it is neither of the other two ids. It needs **no
+     * permission of any kind**, which is what makes it the default push target — a fresh install can
+     * receive a file before the user has picked a folder.
+     */
+    const val DOWNLOADS_ROOT_ID = "downloads:connectsuite"
+
+    /**
+     * What the user reads. Never the path, and never `Download/ConnectSuite` either: the folder is
+     * an inbox, and naming it after its location invites the belief that everything in that location
+     * is visible here, which is exactly what is not true.
+     */
+    const val DOWNLOADS_ROOT_LABEL = "Received files"
+
     /** `kind` values a root may carry. `ALL` is reserved and this build never emits it. */
     const val KIND_APP = "app"
     const val KIND_TREE = "tree"
+
+    /**
+     * `Download/ConnectSuite`. A third kind rather than a lie: it is not a tree the user granted
+     * (there is nothing to revoke, and it must not appear on the Folders screen as removable) and it
+     * is not app-private (the user's file manager can open it). A Mac that does not know this word
+     * carries it through and shows it plainly, which is what `toRoot` already does.
+     */
+    const val KIND_DOWNLOADS = "downloads"
 
     // ---- ids ------------------------------------------------------------------------------------
 

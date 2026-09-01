@@ -460,8 +460,16 @@ first place.
 
 ## 8. Open, and small
 
-1. ~~**Whether the quick picks should include `Download/ConnectSuite`.**~~ **Resolved: not yet, and
-   the reason is a fact rather than a preference.** That folder **does not exist until the first file
+1. ~~**Whether the quick picks should include `Download/ConnectSuite`.**~~ **Resolved for good, and
+   the answer got stronger: never.** Two independent reasons, either sufficient. It is inside
+   `Download`, which item 3's fourth reading makes forbidden for any chip — a missing folder degrades
+   to its parent and that parent is the refusal. And it is now a **root of its own**
+   (`downloads:connectsuite`, `kind: "downloads"`) that needs no grant at all, so a tree grant over
+   it would buy nothing. `FolderQuickPicksTest` fails if anyone adds it.
+
+   The original reasoning is kept below; it was right, and it was right for a smaller reason.
+
+   **(superseded) Resolved: not yet, and the reason is a fact rather than a preference.** That folder **does not exist until the first file
    lands in it** — `DownloadsProbeActivity`'s poller read `No such file or directory` on its first
    five samples, and the `MediaStore` insert is what created the directory. A quick pick pointing at
    a folder that is not there opens the picker in `Download` with `USE THIS FOLDER` disabled, which
@@ -470,7 +478,30 @@ first place.
    *Received files* and listed last.
 2. ~~**Whether an unreadable root should be shown as a broken row or dropped.**~~ **Resolved by the
    code: kept.** `FsRoots.all` keeps it, §4 draws it, 3.2 gives the reason.
-3. **Open, and deliberately left so: `EXTRA_INITIAL_URI` is unset.** Decided 2026-09-01. Aiming the
+3. ~~**Open, and deliberately left so: `EXTRA_INITIAL_URI` is unset.**~~ **Answered on hardware
+   2026-09-01, and the answer is (a): the extra is honoured, aiming is safe, and the chips ship.**
+   `docs/testing.md` → Slice 9 §3. Aimed at `Download/ConnectSuite` the picker opened *inside* it
+   with `USE THIS FOLDER` `enabled="true"`; aimed at `DCIM/Screenshots` it opened inside
+   `Screenshots`; unaimed in the same session it opened in `DCIM`. Two different aims landing in two
+   different folders is what separates "the extra worked" from "the picker restored a location that
+   happened to be right".
+
+   **A fourth reading decides the shape**, and it was not in the three outcomes this section
+   imagined: aimed at a folder that **does not exist**, the picker opens in the **parent**, still
+   grantable. So a chip whose folder is missing degrades safely — *unless the parent is `Download`*,
+   which is the one directory DocumentsUI refuses. Hence the single constraint in
+   `FolderQuickPicks`: **no chip may point inside `Download`**, enforced by `isSafeTarget` and a test
+   shown to fail against §8.1's own planned chip.
+
+   The phone **cannot** check whether a folder exists before aiming at it — that needs
+   `READ_EXTERNAL_STORAGE`, which this project has decided twice not to ask for, and a
+   `DocumentsProvider` query on an ungranted tree throws. The fourth reading is what makes that
+   acceptable rather than reckless.
+
+   The original text is kept below because the reasoning it records is still right about the world it
+   was written in.
+
+   **(superseded) Decided 2026-09-01.** Aiming the
    picker would land the user one tap from the right answer and would also mean a pick that *starts*
    inside `Download` for the `Received files` case — the one directory whose refusal §3.5 exists to
    keep them away from. Aiming an instrument at a place that may refuse is the failure, not the fix.

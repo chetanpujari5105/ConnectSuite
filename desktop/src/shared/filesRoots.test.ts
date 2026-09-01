@@ -3,13 +3,28 @@ import assert from 'node:assert/strict';
 const {
   ADDED_ON_THE_PHONE,
   DOWNLOAD_WALL,
+  RECEIVED_FILES_ALWAYS_WORKS,
   filesPaneView,
   freeSpace,
   loadedFooter,
   pushOffered,
+  sharedFolderCount,
   uploadAffordance,
 } = require('./filesRoots.ts');
 
+/**
+ * The two roots on **every** phone, before anything is granted.
+ *
+ * They are a pair in these fixtures rather than one `appRoot`, because that is the situation every
+ * real user is in and testing the other one is how the almost-empty state stopped being reachable.
+ */
+const downloadsRoot: FsRootRow = {
+  rootId: 'downloads:connectsuite',
+  label: 'Received files',
+  kind: 'downloads',
+  writable: true,
+  freeBytes: 27_233_689_600,
+};
 const appRoot: FsRootRow = {
   rootId: 'app:files',
   label: 'ConnectSuite',
@@ -32,18 +47,46 @@ const failed: FilesFetch = {
   code: 'TIMEOUT',
 };
 
-test('one root is the almost-empty state, and it says the list is short by design', () => {
-  const view = filesPaneView(ready([appRoot]), false);
+test('a phone that has shared nothing is the almost-empty state, however many roots it has', () => {
+  // **The regression this test exists for.** `Received files` and `ConnectSuite` are on every
+  // phone, so the old `roots.length > 1` reading made this state unreachable and told a user who
+  // had shared nothing that their phone had shared two folders.
+  const view = filesPaneView(ready([downloadsRoot, appRoot]), true);
   assert.equal(view.id, 'M2');
-  assert.match(view.headline, /one folder/);
-  // One working root looks like a broken list of many unless the pane says otherwise.
+  assert.ok(!/\b1\b|\b2\b|one folder|two folders/.test(view.headline), view.headline);
+  // Two working roots look like a broken list of many unless the pane says otherwise.
   assert.ok(view.body.some((p) => p.includes('Sync › Folders')));
+});
+
+test('the almost-empty state is not a dead end: sending works with nothing shared', () => {
+  // The one thing that changed when the grant-free destination landed. Without this sentence the
+  // state says "go to the phone" and nothing else, over a pane that can already receive a drop.
+  const view = filesPaneView(ready([downloadsRoot, appRoot]), true);
+  assert.ok(view.body.includes(RECEIVED_FILES_ALWAYS_WORKS));
+  assert.equal(view.upload, true, 'push is offered, so the drop tile belongs here');
+});
+
+test('one granted tree is one shared folder, beside the two that are always there', () => {
+  const view = filesPaneView(ready([downloadsRoot, appRoot, treeRoot]), false);
+  assert.equal(view.id, 'M3');
+  assert.match(view.headline, /one folder/);
+});
+
+test('sharedFolderCount counts trees, never the list length', () => {
+  assert.equal(sharedFolderCount([downloadsRoot, appRoot]), 0);
+  assert.equal(sharedFolderCount([downloadsRoot, appRoot, treeRoot]), 1);
+  // An unrecognised kind from a future phone is not a shared folder either — it is carried through
+  // and drawn, but it must not be counted as something the user granted.
+  assert.equal(
+    sharedFolderCount([downloadsRoot, appRoot, { ...treeRoot, kind: 'all' }]),
+    0,
+  );
 });
 
 test('the Download wall is in the pane, in every ready state', () => {
   // It belongs here rather than in a doc: a Mac user meets it by looking for a file that is
   // definitely on their phone and definitely not in this list.
-  for (const roots of [[appRoot], [appRoot, treeRoot]]) {
+  for (const roots of [[downloadsRoot, appRoot], [downloadsRoot, appRoot, treeRoot]]) {
     const view = filesPaneView(ready(roots), false);
     assert.ok(view.body.includes(DOWNLOAD_WALL), `wall missing from ${view.id}`);
   }
@@ -52,7 +95,7 @@ test('the Download wall is in the pane, in every ready state', () => {
 test('the pane never tells the user to add a folder from the Mac', () => {
   // There is no fs.grant and there will not be one — the Mac cannot open a consent surface only a
   // person holding the phone can answer.
-  const view = filesPaneView(ready([appRoot]), false);
+  const view = filesPaneView(ready([downloadsRoot, appRoot]), false);
   assert.ok(view.body.includes(ADDED_ON_THE_PHONE));
   const text = [view.headline, ...view.body].join(' ').toLowerCase();
   assert.ok(!text.includes('add folder'), 'the Mac must not offer to add a folder');
@@ -61,7 +104,7 @@ test('the pane never tells the user to add a folder from the Mac', () => {
 test('empty and failed differ in four independent ways', () => {
   // One difference is a bug away from none. Colour alone fails for anyone who cannot see it; the
   // icon alone fails at a glance; the headline alone fails when someone reuses a component.
-  const empty = filesPaneView(ready([appRoot]), false);
+  const empty = filesPaneView(ready([downloadsRoot, appRoot]), false);
   const broken = filesPaneView(failed, false);
   assert.notEqual(empty.tone, broken.tone);
   assert.notEqual(empty.icon, broken.icon);
@@ -73,7 +116,7 @@ test('the failed state states what happened; the ready state states what is', ()
   // Not decoration: "no folders" and "couldn't read folders" are different sentences, and the
   // second must never be produced by an empty list.
   assert.match(filesPaneView(failed, false).headline, /Couldn’t/);
-  assert.ok(!/couldn|could not|failed|error/i.test(filesPaneView(ready([appRoot]), false).headline));
+  assert.ok(!/couldn|could not|failed|error/i.test(filesPaneView(ready([downloadsRoot, appRoot]), false).headline));
 });
 
 test('only the failed state offers a retry, and only it shows a code', () => {
@@ -81,7 +124,7 @@ test('only the failed state offers a retry, and only it shows a code', () => {
   assert.equal(filesPaneView(failed, false).code, 'TIMEOUT');
   for (const fetch of [
     { kind: 'loading' } as FilesFetch,
-    ready([appRoot, treeRoot]),
+    ready([downloadsRoot, appRoot, treeRoot]),
     { kind: 'unavailable', reason: 'Files needs a folder.' } as FilesFetch,
   ]) {
     assert.equal(filesPaneView(fetch, false).retry, false, `${fetch.kind} must not offer a retry`);
@@ -111,8 +154,8 @@ test('no upload affordance while push is unavailable, in every state', () => {
   const fetches: FilesFetch[] = [
     { kind: 'idle' },
     { kind: 'loading' },
-    ready([appRoot]),
-    ready([appRoot, treeRoot]),
+    ready([downloadsRoot, appRoot]),
+    ready([downloadsRoot, appRoot, treeRoot]),
     failed,
     { kind: 'unavailable', reason: 'x' },
   ];

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor, Tray, Menu } from 'electron';
 import { networkInterfaces, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import QRCode from 'qrcode';
 import { ErrorCode, MessageType, type ConnectionStatus } from '../shared/protocol';
@@ -8,7 +8,7 @@ import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ContactsClient } from './contacts';
 import { createHash } from 'node:crypto';
-import { createReadStream, promises as fsp } from 'node:fs';
+import { createReadStream, existsSync, promises as fsp } from 'node:fs';
 import { BulkClient } from './bulk';
 import { partPathFor } from '../shared/transferFiles';
 import { FilesClient } from './files';
@@ -780,12 +780,71 @@ ipcMain.handle(
   (_event, options: { id?: string; number?: string; withPhoto?: boolean }) => contacts.get(options),
 );
 
+/**
+ * Drag counters, published together.
+ *
+ * A refusal count with no started count beside it reads as whichever story the reader already
+ * believes — `CLAUDE.md`'s opening rule, and defect 18's 187 refusals over a denominator of zero.
+ */
+let dragsStarted = 0;
+let dragsRefused = 0;
+
+/**
+ * A 1×1 transparent PNG, for when `getFileIcon` gives nothing.
+ *
+ * Electron throws on an empty `icon`, so the alternative to this is a drag that fails with an
+ * exception instead of a drag that works with a plain cursor.
+ */
+const FALLBACK_DRAG_ICON = nativeImage.createFromDataURL(
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk' +
+    'YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+);
+
 ipcMain.handle('fs-roots', () => files.roots());
 ipcMain.handle(
   'fs-push',
   (_event, options: { rootId: string; path: string; source: string; overwrite?: boolean }) =>
     files.push(options),
 );
+ipcMain.handle(
+  'fs-pull',
+  (_event, options: { rootId: string; id: string; name: string; size: number }) =>
+    files.pull(options),
+);
+/**
+ * The drag itself, which can only start here.
+ *
+ * `webContents.startDrag` is a main-process call and it is **synchronous with the renderer's
+ * `dragstart`** — this is `ipcMain.on`, not `handle`, because the renderer must not await anything
+ * before the drag begins or macOS ends the gesture first.
+ *
+ * The icon is the file's own, via `app.getFileIcon`. Electron **throws** on an empty icon, so this
+ * has a fallback: a 1×1 transparent image rather than a refusal, because a drag with a plain cursor
+ * is a working drag and a thrown exception is not. The file's existence is checked first for the
+ * same reason `bulk.pull` writes to `.part` — handing Finder a path to nothing is a failure with no
+ * error attached to it.
+ */
+ipcMain.on('fs-drag', (event, path: string) => {
+  if (typeof path !== 'string' || path.length === 0) return;
+  if (!existsSync(path)) {
+    log.warn('files', `refused a drag of ${path}: it is not on this Mac`);
+    return;
+  }
+  const start = (icon: Electron.NativeImage): void => {
+    try {
+      event.sender.startDrag({ file: path, icon });
+      dragsStarted += 1;
+      log.info('files', `dragged ${basename(path)} to Finder — ${dragsStarted} started / ${dragsRefused} refused`);
+    } catch (error) {
+      dragsRefused += 1;
+      log.warn('files', `startDrag refused ${basename(path)}: ${(error as Error).message}`);
+    }
+  };
+  app
+    .getFileIcon(path, { size: 'normal' })
+    .then((icon) => start(icon.isEmpty() ? FALLBACK_DRAG_ICON : icon))
+    .catch(() => start(FALLBACK_DRAG_ICON));
+});
 ipcMain.handle(
   'fs-list',
   (
@@ -834,10 +893,26 @@ if (!app.isPackaged) {
    * point of the reading: `offset` was `0` for two slices because nothing had ever been the
    * receiver, and this is what makes it a real number.
    */
+  /**
+   * The push-resume probe, in one call or in two halves.
+   *
+   * `stopAfterCut` and `resumeOnly` exist for one reading and it is a specific one: **whether a
+   * pending `MediaStore` item can be resumed across process death.** That claim has been carried as
+   * unproven since the payload spec was written, and it cannot be measured in a single call —
+   * something has to kill the phone's process between the interruption and the resume, and both
+   * halves have to be the product's own client rather than a second one built for the test.
+   *
+   * So the probe splits at exactly the point the process dies, and neither half changes what the
+   * shipping code does; only where the run stops.
+   */
   ipcMain.handle('debug-push-resume-probe', async (_event, options: {
     rootId: string;
     path: string;
     source: string;
+    /** Stop after the interruption and report it. The process may then be killed. */
+    stopAfterCut?: boolean;
+    /** Skip the interruption; agree and finish. What runs after the process came back. */
+    resumeOnly?: boolean;
   }) => {
     if (!link?.isConnected() || !bulk) return { ok: false, reason: 'not connected' };
     const host = link.status().address;
@@ -873,19 +948,38 @@ if (!app.isPackaged) {
         10_000,
       );
 
-    const first = await begin();
-    const p1 = (first.payload ?? {}) as Record<string, unknown>;
-    const firstOffset = Number(p1.offset ?? 0);
-    const cut = await bulk.push({
-      host,
-      token,
-      transferId: String(p1.transferId ?? ''),
-      source: options.source,
-      offset: firstOffset,
-      totalBytes: size,
-      chunkMax: Number(p1.chunkMax ?? 262144),
-      interruptAfterBytes: Math.floor(size / 2),
-    });
+    let firstOffset = 0;
+    let cutBytes = 0;
+    if (options.resumeOnly !== true) {
+      const first = await begin();
+      const p1 = (first.payload ?? {}) as Record<string, unknown>;
+      firstOffset = Number(p1.offset ?? 0);
+      const cut = await bulk.push({
+        host,
+        token,
+        transferId: String(p1.transferId ?? ''),
+        source: options.source,
+        offset: firstOffset,
+        totalBytes: size,
+        chunkMax: Number(p1.chunkMax ?? 262144),
+        interruptAfterBytes: Math.floor(size / 2),
+      });
+      cutBytes = cut.bytes;
+      if (options.stopAfterCut === true) {
+        return {
+          ok: true,
+          size,
+          firstOffset,
+          // **Bytes delivered, and it says so.** `socket.destroy()` reported bytes *queued* and
+          // 12 MB of them never left the machine — the instrument reporting its intention as a
+          // measurement. `bulk.push` half-closes now and resolves from the socket's `close`.
+          sentBeforeCut: cutBytes,
+          sha256,
+          cutAt: Math.floor(size / 2),
+          stopped: 'after the cut, by request — nothing was resumed in this call',
+        };
+      }
+    }
 
     // A second agreement: one transferId, one bulk connection, and the first was consumed.
     const second = await begin();
@@ -905,7 +999,7 @@ if (!app.isPackaged) {
       ok: true,
       size,
       firstOffset,
-      sentBeforeCut: cut.bytes,
+      sentBeforeCut: cutBytes,
       // The reading. A non-zero number here is the phone saying what it already holds.
       resumedOffset,
       resumedSent: finish.bytes,

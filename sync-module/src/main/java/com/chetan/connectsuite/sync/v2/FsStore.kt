@@ -4,22 +4,41 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * What one root can be asked to do. Two implementations: [SafTreeStore] and [AppFilesStore].
+ * What one root can be asked to do. Three implementations: [DownloadsStore], [SafTreeStore] and
+ * [AppFilesStore].
  *
- * The interface exists because `fs.*` addresses two genuinely different things through one payload —
- * a SAF tree the user granted, and the app's own private folder — and the handler in [FsFeature]
- * must not know which it is holding. Under SAF there is no absolute path, so every method here is
- * addressed the way the wire is: by root-relative segments, or by the phone's own opaque id.
+ * The interface exists because `fs.*` addresses genuinely different things through one payload — a
+ * SAF tree the user granted, the app's own private folder, and a `MediaStore` collection that needs
+ * no permission at all — and the handler in [FsFeature] must not know which it is holding. Under SAF
+ * there is no absolute path, so every method here is addressed the way the wire is: by root-relative
+ * segments, or by the phone's own opaque id.
+ *
+ * The one place a caller may ask *which kind* it is holding is [supportsDirectories], and it is a
+ * declared capability rather than a type check for that reason.
  */
 interface FsStore {
 
     val rootId: String
     val label: String
 
-    /** `app` or `tree`. `all` is reserved for an all-files upgrade that is recorded and not built. */
+    /**
+     * `downloads`, `app` or `tree`. `all` is reserved for an all-files upgrade that is recorded and
+     * not built.
+     */
     val kind: String
 
     val writable: Boolean
+
+    /**
+     * Whether this root can hold directories at all.
+     *
+     * False for the `downloads` root, because **`MediaStore` cannot represent an empty directory** —
+     * a folder there exists only as the relative path of a file inside it. Declared here rather than
+     * inferred from a null return, so `fs.mkdir`'s refusal can say *why* instead of reporting the
+     * path as missing: locked decision 6 asks for a specific reason, and "that folder does not
+     * exist" is a wrong one that would send a user looking for a path problem.
+     */
+    val supportsDirectories: Boolean get() = true
 
     fun freeBytes(): Long
 

@@ -12,6 +12,13 @@
 #
 # Only this project's package is denied. Force-stopping anything else is not our business.
 #
+# 2026-09-01: the alternatives this hook offers were themselves wrong in one place, and it took a
+# hardware reading to notice. It recommended `am kill`, which **does nothing while LinkService is
+# running** — a foreground service is not "safe to kill", and the pid is identical before and after.
+# Anyone following that advice would have concluded the process had died and then measured a
+# "restart" that never happened. `am crash` is the one that works, and it keeps the accessibility
+# grant, which is the whole reason this hook exists. See docs/testing.md → Slice 9 §2.
+#
 # ---------------------------------------------------------------------------------------------
 # Defect 41, 2026-08-29: this used to grep the whole command for `force-stop` and `connectsuite`
 # independently, anywhere, in any order. That denied every command that merely *talked* about the
@@ -74,7 +81,7 @@ if printf '%s' "$executable" |
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
       permissionDecisionReason:
-        "force-stop on the ConnectSuite package clears enabled_accessibility_services — the grant, not just the binding — and it cannot be restored except by hand in Settings > Accessibility. Every `input` step is untestable until someone does that.\n\nTo drop the link instead, use one of:\n  - the Mac app'"'"'s Disconnect button (same \"link dropped\" contract, costs nothing)\n  - `adb shell am kill com.chetan.connectsuite.debug` (no grant loss)\n  - turn Wi-Fi off on the phone\n\nSee docs/testing.md, \"Force-stopping the phone app costs the accessibility grant\"."
+        "force-stop on the ConnectSuite package clears enabled_accessibility_services — the grant, not just the binding — and it cannot be restored except by hand in Settings > Accessibility. Every `input` step is untestable until someone does that.\n\nTo drop the link instead, use one of:\n  - the Mac app'"'"'s Disconnect button (same \"link dropped\" contract, costs nothing)\n  - `adb shell am crash com.chetan.connectsuite.debug` (real process death, no grant loss). It may print `Shell does not have permission to crash packages for user 150` and work anyway — read the pid, not the exit line.\n  - `adb shell am kill com.chetan.connectsuite.debug` — but note it does NOTHING while the foreground service is running: measured 2026-09-01, identical pid before and after. Use it only for a backgrounded process.\n  - turn Wi-Fi off on the phone\n\nSee docs/testing.md, \"Force-stopping the phone app costs the accessibility grant\"."
     }
   }'
 fi

@@ -7,9 +7,16 @@ person — are all discharged and have been deleted rather than left to be mista
 instructions. The record of that work is `docs/testing.md`; the summary is
 `docs/phase-4-closeout.md`.
 
-**Phase 5 is open.** Slice 1 (Bug 6's frame caps) shipped on 2026-08-31; the `fs.*` / `media.*`
-payload specification is written as a proposal and is the next thing to read —
-`docs/phase-5-fs-media-proposal.md`. Nothing in `fs.*` or `media.*` is implemented.
+**Phase 5 is open, and Files is finished in both directions.** Photos, `fs.*`, the phone's Folders
+screen with aimed quick picks, the Mac's Files pane, push with resume, the grant-free
+`Download/ConnectSuite` destination, and drag to Finder — all on hardware. **What is left in Phase 5
+is clipboard and contacts.**
+
+**Clipboard is spec'd and unbuilt, and its first obligation is a measurement, not a keystroke.**
+`docs/phase-5-clipboard-proposal.md` §2: the background-read wall is inherited from documentation and
+has never been observed on this device. Two readings with their controls go into `docs/testing.md`
+before any code — and if the first fails, the proposal is rewritten, because the feature it describes
+would not be the feature that is possible.
 
 ---
 
@@ -39,8 +46,8 @@ Mac actually attached. Do not grep the phone log for `Listening on`; it is writt
 `yiaddr = 10.108.253.92, router 10.108.253.63` — the correct one. Two reads of the same fact
 disagreeing, with the less obvious one right.
 
-Baselines, as of Phase 5 slice 8: phone **257** tests (`core` 77, `input-module` 44,
-`sync-module` 105, `mirror-module` 31), Mac **173** tests, `tsc --noEmit` clean. The figure this file
+Baselines, as of Phase 5 slice 9: phone **278** tests (`core` 77, `input-module` 44,
+`sync-module` **126**, `mirror-module` 31), Mac **176** tests, `tsc --noEmit` clean. The figure this file
 carried at the close of Phase 4 — *189 (67 `sync-module` + 122 `core`)* — does not reconcile with the
 tree by either counting method and has been corrected rather than restated; see the note at the end
 of `docs/testing.md`. Run Gradle with `--rerun-tasks` when you intend a *run* — an
@@ -99,19 +106,25 @@ not implement an alternative without saying why the recorded reasoning is wrong.
 | The Mac's **Files pane** | done, slice 7 — `M2` and `M4` measured live, four ways apart |
 | The **single-device audit** | done, read-only — `docs/single-device-audit.md` |
 | **Push**, the phone as receiver | done, slice 8 — with resume, `verified=true`, and F4 closed |
+| **`Download/ConnectSuite`**, the grant-free destination | done, slice 9 — a root of its own, proven with both media grants revoked |
+| **The aimed picker and the quick-pick chips** | done, slice 9 — `EXTRA_INITIAL_URI` measured, chips ship with one enforced constraint |
+| **Drag to Finder** | done, slice 9 — copy-then-drag, with the ordering stated to the user |
+| **Defect 56** | closed, and guarded — `FsArrivalTest`, shown red three ways |
 
-### Next
+### Next — and it is clipboard, then contacts
 
-**Files is complete in both directions.** What is left in Phase 5 is clipboard, contacts and drag to
-Finder — and two smaller items push did not close:
+**Files is complete.** The three items slice 8 left open are all closed, and so is §4's last unproven
+claim: a pending `MediaStore` item **can** be resumed across process death, measured on hardware.
 
-- **`Download/ConnectSuite` as a push destination without a grant.** Push writes into granted roots
-  and `app:files`; the no-grant `MediaStore` destination is still the v1 receive path only. This is
-  the same question as `EXTRA_INITIAL_URI` (`phase-5-files-onboarding-proposal.md` §8.3) and the
-  quick-pick chips, and all three unblock together.
-- **Whether a pending `MediaStore` item can be resumed across process death**, which §4 of the
-  payload proposal still lists as unproven. Push does not use `MediaStore` for SAF trees, so this
-  became less urgent rather than answered.
+1. **Clipboard.** Spec'd in `docs/phase-5-clipboard-proposal.md`, nothing built. **Do not start with
+   code.** §2 names two readings and their controls; §8 gives the build order. The two decisions most
+   likely to be argued with, both already argued: the Mac's clipboard is **not** written
+   automatically (a single-slot store with no undo — an arriving entry is offered), and images are
+   out of scope in version one with `kind` carrying the reason.
+2. **Contacts.** The one Phase 5 feature with no proposal at all. `contacts` is already advertised
+   and `ContactsStore` exists — check what it actually serves before assuming this is greenfield.
+
+**Phase 6 is not open.** `docs/single-device-audit.md` is its input and is committed; do not start it.
 
 ### The single-device audit — **done, read-only, 2026-09-01**
 
@@ -136,6 +149,42 @@ Four things to carry from it:
 **Nothing in the current build fails dangerously if a verdict is wrong** (§4). Every vendor-dependent
 decision so far went the conservative way. The one exception to watch is the Folders screen's wall
 copy, the only place a vendor assumption is asserted to a user as fact.
+
+## Slice 9 — the grant-free destination, the aimed picker, drag to Finder — **done on hardware, 2026-09-01**
+
+Three things taken as one question: **where does a file go when the user has shared nothing, and how
+does it get back out?** Evidence: `docs/testing.md` → **Slice 9**.
+
+`Download/ConnectSuite` is a root (`downloads:connectsuite`, `kind: "downloads"`, label *Received
+files*) needing **no grant of any kind**; `EXTRA_INITIAL_URI` is honoured so the quick-pick chips
+ship; and a file copied to the Mac can be dragged into Finder.
+
+**Defect 56 was written up properly in the same sitting** — a truncated push committed as the
+finished file, the most serious thing found in Phase 5, previously living inside slice 8's narrative
+as a probe finding. `docs/defects.md` row 56 and `docs/testing.md` → **Defect 56**, with what catches
+it now and what would have to break for it to return.
+
+Five things worth carrying forward:
+
+1. **A control is not optional just because the result is the one you wanted.** The first grant-free
+   push succeeded while the app *held* `READ_MEDIA_IMAGES` — it proved the push and proved nothing
+   about the grant. The permissions were revoked, verified `granted=false`, the push repeated, and
+   the grants restored to their recorded flags. `dumpsys` printed `granted=true` **and**
+   `granted=false` for the same permission, because user 95 is Samsung's `DUAL_APP` user.
+2. **`am kill` does nothing to a foreground service.** The pid was identical before and after, caught
+   by reading the pid rather than trusting the command. `am crash` worked — *and printed a permission
+   refusal while doing so*, so the exit line was not the discriminator either. It also keeps the
+   accessibility grant, which is what makes it the right tool where force-stop is forbidden.
+3. **Adding a second grant-free root silently broke the Mac's almost-empty state.** `roots.length > 1`
+   became permanently true, so a phone that had shared nothing would have reported *"2 folders"* and
+   the `Download` wall would have stopped drawing for everyone. Count `kind === 'tree'`, never the
+   array length — now `sharedFolderCount`, with 4 tests that go red on the old reading.
+4. **Finder will not take a promise of a file.** A `dragstart` handler cannot await a network copy, so
+   a row is draggable only after it is copied. Stated to the user in one sentence rather than hidden
+   behind a spinner that cannot finish in time.
+5. **A bad aim degrades to the parent**, which is what makes chips safe — and produces the single
+   constraint that no chip may point inside `Download`, whose parent is the refusal. §8.1's own
+   planned chip was exactly that, and the guard catches it.
 
 ## Slice 8 — push, the phone as receiver — **done on hardware, 2026-09-01**
 

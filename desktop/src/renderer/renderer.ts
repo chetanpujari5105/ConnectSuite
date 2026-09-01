@@ -116,9 +116,9 @@ interface ConnectBridge {
     { ok: true; data: Contact } | { ok: false; reason?: string; fixHint?: string }
   >;
 
-  // Phase 5 slice 7: Files, reads only. There is no `fsPush` and its absence is deliberate —
-  // `push` answers FEATURE_UNAVAILABLE and a bridge method that always failed is what a drop tile
-  // would eventually be wired to.
+  // Files, both directions. `fsPush` arrived with the phone's receiver in slice 8, `fsPull` and
+  // `fsDrag` with drag to Finder in slice 9. The upload affordance is still gated — on the phone's
+  // own `push` field in the roots ack, never on these methods existing.
   fsRoots(): Promise<
     | { ok: true; data: { roots: FsRootRow[]; grantHint: string | null; push: boolean } }
     | { ok: false; reason?: string; fixHint?: string; code?: string }
@@ -129,6 +129,14 @@ interface ConnectBridge {
     source: string;
     overwrite?: boolean;
   }): Promise<{ ok: boolean; bytes?: number; reason?: string; code?: string; fixHint?: string }>;
+  fsPull(options: {
+    rootId: string;
+    id: string;
+    name: string;
+    size: number;
+  }): Promise<{ ok: boolean; path?: string; bytes?: number; verified?: boolean; reason?: string }>;
+  /** Fire-and-forget by necessity: `startDrag` cannot survive an awaited round trip. */
+  fsDrag(path: string): void;
   fsList(options: {
     rootId: string;
     path?: string;
@@ -404,6 +412,8 @@ const files = createFilesView({
   fsRoots: () => connect.fsRoots(),
   fsList: (options) => connect.fsList(options),
   fsPush: (options) => connect.fsPush(options),
+  fsPull: (options) => connect.fsPull(options),
+  fsDrag: (path) => connect.fsDrag(path),
 });
 shell.onRoute((id) => {
   if (id === 'files') void files?.refresh();

@@ -179,7 +179,13 @@ fun SyncRoute(
 
                 SyncTab.Folders -> FoldersSection(
                     state = foldersState,
+                    // Unaimed. Browse… promises nothing about where it opens, which is the only
+                    // promise this app could make before EXTRA_INITIAL_URI was measured.
                     onAddFolder = { folderPicker.launch(foldersViewModel.pickerIntent()) },
+                    // Aimed. A chip *is* a promise about where the picker opens, and it is one the
+                    // handset now honours — FolderQuickPicks carries the readings.
+                    quickPicks = foldersViewModel.quickPicks(),
+                    onQuickPick = { folderPicker.launch(foldersViewModel.pickerIntent(it)) },
                     onRemove = foldersViewModel::remove,
                 )
 

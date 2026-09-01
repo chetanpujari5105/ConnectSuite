@@ -30,22 +30,26 @@ import java.util.concurrent.atomic.AtomicLong
  * only unit-test them, because nothing put bytes on the socket — `docs/testing.md` records that debt
  * by name and this is what pays it.
  *
- * ### Pull only, and deliberately so
+ * ### Both directions, and each one has a receiver with the same three obligations
  *
- * Only `media.original` reaches this today, and it is phone → Mac. Push, SAF destinations,
- * `.part`/`.failed` and resume-across-process-death all belong to the transfer slice, which is
- * `fs.*`. What is built here is the smallest thing that moves real bytes over a real socket: a
- * pending transfer registered by a control request, claimed by a header frame, streamed, and
- * reported.
+ * `media.original` and `fs.transfer.begin` pull phone → Mac; `direction: "push"` receives Mac →
+ * phone into a SAF tree, the app-private folder, or `Download/ConnectSuite` through `MediaStore`.
+ * The class doc used to say *pull only, and deliberately so*; that was true until slice 8.
  *
- * ### Resume is honoured here even though nothing asks for it yet
+ * ### The digest covers the whole file, on both sides, always
  *
- * The header may carry an `offset` and this seeks to it, because the receiver is the side that knows
- * what it already holds. The digest, though, is computed from **byte 0 regardless** — that is the
- * rule the payload proposal spends its longest section on, and getting it wrong on a resumed
- * transfer reports `CHECKSUM_MISMATCH` on a perfectly good file and then deletes it. The sender's
- * obligation is the mirror image of the receiver's: seek to `offset` to *send* from, digest the
- * whole file.
+ * A header may carry an `offset` and the reader seeks to it, because the receiver is the side that
+ * knows what it already holds. The digest is computed from **byte 0 regardless** — the rule the
+ * payload proposal spends its longest section on, and getting it wrong on a resumed transfer reports
+ * `CHECKSUM_MISMATCH` on a perfectly good file and then deletes it. Sender and receiver are mirror
+ * images: seek to `offset` to *send* from, read the partial back to *digest* from zero.
+ *
+ * ### The length is the other half of that, and it is the half that was missing
+ *
+ * A digest is agreed only below a 64 MB ceiling, so on large files there is nothing to compare and
+ * **the agreed length is the only witness that a stream ended early.** [receiveFrom] asks
+ * [FsPartials.arrivalVerdict] rather than deciding for itself, because deciding for itself inline is
+ * the shape defect 56 shipped in — a truncated push committed as the finished file.
  */
 object BulkTransfers {
 
@@ -580,16 +584,27 @@ object BulkTransfers {
             val sha = digest.digest().joinToString("") { "%02x".format(it) }
             val expected = entry.sha256
 
-            // **A stream that ended early is an interruption, not a completion — and without this
-            // check a truncated push with no agreed digest would be committed as the finished
-            // file.** The digest cannot catch it: when the Mac sent no `sha256` there is nothing to
-            // compare against, so the length agreed on the control channel is the only thing that
-            // knows the transfer is short. Found by the resume probe, which cut a 24 MB push in
-            // half and watched the phone treat the half as done.
+            // **Defect 56 — the most serious thing found in Phase 5, and this is the line that
+            // catches it.** A stream that ended early is an interruption, not a completion, and
+            // when the Mac agreed no digest there is nothing else that knows: the length agreed on
+            // the control channel is the only witness. Above the 64 MB pre-hash ceiling *every*
+            // push agrees no digest, so this was the ordinary large-file path, not an edge.
             //
+            // The decision is [FsPartials.arrivalVerdict]'s and not this function's, because the
+            // original defect was exactly this branch deciding for itself where no test could
+            // reach it. `FsArrivalTest` owns the rule, including the ordering — length before
+            // digest — that keeps a truncated arrival resumable instead of destroying it as
+            // corrupt.
+            val verdict = FsPartials.arrivalVerdict(
+                received = total,
+                agreed = entry.size,
+                expectedSha = expected,
+                actualSha = sha,
+            )
+
             // The partial is KEPT and the record holds what arrived, which is what makes the next
             // attempt resume rather than restart.
-            if (total < entry.size) {
+            if (verdict is FsPartials.Arrival.Short) {
                 failed.incrementAndGet()
                 entry.partial.keep()
                 updateRecord(context, entry, total, TransferStatus.PAUSED)
@@ -612,7 +627,7 @@ object BulkTransfers {
                 }
                 return
             }
-            if (total > entry.size) {
+            if (verdict is FsPartials.Arrival.Overrun) {
                 // More than was agreed. The digest would catch it when one exists, and nothing would
                 // when it does not — so it is caught here, and the bytes go rather than being
                 // committed at the final name.
@@ -643,21 +658,22 @@ object BulkTransfers {
                 return
             }
 
-            if (expected != null && expected != sha) {
+            if (verdict is FsPartials.Arrival.Corrupt) {
                 failed.incrementAndGet()
                 entry.partial.discardAsFailed(
                     FsPartials.sidecarText(
                         name = entry.name,
                         whenIso = nowIso(),
                         bytes = total,
-                        expected = expected,
-                        actual = sha,
+                        expected = verdict.expected,
+                        actual = verdict.actual,
                     ),
                 )
                 updateRecord(context, entry, 0L, TransferStatus.FAILED)
                 LinkLog.e(
                     "bulk",
-                    "${entry.transferId} ${entry.name} arrived corrupt: agreed ${expected.take(12)}…, " +
+                    "${entry.transferId} ${entry.name} arrived corrupt: agreed " +
+                        "${verdict.expected.take(12)}…, " +
                         "received ${sha.take(12)}… over $total bytes. The partial was deleted and a " +
                         "${FsPartials.failedNameFor(entry.name)} note left in its place — ${tally()}",
                 )
@@ -701,6 +717,10 @@ object BulkTransfers {
                 return
             }
 
+            // Everything below is the one remaining verdict, and it is read off the verdict rather
+            // than recomputed: `verified` is the difference between "the bytes were checked" and
+            // "nobody looked", and deriving it a second time here is how the two answers drift.
+            val verified = (verdict as FsPartials.Arrival.Complete).verified
             completed.incrementAndGet()
             updateRecord(context, entry, total, TransferStatus.COMPLETED)
             reportIncoming(channel, entry, total, startedAt)
@@ -708,15 +728,15 @@ object BulkTransfers {
                 put("ok", true)
                 put("bytes", total)
                 put("elapsedMs", elapsed)
-                put("verified", expected != null)
+                put("verified", verified)
                 put("sha256", sha)
             }
             LinkLog.i(
                 "bulk",
                 "${entry.transferId} received ${entry.name} into ${entry.rootLabel}: $total bytes " +
                     "in ${elapsed}ms (${rateOf(received, elapsed)}), sha256=${sha.take(12)}…, " +
-                    "verified=${expected != null} " +
-                    (if (expected != null) "(agreed in advance and matched)" else "(nothing was agreed in advance)") +
+                    "verified=$verified " +
+                    (if (verified) "(agreed in advance and matched)" else "(nothing was agreed in advance)") +
                     " — ${tally()}; ${framing.tally.summary()}",
             )
         } catch (e: Exception) {

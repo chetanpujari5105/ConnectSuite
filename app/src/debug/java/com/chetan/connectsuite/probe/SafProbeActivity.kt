@@ -31,10 +31,33 @@ class SafProbeActivity : ComponentActivity() {
         finish()
     }
 
+    /**
+     * Optionally **aims** the picker, which is the whole of §8.3's open question.
+     *
+     * `EXTRA_INITIAL_URI` is unset in the product. Whether it should be depends on what the picker
+     * does with it, and that has three possible answers with three different decisions — it opens
+     * inside the named folder (aiming is safe), it opens in the folder's **parent** (aiming walks
+     * the user into `Download`'s refusal, so it stays unset forever), or it is ignored and the
+     * picker restores its own last location (aiming buys nothing).
+     *
+     * The reading needs the folder to exist, which is why it belongs to push's sitting rather than
+     * onboarding's. Pass it as an extra so the probe can be run both ways in one session and the
+     * unaimed run is the control:
+     *
+     * ```
+     * adb shell am start -n …/…SafProbeActivity \
+     *   --es initial 'content://com.android.externalstorage.documents/document/primary%3ADownload%2FConnectSuite'
+     * ```
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.i(TAG, "--- probe run start; targetSdk=${applicationInfo.targetSdkVersion} ---")
-        picker.launch(null)
+        val initial = intent?.getStringExtra("initial")?.takeIf { it.isNotBlank() }
+        Log.i(
+            TAG,
+            "--- probe run start; targetSdk=${applicationInfo.targetSdkVersion}; " +
+                "initialUri=${initial ?: "(unset — the control)"} ---",
+        )
+        picker.launch(initial?.let { Uri.parse(it) })
     }
 
     /**

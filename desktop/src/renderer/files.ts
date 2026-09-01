@@ -51,6 +51,14 @@ interface FilesBridge {
     source: string;
     overwrite?: boolean;
   }): Promise<{ ok: boolean; bytes?: number; reason?: string; code?: string; fixHint?: string }>;
+  fsPull(options: {
+    rootId: string;
+    id: string;
+    name: string;
+    size: number;
+  }): Promise<{ ok: boolean; path?: string; bytes?: number; verified?: boolean; reason?: string }>;
+  /** Synchronous by necessity — see the preload comment. Nothing may be awaited before it. */
+  fsDrag(path: string): void;
 }
 
 /** One page. The phone caps at 500; 200 is its own default and fills the table several times. */
@@ -85,6 +93,25 @@ class FilesView {
 
   /** What the last push said, so the pane can report a refusal the phone gave a reason for. */
   private lastPush: { ok: boolean; text: string } | null = null;
+
+  /**
+   * Entry id → where that file now sits on this Mac.
+   *
+   * **Finder will not take a promise of a file, only a file.** `webContents.startDrag` needs a path
+   * that exists at the instant the drag begins, and a `dragstart` handler cannot await a copy over
+   * the network — the gesture is over long before the bytes are. So a row becomes draggable *after*
+   * it has been copied, and a drag of an uncopied row starts the copy and says so.
+   *
+   * That is the platform's ordering rather than a limitation of this pane, and it is stated to the
+   * user in one sentence instead of being hidden behind a spinner that cannot finish in time.
+   */
+  private localCopies = new Map<string, string>();
+
+  /** Ids currently being copied, so a second drag on the same row does not start a second transfer. */
+  private copying = new Set<string>();
+
+  /** What the last copy said. The pull's own sentence, including the phone's refusal. */
+  private lastPull: { ok: boolean; text: string } | null = null;
 
   constructor(
     private readonly bridge: FilesBridge,
@@ -284,6 +311,48 @@ class FilesView {
     await this.openPath(this.path);
   }
 
+  /**
+   * Copies one entry to this Mac, so it can be opened, kept, or dragged into Finder.
+   *
+   * Serialised per entry by [copying]: a second click, or a second drag, joins nothing and starts
+   * nothing. Two callers on one fetch is the mistake this pane already made once with `refresh()`,
+   * and here the cost would be two transfers writing the same `.part`.
+   */
+  private async copyToMac(entry: FsEntryRow): Promise<void> {
+    if (this.selectedRoot === null || entry.dir) return;
+    if (this.copying.has(entry.id) || this.localCopies.has(entry.id)) return;
+    this.copying.add(entry.id);
+    this.lastPull = { ok: true, text: `Copying ${entry.name} to this Mac…` };
+    this.render();
+    try {
+      const result = await this.bridge.fsPull({
+        rootId: this.selectedRoot,
+        id: entry.id,
+        name: entry.name,
+        size: entry.size,
+      });
+      if (result.ok && result.path) {
+        this.localCopies.set(entry.id, result.path);
+        this.lastPull = {
+          ok: true,
+          // `verified` is the phone's word and is repeated rather than upgraded: above the 64 MB
+          // pre-hash ceiling nothing agreed a digest, and saying "verified" there would be defect
+          // 56's mistake pointed the other way.
+          text:
+            `${entry.name} is on this Mac — drag it to Finder from here.` +
+            (result.verified === true
+              ? ' Its checksum matched the one agreed before the copy.'
+              : ' No checksum was agreed in advance, so nothing compared the bytes.'),
+        };
+      } else {
+        this.lastPull = { ok: false, text: `${entry.name} — ${result.reason ?? 'the copy failed.'}` };
+      }
+    } finally {
+      this.copying.delete(entry.id);
+      this.render();
+    }
+  }
+
   private render(): void {
     const view = filesPaneView(this.fetch, this.pushAvailable);
 
@@ -300,7 +369,13 @@ class FilesView {
     // Drawn once, in whichever place is actually visible. The wall is standing copy on both sides
     // of this product — the phone's Folders screen carries it in every state — and it must not
     // appear twice on the one screen where both homes are on show.
-    const showsState = this.fetch.kind !== 'ready' || this.roots.length <= 1;
+    //
+    // **Granted trees, never the root count.** `Received files` and `ConnectSuite` are on every
+    // phone, so `roots.length <= 1` became permanently false the day the grant-free destination
+    // landed — and the state card, which is where the `Download` wall lives, stopped drawing for
+    // everyone. `CLAUDE.md` already carries this exact failure one row up: a state checked in the
+    // situation that makes it easy to render rather than the one users are in.
+    const showsState = this.fetch.kind !== 'ready' || sharedFolderCount(this.roots) === 0;
     // F4: the canvas draws two drop tiles. One condition decides whether either exists, and it is
     // the phone's answer rather than a constant — so the tile appears the moment a phone that
     // serves push connects, and never over one that does not.
@@ -542,7 +617,32 @@ class FilesView {
       });
       row.addEventListener('dblclick', () => {
         if (entry.dir) void this.openPath(this.path ? `${this.path}/${entry.name}` : entry.name);
+        else void this.copyToMac(entry);
       });
+
+      // Drag to Finder. A folder is never draggable — `fs.transfer` moves one file and a folder
+      // copy is a loop the Mac would have to drive, which is a transfer queue and not this.
+      const local = this.localCopies.get(entry.id);
+      if (!entry.dir) {
+        row.draggable = true;
+        if (local) row.classList.add('is-local');
+        row.addEventListener('dragstart', (event) => {
+          const path = this.localCopies.get(entry.id);
+          if (!path) {
+            // **The drag is cancelled, and the copy starts.** Finder needs a file that exists at
+            // the instant the gesture begins and this one does not exist yet; awaiting the copy
+            // here would hand Finder nothing and look like a drag that did not register. So the
+            // refusal is explicit, it says what it did instead, and the second drag works.
+            event.preventDefault();
+            void this.copyToMac(entry);
+            return;
+          }
+          // `startDrag` must be called while this handler is still on the stack — the bridge sends
+          // rather than invokes, and nothing here may be awaited.
+          event.preventDefault();
+          this.bridge.fsDrag(path);
+        });
+      }
       this.table.append(row);
     }
 
@@ -590,8 +690,49 @@ class FilesView {
       grid.append(dt, dd);
     }
     this.detail.append(grid);
-    // No "Copy to Mac" button yet: this pane is the read surface, and the pull path belongs with
-    // the transfer queue rather than bolted onto a detail card the day the pane lands.
+
+    if (entry.dir) return;
+
+    const local = this.localCopies.get(entry.id);
+    const button = document.createElement('button');
+    button.className = 'files-detail-action';
+    button.type = 'button';
+    // A stable accessibility name, because a coordinate is a guess about a layout that is still
+    // moving — `CLAUDE.md`'s first driving rule, met by giving the target a name rather than by
+    // remembering a pixel.
+    button.id = 'files-copy-to-mac';
+    if (this.copying.has(entry.id)) {
+      button.textContent = 'Copying…';
+      button.disabled = true;
+    } else if (local) {
+      button.textContent = 'Copy again';
+    } else {
+      button.textContent = 'Copy to Mac';
+    }
+    button.addEventListener('click', () => {
+      if (local) this.localCopies.delete(entry.id);
+      void this.copyToMac(entry);
+    });
+    this.detail.append(button);
+
+    const note = document.createElement('p');
+    note.className = 'files-detail-note';
+    note.id = 'files-drag-note';
+    // Two sentences, and which one shows is the whole state. The unavailable case says what to do
+    // rather than what is missing.
+    note.textContent = local
+      ? `On this Mac at ${local}. Drag the row into Finder to put it anywhere.`
+      : 'Copy it to the Mac before dragging it to Finder — Finder needs the file itself, not a ' +
+        'promise of one, so the drag cannot fetch it as it starts.';
+    this.detail.append(note);
+
+    if (this.lastPull) {
+      const status = document.createElement('p');
+      status.className = 'files-detail-note';
+      status.classList.toggle('is-error', !this.lastPull.ok);
+      status.textContent = this.lastPull.text;
+      this.detail.append(status);
+    }
   }
 }
 

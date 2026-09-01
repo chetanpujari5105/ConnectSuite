@@ -26,7 +26,13 @@
 interface FsRootRow {
   rootId: string;
   label: string;
-  /** `app` | `tree` | `all`. An unrecognised kind is shown plainly, never discarded. */
+  /**
+   * `downloads` | `app` | `tree` | `all`. An unrecognised kind is shown plainly, never discarded.
+   *
+   * **Only `tree` is a folder the user shared.** `downloads` and `app` are on every phone before
+   * anything is granted, so counting the list length to decide whether the user has shared anything
+   * gives the wrong answer — and gave it here once already, see [sharedFolderCount].
+   */
   kind: string;
   writable: boolean;
   freeBytes: number | null;
@@ -79,7 +85,7 @@ interface FilesPaneView {
    * thing that must switch the upload affordance off. Not a fetch state: it coexists with M2 and M3.
    */
   degraded: boolean;
-  /** Never true in this build. See [uploadAffordance]. */
+  /** Driven by the phone's `push` field. See [uploadAffordance]. */
   upload: boolean;
 }
 
@@ -94,6 +100,18 @@ const DOWNLOAD_WALL =
   'Android refuses that folder to every app. A folder inside Download is fine.';
 
 /**
+ * The good news that keeps the almost-empty state from being a dead end.
+ *
+ * `Received files` is `Download/ConnectSuite` through `MediaStore` and needs **no grant of any
+ * kind**, so a phone that has shared nothing can still be sent a file. Before this root existed, a
+ * pane with no granted folders could do nothing at all, and the copy had no better offer than
+ * "go to the phone".
+ */
+const RECEIVED_FILES_ALWAYS_WORKS =
+  'You can send files to this phone without sharing anything: they land in Received files, which ' +
+  'is the Download › ConnectSuite folder on the phone.';
+
+/**
  * There is no `fs.grant`, and there is not going to be one.
  *
  * The inventory is fixed at twelve types. A thirteenth that made the phone open a picker would be
@@ -105,13 +123,28 @@ const ADDED_ON_THE_PHONE =
   'Folders are added on the phone, one at a time — the Mac cannot ask for them.';
 
 /**
- * Whether an upload affordance may be drawn. **Always false in this build.**
+ * How many folders the **user** has shared — `kind === 'tree'`, never the list length.
  *
- * `direction: "push"` answers `FEATURE_UNAVAILABLE`; `docs/protocol.md` says *"A Files pane must not
- * draw an upload affordance against this build"* and `docs/RESUME.md` says it again. The canvas
- * draws a "Drop files to send to phone" tile, so this is the one place that decision lives, and it
- * takes the capability rather than a constant — the tile returns when push does, in the same moment,
- * from one fact.
+ * Written as a named function with this comment because the list-length version shipped and was
+ * wrong the moment a second grant-free root appeared: `Received files` and `ConnectSuite` are on
+ * every phone, so `roots.length > 1` was permanently true and the pane told a user who had shared
+ * nothing that their phone had shared two folders. The almost-empty state — the one the whole
+ * `Download` wall lives in — became unreachable in the same edit.
+ *
+ * That is `CLAUDE.md`'s third instrument row exactly: *check a state in the situation the user is
+ * in*. The situation changed underneath the check.
+ */
+function sharedFolderCount(roots: FsRootRow[]): number {
+  return roots.filter((root) => root.kind === 'tree').length;
+}
+
+/**
+ * Whether an upload affordance may be drawn — **the phone's own answer, never a constant.**
+ *
+ * It was `false` for two slices while `direction: "push"` answered `FEATURE_UNAVAILABLE`, and it
+ * went true the moment a phone serving push connected, from the `push` field in the roots ack and
+ * nothing else. The canvas draws a "Drop files to send to phone" tile; this is the one place that
+ * decision lives, so the tile, the degraded banner and this check cannot disagree.
  */
 function uploadAffordance(pushAvailable: boolean): boolean {
   return pushAvailable;
@@ -179,19 +212,27 @@ function filesPaneView(fetch: FilesFetch, pushAvailable: boolean): FilesPaneView
         upload,
       };
     case 'ready': {
-      const many = fetch.roots.length > 1;
+      // Folders the **user** shared. `Received files` and `ConnectSuite` are on every phone and
+      // counting them here is what made the almost-empty state unreachable once already.
+      const shared = sharedFolderCount(fetch.roots);
+      const any = shared > 0;
       return {
-        id: many ? 'M3' : 'M2',
-        headline: many
-          ? `This phone has shared ${fetch.roots.length} folders`
-          : 'This phone has shared one folder',
-        // The almost-empty case is the dangerous one: one working root looks like a broken list of
-        // many, so it says plainly that the list is short by design.
-        body: many
+        id: any ? 'M3' : 'M2',
+        headline: any
+          ? shared === 1
+            ? 'This phone has shared one folder'
+            : `This phone has shared ${shared} folders`
+          // States what *is*, with no verb of failure in it — the M2/M4 difference, tested.
+          : 'This phone hasn’t shared a folder yet',
+        // The almost-empty case is the dangerous one: two working roots look like a broken list of
+        // many, so it says plainly that the list is short by design — and that sending still works,
+        // which is the one thing that makes this state not a dead end.
+        body: any
           ? [ADDED_ON_THE_PHONE, DOWNLOAD_WALL]
           : [
-              'ConnectSuite’s own folder is always here. To browse more of the phone, open ' +
-                'ConnectSuite on the phone and go to Sync › Folders.',
+              'Received files and ConnectSuite’s own folder are always here. To browse more of the ' +
+                'phone, open ConnectSuite on the phone and go to Sync › Folders.',
+              RECEIVED_FILES_ALWAYS_WORKS,
               ADDED_ON_THE_PHONE,
               DOWNLOAD_WALL,
             ],
@@ -245,11 +286,13 @@ function loadedFooter(loaded: number, hasMore: boolean): string {
 if (typeof module !== 'undefined') {
   module.exports = {
     filesPaneView,
+    sharedFolderCount,
     uploadAffordance,
     pushOffered,
     freeSpace,
     loadedFooter,
     DOWNLOAD_WALL,
     ADDED_ON_THE_PHONE,
+    RECEIVED_FILES_ALWAYS_WORKS,
   };
 }

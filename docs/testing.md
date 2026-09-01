@@ -8810,3 +8810,352 @@ probe files were deleted from `/sdcard/DCIM`.
 **Not built:** a Copy-to-Mac control in the pane (the pull path exists and belongs with a transfer
 queue), and `Download/ConnectSuite` as a push destination without a grant, which is the
 `EXTRA_INITIAL_URI` question in `docs/phase-5-files-onboarding-proposal.md` §8.3.
+
+---
+
+### Defect 56 — a truncated push was committed as the finished file — **closed**
+
+**This is the most serious defect found in Phase 5, and it is written up here rather than left inside
+slice 8's narrative because it deserves to read that way.** Slice 8's record found it while
+describing a probe; the probe is the smaller half of the story.
+
+#### What it was
+
+The phone's receive path ended a push by comparing the digest the Mac had agreed against the digest
+of what landed. When the Mac had agreed **no** digest, there was nothing to compare, and the path
+fell through to `commit()` — which renames `name.part` to `name`.
+
+`fs.transfer.begin` pre-hashes only below a **64 MB ceiling**, because hashing first means reading
+the file twice and a 4 GB video would hold the control channel for a full read with nothing to
+report. So *"the Mac agreed no digest"* is not an unusual configuration. **It is every push of a
+large file.**
+
+Which means: interrupt any push above 64 MB — close the lid, walk out of Wi-Fi range, let the phone
+doze — and the phone renamed the partial to its final name and reported `ok: true`. The file was
+in the user's `DCIM`, at the right name, with the right icon, and half there. Every tool that opened
+it would open it. `.part` exists precisely so that a half file is never at its final name, and this
+defeated it on the last step, after the convention had done its job all the way up to the rename.
+
+**Nothing else could have caught it.** The digest is the usual second line of defence and it is
+absent by design on exactly the transfers where this bites. `fs.transfer.done` reported
+`verified: false`, which is the honest and useless answer — it says *nobody checked the contents*, a
+sentence equally true of the complete file and of the half one. The length agreed on the control
+channel before a byte moved was the only witness in the system, and it was never consulted.
+
+#### What it was not
+
+It was not a corruption bug and it must not be filed as one. The bytes that arrived were perfect. It
+is a **completion** bug: the receiver could not tell an ending from a finishing, and the two produce
+identical bytes on disk up to the last one.
+
+#### How it was found, and why that is the uncomfortable part
+
+It was found *underneath a probe fault*, while the probe was reporting the opposite. The push-resume
+probe cut a 24 MB transfer at 12,058,624 bytes and reported that number as delivered; the phone's log
+said `stopped after 0 bytes`. Chasing that disagreement — `socket.destroy()` discards the send
+buffer, so the count was bytes *queued* — is what put a truncated stream in front of the receive
+path in the first place. **Had the probe been right, the interruption would have been a clean resume
+and this branch would never have run.** The instrument being wrong is what exposed it, which is not a
+method anyone can rely on twice.
+
+#### What now catches it
+
+| Layer | What it holds | Shown to fail |
+|---|---|---|
+| `FsPartials.arrivalVerdict` | The decision itself: `Short` / `Overrun` / `Corrupt` / `Complete(verified)`, from the two lengths and the two digests and nothing else. Each verdict carries `keepsPartial`, so the disk policy travels with the verdict rather than being re-decided by the caller — the whole defect was a caller with a verdict and no policy for one case | — |
+| `FsArrivalTest`, 9 tests | Every verdict, and the two that matter by name: a short arrival with **no digest agreed** is `Short`, and a short arrival **with** a digest agreed is still `Short` | **Yes, three ways — below** |
+| `FsArrivalTest`'s source scan | That `BulkTransfers` reaches its verdict *through* `arrivalVerdict` rather than recomputing it inline, which is the shape the defect shipped in | **Yes** |
+| `BulkTransfers.receiveFrom` | Reads the verdict and does one thing per case. `verified` is read off `Complete` rather than recomputed from `expected != null`, so the wire field and the log line cannot drift | — |
+
+The three mutations, run 2026-09-01, each with the results file's age printed beside the verdict so a
+stale XML could not be read as a pass:
+
+| Mutation | Expected red | Actual |
+|---|---|---|
+| Delete the `received < agreed` clause — **defect 56, reintroduced exactly** | the three short-arrival cases | `tests=9 failures=3`, all three, by name |
+| Decide the digest **before** the length | the one case whose two readings disagree | `tests=9 failures=1` — *a short arrival with a digest agreed is still short, never corrupt* |
+| Recompute the verdict inline in `BulkTransfers` | the source scan | `tests=9 failures=1` — *the receive path asks arrivalVerdict rather than deciding for itself* |
+
+**The first attempt at the third mutation did not compile, and the harness reported a pass anyway** —
+it read the results XML from the previous run, which the failed build had never rewritten. That is
+the seventh row of `CLAUDE.md`'s control table happening live, inside the very run written to prove a
+guard: the instrument reported a state it had not measured. The rerun prints the file's age and the
+Gradle exit code, and the mutation was rewritten to compile.
+
+#### What would have to break for it to come back
+
+Four things, and they are listed because "it is fixed" is not a durable statement about a branch:
+
+1. **Someone deletes the `received < agreed` clause** — because on a healthy link it never fires, and
+   an unreachable branch is a tempting thing to remove. Three tests go red.
+2. **Someone reorders the verdict so the digest is read first**, which looks like a tidy-up and is
+   the subtle version of the same bug. A truncated arrival *also* fails its digest, so it would be
+   reported `Corrupt` — and `Corrupt` **destroys the partial**. The user-visible symptom would not be
+   a half file; it would be a large push restarting from zero every time the network blinks, with a
+   `.failed` sidecar explaining a corruption that never happened. One test goes red.
+3. **Someone recomputes the verdict at the call site** — the original shape. The source scan goes red.
+4. **The pre-hash ceiling is removed or raised to infinity**, which would make every push carry a
+   digest and would make the length check look redundant. It is not redundant: it is what keeps a
+   truncation resumable rather than destroyed, per (2). Nothing automatic catches this one, and it is
+   named here for that reason.
+
+The honest gap: all four guards are unit tests over a pure function plus one source scan. **The
+truncation branch has run on hardware exactly once**, in the run that found it, and the fix's
+hardware evidence is slice 8's `ended early: 12058624 of 24000000 bytes. The partial is kept` — one
+observation, on one interruption, of one size. It is not a claim about every interruption; it is the
+claim that this branch runs and keeps the partial when it does.
+
+---
+
+## Slice 9 — the grant-free destination, the aimed picker, and drag to Finder · 2026-09-01
+
+Three things taken together because they are one question: **where does a file go when the user has
+shared nothing, and how does it get back out?**
+
+### 1. `Download/ConnectSuite` is a root, and it needs no grant
+
+`downloads:connectsuite`, `kind: "downloads"`, label **Received files**, through `MediaStore`. The
+roots ack, read through the Mac's own client:
+
+```
+{"rootId":"downloads:connectsuite","label":"Received files","kind":"downloads","writable":true,…}
+{"rootId":"app:files","label":"ConnectSuite","kind":"app",…}
+{"rootId":"saf:primary%3ADCIM","label":"DCIM","kind":"tree",…}
+```
+
+A 3,000,000-byte push into it, with the folder **not existing beforehand** — `ls` on
+`/sdcard/Download/` returned no `ConnectSuite`, with `ls -d /sdcard/Download` returning `present` as
+the control that the listing worked at all:
+
+```
+[fs]   downloads:connectsuite staged inbox-probe.bin as a pending item at
+       content://media/external/downloads/1000297855
+[fs]   fs.transfer.begin push downloads:connectsuite//inbox-probe.bin → t-1-68554, 3000000 bytes,
+       starting at 0, digest agreed in advance
+[bulk] t-1-68554 received inbox-probe.bin into Received files: 3000000 bytes in 80ms (300.0 Mbit/s),
+       sha256=0c9c13446e67…, verified=true (agreed in advance and matched)
+```
+
+Three digests agree: the Mac's `shasum`, the phone's streaming digest, `adb shell sha256sum`.
+
+**And that run did not prove the thing it looks like it proves.** The claim is *no grant needed*, and
+the app was holding `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` on user 0 at the time — for the photo
+browser. A push succeeding while the grants are present says nothing about a phone where they are
+not. The `dumpsys` output made this easy to get wrong: it prints `granted=true` **and**
+`granted=false` for the same permission, because user 95 is Samsung's `DUAL_APP` user and reads false
+on everything (`docs/single-device-audit.md` §4).
+
+So the control was taken properly. Both grants revoked on user 0, verified `granted=false`, the
+service restarted, and the push repeated:
+
+```
+$ adb shell pm revoke --user 0 … READ_MEDIA_IMAGES   → granted=false, flags=[USER_SET|…]
+$ adb shell pm revoke --user 0 … READ_MEDIA_VIDEO    → granted=false, flags=[USER_SET|…]
+
+[bulk] t-1-46588 received nogrant-probe.bin into Received files: 1500000 bytes in 51ms
+       (235.3 Mbit/s), sha256=2c657a62a75c…, verified=true (agreed in advance and matched)
+```
+
+Digests agreed on all three readings again. `fs.list` on the root then returned both files through
+the app's own client — which is also the check defect 50 demands, because the listing binds
+`RELATIVE_PATH=?` as an argument rather than inlining it, and this provider is the vendor's:
+
+```
+2 entries: inbox-probe.bin (3000000, mtimeMs 1788245968000),
+           nogrant-probe.bin (1500000, mtimeMs 1788246046000)
+```
+
+The `mtimeMs` values land in 2026 rather than 1970, which is the control on `DATE_MODIFIED` being in
+**seconds** and needing the ×1000.
+
+Grants restored afterwards to exactly the state recorded before: `granted=true, flags=[USER_SET|…]`
+for both.
+
+**`/sdcard` stat-by-name went stale again, in the same way slice 8 recorded.** `sha256sum` on the
+path said `No such file or directory` while the file was plainly there; listing the directory showed
+it and the digest then read correctly. This is now **two independent observations** on this handset,
+which moves it from a one-off to reproducible: **list the directory, do not stat the path.**
+
+### 2. A pending `MediaStore` item survives process death — the claim §4 carried as unproven
+
+`docs/phase-5-fs-media-proposal.md` §4 has said since it was written that resuming a pending item
+across process death is *"plausible and has not been observed"*, and that it is the load-bearing
+claim of the default push path. It is observed now.
+
+The probe was split at exactly the point the process dies — `stopAfterCut` and `resumeOnly` — so both
+halves run through the shipping client rather than a second one built for the test.
+
+**Half one**, 24 MB cut at half, in pid **2766**:
+
+```
+[fs]   fs.transfer.begin push downloads:connectsuite//death-probe.bin → t-2-64746, 24000000 bytes,
+       starting at 0, digest agreed in advance
+[fs]   downloads:connectsuite keeping the pending death-probe.bin at 12058624 bytes; the next
+       attempt resumes into this same item
+[bulk] t-2-64746 death-probe.bin ended early: 12058624 of 24000000 bytes. The partial is kept and
+       the next attempt resumes from it
+```
+
+The probe reported `sentBeforeCut: 12058624` and the phone received **exactly** 12,058,624. Those two
+numbers agreeing is slice 8's half-close fix working — the run that found defect 56 had them at
+12,058,624 and **zero**.
+
+On disk, the platform's own partial, exactly as §4 predicted — visible, and not at its final name:
+
+```
+-rwxrwx--- 12058624  .pending-1788850964-death-probe.bin
+```
+
+**The process death.** `adb shell am kill` was tried first and **did nothing** — pid 2766 before and
+after, because a foreground service is not "safe to kill". That was caught by reading the pid rather
+than by assuming the command worked, which is the eighth control-table row exactly: establish that
+the thing you are waiting for has actually been triggered. `am crash` then killed it — and reported
+`Shell does not have permission to crash packages for user 150` while doing so, a refusal message
+over a completed action, so the pid was the discriminator rather than the exit line. The log
+confirms: `Scheduling restart of crashed service …/LinkService`.
+
+`enabled_accessibility_services` still named our service afterwards, which is what force-stop would
+have destroyed and is why `am crash` is the right tool here.
+
+**Half two**, resume only, in pid **6191** — a process that never saw those bytes:
+
+```
+[fs]   downloads:connectsuite reusing the pending item for death-probe.bin (id 1000297857,
+       12058624 bytes already staged) — this is the resume path
+[fs]   fs.transfer.begin push … → t-1-44862, 24000000 bytes, starting at 12058624
+[bulk] t-1-44862 resuming at 12058624 of 24000000; the digest covers the bytes already on disk
+[bulk] t-1-44862 received death-probe.bin into Received files: 24000000 bytes in 240ms
+       (398.0 Mbit/s), sha256=e5b1168d89cf…, verified=true; 47 frames / 11941420 bytes accepted
+```
+
+**11,941,420 bytes crossed the wire**, and 12,058,624 + 11,941,420 = 24,000,000 exactly. The pending
+item is gone from the directory, the file is at its final name, and `sha256sum` on the phone matches
+the source. **§4's open claim is closed: yes, and the offset comes from the item's own file
+descriptor rather than from the row's `SIZE`.**
+
+Note also that the truncation branch — defect 56's — ran here **with a digest agreed**, and reported
+`Short` rather than `Corrupt`, so the partial survived. That is the ordering rule live on hardware,
+not only in `FsArrivalTest`.
+
+### 3. `EXTRA_INITIAL_URI` is honoured — §8.3's open question, answered (a)
+
+`docs/phase-5-files-onboarding-proposal.md` §8.3 named three outcomes and three different decisions.
+`SafProbeActivity` now takes an `initial` extra so the aimed and unaimed runs are the same client.
+
+| Run | Where the picker opened | `USE THIS FOLDER` |
+|---|---|---|
+| **Control** — no extra | inside **`DCIM`**, its restored last location | `enabled="true"` |
+| aimed at `Download/ConnectSuite` | **inside `ConnectSuite`**, listing its three files | `enabled="true"` |
+| aimed at `DCIM/Screenshots` | **inside `Screenshots`** | `enabled="true"` |
+| aimed at `DCIM/NoSuchFolderXYZ` (does not exist) | **`DCIM`** — the parent | `enabled="true"` |
+
+Rows two and three are the discriminator between "the extra worked" and "the picker restored a
+location that happened to be right": the control opened in `DCIM`, and two different aims landed in
+two different folders. **Outcome (a): aiming is honoured and is safe.**
+
+Row four is the one that decides the shape of the feature. **A bad aim degrades to the parent, not to
+an error** — so a chip pointing at a folder that turns out not to exist lands the user somewhere
+grantable. Which makes exactly one thing forbidden, and it is not a matter of taste: **no chip may
+point inside `Download`,** because *its* parent is the refusal. §8.1's planned *Received files* chip
+was precisely that chip.
+
+### 4. The quick picks ship, and the guard catches the chip that was planned
+
+`FolderQuickPicks` — Camera, Screenshots, Documents, Pictures — drawn in every state, hidden once
+granted, each with its own accessibility name. On the device:
+
+```
+text:         'Quick picks'  'Camera'  'Screenshots'  'Documents'  'Pictures'
+content-desc: 'Share the Camera folder'  'Share the Screenshots folder'  …
+```
+
+Pressed **by accessibility name**, not by a remembered pixel: *Share the Screenshots folder* opened
+the picker inside `DCIM › Screenshots` with the confirm button enabled. The chip's promise is kept
+through the shipping path.
+
+`FolderQuickPicksTest`, 7 tests, shown to fail: **adding the `Received files` chip §8.1 planned —
+`primary:Download/ConnectSuite` — turns it red**, `tests=7 failures=2`, on *every shipped chip passes
+the rule*. Results-file age printed beside the verdict so a stale XML could not read as a pass.
+
+There is no `Received files` chip for a second reason too: that folder is now a **root of its own**
+needing no grant, so a tree grant over it would buy nothing.
+
+### 5. Drag to Finder
+
+**Finder will not take a promise of a file, only a file.** `webContents.startDrag` needs a path that
+exists at the instant the gesture begins, and a `dragstart` handler cannot await a network copy — the
+gesture is over long before the bytes are. So a row becomes draggable **after** it is copied, and a
+drag of an uncopied row cancels itself and starts the copy. That ordering is the platform's, and the
+detail card states it in one sentence rather than hiding it behind a spinner that cannot finish.
+
+Measured in the running app, with the pane's own selector narrowed to `section[data-screen="files"]`
+and its visibility asserted first — the app window carries the same attribute:
+
+```
+{"visible":true,"width":1140,"rows":29,"buttons":4}
+rail: ["Received files…","ConnectSuite…","DCIM…"]
+```
+
+Before the copy: `Copy to Mac`, and *"Copy it to the Mac before dragging it to Finder — Finder needs
+the file itself, not a promise of one."* After pressing it **by id** (`#files-copy-to-mac`):
+
+```
+button: "Copy again"
+note:   "On this Mac at /Users/chetan/Downloads/ConnectSuite/nogrant-probe.bin."
+note:   "…Its checksum matched the one agreed before the copy."
+row:    is-local, draggable
+```
+
+**The round trip, three digests at every hop** — the file was sent to the phone earlier in this
+sitting and pulled back:
+
+```
+original sent to the phone:   2c657a62a75c439ef0a55e44b09438b508a734fe784bdd47e765c4584ae97b1b
+on the phone:                 2c657a62a75c439ef0a55e44b09438b508a734fe784bdd47e765c4584ae97b1b
+pulled back to ~/Downloads:   2c657a62a75c439ef0a55e44b09438b508a734fe784bdd47e765c4584ae97b1b
+```
+
+Both drag branches ran. On a copied row, main's own line — written only after `startDrag` returns:
+
+```
+I [files] dragged nogrant-probe.bin to Finder — 1 started / 0 refused
+```
+
+On an uncopied row, the drag was cancelled (`defaultPrevented=true`), the copy ran, and the row
+became `is-local`.
+
+**What this does not prove, stated rather than implied.** The drag was dispatched as a synthetic
+`dragstart` from CDP. That exercises renderer → preload → main → `startDrag` with a real path and the
+file's own icon, and it proves `startDrag` accepted it. **It does not prove Finder completes the
+drop**, which is a physical mouse gesture no automation here performs. The wiring is measured; the
+gesture is not.
+
+### 6. The Mac's almost-empty state was broken by this slice, and the pane's own rule caught it
+
+Adding a second grant-free root made `roots.length > 1` **permanently true**. `filesPaneView` used
+that to choose between M2 and M3, so a phone that had shared nothing would have reported *"This phone
+has shared 2 folders"* — and M2, which is where the `Download` wall lives, would have become
+unreachable for everyone.
+
+That is `CLAUDE.md`'s third instrument row happening to us: *check a state in the situation the user
+is in*. The situation changed underneath the check.
+
+Fixed by counting `kind === 'tree'` through a named `sharedFolderCount`, in both the pure view and
+the renderer's state-card condition. Shown to fail: reverting it to `roots.length` turns **4 tests
+red**, including *a phone that has shared nothing is the almost-empty state, however many roots it
+has*. The mutation was verified to have applied before the run — an earlier attempt in this sitting
+silently edited nothing because the working directory had moved, and reported a pass.
+
+The almost-empty state also gained the sentence this slice made true: **you can send files to a phone
+that has shared nothing.** Before the grant-free root, that state could only say "go to the phone".
+
+### Baseline
+
+Phone **278** tests (`core` 77, `input-module` 44, `sync-module` **126**, `mirror-module` 31), up
+from 257 — the 21 are all in `sync-module`: `FsArrivalTest` 9, `FolderQuickPicksTest` 7,
+`DownloadsRootTest` 5. Mac **176**, up from 173. `tsc --noEmit` clean, and every module re-run with
+`--rerun-tasks` so the result XML is this run's rather than an up-to-date task's.
+
+The device is left as it was found: one persisted tree grant (`DCIM`), both media permissions granted
+with their original flags, no accessibility change. `Download/ConnectSuite` holds the two small probe
+files deliberately, so there is something to drag.

@@ -253,6 +253,20 @@ object FsFeature {
         if (!store.writable) {
             return refuse(session, request, FsFailure.NotWritable(store.label))
         }
+        // A specific reason rather than a path error. Refusing here with `NoSuchPath` would send the
+        // user looking for a folder problem that does not exist — the folder is fine and the *root*
+        // cannot hold folders. The store declares this; this handler does not infer it.
+        if (!store.supportsDirectories) {
+            return refuse(
+                session,
+                request,
+                FsFailure.BadRequest(
+                    "\"${store.label}\" cannot hold folders — Android's media store has no empty " +
+                        "directories, so a folder there exists only while a file is in it. Send " +
+                        "the file itself, or use a folder shared from the phone.",
+                ),
+            )
+        }
 
         val segments = when (val path = FsPaths.splitPath(request.str("path"))) {
             is FsPaths.PathResult.Rejected -> return refuse(session, request, FsFailure.BadRequest(path.why))

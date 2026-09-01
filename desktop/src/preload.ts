@@ -16,7 +16,7 @@ import type {
   SmsMessage,
   SmsThread,
 } from './shared/protocol';
-import type { PushOutcome } from './main/files';
+import type { PullOutcome, PushOutcome } from './main/files';
 import type { FloatState } from './main/float';
 
 /**
@@ -203,6 +203,27 @@ contextBridge.exposeInMainWorld('connect', {
     source: string;
     overwrite?: boolean;
   }): Promise<PushOutcome> => ipcRenderer.invoke('fs-push', options),
+  /**
+   * Copies one file from the phone to `~/Downloads/ConnectSuite` and answers with its local path.
+   *
+   * The path is what [fsDrag] needs: Finder will not accept a promise of a file, only a file, so
+   * a row has to be copied before it can be dragged. That ordering is the platform's and it is
+   * stated to the user rather than hidden behind a spinner that cannot finish in time.
+   */
+  fsPull: (options: {
+    rootId: string;
+    id: string;
+    name: string;
+    size: number;
+  }): Promise<PullOutcome> => ipcRenderer.invoke('fs-pull', options),
+  /**
+   * Hands a local file to Finder as a drag.
+   *
+   * **`send`, not `invoke`, and that is required rather than a style choice.** `webContents.startDrag`
+   * must be called while the renderer's `dragstart` is still on the stack; awaiting an `invoke`
+   * round trip first lets the drag gesture end before the drag begins, and macOS quietly drops it.
+   */
+  fsDrag: (path: string): void => ipcRenderer.send('fs-drag', path),
 
   /**
    * The photo browser. Three verbs, because the fourth needs a socket nothing serves yet.
@@ -226,6 +247,10 @@ contextBridge.exposeInMainWorld('connect', {
     rootId: string;
     path: string;
     source: string;
+    /** Stop after the interruption, so the phone's process can be killed before the resume. */
+    stopAfterCut?: boolean;
+    /** Resume only — what runs after the process came back. */
+    resumeOnly?: boolean;
   }): Promise<unknown> => ipcRenderer.invoke('debug-push-resume-probe', options),
   /** Debug builds only: drives `fs.list`, `fs.stat` and the traversal refusals over the real link. */
   debugFsProbe: (

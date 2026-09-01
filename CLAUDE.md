@@ -61,6 +61,13 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   `TARGET_STALE` rather than `STALE_TARGET`, and `push` is not served yet. It was written as prose
   against `docs/protocol.md` while nothing was built; where the two now disagree, `docs/protocol.md`
   wins, because it is the contract and this was the argument for it.
+- `docs/phase-5-clipboard-proposal.md` — the clipboard spec pass, **written before any code and
+  implementing none of it.** Payloads for the three reserved names, and the two things worth reading
+  first: the **background-read wall is inherited from documentation and has never been measured on
+  this device** (§2 names the reading *and its control*, and nothing may be built before both are
+  recorded), and the Mac's clipboard is **not** written automatically — a clipboard is a single-slot
+  store with no undo, so an arriving entry is offered rather than applied (§5). `EXTRA_IS_SENSITIVE`
+  is honoured and the history is memory-only.
 - `docs/single-device-audit.md` — **every hardware reading in this repo came from one SM-S938B.**
   Which findings are AOSP, which are Samsung, and which are honestly *unknown, single-device*. The
   method that answered most of it is one command — ask which package implements the thing you
@@ -86,7 +93,7 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 | 2 | Screen mirroring (MediaProjection capture, H.264, video socket) | **Done** — closed 2026-08-26 |
 | 3 | **Input injection (AccessibilityService)** — see `docs/phase-3-input.md` | **Done** — passed on hardware 2026-08-27; closed retroactively 2026-08-31 |
 | 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
-| 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **In progress** — photos done; **Files moves both directions** as of 2026-09-01: reads, delete, pull, the phone's Folders screen, the Mac's Files pane, and **push with resume in the receive direction**, all on hardware. Outstanding: clipboard, contacts, drag to Finder |
+| 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **In progress** — photos done; **Files is complete** as of 2026-09-01: both directions with resume, the phone's Folders screen with aimed quick picks, the Mac's Files pane, the grant-free `Download/ConnectSuite` destination, and drag to Finder. Outstanding: **clipboard** (spec written, no code) and **contacts** |
 | 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | Not started |
 | 7 | Mac UX — packaging, distribution, app launching, and the polish pass | Not started |
 
@@ -177,6 +184,16 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
   choose another folder"*. Folders **inside** `Download` are grantable, which is why the "send to
   phone" default is `Download/ConnectSuite` rather than app-private storage. `Android/data` and
   `Android/obb` are unreachable by any route, for any app.
+
+  **`Download/ConnectSuite` is now a root in its own right** (`downloads:connectsuite`, through
+  `MediaStore`) and needs **no grant of any kind** — proven with both media permissions revoked,
+  2026-09-01. So a push works on a phone that has shared nothing, and the SAF picker is for *browsing*
+  the phone rather than for receiving from the Mac. It lists this package's own contributions only,
+  and it is flat: `MediaStore` cannot represent an empty directory.
+
+  **`EXTRA_INITIAL_URI` is honoured on this handset and a bad aim degrades to the parent** — measured
+  2026-09-01, which is what unblocked the quick-pick chips. The single constraint it produces: **no
+  chip may point inside `Download`**, because a missing folder there degrades into the refusal below.
 
   The consequence to state to users rather than let them discover: **a file sitting directly in
   `Download/` can never be reached by this app.** `MANAGE_EXTERNAL_STORAGE` would lift all of it and
@@ -336,6 +353,8 @@ damage on the user's own device or nearly recorded a false result.
   | a pager probe capped at 200 pages, over a 16,369-item album (2026-08-31) | `10000 of 16369, match=false` — read as a pager that stops early | the **probe's own cap**. The pager was fine; the instrument ended the run and then reported the ending as the finding |
   | `KEYCODE_BACK` in DocumentsUI, waiting for the cancel branch's log line (2026-09-01) | *(not reported — caught first)* | BACK **navigates up** in the picker, it does not cancel. The activity was still resumed and the branch had not run. The absent line was a reading that did not exist yet |
   | `dumpsys activity permissions \| grep -c documents/tree` after a revoke (2026-09-01) | 2 tree grants — read as *"Remove did nothing"* | the released grant **is still a row**, at `persisted=0x0`. The real grant is the one at `persisted=0x3`. Row presence is not grant persistence |
+  | the push-resume probe's `sentBeforeCut` after `socket.destroy()` (2026-09-01) | 12,058,624 bytes delivered — read as *resume works* | **zero bytes arrived.** `destroy()` discards the send buffer, so the number was bytes *queued*. The instrument reported its own intention as a measurement, and underneath it a **truncated push was being committed as complete** — defect 56 |
+  | a Gradle mutation run reading `build/test-results/*.xml` (2026-09-01) | `failures=0` — read as *the guard does not catch this* | the build **did not compile**, so nothing rewrote the file. The reading was the previous run's, served with no indication of its age |
 
   Between them, false absences and false presences alike, which is the point: the failure is not
   "empty means broken", it is that **the check could not separate signal from lookalike** and said
@@ -486,6 +505,45 @@ damage on the user's own device or nearly recorded a false result.
   that distinguishes the thing you mean from the thing that merely matches**, and check that the
   attribute is in the output at all. `grep -c` was the second entry in this table and it is the
   ninth as well; the failure has not changed since.
+
+  ### **Two readings, one fact** — the family, now with three members
+
+  Three of the entries above are not lone bad readings. They are **pairs**: two instruments asked the
+  same question about the same fact at the same time, and returned different answers. The pattern is
+  worth a name because a fourth one is otherwise indistinguishable from an ordinary bug, and because
+  the instinct it triggers — *which tool do I trust?* — is the wrong instinct every time.
+
+  | The fact | Reading A | Reading B | Which was right |
+  |---|---|---|---|
+  | Does `mms-sms/conversations` honour a selection? (defect 50) | `adb shell content query --where 'date<…'` → 2990 rows | the app's bound `?` → **empty cursor** | **Both.** The shell *inlines* its literal, the app *binds*; two clients, two different queries, and only one of them is the product |
+  | What is the Mac's current DHCP lease? (step 71) | `ifconfig en0` → the old subnet | `ipconfig getsummary en0` → `yiaddr = 10.108.253.92` | **B.** `ifconfig` was serving a stale lease while the new one was already in place |
+  | Is `push-probe.bin` there, and how big? (slice 8) | `ls -la` → 3,000,000 bytes, the OLD file | `sha256sum` → `No such file or directory` | **Neither.** A SAF delete-plus-rename leaves stat-by-name briefly serving a stale entry to one caller and a miss to the next. Listing the *directory* was the third query that answered it |
+
+  **The three answers are A-and-B, B, and neither — which is exactly why "pick the more trustworthy
+  tool" fails.** There is no ranking that gets all three right. `adb` is not less reliable than the
+  app; `ifconfig` is not a worse tool than `ipconfig`; `ls` is not wrong about files.
+
+  What works is the same question in all three cases: **what is each one actually reading?** Not
+  *which is correct* — that is unanswerable from inside the disagreement — but what each query
+  literally asked, of what, at what moment. A bound parameter and an inlined literal are two
+  requests. A cached interface record and a DHCP client's state are two stores. A directory entry
+  and a path lookup are two indexes over one filesystem. Once the two readings are known to be
+  *about different things*, the disagreement stops being a contradiction and becomes information,
+  and the third query that settles it usually suggests itself.
+
+  Three corollaries, one per row, and they generalise past their own tools:
+
+  - **When a hand probe and the product disagree, the probe is the second suspect, not the
+    tiebreaker.** It differs from the shipping call path somewhere, and that difference is where
+    this class of bug lives.
+  - **A disagreement between two readings of one fact is a finding in itself** — worth a line in
+    `docs/testing.md` even when the practical answer is already clear, because the next person will
+    reach for the wrong one of the two.
+  - **Two disagreeing readings do not imply one is right.** The `/sdcard` row is the one to remember:
+    the correct answer came from a query neither of them had made.
+
+  A fourth member of this family is likely and this is what makes it findable: **any time two things
+  in this repo can answer one question, write down that they can, before they disagree.**
 
 - **A tagged union is a rule about what can be represented, not about who may write it.** Making an
   ambiguous state unrepresentable does nothing about two callers racing to set an unambiguous one,
@@ -655,6 +713,67 @@ damage on the user's own device or nearly recorded a false result.
   run (490 s → 21 s), and that turned out to be a *correctness* fix too — re-reading between pages
   lets the cursor's sorted position shift underneath the pager, so a snapshot is the consistent view
   the cursor was always assuming it had.
+
+- **Raising a guard's number to fit new code is how it stops guarding.** When a counting guard fails,
+  the first hypothesis is that the code is wrong, not that the number is stale. The number moves only
+  when the extra work turns out to be a **genuinely different question**, and it moves by being
+  replaced with two assertions that name the two questions — never by being incremented.
+
+  The worked example cost a user's file in the writing. `FsDeleteGuardTest` counts calls to
+  `DocumentsContract.deleteDocument` on the push path and expects **one**. The first version of
+  `commit()` made **four**, and the tempting reading — *push is new, of course it deletes more* —
+  would have been one character of edit. One of those four calls was silently removing an existing
+  file at the destination: `overwrite` was in the payload spec and had never been implemented, so
+  every push over a name that already existed destroyed what was there without asking.
+
+  The guard was right and the code was wrong, which is the ordinary case and not the surprising one.
+
+  The number is **two** now, and what makes that legitimate is not that two is closer to four. It is
+  that the fourth call became a named question with its own function: `deleteIfUnchanged` asks *may
+  this file the Mac was looking at be destroyed?* and `deleteArtifact` asks *may this transfer
+  artifact be cleaned up?* — two different questions with two different answers, **both asserted by
+  name** rather than summed into a count. A guard that asserts a total tells you when the total
+  changed; a guard that asserts two named calls tells you *which* one appeared.
+
+  Concretely, when a counting guard goes red: name every call the new code makes and say what
+  question each answers. If two calls answer the same question, that is the defect. If they answer
+  different ones, split the assertion — do not raise the count. And a count that has been raised
+  twice is a guard that has stopped guarding; replace it rather than raising it a third time.
+
+- **A probe that reports its stimulus without measuring it can hide the bug it was built to find.**
+  An instrument that applies a stimulus must report what the stimulus *did*, not what it *asked for*.
+  The two are the same number often enough that the difference is invisible until it matters, and it
+  matters exactly when the mechanism under test is broken — which is the run the probe exists for.
+
+  The worked example: the push-resume probe cut a 24 MB transfer and reported `sentBeforeCut:
+  12058624`. **Zero bytes had arrived.** `socket.destroy()` discards the send buffer, so 12 MB handed
+  to `writeFrame` never left the machine, and the count was **bytes queued**. Every layer then told
+  the truth about a different thing: the Mac reported what it had written, the phone reported
+  `stopped after 0 bytes`, and *resume does not work* was the reading on offer.
+
+  It is worse than a wrong number, because the wrong number was **plausible and confirming**. A probe
+  reporting 12 MB delivered and a phone reporting a resume from 12 MB would have agreed, and the run
+  would have been recorded as a pass — over a product where nothing had been delivered.
+
+  And underneath it sat the real defect: a truncated push was being **committed as complete**
+  (defect 56). Had the probe been honest about its own stimulus, the interruption would have been an
+  ordinary resume and that branch would never have run. **The instrument being wrong is what exposed
+  the product bug**, which is not a method anyone can rely on twice, and is the reason this is a rule
+  rather than a footnote in one defect.
+
+  So, for anything that injects a stimulus: **report the effect, measured at the far end or at the
+  boundary the stimulus actually crosses**, and say which one it is. Bytes *delivered*, not bytes
+  written. Taps *the view received*, not taps dispatched. Frames *decoded*, not frames sent. When the
+  far end cannot be read, the probe reports the stimulus **labelled as a request** — `queued=12058624`
+  — so nobody downstream can mistake it for a measurement. The fix here was a half-close: `end()`
+  flushes what is buffered, and the result resolves from the socket's `close` rather than from the
+  write loop.
+
+  This is the same failure as the page cap and the 263 ms sampling window, one layer earlier: those
+  instruments contaminated a *reading*, and this one contaminated the *stimulus*. Both are covered by
+  the general form — **every bound and every assumption the instrument imposes must appear in what it
+  reports** — and this is the half that is easy to miss, because a stimulus does not look like a
+  measurement until someone reads it as one.
 
 - **A package id may appear as a machine handle, never as the only thing a user reads.** Any payload
   carrying a package name carries a resolved label beside it, and any human-readable `message`

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, promises as fsp } from 'node:fs';
-import { basename } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, join } from 'node:path';
 import { MessageType, type PhoneResult } from '../shared/protocol';
 import type { BulkClient } from './bulk';
 
@@ -14,23 +15,19 @@ import { ask, rows } from './feature';
 import type { LinkClient } from './link';
 import { log } from './logger';
 
-/**
- * The Mac's half of Files — the read verbs the pane needs, and nothing it must not offer.
- *
- * ### `push` is not here, and its absence is the feature
- *
- * `fs.transfer.begin` with `direction: "push"` answers `FEATURE_UNAVAILABLE` on this build.
- * `docs/protocol.md` states the consequence for this side directly — *"A Files pane must not draw an
- * upload affordance against this build"* — so there is no upload method on this client at all.
- * Having one that always failed would put the decision in the renderer, where the canvas's drop tile
- * would eventually be wired to it.
- *
- * ### This client does not gate itself on the capability
- *
- * Same rule `PhotosClient` follows and for the same reason: gating would turn a partly-working
- * feature into a dead one. The pane draws what the phone says, including the phone's own sentence
- * when `files` is not advertised.
- */
+/** Where a pulled file landed on this Mac, and what it cost to get here. */
+export interface PullOutcome {
+  ok: boolean;
+  path?: string;
+  bytes?: number;
+  elapsedMs?: number;
+  /** Whether a digest agreed in advance actually matched. `false` means nobody checked. */
+  verified?: boolean;
+  reason?: string;
+  fixHint?: string;
+  code?: string;
+}
+
 /** What a push attempt reports back to the renderer. The phone's verdict arrives separately. */
 export interface PushOutcome {
   ok: boolean;
@@ -53,6 +50,23 @@ export interface PushOutcome {
  */
 const PREHASH_CEILING = 64 * 1024 * 1024;
 
+/**
+ * The Mac's half of Files — both directions now, and the two clients they run on.
+ *
+ * ### Four verbs on the control channel, two on the bulk socket
+ *
+ * `roots` and `list` are `fs.list`; [pull] and [push] each agree a transfer on the control channel
+ * and then hand the `transferId` to [BulkClient]. That split is the protocol's, not a convenience:
+ * the control channel decides *what* moves and the bulk socket moves it, and nothing about the
+ * second step is specific to Files — `media.original` hands the same client the same shape.
+ *
+ * ### This client does not gate itself on the capability
+ *
+ * Same rule `PhotosClient` follows and for the same reason: gating would turn a partly-working
+ * feature into a dead one. The pane draws what the phone says, including the phone's own sentence
+ * when `files` is not advertised. The one thing that *is* gated is the upload affordance, and it is
+ * gated on the phone's own `push` field rather than on this client's existence.
+ */
 export class FilesClient {
   private listCount = 0;
   private rootsCount = 0;
@@ -162,6 +176,94 @@ export class FilesClient {
       log.warn('files', `fs.list ${options.rootId} failed: ${result.reason}`);
     }
     return result;
+  }
+
+  /**
+   * Copies one file from the phone to this Mac. The other half of push, and what drag to Finder
+   * needs before Finder will take anything.
+   *
+   * ### It lands in a real folder, not a temporary one
+   *
+   * `~/Downloads/ConnectSuite`, the same folder `media.original` uses, with a suffixed name rather
+   * than an overwrite. A drag that handed Finder a file in `/tmp` would work and then evaporate:
+   * the user drops it into a folder, macOS moves or copies it, and the copy they keep points at
+   * something the next reboot deletes. A file the user can find again without this app running is
+   * the only honest thing to hand them.
+   *
+   * ### `verified` is the phone's word and is passed through, not upgraded
+   *
+   * Above the phone's 64 MB pre-hash ceiling no digest is agreed, and `verified: false` says so.
+   * Defect 56 is what happens when a receiver treats "nothing checked it" as "it is fine", and this
+   * side must not repeat it in the other direction: the pull's own length check is
+   * `bulk.pull`'s, and this reports what it was told.
+   */
+  async pull(options: {
+    rootId: string;
+    id: string;
+    name: string;
+    size: number;
+  }): Promise<PullOutcome> {
+    const link = this.link();
+    if (!link?.isConnected()) return { ok: false, reason: 'The phone is not connected.' };
+    const bulk = this.bulk();
+    const { host, token } = this.session();
+    if (!bulk || !host || !token) {
+      return { ok: false, reason: 'The file channel is not ready.' };
+    }
+
+    const agreed = await ask(
+      link,
+      'files',
+      MessageType.FS_TRANSFER_BEGIN,
+      { direction: 'pull', rootId: options.rootId, id: options.id },
+      (payload) => ({
+        transferId: String(payload.transferId ?? ''),
+        size: typeof payload.size === 'number' ? payload.size : options.size,
+        sha256: payload.sha256 == null ? null : String(payload.sha256),
+      }),
+    );
+    if (!agreed.ok) {
+      this.failures += 1;
+      log.warn('files', `pull of ${options.name} refused: ${agreed.reason}`);
+      return {
+        ok: false,
+        reason: agreed.reason,
+        ...(agreed.fixHint ? { fixHint: agreed.fixHint } : {}),
+        ...(agreed.code ? { code: agreed.code } : {}),
+      };
+    }
+
+    const folder = join(homedir(), 'Downloads', 'ConnectSuite');
+    await fsp.mkdir(folder, { recursive: true });
+    const destination = await freeName(folder, options.name);
+
+    const result = await bulk.pull({
+      host,
+      token,
+      transferId: agreed.data.transferId,
+      destination,
+      expectedBytes: agreed.data.size,
+      expectedSha256: agreed.data.sha256,
+    });
+    if (!result.ok) {
+      this.failures += 1;
+      log.warn('files', `pull of ${options.name} did not finish: ${result.reason}`);
+      return { ok: false, reason: result.reason ?? 'The transfer did not finish.' };
+    }
+    const verified = agreed.data.sha256 !== null;
+    log.info(
+      'files',
+      `pulled ${options.name} (${result.bytes} bytes) to ${result.path}, ` +
+        `verified=${verified} ` +
+        (verified ? '(agreed in advance and matched)' : '(no digest was agreed in advance)'),
+    );
+    return {
+      ok: true,
+      path: result.path!,
+      bytes: result.bytes,
+      elapsedMs: result.elapsedMs,
+      verified,
+    };
   }
 
   /**
@@ -314,4 +416,27 @@ function toEntry(row: Record<string, unknown>): FsEntryRow {
     ...(typeof row.packageName === 'string' ? { packageName: row.packageName } : {}),
     ...(typeof row.displayName === 'string' ? { displayName: row.displayName } : {}),
   };
+}
+
+/**
+ * `name`, or `name (2)`, `name (3)` — the first that does not exist.
+ *
+ * The same rule `PhotosClient` uses and for the same reason: two files really can share a display
+ * name across folders, and replacing one someone already pulled is a decision that belongs to them.
+ */
+async function freeName(folder: string, name: string): Promise<string> {
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const extension = dot > 0 ? name.slice(dot) : '';
+  for (let n = 1; n < 1000; n += 1) {
+    const candidate = join(folder, n === 1 ? name : `${stem} (${n})${extension}`);
+    try {
+      await fsp.access(candidate);
+    } catch {
+      return candidate;
+    }
+  }
+  // A thousand collisions on one name is not a case worth a cleverer scheme; the timestamp is
+  // unique enough and says plainly that something unusual happened.
+  return join(folder, `${stem} (${Date.now()})${extension}`);
 }

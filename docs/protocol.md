@@ -1046,6 +1046,8 @@ question the existing one already answers is how a namespace bloats.
 request  {}
 ack
 {"roots":[
+  {"rootId":"downloads:connectsuite","label":"Received files","kind":"downloads","writable":true,
+   "freeBytes":27233689600},
   {"rootId":"app:files","label":"ConnectSuite","kind":"app","writable":true,
    "freeBytes":27233689600},
   {"rootId":"saf:primary%3ADCIM","label":"DCIM","kind":"tree","writable":true,
@@ -1063,14 +1065,36 @@ affordance — a drop target, an upload button, a menu item — unless this is `
 `rootId` is opaque to the Mac and stable across sessions — it is **derived from the tree URI**, not
 assigned, so nothing has to store it and a revoked grant disappears on its own.
 
-`kind` is `app` | `tree` | `all`. This build serves `app` and `tree`; **`all` is reserved and
-unused**, held open so that all-files access, if it is ever added, is one more root rather than a
-protocol change. **A Mac must handle a `kind` it does not recognise by showing the root with its
-label and no special treatment, never by discarding it.**
+`kind` is `downloads` | `app` | `tree` | `all`. This build serves the first three; **`all` is
+reserved and unused**, held open so that all-files access, if it is ever added, is one more root
+rather than a protocol change. **A Mac must handle a `kind` it does not recognise by showing the
+root with its label and no special treatment, never by discarding it.**
 
-**The app-private root is always present, even with nothing granted.** An empty roots array would be
-indistinguishable from a phone with nothing on it. One root plus a `grantHint` says both things at
-once: the feature works, and there is more that has not been shared.
+**Two roots are present on every phone, before anything is granted:**
+
+| `kind` | What it is | Why it is always there |
+|---|---|---|
+| `downloads` | `Download/ConnectSuite`, through `MediaStore` | **Needs no permission of any kind.** It is where a push with no folder shared lands, so a fresh install can receive a file before the user has picked anything |
+| `app` | the app's own private folder | The one root that cannot fail — no grant, no provider, no user |
+
+An empty roots array would be indistinguishable from a phone with nothing on it. These two plus a
+`grantHint` say both things at once: the feature works, and there is more that has not been shared.
+
+**A Mac counting shared folders must count `kind == "tree"`, never the length of this array.** The
+two roots above are not folders the user shared, and reading the array length as "how much has been
+shared" reports two on a phone that has shared nothing — which on this Mac made the pane's
+almost-empty state unreachable and took the `Download` wall off screen with it.
+
+**The `downloads` root is flat and has no subdirectories.** `MediaStore` cannot represent an empty
+directory — a folder there exists only as the relative path of a file inside it — so `fs.mkdir`
+against this root refuses with `BAD_REQUEST` and `fs.list` on any path below it answers
+`NO_SUCH_ENTRY`. That is the platform, not a simplification: a `fs.mkdir` that returned an entry
+would be describing a folder that will not be in the next listing.
+
+**It lists this package's own contributions only.** Without storage permission — which this app
+deliberately does not ask for — a `MediaStore` query returns what ConnectSuite put there. A file the
+user moves into `Download/ConnectSuite` by hand is really there and will not appear in `fs.list`. A
+Mac must not present this root as a complete view of that directory.
 
 `grantHint` is a sentence for a person, present only when more could be granted — which under SAF is
 almost always. **It is not parsed**, the same standing the capability `unavailable` strings have.

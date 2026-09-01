@@ -2,6 +2,7 @@ package com.chetan.connectsuite.sync.ui.folders
 
 import android.app.Application
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.lifecycle.AndroidViewModel
 import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.sync.v2.FsRoots
@@ -52,8 +53,39 @@ class FoldersViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
-    /** The picker intent. Deliberately aimed nowhere — see [onPicked] and the note below. */
-    fun pickerIntent() = FsRoots.pickerIntent()
+    /**
+     * The picker intent, optionally **aimed**.
+     *
+     * Unaimed for **Browse…**, which is the only thing that can be right for everybody: with no
+     * initial URI the picker restores its own last location, which is a guess but an honest one
+     * because nothing on the button promised otherwise.
+     *
+     * Aimed for a quick pick, which *is* a promise about where it opens — and one this app could not
+     * make until `EXTRA_INITIAL_URI` was measured on hardware. It is honoured on this handset, and
+     * a bad aim degrades to the parent rather than to the refusal. [FolderQuickPicks] carries the
+     * readings and the one constraint that falls out of them.
+     */
+    fun pickerIntent(pick: FolderQuickPicks.Pick? = null) = FsRoots.pickerIntent(
+        pick?.let {
+            DocumentsContract.buildDocumentUri(
+                FolderQuickPicks.EXTERNAL_STORAGE_AUTHORITY,
+                it.documentId,
+            )
+        },
+    )
+
+    /**
+     * The chips to draw: safe targets the user has not already granted.
+     *
+     * Derived from the live grant list rather than remembered, for the same reason nothing else on
+     * this screen is cached — a chip for a folder already shared is an offer that does nothing, and
+     * the grants can change while this screen is in the background.
+     */
+    fun quickPicks(): List<FolderQuickPicks.Pick> {
+        val granted = (uiState.value as? FoldersUiState.Folders)?.rows?.map { it.rootId }?.toSet()
+            ?: emptySet()
+        return FolderQuickPicks.offered(granted)
+    }
 
     /**
      * The picker's result.
