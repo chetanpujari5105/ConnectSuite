@@ -17,6 +17,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!--
+      Declared beside the receiver that finally uses it. It was declared in :app from Phase 1 and
+      nothing received it for five phases; a permission whose receiver lives in another module is
+      how that happens. See LinkBootReceiver.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application>
         <!-- v1 link. Kept until the v1 ADB mirror path is removed; sync-module still uses it. -->
@@ -36,5 +42,38 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice|dataSync"
             android:stopWithTask="false" />
+
+        <!--
+          Not exported. Both actions it listens for are protected broadcasts the system alone can
+          send, so exporting it would add an attack surface and no capability - and it is worth
+          saying that the protection is what makes this receiver untestable from adb: on this
+          handset `am broadcast -a android.intent.action.BOOT_COMPLETED` is refused outright
+          (uid=2000) and `adb root` is unavailable on a production build. MY_PACKAGE_REPLACED is
+          the half that a plain `adb install -r` does fire for real.
+
+          directBootAware is deliberately absent: everything this receiver reads before deciding -
+          the Room trust store - lives in credential-encrypted storage, so there is nothing useful
+          it could do before the first unlock. See the class comment.
+        -->
+        <receiver
+            android:name=".link.LinkBootReceiver"
+            android:exported="false"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!--
+                  Samsung's fast-restart broadcast. Measured on this handset rather than inherited:
+                  unlike BOOT_COMPLETED it is *not* a protected broadcast here - `am broadcast` from
+                  the shell returns `result=0` instead of a SecurityException - which is exactly why
+                  this receiver is not exported. Whether One UI actually sends it in place of
+                  BOOT_COMPLETED is unverified and needs a reboot; listening costs nothing and a
+                  duplicate delivery is a no-op start on a live service.
+                -->
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -1,0 +1,35 @@
+  * ServiceRecord{335c481 u0 com.chetan.connectsuite.debug/com.chetan.connectsuite.core.link.LinkService c:com.chetan.connectsuite.debug}
+    intent={cmp=com.chetan.connectsuite.debug/com.chetan.connectsuite.core.link.LinkService}
+    packageName=com.chetan.connectsuite.debug
+    processName=com.chetan.connectsuite.debug
+    targetSdkVersion=36
+    baseDir=/data/app/~~t6RsLJ6tZh5eRugymzwciA==/com.chetan.connectsuite.debug-Ts9w-tPYjnUp8MPkyuxqXQ==/base.apk
+    dataDir=/data/user/0/com.chetan.connectsuite.debug
+    app=ProcessRecord{da79201 18738:com.chetan.connectsuite.debug/u0a1011}
+    useNewWiuLogic_forCapabilities()=true
+    useNewWiuLogic_forStart()=true
+    useNewBfslLogic()=true
+    mAllowWiu_noBinding=PROC_STATE_TOP
+    mAllowWiu_inBindService=DENIED
+    mAllowWiu_byBindings=PROC_STATE_TOP
+    getFgsAllowWiu_legacy=PROC_STATE_TOP
+    getFgsAllowWiu_new=PROC_STATE_TOP
+    getFgsAllowWiu_forStart=PROC_STATE_TOP
+    getFgsAllowWiu_forCapabilities=PROC_STATE_TOP
+    allowUiJobScheduling=true
+    recentCallingPackage=com.chetan.connectsuite.debug
+    recentCallingUid=11011
+    mAllowStart_noBinding=PROC_STATE_BFGS
+    mAllowStart_inBindService=DENIED
+    mAllowStart_byBindings=PROC_STATE_TOP
+    getFgsAllowStart_legacy=PROC_STATE_BFGS
+    getFgsAllowStart_new=PROC_STATE_BFGS
+    getFgsAllowStart=PROC_STATE_BFGS
+    startForegroundCount=1
+    infoAllowStartForeground=[callingPackage: com.chetan.connectsuite.debug; callingUid: 11011; uidState: BFGS; uidBFSL: [BFSL]; intent: Intent { xflg=0x4 cmp=com.chetan.connectsuite.debug/com.chetan.connectsuite.core.link.LinkService (has extras) }; code:PROC_STATE_BFGS; tempAllowListReason:<,reasonCode:SYSTEM_ALLOW_LISTED,duration:9223372036854775807,callingUid:-1>; allowWiu:-1; targetSdkVersion:36; callerTargetSdkVersion:36; startForegroundCount:0; bindFromPackage:null: isBindService:false]
+    isForeground=true foregroundId=2001 types=0x00000010 foregroundNoti=Notification(channel=connection_status shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|NO_CLEAR|FOREGROUND_SERVICE|SILENT color=0x00000000 category=service actions=1 vis=PRIVATE semFlags=0x0 semPriority=0 semMissedCount=0 semScenarioType=0)
+    createTime=-1m41s64ms startingBgTimeout=--
+    lastActivity=-1m26s992ms restartTime=-1m41s64ms createdFromFg=true
+    startRequested=true delayedStop=false stopIfKilled=false callStart=true lastStartId=3
+ startCommandResult=1
+

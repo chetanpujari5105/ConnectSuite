@@ -10634,3 +10634,193 @@ are precisely the ones who declined that prompt.
 
 `am set-standby-bucket` is the cheap, reversible approximation and is to be tried before anyone is
 asked to change their phone's real posture.
+
+---
+
+## Phase 6 · Slice 1 — the boot gap, closed as far as this handset can close it · 2026-09-02
+
+### Defect 60 — the fix, and the two claims it rests on that a laptop cannot produce — **fixed; reinstall half proven on hardware 2026-09-02, boot half awaiting a restart**
+
+Defect 60. `RECEIVE_BOOT_COMPLETED` declared since Phase 1, nothing receiving it, so the link never
+came back after a restart. What follows is what was built, what was measured, and — the longer
+half — what was *not* measured and why, because two of the three claims this fix rests on cannot be
+produced on a phone that is not being rebooted.
+
+### 1. The reading that decided the design, before any code
+
+The obvious receiver — filter `BOOT_COMPLETED`, call `LinkService.start` — is wrong on this device,
+and the reason is a platform rule that is easy to inherit from a release note and was instead read
+off the phone:
+
+```
+$ adb shell dumpsys platform_compat | grep -i BOOT_COMPLETED
+ChangeId(296558535; name=FGS_BOOT_COMPLETED_RESTRICTIONS; enableSinceTargetSdk=35; overridable)
+ChangeId(203704822; name=DEFER_BOOT_COMPLETED_BROADCAST_CHANGE_ID; enableSinceTargetSdk=33; overridable)
+
+$ adb shell dumpsys package com.chetan.connectsuite.debug | grep targetSdk
+    versionCode=1 minSdk=29 targetSdk=36
+```
+
+**Control, because a row that is present is not a row that is enabled.** The same dump returns 357
+change rows and prints `disabled` explicitly where a change is off — `ChangeId(189969744;
+name=DOWNSCALE_65; disabled; overridable)` is in the same output. Our row carries no `disabled`, no
+per-package override (`dumpsys platform_compat | grep -A3 connectsuite` returns nothing), and
+`enableSinceTargetSdk=35` against our `targetSdk=36`. So the restriction **applies to this app on
+this device**, and that is a reading rather than a quotation.
+
+**What is still not a reading, and is labelled as one nowhere in the code:** *which* foreground
+service types the restriction denies. That set lives in the framework's `ForegroundServiceTypePolicy`
+and no `dumpsys` on this device exposes it. The documented set is `dataSync`, `camera`,
+`mediaPlayback`, `phoneCall`, `mediaProjection`, `microphone`; `LinkService` declares
+`connectedDevice|dataSync`; so the documented answer is that a naive boot start throws
+`ForegroundServiceStartNotAllowedException` and the service dies before binding a socket.
+
+### 2. Why that half cannot be measured here, stated rather than worked around
+
+`BOOT_COMPLETED` is a protected broadcast and this handset will not let anything but the system send
+it:
+
+```
+$ adb root
+adbd cannot run as root in production builds
+
+$ adb shell am broadcast -a android.intent.action.BOOT_COMPLETED -p com.chetan.connectsuite.debug
+Broadcasting: Intent { act=android.intent.action.BOOT_COMPLETED flg=0x400000 pkg=… }
+java.lang.SecurityException: Permission Denial: not allowed to send broadcast
+    android.intent.action.BOOT_COMPLETED from pid=9262, uid=2000
+```
+
+So there is no stimulus available short of a real reboot, and a reboot is the user's hands (H4). The
+design therefore does not depend on the unmeasured half: **a boot start claims `connectedDevice`
+only.** It is the minimal honest type for a service whose job is holding a link to a connected
+device, it is on the documented *allowed* list, and if the documented denial set is wrong in either
+direction `connectedDevice` is still correct. `dataSync` is added only on a start a user drove —
+which is also the only kind of start that has ever had a bulk transfer behind it.
+
+`LinkAutoStart.foregroundTypesFor` is that decision as a pure function so a test can reach it, and
+`startForegroundWithStatus` now returns a boolean and catches the refusal: a platform denial becomes
+one `E` line naming the reason and the types, plus a clean `stopSelf`, instead of a crash on the
+user's first restart after an update.
+
+### 3. The half that *is* measurable from a laptop, and it fired
+
+`ACTION_MY_PACKAGE_REPLACED` reaches the identical hole by the route `CLAUDE.md` already documents
+as *"reinstalling leaves the phone serverless"* — and unlike a reboot, `adb install -r` produces it
+for real. The receiver handles both.
+
+Grants snapshotted before and after, per the standing rule
+(`docs/evidence/phase-6-boot-2026-09-02/grants-before.txt`, `grants-after.txt`): the diff of every
+`granted=` line, both secure-settings bindings, the deviceidle row and the standby bucket is
+**empty**. Nothing was re-granted and nothing was lost.
+
+```
+02:38:32  adb install -r app-debug.apk
+02:38:41  Success
+
+2026-09-02T02:38:42.448  I [boot]    PACKAGE_REPLACED: 1 paired device(s) — starting LinkService
+2026-09-02T02:38:42.476  I [service] Foreground as PACKAGE_REPLACED, types=0x10
+2026-09-02T02:38:42.485  I [server]  Listening on 42501/42502/42503, 1 paired device(s)
+2026-09-02T02:38:42.955  I [control] Handshake complete with Chetans-MacBook-Pro at 10.47.66.92
+```
+
+**The discriminator is built into the instrument, and it had to be.** Ports being bound after a
+reinstall is *not* evidence that this receiver did it — the app had also been open, and
+`MainActivity.onStart` binds them too. What separates them is the reason carried in the start
+intent: a start from the Activity logs `Foreground as USER`. This one reads `PACKAGE_REPLACED`, 14
+seconds *before* the first `MainActivity` line in the same log (`02:38:56 [fs] Folders screen`). And
+`types=0x10` is `FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE` alone — the small set, claimed and
+accepted, with no refusal logged.
+
+Elapsed, install-complete to listening: **1.5 s**. To a live Mac session: **1.9 s**.
+
+### 4. The reading nobody asked for, which contradicts §0's guess about what was doing the work
+
+§0 of the brief says every run on this handset measures the *exempt* path, and predicted that the
+battery-optimisation allowlist would be what let a background start succeed. It is not, and the
+platform says so:
+
+```
+$ adb shell dumpsys activity services com.chetan.connectsuite.debug   # LinkService record
+mAllowStart_noBinding=PROC_STATE_BFGS
+infoAllowStartForeground=[callingPackage: com.chetan.connectsuite.debug; callingUid: 11011;
+  uidState: BFGS; intent: … core.link.LinkService (has extras); code:PROC_STATE_BFGS;
+  tempAllowListReason:<,reasonCode:SYSTEM_ALLOW_LISTED,duration:9223372036854775807,…>;
+  targetSdkVersion:36; startForegroundCount:0; isBindService:false]
+isForeground=true foregroundId=2001 types=0x00000010
+```
+
+The granted reason is **`PROC_STATE_BFGS`** — the process was already in the bound-foreground-service
+state, because the system had rebound `NotificationMirrorService` when the process came back, 200 ms
+before our receiver ran. Not `REASON_ALLOWLISTED_PACKAGE`, not a package-replaced exemption. The
+allowlist is visible in the same record as a `tempAllowListReason` and is *not* the code that
+decided.
+
+That matters more than it looks, and in an uncomfortable direction:
+
+- The success above is **conditional on this app having an enabled notification listener.** A phone
+  where that grant is off has no BFGS procstate at the moment the receiver runs, and this run says
+  nothing whatever about whether the start would be permitted there.
+- So the contaminant was real but was **not the one the brief named**. §0's warning was right in
+  kind and wrong in particular, which is the everyday form of the control rule: naming *a* lookalike
+  is not naming *the* lookalike, and the only way to tell was to ask the platform which reason it
+  used rather than reasoning about which reason it should have used.
+
+### 5. Samsung's fast-restart broadcast, and one thing measured about it
+
+Defect 60's fix direction says to add `QUICKBOOT_POWERON` and to *verify on this device rather than
+trusting that sentence*. Half of it is verifiable and was:
+
+```
+$ adb shell am broadcast -a android.intent.action.QUICKBOOT_POWERON -p com.chetan.connectsuite.debug
+Broadcasting: Intent { act=android.intent.action.QUICKBOOT_POWERON flg=0x400000 pkg=… }
+Broadcast completed: result=0
+```
+
+No `SecurityException`, where `BOOT_COMPLETED` produced one from the same shell in the same session.
+So on this handset **`QUICKBOOT_POWERON` is not a protected broadcast** — any app can send it. That
+is not a reason to skip it; it is the reason `LinkBootReceiver` is `exported="false"`, so the system
+can deliver it and nothing else can reach it, including that shell command (which is why `result=0`
+is not a delivery).
+
+**Unverified and left unverified:** whether One UI actually sends it, in place of or in addition to
+`BOOT_COMPLETED`, on a fast restart. That needs a reboot. Listening costs nothing and a duplicate
+delivery is a no-op start on a live service.
+
+### 6. What the fix deliberately does not claim
+
+- **It does not make the link survive a restart.** On a device with file-based encryption and a
+  secure lock screen — this one — `BOOT_COMPLETED` is delivered after the **first unlock**, because
+  the Room trust store the receiver reads lives behind that unlock. The honest sentence is *"the link
+  returns when you first unlock the phone after a restart"*. Making it literally survive would mean
+  a direct-boot-aware receiver over device-encrypted storage, i.e. moving the trust store out from
+  behind the lock screen, which is a security trade this phase is not making.
+- **An app in the stopped state receives neither broadcast.** A force-stop, or an install never
+  launched. That is Android's rule and it is also why `scripts/hooks/no-force-stop.sh` exists.
+- **The boot path itself is unproven.** Every line in §3 is `MY_PACKAGE_REPLACED`. The code path from
+  the action string onward is identical and unit-tested, but the platform's decision at boot is a
+  different decision, taken at a different procstate, under a compat change that only applies to
+  boot. Pass criterion when the reboot happens: `scripts/link-up.sh` returning three OKs with nothing
+  tapped, and a `[boot] BOOT:` line in `files/logs/link.log`.
+
+### 7. Guards, and each one shown red first
+
+`core/src/test/java/com/chetan/connectsuite/core/link/BootAutoStartTest.kt`, 9 tests. Every run below
+reports the exit code and the age of the results file it read, after a run earlier in this session
+returned `failures=0` from a task Gradle had skipped as up-to-date — the stale-artifact fault, caught
+by the age line rather than by suspicion.
+
+| Mutation | Result |
+|---|---|
+| baseline, unmutated | `gradle exit: 0; results written 0s ago; tests="9" failures="0"` |
+| `<receiver>` deleted from `core`'s manifest | `exit 1; failures="3"` — *"RECEIVE_BOOT_COMPLETED is declared in [core, app] and no `<receiver>` anywhere filters BOOT_COMPLETED"*, plus the control test reporting it found only `[ClipApplyReceiver, SmsMirrorReceiver]`, plus the MY_PACKAGE_REPLACED assertion |
+| `foregroundTypesFor` collapsed to always return both types | `exit 1; failures="1"` — *"BOOT must not claim dataSync expected:<0> but was:<1>"* |
+| a `USER_PRESENT` filter added to the manifest that nothing maps | `exit 1; failures="1"` — *"the manifest filters actions the receiver drops on the floor: [android.intent.action.USER_PRESENT]"* |
+| all mutations restored | `exit 0; failures="0"` |
+
+The control that makes the manifest half worth anything is separate and named: *"the manifest scan
+finds the receivers already known to exist"*. "No receiver declares BOOT_COMPLETED" and "the XML walk
+found no receivers" are the same result, and without that assertion a renamed attribute or a broken
+walk would pass the real check in silence — the empty-accessibility-query shape.
+
+**Phone suite after the slice:** 244 tests, 0 failures — 84 `core` (11 classes) + 160 `sync-module`
+(19 classes), every result XML written 0-14 s before it was read, `gradle exit: 0`.

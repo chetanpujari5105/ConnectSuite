@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
@@ -36,13 +35,25 @@ class LinkService : LifecycleService() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
 
+    /**
+     * Why this service was started, which decides the foreground types it may claim.
+     *
+     * Read in [onStartCommand] rather than [onCreate] because the intent only exists there, and
+     * `startForeground` therefore moved with it. That is a real change to a working service, so
+     * the reason it is safe is written down: every route into this service goes through
+     * `startForegroundService`/`startService`, `onBind` returns null, and `onStartCommand` runs on
+     * the main thread immediately after `onCreate` — so the five-second deadline is met by the
+     * same tick it was met by before. See [LinkAutoStart].
+     */
+    private var startReason: LinkStartReason = LinkStartReason.UNKNOWN
+    private var isForeground = false
+
     override fun onCreate() {
         super.onCreate()
         NotificationChannels.createAll(this)
         LinkLog.init(this)
 
         server = LinkController.get(this, versionName())
-        startForegroundWithStatus(getString(R.string.link_service_starting))
 
         lifecycleScope.launch { server.start() }
 
@@ -61,6 +72,18 @@ class LinkService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        if (!isForeground) {
+            startReason = LinkStartReason.fromExtra(
+                intent?.getStringExtra(LinkStartReason.EXTRA),
+            )
+            if (!startForegroundWithStatus(getString(R.string.link_service_starting))) {
+                // The platform refused the types we asked for. Stopping is the only honest move:
+                // a started-but-not-foreground service is killed by the system within seconds and
+                // would take the sockets down with it in a way nothing logs.
+                stopSelf()
+                return START_NOT_STICKY
+            }
+        }
         when (intent?.action) {
             ACTION_STOP -> {
                 stopSelf()
@@ -126,14 +149,35 @@ class LinkService : LifecycleService() {
         wifiLock = null
     }
 
-    private fun startForegroundWithStatus(status: String) {
-        val types = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        } else {
-            0
+    /**
+     * Goes foreground, and returns whether it worked.
+     *
+     * The failure it catches is `ForegroundServiceStartNotAllowedException`, which on Android 15+
+     * is how the platform refuses a type that may not be claimed for the start reason in play.
+     * Catching it turns a crash on the user's first boot after installing an update into one log
+     * line and a clean stop — and, unlike the crash, it says which reason and which types were
+     * refused, which is the only thing that would let anyone fix it.
+     */
+    private fun startForegroundWithStatus(status: String): Boolean {
+        val types = LinkAutoStart.foregroundTypesFor(startReason)
+        return try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(status), types)
+            isForeground = true
+            LinkLog.i("service", "Foreground as $startReason, types=0x${types.toString(16)}")
+            true
+        } catch (e: Exception) {
+            // The class is named rather than referenced: ForegroundServiceStartNotAllowedException
+            // is API 31 and this module's minSdk is 29, so an `is` check would put an unresolvable
+            // type in a method that runs on every start. The name in the log is the same evidence
+            // and costs nothing.
+            LinkLog.e(
+                "service",
+                "startForeground refused for $startReason with types=0x${types.toString(16)}: " +
+                    "${e.javaClass.simpleName} — the link will not come back on this path",
+                e,
+            )
+            false
         }
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(status), types)
     }
 
     private fun updateStatus(status: String) {
@@ -187,10 +231,13 @@ class LinkService : LifecycleService() {
         const val ACTION_STOP = "com.chetan.connectsuite.link.STOP"
         const val ACTION_REFRESH_CAPABILITIES = "com.chetan.connectsuite.link.REFRESH_CAPS"
 
-        fun start(context: Context) {
+        @JvmStatic
+        @JvmOverloads
+        fun start(context: Context, reason: LinkStartReason = LinkStartReason.USER) {
             ContextCompat.startForegroundService(
                 context,
-                Intent(context, LinkService::class.java),
+                Intent(context, LinkService::class.java)
+                    .putExtra(LinkStartReason.EXTRA, reason.name),
             )
         }
 

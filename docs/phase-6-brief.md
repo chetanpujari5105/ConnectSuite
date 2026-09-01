@@ -49,7 +49,19 @@ survived" would be reporting the exempt case as the general one.
 All of these are runnable with the phone attached and no second device. **Ordered by what they would
 change**, not by how easy they are.
 
-### P1 · The boot gap, and it needs no device at all
+### P1 · The boot gap, and it needs no device at all — **built 2026-09-02**
+
+> **Done, with one half proven and one half owed.** `LinkBootReceiver` takes `BOOT_COMPLETED`,
+> `QUICKBOOT_POWERON` and `MY_PACKAGE_REPLACED`; the last of those fired for real on `adb install -r`
+> and had the link listening 1.5 s later. The boot half cannot be produced from a laptop —
+> `BOOT_COMPLETED` is protected, `adb root` is refused on this production build — so it is H4's to
+> confirm. `docs/testing.md` → Phase 6 Slice 1 carries the readings, including two that changed the
+> design: `FGS_BOOT_COMPLETED_RESTRICTIONS` is live for this package (so a boot start claims
+> `connectedDevice` only, never `dataSync`), and the start that succeeded was granted under
+> `PROC_STATE_BFGS` rather than under the battery allowlist §0 predicted.
+
+The original finding, kept because the enumeration is the useful part:
+
 
 `RECEIVE_BOOT_COMPLETED` is declared in `app/src/main/AndroidManifest.xml:35`. **Nothing receives
 it.** The control: two `<receiver>` elements exist in the whole project, both in

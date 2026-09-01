@@ -1,0 +1,4 @@
+2026-09-02T02:38:42.448+05:30 I [boot] PACKAGE_REPLACED: 1 paired device(s) — starting LinkService
+2026-09-02T02:38:42.476+05:30 I [service] Foreground as PACKAGE_REPLACED, types=0x10
+2026-09-02T02:38:42.485+05:30 I [server] Listening on 42501/42502/42503, 1 paired device(s)
+2026-09-02T02:38:42.955+05:30 I [control] Handshake complete with Chetans-MacBook-Pro at 10.47.66.92

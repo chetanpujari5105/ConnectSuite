@@ -73,7 +73,7 @@ own heading there, and its own row here.
 | **57** | `media.thumb` answers `NOT_FOUND` both for a photo that is gone and for one that is there and could not be rendered — one code for two facts, on the namespace whose sibling `fs.thumb` separates them deliberately | **deferred to Phase 6** — the second option Phase 5's closing condition offers, taken deliberately. The branch has never been produced: it needs an undecodable `MediaStore` row, which means truncating a file's bytes under its own entry on somebody's real phone, and a phase of ordinary use produced none. Reporting only — the Mac already drops errored ids into a `missing` set and stops asking, which is correct for both causes | source, 2026-09-01, found by reading the handler against the contract while `media.*` was written into `docs/protocol.md` | see below |
 | **58** | **The clipboard undo was reachable and not visible.** With auto-apply on, the Mac captures the clipboard it overwrites as a `displaced` entry so Restore is an undo — the condition `docs/protocol.md` set for removing the confirmation. `onClipArrived` carries the arriving entry and **not** the displaced one created beside it, so the pane's mirror learned about the new clip and never about what it replaced; the Restore row appeared only on the next `refresh()`, which a button click triggers — the click auto-apply exists to remove. **Every test was green**, because no test reads the renderer's list | **closed** | on hardware 2026-09-02, in the slice that introduced it. Found by reading the pane's rows structurally after an auto-apply and noticing the arrival at 1:21:08 had no Restore row while one from 1:17:13 did — not by any failure | `docs/testing.md` → Slice 12 §9 |
 | **59** | **A watcher send was invisible in the Mac's clipboard pane.** The pane refreshed only on its own button clicks, and the watcher clicks nothing — so after copying on the Mac the list still rendered *"Nothing yet. Copy something on either machine."* over a history with entries in it. The probe step that should have caught it **had no assertion**: it sliced the first 60 characters of the list and printed them, so a list full of rows was reported under the heading *"The pane starts with an empty history and says so"* | **closed** | on hardware 2026-09-02, in the slice that introduced it; fixed with a `clip-changed` event on any history mutation, re-measured as 2 rows drawn with nothing touched | `docs/testing.md` → Slice 13 |
-| **60** | **The link does not come back after a reboot.** `RECEIVE_BOOT_COMPLETED` is declared in `app/src/main/AndroidManifest.xml:35` and **nothing receives it** — the control is that the whole project declares two `<receiver>` elements, both in `sync-module`, and neither carries a `BOOT_COMPLETED` filter. The phone binds the sockets, so after a restart nothing binds them until somebody opens the app. Same shape as `adb install -r` leaving the app serverless, by a second route nobody had written down; a declared permission with no implementation is the manifest version of a message type in the inventory and specified nowhere | **open** | source, 2026-09-02, found statically while writing `docs/phase-6-brief.md`; needs no device to establish, only to confirm | `docs/phase-6-brief.md` → P1 |
+| **60** | **The link did not come back after a reboot.** `RECEIVE_BOOT_COMPLETED` was declared in `app/src/main/AndroidManifest.xml` from Phase 1 and **nothing received it** — the control is that the whole project declared two `<receiver>` elements, both in `sync-module`, and neither carried a `BOOT_COMPLETED` filter. `LinkBootReceiver` now takes `BOOT_COMPLETED`, Samsung's `QUICKBOOT_POWERON` and `MY_PACKAGE_REPLACED` — the last closing the *"reinstalling leaves the phone serverless"* hole `CLAUDE.md` documents, by the same route | **fixed** — the `MY_PACKAGE_REPLACED` half is proven on hardware; **the boot half is not, and cannot be from a laptop**: `BOOT_COMPLETED` is a protected broadcast, `adb root` is refused on this production build, and `am broadcast` is denied at uid 2000, so a real restart (H4) is the only stimulus | 2026-09-02: `adb install -r` → `[boot] PACKAGE_REPLACED: 1 paired device(s)` → `Foreground as PACKAGE_REPLACED, types=0x10` → `Listening on 42501/42502/42503`, 1.5 s, with grants diffed empty before and after. Guarded by `BootAutoStartTest` (9 tests), shown red under three separate mutations | `docs/testing.md` → Phase 6 Slice 1 |
 
 ---
 
@@ -952,34 +952,52 @@ belongs on the branch that has already failed and is already off the fast path.
 
 ---
 
-### 60 — the link does not come back after a reboot · **open**
+### 60 — the link did not come back after a reboot · **fixed**, boot half unproven
 
-`RECEIVE_BOOT_COMPLETED` is declared in `app/src/main/AndroidManifest.xml:35`. Nothing receives it.
+`RECEIVE_BOOT_COMPLETED` was declared in `app/src/main/AndroidManifest.xml` and nothing received it.
 
-The control, because an empty grep is not a finding: the whole project declares **two** `<receiver>`
-elements, both in `sync-module/src/main/AndroidManifest.xml`, and neither carries a `BOOT_COMPLETED`
-intent-filter. So the absence is enumerated rather than searched for.
+The control, because an empty grep is not a finding: the whole project declared **two** `<receiver>`
+elements, both in `sync-module/src/main/AndroidManifest.xml`, and neither carried a `BOOT_COMPLETED`
+intent-filter. So the absence was enumerated rather than searched for. That enumeration is a test
+now — `BootAutoStartTest` parses every `AndroidManifest.xml` in the tree and asserts, with its own
+control that the walk found the receivers already known to exist.
 
-Android binds the listening sockets on the phone (locked decision #2), so after a restart there is
-nothing for the Mac to connect to until somebody opens the app by hand. This is the same failure as
-`adb install -r` leaving the app serverless — already documented in `CLAUDE.md` — reached by a second
-route that nobody had written down, which is why it survived four phases.
+**What was built**, 2026-09-02: `core/.../link/LinkBootReceiver.kt`, taking `BOOT_COMPLETED`,
+`QUICKBOOT_POWERON` and `MY_PACKAGE_REPLACED`, gated on there being a paired device and failing open
+on a trust-store read that errors or times out. `LinkService` now learns *why* it was started and
+picks its foreground types from that.
 
-Found statically while writing `docs/phase-6-brief.md`, not by a failure. It costs nothing to
-establish and a reboot only to confirm.
+**Three things the fix is careful about, and each one came from a reading rather than a habit:**
 
-**Fix direction:** a `BootReceiver` with `RECEIVE_BOOT_COMPLETED` **and** `QUICKBOOT_POWERON`
-(Samsung ships the latter and does not always send the former on a fast restart — verify on this
-device rather than trusting that sentence), starting `LinkService` through
-`ContextCompat.startForegroundService`, gated on there being a paired device: an app that has never
-been paired must not start a foreground service at boot, because a persistent notification on a phone
-that has nothing to connect to is how an app gets uninstalled. The pass criterion is
-`scripts/link-up.sh` returning all three OKs after a reboot with nothing tapped — the same instrument
-that catches the post-install case, which is the point.
+1. **A boot start claims `connectedDevice` only, never `dataSync`.**
+   `FGS_BOOT_COMPLETED_RESTRICTIONS` is live for this package on this device — read from
+   `dumpsys platform_compat`, with the control that the same dump prints `disabled` explicitly on
+   changes that are off and prints nothing of the sort on ours. *Which* types it denies is not
+   readable anywhere and `dataSync` is on the documented denial list, so the code is written so the
+   unmeasured half cannot matter.
+2. **`QUICKBOOT_POWERON` is not a protected broadcast on this handset** — `am broadcast` returns
+   `result=0` where `BOOT_COMPLETED` returns a `SecurityException` from the same shell. That is why
+   the receiver is `exported="false"`, and it is a measurement rather than the sentence the old fix
+   direction told the next person to verify.
+3. **The success measured on 2026-09-02 was granted under `PROC_STATE_BFGS`, not under the battery
+   allowlist** (`dumpsys activity services`, `infoAllowStartForeground … code:PROC_STATE_BFGS`). The
+   process was already bound-foreground because the notification listener had been rebound 200 ms
+   earlier. So the run is conditional on this app holding that grant, and says nothing about a phone
+   where it is off. The brief's §0 predicted the allowlist would be the contaminant; it was not, and
+   only asking the platform which reason it used could tell.
 
-**Wrong fix to avoid:** two. **Do not use `START_STICKY` as the answer** — it is already set
-(`LinkService.kt:72`) and it governs a *killed* service in a running system, not a boot; relying on
-it here would be a registration line offered as an execution line. And **do not start the service
-unconditionally at boot to be safe**; the gate on a paired device is the whole difference between a
-background app and a nuisance, and it is also what keeps the unpaired install off Samsung's radar in
-the phase whose entire subject is Samsung's radar.
+**What is still owed, and it needs a restart rather than a decision:** a `[boot] BOOT:` line in
+`files/logs/link.log` and `scripts/link-up.sh` returning three OKs with nothing tapped. Until then
+the boot path is unproven — the code from the action string onward is identical to the proven path
+and unit-tested, but the platform's decision at boot is a different decision at a different
+procstate under a compat change that applies only to boot, and a registration line is not an
+execution line.
+
+**And one thing the fix does not claim.** On this FBE device with a secure lock screen,
+`BOOT_COMPLETED` arrives after the **first unlock**, because the Room trust store the receiver reads
+is credential-encrypted. The honest sentence is *"the link returns when you first unlock the phone
+after a restart"*. Direct-boot awareness would mean moving the trust store out from behind the lock
+screen, which is a security trade this phase is not making.
+
+**Wrong fix avoided, recorded because it was tempting:** `START_STICKY` is not the answer and was
+already set (`LinkService.kt`); it governs a killed service in a running system, not a boot.
