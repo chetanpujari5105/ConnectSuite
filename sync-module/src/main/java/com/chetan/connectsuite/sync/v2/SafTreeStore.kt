@@ -93,25 +93,26 @@ class SafTreeStore(
         )
     }
 
-    private fun childrenOf(parentDocumentId: String): List<FsPaths.Entry>? {
-        Snapshots.hit(rootId, parentDocumentId)?.let { return it }
-
-        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocumentId)
-        val out = mutableListOf<FsPaths.Entry>()
-        val startedAt = System.currentTimeMillis()
-        val ok = runCatching {
-            resolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
-                while (cursor.moveToNext()) entryOf(cursor)?.let { out += it }
-                true
+    private fun childrenOf(parentDocumentId: String): List<FsPaths.Entry>? =
+        Snapshots.getOrBuild(rootId, parentDocumentId) {
+            val childrenUri =
+                DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocumentId)
+            val out = mutableListOf<FsPaths.Entry>()
+            val startedAt = System.currentTimeMillis()
+            val ok = runCatching {
+                resolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                    while (cursor.moveToNext()) entryOf(cursor)?.let { out += it }
+                    true
+                }
+            }.getOrElse {
+                LinkLog.w("fs", "$rootId could not list $parentDocumentId", it)
+                null
             }
-        }.getOrElse {
-            LinkLog.w("fs", "$rootId could not list $parentDocumentId", it)
-            null
+            // Null rather than an empty snapshot: a directory we could not read is not a directory
+            // with no children, and caching the second for 30 s would be this pane's own defining
+            // confusion written into the phone.
+            if (ok == null) null else out to (System.currentTimeMillis() - startedAt)
         }
-        if (ok == null) return null
-        Snapshots.put(rootId, parentDocumentId, out, System.currentTimeMillis() - startedAt)
-        return out
-    }
 
     /** Walks [segments] from the tree root, one query per segment. Null when any of them is absent. */
     private fun resolveDirectory(segments: List<String>): String? {
@@ -458,6 +459,15 @@ class SafTreeStore(
         private var hits = 0L
         private var misses = 0L
 
+        /**
+         * The serialisation, and the only thing that decides whether a second caller builds.
+         *
+         * It lives in [SingleFlight] rather than here because this object cannot be reached from a
+         * JVM test — [put] logs through `LinkLog` into `android.util.Log` — and the concurrency is
+         * the half that needs one. `SafTreeStoreJoinTest` exercises that class directly.
+         */
+        private val flight = SingleFlight<String>()
+
         private fun key(rootId: String, documentId: String) = "$rootId::$documentId"
 
         @Synchronized
@@ -474,6 +484,46 @@ class SafTreeStore(
             return snapshot.entries
         }
 
+        /**
+         * The whole cache decision in one place: return a live snapshot, or build this directory
+         * **exactly once** while every other caller for it waits on that build rather than starting
+         * a second one.
+         *
+         * ### The reading
+         *
+         * `DCIM/Camera` takes 10,371 ms to snapshot and the Mac's `fs.list` timeout was 10,000 ms,
+         * so the first open of a large folder always failed — and each failed attempt started
+         * *another full rebuild*, because a miss went straight to the read with nothing serialising
+         * it. Three overlapping builds of one directory were measured (10,371 / 11,352 / 10,082 ms),
+         * each making the others slower, and the pane drew its failure card for a folder that is
+         * perfectly readable. Raising the timeout alone would have left the stampede in place and
+         * made it worse, because a longer window is more time in which to start more of them.
+         *
+         * This is the same *"who else calls this, and what happens if they both do"* the Mac's
+         * `refresh()` already learned, on the other side of the link. A type cannot express it:
+         * every intermediate state here was legal, and the wrong outcome was assembled out of legal
+         * states in the wrong order.
+         *
+         * [build] returns the entries and the milliseconds the read took, or null if the directory
+         * could not be listed — a failure is **not** cached, so a transient provider error does not
+         * become a 30-second lie.
+         */
+        fun getOrBuild(
+            rootId: String,
+            documentId: String,
+            build: () -> Pair<List<FsPaths.Entry>, Long>?,
+        ): List<FsPaths.Entry>? =
+            flight.run(
+                key = key(rootId, documentId),
+                cached = { hit(rootId, documentId) },
+                build = {
+                    build()?.let { (entries, readMs) ->
+                        put(rootId, documentId, entries, readMs)
+                        entries
+                    }
+                },
+            )
+
         @Synchronized
         fun put(rootId: String, documentId: String, entries: List<FsPaths.Entry>, readMs: Long) {
             val now = System.currentTimeMillis()
@@ -484,7 +534,8 @@ class SafTreeStore(
             LinkLog.i(
                 "fs",
                 "snapshot of $documentId in $rootId: ${entries.size} entries read in ${readMs}ms; " +
-                    "$hits hits / $misses misses since start, ${byKey.size} directories held",
+                    "$hits hits / $misses misses / ${flight.joins()} joined since start, " +
+                    "${byKey.size} directories held",
             )
         }
 

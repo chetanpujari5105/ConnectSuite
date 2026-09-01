@@ -21,6 +21,25 @@ import { log } from './logger';
 const TIMEOUT_MS = 10_000;
 
 /**
+ * How long `fs.list` may take, which is not the same question.
+ *
+ * Every other request in this file is a query the phone answers from a store it already has. A
+ * first `fs.list` of a directory makes the phone *read that directory*, and a `DocumentsProvider`
+ * honours neither a sort nor a limit, so the cost is the whole directory however small the page.
+ * `DCIM/Camera` — 16,377 entries — was measured at **10,371 ms**, against a 10,000 ms timeout: the
+ * first open of a large folder failed every time, and the pane drew its failure card for a folder
+ * that is perfectly readable.
+ *
+ * 45 s is roughly four times the worst measured build. It is deliberately generous rather than
+ * tuned, because the thing that actually fixed this is on the phone — concurrent callers now join
+ * one build instead of each starting their own, so the wait is one read rather than three
+ * overlapping ones making each other slower. A longer timeout on its own would have *worsened*
+ * that stampede by leaving more time to start more of it.
+ */
+const FS_LIST_TIMEOUT_MS = 45_000;
+export { FS_LIST_TIMEOUT_MS };
+
+/**
  * One request, with the phone's own sentence on failure.
  *
  * `extract` turns the ack payload into whatever the caller wants. It runs inside the try, so a
@@ -35,12 +54,13 @@ export async function ask<T>(
   type: string,
   payload: Record<string, unknown>,
   extract: (payload: Record<string, unknown>) => T,
+  timeoutMs: number = TIMEOUT_MS,
 ): Promise<PhoneResult<T>> {
   if (!link?.isConnected()) {
     return notConnected(feature, type);
   }
   try {
-    const envelope: Envelope = await link.request(type, payload, TIMEOUT_MS);
+    const envelope: Envelope = await link.request(type, payload, timeoutMs);
     const data = extract(envelope.payload ?? {});
     log.info(feature, `${type} ok`);
     return { ok: true, data };

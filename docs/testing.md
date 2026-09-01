@@ -9359,6 +9359,60 @@ while (b) caps the table at 200, and fixing (b) without touching this makes it r
 
 Only **F-2 needs the protocol**. Everything else is one CSS rule, one constant, one concurrency
 
+### F-4a fixed — the timeout was the symptom, the stampede was the cause (2026-09-01)
+
+On hardware, SM-S938B, against `DCIM/Camera` — the folder that failed **every first time**.
+
+```
+[fs] snapshot of primary:DCIM/Camera …: 16377 entries read in 16981ms; 0 hits / 8 misses / 0 joined
+[fs] fs.list …/Camera → 200 of 16377 entries, hasMore=true, cursor=FIRST_PAGE
+Mac  fs.list saf:primary%3ADCIM/Camera → 200 entries, hasMore=true, 17288 ms
+```
+
+**16,981 ms.** The old timeout was 10,000 ms, so this folder could not open, ever, and the pane drew
+its failure card for a directory that reads perfectly well. It now opens: the pane settled after
+18.0 s with 200 rows and **no state card** (`state: ""`).
+
+Two changes, and the order of blame matters. `FS_LIST_TIMEOUT_MS = 45_000` is `fs.list`'s alone —
+every other Phase 4 request keeps 10 s, because they are queries against a store the phone already
+has and `fs.list` is the one that makes it *read a directory*. But raising a timeout on its own
+would have made the real fault worse: a miss went straight to the read with nothing serialising it,
+so each failed attempt started **another full rebuild** (10,371 / 11,352 / 10,082 ms measured), and a
+longer window is more time in which to start more of them. `SingleFlight` is the fix; the constant
+is what stops a single honest build being called a failure.
+
+**`joined: 0` on this run, and that is the number to publish.** Only one caller went for the
+directory, so the join never fired and this run is *not* evidence that it works — the timeout carried
+it alone. The evidence for the join is `SingleFlightTest`, shown red at `expected:<1> but was:<8>`
+and `expected:<7> but was:<0>` with `run` reduced to `cached() ?: build()`, green restored.
+
+### F-4b confirmed on the folder it was about — 200 → 400 → 600
+
+The CSS bound made the table the scroller; this is that fix meeting the 16,377-entry directory F-4b
+said would show 200 rows permanently:
+
+```
+rows 600   footer "600 loaded · more on the phone"   crumbs DCIM›Camera
+phone: cursor=FIRST_PAGE, then cursor=EXACT, then cursor=EXACT
+```
+
+Three pages, the phone matching the cursor exactly on each, no repeats.
+
+**An instrument note, and it is the sampling window again at a different scale.** The first attempt
+scrolled to the bottom five times, waited 2.5 s after each, read 200 rows every time, and was one
+sentence from *"paging still does not work"*. A page takes **16 s** here, so every sample was taken
+before the page could possibly have arrived: five readings that did not exist yet. The scroll probe
+that settled it reported `scrollEventsSeen: 1, nearBottom: true` — the stimulus had landed and the
+handler had run — which separated "the handler never fires" from "I looked too early", and only the
+second was true. *Could I have seen it* rather than *did I see it*, for the third time in this file.
+
+**Also observed, not a defect.** Pages 2 and 3 each cost ~16 s because the snapshot'''s 30 s sliding
+idle TTL expired between my scrolls (47 s and 65 s apart). A user scrolling continuously stays inside
+the TTL and gets the 236–364 ms pages defect 55 measured. Worth knowing that a pause longer than 30 s
+costs a full rebuild; not worth a defect, because the TTL is the bound on how stale the view may be
+and shortening the wait means lengthening the lie.
+
+
 ### F-4b and F-4c fixed — the pane owns its own scrolling (2026-09-01)
 
 One missing bound caused both, and both are fixed by making the chain height-bounded rather than by

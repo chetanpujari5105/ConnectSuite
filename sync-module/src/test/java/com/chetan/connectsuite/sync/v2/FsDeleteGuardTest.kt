@@ -134,12 +134,58 @@ class FsDeleteGuardTest {
         // delete. `readRow` queries the document URI directly and is what both evaluations of the
         // guard call, so the cache is reachable from the *listing* path and from nowhere else. A
         // guard that could be answered from a 30-second-old cache is a guard that re-checks a copy.
+        //
+        // This asserts **two named questions** rather than one count, which is what the count was
+        // standing in for. It used to count `Snapshots.hit(` and require it inside `childrenOf`;
+        // when the cache grew a single entry point — `getOrBuild`, which coalesces concurrent
+        // callers — that count went to zero, because the read moved *inside* the cache and is now
+        // unqualified there. Raising or lowering the number would have been the edit that stops a
+        // guard guarding: the property never changed, only the shape it is written in, and the
+        // second assertion below is the half that was previously only implied.
         val source = sources().first { it.name == "SafTreeStore.kt" }.readText()
-        assertEquals(1, callSites(source, "Snapshots.hit("))
+
+        // (1) There is exactly one way into the snapshot from this store, and it is the listing.
+        assertEquals(
+            "the snapshot must have exactly one entry point from the store",
+            1,
+            callSites(source, "Snapshots.getOrBuild("),
+        )
         assertTrue(
-            "the one snapshot read must be inside childrenOf",
-            source.substringAfter("private fun childrenOf(").substringBefore("private fun resolveDirectory(")
-                .contains("Snapshots.hit("),
+            "the one snapshot entry point must be inside childrenOf",
+            source.substringAfter("private fun childrenOf(")
+                .substringBefore("private fun resolveDirectory(")
+                .contains("Snapshots.getOrBuild("),
+        )
+
+        // (2) Everything from the first row-read to the cache's own declaration — `readRow`,
+        // `deleteIfUnchanged`, `deleteArtifact`, `openPartial` — *reads* nothing from the snapshot.
+        //
+        // The boundaries are asserted before they are used. `private val projection` was the first
+        // choice for the closing one and sits at line 67, *before* `readRow`: `substringBefore`
+        // returns the whole string when its delimiter is absent, so that scan would have run to end
+        // of file, swallowed the `Snapshots` object itself, and reported on a region nobody meant.
+        // A source scan with a wrong boundary is the "what did I actually measure" failure with no
+        // error to show for it.
+        val from = "private fun readRow("
+        val to = "internal object Snapshots {"
+        assertTrue("boundary '$from' missing", source.contains(from))
+        assertTrue("boundary '$to' missing", source.contains(to))
+        assertTrue("boundaries are out of order", source.indexOf(from) < source.indexOf(to))
+        val actingPath = source.substring(source.indexOf(from), source.indexOf(to))
+
+        // `invalidate` is deliberately *not* in this list. Every write calls it, and must: a
+        // listing that outlives our own change is a listing that lies. What is forbidden is
+        // **reading** a decision out of the cache.
+        listOf("Snapshots.getOrBuild(", "Snapshots.hit(").forEach { reach ->
+            assertEquals(
+                "the acting path must not read the snapshot via $reach",
+                0,
+                callSites(actingPath, reach),
+            )
+        }
+        assertTrue(
+            "control — the acting path region must be the one that invalidates, or it is the wrong region",
+            callSites(actingPath, "Snapshots.invalidate(") > 0,
         )
     }
 

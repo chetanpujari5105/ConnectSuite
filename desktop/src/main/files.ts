@@ -11,7 +11,7 @@ import type { BulkClient } from './bulk';
 const sharedRoots = require('../shared/filesRoots') as {
   pushOffered: (raw: unknown) => boolean;
 };
-import { ask, rows } from './feature';
+import { ask, rows, FS_LIST_TIMEOUT_MS } from './feature';
 import type { LinkClient } from './link';
 import { log } from './logger';
 
@@ -160,6 +160,7 @@ export class FilesClient {
         entries: rows(payload, 'entries').map(toEntry),
         hasMore: payload.hasMore === true,
       }),
+      FS_LIST_TIMEOUT_MS,
     );
     if (result.ok) {
       this.listCount += 1;
