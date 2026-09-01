@@ -1,4 +1,4 @@
-import { createWriteStream, promises as fs } from 'node:fs';
+import { createReadStream, createWriteStream, promises as fs } from 'node:fs';
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
 import { CANDIDATE_TIMEOUT_MS } from './discovery';
 import { FrameReader, writeFrame } from './framing';
@@ -62,6 +62,167 @@ export class BulkClient {
   /** Successes beside failures, per CLAUDE.md — a failure count with no denominator is not evidence. */
   private tallyLine(): string {
     return `${this.transfers} transfers / ${this.failures} failed / ${this.bytesMoved} bytes since launch`;
+  }
+
+  /**
+   * Pushes one local file the phone has already agreed to receive.
+   *
+   * ### The verdict is not here, and that is deliberate
+   *
+   * This resolves when the bytes are written and the socket closes. **Whether they were right is the
+   * phone's to say**, on `fs.transfer.done` over the control channel, because the phone is the
+   * receiver and the receiver is the side that hashes what actually landed. A Mac that decided
+   * success here would be reporting that it finished sending, dressed as the file being on the
+   * phone — the same collapse `verified` exists to prevent on a pull.
+   *
+   * ### The digest covers the whole file even when only part of it is sent
+   *
+   * On a resume the phone starts hashing from byte 0 by reading its own partial back, so the digest
+   * agreed on the control channel is over the whole file. This side must send exactly the bytes from
+   * `offset` onward and must **not** re-derive a digest over the sent range — the number was agreed
+   * before the socket opened and comparing anything else against it is the failure that reports
+   * corruption on a byte-perfect file.
+   */
+  async push(options: {
+    host: string;
+    token: string;
+    transferId: string;
+    source: string;
+    /** Where the phone said to start. Bytes before this are already on the phone. */
+    offset: number;
+    /** Total size of the local file, as agreed on the control channel. */
+    totalBytes: number;
+    chunkMax: number;
+    /**
+     * Cuts the socket once this many bytes have been sent. **A probe hook, and it ships disabled.**
+     *
+     * Resume cannot be exercised without an interruption, and an interruption cannot be arranged
+     * from outside a socket this class owns. The same reasoning as `pull`'s hook: a standalone
+     * script that spoke the protocol itself would be a second client, differing from the shipping
+     * one somewhere, verifying a mechanism the product does not use. The *stimulus* is injected and
+     * the *mechanism* under test stays the product's.
+     */
+    interruptAfterBytes?: number;
+  }): Promise<BulkResult> {
+    const { host, token, transferId, source, offset, totalBytes } = options;
+    const startedAt = Date.now();
+    const chunk = Math.max(1, Math.min(options.chunkMax || 262144, MAX_BULK_FRAME));
+
+    return new Promise<BulkResult>((resolve) => {
+      let settled = false;
+      let sent = 0;
+      const tally = new FrameTally('bulk');
+      let socket: TLSSocket | null = null;
+
+      const fail = (reason: string): void => {
+        if (settled) return;
+        settled = true;
+        socket?.destroy();
+        this.failures += 1;
+        // Nothing is cleaned up here. The **phone** holds the partial and the record, and it keeps
+        // both on an interruption so the next attempt resumes — deleting or resetting anything from
+        // this side would be the sender deciding what the receiver already decided.
+        log.warn(
+          'bulk',
+          `${transferId} push interrupted after ${offset + sent} of ${totalBytes} bytes: ` +
+            `${reason}; the phone keeps its partial and the next attempt resumes; ` +
+            `${tally.summary()}; ${this.tallyLine()}`,
+        );
+        resolve({
+          ok: false,
+          bytes: offset + sent,
+          elapsedMs: Date.now() - startedAt,
+          reason,
+          verified: false,
+          ...(offset > 0 ? { resumedFrom: offset } : {}),
+        });
+      };
+
+      socket = tlsConnect({
+        host,
+        port: PORT_BULK,
+        cert: this.identity.certPem,
+        key: this.identity.keyPem,
+        minVersion: 'TLSv1.3',
+        rejectUnauthorized: false,
+        timeout: CANDIDATE_TIMEOUT_MS,
+      });
+
+      socket.setTimeout(CANDIDATE_TIMEOUT_MS, () =>
+        fail('the phone did not answer on the file port'),
+      );
+      socket.once('error', (error) => fail(error.message));
+
+      socket.once('secureConnect', () => {
+        socket!.setTimeout(0);
+        socket!.setNoDelay(true);
+        writeFrame(socket!, Buffer.from(token, 'utf8'));
+        writeFrame(
+          socket!,
+          Buffer.from(JSON.stringify({ transferId, offset }), 'utf8'),
+          MAX_BULK_HEADER_FRAME,
+          tally,
+          'Bulk header',
+        );
+
+        const reading = createReadStream(source, { start: offset, highWaterMark: chunk });
+        reading.on('error', (error: Error) => fail(`could not read ${source}: ${error.message}`));
+        reading.on('data', (piece: string | Buffer) => {
+          const buffer = Buffer.isBuffer(piece) ? piece : Buffer.from(piece);
+          // Every frame goes through the same writer as a pull's header, so the write-side cap is
+          // enforced here rather than trusted — a peer that has lost sync must be refused by the
+          // side that framed the bytes, not only by the side reading them.
+          writeFrame(socket!, buffer, MAX_BULK_FRAME, tally, 'Bulk chunk');
+          sent += buffer.length;
+          if (options.interruptAfterBytes !== undefined && sent >= options.interruptAfterBytes) {
+            // **Half-close, not destroy — and the first version got this wrong in a way the probe
+            // itself hid.** `socket.destroy()` discards whatever is still in the send buffer, so a
+            // run that reported 12,058,624 bytes "sent" delivered **zero**: the phone logged
+            // `stopped after 0 bytes` and had nothing to resume from. The count was bytes handed to
+            // `writeFrame`, which is not a fact about the transfer.
+            //
+            // `end()` flushes what is buffered and then closes, so the phone receives a real prefix
+            // and sees the stream end short of the agreed size — which it now treats as an
+            // interruption rather than a completion. That is the honest stimulus: the receiver
+            // takes its ordinary path, keeps the partial, and records what it actually holds.
+            log.warn('bulk', `${transferId} push interrupted deliberately at ${sent} bytes (probe)`);
+            reading.destroy();
+            socket!.end();
+            // Resolved from the close, not from here, so `bytes` is what the socket accepted rather
+            // than what was queued.
+            socket!.once('close', () => fail(`interrupted by the resume probe at ${sent} bytes`));
+            return;
+          }
+        });
+        reading.on('end', () => {
+          if (settled) return;
+          settled = true;
+          const elapsedMs = Date.now() - startedAt;
+          const total = offset + sent;
+          this.transfers += 1;
+          this.bytesMoved += sent;
+          // Half-close: the phone's read loop ends when the stream does, and it then hashes what it
+          // holds and sends `fs.transfer.done`. Destroying the socket here would cut that decision
+          // off mid-answer.
+          socket!.end();
+          log.info(
+            'bulk',
+            `${transferId} pushed ${sent} bytes of ${totalBytes} in ${elapsedMs}ms ` +
+              `(${rateOf(sent, elapsedMs)})${offset > 0 ? ` from offset ${offset}` : ''}; ` +
+              'the phone reports the verdict on fs.transfer.done; ' +
+              `${tally.summary()}; ${this.tallyLine()}`,
+          );
+          resolve({
+            ok: true,
+            bytes: total,
+            elapsedMs,
+            // Never true from this side. The receiver hashes what landed, and this is the sender.
+            verified: false,
+            ...(offset > 0 ? { resumedFrom: offset } : {}),
+          });
+        });
+      });
+    });
   }
 
   /**

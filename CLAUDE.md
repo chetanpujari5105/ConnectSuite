@@ -86,7 +86,7 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 | 2 | Screen mirroring (MediaProjection capture, H.264, video socket) | **Done** — closed 2026-08-26 |
 | 3 | **Input injection (AccessibilityService)** — see `docs/phase-3-input.md` | **Done** — passed on hardware 2026-08-27; closed retroactively 2026-08-31 |
 | 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
-| 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **In progress** — photos done; `fs.*` reads, delete and pull done on hardware 2026-09-01; the phone's **Folders screen** and the Mac's **Files pane** both done 2026-09-01. Outstanding: **push** (both halves of "both directions" are not done), clipboard, contacts, drag to Finder |
+| 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **In progress** — photos done; **Files moves both directions** as of 2026-09-01: reads, delete, pull, the phone's Folders screen, the Mac's Files pane, and **push with resume in the receive direction**, all on hardware. Outstanding: clipboard, contacts, drag to Finder |
 | 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | Not started |
 | 7 | Mac UX — packaging, distribution, app launching, and the polish pass | Not started |
 

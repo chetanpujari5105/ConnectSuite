@@ -8672,3 +8672,141 @@ Mac **172** tests, up from 161; `tsc --noEmit` clean; `stylesheets.test.ts` gree
 collides across the three sheets. The phone's grant was removed and re-granted during the run and is
 restored: one persisted tree grant on `primary:DCIM`, `persisted=0x3`. `scripts/link-up.sh` **3 of
 3**, and the pane is showing 28 entries from `DCIM`.
+
+---
+
+## Slice 8 — push, the phone as receiver · 2026-09-01
+
+**Files moves in both directions.** `direction: "push"` is served: the phone opens a partial in a
+granted tree, receives on the bulk channel, hashes what lands, and commits or refuses. The canvas's
+drop tile is real, which closes **F4** in `docs/design-departures.md`.
+
+### The contract changed first
+
+`fs.list`'s roots ack carries **`push: true`**. It is there rather than in the capability list
+because `files` is one capability with two directions and the Mac draws a different pane for each.
+**Absent means false** — every phone built before this omits it — and `pushOffered` is the one place
+that rule lives, with two readers (the main process caches it, the renderer draws from it) and a
+test that walks `undefined`, `null`, `false`, `'true'`, `1`, `{}` and `[]` and expects `false` for
+all of them.
+
+The Mac's drop tile and the degraded banner are driven by that single fact, so they cannot disagree.
+Observed at the moment the new phone build connected: `dropShown: true`, `degradedBannerShown:
+false`, tile reading *"Drop files here to send them to DCIM"*.
+
+### A clean push, three digests agreeing
+
+3,000,000 bytes into `DCIM` through the shipping path — renderer → preload → main → `BulkClient.push`
+→ the phone:
+
+```
+[fs]   fs.transfer.begin push saf:primary%3ADCIM//push-probe.bin → t-1-63334, 3000000 bytes,
+       starting at 0, digest agreed in advance
+[bulk] t-1-63334 received push-probe.bin into DCIM: 3000000 bytes in 79ms (303.8 Mbit/s),
+       sha256=fd456163578b…, verified=true (agreed in advance and matched)
+```
+
+`shasum` on the Mac, the phone's streaming digest, and `adb shell sha256sum` on what landed all read
+`fd456163578b6b63…`. No `.part` and no `.failed` left behind.
+
+### The overwrite refusal — and the guard that forced it to exist
+
+Pushing the same name again with no `overwrite`:
+
+```
+code: TARGET_STALE
+"Nothing was written: "push-probe.bin" is already in that folder on the phone, holding 3000000
+ bytes and last modified at 1788213763440, and the Mac did not ask to replace it."
+fixHint: "Send it again with overwrite, or choose a different name."
+```
+
+With `overwrite: true` and different bytes, the file is replaced: 1,500,000 bytes, new digest
+`aac8d165f1a8…`, matching on all three readings again.
+
+**This check exists because `FsDeleteGuardTest` failed, and the code was what was wrong.** The first
+version of `commit()` called `DocumentsContract.deleteDocument` three times inline — one of which
+silently removed a user's existing file at the destination. `overwrite` was in the payload spec and
+had not been implemented. The guard counts platform deletes and expects **one**; it saw four, and
+the fix was not to raise the number. It is now **two named functions answering two different
+questions** — `deleteIfUnchanged` (may this file the Mac was looking at be destroyed?) and
+`deleteArtifact` (may this transfer artifact be cleaned up?) — and the test asserts both by name.
+
+A guard whose number moves to fit new code has stopped guarding. This one moved because a genuinely
+new *question* appeared, and the function answering it is named in the assertion.
+
+### Resume, in the receive direction — and the two bugs the probe found first
+
+**The first run reported resume working and it had not.** `resumedOffset: 0`, and the phone's log
+said why, because the reason is on the line:
+
+```
+[bulk] push of push-resume.bin … starts at 0: there is no partial file
+[bulk] t-2-3649 stopped after 0 bytes (0 of 24000000) … EOFException
+```
+
+The Mac had reported `sentBeforeCut: 12058624`. **Zero bytes arrived.** Two separate faults:
+
+1. **The probe lied about its own stimulus.** `socket.destroy()` discards whatever is still in the
+   send buffer, so 12 MB handed to `writeFrame` never left the machine. The count was *bytes queued*,
+   not *bytes delivered* — an instrument reporting its own intention as a measurement. The fix is a
+   half-close: `end()` flushes what is buffered and then closes, and the result resolves from the
+   socket's `close` rather than from the write loop.
+2. **A truncated push would have been committed as complete.** The receive path compared the digest
+   and, when the Mac had agreed none, committed whatever arrived. A stream that ends early is an
+   interruption, and with no digest **nothing else knows that** — the length agreed on the control
+   channel is the only thing that can tell. `total < size` now keeps the partial and reports
+   `TRANSFER_FAILED`; `total > size` deletes it, because an overrun cannot be resumed into anything
+   sensible.
+
+The second is the one that mattered. It was reachable by any interrupted push of a file above the
+64 MB pre-hash ceiling, and its symptom would have been *a file that looks complete and is half
+there* — the exact thing `.part` exists to prevent, defeated on the last step.
+
+**With both fixed:**
+
+```
+[bulk] push of push-resume.bin … starts at 0: the partial is empty
+[fs]   fs.transfer.begin push … → t-1-62476, 24000000 bytes, starting at 0, digest agreed
+[bulk] t-1-62476 push-resume.bin ended early: 12058624 of 24000000 bytes. The partial is kept
+       and the next attempt resumes from it
+[fs]   fs.transfer.begin push … → t-2-62744, 24000000 bytes, starting at 12058624
+[bulk] t-2-62744 resuming at 12058624 of 24000000; the digest covers the bytes already on disk
+[bulk] t-2-62744 received push-resume.bin into DCIM: 24000000 bytes in 155ms (616.3 Mbit/s),
+       sha256=5fa81f70ae5a…, verified=true (agreed in advance and matched);
+       47 frames / 11941420 bytes accepted
+```
+
+**`starting at 12058624` is the phone's own number** — computed from its record and its partial, not
+chosen by the Mac. `offset` was `0` in every ack for two slices because nothing in this project had
+ever been the receiver. Only 11,941,420 bytes crossed the wire on the second attempt, and
+`sha256sum` on the phone matches the source exactly: **a resumed transfer whose digest covers the
+whole file, verified true, in the direction that had never been exercised.**
+
+Note also `starts at 0: the partial is empty` rather than *there is no partial file*. Those are two
+different reasons and the first version collapsed them by mapping a zero-length partial to `null` —
+which made a genuine zero-byte resume read as a missing file. The reasons exist to be told apart in
+exactly this situation.
+
+### An instrument note: `/sdcard` stat-by-name goes stale after a SAF replace
+
+Immediately after the authorised overwrite, two adb calls milliseconds apart disagreed:
+
+```
+$ adb shell ls -la /sdcard/DCIM/push-probe.bin      → 3000000 bytes, 03:32   (the OLD file)
+$ adb shell sha256sum /sdcard/DCIM/push-probe.bin   → No such file or directory
+```
+
+Neither was true. Listing the **directory** showed the new 1,500,000-byte file at 11:53, matching the
+phone's own log and the digest. A delete-plus-rename underneath emulated storage leaves stat-by-name
+briefly serving a stale entry to one caller and a miss to the next. **List the directory; do not
+stat the path.** Recorded in `docs/single-device-audit.md` as unknown, single-device.
+
+### Baseline
+
+Phone **257** tests (`core` 77, `input-module` 44, `sync-module` 105, `mirror-module` 31), Mac
+**173**, `tsc --noEmit` clean. The DCIM grant is as it was — one persisted tree grant — and both
+probe files were deleted from `/sdcard/DCIM`.
+
+**Not built:** a Copy-to-Mac control in the pane (the pull path exists and belongs with a transfer
+queue), and `Download/ConnectSuite` as a push destination without a grant, which is the
+`EXTRA_INITIAL_URI` question in `docs/phase-5-files-onboarding-proposal.md` §8.3.

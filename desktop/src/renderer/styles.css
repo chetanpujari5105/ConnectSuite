@@ -1953,3 +1953,26 @@ img#qr {
 
 .files-detail-facts dt { color: var(--text-meta); }
 .files-detail-facts dd { margin: 0; color: var(--text-body); overflow-wrap: anywhere; }
+
+/* The drop target — F4, and it exists only while the phone says it will receive files.
+   `uploadAffordance(pushAvailable)` is the one condition; this rule only draws the result. */
+.files-drop {
+  margin-top: var(--space-3);
+  padding: var(--space-5);
+  border: 1px dashed var(--hairline-hover);
+  border-radius: var(--radius-tile);
+  text-align: center;
+  font: var(--text-body-size);
+  color: var(--text-meta);
+}
+
+.files-drop[hidden] { display: none; }
+
+.files-drop.is-over {
+  border-color: var(--accent-border);
+  background: var(--accent-tint);
+  color: var(--accent-text);
+}
+
+/* A refused push keeps the phone's own sentence, in the colour reserved for failure. */
+.files-drop.is-error { border-color: var(--destructive-border); color: var(--destructive); }

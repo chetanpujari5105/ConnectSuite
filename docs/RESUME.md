@@ -39,8 +39,8 @@ Mac actually attached. Do not grep the phone log for `Listening on`; it is writt
 `yiaddr = 10.108.253.92, router 10.108.253.63` — the correct one. Two reads of the same fact
 disagreeing, with the less obvious one right.
 
-Baselines, as of Phase 5 slice 7: phone **247** tests (`core` 77, `input-module` 44,
-`sync-module` 95, `mirror-module` 31), Mac **172** tests, `tsc --noEmit` clean. The figure this file
+Baselines, as of Phase 5 slice 8: phone **257** tests (`core` 77, `input-module` 44,
+`sync-module` 105, `mirror-module` 31), Mac **173** tests, `tsc --noEmit` clean. The figure this file
 carried at the close of Phase 4 — *189 (67 `sync-module` + 122 `core`)* — does not reconcile with the
 tree by either counting method and has been corrected rather than restated; see the note at the end
 of `docs/testing.md`. Run Gradle with `--rerun-tasks` when you intend a *run* — an
@@ -88,6 +88,79 @@ not implement an alternative without saying why the recorded reasoning is wrong.
    link violates the contract.
 
 ---
+
+### Where Phase 5 stands
+
+| | State |
+|---|---|
+| Photos | done, three verbs of four, 2026-08-31; `media.original` 2026-09-01 |
+| `fs.*` reads, `fs.delete`, pull | done on hardware, slice 5 |
+| The phone's **Folders screen** | done, slice 6 — all four states, a real grant read back from the platform |
+| The Mac's **Files pane** | done, slice 7 — `M2` and `M4` measured live, four ways apart |
+| The **single-device audit** | done, read-only — `docs/single-device-audit.md` |
+| **Push**, the phone as receiver | done, slice 8 — with resume, `verified=true`, and F4 closed |
+
+### Next
+
+**Files is complete in both directions.** What is left in Phase 5 is clipboard, contacts and drag to
+Finder — and two smaller items push did not close:
+
+- **`Download/ConnectSuite` as a push destination without a grant.** Push writes into granted roots
+  and `app:files`; the no-grant `MediaStore` destination is still the v1 receive path only. This is
+  the same question as `EXTRA_INITIAL_URI` (`phase-5-files-onboarding-proposal.md` §8.3) and the
+  quick-pick chips, and all three unblock together.
+- **Whether a pending `MediaStore` item can be resumed across process death**, which §4 of the
+  payload proposal still lists as unproven. Push does not use `MediaStore` for SAF trees, so this
+  became less urgent rather than answered.
+
+### The single-device audit — **done, read-only, 2026-09-01**
+
+**`docs/single-device-audit.md`.** No code changed, no device state modified. Every hardware finding
+is marked **contract**, **AOSP/Mainline**, **vendor**, or **unknown, single-device**.
+
+Four things to carry from it:
+
+1. **The method is one command.** `pm list packages -f | grep <component>` — ask who ships the code
+   behind the reading and where its APK lives. On one device that is the strongest available proxy
+   for portability, and it answered most of the audit.
+2. **`com.android.providers.telephony` is `/system/priv-app/SecTelephonyProvider/SecTelephonyProvider.apk`.**
+   Defect 50 is **vendor**, with evidence beyond the package name — and *a package name is not
+   provenance* is defect 50's own rule one layer down.
+3. **The SAF picker is Google's and Play-updated** (`/data/app`, versionName 17), so the wall is more
+   portable than assumed **and** can change on this very device with no OS upgrade. Re-run
+   `SafProbeActivity` after a DocumentsUI update. §6.4.
+4. **The `DUAL_APP` user 95 control is Samsung-only.** Several permission readings in
+   `docs/testing.md` used *user 95 reads `false` on everything* as their control. Anyone reproducing
+   those elsewhere will find the control absent — that is not a failure.
+
+**Nothing in the current build fails dangerously if a verdict is wrong** (§4). Every vendor-dependent
+decision so far went the conservative way. The one exception to watch is the Folders screen's wall
+copy, the only place a vendor assumption is asserted to a user as fact.
+
+## Slice 8 — push, the phone as receiver — **done on hardware, 2026-09-01**
+
+**Files moves in both directions.** Evidence: `docs/testing.md` → **Slice 8**. F4 in
+`docs/design-departures.md` is closed — the canvas's drop tile is real, gated on the phone's own
+`push` field in the roots ack, where **absent means false**.
+
+Resume works in the receive direction: a 24 MB push cut in half, then re-offered `starting at
+12058624` — **the phone's own number**, from its record and its partial — with the digest covering
+the bytes already on disk and `verified=true` at the end. `offset` had been `0` in every ack for two
+slices because nothing had ever been the receiver.
+
+Three things worth carrying forward:
+
+1. **A guard that fails is usually right.** `FsDeleteGuardTest` counts platform deletes and expects
+   one; it saw four, and one of those silently removed a user's file at the destination — `overwrite`
+   was in the spec and unimplemented. The number moved to two only after the fourth call became a
+   *named second question* (`deleteArtifact` beside `deleteIfUnchanged`). Raising a guard's number to
+   fit new code is how it stops guarding.
+2. **The probe lied about its own stimulus, and the product bug it hid was worse.** `socket.destroy()`
+   discards the send buffer, so a reported 12 MB delivered zero. Underneath it: a truncated push with
+   no agreed digest was being **committed as complete** — nothing but the agreed length can catch
+   that, and nothing was checking it.
+3. **`/sdcard` stat-by-name goes stale** immediately after a SAF delete-plus-rename: `ls` on the path
+   showed the old file and `sha256sum` said it did not exist, milliseconds apart. List the directory.
 
 ## Slice 7 — the Mac's Files pane — **built and running, 2026-09-01**
 
@@ -148,60 +221,6 @@ decision, not a deferral.** A chip is a promise about where the picker opens and
 make it: with `EXTRA_INITIAL_URI` unset the picker does not start at the top of storage, it
 *chooses*, and on this handset it **restored its last location** and opened inside `DCIM`. A chip
 labelled `Camera` would be right by coincidence and wrong by default.
-
-### Next, in order
-
-1. ~~**The Folders screen**~~ — **done, slice 6, 2026-09-01.**
-2. ~~**The Mac's Files pane**~~ — **done, slice 7, 2026-09-01.** Read half only; no upload
-   affordance, by three separate statements and one test.
-3. ~~**The single-device audit**~~ — **done, read-only, 2026-09-01.** See below.
-4. **Push — the phone as receiver.** The next thing built, and the last thing standing between Files
-   and complete. It turns the canvas's drop tile real and closes **F4** in
-   `docs/design-departures.md`; the Mac's pane already has one condition
-   (`uploadAffordance(pushAvailable)`) waiting for it, so the tiles appear in the same moment the
-   verb answers. What it owes:
-
-   - `.part` / `.failed` in a SAF tree, and the `MediaStore` pending item for `Download/ConnectSuite`
-     — the mechanism is proven (`DownloadsProbeActivity`, four storage permissions `false`), the verb
-     is not served.
-   - The Room row that is authoritative for resume, per `phase-5-fs-media-proposal.md` §4.
-   - **The reading §4 still lists as unproven: whether a pending `MediaStore` item can be resumed
-     across process death.** Hold the state open rather than sampling for it — the `--ez abandon`
-     path already exists for exactly this.
-   - **The `EXTRA_INITIAL_URI` reading**, `phase-5-files-onboarding-proposal.md` §8.3. It needs
-     `Download/ConnectSuite` to exist, which push is what creates. Until it is taken, no chip or
-     button in this app may claim a destination — the picker's starting location is **not stable
-     between runs**, measured four times on 2026-09-01.
-3. **Push**, which is the phone as receiver: `.part`/`.failed` in a SAF tree, the `MediaStore`
-   pending item for `Download/ConnectSuite`, and the Room row that is authoritative for resume. It
-   also owes the reading §4 of the payload proposal still lists as unproven — **whether a pending
-   `MediaStore` item can be resumed across process death** — and the `EXTRA_INITIAL_URI` reading in
-   §8.3 of the onboarding proposal, which needs `Download/ConnectSuite` to exist and so is naturally
-   this sitting's.
-
-### The single-device audit — **done, read-only, 2026-09-01**
-
-**`docs/single-device-audit.md`.** No code changed, no device state modified. Every hardware finding
-is marked **contract**, **AOSP/Mainline**, **vendor**, or **unknown, single-device**.
-
-Four things to carry from it:
-
-1. **The method is one command.** `pm list packages -f | grep <component>` — ask who ships the code
-   behind the reading and where its APK lives. On one device that is the strongest available proxy
-   for portability, and it answered most of the audit.
-2. **`com.android.providers.telephony` is `/system/priv-app/SecTelephonyProvider/SecTelephonyProvider.apk`.**
-   Defect 50 is **vendor**, with evidence beyond the package name — and *a package name is not
-   provenance* is defect 50's own rule one layer down.
-3. **The SAF picker is Google's and Play-updated** (`/data/app`, versionName 17), so the wall is more
-   portable than assumed **and** can change on this very device with no OS upgrade. Re-run
-   `SafProbeActivity` after a DocumentsUI update. §6.4.
-4. **The `DUAL_APP` user 95 control is Samsung-only.** Several permission readings in
-   `docs/testing.md` used *user 95 reads `false` on everything* as their control. Anyone reproducing
-   those elsewhere will find the control absent — that is not a failure.
-
-**Nothing in the current build fails dangerously if a verdict is wrong** (§4). Every vendor-dependent
-decision so far went the conservative way. The one exception to watch is the Folders screen's wall
-copy, the only place a vendor assumption is asserted to a user as fact.
 
 ## Slice 5 — `fs.*`, the phone side — **done on hardware, 2026-09-01**
 

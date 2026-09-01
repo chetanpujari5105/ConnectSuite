@@ -35,7 +35,9 @@ interface FilesBridgeResult<T> {
 }
 
 interface FilesBridge {
-  fsRoots(): Promise<FilesBridgeResult<{ roots: FsRootRow[]; grantHint: string | null }>>;
+  fsRoots(): Promise<
+    FilesBridgeResult<{ roots: FsRootRow[]; grantHint: string | null; push?: boolean }>
+  >;
   fsList(options: {
     rootId: string;
     path?: string;
@@ -43,6 +45,12 @@ interface FilesBridge {
     afterName?: string;
     afterId?: string;
   }): Promise<FilesBridgeResult<{ entries: FsEntryRow[]; hasMore: boolean }>>;
+  fsPush(options: {
+    rootId: string;
+    path: string;
+    source: string;
+    overwrite?: boolean;
+  }): Promise<{ ok: boolean; bytes?: number; reason?: string; code?: string; fixHint?: string }>;
 }
 
 /** One page. The phone caps at 500; 200 is its own default and fills the table several times. */
@@ -66,12 +74,17 @@ class FilesView {
   private unavailableReason: string | null = null;
 
   /**
-   * Whether `fs.transfer.begin` serves `push`. **False for the whole of this build.**
+   * Whether the phone will receive files — **the phone's own answer, from the roots ack.**
    *
-   * Held as a field rather than inlined so that the day push ships, one assignment turns the tile
-   * on everywhere it belongs and the tests already say what that looks like.
+   * Not a constant and not a guess. A phone built before push shipped omits the field, and an
+   * absent field is read as `false`: the drop target must never appear over a phone that would
+   * answer `FEATURE_UNAVAILABLE`. This is the one condition; the tile, the banner and the
+   * `uploadAffordance` check all read it.
    */
   private pushAvailable = false;
+
+  /** What the last push said, so the pane can report a refusal the phone gave a reason for. */
+  private lastPush: { ok: boolean; text: string } | null = null;
 
   constructor(
     private readonly bridge: FilesBridge,
@@ -83,8 +96,28 @@ class FilesView {
     private readonly stateEl: HTMLElement,
     private readonly table: HTMLElement,
     private readonly footer: HTMLElement,
+    private readonly drop: HTMLElement,
     private readonly detail: HTMLElement,
   ) {
+    // The drop target. Registered once and *shown* conditionally, rather than wired up when push
+    // appears: a listener added later is a listener that can be added twice, and this pane already
+    // learned what two callers do to one state machine.
+    for (const type of ['dragover', 'dragenter'] as const) {
+      this.drop.addEventListener(type, (event) => {
+        if (!this.pushAvailable) return;
+        event.preventDefault();
+        this.drop.classList.add('is-over');
+      });
+    }
+    this.drop.addEventListener('dragleave', () => this.drop.classList.remove('is-over'));
+    this.drop.addEventListener('drop', (event) => {
+      event.preventDefault();
+      this.drop.classList.remove('is-over');
+      if (!this.pushAvailable) return;
+      const files = Array.from((event as DragEvent).dataTransfer?.files ?? []);
+      void this.sendFiles(files);
+    });
+
     this.table.addEventListener('scroll', () => {
       // The third condition is the one whose absence made the Photos grid load forever: a table
       // shorter than its own viewport satisfies "near the bottom" permanently.
@@ -159,6 +192,7 @@ class FilesView {
     }
     this.roots = result.data?.roots ?? [];
     this.grantHint = result.data?.grantHint ?? null;
+    this.pushAvailable = pushOffered(result.data?.push);
     this.fetch = { kind: 'ready', roots: this.roots, grantHint: this.grantHint };
     if (this.selectedRoot === null || !this.roots.some((r) => r.rootId === this.selectedRoot)) {
       // Prefer a granted tree over the app-private root: `ConnectSuite`'s own folder is always
@@ -211,21 +245,73 @@ class FilesView {
     }
   }
 
+  /**
+   * Sends dropped files, one at a time.
+   *
+   * **Serially, not in parallel**, and that is the protocol rather than caution: one `transferId`,
+   * one file, one bulk connection. A folder copy is this loop, which is why it is a loop here and
+   * not a protocol feature.
+   */
+  private async sendFiles(files: File[]): Promise<void> {
+    if (!files.length || this.selectedRoot === null) return;
+    for (const file of files) {
+      // Electron exposes the real path on a dropped File. Without one there is nothing to read, and
+      // saying so beats sending zero bytes and reporting success.
+      const source = (file as File & { path?: string }).path;
+      if (!source) {
+        this.lastPush = { ok: false, text: `${file.name} could not be read from this drop.` };
+        this.render();
+        continue;
+      }
+      this.lastPush = { ok: true, text: `Sending ${file.name}…` };
+      this.render();
+      const result = await this.bridge.fsPush({
+        rootId: this.selectedRoot,
+        path: this.path,
+        source,
+      });
+      this.lastPush = result.ok
+        ? { ok: true, text: `${file.name} sent. The phone reports whether it arrived intact.` }
+        : {
+            ok: false,
+            // The phone's own sentence, and its code beside it. A generic failure here would throw
+            // away the one thing that distinguishes "already there" from "no room".
+            text: `${file.name} — ${result.reason ?? 'the phone refused it.'}` +
+              (result.code ? ` (${result.code})` : ''),
+          };
+      this.render();
+    }
+    await this.openPath(this.path);
+  }
+
   private render(): void {
     const view = filesPaneView(this.fetch, this.pushAvailable);
 
     // M6 — advertised, and one direction degraded. A banner over a working pane, never red.
     this.banner.hidden = !(view.degraded && this.fetch.kind === 'ready');
     if (!this.banner.hidden) {
+      // Driven by one fact, so the banner and the drop tile cannot disagree: this phone is not
+      // offering the receive direction, so there is nothing to drop onto and the banner says why.
       this.banner.textContent =
-        'Copying to the Mac works. Sending files to the phone from here does not yet — the phone ' +
-        'is not offering that direction, so there is nothing to drop files onto.';
+        'Copying to the Mac works. Sending files to this phone does not — it is not offering that ' +
+        'direction, so there is nothing here to drop files onto.';
     }
 
     // Drawn once, in whichever place is actually visible. The wall is standing copy on both sides
     // of this product — the phone's Folders screen carries it in every state — and it must not
     // appear twice on the one screen where both homes are on show.
     const showsState = this.fetch.kind !== 'ready' || this.roots.length <= 1;
+    // F4: the canvas draws two drop tiles. One condition decides whether either exists, and it is
+    // the phone's answer rather than a constant — so the tile appears the moment a phone that
+    // serves push connects, and never over one that does not.
+    const canUpload = uploadAffordance(this.pushAvailable) && this.fetch.kind === 'ready';
+    this.drop.hidden = !canUpload;
+    if (canUpload) {
+      this.drop.textContent = this.lastPush?.text
+        ?? `Drop files here to send them to ${this.crumbLabel()}`;
+      this.drop.classList.toggle('is-error', this.lastPush?.ok === false);
+    }
+
     this.renderRail(showsState);
     this.renderState(view, showsState);
     this.renderCrumbs();
@@ -324,6 +410,13 @@ class FilesView {
     }
 
     this.stateEl.append(card);
+  }
+
+  /** Where a dropped file would land, in the same words the breadcrumb uses. */
+  private crumbLabel(): string {
+    const root = this.roots.find((r) => r.rootId === this.selectedRoot);
+    if (!root) return 'this phone';
+    return [root.label, ...this.path.split('/').filter(Boolean)].join(' › ');
   }
 
   private renderCrumbs(): void {
@@ -538,11 +631,16 @@ function createFilesView(bridge: FilesBridge): FilesView | null {
   const state = document.getElementById('files-state');
   const table = document.getElementById('files-table');
   const footer = document.getElementById('files-footer');
+  const drop = document.getElementById('files-drop');
   const detail = document.getElementById('files-detail');
-  if (!banner || !rail || !hint || !wall || !crumbs || !state || !table || !footer || !detail) {
+  if (
+    !banner || !rail || !hint || !wall || !crumbs || !state || !table || !footer || !drop || !detail
+  ) {
     return null;
   }
-  return new FilesView(bridge, banner, rail, hint, wall, crumbs, state, table, footer, detail);
+  return new FilesView(
+    bridge, banner, rail, hint, wall, crumbs, state, table, footer, drop, detail,
+  );
 }
 
 (globalThis as Record<string, unknown>).createFilesView = createFilesView;

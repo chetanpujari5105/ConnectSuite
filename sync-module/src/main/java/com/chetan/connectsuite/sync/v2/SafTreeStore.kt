@@ -7,6 +7,7 @@ import android.os.StatFs
 import android.provider.DocumentsContract
 import com.chetan.connectsuite.core.link.LinkLog
 import java.io.InputStream
+import java.io.OutputStream
 
 /**
  * One granted SAF tree, addressed by root-relative segments and by document id.
@@ -21,10 +22,21 @@ import java.io.InputStream
  *
  * ### The one place a document is deleted
  *
- * `DocumentsContract.deleteDocument` is called from exactly one function in this module,
- * [deleteIfUnchanged], and `FsDeleteGuardTest` fails if a second call site appears. That is the
- * enforceable half of the compare-and-delete rule: the guard cannot be bypassed by a caller who
- * reaches for a bare delete, because there is no bare delete to reach for.
+ * `DocumentsContract.deleteDocument` is called from exactly **two** functions in this module, one
+ * per question, and `FsDeleteGuardTest` fails if a third call site appears. That is the enforceable
+ * half of the compare-and-delete rule: the guard cannot be bypassed by a caller who reaches for a
+ * bare delete, because there is no bare delete to reach for.
+ *
+ * - [deleteIfUnchanged] answers *may this file the Mac was looking at be destroyed?* — compare and
+ *   delete, and the only route `fs.delete` has.
+ * - [deleteArtifact] answers *may this transfer artifact be cleaned up?* — a `.part` or `.failed`
+ *   this app created, or a destination the Mac authorised with `overwrite: true` on the control
+ *   channel before a byte moved.
+ *
+ * **It went from one to two when push landed, and the guard is what forced the distinction.** The
+ * first version of `commit()` called the platform delete three times inline, one of which silently
+ * removed a user's existing file — `overwrite` was in the payload spec and had not been
+ * implemented. The test failed, and the hole was in the code rather than in the test.
  */
 class SafTreeStore(
     private val context: Context,
@@ -222,6 +234,159 @@ class SafTreeStore(
         return runCatching { resolver.openInputStream(documentUri(id)) }.getOrElse {
             LinkLog.w("fs", "$rootId could not open ${row.name}", it)
             null
+        }
+    }
+
+    /**
+     * Deletes a **transfer artifact** — a `.part` or a `.failed` we created, or a destination the
+     * Mac explicitly asked to overwrite.
+     *
+     * ### Why this exists beside [deleteIfUnchanged] rather than inside it
+     *
+     * `deleteIfUnchanged` is compare-and-delete: it exists so `fs.delete` can never destroy a file
+     * the Mac was not looking at. These three are a different question. Two of them delete files
+     * **this app created and named**, and the third deletes a destination the Mac authorised with
+     * `overwrite: true` — a decision taken on the control channel, before a byte moved, and refused
+     * with `TARGET_STALE` when it was not given.
+     *
+     * They are one function rather than three call sites so that `FsDeleteGuardTest` can still say
+     * something true: **the platform's delete appears in exactly two places in this module**, one
+     * per question, and a third is a test failure. Folding these into `deleteIfUnchanged` would have
+     * meant inventing an expected size for a file nobody looked at, which is the compare half
+     * becoming a formality — the worst outcome available.
+     */
+    private fun deleteArtifact(id: String, why: String): Boolean {
+        val gone = runCatching {
+            DocumentsContract.deleteDocument(resolver, documentUri(id))
+        }.getOrElse {
+            LinkLog.w("fs", "$rootId could not delete $why", it)
+            false
+        }
+        Snapshots.invalidate(rootId)
+        return gone
+    }
+
+    override fun openPartial(segments: List<String>, name: String): FsPartial? {
+        if (!writable) {
+            LinkLog.w("fs", "$rootId is read-only; refusing to open a partial for $name")
+            return null
+        }
+        val parent = resolveDirectory(segments) ?: return null
+        val partName = FsPartials.partNameFor(name)
+        val existing = childrenOf(parent)?.firstOrNull { it.name == partName && !it.dir }
+        val partId = existing?.let { FsPaths.decodeId(it.id) } ?: runCatching {
+            // A partial is always created with a generic type. Giving it the real MIME would let a
+            // provider "helpfully" append its own extension to a name that already ends in .part.
+            DocumentsContract.createDocument(
+                resolver,
+                documentUri(FsPaths.encodeId(parent)),
+                "application/octet-stream",
+                partName,
+            )?.let { DocumentsContract.getDocumentId(it) }
+        }.getOrElse {
+            LinkLog.w("fs", "$rootId could not create $partName", it)
+            null
+        } ?: return null
+
+        // The provider may have renamed the document to avoid a collision — `foo.part (1)`. Read the
+        // row back rather than assuming the name we asked for is the name we got, which is the same
+        // discipline as re-reading a row immediately before a delete.
+        val actual = readRow(FsPaths.encodeId(partId))
+        if (actual == null) {
+            LinkLog.w("fs", "$rootId created $partName and could not read it back")
+            return null
+        }
+        Snapshots.invalidate(rootId)
+        return SafPartial(parentId = parent, partId = partId, partName = actual.name, finalName = name)
+    }
+
+    /**
+     * One partial in a SAF tree.
+     *
+     * Every operation re-resolves through the provider rather than caching a `Uri`, because a
+     * document can be renamed or removed by anything else on the device between two of these calls —
+     * these are not our directories.
+     */
+    private inner class SafPartial(
+        private val parentId: String,
+        private val partId: String,
+        private val partName: String,
+        private val finalName: String,
+    ) : FsPartial {
+
+        private val encoded = FsPaths.encodeId(partId)
+
+        override val bytesOnDisk: Long
+            get() = readRow(encoded)?.size ?: 0L
+
+        override fun append(): OutputStream? = runCatching {
+            // "wa" is append. Plain "w" truncates, and a resumed transfer that truncates its own
+            // partial produces a file whose digest can never match and whose bytes are half gone —
+            // a data-loss bug that looks like a checksum bug.
+            resolver.openOutputStream(documentUri(encoded), "wa")
+        }.getOrElse {
+            LinkLog.w("fs", "$rootId could not open $partName for append", it)
+            null
+        }
+
+        override fun read(): InputStream? = runCatching {
+            resolver.openInputStream(documentUri(encoded))
+        }.getOrElse {
+            LinkLog.w("fs", "$rootId could not read $partName back", it)
+            null
+        }
+
+        override fun commit(): FsPaths.Entry? {
+            // Any stale sidecar for this name is cleared first: a finished file sitting beside a
+            // `.failed` note about itself is a directory that contradicts itself.
+            childrenOf(parentId)
+                ?.firstOrNull { it.name == FsPartials.failedNameFor(finalName) && !it.dir }
+                ?.let { stale -> deleteArtifact(stale.id, "a stale .failed sidecar") }
+
+            // An existing file at the final name is removed before the rename, because SAF will
+            // otherwise hand back `holiday (1).mov` and the Mac would be told a name it did not ask
+            // for. Overwrite is the caller's decision and it has already been taken by this point.
+            childrenOf(parentId)
+                ?.firstOrNull { it.name == finalName && !it.dir }
+                ?.let { previous ->
+                    // Only reachable when the Mac sent `overwrite: true`; `fs.transfer.begin`
+                    // refuses with TARGET_STALE otherwise, before the socket opens.
+                    deleteArtifact(previous.id, "the destination $finalName, which the Mac asked to replace")
+                }
+
+            val renamed = runCatching {
+                DocumentsContract.renameDocument(resolver, documentUri(encoded), finalName)
+            }.getOrElse {
+                LinkLog.e("fs", "$rootId could not rename $partName to $finalName", it)
+                null
+            }
+            Snapshots.invalidate(rootId)
+            if (renamed == null) {
+                // The partial is left exactly where it is. A failed rename has lost nothing; a
+                // delete here would.
+                return null
+            }
+            return readRow(FsPaths.encodeId(DocumentsContract.getDocumentId(renamed) ?: return null))
+        }
+
+        override fun discardAsFailed(sidecar: String) {
+            deleteArtifact(encoded, "the corrupt $partName")
+            runCatching {
+                val uri = DocumentsContract.createDocument(
+                    resolver,
+                    documentUri(FsPaths.encodeId(parentId)),
+                    "text/plain",
+                    FsPartials.failedNameFor(finalName),
+                )
+                if (uri != null) {
+                    resolver.openOutputStream(uri, "w")?.use { it.write(sidecar.toByteArray()) }
+                }
+            }.onFailure { LinkLog.w("fs", "$rootId could not write the .failed sidecar", it) }
+            Snapshots.invalidate(rootId)
+        }
+
+        override fun keep() {
+            Snapshots.invalidate(rootId)
         }
     }
 

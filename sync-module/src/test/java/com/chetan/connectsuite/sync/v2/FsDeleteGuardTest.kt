@@ -58,13 +58,42 @@ class FsDeleteGuardTest {
             .count { it.contains(needle) }
 
     @Test
-    fun `a document is deleted from exactly one place in this module`() {
+    fun `a document is deleted from exactly two places, one per question`() {
+        // **This test went from one to two when push landed, and it is the reason the hole was
+        // found rather than shipped.** `commit()` called the platform delete three times inline,
+        // and one of those silently removed a user's existing file at the destination — `overwrite`
+        // was in the payload spec and had not been implemented. The guard failed, the code was
+        // wrong, and the number here moved only after the third call site became two named
+        // functions answering two different questions:
+        //
+        //   deleteIfUnchanged — may this file the Mac was looking at be destroyed? (compare-and-delete)
+        //   deleteArtifact    — may this transfer artifact be cleaned up? (.part, .failed, or an
+        //                       authorised overwrite)
+        //
+        // Raising this number to fit new code is how a guard stops guarding. It may only move when a
+        // genuinely new *question* appears, and the function answering it is named here.
         val hits = sources().associate { it.name to callSites(it.readText(), "DocumentsContract.deleteDocument") }
         val withCalls = hits.filterValues { it > 0 }
         assertEquals(
             "DocumentsContract.deleteDocument must appear in exactly one file — found $withCalls",
-            mapOf("SafTreeStore.kt" to 1),
+            mapOf("SafTreeStore.kt" to 2),
             withCalls,
+        )
+        val source = sources().first { it.name == "SafTreeStore.kt" }.readText()
+        assertEquals("deleteIfUnchanged must still exist", 1, callSites(source, "fun deleteIfUnchanged("))
+        assertEquals("the second call site must be the named artifact helper", 1, callSites(source, "private fun deleteArtifact("))
+    }
+
+    @Test
+    fun `a transfer artifact is never deleted by the compare-and-delete path, and vice versa`() {
+        // The two questions must not blur. Folding the artifact deletes into `deleteIfUnchanged`
+        // would mean inventing an expected size for a file nobody looked at — the compare half
+        // becoming a formality, which is worse than not having it.
+        val source = sources().first { it.name == "SafTreeStore.kt" }.readText()
+        val artifact = source.substringAfter("private fun deleteArtifact(").substringBefore("\n    }")
+        assertTrue(
+            "deleteArtifact must not consult the compare-and-delete verdict",
+            !artifact.contains("FsPaths.deleteVerdict("),
         )
     }
 

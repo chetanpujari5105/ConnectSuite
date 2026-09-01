@@ -75,6 +75,14 @@ not make the code AOSP, exactly as the shell issuing a query does not make it th
 | **Defect 55** — `fs.list` re-read and re-sorted the whole directory per page: 490 s over 16,377 entries, 21 s after the snapshot fix | `docs/testing.md`, defect 55 | **unknown, single-device — and the *number* is device-specific regardless** | The *cause* is contract (SAF honours neither sort nor limit, so the work is O(n) per page whatever the provider). The *cost* is this provider on this storage with this file count. Another device will have a different constant and the same shape. **The fix is portable; the 490 is not** |
 | `fs.list` over a 16,377-entry directory, `tieBoundaries: 0` | `docs/testing.md` → Slice 5 | **not a platform fact at all** | A property of this user's filenames. It says the tiebreak was unexercised **here**, which is why it is published |
 | A released `persistableUriPermission` **still appears** in `dumpsys activity permissions` at `persisted=0x0` until the owning process lets go | `docs/testing.md` → Slice 6 | **unknown, single-device** — and it is an *instrument* fact, not a product one | This is `ActivityManagerService` behaviour, i.e. framework, so likely AOSP; but it was read through `dumpsys` output whose format is not a contract. Nothing in the product depends on it |
+| **`/sdcard/<path>` stat-by-name goes stale** right after a SAF delete-plus-rename: `ls` on the path showed the old file and `sha256sum` said it did not exist, milliseconds apart | `docs/testing.md` → Slice 8 | **unknown, single-device** — instrument, not product | Emulated storage is a FUSE layer whose caching is not specified. Listing the *directory* was correct and agreed with the phone's own log. Nothing in the product reads `/sdcard` by path — only `adb` does, which is why this is an instrument note |
+| **The hotspot interface is `swlan0`**, and `wifi_on` reads `0` while it is up | this sitting, `adb shell ip -f inet addr` | **vendor** | `swlan0` is Samsung's naming; AOSP tethering typically uses `ap0` or `wlan1`. The practical consequence is a lookalike: **`wifi_on=0` and an empty `wlan0` do not mean the phone has no network.** A link diagnosis that reads either and stops will conclude the phone is offline while it is in fact the Mac's own gateway |
+
+**The `swlan0` row cost real time in this repo and is the third member of a family.** `ifconfig`
+against `ipconfig getsummary` on the Mac (step 71), `wlan0` against `swlan0` on the phone, and
+`ls` against `sha256sum` on `/sdcard` — three pairs of readings about one fact where the obvious
+instrument was the wrong one. None of them is a bug. All three are *two views of one thing, only one
+of which is current*, and in each case the wrong one was the one a person reaches for first.
 
 ### B. MediaStore and Downloads
 

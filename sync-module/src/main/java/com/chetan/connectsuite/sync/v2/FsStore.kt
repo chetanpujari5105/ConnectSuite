@@ -1,6 +1,7 @@
 package com.chetan.connectsuite.sync.v2
 
 import java.io.InputStream
+import java.io.OutputStream
 
 /**
  * What one root can be asked to do. Two implementations: [SafTreeStore] and [AppFilesStore].
@@ -42,6 +43,66 @@ interface FsStore {
 
     /** Opens [id] for reading, for a transfer. Null when it is gone or is a directory. */
     fun openStream(id: String): InputStream?
+
+    /**
+     * Opens the partial for [name] under [segments], creating it if absent.
+     *
+     * Null when the parent does not resolve, the root is not [writable], or the provider refuses.
+     * **The caller decides whether to append**, from the transfer record and [FsPartials.resumeFrom]
+     * — this only reports what is on disk. A store that decided for itself would be deciding to
+     * append to a file it cannot know is ours.
+     */
+    fun openPartial(segments: List<String>, name: String): FsPartial?
+}
+
+/**
+ * A partial being received, and the three ways it can end.
+ *
+ * One handle rather than four store methods, because the four operations share a resolved parent
+ * and a resolved document that are expensive to find again under SAF — and because keeping them
+ * together is what makes it obvious that every path out of a transfer is covered.
+ */
+interface FsPartial {
+
+    /** What the `.part` already holds, right now. The resume input; never the resume decision. */
+    val bytesOnDisk: Long
+
+    /** Appends to the partial. Called once; the caller closes it. */
+    fun append(): OutputStream?
+
+    /**
+     * Reads the partial back from byte 0, for the resume digest.
+     *
+     * A resumed push must digest the bytes **actually on disk**, not the number a record claims —
+     * a record longer than the file is how a resumed digest silently omits a hole and then reports
+     * a mismatch on bytes that never arrived.
+     */
+    fun read(): InputStream?
+
+    /**
+     * Renames the partial to its final name and clears any stale `.failed` beside it.
+     *
+     * Returns the finished entry, or null when the rename failed — in which case the partial is
+     * **left alone**, because a rename that failed has not lost anything and a delete would.
+     */
+    fun commit(): FsPaths.Entry?
+
+    /**
+     * Deletes the partial and writes the `.failed` sidecar in its place.
+     *
+     * The checksum-mismatch path, and the only one that destroys received bytes. It destroys them on
+     * purpose: a corrupt file is worse than a missing one.
+     */
+    fun discardAsFailed(sidecar: String)
+
+    /**
+     * Leaves the partial where it is, for a cancel or a dropped socket.
+     *
+     * The opposite of [discardAsFailed] and the reason both exist: an interrupted partial is a
+     * resumable artifact, a checksum-failed partial is corrupt, and they look identical on disk
+     * unless something decides.
+     */
+    fun keep()
 }
 
 /**

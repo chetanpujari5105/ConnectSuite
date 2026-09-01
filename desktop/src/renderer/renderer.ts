@@ -120,9 +120,15 @@ interface ConnectBridge {
   // `push` answers FEATURE_UNAVAILABLE and a bridge method that always failed is what a drop tile
   // would eventually be wired to.
   fsRoots(): Promise<
-    | { ok: true; data: { roots: FsRootRow[]; grantHint: string | null } }
+    | { ok: true; data: { roots: FsRootRow[]; grantHint: string | null; push: boolean } }
     | { ok: false; reason?: string; fixHint?: string; code?: string }
   >;
+  fsPush(options: {
+    rootId: string;
+    path: string;
+    source: string;
+    overwrite?: boolean;
+  }): Promise<{ ok: boolean; bytes?: number; reason?: string; code?: string; fixHint?: string }>;
   fsList(options: {
     rootId: string;
     path?: string;
@@ -397,6 +403,7 @@ shell.onRoute((id) => {
 const files = createFilesView({
   fsRoots: () => connect.fsRoots(),
   fsList: (options) => connect.fsList(options),
+  fsPush: (options) => connect.fsPush(options),
 });
 shell.onRoute((id) => {
   if (id === 'files') void files?.refresh();

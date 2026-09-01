@@ -51,6 +51,23 @@ interface TransferDao {
     @Query("SELECT * FROM transfers WHERE peerDeviceId = :peerDeviceId AND status = 'PAUSED'")
     suspend fun resumable(peerDeviceId: String): List<TransferEntity>
 
+    /**
+     * The most recent incoming record for one destination, for resuming an `fs.*` push.
+     *
+     * **Looked up by where the file is going, not by `transferId`**, because a retry after a dropped
+     * socket is a *new* transfer with a new id arriving at the same place. Without this the record
+     * could never be found again and every interruption would restart from zero — which would look
+     * like resume being unimplemented rather than unfindable.
+     *
+     * This is the row `docs/protocol.md` means by *"anything that decides to append consults the
+     * transfer record, not the filename"*. A `.part` with no row here is a stranger's file.
+     */
+    @Query(
+        "SELECT * FROM transfers WHERE relativePath = :relativePath AND fileName = :fileName " +
+            "AND direction = 'INCOMING' ORDER BY updatedAtMillis DESC LIMIT 1",
+    )
+    suspend fun findIncomingAt(relativePath: String, fileName: String): TransferEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(transfer: TransferEntity)
 

@@ -189,6 +189,11 @@ object FsFeature {
                     }
                 } as JsonArray,
             )
+            // Whether this phone will receive files. It lives here rather than in the capability
+            // list because `files` is one capability with two directions and the Mac draws a
+            // different pane for each. A Mac that does not see this field must read it as false,
+            // which is what every phone built before push shipped actually means.
+            put("push", true)
             // Present only when more could be granted — which under SAF is always, because there is
             // always another folder that has not been picked.
             put("grantHint", FsRoots.GRANT_HINT)
@@ -366,8 +371,13 @@ object FsFeature {
      */
     private fun onBegin(session: ControlSession, request: Envelope, context: Context) {
         val direction = request.str("direction") ?: "pull"
+        if (direction == "push") return onBeginPush(session, request, context)
         if (direction != "pull") {
-            return refuse(session, request, FsFailure.PushNotServed)
+            return refuse(
+                session,
+                request,
+                FsFailure.BadRequest("direction must be \"pull\" or \"push\", not \"$direction\""),
+            )
         }
         val rootId = request.str("rootId")
             ?: return refuse(session, request, FsFailure.BadRequest("rootId is required"))
@@ -410,6 +420,104 @@ object FsFeature {
         }
     }
 
+    /**
+     * Agrees an incoming file — the phone as receiver.
+     *
+     * ### The offset is decided here, and this is the field that was `0` for two slices
+     *
+     * The receiver decides the resume point because it is the side that knows what it already
+     * holds. On a pull that is the Mac and this ack has nothing to say. On a push it is the phone,
+     * and the number it returns is what stops an interrupted 2 GB file starting again from zero.
+     *
+     * ### Everything refused here is refused *before* a socket opens
+     *
+     * A read-only tree, a full disk, a `..` in the path: each is a control-channel refusal with a
+     * code the Mac reacts to differently. Discovering them after the bulk socket is up would mean
+     * failing a transfer that has already moved bytes, and `NO_SPACE` in particular is one only the
+     * user can fix — it must not look like something a retry would cure.
+     */
+    private fun onBeginPush(session: ControlSession, request: Envelope, context: Context) {
+        val rootId = request.str("rootId")
+            ?: return refuse(session, request, FsFailure.BadRequest("rootId is required"))
+        val name = request.str("name")
+            ?: return refuse(session, request, FsFailure.BadRequest("name is required for a push"))
+        if (name.contains('/') || name == "." || name == "..") {
+            return refuse(session, request, FsFailure.BadRequest("name may not contain a path"))
+        }
+        val size = request.long("size")
+            ?: return refuse(session, request, FsFailure.BadRequest("size is required for a push"))
+        if (size < 0) return refuse(session, request, FsFailure.BadRequest("size may not be negative"))
+
+        val store = FsRoots.find(context, rootId)
+            ?: return refuse(session, request, FsFailure.RootNotGranted(rootId))
+        if (!store.writable) return refuse(session, request, FsFailure.NotWritable(store.label))
+
+        val segments = when (val path = FsPaths.splitPath(request.str("path") ?: "")) {
+            is FsPaths.PathResult.Ok -> path.segments
+            is FsPaths.PathResult.Rejected -> {
+                return refuse(session, request, FsFailure.BadRequest(path.why))
+            }
+        }
+
+        // Checked before a byte moves, and it is its own code because only the user can fix it —
+        // retrying a NO_SPACE is the one retry that is certain to fail again.
+        val free = store.freeBytes()
+        if (free in 1 until size) {
+            return refuse(session, request, FsFailure.NoSpace(store.label, size, free))
+        }
+
+        // **Overwrite is decided here, on the control channel, before a byte moves.** The store's
+        // `commit()` will replace a file at the destination name, and the only thing standing
+        // between that and a user losing data is this check — which is why it is a refusal with a
+        // code rather than a flag threaded through the transfer. `FsDeleteGuardTest` caught the
+        // version of this code that had no check at all.
+        val overwrite = FsPartials.overwriteRequested(request.raw("overwrite"))
+        if (!overwrite) {
+            val existing = store.listChildren(segments)?.firstOrNull { it.name == name && !it.dir }
+            if (existing != null) {
+                return refuse(
+                    session,
+                    request,
+                    FsFailure.AlreadyThere(name, existing.size, existing.mtimeMs),
+                )
+            }
+        }
+
+        val sessionId = session.token
+            ?: return refuse(session, request, FsFailure.BadRequest("this session has no token"))
+
+        val arriving = BulkTransfers.registerFsPush(
+            context = context,
+            store = store,
+            segments = segments,
+            name = name,
+            size = size,
+            // The Mac's digest, agreed before anything moves. Null is allowed and is reported
+            // honestly as `verified: false` rather than as a failure.
+            sha256 = request.str("sha256"),
+            sessionId = sessionId,
+        ) ?: return refuse(session, request, FsFailure.NoSuchEntry)
+
+        delivered.incrementAndGet()
+        LinkLog.i(
+            "fs",
+            "fs.transfer.begin push $rootId/${FsPaths.joinPath(segments)}/$name → " +
+                "${arriving.transferId}, $size bytes, starting at ${arriving.offset}, " +
+                (if (arriving.sha256 != null) "digest agreed in advance" else "no digest agreed") +
+                " — ${tally()}",
+        )
+        session.ack(request) {
+            put("transferId", arriving.transferId)
+            put("direction", "push")
+            put("size", size)
+            put("name", name)
+            put("sha256", arriving.sha256)
+            // The field that finally carries a number. Everything above exists to compute it.
+            put("offset", arriving.offset)
+            put("chunkMax", BulkTransfers.chunkMax())
+        }
+    }
+
     private fun onCancel(session: ControlSession, request: Envelope) {
         val transferId = request.str("transferId")
             ?: return refuse(session, request, FsFailure.BadRequest("transferId is required"))
@@ -445,6 +553,16 @@ object FsFeature {
 
     private fun Envelope.long(key: String): Long? =
         payload[key]?.jsonPrimitive?.content?.toLongOrNull()
+
+    /**
+     * The raw payload value, uninterpreted.
+     *
+     * Used only by `overwrite`, whose reading is a decision rather than a parse and therefore lives
+     * in [FsPartials.overwriteRequested] where a test can reach it. A `bool()` helper here would put
+     * "absent means do not destroy anything" inside the JSON reader, which is the last place anyone
+     * looks for it.
+     */
+    private fun Envelope.raw(key: String): String? = payload[key]?.jsonPrimitive?.content
 }
 
 /** Every way an `fs.*` request can fail, each with the sentence a person reads. */
@@ -515,16 +633,37 @@ sealed class FsFailure(
     )
 
     /**
-     * The Mac asked to push and this build only pulls.
+     * The receiver has no room, and it is its own code because only the user can fix it.
      *
-     * Named as its own failure rather than folded into `BAD_REQUEST`, because the request is well
-     * formed and the Mac's response is different: there is nothing for it to fix, and it should stop
-     * offering the direction rather than retry it.
+     * Retrying a `TRANSFER_FAILED` is worth it and retrying this one is certain to fail again. The
+     * message names **which side** is full, because "not enough space" on a two-device transfer is
+     * a sentence that sends people to the wrong machine.
      */
-    object PushNotServed : FsFailure(
-        label = "push-not-served",
-        code = ErrorCode.FEATURE_UNAVAILABLE,
-        reason = "This phone build can send files to the Mac but cannot receive them yet.",
+    class NoSpace(label: String, needed: Long, free: Long) : FsFailure(
+        label = "no-space",
+        code = ErrorCode.NO_SPACE,
+        reason = "The phone does not have room for that: \"$label\" has $free bytes free and the " +
+            "file needs $needed.",
+        fixHint = "Free some space on the phone, or send to a different folder.",
+    )
+
+    /**
+     * Something is already at that name and the Mac did not ask to replace it.
+     *
+     * `TARGET_STALE` rather than a new code, on the protocol's own bar — *the Mac reacts
+     * differently* — and here it does not: the response is refresh, look at what is there, and ask
+     * again with `overwrite: true` or a different name. That is the same move `fs.delete`'s refusal
+     * asks for, which is why it is the same code.
+     *
+     * The size and modified time are on the line for the same reason they are on the delete
+     * refusal: the Mac's next move needs them, and a refusal that says only "no" costs a round trip.
+     */
+    class AlreadyThere(name: String, size: Long, mtimeMs: Long) : FsFailure(
+        label = "already-there",
+        code = ErrorCode.TARGET_STALE,
+        reason = "Nothing was written: \"$name\" is already in that folder on the phone, holding " +
+            "$size bytes and last modified at $mtimeMs, and the Mac did not ask to replace it.",
+        fixHint = "Send it again with overwrite, or choose a different name.",
     )
 
     class BadRequest(detail: String) : FsFailure(

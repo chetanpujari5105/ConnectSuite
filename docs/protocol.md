@@ -1050,8 +1050,15 @@ ack
    "freeBytes":27233689600},
   {"rootId":"saf:primary%3ADCIM","label":"DCIM","kind":"tree","writable":true,
    "freeBytes":27233681408}],
+ "push":true,
  "grantHint":"Add a folder in ConnectSuite on the phone, under Sync › Folders, to browse more of it"}
 ```
+
+**`push` says whether this phone will receive files**, and it is here rather than in the capability
+list because `files` is one capability with two directions and the Mac draws a different pane for
+each. **Absent means false**, which is what every phone built before push shipped means, so a Mac
+must treat a missing field as "no" rather than as "unknown". A Mac must not draw an upload
+affordance — a drop target, an upload button, a menu item — unless this is `true`.
 
 `rootId` is opaque to the Mac and stable across sessions — it is **derived from the tree URI**, not
 assigned, so nothing has to store it and a revoked grant disappears on its own.
@@ -1182,8 +1189,27 @@ ack      {"transferId":"t-8f21","direction":"pull","size":3874112,"mtimeMs":1756
 ```
 
 `direction` is from the **Mac's** point of view: `pull` moves phone → Mac, `push` moves Mac → phone.
-**This build serves `pull` only**; `push` answers `FEATURE_UNAVAILABLE` with a sentence saying so.
-A Files pane must not draw an upload affordance against this build.
+**Both directions are served.** A phone that does not serve `push` answers `FEATURE_UNAVAILABLE` and
+says so in the roots ack's `push` field; a Files pane must not draw an upload affordance unless that
+field is `true`.
+
+A push request names where the file is going rather than what it is:
+
+```json
+request  {"direction":"push","rootId":"saf:primary%3ADCIM","path":"Camera",
+          "name":"holiday.mov","size":214748364,"sha256":"6f3b…"}
+ack      {"transferId":"t-9c04","direction":"push","size":214748364,"name":"holiday.mov",
+          "sha256":"6f3b…","offset":1048576,"chunkMax":262144}
+```
+
+**`sha256` on a push is the Mac's digest, agreed before a byte moves**, and it is optional. Null is
+answered honestly with `verified: false` on `fs.transfer.done` rather than refused — a transfer
+nobody could check is a real outcome and must not be dressed as a checked one.
+
+**`offset` on a push is the phone's answer and is the whole point of the field.** It is computed
+from the transfer record and the partial on disk together, never from the filename: a `.part` with
+no record of ours beside it is another app's file and the phone starts from zero rather than
+appending to it. See *What is left on disk* below.
 
 **`sha256` is non-null when the phone pre-hashed**, which it does below a 64 MB ceiling. That is what
 makes `verified: true` reachable at all — `media.original` acks `null` because hashing before sending
@@ -1279,7 +1305,9 @@ there, and it means the convention survives a Mac that has never heard of it.
 | Digest mismatch on arrival; the partial was deleted | `CHECKSUM_MISMATCH` |
 | The socket dropped, a read failed, a write failed | `TRANSFER_FAILED` |
 | A `..` segment, `limit` out of range, a missing required field, a `/` in a mkdir name | `BAD_REQUEST` |
-| `direction: "push"` against a build that only pulls | `FEATURE_UNAVAILABLE` |
+| `direction: "push"` against a phone that only pulls | `FEATURE_UNAVAILABLE` |
+| A push whose destination folder was shared read-only | `PERMISSION_DENIED` |
+| A push larger than the free space the phone reports | `NO_SPACE`, refused **before** the socket opens |
 
 **`ROOT_NOT_GRANTED` is not `PERMISSION_DENIED`.** `PERMISSION_DENIED` greys out the pane, which is
 right when a capability has no grant at all and **wrong** here: the feature works, the user has added

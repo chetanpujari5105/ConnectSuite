@@ -4,6 +4,7 @@ import android.content.Context
 import com.chetan.connectsuite.core.link.LinkLog
 import java.io.File
 import java.io.InputStream
+import java.io.OutputStream
 
 /**
  * The app's own folder — the one root that always exists, granted or not.
@@ -132,5 +133,70 @@ class AppFilesStore(context: Context) : FsStore {
         val file = fileFor(id) ?: return null
         if (!file.isFile) return null
         return runCatching { file.inputStream() }.getOrNull()
+    }
+
+    override fun openPartial(segments: List<String>, name: String): FsPartial? {
+        val dir = resolve(FsPaths.joinPath(segments)) ?: return null
+        if (!dir.isDirectory) return null
+        // `resolve` is the escape check and it is applied to the partial's own path too, not only to
+        // the directory: `name` comes off the wire, and a directory that resolves does not make
+        // every child of it safe.
+        val part = resolve(
+            FsPaths.joinPath(segments + FsPartials.partNameFor(name)),
+        ) ?: return null
+        val finalFile = resolve(FsPaths.joinPath(segments + name)) ?: return null
+        return LocalPartial(part, finalFile)
+    }
+
+    /**
+     * A partial in the app's own folder — the same three endings as [SafTreeStore.SafPartial], on a
+     * real filesystem where each of them is one call.
+     *
+     * It exists because this root is the one that cannot fail: no grant, no provider, no user. When
+     * a push has nowhere else to land it lands here, and the convention has to hold identically or
+     * the fallback would be the place the rules quietly stop applying.
+     */
+    private inner class LocalPartial(
+        private val part: File,
+        private val finalFile: File,
+    ) : FsPartial {
+
+        override val bytesOnDisk: Long
+            get() = if (part.isFile) part.length() else 0L
+
+        override fun append(): OutputStream? = runCatching {
+            part.parentFile?.mkdirs()
+            java.io.FileOutputStream(part, true)
+        }.getOrElse {
+            LinkLog.w("fs", "$rootId could not open ${part.name} for append", it)
+            null
+        }
+
+        override fun read(): InputStream? =
+            if (part.isFile) runCatching { part.inputStream() }.getOrNull() else null
+
+        override fun commit(): FsPaths.Entry? {
+            val sidecar = File(finalFile.parentFile, FsPartials.failedNameFor(finalFile.name))
+            if (sidecar.exists()) sidecar.delete()
+            if (finalFile.exists()) finalFile.delete()
+            return if (part.renameTo(finalFile)) {
+                entryOf(finalFile)
+            } else {
+                LinkLog.e("fs", "$rootId could not rename ${part.name} to ${finalFile.name}")
+                null
+            }
+        }
+
+        override fun discardAsFailed(sidecar: String) {
+            if (!part.delete()) {
+                LinkLog.e("fs", "$rootId could not delete the corrupt ${part.name}")
+            }
+            runCatching {
+                File(finalFile.parentFile, FsPartials.failedNameFor(finalFile.name))
+                    .writeText(sidecar)
+            }.onFailure { LinkLog.w("fs", "$rootId could not write the .failed sidecar", it) }
+        }
+
+        override fun keep() = Unit
     }
 }

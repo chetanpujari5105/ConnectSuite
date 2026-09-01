@@ -4,6 +4,10 @@ import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import com.chetan.connectsuite.core.data.ConnectSuiteDatabase
+import com.chetan.connectsuite.core.data.TransferDirection
+import com.chetan.connectsuite.core.data.TransferEntity
+import com.chetan.connectsuite.core.data.TransferStatus
 import com.chetan.connectsuite.core.link.AuthenticatedChannel
 import com.chetan.connectsuite.core.link.BulkFraming
 import com.chetan.connectsuite.core.link.LinkLog
@@ -11,6 +15,7 @@ import com.chetan.connectsuite.core.protocol.Envelope
 import com.chetan.connectsuite.core.protocol.ErrorCode
 import com.chetan.connectsuite.core.protocol.Link
 import com.chetan.connectsuite.core.protocol.MessageType
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.InputStream
@@ -82,6 +87,38 @@ object BulkTransfers {
     )
 
     private val pending = ConcurrentHashMap<String, Pending>()
+
+    /**
+     * A push the phone has agreed to receive and no socket has claimed yet.
+     *
+     * Separate from [pending] rather than a `direction` field on it, because the two share almost
+     * nothing: a pull holds a source and streams out, a push holds a partial on disk, a resume
+     * offset the phone chose, and a Room row that outlives the process. One type carrying both would
+     * be half-null in either direction, and the half that is null is different each time.
+     */
+    data class Incoming(
+        val transferId: String,
+        val name: String,
+        val size: Long,
+        val sessionId: String,
+        /** The digest the **Mac** agreed before sending, or null when it did not pre-hash. */
+        val sha256: String?,
+        /** Where the phone told the Mac to start. The digest must still cover byte 0 onward. */
+        val offset: Long,
+        val partial: FsPartial,
+        /** `rootId/path` and the file name — how the Room row is found again on a later attempt. */
+        val recordPath: String,
+        val rootLabel: String,
+        /**
+         * The **application** context, for the record writes on the socket thread.
+         *
+         * Application rather than whatever was handed in: this map outlives any activity, and an
+         * unclaimed push can sit here for the length of a session.
+         */
+        val context: Context,
+    )
+
+    private val incoming = ConcurrentHashMap<String, Incoming>()
 
     /**
      * Transfers a `fs.transfer.cancel` has asked to stop, checked once per chunk.
@@ -298,8 +335,17 @@ object BulkTransfers {
     fun forgetSession(sessionId: String) {
         val dropped = pending.entries.filter { it.value.sessionId == sessionId }
         dropped.forEach { pending.remove(it.key) }
-        if (dropped.isNotEmpty()) {
-            LinkLog.i("bulk", "session ended: dropped ${dropped.size} unclaimed transfer(s)")
+        // An unclaimed push is dropped too, and its partial is **kept**: the bytes on disk are a
+        // resumable artifact and the record beside them is what a later attempt looks up. Deleting
+        // here would turn every dropped session into a restart from zero.
+        val abandoned = incoming.entries.filter { it.value.sessionId == sessionId }
+        abandoned.forEach { incoming.remove(it.key)?.partial?.keep() }
+        if (dropped.isNotEmpty() || abandoned.isNotEmpty()) {
+            LinkLog.i(
+                "bulk",
+                "session ended: dropped ${dropped.size} unclaimed pull(s) and " +
+                    "${abandoned.size} unclaimed push(es); partials kept",
+            )
         }
     }
 
@@ -347,6 +393,12 @@ object BulkTransfers {
             (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull()
         } ?: 0L
 
+        val arriving = transferId?.let { incoming.remove(it) }
+        if (arriving != null) {
+            receiveFrom(channel, framing, arriving)
+            return
+        }
+
         val entry = transferId?.let { pending.remove(it) }
         if (entry == null) {
             failed.incrementAndGet()
@@ -365,6 +417,420 @@ object BulkTransfers {
         }
 
         streamTo(channel, framing, entry, offset)
+    }
+
+    /**
+     * Agrees a push and returns what the ack must carry, or null when the destination is unusable.
+     *
+     * ### The resume offset is decided here, from the record and never from the filename
+     *
+     * `docs/protocol.md`: *anything that decides to append to, delete or overwrite consults the
+     * transfer record, not the filename.* A granted tree is `DCIM` or `Documents`, shared with every
+     * downloader on the device, and all of them write `.part` files. Resuming from an unrecorded
+     * partial would mean **appending our bytes to a stranger's half-finished download and then
+     * renaming the result over their file** — so [FsPartials.resumeFrom] refuses without a record
+     * and the refusal is logged with its reason.
+     */
+    fun registerFsPush(
+        context: Context,
+        store: FsStore,
+        segments: List<String>,
+        name: String,
+        size: Long,
+        sha256: String?,
+        sessionId: String,
+    ): Incoming? {
+        val partial = store.openPartial(segments, name) ?: return null
+        val recordPath = "${store.rootId}/${FsPaths.joinPath(segments)}"
+        val recorded = runBlocking {
+            runCatching {
+                ConnectSuiteDatabase.get(context).transferDao().findIncomingAt(recordPath, name)
+            }.getOrNull()
+        }
+        // Passed straight through, not `takeIf { it > 0 }`. `openPartial` always leaves a partial,
+        // so an empty one is "the partial is empty" and never "there is no partial file" — two
+        // reasons that exist precisely to be told apart in the log, and collapsing them once
+        // already made a zero-byte resume read as a missing file.
+        val decision = FsPartials.resumeFrom(
+            partBytes = partial.bytesOnDisk,
+            recordedBytes = recorded?.bytesTransferred,
+            totalBytes = size,
+        )
+        val offset = when (decision) {
+            is FsPartials.Resume.FromOffset -> decision.offset
+            is FsPartials.Resume.FromZero -> {
+                // Logged with the reason on the line, because "starting from zero" and "resuming"
+                // are indistinguishable in a byte count and the reason is what tells a stranger's
+                // partial from our own.
+                LinkLog.i(
+                    "bulk",
+                    "push of $name into ${store.rootId} starts at 0: ${decision.why}",
+                )
+                0L
+            }
+        }
+
+        val transferId = nextId()
+        val now = System.currentTimeMillis()
+        runBlocking {
+            runCatching {
+                ConnectSuiteDatabase.get(context).transferDao().upsert(
+                    TransferEntity(
+                        transferId = transferId,
+                        jobId = sessionId,
+                        peerDeviceId = sessionId,
+                        direction = TransferDirection.INCOMING,
+                        fileName = name,
+                        relativePath = recordPath,
+                        mimeType = "application/octet-stream",
+                        totalBytes = size,
+                        bytesTransferred = offset,
+                        status = TransferStatus.PENDING,
+                        checksum = sha256,
+                        localUri = null,
+                        startedAtMillis = now,
+                        updatedAtMillis = now,
+                    ),
+                )
+            }.onFailure {
+                // A push with no row is a push that cannot resume. It is allowed to proceed — losing
+                // resume is better than refusing the transfer — and the loss is said out loud rather
+                // than discovered later as "resume does not work".
+                LinkLog.w("bulk", "push $transferId has no record; it will not be resumable", it)
+            }
+        }
+
+        val entry = Incoming(
+            transferId = transferId,
+            name = name,
+            size = size,
+            sessionId = sessionId,
+            sha256 = sha256,
+            offset = offset,
+            partial = partial,
+            recordPath = recordPath,
+            rootLabel = store.label,
+            context = context.applicationContext,
+        )
+        incoming[transferId] = entry
+        return entry
+    }
+
+    /**
+     * Receives one push, start to finish.
+     *
+     * The mirror of [streamTo], and the digest rule is the same one from the other side: **it covers
+     * the whole file, not the part that moved.** On a resume the bytes already on disk are read back
+     * and fed through the digest before the first arriving chunk, because the digest the Mac agreed
+     * is over the whole file — a digest that started at the offset would report `CHECKSUM_MISMATCH`
+     * on a byte-perfect file and then delete the partial the phone already held.
+     */
+    private fun receiveFrom(channel: AuthenticatedChannel, framing: BulkFraming, entry: Incoming) {
+        val startedAt = System.currentTimeMillis()
+        var received = 0L
+        var lastReport = 0L
+        var lastRecord = 0L
+        val digest = MessageDigest.getInstance("SHA-256")
+        val context = entry.context
+
+        try {
+            if (entry.offset > 0) {
+                digestExistingPartial(entry, digest)
+                LinkLog.i(
+                    "bulk",
+                    "${entry.transferId} resuming at ${entry.offset} of ${entry.size}; the digest " +
+                        "covers the bytes already on disk",
+                )
+            }
+
+            val out = entry.partial.append()
+                ?: throw IllegalStateException("the partial could not be opened for append")
+            out.use { sink ->
+                while (true) {
+                    if (entry.transferId in cancelled) {
+                        cancelled.remove(entry.transferId)
+                        throw java.io.InterruptedIOException(
+                            "cancelled by the Mac after $received bytes",
+                        )
+                    }
+                    val chunk = framing.readChunk() ?: break
+                    if (chunk.isEmpty()) continue
+                    sink.write(chunk)
+                    digest.update(chunk, 0, chunk.size)
+                    received += chunk.size
+
+                    val now = System.currentTimeMillis()
+                    if (now - lastReport >= PROGRESS_INTERVAL_MS) {
+                        lastReport = now
+                        reportIncoming(channel, entry, entry.offset + received, startedAt)
+                    }
+                    // The record is what a later attempt resumes from, so it is written as the bytes
+                    // land rather than at the end. A row updated only on success would make every
+                    // interruption — the one case resume exists for — restart from zero.
+                    if (now - lastRecord >= 1_000) {
+                        lastRecord = now
+                        updateRecord(context, entry, entry.offset + received, TransferStatus.RUNNING)
+                    }
+                }
+                sink.flush()
+            }
+
+            val total = entry.offset + received
+            val elapsed = System.currentTimeMillis() - startedAt
+            val sha = digest.digest().joinToString("") { "%02x".format(it) }
+            val expected = entry.sha256
+
+            // **A stream that ended early is an interruption, not a completion — and without this
+            // check a truncated push with no agreed digest would be committed as the finished
+            // file.** The digest cannot catch it: when the Mac sent no `sha256` there is nothing to
+            // compare against, so the length agreed on the control channel is the only thing that
+            // knows the transfer is short. Found by the resume probe, which cut a 24 MB push in
+            // half and watched the phone treat the half as done.
+            //
+            // The partial is KEPT and the record holds what arrived, which is what makes the next
+            // attempt resume rather than restart.
+            if (total < entry.size) {
+                failed.incrementAndGet()
+                entry.partial.keep()
+                updateRecord(context, entry, total, TransferStatus.PAUSED)
+                LinkLog.w(
+                    "bulk",
+                    "${entry.transferId} ${entry.name} ended early: $total of ${entry.size} bytes. " +
+                        "The partial is kept and the next attempt resumes from it — ${tally()}",
+                )
+                sendDone(channel, entry.transferId) {
+                    put("ok", false)
+                    put("code", ErrorCode.TRANSFER_FAILED)
+                    put(
+                        "message",
+                        "${entry.name} stopped after $total of ${entry.size} bytes and can be " +
+                            "resumed.",
+                    )
+                    put("bytes", total)
+                    put("elapsedMs", elapsed)
+                    put("verified", false)
+                }
+                return
+            }
+            if (total > entry.size) {
+                // More than was agreed. The digest would catch it when one exists, and nothing would
+                // when it does not — so it is caught here, and the bytes go rather than being
+                // committed at the final name.
+                failed.incrementAndGet()
+                entry.partial.discardAsFailed(
+                    FsPartials.sidecarText(
+                        name = entry.name,
+                        whenIso = nowIso(),
+                        bytes = total,
+                        expected = "${entry.size} bytes",
+                        actual = "$total bytes",
+                    ),
+                )
+                updateRecord(context, entry, 0L, TransferStatus.FAILED)
+                LinkLog.e(
+                    "bulk",
+                    "${entry.transferId} ${entry.name} overran: $total bytes where ${entry.size} " +
+                        "were agreed. The partial was deleted — ${tally()}",
+                )
+                sendDone(channel, entry.transferId) {
+                    put("ok", false)
+                    put("code", ErrorCode.TRANSFER_FAILED)
+                    put("message", "${entry.name} sent more bytes than were agreed, so it was discarded.")
+                    put("bytes", total)
+                    put("elapsedMs", elapsed)
+                    put("verified", false)
+                }
+                return
+            }
+
+            if (expected != null && expected != sha) {
+                failed.incrementAndGet()
+                entry.partial.discardAsFailed(
+                    FsPartials.sidecarText(
+                        name = entry.name,
+                        whenIso = nowIso(),
+                        bytes = total,
+                        expected = expected,
+                        actual = sha,
+                    ),
+                )
+                updateRecord(context, entry, 0L, TransferStatus.FAILED)
+                LinkLog.e(
+                    "bulk",
+                    "${entry.transferId} ${entry.name} arrived corrupt: agreed ${expected.take(12)}…, " +
+                        "received ${sha.take(12)}… over $total bytes. The partial was deleted and a " +
+                        "${FsPartials.failedNameFor(entry.name)} note left in its place — ${tally()}",
+                )
+                sendDone(channel, entry.transferId) {
+                    put("ok", false)
+                    put("code", ErrorCode.CHECKSUM_MISMATCH)
+                    put(
+                        "message",
+                        "${entry.name} arrived on the phone with the wrong contents, so it was " +
+                            "deleted. Sending it again starts from zero.",
+                    )
+                    put("bytes", total)
+                    put("elapsedMs", elapsed)
+                    put("verified", false)
+                    put("sha256", sha)
+                }
+                return
+            }
+
+            val finished = entry.partial.commit()
+            if (finished == null) {
+                failed.incrementAndGet()
+                updateRecord(context, entry, total, TransferStatus.FAILED)
+                LinkLog.e(
+                    "bulk",
+                    "${entry.transferId} received all $total bytes and could not rename the partial " +
+                        "to ${entry.name}; the partial is kept — ${tally()}",
+                )
+                sendDone(channel, entry.transferId) {
+                    put("ok", false)
+                    put("code", ErrorCode.TRANSFER_FAILED)
+                    put(
+                        "message",
+                        "${entry.name} arrived but the phone could not put it in place. The partial " +
+                            "is still there and sending again will resume.",
+                    )
+                    put("bytes", total)
+                    put("elapsedMs", elapsed)
+                    put("verified", false)
+                }
+                return
+            }
+
+            completed.incrementAndGet()
+            updateRecord(context, entry, total, TransferStatus.COMPLETED)
+            reportIncoming(channel, entry, total, startedAt)
+            sendDone(channel, entry.transferId) {
+                put("ok", true)
+                put("bytes", total)
+                put("elapsedMs", elapsed)
+                put("verified", expected != null)
+                put("sha256", sha)
+            }
+            LinkLog.i(
+                "bulk",
+                "${entry.transferId} received ${entry.name} into ${entry.rootLabel}: $total bytes " +
+                    "in ${elapsed}ms (${rateOf(received, elapsed)}), sha256=${sha.take(12)}…, " +
+                    "verified=${expected != null} " +
+                    (if (expected != null) "(agreed in advance and matched)" else "(nothing was agreed in advance)") +
+                    " — ${tally()}; ${framing.tally.summary()}",
+            )
+        } catch (e: Exception) {
+            failed.incrementAndGet()
+            val total = entry.offset + received
+            val elapsed = System.currentTimeMillis() - startedAt
+            // The partial is KEPT. An interrupted push is a resumable artifact and the record beside
+            // it is what the next attempt looks up — the opposite of the checksum path above, and
+            // the difference is the whole reason both exist.
+            entry.partial.keep()
+            updateRecord(context, entry, total, TransferStatus.PAUSED)
+            LinkLog.e(
+                "bulk",
+                "${entry.transferId} stopped after $received bytes ($total of ${entry.size}) in " +
+                    "${elapsed}ms; the partial is kept and is resumable — ${tally()}; " +
+                    framing.tally.summary(),
+                e,
+            )
+            runCatching {
+                sendDone(channel, entry.transferId) {
+                    put("ok", false)
+                    put("code", ErrorCode.TRANSFER_FAILED)
+                    put("message", "${entry.name} stopped after $total bytes and can be resumed.")
+                    put("bytes", total)
+                    put("elapsedMs", elapsed)
+                    put("verified", false)
+                }
+            }
+        } finally {
+            channel.close()
+        }
+    }
+
+    /**
+     * Feeds the bytes already on disk through [digest] before the first arriving chunk.
+     *
+     * The receive-side twin of [digestSkipped]. It reads the partial back rather than trusting the
+     * recorded length, because the digest must cover the bytes that are **actually there**.
+     */
+    private fun digestExistingPartial(entry: Incoming, digest: MessageDigest) {
+        val stream = entry.partial.read()
+            ?: throw IllegalStateException("the partial could not be read back for the digest")
+        stream.use { input ->
+            val buffer = ByteArray(CHUNK)
+            var covered = 0L
+            while (covered < entry.offset) {
+                val want = minOf(CHUNK.toLong(), entry.offset - covered).toInt()
+                val read = input.read(buffer, 0, want)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+                covered += read
+            }
+            if (covered != entry.offset) {
+                throw IllegalStateException(
+                    "the partial holds $covered bytes where the resume offset says ${entry.offset}",
+                )
+            }
+        }
+    }
+
+    private fun nowIso(): String = java.text.SimpleDateFormat(
+        "yyyy-MM-dd'T'HH:mm:ssXXX",
+        java.util.Locale.US,
+    ).format(java.util.Date())
+
+    private fun updateRecord(
+        context: Context,
+        entry: Incoming,
+        bytes: Long,
+        status: TransferStatus,
+    ) {
+        runBlocking {
+            runCatching {
+                val dao = ConnectSuiteDatabase.get(context).transferDao()
+                dao.updateProgress(entry.transferId, bytes, System.currentTimeMillis())
+                dao.updateStatus(entry.transferId, status, null, System.currentTimeMillis())
+            }.onFailure { LinkLog.w("bulk", "${entry.transferId} record update failed", it) }
+        }
+    }
+
+    private fun reportIncoming(
+        channel: AuthenticatedChannel,
+        entry: Incoming,
+        bytes: Long,
+        startedAt: Long,
+    ) {
+        val elapsed = (System.currentTimeMillis() - startedAt).coerceAtLeast(1)
+        channel.session.send(
+            Envelope(
+                type = MessageType.FS_TRANSFER_PROGRESS,
+                payload = buildJsonObject {
+                    put("transferId", entry.transferId)
+                    put("bytes", bytes)
+                    put("total", entry.size)
+                    put("bytesPerSecond", (bytes - entry.offset) * 1000 / elapsed)
+                },
+            ),
+        )
+    }
+
+    private fun sendDone(
+        channel: AuthenticatedChannel,
+        transferId: String,
+        body: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit,
+    ) {
+        channel.session.send(
+            Envelope(
+                type = MessageType.FS_TRANSFER_DONE,
+                payload = buildJsonObject {
+                    put("transferId", transferId)
+                    body()
+                },
+            ),
+        )
     }
 
     private fun streamTo(

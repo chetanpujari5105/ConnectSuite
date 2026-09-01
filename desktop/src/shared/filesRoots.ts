@@ -117,6 +117,22 @@ function uploadAffordance(pushAvailable: boolean): boolean {
   return pushAvailable;
 }
 
+/**
+ * Whether the phone said it will receive files, read from the roots ack.
+ *
+ * **Absent is `false`, and so is anything that is not the boolean `true`.** Every phone built before
+ * push shipped omits this field, so reading a missing value as "unknown" — or worse, as a reason to
+ * try — puts a drop target over a phone that answers `FEATURE_UNAVAILABLE`. The asymmetry is the
+ * same one the phone applies to `overwrite`: guessing yes costs the user something, guessing no
+ * costs a feature that reappears on the next ack.
+ *
+ * One home because it has two readers — the main process caches it, the renderer draws from it —
+ * and two spellings of "absent means no" is one spelling away from a tile nobody can explain.
+ */
+function pushOffered(raw: unknown): boolean {
+  return raw === true;
+}
+
 /** The view for a fetch state. Pure, total, and the only place this copy exists. */
 function filesPaneView(fetch: FilesFetch, pushAvailable: boolean): FilesPaneView {
   const degraded = !pushAvailable;
@@ -230,6 +246,7 @@ if (typeof module !== 'undefined') {
   module.exports = {
     filesPaneView,
     uploadAffordance,
+    pushOffered,
     freeSpace,
     loadedFooter,
     DOWNLOAD_WALL,

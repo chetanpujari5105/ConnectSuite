@@ -1,4 +1,15 @@
+import { createHash } from 'node:crypto';
+import { createReadStream, promises as fsp } from 'node:fs';
+import { basename } from 'node:path';
 import { MessageType, type PhoneResult } from '../shared/protocol';
+import type { BulkClient } from './bulk';
+
+// `shared/filesRoots.ts` is a plain script, not a module — it has to be loadable by a `<script>` tag
+// in the CSP-locked renderer, so it has no top-level `export` and a `module.exports` shim instead.
+// Same file, three consumers; `pushOffered` must have one home because it has two readers.
+const sharedRoots = require('../shared/filesRoots') as {
+  pushOffered: (raw: unknown) => boolean;
+};
 import { ask, rows } from './feature';
 import type { LinkClient } from './link';
 import { log } from './logger';
@@ -20,12 +31,45 @@ import { log } from './logger';
  * feature into a dead one. The pane draws what the phone says, including the phone's own sentence
  * when `files` is not advertised.
  */
+/** What a push attempt reports back to the renderer. The phone's verdict arrives separately. */
+export interface PushOutcome {
+  ok: boolean;
+  transferId?: string;
+  bytes?: number;
+  elapsedMs?: number;
+  reason?: string;
+  fixHint?: string;
+  code?: string;
+  resumedFrom?: number;
+}
+
+/**
+ * The ceiling above which a file is sent without a digest agreed in advance.
+ *
+ * The same number the phone uses on a pull, for the same reason: hashing first means reading the
+ * file twice, and a 4 GB video would hold the control channel for the length of a full read with no
+ * progress to report. Above it the transfer is honest about being unverified rather than silently
+ * downgraded.
+ */
+const PREHASH_CEILING = 64 * 1024 * 1024;
+
 export class FilesClient {
   private listCount = 0;
   private rootsCount = 0;
   private failures = 0;
 
-  constructor(private readonly link: () => LinkClient | null) {}
+  constructor(
+    private readonly link: () => LinkClient | null,
+    private readonly bulk: () => BulkClient | null,
+    private readonly session: () => { host: string | null; token: string | null },
+  ) {}
+
+  /** Whether the phone said it will receive files. Absent in the roots ack means **no**. */
+  private pushServed = false;
+
+  pushAvailable(): boolean {
+    return this.pushServed;
+  }
 
   /**
    * The roots, from `fs.list` with no `rootId`. There is no `fs.roots` and there should not be one.
@@ -33,7 +77,9 @@ export class FilesClient {
    * `grantHint` is rendered verbatim and never parsed — the same standing the capability
    * `unavailable` strings have.
    */
-  async roots(): Promise<PhoneResult<{ roots: FsRootRow[]; grantHint: string | null }>> {
+  async roots(): Promise<
+    PhoneResult<{ roots: FsRootRow[]; grantHint: string | null; push: boolean }>
+  > {
     const result = await ask(
       this.link(),
       'files',
@@ -42,10 +88,14 @@ export class FilesClient {
       (payload) => ({
         roots: rows(payload, 'roots').map(toRoot),
         grantHint: typeof payload.grantHint === 'string' ? payload.grantHint : null,
+        // Absent means false. Every phone built before push shipped omits this, and reading a
+        // missing field as "unknown" would end with a drop target over a phone that cannot receive.
+        push: sharedRoots.pushOffered(payload.push),
       }),
     );
     if (result.ok) {
       this.rootsCount += 1;
+      this.pushServed = result.data.push;
       // The success line, with the denominator beside it — a count on its own reads as whichever
       // story the reader already believes.
       log.info(
@@ -113,6 +163,129 @@ export class FilesClient {
     }
     return result;
   }
+
+  /**
+   * Sends one local file to a folder the phone has shared.
+   *
+   * ### The verdict is not decided here, and that is deliberate
+   *
+   * This resolves when the bytes are written. **Whether they were right is the phone's to say**, on
+   * `fs.transfer.done` over the control channel, because the phone is the receiver and the receiver
+   * is the side that hashes what actually landed. A Mac that reported success here would be saying
+   * *I finished sending*, dressed as *the file is on the phone* — the same collapse `verified`
+   * exists to prevent on a pull.
+   *
+   * ### The digest is computed before anything is agreed
+   *
+   * The phone compares what lands against this number, so it must be over the whole file and must
+   * exist before `fs.transfer.begin`. Above [PREHASH_CEILING] it is skipped, the phone is told
+   * nothing, and `fs.transfer.done` reports `verified: false`.
+   *
+   * ### `overwrite` is not sent unless the caller asked for it
+   *
+   * The phone refuses with `TARGET_STALE` when something is already at that name, and that refusal
+   * is the only thing between a push and a file the user already had. Defaulting it here would
+   * remove the protection from the side that does not own the data.
+   */
+  async push(options: {
+    rootId: string;
+    path: string;
+    source: string;
+    overwrite?: boolean;
+  }): Promise<PushOutcome> {
+    const link = this.link();
+    if (!link?.isConnected()) return { ok: false, reason: 'The phone is not connected.' };
+    const bulk = this.bulk();
+    const { host, token } = this.session();
+    if (!bulk || !host || !token) {
+      return { ok: false, reason: 'The file channel is not ready.' };
+    }
+
+    const name = basename(options.source);
+    let size: number;
+    try {
+      size = (await fsp.stat(options.source)).size;
+    } catch (error) {
+      return { ok: false, reason: `Could not read ${name}: ${(error as Error).message}` };
+    }
+
+    const sha256 = size <= PREHASH_CEILING ? await digestOf(options.source) : null;
+    if (sha256 === null) {
+      log.info(
+        'files',
+        `${name} is ${size} bytes; no digest was agreed in advance, so this transfer will report ` +
+          'verified=false',
+      );
+    }
+
+    const agreed = await ask(
+      link,
+      'files',
+      MessageType.FS_TRANSFER_BEGIN,
+      {
+        direction: 'push',
+        rootId: options.rootId,
+        path: options.path,
+        name,
+        size,
+        ...(sha256 ? { sha256 } : {}),
+        ...(options.overwrite ? { overwrite: true } : {}),
+      },
+      (payload) => ({
+        transferId: String(payload.transferId ?? ''),
+        offset: typeof payload.offset === 'number' ? payload.offset : 0,
+        chunkMax: typeof payload.chunkMax === 'number' ? payload.chunkMax : 262144,
+      }),
+    );
+    if (!agreed.ok) {
+      this.failures += 1;
+      log.warn('files', `push of ${name} refused: ${agreed.reason}`);
+      return {
+        ok: false,
+        reason: agreed.reason,
+        ...(agreed.fixHint ? { fixHint: agreed.fixHint } : {}),
+        ...(agreed.code ? { code: agreed.code } : {}),
+      };
+    }
+
+    const result = await bulk.push({
+      host,
+      token,
+      transferId: agreed.data.transferId,
+      source: options.source,
+      offset: agreed.data.offset,
+      totalBytes: size,
+      chunkMax: agreed.data.chunkMax,
+    });
+    if (result.ok) {
+      log.info(
+        'files',
+        `pushed ${name} (${result.bytes} bytes) to ${options.rootId}/${options.path}` +
+          `${agreed.data.offset > 0 ? `, resumed from ${agreed.data.offset}` : ''}; the phone ` +
+          'reports the verdict on fs.transfer.done',
+      );
+    } else {
+      this.failures += 1;
+    }
+    return {
+      ok: result.ok,
+      transferId: agreed.data.transferId,
+      bytes: result.bytes,
+      elapsedMs: result.elapsedMs,
+      ...(result.reason ? { reason: result.reason } : {}),
+      ...(agreed.data.offset > 0 ? { resumedFrom: agreed.data.offset } : {}),
+    };
+  }
+}
+
+async function digestOf(path: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const hash = createHash('sha256');
+    const stream = createReadStream(path);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('error', () => resolve(null));
+  });
 }
 
 function toRoot(row: Record<string, unknown>): FsRootRow {

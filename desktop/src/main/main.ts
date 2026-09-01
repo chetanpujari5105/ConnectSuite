@@ -8,7 +8,7 @@ import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ContactsClient } from './contacts';
 import { createHash } from 'node:crypto';
-import { promises as fsp } from 'node:fs';
+import { createReadStream, promises as fsp } from 'node:fs';
 import { BulkClient } from './bulk';
 import { partPathFor } from '../shared/transferFiles';
 import { FilesClient } from './files';
@@ -77,7 +77,11 @@ const photos = new PhotosClient(
  * `FEATURE_UNAVAILABLE` and `docs/protocol.md` forbids the affordance, so the decision lives in the
  * client rather than in the renderer where the canvas's drop tile would find it.
  */
-const files = new FilesClient(() => link);
+const files = new FilesClient(
+  () => link,
+  () => bulk,
+  () => ({ host: link?.status().address ?? null, token: link?.token() ?? null }),
+);
 
 /**
  * What is playing on the phone. Pushed by the phone, asked for once on connect.
@@ -778,6 +782,11 @@ ipcMain.handle(
 
 ipcMain.handle('fs-roots', () => files.roots());
 ipcMain.handle(
+  'fs-push',
+  (_event, options: { rootId: string; path: string; source: string; overwrite?: boolean }) =>
+    files.push(options),
+);
+ipcMain.handle(
   'fs-list',
   (
     _event,
@@ -817,6 +826,96 @@ ipcMain.handle('media-original', (_event, options: { id: string }) => photos.ori
  * offered as `offset`, and the resumed transfer's digest equals a whole-file digest of the source.
  */
 if (!app.isPackaged) {
+  /**
+   * The push half of the resume probe: interrupt a send, then send it again and read the offset.
+   *
+   * The phone is the receiver here, so **the phone decides the resume point** — the number comes
+   * back in the `fs.transfer.begin` ack rather than being chosen by this side. That is the whole
+   * point of the reading: `offset` was `0` for two slices because nothing had ever been the
+   * receiver, and this is what makes it a real number.
+   */
+  ipcMain.handle('debug-push-resume-probe', async (_event, options: {
+    rootId: string;
+    path: string;
+    source: string;
+  }) => {
+    if (!link?.isConnected() || !bulk) return { ok: false, reason: 'not connected' };
+    const host = link.status().address;
+    const token = link.token();
+    if (!host || !token) return { ok: false, reason: 'no live session' };
+
+    const size = (await fsp.stat(options.source)).size;
+    const name = options.source.split('/').pop() ?? 'probe.bin';
+
+    // The digest is agreed in advance, exactly as `FilesClient.push` does it. Without it the run
+    // would prove resume and say nothing about whether the resumed bytes were right — and the
+    // resumed digest starting in the wrong place is the failure the whole design is arranged
+    // around.
+    const sha256 = await new Promise<string>((resolve) => {
+      const hash = createHash('sha256');
+      const stream = createReadStream(options.source);
+      stream.on('data', (chunk: Buffer | string) => hash.update(chunk));
+      stream.on('end', () => resolve(hash.digest('hex')));
+    });
+
+    const begin = async () =>
+      link!.request(
+        MessageType.FS_TRANSFER_BEGIN,
+        {
+          direction: 'push',
+          rootId: options.rootId,
+          path: options.path,
+          name,
+          size,
+          sha256,
+          overwrite: true,
+        },
+        10_000,
+      );
+
+    const first = await begin();
+    const p1 = (first.payload ?? {}) as Record<string, unknown>;
+    const firstOffset = Number(p1.offset ?? 0);
+    const cut = await bulk.push({
+      host,
+      token,
+      transferId: String(p1.transferId ?? ''),
+      source: options.source,
+      offset: firstOffset,
+      totalBytes: size,
+      chunkMax: Number(p1.chunkMax ?? 262144),
+      interruptAfterBytes: Math.floor(size / 2),
+    });
+
+    // A second agreement: one transferId, one bulk connection, and the first was consumed.
+    const second = await begin();
+    const p2 = (second.payload ?? {}) as Record<string, unknown>;
+    const resumedOffset = Number(p2.offset ?? 0);
+    const finish = await bulk.push({
+      host,
+      token,
+      transferId: String(p2.transferId ?? ''),
+      source: options.source,
+      offset: resumedOffset,
+      totalBytes: size,
+      chunkMax: Number(p2.chunkMax ?? 262144),
+    });
+
+    return {
+      ok: true,
+      size,
+      firstOffset,
+      sentBeforeCut: cut.bytes,
+      // The reading. A non-zero number here is the phone saying what it already holds.
+      resumedOffset,
+      resumedSent: finish.bytes,
+      sha256,
+      // What the instrument itself imposed, reported so a result shaped by it cannot be read as a
+      // result about the mechanism.
+      cutAt: Math.floor(size / 2),
+    };
+  });
+
   ipcMain.handle('debug-resume-probe', async (_event, options: { id: string }) => {
     if (!link?.isConnected() || !bulk) return { ok: false, reason: 'not connected' };
     const host = link.status().address;

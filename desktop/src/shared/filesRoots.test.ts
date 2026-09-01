@@ -6,6 +6,7 @@ const {
   filesPaneView,
   freeSpace,
   loadedFooter,
+  pushOffered,
   uploadAffordance,
 } = require('./filesRoots.ts');
 
@@ -121,6 +122,15 @@ test('no upload affordance while push is unavailable, in every state', () => {
   }
   assert.equal(uploadAffordance(true), true, 'the tile must return when push ships');
   assert.equal(filesPaneView(ready([appRoot]), true).degraded, false);
+});
+
+test('a phone that does not mention push is a phone that cannot receive', () => {
+  // Every phone built before push shipped omits the field. Reading that as "unknown" — or as a
+  // reason to try — puts a drop target over a phone that answers FEATURE_UNAVAILABLE.
+  assert.equal(pushOffered(true), true);
+  for (const raw of [undefined, null, false, 'true', 1, {}, []]) {
+    assert.equal(pushOffered(raw), false, `pushOffered(${JSON.stringify(raw)}) must be false`);
+  }
 });
 
 test('the footer never claims a total the phone did not send', () => {

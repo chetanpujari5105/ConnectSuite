@@ -16,6 +16,7 @@ import type {
   SmsMessage,
   SmsThread,
 } from './shared/protocol';
+import type { PushOutcome } from './main/files';
 import type { FloatState } from './main/float';
 
 /**
@@ -172,11 +173,12 @@ contextBridge.exposeInMainWorld('connect', {
   ): Promise<PhoneResult<PhoneContact>> => ipcRenderer.invoke('contacts-get', options),
 
   /**
-   * Files — reads only.
+   * Files, both directions.
    *
-   * There is no `fsPush` here and that is the point: `direction: "push"` answers
-   * `FEATURE_UNAVAILABLE`, and a bridge method that always failed is the thing a drop tile would
-   * eventually be wired to. The affordance returns when the verb does.
+   * `fsPush` landed with the phone's receiver; until then this comment said there was deliberately
+   * no push method, because a bridge call that always failed is what a drop tile would have been
+   * wired to. The affordance is still gated — on the phone's own `push` field in the roots ack, not
+   * on this method existing.
    */
   fsRoots: (): Promise<PhoneResult<{ roots: FsRootRow[]; grantHint: string | null }>> =>
     ipcRenderer.invoke('fs-roots'),
@@ -188,6 +190,19 @@ contextBridge.exposeInMainWorld('connect', {
     afterId?: string;
   }): Promise<PhoneResult<{ entries: FsEntryRow[]; hasMore: boolean }>> =>
     ipcRenderer.invoke('fs-list', options),
+  /**
+   * Sends one local file to the phone.
+   *
+   * `overwrite` is omitted unless the caller means it: the phone refuses with `TARGET_STALE` when
+   * something is already at that name, and that refusal is what stands between a push and a file
+   * the user already had.
+   */
+  fsPush: (options: {
+    rootId: string;
+    path: string;
+    source: string;
+    overwrite?: boolean;
+  }): Promise<PushOutcome> => ipcRenderer.invoke('fs-push', options),
 
   /**
    * The photo browser. Three verbs, because the fourth needs a socket nothing serves yet.
@@ -207,6 +222,11 @@ contextBridge.exposeInMainWorld('connect', {
   /** Debug builds only: exercises resume end to end. Absent from a packaged build's handlers. */
   debugResumeProbe: (options: { id: string }): Promise<unknown> =>
     ipcRenderer.invoke('debug-resume-probe', options),
+  debugPushResumeProbe: (options: {
+    rootId: string;
+    path: string;
+    source: string;
+  }): Promise<unknown> => ipcRenderer.invoke('debug-push-resume-probe', options),
   /** Debug builds only: drives `fs.list`, `fs.stat` and the traversal refusals over the real link. */
   debugFsProbe: (
     options: { rootId?: string; path?: string; limit?: number; pageCap?: number } = {},
