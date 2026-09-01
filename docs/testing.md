@@ -9359,6 +9359,49 @@ while (b) caps the table at 200, and fixing (b) without touching this makes it r
 
 Only **F-2 needs the protocol**. Everything else is one CSS rule, one constant, one concurrency
 
+### F-3 fixed · Multi-select and multi-file drag, with the 104 ms ceiling applied (2026-09-01)
+
+Measured on hardware in `DCIM/Camera`, 200 rows loaded of 16,377:
+
+| Gesture | Result |
+|---|---|
+| click row 0, ⇧-click row 2 | **3 rows selected**; card reads *"2 files selected"* |
+| ⌘-click row 6 | **4 rows selected** |
+| click row 0, ⇧-click row 39 | **40 rows selected**, `is-copying: 0` |
+
+The card on that last one:
+
+> 39 files selected · 403 MB — that is at least 4.1s of setup before any bytes move, so nothing is
+> copied until you drag them or press Copy to Mac. · 3 of 39 on this Mac. · **Copy 36 to this Mac**
+
+**The ceiling is applied, not only recorded.** A pull costs ~104 ms of fixed overhead — one control
+round trip and one TLS bulk connection each, before any bytes — so speculative copying is capped at
+**8 files** (~830 ms, inside the time it takes to move a hand to Finder). Above the cap nothing is
+spent and the card quotes what it would cost. 40 files selected started **zero** copies, which is the
+row that says the cap is load-bearing rather than decorative. The constant and the sentence read the
+same `PULL_OVERHEAD_MS`, so the guard and the explanation cannot drift apart.
+
+`startDrag`'s `files?: string[]` is now exercised rather than only verified in the typings. Every
+path is checked to exist **before any of them is dragged**: a partial multi-file drag would hand
+Finder some of a selection with nothing saying which, which is defect 56's shape on the Mac side.
+
+**Two readings that were checked rather than assumed**, both of which looked like defects:
+
+- *"3 rows selected but 2 files selected"* — row 0 is `Cshot`, a **directory**, correctly excluded
+  from the file set. Not an off-by-one.
+- *"2 files selected · 0 KB"* — rows 1 and 2 are `.temp-20250807_…` and `.temp-20250821_…`, and the
+  size column independently reads **`0 B`** for both. They are genuinely zero-byte files. The reading
+  was right and the *wording* was wrong: the summary said `0 KB` where the column says `0 B`, and the
+  unit is now shared.
+
+**What this run could not test, and why it is stated rather than omitted.** The first attempt ran in
+`Received files`, which holds **2 files** — not enough rows for a ⇧-range or a ⌘-add. The probe
+reported `only 2 rows` rather than a selection count, which is the instrument naming its own limit
+instead of returning a number shaped by it. The run above was re-done in a directory with 16,377
+entries. A native Finder **drop** of several files still cannot be driven from CDP; what is measured
+is the selection, the cap, and the paths handed to `fsDrag`.
+
+
 ### F-1 · The first drag is a drag — copy starts on selection (2026-09-01)
 
 On hardware, the grant-free `Received files` root:

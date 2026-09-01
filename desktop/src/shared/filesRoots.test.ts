@@ -11,6 +11,7 @@ const {
   sharedFolderCount,
   uploadAffordance,
   shouldPrefetchForDrag,
+  multiSelectionSummary,
 } = require('./filesRoots.ts');
 
 /**
@@ -222,5 +223,39 @@ test('nothing is fetched with no root selected', () => {
   assert.equal(
     shouldPrefetchForDrag({ isDir: false, rootSelected: false, alreadyLocal: false, alreadyCopying: false }),
     false,
+  );
+});
+
+// --- the ~104 ms ceiling, surfaced ------------------------------------------------------------
+
+test('a small selection is already copying, and says so', () => {
+  const s = multiSelectionSummary({ files: 3, totalBytes: 3 * 1024 * 1024, prefetchMax: 8, perFileOverheadMs: 104 });
+  assert.equal(s.prefetching, true);
+  assert.equal(s.headline, '3 files selected');
+  assert.match(s.note, /copying to this Mac now/);
+});
+
+test('a large selection quotes the cost and copies nothing until asked', () => {
+  const s = multiSelectionSummary({ files: 100, totalBytes: 100 * 1024 * 1024, prefetchMax: 8, perFileOverheadMs: 104 });
+  assert.equal(s.prefetching, false);
+  // 100 x 104ms = 10.4s. The number a user would otherwise meet by waiting for it.
+  assert.match(s.note, /at least 10s of setup/);
+  assert.match(s.note, /nothing is copied until you drag them/);
+});
+
+test('the boundary is the cap itself, not one past it', () => {
+  assert.equal(multiSelectionSummary({ files: 8, totalBytes: 1, prefetchMax: 8, perFileOverheadMs: 104 }).prefetching, true);
+  assert.equal(multiSelectionSummary({ files: 9, totalBytes: 1, prefetchMax: 8, perFileOverheadMs: 104 }).prefetching, false);
+});
+
+test('twenty files reads in seconds, not milliseconds', () => {
+  const s = multiSelectionSummary({ files: 20, totalBytes: 1, prefetchMax: 8, perFileOverheadMs: 104 });
+  assert.match(s.note, /at least 2.1s/);
+});
+
+test('the headline is singular for one file', () => {
+  assert.equal(
+    multiSelectionSummary({ files: 1, totalBytes: 1, prefetchMax: 8, perFileOverheadMs: 104 }).headline,
+    '1 file selected',
   );
 });

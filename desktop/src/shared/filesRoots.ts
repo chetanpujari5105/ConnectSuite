@@ -306,6 +306,56 @@ function shouldPrefetchForDrag(input: {
 }
 
 /**
+ * What the detail card says when more than one row is selected.
+ *
+ * ### The ~104 ms ceiling, said out loud instead of discovered at 100 files
+ *
+ * A pull costs about **104 ms of fixed overhead per file** — one control round trip and one TLS bulk
+ * connection each, measured, before any bytes move. `docs/phase-5-fs-media-proposal.md` settles the
+ * protocol half twice: one `transferId`, one file, one bulk connection, and a multi-file job is n of
+ * those driven by the Mac. So the loop is fine at the sizes a person selects and not fine at the
+ * sizes a folder contains, and the number where that turns over is worth showing rather than
+ * leaving to be met.
+ *
+ * Below the speculation cap the copies have already started and the card says so. Above it, nothing
+ * has been spent and the card says what it would cost, so "copy 60 files" is a decision rather than
+ * a surprise. `estimateMs` is deliberately the *overhead* only — it is a floor, not a promise, and
+ * the wording never claims otherwise.
+ */
+function multiSelectionSummary(input: {
+  files: number;
+  totalBytes: number;
+  prefetchMax: number;
+  perFileOverheadMs: number;
+}): { headline: string; note: string; prefetching: boolean } {
+  const prefetching = input.files > 0 && input.files <= input.prefetchMax;
+  const overheadMs = input.files * input.perFileOverheadMs;
+  const overhead =
+    overheadMs >= 1000 ? `${(overheadMs / 1000).toFixed(overheadMs >= 10000 ? 0 : 1)}s` : `${overheadMs}ms`;
+  return {
+    headline: `${input.files} file${input.files === 1 ? '' : 's'} selected`,
+    note: prefetching
+      ? `${freeSpaceless(input.totalBytes)} — copying to this Mac now, so you can drag them straight over.`
+      : `${freeSpaceless(input.totalBytes)} — that is at least ${overhead} of setup before any bytes move, ` +
+        `so nothing is copied until you drag them or press Copy to Mac.`,
+    prefetching,
+  };
+}
+
+/** Bytes, in the same words the size column uses. Named apart from `freeSpace`, which is a volume. */
+function freeSpaceless(bytes: number): string {
+  if (bytes <= 0) return '0 B';
+  const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 100 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
+/**
  * The plain-script shape `appLabel.ts` documents: no top-level `export`, a `module.exports` shim at
  * the foot. That makes this one file loadable by a `<script>` tag in the CSP-locked renderer,
  * `require`-able from the main process, and `require`-able from `node --test` — one implementation,
@@ -324,6 +374,7 @@ if (typeof module !== 'undefined') {
     freeSpace,
     loadedFooter,
     shouldPrefetchForDrag,
+    multiSelectionSummary,
     DOWNLOAD_WALL,
     ADDED_ON_THE_PHONE,
     RECEIVED_FILES_ALWAYS_WORKS,

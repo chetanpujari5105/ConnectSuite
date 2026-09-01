@@ -824,24 +824,51 @@ ipcMain.handle(
  * same reason `bulk.pull` writes to `.part` — handing Finder a path to nothing is a failure with no
  * error attached to it.
  */
-ipcMain.on('fs-drag', (event, path: string) => {
-  if (typeof path !== 'string' || path.length === 0) return;
-  if (!existsSync(path)) {
-    log.warn('files', `refused a drag of ${path}: it is not on this Mac`);
+ipcMain.on('fs-drag', (event, paths: string[]) => {
+  if (!Array.isArray(paths) || paths.length === 0) return;
+  if (!paths.every((p) => typeof p === 'string' && p.length > 0)) return;
+
+  // Every path is checked before any of them is dragged. A partial multi-file drag would hand
+  // Finder some of what the user selected with nothing saying which — the same shape as reporting
+  // a truncated push as complete, and the reason `bulk.pull` writes to `.part`.
+  const missing = paths.filter((p) => !existsSync(p));
+  if (missing.length > 0) {
+    dragsRefused += 1;
+    log.warn(
+      'files',
+      `refused a drag of ${paths.length} file(s): ${missing.length} not on this Mac ` +
+        `(${missing.map((p) => basename(p)).join(', ')}) — ` +
+        `${dragsStarted} started / ${dragsRefused} refused`,
+    );
     return;
   }
+
   const start = (icon: Electron.NativeImage): void => {
     try {
-      event.sender.startDrag({ file: path, icon });
+      // `file` is the anchor Electron requires; `files` carries the whole set and is what Finder
+      // actually receives when there is more than one. Sending `files` for a single path too would
+      // be harmless, but the one-file case is the overwhelmingly common one and this keeps the
+      // payload identical to what shipped before it.
+      event.sender.startDrag(
+        paths.length === 1 ? { file: paths[0]!, icon } : { file: paths[0]!, files: paths, icon },
+      );
       dragsStarted += 1;
-      log.info('files', `dragged ${basename(path)} to Finder — ${dragsStarted} started / ${dragsRefused} refused`);
+      log.info(
+        'files',
+        `dragged ${paths.length} file(s) to Finder — ${paths.map((p) => basename(p)).join(', ')} — ` +
+          `${dragsStarted} started / ${dragsRefused} refused`,
+      );
     } catch (error) {
       dragsRefused += 1;
-      log.warn('files', `startDrag refused ${basename(path)}: ${(error as Error).message}`);
+      log.warn(
+        'files',
+        `startDrag refused ${paths.length} file(s): ${(error as Error).message} — ` +
+          `${dragsStarted} started / ${dragsRefused} refused`,
+      );
     }
   };
   app
-    .getFileIcon(path, { size: 'normal' })
+    .getFileIcon(paths[0]!, { size: 'normal' })
     .then((icon) => start(icon.isEmpty() ? FALLBACK_DRAG_ICON : icon))
     .catch(() => start(FALLBACK_DRAG_ICON));
 });

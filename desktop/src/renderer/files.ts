@@ -58,7 +58,7 @@ interface FilesBridge {
     size: number;
   }): Promise<{ ok: boolean; path?: string; bytes?: number; verified?: boolean; reason?: string }>;
   /** Synchronous by necessity — see the preload comment. Nothing may be awaited before it. */
-  fsDrag(path: string): void;
+  fsDrag(paths: string[]): void;
 }
 
 /** One page. The phone caps at 500; 200 is its own default and fills the table several times. */
@@ -75,7 +75,23 @@ class FilesView {
   private hasMore = false;
   private loading = false;
   private listFailure: { reason: string; code: string | null } | null = null;
+
+  /**
+   * The row the detail card describes — the last one clicked, and the anchor a shift-click extends
+   * from. Never a directory's stand-in: it is whatever was clicked, and the card reads it directly.
+   */
   private selected: FsEntryRow | null = null;
+
+  /**
+   * Every selected row's id, `selected` included.
+   *
+   * A `Set` rather than an array because the only questions asked of it are membership and size,
+   * and because a row appearing twice in a multi-file drag would hand Finder a duplicate.
+   */
+  private selectedIds = new Set<string>();
+
+  /** Where a shift-click measures from. Moves on a plain or ⌘ click, not on a shift-click. */
+  private selectionAnchorId: string | null = null;
 
   /** True when the phone advertises `files`. False draws M5 with the phone's own sentence. */
   private advertised = false;
@@ -237,6 +253,8 @@ class FilesView {
     this.hasMore = false;
     this.listFailure = null;
     this.selected = null;
+    this.selectedIds.clear();
+    this.selectionAnchorId = null;
     await this.loadMore();
   }
 
@@ -331,6 +349,27 @@ class FilesView {
   private static readonly PREFETCH_DELAY_MS = 250;
 
   /**
+   * How many selected files may be fetched speculatively.
+   *
+   * **Derived from the measurement, not chosen.** A pull costs ~104 ms of fixed overhead — one
+   * control round trip and one TLS bulk connection, per file, before any bytes — so eight files is
+   * about 830 ms, which fits inside the time it takes to move a hand to Finder. Twenty is two
+   * seconds and a hundred is ten, both of which are a link busy with work nobody asked for.
+   *
+   * Above this, selecting costs nothing and the copy waits to be asked. The number moves only if
+   * that per-file cost is measured again; it is not a comfort setting.
+   */
+  private static readonly PREFETCH_MAX_FILES = 8;
+
+  /**
+   * Fixed cost of one pull, measured — a control round trip plus a TLS bulk connection, before any
+   * bytes. 215 KB and 104 MB differ by 1.3 s of wire and by nothing here. It is what
+   * [PREFETCH_MAX_FILES] is derived from and what the multi-selection card quotes, so the two can
+   * never drift into disagreeing about the same number.
+   */
+  private static readonly PULL_OVERHEAD_MS = 104;
+
+  /**
    * Start the copy when a row is *selected*, so the first drag is a drag rather than a refusal.
    *
    * **Finder will not take a promise of a file, only a file.** `webContents.startDrag` needs a path
@@ -346,6 +385,58 @@ class FilesView {
    * Directories are never fetched: `fs.transfer` moves one file, and a folder copy is a loop the
    * Mac would have to drive, which is a transfer queue and not this pane.
    */
+  /**
+   * What a click does to the selection: replace, toggle (⌘/Ctrl), or extend (⇧).
+   *
+   * The range is taken over `this.entries`, which is the order the phone returned and the order
+   * drawn — never over a re-sorted copy, or a shift-click would select a range the user cannot see.
+   * Directories are allowed in a selection so ⌘A-style sweeps behave, and are filtered out where it
+   * matters: nothing copies them, nothing drags them.
+   */
+  private selectOn(entry: FsEntryRow, event: MouseEvent): void {
+    const extend = event.shiftKey;
+    const toggle = event.metaKey || event.ctrlKey;
+
+    if (extend && this.selectionAnchorId !== null) {
+      const from = this.entries.findIndex((e) => e.id === this.selectionAnchorId);
+      const to = this.entries.findIndex((e) => e.id === entry.id);
+      if (from !== -1 && to !== -1) {
+        const [lo, hi] = from <= to ? [from, to] : [to, from];
+        this.selectedIds = new Set(this.entries.slice(lo, hi + 1).map((e) => e.id));
+        this.selected = entry;
+        return;
+      }
+      // Anchor scrolled out of the loaded window. Fall through to a plain click rather than
+      // guessing at a range whose other end is not in `entries` — a selection the user cannot see
+      // is worse than a selection they have to make again.
+    }
+
+    if (toggle) {
+      if (this.selectedIds.has(entry.id) && this.selectedIds.size > 1) {
+        this.selectedIds.delete(entry.id);
+        // The card follows something still selected, so it never describes a deselected row.
+        if (this.selected?.id === entry.id) {
+          const survivor = this.entries.find((e) => this.selectedIds.has(e.id));
+          this.selected = survivor ?? null;
+        }
+      } else {
+        this.selectedIds.add(entry.id);
+        this.selected = entry;
+      }
+      this.selectionAnchorId = entry.id;
+      return;
+    }
+
+    this.selectedIds = new Set([entry.id]);
+    this.selected = entry;
+    this.selectionAnchorId = entry.id;
+  }
+
+  /** The selected rows, in the drawn order, files only. The order Finder receives them in. */
+  private selectedFiles(): FsEntryRow[] {
+    return this.entries.filter((e) => this.selectedIds.has(e.id) && !e.dir);
+  }
+
   /** The one home for the decision. Called twice — once to schedule, once at the moment of acting. */
   private prefetchable(entry: FsEntryRow): boolean {
     return shouldPrefetchForDrag({
@@ -356,19 +447,34 @@ class FilesView {
     });
   }
 
-  private prefetchForDrag(entry: FsEntryRow): void {
+  private prefetchSelection(): void {
     if (this.prefetchTimer !== null) clearTimeout(this.prefetchTimer);
     this.prefetchTimer = null;
-    if (!this.prefetchable(entry)) return;
+    const wanted = this.selectedFiles();
+    if (wanted.length === 0) return;
+
+    // **The 104 ms ceiling, applied rather than only documented.** Each file costs one control round
+    // trip and one TLS bulk connection — measured at ~104 ms mean, and that is fixed cost before any
+    // bytes. Speculating on a large selection would spend it without being asked: 100 files is ten
+    // seconds of link the user never requested, and they may have selected them to drag, to delete,
+    // or by dragging a marquee across the table by accident.
+    //
+    // So speculation is capped and the explicit path is not. Above the cap the copy waits for the
+    // drag or for **Copy to Mac**, which is the user asking for it.
+    if (wanted.length > FilesView.PREFETCH_MAX_FILES) return;
+    const ids = wanted.map((e) => e.id);
+
     this.prefetchTimer = setTimeout(() => {
       this.prefetchTimer = null;
       // Re-tested at the moment of acting, not when the timer was set: the selection can have moved
       // on, the pane can have navigated, a copy can have finished. The predicate that decides
       // whether to act is the same expression that decided what was seen, evaluated again here — a
       // check that does not gate the action is decoration.
-      if (this.selected?.id !== entry.id) return;
-      if (!this.prefetchable(entry)) return;
-      void this.copyToMac(entry);
+      const still = this.selectedFiles();
+      if (still.length !== ids.length || !still.every((e, i) => e.id === ids[i])) return;
+      for (const entry of still) {
+        if (this.prefetchable(entry)) void this.copyToMac(entry);
+      }
     }, FilesView.PREFETCH_DELAY_MS);
   }
 
@@ -626,7 +732,7 @@ class FilesView {
     for (const entry of this.entries) {
       const row = document.createElement('div');
       row.className = 'files-row';
-      if (this.selected?.id === entry.id) row.classList.add('is-selected');
+      if (this.selectedIds.has(entry.id)) row.classList.add('is-selected');
       row.setAttribute('role', 'row');
 
       const name = document.createElement('span');
@@ -665,10 +771,10 @@ class FilesView {
       size.textContent = entry.dir ? '—' : fileBytes(entry.size);
 
       row.append(name, date, size);
-      row.addEventListener('click', () => {
-        this.selected = entry;
+      row.addEventListener('click', (event) => {
+        this.selectOn(entry, event as MouseEvent);
         this.render();
-        this.prefetchForDrag(entry);
+        this.prefetchSelection();
       });
       row.addEventListener('dblclick', () => {
         if (entry.dir) void this.openPath(this.path ? `${this.path}/${entry.name}` : entry.name);
@@ -689,20 +795,28 @@ class FilesView {
           row.setAttribute('aria-busy', 'true');
         }
         row.addEventListener('dragstart', (event) => {
-          const path = this.localCopies.get(entry.id);
-          if (!path) {
-            // **The drag is cancelled, and the copy starts.** Finder needs a file that exists at
-            // the instant the gesture begins and this one does not exist yet; awaiting the copy
-            // here would hand Finder nothing and look like a drag that did not register. So the
-            // refusal is explicit, it says what it did instead, and the second drag works.
+          // Dragging a row that is not in the selection drags **that row**, and makes it the
+          // selection — the behaviour every file manager has, and the one that avoids a drag
+          // quietly carrying rows the user selected somewhere further up the table.
+          const dragging = this.selectedIds.has(entry.id) ? this.selectedFiles() : [entry];
+
+          const ready = dragging.filter((e) => this.localCopies.has(e.id));
+          if (ready.length !== dragging.length) {
+            // **The drag is cancelled, and the copies start.** Finder needs files that exist at the
+            // instant the gesture begins; awaiting them here would hand it nothing and look like a
+            // drag that did not register. Partial is not an option either — handing over the ready
+            // half of a selection is a silent wrong answer, which is defect 56's shape.
             event.preventDefault();
-            void this.copyToMac(entry);
+            for (const e of dragging) {
+              if (this.prefetchable(e)) void this.copyToMac(e);
+            }
             return;
           }
+
           // `startDrag` must be called while this handler is still on the stack — the bridge sends
           // rather than invokes, and nothing here may be awaited.
           event.preventDefault();
-          this.bridge.fsDrag(path);
+          this.bridge.fsDrag(dragging.map((e) => this.localCopies.get(e.id)!));
         });
       }
       this.table.append(row);
@@ -721,6 +835,47 @@ class FilesView {
 
   private renderDetail(): void {
     this.detail.replaceChildren();
+
+    // More than one row selected: the card describes the *set*, because describing one of them and
+    // acting on all of them is the mismatch that makes a multi-file drag feel like it misfired.
+    if (this.selectedIds.size > 1) {
+      const files = this.selectedFiles();
+      const summary = multiSelectionSummary({
+        files: files.length,
+        totalBytes: files.reduce((sum, e) => sum + e.size, 0),
+        prefetchMax: FilesView.PREFETCH_MAX_FILES,
+        perFileOverheadMs: FilesView.PULL_OVERHEAD_MS,
+      });
+
+      const title = document.createElement('h3');
+      title.className = 'files-detail-title';
+      title.textContent = summary.headline;
+
+      const note = document.createElement('p');
+      note.className = 'files-detail-note';
+      note.textContent = summary.note;
+
+      const copied = files.filter((e) => this.localCopies.has(e.id)).length;
+      const ready = document.createElement('p');
+      ready.className = 'files-detail-note';
+      // The denominator, so "3 ready" cannot be read as "3 left to go".
+      ready.textContent = `${copied} of ${files.length} on this Mac.`;
+
+      const button = document.createElement('button');
+      button.className = 'files-detail-action';
+      button.textContent =
+        copied === files.length ? 'Drag them to Finder' : `Copy ${files.length - copied} to this Mac`;
+      button.disabled = copied === files.length;
+      button.addEventListener('click', () => {
+        for (const e of files) {
+          if (this.prefetchable(e)) void this.copyToMac(e);
+        }
+      });
+
+      this.detail.append(title, note, ready, button);
+      return;
+    }
+
     const entry = this.selected;
     if (!entry) {
       const empty = document.createElement('p');

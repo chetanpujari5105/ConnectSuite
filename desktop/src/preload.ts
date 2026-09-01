@@ -217,13 +217,16 @@ contextBridge.exposeInMainWorld('connect', {
     size: number;
   }): Promise<PullOutcome> => ipcRenderer.invoke('fs-pull', options),
   /**
-   * Hands a local file to Finder as a drag.
+   * Hands one or more local files to Finder as a drag.
    *
    * **`send`, not `invoke`, and that is required rather than a style choice.** `webContents.startDrag`
    * must be called while the renderer's `dragstart` is still on the stack; awaiting an `invoke`
    * round trip first lets the drag gesture end before the drag begins, and macOS quietly drops it.
+   *
+   * An array always, even for one file. The single-path form was the shape before multi-select and
+   * keeping both would mean two call paths through the one thing that cannot be retried mid-gesture.
    */
-  fsDrag: (path: string): void => ipcRenderer.send('fs-drag', path),
+  fsDrag: (paths: string[]): void => ipcRenderer.send('fs-drag', paths),
 
   /**
    * The photo browser. Three verbs, because the fourth needs a socket nothing serves yet.
