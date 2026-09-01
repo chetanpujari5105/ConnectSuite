@@ -9130,12 +9130,62 @@ file's own icon, and it proves `startDrag` accepted it. **It does not prove Find
 drop**, which is a physical mouse gesture no automation here performs. The wiring is measured; the
 gesture is not.
 
-### 6. The Mac's almost-empty state was broken by this slice, and the pane's own rule caught it
+### 6. The Mac's almost-empty state was broken by this slice — and the first write-up of it overstated the damage
 
-Adding a second grant-free root made `roots.length > 1` **permanently true**. `filesPaneView` used
-that to choose between M2 and M3, so a phone that had shared nothing would have reported *"This phone
-has shared 2 folders"* — and M2, which is where the `Download` wall lives, would have become
-unreachable for everyone.
+**Corrected 2026-09-01, in the sitting after.** The paragraph originally here said the `Download`
+wall *"would have stopped drawing for everyone"*. **It would not have.** The wall has two
+complementary homes and has had since the commit that shipped the pane:
+`this.wallEl.hidden = showsState` — the state card carries the sentence when the card is drawn, and a
+plain `#files-wall` line carries it when the card is not. Exactly one copy is on screen either way.
+Measured in the running app with one tree granted: `stateCard: hidden`, `wallEl: VISIBLE`, carrying
+the wall text.
+
+So this was **not** a second vanishing of the wall. That matters, because "the wall disappeared
+twice" is a claim about a specific sentence going missing from a user's screen, and it did not
+happen. The overclaim came from reading one condition (`showsState`) and not the line twenty rows
+below it that consumes the same boolean the other way round — the same shape as every other entry in
+this record: a reading that was real, about something adjacent to the thing being claimed.
+
+**What actually broke.** Both branches evaluated on a phone with two grant-free roots and no granted
+tree:
+
+```
+zeroTreesPhone: { rootCount: 2, sharedTrees: 0 }
+correct_showsState (kind === 'tree')  → true
+buggy_showsState   (roots.length <= 1) → false
+viewId: M2, headline: "This phone hasn’t shared a folder yet", body: 4 paragraphs
+```
+
+With `showsState` false the **M2 card is never drawn at all**. A user who had shared nothing would
+have seen a rail with two roots, one bare wall sentence, and **no headline and none of the other
+three paragraphs** — not the *"open ConnectSuite on the phone and go to Sync › Folders"* guidance,
+not *"you can send files to this phone without sharing anything"*, not `ADDED_ON_THE_PHONE`. The
+pane would have been silent about what to do, on the one screen where the user has done nothing yet.
+
+The *"This phone has shared 2 folders"* headline was latent rather than visible: `filesPaneView`
+computed it, and the card that would have shown it was hidden by the same bug.
+
+### 6b. What catches it now — and the honest answer is: the wrong half
+
+**Four tests went red on the mutation, and all four are on the pure view model.** `sharedFolderCount`
+and `filesPaneView` are covered. **`showsState` — the condition in the renderer that decides whether
+a user sees any of it — is reached by no test at all**, confirmed by scan: it appears in
+`src/renderer/files.ts` and in no `*.test.ts`, and nothing loads `createFilesView`.
+
+That is the same condition that broke **both** times. The slice-7 finding
+(*"the card only renders with at most one root"*) and this one are one line, twice, and the fix each
+time was to change the expression rather than to give it a home a test can reach.
+
+So, stated plainly: **nothing catches the thing that broke.** The four tests catch a function that
+was written correctly on the first attempt; they would stay green through a third variant of the
+same mistake, because the mistake lives in the renderer's copy of the decision and the renderer is
+the untested half.
+
+The enforcement point that would close it is one extraction — `stateCardShown(fetch, roots)` moved
+into `src/shared/filesRoots.ts` beside `sharedFolderCount`, with the renderer calling it and a test
+asserting the two homes are complementary (`card XOR plain wall`, never both, never neither). That
+is the `src/shared/` testable-seam rule applied to a decision that has now escaped it twice. **Not
+built in this sitting** — it is on the list with the four findings below, for ordering.
 
 That is `CLAUDE.md`'s third instrument row happening to us: *check a state in the situation the user
 is in*. The situation changed underneath the check.
@@ -9159,3 +9209,153 @@ from 257 — the 21 are all in `sync-module`: `FsArrivalTest` 9, `FolderQuickPic
 The device is left as it was found: one persisted tree grant (`DCIM`), both media permissions granted
 with their original flags, no accessibility change. `Download/ConnectSuite` holds the two small probe
 files deliberately, so there is something to drag.
+
+---
+
+## Files pane — the measurement pass after first real use · 2026-09-01
+
+**The first time anyone used this pane rather than looked at it**, and four complaints came back.
+Measured rather than guessed, because three of the four had an obvious cause that turned out to be
+wrong. Nothing here is fixed yet; this is the reading that decides the order.
+
+### F-1 · Where the drag time actually goes — and it is not where it looked
+
+| Leg | Measured | Notes |
+|---|---|---|
+| `dragstart` → handler returns, **uncopied** row | **1 ms** | The drag is cancelled and the copy starts. **Nothing appears.** |
+| `fs.transfer.begin` + bulk pull, 215 KB photo | **156 ms** first, **104 ms** mean over 5 | ~100 ms of that is fixed cost, not bytes |
+| same, 104 MB video | **1,458 ms** | 601 Mbit/s — the wire is not the problem |
+| `dragstart` → `startDrag` returns, **copied** row | **5 ms** | renderer → IPC → main → native drag |
+| `app.getFileIcon` | **0.3–0.8 ms** cold, 0 ms warm | measured in its own Electron process |
+
+**The hypothesis going in was `getFileIcon`** — it is `await`ed before `startDrag`, which the
+preload comment explicitly forbids. It costs **under a millisecond**. It is still wrong to await it
+(a real gesture can end during an await), but it is not the delay and fixing it would change nothing
+a user can feel.
+
+**So the pause is the copy, and it is worse than the copy's duration**, because the first drag
+returns in 1 ms having produced no drag image, no row change, and no cursor feedback. The only
+signal is one line of text in the **detail card on the right**, which is not where a dragging hand is
+looking — and which scrolls off screen (F-4). A 104 MB video is 1.5 s of a pane that looks like it
+ignored the gesture, and a user who lets go and tries again pays it twice.
+
+### F-1b · Is a promised-file drag available? **No — copy-first is forced**
+
+From the installed Electron 43.4.1 typings rather than from memory:
+
+```
+interface Item { file: string; files?: string[]; icon: NativeImage | string; }
+```
+
+`startDrag` takes **paths that must already exist**. Searching the whole `electron.d.ts` for
+`FilePromise|promisedFile|NSFilePromise|dragPromise` returns **nothing**. macOS has
+`NSFilePromiseProvider` and Electron does not expose it; reaching it means a native module, which is
+a different kind of project than this one.
+
+**A tempting wrong fix, named now:** hand Finder the path of a `.part` that is still being written.
+Finder copies bytes at drop time, so the user gets a truncated file that looks complete — **defect
+56 exactly, on the Mac side**. Not to be attempted.
+
+So the wait cannot be removed. It can only be made visible, or moved earlier (speculative copy on
+selection).
+
+### F-2 · Why a selected photo shows no thumbnail
+
+The detail card draws a title, `Kind`/`Size`/`Modified`, the **Copy to Mac** button and one note.
+No image, ever.
+
+**The reason is structural: `fs.*` ids and `media.*` ids are disjoint id spaces.**
+
+```
+fs.list  id: "primary%3ADCIM%2FCamera%2FCshot"      ← a SAF document id
+media.*  id: a MediaStore numeric _ID
+```
+
+Asked for a thumbnail of an `fs.*` id, `media.thumb` answers **`ok: true` with zero entries** — a
+silent empty rather than a refusal, which is its own small defect: an absence with no reason
+attached. So the pane cannot borrow the photo browser's thumbnails, and no amount of renderer work
+changes that.
+
+### F-3 · Multi-select — what each half costs
+
+| Half | Cost | Kind |
+|---|---|---|
+| Selecting several rows | `selected: FsEntryRow \| null` → a `Set`, plus shift/cmd-click and a selection-aware detail card | **renderer only** |
+| Dragging several files | **free** — `startDrag` already takes `files?: string[]` (verified in the typings; not yet exercised) | **renderer only**, but every file must be copied first |
+| Copying several files | **~104 ms fixed cost per file**, measured: one control round trip and one TLS bulk connection each | **Mac's loop** |
+
+`docs/phase-5-fs-media-proposal.md` settles the protocol half twice: *"One `transferId`, one file,
+one bulk connection … a multi-file job is n of these driven by the Mac. A folder copy is the Mac's
+loop, not a protocol feature."* And item 5 of its open list: *"Multi-file jobs as a protocol concept
+… if that turns out to be too chatty over a real link, a job wrapper is an addition, not a
+rewrite."*
+
+**The measurement says the loop is fine at the sizes a person selects and not fine at the sizes a
+folder contains**: 20 files ≈ 2 s of pure overhead before any bytes, 100 files ≈ 10 s. So multi-select
+by hand needs **no protocol change**; a folder copy eventually does.
+
+### F-4 · "Not smooth" — four measured causes, and the first two are not smoothness at all
+
+**(a) Opening a large folder fails, every first time.** The phone builds a per-directory snapshot
+(defect 55's fix) and `DCIM/Camera` has 16,377 entries:
+
+```
+[fs] snapshot of primary:DCIM/Camera: 16377 entries read in 10371ms
+```
+
+The Mac's `fs.list` timeout is **10,000 ms**. The pane shows **"Couldn't open this folder — fs.list
+timed out after 10000ms — Try again"** for a folder that is perfectly readable. Reproduced after
+waiting past the 30 s idle TTL; the second attempt failed too, and each failed attempt caused
+**another full rebuild** (11,352 ms, then 10,082 ms) because concurrent requests do not join the run
+in flight — the same *"who else calls this, and what happens if they both do"* the Mac's `refresh()`
+already learned. Once a snapshot lands, pages take **236–364 ms**.
+
+This is the pane's failure card shown for a non-failure, which is the one thing this pane exists to
+get right.
+
+**(b) The pane can never load past its first page.** The scroll handler is bound to `#files-table`
+and its first guard is `if (this.table.scrollHeight <= this.table.clientHeight) return`. Measured:
+
+```
+.files-table   overflow-y: auto   scrollH 7286   clientH 7286   scrollable: false
+.page.cs-scroll                   scrollH 7592   clientH  667   scrollable: TRUE
+```
+
+`.files-table` has `overflow-y: auto` and **nothing constrains its height**, so it grows to its full
+content and never scrolls; the real scroller is `.page`, seven ancestors up. Scrolling that to the
+bottom twice and waiting 5 s loaded **0 additional rows**; the footer still read *"200 loaded · more
+on the phone"*. **A folder of 16,377 entries shows 200 of them, permanently.**
+
+This is the Photos-grid bug's sibling — the comment in that very handler warns about the *third*
+condition, and it is the *first* one that is permanently true here.
+
+**(c) Nothing stays put while scrolling.** Scrolling `.page` from 0 to 3000:
+
+| Element | top at 0 | top at 3000 |
+|---|---|---|
+| column header (`position: sticky`) | 302 | **−2698** — does not stick |
+| roots rail | 282 | −2718 — gone |
+| detail card, with **Copy to Mac** | 247 | −2753 — gone |
+
+The whole pane is one 7,592 px page in a 667 px viewport. Scrolling to a file loses the header, the
+folder list and the only button that acts on the selection.
+
+**(d) Render cost is fine today and is a cliff behind (b).** A row click rebuilds every row:
+**11.2 ms at 201 rows** — imperceptible. That is ~56 µs/row, so the same code at 16,377 rows
+extrapolates to **~0.9 s per click**. Stated as an extrapolation, not a reading: it is unreachable
+while (b) caps the table at 200, and fixing (b) without touching this makes it reachable.
+
+### What each fix costs, for ordering
+
+| # | Fix | Kind | Protocol change? |
+|---|---|---|---|
+| b | Give `.files-table` a bounded height so it is the scroller | **CSS, one rule** | no |
+| c | Same rule fixes the sticky header, the rail and the detail card | **CSS, same rule** | no |
+| a | Raise the `fs.list` timeout, and join a snapshot build already in flight | Mac constant + phone concurrency | no |
+| 1 | Make the wait visible at the row, and copy on selection rather than on drag | renderer | no |
+| 3 | Multi-select and multi-file drag | renderer | no |
+| d | Reconcile rows instead of rebuilding, or virtualise | renderer | no, and only after (b) |
+| 2 | Thumbnails in the detail card | **`fs.thumb`, a thirteenth message name** | **yes** |
+
+Only **F-2 needs the protocol**. Everything else is one CSS rule, one constant, one concurrency
+join, and renderer work.

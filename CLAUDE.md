@@ -476,6 +476,36 @@ damage on the user's own device or nearly recorded a false result.
   a timeout, a page cap, a sample interval, a buffer size, a `head -20` — must appear in what it
   reports, or a result shaped by that bound will be read as a result about the thing measured.**
 
+  **The eleventh entry is the third member of that pair, and the uncomfortable part is where it
+  happened.** A Gradle mutation run read `build/test-results/*.xml` and reported `failures=0` — the
+  guard does not catch this. The build had **not compiled**: the mutation was written in a form that
+  did not typecheck, `testDebugUnitTest` never ran, and nothing rewrote the results file. The verdict
+  came from the *previous* run, served with no indication of its age and no exit code beside it.
+
+  Line them up, because the three are one failure wearing three costumes:
+
+  | | What the instrument did | What was reported |
+  |---|---|---|
+  | 263 ms window | sampled outside the window | **no reading**, read as a negative |
+  | 200-page cap | ended the run itself | **its own ending**, read as the pager's |
+  | stale results XML | never ran, and served the last run's file | **an older reading**, read as this run's |
+
+  The first held nothing, the second held something about itself, the third held something true
+  about a different moment — and all three printed a confident number.
+
+  **This one happened inside the run written to prove a guard against exactly this family.** The
+  session had just added a row to this table about an instrument reporting a state it had not
+  measured, and then did it, three mutations later, in the mutation testing meant to establish that
+  defect 56's guard could see its own defect. Being able to state the rule is not being immune to it,
+  and a project that has written this table nine times over is precisely the project most likely to
+  trust its own harness.
+
+  So the harness owes what the probes owe. Every automated verdict prints **the age of the artifact
+  it read and the exit code of the command that should have produced it** — one line, and the version
+  of this run that has them reads `results file written 0.1s ago; gradle exit: 0`. An artifact older
+  than the run is not a result, it is a memory, and `failures=0` from a build that never compiled is
+  the most confident wrong answer in the set.
+
   **The eighth and ninth entries are one rule on two different tools, and neither of them is about
   folders.** They were found in the same hour, from opposite directions, and both would have been
   written down as facts about the product:
@@ -605,6 +635,29 @@ damage on the user's own device or nearly recorded a false result.
   - **Check a state in the situation the user is in**, not in the situation that makes it easy to
     render. "Is the copy present?" is the wrong question; "is it present *with two folders
     granted*?" is the one that found this.
+
+  **That third row broke a second time, and the second break is the more useful one, because the
+  first fix did not fail — the untested half did.** The condition is `showsState` in the Files pane:
+  it chooses between the state card (which carries the `Download` wall in its copy) and a plain wall
+  line, and `wallEl.hidden = showsState` makes the two homes complementary. Slice 7 got it wrong one
+  way; slice 9 got it wrong the other way, when a second grant-free root made `roots.length > 1`
+  permanently true and the **M2 card stopped being drawn at all** — no headline, no guidance, on the
+  one screen where the user has done nothing yet.
+
+  Two things to take from it, and only the second is about folders:
+
+  - **Say what actually went missing.** The first write-up of the second break said *the wall
+    stopped drawing for everyone*. It did not: the wall moved to its other home, and exactly one
+    copy was on screen throughout. The claim was adjacent to the truth and more alarming than it, and
+    it was made by reading one condition and not the line that consumes the same boolean the other
+    way round. **A regression report is a reading too**, and "what else would look exactly like this"
+    applies to your own diff.
+  - **Four tests went red on the mutation and none of them touches the thing that broke.**
+    `sharedFolderCount` and `filesPaneView` are covered; `showsState` lives in the renderer and is
+    reached by no test — the same condition, untested, both times. A guard on the function that was
+    written correctly is not a guard on the decision that keeps going wrong. When a bug recurs in one
+    line, the question is not *is the new expression right* but **what would have caught either
+    version**, and if the answer is "nothing", the line is in the wrong file.
 
   This is now the third sitting where the reading was fine and the instrument was not — the probe
   cap, the hidden grid, and these three — so the general form is worth stating without a device in
