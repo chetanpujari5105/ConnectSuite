@@ -10053,3 +10053,532 @@ reading 4 refused. Not re-argued after the fact; that is what the table was writ
    also *did* rebind after `-r` here, which `InputFeature.kt`'s 2026-08-27 note says it does not —
    recorded as an observation, not a conclusion, because what restarted the process was not
    established.
+
+---
+
+## Slice 12 — Handoff behaviour: auto-apply on the Mac, a setting on the phone, and the cycle proof that had to come first · 2026-09-02
+
+Slice 11 measured the wall. This slice acts on it: **the Mac applies what arrives** so ⌘V works with
+nothing clicked, and the phone gets a **setting** rather than a rule, defaulting to hold-for-a-tap.
+The phone's *send* direction is untouched — focus is still the only moment it may read, and nothing
+here tries to work around that.
+
+The gate on both was one question asked before either was built: **if the Mac applies automatically
+and the phone does too, can a clip echo back and forth?**
+
+### 1. The cycle proof, and why the peer is adversarial
+
+The obvious proof — wire a Mac `ClipEcho` to a phone `ClipEcho` and watch them settle — proves that
+two copies of one rule agree, which they will, being copies. It is `MediaPayloadsTest`'s mistake with
+a socket in the middle: delete the rule from both and the run stays green.
+
+So each side is driven against a peer that **pushes back everything it receives, immediately,
+forever**, and lies about `source` and `atMs` while doing it. If one real implementation cannot be
+driven into a cycle by a peer that does nothing but echo, it cannot be driven into one by the other
+side of this product — whatever that side does now, and whatever it is changed into later. That is a
+stronger claim than the pair, and it survives someone adding a clipboard watcher to the Mac.
+
+The trigger in the harness fires after **every** clipboard write, which is the worst case rather than
+the real one: the phone's trigger is window focus and the Mac's is a click, and neither fires on a
+write we made ourselves.
+
+**Result: converges after exactly one push, on both sides.** The interlock refuses everything after
+it, and the refusal is asserted **by name**.
+
+### 2. The instrument was wrong first, again, and this one is a new shape
+
+The first version recorded only the pushes. The mutation run built to prove it could see its own
+defect **stayed green with the echo rule deleted**:
+
+| Mutation | What was expected | What happened |
+|---|---|---|
+| echo rule deleted | the cycle test goes red | **2 of 5 green** — including both automatic cycle tests |
+
+`appliedLocally` arms the *unchanged* guard as well, so that guard caught every echo and the run
+still converged to one push. Only the `user`-trigger case — which skips the unchanged rule — went
+red. The test was not weak; it was **measuring a different guard than the one it was named for**, and
+it would have reported the echo rule as proven on a build where the echo rule did not exist.
+
+Two guards both stopping a cycle is a good property. A test that cannot say **which one ran** is not
+evidence for either. The runs now record the refusal *reason*, and the assertions read it.
+
+This is the family in CLAUDE.md — *what you measured, and what you measured it on* — arriving in a
+file written to apply that rule, three mutations into the run meant to establish it. Being able to
+state the rule is not being immune to it.
+
+### 3. The mutation matrix, after the fix
+
+Every bound reported: node's runner exits non-zero on failure, and each Gradle verdict is printed
+with the age of the results file and the exit code of the build that should have written it.
+
+| Mutation | Mac (`node --test`) | Phone (gradle exit / results age) |
+|---|---|---|
+| echo rule deleted | **5 of 5 fail** — `run ended at hop cap after 50 hops`, `reportable: false` | **exit 1**, 4 of 5 fail, results 0.1s old |
+| unchanged rule deleted | 1 fail — the discrimination control | — |
+| both deleted | **5 of 5 fail**, runs away to the cap | — |
+| `lastReceived` cleared on link drop | 1 fail — the bounce, §4 | **exit 1**, 1 of 5 fail, results 0.1s old |
+| restored | 5 of 5 pass | **exit 0**, 5 of 5, results 0.1s old |
+
+The control that matters more than any of them: **a genuine second copy still sends.** A guard that
+refused every send would pass every no-cycle test perfectly and this file would be evidence of
+nothing, in the way an empty accessibility tree is evidence of nothing.
+
+### 4. The real hazard the proof turned up, and it is not a loop
+
+`lastReceived` was cleared on disconnect on both sides. Harmless while both ends waited for a tap;
+with auto-apply on it opens a **one-hop bounce**:
+
+> The Mac applies X to the phone → the link drops → the phone refocuses, reads X off its own
+> clipboard with the interlock disarmed, and sends X home → **a Mac that auto-applies writes X over
+> whatever the person has copied since.**
+
+It terminates. It happens once. It silently replaces live work with a stale entry, which is the exact
+harm auto-apply is on probation for, arriving by the one route a no-cycle proof does not cover.
+
+**Fix:** `lastSent` still clears on a drop — the next Mac may be a different Mac and should get this
+phone's clipboard — and `lastReceived` does not. It is one string, never rendered, never sent, never
+logged, and the clipboard it came from is still holding it, so it is not a retention decision in the
+sense the history's is.
+
+### 5. Reading — can Electron see a concealed clipboard? Partly, and the gap is the finding
+
+The Mac's auto-apply captures the clipboard it is about to overwrite into the history, so Restore is
+an undo — `docs/protocol.md`'s stated condition for removing the confirmation. That capture must not
+scoop up a password manager's clip. The convention is `org.nspasteboard.ConcealedType`, which is
+documentation until measured.
+
+Run through `clipboard.read` / `clipboard.write` / `writeBuffer`, negative and positive in one pass:
+
+| Stimulus | `readText()` | `read('org.nspasteboard.ConcealedType')` | `availableFormats()` |
+|---|---|---|---|
+| `writeText('an ordinary clip')` | `"an ordinary clip"` | `""` | `["text/plain"]` |
+| `write({ text, [TYPE]: … })` | `"a secret"` | `""` | `["text/plain"]` |
+| `writeBuffer(TYPE, …)` | `""` | `"1"` | `[]` |
+
+**What this establishes:** the read path is live and is not a query that answers `""` to everything —
+row 3 is a non-trivially-true positive.
+
+**What it does not establish, and this is the part to carry forward:** a pasteboard holding text
+**and** the marker together could not be built with Electron's API. `clipboard.write` silently drops
+the custom type (row 2 is a positive control that *failed to be positive*), and `writeBuffer`
+replaces the whole pasteboard (row 3 has no text left in it). **The real case — 1Password's actual
+copy on this Mac — is unmeasured.**
+
+So the check ships as **defence in depth and is not the safeguard**. The safeguard is that a
+`displaced` entry's text is **never drawn**: it is held for Restore and rendered as a description and
+a button. If the check silently returns `""` for a real password manager, the password sits in a
+memory-only history that shows a Restore button, cleared on disconnect and gone on restart. Getting
+the check wrong costs nothing; relying on it would have.
+
+The reading that would close this is one line and needs a person: copy from a password manager on
+this Mac, then read the two values. Recorded as owed rather than assumed.
+
+### 6. The enforcement point — `scripts/check-clip-echo.mjs`
+
+The interlock gets **one home per side** (`clipEcho.ts`, `ClipEcho.kt`) and the scan fails a commit
+that grows a second. It exists because the rule *already had* two homes — `shouldSend` in
+`clipboardHistory.ts` and `ClipboardPayloads.shouldSend` — each with its own passing test, both of
+which would have gone on passing over functions nothing called. Both were deleted with their tests.
+
+Its discriminator is **declaration syntax, never mentions**. The words `lastReceived` and `lastSent`
+appear dozens of times in the comments explaining why they may appear only twice, including inside
+the checker; a matcher counting occurrences would forbid documenting the thing it guards, which is
+defect 41 exactly.
+
+**The fixtures found a real gap on their first run.** The matcher required a `val`/`var`/`let`/`const`
+keyword — so it caught Kotlin's `private var lastSent` and **missed TypeScript's
+`private lastReceived: string | null`**, which has no keyword at all and is the form the shipping Mac
+client uses. The scan would have passed over the exact file it was written for. Seven fixtures, each
+paired with its opposite, including two controls proving prose and the `lastSentPreview` display
+fields are not homes.
+
+The scan reports its own bound: `212 files read outside the 2 declared homes`, and it exits
+`INSTRUMENT FAILURE` below 50 rather than printing a clean pass over a run that read nothing.
+
+### Suite
+
+| | Before | After |
+|---|---|---|
+| Mac (`npm test`) | 203 | **209** — +5 cycle proof, +2 displaced-row, −1 `shouldSend` moved to the cycle proof |
+| Phone (`:sync-module` + `:core`) | 234 | **237** — +5 `ClipEchoTest`, −2 `shouldSend` moved with the rule |
+| `node --test scripts/check-clip-echo.test.mjs` | — | 7 |
+
+Phone results read with their age and exit code beside them: `237 tests, 0 failures, 0 errors across
+29 classes`, `newest results file written 8.3s ago`, `gradle exit: 0`.
+
+### What this slice did **not** do
+
+- **The phone's send direction is unchanged.** Focus is still the only moment it may read. Nothing
+  here polls, observes, or tries to route around Slice 11's wall.
+- **Neither auto-apply has run on hardware yet.** Everything above is a JVM/node result and a
+  measurement of Electron's clipboard API on this Mac. The phone-side setting, the notification's two
+  shapes, and the Mac's Restore row are unproven on the device.
+
+### 7. The Mac's applied path, exercised against the real pasteboard
+
+`scripts/clip-apply-probe.mjs`. A mocked `clipboard` here would prove `ClipboardClient` calls the
+function we told it to call; it would not prove that ⌘V produces the text, which is the whole claim.
+So the probe loads the **compiled shipping class**, hands it a real `clip.push` payload, and reads
+the pasteboard back through the same API a paste would. It captures the machine's own clipboard first
+and restores it, and prints whether the restore worked rather than assuming it.
+
+`electron exit: 0` · **7 of 7 ok** · `Clipboard restored: yes`
+
+| Check | Result |
+|---|---|
+| the arriving text is on the pasteboard | ok — `"FROM-THE-PHONE-xyz"` |
+| the renderer was told it was applied | ok — `[true]` |
+| the arrival is newest, the displaced entry under it | ok — `["text","displaced"]` |
+| the displaced entry holds what was about to be lost | ok — `"WORK-IN-PROGRESS-abc"` |
+| sending the phone's own entry back is refused | ok — the interlock's sentence |
+| **control** — a genuinely new clip is *not* refused | ok — reaches the link and stops at *"The Mac is not connected"* |
+| Restore is an undo | ok — pasteboard back to `"WORK-IN-PROGRESS-abc"` |
+
+**The instrument was wrong twice more, and both are worth keeping.**
+
+1. **A wrong assumption about ordering produced three confident wrong findings.** The first version
+   expected `['displaced','text']`; the real order is `['text','displaced']`, because the displaced
+   entry is captured before the arrival is stored — which is exactly what the row's copy asserts
+   (*"before the entry above replaced it"*). Two checks read a correct product as broken, and the
+   third then "restored" the arriving text over itself and reported a failed undo. One assumption,
+   three findings, none real.
+2. **A check ordered after Restore failed for a reason that turned out to be a property.** The
+   interlock is a **single slot**, and Restore is a local write that moves it — so with Restore run
+   first, the phone's own entry was no longer recognised as an echo. Correct behaviour, and now
+   stated in `docs/protocol.md`: a clip that arrives, is displaced by a Restore, and is copied again
+   can travel back, **one hop, terminating**, because the far side refuses to return it. The
+   alternative is remembering every text ever received, which is a bigger store of other people's
+   clipboard content than this feature will keep for a saved round trip.
+
+The control is the row that makes the other six mean anything: a `send` that refused *everything*
+would satisfy the interlock check perfectly, so the probe requires a genuinely new clip to get past
+the interlock and fail somewhere else — at the link, by name.
+
+### 8. The pane, read through `scripts/clipboard-pane-probe.mjs`
+
+All reportable. The copy rule is checked as an **ordering** rather than read as a vibe — *"say what
+I get, then the limit"* is a positional claim and therefore checkable:
+
+| Question | Answer |
+|---|---|
+| clipboard section height (control: `2` nodes carry the attribute, so the selector reached the pane and not the window) | `170` |
+| controls the pane offers, counted not matched (control: `nav button > 0`) | `2` |
+| does the wall still state the one-directional limit? | `true` |
+| **does the benefit sentence precede the limit sentence?** (control: both phrases present, so two `-1`s cannot compare as a pass) | `true` |
+| does the standing copy say the replaced clipboard is kept? | `true` |
+| the empty history | `"Nothing yet. Copy something on either machine."` |
+
+### 9. On hardware · SM-S938B, link up, 2026-09-02
+
+`scripts/link-up.sh`: `ServiceRecord isForeground=true` · `42501/42502/42503 all LISTEN under uid
+11011` · `1 control session(s) ESTABLISHED`.
+
+**Mac auto-apply — passes, unprompted and unattended.** The phone was backgrounded (launcher
+resumed) and pushed on refocus:
+
+```
+01:17:13 I [clipboard] Applied an arriving entry to this Mac's clipboard: 40 bytes,
+         previous clipboard captured — 0 sent / 1 received / 1 of 1 applied / 0 refused
+```
+
+`⌘V` produces the phone's text with nothing clicked. **It also replaced the operator's real
+clipboard**, which is the feature working and is the reason the undo is a condition rather than a
+nicety: the displaced entry was captured, and Restore put it back at 01:22:41 (`51 bytes`).
+
+**The phone's default holds — `held for a tap`, twice, with the denominator beside it.**
+
+```
+01:18:46 clip.push ← Mac: 19 bytes, held for a tap — 1 sent / 1 received / 0 of 1 applied
+01:19:32 clip.push ← Mac: 19 bytes, held for a tap — 1 sent / 2 received / 0 of 2 applied
+```
+
+`0 of 1` and `0 of 2` are what say the setting is off rather than the branch being missing — a bare
+"held for a tap" would read identically on a build where auto-apply had never been written.
+
+**The offered notification, read rather than tapped** (`dumpsys notification --noredact`):
+
+```
+id=3101 channel=clipboard_offer flags=AUTO_CANCEL category=status actions=1
+android.title=String (Copied on your Mac)
+```
+
+`actions=1` **is** the discriminator between the two shapes — the applied shape is `actions=0` with
+title *On your clipboard* — so this reading distinguishes the branch that ran from the one that did
+not, rather than merely proving a notification exists.
+
+### Defect 58 — the undo was reachable and not visible, at the one moment it exists for
+
+Reading the pane's rows after an auto-apply, structurally (source, button, body length — **never the
+text**):
+
+```
+0: Phone · 1:21:08 AM        | Use this | body 22 chars
+1: This Mac · 1:19:32 AM     | Use this | body 19 chars
+…
+4: Replaced on this Mac · 1:17:13 AM | Restore | body 68 chars (muted)
+```
+
+The arrival at **1:21:08** displaced a clipboard and the main process logged `previous clipboard
+captured` — and **there is no Restore row for it.** The only one present belongs to 1:17:13, four
+minutes earlier.
+
+Cause: `onClipArrived` carries the arriving entry and not the `displaced` entry created beside it, so
+the renderer's mirror learned about the arrival and never about what it replaced. The Restore row
+appeared only on the next `refresh()` — triggered by a button click, which is the thing auto-apply
+exists to remove. **The undo was reachable and not visible**, and every test was green, because the
+renderer's list is not what any test reads.
+
+Fixed by reconciling from the main process after each arrival — prepend for immediacy, refresh for
+truth — with the refresh generation-counted, because a route open, a send, a request and an arrival
+can all begin one and the Files pane has already paid for two correct triggers assembling a wrong
+picture out of legal states.
+
+Re-measured on hardware after the fix, same route:
+
+```
+0: Phone · 1:24:47 AM                | Use this | body 22 chars
+1: Replaced on this Mac · 1:24:47 AM | Restore  | body 68 chars (muted)
+```
+
+Same timestamp, both present, no click in between. Restore then returned the displaced text
+verbatim.
+
+**Two instrument faults in this hour, both mine.**
+
+- **A stimulus whose expectation was already true.** The first send probe waited for
+  `#clip-notice` to be `!hidden` — already satisfied by an arrival 93 seconds earlier — so it
+  settled in `10ms` having measured nothing and read back the *stale* sentence: *"On this Mac's
+  clipboard now"* after clicking **Send**. Re-run with the notice blanked first and an expectation
+  only this send could satisfy: `waited=106ms`, `"Sent 19 bytes to the phone."` A stimulus whose
+  expectation is already true is not a stimulus.
+- **Two taps driven from a `uiautomator` dump landed in the operator's private conversation.** The
+  dump was current when taken and the screen was not when the tap arrived. This is CLAUDE.md's
+  coordinate rule failing in the sanctioned form — *driven from a dump* is not the same as *driven
+  from a dump that is still true* — and the answer here was to stop, not to retry. Consequently:
+
+**What is still unproven on hardware, stated rather than implied:** the phone's auto-apply **on**
+path. The setting could not be flipped without a tap on the Switch, and after two misdirected taps
+on somebody's real phone the right call was to stop. So the applied notification shape
+(`actions=0`, *On your clipboard*), the applied card copy, and `applied` tracking `received` in the
+tally are **unrun**. The default-off path is proven; the opt-in path is not.
+
+---
+
+## Slice 13 — the Mac watches its own clipboard · 2026-09-02
+
+Mac → phone becomes automatic. macOS gates nothing, so the button was never the platform's idea. The
+phone's send direction is **untouched** — focus is still the only moment it may read, and nothing
+here polls, observes or routes around Slice 11's wall.
+
+Three questions were answered before any of it was built, because the change removes the premise the
+echo proof was written on.
+
+### 1. Does the interlock hold when both ends send automatically?
+
+**Yes, and it was not resting on the button.** `exchange`'s peer has always been an adversary that
+pushes back everything it receives, immediately, forever — a maximally auto-sending far side — so the
+Mac's half was already proven against the shape it has now become. What the button *was* hiding is a
+different failure that is not a cycle at all: a **flood**. A poll that classified itself as a `user`
+trigger would skip the unchanged rule and re-send the same clipboard every 500 ms for as long as the
+app was open. No echo rule stops that; a person pressing a button could never produce it.
+
+Five new cases model the watcher directly, and the mutation matrix now separates every field and
+every branch:
+
+| Mutation | Mac (`node --test`) |
+|---|---|
+| echo rule deleted | **6 of 10 fail**, `hop cap after 50 hops`, `reportable: false` |
+| unchanged rule deleted | **4 of 10 fail** — including *a watcher over an unchanged clipboard sends once* |
+| watcher misclassified as a `user` trigger | **4 of 10 fail** — the flood, caught by name |
+| `wroteLocally` becomes a no-op | **4 of 10 fail** |
+| `lastReceived` cleared on link drop | 1 fail — the reconnect bounce |
+| restored | 10 of 10 pass |
+
+#### The gap that matrix found first
+
+An earlier run had `appliedLocally` arming **both** guards, and the mutation that removed its
+`lastReceived` half left **every test green** — the same two-guards-one-test shape that let the very
+first version of this file pass with the echo rule deleted, recurring in the file written to prevent
+it.
+
+It was not fixed by adding a test. The half was **redundant where it was written for and wrong where
+it was reachable**: an arriving entry is already covered by `arrived`, which runs before the write
+and survives a link drop, and the only path where it was the sole guard was a Restore — where it made
+a later deliberate *Send this Mac's clipboard* click refuse as an echo, over text the person had just
+put back on purpose. A click is an instruction; the interlock exists to stop machines looping, not to
+overrule people. Narrowed to `wroteLocally`, which arms the unchanged rule and nothing else, every
+assignment is now uniquely load-bearing — mutation D above.
+
+### 2. What happens to a password
+
+**The previous slice's conclusion was wrong, and the way it was wrong is the finding.**
+
+Slice 12 reported that `clipboard.read(TYPE)` could see the marker, on the strength of a
+`writeBuffer` round-trip returning `"1"`. That control used **Chromium for both the stimulus and the
+reading**, so it proved only that Chromium is self-consistent with its own encoding. `swift` builds
+the real thing through `NSPasteboard` — the same API 1Password calls — and the real thing reads
+differently:
+
+| Stimulus (via `NSPasteboard`) | `readText()` | `has(Concealed)` | `read(Concealed)` | `availableFormats()` |
+|---|---|---|---|---|
+| text + `ConcealedType` — the 1Password shape | the text | **`true`** | `""` | `["text/plain"]` |
+| **CONTROL** — same text, no marker | the text | `false` | `""` | `["text/plain"]` |
+| text + `TransientType` | the text | `false` | `""` | `["text/plain"]` |
+| text + `AutoGeneratedType` | the text | `false` | `""` | `["text/plain"]` |
+| text + all three | the text | `true` | `""` | `["text/plain"]` |
+| **CONTROL** — ordinary text again | the text | `false` | `""` | `["text/plain"]` |
+
+`read` is `""` in **every row, including the true ones** — the convention writes the marker as a
+present type carrying *empty data*. So the check shipped in Slice 12 could never have fired on a real
+password manager, and it passed its own control only because that control wrote `'1'` as the marker's
+value, which nothing in the wild writes. **The control and the real input differed in the exact
+attribute being read**, which is the discrimination rule in the most literal form it has taken in
+this repo.
+
+`has` is the detection surface, `read` is not, and all three markers are honoured. Each marked row
+above is paired with an unmarked control carrying the same text, because "the check returned true"
+means nothing unless the same check returns false one line later.
+
+The residual risk is stated rather than engineered away: **an app that copies a password and sets no
+marker is indistinguishable from one that copies a URL.** Nothing here can fix that, so the rest of
+the design carries it — the phone holds rather than applies by default, both histories are
+memory-only and cleared on disconnect, no clipboard text is logged at any level, and the watcher has
+a switch that persists.
+
+### 3. Polling or an event, and what it costs
+
+**Polling, and not by choice.** `NSPasteboard` has no change notification — no callback, no KVO, no
+notification-centre event — and Electron exposes no `changeCount`, so every clipboard manager on
+macOS polls and reads.
+
+`clipboard.readText()`, median of 200 reads each:
+
+| clipboard | median | worst | at the 500 ms floor | at 250 ms |
+|---|---|---|---|---|
+| empty | 0.0010 ms | 0.0206 ms | 0.002 ms/s | 0.004 ms/s |
+| 100 B | 0.0106 ms | 0.3066 ms | 0.021 ms/s | 0.042 ms/s |
+| 10 KB | 0.0273 ms | 0.7392 ms | 0.055 ms/s | 0.109 ms/s |
+| **64 KB — this namespace's own cap** | **0.1008 ms** | 0.1539 ms | **0.202 ms/s → 0.02 % of a core** | 0.403 ms/s |
+| 1 MB | 2.0355 ms | 6.2519 ms | 4.071 ms/s → 0.4 % | 8.142 ms/s |
+| 20 MB | **37.2974 ms** | 66.4523 ms | 74.595 ms/s → **7.5 %** | 149.190 ms/s |
+
+The last row is why the interval is a function rather than a constant. `nextIntervalMs` holds a **1 %
+duty cycle** derived from the *measured* read rather than from the clipboard's size — measure the
+effect, not the stimulus — so it adapts to a slow or busy machine instead of encoding this one's
+performance as a table. A 20 MB clipboard backs off to 3.7 s and costs 1 % instead of 7.5 %, and
+nothing is missed by it: a clipboard that large is over the 64 KB cap and would be refused anyway.
+
+**Above a 50 ms read the ceiling binds and the budget is exceeded** — `MAX_INTERVAL_MS` is a
+deliberate cap on how unresponsive the watcher may become, and it is paid for in budget (2 % at
+100 ms). Without it a 200 MB clipboard would push the interval to 37 seconds and the person who
+copies a URL immediately afterwards would wait most of a minute. That trade is asserted in the tests
+rather than left in a comment.
+
+**Reads do not bump `changeCount`** — 500 reads left it at `1209`; a single write moved it to `1210`,
+so the counter was live throughout. Had reads counted as writes the watcher would have been its own
+stimulus, sending in a loop with nothing wrong with the interlock. And the watcher **does not read at
+all while the link is down**: a clipboard watcher with no phone attached is reading somebody's
+passwords for no purpose.
+
+### On hardware, with the phone attached
+
+```
+01:55:09 Watching this Mac's clipboard every 500ms; it is read only while the phone is connected
+01:55:29 clip.push → phone: 26 bytes — 2 sent / 0 received / 0 of 0 applied / 0 refused
+```
+
+| Stimulus | Pushes to the phone |
+|---|---|
+| an ordinary copy, **no button pressed** | 1 — and the phone logged it arriving |
+| the same clipboard, left alone 6 seconds (12 polls) | still 2 total — **no flood** |
+| a password-manager-shaped copy via `NSPasteboard` | **still 2 total — the password did not leave the machine** |
+
+### The applied notification shape, finally measured
+
+Slice 12 left the phone's auto-apply path unproven because two misdirected taps had made further
+tapping unwise. One of those taps had in fact flipped the setting on, so the path ran on its own and
+the shape could be read rather than driven:
+
+| | `android.title` | actions |
+|---|---|---|
+| offered (default) | `Copied on your Mac` | `actions=1` |
+| **applied** | `On your clipboard` | **no `actions=` field** |
+
+Both shapes are now proven on hardware, and `actions=` is the discriminator between them.
+
+### Defect 59 — a watcher send was invisible in the pane
+
+Found by the pane probe, which reads the list rather than assuming a send redraws it: after the
+watcher sent, `#clip-list` still rendered *"Nothing yet. Copy something on either machine."* The pane
+refreshed only on its own button clicks, and the watcher does not click anything. Fixed with a
+`clip-changed` event from the main process on any history mutation; re-measured, the list draws
+`2` rows with nothing touched.
+
+**The probe step that should have caught it earlier could not.** It read
+`#clip-list.textContent.trim().slice(0, 60)` and printed whatever came back, so a list *full of rows*
+was reported under the heading *"The pane starts with an empty history and says so"* — it had no
+assertion in it at all. Replaced with a counted presence check plus a control that separates "no
+rows" from "wrong element".
+
+### Suite
+
+| | Before | After |
+|---|---|---|
+| Mac (`npm test`) | 209 | **221** — +5 watcher cases in the cycle proof, +7 `clipWatchPolicy` |
+| Phone | 237 | 237 — unchanged; the phone has no watcher and cannot have one |
+
+### What is not proven
+
+- **The phone has not been reinstalled with this build.** The new phone-side copy attributing the
+  limit to Android is unverified on the device; the APK on it is one revision behind. It was not
+  installed because the phone was in someone's hand at the time.
+### The phone's auto-apply ON path — proven, and in daily use
+
+**Corrected 2026-09-02.** This slice first recorded the phone's `clipboard_auto_apply` as *on from a
+misdirected tap, to be reverted*. That was wrong: the setting was **turned on deliberately by its
+owner** and is staying on. It is a user's choice about their own device, not stray state, and the
+record said otherwise because the session assumed its own taps were the only thing that could have
+changed it — an absence rule failure of the ordinary kind. *What else would look exactly like this?*
+A person using their phone.
+
+So the branch Slice 12 listed as unproven is **proven, and by the strongest available evidence**:
+not a scripted run but continuous use on hardware.
+
+| | Evidence |
+|---|---|
+| the setting persists | `clipboard_auto_apply` → `12 02 08 01` in `connectsuite_settings.preferences_pb` |
+| the branch executes | `clip.push ← Mac: 26 bytes, applied to this phone's clipboard — 5 sent / 7 received / 5 of 7 applied` |
+| the applied notification shape | `android.title=String (On your clipboard)` with **no `actions=` field**, against the offered shape's `actions=1` |
+| the interlock holds under it | the phone has not once pushed back a clip the Mac applied to it |
+
+`5 of 7 applied` is the denominator that makes the first number mean something: two of the seven
+arrived before the setting was on and were held, five after it and were applied, which is the setting
+changing behaviour rather than a branch that always runs.
+
+**Nothing in Phase 5's clipboard work is unproven on hardware now.**
+
+### The gate checked the target and not the intent · 2026-09-02
+
+Reinstalling the phone needed a tap to reach the Clip tab, so the session reran `flip.sh` — the
+gated script written in Slice 13 to navigate there. It navigated there, and then **turned the
+auto-apply setting off**, which is what it had been built to do the day before and which had since
+been explicitly countermanded: the setting is its owner's deliberate choice.
+
+Every gate in that script passed, correctly. It confirmed the resumed activity was ours, re-dumped
+before each tap, refused when the screen moved. **It verified the target of the action and never the
+premise of it** — and the premise had expired.
+
+Restored immediately: `12 02 08 00` → `12 02 08 01`, switch reads `true`, verified two ways.
+
+Two things worth keeping, and the second is the one that generalises:
+
+- **The gate rule has a third form.** *Do not act on a target you have not identified* (coordinates),
+  *do not accept a reading you cannot trust* (controls), *having identified the target is worth
+  nothing if the action does not depend on it* (decoration) — and now: **an action whose reason has
+  been withdrawn is not made safe by verifying its target.** The predicate that decides *whether to
+  act* has to include *is this still wanted*, which no amount of dumping the screen can answer.
+- **A tool built for a decision that has been reversed is a loaded gun.** `flip.sh` existed for one
+  purpose, that purpose was countermanded, and it sat in the scratchpad still working perfectly. It
+  is deleted. The general form: when a decision is reversed, the automation built to serve it is part
+  of what gets reverted — otherwise the next person to reach for a familiar script re-executes the
+  old decision, which is the force-stop failure with a different command.

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ClipHistory, byteLength, shouldSend, tooLarge, MAX_TEXT_BYTES } from './clipboardHistory';
+import { ClipHistory, byteLength, tooLarge, MAX_TEXT_BYTES } from './clipboardHistory';
 
 test('a sensitive item is never stored', () => {
   const history = new ClipHistory();
@@ -22,11 +22,8 @@ test('exactly at the cap is allowed, one byte over is not', () => {
   assert.equal(tooLarge('a'.repeat(MAX_TEXT_BYTES + 1)), true);
 });
 
-test('a side does not send back what it just received', () => {
-  assert.equal(shouldSend('from the phone', 'from the phone'), false);
-  assert.equal(shouldSend('something else', 'from the phone'), true);
-  assert.equal(shouldSend('anything', null), true);
-});
+// The echo rule's test moved to `clipEcho.test.ts` with the rule itself. It is not duplicated here:
+// a test left behind over a deleted function passes forever and reads like coverage.
 
 test('duplicates collapse to the most recent occurrence', () => {
   const history = new ClipHistory();

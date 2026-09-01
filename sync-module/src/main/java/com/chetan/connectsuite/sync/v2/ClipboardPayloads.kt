@@ -5,8 +5,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * The half of `clip.*` with no Android in it: the payload shapes, the size cap, the echo rule and
- * the history.
+ * The half of `clip.*` with no Android in it: the payload shapes, the size cap and the history. The
+ * echo rule is [ClipEcho]'s and is not restated here.
  *
  * Separate for the reason `CLAUDE.md` gives by name — a JVM test that merely *references* an object
  * holding an Android static in a field initializer dies with `ExceptionInInitializerError`, and the
@@ -76,21 +76,16 @@ object ClipboardPayloads {
         }
     }
 
-    /**
-     * Whether this side may send [text], given the last text it *received*.
+    /*
+     * The echo rule used to live here, as `shouldSend`. It moved to [ClipEcho] when auto-apply
+     * arrived, and it was *deleted* from here rather than kept as a delegating one-liner.
      *
-     * **A rule about what to send, not a filter on what arrives.** One slot plus two writers is an
-     * echo waiting to happen: a side applies what the other sent, notices its own clipboard changed,
-     * and sends it straight back. The receiving end cannot tell that from somebody genuinely copying
-     * the same string twice — only the sender knows — so the decision is made where the knowledge
-     * is.
-     *
-     * The value it reads is written by the receive path and read by the send path, which are two
-     * callers. Its concurrency is stated in [ClipFeature], not merely its type: a tagged union
-     * prevents an ambiguous state and does nothing about two callers racing to set an unambiguous
-     * one.
+     * A rule with two homes has one that is tested and one that is real, and nothing says which is
+     * which until they disagree. `ClipboardPayloadsTest` covered this function and would have gone
+     * on covering it after the shipping path stopped calling it — a green test over dead code reads
+     * exactly like a green test over live code. `scripts/check-clip-echo.mjs` is what stops a third
+     * home appearing on either side.
      */
-    fun shouldSend(text: String, lastReceived: String?): Boolean = text != lastReceived
 
     /**
      * A bounded, in-memory clipboard history.

@@ -126,7 +126,7 @@ not implement an alternative without saying why the recorded reasoning is wrong.
 | **Defect 56** | closed, and guarded — `FsArrivalTest`, shown red three ways |
 | The **`media.*` contract** | migrated into `docs/protocol.md` → Photos, slice 10 — and guarded by `scripts/check-protocol-spec.mjs` |
 | **Contacts** | **served since Phase 4**, not outstanding — `docs/phase-5-closeout.md` carries the argument |
-| **Clipboard** | spec'd, decided, instrument built — **and not one reading taken**. The only feature left in the phase |
+| **Clipboard** | complete and measured. Slice 11 the wall, Slice 12 auto-apply plus the undo, Slice 13 the Mac's watcher. Both auto-apply paths and both notification shapes are proven on hardware. The concealed-clipboard reading that was owed is **taken** — via `scripts/support/write-marked-clip.swift`, because Electron cannot build a pasteboard holding text *and* a marker — and it overturned Slice 12's conclusion: detection is `clipboard.has`, never `read`. Owed: reinstall the phone with the current copy, and the phone's auto-apply setting is **on** from a misdirected tap and wants one tap to restore |
 
 ### Next — and it is clipboard, and only clipboard
 

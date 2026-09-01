@@ -72,18 +72,8 @@ class ClipboardPayloadsTest {
         assertTrue(ClipboardPayloads.tooLarge(overCap))
     }
 
-    // --- the echo rule ----------------------------------------------------------------------------
-
-    @Test
-    fun `a side does not send back the entry it just received`() {
-        assertFalse(ClipboardPayloads.shouldSend("from the mac", lastReceived = "from the mac"))
-    }
-
-    @Test
-    fun `a side does send an entry that differs from the last received one`() {
-        assertTrue(ClipboardPayloads.shouldSend("something else", lastReceived = "from the mac"))
-        assertTrue(ClipboardPayloads.shouldSend("anything", lastReceived = null))
-    }
+    // The echo rule's tests moved to `ClipEchoTest` with the rule itself, and were not duplicated
+    // here: a test left behind over a deleted function passes forever and reads like coverage.
 
     // --- the history ------------------------------------------------------------------------------
 

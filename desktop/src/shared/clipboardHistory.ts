@@ -5,7 +5,7 @@
  * `session.ts` and `transferDigest.ts` — and these are exactly the rules worth testing without a
  * window: what is remembered, what is refused, and what must never be sent back.
  *
- * The phone has the same three rules in `ClipboardPayloads.kt`. They are deliberately duplicated
+ * The phone has the same rules in `ClipboardPayloads.kt`. They are deliberately duplicated
  * rather than shared, because there is no shared runtime — and where two expressions of one rule
  * exist, `docs/protocol.md` is the one they are both answerable to. The caps are stated there.
  */
@@ -17,7 +17,16 @@ export const MAX_TEXT_BYTES = 64 * 1024;
 export const HISTORY_MAX = 20;
 
 export interface ClipItem {
-  kind: 'text' | 'empty' | 'sensitive';
+  /**
+   * `displaced` is **local to the Mac and never on the wire** — see [ClipboardClient.onPush].
+   *
+   * It is what this Mac's clipboard held immediately before an arriving entry overwrote it, kept so
+   * that Restore is an undo. `docs/protocol.md` permits removing the confirmation only if it is
+   * replaced by an undo, and this is that undo. Its text is **never rendered**: the pane draws the
+   * row and the button and not the content, because this is the one entry in the history nobody
+   * chose to put there and it may be a password.
+   */
+  kind: 'text' | 'empty' | 'sensitive' | 'displaced';
   text?: string;
   atMs: number;
   source: 'phone' | 'mac';
@@ -34,16 +43,16 @@ export function tooLarge(text: string): boolean {
   return byteLength(text) > MAX_TEXT_BYTES;
 }
 
-/**
- * Whether this side may send `text`, given the last text it **received**.
+/*
+ * The echo rule used to live here, as `shouldSend`. It moved to `clipEcho.ts` when auto-apply
+ * landed on the Mac, and it was *deleted* from here rather than left as a convenience wrapper.
  *
- * A rule about what to send rather than a filter on what arrives: the receiving side cannot tell an
- * echo from somebody genuinely copying the same string twice, so the decision is made where the
- * knowledge is. One slot plus two writers is an echo waiting to happen.
+ * A rule with two homes has one home that is tested and one that is real, and nothing says which is
+ * which until they disagree. `clipboardHistory.test.ts` covered this function perfectly and would
+ * have kept covering it after the shipping path stopped calling it — a passing test over dead code
+ * that reads exactly like a passing test over live code. `scripts/check-clip-echo.mjs` is what stops
+ * a third one appearing.
  */
-export function shouldSend(text: string, lastReceived: string | null): boolean {
-  return text !== lastReceived;
-}
 
 /**
  * A bounded, in-memory clipboard history.

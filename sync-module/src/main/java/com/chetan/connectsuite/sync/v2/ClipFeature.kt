@@ -5,6 +5,7 @@ import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
 import com.chetan.connectsuite.core.app.AppForeground
+import com.chetan.connectsuite.core.data.SettingsStore
 import com.chetan.connectsuite.core.link.ControlSession
 import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.core.link.LinkServer
@@ -14,6 +15,8 @@ import com.chetan.connectsuite.core.protocol.Envelope
 import com.chetan.connectsuite.core.protocol.ErrorCode
 import com.chetan.connectsuite.core.protocol.MessageType
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.add
@@ -47,9 +50,15 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * ### Two rules that are not obvious from the payloads
  *
- * **An arriving entry is offered, never applied.** A clipboard is a single-slot store with no undo;
- * writing to it destroys what was there and the person finds out when they paste. [onPush] stores
- * and notifies. [apply] is what a deliberate tap calls.
+ * **An arriving entry is offered by default, and applied only if the person asked for that.**
+ * `SettingsStore.clipboardAutoApply` decides, and it is **off** — not out of caution but because of
+ * the same measurement this file is built on. The Mac applies what arrives and can afford to: it
+ * reads its own clipboard first, keeps what it is about to overwrite, and offers Restore. **This
+ * phone cannot**, because it may not read its clipboard while unfocused — so it cannot see what it
+ * would destroy, cannot put it back, and what it destroys is often not in the history either (a
+ * clip copied while this app was backgrounded was never read). Auto-apply here is the one write in
+ * the feature with no undo and no witness. Some people will want it anyway; nobody should get it
+ * without asking.
  *
  * **Nothing here logs clipboard text, at any level.** `LinkLog` writes to a rotating file on disk,
  * so a handler written the way every other handler in this repo is written would put people's
@@ -76,23 +85,27 @@ object ClipFeature {
     private val history = ClipboardPayloads.History()
 
     /**
-     * The last text this side **received**, and the whole of the echo rule.
+     * The echo interlock, and the whole of what stops two clipboards writing each other in a
+     * circle. One home — see [ClipEcho] — so `ClipEchoTest` can drive the rule against an
+     * adversarial peer rather than model it, and so this file holds no clipboard text of its own to
+     * compare against.
      *
-     * Its concurrency is stated rather than merely its type, because a tagged union does nothing
-     * about two callers: this is written by [onPush] on a socket thread and read by
-     * [onWindowFocused] on the main thread. `@Volatile` is sufficient — the two never
-     * read-modify-write it, they each assign or compare — and the failure it prevents is a phone
-     * bouncing the Mac's own entry straight back at it.
+     * It became load-bearing when auto-apply landed. Before that a person was the rate limiter on
+     * both ends, and a loop that needs a human to press a button once per hop is not a loop.
      */
-    @Volatile
-    private var lastReceived: String? = null
-
-    /** The last text this side sent, so a re-focus does not re-send an unchanged clipboard. */
-    @Volatile
-    private var lastSent: String? = null
+    private val echo = ClipEcho()
 
     private val sent = AtomicLong(0)
     private val received = AtomicLong(0)
+
+    /**
+     * Applied beside received, because a count with no denominator is not evidence.
+     *
+     * With auto-apply off these differ by every entry nobody tapped, which is the number that says
+     * whether the offer is being used or ignored — and with it on they should track, so a gap is
+     * the setting not taking effect. Neither reading exists without both numbers.
+     */
+    private val applied = AtomicLong(0)
     private val refusedNotFocused = AtomicLong(0)
     private val refusedSensitive = AtomicLong(0)
     private val refusedTooLarge = AtomicLong(0)
@@ -103,6 +116,8 @@ object ClipFeature {
         val lastSentAtMs: Long = 0L,
         val lastReceivedPreview: String? = null,
         val lastReceivedAtMs: Long = 0L,
+        /** Whether the last arriving entry reached the clipboard, so the card names what happened. */
+        val lastReceivedApplied: Boolean = false,
         val historySize: Int = 0,
         val linkUp: Boolean = false,
     )
@@ -111,7 +126,8 @@ object ClipFeature {
     val state: StateFlow<PhoneState> = _state
 
     private fun tally(): String =
-        "${sent.get()} sent / ${received.get()} received / ${refusedNotFocused.get()} refused-unfocused / " +
+        "${sent.get()} sent / ${received.get()} received / ${applied.get()} of ${received.get()} applied / " +
+            "${refusedNotFocused.get()} refused-unfocused / " +
             "${refusedSensitive.get()} refused-sensitive / ${refusedTooLarge.get()} refused-too-large since start"
 
     fun install(context: Context, server: LinkServer) {
@@ -156,8 +172,13 @@ object ClipFeature {
      */
     fun onLinkDropped() {
         val had = history.clear()
-        lastReceived = null
-        lastSent = null
+        // The interlock is **not** fully cleared with the history, and that distinction is the fix
+        // for a bounce nobody had seen: `linkDropped` drops what this side last sent and keeps what
+        // it last received. Clearing both would let the next focus read back a clip the Mac gave
+        // this phone and send it home, where a Mac that auto-applies writes it over whatever the
+        // person copied in the meantime. One hop, terminating, silently destroying live work. See
+        // `ClipEcho` and `ClipEchoTest`'s last case.
+        echo.linkDropped()
         _state.value = PhoneState()
         LinkLog.i("clip", "Link dropped; cleared $had clipboard entries — ${tally()}")
     }
@@ -178,11 +199,11 @@ object ClipFeature {
 
         // **Report the effect, not the stimulus** — this repo's own probe rule, and it belongs in
         // product code for the same reason. `broadcast` over zero sessions returns normally and
-        // delivers nothing, so an earlier version of this counted a send, set `lastSent`, and drew
+        // delivers nothing, so an earlier version of this counted a send, armed the interlock, and drew
         // "Sent to your Mac" for an entry no Mac ever saw. Observed 2026-09-01: the phone read its
         // clipboard on focus at 18:53:57 and the Mac connected at 18:54:13, sixteen seconds later.
         //
-        // Worse than a wrong number: `lastSent` would then suppress the *real* send when a Mac did
+        // Worse than a wrong number: the interlock would then suppress the *real* send when a Mac did
         // arrive, because the text had not changed. The feature would look broken exactly once,
         // for the person whose phone was open before their Mac was.
         if (server.anyLiveSession() == null) {
@@ -195,11 +216,19 @@ object ClipFeature {
             return
         }
 
-        if (!ClipboardPayloads.shouldSend(text, lastReceived)) {
-            LinkLog.i("clip", "Not sending: identical to the last entry received from the Mac — ${tally()}")
-            return
+        // Focus is an *automatic* trigger, so both rules apply: the echo rule (never send back what
+        // we received) and the unchanged rule (do not re-send the same clipboard every time
+        // somebody opens the app). Named refusals rather than a boolean, because the first is
+        // logged and the second is the ordinary case — and collapsing them would hide which one is
+        // doing the work, which is exactly how the Mac's twin test passed over a deleted echo rule.
+        when (echo.maySend(text, ClipEcho.Trigger.AUTOMATIC)) {
+            ClipEcho.Decision.Echo -> {
+                LinkLog.i("clip", "Not sending: identical to the last entry received from the Mac — ${tally()}")
+                return
+            }
+            ClipEcho.Decision.Unchanged -> return
+            ClipEcho.Decision.Send -> Unit
         }
-        if (text == lastSent) return
 
         val payload = ClipboardPayloads.entry(
             kind = ClipboardPayloads.KIND_TEXT,
@@ -219,7 +248,7 @@ object ClipFeature {
                 appName = clip.appName,
             ),
         )
-        lastSent = text
+        echo.sent(text)
         sent.incrementAndGet()
         server.broadcast { session -> session.send(Envelope(type = MessageType.CLIP_PUSH, payload = payload)) }
         _state.value = _state.value.copy(
@@ -276,11 +305,15 @@ object ClipFeature {
     }
 
     /**
-     * The Mac's clipboard arriving here. **Stored and offered, never applied.**
+     * The Mac's clipboard arriving here. **Stored, then applied or offered per the setting.**
      *
-     * The write itself is legal from the background on this device — that was reading 5 — so the
-     * reason this does not simply set the clipboard is a design decision about a single-slot store
-     * with no undo, not a platform limit. [apply] is what a deliberate tap calls.
+     * The write is legal from the background on this device — that was reading 5 — so which of the
+     * two happens is a decision rather than a limit, and it is the user's decision:
+     * `SettingsStore.clipboardAutoApply`, off by default for the reason in the class comment.
+     *
+     * The setting is read here, at the moment of acting, rather than cached at install: a toggle
+     * flipped while the phone is in a pocket has to take effect on the next arrival, and a value
+     * read once at startup would leave somebody's *off* being honoured by a field nobody updated.
      */
     private fun onPush(session: ControlSession, request: Envelope, context: Context) {
         val kind = request.payload["kind"]?.jsonPrimitive?.content ?: ClipboardPayloads.KIND_TEXT
@@ -304,7 +337,9 @@ object ClipFeature {
             )
         }
 
-        lastReceived = text
+        // Armed **before** any write. A write that lands first leaves a window in which a focus
+        // event could read this phone's own new clipboard and push it straight back to the Mac.
+        echo.arrived(text)
         received.incrementAndGet()
         history.add(
             ClipboardPayloads.History.Item(
@@ -314,15 +349,36 @@ object ClipFeature {
                 source = ClipboardPayloads.SOURCE_MAC,
             ),
         )
+
+        val autoApply = runCatching {
+            runBlocking { SettingsStore.get(context).clipboardAutoApply.first() }
+        }.getOrElse { failure ->
+            // Fails **closed**, to the confirmation. A settings read that throws must not be the
+            // route by which somebody's clipboard gets replaced without them having asked, and the
+            // cost of the wrong guess in this direction is one extra tap.
+            LinkLog.w("clip", "Could not read the auto-apply setting; holding for a tap instead", failure)
+            false
+        }
+        if (autoApply) {
+            applyToClipboard(context, text)
+            applied.incrementAndGet()
+        }
+
         _state.value = _state.value.copy(
             lastReceivedPreview = text,
             lastReceivedAtMs = System.currentTimeMillis(),
+            lastReceivedApplied = autoApply,
             historySize = history.size,
             linkUp = true,
         )
-        ClipNotifications.offer(context, text)
+        ClipNotifications.post(context, text, applied = autoApply)
         session.ack(request)
-        LinkLog.i("clip", "clip.push ← Mac: ${ClipboardPayloads.byteLength(text)} bytes, offered — ${tally()}")
+        LinkLog.i(
+            "clip",
+            "clip.push ← Mac: ${ClipboardPayloads.byteLength(text)} bytes, " +
+                (if (autoApply) "applied to this phone's clipboard" else "held for a tap") +
+                " — ${tally()}",
+        )
     }
 
     private fun onHistory(session: ControlSession, request: Envelope) {
@@ -361,20 +417,34 @@ object ClipFeature {
     }
 
     /**
-     * Writes the phone's clipboard. Called only from a deliberate tap on the offer.
+     * Writes the phone's clipboard from a **deliberate tap** — the notification action or the card.
      *
-     * Legal from anywhere on this device — the background write landed in reading 5 — so this is
-     * safe to call from a notification action with no activity on screen.
+     * Legal from anywhere on this device (the background write landed in reading 5), so it is safe
+     * to call from a broadcast receiver with no activity on screen.
      */
     fun apply(context: Context, text: String) {
+        applyToClipboard(context, text)
+        applied.incrementAndGet()
+        _state.value = _state.value.copy(lastReceivedApplied = true)
+        LinkLog.i(
+            "clip",
+            "Applied a Mac entry to the phone clipboard on a tap: " +
+                "${ClipboardPayloads.byteLength(text)} bytes — ${tally()}",
+        )
+    }
+
+    /**
+     * The one place that writes this phone's clipboard, reached from a tap and from auto-apply.
+     *
+     * [ClipEcho.wroteLocally] runs whichever route got here: the Mac's entry is now this phone's
+     * clipboard, and the next focus must not read it back and send it home. It arms the *unchanged*
+     * rule; the echo rule was already armed by [ClipEcho.arrived] when the push landed, before any
+     * write, and that one survives a link drop — which is what `ClipEchoTest`'s last case checks.
+     */
+    private fun applyToClipboard(context: Context, text: String) {
+        echo.wroteLocally(text)
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("ConnectSuite", text))
-        // `lastSent` too: applying the Mac's entry makes it this phone's clipboard, and the next
-        // focus must not read it back and send it home again. Belt and braces with the echo rule,
-        // because the two guards fail in different ways — this one survives a `lastReceived` reset.
-        lastReceived = text
-        lastSent = text
-        LinkLog.i("clip", "Applied a Mac entry to the phone clipboard: ${ClipboardPayloads.byteLength(text)} bytes — ${tally()}")
     }
 
     // --- the one place that touches ClipboardManager for reading ----------------------------------

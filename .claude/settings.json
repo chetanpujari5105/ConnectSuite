@@ -21,6 +21,18 @@
             "command": "\"$CLAUDE_PROJECT_DIR/scripts/hooks/protocol-spec-in-sync.sh\"",
             "if": "Bash(git commit *)",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/scripts/hooks/clip-echo-in-sync.sh\"",
+            "if": "Bash(git commit *)",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/scripts/hooks/renderer-views-covered.sh\"",
+            "if": "Bash(git commit *)",
+            "timeout": 15
           }
         ]
       }

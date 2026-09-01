@@ -85,3 +85,31 @@ test('the source line shows the app label, never the package id', () => {
   assert.equal(api.clipRowSource({ kind: 'text', atMs: 1, source: 'phone' }), 'Phone');
   assert.equal(api.clipRowSource({ kind: 'text', atMs: 1, source: 'mac' }), 'This Mac');
 });
+
+test('a displaced entry is restorable without being readable', () => {
+  // The rule the undo rests on. `displaced` is what this Mac's clipboard held before an arriving
+  // entry overwrote it — the one row in this list nobody chose to add — and on macOS it may be a
+  // password manager's clip that the concealed-type check did not catch. `main/clipboard.ts` says
+  // plainly that the check's measurement did not reach the real case (Slice 12), so this is the
+  // safeguard that does not depend on it: the text is held for Restore and never drawn.
+  const secret = 'correct-horse-battery-staple';
+  const rendered = api.clipRowText({ kind: 'displaced', text: secret, atMs: 1, source: 'mac' });
+
+  assert.ok(!rendered.body.includes(secret), 'a displaced row must not render the text it holds');
+  assert.match(rendered.body, /before the entry above replaced it/);
+  assert.equal(rendered.muted, true);
+
+  // The control, and it is the half that makes the assertion above mean anything: the same function
+  // *does* render text for the kind that is supposed to have it. Without this, deleting the whole
+  // body from `clipRowText` would leave the test above green.
+  assert.equal(api.clipRowText({ kind: 'text', text: secret, atMs: 1, source: 'mac' }).body, secret);
+});
+
+test('a displaced row says it was replaced rather than claiming the Mac sent it', () => {
+  // It carries `source: 'mac'`, which is true and would otherwise draw "This Mac" — the same label
+  // as an entry this Mac deliberately sent to the phone. Two different events reading identically
+  // in the one list a person consults to undo something is how the undo gets missed.
+  const displaced = api.clipRowSource({ kind: 'displaced', text: 'x', atMs: 1, source: 'mac' });
+  assert.equal(displaced, 'Replaced on this Mac');
+  assert.notEqual(displaced, api.clipRowSource({ kind: 'text', atMs: 1, source: 'mac' }));
+});

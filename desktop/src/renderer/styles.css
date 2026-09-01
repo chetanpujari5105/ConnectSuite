@@ -2158,3 +2158,34 @@ img#qr {
   color: var(--text-muted);
   padding: 4px 2px;
 }
+
+/*
+ * The clipboard watcher's toggle and the phone-side limit.
+ *
+ * `styles.css` owns what lives inside a screen — the division `stylesheets.test.ts` enforces — so
+ * these belong here and their colours come from tokens rather than from a second `:root`.
+ */
+.clip-watch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.clip-watch input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/*
+ * Set apart from the line above it on purpose. This one is a statement about Android rather than
+ * about ConnectSuite, and a reader who skims two identical paragraphs takes both as ours.
+ */
+.clip-wall-phone {
+  border-left: 2px solid var(--border);
+  padding-left: 12px;
+  margin-top: -4px;
+}

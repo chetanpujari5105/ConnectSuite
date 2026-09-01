@@ -116,11 +116,20 @@ interface ConnectBridge {
     { ok: true; data: Contact } | { ok: false; reason?: string; fixHint?: string }
   >;
 
-  // Phase 5: clipboard. Asymmetric, and the types say so — `clipSend` works while the link is up,
+  // Phase 5: clipboard. Asymmetric, and the types say so — this Mac watches its own clipboard and
+  // `clipSend` is the manual override,
   // `clipRequest` is answerable only while ConnectSuite is focused on the phone. `clipUse` is the
   // only call that writes this Mac's clipboard, which is why it is its own method rather than a
   // side effect of receiving.
   clipSend(): Promise<{ ok: true; data: { bytes: number } } | { ok: false; reason?: string; fixHint?: string }>;
+  /**
+   * The watcher's switch. There is no phone-side twin and there cannot be one: Android refuses a
+   * background clipboard read to every app, so the phone has nothing to watch with.
+   */
+  clipWatching(): Promise<{ ok: true; data: { watching: boolean } } | { ok: false; reason?: string }>;
+  clipSetWatching(
+    on: boolean,
+  ): Promise<{ ok: true; data: { watching: boolean } } | { ok: false; reason?: string }>;
   clipRequest(): Promise<
     { ok: true; data: ClipEntryRow } | { ok: false; reason?: string; fixHint?: string }
   >;
@@ -128,6 +137,7 @@ interface ConnectBridge {
     { ok: true; data: ClipEntryRow[] } | { ok: false; reason?: string; fixHint?: string }
   >;
   clipUse(text: string): Promise<{ ok: true; data: null } | { ok: false; reason?: string }>;
+  onClipChanged(callback: () => void): void;
   onClipArrived(callback: (entry: ClipEntryRow) => void): void;
 
   // Files, both directions. `fsPush` arrived with the phone's receiver in slice 8, `fsPull` and
@@ -448,9 +458,11 @@ const clipboard = new ClipboardView(
   connect,
   el('clip-list'),
   el('clip-wall'),
+  el('clip-wall-phone'),
   el('clip-notice'),
   el<HTMLButtonElement>('clip-send'),
   el<HTMLButtonElement>('clip-request'),
+  el<HTMLInputElement>('clip-watch'),
 );
 void clipboard;
 

@@ -86,8 +86,22 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   - §2's **pre-registered decision table**: the product shape for every answer the readings can
     give, written *before* the reading so nothing can be rationalised afterwards. A refusal makes
     this a foreground-only feature, which is a different product, and that is decided already;
-  - the Mac's clipboard is **not** written automatically — a single-slot store with no undo, so an
-    arriving entry is offered rather than applied (§5);
+  - §5 said the Mac's clipboard is **not** written automatically — a single-slot store with no undo,
+    so an arriving entry is offered rather than applied. **That was reversed on 2026-09-02 on the
+    condition the contract itself named**, which was *revisit it with an undo, not by removing the
+    confirmation*: the Mac now applies on arrival and keeps what it overwrote as a `displaced`
+    history entry that Restore puts back. **The phone did not follow**, and the asymmetry is a
+    measurement rather than a preference — it may not read its clipboard while unfocused, so it
+    cannot see what it would destroy and cannot offer it back. Auto-apply there is a setting, off by
+    default. **Mac → phone became automatic on 2026-09-02** — a polling watcher, because
+    `NSPasteboard` has no change notification and Electron exposes no `changeCount`; the button is a
+    manual override now. Two readings from that slice are worth more than the feature: the
+    concealed-clipboard check shipped in Slice 12 **could never have fired**, because the convention
+    writes its marker as a present type with *empty data* and the check read the value — its control
+    passed only because the control wrote a value nothing in the wild writes, so the control and the
+    real input differed in the exact attribute being read. `has`, never `read`. And the mutation
+    matrix caught a second *two-guards-one-test* gap, in the file written to prevent the first one.
+    `docs/testing.md` → Slices 12 and 13, and `docs/protocol.md` wins over §5;
   - §6 is **the first at-rest storage decision in this project**: memory only, 20 entries, 64 KB
     each, cleared on disconnect, gone on restart, and **no clipboard text in any log line** —
     `LinkLog` writes to a rotating file, so a handler written the way every other handler in this
@@ -118,8 +132,8 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 | 2 | Screen mirroring (MediaProjection capture, H.264, video socket) | **Done** — closed 2026-08-26 |
 | 3 | **Input injection (AccessibilityService)** — see `docs/phase-3-input.md` | **Done** — passed on hardware 2026-08-27; closed retroactively 2026-08-31 |
 | 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
-| 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **In progress** — photos done; **Files is complete** as of 2026-09-01 (both directions with resume, the Folders screen, the Files pane, the grant-free `Download/ConnectSuite` destination, drag to Finder); **contacts shipped in Phase 4** and is not outstanding — see `docs/phase-5-closeout.md`. Outstanding: **clipboard**, and only clipboard — spec'd and decided, its instrument built, **not one reading taken** |
-| 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | Not started |
+| 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **Done** — closed 2026-09-02 against both its conditions (`docs/phase-5-closeout.md`); photos done; **Files is complete** as of 2026-09-01 (both directions with resume, the Folders screen, the Files pane, the grant-free `Download/ConnectSuite` destination, drag to Finder); **contacts shipped in Phase 4** and is not outstanding — see `docs/phase-5-closeout.md`. **Clipboard is built in both directions** — the wall measured (Slice 11, 2026-09-01), the feature landed, and Handoff-style auto-apply added on the Mac with a setting on the phone (Slice 12, 2026-09-02). Both directions are as automatic as their platforms allow — the Mac watches its own clipboard, the phone cannot and no Android app can. Outstanding: the phone has not been reinstalled with the latest copy change |
+| 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | **Open** — Phase 5 closed 2026-09-02. Read `docs/single-device-audit.md` §4 first: this is the phase where one-handset findings stop being a footnote, because battery management is the most vendor-specific surface on Android |
 | 7 | Mac UX — packaging, distribution, app launching, and the polish pass | Not started |
 
 `android-connect-suite-claude-code-prompt.md` is the **v1 plan and is superseded**. Its phases are
@@ -380,6 +394,8 @@ damage on the user's own device or nearly recorded a false result.
   | `dumpsys activity permissions \| grep -c documents/tree` after a revoke (2026-09-01) | 2 tree grants — read as *"Remove did nothing"* | the released grant **is still a row**, at `persisted=0x0`. The real grant is the one at `persisted=0x3`. Row presence is not grant persistence |
   | the push-resume probe's `sentBeforeCut` after `socket.destroy()` (2026-09-01) | 12,058,624 bytes delivered — read as *resume works* | **zero bytes arrived.** `destroy()` discards the send buffer, so the number was bytes *queued*. The instrument reported its own intention as a measurement, and underneath it a **truncated push was being committed as complete** — defect 56 |
   | a Gradle mutation run reading `build/test-results/*.xml` (2026-09-01) | `failures=0` — read as *the guard does not catch this* | the build **did not compile**, so nothing rewrote the file. The reading was the previous run's, served with no indication of its age |
+  | `clipboard.read('org.nspasteboard.ConcealedType')` after `clipboard.writeBuffer` of the same type (2026-09-02) | the marker is readable — *the concealed-clipboard check works* | **Chromium wrote it and Chromium read it back.** A password manager writes through `NSPasteboard`, and against that the same call returns `""`. The run proved Chromium agrees with itself |
+  | the same check's positive control, which wrote `'1'` as the marker's value | the check fires on a marked clipboard | the convention writes the marker as a **present type carrying empty data**. `read(type) !== ''` is false for every real concealed clip ever written; the control was the only input in the world that could have passed it |
 
   Between them, false absences and false presences alike, which is the point: the failure is not
   "empty means broken", it is that **the check could not separate signal from lookalike** and said
@@ -600,6 +616,44 @@ damage on the user's own device or nearly recorded a false result.
   A fourth member of this family is likely and this is what makes it findable: **any time two things
   in this repo can answer one question, write down that they can, before they disagree.**
 
+  #### The degenerate case: one reading wearing two hats
+
+  The family above is two instruments disagreeing. The failure below is the same family with **the
+  second reading missing entirely** — and it is worse, because a disagreement is at least visible
+  and this produces a clean, confirming, single answer.
+
+  **If the instrument supplies its own input, it measures itself.** The concealed-clipboard check
+  was validated by `clipboard.writeBuffer(type, …)` followed by `clipboard.read(type)`: Chromium
+  wrote the marker, Chromium read it back, and it came back. That is a true statement about
+  Chromium's encoding and says **nothing whatever** about a marker a password manager wrote —
+  measured a day later through `NSPasteboard`, the same call returns `""`, and the check that
+  shipped could never have fired on the input it exists for.
+
+  The question that catches it is not *did the control pass* but **who wrote the thing I am
+  reading**. When the answer is *this same subsystem*, there is no reading yet — there is a
+  round-trip. A round-trip is worth taking (it proves the call path is wired) and it must be
+  labelled as one, never as evidence about foreign input. `scripts/support/write-marked-clip.swift`
+  exists for exactly this: when the product's own API cannot construct the state under test, the
+  stimulus comes from outside the product or the reading does not exist.
+
+  #### And the control must differ from the real input only in the thing being tested
+
+  The second half of the same failure, and it is the one that made it survive review. The control
+  wrote `'1'` as the marker's *value*, and the check read the value. Real markers carry **empty
+  data** — the type's presence is the whole signal. So the control and the real input differed in
+  **exactly the attribute under test**, which makes a control not merely weak but actively
+  misleading: it certifies the one behaviour that does not occur.
+
+  Stated generally: **a control is a claim that this input is like the real one in every way that
+  matters.** Before trusting one, name the attribute the check reads and confirm the control carries
+  it *the way the real input does* — not merely that it carries it. Here that is one sentence —
+  *does a real password manager set a value, or just the type?* — and it was never asked, because
+  the control passed.
+
+  The two halves are one rule from two directions: the first says the stimulus must come from
+  outside the instrument, the second says it must resemble the real thing where it counts. Fail
+  either and the result is a confident green over a feature that has never worked.
+
 - **A tagged union is a rule about what can be represented, not about who may write it.** Making an
   ambiguous state unrepresentable does nothing about two callers racing to set an unambiguous one,
   and the second writer is free to move the machine back to a state the first had already left.
@@ -751,6 +805,17 @@ damage on the user's own device or nearly recorded a false result.
   identified. The control rule says do not accept a reading you cannot trust. This one closes the
   gap between them: **having identified the target correctly is worth nothing if the action does
   not depend on the identification.**
+
+  **There is a third form, found on 2026-09-02, and no amount of screen-reading catches it.** A
+  script gated on every check it had — resumed activity confirmed, screen re-dumped before each tap,
+  refusing when the screen moved — correctly navigated to a settings screen and then flipped a toggle
+  it had been written to flip the day before, after that decision had been explicitly reversed. Every
+  gate verified the **target** of the action; none verified its **premise**, and the premise had
+  expired. So: *is this still wanted* is part of the predicate, and it is the part a dump cannot
+  answer. The corollary is about tools rather than checks — **automation built for a decision that
+  has been reversed is part of what gets reverted.** A script that still works perfectly for a
+  purpose nobody holds any more will be reached for by the next person who recognises its name, which
+  is the force-stop failure wearing a different command.
 
   Concretely, for anything that drives a real device: the predicate that decides *whether* to act is
   the same expression that decides *what was seen*, evaluated at the moment of acting — not earlier,

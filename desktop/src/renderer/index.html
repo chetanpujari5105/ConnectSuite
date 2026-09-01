@@ -492,8 +492,22 @@
                   <button id="clip-request" class="button-secondary" type="button">
                     Ask the phone for its clipboard
                   </button>
+                  <!--
+                    A checkbox rather than a button, because it reports a state as much as it
+                    changes one. This is the only control in the app that decides whether something
+                    reads your clipboard all day, so it says what it is doing while it does it.
+                  -->
+                  <label class="clip-watch" for="clip-watch">
+                    <input type="checkbox" id="clip-watch" checked />
+                    <span>Send what I copy automatically</span>
+                  </label>
                 </div>
                 <div class="clip-wall" id="clip-wall"></div>
+                <!--
+                  The phone half, in its own block. It is a platform fact and not a roadmap item,
+                  and the two read identically unless one of them says whose limit it is.
+                -->
+                <div class="clip-wall clip-wall-phone" id="clip-wall-phone"></div>
                 <div class="clip-notice" id="clip-notice" role="status" hidden></div>
                 <div class="clip-list" id="clip-list" aria-label="Clipboard history"></div>
               </div>

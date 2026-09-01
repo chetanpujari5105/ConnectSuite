@@ -1,21 +1,39 @@
 # Phase 5 close-out ledger — files, photos, clipboard, contacts
 
-> ## ⏳ **PHASE 5 IS NOT CLOSED — this is the ledger as it stands on 2026-09-01.**
+> ## ✅ **PHASE 5 IS CLOSED — 2026-09-02.** Phase 6 may open.
 >
-> Everything in scope is proven on hardware **except clipboard**, which has a specification, a
-> pre-registered decision table and an instrument — and **not one reading**. The instrument was
-> built on a day the phone was not attached and has never been run.
+> **Both conditions are met, and here is each one against its own wording.**
 >
-> **Two conditions close this phase**, and they are the whole list:
+> **1. Clipboard readings 1–5, with their controls, and the feature the pre-registered table names
+> for the answer that came back — built and proven on the device.**
+> The readings are `docs/testing.md` → **Slice 11**: reads refused **90 of 90** with the
+> accessibility service bound and **60 of 60** with it disabled, over clips proven readable with
+> focus half a second earlier; the listener silent across 12 samples; **writes unrestricted**. The
+> decision table's answer for that reading was *a foreground-only send from the phone and an
+> unrestricted one to it* — which is what shipped, and then went further than the table asked:
+> **Slice 12** put an undo behind the Mac's auto-apply and gave the phone a setting, **Slice 13**
+> made the Mac's send automatic with a watcher. Every branch is proven on hardware, including the
+> phone's auto-apply, which is **in daily use** rather than merely demonstrated.
 >
-> 1. **Clipboard readings 1–5 recorded in `docs/testing.md`** with their controls
->    (`docs/phase-5-clipboard-proposal.md` §2), and then whichever feature the pre-registered table
->    names for the answer that comes back — built, and proven on the device.
-> 2. **Defect 57's branch produced once** — an undecodable `MediaStore` row — or the defect
->    consciously carried into Phase 6 as a numbered deferral rather than as an unfinished sentence.
+> **2. Defect 57's branch produced once, or carried into Phase 6 as a numbered deferral.**
+> **Carried, deliberately, as the second option the condition offers.** The branch was never
+> produced: manufacturing an undecodable `MediaStore` row means truncating a file's bytes under its
+> own entry on someone's real phone, and nothing on this device has produced one naturally in a
+> phase of use. It is **deferral 57**, its fix direction and its wrong-fix are in `docs/defects.md`,
+> and it is a *reporting* defect — the Mac already drops errored ids into a `missing` set and stops
+> asking, which is right for both causes. It is not an unfinished sentence and it does not block
+> Phase 6.
 >
-> **Contacts is not one of them.** It shipped and was proven in Phase 4; see *The contacts line, and
-> why it is already served*.
+> **What Phase 5 also leaves behind, which is worth more than any of its features:** four
+> enforcement points where there were two — `check-clip-echo.mjs` and `check-renderer-views.mjs`
+> joined `check-defects.sh` and `check-protocol-spec.mjs` — and five new entries in `CLAUDE.md`'s
+> control table, one of which (**the instrument supplying its own input**) invalidated a
+> conclusion this ledger had already recorded as measured.
+>
+> **The single-device caveat is unchanged and now matters more.** Every hardware reading in this
+> phase came from one SM-S938B. `docs/single-device-audit.md` §4 is the list of which findings are
+> AOSP, which are Samsung, and which are honestly unknown — and Phase 6 is the phase where that
+> stops being a footnote, because battery management is the most vendor-specific surface on Android.
 
 This is the summary a person reads before deciding whether Phase 6 can open. The evidence behind
 every claim is in `docs/testing.md` in dated sections; the defect index is `docs/defects.md`; the
@@ -38,6 +56,10 @@ contract is `docs/protocol.md`.
 | **The aimed picker and quick-pick chips** | done | — | Slice 9 — `EXTRA_INITIAL_URI` measured honoured, a bad aim measured to degrade to the parent |
 | **Drag to Finder** | — | done | Slice 9 — copy-then-drag, with the ordering stated to the user rather than hidden behind a spinner |
 | **The `fs.*` contract** | — | — | `docs/protocol.md` → Files, including `fs.thumb` |
+| **The clipboard wall** — measured, not inherited | — | — | Slice 11 — 90/90 and 60/60 refusals against a focused control; the AccessibilityService exception does **not** operate on this device |
+| **Clipboard, both directions** | done | done | Slices 11–13 — the phone sends on focus, the Mac watches its own clipboard; both auto-apply paths and both notification shapes proven on hardware |
+| **The echo interlock** | done | done | Slice 12–13 — each side driven against an adversarial peer that echoes everything forever; five mutations, each visible in its own test |
+| **The concealed-clipboard check** | — | done | Slice 13 — measured through `NSPasteboard`, which overturned Slice 12's conclusion: `has`, never `read` |
 | **The `media.*` contract** | — | — | Slice 10 — moved into `docs/protocol.md` → Photos, and guarded so the next one cannot go missing |
 | **Contacts** | done | done | **Phase 4**, contacts pane run 2026-08-28, and `nameFor` firing on an inbound ring in step 70 |
 

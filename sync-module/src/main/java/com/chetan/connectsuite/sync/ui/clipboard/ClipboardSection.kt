@@ -2,6 +2,7 @@ package com.chetan.connectsuite.sync.ui.clipboard
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,8 +12,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,16 +36,23 @@ import com.chetan.connectsuite.sync.v2.ClipFeature
  * `MainActivity.onWindowFocusChanged` is what does it — so the card reports what *was* sent rather
  * than offering a button that repeats it. The button exists for the other direction only.
  *
- * ### The other direction is offered, never applied
+ * ### The other direction is offered by default, and the switch is on this screen
  *
- * An entry from the Mac lands in the history and waits. A clipboard is a single-slot store with no
- * undo, and applying one silently would destroy whatever the person was about to paste. Writing is
- * permitted from anywhere on this device — that was measured too — so the confirmation is a choice,
- * not a limit.
+ * An entry from the Mac lands in the history and waits for a tap. Writing is permitted from
+ * anywhere on this device — that was measured too — so the confirmation is a choice, and
+ * *Put it on my clipboard straight away* is where somebody makes the other one.
+ *
+ * **The switch's copy names the cost rather than describing the behaviour**, because the behaviour
+ * is obvious from the title and the cost is not: the Mac can afford to auto-apply because it reads
+ * its own clipboard first and keeps what it overwrites, and this phone cannot read its clipboard
+ * while unfocused, so it has nothing to keep and nothing to offer back. A person turning this on
+ * should be told the one thing they cannot work out by looking.
  */
 @Composable
 fun ClipboardSection(
     state: ClipFeature.PhoneState,
+    autoApply: Boolean,
+    onSetAutoApply: (Boolean) -> Unit,
     onApplyFromMac: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -55,16 +65,31 @@ fun ClipboardSection(
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("How this works", style = MaterialTheme.typography.titleMedium)
+                    // Whose limit it is, in the first clause. The line this replaced opened with
+                    // "Android only lets ConnectSuite read your clipboard while it is on screen",
+                    // which is true and reads — to anyone who has not measured it — like a feature
+                    // nobody finished. It is not ours to finish: no app on any Android phone can
+                    // read the clipboard in the background.
                     Text(
-                        "Android only lets ConnectSuite read your clipboard while it is on screen. " +
-                            "So copy something in another app, come back here, and it goes to your " +
+                        "Android forbids every app from reading the clipboard in the background — " +
+                            "not just this one, and there is no permission that changes it. So " +
+                            "copy something in another app, come back here, and it goes to your " +
                             "Mac the moment this screen appears.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
-                        "Text copied on your Mac arrives any time — it waits here until you tap " +
-                            "Copy, because putting it on your clipboard would replace what is " +
-                            "already there.",
+                        "Your Mac has no such rule, so anything you copy there arrives here on its own.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        if (autoApply) {
+                            "Text copied on your Mac arrives any time and goes straight on your " +
+                                "clipboard, ready to paste."
+                        } else {
+                            "Text copied on your Mac arrives any time — it waits here until you " +
+                                "tap Copy, because putting it on your clipboard would replace " +
+                                "what is already there."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -93,6 +118,33 @@ fun ClipboardSection(
         }
 
         item {
+            Card(Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            "Put it on my clipboard straight away",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            "Skips the tap. What was on this phone's clipboard is gone — Android " +
+                                "will not let ConnectSuite read it in the background, so unlike " +
+                                "your Mac it cannot keep a copy to put back.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = autoApply, onCheckedChange = onSetAutoApply)
+                }
+            }
+        }
+
+        item {
             Card(
                 Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -106,8 +158,21 @@ fun ClipboardSection(
                         Text("Nothing yet.", style = MaterialTheme.typography.bodyMedium)
                     } else {
                         Text(received, maxLines = 6, overflow = TextOverflow.Ellipsis)
-                        Button(onClick = { onApplyFromMac(received) }) {
-                            Text("Copy to this phone")
+                        // What happened, from what was recorded when it happened — not from
+                        // `autoApply`, which is the setting's value *now*. An entry that arrived
+                        // before the switch was flipped would otherwise be described by a rule that
+                        // was not in force when it landed, and the button would vanish from an
+                        // entry nobody had applied.
+                        if (state.lastReceivedApplied) {
+                            Text(
+                                "On this phone's clipboard — long-press and Paste.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            Button(onClick = { onApplyFromMac(received) }) {
+                                Text("Copy to this phone")
+                            }
                         }
                     }
                 }

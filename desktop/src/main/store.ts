@@ -16,6 +16,14 @@ interface Schema {
   tailscaleAddress: string | null;
   lastDiscoveryVia: ConnectionStatus['via'] | null;
   autoConnect: boolean;
+  /**
+   * Watch this Mac's clipboard and send each copy without a click.
+   *
+   * **On by default, and persisted, because a privacy switch that forgets is not a switch.** The
+   * value is a preference and holds no clipboard content — the histories stay memory-only and the
+   * `docs/protocol.md` rule about nothing at rest is untouched by it.
+   */
+  watchClipboard: boolean;
 }
 
 /**
@@ -31,6 +39,7 @@ export const store = new Store<Schema>({
     tailscaleAddress: null,
     lastDiscoveryVia: null,
     autoConnect: true,
+    watchClipboard: true,
   },
 });
 

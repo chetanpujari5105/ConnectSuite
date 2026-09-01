@@ -7,6 +7,7 @@ import { ErrorCode, MessageType, type ConnectionStatus } from '../shared/protoco
 import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
+import { ClipboardWatcher } from './clipboardWatcher';
 import { ContactsClient } from './contacts';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, promises as fsp } from 'node:fs';
@@ -54,13 +55,40 @@ const contacts = new ContactsClient(() => link);
 /**
  * The clipboard, which is asymmetric because Android is — see clipboard.ts.
  *
- * The arriving entry goes to the renderer as an event and **nowhere near this Mac's own
- * clipboard**: writing it is `clipboard.use`, reached only by a click. A single-slot store with no
- * undo does not get written on somebody's behalf.
+ * **An arriving entry is applied to this Mac's clipboard immediately**, so ⌘V works with nothing
+ * clicked. That is a reversal, and the thing that made it defensible is that the clipboard it
+ * overwrites is captured into the history first — `docs/protocol.md` allowed removing the
+ * confirmation only in exchange for an undo, and Restore is that undo. The phone does not get the
+ * same default, because it may not read its own clipboard in the background and therefore cannot
+ * see what it would be destroying.
+ *
+ * The renderer is told whether the entry was applied, because "it is on your clipboard" and "it is
+ * in your history" are two different sentences and the pane says the right one.
  */
 const clip = new ClipboardClient(
   () => link,
   (entry) => sendAll('clip-arrived', entry),
+  () => sendAll('clip-changed'),
+);
+
+/**
+ * The Mac's clipboard watcher, which is what makes this direction automatic.
+ *
+ * macOS gates nothing, so the button was never the platform's idea — it was ours, and it made the
+ * feature something to operate. The watcher polls because `NSPasteboard` offers no change
+ * notification and Electron exposes no `changeCount`; `clipboardWatcher.ts` carries the readings
+ * that make the interval affordable and the marker check that keeps password-manager clips off the
+ * wire.
+ *
+ * **It reads nothing while the link is down**, which is both the cheap thing and the right thing:
+ * a watcher with no phone attached would be reading somebody's passwords for no purpose.
+ */
+const clipWatcher = new ClipboardWatcher(
+  () => link?.isConnected() === true,
+  // `automatic`, and that word is the whole difference between a watcher and a button held down:
+  // it is what makes the unchanged rule apply, so an unaltered clipboard is sent once rather than
+  // twice a second forever.
+  () => clip.send('automatic'),
 );
 
 /**
@@ -315,7 +343,7 @@ function send(channel: string, payload: unknown): void {
  * The float window opens mid-stream with no parameter sets of its own, which is why opening it
  * replays the retained config frame and asks for an IDR. See [openFloatWindow].
  */
-function sendAll(channel: string, payload: unknown): void {
+function sendAll(channel: string, payload: unknown = null): void {
   send(channel, payload);
   const detached = float?.webContents();
   if (detached && !detached.isDestroyed()) detached.webContents.send(channel, payload);
@@ -582,6 +610,11 @@ app.whenReady().then(() => {
 
   if (store.get('autoConnect')) link.start();
 
+  // Started unconditionally when the preference is on: the watcher polls nothing until the link is
+  // up, so there is no separate "start it when we connect" edge to get wrong — and no window in
+  // which a copy made during a reconnect is missed because nobody re-armed anything.
+  if (store.get('watchClipboard')) clipWatcher.start();
+
   // The lid-open case: the sockets are already dead but nothing has told us yet, so waiting out
   // the backoff would add half a minute of "connected but not".
   powerMonitor.on('resume', () => link?.retryNow('system resumed'));
@@ -788,11 +821,21 @@ ipcMain.handle('notif-action', (_event, payload: { key: string; index: number })
 );
 ipcMain.handle('notif-dismiss', (_event, key: string) => notifications.dismiss(key));
 
-ipcMain.handle('clip-send', () => clip.send());
+// The manual override, kept: a click is a `user` trigger and is never argued with by the
+// unchanged rule, so pressing it after copying the same thing twice still sends.
+ipcMain.handle('clip-send', () => clip.send('user'));
+ipcMain.handle('clip-watching', () => ({ ok: true, data: { watching: clipWatcher.isRunning } }));
+ipcMain.handle('clip-set-watching', (_event, on: boolean) => {
+  if (on) clipWatcher.start();
+  else clipWatcher.stop();
+  store.set('watchClipboard', clipWatcher.isRunning);
+  return { ok: true, data: { watching: clipWatcher.isRunning } };
+});
 ipcMain.handle('clip-request', () => clip.request());
 ipcMain.handle('clip-history', () => ({ ok: true, data: clip.entries() }));
 ipcMain.handle('clip-phone-history', (_event, limit?: number) => clip.phoneHistory(limit));
-// The only path that writes this Mac's clipboard, and it starts with a click.
+// A click on an older row, or Restore on a displaced entry. Arriving entries are applied by
+// `ClipboardClient.receive` without coming through here.
 ipcMain.handle('clip-use', (_event, text: string) => {
   clip.use(text);
   return { ok: true, data: null };

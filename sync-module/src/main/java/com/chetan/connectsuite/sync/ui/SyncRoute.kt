@@ -23,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -32,6 +33,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import com.chetan.connectsuite.core.permissions.SpecialAccess
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.chetan.connectsuite.core.data.SettingsStore
 import com.chetan.connectsuite.core.model.Device
 import com.chetan.connectsuite.sync.ui.devices.DevicesSection
 import com.chetan.connectsuite.sync.ui.devices.DevicesViewModel
@@ -45,6 +47,7 @@ import com.chetan.connectsuite.sync.ui.notifications.NotificationsSection
 import com.chetan.connectsuite.sync.ui.notifications.NotificationsViewModel
 import com.chetan.connectsuite.sync.ui.transfers.TransfersViewModel
 import com.chetan.connectsuite.sync.v2.ClipFeature
+import kotlinx.coroutines.launch
 
 private enum class SyncTab(val label: String) {
     Devices("Devices"),
@@ -72,6 +75,12 @@ fun SyncRoute(
     val foldersState by foldersViewModel.uiState.collectAsStateWithLifecycle()
     val foldersMessage by foldersViewModel.message.collectAsStateWithLifecycle()
     val clipboardState by ClipFeature.state.collectAsStateWithLifecycle()
+    // Collected rather than snapshotted: the switch has to redraw when the value changes, and
+    // `ClipFeature` reads the same flow at the moment an entry arrives, so the screen and the
+    // handler cannot disagree about what the setting says.
+    val clipboardAutoApply by SettingsStore.get(context).clipboardAutoApply
+        .collectAsStateWithLifecycle(initialValue = false)
+    val scope = rememberCoroutineScope()
 
     // Notification access is granted in system Settings, so re-check whenever we come back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { notificationsViewModel.refreshListenerState() }
@@ -198,6 +207,10 @@ fun SyncRoute(
                 // add a second home for a value that must have exactly one.
                 SyncTab.Clipboard -> ClipboardSection(
                     state = clipboardState,
+                    autoApply = clipboardAutoApply,
+                    onSetAutoApply = { enabled ->
+                        scope.launch { SettingsStore.get(context).setClipboardAutoApply(enabled) }
+                    },
                     onApplyFromMac = { ClipFeature.apply(context, it) },
                 )
 

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   ClipEntry,
+  LocalClipEntry,
   ConnectionStatus,
   GeometryStamp as InputGeometry,
   InputResult,
@@ -169,22 +170,34 @@ contextBridge.exposeInMainWorld('connect', {
   /**
    * Clipboard, and the asymmetry is in the method names as much as in the docs.
    *
-   * `clipSend` always works while the link is up. `clipRequest` is answerable only while
+   * `clipSend` is the **manual override** now: copying on this Mac sends on its own, because macOS
+   * gates nothing and the watcher in `clipboardWatcher.ts` polls for it. The button remains for the
+   * case the interlock has suppressed something, or somebody just wants to be sure.
+   *
+   * `clipRequest` is answerable only while
    * ConnectSuite is focused on the phone and otherwise resolves `{ ok: false }` with
    * `PHONE_NOT_FOREGROUND`'s sentence — a live pane, not a grey one, because there is no permission
    * for the user to go and grant.
    *
-   * **`clipUse` is the only thing that writes this Mac's clipboard**, and it exists as its own call
-   * for that reason: an arriving entry is offered, never applied.
+   * **`clipUse` writes this Mac's clipboard from a click** — an older history row, or Restore on
+   * the `displaced` entry that auto-apply pushed aside. Arriving entries no longer come through it:
+   * they are applied on arrival, and `onClipArrived` carries `applied` so the pane can say which
+   * happened rather than guessing.
    */
   clipSend: (): Promise<PhoneResult<{ bytes: number }>> => ipcRenderer.invoke('clip-send'),
+  /** Whether this Mac is watching its own clipboard. The phone has no equivalent and cannot. */
+  clipWatching: (): Promise<PhoneResult<{ watching: boolean }>> => ipcRenderer.invoke('clip-watching'),
+  clipSetWatching: (on: boolean): Promise<PhoneResult<{ watching: boolean }>> =>
+    ipcRenderer.invoke('clip-set-watching', on),
   clipRequest: (): Promise<PhoneResult<ClipEntry>> => ipcRenderer.invoke('clip-request'),
-  clipHistory: (): Promise<PhoneResult<ClipEntry[]>> => ipcRenderer.invoke('clip-history'),
+  clipHistory: (): Promise<PhoneResult<LocalClipEntry[]>> => ipcRenderer.invoke('clip-history'),
   clipPhoneHistory: (limit?: number): Promise<PhoneResult<ClipEntry[]>> =>
     ipcRenderer.invoke('clip-phone-history', limit),
   clipUse: (text: string): Promise<PhoneResult<null>> => ipcRenderer.invoke('clip-use', text),
-  onClipArrived: (callback: (entry: ClipEntry) => void) =>
+  onClipArrived: (callback: (entry: LocalClipEntry & { applied: boolean }) => void) =>
     ipcRenderer.on('clip-arrived', (_event, entry) => callback(entry)),
+  /** The history moved for a reason the renderer did not initiate — a watcher send, or a clear. */
+  onClipChanged: (callback: () => void) => ipcRenderer.on('clip-changed', () => callback()),
 
   contactsList: (options: { query?: string; limit?: number } = {}): Promise<
     PhoneResult<{ contacts: PhoneContact[]; hasMore: boolean }>

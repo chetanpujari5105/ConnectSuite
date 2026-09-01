@@ -157,7 +157,11 @@ const SCREENS: NavScreen[] = [
     // wall." That was inherited from documentation and it is **wrong on this device**: measured
     // 2026-09-01, reads are refused with the service bound and with it disabled alike. It is a
     // platform wall, it is one-directional, and the pane says so in standing copy.
-    subtitle: 'Send from this Mac any time; the phone sends when you open it.',
+    // Says what you get, then the limit — in that order. The previous line
+    // ("Send from this Mac any time; the phone sends when you open it") was accurate and described
+    // the *mechanism*: two clauses about which machine may transmit when, and nothing about the
+    // thing a person actually wants, which is that ⌘V works.
+    subtitle: 'Copy on either machine, paste on the other — the phone sends while it is open.',
     icon: 'clipboard',
     group: 'MENU',
     shortcut: '⌘7',

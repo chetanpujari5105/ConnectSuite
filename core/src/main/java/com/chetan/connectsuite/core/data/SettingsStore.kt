@@ -31,6 +31,25 @@ class SettingsStore(private val appContext: Context) {
         /** Show incoming mirrored notifications as real notifications on this device. */
         val SHOW_RECEIVED_AS_NOTIFICATIONS = booleanPreferencesKey("show_received_notifications")
 
+        /**
+         * Put an arriving Mac clipboard entry straight on this phone's clipboard.
+         *
+         * **Off by default, and the reason is a measurement rather than caution.** The Mac applies
+         * what arrives, and it can afford to: it reads its own clipboard first and keeps what it is
+         * about to overwrite, so Restore is an undo. This phone cannot do that — Android refuses a
+         * clipboard read to any app that is not focused (`docs/testing.md` → Slice 11), so it
+         * cannot see what it would be destroying and cannot offer to put it back.
+         *
+         * That makes phone-side auto-apply the one write in this feature with no undo and no
+         * witness, landing on a device that is usually in somebody's pocket — and what it destroys
+         * is often unrecoverable, because a clip copied while ConnectSuite was backgrounded was
+         * never read and is therefore not in the phone's history either.
+         *
+         * It is a setting rather than a rule because that is a trade some people will want. It is
+         * not the default because a person who has not made the trade should not be making it.
+         */
+        val CLIPBOARD_AUTO_APPLY = booleanPreferencesKey("clipboard_auto_apply")
+
         /** Screen-mirroring defaults, set in the Mirror module's quality selector. */
         val MIRROR_MAX_HEIGHT = intPreferencesKey("mirror_max_height")
         val MIRROR_BITRATE_MBPS = intPreferencesKey("mirror_bitrate_mbps")
@@ -59,6 +78,9 @@ class SettingsStore(private val appContext: Context) {
     val showReceivedAsNotifications: Flow<Boolean> =
         appContext.dataStore.data.map { it[Keys.SHOW_RECEIVED_AS_NOTIFICATIONS] ?: true }
 
+    val clipboardAutoApply: Flow<Boolean> =
+        appContext.dataStore.data.map { it[Keys.CLIPBOARD_AUTO_APPLY] ?: false }
+
     val mirrorMaxHeight: Flow<Int> =
         appContext.dataStore.data.map { it[Keys.MIRROR_MAX_HEIGHT] ?: 1080 }
 
@@ -75,6 +97,7 @@ class SettingsStore(private val appContext: Context) {
     suspend fun setIncludeLowPriority(enabled: Boolean) = put(Keys.INCLUDE_LOW_PRIORITY, enabled)
     suspend fun setShowReceivedAsNotifications(enabled: Boolean) =
         put(Keys.SHOW_RECEIVED_AS_NOTIFICATIONS, enabled)
+    suspend fun setClipboardAutoApply(enabled: Boolean) = put(Keys.CLIPBOARD_AUTO_APPLY, enabled)
 
     suspend fun setMirrorQuality(maxHeight: Int, bitrateMbps: Int, maxFps: Int) {
         appContext.dataStore.edit {
@@ -104,6 +127,7 @@ class SettingsStore(private val appContext: Context) {
         excludedPackages = excludedPackages.first(),
         includeLowPriority = includeLowPriority.first(),
         showReceivedAsNotifications = showReceivedAsNotifications.first(),
+        clipboardAutoApply = clipboardAutoApply.first(),
     )
 
     private suspend fun put(key: androidx.datastore.preferences.core.Preferences.Key<Boolean>, value: Boolean) {
@@ -129,4 +153,5 @@ data class SettingsSnapshot(
     val excludedPackages: Set<String>,
     val includeLowPriority: Boolean,
     val showReceivedAsNotifications: Boolean,
+    val clipboardAutoApply: Boolean,
 )

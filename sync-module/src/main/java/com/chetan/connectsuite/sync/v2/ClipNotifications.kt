@@ -14,15 +14,24 @@ import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.core.notification.NotificationChannels
 
 /**
- * The phone's offer surface: *the Mac copied this — tap to put it on your clipboard.*
+ * The phone's surface for an entry from the Mac, in the two shapes the setting produces.
  *
- * **The offer exists because of a design decision, not a platform limit.** Writing the clipboard
- * from the background is permitted on this device (`docs/testing.md` → Slice 11, reading 5), so
- * ConnectSuite could simply apply what arrives. It does not: a clipboard is a single-slot store
- * with no undo, and silently replacing what somebody was about to paste — on a device they are not
- * looking at — is the one failure this feature could cause that they cannot walk back.
+ * **Offered** (`SettingsStore.clipboardAutoApply` off, the default): *the Mac copied this — tap to
+ * put it on your clipboard.* **Applied** (the setting on): *this is on your clipboard now*, with no
+ * action, because there is nothing left to do.
  *
- * So the entry is held and this notification offers it. One tap applies it.
+ * ### The two are different notifications and not one with a reworded title
+ *
+ * A notification that says *Copied on your Mac* over an entry already applied, still carrying a
+ * *Copy to this phone* button, is a claim about the device's state that is false in both halves —
+ * and pressing that button would do nothing visible, which is the shape of bug people report as
+ * "the clipboard is broken". [post] takes `applied` and builds the right one; there is no default,
+ * so a third caller has to decide which it means.
+ *
+ * The write itself is permitted from the background on this device (`docs/testing.md` → Slice 11,
+ * reading 5), so **which of the two happens was never a platform question**. It is a decision about
+ * a single-slot store with no undo — and on this side, unlike the Mac's, the undo cannot be built,
+ * because the phone may not read the clipboard it is about to overwrite.
  *
  * The preview is truncated for the notification and **the full text never leaves memory**: the
  * action carries it in the PendingIntent extra rather than through any store, and nothing here is
@@ -37,44 +46,61 @@ object ClipNotifications {
     const val ACTION_APPLY = "com.chetan.connectsuite.CLIP_APPLY"
     const val EXTRA_TEXT = "com.chetan.connectsuite.CLIP_TEXT"
 
-    fun offer(context: Context, text: String) {
+    /**
+     * @param applied whether the text is already on this phone's clipboard. Not defaulted: the two
+     *   notifications make opposite claims about the device, and a caller that has not decided
+     *   which one it means should not be able to post either.
+     */
+    fun post(context: Context, text: String, applied: Boolean) {
         val app = context.applicationContext
         val manager = app.getSystemService<NotificationManager>() ?: return
         if (!canPost(app)) {
-            // Not fatal and not silent. The entry is in the history either way; what is lost is the
-            // one-tap route to it, and saying so beats a person wondering why nothing happened.
+            // Not fatal and not silent, and the sentence differs by case — with auto-apply on, the
+            // clipboard **was** written and only the telling failed, which is a materially smaller
+            // problem than an offer nobody can reach and should not be logged as the same thing.
             LinkLog.w(
                 "clip",
-                "Notifications are not permitted, so the arriving clipboard entry could not be " +
-                    "offered; it is in the history and can be applied from the app",
+                if (applied) {
+                    "Notifications are not permitted, so the arriving entry was applied to the " +
+                        "clipboard without saying so; it is also in the history"
+                } else {
+                    "Notifications are not permitted, so the arriving clipboard entry could not be " +
+                        "offered; it is in the history and can be applied from the app"
+                },
             )
             return
         }
 
         val preview = text.take(PREVIEW_CHARS).replace('\n', ' ')
-        val apply = PendingIntent.getBroadcast(
-            app,
-            REQUEST_ID,
-            Intent(app, ClipApplyReceiver::class.java)
-                .setAction(ACTION_APPLY)
-                .putExtra(EXTRA_TEXT, text),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        val notification = Notification.Builder(app, NotificationChannels.CLIPBOARD)
-            .setContentTitle("Copied on your Mac")
+        val builder = Notification.Builder(app, NotificationChannels.CLIPBOARD)
+            .setContentTitle(if (applied) "On your clipboard" else "Copied on your Mac")
             .setContentText(preview)
             .setStyle(Notification.BigTextStyle().bigText(preview))
             .setSmallIcon(android.R.drawable.ic_menu_edit)
             .setCategory(Notification.CATEGORY_STATUS)
             .setAutoCancel(true)
-            .addAction(
-                Notification.Action.Builder(null, "Copy to this phone", apply).build(),
-            )
-            .build()
 
-        runCatching { manager.notify(NOTIFICATION_ID, notification) }
-            .onFailure { LinkLog.w("clip", "Could not post the clipboard offer", it) }
+        if (!applied) {
+            // The action exists only where there is something to do. An applied entry carrying a
+            // "Copy to this phone" button would invite a tap that changes nothing.
+            builder.addAction(
+                Notification.Action.Builder(
+                    null,
+                    "Copy to this phone",
+                    PendingIntent.getBroadcast(
+                        app,
+                        REQUEST_ID,
+                        Intent(app, ClipApplyReceiver::class.java)
+                            .setAction(ACTION_APPLY)
+                            .putExtra(EXTRA_TEXT, text),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    ),
+                ).build(),
+            )
+        }
+
+        runCatching { manager.notify(NOTIFICATION_ID, builder.build()) }
+            .onFailure { LinkLog.w("clip", "Could not post the clipboard notification", it) }
     }
 
     fun dismiss(context: Context) {

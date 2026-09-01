@@ -274,6 +274,18 @@ export interface ClipEntry {
   appName?: string;
 }
 
+/**
+ * What the Mac's **local** clipboard history holds, which is the wire entry plus one kind that is
+ * not on the wire.
+ *
+ * `displaced` is what this Mac's clipboard held before an arriving entry overwrote it, kept so that
+ * Restore is an undo. It is never sent and never received — it is deliberately absent from
+ * [ClipEntry] so that the wire type stays exactly what `docs/protocol.md` specifies, and so that
+ * anything building a payload out of a history row fails to compile rather than inventing a kind
+ * the phone has never heard of.
+ */
+export type LocalClipEntry = Omit<ClipEntry, 'kind'> & { kind: ClipEntry['kind'] | 'displaced' };
+
 export const Capability = {
   MIRROR: 'mirror',
   INPUT: 'input',

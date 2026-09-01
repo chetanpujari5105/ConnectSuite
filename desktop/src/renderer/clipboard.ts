@@ -18,14 +18,22 @@
  * copy is standing anyway, because being able to explain a surprise is not as good as not
  * surprising anyone.
  *
- * ### One control writes the clipboard
+ * ### An arriving entry is already on the clipboard
  *
- * "Use this", per row. Nothing else on this page touches the pasteboard, and an arriving entry
- * never does: a single-slot store with no undo does not get written on somebody's behalf.
+ * It used to wait for a click. That made the feature a list to operate rather than a clipboard, and
+ * the point of it is that ⌘V works with nothing touched — so the main process applies what arrives
+ * and this pane reports it, rather than offering it.
+ *
+ * `docs/protocol.md` permitted that reversal on one condition: **with an undo, not by removing the
+ * confirmation.** So the clipboard that was overwritten is kept as a `displaced` row and Restore
+ * puts it back. That row draws its **buttons and not its text** — it is the one entry here nobody
+ * chose to put in the list, and on macOS it may be a password manager's clip. The concealed-type
+ * check that tries to keep those out is in `main/clipboard.ts` and its measurement did not reach
+ * the real case, which is exactly why the display rule does not depend on it.
  */
 
 interface ClipEntryRow {
-  kind: 'text' | 'empty' | 'sensitive' | string;
+  kind: 'text' | 'empty' | 'sensitive' | 'displaced' | string;
   text?: string;
   atMs: number;
   source: 'phone' | 'mac';
@@ -37,10 +45,14 @@ type ClipResult<T> = { ok: true; data: T } | { ok: false; reason?: string; fixHi
 
 interface ClipBridge {
   clipSend(): Promise<ClipResult<{ bytes: number }>>;
+  clipWatching(): Promise<ClipResult<{ watching: boolean }>>;
+  clipSetWatching(on: boolean): Promise<ClipResult<{ watching: boolean }>>;
   clipRequest(): Promise<ClipResult<ClipEntryRow>>;
   clipHistory(): Promise<ClipResult<ClipEntryRow[]>>;
   clipUse(text: string): Promise<ClipResult<null>>;
-  onClipArrived(callback: (entry: ClipEntryRow) => void): void;
+  /** `applied` says whether it reached the pasteboard — a `sensitive` or `empty` entry does not. */
+  onClipArrived(callback: (entry: ClipEntryRow & { applied?: boolean }) => void): void;
+  onClipChanged(callback: () => void): void;
 }
 
 /**
@@ -64,6 +76,12 @@ function clipRowText(entry: ClipEntryRow): { body: string; muted: boolean } {
       };
     case 'too_large':
       return { body: 'That entry is over the 64 KB limit, so nothing was sent or cut short.', muted: true };
+    case 'displaced':
+      // **The text is deliberately not here.** This is what this Mac's clipboard held before an
+      // arriving entry replaced it — the only row in the list nobody chose to add — so it is
+      // restorable without being readable. Rendering it would turn the undo into a place where a
+      // password manager's clip gets drawn on screen.
+      return { body: 'What was on this Mac’s clipboard before the entry above replaced it.', muted: true };
     default:
       return { body: `This Mac can’t show a “${entry.kind}” entry yet.`, muted: true };
   }
@@ -71,6 +89,7 @@ function clipRowText(entry: ClipEntryRow): { body: string; muted: boolean } {
 
 /** Where an entry came from, with the package-id rule applied: the label, never the raw id. */
 function clipRowSource(entry: ClipEntryRow): string {
+  if (entry.kind === 'displaced') return 'Replaced on this Mac';
   if (entry.source === 'mac') return 'This Mac';
   if (entry.appName) return `Phone · ${entry.appName}`;
   return 'Phone';
@@ -79,18 +98,42 @@ function clipRowSource(entry: ClipEntryRow): string {
 class ClipboardView {
   private entries: ClipEntryRow[] = [];
 
+  /** Generation counter for [refresh]; see its comment for the race it closes. */
+  private refreshes = 0;
+
   constructor(
     private readonly bridge: ClipBridge,
     private readonly list: HTMLElement,
     private readonly wall: HTMLElement,
+    private readonly phoneWall: HTMLElement,
     private readonly notice: HTMLElement,
     sendButton: HTMLButtonElement,
     requestButton: HTMLButtonElement,
+    watchToggle: HTMLInputElement,
   ) {
+    // **What you get, then the limit** — in that order, and in two blocks rather than one
+    // paragraph, because they are two different kinds of statement. The first is what the feature
+    // does. The second is a platform fact with an owner, and merging them let the limit read as
+    // ours.
     this.wall.textContent =
-      'Your phone can only send its clipboard while ConnectSuite is open on screen — Android does ' +
-      'not let any app read the clipboard in the background. Copy on the phone, then open ' +
-      'ConnectSuite there and it arrives. Sending from this Mac works any time.';
+      'Copy anything on this Mac and it goes to your phone on its own — the button is there if you ' +
+      'want it, but you should not need it. Anything the phone sends lands on this Mac’s clipboard ' +
+      'the moment it arrives, so ⌘V just works, and whatever the clipboard held is kept below so ' +
+      'you can put it back.';
+
+    // **Whose limit it is, said in the first clause.** The previous line was accurate and ownerless
+    // — *"Android does not let any app read the clipboard in the background, so the phone sends
+    // only while ConnectSuite is open"* — which reads, to somebody who has not measured it, exactly
+    // like a feature nobody had got round to finishing. It is not: it was measured on hardware
+    // (90 of 90 background reads refused, with our accessibility service bound and with it
+    // disabled alike), it applies to every app on every Android phone, and there is no version of
+    // ConnectSuite that fixes it.
+    this.phoneWall.textContent =
+      'The other direction is Android’s rule, not an unfinished feature. Android forbids every app ' +
+      'from reading the clipboard while it is in the background — no Android app can do what an ' +
+      'iPhone does here, and ConnectSuite is not an exception to it. So the phone can only send ' +
+      'its clipboard while ConnectSuite is open on screen: copy on the phone, open ConnectSuite ' +
+      'there, and it arrives.';
 
     sendButton.addEventListener('click', () => {
       void this.run(() => this.bridge.clipSend(), (data) => `Sent ${data.bytes} bytes to the phone.`);
@@ -100,12 +143,57 @@ class ClipboardView {
         () => this.bridge.clipRequest(),
         (entry) => {
           this.prepend(entry);
-          return clipRowText(entry).body ? 'Got the phone’s clipboard.' : 'The phone answered.';
+          return entry.kind === 'text'
+            ? 'On this Mac’s clipboard now — ⌘V to paste.'
+            : `${clipRowText(entry).body} Nothing was put on this Mac’s clipboard.`;
         },
       );
     });
 
-    this.bridge.onClipArrived((entry) => this.prepend(entry));
+    // The toggle reports the main process's state rather than its own checked attribute: the
+    // watcher is started from a persisted preference at launch, and a checkbox that drew `checked`
+    // from the HTML would show "on" for a session where it is off.
+    void this.bridge.clipWatching().then((result) => {
+      if (result.ok) watchToggle.checked = result.data.watching;
+    });
+    watchToggle.addEventListener('change', () => {
+      void this.bridge.clipSetWatching(watchToggle.checked).then((result) => {
+        if (!result.ok) return;
+        watchToggle.checked = result.data.watching;
+        this.say(
+          result.data.watching
+            ? 'Watching this Mac’s clipboard — copies go to the phone on their own.'
+            : 'Stopped watching. Use the button to send a copy.',
+          false,
+        );
+      });
+    });
+
+    // The watcher sends with nobody clicking anything, so without this the list sits at "Nothing
+    // yet" over a history that has entries in it — which is what the pane probe found.
+    this.bridge.onClipChanged(() => void this.refresh());
+
+    this.bridge.onClipArrived((entry) => {
+      // Prepend for immediacy, then reconcile — and the reconcile is not tidiness, it is the undo.
+      //
+      // The event carries the arriving entry and **not** the `displaced` entry created beside it in
+      // the main process, so a pane that only prepended showed the new clip with no Restore row for
+      // what it had just replaced. Measured on hardware, 2026-09-02: after an auto-apply the list
+      // held the arrival and the *previous* displaced row, and the one belonging to that arrival
+      // appeared only on the next refresh. The undo was missing at the one moment it exists for.
+      this.prepend(entry);
+      void this.refresh();
+      // Says which of the two things happened rather than assuming the happy one. A `sensitive` or
+      // `empty` entry arrives and is *not* applied, and a pane that announced "ready to paste" over
+      // one would be telling somebody something false about their own clipboard — the same mistake
+      // as collapsing `sensitive` into `empty`, one layer up.
+      this.say(
+        entry.applied
+          ? 'On this Mac’s clipboard now — ⌘V to paste.'
+          : `${clipRowText(entry).body} Nothing was put on this Mac’s clipboard.`,
+        false,
+      );
+    });
     void this.refresh();
   }
 
@@ -132,12 +220,21 @@ class ClipboardView {
     this.draw();
   }
 
+  /**
+   * Reconciles from the main process, which holds the history this pane only mirrors.
+   *
+   * **Its concurrency is stated rather than only its type.** A route opening, a send, a request and
+   * an arrival can all begin one of these, and the Files pane has already paid for exactly that: two
+   * correct triggers a frame apart assembled a wrong picture out of legal states. Here a late reply
+   * overwriting a newer one would resurrect a displaced row the person has already restored, so a
+   * run that is no longer the newest discards its own result instead of drawing it.
+   */
   private async refresh(): Promise<void> {
+    const mine = ++this.refreshes;
     const result = await this.bridge.clipHistory();
-    if (result.ok) {
-      this.entries = result.data;
-      this.draw();
-    }
+    if (!result.ok || mine !== this.refreshes) return;
+    this.entries = result.data;
+    this.draw();
   }
 
   private draw(): void {
@@ -161,18 +258,33 @@ class ClipboardView {
       const body = document.createElement('div');
       const rendered = clipRowText(entry);
       body.className = rendered.muted ? 'clip-body is-muted' : 'clip-body';
+      // `clipRowText` is the single decision about what a row says, and for `displaced` it returns
+      // a description rather than the content. Nothing here reaches past it to `entry.text`.
       body.textContent = rendered.body;
 
       row.append(meta, body);
 
-      if (entry.kind === 'text' && entry.text) {
+      // Restore and Use this are the same call and two different sentences: one puts an older
+      // entry on the clipboard, the other undoes an automatic write. Naming them the same thing
+      // would leave the undo unlabelled on the one row that exists to be an undo.
+      if ((entry.kind === 'text' || entry.kind === 'displaced') && entry.text) {
+        const restoring = entry.kind === 'displaced';
         const use = document.createElement('button');
         use.type = 'button';
         use.className = 'button-secondary clip-use';
-        use.textContent = 'Use this';
+        use.textContent = restoring ? 'Restore' : 'Use this';
         const text = entry.text;
         use.addEventListener('click', () => {
-          void this.bridge.clipUse(text).then(() => this.say('Copied to this Mac’s clipboard.', false));
+          void this.bridge
+            .clipUse(text)
+            .then(() =>
+              this.say(
+                restoring
+                  ? 'Put back on this Mac’s clipboard.'
+                  : 'Copied to this Mac’s clipboard.',
+                false,
+              ),
+            );
         });
         row.append(use);
       }
@@ -184,7 +296,8 @@ class ClipboardView {
     held.className = 'clip-footnote';
     held.textContent =
       `${this.entries.length} of 20 entries, in memory only. They are cleared when the phone ` +
-      'disconnects and are never written to disk.';
+      'disconnects and are never written to disk. Replaced entries are kept so you can put them ' +
+      'back, and their text is not shown.';
     this.list.append(held);
   }
 }
