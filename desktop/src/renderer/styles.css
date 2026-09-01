@@ -2003,6 +2003,19 @@ img#qr {
 
 /* A file already copied to this Mac. The only rows Finder will take a drag from, so the affordance
    is a cursor rather than a decoration — `grab` says draggable in the one place it is true. */
+/* A row whose bytes are still arriving. `progress` rather than `wait`: the pane is usable and only
+   this row's drag is not yet possible. Flat, like `.photos-thumb-pending` — a pulse on a row the
+   user is looking at is motion for a wait usually measured in milliseconds. */
+.files-row.is-copying {
+  cursor: progress;
+  background: var(--well);
+}
+
+.files-row.is-copying .files-cell-size {
+  color: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
 .files-row.is-local { cursor: grab; }
 
 .files-row.is-local:active { cursor: grabbing; }

@@ -9359,6 +9359,39 @@ while (b) caps the table at 200, and fixing (b) without touching this makes it r
 
 Only **F-2 needs the protocol**. Everything else is one CSS rule, one constant, one concurrency
 
+### F-1 · The first drag is a drag — copy starts on selection (2026-09-01)
+
+On hardware, the grant-free `Received files` root:
+
+```
+t+400 ms    is-copying: true    detail "Copying…"
+t+1500 ms   is-copying: false   is-local: true    detail "On this Mac at /Users/chetan…"
+```
+
+The copy starts from **selection alone** — no drag was dispatched in that run. A 2.9 MB file is
+draggable about 1.5 s after the click, and the window the fix uses is simply the time between
+selecting a row and getting the mouse to Finder.
+
+`startDrag` still needs a path that exists when `dragstart` fires, and that handler still cannot
+await a network copy — the platform ordering is unchanged and the refusal branch stays, because a
+copy may still be in flight and a wrong answer to Finder is worse than an honest one. What changed
+is that the refusal is now the uncommon path instead of the guaranteed first experience of the
+feature.
+
+**Debounced at 250 ms**, re-tested at the moment of acting rather than when the timer was set. Without
+the debounce, arrow-keying through the 600-row `DCIM/Camera` listing would pull 600 files; with it,
+the copy starts for the row you stopped on. The predicate moved to `shouldPrefetchForDrag` in
+`src/shared/filesRoots.ts` for the reason `showsState` earns a mention in `CLAUDE.md` — that condition
+broke twice in the renderer where no test reached it, and on the second break four tests went red and
+none of them touched the line that failed. Five tests now call it; shown red by deleting
+`if (input.isDir) return false`, which fails *a directory is never prefetched* and nothing else.
+
+**What this run did not test.** A native Finder drop cannot be driven from CDP, so nothing here
+exercised `webContents.startDrag` end to end. What is measured is the precondition the drag depends
+on — `localCopies` holding a real path, and the row carrying `is-local` — reached 1.5 s after
+selection without a drag. The drop itself is still a by-hand step.
+
+
 ### F-4a fixed — the timeout was the symptom, the stampede was the cause (2026-09-01)
 
 On hardware, SM-S938B, against `DCIM/Camera` — the folder that failed **every first time**.

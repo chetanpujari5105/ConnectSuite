@@ -10,6 +10,7 @@ const {
   pushOffered,
   sharedFolderCount,
   uploadAffordance,
+  shouldPrefetchForDrag,
 } = require('./filesRoots.ts');
 
 /**
@@ -187,4 +188,39 @@ test('free space is omitted rather than shown as a plausible zero', () => {
   assert.equal(freeSpace(null), '');
   assert.equal(freeSpace(27_233_689_600), '25 GB free');
   assert.equal(freeSpace(5_368_709_120), '5.0 GB free');
+});
+
+test('a file that is not yet here is prefetched on selection, so the first drag is a drag', () => {
+  assert.equal(
+    shouldPrefetchForDrag({ isDir: false, rootSelected: true, alreadyLocal: false, alreadyCopying: false }),
+    true,
+  );
+});
+
+test('a directory is never prefetched — fs.transfer moves one file', () => {
+  assert.equal(
+    shouldPrefetchForDrag({ isDir: true, rootSelected: true, alreadyLocal: false, alreadyCopying: false }),
+    false,
+  );
+});
+
+test('a file already on this Mac is not pulled again', () => {
+  assert.equal(
+    shouldPrefetchForDrag({ isDir: false, rootSelected: true, alreadyLocal: true, alreadyCopying: false }),
+    false,
+  );
+});
+
+test('a copy already in flight is not started twice', () => {
+  assert.equal(
+    shouldPrefetchForDrag({ isDir: false, rootSelected: true, alreadyLocal: false, alreadyCopying: true }),
+    false,
+  );
+});
+
+test('nothing is fetched with no root selected', () => {
+  assert.equal(
+    shouldPrefetchForDrag({ isDir: false, rootSelected: false, alreadyLocal: false, alreadyCopying: false }),
+    false,
+  );
 });

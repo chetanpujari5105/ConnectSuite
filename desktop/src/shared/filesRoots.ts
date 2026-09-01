@@ -274,6 +274,38 @@ function loadedFooter(loaded: number, hasMore: boolean): string {
 }
 
 /**
+ * Whether selecting a row should start fetching its bytes, so the *first* drag to Finder is a drag
+ * rather than a refusal.
+ *
+ * ### Why this is a function and not four `if`s in the click handler
+ *
+ * `showsState` is the cautionary tale: one condition, living in the renderer where no test reaches
+ * it, got the empty/failed distinction wrong in slice 7 and wrong the other way in slice 9 — and on
+ * the second break four tests went red and **none of them touched the line that failed**. A guard on
+ * the function that was written correctly is not a guard on the decision that keeps going wrong. So
+ * the decision lives here, where `filesRoots.test.ts` calls it.
+ *
+ * ### What it decides
+ *
+ * `webContents.startDrag` needs a path that exists at the instant `dragstart` fires, and that
+ * handler cannot await a network copy. Selection precedes the drag by however long it takes to move
+ * the mouse, so that is the window. A directory is never fetched — `fs.transfer` moves one file —
+ * and a row already copied or already copying is left alone, so browsing does not re-pull.
+ */
+function shouldPrefetchForDrag(input: {
+  isDir: boolean;
+  rootSelected: boolean;
+  alreadyLocal: boolean;
+  alreadyCopying: boolean;
+}): boolean {
+  if (input.isDir) return false;
+  if (!input.rootSelected) return false;
+  if (input.alreadyLocal) return false;
+  if (input.alreadyCopying) return false;
+  return true;
+}
+
+/**
  * The plain-script shape `appLabel.ts` documents: no top-level `export`, a `module.exports` shim at
  * the foot. That makes this one file loadable by a `<script>` tag in the CSP-locked renderer,
  * `require`-able from the main process, and `require`-able from `node --test` — one implementation,
@@ -291,6 +323,7 @@ if (typeof module !== 'undefined') {
     pushOffered,
     freeSpace,
     loadedFooter,
+    shouldPrefetchForDrag,
     DOWNLOAD_WALL,
     ADDED_ON_THE_PHONE,
     RECEIVED_FILES_ALWAYS_WORKS,

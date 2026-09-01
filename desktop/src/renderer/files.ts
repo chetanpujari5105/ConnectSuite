@@ -318,6 +318,60 @@ class FilesView {
    * nothing. Two callers on one fetch is the mistake this pane already made once with `refresh()`,
    * and here the cost would be two transfers writing the same `.part`.
    */
+  /**
+   * Pending selection-triggered copy. One timer, because one row is selected at a time.
+   *
+   * Cleared and rescheduled on every selection, so arrow-keying or clicking down a list starts a
+   * copy for the row you **stopped on** rather than one for every row you passed through. Without
+   * this, browsing a 600-row directory would pull 600 files.
+   */
+  private prefetchTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** How long a row must stay selected before its bytes are worth fetching. */
+  private static readonly PREFETCH_DELAY_MS = 250;
+
+  /**
+   * Start the copy when a row is *selected*, so the first drag is a drag rather than a refusal.
+   *
+   * **Finder will not take a promise of a file, only a file.** `webContents.startDrag` needs a path
+   * that exists at the instant the gesture begins, and `dragstart` cannot await a network copy — the
+   * gesture is over long before the bytes are. That ordering is the platform's and does not change.
+   * What changes is *when the copy starts*: selection precedes the drag by however long it takes to
+   * move the mouse, and that is the window this uses.
+   *
+   * The `dragstart` refusal stays, because the copy may still be in flight and a wrong answer to
+   * Finder is worse than an honest one. It is now the uncommon path rather than the guaranteed
+   * first experience of the feature.
+   *
+   * Directories are never fetched: `fs.transfer` moves one file, and a folder copy is a loop the
+   * Mac would have to drive, which is a transfer queue and not this pane.
+   */
+  /** The one home for the decision. Called twice — once to schedule, once at the moment of acting. */
+  private prefetchable(entry: FsEntryRow): boolean {
+    return shouldPrefetchForDrag({
+      isDir: entry.dir,
+      rootSelected: this.selectedRoot !== null,
+      alreadyLocal: this.localCopies.has(entry.id),
+      alreadyCopying: this.copying.has(entry.id),
+    });
+  }
+
+  private prefetchForDrag(entry: FsEntryRow): void {
+    if (this.prefetchTimer !== null) clearTimeout(this.prefetchTimer);
+    this.prefetchTimer = null;
+    if (!this.prefetchable(entry)) return;
+    this.prefetchTimer = setTimeout(() => {
+      this.prefetchTimer = null;
+      // Re-tested at the moment of acting, not when the timer was set: the selection can have moved
+      // on, the pane can have navigated, a copy can have finished. The predicate that decides
+      // whether to act is the same expression that decided what was seen, evaluated again here — a
+      // check that does not gate the action is decoration.
+      if (this.selected?.id !== entry.id) return;
+      if (!this.prefetchable(entry)) return;
+      void this.copyToMac(entry);
+    }, FilesView.PREFETCH_DELAY_MS);
+  }
+
   private async copyToMac(entry: FsEntryRow): Promise<void> {
     if (this.selectedRoot === null || entry.dir) return;
     if (this.copying.has(entry.id) || this.localCopies.has(entry.id)) return;
@@ -614,6 +668,7 @@ class FilesView {
       row.addEventListener('click', () => {
         this.selected = entry;
         this.render();
+        this.prefetchForDrag(entry);
       });
       row.addEventListener('dblclick', () => {
         if (entry.dir) void this.openPath(this.path ? `${this.path}/${entry.name}` : entry.name);
@@ -626,6 +681,13 @@ class FilesView {
       if (!entry.dir) {
         row.draggable = true;
         if (local) row.classList.add('is-local');
+        // The wait, at the row rather than only in the detail card. A selected row whose bytes are
+        // still arriving is the one state where a drag will be refused, so it is the one state that
+        // has to be legible without reading the card on the other side of the pane.
+        if (this.copying.has(entry.id)) {
+          row.classList.add('is-copying');
+          row.setAttribute('aria-busy', 'true');
+        }
         row.addEventListener('dragstart', (event) => {
           const path = this.localCopies.get(entry.id);
           if (!path) {
