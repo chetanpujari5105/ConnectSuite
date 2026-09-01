@@ -237,3 +237,37 @@ turning off, and that notification mirroring still works an hour after the app w
 
 For each: pair two devices, send a 500 MB+ file, lock both screens mid-transfer, and confirm it
 resumes; then leave the app for an hour and confirm a notification still mirrors.
+
+---
+
+## About this repository
+
+### Commit history
+
+Work on ConnectSuite began **2026-08-21**. The repository was initialised **2026-08-28**, so the
+first seven days are consolidated into the root commit (`Phase 4: four Mac panes …`, 205 files)
+rather than spread across the commits that produced them. Phases 1, 2 and 3 were built, and passed
+on hardware, before the first commit exists — their dates are recorded in `CLAUDE.md`'s roadmap
+table and in `docs/testing.md`, which is where the real chronology lives.
+
+Commit dates are the dates the commits were made and have not been adjusted.
+
+### Phone numbers and contact names are substitutions
+
+Every phone number and personal contact name in the documentation, the test fixtures and the
+commit messages is a **substitution, not a real number or a real person**. The numbers
+(`9800000001`, `9900000002`, `8800000004`, and others of that shape) and the contact labels
+(`Contact B`, `Contact D`, `Contact G`) replace the real ones the features were developed against.
+
+They were substituted throughout the history — blobs and commit messages alike — before this
+repository was first published, because the call, SMS and contact features were necessarily built
+and verified against real people's numbers, and those are not ours to publish.
+
+The substitution is **stable and shape-preserving**: one real number maps to exactly one
+replacement everywhere it appears, in every form (bare, `91`-prefixed, `+91`-prefixed, and spaced).
+This matters because it is load-bearing — `CallNumberRulesTest` and `scripts/step70-gate.mjs`
+assert *equality and containment between* numbers rather than against literals, so the defect
+narratives in `docs/defects.md` and `docs/testing.md` still describe the failures they actually
+describe, and the suites still pass for the reasons they always passed.
+
+`Chetan` is the author and is not a substitution.
