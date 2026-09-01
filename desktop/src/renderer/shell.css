@@ -602,10 +602,20 @@ body {
   to { opacity: 1; transform: none; }
 }
 
+/* A column, so a screen that wants to own its own scrolling can fill what is left after the page
+   head rather than guess at it. `height: 100%` cannot express that: the head is a sibling inside
+   `.page`, so 100% overshoots by exactly its height — measured at 68 px, which is what left the
+   Files pane still overflowing its page by 84 px after its own scroll containment was correct.
+
+   Every other screen is `flex: 0 0 auto` by default, which is the block behaviour they already had,
+   so this changes the frame's capability and not any existing pane's layout. Only a screen that
+   opts in with `flex: 1` becomes viewport-bounded. */
 .page {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
   padding: 0 var(--space-11) var(--space-11);
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.14) transparent;

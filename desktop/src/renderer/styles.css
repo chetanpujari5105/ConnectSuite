@@ -1670,7 +1670,31 @@ img#qr {
    guard two of the four and no more, which is why the rule does not live here.
 ================================================================================================ */
 
-.pane-files { display: flex; flex-direction: column; min-height: 0; }
+/* Files is the first pane that scrolls *inside itself* rather than letting `.page` scroll, and the
+   chain below depends on every link being height-bounded.
+
+   Measured before this rule existed (F-4b, docs/testing.md): `.files-table` had `overflow-y: auto`
+   and nothing constraining its height, so it grew to its content — `scrollH 7286, clientH 7286,
+   scrollable: false` — while the real scroller was `.page`, seven ancestors up. The scroll handler's
+   first guard is `scrollHeight <= clientHeight`, which was therefore permanently true: a folder of
+   16,377 entries showed 200 of them and never loaded another page.
+
+   The same missing bound is F-4c. With the whole pane one 7,592 px block in a 667 px viewport, the
+   sticky column header, the roots rail and the detail card carrying **Copy to Mac** all scrolled
+   away — `top: 302 → −2698` for the header. Bounding the pane is what makes `position: sticky` mean
+   anything, so one rule closes both, and neither is a smoothness problem despite where they were
+   filed.
+
+   The chain, each link already carrying `min-height: 0` so a flex item may shrink below its content:
+   `.screen` → `.pane-files` → `.files-body` → `.files-panel` → `.files-listing` → `.files-table`. */
+.screen[data-screen="files"] {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pane-files { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 
 .files-body {
   display: grid;

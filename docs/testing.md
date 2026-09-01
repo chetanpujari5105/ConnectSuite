@@ -9358,4 +9358,49 @@ while (b) caps the table at 200, and fixing (b) without touching this makes it r
 | 2 | Thumbnails in the detail card | **`fs.thumb`, a thirteenth message name** | **yes** |
 
 Only **F-2 needs the protocol**. Everything else is one CSS rule, one constant, one concurrency
+
+### F-4b and F-4c fixed — the pane owns its own scrolling (2026-09-01)
+
+One missing bound caused both, and both are fixed by making the chain height-bounded rather than by
+touching either symptom. Measured through CDP on the running app, `section[data-screen="files"]`
+selected explicitly and asserted visible first — the bare attribute selector also matches the app
+window and comes first in document order.
+
+| | before | after |
+|---|---|---|
+| `.files-table` | `scrollH 7286  clientH 7286` — **scrollable: false** | `scrollH 1051  clientH 362` — **scrollable: true** |
+| `.page` | the real scroller, `scrollH 7592  clientH 667` | `scrollH 667  clientH 667` — **scrollable: false** |
+
+The first row is F-4b: the scroll handler's first guard is `scrollHeight <= clientHeight`, which was
+permanently true, so a folder of 16,377 entries showed 200 and never paged again. It is now false,
+so the guard admits.
+
+F-4c is the same rule, proved by scrolling rather than by inspecting CSS. With `#files-table`
+scrolled to 600:
+
+| element | top at 0 | top at 600 |
+|---|---|---|
+| roots rail | 248 | **248** |
+| detail card (**Copy to Mac**) | 247 | **247** |
+| crumbs | 260 | **260** |
+
+Nothing moves. The earlier reading was `302 → −2698` for the header, against a page scrolled to 3000.
+
+**Two rules, not one.** `.files-table` was already `flex: 1; min-height: 0; overflow-y: auto` and had
+been all along — the bound was missing *above* it. `height: 100%` on the screen was the first
+attempt and was wrong in a way only measurement showed: the page head is a **sibling inside `.page`**,
+so 100% overshot it by exactly its 68 px and left the page scrolling by 84. The fix is `.page` as a
+flex column (shell.css — the frame) and the Files screen taking `flex: 1` (styles.css — inside a
+screen). Every other screen stays `flex: 0 0 auto`, which is the block behaviour it already had.
+
+**Control that the change is confined to Files**: all eleven screens routed to and measured non-zero
+afterwards — overview 483, mirror 831, photos 170, messages 496, notifications 608, clipboard 420,
+calls 362, camera 420, activity 420, settings 388. `mirror` at 831 in a 667 viewport still scrolls
+`.page`, which is the behaviour it had before and was not in scope.
+
+*An instrument note, since the first run of that control read `notifications=hidden` and was one
+sentence from "the pane broke": the nav control's text is `"Notifications27"` — the unread badge
+sits inside the button — so an exact-match on the label found nothing and the pane was never routed
+to. The absence was my selector, not the pane. Matched on prefix, it renders at 608.*
+
 join, and renderer work.
