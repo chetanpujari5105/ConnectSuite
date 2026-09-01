@@ -1,0 +1,17 @@
+### P5 — process death by am crash (START_STICKY restart)
+instrument: sample interval 400ms, deadline 90s — both are bounds on what this run can see
+t0-1  pid=18738 listening_sockets=4/4
+t0    running: adb shell am crash com.chetan.connectsuite.debug
+      Shell does not have permission to crash packages for user 150
+    0.070s  process gone
+    0.691s  process back (pid=23016)
+    1.290s  listening again (3/4 sockets)
+stopped=recovered after 3 samples
+summary: samples=3 requested_interval=400ms observed_mean_gap=645ms  gone_at=  0.070 back_at=  0.691 listening_at=  1.290
+### P5 run 2 — same stimulus, finest interval adb allows
+instrument: sample interval 0ms, deadline 90s — both are bounds on what this run can see
+t0-1  pid=23016 listening_sockets=4/4
+t0    running: adb shell am crash com.chetan.connectsuite.debug
+      Shell does not have permission to crash packages for user 150
+stopped=deadline after 422 samples — this run holds no reading about recovery, only that it did not happen inside 90s
+summary: samples=422 requested_interval=0ms observed_mean_gap=214ms  gone_at=never back_at=never listening_at=never

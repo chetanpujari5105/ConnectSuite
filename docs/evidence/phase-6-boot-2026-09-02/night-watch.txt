@@ -1,0 +1,7 @@
+# link-night-watch — read-only, started 2026-09-02T02:59:16+0530
+# requested interval 120s. Columns: time screen wakefulness deep light sockets established wakelock_acq pid
+# ON CABLE: deep Doze will not occur unaided. Wakelock column is the live ACQ elapsed from dumpsys power.
+02:59:16 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-6m5s192ms  pid=31828
+02:59:16   [samples=1 observed_mean_gap=0.5s]
+03:01:17 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-8m5s828ms  pid=31828
+03:01:17   [samples=2 observed_mean_gap=60.6s]

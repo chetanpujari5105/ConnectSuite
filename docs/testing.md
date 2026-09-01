@@ -10824,3 +10824,299 @@ walk would pass the real check in silence — the empty-accessibility-query shap
 
 **Phone suite after the slice:** 244 tests, 0 failures — 84 `core` (11 classes) + 160 `sync-module`
 (19 classes), every result XML written 0-14 s before it was read, `gradle exit: 0`.
+
+---
+
+## Phase 6 · Slice 2 — the four experiments this handset can run alone · 2026-09-02
+
+**Every reading below is on the EXEMPT path** and each one says so where it matters.
+`user,com.chetan.connectsuite.debug,11011` is still in the deviceidle whitelist and
+`am get-standby-bucket` still reads `5` — verified before and after every run in this slice. That is
+the brief's §0 and it is not a footnote: nothing here describes a phone whose owner declined the
+onboarding prompt.
+
+### P6 — the standby-bucket approximation is **not reversible**, so it was not taken
+
+The brief calls `am set-standby-bucket` *"reversible in one command"* and says it is the cheapest
+approximation of H1, to be run before anyone is asked to change their phone's real posture. That is
+wrong, and the platform says so in one line:
+
+```
+$ adb shell am get-standby-bucket com.chetan.connectsuite.debug
+5
+
+$ adb shell am set-standby-bucket com.chetan.connectsuite.debug 5
+java.lang.IllegalArgumentException: Cannot set the standby bucket to 5
+
+$ adb shell am get-standby-bucket com.chetan.connectsuite.debug
+5                                    # unchanged — the refusal changed nothing
+```
+
+`EXEMPTED` is **derived** from the deviceidle whitelist and cannot be set. So the shell can move the
+bucket *down* out of it and has no command that puts it back. There is a plausible mechanism by
+which the platform would restore it on its own — the whitelist is re-read when app-standby
+re-evaluates — and *plausible mechanism* is exactly what this project does not spend somebody else's
+phone on. Proving it would require breaking the state first, which is the thing in question.
+
+So P6 was not run, and the brief's sentence is corrected rather than worked around. **What it would
+have stood in for, and now does not:** the unexempt path is unapproximated, and every claim in this
+slice about Doze, wakelocks and process death is exempt-path-only with no cheap control available.
+That moves H1 from *"only if §2 leaves a question"* to *"the only route to the unexempt path"*, and
+it is the user's call because it is the user's battery.
+
+### P2 — forced deep Doze, three minutes, link intact
+
+`scripts/doze-probe.sh`. It simulates the unplug with `dumpsys battery unplug` rather than asking
+anyone to pull a cable, forces deep idle, and restores on every exit path including Ctrl-C — a probe
+that can leave a phone believing it is on battery all night is worse than no probe.
+
+```
+baseline  deep=ACTIVE light=ACTIVE listen=4/4 established=1
+    Now forced in to deep idle mode
+     0.0s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+    …  12 samples at 15 s …
+   169.1s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+stopped=duration after 12 samples
+
+--- restoring ---
+deep=ACTIVE  light=ACTIVE
+charging=  AC powered: false   USB powered: true
+whitelist row: user,com.chetan.connectsuite.debug,11011
+standby bucket: 5
+```
+
+**`established=1` is not the reading, and taking it as one would have been the row-presence fault
+again.** A TCP socket sits in `ESTABLISHED` long after its peer has gone; the count says a socket
+record exists, not that anything crosses it. The liveness control is on the Mac, and it is a message
+that actually arrived:
+
+```
+# Mac log, inside the forced-idle window (02:54:17 – 02:57:17)
+2026-09-02T02:54:33.499  I [notif] updated com.android.systemui — 54 showing, 344 posted / 2 removed
+```
+
+16 seconds into `deep=IDLE`, a phone-originated notification crossed the control channel and was
+drawn. And the negative half carries its own control: the Mac logged no `Heartbeat lost` during the
+window, and that query is known to be able to see one — `2026-09-02T00:29:17.946 W [link] Heartbeat
+lost: no pong in 15s` is in the same file from earlier the same night.
+
+**What this proves:** on the exempt path, a deep-Doze transition does not disturb the listeners, the
+established control session, or message delivery across it. **What it does not:** anything about a
+non-whitelisted app, which is the entire population Doze's network restrictions apply to. A clean
+pass here was the expected result and is worth exactly as much as its caveat.
+
+### P3 — the wakelock, and three instruments that do not agree
+
+`LinkService` takes a `PARTIAL_WAKE_LOCK` named `ConnectSuite:link` while a client is connected.
+Three ways of asking how long it is held give three different answers:
+
+| Instrument | Answer | What it is reading |
+|---|---|---|
+| `dumpsys power` | `PARTIAL_WAKE_LOCK 'ConnectSuite:link' ACQ=-6m53s253ms LONG (uid=11011 pid=18738)` | the **live** hold, elapsed, at the instant of the dump. Unambiguous |
+| `dumpsys batterystats --charged` | `7m 8s 807ms partial (0 times) max=459388 actual=459388 (running for 0ms)` | a blamed total for the current charge session — **with an acquisition count of zero beside a non-zero duration**, which cannot both describe a session containing the many acquisitions the history shows |
+| `dumpsys batterystats --history` | `+longwake` / `-longwake` spans of 3, 6, 13, 16, 30 and 31 minutes across 09-01 → 09-02 | wall-clock long-wakelock transitions across the whole history buffer, spanning charge sessions |
+
+**This is the "two readings, one fact" family with a third member, and it is not resolved here.** The
+tempting reconciliation — that `--charged` was reset and holds only the current hold — accounts for
+`7m 8s ≈ ACQ=-6m53s` neatly and then fails against `Total running: 5h 16m 53s` in the same block,
+which says the charge session is five hours long and should contain those acquisitions. Picking the
+tidy story would be inventing the reconciliation rather than measuring it.
+
+So the practical rule, which is the useful output: **no aggregate wakelock figure for this app is
+quoted anywhere yet.** The only number this project will stand behind is `dumpsys power`'s live
+elapsed hold, sampled — which is what `scripts/link-night-watch.sh` now does, at a stated interval,
+read-only. What would settle the aggregates is H3: an unplugged run with a `batterystats --reset` at
+its start, so the window has a known beginning.
+
+**The structural finding needs no aggregate, and is defect 61 below:** the lock is acquired with a
+12-hour timeout behind an `if (wakeLock == null)` guard, so once the platform's timeout lapses it it
+is **never re-armed**, and the comment on the field claims the opposite.
+
+### P5 — process death, and `am crash` is not a dependable stimulus
+
+`scripts/link-recovery-probe.sh`. Its control run first, because a probe that cannot see a healthy
+link cannot see an unhealthy one: with no stimulus it reports `pid=18738 listening_sockets=4/4` and
+then `stopped=deadline … this run holds no reading about recovery`. That phrasing is deliberate — the
+page-cap lesson — and it earned itself twice in the next twenty minutes.
+
+**The control also found two faults in the instrument before it produced any number.** It sampled
+without sleeping, so a "500 ms interval" was really an adb round trip; and `pidof` returns two pids
+on this handset because of the dual-app clone under u95, so the probe would have reported *"the
+process never died"* about a process that had died. Both are fixed and the probe now prints the
+**observed** mean gap beside the requested one.
+
+**Run 1 — the process died and `START_STICKY` brought the service back:**
+
+```
+t0-1  pid=18738 listening_sockets=4/4
+t0    adb shell am crash com.chetan.connectsuite.debug
+      Shell does not have permission to crash packages for user 150     ← the documented misleading refusal
+    0.070s  process gone
+    0.691s  process back (pid=23016)
+    1.290s  listening again (3/4 sockets)
+summary: samples=3 requested_interval=400ms observed_mean_gap=645ms
+```
+
+±645 ms on each of those, and the fine-grained truth is in the phone's own log:
+
+```
+02:48:03.782  I [service] Foreground as UNKNOWN, types=0x10
+02:48:03.791  I [server]  Listening on 42501/42502/42503, 1 paired device(s)
+02:48:07.605  I [control] Handshake complete with Chetans-MacBook-Pro
+```
+
+**`Foreground as UNKNOWN` is the discriminator, and it is the reason Slice 1 recorded a start reason
+at all.** A null-intent `START_STICKY` restart is the only route that produces it — a start from
+`MainActivity` logs `USER`, one from the receiver logs `BOOT` or `PACKAGE_REPLACED`. So this answers
+P5's question directly: `START_STICKY` does restart `LinkService`, and it **does** bind its ports,
+which the brief suspected it might not. It also validates the type policy from Slice 1 from the
+other end: `UNKNOWN` claims `connectedDevice` only, `types=0x10`, accepted.
+
+**Run 2 — the same command, 49 seconds later, and the process did not die at all:**
+
+```
+stopped=deadline after 422 samples — this run holds no reading about recovery
+summary: samples=422 requested_interval=0ms observed_mean_gap=214ms
+```
+
+422 samples at 214 ms is far finer than run 1's, so this is not a missed window. The process was
+alive with the same pid throughout, and the reason is in logcat:
+
+```
+02:48:52.330  I ActivityManager: Showing crash dialog for package com.chetan.connectsuite.debug u0
+```
+
+The crash raised a **modal error dialog** and the process was held in the error state behind it, with
+the link still up (4/4 sockets, session established). `dumpsys window` confirmed
+`mCurrentFocus=Window{… Application Error: com.chetan.connectsuite.debug}` — on the phone's screen,
+holding focus.
+
+**So `docs/RESUME.md`'s "`am crash` works" is half right and the half that is missing is the
+dangerous one.** Same command, same package, same session, 49 seconds apart, two outcomes: a silent
+kill, and a modal dialog with the process alive. The discriminating variable was **not identified**,
+and saying so is the point — an experiment that uses `am crash` as a process-death stimulus must
+verify the process actually died rather than assume it, which is what the probe's `stopped=deadline`
+line does and why it is phrased as holding no reading rather than as a negative one.
+
+**Clearing the dialog without input.** `am kill` did nothing (the documented no-op on a
+foreground-service host, confirmed: focus unchanged, pid unchanged). Relaunching `MainActivity` by
+name started the activity behind the dialog and did not dismiss it. `am broadcast -a
+android.intent.action.CLOSE_SYSTEM_DIALOGS` cleared it, verified by the error window being gone with
+the control that the same query still enumerated 20 other windows. No key event was sent at any
+point.
+
+### P5b — and clearing it exposed the more serious finding: **a crash can leave the phone serverless**
+
+When the dialog was dismissed the held process finally died, and what came back was not the service:
+
+```
+02:52:00.415  I ActivityManager: Killing 23016:com.chetan.connectsuite.debug/u0a1011 (adj 0): crash
+02:52:00.453  W NotificationListeners: 0 notification listener binding died: …NotificationMirrorService
+02:52:10.484  I ActivityManager: Start proc 31828:…/u0a1011 for service {…/NotificationMirrorService}
+```
+
+Ten seconds later the process was back — **started for the notification listener, not for
+`LinkService`.** Every feature installed itself into `LinkServer`, capabilities went green, and the
+phone's own log has **no `[service] Foreground as` line and no `Listening on` line**. Sockets: `0`.
+
+That is the exact state `CLAUDE.md` documents after `adb install -r` — *"the app returns via the
+notification-listener rebind with every feature installed and no port bound"* — reached by a **third**
+route, and this one needs no laptop and no reinstall. `START_STICKY` restarted the service after run
+1's kill and did not after this one; the visible difference is the kill reason, `(adj 0): crash`.
+
+The link was down from 02:52:00 until it was restored by hand at 02:53:08, and nothing on either side
+said so beyond the Mac's ordinary reconnect attempts. Recovery was the documented one —
+`am start -n …/MainActivity`, then `scripts/link-up.sh` returning its three OKs:
+
+```
+OK  1. ServiceRecord present, isForeground=true, createTime=-4s129ms
+OK  2. 42501/42502/42503 all LISTEN under uid 11011
+OK  3. 1 control session(s) ESTABLISHED on 42501 under uid 11011
+```
+
+This is **defect 62** and it has a fix direction that falls straight out of Slice 1's readings.
+
+### P4 — screen off and on, not run, and why
+
+The brief's P4 needs the screen turned off and back on. There is no `adb` route to that which is not
+a key event, and this session is operating under an explicit instruction not to send input to the
+phone. `input keyevent 26` / `223` / `224` are all input, and the repo's own control table already
+records `KEYCODE_BACK` doing something other than what it looked like inside DocumentsUI — so
+"it's only a power key" is precisely the reasoning that table exists to distrust.
+
+**What was done instead, since the phone is attached all night:** `scripts/link-night-watch.sh`, a
+read-only sampler that touches nothing and waits for the screen-off that happens anyway. It records
+screen state, wakefulness, both idle states, socket count, established sessions, the live wakelock
+`ACQ` elapsed, and the pid, and it prints its **observed** mean gap beside its requested interval so
+a transition shorter than the gap is visibly outside what the run can see. It also prints, in its own
+header, the thing that limits it: **the phone is on the cable, so it will not enter deep Doze
+unaided** and nothing it collects describes an unplugged night. That is H3.
+
+**Blocked, not deferred.** P4's forced version needs either the user's hands on the power button or
+an explicit relaxation of the no-input rule for key events with no navigation surface. It is one
+sentence of permission, not a device limitation.
+
+### Defect 61 — the wake lock is never re-armed, and its own comment says it is
+
+`LinkService.acquireLocks()` creates the lock behind `if (wakeLock == null)` and acquires it with
+`WAKE_LOCK_TIMEOUT_MS = 12h`. The field's comment reads *"Re-armed on every state change; a phone
+that sleeps for a day never holds it stale."*
+
+The first half of that sentence is not true of the code beneath it. `acquireLocks()` runs on every
+`state` emission where `isConnected` is true — and on the second and every later emission the field
+is non-null, so it returns without touching the lock. When the platform's 12-hour timeout expires,
+`isHeld` goes false, the field stays non-null, and **nothing re-acquires it for the rest of the
+connection.** The only thing that clears the field is `releaseLocks()`, which runs on disconnect.
+
+Found by reading, not by a failure, and it is **unreachable in every reading this project holds** —
+which is itself the finding. The longest `+longwake` span in the history buffer is 31 minutes, and
+the spans are separated by ~62-second gaps that are the Mac reconnecting. The bug needs a single
+connection held for twelve hours, and on this device the link has never stayed up for one. So the
+defect is invisible today *because of a second problem*, and Phase 6's whole purpose is to remove
+that second problem — at which point this one starts happening.
+
+**Fix direction:** re-acquire when the lock is not held rather than when the field is null, and stop
+relying on a state change to do it — a connection that is quietly healthy emits nothing for hours,
+which is exactly the case that breaks. Re-arm on a timer the service already owns, with the timeout
+shortened so a missed release path lapses in about an hour instead of half a day. The invariant that
+matters is `re-arm interval < timeout`, with margin, and it is the thing a later tuning edit will
+silently break, so it belongs in an assertion rather than in a comment.
+
+**Wrong fix to avoid:** removing the timeout and acquiring indefinitely. The timeout is the backstop
+against a release path that is missed, and this project has already shipped a capture session that
+outlived its consumer (the `sessionEndedSink` comment records it) — an indefinite `PARTIAL_WAKE_LOCK`
+is the same mistake with the battery attached.
+
+### Defect 62 — a crash leaves the phone alive, granted, and serverless
+
+Measured 2026-09-02 during P5 and recorded in full above. After a process death whose kill reason is
+`(adj 0): crash`, `START_STICKY` did **not** restart `LinkService`. The process came back ten seconds
+later, started for `NotificationMirrorService`; every feature installed itself, every capability went
+green, and the phone had **no listening socket** and no `[service] Foreground as` line in its own log.
+
+This is the third route to a state `CLAUDE.md` already documents for `adb install -r`, and it is the
+worst of the three because it needs nothing but a crash: no laptop, no reinstall, no reboot. It is
+also silent on both sides — the Mac shows an ordinary reconnect loop, which is what it shows for a
+phone in a lift.
+
+The control that separates this from run 1's outcome is the phone's own start-reason line: run 1
+logged `Foreground as UNKNOWN` (a genuine `START_STICKY` restart) 0.7 s after its death, and this run
+logged nothing at all.
+
+**Fix direction:** the process *does* come back — reliably, because the platform rebinds
+`NotificationMirrorService` — so the missing piece is only that nothing in that path starts the link.
+`onListenerConnected` is that path and already runs in this process; starting `LinkService` from it,
+gated on a paired device exactly as `LinkBootReceiver` is, closes all three routes with one rule
+rather than three. Slice 1's reading is what makes it sound rather than hopeful: the `install -r`
+start was granted under `PROC_STATE_BFGS`, which is the procstate a bound notification listener
+*is*, so the start is permitted for a reason that was measured on this device rather than assumed.
+Log it with its own reason so the route is visible in the log the way `PACKAGE_REPLACED` and
+`UNKNOWN` now are.
+
+**Wrong fix to avoid:** a `JobScheduler` or `AlarmManager` watchdog that periodically checks whether
+the service is up. It would work, and it buys a permanent background job, a new failure mode under
+the very battery restrictions this phase is about, and a second thing that starts the service for
+reasons nobody can see. The listener rebind is a signal the platform already sends us for free. And
+**do not reach for the notification listener as a general-purpose restart trigger** — it is the right
+answer here only because the crash path demonstrably ends in that rebind; a phone where that grant is
+off gets no fix from this and needs to be said so out loud.

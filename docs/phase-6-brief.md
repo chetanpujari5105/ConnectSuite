@@ -77,7 +77,13 @@ It is also the first Phase 6 defect: a declared permission with no implementatio
 version of a message type in the inventory and specified nowhere, which is what
 `check-protocol-spec.mjs` exists for.
 
-### P2 · Doze, forced rather than waited for
+### P2 · Doze, forced rather than waited for — **run 2026-09-02, exempt path, link intact**
+
+> Three minutes of `deep=IDLE` with all listeners bound, the control session established, and — the
+> control that matters, because `ESTABLISHED` is a socket record and not a live session — a
+> phone-originated notification delivered to the Mac 16 s into deep idle. Caveat unchanged and
+> load-bearing: whitelisted apps are exempt from Doze's network restrictions.
+
 
 `dumpsys deviceidle force-idle` produces deep Doze on demand. Current state reads `ACTIVE` for both
 deep and light, so there is a live baseline to compare against. What it answers: whether the control
@@ -88,7 +94,13 @@ socket survives a Doze transition, whether the heartbeat (`PING_INTERVAL_MS = 5_
 network restrictions, so a clean pass here proves the *exempt* path and nothing else — and that must
 be written beside the result, not discovered later.
 
-### P3 · What the service actually costs while it is behaving
+### P3 · What the service actually costs while it is behaving — **partly run 2026-09-02; no aggregate is quotable yet**
+
+> Three instruments give three different answers about the same wakelock and the reconciliation is
+> not established, so this project quotes none of them. Only `dumpsys power`'s live elapsed hold is
+> unambiguous and it is now sampled by `scripts/link-night-watch.sh`. Structural finding, needing no
+> aggregate: the lock is never re-armed after its own timeout (defect 61).
+
 
 `dumpsys batterystats --charged com.chetan.connectsuite.debug` after a plugged run gives wakelock
 durations and wake counts. It will not give a trustworthy mAh figure while charging — that needs H3 —
@@ -96,14 +108,27 @@ but the **wakelock hold time** is the number that matters most and it is readabl
 `LinkService.kt:101` takes a `PARTIAL_WAKE_LOCK` named `ConnectSuite:link`; nobody has ever looked at
 how long it is held or whether it is released on every path.
 
-### P4 · The reconnect edges the Mac already has, from the phone's side
+### P4 · The reconnect edges the Mac already has, from the phone's side — **blocked, not deferred**
+
+> Turning the screen off and on needs a key event, and key events are input. Under a session
+> instruction not to send input to the phone this is one sentence of permission away, not a device
+> limitation. In the meantime `scripts/link-night-watch.sh` waits, read-only, for the screen-off that
+> happens anyway.
+
 
 The Mac reacts to `powerMonitor` `resume` and `unlock-screen` and to interface changes
 (`main.ts:619-628`). The phone has **no equivalent** — no screen-off handling, no connectivity
 callback, `START_STICKY` and nothing else. Measurable: turn the screen off, wait, turn it on, and
 read how the link recovers and how long it takes.
 
-### P5 · The kill this project already knows how to do safely
+### P5 · The kill this project already knows how to do safely — **run 2026-09-02, and it is less safe than this says**
+
+> `am crash` produced two different outcomes from the same command 49 seconds apart: a silent kill,
+> and a modal *Application Error* dialog with the process alive. `START_STICKY` restarted
+> `LinkService` after the first and **not** after the second — leaving the phone alive, granted and
+> serverless (defect 62). Answers this section's question in both directions: yes it rebinds its
+> ports when it restarts, and no it does not always restart. `docs/testing.md` → Phase 6 Slice 2.
+
 
 `am kill` does nothing to a foreground service and `am crash` works while printing a misleading
 permission refusal — both recorded in `docs/RESUME.md`, both learned the hard way, both reusable
@@ -112,7 +137,14 @@ not touch the forbidden `force-stop`. It answers: does `START_STICKY` actually b
 back, and does it bind its ports when it does — which the install-serverless finding suggests it may
 not.
 
-### P6 · Standby bucket movement over time
+### P6 · Standby bucket movement over time — **withdrawn 2026-09-02: it is not reversible**
+
+> `am set-standby-bucket <pkg> 5` is refused — *"Cannot set the standby bucket to 5"*. `EXEMPTED` is
+> derived from the deviceidle whitelist and cannot be set, so the shell can move the bucket out of it
+> and has no command that puts it back. The paragraph below calling this "reversible in one command"
+> is wrong and is kept only so the correction has something to point at. **H1 is therefore the only
+> route to the unexempt path**, and it is a decision about somebody's own phone.
+
 
 `am get-standby-bucket` reads `5` (EXEMPTED) now. `am set-standby-bucket` can move it to `RARE` or
 `RESTRICTED` to simulate what an unexempt, unused install looks like — without touching the

@@ -1,0 +1,26 @@
+### Forced Doze — EXEMPT PATH (see header)
+instrument: 180s run, 15s samples. Both are bounds: a drop shorter than
+            one sample gap is invisible to this run, and a run that ends still IDLE says so.
+
+baseline  deep=ACTIVE light=ACTIVE listen=4/4 established=1
+--- unplug (simulated) + force-idle ---
+    Now forced in to deep idle mode
+     0.0s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+    15.3s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+    30.7s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+    46.0s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+    61.4s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+    76.8s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+    92.2s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+   107.5s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+   122.9s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+   138.3s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+   153.8s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+   169.1s  deep=IDLE light=OVERRIDE listen=4/4 established=1
+stopped=duration after 12 samples
+
+--- restoring ---
+deep=ACTIVE  light=ACTIVE
+charging=  AC powered: false   USB powered: true
+whitelist row: user,com.chetan.connectsuite.debug,11011
+standby bucket: 5
