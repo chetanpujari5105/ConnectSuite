@@ -227,6 +227,19 @@ contextBridge.exposeInMainWorld('connect', {
    * keeping both would mean two call paths through the one thing that cannot be retried mid-gesture.
    */
   fsDrag: (paths: string[]): void => ipcRenderer.send('fs-drag', paths),
+  /**
+   * Thumbnails for `fs.*` ids. Crosses as entries rather than a Map; the renderer rebuilds it.
+   *
+   * Separate from [mediaThumbs] because `fs.*` and `media.*` are disjoint id spaces — asking the
+   * latter for an `fs.*` id answers `ok: true` with zero entries, which is a silent empty.
+   */
+  fsThumbs: (options: {
+    rootId: string;
+    ids: string[];
+    maxEdge?: number;
+  }): Promise<{ ok: boolean; entries?: [string, string][]; reason?: string; code?: string }> =>
+    ipcRenderer.invoke('fs-thumb', options),
+
 
   /**
    * The photo browser. Three verbs, because the fourth needs a socket nothing serves yet.

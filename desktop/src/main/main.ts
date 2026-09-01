@@ -873,6 +873,19 @@ ipcMain.on('fs-drag', (event, paths: string[]) => {
     .catch(() => start(FALLBACK_DRAG_ICON));
 });
 ipcMain.handle(
+  'fs-thumb',
+  (_event, options: { rootId: string; ids: string[]; maxEdge?: number }) =>
+    files
+      .thumbsFor(options.rootId, options.ids, options.maxEdge)
+      // A Map does not survive structured cloning to the renderer in a useful shape, so it crosses
+      // as entries and is rebuilt there — the same shape `media-thumbs` already uses.
+      .then((result) =>
+        result.ok
+          ? { ok: true as const, entries: [...result.data.entries()] }
+          : { ok: false as const, reason: result.reason, code: result.code },
+      ),
+);
+ipcMain.handle(
   'fs-list',
   (
     _event,

@@ -137,6 +137,11 @@ interface ConnectBridge {
   }): Promise<{ ok: boolean; path?: string; bytes?: number; verified?: boolean; reason?: string }>;
   /** Fire-and-forget by necessity: `startDrag` cannot survive an awaited round trip. */
   fsDrag(paths: string[]): void;
+  fsThumbs(options: {
+    rootId: string;
+    ids: string[];
+    maxEdge?: number;
+  }): Promise<{ ok: boolean; entries?: [string, string][]; reason?: string; code?: string }>;
   fsList(options: {
     rootId: string;
     path?: string;
@@ -414,6 +419,7 @@ const files = createFilesView({
   fsPush: (options) => connect.fsPush(options),
   fsPull: (options) => connect.fsPull(options),
   fsDrag: (paths) => connect.fsDrag(paths),
+  fsThumbs: (options) => connect.fsThumbs(options),
 });
 shell.onRoute((id) => {
   if (id === 'files') void files?.refresh();

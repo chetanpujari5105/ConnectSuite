@@ -2040,6 +2040,22 @@ img#qr {
 
 /* Two sentences whose difference is the whole state: where the file is, or why the drag needs a
    copy first. Never red for the second — not having copied a file yet is not a failure. */
+/* The thumbnail in the detail card — F-2, which needed `fs.thumb` because `fs.*` and `media.*` are
+   disjoint id spaces. Bounded by the card, never upscaled past what the phone sent: the image is
+   made at maxEdge 256 and `max-width` lets it sit smaller, never larger. */
+.files-detail-thumb {
+  display: block;
+  max-width: 100%;
+  max-height: 200px;
+  width: auto;
+  height: auto;
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: var(--well);
+  object-fit: contain;
+}
+
 .files-detail-note {
   margin: var(--space-3) 0 0;
   font: var(--text-meta-size);

@@ -166,6 +166,8 @@ export const MessageType = {
    */
   FS_LIST: 'fs.list',
   FS_STAT: 'fs.stat',
+  /** Batched thumbnails for `fs.*` ids. Separate from MEDIA_THUMB: the id spaces are disjoint. */
+  FS_THUMB: 'fs.thumb',
   FS_MKDIR: 'fs.mkdir',
   /**
    * Compare-and-delete. `expectSize` and `expectMtimeMs` are **required**, and a mismatch refuses

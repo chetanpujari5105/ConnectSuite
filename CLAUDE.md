@@ -55,9 +55,15 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   the one place the platform makes them genuinely indistinguishable (a refused folder and a
   cancelled pick both arrive as `null`). **The phone half is built — 2026-09-01, all four states on
   hardware**; the Mac's Files pane (§3.3, §3.4, §6) is still a proposal.
-- `docs/phase-5-fs-media-proposal.md` — the `fs.*` / `media.*` payload specification. **`fs.*` and
-  `media.*` are now implemented and the contract has moved to `docs/protocol.md`** (Files, Photos);
-  read this for the *arguments*, and note two recorded deviations: the delete refusal ships as
+- `docs/phase-5-fs-media-proposal.md` — the `fs.*` / `media.*` payload specification. **`fs.*` is
+  implemented and its contract has moved to `docs/protocol.md`** (the Files section, plus `fs.thumb`
+  as of 2026-09-01). **`media.*` is implemented and its contract has NOT moved**: `media.buckets`,
+  `media.list`, `media.thumb` and `media.original` appear in `docs/protocol.md`'s message-type list
+  and are specified nowhere in it, so §5 here is still their only spec. This line used to claim both
+  had moved; the gap was found on 2026-09-01 while writing `fs.thumb` deliberately in the shape of a
+  `media.thumb` the contract does not describe. Migrating it is owed by whoever next touches
+  `media.*`.
+  Read this for the *arguments*, and note two recorded deviations: the delete refusal ships as
   `TARGET_STALE` rather than `STALE_TARGET`, and `push` is not served yet. It was written as prose
   against `docs/protocol.md` while nothing was built; where the two now disagree, `docs/protocol.md`
   wins, because it is the contract and this was the argument for it.

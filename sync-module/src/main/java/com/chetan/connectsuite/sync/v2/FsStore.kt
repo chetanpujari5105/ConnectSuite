@@ -64,6 +64,22 @@ interface FsStore {
     fun openStream(id: String): InputStream?
 
     /**
+     * A thumbnail for [id], bounded to [maxEdge], or null when this file has none.
+     *
+     * **Null is an ordinary answer.** Most files are not images: a `.txt`, an `.apk` and a directory
+     * have no thumbnail and never will, and the wire says `NO_THUMBNAIL` for them rather than an
+     * error — a pane that greyed itself out over a folder of documents would be reporting a normal
+     * situation as a fault.
+     *
+     * The default decodes through [openStream], which works for every root because every root can
+     * produce bytes. A store overrides it only to offer a **cheaper source** — `SafTreeStore` asks
+     * the provider for its own cached thumbnail, which beats decoding a 12 MP JPEG — and comes back
+     * through [FsThumbs.encode] so the caps apply to that path too.
+     */
+    fun thumbnail(id: String, maxEdge: Int): FsThumbs.Thumb? =
+        FsThumbs.fromStream({ openStream(id) }, maxEdge)
+
+    /**
      * Opens the partial for [name] under [segments], creating it if absent.
      *
      * Null when the parent does not resolve, the root is not [writable], or the provider refuses.

@@ -71,7 +71,7 @@ SMS: `sms.threads`, `sms.messages`, `sms.send`, `sms.received`, `sms.sent`
 Calls: `call.incoming`, `call.ended`, `call.log`, `call.dial`, `call.answer`, `call.reject`
 Contacts: `contacts.list`, `contacts.get`
 Clipboard: `clip.push`, `clip.request`, `clip.history`
-Files: `fs.list`, `fs.stat`, `fs.mkdir`, `fs.delete`, `fs.transfer.begin`, `fs.transfer.progress`, `fs.transfer.done`, `fs.transfer.cancel`
+Files: `fs.list`, `fs.stat`, `fs.thumb`, `fs.mkdir`, `fs.delete`, `fs.transfer.begin`, `fs.transfer.progress`, `fs.transfer.done`, `fs.transfer.cancel`
 Photos: `media.buckets`, `media.list`, `media.thumb`, `media.original`
 Mirror: `mirror.start`, `mirror.stop`, `mirror.config`, `mirror.keyframe`, `mirror.stats`, `mirror.state`, `mirror.rotate`
 Input: `input.tap`, `input.swipe`, `input.scroll`, `input.key`, `input.text`, `input.global`
@@ -1158,6 +1158,63 @@ ack      {"id":"msf%3A1000012345","name":"IMG_2041.jpg","dir":false,"size":38741
 `sha256` is `null` unless the phone already holds one and is **never** computed here: digesting a
 4 GB video to answer a stat would block the control channel for a minute with nothing able to report
 progress. A directory reports `size: 0` and `mime: "inode/directory"`.
+
+### `fs.thumb`
+
+```json
+request  {"rootId":"saf:primary%3ADCIM","ids":["msf%3A1000012345","msf%3A1000012399"],"maxEdge":256}
+ack
+{"thumbs":[
+  {"id":"msf%3A1000012345","mime":"image/jpeg","width":256,"height":192,
+   "data":"/9j/4AAQSkZJRgABAQ…"},
+  {"id":"msf%3A1000012399","error":"NO_THUMBNAIL"}]}
+```
+
+**A thirteenth message name, and the only Files item that needed one.** Everything else the Files
+pane wanted was a CSS rule, a constant, a concurrency join or renderer work. This is different
+because it is not a rendering problem: **`fs.*` ids and `media.*` ids are disjoint id spaces**, and
+no amount of Mac-side work bridges them.
+
+```
+fs.list  id: "primary%3ADCIM%2FCamera%2FIMG_2041.jpg"   ← a SAF document id
+media.*  id: "1000012345"                                ← a MediaStore _ID
+```
+
+Asked for a thumbnail of an `fs.*` id, `media.thumb` answers **`ok: true` with zero entries** — a
+silent empty, which is an absence with no reason attached and exactly the shape this project keeps
+writing rules about. So the Files pane could not borrow the photo browser's thumbnails, and a
+selected photo drew `Kind`/`Size`/`Modified` and no image, ever.
+
+**Why a separate type rather than teaching `media.thumb` a second id space.** The same reason
+`media.original` is not `fs.transfer.begin` with a media id: two mutually exclusive addressing modes
+in one type means an error table that has to explain which fields go together, and a caller that can
+form a request no handler can serve. One type, one addressing mode. `fs.thumb` carries `rootId`
+because every `fs.*` id is only meaningful inside a root, and that is precisely the difference from
+`media.thumb`, whose ids are global to the device.
+
+**The shape deliberately mirrors `media.thumb`** — batched ids, `maxEdge`, base64 in the ack, a
+per-item `error` — because a photo grid and a file listing have the same need and two different
+answers to it would be a difference with no reason behind it. The caps carry over unchanged and for
+unchanged reasons:
+
+- **`ids` is capped at 32 per request.** 32 × ~33 KB ≈ 1 MB, well inside `MAX_CONTROL_FRAME`. The cap
+  bounds head-of-line blocking on the channel that also carries `ping`.
+- **`maxEdge` is capped at 512.** Above that it is a preview, not a thumbnail, and it belongs on the
+  bulk channel like the original.
+- **A per-item `error`, never a failed ack.** One unreadable file in a batch of 32 must not lose the
+  other 31.
+
+**`NO_THUMBNAIL` is a normal answer, not a failure.** Most files are not images: a `.txt`, an `.apk`
+and a directory have no thumbnail and never will, and a pane that treats that as an error would grey
+itself out over a folder of documents. It is distinct from `NOT_FOUND` (the id is gone) and from
+`PERMISSION_DENIED` (the root's grant was revoked), because those three want three different
+sentences on screen. A directory is always `NO_THUMBNAIL`; it is never an error to ask.
+
+**Bytes on the control channel, for the same reason `media.thumb` puts them there.** A listing needs
+many thumbnails within a second of a folder opening; a bulk socket per tile is absurd and a bulk
+socket for the batch is a second transfer state machine serving something that is not a transfer. A
+thumbnail is small by construction, and one that is not is a bug in thumbnail generation that should
+be visible as one.
 
 ### `fs.mkdir`
 

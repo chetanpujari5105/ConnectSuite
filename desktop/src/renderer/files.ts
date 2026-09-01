@@ -59,6 +59,19 @@ interface FilesBridge {
   }): Promise<{ ok: boolean; path?: string; bytes?: number; verified?: boolean; reason?: string }>;
   /** Synchronous by necessity — see the preload comment. Nothing may be awaited before it. */
   fsDrag(paths: string[]): void;
+
+  /**
+   * Thumbnails for `fs.*` ids, batched in the main process at the phone's cap of 32.
+   *
+   * Separate from the photo browser's because `fs.*` and `media.*` are disjoint id spaces: asking
+   * `media.thumb` for a SAF document id answers `ok: true` with zero entries. That is the whole
+   * reason `fs.thumb` exists.
+   */
+  fsThumbs(options: {
+    rootId: string;
+    ids: string[];
+    maxEdge?: number;
+  }): Promise<{ ok: boolean; entries?: [string, string][]; reason?: string; code?: string }>;
 }
 
 /** One page. The phone caps at 500; 200 is its own default and fills the table several times. */
@@ -255,6 +268,10 @@ class FilesView {
     this.selected = null;
     this.selectedIds.clear();
     this.selectionAnchorId = null;
+    // Both caches are per-folder: ids are only meaningful inside a root, and holding them across a
+    // navigation is how a stale picture ends up beside a new name.
+    this.thumbCache.clear();
+    this.thumbAsked.clear();
     await this.loadMore();
   }
 
@@ -435,6 +452,43 @@ class FilesView {
   /** The selected rows, in the drawn order, files only. The order Finder receives them in. */
   private selectedFiles(): FsEntryRow[] {
     return this.entries.filter((e) => this.selectedIds.has(e.id) && !e.dir);
+  }
+
+  /** Thumbnails that have arrived, keyed by entry id. Cleared when the folder changes. */
+  private thumbCache = new Map<string, string>();
+
+  /** Ids already asked about, so a redraw does not re-ask. Holds "has none" as well as "arrived". */
+  private thumbAsked = new Set<string>();
+
+  private thumbFor(entry: FsEntryRow): string | undefined {
+    return this.thumbCache.get(entry.id);
+  }
+
+  /**
+   * Ask for one entry's thumbnail, once.
+   *
+   * **Once**, including when the answer is "this file has none" — `thumbAsked` is added to before
+   * the request, not after it, so a folder of documents does not re-ask on every redraw. A redraw
+   * happens on every click, so the difference is between one request and one per interaction.
+   *
+   * Directories are never asked about: the phone answers `NO_THUMBNAIL` for them by contract, and
+   * spending a round trip to be told something the wire already guarantees is a request that only
+   * has one possible answer.
+   */
+  private async requestThumb(entry: FsEntryRow): Promise<void> {
+    if (entry.dir || this.selectedRoot === null) return;
+    if (this.thumbAsked.has(entry.id)) return;
+    this.thumbAsked.add(entry.id);
+    const result = await this.bridge.fsThumbs({ rootId: this.selectedRoot, ids: [entry.id] });
+    if (!result.ok || !result.entries) return;
+    let arrived = false;
+    for (const [id, data] of result.entries) {
+      this.thumbCache.set(id, data);
+      if (id === entry.id) arrived = true;
+    }
+    // Redraw only if this entry is still the one on screen and something actually came back. A
+    // render on every reply would fight the selection the user has moved on to.
+    if (arrived && this.selected?.id === entry.id) this.render();
   }
 
   /** The one home for the decision. Called twice — once to schedule, once at the moment of acting. */
@@ -900,6 +954,21 @@ class FilesView {
     title.className = 'files-detail-title';
     title.textContent = entry.name;
     this.detail.append(title);
+
+    // F-2, which needed the protocol. The image is drawn only when the bytes are already here —
+    // never a spinner that may never resolve, and never a box for a file that has no thumbnail,
+    // because most files do not and an empty frame on every `.txt` is worse than no frame.
+    const cached = this.thumbFor(entry);
+    if (cached) {
+      const img = document.createElement('img');
+      img.className = 'files-detail-thumb';
+      img.src = `data:image/jpeg;base64,${cached}`;
+      // Its own dimensions, so a thumbnail is never drawn larger than it was made — the Photos pane
+      // upscaled one two and a half times and it looked like a rendering bug in the encoder.
+      img.alt = '';
+      this.detail.append(img);
+    }
+    void this.requestThumb(entry);
 
     const facts: Array<[string, string]> = [
       ['Kind', entry.dir ? 'Folder' : entry.mime],

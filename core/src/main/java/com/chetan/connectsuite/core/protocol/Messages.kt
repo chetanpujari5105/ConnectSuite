@@ -107,6 +107,9 @@ object MessageType {
 
     const val FS_LIST = "fs.list"
     const val FS_STAT = "fs.stat"
+
+    /** Batched thumbnails for `fs.*` ids. Separate from [MEDIA_THUMB]: the id spaces are disjoint. */
+    const val FS_THUMB = "fs.thumb"
     const val FS_MKDIR = "fs.mkdir"
     const val FS_DELETE = "fs.delete"
     const val FS_TRANSFER_BEGIN = "fs.transfer.begin"

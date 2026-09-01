@@ -1,6 +1,7 @@
 package com.chetan.connectsuite.sync.v2
 
 import android.content.Context
+import android.util.Base64
 import com.chetan.connectsuite.core.link.ControlSession
 import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.core.link.LinkServer
@@ -12,6 +13,8 @@ import com.chetan.connectsuite.core.protocol.MessageType
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.util.concurrent.atomic.AtomicLong
@@ -41,6 +44,7 @@ object FsFeature {
     val handledTypes: Set<String> = setOf(
         MessageType.FS_LIST,
         MessageType.FS_STAT,
+        MessageType.FS_THUMB,
         MessageType.FS_MKDIR,
         MessageType.FS_DELETE,
         MessageType.FS_TRANSFER_BEGIN,
@@ -94,6 +98,7 @@ object FsFeature {
     private fun handlerFor(type: String, context: Context): MessageHandler = when (type) {
         MessageType.FS_LIST -> MessageHandler { session, request -> onList(session, request, context) }
         MessageType.FS_STAT -> MessageHandler { session, request -> onStat(session, request, context) }
+        MessageType.FS_THUMB -> MessageHandler { session, request -> onThumb(session, request, context) }
         MessageType.FS_MKDIR -> MessageHandler { session, request -> onMkdir(session, request, context) }
         MessageType.FS_DELETE -> MessageHandler { session, request -> onDelete(session, request, context) }
         MessageType.FS_TRANSFER_BEGIN -> MessageHandler { session, request -> onBegin(session, request, context) }
@@ -237,6 +242,93 @@ object FsFeature {
         // sha256 is null and is never computed here. Digesting a 4 GB video to answer a stat would
         // block the control channel for a minute with nothing to report progress on.
         session.ack(request) { FsPaths.stat(entry).forEach { (k, v) -> put(k, v) } }
+    }
+
+    // ---- fs.thumb -------------------------------------------------------------------------------
+
+    /**
+     * Batched thumbnails for `fs.*` ids.
+     *
+     * **A per-item `error`, never a failed ack.** One unreadable file in a batch of 32 must not lose
+     * the other 31, and the commonest per-item answer is not a failure at all: most files are not
+     * images, so `NO_THUMBNAIL` is what a `.txt`, an `.apk` and a directory get. It is kept distinct
+     * from `NOT_FOUND` (the id is gone) because those want two different sentences on screen.
+     *
+     * The whole request is refused only for things that make the batch meaningless: a missing
+     * `rootId`, a root whose grant is gone, or more ids than the protocol's cap.
+     */
+    private fun onThumb(session: ControlSession, request: Envelope, context: Context) {
+        val rootId = request.str("rootId")
+            ?: return refuse(session, request, FsFailure.BadRequest("rootId is required"))
+        val ids = request.payload["ids"]?.let { element ->
+            runCatching { element.jsonArray.map { it.jsonPrimitive.content } }.getOrNull()
+        } ?: return refuse(session, request, FsFailure.BadRequest("ids must be an array"))
+
+        if (ids.isEmpty() || ids.size > FsThumbs.MAX_IDS) {
+            // Refused rather than truncated. Silently serving the first 32 of 40 would hand back a
+            // short list the Mac cannot tell from eight files that have no thumbnail.
+            return refuse(
+                session,
+                request,
+                FsFailure.BadRequest("ids must hold 1 to ${FsThumbs.MAX_IDS} entries"),
+            )
+        }
+        val store = FsRoots.find(context, rootId)
+            ?: return refuse(session, request, FsFailure.RootNotGranted(rootId))
+
+        val maxEdge = FsThumbs.edgeOf(request.int("maxEdge"))
+        val startedAt = System.currentTimeMillis()
+        var made = 0
+        var none = 0
+        var missing = 0
+
+        val thumbs = ids.map { id ->
+            val entry = store.statById(id)
+            if (entry == null) {
+                missing++
+                return@map buildJsonObject {
+                    put("id", id)
+                    put("error", "NOT_FOUND")
+                }
+            }
+            val thumb =
+                if (entry.dir) null
+                else runCatching { store.thumbnail(id, maxEdge) }.getOrElse {
+                    LinkLog.w("fs", "fs.thumb $rootId/${entry.name} could not be decoded", it)
+                    null
+                }
+            if (thumb == null) {
+                none++
+                // Not an error. Most files are not images, and a directory never will be — a pane
+                // that greyed itself out over a folder of documents would be reporting the ordinary
+                // case as a fault. Kept distinct from NOT_FOUND, which is a different sentence.
+                return@map buildJsonObject {
+                    put("id", id)
+                    put("error", "NO_THUMBNAIL")
+                }
+            }
+            made++
+            buildJsonObject {
+                put("id", id)
+                put("mime", "image/jpeg")
+                put("width", thumb.width)
+                put("height", thumb.height)
+                put("data", Base64.encodeToString(thumb.bytes, Base64.NO_WRAP))
+            }
+        }
+
+        delivered.incrementAndGet()
+        // The success count beside both ways of having none, and the elapsed time beside the counts:
+        // a batch of 32 that produced 0 thumbnails in 40 ms and one that produced 0 in 9 s are
+        // different problems, and a bare "0 thumbs" cannot tell them apart.
+        LinkLog.i(
+            "fs",
+            "fs.thumb $rootId → $made made / $none without one / $missing gone, " +
+                "maxEdge=$maxEdge, ${System.currentTimeMillis() - startedAt} ms — ${tally()}",
+        )
+        session.ack(request) {
+            put("thumbs", buildJsonArray { thumbs.forEach { add(it) } } as JsonArray)
+        }
     }
 
     // ---- fs.mkdir -------------------------------------------------------------------------------

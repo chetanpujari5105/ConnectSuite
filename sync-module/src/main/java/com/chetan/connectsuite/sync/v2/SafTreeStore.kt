@@ -2,6 +2,7 @@ package com.chetan.connectsuite.sync.v2
 
 import android.content.Context
 import android.database.Cursor
+import android.graphics.Point
 import android.net.Uri
 import android.os.StatFs
 import android.provider.DocumentsContract
@@ -227,6 +228,34 @@ class SafTreeStore(
         } else {
             DeleteOutcome.Refused("the phone's storage provider refused the delete")
         }
+    }
+
+    /**
+     * The provider's own thumbnail first, decoding only if it has none.
+     *
+     * `DocumentsContract.getDocumentThumbnail` returns something the provider very often already
+     * has — MediaStore keeps thumbnails for camera images — so this avoids decoding a 12 MP JPEG to
+     * throw 99% of it away. It is a *hint*: providers may return null, may ignore the size, and may
+     * return something larger than asked for, which is why the result still goes through
+     * [FsThumbs.encode] rather than being sent as-is.
+     *
+     * The fallback is the interface's default, so a provider without thumbnails still produces one
+     * for anything `BitmapFactory` can read. Both paths return null for a file that is not an image,
+     * which the wire reports as `NO_THUMBNAIL` and not as a failure.
+     */
+    override fun thumbnail(id: String, maxEdge: Int): FsThumbs.Thumb? {
+        // `documentUri` decodes the id itself — every other caller passes the encoded form, and
+        // decoding here as well would build a URI from an id that had been unescaped twice.
+        val uri = documentUri(id)
+        val fromProvider = runCatching {
+            DocumentsContract.getDocumentThumbnail(resolver, uri, Point(maxEdge, maxEdge), null)
+        }.getOrNull()
+        if (fromProvider != null) {
+            val encoded = FsThumbs.encode(fromProvider, maxEdge)
+            fromProvider.recycle()
+            if (encoded != null) return encoded
+        }
+        return FsThumbs.fromStream({ openStream(id) }, maxEdge)
     }
 
     override fun openStream(id: String): InputStream? {

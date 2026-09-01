@@ -50,6 +50,9 @@ export interface PushOutcome {
  */
 const PREHASH_CEILING = 64 * 1024 * 1024;
 
+/** The phone's batch cap, from `docs/protocol.md`. Asking for more is refused, not truncated. */
+const FS_THUMB_BATCH = 32;
+
 /**
  * The Mac's half of Files — both directions now, and the two clients they run on.
  *
@@ -126,6 +129,91 @@ export class FilesClient {
       );
     }
     return result;
+  }
+
+  /**
+   * Thumbnails for `fs.*` ids, batched at the phone's cap.
+   *
+   * ### Why this is not `photos.thumbsFor`
+   *
+   * `fs.*` and `media.*` are **disjoint id spaces** — a SAF document id and a `MediaStore` `_ID`
+   * name different things, and asking `media.thumb` for the former answers `ok: true` with zero
+   * entries, a silent empty. That is why `fs.thumb` exists as a thirteenth message name rather than
+   * a second addressing mode on an existing one.
+   *
+   * ### The two caches, and why a failure is remembered
+   *
+   * `thumbs` holds what arrived; `noThumb` holds ids the phone said have none. Both are needed:
+   * without the second, every redraw of a folder of documents re-asks for thumbnails that will never
+   * exist, which is 32 ids of control traffic per scroll for a permanent answer. Keyed by
+   * `rootId + id` because an id is only meaningful inside its root.
+   *
+   * A `NO_THUMBNAIL` is **not** a failure and is not counted as one. Most files are not images.
+   */
+  private readonly thumbs = new Map<string, string>();
+  private readonly noThumb = new Set<string>();
+  private thumbsMade = 0;
+  private thumbsNone = 0;
+  private thumbsGone = 0;
+  private thumbCacheHits = 0;
+
+  private thumbKey(rootId: string, id: string): string {
+    return `${rootId}\u0000${id}`;
+  }
+
+  async thumbsFor(
+    rootId: string,
+    ids: string[],
+    maxEdge = 256,
+  ): Promise<PhoneResult<Map<string, string>>> {
+    const wanted = ids.filter((id) => {
+      const key = this.thumbKey(rootId, id);
+      return !this.thumbs.has(key) && !this.noThumb.has(key);
+    });
+    this.thumbCacheHits += ids.length - wanted.length;
+
+    for (let i = 0; i < wanted.length; i += FS_THUMB_BATCH) {
+      const batch = wanted.slice(i, i + FS_THUMB_BATCH);
+      const result = await ask(
+        this.link(),
+        'files',
+        MessageType.FS_THUMB,
+        { rootId, ids: batch, maxEdge },
+        (payload) =>
+          rows(payload, 'thumbs').map((row) => ({
+            id: String(row.id ?? ''),
+            data: typeof row.data === 'string' ? row.data : null,
+            error: typeof row.error === 'string' ? row.error : null,
+          })),
+      );
+      if (!result.ok) return result;
+      for (const thumb of result.data) {
+        const key = this.thumbKey(rootId, thumb.id);
+        if (thumb.data) {
+          this.thumbs.set(key, thumb.data);
+          this.thumbsMade += 1;
+        } else {
+          this.noThumb.add(key);
+          if (thumb.error === 'NOT_FOUND') this.thumbsGone += 1;
+          else this.thumbsNone += 1;
+        }
+      }
+    }
+
+    // Made beside both ways of having none, and the cache hits beside all three: a hit rate with no
+    // misses next to it cannot tell a warm cache from one nothing consults.
+    log.info(
+      'files',
+      `fs.thumb ${rootId} → ${this.thumbsMade} made / ${this.thumbsNone} without one / ` +
+        `${this.thumbsGone} gone / ${this.thumbCacheHits} from cache, since start`,
+    );
+
+    const answer = new Map<string, string>();
+    for (const id of ids) {
+      const data = this.thumbs.get(this.thumbKey(rootId, id));
+      if (data) answer.set(id, data);
+    }
+    return { ok: true, data: answer };
   }
 
   /**

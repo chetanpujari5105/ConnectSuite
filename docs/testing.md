@@ -9394,6 +9394,77 @@ contains the vocabulary of the thing it says is absent, which is how a text matc
 upload affordance that does not exist.
 
 
+### F-2 fixed · `fs.thumb`, the thirteenth message name (2026-09-01)
+
+The one Files item that needed the protocol, and it needed it for a reason no renderer work could
+touch: **`fs.*` and `media.*` are disjoint id spaces.** Asked for a thumbnail of a SAF document id,
+`media.thumb` answers `ok: true` with zero entries — a silent empty — so a selected photo drew
+`Kind`/`Size`/`Modified` and no image, ever.
+
+Contract first, then both sides, as the rules require: `docs/protocol.md` gained an `fs.thumb`
+section and the message-type list, then `Messages.kt` and `protocol.ts`, then the phone, then the Mac.
+
+**On hardware**, read through `scripts/probe.mjs` so every number carries a control:
+
+```
+phone  fs.thumb saf:primary%3ADCIM → 1 made / 0 without one / 0 gone, maxEdge=256, 31–38 ms
+Mac    fs.thumb saf:primary%3ADCIM → 15 made / 2 without one / 0 gone / 0 from cache
+pane   {"natural":"192x256","drawn":"151x200","isData":true,"bytes":16823}
+```
+
+- **192×256 natural** for a portrait photo at `maxEdge: 256` — the long edge lands on the cap and the
+  short one follows the aspect ratio.
+- **Drawn 151×200**, bounded by the card, never larger than it was made. The Photos pane once drew a
+  thumbnail at two and a half times its real size; `max-width`/`max-height` with `width: auto` is that
+  rule as CSS.
+- **16,823 bytes of base64** ≈ 12.6 KB of JPEG, inside the 10–25 KB the payload spec predicted, which
+  is what makes 32 per batch ≈ 1 MB safe on the control channel.
+- **31–38 ms per thumbnail on the phone**, because `SafTreeStore` asks the provider for its own
+  cached thumbnail before falling back to decoding.
+
+**A file with no thumbnail draws no empty frame** — `0` image elements for a `.temp-….mp4` of 0 B.
+`NO_THUMBNAIL` is a normal answer and not a failure: most files are not images, and a pane that
+greyed itself out over a folder of documents would be reporting the ordinary case as a fault. It is
+kept distinct from `NOT_FOUND` because those want two different sentences.
+
+**The cache, checked because `0 from cache` beside `15 made` is a number with no denominator.** There
+are two caches — the renderer's, which `render()` reads synchronously because it cannot await, and
+the main process's, which survives folder navigation — and the concern was that the renderer's
+`thumbAsked` guard makes the second unreachable. Asked directly for the same id twice:
+
+```
+{"firstOk":true,"secondOk":true,"firstMs":0,"secondMs":0,"sameBytes":true}
+Mac: 29 made / 3 without one / 0 gone / 2 from cache
+```
+
+`2 from cache`, identical bytes. The earlier zero meant no repeat had happened yet, not a dead cache.
+
+#### The arithmetic is tested; the decode is not, and that is stated rather than implied
+
+`FsThumbs.sampleSize`, `scaledSize` and `edgeOf` are pure and have 11 tests. `BitmapFactory` and
+`Bitmap` are Android statics, so `fromStream` and `encode` cannot run on the JVM — and the answer to
+that here is never `returnDefaultValues = true`, which makes every Android call silently return null
+and every test vacuously green. Nothing in the unit suite proves a JPEG comes out; the hardware run
+above is that evidence.
+
+**One mutation failed to fail, and the response was not a new test for the old code.** Flipping
+`sampleSize`'s `&&` to `||` broke nothing, because both forms produce the *same thumbnail* — they
+differ only in how much bitmap is decoded. Asking what the condition was actually for gave a third
+answer neither said: bound by the **longest** edge, which is what `scaledSize` bounds by. The old
+form never sampled an 8000×400 panorama at all — 12.8 MB of bitmap decoded to produce 256×13 — and
+the new one samples it to 500×25. The panorama test fails against the old formulation, which is what
+makes it a test rather than a restatement.
+
+#### A documentation gap found on the way, and corrected
+
+`CLAUDE.md` claimed the `fs.*`/`media.*` contract "has moved to `docs/protocol.md` (Files, Photos)".
+**True for Files, false for Photos.** `media.buckets`, `media.list`, `media.thumb` and
+`media.original` are named in the message-type list at line 74 and specified nowhere in the contract;
+`docs/phase-5-fs-media-proposal.md` §5 is still their only spec. Found by writing `fs.thumb`
+deliberately in the shape of a `media.thumb` the contract does not describe. The claim is corrected;
+migrating the Photos payloads is owed by whoever next touches `media.*`.
+
+
 ### `scripts/probe.mjs` — the DOM-as-instrument rule stops being a rule (2026-09-01)
 
 Three sittings, three faults, all of them the instrument rather than the product, and all of them
