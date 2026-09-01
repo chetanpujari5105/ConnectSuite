@@ -149,6 +149,14 @@ export const MessageType = {
    * needs the bulk channel, which is why the `photos` capability is not advertised even though
    * these three answer. See renderer/photos.ts for what the pane does about that.
    */
+  /**
+   * Phase 5 slice 11. Asymmetric by platform: Mac to phone works whenever the link is up, phone to
+   * Mac only while ConnectSuite is focused on the phone. See docs/protocol.md → Clipboard.
+   */
+  CLIP_PUSH: 'clip.push',
+  CLIP_REQUEST: 'clip.request',
+  CLIP_HISTORY: 'clip.history',
+
   MEDIA_BUCKETS: 'media.buckets',
   MEDIA_LIST: 'media.list',
   MEDIA_THUMB: 'media.thumb',
@@ -241,7 +249,30 @@ export const ErrorCode = {
   ROOT_NOT_GRANTED: 'ROOT_NOT_GRANTED',
   NO_SPACE: 'NO_SPACE',
   CHECKSUM_MISMATCH: 'CHECKSUM_MISMATCH',
+
+  /**
+   * The phone will not read its own clipboard because it is not the focused app.
+   *
+   * **Not PERMISSION_DENIED**, and here that distinction is at its sharpest: *there is no
+   * permission to grant.* Measured on hardware — reads are refused from the background with the
+   * AccessibilityService bound and with it disabled alike, and a foreground service does not help.
+   * So a fixHint pointing at Settings would send somebody looking for a switch that does not
+   * exist. The pane stays alive, says "open ConnectSuite on the phone", and offers a retry that
+   * becomes meaningful the moment they do.
+   */
+  PHONE_NOT_FOREGROUND: 'PHONE_NOT_FOREGROUND',
 } as const;
+
+/** One clipboard entry, in either direction. `text` is absent for every kind but `text`. */
+export interface ClipEntry {
+  kind: 'text' | 'empty' | 'sensitive';
+  text?: string;
+  atMs: number;
+  source: 'phone' | 'mac';
+  /** Never sent without appName beside it — the package-id rule. */
+  package?: string;
+  appName?: string;
+}
 
 export const Capability = {
   MIRROR: 'mirror',

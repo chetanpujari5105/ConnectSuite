@@ -29,6 +29,16 @@ object NotificationChannels {
      */
     const val MIRROR_REQUEST = "screen_mirror_request"
 
+    /**
+     * A clipboard entry has arrived from the Mac and is being **offered**.
+     *
+     * Default importance rather than high: it is an offer, not a demand, and it competes with
+     * whatever the person is actually doing. It is the phone's only offer surface, though — the
+     * Mac's entry is never written to the clipboard without a tap, so a person with this channel
+     * muted has an entry sitting in the app rather than one silently applied.
+     */
+    const val CLIPBOARD = "clipboard_offer"
+
     fun createAll(context: Context) {
         val manager = context.getSystemService<NotificationManager>() ?: return
         manager.createNotificationChannels(
@@ -40,6 +50,14 @@ object NotificationChannels {
                 ).apply {
                     description = "Shown while ConnectSuite is listening for paired devices."
                     setShowBadge(false)
+                },
+                NotificationChannel(
+                    CLIPBOARD,
+                    "Clipboard from your Mac",
+                    NotificationManager.IMPORTANCE_DEFAULT,
+                ).apply {
+                    description = "Offers text copied on your Mac. Nothing is put on your " +
+                        "clipboard until you tap Copy."
                 },
                 NotificationChannel(
                     PAIRING,

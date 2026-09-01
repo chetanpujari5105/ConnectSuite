@@ -36,6 +36,7 @@ import com.chetan.connectsuite.core.model.Device
 import com.chetan.connectsuite.sync.ui.devices.DevicesSection
 import com.chetan.connectsuite.sync.ui.devices.DevicesViewModel
 import com.chetan.connectsuite.sync.ui.devices.PairingRequestDialog
+import com.chetan.connectsuite.sync.ui.clipboard.ClipboardSection
 import com.chetan.connectsuite.sync.ui.folders.FoldersSection
 import com.chetan.connectsuite.sync.ui.folders.FoldersViewModel
 import com.chetan.connectsuite.sync.ui.transfers.IncomingOfferDialog
@@ -43,11 +44,13 @@ import com.chetan.connectsuite.sync.ui.transfers.TransfersSection
 import com.chetan.connectsuite.sync.ui.notifications.NotificationsSection
 import com.chetan.connectsuite.sync.ui.notifications.NotificationsViewModel
 import com.chetan.connectsuite.sync.ui.transfers.TransfersViewModel
+import com.chetan.connectsuite.sync.v2.ClipFeature
 
 private enum class SyncTab(val label: String) {
     Devices("Devices"),
     Transfers("Transfers"),
     Folders("Folders"),
+    Clipboard("Clip"),
     Notifications("Feed"),
 }
 
@@ -68,6 +71,7 @@ fun SyncRoute(
     val notificationsState by notificationsViewModel.uiState.collectAsStateWithLifecycle()
     val foldersState by foldersViewModel.uiState.collectAsStateWithLifecycle()
     val foldersMessage by foldersViewModel.message.collectAsStateWithLifecycle()
+    val clipboardState by ClipFeature.state.collectAsStateWithLifecycle()
 
     // Notification access is granted in system Settings, so re-check whenever we come back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { notificationsViewModel.refreshListenerState() }
@@ -187,6 +191,14 @@ fun SyncRoute(
                     quickPicks = foldersViewModel.quickPicks(),
                     onQuickPick = { folderPicker.launch(foldersViewModel.pickerIntent(it)) },
                     onRemove = foldersViewModel::remove,
+                )
+
+                // The state is read from the feature rather than through a ViewModel: it is
+                // process-scoped by design (in memory, cleared on disconnect) and a ViewModel would
+                // add a second home for a value that must have exactly one.
+                SyncTab.Clipboard -> ClipboardSection(
+                    state = clipboardState,
+                    onApplyFromMac = { ClipFeature.apply(context, it) },
                 )
 
                 SyncTab.Notifications -> NotificationsSection(

@@ -2064,3 +2064,97 @@ img#qr {
 }
 
 .files-detail-note.is-error { color: var(--destructive); }
+
+/* ============================== Clipboard ====================================================
+   Owned here because it is what lives inside a screen; the window, sidebar and dock are
+   shell.css's, and every colour below is a token from tokens.css rather than a second :root.
+   One selector, one stylesheet — stylesheets.test.ts fails on a duplicate at equal specificity. */
+.pane-clipboard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  min-height: 0;
+}
+
+.clip-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Standing copy, in every state. Muted rather than alarming: it describes the shape of the
+   feature, not a fault. */
+.clip-wall {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+
+.clip-notice {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.clip-notice.is-problem {
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.clip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.clip-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'meta use' 'body use';
+  gap: 2px 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.clip-meta {
+  grid-area: meta;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.clip-body {
+  grid-area: body;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 5.8em;
+  overflow: hidden;
+}
+
+.clip-body.is-muted {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.clip-use {
+  grid-area: use;
+  align-self: center;
+}
+
+.clip-empty,
+.clip-footnote {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 2px;
+}

@@ -9892,3 +9892,164 @@ too and is not part of either suite.
 No new unit test was added to either suite in this sitting, which is the honest shape of a docs and
 guards pass: the new checks are the 14 fixtures, and the code that changed is one debug-only probe
 that no test can reach without a clipboard.
+
+## Slice 11 — the clipboard wall, measured · 2026-09-01
+
+**The documented exception does not operate on this handset.** `CLAUDE.md` has carried one sentence
+since Phase 1 — *background clipboard reads are blocked since Android 10 unless the app has an
+enabled AccessibilityService or is the default IME* — and the whole clipboard feature was specified
+on top of it. It is now measured, and the half that mattered is false here: **this app has an enabled
+and bound AccessibilityService and is refused anyway.**
+
+Device SM-S938B, Android 16 / SDK 36, `targetSdk 36`, default IME **Samsung HoneyBoard** (not ours,
+so the IME exception is out of play throughout). Instrument: `ClipProbeActivity`. Five readings and
+the listener question, in one sitting, 18:14–18:28.
+
+### 0. The instrument was wrong first, and the platform said why
+
+The first run reported `stopped=control-failed` — the focused control read returned null:
+
+```
+18:14:52.834 CONTROL foreground read of our own clip: returned=false items=0 matchedOurMarker=false
+18:14:52.834 E/ClipboardService: Denying clipboard access to com.chetan.connectsuite.debug,
+                                 application is not in focus nor is it a system service for user 0
+```
+
+The read ran **inside `onCreate`, 7 ms after `am start`** — the activity existed and had not been
+focused, and focus is the platform's own criterion. That null was the instrument measuring itself,
+and it is the same fault as measuring a hidden DOM element: *what you measured it on* was never
+checked. The probe now takes every reading from `onWindowFocusChanged(true)` and carries `focused=`
+beside `importance=` on **every** read line, so a future null can be attributed rather than assumed.
+
+**The probe stopping was the design working.** It refused to sample, refused to conclude, and named
+which of the two it was. And the run was not wasted: the `setPrimaryClip` in it **landed** (Samsung's
+copy toast fired at 18:14:52.836), which was reading 5's first data point before reading 5 was run.
+
+### 1. Reading 1 — a focused read works. The precondition holds
+
+```
+18:16:50.655 window focus = true (importance=100)
+18:16:50.659 CONTROL foreground read of our own clip: focused=true importance=100 returned=true
+             items=1 matchedOurMarker=true length=22 label='ConnectSuite probe' isSensitive=false
+18:16:50.661 LISTENER fired #1 importance=100 (foreground) focused=true readAfterCallback=true
+```
+
+Both known positives in three milliseconds: the read path works, and the listener is wired up —
+which is what makes its later silence evidence rather than an absence of instrumentation.
+
+### 2. Reading 2 — backgrounded, **our own clip**: refused
+
+349 samples over 180 s, 348 of them at `focused=false`, **0 readable**. The clip was ours, written by
+us, 22 characters, and we could not read it back. *The owner may read its own clip* — the lookalike
+this reading exists to exclude — is **false here**, so it cannot explain anything in reading 3.
+
+### 3. The stimulus, placed in time by the platform rather than by anyone's word
+
+The operator copied in another app during the window. The proof is not their report:
+
+```
+18:19:45.497 SemClipboardToastController: ClipLabel is not empty ... com.openai.chatgpt
+18:19:51.137 stopped=window — 349 samples over 180s
+```
+
+**The copy landed 5.6 s before the window closed**, with 12 samples after it: 0 readable, and **0
+listener callbacks**. That is the answer to §7's open question, taken against a stimulus whose timing
+is independently witnessed.
+
+`verify`, from the foreground, 48 s later:
+
+```
+18:20:39.893 VERIFY foreground read: focused=true importance=100 returned=true stillOurMarker=false
+             length=57 label='plain text'
+             READING: background reads were REFUSED
+```
+
+### 4. Reading 3 — backgrounded, **foreign clip**, with no stimulus timing in it at all
+
+The `foreign` run has a hole and it was found before it was leaned on: a copy arriving *after* the
+window produces silence indistinguishable from a refusal. So `watch` mode was added — it writes
+nothing and runs over a clip **already in place**, with a focused read of that very clip as its known
+positive:
+
+```
+18:20:59.496 CONTROL focused read of the EXISTING clip: focused=true importance=100 returned=true
+             length=57 label='plain text'
+18:20:59.999 SAMPLE t=500ms importance=100 (foreground) focused=false returned=false
+...
+18:21:44.634 stopped=window — 90 samples over 45s at 500ms, 89 of them taken while not foreground;
+             0 readable / 90 refused-or-empty
+```
+
+**Readable with focus at 18:20:59.496; unreadable without it 0.5 s later, ninety times.** The
+difference is focus and nothing else. The platform wrote **90 denial lines in that window, one per
+sample**, naming us and the reason.
+
+### 5. Reading 5 — the write direction **works**, and that is the asymmetry the feature turns on
+
+```
+18:22:40.499 WRITE run: backgrounding, then writing from the background in 3s
+18:22:43.513 WRITE attempted from importance=125 (foreground-service) threw=no
+18:22:43.535 I/ClipboardService: adding mcfds          ← the platform accepted it
+18:23:01.120 VERIFY foreground read: returned=true stillOurMarker=true length=28
+             READING (write direction): the background setPrimaryClip LANDED
+```
+
+**Writes are not gated on focus. Reads are.** And the sharpest single line in the whole sitting is
+what happened 54 ms after that successful write:
+
+```
+18:22:43.567 E/ClipboardService: Denying clipboard access to com.chetan.connectsuite.debug ...
+```
+
+**We were refused reading back the clip we had just written.** A `threw=no` on the write is not a
+readable clipboard, which is exactly why the probe reports the effect at the far end rather than the
+call's return.
+
+### 6. Reading 4 — the control: the accessibility grant makes **no difference**
+
+The service was disabled by hand and the off-state verified four ways before anything ran — grant
+string empty, `accessibility_enabled=0`, no bound service, no enabled service, all agreeing. Then the
+same `watch` shape over a fresh foreign clip:
+
+```
+18:27:02.447 SemClipboardToastController: ... com.openai.chatgpt        ← the stimulus, witnessed
+18:27:17.441 ENV accessibilityServiceOfOurs=false defaultImeIsOurs=false
+18:27:17.441 ENV enabled_accessibility_services=
+18:27:17.477 CONTROL focused read of the EXISTING clip: focused=true returned=true length=92
+18:27:47.592 stopped=window — 60 samples over 30s, 59 not foreground; 0 readable / 60 refused
+```
+
+| | accessibility service | focused read | backgrounded reads |
+|---|---|---|---|
+| Reading 3 | **enabled and bound** | works (57 chars) | **0 of 90** |
+| Reading 4 | **disabled, verified 4 ways** | works (92 chars) | **0 of 60** |
+
+**Identical.** The grant is not the discriminator; focus is. So `CapabilityContract` gating
+`clipboard` on `ACCESSIBILITY_SERVICE` is gating on a rule that does not operate on this device —
+conservative rather than dangerous, and now measured rather than inherited.
+
+### What the readings decide, by the table written before them
+
+`docs/phase-5-clipboard-proposal.md` §2's pre-registered table, **row 3** — reading 3 refused,
+reading 4 refused. Not re-argued after the fact; that is what the table was written for.
+
+| Direction | What is possible on this device |
+|---|---|
+| **Mac → phone** | **Everything.** The background write lands, so a clipboard arriving from the Mac can be delivered whenever it arrives |
+| **Phone → Mac** | **Only while ConnectSuite is focused on the phone.** No background read, no `OnPrimaryClipChangedListener` callback, so no unsolicited `clip.push` from the phone and no answerable `clip.request` from a backgrounded one |
+
+### Two things this sitting also settled in passing
+
+1. **A foreground service does not buy clipboard access.** Every refusal above was taken at
+   `importance=125 (IMPORTANCE_FOREGROUND_SERVICE)` or `100`. The instinct — *run it inside
+   `LinkService` and it will work* — is measured false here, and it would have been the first thing
+   tried.
+2. **`adb install -r` leaves a window where the accessibility readings disagree.** Immediately after
+   the install, `settings get secure accessibility_enabled` read **0** while `dumpsys` listed the
+   service under `Bound services` — and 30 seconds later the setting read **1** with a live pid. Two
+   readings of one fact, resolved by a third (`pidof`), and the disagreement was **transient rather
+   than contradictory**. Had reading 3 been taken in that window, a refusal would have been
+   attributed to the platform instead of to a service that was still coming back up. The service
+   also *did* rebind after `-r` here, which `InputFeature.kt`'s 2026-08-27 note says it does not —
+   recorded as an observation, not a conclusion, because what restarted the process was not
+   established.

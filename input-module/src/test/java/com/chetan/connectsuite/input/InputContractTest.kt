@@ -63,9 +63,13 @@ class InputContractTest {
 
     @Test
     fun `enabling the accessibility service must not advertise clipboard`() {
-        // The permission half of clipboard opens with the accessibility service. The
-        // implementation half does not exist. A regression here is the exact false promise the
-        // capability contract was introduced to stop, and it is cheap to guard.
+        // The assertion stands; its reason changed on 2026-09-01. Clipboard used to be gated on
+        // the accessibility grant, so this guarded "the grant arrives and the handlers do not".
+        // That gate is gone — measured: the rule it modelled does not operate on this device — so
+        // what this now guards is plainer and no less worth guarding: **installing input must not
+        // advertise clipboard**, because these are different features and `advertisable` is
+        // answered by the handler half. A regression here is the false promise the capability
+        // contract exists to stop.
         assertFalse(
             "clipboard has no handlers and must stay off the Mac's list",
             advertisable(Capability.CLIPBOARD, InputFeature.handledTypes),

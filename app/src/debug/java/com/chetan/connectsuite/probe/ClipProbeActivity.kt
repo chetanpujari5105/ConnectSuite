@@ -98,29 +98,101 @@ import androidx.activity.ComponentActivity
  */
 class ClipProbeActivity : ComponentActivity() {
 
+    private var pendingMode: String? = null
+    private var pendingSeconds: Int = 45
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        run(intent)
+        arm(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        run(intent)
+        arm(intent)
     }
 
-    private fun run(intent: Intent) {
+    /**
+     * **Nothing reads the clipboard from `onCreate`, and the first version of this probe did.**
+     *
+     * Measured 2026-09-01: a read taken 7 ms after `am start`, inside `onCreate`, came back null
+     * and the platform said exactly why —
+     * `Denying clipboard access to …, application is not in focus`. The activity existed and was
+     * not yet **focused**, and focus is the platform's own criterion. So that null was the
+     * instrument measuring itself: reading 1 is *a focused read*, and `onCreate` is not one.
+     *
+     * The fix is to let the platform tell us when its criterion is satisfied rather than to guess
+     * with a delay — [onWindowFocusChanged] is that signal, and every read line below now carries
+     * `focused=` beside `importance=` so a future null can be attributed rather than assumed. The
+     * write in that first run *did* land, which is itself reading 5's first data point: writes are
+     * not gated on focus.
+     */
+    private fun arm(intent: Intent) {
         val mode = intent.getStringExtra("mode") ?: "foreign"
         val seconds = intent.getIntExtra("seconds", 45)
         Log.i(TAG, "--- clip probe: mode=$mode window=${seconds}s interval=${INTERVAL_MS}ms ---")
         logEnvironment()
+        pendingMode = mode
+        pendingSeconds = seconds
+        if (hasWindowFocus()) startPending() else Log.i(TAG, "waiting for window focus before any read")
+    }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        Log.i(TAG, "window focus = $hasFocus (importance=${importance()})")
+        if (hasFocus) startPending()
+    }
+
+    private fun startPending() {
+        val mode = pendingMode ?: return
+        pendingMode = null
         when (mode) {
-            "foreign" -> startForeignRun(seconds)
-            "write" -> startWriteRun(seconds)
+            "foreign" -> startForeignRun(pendingSeconds)
+            "write" -> startWriteRun(pendingSeconds)
+            "watch" -> startWatchRun(pendingSeconds)
             "verify" -> verify()
-            else -> Log.w(TAG, "unknown mode '$mode' — nothing was measured. Use foreign, write or verify.")
+            else -> Log.w(TAG, "unknown mode '$mode' — nothing was measured. Use foreign, watch, write or verify.")
         }
+    }
+
+    /**
+     * Reading 3 without any stimulus timing in it — added after the first run, and it is the
+     * version that can produce an unambiguous refusal.
+     *
+     * `foreign` mode has a hole: the operator's copy has to land *inside* the sampling window, and
+     * a copy that arrives after it produces silence that looks exactly like a refusal. `watch`
+     * removes the question — it is run **over a clipboard that already holds somebody else's clip**.
+     * Its known positive is a focused read of that very clip, taken before backgrounding: if we can
+     * read it with focus and cannot read it without, the difference is focus and nothing else.
+     *
+     * It writes nothing, which is the whole point: the clip under test stays the one the platform
+     * gave another app.
+     */
+    private fun startWatchRun(seconds: Int) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = runCatching { clipboard.primaryClip }.getOrNull()
+        val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
+        Log.i(
+            TAG,
+            "CONTROL focused read of the EXISTING clip: focused=${hasWindowFocus()} " +
+                "importance=${importance()} returned=${clip != null} length=${text?.length ?: -1} " +
+                "${describe(clip?.description)}",
+        )
+        if (clip == null) {
+            Log.w(
+                TAG,
+                "stopped=control-failed — nothing readable even with focus, so a background null " +
+                    "would say nothing. Copy something in another app first, then re-run watch.",
+            )
+            return
+        }
+        // Deliberately not our marker: in watch mode every readable clip is the foreign one, and
+        // `ours` must not carry a stale marker from an earlier run into this run's counting.
+        ours = null
+        registerListener()
+        Log.i(TAG, "WATCH: backgrounding now; the clip under test is already in place, nothing to copy")
+        moveTaskToBack(true)
+        sampleInBackground(seconds) { elapsed, sample -> Log.i(TAG, "SAMPLE t=${elapsed}ms $sample") }
     }
 
     // --- the environment every reading has to be interpreted against ------------------------------
@@ -179,7 +251,8 @@ class ClipProbeActivity : ComponentActivity() {
         val matched = text == marker
         Log.i(
             TAG,
-            "CONTROL foreground read of our own clip: returned=${back != null} " +
+            "CONTROL foreground read of our own clip: focused=${hasWindowFocus()} " +
+                "importance=${importance()} returned=${back != null} " +
                 "items=${back?.itemCount ?: 0} matchedOurMarker=$matched " +
                 "length=${text?.length ?: -1} ${describe(back?.description)}",
         )
@@ -244,7 +317,7 @@ class ClipProbeActivity : ComponentActivity() {
             Log.i(
                 TAG,
                 "LISTENER fired #$listenerCallbacks importance=$importance " +
-                    "(${importanceName(importance)}) readAfterCallback=${clip != null} " +
+                    "(${importanceName(importance)}) focused=${hasWindowFocus()} readAfterCallback=${clip != null} " +
                     "stillOurMarker=${text != null && text == ours} length=${text?.length ?: -1}",
             )
         }
@@ -288,8 +361,9 @@ class ClipProbeActivity : ComponentActivity() {
 
             onSample(
                 now - startedAt,
-                "importance=$importance (${importanceName(importance)}) returned=${clip != null} " +
-                    "items=${clip?.itemCount ?: 0} stillOurMarker=$isOurs length=${text?.length ?: -1} " +
+                "importance=$importance (${importanceName(importance)}) focused=${hasWindowFocus()} " +
+                    "returned=${clip != null} items=${clip?.itemCount ?: 0} stillOurMarker=$isOurs " +
+                    "length=${text?.length ?: -1} " +
                     "${describe(clip?.description)}",
             )
 
@@ -332,7 +406,8 @@ class ClipProbeActivity : ComponentActivity() {
         val stillOurs = text != null && text == ours
         Log.i(
             TAG,
-            "VERIFY foreground read: returned=${clip != null} stillOurMarker=$stillOurs " +
+            "VERIFY foreground read: focused=${hasWindowFocus()} importance=${importance()} " +
+                "returned=${clip != null} stillOurMarker=$stillOurs " +
                 "length=${text?.length ?: -1} ${describe(clip?.description)}",
         )
 

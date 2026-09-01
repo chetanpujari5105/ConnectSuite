@@ -9,6 +9,7 @@ import com.chetan.connectsuite.input.InputFeature
 import com.chetan.connectsuite.mirror.v2.MirrorEngine
 import com.chetan.connectsuite.mirror.v2.MirrorFeature
 import com.chetan.connectsuite.sync.v2.CallFeature
+import com.chetan.connectsuite.sync.v2.ClipFeature
 import com.chetan.connectsuite.sync.v2.ContactsFeature
 import com.chetan.connectsuite.sync.v2.FsFeature
 import com.chetan.connectsuite.sync.v2.MediaFeature
@@ -78,6 +79,16 @@ class ConnectSuiteApp : Application() {
         // has not shared that folder, add it under Sync > Folders"; an unregistered one can only
         // say "not implemented on this phone build".
         FsFeature.install(this, link)
+        // Phase 5, the clipboard slice. All three verbs, and the capability turns on with them —
+        // there is no permission and no special access to wait for, which is itself the finding:
+        // the accessibility grant this used to be gated on guards a rule this device does not
+        // implement (docs/testing.md, Slice 11).
+        //
+        // The asymmetry is the platform's and it is carried in the answers rather than in the
+        // advertisement: Mac to phone works whenever the link is up, phone to Mac only in the
+        // moment MainActivity has window focus, and `clip.request` to a backgrounded phone answers
+        // PHONE_NOT_FOREGROUND rather than pretending the clipboard is empty.
+        ClipFeature.install(this, link)
         // Last, because it reads NotificationRelay: the media remote is gated on the notification
         // listener rather than on a permission of its own. See RemoteFeature.
         RemoteFeature.install(this, link)

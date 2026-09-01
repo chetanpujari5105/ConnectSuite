@@ -6,6 +6,7 @@ import QRCode from 'qrcode';
 import { ErrorCode, MessageType, type ConnectionStatus } from '../shared/protocol';
 import { loadIdentity } from './identity';
 import { InputClient } from './input';
+import { ClipboardClient } from './clipboard';
 import { ContactsClient } from './contacts';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, promises as fsp } from 'node:fs';
@@ -49,6 +50,18 @@ const notifications = new NotificationClient(() => link);
  * talking to is a claim it cannot still stand behind.
  */
 const contacts = new ContactsClient(() => link);
+
+/**
+ * The clipboard, which is asymmetric because Android is — see clipboard.ts.
+ *
+ * The arriving entry goes to the renderer as an event and **nowhere near this Mac's own
+ * clipboard**: writing it is `clipboard.use`, reached only by a click. A single-slot store with no
+ * undo does not get written on somebody's behalf.
+ */
+const clip = new ClipboardClient(
+  () => link,
+  (entry) => sendAll('clip-arrived', entry),
+);
 
 /**
  * The photo browser's three working verbs.
@@ -437,6 +450,7 @@ app.whenReady().then(() => {
     if (status.phase !== 'connected') {
       notifications.clear();
       contacts.clear();
+      clip.clear();
       photos.clear();
       remote.clear();
       sms.clear();
@@ -513,6 +527,9 @@ app.whenReady().then(() => {
     // the phone's own keyboard diverged from the Mac until a thread was reopened.
     if (message?.type === MessageType.SMS_SENT && message.payload) {
       sms.onSent(message.payload);
+    }
+    if (message?.type === MessageType.CLIP_PUSH && message.payload) {
+      clip.onPush(message.payload);
     }
     if (message?.type === MessageType.REMOTE_STATE && message.payload) {
       remote.onState(message.payload);
@@ -770,6 +787,16 @@ ipcMain.handle('notif-action', (_event, payload: { key: string; index: number })
   notifications.action(payload.key, payload.index),
 );
 ipcMain.handle('notif-dismiss', (_event, key: string) => notifications.dismiss(key));
+
+ipcMain.handle('clip-send', () => clip.send());
+ipcMain.handle('clip-request', () => clip.request());
+ipcMain.handle('clip-history', () => ({ ok: true, data: clip.entries() }));
+ipcMain.handle('clip-phone-history', (_event, limit?: number) => clip.phoneHistory(limit));
+// The only path that writes this Mac's clipboard, and it starts with a click.
+ipcMain.handle('clip-use', (_event, text: string) => {
+  clip.use(text);
+  return { ok: true, data: null };
+});
 
 ipcMain.handle(
   'contacts-list',

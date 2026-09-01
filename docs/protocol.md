@@ -1427,6 +1427,153 @@ Only the user can, and they need to be told which side is full.
 it, the partial has already been deleted so a retry is clean, and it says something a generic failure
 does not — the bytes moved and were wrong, which is a different fault from bytes that never moved.
 
+## Clipboard (42501)
+
+Capability `clipboard`. Three types, and **the namespace is asymmetric because the platform is** —
+that asymmetry is stated here rather than discovered at runtime, because a Mac that assumes symmetry
+draws an affordance the phone can never serve.
+
+### The wall, measured rather than inherited
+
+Observed on hardware (SM-S938B, Android 16, `targetSdk 36`, 2026-09-01 — `docs/testing.md` →
+**Slice 11**):
+
+- **An app cannot read the clipboard unless it is focused.** Not backgrounded, not from a foreground
+  service, not while holding an enabled and bound AccessibilityService, and not even to read back a
+  clip it wrote itself 54 ms earlier. The platform says so on every attempt:
+  `Denying clipboard access to <package>, application is not in focus nor is it a system service`.
+- **`OnPrimaryClipChangedListener` does not fire while unfocused.** A real copy in another app,
+  witnessed by the platform's own log, produced zero callbacks across 12 samples.
+- **Writes are unrestricted.** `setPrimaryClip` from a backgrounded process lands and is readable
+  afterwards.
+
+The AccessibilityService exception this project inherited from documentation **does not operate on
+this device**: the same run refused 90 of 90 reads with the service bound and 60 of 60 with it
+disabled, over clips proven readable with focus half a second earlier.
+
+So:
+
+| Direction | State |
+|---|---|
+| **Mac → phone** | Works whenever the link is up. The phone is not required to be on screen |
+| **Phone → Mac** | **Only while ConnectSuite is focused on the phone.** No unsolicited push, no observer, no answerable request from a backgrounded phone |
+
+**A Mac must carry that as standing copy, before the first request**, not as the explanation of a
+failure. It is not the `Download` wall's problem — the refusal here is unambiguous and does get its
+own error — but a person should not learn the shape of a feature by tripping over it.
+
+### `clip.push` — event, either side
+
+The sender's clipboard changed and it is telling the other side.
+
+```json
+{"kind":"text","text":"https://example.com/a-thing","atMs":1788246046000,
+ "source":"phone","appName":"Chrome","package":"com.android.chrome"}
+```
+
+- **`kind`** is `text`, `empty` or `sensitive` in this build. A receiver meeting a `kind` it does not
+  know shows the entry as *something this end cannot display yet* and **keeps its place in the
+  history** — never discards it, never renders it as empty text.
+- **`package` never appears without `appName`.** The package-id rule: a package id may be a machine
+  handle and never the only thing a person reads. Both are **optional** — a clipboard does not always
+  name an owner — and when the owner is unknown the fields are *absent*, never `"unknown"`.
+- **`atMs`** is the sender's clock. It orders that side's history and is trusted for nothing else.
+- **`source`** is `phone` or `mac`, so a receiver can tell a real change from its own echo.
+
+**From the phone this is only ever sent while the app is focused**, which in practice means the
+moment a person brings ConnectSuite to the front after copying something. That is not a limitation of
+this design, it is the only moment the phone is permitted to look.
+
+**An arriving entry is offered, never applied.** A clipboard is a single-slot store with no undo:
+writing to it destroys what was there, and the person who loses work finds out when they paste. Both
+ends put the entry in their history and wait to be asked. **If this is ever revisited, it is
+revisited with an undo, not by removing the confirmation** — and the history is what an undo would be
+built on.
+
+### `clip.request` — either side
+
+*Send me what you have now.* Answered with the same body as `clip.push`, or with an explicit empty:
+
+```json
+request  {}
+ack      {"kind":"empty","atMs":1788246046000}
+```
+
+**Three answers, kept apart on purpose**, because collapsing any two of them tells a person something
+untrue:
+
+| Situation | Answer |
+|---|---|
+| There is text and it may be sent | `kind: "text"` with the body above |
+| The clipboard holds nothing | ack `kind: "empty"` — a **success**, not an error |
+| The clipboard holds something an app flagged sensitive | ack `kind: "sensitive"`, with **no `text`** |
+| The phone is not focused, so it may not look | error `PHONE_NOT_FOREGROUND` |
+
+**`sensitive` is not `empty`.** A password manager's clip is *there*; saying the clipboard is empty
+would be a Mac telling its user something false about their own phone. `EXTRA_IS_SENSITIVE` is
+honoured absolutely: the text is never read into a payload, never entered into a history, and never
+logged.
+
+**`PHONE_NOT_FOREGROUND` is not `PERMISSION_DENIED`**, and the distinction is sharper here than
+anywhere else in this protocol: **there is no permission to grant.** A `PERMISSION_DENIED` greys the
+pane and points a `fixHint` at a Settings screen that cannot help, which is worse than useless — it
+sends somebody to look for a switch that does not exist. The Mac's response to this code is one
+sentence — *open ConnectSuite on the phone* — and a retry that becomes meaningful the moment they do.
+
+### `clip.history` — either side
+
+The last *n* entries the responder holds, newest first, same body per entry.
+
+```json
+request  {"limit":20}
+ack      {"entries":[…],"hasMore":true}
+```
+
+**No cursor, and that is a decision.** The history is capped at 20 entries and fits one frame; a pager
+over 20 rows would be the fourth pager in this repo and the first three each cost a defect (32, 50,
+55). `hasMore` exists to say *the cap is doing something* and is never to be paged on.
+
+### The history, and what it is allowed to be
+
+**Memory only, on both sides, and nowhere else.** Not Room, not a file, not `electron-store`. A
+clipboard history that survives a reboot is a file full of other people's passwords.
+
+- **20 entries per side**, **64 KB of text each**. Duplicates collapse to the most recent occurrence.
+- **Cleared on disconnect** — the rule the contact and thumbnail caches already follow — and gone on
+  restart. A restart is a clear.
+- **Sensitive entries never enter it.**
+- **The 64 KB cap is refused, never truncated.** A silently truncated clipboard entry is a corrupt
+  paste with the same *looks complete* symptom as defect 56's truncated push, and the refusal names
+  the cap.
+- **No clipboard text is logged at any level, on either side.** `LinkLog` writes to a rotating file;
+  a handler written the way every other handler in this repo is written would put people's passwords
+  on disk. What is logged is `kind`, length, whether the sensitive flag was set, the resolved app
+  label, and the counters with their denominators.
+
+**Deleting is local by construction.** No message in this namespace deletes anything on the other
+side, so a *Clear* button clears the side it is on and says so. Two things it cannot reach and both
+are stated to the user rather than left to be discovered: the OS keeps its own clipboard history
+(One UI's, and whatever pasteboard manager a Mac has installed), and an entry already pasted is out.
+
+### The echo
+
+One slot plus two writers is an echo waiting to happen. **The rule is about what to send, not about
+what to accept: a side never pushes an entry whose text is identical to the last entry it received.**
+The receiving side cannot tell an echo from somebody genuinely copying the same string twice, so the
+decision has to be made where the knowledge is.
+
+That value is written by the receive path and read by the send path, which are two callers — so its
+concurrency is stated, not merely its type. A tagged union prevents an ambiguous state; it does
+nothing about two callers racing to set an unambiguous one.
+
+### Images and rich text
+
+**Out of scope in this build, and `kind` is what says so** rather than the field being absent. A
+copied image is arbitrarily large, arrives as a `content://` URI whose provider may not outlive the
+read, and carrying it means either a size cap that silently truncates somebody's work or a transfer
+with a progress UI — which is Files, which exists. A receiver meeting an unknown `kind` from a later
+build must show it as unrenderable and keep it, never render it as empty text.
+
 ## Photos (42501, with bytes on 42503)
 
 Capability `photos`. Four types, addressing **`MediaStore` ids that are global to the device** — no
@@ -1641,7 +1788,8 @@ Codes: `PERMISSION_DENIED`, `FEATURE_UNAVAILABLE`, `SECURE_SURFACE`, `ENCODER_FA
 `DEVICE_LOCKED`, `CONSENT_TIMEOUT`, `GEOMETRY_STALE`, `GESTURE_FAILED`, `NO_EDITABLE_FOCUS`,
 `UNSUPPORTED_KEY`, `TRANSFER_FAILED`, `PROTOCOL_MISMATCH`, `UNAUTHORIZED`, `BAD_REQUEST`,
 `NOT_FOUND`, `NO_REPLY_ACTION`, `NO_TELEPHONY`, `SEND_FAILED`, `NO_ACTIVE_CALL`,
-`NO_MEDIA_SESSION`, `TARGET_STALE`, `ROOT_NOT_GRANTED`, `NO_SPACE`, `CHECKSUM_MISMATCH`
+`NO_MEDIA_SESSION`, `TARGET_STALE`, `ROOT_NOT_GRANTED`, `NO_SPACE`, `CHECKSUM_MISMATCH`,
+`PHONE_NOT_FOREGROUND`
 
 `feature` is a **capability name** — see [the namespace rule](#namespace-rule) — or absent for the
 system messages, which belong to no feature.

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  ClipEntry,
   ConnectionStatus,
   GeometryStamp as InputGeometry,
   InputResult,
@@ -165,6 +166,26 @@ contextBridge.exposeInMainWorld('connect', {
    * phone has the indexes, and the number matching that makes `+1 555-123-4567` and `5551234567`
    * the same person lives there and only there.
    */
+  /**
+   * Clipboard, and the asymmetry is in the method names as much as in the docs.
+   *
+   * `clipSend` always works while the link is up. `clipRequest` is answerable only while
+   * ConnectSuite is focused on the phone and otherwise resolves `{ ok: false }` with
+   * `PHONE_NOT_FOREGROUND`'s sentence — a live pane, not a grey one, because there is no permission
+   * for the user to go and grant.
+   *
+   * **`clipUse` is the only thing that writes this Mac's clipboard**, and it exists as its own call
+   * for that reason: an arriving entry is offered, never applied.
+   */
+  clipSend: (): Promise<PhoneResult<{ bytes: number }>> => ipcRenderer.invoke('clip-send'),
+  clipRequest: (): Promise<PhoneResult<ClipEntry>> => ipcRenderer.invoke('clip-request'),
+  clipHistory: (): Promise<PhoneResult<ClipEntry[]>> => ipcRenderer.invoke('clip-history'),
+  clipPhoneHistory: (limit?: number): Promise<PhoneResult<ClipEntry[]>> =>
+    ipcRenderer.invoke('clip-phone-history', limit),
+  clipUse: (text: string): Promise<PhoneResult<null>> => ipcRenderer.invoke('clip-use', text),
+  onClipArrived: (callback: (entry: ClipEntry) => void) =>
+    ipcRenderer.on('clip-arrived', (_event, entry) => callback(entry)),
+
   contactsList: (options: { query?: string; limit?: number } = {}): Promise<
     PhoneResult<{ contacts: PhoneContact[]; hasMore: boolean }>
   > => ipcRenderer.invoke('contacts-list', options),

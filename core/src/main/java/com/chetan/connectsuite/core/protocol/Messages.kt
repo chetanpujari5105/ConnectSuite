@@ -218,6 +218,21 @@ object ErrorCode {
     const val BAD_REQUEST = "BAD_REQUEST"
 
     /**
+     * The phone may not read its own clipboard because it is not the focused app.
+     *
+     * **Not `PERMISSION_DENIED`, and the difference is sharper here than anywhere else in this
+     * protocol: there is no permission to grant.** `PERMISSION_DENIED` greys the pane and points a
+     * `fixHint` at a Settings screen, which would send somebody hunting for a switch that does not
+     * exist — the platform's rule is window focus and nothing else. Measured 2026-09-01: reads are
+     * refused from the background with our AccessibilityService bound *and* with it disabled, and
+     * a foreground service does not help either.
+     *
+     * The Mac's response is one sentence — open ConnectSuite on the phone — and a retry that
+     * becomes meaningful the moment the person does.
+     */
+    const val PHONE_NOT_FOREGROUND = "PHONE_NOT_FOREGROUND"
+
+    /**
      * The thing the request named is gone: a dismissed notification, a deleted thread, a contact
      * that no longer exists, a call that has already ended.
      *

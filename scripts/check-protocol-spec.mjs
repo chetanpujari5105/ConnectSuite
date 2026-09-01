@@ -54,6 +54,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MESSAGES_KT = 'core/src/main/java/com/chetan/connectsuite/core/protocol/Messages.kt';
 const PROTOCOL_MD = 'docs/protocol.md';
+const PROTOCOL_TS = 'desktop/src/shared/protocol.ts';
 
 /** Types specified under a section named for the concept. The heading must still exist. */
 export const SPECIFIED_UNDER = {
@@ -66,15 +67,26 @@ export const SPECIFIED_UNDER = {
 
 /** Debt: named on the wire, specified nowhere. Every entry carries why. */
 export const UNSPECIFIED = {
-  'clip.push': 'Phase 5, unbuilt. The payloads may not be written before the background-read ' +
-    'reading in docs/phase-5-clipboard-proposal.md §2 is taken on hardware.',
-  'clip.request': 'As clip.push.',
-  'clip.history': 'As clip.push.',
   'apps.list': 'Phase 7. No handler on either side; the capability advertises itself unavailable.',
   'apps.launch': 'Phase 7. No handler on either side.',
   'apps.icon': 'Phase 7. No handler on either side.',
   'battery.state': 'Unscheduled. No handler on either side; belongs to no capability.',
   'net.state': 'Unscheduled. No handler on either side; belongs to no capability.',
+};
+
+/**
+ * Types the phone defines and the Mac deliberately does not, with the reason.
+ *
+ * Same shape and same rule as UNSPECIFIED: an entry here that turns up in the twin after all is a
+ * failure, so the list gets pruned rather than accumulating.
+ */
+export const TWIN_EXEMPT = {
+  'mirror.screenoff':
+    'Not implemented anywhere. The phone keeps the constant so MirrorContractTest can assert it is ' +
+    'never registered; the Mac has no such test and no reason to name it.',
+  'apps.list': 'Phase 7. No handler on either side, and the Mac sends nothing it cannot be answered on.',
+  'apps.launch': 'Phase 7.',
+  'apps.icon': 'Phase 7.',
 };
 
 /** Types deliberately absent from the document's own inventory list, with the reason it gives. */
@@ -90,6 +102,16 @@ export function typesFrom(kotlin) {
   const end = rest.indexOf('\nobject ');
   const block = end < 0 ? rest : rest.slice(0, end);
   return [...block.matchAll(/const val [A-Z_0-9]+ = "([^"]+)"/g)].map((m) => m[1]);
+}
+
+/** Every `X: 'a.b',` inside the desktop twin's `MessageType` object. */
+export function typesFromTwin(typescript) {
+  const start = typescript.indexOf('export const MessageType');
+  if (start < 0) return [];
+  const rest = typescript.slice(start);
+  const end = rest.indexOf('} as const;');
+  const block = end < 0 ? rest : rest.slice(0, end);
+  return [...block.matchAll(/[A-Z_0-9]+: '([^']+)'/g)].map((m) => m[1]);
 }
 
 /**
@@ -131,6 +153,8 @@ export function subjectsIn(doc) {
 export function check({
   kotlin,
   markdown,
+  typescript = null,
+  twinExempt = TWIN_EXEMPT,
   minTypes = 40,
   specifiedUnder = SPECIFIED_UNDER,
   unspecified = UNSPECIFIED,
@@ -185,7 +209,34 @@ export function check({
     }
   }
 
-  return { findings, specified, debt, types };
+  // The desktop twin. `CLAUDE.md`: shared message types are defined once per side and must stay in
+  // sync with docs/protocol.md — which had never been checked, and was wrong. All three `clip.*`
+  // names were specified in the contract, implemented on the phone, and absent from protocol.ts,
+  // found only because a compile failed. A drift that does not happen to break a compile is
+  // invisible: a Mac simply never sends the message.
+  //
+  // Only phone→Mac direction is checked — every type the phone knows must exist on the Mac —
+  // because the Mac defines no types of its own.
+  if (typescript !== null) {
+    const twin = new Set(typesFromTwin(typescript));
+    if (twin.size < minTypes) {
+      return {
+        instrumentFailure: `parsed ${twin.size} message types from ${PROTOCOL_TS}, fewer than the ${minTypes} expected`,
+      };
+    }
+    for (const type of types) {
+      if (!twin.has(type) && !twinExempt[type]) {
+        findings.push(
+          `${type} is in ${MESSAGES_KT} and missing from ${PROTOCOL_TS} — the two sides are defined ` +
+            'once each and must stay in sync with docs/protocol.md; a Mac cannot send a type it has no name for',
+        );
+      }
+    }
+  }
+
+  const twinDebt = typescript === null ? [] : types.filter((t) => twinExempt[t]);
+
+  return { findings, specified, debt, types, twinDebt };
 }
 
 function main() {
@@ -194,6 +245,7 @@ function main() {
     result = check({
       kotlin: readFileSync(join(ROOT, MESSAGES_KT), 'utf8'),
       markdown: readFileSync(join(ROOT, PROTOCOL_MD), 'utf8'),
+      typescript: readFileSync(join(ROOT, PROTOCOL_TS), 'utf8'),
     });
   } catch (error) {
     console.log(`check-protocol-spec: INSTRUMENT FAILURE — ${error.message}. Nothing was checked.`);
@@ -207,9 +259,11 @@ function main() {
   const { findings, specified, debt, types } = result;
   console.log(
     `check-protocol-spec: ${specified.length} of ${types.length} message types specified in ${PROTOCOL_MD}, ` +
-      `${debt.length} on the debt list, ${findings.length} unaccounted for`,
+      `${debt.length} on the debt list, ${result.twinDebt.length} defined on the phone and not the Mac, ` +
+      `${findings.length} unaccounted for`,
   );
   for (const type of debt) console.log(`  debt: ${type} — ${UNSPECIFIED[type]}`);
+  for (const type of result.twinDebt) console.log(`  mac-side gap: ${type} — ${TWIN_EXEMPT[type]}`);
   for (const finding of findings) console.log(`  FAIL: ${finding}`);
   process.exit(findings.length === 0 ? 0 : 1);
 }

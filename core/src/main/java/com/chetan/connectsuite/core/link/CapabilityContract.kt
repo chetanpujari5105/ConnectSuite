@@ -255,10 +255,25 @@ object CapabilityContract {
                 MessageType.CLIP_REQUEST,
                 MessageType.CLIP_HISTORY,
             ),
-            // Reading the clipboard in the background is only legal for us through the
-            // accessibility service; without it clipboard is foreground-only, so it is not
-            // advertised at all rather than half-working.
-            specialAccess = SpecialAccess.ACCESSIBILITY_SERVICE,
+            // **No gate, and that is a measured decision rather than a loosening.**
+            //
+            // This used to require SpecialAccess.ACCESSIBILITY_SERVICE, on the documented rule that
+            // background clipboard reads are legal for an app with one. Measured on this handset
+            // 2026-09-01 (docs/testing.md, Slice 11): the rule does not operate here. Reads were
+            // refused 90 of 90 with our service bound and 60 of 60 with it disabled — identical,
+            // over clips proven readable with focus half a second earlier. The discriminator is
+            // window focus and nothing else, and no permission grants it.
+            //
+            // So the old gate was guarding a premise this device does not implement, and — worse —
+            // it made that premise untestable: with clipboard never advertised, nothing in the
+            // shipping path ever called getPrimaryClip. Only a probe that went around the gate
+            // could find out. See docs/phase-5-closeout.md for the sweep that asks which other
+            // gates are in that position.
+            //
+            // What replaces it is not a weaker gate but a different mechanism: the asymmetry lives
+            // in the answers. `clip.request` to an unfocused phone is PHONE_NOT_FOREGROUND, which
+            // is a live pane and a sentence, not a grey chip and a Settings hunt for a switch that
+            // does not exist.
         ),
         Capability.REMOTE to Contract(
             requests = setOf(MessageType.REMOTE_STATE, MessageType.REMOTE_COMMAND),

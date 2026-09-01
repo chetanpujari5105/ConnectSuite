@@ -34,6 +34,15 @@
             </intent-filter>
         </service>
 
+        <!--
+          Not exported: its extra carries the user's clipboard text, and an exported receiver
+          accepting arbitrary text from any app on the device would be a way to write somebody's
+          clipboard from outside. The only sender is our own immutable PendingIntent.
+        -->
+        <receiver
+            android:name=".v2.ClipApplyReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".sms.SmsMirrorReceiver"
             android:exported="true"

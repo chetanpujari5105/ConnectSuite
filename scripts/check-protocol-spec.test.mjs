@@ -190,3 +190,62 @@ test('control — the same checker against the pre-migration contract reports th
     'mirror.stop',
   ]);
 });
+
+// --- the desktop twin, added after it caught a real drift ---------------------------------------
+
+test('fixture — a type on the phone and missing from the Mac is a finding', () => {
+  // This is not hypothetical. All three `clip.*` names were specified in docs/protocol.md and
+  // implemented on the phone while `desktop/src/shared/protocol.ts` had never heard of them; it
+  // surfaced as a TypeScript compile error, which is luck. A drift that does not break a compile
+  // is invisible — the Mac simply never sends the message.
+  const r = check({
+    kotlin: kotlinWith('clip.push'),
+    markdown: markdownWith(['clip.push'], '`clip.push` — **event**, either side.'),
+    typescript: "export const MessageType = {\n  PING: 'ping',\n} as const;",
+    minTypes: 1,
+    specifiedUnder: {},
+    unspecified: {},
+    notInInventory: {},
+    twinExempt: {},
+  });
+  assert.equal(r.findings.length, 1);
+  assert.match(r.findings[0], /missing from desktop\/src\/shared\/protocol\.ts/);
+});
+
+test('fixture — the same type present in the twin is no finding', () => {
+  const r = check({
+    kotlin: kotlinWith('clip.push'),
+    markdown: markdownWith(['clip.push'], '`clip.push` — **event**, either side.'),
+    typescript: "export const MessageType = {\n  CLIP_PUSH: 'clip.push',\n} as const;",
+    minTypes: 1,
+    specifiedUnder: {},
+    unspecified: {},
+    notInInventory: {},
+    twinExempt: {},
+  });
+  assert.deepEqual(r.findings, []);
+});
+
+test('fixture — a twin-exempt type is a counted gap, not a finding', () => {
+  const r = check({
+    kotlin: kotlinWith('apps.list'),
+    markdown: markdownWith(['apps.list'], '`apps.list` — **request**.'),
+    typescript: "export const MessageType = {\n  PING: 'ping',\n} as const;",
+    minTypes: 1,
+    specifiedUnder: {},
+    unspecified: {},
+    notInInventory: {},
+    twinExempt: { 'apps.list': 'Phase 7.' },
+  });
+  assert.deepEqual(r.findings, []);
+  assert.deepEqual(r.twinDebt, ['apps.list']);
+});
+
+test('the tree as it stands has no phone type the Mac has never heard of', () => {
+  const r = check({
+    kotlin: readFileSync(join(ROOT, 'core/src/main/java/com/chetan/connectsuite/core/protocol/Messages.kt'), 'utf8'),
+    markdown: readFileSync(join(ROOT, 'docs/protocol.md'), 'utf8'),
+    typescript: readFileSync(join(ROOT, 'desktop/src/shared/protocol.ts'), 'utf8'),
+  });
+  assert.deepEqual(r.findings, []);
+});

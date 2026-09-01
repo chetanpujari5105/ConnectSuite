@@ -116,6 +116,20 @@ interface ConnectBridge {
     { ok: true; data: Contact } | { ok: false; reason?: string; fixHint?: string }
   >;
 
+  // Phase 5: clipboard. Asymmetric, and the types say so — `clipSend` works while the link is up,
+  // `clipRequest` is answerable only while ConnectSuite is focused on the phone. `clipUse` is the
+  // only call that writes this Mac's clipboard, which is why it is its own method rather than a
+  // side effect of receiving.
+  clipSend(): Promise<{ ok: true; data: { bytes: number } } | { ok: false; reason?: string; fixHint?: string }>;
+  clipRequest(): Promise<
+    { ok: true; data: ClipEntryRow } | { ok: false; reason?: string; fixHint?: string }
+  >;
+  clipHistory(): Promise<
+    { ok: true; data: ClipEntryRow[] } | { ok: false; reason?: string; fixHint?: string }
+  >;
+  clipUse(text: string): Promise<{ ok: true; data: null } | { ok: false; reason?: string }>;
+  onClipArrived(callback: (entry: ClipEntryRow) => void): void;
+
   // Files, both directions. `fsPush` arrived with the phone's receiver in slice 8, `fsPull` and
   // `fsDrag` with drag to Finder in slice 9. The upload affordance is still gated — on the phone's
   // own `push` field in the roots ack, never on these methods existing.
@@ -425,6 +439,20 @@ shell.onRoute((id) => {
   if (id === 'files') void files?.refresh();
 });
 
+
+// Clipboard. Built on all three verbs, and it does not gate itself on the capability for a reason
+// the other panes do not have: the interesting failure — the phone being unfocused — is a *state*
+// this pane draws a sentence for, not an absence that should grey it out. There is no permission to
+// grant, so a grey pane would offer nothing to act on.
+const clipboard = new ClipboardView(
+  connect,
+  el('clip-list'),
+  el('clip-wall'),
+  el('clip-notice'),
+  el<HTMLButtonElement>('clip-send'),
+  el<HTMLButtonElement>('clip-request'),
+);
+void clipboard;
 
 // Contacts. Same hidden-not-greyed rule as the notifications card above. The search box is wired
 // inside the view because the debounce belongs with the thing it debounces.

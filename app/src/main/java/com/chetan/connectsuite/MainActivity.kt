@@ -8,7 +8,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.chetan.connectsuite.core.app.AppForeground
 import com.chetan.connectsuite.core.link.LinkService
+import com.chetan.connectsuite.sync.v2.ClipFeature
 import com.chetan.connectsuite.core.ui.ConnectSuiteTheme
 import com.chetan.connectsuite.mirror.v2.MirrorNotifications
 
@@ -56,5 +58,24 @@ class MainActivity : ComponentActivity() {
         // The user may have just come back from Settings after granting - or revoking - a
         // permission, and every connected Mac needs to hear about it.
         LinkService.refreshCapabilities(this)
+    }
+
+    /**
+     * The only place in this app that knows whether a clipboard read is legal.
+     *
+     * Window focus is the platform's own criterion for `ClipboardManager` — measured on this
+     * handset, not inherited: a read from an unfocused app is refused with
+     * *"application is not in focus nor is it a system service"*, and neither an enabled
+     * AccessibilityService nor a foreground service changes it. There is no lifecycle callback for
+     * focus, so the Activity is the only thing that can report it, and `ClipFeature` answers
+     * `PHONE_NOT_FOREGROUND` on the strength of this flag rather than guessing from `onStart`.
+     *
+     * It is also the moment the clipboard becomes readable, which is the whole phone-to-Mac path:
+     * a person copies in another app, comes back here, and this is when we may look.
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        AppForeground.reportWindowFocus(hasFocus)
+        if (hasFocus) ClipFeature.onWindowFocused(this)
     }
 }

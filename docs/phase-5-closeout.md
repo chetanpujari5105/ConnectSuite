@@ -65,6 +65,46 @@ missing.
 
 ---
 
+## The gate sweep — asked for after the clipboard reading, 2026-09-01. **Reported, not fixed**
+
+The clipboard reading exposed a gate guarding a rule this device does not implement. The question
+that follows is whether there are others, and the honest answer needs a distinction the contract does
+not currently draw.
+
+**Class A — the grant *is* the mechanism.** Revoke it and the API is not refused, it is unreachable:
+there is no `dispatchGesture` without an AccessibilityService, and no `StatusBarNotification` without
+a bound listener. These cannot fail the way clipboard did.
+
+| Gate | Status |
+|---|---|
+| `input` / `ACCESSIBILITY_SERVICE` | Structural. Also the one gate whose *effect on advertisement* is observed — the running-check caught a granted-but-unbound service on 2026-08-27 |
+| `notifications` / `NOTIFICATION_LISTENER` | Structural, and observed end to end: a revoke propagated to the Mac in **16 ms** (2026-08-28) |
+
+**Class B — a policy gate.** A separate subsystem holds the rule and refuses us. Every one of these
+models a platform behaviour **this project has never seen operate**:
+
+| # | Gate | What has never been observed |
+|---|---|---|
+| 1 | **`remote` / `NOTIFICATION_LISTENER`** | **The twin of the clipboard finding, and the reason this sweep was worth running.** The claim is that `MediaSessionManager.getActiveSessions` requires a notification-listener component to name itself with. It is documentation-derived, exactly as the clipboard sentence was, and it has never been tested — **because our own gate prevents the call.** With the listener off, `remote` is not advertised, so `getActiveSessions` is never reached, so the premise is untestable through the product. If the rule is wrong in either direction, the symptom is a media remote that is greyed out for no reason, and nothing in this repo could tell |
+| 2 | `photos` / the two permission alternatives | The refusal branch is implemented and `docs/testing.md` records it as **drawn-but-unobserved** in as many words. Slice 9 did revoke both media grants — but to prove the *push* needed none, not to watch photos refuse |
+| 3 | `sms` (3 permissions), `calls` (4), `contacts` (1) | Exercised only in the **granted** direction, every time. `docs/testing.md` says contacts' `PERMISSION_DENIED` is *"reachable with `pm revoke`"* — reachable, not reached. The calls four-permission split, the one that closed a real defect, was **reasoned** from what each verb calls and never watched to fail |
+| 4 | `mic` / `RECORD_AUDIO` | The gate cannot decide anything: `requests = emptySet()` makes the capability unadvertisable whatever the permission says, so this is a lock on a door with no room behind it. Never exercised, and not exercisable |
+
+**The structural finding, which is bigger than any row above: a gate makes its own premise
+untestable.** `clipboard` was never advertised, so nothing in the shipping path ever called
+`getPrimaryClip`, so the rule the gate models was never exercised — for an entire phase. The only
+thing that could test it was a probe that went **around** the gate, which is what `ClipProbeActivity`
+is. `remote` sits in that position today, and any future capability gated on a documented refusal
+will too.
+
+**Not fixed, deliberately, and the reason is the same discipline that produced the finding.** Three
+of the four rows are testable with `pm revoke` in minutes — but a revoke run is a hardware sitting
+with controls of its own (the fourth row of `CLAUDE.md`'s table is a `dumpsys` count that lies about
+grant state), and doing it badly would replace *unobserved* with *wrongly observed*, which is worse.
+Row 1 is the one worth a sitting on its own.
+
+---
+
 ## Deferred and open, by number
 
 | # | State | What it is, in one line |

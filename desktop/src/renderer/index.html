@@ -476,7 +476,28 @@
                 </div>
               </div>
             </section>
-            <section class="screen" data-screen="clipboard" hidden></section>
+            <!-- ============================== Clipboard =================================== -->
+            <!--
+              Asymmetric on purpose, because the platform is. The wall line is standing copy in
+              every state — a person should not learn the shape of a feature by wondering why
+              nothing arrived — and "Use this" is the only control on the page that writes this
+              Mac's clipboard.
+            -->
+            <section class="screen" data-screen="clipboard" hidden>
+              <div class="pane pane-clipboard" id="clipboard-card">
+                <div class="clip-actions">
+                  <button id="clip-send" class="button-primary" type="button">
+                    Send this Mac's clipboard
+                  </button>
+                  <button id="clip-request" class="button-secondary" type="button">
+                    Ask the phone for its clipboard
+                  </button>
+                </div>
+                <div class="clip-wall" id="clip-wall"></div>
+                <div class="clip-notice" id="clip-notice" role="status" hidden></div>
+                <div class="clip-list" id="clip-list" aria-label="Clipboard history"></div>
+              </div>
+            </section>
             <section class="screen" data-screen="camera" hidden></section>
             <section class="screen" data-screen="activity" hidden></section>
 
@@ -545,6 +566,7 @@
     <script src="../shared/filesRoots.js"></script>
     <script src="files.js"></script>
     <script src="photos.js"></script>
+    <script src="clipboard.js"></script>
     <script src="shell.js"></script>
     <script src="renderer.js"></script>
   </body>

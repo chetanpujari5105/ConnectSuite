@@ -152,17 +152,16 @@ const SCREENS: NavScreen[] = [
     id: 'clipboard',
     label: 'Clipboard',
     title: 'Clipboard',
-    subtitle: 'Copy on your phone, paste on your Mac.',
+    // The old copy here said background reads are blocked "unless the app holds an enabled
+    // AccessibilityService, which Phase 3 gives us — so this is scheduled work, not a platform
+    // wall." That was inherited from documentation and it is **wrong on this device**: measured
+    // 2026-09-01, reads are refused with the service bound and with it disabled alike. It is a
+    // platform wall, it is one-directional, and the pane says so in standing copy.
+    subtitle: 'Send from this Mac any time; the phone sends when you open it.',
     icon: 'clipboard',
     group: 'MENU',
     shortcut: '⌘7',
-    state: 'unbuilt',
-    unbuiltReason:
-      'Clipboard sync is Phase 5. The phone half is also gated: background clipboard reads have ' +
-      'been blocked since Android 10 unless the app holds an enabled AccessibilityService, which ' +
-      'Phase 3 gives us — so this is scheduled work, not a platform wall.',
-    unbuiltHeadline: 'Nothing carries a clipboard between the two',
-    unbuiltHandle: 'no namespace proposed yet',
+    state: 'built',
   },
   {
     id: 'calls',
