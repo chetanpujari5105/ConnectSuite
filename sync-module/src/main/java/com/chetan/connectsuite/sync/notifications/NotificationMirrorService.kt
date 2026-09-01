@@ -22,6 +22,8 @@ import com.chetan.connectsuite.core.transport.ConnectionManager
 import com.chetan.connectsuite.sync.v2.NotificationFeature
 import com.chetan.connectsuite.sync.v2.RemoteFeature
 import com.chetan.connectsuite.sync.v2.NotificationRelay
+import com.chetan.connectsuite.core.link.LinkAutoStart
+import com.chetan.connectsuite.core.link.LinkStartReason
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -68,6 +70,22 @@ class NotificationMirrorService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.i(TAG, "Notification access granted")
+        // Defect 62. A kill whose reason is `(adj 0): crash` gets no START_STICKY restart, so the
+        // process comes back for *this* bind alone — every feature installs, every capability goes
+        // green, and no port is bound. That was measured on 2026-09-02 and it is the third route to
+        // the serverless state CLAUDE.md documents for `adb install -r`.
+        //
+        // This callback is the one signal the platform already sends us on that path, so it costs
+        // no background job and no polling. It is sound rather than hopeful because the background
+        // foreground-service start it makes was measured to be granted under PROC_STATE_BFGS — which
+        // is the procstate a bound notification listener *is*.
+        //
+        // ensureRunning returns immediately when the link is already up, which is the ordinary case
+        // here: this also fires on a plain grant toggle with everything working.
+        //
+        // What it does not fix, said out loud rather than left to be discovered: a phone with this
+        // grant switched off gets nothing from it, because there is no rebind to hang it on.
+        LinkAutoStart.ensureRunning(this, LinkStartReason.LISTENER_REBIND)
         // The v2 half: the relay is the only thing the link can reach a bound listener through,
         // and refreshing capabilities is what turns the Mac's notifications pane on without
         // waiting for a reconnect — the same live behaviour `input` has.

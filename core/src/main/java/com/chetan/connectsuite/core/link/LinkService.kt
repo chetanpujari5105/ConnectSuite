@@ -18,6 +18,7 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.chetan.connectsuite.core.R
 import com.chetan.connectsuite.core.notification.NotificationChannels
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -48,6 +49,10 @@ class LinkService : LifecycleService() {
     private var startReason: LinkStartReason = LinkStartReason.UNKNOWN
     private var isForeground = false
 
+    /** Published together so a re-arm count is never read without the denominator beside it. */
+    private var wakeLockAcquires = 0
+    private var wakeLockRearms = 0
+
     override fun onCreate() {
         super.onCreate()
         NotificationChannels.createAll(this)
@@ -59,6 +64,11 @@ class LinkService : LifecycleService() {
 
         advertiser = NsdAdvertiser(this, server.identity.deviceName, server.identity.deviceId)
             .also { it.start() }
+
+        // Defect 61: the lock's own timeout is the backstop against a missed release path, and a
+        // backstop that is never re-armed is just a leak with a deadline. This is the only thing in
+        // the service that ticks while nothing is happening, which is the state the bug lives in.
+        lifecycleScope.launch { rearmTicker() }
 
         lifecycleScope.launch {
             server.state.collect { state ->
@@ -118,13 +128,34 @@ class LinkService : LifecycleService() {
         else -> getString(R.string.link_service_waiting)
     }
 
+    /**
+     * Defect 61. The guard here used to be `if (wakeLock == null)`, and the field's comment claimed
+     * the lock was *"re-armed on every state change"*. It was not: after the platform timed the
+     * lock out, `isHeld` went false, the field stayed non-null, and nothing re-acquired it for the
+     * rest of the connection.
+     *
+     * The guard is `isHeld` now, and — the half that matters more — a state change is no longer
+     * what drives it. A quietly healthy connection emits no state changes for hours, which is
+     * exactly the case that broke; [rearmTicker] is what actually keeps the lock alive.
+     */
     private fun acquireLocks() {
-        if (wakeLock == null) {
+        val existing = wakeLock
+        if (existing == null || !existing.isHeld) {
+            if (existing != null) {
+                wakeLockRearms++
+                LinkLog.i(
+                    "service",
+                    "Wake lock had lapsed and was re-acquired — $wakeLockRearms re-arm(s) / " +
+                        "$wakeLockAcquires first-acquire(s) since start",
+                )
+            } else {
+                wakeLockAcquires++
+            }
             val power = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ConnectSuite:link")
                 .apply {
                     setReferenceCounted(false)
-                    acquire(WAKE_LOCK_TIMEOUT_MS)
+                    acquire(LinkLockPolicy.TIMEOUT_MS)
                 }
         }
         if (wifiLock == null) {
@@ -139,6 +170,13 @@ class LinkService : LifecycleService() {
                 setReferenceCounted(false)
                 acquire()
             }
+        }
+    }
+
+    private suspend fun rearmTicker() {
+        while (true) {
+            delay(LinkLockPolicy.REARM_INTERVAL_MS)
+            if (server.state.value.isConnected) acquireLocks() else releaseLocks()
         }
     }
 
@@ -224,9 +262,6 @@ class LinkService : LifecycleService() {
 
     companion object {
         private const val NOTIFICATION_ID = 2001
-
-        /** Re-armed on every state change; a phone that sleeps for a day never holds it stale. */
-        private const val WAKE_LOCK_TIMEOUT_MS = 12L * 60 * 60 * 1000
 
         const val ACTION_STOP = "com.chetan.connectsuite.link.STOP"
         const val ACTION_REFRESH_CAPABILITIES = "com.chetan.connectsuite.link.REFRESH_CAPS"

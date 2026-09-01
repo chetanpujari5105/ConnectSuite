@@ -1,7 +1,13 @@
 package com.chetan.connectsuite.core.link
 
+import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Why `LinkService` was asked to start, and what foreground-service types that permits.
@@ -69,6 +75,15 @@ enum class LinkStartReason {
     /** `ACTION_MY_PACKAGE_REPLACED` — the `adb install -r` hole, arriving as a broadcast. */
     PACKAGE_REPLACED,
 
+    /**
+     * The platform rebinding `NotificationMirrorService` after the process died.
+     *
+     * Defect 62's route, and the one that needs no laptop: a kill whose reason is `(adj 0): crash`
+     * does **not** get a `START_STICKY` restart, so the process returns for the listener alone and
+     * the phone sits granted and serverless. Measured 2026-09-02.
+     */
+    LISTENER_REBIND,
+
     /** `START_STICKY` handed us back a null intent. We do not know who wanted us. */
     UNKNOWN,
     ;
@@ -95,6 +110,96 @@ object LinkAutoStart {
      * database and a real broadcast — and it is also the part that a manifest edit can silently
      * desynchronise from, by adding a filter for an action nothing here maps.
      */
+    /** How long the trust-store read may take before the gate gives up and starts anyway. */
+    const val TRUST_READ_TIMEOUT_MS = 3_000L
+
+    /**
+     * Starts `LinkService` if this phone has something to serve, from any of the automatic routes.
+     *
+     * **One home for the rule, because there are three callers and there were nearly three copies.**
+     * The boot broadcast, the package-replaced broadcast and the notification-listener rebind all
+     * want the identical decision — *is there a paired device, and is the link already up* — and a
+     * decision written out three times is three things to get wrong.
+     *
+     * The gate itself: a foreground service means a permanent notification, and posting one on a
+     * phone that has never been paired is a notification about nothing. So the trust store is read
+     * first and nothing starts when it is empty.
+     *
+     * It **fails open**. A read that throws or exceeds [TRUST_READ_TIMEOUT_MS] starts the service
+     * anyway, because an error is not evidence of an unpaired phone and the two mistakes do not
+     * cost the same: a spurious notification is a nuisance, a link that never comes back is the
+     * defect all three callers exist for.
+     *
+     * [onFinished] is run on every path, including the failure ones — a `BroadcastReceiver` using
+     * `goAsync()` must call `finish()` or the system holds the process and eventually complains.
+     */
+    fun ensureRunning(
+        context: Context,
+        reason: LinkStartReason,
+        scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+        onFinished: () -> Unit = {},
+    ) {
+        val appContext = context.applicationContext
+        LinkLog.init(appContext)
+
+        // Cheap, in-process, and the reason this is safe to call from a path that may fire while
+        // the link is perfectly healthy: the listener rebinds on an ordinary grant toggle too.
+        if (LinkController.peek()?.state?.value?.running == true) {
+            LinkLog.i("autostart", "$reason: already listening — nothing to do")
+            onFinished()
+            return
+        }
+
+        scope.launch {
+            try {
+                val paired = withTimeoutOrNull(TRUST_READ_TIMEOUT_MS) {
+                    TrustStore(appContext).let { store ->
+                        store.reload()
+                        store.trustedCount()
+                    }
+                }
+                when {
+                    paired == null -> {
+                        LinkLog.w(
+                            "autostart",
+                            "$reason: trust store did not answer in ${TRUST_READ_TIMEOUT_MS}ms — " +
+                                "starting anyway (fail-open)",
+                        )
+                        startOrLog(appContext, reason)
+                    }
+                    paired == 0 -> LinkLog.i(
+                        "autostart",
+                        "$reason: 0 paired device(s) — not starting; nothing would connect and " +
+                            "the notification would be about nothing",
+                    )
+                    else -> {
+                        LinkLog.i(
+                            "autostart",
+                            "$reason: $paired paired device(s), link not running — starting LinkService",
+                        )
+                        startOrLog(appContext, reason)
+                    }
+                }
+            } catch (e: Exception) {
+                LinkLog.w("autostart", "$reason: trust store read failed — starting anyway", e)
+                startOrLog(appContext, reason)
+            } finally {
+                onFinished()
+            }
+        }
+    }
+
+    private fun startOrLog(context: Context, reason: LinkStartReason) {
+        runCatching { LinkService.start(context, reason) }
+            .onFailure {
+                // Android 12+ can refuse a background foreground-service start outright. It will not
+                // on this handset — the start measured on 2026-09-02 was granted under
+                // PROC_STATE_BFGS — which is exactly why the refusal is logged rather than assumed
+                // impossible: the device that proves this code is not the device that will break it.
+                LinkLog.e("autostart", "$reason: LinkService.start was refused", it)
+            }
+    }
+
     fun reasonFor(action: String?): LinkStartReason? = when (action) {
         "android.intent.action.BOOT_COMPLETED", ACTION_QUICKBOOT_POWERON -> LinkStartReason.BOOT
         "android.intent.action.MY_PACKAGE_REPLACED" -> LinkStartReason.PACKAGE_REPLACED
@@ -119,6 +224,7 @@ object LinkAutoStart {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
             LinkStartReason.PACKAGE_REPLACED,
+            LinkStartReason.LISTENER_REBIND,
             LinkStartReason.BOOT,
             LinkStartReason.UNKNOWN,
             -> ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE

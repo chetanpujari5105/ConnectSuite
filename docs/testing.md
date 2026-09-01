@@ -11120,3 +11120,118 @@ reasons nobody can see. The listener rebind is a signal the platform already sen
 **do not reach for the notification listener as a general-purpose restart trigger** — it is the right
 answer here only because the crash path demonstrably ends in that rebind; a phone where that grant is
 off gets no fix from this and needs to be said so out loud.
+
+---
+
+## Phase 6 · Slice 3 — defects 61 and 62 fixed, and 62 caught in the act · 2026-09-02
+
+### Defect 62 — closed, reproduced and fixed inside one run
+
+The fix is three lines in `NotificationMirrorService.onListenerConnected` calling
+`LinkAutoStart.ensureRunning(this, LISTENER_REBIND)`, and it is sound rather than hopeful for a
+reason that was *measured* in Slice 1 rather than assumed: the `install -r` start was granted under
+`PROC_STATE_BFGS`, and a bound notification listener **is** that procstate, so the background
+foreground-service start it makes is permitted for a reason read off this device.
+
+**The gate proved itself before the defect did.** On the reinstall that carried the fix, both routes
+fired and only one of them acted:
+
+```
+03:05:53.751  I [autostart] PACKAGE_REPLACED: 1 paired device(s), link not running — starting LinkService
+03:05:53.794  I [service]   Foreground as PACKAGE_REPLACED, types=0x10
+03:05:53.822  I [server]    Listening on 42501/42502/42503, 1 paired device(s)
+03:05:53.822  I [autostart] LISTENER_REBIND: already listening — nothing to do
+```
+
+That second line matters more than it looks. The listener rebinds on an ordinary grant toggle too,
+with everything working — so an ungated version of this fix would start a service that is already
+running every time somebody touched a switch in Settings. `LinkController.peek()?.state?.value?.running`
+is an in-process read and the whole gate.
+
+**Then the defect itself, on the second consecutive `am crash`** — the variant that raises the modal
+dialog, which is the one `START_STICKY` does not recover from:
+
+```
+03:06:41.592  I ActivityManager: Showing crash dialog for package com.chetan.connectsuite.debug u0
+03:06:45.778  I ActivityManager: Killing 5524:…/u0a1011 (adj 100): crash
+03:06:55.827  I ActivityManager: Start proc 6617:… for service {…/NotificationMirrorService}   ← not LinkService
+03:06:56.131  I [autostart] LISTENER_REBIND: 1 paired device(s), link not running — starting LinkService
+03:06:56.145  I [service]   Foreground as LISTENER_REBIND, types=0x10
+03:06:56.150  I [server]    Listening on 42501/42502/42503, 1 paired device(s)
+03:06:57.194  I [control]   Handshake complete with Chetans-MacBook-Pro
+```
+
+**Line 3 is the defect's signature, unchanged.** The platform still started the process for
+`NotificationMirrorService` alone; `START_STICKY` still did not restart `LinkService`. Nothing about
+the platform's behaviour was altered or worked around — the app simply now notices. `sockets=4/4`,
+`link-up.sh` three OKs.
+
+| | before the fix (02:52:00) | after the fix (03:06:45) |
+|---|---|---|
+| kill reason | `(adj 0): crash` | `(adj 100): crash` |
+| process back | 10.1 s later, for `NotificationMirrorService` | 10.0 s later, for `NotificationMirrorService` |
+| `LinkService` started by | **nothing** | `LISTENER_REBIND`, 304 ms after the process started |
+| sockets bound | **0**, until restored by hand 68 s later | 4/4, 323 ms after the process started |
+| Mac reconnected | only after manual recovery | 03:06:57.194, 11.4 s after the kill |
+
+The 10 seconds are the platform's own delay before restarting the process and are not ours to
+shorten. Everything after it is: **323 ms from process start to listening.**
+
+**The two `am crash` variants both appeared again in this run**, which is worth recording because it
+means the earlier observation was not a one-off: the first crash killed silently and `START_STICKY`
+recovered it (`Foreground as UNKNOWN` at 03:06:13.940, with `LISTENER_REBIND` correctly declining
+21 ms later); the second raised the dialog and did not. The discriminating variable is still not
+identified — the only visible correlation is that the dialog appeared on the *second* crash in both
+sittings — and it stays labelled unidentified rather than guessed at.
+
+**What this fix does not cover, stated in the code rather than left to be found:** a phone with the
+notification-listener grant switched off has no rebind to hang this on, and gets nothing from it.
+
+### Defect 61 — closed, and the guard is on the relationship rather than the value
+
+`acquireLocks()` guards on `isHeld` instead of `== null`, and — the half that matters more — a state
+change is no longer what drives it. `LinkLockPolicy` holds the two numbers together in one file
+because the defect was a *relationship*: a twelve-hour timeout was perfectly safe alone and fatal
+beside a re-arm that never ran. Timeout 60 min, re-arm every 20 min, driven by a ticker that runs
+whether or not anything is happening — which is the state the bug lived in, since a quietly healthy
+connection emits no state changes for hours.
+
+Shortening the timeout is a free improvement once the re-arm works, and it cuts the cost of a missed
+release path from an overnight battery complaint to a rounding error.
+
+The re-arm count is published beside its denominator (`N re-arm(s) / M first-acquire(s) since
+start`), so "the lock was re-acquired 4 times" can be told from "the lock was re-acquired 4 times out
+of 4 attempts", which is a different and much worse story.
+
+**Red-first, three mutations, each reporting exit code and result age:**
+
+| Mutation | Result |
+|---|---|
+| timeout back to 12 h | `exit 1; failures=1` — *"a timeout of 43200000ms is long enough to be an overnight battery complaint if a release path is ever missed"* |
+| re-arm interval raised past the timeout | `exit 1; failures=1` — *"a re-arm interval that is not shorter than the timeout means the lock lapses"* |
+| re-arm set to 59 min against a 60 min timeout | `exit 1; failures=1` — *"only 1 re-arm(s) fit inside one timeout; 3 are required so a missed tick is survivable"* |
+| restored | `exit 0; tests=11 failures=0` |
+
+**The third one is why the assertion is not `REARM < TIMEOUT`.** 59 against 60 satisfies that
+inequality and leaves the lock lapsed for however long a slow tick, a doze deferral or a dispatch
+delay costs. `MIN_REARMS_PER_TIMEOUT = 3` means two consecutive ticks can be missed entirely and the
+lock still holds — and it is the assertion a plausible-looking future edit trips over, which is the
+only kind worth writing.
+
+**Not yet observable on hardware.** The re-arm path needs a connection held past 20 minutes, and
+`scripts/link-night-watch.sh` is sampling the live `ACQ` elapsed all night at a stated interval. A
+first re-arm would appear in `link.log` as *"Wake lock had lapsed and was re-acquired"* — and on a
+correctly working service that line should **never** appear, because the re-arm happens before the
+lapse. What the ticker actually prevents is invisible by design; what it would print is the
+alarm.
+
+### One refactor worth naming, because it removed a third copy before it was written
+
+`LinkBootReceiver` had the paired-device gate, the fail-open timeout and the refusal logging inside
+it. The listener fix needed the identical decision, and the obvious move — copy it — would have been
+the second copy, with a third waiting behind any future route. It is one function now,
+`LinkAutoStart.ensureRunning`, and the receiver is the two broadcasts and nothing else. Same rule as
+`MediaPayloads.cursorOf`: give the rule one home and let the callers call it.
+
+**Suite:** 248 tests, 0 failures — 88 `core` (11 classes) + 160 `sync-module` (19 classes), every
+result XML 0 s old, `gradle exit: 0`. Grants diffed empty across the reinstall that carried the fix.

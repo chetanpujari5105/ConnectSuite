@@ -74,8 +74,8 @@ own heading there, and its own row here.
 | **58** | **The clipboard undo was reachable and not visible.** With auto-apply on, the Mac captures the clipboard it overwrites as a `displaced` entry so Restore is an undo — the condition `docs/protocol.md` set for removing the confirmation. `onClipArrived` carries the arriving entry and **not** the displaced one created beside it, so the pane's mirror learned about the new clip and never about what it replaced; the Restore row appeared only on the next `refresh()`, which a button click triggers — the click auto-apply exists to remove. **Every test was green**, because no test reads the renderer's list | **closed** | on hardware 2026-09-02, in the slice that introduced it. Found by reading the pane's rows structurally after an auto-apply and noticing the arrival at 1:21:08 had no Restore row while one from 1:17:13 did — not by any failure | `docs/testing.md` → Slice 12 §9 |
 | **59** | **A watcher send was invisible in the Mac's clipboard pane.** The pane refreshed only on its own button clicks, and the watcher clicks nothing — so after copying on the Mac the list still rendered *"Nothing yet. Copy something on either machine."* over a history with entries in it. The probe step that should have caught it **had no assertion**: it sliced the first 60 characters of the list and printed them, so a list full of rows was reported under the heading *"The pane starts with an empty history and says so"* | **closed** | on hardware 2026-09-02, in the slice that introduced it; fixed with a `clip-changed` event on any history mutation, re-measured as 2 rows drawn with nothing touched | `docs/testing.md` → Slice 13 |
 | **60** | **The link did not come back after a reboot.** `RECEIVE_BOOT_COMPLETED` was declared in `app/src/main/AndroidManifest.xml` from Phase 1 and **nothing received it** — the control is that the whole project declared two `<receiver>` elements, both in `sync-module`, and neither carried a `BOOT_COMPLETED` filter. `LinkBootReceiver` now takes `BOOT_COMPLETED`, Samsung's `QUICKBOOT_POWERON` and `MY_PACKAGE_REPLACED` — the last closing the *"reinstalling leaves the phone serverless"* hole `CLAUDE.md` documents, by the same route | **fixed** — the `MY_PACKAGE_REPLACED` half is proven on hardware; **the boot half is not, and cannot be from a laptop**: `BOOT_COMPLETED` is a protected broadcast, `adb root` is refused on this production build, and `am broadcast` is denied at uid 2000, so a real restart (H4) is the only stimulus | 2026-09-02: `adb install -r` → `[boot] PACKAGE_REPLACED: 1 paired device(s)` → `Foreground as PACKAGE_REPLACED, types=0x10` → `Listening on 42501/42502/42503`, 1.5 s, with grants diffed empty before and after. Guarded by `BootAutoStartTest` (9 tests), shown red under three separate mutations | `docs/testing.md` → Phase 6 Slice 1 |
-| **61** | **The link wake lock is never re-armed, and the comment on the field claims it is.** `acquireLocks()` guards on `wakeLock == null`, so once the 12-hour `acquire()` timeout lapses it, nothing re-acquires for the rest of the connection. Unreachable in every reading this project holds — the longest observed hold is 31 minutes — **because the link has never stayed up for twelve hours**, which is the problem Phase 6 exists to remove | **open** | source, 2026-09-02, found by reading `LinkService` while measuring P3; the readings that show it is currently unreachable are in the same slice | `docs/testing.md` → Phase 6 Slice 2 |
-| **62** | **A crash leaves the phone alive, fully granted, and serverless.** After a kill whose reason is `(adj 0): crash`, `START_STICKY` did not restart `LinkService`; the process came back 10 s later for the notification-listener rebind, every capability went green, and no socket was bound. The third route to the state `CLAUDE.md` documents for `adb install -r`, and the only one that needs nothing but a crash. Silent on both sides — the Mac shows the same reconnect loop it shows for a phone in a lift | **open** | on hardware 2026-09-02, P5b: `Killing 23016 … (adj 0): crash` → `Start proc 31828 … for service {…NotificationMirrorService}` → 0 sockets, with the control that run 1's death logged `Foreground as UNKNOWN` 0.7 s later and this one logged nothing | `docs/testing.md` → Phase 6 Slice 2 |
+| **61** | **The link wake lock is never re-armed, and the comment on the field claims it is.** `acquireLocks()` guards on `wakeLock == null`, so once the 12-hour `acquire()` timeout lapses it, nothing re-acquires for the rest of the connection. Unreachable in every reading this project holds — the longest observed hold is 31 minutes — **because the link has never stayed up for twelve hours**, which is the problem Phase 6 exists to remove | **closed** | fixed 2026-09-02: `isHeld` guard plus a 20-minute re-arm ticker against a 60-minute timeout. `LinkLockPolicy` + `BootAutoStartTest`, shown red under three mutations including the 59-against-60-minute edit a naive `REARM < TIMEOUT` would pass. The re-arm path itself needs a >20-minute connection and is being sampled overnight | `docs/testing.md` → Phase 6 Slice 2 |
+| **62** | **A crash leaves the phone alive, fully granted, and serverless.** After a kill whose reason is `(adj 0): crash`, `START_STICKY` did not restart `LinkService`; the process came back 10 s later for the notification-listener rebind, every capability went green, and no socket was bound. The third route to the state `CLAUDE.md` documents for `adb install -r`, and the only one that needs nothing but a crash. Silent on both sides — the Mac shows the same reconnect loop it shows for a phone in a lift | **closed** | fixed and reproduced in one run on hardware 2026-09-02: the same `Start proc … for service {…NotificationMirrorService}` signature, and 304 ms later `[autostart] LISTENER_REBIND … starting LinkService` → listening → Mac reconnected 11.4 s after the kill. Originally seen as P5b: `Killing 23016 … (adj 0): crash` → `Start proc 31828 … for service {…NotificationMirrorService}` → 0 sockets, with the control that run 1's death logged `Foreground as UNKNOWN` 0.7 s later and this one logged nothing | `docs/testing.md` → Phase 6 Slice 2 |
 
 ---
 
@@ -1006,7 +1006,7 @@ already set (`LinkService.kt`); it governs a killed service in a running system,
 
 ---
 
-### 61 — the wake lock is never re-armed · **open**
+### 61 — the wake lock is never re-armed · **closed** 2026-09-02
 
 `LinkService.acquireLocks()` creates the lock behind `if (wakeLock == null)` and acquires it with a
 12-hour timeout. The field's own comment says *"Re-armed on every state change"*; the code returns
@@ -1018,7 +1018,7 @@ Currently unreachable, and the reason is the interesting part: it needs one conn
 twelve hours, and the longest hold in this device's history buffer is 31 minutes. The defect is
 hidden by the link's instability, and Phase 6 is the phase that removes the hiding place.
 
-**Fix direction:** re-acquire on `!isHeld` rather than on `== null`, and drive it from a timer the
+**Fixed as directed**, 2026-09-02 — re-acquire on `!isHeld` rather than on `== null`, driven from a timer the
 service owns rather than from a state change — a quietly healthy connection emits no state changes
 for hours, which is precisely the case that breaks. Shorten the timeout so a missed release lapses in
 about an hour rather than half a day. The invariant that a later tuning edit will silently break is
@@ -1031,7 +1031,7 @@ its consumer — the same mistake with the battery attached.
 
 ---
 
-### 62 — a crash leaves the phone alive, granted, and serverless · **open**
+### 62 — a crash leaves the phone alive, granted, and serverless · **closed** 2026-09-02
 
 After a process death with kill reason `(adj 0): crash`, `START_STICKY` did not restart
 `LinkService`. The process returned ten seconds later, started for `NotificationMirrorService`; every
@@ -1040,7 +1040,7 @@ feature installed, every capability went green, and no port was bound.
 Third route to the `adb install -r` serverless state, and the cheapest: it needs only a crash.
 Silent on both sides.
 
-**Fix direction:** start `LinkService` from `onListenerConnected`, gated on a paired device the way
+**Fixed as directed**, 2026-09-02 — `LinkService` starts from `onListenerConnected`, gated on a paired device the way
 `LinkBootReceiver` is, with its own start reason so the route shows up in the log. What makes this
 sound rather than hopeful is Slice 1's measurement: the `install -r` start was granted under
 `PROC_STATE_BFGS`, which is the procstate a bound notification listener *is*, so the background

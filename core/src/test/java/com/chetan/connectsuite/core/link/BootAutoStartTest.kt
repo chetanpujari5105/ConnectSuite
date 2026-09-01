@@ -93,6 +93,44 @@ class BootAutoStartTest {
         assertEquals(LinkStartReason.BOOT, LinkAutoStart.reasonFor(LinkAutoStart.ACTION_QUICKBOOT_POWERON))
     }
 
+    // ---- the wake-lock relationship, defect 61 ------------------------------------------
+
+    /**
+     * The assertion the comment failed to be.
+     *
+     * Defect 61 was not a wrong value, it was a wrong *relationship*: a twelve-hour timeout is safe
+     * on its own and fatal beside a re-arm that never runs. So this asserts the relationship, and it
+     * is written to fail on the edit most likely to be made — lengthening the interval, or
+     * shortening the timeout, without looking at the other one.
+     */
+    @Test
+    fun `the wake lock is re-armed several times inside its own timeout`() {
+        assertTrue(
+            "a re-arm interval that is not shorter than the timeout means the lock lapses",
+            LinkLockPolicy.REARM_INTERVAL_MS < LinkLockPolicy.TIMEOUT_MS,
+        )
+        val opportunities = LinkLockPolicy.TIMEOUT_MS / LinkLockPolicy.REARM_INTERVAL_MS
+        assertTrue(
+            "only $opportunities re-arm(s) fit inside one timeout; " +
+                "${LinkLockPolicy.MIN_REARMS_PER_TIMEOUT} are required so a missed tick is survivable",
+            opportunities >= LinkLockPolicy.MIN_REARMS_PER_TIMEOUT,
+        )
+    }
+
+    /**
+     * The backstop must stay a backstop. An indefinite acquire (0 or negative) is the wrong fix
+     * recorded against defect 61, and half a day is what the defect shipped with.
+     */
+    @Test
+    fun `the timeout is a real backstop and not half a day`() {
+        assertTrue("the timeout must be positive", LinkLockPolicy.TIMEOUT_MS > 0)
+        assertTrue(
+            "a timeout of ${LinkLockPolicy.TIMEOUT_MS}ms is long enough to be an overnight battery " +
+                "complaint if a release path is ever missed",
+            LinkLockPolicy.TIMEOUT_MS <= 2L * 60 * 60 * 1000,
+        )
+    }
+
     // ---- half two: the permission and the receiver must exist together --------------------
 
     private data class ReceiverDecl(val manifest: File, val name: String, val actions: List<String>)
