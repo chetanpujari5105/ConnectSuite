@@ -9359,6 +9359,41 @@ while (b) caps the table at 200, and fixing (b) without touching this makes it r
 
 Only **F-2 needs the protocol**. Everything else is one CSS rule, one constant, one concurrency
 
+### `showsState` moved to `src/shared/` — the condition that was wrong twice (2026-09-01)
+
+It is now `downloadWallHome({ ready, sharedFolders })` returning `'state-card' | 'rail-line'`, plus
+`wallHomeVisibility(home)` returning the pair of flags the renderer assigns. **One value in, two
+flags out** — where before, `stateEl.hidden` and `wallEl.hidden` were two expressions consuming one
+renderer-local boolean in opposite directions, which is how a fix to one of them left the other
+drawing nothing.
+
+Six tests, three of them shown red against a real failure mode:
+
+| Mutation | Red |
+|---|---|
+| drop the `sharedFolders === 0` branch (the slice 9 break) | *the wall is in the state card before anything is shared*, and the control |
+| `stateCard: true` unconditionally | *complementary homes — exactly one home is ever on screen* |
+| put the second `wallEl.hidden = true` back | *the renderer sets each home once* |
+
+**The source guard found a real second assignment on its first run**, which is the part worth
+keeping. `this.wallEl.hidden` was set twice: once from the decision, and once as `true` on
+`renderRail`'s not-ready early return. That second one was **redundant** — `downloadWallHome` already
+answers `state-card` when the pane is not ready, so `railLine` is already false — and a redundant
+second assignment to one of two complementary flags is exactly the shape that drifted twice. The
+wall is now set once, before any early return.
+
+On hardware, with folders shared:
+
+```
+homesOnScreen: ["rail-line"]   count: 1   wallShown: true   stateShown: false
+```
+
+Read after asserting `section[data-screen="files"]` is visible, and counting **homes carrying the
+sentence** rather than searching the pane's text for the word — the degraded banner's own copy
+contains the vocabulary of the thing it says is absent, which is how a text match confirmed an
+upload affordance that does not exist.
+
+
 ### F-3 fixed · Multi-select and multi-file drag, with the 104 ms ceiling applied (2026-09-01)
 
 Measured on hardware in `DCIM/Camera`, 200 rows loaded of 16,377:

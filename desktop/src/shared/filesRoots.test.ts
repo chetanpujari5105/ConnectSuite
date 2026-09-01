@@ -12,6 +12,8 @@ const {
   uploadAffordance,
   shouldPrefetchForDrag,
   multiSelectionSummary,
+  downloadWallHome,
+  wallHomeVisibility,
 } = require('./filesRoots.ts');
 
 /**
@@ -258,4 +260,62 @@ test('the headline is singular for one file', () => {
     multiSelectionSummary({ files: 1, totalBytes: 1, prefetchMax: 8, perFileOverheadMs: 104 }).headline,
     '1 file selected',
   );
+});
+
+// --- the Download wall's two homes ------------------------------------------------------------
+//
+// This condition has been wrong twice, in both directions, and on the second break four tests went
+// red and none of them touched it. These are the tests that would have caught either version.
+
+test('complementary homes — exactly one home is ever on screen', () => {
+  for (const home of ['state-card', 'rail-line']) {
+    const v = wallHomeVisibility(home);
+    assert.equal(
+      Number(v.stateCard) + Number(v.railLine),
+      1,
+      `${home} must light exactly one home, got ${JSON.stringify(v)}`,
+    );
+  }
+});
+
+test('the wall is in the state card before anything is shared — the slice 9 break', () => {
+  // Two grant-free roots and nothing granted. `roots.length > 1` is true here, which is exactly
+  // what made the M2 card stop drawing; the count that matters is shared folders, and it is 0.
+  assert.equal(downloadWallHome({ ready: true, sharedFolders: 0 }), 'state-card');
+});
+
+test('the wall moves to the rail once a folder is shared', () => {
+  assert.equal(downloadWallHome({ ready: true, sharedFolders: 1 }), 'rail-line');
+  assert.equal(downloadWallHome({ ready: true, sharedFolders: 9 }), 'rail-line');
+});
+
+test('a pane that is not ready shows the state card, whatever the roots say', () => {
+  assert.equal(downloadWallHome({ ready: false, sharedFolders: 0 }), 'state-card');
+  assert.equal(downloadWallHome({ ready: false, sharedFolders: 5 }), 'state-card');
+});
+
+test('control — the two homes are not the same expression, so a swap is visible', () => {
+  // If both homes were driven by one boolean read the same way, these two would agree. They must
+  // not: this is the pair that a single wrong `!` collapses.
+  const shared = wallHomeVisibility(downloadWallHome({ ready: true, sharedFolders: 3 }));
+  const bare = wallHomeVisibility(downloadWallHome({ ready: true, sharedFolders: 0 }));
+  assert.notDeepEqual(shared, bare);
+  assert.equal(shared.railLine, true);
+  assert.equal(bare.stateCard, true);
+});
+
+test('the renderer sets each home once, and both from the shared decision', () => {
+  // The source guard. `filesPaneView` and `sharedFolderCount` were covered when this broke; the two
+  // assignments that consume the decision were not, and they are where a drift shows up.
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'renderer', 'files.ts'),
+    'utf8',
+  );
+  const count = (needle) => src.split(needle).length - 1;
+  assert.equal(count('this.stateEl.hidden ='), 1, 'stateEl.hidden must be assigned in exactly one place');
+  assert.equal(count('this.wallEl.hidden ='), 1, 'wallEl.hidden must be assigned in exactly one place');
+  assert.equal(count('wallHomeVisibility('), 1, 'the decision must be taken once');
+  assert.equal(count('showsState'), 0, 'the old renderer-local condition must not come back');
+  // Control: the scan can see these strings at all.
+  assert.ok(count('this.stateEl.hidden') > 0 && count('this.wallEl.hidden') > 0);
 });

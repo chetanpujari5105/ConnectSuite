@@ -535,7 +535,14 @@ class FilesView {
     // landed — and the state card, which is where the `Download` wall lives, stopped drawing for
     // everyone. `CLAUDE.md` already carries this exact failure one row up: a state checked in the
     // situation that makes it easy to render rather than the one users are in.
-    const showsState = this.fetch.kind !== 'ready' || sharedFolderCount(this.roots) === 0;
+    // One value, two flags. Both homes are set from `homes` below and neither is the negation of
+    // the other's variable — see `downloadWallHome`, which carries why this left the renderer.
+    const homes = wallHomeVisibility(
+      downloadWallHome({
+        ready: this.fetch.kind === 'ready',
+        sharedFolders: sharedFolderCount(this.roots),
+      }),
+    );
     // F4: the canvas draws two drop tiles. One condition decides whether either exists, and it is
     // the phone's answer rather than a constant — so the tile appears the moment a phone that
     // serves push connects, and never over one that does not.
@@ -547,19 +554,29 @@ class FilesView {
       this.drop.classList.toggle('is-error', this.lastPush?.ok === false);
     }
 
-    this.renderRail(showsState);
-    this.renderState(view, showsState);
+    this.renderRail(homes.railLine);
+    this.renderState(view, homes.stateCard);
     this.renderCrumbs();
     this.renderTable();
     this.renderDetail();
   }
 
-  private renderRail(showsState: boolean): void {
+  private renderRail(railLine: boolean): void {
     this.rail.replaceChildren();
+
+    // The `Download` wall. It belongs in the pane rather than in a document: a Mac user meets it by
+    // looking for a file that is definitely on their phone and definitely not in this list.
+    //
+    // Set here, once, **before any early return.** The not-ready path used to assign it a second
+    // time as `true`, which was redundant — `downloadWallHome` already answers `state-card` when the
+    // pane is not ready, so `railLine` is already false — and a redundant second assignment to one
+    // of two complementary flags is precisely how these two drifted apart twice.
+    this.wallEl.textContent = DOWNLOAD_WALL;
+    this.wallEl.hidden = !railLine;
+
     if (this.fetch.kind !== 'ready') {
       this.hintEl.textContent = '';
       this.hintEl.hidden = true;
-      this.wallEl.hidden = true;
       return;
     }
     for (const root of this.roots) {
@@ -590,18 +607,13 @@ class FilesView {
     this.hintEl.textContent = this.grantHint ?? '';
     this.hintEl.hidden = !this.grantHint;
 
-    // The `Download` wall. It belongs in the pane rather than in a document: a Mac user meets it by
-    // looking for a file that is definitely on their phone and definitely not in this list. Shown
-    // here whenever the state card — which carries the same sentence in its own copy — is not.
-    this.wallEl.textContent = DOWNLOAD_WALL;
-    this.wallEl.hidden = showsState;
   }
 
-  private renderState(view: FilesPaneView, showsState: boolean): void {
+  private renderState(view: FilesPaneView, stateCard: boolean): void {
     this.stateEl.replaceChildren();
     // The rule that keeps M2 and M4 apart is expressed once, in `filesPaneView`. This only draws it.
-    this.stateEl.hidden = !showsState;
-    if (!showsState) return;
+    this.stateEl.hidden = !stateCard;
+    if (!stateCard) return;
 
     const card = document.createElement('div');
     card.className = `files-state-card files-state--${view.tone}`;
