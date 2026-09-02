@@ -85,6 +85,9 @@ own heading there, and its own row here.
 | **69** | **"Finding your Mac" asks for a permission whose own copy is about a different feature.** Onboarding page 2 is titled for the Mac and its `NEARBY_DEVICES` card reads *"ConnectSuite needs this to find other devices over **Wi-Fi Direct**"*. Wi-Fi Direct is the **v1 Sync** path — `core/discovery/WifiDirectDiscovery.kt` is the only thing in the tree that uses `WifiP2p`. The v2 Mac link is mDNS plus a gateway probe, and the Mac dials the phone. **Defect 63's shape, and this one is mine**: I retitled the page and left the rationale describing the other path | **open** | source + the release app's own first run, 2026-09-02 | see below |
 | **70** | **The QR screen's title renders under the status bar.** `QrScanScreen` is a bare `Column` with `fillMaxSize().padding(16.dp)` and no `systemBarsPadding()` — the only screen in the app that hosts no `Scaffold` and does not inset itself. *"Pair with your Mac"* is drawn behind the clock on the single screen a new user must use | **closed** 2026-09-02 | **A `uiautomator` dump cannot see this** — the text is present, correctly bounded, and painted beneath something else. It was found in a screenshot. Fixed with `systemBarsPadding()` | see below |
 | **71** | **"Sync" names two different things, and onboarding uses the wrong one.** Page 1's Sync card reads *"Your notifications, texts, calls, photos, files and clipboard, on the Mac"*. The app's **Sync tab** is the v1 Android-to-Android feature: a device list with *Pair* buttons, `Devices / Transfers / Folders / Clip / Feed`, and a `Not paired · 100.113.127.25` row for something that is not a Mac. A stranger reads the card, finishes onboarding, and lands on a screen with no relationship to it — **and lands there precisely when they chose "I'll do this later"**, which is the user who most needs guidance | **open** | the release app's first run on hardware, 2026-09-02 | see below |
+| **72** | **A raw BoringSSL error was rendered in the Mac's status bar.** `link.ts` assigned `this.lastError = error.message` and that reached the UI: *"1288490715584:error:10000416:SSL routines:OPENSSL_internal:SSLV3_ALERT_CERTIFICATE_UNKNOWN:../../third_party/boringssl/src/ssl/tls_record.cc:489:SSL alert number 46"* — a vendored library's file path and line number, on the first screen a new user meets, 47 times in one outage | **closed** 2026-09-02 | `classifyLinkError` in `src/shared/`, keyed on the **alert number** (46 = `certificate_unknown`) rather than BoringSSL's spelling, because the number is the wire's own value and the surrounding text changes with every Electron bump. `lastErrorRaw` keeps the original for the log and the debug HUD. 12 tests, red under 5 mutations; one test asserts no message contains a path, a line number or any BoringSSL token | see below |
+| **73** | **Trust is two stores and either side can drop it alone; the Mac had no state for "the phone forgot me".** After a `Forget` tap on the phone, the Mac keeps its own entry, keeps showing the phone's name, and retries **forever** against a device that will refuse every attempt. It was drawn as *"Reconnecting…"*, which promises that waiting will work | **closed** 2026-09-02 | `PairingHealth` is three states — `unpaired`, `paired`, `repudiated`. Measured, not hypothesised: 47 alerts in one outage, with `[trust] Forgot 3030c8eb…` on the phone at the moment it began. **No wire message is possible for the failing case** — the handshake fails, so there is no channel; the TLS alert is the signal and it is sufficient | see below |
+| **74** | **The sidebar and the pairing screen disagreed about whether a phone was paired.** *"Samsung SM-S938B · Reconnecting"* in the sidebar while the pairing screen asked for a scan. The sidebar read the remembered device name, the router read `paired`, and nothing reconciled them — defect 27's shape on the first screen a stranger sees | **closed** 2026-09-02 | Both now read `PairingHealth`. A property test asserts the two cannot disagree for any state: `needsPairing(h)` is true exactly when `pairingLabel(h) !== 'Paired'`, over every reachable state | see below |
 
 ---
 
@@ -1559,3 +1562,90 @@ first screen for someone who deferred.
 
 **Wrong fix to avoid:** deleting the Sync card from page 1. The features it lists are real and are
 the reason to install the app; what is wrong is that the word points at the other feature.
+
+---
+
+### 72 — a raw BoringSSL error in the status bar · **closed** 2026-09-02
+
+*The three defects below share one cause; it is written once here and cross-referenced.*
+
+A release build would not pair. The Mac's status bar read:
+
+```
+1288490715584:error:10000416:SSL routines:OPENSSL_internal:SSLV3_ALERT_CERTIFICATE_UNKNOWN:
+../../third_party/boringssl/src/ssl/tls_record.cc:489:SSL alert number 46
+```
+
+— while its sidebar read *"Samsung SM-S938B · Reconnecting"*. Three separate defects, and the
+diagnosis nearly went to a fourth explanation that was wrong.
+
+#### The cause, and the reading that almost hid it
+
+The phone had **forgotten the Mac**. `[trust] Forgot 3030c8ebcddcd0fb…` at 23:30:00, the session
+ended five seconds later, and all 47 subsequent connections were refused — `27 refused / 3 accepted`
+on the phone's own counter, which is the denominator rule earning its place.
+
+The hypothesis on the table was different and reasonable: *the Mac's slot still holds the debug
+install's pairing, so it presents a certificate the release app never pinned*. Testing it meant
+reading the phone's trust store, and the first read **agreed**:
+
+```
+$ adb shell run-as … cat databases/connectsuite.db > cs.db
+$ sqlite3 cs.db 'select name, fingerprint from trusted_devices;'
+Chetans-MacBook-Pro|DESKTOP|3030c8eb…            ← the Mac IS still stored
+```
+
+Room runs SQLite in **WAL mode**. The delete was in `connectsuite.db-wal`; the copied main file was
+a pre-delete snapshot. With the WAL alongside: **0 rows**. That is recorded as its own rule in
+`CLAUDE.md` — *the instrument fault that confirms the hypothesis is worse than the one that
+contradicts it*, because a reading that agrees with you is filed rather than interrogated.
+
+#### The raw error itself
+
+`classifyLinkError` maps a transport error to one sentence. It keys on **`SSL alert number 46`** —
+the wire's own value for `certificate_unknown` — rather than on `SSLV3_ALERT_CERTIFICATE_UNKNOWN`,
+because the symbolic name is BoringSSL's spelling and everything around it is a path into a vendored
+tree that moves with every Electron bump. The symbolic name is a fallback.
+
+The fixture is the **real string from the Mac's log**, not a constructed one: a hand-written
+approximation would test that the regex matches the thing the regex was written from.
+
+An attempt to capture the error shape by building a rejecting TLS server in Node **failed twice and
+is worth recording**: with `rejectUnauthorized` the handshake *succeeded*, because in **TLS 1.3 the
+client's `connect` callback fires before the server has validated the client certificate** — the
+rejection arrives on the next read. The second attempt then saw `ECONNRESET` rather than an alert,
+because Node's server does not reproduce Conscrypt's `CertificateException` → alert path. The probe
+was abandoned in favour of the log, which held the real thing all along.
+
+---
+
+### 73 — trust is two stores and the Mac had no state for "the phone forgot me" · **closed** 2026-09-02
+
+Trust is two independent stores. Either side can drop it alone, and **the Mac had no way to
+represent a pairing the phone no longer honours.** `paired` was a boolean over three states.
+
+**Does the wire need a message? No, and it could not have one for the failing case.** When the phone
+has forgotten this Mac the handshake fails, so there is no channel; a message announcing it would
+need the connection whose absence is the announcement. Alert 46 is the signal, it arrives reliably,
+and it is specific.
+
+**A `pair.forgotten` courtesy on the live session is still worth having** — the phone had five
+seconds of open channel between the `Forget` tap and the teardown — and it is **not a substitute**:
+it cannot be sent when the Mac is offline at the moment of forgetting, which is exactly when this
+state persists longest. The alert mapping stays load-bearing either way. Specified but not built.
+
+---
+
+### 74 — the sidebar and the pairing screen disagreed · **closed** 2026-09-02
+
+The property that now holds, asserted over every reachable state rather than case by case:
+
+```ts
+assert.equal(needsPairing(h), pairingLabel(h) !== 'Paired');
+```
+
+A state where the sidebar names a phone while the shell demands pairing is unrepresentable.
+
+**Wrong fix to avoid** for all three: showing the raw error "just in the debug HUD *and* the status
+bar". The raw text has one home — `lastErrorRaw`, the log and the HUD — and prose has another. Five
+mutations cover these, including the original bug re-introduced verbatim.

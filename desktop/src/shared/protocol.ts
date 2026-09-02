@@ -4,6 +4,8 @@
  * first, then both files.
  */
 
+import type { PairingHealth } from './linkHealth';
+
 export const PROTOCOL_MAJOR = 1;
 
 export const PORT_CONTROL = 42501;
@@ -667,9 +669,19 @@ export interface ConnectionStatus {
   /** Why each absent capability is absent, as the phone explained it. Empty when disconnected. */
   unavailable: UnavailableCapability[];
   rttMs?: number;
+  /** A sentence for a person. Classified by `classifyLinkError`; never a raw transport error. */
   lastError?: string;
+  /** The original text, for the debug HUD and the log only. Never rendered as prose. */
+  lastErrorRaw?: string;
   nextRetryInMs?: number;
+  /**
+   * @deprecated Two states where there are three. Read `pairing` instead — a stored pairing the
+   * phone has repudiated is not `paired`, and drawing it as such is what produced "Reconnecting…"
+   * forever against a phone that would never accept us.
+   */
   paired: boolean;
+  /** Pairing as three states. The one fact the sidebar and the pairing screen both read. */
+  pairing?: PairingHealth;
 }
 
 /** Colon-separated uppercase hex is what both ends display; comparisons use this normal form. */

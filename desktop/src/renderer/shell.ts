@@ -51,6 +51,12 @@ interface ShellStatus {
   rttMs?: number;
   lastError?: string;
   paired: boolean;
+  /**
+   * Pairing as three states — the renderer's copy of `PairingHealth`. Declared inline rather than
+   * imported because the renderer loads as plain <script> tags and cannot use `import`; that is the
+   * same constraint `CLAUDE.md` records for hanging testable halves on `globalThis`.
+   */
+  pairing?: { kind: 'unpaired' | 'paired' | 'repudiated' };
 }
 
 /** live / working / down / idle — the four the dots, chips and island all read. */
@@ -63,7 +69,9 @@ function toneOf(status: ShellStatus | null): LinkTone {
     return 'working';
   }
   if (status.phase === 'reconnecting') return 'working';
-  if (!status.paired) return 'idle';
+  // Three states, not two. A stored pairing the phone has repudiated is not paired — drawing it
+  // as "Reconnecting" promises that waiting will work, and it never will.
+  if (status.pairing ? status.pairing.kind !== 'paired' : !status.paired) return 'idle';
   return status.lastError ? 'down' : 'idle';
 }
 
@@ -80,6 +88,7 @@ function toneLabel(status: ShellStatus | null): string {
     case 'reconnecting':
       return 'Reconnecting';
     default:
+      if (status.pairing?.kind === 'repudiated') return 'Pairing was removed on the phone';
       return status.paired ? 'Disconnected' : 'Not paired';
   }
 }
@@ -320,7 +329,10 @@ class ShellView {
    * says so in the island rather than no-opping silently.
    */
   route(id: string, settingsPane?: string): void {
-    if (this.status && !this.status.paired && id !== 'pairing') {
+    const blocked = this.status
+      ? (this.status.pairing ? this.status.pairing.kind !== 'paired' : !this.status.paired)
+      : false;
+    if (blocked && id !== 'pairing') {
       this.setIsland('Pair a phone first — there is nothing to show until you do.', 'working');
       return;
     }
@@ -657,7 +669,14 @@ class ShellView {
 
     const tone = toneOf(status);
     const label = toneLabel(status);
-    const name = status?.deviceName ?? (status?.paired ? 'Phone' : 'No phone paired');
+    // The sidebar and the pairing screen read the same fact. They disagreed on 2026-09-02 —
+    // "Samsung SM-S938B · Reconnecting" beside a pairing screen asking for a scan — because the
+    // sidebar read the remembered name and the router read `paired`.
+    const health = status?.pairing;
+    const name =
+      health?.kind === 'repudiated'
+        ? (status?.deviceName ?? 'Phone')
+        : (status?.deviceName ?? (status?.paired ? 'Phone' : 'No phone paired'));
     const latency = status?.rttMs === undefined ? '—' : `${status.rttMs} ms`;
 
     $('device-name').textContent = name;
@@ -698,7 +717,10 @@ class ShellView {
 
     // Pairing is forced while unpaired and released the moment the phone is trusted, rather than
     // leaving the user on a pairing screen they have already finished with.
-    if (status && !status.paired && this.current !== 'pairing') this.route('pairing');
+    const mustPair = status
+      ? (status.pairing ? status.pairing.kind !== 'paired' : !status.paired)
+      : false;
+    if (mustPair && this.current !== 'pairing') this.route('pairing');
     if (status?.paired && wasPaired === false) this.route('overview');
   }
 

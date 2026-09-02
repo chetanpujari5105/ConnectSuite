@@ -696,6 +696,7 @@ damage on the user's own device or nearly recorded a false result.
   | Does `mms-sms/conversations` honour a selection? (defect 50) | `adb shell content query --where 'date<…'` → 2990 rows | the app's bound `?` → **empty cursor** | **Both.** The shell *inlines* its literal, the app *binds*; two clients, two different queries, and only one of them is the product |
   | What is the Mac's current DHCP lease? (step 71) | `ifconfig en0` → the old subnet | `ipconfig getsummary en0` → `yiaddr = 10.108.253.92` | **B.** `ifconfig` was serving a stale lease while the new one was already in place |
   | Is `push-probe.bin` there, and how big? (slice 8) | `ls -la` → 3,000,000 bytes, the OLD file | `sha256sum` → `No such file or directory` | **Neither.** A SAF delete-plus-rename leaves stat-by-name briefly serving a stale entry to one caller and a miss to the next. Listing the *directory* was the third query that answered it |
+  | Does the phone still trust this Mac? (2026-09-02) | `sqlite3` on a copied `connectsuite.db` → 1 row, the Mac is stored | the app's own `[trust] Forgot …` log line, and a `Rejected unpaired client` for the same key | **B.** Room runs WAL; the delete was in `connectsuite.db-wal` and the copied main file was a pre-delete snapshot. **The stale reading was the one that confirmed the hypothesis** — see the section below on why that variety is worse |
 
   **The three answers are A-and-B, B, and neither — which is exactly why "pick the more trustworthy
   tool" fails.** There is no ranking that gets all three right. `adb` is not less reliable than the
@@ -722,6 +723,67 @@ damage on the user's own device or nearly recorded a false result.
 
   A fourth member of this family is likely and this is what makes it findable: **any time two things
   in this repo can answer one question, write down that they can, before they disagree.**
+
+
+  #### The variety that is worse: when the instrument's fault produces the answer you wanted
+
+  Every other member of this family produced a wrong answer **nobody wanted** — an empty cursor, a
+  page cap, a stale XML, a hidden pane. Being unwelcome is what got them looked at. A reading that
+  contradicts your expectation is *interrogated*; a reading that confirms it is *filed*.
+
+  So the dangerous instrument fault is not the one that misleads. It is the one that misleads
+  **towards the hypothesis already on the table**, because the check that would catch it is the one
+  step nobody performs on good news.
+
+  **The worked example, 2026-09-02.** A release build would not pair. The hypothesis on the table,
+  reasonable and offered first, was *the Mac's slot still holds a pairing from the debug install, so
+  the phone is being shown a certificate it never pinned*. Testing it meant reading the phone's trust
+  store:
+
+  ```
+  $ adb shell run-as … cat databases/connectsuite.db > cs.db
+  $ sqlite3 cs.db "select name, fingerprint from trusted_devices;"
+  Chetans-MacBook-Pro|DESKTOP|3030c8ebcddcd0fb…          ← the Mac IS still stored
+  ```
+
+  That is a **stale pre-delete snapshot**, and it is the reading that fits the hypothesis. Room runs
+  SQLite in **WAL mode**: committed writes live in `connectsuite.db-wal` until a checkpoint, so a
+  copy of `connectsuite.db` alone is the database *as of some earlier moment*, served with no
+  indication of its age and no error. Copied with its `-wal`:
+
+  ```
+  with the WAL     → 0 rows          ← the Mac had been forgotten
+  main file only   → 1 row           ← the answer that confirmed the theory
+  ```
+
+  The truth was the opposite of the hypothesis: the phone had forgotten the Mac (a `Forget` tap,
+  logged), the Mac still held the phone, and nothing about the release build's identity was involved.
+  A confirmed theory, a plausible mechanism, and a clean SQL result — all wrong, and all pointing the
+  same way.
+
+  **Why this variety earns its own entry:**
+
+  - **The stale-XML row was caught by its own oddity** — `failures=0` from a build that had not
+    compiled is strange on its face. A trust-store row that says exactly what you predicted is not
+    strange at all. There is nothing to notice.
+  - **Confirmation removes the second query.** The habit this file is built on — *ask a third
+    question when two readings disagree* — is triggered by disagreement. One reading that agrees
+    with you produces no disagreement, so the habit never fires.
+  - **It is the shape that survives review.** The write-up would have read *"the phone still trusts
+    the old certificate, so the release app cannot pair"* — coherent, evidenced, and false, with a
+    real defect (the `Forget` tap and the asymmetric trust it leaves) invisible behind it.
+
+  **The rule, stated for any store and not just SQLite: a file copied out of a running system is a
+  question about a different moment than the one you asked.** Databases with write-ahead logs,
+  journals or snapshots (`-wal`, `-shm`, `-journal`, an LSM's memtable, a log-structured store's tail)
+  keep recent truth *outside* the file everyone names. Copy the whole set, or read through the
+  engine, or say the reading may be stale — but never take the main file as the state.
+
+  **And the general form, which is the part that is not about databases:** when a reading confirms
+  the hypothesis, that is the moment to spend one query on the instrument, because it is the only
+  moment the reading will not be challenged on its own. Concretely: *what would this instrument have
+  shown if the hypothesis were false* — and if the answer is "the same thing", there is no reading
+  yet.
 
   #### The degenerate case: one reading wearing two hats
 

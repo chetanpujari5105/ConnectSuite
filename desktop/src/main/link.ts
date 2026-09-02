@@ -16,6 +16,7 @@ import {
   type PhoneRequestError,
   type UnavailableCapability,
 } from '../shared/protocol';
+import { classifyLinkError, pairingHealth, type LinkFailure } from '../shared/linkHealth';
 import { clearedSession, type SessionScoped } from '../shared/session';
 import { CANDIDATE_TIMEOUT_MS, discoverCandidates, type Candidate } from './discovery';
 import { fingerprintOfDer, type Identity } from './identity';
@@ -57,6 +58,12 @@ export class LinkClient extends EventEmitter {
   private session: SessionScoped = clearedSession();
   private rttMs: number | undefined;
   private lastError: string | undefined;
+  /**
+   * The last failure, classified. `lastError` stays raw for the log and the debug HUD; **this** is
+   * what any user-facing surface reads. Before this existed, `lastError` went straight to the
+   * status bar and a user saw a BoringSSL path and line number.
+   */
+  private lastFailure: LinkFailure | null = null;
 
   /**
    * How far the phone's monotonic clock is behind this Mac's `Date.now()`, in milliseconds.
@@ -125,7 +132,11 @@ export class LinkClient extends EventEmitter {
       capabilities: this.session.capabilities,
       unavailable: this.session.unavailable,
       rttMs: this.rttMs,
-      lastError: this.lastError,
+      // The classified sentence, never the raw text. `lastErrorRaw` carries the original for the
+      // debug HUD and the log, which are the only places it belongs.
+      lastError: this.lastFailure?.message ?? this.lastError,
+      lastErrorRaw: this.lastError,
+      pairing: pairingHealth(store.get('paired') !== null, this.lastFailure, Date.now()),
       paired: store.get('paired') !== null,
     };
   }
@@ -207,8 +218,10 @@ export class LinkClient extends EventEmitter {
         }
       }
       this.lastError = 'No phone answered on any known address';
+      this.lastFailure = classifyLinkError(this.lastError);
     } catch (error) {
       this.lastError = String(error);
+      this.lastFailure = classifyLinkError(this.lastError);
       log.error('link', 'Discovery failed', error);
     } finally {
       this.connecting = false;
@@ -228,7 +241,10 @@ export class LinkClient extends EventEmitter {
         if (!ok) {
           // Every failed candidate says why. Without this a refused handshake looks identical to
           // a phone that is simply not there, which is exactly the case that wastes an evening.
-          if (reason) this.lastError = reason;
+          if (reason) {
+            this.lastError = reason;
+            this.lastFailure = classifyLinkError(reason);
+          }
           log.warn('link', `${candidate.host} failed: ${reason ?? 'unknown reason'}`);
           socket.destroy();
         }
@@ -314,6 +330,7 @@ export class LinkClient extends EventEmitter {
     });
     socket.on('error', (error) => {
       this.lastError = error.message;
+      this.lastFailure = classifyLinkError(error.message);
       log.warn('link', `Socket error: ${error.message}`);
     });
 
