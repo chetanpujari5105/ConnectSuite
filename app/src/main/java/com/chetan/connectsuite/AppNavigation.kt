@@ -30,6 +30,7 @@ import com.chetan.connectsuite.link.LinkRoute
 import com.chetan.connectsuite.input.ui.InputOnboardingCard
 import com.chetan.connectsuite.mirror.v2.ui.MirrorScreen
 import com.chetan.connectsuite.sync.ui.SyncRoute
+import com.chetan.connectsuite.onboarding.OnboardingOutcome
 import com.chetan.connectsuite.onboarding.OnboardingScreen
 import com.chetan.connectsuite.sync.ui.settings.SyncSettingsScreen
 
@@ -64,17 +65,30 @@ fun ConnectSuiteRoot(
     var onboardingDone by rememberSaveable {
         mutableStateOf(onboardingPrefs.getBoolean(KEY_ONBOARDING_DONE, false))
     }
+    // Where onboarding asked us to open. Null on every launch after the first, which is why the
+    // fallback below is the ordinary start destination rather than anything conditional.
+    var landingTab by rememberSaveable { mutableStateOf<String?>(null) }
 
     if (!onboardingDone) {
         OnboardingScreen(
-            onFinished = {
+            onFinished = { outcome ->
                 onboardingPrefs.edit().putBoolean(KEY_ONBOARDING_DONE, true).apply()
+                // Somebody who has just paired should land on the thing they paired, not on Sync
+                // — which is the v1 Android-to-Android feature and has nothing to do with a Mac.
+                landingTab = when (outcome) {
+                    OnboardingOutcome.PAIRED -> TopLevelTab.Mac.route
+                    OnboardingOutcome.NOT_PAIRED -> null
+                }
                 onboardingDone = true
             },
         )
         return
     }
 
+    // Created only after onboarding has finished — the early return above guarantees it — so the
+    // start destination is evaluated once, with `landingTab` already set. No navigation effect is
+    // needed to get there, and none is used: a second route change racing the first is exactly the
+    // failure `CLAUDE.md` records against the Files pane.
     val navController = rememberNavController()
 
     LaunchedEffect(requestedTab) {
@@ -121,7 +135,7 @@ fun ConnectSuiteRoot(
         // padding the top twice.
         NavHost(
             navController = navController,
-            startDestination = TopLevelTab.Sync.route,
+            startDestination = landingTab ?: TopLevelTab.Sync.route,
             modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding()),
         ) {
             composable(TopLevelTab.Sync.route) {

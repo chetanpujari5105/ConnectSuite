@@ -73,10 +73,13 @@ own heading there, and its own row here.
 | **57** | `media.thumb` answers `NOT_FOUND` both for a photo that is gone and for one that is there and could not be rendered — one code for two facts, on the namespace whose sibling `fs.thumb` separates them deliberately | **deferred to Phase 6** — the second option Phase 5's closing condition offers, taken deliberately. The branch has never been produced: it needs an undecodable `MediaStore` row, which means truncating a file's bytes under its own entry on somebody's real phone, and a phase of ordinary use produced none. Reporting only — the Mac already drops errored ids into a `missing` set and stops asking, which is correct for both causes | source, 2026-09-01, found by reading the handler against the contract while `media.*` was written into `docs/protocol.md` | see below |
 | **58** | **The clipboard undo was reachable and not visible.** With auto-apply on, the Mac captures the clipboard it overwrites as a `displaced` entry so Restore is an undo — the condition `docs/protocol.md` set for removing the confirmation. `onClipArrived` carries the arriving entry and **not** the displaced one created beside it, so the pane's mirror learned about the new clip and never about what it replaced; the Restore row appeared only on the next `refresh()`, which a button click triggers — the click auto-apply exists to remove. **Every test was green**, because no test reads the renderer's list | **closed** | on hardware 2026-09-02, in the slice that introduced it. Found by reading the pane's rows structurally after an auto-apply and noticing the arrival at 1:21:08 had no Restore row while one from 1:17:13 did — not by any failure | `docs/testing.md` → Slice 12 §9 |
 | **59** | **A watcher send was invisible in the Mac's clipboard pane.** The pane refreshed only on its own button clicks, and the watcher clicks nothing — so after copying on the Mac the list still rendered *"Nothing yet. Copy something on either machine."* over a history with entries in it. The probe step that should have caught it **had no assertion**: it sliced the first 60 characters of the list and printed them, so a list full of rows was reported under the heading *"The pane starts with an empty history and says so"* | **closed** | on hardware 2026-09-02, in the slice that introduced it; fixed with a `clip-changed` event on any history mutation, re-measured as 2 rows drawn with nothing touched | `docs/testing.md` → Slice 13 |
-| **60** | **The link did not come back after a reboot.** `RECEIVE_BOOT_COMPLETED` was declared in `app/src/main/AndroidManifest.xml` from Phase 1 and **nothing received it** — the control is that the whole project declared two `<receiver>` elements, both in `sync-module`, and neither carried a `BOOT_COMPLETED` filter. `LinkBootReceiver` now takes `BOOT_COMPLETED`, Samsung's `QUICKBOOT_POWERON` and `MY_PACKAGE_REPLACED` — the last closing the *"reinstalling leaves the phone serverless"* hole `CLAUDE.md` documents, by the same route | **fixed** — the `MY_PACKAGE_REPLACED` half is proven on hardware; **the boot half is not, and cannot be from a laptop**: `BOOT_COMPLETED` is a protected broadcast, `adb root` is refused on this production build, and `am broadcast` is denied at uid 2000, so a real restart (H4) is the only stimulus | 2026-09-02: `adb install -r` → `[boot] PACKAGE_REPLACED: 1 paired device(s)` → `Foreground as PACKAGE_REPLACED, types=0x10` → `Listening on 42501/42502/42503`, 1.5 s, with grants diffed empty before and after. Guarded by `BootAutoStartTest` (9 tests), shown red under three separate mutations | `docs/testing.md` → Phase 6 Slice 1 |
+| **60** | **The link did not come back after a reboot.** `RECEIVE_BOOT_COMPLETED` was declared in `app/src/main/AndroidManifest.xml` from Phase 1 and **nothing received it** — the control is that the whole project declared two `<receiver>` elements, both in `sync-module`, and neither carried a `BOOT_COMPLETED` filter. `LinkBootReceiver` now takes `BOOT_COMPLETED`, Samsung's `QUICKBOOT_POWERON` and `MY_PACKAGE_REPLACED` — the last closing the *"reinstalling leaves the phone serverless"* hole `CLAUDE.md` documents, by the same route | **closed** — the receiver is proven on hardware through a real restart. **Read defect 64 before reading this as "the boot path works"**: the branch that fired is the *no-op* one | **2026-09-02, a real reboot with nothing tapped**: `[autostart] BOOT: already listening — nothing to do` at 12:41:08, and `scripts/link-up.sh` three OKs. The `MY_PACKAGE_REPLACED` half proven separately at 13:01 — 28/28 grants preserved, diff empty, listening 10 s later. Guarded by `BootAutoStartTest` (9 tests), shown red under three mutations | `docs/testing.md` → Phase 6 Slice 1 |
 | **61** | **The link wake lock is never re-armed, and the comment on the field claims it is.** `acquireLocks()` guards on `wakeLock == null`, so once the 12-hour `acquire()` timeout lapses it, nothing re-acquires for the rest of the connection. Unreachable in every reading this project holds — the longest observed hold is 31 minutes — **because the link has never stayed up for twelve hours**, which is the problem Phase 6 exists to remove | **closed** | fixed 2026-09-02 and **corrected the same day**: the first fix re-acquired only on `!isHeld`, which repairs a lapse rather than preventing one — the overnight run measured a **59m49s** hold against a 60-minute timeout, i.e. a nineteen-minute gap about to open. A tick on a held lock now *extends* it.  `LinkLockPolicy` + `BootAutoStartTest`, shown red under three mutations including the 59-against-60-minute edit a naive `REARM < TIMEOUT` would pass. The re-arm path itself needs a >20-minute connection and is being sampled overnight | `docs/testing.md` → Phase 6 Slice 2 |
 | **62** | **A crash leaves the phone alive, fully granted, and serverless.** After a kill whose reason is `(adj 0): crash`, `START_STICKY` did not restart `LinkService`; the process came back 10 s later for the notification-listener rebind, every capability went green, and no socket was bound. The third route to the state `CLAUDE.md` documents for `adb install -r`, and the only one that needs nothing but a crash. Silent on both sides — the Mac shows the same reconnect loop it shows for a phone in a lift | **closed** | fixed and reproduced in one run on hardware 2026-09-02: the same `Start proc … for service {…NotificationMirrorService}` signature, and 304 ms later `[autostart] LISTENER_REBIND … starting LinkService` → listening → Mac reconnected 11.4 s after the kill. Originally seen as P5b: `Killing 23016 … (adj 0): crash` → `Start proc 31828 … for service {…NotificationMirrorService}` → 0 sockets, with the control that run 1's death logged `Foreground as UNKNOWN` 0.7 s later and this one logged nothing | `docs/testing.md` → Phase 6 Slice 2 |
-| **63** | **The onboarding security note describes a pairing flow this app does not have.** *"Devices are paired by confirming a key on both screens"* — nothing is confirmed on both screens: the Mac draws a QR, the phone scans it, and the fingerprint is pinned. A user who reads it waits for a key on the Mac that never appears. Shipped user-facing copy, on the third page every new user sees | **open** | source, 2026-09-02, found by reading the four onboarding pages against the pairing implementation while writing `docs/phase-7-pairing-flow.md`; no test could have seen it — it is a true-sounding sentence about a mechanism | `docs/testing.md` → Phase 7 Slice 4 |
+| **63** | **The onboarding security note describes the wrong one of two pairing flows.** Filed as *"a pairing flow this app does not have"* — that was **too generous to the code and too harsh on the sentence**. `PairingRequestDialog` and `PairingManager.acceptPairing` do exactly what it says: an 8-group fingerprint, shown on both devices, confirmed by a tap. That is the **Sync** path (v1, Android to Android) and it works. Onboarding's subject is the **Mac**, whose pairing is a QR the phone scans with no confirmation anywhere. A true sentence about the wrong path, four pages before the user meets the other one | **closed** 2026-09-02 | Fixed as a pass over all four pages — what the fix direction asked for — which found **two larger defects beside it**, see 65. `OnboardingCopyTest`, 8 tests, red under 7 mutations including the original sentence restored verbatim | `docs/testing.md` → Phase 7 Slice 4 |
+| **64** | **The boot path has never started anything, and the run that "proved" it could not have.** On the 2026-09-02 restart `LinkBootReceiver` fired and took the `already listening — nothing to do` branch: the notification-listener rebind had started `LinkService` **3.9 s earlier**. `startOrLog` was never reached for `BOOT`, so `foregroundTypesFor(BOOT) = connectedDevice only` — written narrow because `FGS_BOOT_COMPLETED_RESTRICTIONS` may deny `dataSync` — is still unexercised. With the listener enabled the rebind may **always** win, making the BOOT start structurally unreachable on this handset | **open** | source + the boot log, 2026-09-02: `12:41:04.355 [autostart] LISTENER_REBIND … starting LinkService` → `12:41:08.218 [autostart] BOOT: already listening` | see below |
+| **65** | **Two deleted features were still being taught to new users.** Onboarding page 1 offered *"See and control another Android device's screen from here… the target needs debugging enabled once"*, and page 3 was three numbered steps walking a new user through developer options and `adb tcpip 5555`. Both describe the **v1 ADB mirror, deleted 2026-08-26**. `adb tcpip 5555` survived in exactly one place in the repository and it was a sentence shown to users, in an app whose first locked decision is *no ADB anywhere*. `README.md` carried it in three more places | **closed** 2026-09-02 | Found by reading all four pages against the implementation rather than patching the one reported. Copy moved to `OnboardingCopy.kt`; `OnboardingCopyTest` freezes the pre-fix strings as a fixture and is red whenever any returns. The `app/` module had **no test source set at all** before this | `docs/testing.md` → Phase 7 Slice 4 |
+| **66** | **A shipped, logged failure had no route to the screen.** `LinkTls.checkClientTrusted` has logged `Rejected unpaired client …` since Phase 1. The Mac tab rendered *"Listening for your Mac"* for a refused handshake, for a Mac that had not dialled, and for a Mac on a different network — three situations, one sentence, forever. The user is holding the phone; it was the one screen that could say something and did not | **closed** 2026-09-02, **not yet on hardware** | `LinkWaitStatus` (pure, in `core/`) + the accept loop publishing `RefusedConnection`. `LinkWaitStatusTest`, 11 tests, red under 6 mutations. The device left the USB bus before the build could be installed | `docs/testing.md` → Phase 7 Slice 4 |
 
 ---
 
@@ -989,12 +992,22 @@ picks its foreground types from that.
    where it is off. The brief's §0 predicted the allowlist would be the contaminant; it was not, and
    only asking the platform which reason it used could tell.
 
-**What is still owed, and it needs a restart rather than a decision:** a `[boot] BOOT:` line in
-`files/logs/link.log` and `scripts/link-up.sh` returning three OKs with nothing tapped. Until then
-the boot path is unproven — the code from the action string onward is identical to the proven path
-and unit-tested, but the platform's decision at boot is a different decision at a different
-procstate under a compat change that applies only to boot, and a registration line is not an
-execution line.
+**The restart happened on 2026-09-02, and it answered less than it appears to.** The receiver fired
+— the genuinely unknown part, since `BOOT_COMPLETED` is protected, delivery on an FBE device waits
+for first unlock, and a stopped app receives nothing — and `scripts/link-up.sh` returned three OKs
+with nothing tapped. But the branch it took was `already listening — nothing to do`, because the
+notification-listener rebind had started the service 3.9 seconds earlier. **The boot path has still
+never started anything.** That is defect 64. This row is closed for the question it was filed for:
+the receiver exists, is registered, and executes.
+
+**Two things about the pass criterion, both worth carrying forward.** It was written in
+`docs/RESUME.md` as *"a `[boot] BOOT:` line"* — the tag is `autostart`, and no such string is ever
+written, so a grep for it returns zero on a perfectly healthy boot. And the first attempt to read it
+ran against `com.connectsuite.app`, which is not this app's package on any device: `run-as` failed
+and the grep returned `0` with nothing an eye would catch. **A pass criterion naming a string the
+code does not write is a test that can only fail**, and either reading would have been recorded as
+the boot path being broken. The control that caught it was the cheap one — confirm the log has *any*
+lines before believing a grep that finds none.
 
 **And one thing the fix does not claim.** On this FBE device with a secure lock screen,
 `BOOT_COMPLETED` arrives after the **first unlock**, because the Room trust store the receiver reads
@@ -1086,3 +1099,168 @@ found.
 **Wrong fix to avoid:** deleting the card. The security model is why this app has no account and no
 server and it is worth saying; the fault is that this card describes somebody else's implementation
 of it.
+
+---
+
+### 64 — the boot path fired into a state it was not built for, and reported success · **open**
+
+The 2026-09-02 restart, in the order it happened:
+
+```
+12:41:04.355 I [autostart] LISTENER_REBIND: 1 paired device(s), link not running — starting LinkService
+12:41:04.468 I [service]   Foreground as LISTENER_REBIND, types=0x10
+12:41:04.504 I [server]    Listening on 42501/42502/42503, 1 paired device(s)
+12:41:08.218 I [autostart] BOOT: already listening — nothing to do
+```
+
+`LinkBootReceiver` received `BOOT_COMPLETED` and `LinkAutoStart.ensureRunning` ran — both genuinely
+unknown before this reading, and both now established. It then took the early-return branch, because
+`LinkController.peek()?.state?.value?.running` was already true.
+
+**So `startOrLog` has never been reached with `LinkStartReason.BOOT`.** Everything the fix reasons
+carefully about downstream of that call is untested by this run:
+
+- `foregroundTypesFor(BOOT)` returning `connectedDevice` **only** — chosen narrow precisely because
+  `FGS_BOOT_COMPLETED_RESTRICTIONS` is live for this package and the denial set is readable nowhere.
+  It has never been claimed at boot.
+- whether a `startForegroundService` from a boot broadcast is permitted at all here. The 2026-09-02
+  success was granted under `PROC_STATE_BFGS` — a procstate the app held because the listener had
+  *just* been rebound. A cold boot start may not have it.
+
+**Why this is not simply "the other fix got there first".** The notification listener is enabled on
+this device and rebinds within seconds of boot. If that ordering is reliable, the BOOT branch is
+**structurally unreachable in this configuration** — not dead code (revoke the listener grant and it
+becomes the only route) but code whose activation requires a state this phone is never in. A fix
+that can only be observed in a configuration nobody runs is a fix nobody has verified.
+
+**Fix direction:** do not chase the race. The reading that settles it is a boot with the
+notification-listener grant revoked, which makes `LISTENER_REBIND` impossible and leaves `BOOT` as
+the only route — one restart plus one grant toggle, exercising the exact path the compat change
+governs. Failing that, `LinkAutoStart` can log *which reason got there first* when it declines to
+act, so the ordering is visible in the log rather than inferred from timestamps.
+
+**Wrong fix to avoid:** delaying the listener rebind, or making `BOOT` force a restart of a healthy
+service, so the boot path can be seen to run. That breaks a working link to observe an unproven one,
+and the early return is correct — the listener genuinely does rebind on an ordinary grant toggle
+while the link is fine.
+
+**The general form, and the reason this is a record rather than a note.** *A fix verified only at
+the moment it fires is not verified against the state it was meant to prevent.* Second time in two
+days on this project, and the first was sharper: defect 61's first version re-acquired the wake lock
+only on `!isHeld`, which **repairs a lapse rather than preventing one**, and the overnight run caught
+it at a 59m49s hold against a 60-minute timeout — eleven seconds from the gap opening. Both were
+correct code. Both were exercised in a state that could not distinguish them from the broken version:
+
+| | The state it was meant to prevent | The state it was observed in |
+|---|---|---|
+| defect 61, first fix | a lock that has lapsed and left a gap | a lock about to lapse, repaired in time by accident of sampling |
+| defect 60, boot half | a phone that boots with nothing listening | a phone already listening when the branch ran |
+
+So, before recording any fix as proven: **what state was the machine in when this ran, and is it the
+state the defect describes?** A green reading taken in the wrong state is not weak evidence, it is
+evidence about something else.
+
+---
+
+### 65 — two deleted features were still being taught to new users · **closed** 2026-09-02
+
+Found by doing what defect 63's fix direction actually asked for — *"a pass over all four
+[onboarding] pages rather than a patch to the one that was found"* — and the pass found more than
+the report did.
+
+**Page 1**, the Mirror feature card: *"See and control another Android device's screen from here.
+No root; the target needs debugging enabled once."*
+
+**Page 3** in its entirety, three numbered steps:
+
+1. *"On the target device: Settings → About phone → tap Build number seven times."*
+2. *"Settings → System → Developer options → turn on Wireless debugging."*
+3. *"Plug it into a computer once and run `adb tcpip 5555`. You can unplug immediately afterwards."*
+
+Both describe the **v1 ADB mirror, deleted on 2026-08-26** with its `LEGACY_ADB_MIRROR` flag and the
+`:mirror-server` dex module. Mirror v2 is `MediaProjection`: it sends *this phone's* screen *to the
+Mac*, and needs no permission, no developer options and no second device. The copy was not merely
+stale — it walked a new user through configuring a security-sensitive setting for software that is
+not in the build.
+
+`adb tcpip 5555` survived in **exactly one place in this repository**, and it was a sentence shown to
+users. The control for that claim is an enumeration rather than a grep for an absence: searching
+`app/`, `core/`, `sync-module/`, `mirror-module/`, `input-module/` and `desktop/src` for `tcpip`
+returns one line, in `OnboardingScreen.kt`. `README.md` carried the same instructions in three more
+places — Module 2's architecture, the limitations list, and two troubleshooting rows.
+
+**Why nothing caught it.** The `app/` module had **no test source set at all**. The project's 332
+tests could not see a single string in the onboarding flow, and there was no mechanism by which this
+could have been found other than a person reading the pages.
+
+**The fix, and the shape that makes it checkable.** Copy moved to `OnboardingCopy.kt`; the screen
+renders from that enumeration and holds no literals of its own. *"Is this sentence true"* is not
+testable; *"does this sentence name a mechanism this app does not have"* is. `forbiddenMechanisms`
+lists seven — `adb`, `tcpip`, `wireless debugging`, `developer options`, `build number`, mirroring
+another device, and the key-comparison pairing of defect 63 — each carrying the decision it comes
+from, because a guard that fails with *"forbidden pattern matched"* teaches the next person to
+delete the pattern.
+
+**The drift guard is the half that matters.** `OnboardingCopyTest` scans `OnboardingScreen.kt` for
+prose literals and fails on any not in the copy object — otherwise the enumeration is a list the
+drawing code need not use, which is the `icons.ts` failure in `CLAUDE.md` whose first guard
+enumerated only the sidebar and the dock and **passed with `capture` deleted**. That scanner carries
+its own control: a test asserting it finds dozens of literals in a file known to be full of them,
+plus a planted stray it must flag. An empty scan must mean *no strays*, never *the scanner is
+broken*.
+
+Shown red under 7 mutations: defect 63's sentence restored verbatim, the `adb tcpip` step restored,
+the mirror-another-device claim restored, a stray sentence written inline in the screen, the `adb`
+pattern deleted from the rule, pairing moved off the end of the flow, and the literal scanner's own
+threshold broken.
+
+**Wrong fix to avoid:** patching the one reported sentence. It was the smallest of the three.
+
+---
+
+### 66 — the phone could see the refusal and never said so · **closed** 2026-09-02, not yet on hardware
+
+`LinkTls.checkClientTrusted` has written `Rejected unpaired client …` since Phase 1. The Mac tab
+rendered one sentence — *"Listening for your Mac"* — for all of:
+
+- the Mac has not dialled yet (normal, a second or two),
+- the Mac dialled and the handshake was refused,
+- the Mac is on a different network and never will dial.
+
+§3.2 of `docs/phase-7-pairing-flow.md`, and the mirror image of the Mac's J1/J2 problem — except
+that this one needs **no protocol change**, because the phone can already see its own accept loop,
+and that **the phone's screen is the one the user is holding.**
+
+**What was built:** `LinkState` gained `listeningSinceMillis` and `lastRefusal`; the control accept
+loop publishes a `RefusedConnection` (address plus a 23-character key prefix, matching what the log
+already writes) beside the line it was already logging. The decision about what to *say* is
+`LinkWaitStatus.of` — pure, in `core/`, with `nowMillis` injected so the twenty-second rule is
+tested without waiting twenty seconds.
+
+**Three things it deliberately does not claim.**
+
+- **It cannot separate J6 from J2.** A Mac on the wrong network and a Mac still searching are both
+  silence on the accept loop, and no reading on this device distinguishes them. So the copy is
+  conditional — *"if it stays like this, check that your Mac is awake and on the same Wi-Fi"* — and
+  the test asserts that wording, because *"your Mac is on a different network"* would be a coin flip
+  rendered as a fact. That is the folder-picker rule: when the platform returns one result for two
+  intents, nothing may be explained afterwards.
+- **A null start time withholds the hint** rather than assuming a long wait. Not knowing how long we
+  have waited is not evidence that we have waited a long time.
+- **A refusal expires** after 60 s. It is an event, not a state; left standing it would accuse a
+  stranger who connected once, an hour ago, of being the reason nothing is happening now.
+
+**Why the decision is not a `when` inside the composable.** `CLAUDE.md`'s `showsState` record: the
+same condition was got wrong in slice 7 and again in slice 9, in a renderer file no test could
+reach, and *"four tests went red on the mutation and none of them touches the thing that broke"*.
+`LinkWaitStatusTest` has 11 tests and was shown red under 6 mutations — the threshold inverted, the
+refusal never expiring, the refusal checked after the clock, an unknown start time treated as a long
+wait, `Connected` no longer beating `Refused`, and the hint dropping the word Wi-Fi.
+
+**The refusal counter carries its denominator.** `LinkLog` now writes `N refused / M accepted since
+start`, because 187 refusals with no success count was indistinguishable from a user misclicking
+until the denominator turned out to be zero.
+
+**Status: built, unit-tested, and not yet seen on hardware.** The device left the USB bus before the
+build could be installed. The install on the phone (13:01, 2026-09-02) carries defects 63 and 65
+only.

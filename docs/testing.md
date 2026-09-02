@@ -12057,3 +12057,268 @@ It also cost a real scare — four failures that read as a renderer regression o
 night of renderer changes, at the exact moment when believing them would have been most reasonable.
 The thing that settled it in ten minutes was reading the view's own state and the Mac's log before
 touching the code.
+
+---
+
+## Phase 6 · Slice 5 — the reboot, and what a green run did not prove · 2026-09-02
+
+The restart the user performed by hand, at 12:40. It is item 1 of `docs/RESUME.md`'s three, and the
+only stimulus that can produce `BOOT_COMPLETED` — a protected broadcast, with `adb root` refused on
+this production build and `am broadcast` denied at uid 2000.
+
+### 1. The result, and it passes
+
+`scripts/link-up.sh`, nothing tapped on the phone:
+
+```
+uid      com.chetan.connectsuite.debug = 11011   ← the control for readings 2 and 3
+OK       1. ServiceRecord present, isForeground=true, createTime=-3m44s375ms
+OK       2. 42501/42502/42503 all LISTEN under uid 11011
+OK       3. 1 control session(s) ESTABLISHED on 42501 under uid 11011
+```
+
+`LinkBootReceiver` received the broadcast. That was genuinely unknown beforehand — the receiver had
+never been exercised by the event it exists for, and three separate platform rules could have
+prevented delivery (protected broadcast, FBE deferring to first unlock, the stopped-app state).
+
+### 2. Two failed readings before the real one, both mine
+
+Before the pass, two readings that would have been recorded as failures.
+
+| Reading | Reported | Actually |
+|---|---|---|
+| `run-as com.connectsuite.app … grep -c '\[boot\] BOOT:'` | `0` — the boot path did not run | **the package does not exist.** This app is `com.chetan.connectsuite.debug`; `run-as` failed and the count was of nothing |
+| `grep '\[boot\]' files/logs/link.log` on the right package | `0` — still nothing | **the tag is `autostart`.** No line in this codebase has ever contained `[boot]`. `docs/RESUME.md`'s pass criterion named a string the code does not write |
+
+Both are the same family as everything in `CLAUDE.md`'s table: a clean, specific, confident answer
+from a query that could not have returned anything else. The second is the more interesting, because
+the criterion was written down *in this repository, three days ago, as the definition of the pass* —
+so the wrong string had already survived one review.
+
+**The control that caught it cost one command:** ask whether the log has any lines at all.
+
+```
+-rw------- 1 u0_a1011 u0_a1011  65796 2026-09-02 12:43 link.log     ← 439 lines, written 0 min ago
+$ run-as com.chetan.connectsuite.debug grep -c 'clip' files/logs/link.log
+39
+```
+
+A file with 439 lines and 39 `clip` matches is a file the grep can read. Only then is a zero for
+`[boot]` a reading about the boot path rather than about the query.
+
+**The rule this earns:** *a pass criterion naming a string the code does not write is a test that
+can only fail.* It belongs beside the existing enforcement-point rule, because the fix is the same
+shape — the criterion should have been derived from the source (`LinkLog.i("autostart", …)`) rather
+than written from memory into a document nothing checks.
+
+### 3. What the pass does not prove, which is defect 64
+
+The boot window, in full:
+
+```
+12:41:04.355 I [autostart] LISTENER_REBIND: 1 paired device(s), link not running — starting LinkService
+12:41:04.468 I [service]   Foreground as LISTENER_REBIND, types=0x10
+12:41:04.504 I [server]    Listening on 42501/42502/42503, 1 paired device(s)
+12:41:08.218 I [autostart] BOOT: already listening — nothing to do
+```
+
+**The BOOT branch arrived 3.9 seconds too late to do anything.** The notification-listener rebind —
+defect 62's route — had already started the service, so `ensureRunning` took the early return and
+`startOrLog` was never called with `LinkStartReason.BOOT`.
+
+So the run proves the receiver is registered, delivered to, and executing. It proves **nothing**
+about:
+
+- `foregroundTypesFor(BOOT)` claiming `connectedDevice` only, written narrow because
+  `FGS_BOOT_COMPLETED_RESTRICTIONS` is live for this package and its denial set is readable nowhere;
+- whether a `startForegroundService` from a boot broadcast is permitted on this handset at all. The
+  2026-09-02 success came under `PROC_STATE_BFGS`, a procstate held *because* the listener had just
+  rebound.
+
+And the uncomfortable part: with the notification listener enabled — which it is, and which every
+real user of this app will have — the rebind may **always** win. The BOOT start path is then not
+dead code but code whose activation requires a configuration this phone is never in.
+
+### 4. The rule, which is the reason this slice is written up at all
+
+> **A fix verified only at the moment it fires is not verified against the state it was meant to
+> prevent.**
+
+Second occurrence in two days, and the first one was sharper. Defect 61's first fix re-acquired the
+wake lock only on `!isHeld` — repairing a lapse rather than preventing one — and the overnight run
+caught it at **59m49s against a 60-minute timeout**, eleven seconds from the gap opening. Both fixes
+were correct code. Both ran in a state that could not distinguish them from the broken version:
+
+| | The state it was meant to prevent | The state it was observed in |
+|---|---|---|
+| defect 61, first fix | a lock that has lapsed, leaving a gap | a lock about to lapse, repaired in time by accident of sampling |
+| defect 60, boot half | a phone that boots with nothing listening | a phone already listening when the branch ran |
+
+The question to ask before recording a fix as proven is not *did it pass* but **what state was the
+machine in when this ran, and is it the state the defect describes?** A green reading taken in the
+wrong state is not weak evidence — it is evidence about something else, which is the same failure as
+every row in `CLAUDE.md`'s lookalike table, one level up from the query and inside the experiment.
+
+### 5. The reinstall half, measured again
+
+`adb install -r` at 13:01, with the grant set diffed before and after:
+
+```
+grants before: 28 granted=true
+grants after:  28 granted=true      diff: (none)
+13:01:20.015 I [control] Handshake complete with Chetans-MacBook-Pro at 10.135.144.88
+13:01:20.474 I [nsd]     Registered as ConnectSuite Samsung SM-S938B
+link-up.sh: OK 1 / OK 2 / OK 3, createTime=-10s403ms
+```
+
+The `MY_PACKAGE_REPLACED` path brought the link back in ten seconds with nothing tapped, which is
+the hole `CLAUDE.md` documents for `adb install -r` closed by measurement rather than by argument.
+
+---
+
+## Phase 7 · Slice 4 (continued) — F1 through F5 built, and the pages nobody had read · 2026-09-02
+
+`docs/phase-7-pairing-flow.md` names seven items; five need no protocol change and all five are now
+built. Defects 63, 65 and 66 come out of this slice.
+
+### 1. What was built
+
+| # | Item | Where |
+|---|---|---|
+| **F1** | A fifth onboarding page that ends on pairing, with a success state and a landing tab | `OnboardingCopy.pair`, `PairPage`, `OnboardingOutcome` |
+| **F2** | The Mac tab reordered: state → action → paired list → **Advanced**, collapsed | `LinkRoute.kt` |
+| **F3** | The security-note copy corrected — defect 63 | `OnboardingCopy.welcome` |
+| **F4** | A clock on the phone's silence, with the network hint past 20 s | `LinkWaitStatus.Waiting` |
+| **F5** | The refused handshake reaching the screen | `LinkWaitStatus.Refused`, `RefusedConnection` |
+
+### 2. Defect 63 was reported slightly wrong, and the correction matters
+
+The register said *"describes a pairing flow this app does not have"*. Read against the code that is
+not true: `PairingRequestDialog` shows an 8-group `displayFingerprint` with Accept/Decline,
+`DevicesScreen` shows this device's own `Key …`, and `PairingManager.acceptPairing` pins what the
+peer actually presented. **That flow is shipped and works.** It is the *Sync* path — v1, Android to
+Android.
+
+What is wrong is that onboarding's subject is the **Mac**, whose pairing is a QR the phone scans with
+no confirmation anywhere. So the sentence is a **true statement about the wrong one of two paths**,
+which is worse than a false one: a false sentence gets deleted, an unqualified true one survives
+review. The replacement names its path.
+
+It also scopes the guard: *"a key confirmed on both screens"* is forbidden **in onboarding copy**,
+not in the app at large, where it describes something real.
+
+### 3. The pass over all four pages found two larger defects — 65
+
+63's own fix direction asked for a pass over all four pages rather than a patch to the one reported.
+Doing it found:
+
+- **page 1**: *"See and control another Android device's screen from here. No root; the target needs
+  debugging enabled once."*
+- **page 3, entire**: tap Build number seven times → enable Wireless debugging → run
+  `adb tcpip 5555`.
+
+Both describe the **v1 ADB mirror, deleted 2026-08-26**. The enumeration, which is the control for
+the claim rather than a grep for an absence — searching `app/`, `core/`, `sync-module/`,
+`mirror-module/`, `input-module/`, `desktop/src` for `tcpip`:
+
+```
+app/src/main/java/com/chetan/connectsuite/onboarding/OnboardingScreen.kt:238
+```
+
+One line, in the whole repository, and it was a sentence shown to users, in an app whose first locked
+decision is *no ADB anywhere*. `README.md` carried the same in three more places.
+
+**Nothing could have caught it: the `app/` module had no test source set at all.** 332 tests in this
+project and not one could see a string in the onboarding flow.
+
+### 4. The guard, and why it is about mechanisms rather than truth
+
+*"Is this sentence true"* is not checkable. *"Does this sentence name a mechanism this app does not
+have"* is. `OnboardingCopy.forbiddenMechanisms` holds seven, each with the decision it comes from.
+
+Mutation results — the red-first requirement, seven of them:
+
+```
+=== BASELINE BEFORE: 8 tests, results 0.1s old, gradle exit 0        green
+M1 the pairing sentence restored — defect 63 verbatim   RED: shipping copy names no mechanism…
+M2 the adb tcpip instruction restored                   RED: shipping copy names no mechanism…
+M3 the mirror-another-device claim restored             RED: shipping copy names no mechanism…
+M4 a user-facing sentence written inline in the screen  RED: the screen holds no user-facing copy…
+M5 the adb pattern deleted from the rule                RED: every forbidden mechanism has a pattern…
+                                                             the checker catches every false statement…
+M6 pairing no longer ends the flow                      RED: the flow ends on pairing
+M7 the drift guard's own control weakened               RED: the literal scanner can see literals
+=== BASELINE AFTER: 8 tests, results 0.1s old, exit 0                green — restored
+```
+
+**M4 is the one that matters most.** Without the drift guard the enumeration is a list the drawing
+code need not use — the `icons.ts` failure, whose first guard enumerated only the sidebar and the
+dock and passed with `capture` deleted. M7 breaks that guard's *own* control, to show the control is
+load-bearing rather than decorative.
+
+### 5. Three harness faults in this slice, all mine, all the same family
+
+Recorded because `CLAUDE.md`'s eleventh table row was written about exactly this and it happened
+three more times inside the run meant to honour it.
+
+| The instrument | What it reported | What was actually true |
+|---|---|---|
+| `./gradlew … \| tail -35; echo "exit: $?"` | `gradle exit: 0` under a **compile failure** | `$?` was `tail`'s exit code. Gradle had failed |
+| the mutation runner, without `--rerun-tasks` | baseline RED over unmutated source | Gradle served the **previous mutation's compiled classes**; the source was clean |
+| the mutation runner, killed at a 2-minute timeout | *(nothing — it never printed)* | it left the source **mutated**, and the next run snapshotted that as pristine and baked it in |
+
+The third is the worst and is a rule: **a harness that edits source must snapshot once, before it
+touches anything, and restore under `finally` and `atexit`.** The version that snapshotted
+per-mutation turned a timeout into a permanent edit that a later run then treated as the original.
+The fix also prints the age of the results file and gradle's own exit code on every run —
+
+```
+gradle exit: 0
+results: TEST-…OnboardingCopyTest.xml written 0s ago
+tests="8" skipped="0" failures="0" errors="0"
+```
+
+— because `failures=0` from a build that never compiled is the most confident wrong answer in the
+set.
+
+**A fourth, in the documentation rather than the code**: a Python edit anchored as
+`s[s.index('| **63** |'):]` — *from this row to the end of the file* — replaced **1,006 lines and all
+30 defect records** with four table rows. `scripts/check-defects.sh` caught it immediately (12 rows
+without records), which is the hook doing precisely the job it was written for, and `git checkout
+HEAD --` restored it. The rewritten edit is bounded to a single line and asserts the file **grew**.
+That assertion is the general form: *an edit that is meant to add must fail if the line count falls.*
+
+### 6. F4 and F5: what the phone may and may not say
+
+`LinkWaitStatus` is pure and lives in `core/`, because the `showsState` record in `CLAUDE.md` is
+about a condition in a renderer that was got wrong twice in two slices with no test able to reach it.
+
+Six mutations, all red on the right tests:
+
+```
+N1 the hint threshold inverted            RED × 4 (both sides of the boundary, plus the null case)
+N2 the refusal never expires              RED: an old refusal expires back into the wait
+N3 the refusal checked after the clock    RED × 2
+N4 unknown start time = a long wait       RED: an unknown start time withholds the hint
+N5 connected no longer beats refused      RED: a refusal never displaces a live connection
+N6 the hint stops naming Wi-Fi            RED: a long wait offers the network hint
+```
+
+**The copy is deliberately conditional.** J6 (*scanned, wrong network*) and J2 (*scanned, Mac
+searching*) are both silence on the accept loop and nothing on this device separates them, so the
+phone says *"if it stays like this, check that your Mac is awake and on the same Wi-Fi"* rather than
+diagnosing. That is the folder-picker rule — when the platform returns one result for two intents,
+nothing may be explained afterwards — and the test asserts the conditional wording, not merely that
+some hint appears.
+
+### 7. Status, stated plainly
+
+| | |
+|---|---|
+| Unit tests | **343**, 0 failures (`app` 8 + `core` 133 + `sync-module` 67 + `mirror-module`/`input-module` the rest), no results file older than the run |
+| On the phone | The **13:01 install carries F1, F3 and F5's copy fixes only** — defects 63 and 65 |
+| Not on the phone | **F2, F4 and F5** (defect 66) are built, unit-tested and **unverified on hardware.** The device left the USB bus at ~13:05 and `adb devices` has been empty since |
+
+Nothing in §6 has been seen on a screen. It is written down here as built-and-untested rather than
+as done, because a unit test on `LinkWaitStatus.of` proves the decision and says nothing about
+whether the card draws.

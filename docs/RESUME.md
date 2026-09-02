@@ -1,34 +1,63 @@
-# Resume here — written 2026-09-02, after an unattended overnight run
+# Resume here — written 2026-09-02, after the reboot and the pairing-flow build
 
-> **Where work resumes.** Phase 6 has code and hardware readings; Phase 7 has three of its four
-> items landed and one proposed; Phase 9 has an audit, a `.dmg` and a version scheme. **Nothing is
-> half-applied** — every item below is either committed and proven, or written down as a proposal
-> with nothing built.
+> **Where work resumes.** Phase 6's reboot has happened and answered less than it looks like;
+> Phase 7's pairing flow is built on the phone side, five of seven items; Phase 9 has an audit, a
+> `.dmg` and a version scheme. **Nothing is half-applied** — every item below is either committed,
+> or written down as a proposal with nothing built, or explicitly marked unverified on hardware.
 >
-> **The three things waiting on your hands, in the order they are worth doing:**
+> **The one thing waiting on your hands, and it is small:**
 >
-> 1. **A reboot.** It is the only stimulus that proves the boot half of defect 60. `BOOT_COMPLETED`
->    is a protected broadcast, `adb root` is refused on this production build, and `am broadcast`
->    is denied at uid 2000 — so a laptop cannot produce it. Pass criterion: a `[boot] BOOT:` line in
->    `files/logs/link.log` and `scripts/link-up.sh` returning three OKs with nothing tapped.
-> 2. **Read `docs/phase-7-pairing-flow.md`.** It is the one item you asked to have proposed rather
->    than built, and five of its seven pieces need no protocol change. F1 — a fifth onboarding page
->    that ends on pairing — is the single largest improvement in it.
-> 3. **Two permissions, one sentence each:** may a key event be sent to the phone (P4's forced
->    version), and is the unexempt battery path in scope at all (H1). §P6 is *not* the cheap
->    approximation the brief said it was — `am set-standby-bucket <pkg> 5` is refused, so the shell
->    can move the bucket out of EXEMPTED and has no command that puts it back.
+> 1. **Plug the phone back in.** `adb devices` has been empty since ~13:05 and three built,
+>    unit-tested changes have never been seen on a screen: **F2** (the Mac tab reordered behind an
+>    Advanced fold), **F4** (the wait clock and the network hint) and **F5** (a refused handshake
+>    reaching the screen, defect 66). The APK is built. Install, open the **Mac** tab, and the three
+>    are visible in one look.
+>
+> **Then, when you have a spare restart:** defect 64 wants **one reboot with the notification-listener
+> grant revoked**. That is the only configuration in which the boot path is the *only* route back, so
+> it is the only one that can prove it starts anything. Toggle the grant back afterwards.
+>
+> ### What the reboot actually proved, because the pass criterion was wrong twice over
+>
+> `scripts/link-up.sh` returned three OKs with nothing tapped, and `LinkBootReceiver` **did** receive
+> `BOOT_COMPLETED` — the genuinely unknown part. But:
+>
+> - **The pass criterion in the previous version of this file named a string the code does not
+>   write.** It said *"a `[boot] BOOT:` line"*; the tag is **`autostart`**. A grep for `[boot]`
+>   returns zero on a perfectly healthy boot, and the first reading of this run did exactly that.
+>   The correct query is `grep autostart files/logs/link.log`, and the package is
+>   **`com.chetan.connectsuite.debug`** — the first attempt used `com.connectsuite.app`, which
+>   exists on no device, so `run-as` failed and the count was of nothing.
+> - **The branch that ran was the no-op one.** `[autostart] BOOT: already listening — nothing to do`,
+>   because the notification-listener rebind started `LinkService` 3.9 seconds earlier. So
+>   `startOrLog` has never been reached for `BOOT`, and the deliberately narrow
+>   `connectedDevice`-only foreground type has never been claimed at boot. **Defect 64**, open.
+>
+> That is now a rule in `CLAUDE.md`: *a fix verified only at the moment it fires is not verified
+> against the state it was meant to prevent* — with defect 61's 59m49s-against-60-minutes as its
+> sharper half.
+>
+> ### Two answered, one closed as out of scope
+>
+> - **A key event may be sent** for P4's forced version — key events only, nothing that can land in
+>   an app. Not yet used.
+> - **The unexempt battery path is out of scope on this handset**, and correctly so: the shell can
+>   move the bucket out of `EXEMPTED` and `am set-standby-bucket … 5` is refused, so there is no
+>   command that puts it back, on a daily-driver phone. **It needs a second device**, and is recorded
+>   that way rather than as a gap.
 
 ## What landed, 2026-09-02
 
 | | |
 |---|---|
-| **Defect 60** | `LinkBootReceiver` — `BOOT_COMPLETED`, `QUICKBOOT_POWERON`, `MY_PACKAGE_REPLACED`. The reinstall half is proven on hardware; the boot half is item 1 above |
-| **Defect 61** | The wake lock is refreshed on a timer rather than repaired after a lapse. Corrected twice in one day — see the record, the second version is the one that matters |
+| **Defect 60** | `LinkBootReceiver` — `BOOT_COMPLETED`, `QUICKBOOT_POWERON`, `MY_PACKAGE_REPLACED`. Both halves now measured on hardware; **read defect 64 before reading the boot half as working** |
+| **Defect 61** | The wake lock is refreshed on a timer rather than repaired after a lapse. Corrected twice in one day — the second version is the one that matters |
 | **Defect 62** | A crash left the phone alive, granted and serverless. Reproduced and fixed in one run |
-| **Defect 63** | *New, open, needs no device:* the onboarding security note describes a pairing flow this app does not have |
-| **Phase 6** | Forced Doze passed on the exempt path; `am crash` shown to be an unreliable stimulus; P4 answered by an overnight watcher instead of a key event |
-| **Phase 7** | The Activity pane built (the tenth of eleven screens); deep links so the palette can find the media remote and contacts; FilesView and RemoteView off the renderer-view debt list |
+| **Defect 63** | **Closed.** The onboarding security note — and the report was slightly wrong in a way worth knowing: the key-confirmation flow it describes **is real**, on the Sync path. It is a true sentence about the wrong one of two pairing paths |
+| **Defect 64** | *New, open:* the boot path fired into a state it was not built for and returned success |
+| **Defect 65** | *New, closed:* two deleted features still being taught to new users — onboarding page 3 walked people through `adb tcpip 5555`, for a mirror deleted on 2026-08-26. Found by reading all four pages, which is what 63's fix direction asked for |
+| **Defect 66** | *New, closed, unverified on hardware:* the phone could see a refused handshake and never said so |
+| **Phase 7** | **F1-F5 built** — the fifth onboarding page ending on pairing, the Mac tab reordered, the copy corrected, the wait clock, the refusal on screen. F6 and F7 change `docs/protocol.md` and are untouched |
 | **Phase 9** | The distribution audit, an unsigned `.dmg` that launches from `/Applications`, a 25 MB release APK, and one version scheme with a commit hook |
 
 **Two of the audit's own rows were wrong and are corrected in place rather than deleted** — D5
@@ -36,41 +65,31 @@ overstated a risk that a measurement did not support, and D8 called an anonymise
 real phone number. Both corrections are in `docs/phase-9-distribution-audit.md` with the reading
 that settled them.
 
+**The `app/` module now has a test source set.** It had none: 332 tests in this project and not one
+could see a string in the onboarding flow, which is why defect 65 survived a week. It is 8 tests
+now, and they are the reason the copy is enumerated in `OnboardingCopy.kt` rather than written where
+it is drawn.
+
 ---
 
-## Older, and still true
+## Older, and mostly discharged
 
 **Phase 4 is closed.** Step 70 (the ring) and step 71 (the SMS sitting) both passed on hardware.
-Nothing in Phase 4 is waiting on a device, a second person, or a booking. The previous contents of
-this file — the step-70 preconditions, the stale-overnight table, the line to give the second
-person — are all discharged and have been deleted rather than left to be mistaken for live
-instructions. The record of that work is `docs/testing.md`; the summary is
-`docs/phase-4-closeout.md`.
+Nothing in Phase 4 is waiting on a device, a second person, or a booking. The record is
+`docs/testing.md`; the summary is `docs/phase-4-closeout.md`.
 
-**Phase 5 is open, and Files is finished in both directions.** Photos, `fs.*`, the phone's Folders
-screen with aimed quick picks, the Mac's Files pane, push with resume, the grant-free
-`Download/ConnectSuite` destination, and drag to Finder — all on hardware. **What is left in Phase 5
-is clipboard and contacts.**
+**Phase 5 is closed** — 2026-09-02, against both its conditions, in `docs/phase-5-closeout.md`.
+Files is finished in both directions, photos are done, contacts shipped in Phase 4, and **clipboard
+is built in both directions**: the background-read wall was measured on this device (Slice 11), the
+feature landed, and Handoff-style auto-apply followed on the Mac with a setting on the phone (Slice
+12). Both directions are as automatic as their platforms allow.
 
-**Clipboard is spec'd and unbuilt, its instrument is built and unrun, and clipboard is now the
-phase's *only* remaining feature.** `docs/phase-5-clipboard-proposal.md` §2: the background-read wall
-is inherited from documentation and has never been observed on this device. **Five** readings with
-their controls go into `docs/testing.md` before any code, and §2 carries a **pre-registered decision
-table** — the product shape for each possible answer, written before the reading, so nothing can be
-rationalised afterwards. The probe is
-`app/src/debug/java/com/chetan/connectsuite/probe/ClipProbeActivity.kt`; its class comment is the
-operating manual.
-
-**Contacts is not outstanding.** It shipped in Phase 4 and is proven there — `ContactsFeature` on the
-phone, `ContactsClient` and the pane on the Mac, specified in `docs/protocol.md`, run 2026-08-28. The
-Phase 5 row groups it by permission surface, not by work left. `docs/phase-5-closeout.md` carries the
-argument; do not start it as though it were greenfield.
-
-**The ledger for the phase is `docs/phase-5-closeout.md`** — what passes, what is unproven *with the
-control each one needs*, and what is deferred by number. Phase 5 closes on two conditions and they
-are both in its banner.
-
----
+> **This section said the opposite until 2026-09-02** — that Phase 5 was open, that clipboard was
+> *"spec'd and unbuilt, its instrument built and unrun"*, and that clipboard and contacts were what
+> remained. All of it was true when written and none of it was true by the time anyone read it, in
+> the file whose banner says **read it first**. It is the same defect as 65 one floor up: a document
+> describing a build that no longer exists, with nothing in the repo able to notice. Corrected rather
+> than deleted, because the failure is worth more than the paragraph.
 
 ## Start of day, both sides
 

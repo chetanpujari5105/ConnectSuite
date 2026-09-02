@@ -140,8 +140,8 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 | 3 | **Input injection (AccessibilityService)** — see `docs/phase-3-input.md` | **Done** — passed on hardware 2026-08-27; closed retroactively 2026-08-31 |
 | 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
 | 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **Done** — closed 2026-09-02 against both its conditions (`docs/phase-5-closeout.md`); photos done; **Files is complete** as of 2026-09-01 (both directions with resume, the Folders screen, the Files pane, the grant-free `Download/ConnectSuite` destination, drag to Finder); **contacts shipped in Phase 4** and is not outstanding — see `docs/phase-5-closeout.md`. **Clipboard is built in both directions** — the wall measured (Slice 11, 2026-09-01), the feature landed, and Handoff-style auto-apply added on the Mac with a setting on the phone (Slice 12, 2026-09-02). Both directions are as automatic as their platforms allow — the Mac watches its own clipboard, the phone cannot and no Android app can. Outstanding: the phone has not been reinstalled with the latest copy change |
-| 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | **In progress** — code landed 2026-09-02: `LinkBootReceiver` (defect 60), the wake-lock refresh (61), and the crash-serverless fix (62). Forced Doze passes on the **exempt** path with a live message across it; `am crash` is shown to be an unreliable stimulus; P4 answered by an overnight read rather than a key event. **Two things wait on the user**: a reboot (the only stimulus that proves the boot half) and a decision about the unexempt path — §P6's `am set-standby-bucket` is **not** reversible, `… 5` is refused, so it was not taken |
-| 7 | Mac UX — packaging, distribution, app launching, and the polish pass | **In progress** — 2026-09-02: the **Activity** pane built (ten of eleven screens; Camera needs a signed system extension), palette **deep links** so the media remote and contacts are findable, and two view classes off the renderer-view debt list. **Pairing is proposed, not built** — `docs/phase-7-pairing-flow.md`, and it is the item that blocks anyone else using the app |
+| 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | **In progress** — code landed 2026-09-02: `LinkBootReceiver` (defect 60), the wake-lock refresh (61), the crash-serverless fix (62). Forced Doze passes on the **exempt** path with a live message across it. **The reboot happened, 2026-09-02: the receiver fires and the link is up with nothing tapped — but the branch that ran was `already listening`, because the listener rebind beat it by 3.9 s. The boot path has still never started anything (defect 64).** The unexempt path is **out of scope on this handset** — `am set-standby-bucket … 5` is refused, so the bucket cannot be put back; it needs a second device |
+| 7 | Mac UX — packaging, distribution, app launching, and the polish pass | **In progress** — 2026-09-02: the **Activity** pane, palette **deep links**, two view classes off the renderer-view debt list. **Pairing's phone half is now built**: F1-F5 of `docs/phase-7-pairing-flow.md`, all five items that need no protocol change — a fifth onboarding page ending on pairing, the Mac tab reordered behind an **Advanced** fold, and the phone finally saying *which* silence it is in. F6 and F7 change `docs/protocol.md` and are not built. **F2, F4 and F5 are unverified on hardware** — the device left the USB bus before they could be installed |
 | 9 | Distribution — packaging, signing, release builds | **Started** — 2026-09-02, only the parts needing no Apple account: `docs/phase-9-distribution-audit.md` (eleven rows, two of them corrected by measurement), an unsigned `.dmg` that launches from `/Applications`, a 25 MB unsigned release APK, and one version scheme (`docs/versioning.md`) with a sixth commit hook. **Nothing signed, notarized or published**; the config for all three is written with credentials blank |
 
 `android-connect-suite-claude-code-prompt.md` is the **v1 plan and is superseded**. Its phases are
@@ -862,6 +862,81 @@ damage on the user's own device or nearly recorded a false result.
   for the line, and refuses the reject if it never comes, so a build whose visible change did not
   happen does not get a call spent on it. Anyone asking for pre-ring proof of option 4 should be
   pointed here.
+
+- **A fix verified only at the moment it fires is not verified against the state it was meant to
+  prevent.** The rule above asks whether a reading is *about* the target. This one asks a question
+  one level further in: the code ran, the log line is real, the check is green — **but what state
+  was the machine in when it ran, and is it the state the defect describes?**
+
+  It has happened twice in two days, and the two together are what make it a rule rather than a
+  coincidence:
+
+  | | The state the fix exists to prevent | The state it was observed in | What the green run actually proved |
+  |---|---|---|---|
+  | **defect 61**, first fix | a wake lock that has lapsed, leaving a gap | a lock *about to* lapse, repaired in time by accident of sampling | that the repair path works — not that the gap never opens |
+  | **defect 60**, boot half | a phone that boots with nothing listening | a phone **already listening** when the branch ran | that the receiver is delivered to — not that it can start anything |
+
+  Defect 61 is the sharper of the two because a number caught it. The first fix re-acquired only on
+  `!isHeld`, which **repairs a lapse rather than preventing one**, and the overnight run measured a
+  **59m49s** hold against a 60-minute timeout — eleven seconds from a nineteen-minute gap opening.
+  Had the sampling landed a minute later the run would have been recorded as a pass, over a fix that
+  was doing the wrong thing correctly.
+
+  Defect 60 is the commoner shape and the easier one to miss, because **nothing looked wrong at
+  all**. A real reboot produced `[autostart] BOOT: …` and `scripts/link-up.sh` returned three OKs
+  with nothing tapped — the exact pass criterion, met. The branch that ran was
+  `already listening — nothing to do`: the notification-listener rebind had started the service 3.9
+  seconds earlier, so the boot path's own start was never reached, and the narrow
+  `connectedDevice`-only foreground type it was carefully written to claim has still never been
+  claimed at boot. Worse, on a phone with the listener enabled the rebind may *always* win, which
+  makes the branch structurally unreachable in the only configuration anybody runs.
+
+  Both are the lookalike table's failure moved inside the experiment. There the question is *what
+  else would produce this reading*; here it is **what else would produce this pass** — and the answer
+  in both rows is "the version of this fix that does not work".
+
+  So, concretely, before a fix is recorded as proven:
+
+  - **Name the state the defect describes**, in a sentence, and say whether the machine was in it.
+    "The link was down and came back" is a different claim from "the link never went down".
+  - **A no-op branch is not a pass.** If the code's response to the stimulus was *nothing needed
+    doing*, the thing under test did not run. Say so on the line rather than in a footnote — this is
+    why `already listening — nothing to do` is logged with its reason attached.
+  - **When the state cannot be produced on demand, say the fix is unproven and name the stimulus
+    that would prove it.** For defect 60 that is one restart with the notification-listener grant
+    revoked, which removes the competing route and leaves the boot path as the only one. Writing
+    that down is cheap; discovering in Phase 8 that the boot path never worked is not.
+  - **Do not engineer the state by breaking the working path.** Delaying the rebind so the boot
+    branch can be seen would sabotage a healthy link to observe an unhealthy one, and the early
+    return it would defeat is correct.
+
+  The corollary for instrumentation, which is what makes the next one findable: **when two mechanisms
+  can satisfy the same guarantee, the log must say which one did.** `LinkAutoStart` names its reason
+  on every line — `LISTENER_REBIND`, `BOOT`, `PACKAGE_REPLACED` — and that is the only reason this
+  was visible at all; a single `Link restored` line would have read as a clean pass forever.
+
+- **A pass criterion naming a string the code does not write is a test that can only fail.**
+  The small, cheap member of the family above, and it cost two false negatives in one sitting.
+
+  `docs/RESUME.md` defined the boot pass as *"a `[boot] BOOT:` line in `files/logs/link.log`"*. The
+  tag is **`autostart`**; no line in this codebase has ever contained `[boot]`. The criterion had
+  been written down three days earlier, reviewed, and carried in the brief as the definition of the
+  pass — and a grep for it returns zero on a perfectly healthy boot. The same run's first attempt
+  read the log of `com.connectsuite.app`, a package that exists on no device here (it is
+  `com.chetan.connectsuite.debug`), where `run-as` fails and the count is of nothing.
+
+  Two zeroes, both confident, neither about the boot path.
+
+  The control is one command and it is the same one every time: **prove the query returns a known
+  positive before believing a negative.** A `wc -l` showing 439 lines and a grep for a tag known to
+  be there (`clip` → 39) turns a zero for `[boot]` into a reading about the boot path rather than
+  about the query.
+
+  The enforcement point, since a rule without one is a rule someone remembers: a pass criterion that
+  quotes a log string should be **derived from the source that writes it** — `LinkLog.i("autostart",
+  …)` — and not typed from memory into a document nothing checks. Where a criterion is written by
+  hand anyway, the check that makes it honest is to run the grep against a log known to contain the
+  event *before* the run that depends on it.
 
 - **A green pager needs a clock beside it.** The three preconditions above all ask whether a pager
   *loses rows*. None of them asks whether it can be afforded, and a pager can pass every one of them

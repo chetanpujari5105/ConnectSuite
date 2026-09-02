@@ -1,6 +1,28 @@
 # Pairing, end to end — the flow proposal, both surfaces
 
-> **Written 2026-09-02. Nothing here is built.** The Mac's *screen* already has a proposal, in
+> **Written 2026-09-02. F1-F5 were built the same day — every item that needs no protocol change.**
+> The tables below are left in their original tense as the argument that produced the work; what
+> shipped is in `docs/testing.md` → Phase 7 Slice 4, and defects 63, 65 and 66. **F6 and F7 change
+> `docs/protocol.md` and are untouched.**
+>
+> Three things the build changed about the analysis:
+>
+> - **§2.3's defect is real but was described too strongly.** *"Nothing is confirmed on both
+>   screens"* — the key-comparison flow **exists and works**, on the Sync path (`PairingRequestDialog`,
+>   `PairingManager.acceptPairing`). The sentence is true of Sync and false of the Mac, which is a
+>   worse defect than an invented one: a false sentence gets deleted, an unqualified true one
+>   survives review. Defect 63.
+> - **Two larger copy defects were sitting beside it**, on pages this document had read for pairing
+>   and not for anything else: onboarding page 3 walked new users through `adb tcpip 5555` for a
+>   mirror deleted on 2026-08-26. Defect 65.
+> - **F4's threshold is 20 s, not the 30 s suggested in §3.2.** The measured scan-to-handshake time
+>   on this hardware is 1.5 s at worst, so 20 s is already more than ten times the observed worst
+>   case.
+>
+> **F2, F4 and F5 are unverified on hardware** — the device left the USB bus before the build could
+> be installed.
+>
+> **Original note follows.** **Nothing here is built.** The Mac's *screen* already has a proposal, in
 > `docs/design-departures.md` → "A request, not a departure: the pairing screen", and this does not
 > repeat it. What that one does not cover is **the phone half and the join between them**, which is
 > where the actual blocker is.

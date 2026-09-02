@@ -6,7 +6,7 @@ account, no server in the middle, no mobile data.
 | Module | What it does |
 | --- | --- |
 | **Sync** | Pair two devices, send files at Wi-Fi speed, and mirror notifications and incoming SMS between them. |
-| **Mirror** | See and control another Android device's screen from this one. No root. |
+| **Mirror** | Put this phone's screen on a paired Mac and control it from there. No root, no debugging, no setup. |
 
 ---
 
@@ -88,36 +88,39 @@ matching fingerprint is in the trust store.
 
 ## Module 2 — Mirror
 
-Architecture follows scrcpy's client/server split:
+Capture is `MediaProjection`, encode is `MediaCodec`, and the frames go to the paired Mac over the
+v2 link's video socket. **There is no ADB anywhere in this path** — locked architecture decision #1
+in `CLAUDE.md`.
 
-1. The controller speaks the ADB wire protocol directly to the target's `adbd` — there is no `adb`
-   binary bundled, and none is needed.
-2. It pushes `connectsuite-server.dex` to `/data/local/tmp/` and starts it with `app_process`, so
-   the server runs as the shell user (uid 2000).
-3. That uid already holds `CAPTURE_VIDEO_OUTPUT` and `INJECT_EVENTS`, which is precisely why no
-   root is required — and why there is no "start recording?" consent dialog, unlike a
-   `MediaProjection`-based approach.
-4. The server creates a virtual display through `SurfaceControl`, points it at a `MediaCodec`
-   hardware H.264 encoder's input surface, and streams the elementary stream back over an ADB
-   forwarded socket.
-5. The controller decodes into a `SurfaceView` and sends touches, keys and typed text back over a
-   second socket, translated to the target's own resolution.
+1. The Mac sends `mirror.start`. The phone raises Android's own capture-consent prompt and the user
+   taps to allow it.
+2. `MediaProjection` gives us a virtual display; it is pointed at a `MediaCodec` hardware H.264
+   encoder's input surface.
+3. The elementary stream goes back over port 42502, authorised by the session token from the
+   control handshake.
+4. The Mac decodes and draws it, and sends touches and typed text back on the control channel,
+   translated to the phone's own resolution. Input is injected by an `AccessibilityService`.
 
 Frames never touch the heap on either side — display surface into encoder, decoder into view
 surface — which is what keeps latency low rather than merely the framerate high.
 
-### Target setup (one time, per device you want to mirror)
+### Setup
 
-None of this can be automated. Android deliberately requires a person at the target device.
+**None.** Mirroring needs no permission you have not already granted and no developer settings on
+either machine. Two things about it are worth knowing, because both are Android's rules rather than
+ours:
 
-1. **Settings → About phone**, tap **Build number** seven times.
-2. **Settings → System → Developer options** → turn on **Wireless debugging**.
-3. Plug the target into a computer once and run `adb tcpip 5555`. Unplug immediately after; the
-   port stays open until the device reboots or Wi-Fi is toggled.
-4. In ConnectSuite's Mirror tab, enter `<target-ip>:5555` and tap **Connect**. Accept the
-   *"Allow wireless debugging?"* prompt on the target, ticking **Always allow**.
+- **Android asks every time.** `MediaProjection` consent cannot be cached across sessions on
+  Android 14+, so every mirroring session begins with a tap on the phone. No app can turn this off.
+- **Some surfaces stay black.** The lock screen, banking apps and DRM video set `FLAG_SECURE`, and
+  Android hands us black frames for them. The Mac shows a message saying so rather than a blank
+  window.
 
-The in-app setup wizard (Mirror tab → **?**) walks through the same steps.
+An earlier version of this app mirrored a *second Android device* over an ADB connection, using a
+pushed `connectsuite-server.dex` running as uid 2000. That implementation, its `LEGACY_ADB_MIRROR`
+flag and the `:mirror-server` module were **deleted on 2026-08-26** once the MediaProjection path
+passed on hardware. If you find instructions anywhere telling you to run `adb tcpip 5555`, they are
+describing software that no longer exists.
 
 ### Quality presets
 
@@ -180,18 +183,29 @@ no access to Messages, the notification stream, or the call log on either end. A
 neither send this data to ConnectSuite nor display what ConnectSuite sends. This affects every app
 of this kind, not just this one.
 
-**Screen mirroring requires debugging enabled on the target.** Developer Options plus an open
-debugging port. There is no API to enable this remotely or silently — that is the entire point of
-the restriction.
+**Mirroring consent cannot be remembered.** `MediaProjection` requires a fresh user tap on the
+phone for every session on Android 14+. There is no API to cache it and no flag to disable the
+prompt.
 
-**Pairing via the 6-digit wireless-debugging code is not implemented.** Android 11+ offers a
-TLS-based `adb pair` handshake using SPAKE2. This build implements the classic RSA-authenticated
-ADB transport instead, so mirroring targets a port opened with `adb tcpip 5555`. The setup wizard
-directs users down the path that works.
+**Secure surfaces capture as black frames.** Anything marked `FLAG_SECURE` — the lock screen,
+banking apps, DRM video — is blanked by Android itself during capture. The Mac detects it and says
+so rather than showing a black window and no explanation.
 
-**Display capture uses internal framework APIs.** `SurfaceControl.createDisplay` is not public API.
-It is reached by reflection with per-release fallbacks, and some Android 14+ OEM builds restrict it
-further. When it is unavailable, the session fails with a clear message rather than a blank screen.
+**Call audio cannot be streamed.** `CAPTURE_AUDIO_OUTPUT` is system-only, and recording calls
+through an `AccessibilityService` violates Play policy. Pair the Mac to the phone over Bluetooth as
+an audio device instead.
+
+**Hardware keys cannot be pressed remotely.** There is no public API for an `AccessibilityService`
+to synthesise a `KeyEvent`; `INJECT_EVENTS` is signature-level. Volume, power and hardware keys are
+therefore not remotable — text entry and the global actions (back, home, recents, notifications,
+quick settings, lock screen, power menu) are the whole of what can be injected.
+
+**There is no path-based view of shared storage.** Scoped storage is not optional at `targetSdk
+36`, so file browsing works over SAF trees the user has granted, one folder at a time. Android
+refuses a grant on the storage root and on `Download` itself; folders inside `Download` are
+grantable, which is why files sent from the Mac land in `Download/ConnectSuite`. A file sitting
+directly in `Download/` cannot be reached by this app. `MANAGE_EXTERNAL_STORAGE` would lift this
+and is deliberately not requested.
 
 **OEM battery managers kill background services.** Xiaomi/HyperOS is the most aggressive, followed
 by Samsung, OnePlus, Oppo and Vivo. Android's own battery-optimisation exemption (requested during
@@ -213,9 +227,10 @@ local-network discovery, which works whenever both devices share an access point
 | Paired but "not reachable" | The device's IP changed. Open the app on both ends so they re-announce. |
 | Notifications stop after a while | Battery optimisation. Allow the app in *both* Android's setting and your OEM's autostart/protected-apps list. |
 | Transfers stall near the end | Usually a Wi-Fi power-save drop. The transfer pauses and resumes automatically once both devices are visible again. |
-| Mirror: "Could not reach" | Wrong IP or the port is closed. Re-run `adb tcpip 5555` over USB — a reboot closes it. |
-| Mirror: connects then fails at "Starting capture" | The target's build restricts the display-capture APIs. Known on some Android 14+ OEM images. |
-| Mirror: no "Allow debugging" prompt | The target's screen must be unlocked for the prompt to appear. |
+| Mirror: the Mac asks and nothing happens | Android will not let a backgrounded app raise the capture prompt. Open ConnectSuite on the phone, go to the Mirror tab, and tap **Start** — that tap is the foreground Android insists on. |
+| Mirror: the window is black | The app on screen sets `FLAG_SECURE` (lock screen, banking, DRM video). Android blanks it during capture; nothing can be done about it. |
+| Mac never connects after pairing | Both must be on the same Wi-Fi. The phone's Mac tab says how long it has been waiting and whether anything was refused. |
+| The link is gone after a phone restart | It comes back at your **first unlock**, not at boot — the trust store is credential-encrypted, so Android holds `BOOT_COMPLETED` until then. |
 
 ---
 

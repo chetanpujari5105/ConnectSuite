@@ -41,6 +41,21 @@ data class LinkState(
     val running: Boolean = false,
     val clients: List<String> = emptyList(),
     val lastError: String? = null,
+    /**
+     * When the accept loops came up, so the phone can put a clock on its own silence.
+     *
+     * Null means listening with no known start — see `LinkWaitStatus.of`, which withholds the
+     * network hint rather than guessing at an elapsed time it does not have.
+     */
+    val listeningSinceMillis: Long? = null,
+    /**
+     * The last Mac turned away at the TLS handshake, for F5.
+     *
+     * `LinkTls` has logged this since Phase 1 and nothing on screen has ever heard it, so a user
+     * whose Mac was refused saw the same "Listening for your Mac" as a user whose Mac had not
+     * dialled at all.
+     */
+    val lastRefusal: RefusedConnection? = null,
 ) {
     val isConnected: Boolean get() = clients.isNotEmpty()
 }
@@ -81,6 +96,16 @@ class LinkServer(
     private var videoSocket: SSLServerSocket? = null
     private var bulkSocket: SSLServerSocket? = null
     private val acceptJobs = mutableListOf<Job>()
+
+    /**
+     * Refusals and acceptances, published together.
+     *
+     * `CLAUDE.md`'s denominator rule: "187 refusals" was indistinguishable from a user misclicking
+     * until the success count turned out to be zero. A phone refusing every Mac and a phone
+     * refusing one stranger look identical on the refusal line alone.
+     */
+    private val refusedCount = java.util.concurrent.atomic.AtomicInteger()
+    private val acceptedCount = java.util.concurrent.atomic.AtomicInteger()
 
     private val _state = MutableStateFlow(LinkState())
     val state: StateFlow<LinkState> = _state.asStateFlow()
@@ -234,7 +259,16 @@ class LinkServer(
         acceptJobs += scope.launch { acceptSideChannel(videoSocket!!, "video") { videoChannelSink } }
         acceptJobs += scope.launch { acceptSideChannel(bulkSocket!!, "bulk") { bulkChannelSink } }
 
-        _state.update { it.copy(running = true, lastError = null) }
+        _state.update {
+            it.copy(
+                running = true,
+                lastError = null,
+                listeningSinceMillis = System.currentTimeMillis(),
+                // A fresh listen is a fresh wait: a refusal from the previous session is not an
+                // explanation for this one's silence.
+                lastRefusal = null,
+            )
+        }
         LinkLog.i(
             "server",
             "Listening on ${Link.PORT_CONTROL}/${Link.PORT_VIDEO}/${Link.PORT_BULK}, " +
@@ -278,10 +312,38 @@ class LinkServer(
                 val fingerprint = try {
                     LinkTls.handshake(socket)
                 } catch (e: Exception) {
-                    LinkLog.w("server", "Refused ${socket.inetAddress?.hostAddress}", e)
+                    val address = socket.inetAddress?.hostAddress
+                    // F5: the refusal reaches the screen as well as the log. The fingerprint is
+                    // read from the socket rather than from the exception — the peer presented a
+                    // certificate, it simply was not one we trust, and naming the key is what lets
+                    // a user tell "a stranger on the network" from "my Mac, reinstalled".
+                    val prefix = runCatching {
+                        DeviceIdentity.fingerprintOf(
+                            socket.session.peerCertificates.first() as java.security.cert.X509Certificate,
+                        ).take(23)
+                    }.getOrNull()
+                    LinkLog.w(
+                        "server",
+                        "Refused $address" + (prefix?.let { ", key $it…" } ?: ", no usable certificate") +
+                            " — ${refusedCount.incrementAndGet()} refused / " +
+                            "${acceptedCount.get()} accepted since start",
+                        e,
+                    )
+                    if (prefix != null) {
+                        _state.update {
+                            it.copy(
+                                lastRefusal = RefusedConnection(
+                                    fingerprintPrefix = prefix,
+                                    address = address,
+                                    atMillis = System.currentTimeMillis(),
+                                ),
+                            )
+                        }
+                    }
                     runCatching { socket.close() }
                     return@launch
                 }
+                acceptedCount.incrementAndGet()
                 socket.tcpNoDelay = true
                 socket.keepAlive = true
                 val session = ControlSession(socket, fingerprint, this@LinkServer)
