@@ -32,5 +32,11 @@
             android:exported="true"
             android:label="Fs probe"
             android:theme="@style/Theme.ConnectSuite" />
+
+        <activity
+            android:name="com.chetan.connectsuite.probe.AppsProbeActivity"
+            android:exported="true"
+            android:label="Fs probe"
+            android:theme="@style/Theme.ConnectSuite" />
     </application>
 </manifest>

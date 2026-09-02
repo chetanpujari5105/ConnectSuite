@@ -62,35 +62,33 @@ interface ShellStatus {
 /** live / working / down / idle — the four the dots, chips and island all read. */
 type LinkTone = 'live' | 'working' | 'down' | 'idle';
 
+/**
+ * The tone rules, reached the one way that works in both places this file runs: in the browser
+ * `shared/linkTone.js` is a plain <script> loaded before this one, so its declarations are already
+ * on `globalThis`; under `node --test` there is no script tag, so it is `require`d. Same file
+ * either way — an indirection, not a second implementation.
+ */
+const toneRules = (
+  typeof module !== 'undefined'
+    ? require('../shared/linkTone')
+    : (globalThis as unknown as Record<string, unknown>)
+) as {
+  linkTone: (p: string | undefined, h: { kind: string } | undefined, l: boolean, e: string | undefined) => LinkTone;
+  linkToneLabel: (p: string | undefined, h: { kind: string } | undefined, l: boolean) => string;
+};
+
 function toneOf(status: ShellStatus | null): LinkTone {
   if (!status) return 'idle';
-  if (status.phase === 'connected') return 'live';
-  if (status.phase === 'searching' || status.phase === 'connecting' || status.phase === 'handshaking') {
-    return 'working';
-  }
-  if (status.phase === 'reconnecting') return 'working';
-  // Three states, not two. A stored pairing the phone has repudiated is not paired — drawing it
-  // as "Reconnecting" promises that waiting will work, and it never will.
-  if (status.pairing ? status.pairing.kind !== 'paired' : !status.paired) return 'idle';
-  return status.lastError ? 'down' : 'idle';
+  // Delegates. The precedence — repudiation outranks the transport phase, a live session outranks
+  // everything — has one home in src/shared/linkHealth.ts where a test can reach it. It was
+  // written out here once and got wrong: the phase switch ran first, so a repudiated pairing drew
+  // "Reconnecting" forever, which is the exact sentence the state exists to replace.
+  return toneRules.linkTone(status.phase, status.pairing, status.paired, status.lastError);
 }
 
 function toneLabel(status: ShellStatus | null): string {
   if (!status) return 'Starting…';
-  switch (status.phase) {
-    case 'connected':
-      return 'Connected';
-    case 'searching':
-      return 'Looking for phone';
-    case 'connecting':
-    case 'handshaking':
-      return 'Connecting';
-    case 'reconnecting':
-      return 'Reconnecting';
-    default:
-      if (status.pairing?.kind === 'repudiated') return 'Pairing was removed on the phone';
-      return status.paired ? 'Disconnected' : 'Not paired';
-  }
+  return toneRules.linkToneLabel(status.phase, status.pairing, status.paired);
 }
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;

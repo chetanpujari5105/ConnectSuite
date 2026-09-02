@@ -284,6 +284,32 @@ class LinkServer(
         runCatching { pairIntentSink?.invoke(payload.peerId) }
     }
 
+    /**
+     * Forget a peer **and end any session it is currently holding**.
+     *
+     * `trustStore.forget` alone deletes the row and reloads the cache, and does nothing about the
+     * connection that trust already authorised. Measured on hardware 2026-09-03: after a `Forget`
+     * tap the control session stayed `ESTABLISHED` for over a minute, with the Mac still able to
+     * read notifications, texts, files and the clipboard. The refusal only takes effect on the
+     * *next* handshake, which may be never while the link stays up.
+     *
+     * Revoking access has to revoke the access, so this is the entry point the UI calls and
+     * `TrustStore.forget` becomes the storage half of it rather than the whole operation.
+     */
+    suspend fun forgetAndDisconnect(deviceId: String) {
+        trustStore.forget(deviceId)
+        val target = PairingQrPayload.normalizeFingerprint(deviceId)
+        val dropped = liveSessions.keys.filter {
+            PairingQrPayload.normalizeFingerprint(it.peerFingerprint) == target
+        }
+        dropped.forEach { it.close("pairing removed on this phone") }
+        LinkLog.i(
+            "trust",
+            "Forgot ${deviceId.take(16)}… and closed ${dropped.size} live session(s) — " +
+                "${liveSessions.size - dropped.size} other session(s) left alone",
+        )
+    }
+
     /** Clears the advertised intent once the pairing is resolved, either way. */
     private fun clearPairIntent() {
         runCatching { pairIntentSink?.invoke(null) }

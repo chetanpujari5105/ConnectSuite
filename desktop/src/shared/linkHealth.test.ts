@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   classifyLinkError,
+  linkTone,
+  linkToneLabel,
   needsPairing,
   pairingHealth,
   pairingLabel,
@@ -141,4 +143,35 @@ test('the sidebar and the pairing screen cannot disagree', () => {
       `label ${JSON.stringify(label)} disagrees with needsPairing=${routes}`,
     );
   }
+});
+
+// ---- precedence: repudiation outranks the transport phase --------------------------------------
+
+test('a repudiated pairing never renders as Reconnecting, in any phase', () => {
+  // The defect this file was supposed to prevent and did not, because the renderer switched on
+  // phase first and only its default branch had been patched. Every phase, one assertion.
+  const h = { kind: 'repudiated', sinceMillis: 0 } as const;
+  for (const phase of ['searching', 'connecting', 'handshaking', 'reconnecting', 'idle', undefined]) {
+    assert.equal(
+      linkToneLabel(phase, h, true),
+      'Pairing was removed on the phone',
+      `phase ${phase} leaked through and hid the repudiation`,
+    );
+    assert.equal(linkTone(phase, h, true, 'x'), 'down', `phase ${phase} drew a hopeful tone`);
+  }
+});
+
+test('a live session still outranks everything', () => {
+  // The one exception: if we are actually connected, we are connected. A stale repudiation must
+  // not paint a working link as broken.
+  const h = { kind: 'repudiated', sinceMillis: 0 } as const;
+  assert.equal(linkToneLabel('connected', h, true), 'Connected');
+  assert.equal(linkTone('connected', h, true, undefined), 'live');
+});
+
+test('an ordinary reconnect is still Reconnecting', () => {
+  // The control for the two above: if repudiation swallowed every phase, these would break.
+  const h = { kind: 'paired' } as const;
+  assert.equal(linkToneLabel('reconnecting', h, true), 'Reconnecting');
+  assert.equal(linkTone('reconnecting', h, true, 'x'), 'working');
 });

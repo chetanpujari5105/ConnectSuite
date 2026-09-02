@@ -88,6 +88,8 @@ own heading there, and its own row here.
 | **72** | **A raw BoringSSL error was rendered in the Mac's status bar.** `link.ts` assigned `this.lastError = error.message` and that reached the UI: *"1288490715584:error:10000416:SSL routines:OPENSSL_internal:SSLV3_ALERT_CERTIFICATE_UNKNOWN:../../third_party/boringssl/src/ssl/tls_record.cc:489:SSL alert number 46"* — a vendored library's file path and line number, on the first screen a new user meets, 47 times in one outage | **closed** 2026-09-02 | `classifyLinkError` in `src/shared/`, keyed on the **alert number** (46 = `certificate_unknown`) rather than BoringSSL's spelling, because the number is the wire's own value and the surrounding text changes with every Electron bump. `lastErrorRaw` keeps the original for the log and the debug HUD. 12 tests, red under 5 mutations; one test asserts no message contains a path, a line number or any BoringSSL token | see below |
 | **73** | **Trust is two stores and either side can drop it alone; the Mac had no state for "the phone forgot me".** After a `Forget` tap on the phone, the Mac keeps its own entry, keeps showing the phone's name, and retries **forever** against a device that will refuse every attempt. It was drawn as *"Reconnecting…"*, which promises that waiting will work | **closed** 2026-09-02 | `PairingHealth` is three states — `unpaired`, `paired`, `repudiated`. Measured, not hypothesised: 47 alerts in one outage, with `[trust] Forgot 3030c8eb…` on the phone at the moment it began. **No wire message is possible for the failing case** — the handshake fails, so there is no channel; the TLS alert is the signal and it is sufficient | see below |
 | **74** | **The sidebar and the pairing screen disagreed about whether a phone was paired.** *"Samsung SM-S938B · Reconnecting"* in the sidebar while the pairing screen asked for a scan. The sidebar read the remembered device name, the router read `paired`, and nothing reconciled them — defect 27's shape on the first screen a stranger sees | **closed** 2026-09-02 | Both now read `PairingHealth`. A property test asserts the two cannot disagree for any state: `needsPairing(h)` is true exactly when `pairingLabel(h) !== 'Paired'`, over every reachable state | see below |
+| **75** | **Revoking trust did not revoke access.** `TrustStore.forget` deletes the row and reloads the cache, and does nothing to the session that trust already authorised. Measured on hardware 2026-09-03: after a `Forget` tap the control session stayed `ESTABLISHED` for over a minute, with the Mac still reading notifications, texts, files and the clipboard. The refusal only bites on the *next* handshake, which may never come while the link stays up | **fixed** 2026-09-03, **not yet re-measured on hardware** | Found by doing the thing rather than reasoning about it: tapped `Forget` to demonstrate the repudiated state, and `scripts/link-up.sh` still reported `1 control session(s) ESTABLISHED`. `LinkServer.forgetAndDisconnect` now forgets **and** closes matching live sessions, logging how many it closed beside how many it left alone | see below |
+| **76** | **The repudiated state could not render, because the renderer restated the rule and only one branch was patched.** `shell.ts`'s `toneOf`/`toneLabel` switch on the transport **phase** first, so a repudiated pairing reconnecting forever drew *"Reconnecting"* — the exact sentence the fourth state exists to replace. The shared model was correct and 5 mutations were green over it | **closed** 2026-09-03 | **The unit tests could not see it and a screenshot could.** The precedence now lives in `shared/linkTone.ts` — script-safe in the `appLabel.ts` style so the renderer loads the *same file* rather than a copy — and a test asserts a repudiated pairing never renders as `Reconnecting` in **any** phase, with `connected` still outranking it | see below |
 
 ---
 
@@ -1649,3 +1651,80 @@ A state where the sidebar names a phone while the shell demands pairing is unrep
 **Wrong fix to avoid** for all three: showing the raw error "just in the debug HUD *and* the status
 bar". The raw text has one home — `lastErrorRaw`, the log and the HUD — and prose has another. Five
 mutations cover these, including the original bug re-introduced verbatim.
+
+---
+
+### 75 — revoking trust did not revoke access · **fixed** 2026-09-03
+
+`TrustStore.forget(peerId)` deletes the Room row and reloads the in-memory cache. Nothing else
+happens. `LinkServer.liveSessions` is untouched, so **the connection that trust authorised keeps
+running**.
+
+Measured, on hardware, while demonstrating something else:
+
+```
+00:02:32  I [trust] Forgot 3030c8ebcddcd0fb7ec2118e171ea70acc19b3971a7c63bd6d2b31cc1da5826c
+00:03:3x  $ scripts/link-up.sh
+          OK  3. 1 control session(s) ESTABLISHED on 42501 under uid 11011
+```
+
+Over a minute after the revoke, with full access to notifications, SMS, call log, contacts, files
+and clipboard. The refusal takes effect on the **next** handshake, and while the link stays up there
+may not be one — the Mac only reconnected because the app was restarted.
+
+**This is a security defect and it reads like a UI defect**, which is why it survived. The Mac tab's
+`Forget` button looks like a list operation; the row disappears, the UI is correct, and the sentence
+*"an unpaired device is refused without asking you anything"* stays true about future connections
+while being silent about the present one.
+
+`LinkServer.forgetAndDisconnect` is the entry point now: it forgets **and** closes every live
+session whose fingerprint matches, and `TrustStore.forget` becomes the storage half rather than the
+whole operation. The log line carries both numbers — sessions closed *and* sessions left alone —
+because "closed 1" says nothing about whether it closed the right one on a phone with two Macs.
+
+**Wrong fix to avoid:** closing all sessions on any forget. A second paired Mac is not party to this
+and must not be dropped; that is why the match is on the fingerprint rather than on the count.
+
+**Still owed:** a hardware re-measurement. The fix compiles and is installed, and the sequence
+*Forget → session closes → link-up reports 0 sessions* has not been run.
+
+---
+
+### 76 — the fourth state could not render, and only a screenshot could tell · **closed** 2026-09-03
+
+`PairingHealth` was correct. `classifyLinkError` was correct. Twelve tests and five red mutations
+covered them. And the state **never appeared on screen**, because `shell.ts` kept its own expression
+of the rule:
+
+```ts
+switch (status.phase) {
+  case 'reconnecting': return 'Reconnecting';      // ← wins, always
+  default:
+    if (status.pairing?.kind === 'repudiated') …   // ← the patch went here
+}
+```
+
+A repudiated pairing is *always* in a retry phase, so the branch that was patched was the one branch
+that could never run. The probe read `{"state":"Reconnecting"}` on a phone that had already forgotten
+the Mac.
+
+**This is `showsState` for the third time in this project**, and the third time the same shape: a
+correct shared model, a renderer carrying a second copy of the decision, and a fix applied to the
+copy's wrong half. The count matters — it is now the most repeated defect in this repository, and
+each occurrence was found by eye rather than by any check.
+
+The fix is structural rather than another patch: the precedence moved to `shared/linkTone.ts`,
+written in the `appLabel.ts` style — no top-level `export`, declarations on `globalThis`, plus
+`module.exports` — so the renderer loads **the same file** as the tests rather than a copy. That is
+defect 46's rule, and it is the only arrangement in which the renderer and `node --test` can be
+proven to agree.
+
+The test that would have caught it asserts the property rather than a case: *a repudiated pairing
+never renders as `Reconnecting`, **in any phase*** — six phases, one loop — with `connected` still
+outranking it, because a live session is not a hypothesis.
+
+**And the general lesson, which is the one worth carrying:** the shared model being right is not the
+feature working. Between the model and the pixel there is a renderer, and this project has now been
+bitten there three times while its unit suite was green. **A state that has never been seen on a
+screen is unproven, whatever the tests say** — which is exactly what the user said when asking to
+watch this one be drawn rather than take five mutations on it.

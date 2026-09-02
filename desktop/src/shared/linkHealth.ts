@@ -173,23 +173,23 @@ export function pairingHealth(
 }
 
 /**
- * What the sidebar's device row should say, so it cannot contradict the pairing screen.
- *
- * A repudiated pairing is **not** "Reconnecting". Reconnecting promises that waiting will work, and
- * here it never will — the phone will refuse every attempt until somebody scans a code.
+ * Pairing copy and the tone precedence live in `./linkTone`, which is script-safe so the renderer
+ * can load it as a plain `<script>`. Re-exported here so callers have one import, and **required
+ * rather than duplicated** — the renderer and the tests must run the same code, which is defect
+ * 46's rule.
  */
-export function pairingLabel(health: PairingHealth): string {
-  switch (health.kind) {
-    case 'unpaired':
-      return 'No phone paired';
-    case 'repudiated':
-      return 'Pairing was removed on the phone';
-    case 'paired':
-      return 'Paired';
-  }
-}
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const tone = require('./linkTone') as {
+  pairingLabel: (h: PairingHealth | undefined) => string;
+  needsPairing: (h: PairingHealth | undefined) => boolean;
+  linkTone: (p: string | undefined, h: PairingHealth | undefined, l: boolean, e: string | undefined) => LinkTone;
+  linkToneLabel: (p: string | undefined, h: PairingHealth | undefined, l: boolean) => string;
+};
 
-/** Whether the shell must force the pairing route. True for both states that need a scan. */
-export function needsPairing(health: PairingHealth): boolean {
-  return health.kind !== 'paired';
-}
+/** The four tones the dots, chips and island all read. */
+export type LinkTone = 'live' | 'working' | 'down' | 'idle';
+
+export const pairingLabel = tone.pairingLabel;
+export const needsPairing = tone.needsPairing;
+export const linkTone = tone.linkTone;
+export const linkToneLabel = tone.linkToneLabel;

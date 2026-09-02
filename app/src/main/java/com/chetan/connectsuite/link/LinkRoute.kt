@@ -186,7 +186,9 @@ fun LinkRoute() {
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             OutlinedButton(onClick = {
-                                scope.launch { server.trustStore.forget(mac.deviceId) }
+                                // Not `trustStore.forget` — that revokes the row and leaves the
+                                // session it authorised running. See LinkServer.forgetAndDisconnect.
+                                scope.launch { server.forgetAndDisconnect(mac.deviceId) }
                             }) { Text("Forget") }
                         }
                     }
