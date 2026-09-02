@@ -12403,3 +12403,74 @@ hardware reading of a different branch of the same `when`.
 That is the same distinction this file has now made three times in two days: the code is proven, the
 **state** is not, and a card that renders correctly for `Connected` is not evidence that
 `Refused` renders at all.
+
+---
+
+## Phase 9 · Slice 2 — what a stranger actually hits, measured · 2026-09-02
+
+Asked: *what is left before someone who isn't me can install this and pair a phone?* Answered by
+running the checks rather than reasoning from the audit, which turned up two blocks nobody had
+recorded.
+
+### 1. The Mac: Gatekeeper returns an error, not a verdict
+
+```
+$ codesign -dv ConnectSuite.app
+Identifier=Electron                          ← electron-builder's default, not com.chetan.connectsuite.desktop
+CodeDirectory … flags=0x20002(adhoc,linker-signed)
+Signature=adhoc
+Info.plist=not bound
+
+$ spctl -a -vvv -t exec ConnectSuite.app
+ConnectSuite.app: code has no resources but signature indicates they must be present
+```
+
+**Two controls, both clean**, which is what makes the third line a reading:
+
+```
+/System/Applications/Calculator.app: accepted    source=Apple System
+/Applications/Google Chrome.app:     accepted    source=Notarized Developer ID
+```
+
+And a **wrong control caught first**: the initial check used `spctl -t install`, under which
+Calculator is *also* `rejected` — the assessment type is for installer packages, so ConnectSuite's
+answer under it was uninterpretable. The control failing is what said so. `-t exec` is the type for
+an application bundle, and under it the controls pass and ours errors.
+
+**Quarantine makes no difference**, which was the specific thing worth testing: a copy carrying
+`com.apple.quarantine: 0081;…;Safari;` — the attribute a real download gets — returns the identical
+error. So the existing note that the `.dmg` *"launches from `/Applications`"* is true and narrow: it
+was measured on a locally built copy that never had quarantine, and says nothing about a downloaded
+one.
+
+**Why this is worse than unsigned**, and the reason it is D12 rather than a footnote on D3: an
+*unidentified developer* app gets the right-click → Open bypass and a "cancel / open anyway" dialog.
+A **broken** signature does not — the user is told the app is damaged and should be moved to the
+Trash, and the only way through is `xattr -cr`, which is not something to put in a README for
+non-technical users.
+
+### 2. The phone: the release APK is refused by the platform
+
+Not policy, not Play Store — the installer:
+
+```
+$ adb install app-release-unsigned.apk
+Failure [INSTALL_PARSE_FAILED_NO_CERTIFICATES: Failed to collect certificates …]
+```
+
+`keystore.properties` is absent by design and `.gitignore`d, so the release build assembles unsigned
+rather than silently falling back to the debug key. That is the correct behaviour — a debug-signed
+APK shipped to users would be far worse — and it is also an absolute block. **The 25 MB release APK
+in the audit has never been installed by anything, and cannot be.**
+
+### 3. What this changes about the audit
+
+D3 was closed on 2026-09-02 as *"an unsigned `.dmg` that launches from `/Applications`"*. That
+sentence is accurate about the artifact and was read as *"the Mac app can be handed to someone"*.
+It cannot be. The two rows added here — D12 and D13 — are the measurements that separate *"an
+artifact exists"* from *"an artifact installs"*, and both were one command away for a week.
+
+The general form is the one this file keeps arriving at from different directions: **a build
+succeeding is not a build working, and the check for the second one is to try the thing the user
+will do.** Building a `.dmg` and opening it locally exercises neither the signature nor quarantine —
+the two mechanisms that exist specifically to treat a downloaded file differently from a local one.
