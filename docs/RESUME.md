@@ -1,10 +1,44 @@
-# Resume here — Phase 5 opening brief, written 2026-08-31
+# Resume here — written 2026-09-02, after an unattended overnight run
 
-> **Where work resumes, 2026-09-02: Phase 5 is closed and Phase 6 is open with a brief and no code.**
-> Read `docs/phase-6-brief.md` §0 first — this handset is **already battery-optimisation exempt**, so
-> the obvious first experiment measures the exempt path and reports it as the general one. The first
-> Phase 6 defect is already found and needs no device: `RECEIVE_BOOT_COMPLETED` is declared and
-> nothing receives it.
+> **Where work resumes.** Phase 6 has code and hardware readings; Phase 7 has three of its four
+> items landed and one proposed; Phase 9 has an audit, a `.dmg` and a version scheme. **Nothing is
+> half-applied** — every item below is either committed and proven, or written down as a proposal
+> with nothing built.
+>
+> **The three things waiting on your hands, in the order they are worth doing:**
+>
+> 1. **A reboot.** It is the only stimulus that proves the boot half of defect 60. `BOOT_COMPLETED`
+>    is a protected broadcast, `adb root` is refused on this production build, and `am broadcast`
+>    is denied at uid 2000 — so a laptop cannot produce it. Pass criterion: a `[boot] BOOT:` line in
+>    `files/logs/link.log` and `scripts/link-up.sh` returning three OKs with nothing tapped.
+> 2. **Read `docs/phase-7-pairing-flow.md`.** It is the one item you asked to have proposed rather
+>    than built, and five of its seven pieces need no protocol change. F1 — a fifth onboarding page
+>    that ends on pairing — is the single largest improvement in it.
+> 3. **Two permissions, one sentence each:** may a key event be sent to the phone (P4's forced
+>    version), and is the unexempt battery path in scope at all (H1). §P6 is *not* the cheap
+>    approximation the brief said it was — `am set-standby-bucket <pkg> 5` is refused, so the shell
+>    can move the bucket out of EXEMPTED and has no command that puts it back.
+
+## What landed, 2026-09-02
+
+| | |
+|---|---|
+| **Defect 60** | `LinkBootReceiver` — `BOOT_COMPLETED`, `QUICKBOOT_POWERON`, `MY_PACKAGE_REPLACED`. The reinstall half is proven on hardware; the boot half is item 1 above |
+| **Defect 61** | The wake lock is refreshed on a timer rather than repaired after a lapse. Corrected twice in one day — see the record, the second version is the one that matters |
+| **Defect 62** | A crash left the phone alive, granted and serverless. Reproduced and fixed in one run |
+| **Defect 63** | *New, open, needs no device:* the onboarding security note describes a pairing flow this app does not have |
+| **Phase 6** | Forced Doze passed on the exempt path; `am crash` shown to be an unreliable stimulus; P4 answered by an overnight watcher instead of a key event |
+| **Phase 7** | The Activity pane built (the tenth of eleven screens); deep links so the palette can find the media remote and contacts; FilesView and RemoteView off the renderer-view debt list |
+| **Phase 9** | The distribution audit, an unsigned `.dmg` that launches from `/Applications`, a 25 MB release APK, and one version scheme with a commit hook |
+
+**Two of the audit's own rows were wrong and are corrected in place rather than deleted** — D5
+overstated a risk that a measurement did not support, and D8 called an anonymised placeholder set a
+real phone number. Both corrections are in `docs/phase-9-distribution-audit.md` with the reading
+that settled them.
+
+---
+
+## Older, and still true
 
 **Phase 4 is closed.** Step 70 (the ring) and step 71 (the SMS sitting) both passed on hardware.
 Nothing in Phase 4 is waiting on a device, a second person, or a booking. The previous contents of

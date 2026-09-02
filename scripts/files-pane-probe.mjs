@@ -68,6 +68,29 @@ const ROWS = `__probe.count('#files-table .files-row:not(.files-row--head)')`;
  * snapshot rebuild once the sliding TTL has lapsed.
  */
 async function openCameraIfNeeded() {
+  /*
+   * Wait for the rail before clicking into it.
+   *
+   * On a cold start the pane's first `fs.list` is still in flight when this runs, `#files-roots` is
+   * empty, and the `find` below returns `undefined` — so nothing is clicked and the `expect` then
+   * polls for twenty seconds for a navigation that was never started. The probe now says so out
+   * loud instead of producing a reading, which is the improvement; this is the other half, which is
+   * not needing to.
+   *
+   * A stimulus applied to a surface that has not been drawn yet is not a stimulus.
+   */
+  const railReady = await probe.read({
+    question: 'root buttons in the rail, before anything is clicked',
+    read: `__probe.count('#files-roots [role="option"], #files-roots button')`,
+    control: PANE_VISIBLE,
+    settle: { until: (n) => n > 0, within: 20000 },
+  });
+  if (!railReady.reportable || !railReady.value) {
+    console.log('  FAIL  the roots rail never populated — nothing below is a reading');
+    failures += 1;
+    return false;
+  }
+
   const where = await probe.read({
     question: 'which folder is the pane showing?',
     read: `(document.querySelector('#files-crumbs')?.textContent || '').trim()`,
@@ -75,21 +98,68 @@ async function openCameraIfNeeded() {
   });
   if (String(where.value).includes('Camera')) return true;
 
-  await probe.act({
+  /*
+   * `expect` names the destination, not a row count.
+   *
+   * It used to be `count('.files-row') > 0`, which is **already true before the click** whenever the
+   * pane is showing any non-empty folder. The act then "landed" instantly, the DCIM listing was
+   * still in flight, and the next step looked for a `Camera` row among the *previous* folder's rows,
+   * found none, and reported `Camera lists its first page → 1`.
+   *
+   * That is the probe failing to verify its own stimulus — the rule this repo already carries about
+   * KEYCODE_BACK in DocumentsUI, where an absent log line was read as a branch that did not run when
+   * the action had simply not happened. It went unnoticed for a day because `openCameraIfNeeded`
+   * early-returns when the pane is *already* in Camera, which it was on every run that followed
+   * another run. A cold start is what exposed it, and a cold start is what a stranger has.
+   */
+  const selected = await probe.act({
     what: 'select the DCIM root',
     run: `(() => { const r=[...document.querySelectorAll('#files-roots [role="option"], #files-roots button')]
       .find(x => (x.textContent||'').toUpperCase().includes('DCIM')); if (r) r.click(); return !!r; })()`,
-    expect: `__probe.count('#files-table .files-row:not(.files-row--head)') > 0`,
-    within: 15000,
+    /*
+     * Both halves: the crumb **and** a drawn listing.
+     *
+     * The crumb updates the moment the root is selected, before `fs.list` has answered — so an
+     * `expect` on the crumb alone lands on an empty table, and the `Camera` row the next step looks
+     * for does not exist yet. That produced exactly one failure per cold start and none afterwards.
+     *
+     * This is the settle-before-stimulus rule twice in one function: wait for the rail before
+     * clicking a root, and wait for the listing before clicking a row.
+     */
+    expect: `((document.querySelector('#files-crumbs')?.textContent||'').trim().startsWith('DCIM')
+      && __probe.count('#files-table .files-row:not(.files-row--head)') > 1)`,
+    within: 45000,
   });
+  if (!selected.landed) {
+    console.log('  FAIL  could not select the DCIM root — nothing below is a reading');
+    failures += 1;
+    return false;
+  }
+  // And the same for the folder: the row must exist *in this listing* before it can be opened.
   const opened = await probe.act({
     what: 'open Camera',
     run: `(() => { const row=[...document.querySelectorAll('#files-table .files-row:not(.files-row--head)')]
       .find(x => (x.querySelector('.files-cell-name')?.textContent||'').replace(/[^A-Za-z0-9 ]/g,'').trim()==='Camera');
       if (row) row.dispatchEvent(new MouseEvent('dblclick',{bubbles:true})); return !!row; })()`,
     expect: `(document.querySelector('#files-crumbs')?.textContent||'').includes('Camera')`,
-    within: 10000,
+    /*
+     * 45 s, and the number comes from the product rather than from taste.
+     *
+     * This section's own heading records the measurement: a cold `DCIM/Camera` costs a **16,981 ms**
+     * snapshot rebuild (defect 55's fix — the per-directory snapshot held for a run) before the
+     * first page is listed at all. A 20 s bound is that plus three seconds, so the first navigation
+     * of a cold app fails and every later one passes, which is the worst possible shape for a
+     * check: green whenever it has been run before.
+     *
+     * A bound the instrument imposes has to appear in what it reports, and this one now has room
+     * for the thing it is bounding.
+     */
+    within: 45000,
   });
+  if (!opened.landed) {
+    console.log('  FAIL  could not open DCIM/Camera — nothing below is a reading');
+    failures += 1;
+  }
   return opened.landed;
 }
 

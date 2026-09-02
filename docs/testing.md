@@ -11984,3 +11984,76 @@ no duplicate. It is recorded as *observed to be harmless* rather than *designed 
 thing making it safe is the platform's serialisation and not this code.
 
 `link-up.sh`: three OKs. Grants diffed **identical** to the previous snapshot.
+
+---
+
+## Phase 7 · Slice 5 — the Files probe was failing, and the product was fine · 2026-09-02
+
+The final verification run reported `files-pane-probe.mjs` → **4 CHECK(S) FAILED**, with
+`Camera lists its first page → 1` where an earlier run the same morning had read `200 → 400`. That
+looks exactly like a regression from the day's renderer work.
+
+**It was not. Every one of the four was the instrument.**
+
+### 1. Establishing that first, before touching anything
+
+The pane's own state, read out of the live view object rather than inferred from the DOM:
+
+```
+fetch: {"kind":"ready", roots:[5 roots …]}   advertised: true   selectedRoot: saf:primary%3ADocuments
+entries: 1        inFlight: false            unavailableReason: null
+```
+
+and the DOM agreeing with it: `#files-roots` with **5** children, `#files-state` hidden,
+`files.rail === document.getElementById('files-roots')`. The Mac's own log had
+`fs.list roots → 5 root(s)` and `fs.list saf:primary%3ADocuments/ → 1 entries` — Documents genuinely
+holds one file. **The `1` the probe reported was Documents' single entry**, read while the probe
+believed it was in `DCIM/Camera`.
+
+**One of my own readings on the way there was wrong and is worth recording**: a first pass scoped
+`.files-root-name` to `section[data-screen="files"]` and got zero, which looked like a pane drawing
+nothing. The rail is not inside that section. That is the third time in this repo a query has been
+scoped to a container that does not hold its target, and the fix is the same each time — narrow to
+the element, then assert the element is what you think it is.
+
+### 2. Three faults in one function, all the same rule
+
+`openCameraIfNeeded()` puts the pane in `DCIM/Camera`. It early-returns when the pane is *already*
+there — which it was on every run that followed another run, so all three faults were invisible
+except from a cold start. **A cold start is what a stranger has.**
+
+| | The fault | The rule it breaks |
+|---|---|---|
+| 1 | *Select the DCIM root* waited for `count('.files-row') > 0` — **already true** on any non-empty folder. The act "landed" instantly, the DCIM listing was still in flight, and the next step searched the *previous* folder's rows | The instrument must verify its stimulus took effect. Same as `KEYCODE_BACK` in DocumentsUI, where an absent log line was read as a branch that did not run when the action had simply not happened |
+| 2 | It clicked into `#files-roots` before the rail had populated, so `find` returned `undefined`, nothing was clicked, and the `expect` then polled for a navigation that was never started | A stimulus applied to a surface that has not been drawn is not a stimulus |
+| 3 | Waiting on the crumb alone — the crumb updates when the root is *selected*, before `fs.list` answers — so the `Camera` row was looked for in an empty table | Same rule, one layer down: wait for the listing before clicking a row |
+
+Plus a bound that was simply too small: `within: 20000` against this section's own recorded
+**16,981 ms** cold snapshot rebuild. Twenty seconds is that plus three, which is the worst shape a
+check can have — green whenever it has been run before.
+
+### 3. What it does now
+
+It **says so**. Each navigation step reports `could not select the DCIM root — nothing below is a
+reading` / `could not open DCIM/Camera` and counts a failure, instead of proceeding to measure the
+wrong folder. That is the whole improvement: the intermediate versions still failed, and each one
+failed *legibly*, which is how the three faults came out one at a time.
+
+```
+COLD-START exit: 0
+=== ALL CHECKS PASSED — 10 readings, 0 not reportable ===      12 PASS lines
+```
+
+One run, freshly launched app, no warm-up.
+
+### 4. The thing to take from it
+
+`CLAUDE.md` already carries *"every bound the instrument imposes must appear in what it reports"*.
+This adds the neighbouring one: **an `expect` that is already satisfied before the stimulus is not
+a bound at all — it is an assertion that time passes.** The tell is that it never fails, and the
+second tell is an early-return that makes the whole path unreachable on any run but the first.
+
+It also cost a real scare — four failures that read as a renderer regression on the morning after a
+night of renderer changes, at the exact moment when believing them would have been most reasonable.
+The thing that settled it in ten minutes was reading the view's own state and the Mac's log before
+touching the code.
