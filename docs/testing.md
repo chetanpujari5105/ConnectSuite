@@ -11490,3 +11490,137 @@ so a ninth tile for a card on the same screen makes that count either wrong or m
 whether Quick actions means *the eight screens* or *the things you do most* is the designer's call.
 
 **Suite:** 261 tests, 0 failures (was 255). `tsc` clean, build exit 0, relaunched and re-read at 9222.
+
+---
+
+## Phase 7 · Slice 3 — two off the renderer-view debt list, and a fault in the harness itself · 2026-09-02
+
+`scripts/check-renderer-views.mjs` listed nine view classes drawn by nobody's test, with
+**FilesView first — the reason the file exists.** Two came off in this sitting, and neither removal
+was voluntary: the checker refused both commits on the branch that fails an entry which is *"now
+driven by a test but is still on the debt list"*. That is the half of a guard people usually forget
+to write, and it pruned itself twice in one afternoon.
+
+### 1. FilesView — the wall that broke twice, asserted over the whole state space
+
+`filesView.test.ts` mounts the real class against the DOM double and reads the two elements the
+pane writes to — never `downloadWallHome`, because asking the rule where it put the wall is asking
+the thing under test to describe itself.
+
+**A measurement came before the assertion, and it changed what the assertion says.** Evaluating
+`filesPaneView` over all five inputs:
+
+```
+unavailable        id=M5 shared=0 home=state-card bodyMentionsDownload=false
+ready 0 roots      id=M2 shared=0 home=state-card bodyMentionsDownload=true
+ready 2 grant-free id=M2 shared=0 home=state-card bodyMentionsDownload=true
+ready with a tree  id=M3 shared=1 home=rail-line  bodyMentionsDownload=true
+failed             id=M4 shared=0 home=state-card bodyMentionsDownload=false
+```
+
+`wallHomeVisibility` answers `stateCard: true` for M4 and M5 — and those two cards carry **no wall
+copy at all**, so the wall is on screen **zero** times there. That is correct behaviour: when the
+pane could not load, or the phone is not offering Files, the user's problem is the failure and not a
+note about which folder Android refuses to share.
+
+But it means **`wallHomeVisibility` is a claim about which container the wall would live in, not a
+claim that a wall is drawn** — and reading it as the second is how somebody concludes the wall is
+covered in five states when it appears in three. The test asserts `expectWall: false` for those two
+as firmly as `true` for the other three, so a change that starts drawing the wall over a failed
+fetch is caught in the other direction too. It carries its own control: a detector that always
+returned false would pass both `false` rows.
+
+**Five mutations, all red, including both historical breaks:**
+
+| Mutation | Result |
+|---|---|
+| the slice-9 break: `roots.length` instead of `sharedFolderCount` | `pass 38 / fail 1` |
+| the slice-7 break: both wall homes true | `pass 35 / fail 4` |
+| the wall drawn over a failed fetch | `pass 38 / fail 1` |
+| the in-flight join removed (the race that produced the empty table) | `pass 38 / fail 1` |
+| the drop tile shown regardless of what the phone said about `push` | `pass 38 / fail 1` |
+| restored | `tests 39 / pass 39 / fail 0` |
+
+**The first row is the point of the whole exercise.** `CLAUDE.md` records that when the slice-9
+break happened, *"four tests went red on the mutation and none of them touches the thing that
+broke"* — they were all in `filesRoots.test.ts`, over the rule, and `showsState` lived in the
+renderer where no test reached. That mutation now goes red in a renderer test.
+
+### 2. RemoteView — taken next, because slice 2 had just made it findable
+
+It would have been odd to point people at a pane no test drives. `remoteView.test.ts`, 16 tests
+against the two rules its file comment names with step numbers:
+
+- **Step 66 — nothing playing is a normal state, not a failure.** Asserted twice: the sentence is
+  drawn and no transport is, and the card carries no `error`/`warning`/`destructive`/`danger` class.
+  A remote that reported an idle phone as a fault would cry wolf every time somebody stopped their
+  music.
+- **Step 65 — a button is drawn only where the player says it works.** Disabled *with the reason on
+  it*, and the reason in a `visually-hidden` span as well as the tooltip, which is defect 26: a
+  tooltip tells a sighted mouse user why and tells everybody else nothing.
+
+Plus defect 46 (a package id is never the whole sentence a person reads), the volume reading
+carrying its maximum, both refusal paths raising a notice, and the position extrapolation — a paused
+track that does not creep, a playing one that does, and neither running past the end.
+
+**Six mutations, all red:** an idle remote styled as an error, skip buttons live regardless of the
+session, the reason only in the tooltip, paused tracks creeping forward, the volume printed without
+its maximum, and a refusal swallowed.
+
+### 3. The harness had a fault, and `tsc` could not see it
+
+Extending `domDouble.testkit.ts` for the Activity pane, a field declaration — `private ownText = ''`
+— was **deleted by accident**. `npm run typecheck` stayed clean and 255 tests stayed green.
+
+`tsconfig.json` excludes `*.test.ts` and `*.testkit.ts` from the project so nothing test-shaped
+reaches `dist/`. That is right, and the cost nobody had noticed is that those files are then **not
+typechecked at all**. The symptom was `textContent` returning `undefined` from a fresh element where
+a real one returns `''` — and it surfaced as a *RemoteView* test failing, which is the worst
+possible place for it to surface, because the file it pointed at was innocent.
+
+A second fault came out with it: setting `textContent` and then appending a child dropped the text.
+A real DOM keeps the text node and returns both. That is exactly the shape `RemoteView.showNotice`
+writes — a reason, then a fix hint appended beside it — so the double was silently deleting the more
+important half of a refusal message.
+
+**`tsconfig.test.json` is the enforcement point**, wired into `npm run typecheck`. Its scope is the
+**harness and not the tests**, deliberately: a fault in a test surfaces as that test failing, which
+points at the right file; a fault in the harness surfaces as whichever pane happens to be under test
+failing, which points at the wrong one. Checking the tests too was tried first and reported 40
+errors about how `tsx` executes them (`import.meta`, `.ts` specifiers) rather than about whether
+they are right — noise that gets normalised and then ignored.
+
+Its control is the fault itself: with `ownText` deleted again, `tsc -p tsconfig.test.json` reports
+four `TS2339`s; restored, it is clean.
+
+### 4. The double grew, and what it still cannot see is written into it
+
+`appendChild`, `setAttribute`/`getAttribute`, `style`, `dataset`, `title`, form-control fields,
+`createElementNS`, `createTextNode`, `querySelector`, `matches`, `classList.add`/`remove`, and
+`installFakeWindow`.
+
+Two of those carry their own limits in the source rather than in a reader's memory:
+
+- **`matches(':active')` always answers false.** The double has no pointer, so `RemoteView.tick`'s
+  branch that skips redrawing a slider the user is dragging is untested here and always will be.
+  Saying so is the point — a `matches` that quietly returned false for everything would look like
+  coverage.
+- **`installFakeWindow` records timers and never fires them.** A test can assert *that* a ticker was
+  scheduled and at what interval, and can run one deliberately; it cannot wait for one. Letting them
+  run would make a result depend on how long the process happened to take.
+
+### 5. One reading that was not a finding, recorded because it looked like one
+
+`files-pane-probe.mjs` reported **4 CHECK(S) FAILED** immediately after the relaunch — the table
+reading `7286/7286` and the pager `1 → 1`. Re-run against the same build a minute later: **ALL
+CHECKS PASSED**, 10 readings, 0 not reportable, including `200 → 400` on the pager and one wall home.
+
+Nothing changed but the app being warm. The first run measured a pane that had not finished
+loading, which is *could I have seen it* rather than *did I see it* — and it is only not in this
+record as a regression because the probe was run twice before anything was concluded from it.
+
+**State of the debt list:** 4 covered, 7 remaining — CallsView, ContactsView, MirrorView,
+NotificationsView, PhotosView, ShellView, SmsView, each still carrying its reason.
+
+**Suite:** 285 tests, 0 failures (was 261). `npm run typecheck` clean over both configs, build exit
+0, relaunched and re-read at 9222.

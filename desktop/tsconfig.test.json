@@ -1,0 +1,28 @@
+{
+  "//": [
+    "Typechecks the test *harness*, which tsconfig.json excludes.",
+    "",
+    "The base config excludes `*.test.ts` and `*.testkit.ts` so that nothing test-shaped reaches",
+    "`dist/`. That is right, and it had a cost nobody had noticed: those files are then not",
+    "typechecked at all. `npm run typecheck` was clean over a `domDouble.testkit.ts` that had lost a",
+    "field declaration — every view test ran through a harness whose `textContent` returned",
+    "`undefined` where a real element returns `''`, and the only thing that caught it was a test",
+    "failing for a reason that had nothing to do with the pane it was testing.",
+    "",
+    "Scope is the harness and not the tests, deliberately. A fault in a test surfaces as that test",
+    "failing, which points at the right file. A fault in the harness surfaces as whichever pane",
+    "happens to be under test failing, which points at the wrong one — and that is the whole reason",
+    "this config exists.",
+    "",
+    "The tests themselves are run by `tsx`, whose module mode differs from this project's",
+    "(`import.meta`, `.ts` import specifiers), so checking them here would report errors about how",
+    "they are executed rather than about whether they are right. Widening this include is how that",
+    "noise gets normalised and then ignored."
+  ],
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/**/*.testkit.ts"],
+  "exclude": []
+}

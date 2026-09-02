@@ -145,6 +145,21 @@ function remoteUserVisibleStrings(state: AppLabelSource & { playing?: boolean })
   ];
 }
 
+// The same names on `globalThis`, for the reason `shared/activity.ts` and `shared/filesRoots.ts`
+// carry this block: in the renderer these are already global, and under `node --test` this file is
+// a CommonJS module whose declarations are module-scoped — so `RemoteView.render` would throw
+// `remoteNowPlayingNoteOf is not defined` the moment a view test mounted the pane.
+{
+  const g = globalThis as Record<string, unknown>;
+  g.resolveAppLabel = resolveAppLabel;
+  g.appPhrase = appPhrase;
+  g.remoteNowPlayingNoteOf = remoteNowPlayingNoteOf;
+  g.remoteUnsupportedReasonOf = remoteUnsupportedReasonOf;
+  g.remoteSeekDisabledTitleOf = remoteSeekDisabledTitleOf;
+  g.remoteSkipTitleOf = remoteSkipTitleOf;
+  g.remoteUserVisibleStrings = remoteUserVisibleStrings;
+}
+
 // Reachable from the pane (a plain script in one global scope), from the main process (`require`),
 // and from `node --test` (the same `require`). `typeof` on an undeclared identifier is safe in JS,
 // so this is a no-op in the browser.

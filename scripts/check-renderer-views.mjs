@@ -29,7 +29,7 @@
  *
  * ### The debt list is printed on every run
  *
- * Nine of the ten views are uncovered right now and pretending otherwise would be worse than the
+ * Most of the views are uncovered right now and pretending otherwise would be worse than the
  * gap. They are listed with a reason each; an entry that becomes covered without leaving the list
  * fails the check, because an allowlist nobody prunes is how a guard stops guarding.
  */
@@ -46,16 +46,20 @@ const RENDERER = 'desktop/src/renderer';
  * Not a permanent exemption: this list is the work queue for the next renderer sitting, in the
  * order the panes have actually broken. `domDouble.testkit.ts` is what makes clearing an entry a
  * small job now — the harness exists, and each of these is a `mount()` and a handful of assertions.
+ *
+ * **FilesView and RemoteView came off it on 2026-09-02**, and neither removal was voluntary: this
+ * checker refused both commits, on the branch that fails an entry which is *"now driven by a test
+ * but is still on the debt list"*. That is the half of a guard people usually forget to write — an
+ * allowlist nobody prunes is how a guard stops guarding, and this one pruned itself twice in one
+ * sitting.
  */
 export const UNCOVERED = new Map([
-  ['FilesView', 'Owns showsState, which broke twice — the first entry to clear, and the reason this file exists'],
   ['PhotosView', 'The grid paged and measured through probe.mjs; no view-level test yet'],
   ['SmsView', 'Phase 4, proven on hardware across 5 pager pages; retro-fitting is Phase 6 work'],
   ['CallsView', 'Pure half already tested (calls.test.ts); the drawing half is not'],
   ['NotificationsView', 'Phase 4'],
   ['ContactsView', 'Phase 4'],
   ['MirrorView', 'Needs a canvas and a video element the DOM double deliberately does not model'],
-  ['RemoteView', 'Phase 4'],
   ['ShellView', 'The window frame; its rules live in shell.css and stylesheets.test.ts guards those'],
 ]);
 

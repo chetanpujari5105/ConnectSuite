@@ -324,3 +324,8 @@ function clock(ms: number): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
 }
+
+// The view class, where a test can construct it. `clock` goes too: it is the pane's one pure
+// decision and a second copy of it in a test is a copy that would not get the next fix.
+(globalThis as Record<string, unknown>).RemoteView = RemoteView;
+(globalThis as Record<string, unknown>).remoteClock = clock;

@@ -412,6 +412,36 @@ function wallHomeVisibility(home: WallHome): { stateCard: boolean; railLine: boo
  * A second copy of `filesPaneView` in the renderer is the copy that would not get the next fix, and
  * the M2/M4 distinction is exactly the rule that must not have two homes.
  */
+/*
+ * The same names on `globalThis`, for the same reason `shared/activity.ts` carries this block.
+ *
+ * In the renderer these are already global — a `<script>` tag's top-level declarations are — so
+ * this is a no-op there. It matters under `node --test`, where this file is a CommonJS module and
+ * its declarations are module-scoped: without it, `FilesView.render` throws `filesPaneView is not
+ * defined` the moment a view test mounts the pane, and the first entry on the renderer-view debt
+ * list could not be cleared at all.
+ *
+ * The alternative was to hand the view its helpers as constructor arguments, which would let a test
+ * pass in a second implementation of the very rules it is checking — the model-instead-of-call
+ * fault. The view calls the one implementation, in both environments.
+ */
+{
+  const g = globalThis as Record<string, unknown>;
+  g.filesPaneView = filesPaneView;
+  g.sharedFolderCount = sharedFolderCount;
+  g.uploadAffordance = uploadAffordance;
+  g.pushOffered = pushOffered;
+  g.freeSpace = freeSpace;
+  g.loadedFooter = loadedFooter;
+  g.shouldPrefetchForDrag = shouldPrefetchForDrag;
+  g.multiSelectionSummary = multiSelectionSummary;
+  g.downloadWallHome = downloadWallHome;
+  g.wallHomeVisibility = wallHomeVisibility;
+  g.DOWNLOAD_WALL = DOWNLOAD_WALL;
+  g.ADDED_ON_THE_PHONE = ADDED_ON_THE_PHONE;
+  g.RECEIVED_FILES_ALWAYS_WORKS = RECEIVED_FILES_ALWAYS_WORKS;
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     filesPaneView,

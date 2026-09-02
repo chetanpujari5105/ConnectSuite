@@ -1083,3 +1083,7 @@ function createFilesView(bridge: FilesBridge): FilesView | null {
 }
 
 (globalThis as Record<string, unknown>).createFilesView = createFilesView;
+// The view class itself, so `filesView.test.ts` drives the real one rather than a paraphrase. It is
+// the first entry on `scripts/check-renderer-views.mjs`'s debt list, and it is there because the
+// `Download` wall's two homes broke twice — in opposite directions — with a green suite each time.
+(globalThis as Record<string, unknown>).FilesView = FilesView;
