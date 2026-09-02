@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -76,7 +77,12 @@ fun QrScanScreen(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        // The activity draws edge to edge and this screen hosts no Scaffold, so nothing else
+        // insets it. Without this the title renders *under* the status bar — "Pair with your Mac"
+        // half-hidden behind the clock, which is what a screenshot showed on 2026-09-02 and what
+        // no `uiautomator` dump could have: the text is present, correctly bounded, and painted
+        // beneath something else. Every other bare-Column screen in this app already does this.
+        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Pair with your Mac", style = MaterialTheme.typography.headlineSmall)

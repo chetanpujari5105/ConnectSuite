@@ -12548,3 +12548,88 @@ decision.
 The tell: **every test constructs its input by hand.** Normal, usually fine, and exactly what makes
 the layer confusion invisible — the inputs are always well-formed, so *does anything real produce
 these?* never gets asked.
+
+---
+
+## Phase 9 · Slice 3 — the signed APK installs, and a stranger's first run · 2026-09-02
+
+### 1. D13 closes on a working install
+
+```
+$ ./scripts/target-device.sh
+OK    target RZCY12330DT (SM-S938B, sdk 36)
+
+$ adb -s RZCY12330DT install app/build/outputs/apk/release/app-release.apk
+Success
+Install command complete in 790 ms
+
+$ adb -s RZCY12330DT shell pm list packages | grep chetan.connectsuite
+  com.chetan.connectsuite.debug
+  com.chetan.connectsuite
+```
+
+`dumpsys package` reports `apkSigningVersion=4` and one signature — the `.idsig` beside the APK is
+v4 incremental signing, accepted on top of the v3 block `apksigner` verified. RSA 4096, DN
+`CN=Chetan, OU=ConnectSuite…`, config read from `~/.android-keystores/connectsuite.properties`
+outside the repository.
+
+**The control that was missing on the OPPO ran first this time**: `pm list packages` showed the
+debug build before the install. On the wrong phone that same query returned nothing and was read as
+a bad grep — defect 68.
+
+**And the pin's own ergonomics were a defect.** Its first version printed `-s <serial>` for callers
+to splice in as `adb $TARGET install …`. That works in bash and silently does not in **zsh**, which
+performs no word splitting on unquoted expansions: the pair arrives as one argument and adb answers
+`-s requires an argument`. It prints **just the serial** now, called as
+`adb -s "$(scripts/target-device.sh)"`. A guard that is awkward to call is a guard people route
+around, and routing around this one is how the OPPO nearly got an install.
+
+### 2. A stranger's first run, walked on hardware
+
+The release `applicationId` has no `.debug` suffix, so it installs alongside as a separate app with
+no grants and no pairing — a genuine first run. `pm clear` reset it after an accidental completion;
+the debug app's 28 grants were verified untouched.
+
+All five pages render, in order, with the corrected copy:
+
+| | |
+|---|---|
+| 1 | ConnectSuite · the two feature cards · the rewritten pairing sentence |
+| 2 | Finding your Mac · two permission cards · Skip for now / Continue |
+| 3 | About mirroring · *Android asks every time* · *Some things stay black* |
+| 4 | Keeping it running · battery card · manufacturer card |
+| 5 | **Connect your Mac** · I'll do this later / **Scan the code** |
+| → | *Pair with your Mac* — camera live, QR scanner running |
+
+Defect 65 is gone from the shipped build: no page mentions ADB, developer options or a second
+Android device.
+
+### 3. What is confusing, recorded before anything was fixed
+
+Three findings, and **two of them are mine, introduced by the fix that produced this flow**:
+
+- **Defect 69 — page 2 asks for Wi-Fi Direct on a page about the Mac.** The `NEARBY_DEVICES`
+  rationale is accurate and describes the **v1 Sync** discovery path; the only `WifiP2p` consumer in
+  the tree is `core/discovery/WifiDirectDiscovery.kt`. Retitling the page from *"Finding your
+  devices"* to *"Finding your Mac"* made a correct sentence false **without touching it**. That is
+  defect 63's shape, committed three commits after 63's own record warned about it: **a sentence's
+  truth depends on the heading above it.** Unmeasured and free to measure: the release app has
+  `NEARBY_WIFI_DEVICES` `granted=false` right now, so pairing it answers whether the v2 link needs
+  the permission at all.
+- **Defect 70 — the QR screen's title is painted under the status bar.** `QrScanScreen` is the only
+  screen with no `Scaffold` and no `systemBarsPadding()`. **No dump could have found it**: the node
+  is present, correctly bounded, correctly texted, and drawn beneath the clock. It took a
+  screenshot. The mirror image of the grid-tile defect, which took a measurement over an eye — a
+  dump carries no z-order, a screenshot carries no scale, and neither instrument substitutes for the
+  other.
+- **Defect 71 — "Sync" names two things and onboarding uses the wrong one.** Page 1 sells *"Sync —
+  notifications, texts, calls, photos, files and clipboard, on the Mac"*; the app's Sync tab is the
+  v1 Android-to-Android device list, `Not paired · 100.113.127.25 [Pair]`. **And "I'll do this
+  later" lands there** — F1 sends a paired user to the Mac tab and an unpaired one to Sync, so the
+  person who deferred because they have not installed the Mac app yet gets the screen least able to
+  help them. The working half of F1 is the half for users who no longer need it.
+
+Page 5 is also visually the emptiest screen in the flow — a title, a subtitle, one grey line, then
+roughly a third of the display blank above the buttons — which is the wrong shape for the page the
+whole flow now exists to reach. Recorded as an observation rather than a defect; it is a design
+question, not a mechanism failing.

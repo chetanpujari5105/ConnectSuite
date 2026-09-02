@@ -32,7 +32,15 @@ connectsuite_target() {
   fi
   # Printed so every transcript that installs anything carries the target in it.
   echo "OK    target $serial ($model, sdk $(adb -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r'))" >&2
-  echo "-s $serial"
+  # **Just the serial, and nothing else.** An earlier version printed the flag pair `-s <serial>`
+  # so callers could write `adb $TARGET install …`. That works in bash and silently does not in
+  # zsh, which performs no word splitting on unquoted expansions — the whole pair arrives as one
+  # argument and adb answers `-s requires an argument`. This machine's shell is zsh.
+  #
+  # It is fixed here rather than at the call site because a guard that is awkward to call is a
+  # guard people route around, and routing around this one is how the OPPO got an install command
+  # aimed at it. Callers write:  adb -s "$(scripts/target-device.sh)" install …
+  printf '%s' "$serial"
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then connectsuite_target; fi

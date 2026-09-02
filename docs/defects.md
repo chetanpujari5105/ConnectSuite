@@ -82,6 +82,9 @@ own heading there, and its own row here.
 | **66** | **A shipped, logged failure had no route to the screen.** `LinkTls.checkClientTrusted` has logged `Rejected unpaired client …` since Phase 1. The Mac tab rendered *"Listening for your Mac"* for a refused handshake, for a Mac that had not dialled, and for a Mac on a different network — three situations, one sentence, forever. The user is holding the phone; it was the one screen that could say something and did not | **closed** — **F2 proven on hardware 2026-09-02; F4 and F5's own states not yet drawn** | `LinkWaitStatus` (pure, in `core/`) + the accept loop publishing `RefusedConnection`. `LinkWaitStatusTest`, 11 tests, red under 6 mutations. On hardware: the reordered tab renders `Connected to Chetans-MacBook-Pro` → `Pair another Mac` → the paired list → `Advanced` **collapsed**, and expands to the ports line and capability diagnostics. The `Waiting` and `Refused` branches need a stopped Mac and an unpaired one and have been seen only in tests | `docs/testing.md` → Phase 7 Slice 4 |
 | **67** | **The phone's wait clock measured the server's uptime, not the wait.** F4's twenty-second network hint was judged against `listeningSinceMillis`, written once when the accept loops came up — so on any phone listening for more than twenty seconds, which is every phone after the first half minute, the hint appeared the instant its Mac went away. *"Check that your Mac is awake and on the same Wi-Fi"* two seconds after closing a lid is exactly the alarming noise the threshold exists to prevent | **closed** 2026-09-02, **proven on hardware** | Found by looking at the screen, 25 s after stopping the Mac app, on the run staged to watch F4 draw. **Eleven unit tests were green throughout and none could have caught it** — they call `LinkWaitStatus.of` and hand it the field by hand, so they test the decision at a layer the defect does not live in. Fixed by extracting `LinkState.afterSessionEnded`, now 16 tests, red under three mutations including the original bug. Re-measured on hardware: hint absent through t+21s after a drop, shown by t+27s | see below |
 | **68** | **A signed release APK was one incidental failure away from being installed on someone else's phone.** `adb install` targets whatever single device is on the bus and says nothing about which. The Samsung had been swapped for an **OPPO CPH1859** and the command was issued against it; what stopped it was `INSTALL_FAILED_OLDER_SDK` (minSdk 29 against SDK 28), which is luck, not a check. **The tell had already appeared and been explained away**: `pm list packages \| grep chetan` returned nothing on a device where the debug build had been installed twenty minutes earlier, and that absence was read as a bad grep | **closed** 2026-09-02 | `scripts/target-device.sh` pins serial *and* model and refuses to guess, printing what is attached instead. All three branches exercised: refuses the wrong device, **passes** when pointed at the device that is present, and refuses a serial whose model does not match | see below |
+| **69** | **"Finding your Mac" asks for a permission whose own copy is about a different feature.** Onboarding page 2 is titled for the Mac and its `NEARBY_DEVICES` card reads *"ConnectSuite needs this to find other devices over **Wi-Fi Direct**"*. Wi-Fi Direct is the **v1 Sync** path — `core/discovery/WifiDirectDiscovery.kt` is the only thing in the tree that uses `WifiP2p`. The v2 Mac link is mDNS plus a gateway probe, and the Mac dials the phone. **Defect 63's shape, and this one is mine**: I retitled the page and left the rationale describing the other path | **open** | source + the release app's own first run, 2026-09-02 | see below |
+| **70** | **The QR screen's title renders under the status bar.** `QrScanScreen` is a bare `Column` with `fillMaxSize().padding(16.dp)` and no `systemBarsPadding()` — the only screen in the app that hosts no `Scaffold` and does not inset itself. *"Pair with your Mac"* is drawn behind the clock on the single screen a new user must use | **closed** 2026-09-02 | **A `uiautomator` dump cannot see this** — the text is present, correctly bounded, and painted beneath something else. It was found in a screenshot. Fixed with `systemBarsPadding()` | see below |
+| **71** | **"Sync" names two different things, and onboarding uses the wrong one.** Page 1's Sync card reads *"Your notifications, texts, calls, photos, files and clipboard, on the Mac"*. The app's **Sync tab** is the v1 Android-to-Android feature: a device list with *Pair* buttons, `Devices / Transfers / Folders / Clip / Feed`, and a `Not paired · 100.113.127.25` row for something that is not a Mac. A stranger reads the card, finishes onboarding, and lands on a screen with no relationship to it — **and lands there precisely when they chose "I'll do this later"**, which is the user who most needs guidance | **open** | the release app's first run on hardware, 2026-09-02 | see below |
 
 ---
 
@@ -1461,3 +1464,98 @@ the `enableV1Signing` comment about "API < 24 installs" now describes a case thi
 
 **Defect 13 is not closed by this run.** The APK is signed and verified; it has never been installed
 on the device this project's claims are about.
+
+---
+
+### 69 — the permission page names the wrong one of two discovery paths · **open**
+
+Onboarding page 2 is titled **"Finding your Mac"** and its subtitle reads *"Two permissions, so this
+phone can see your Mac on the network"*. The card underneath says:
+
+> ConnectSuite needs this to find other devices over **Wi-Fi Direct**. On Android 12 and below the
+> system reports nearby Wi-Fi peers through the location permission — no location is ever collected
+> or sent anywhere.
+
+**Wi-Fi Direct is not how the Mac is found.** The only consumer of `WifiP2p` in the tree is
+`core/discovery/WifiDirectDiscovery.kt`, which belongs to the **v1 Sync** feature. The v2 link is
+mDNS (`NsdAdvertiser`) plus the Mac's gateway and last-known-IP probes, and the *Mac dials the
+phone* — locked decision #2.
+
+**This is defect 63 wearing a different hat, and I put it there.** 63 was *a true sentence about the
+wrong one of two paths*; the rationale string is unchanged and was accurate when the page was titled
+"Finding your devices". Retitling it to "Finding your Mac" — part of F1 — made a correct sentence
+false without touching it. **A sentence's truth depends on the heading above it**, which is exactly
+the failure mode 63's own record warned about, three commits earlier.
+
+**What is not yet known, and must be measured rather than argued:** whether the v2 link works with
+`NEARBY_WIFI_DEVICES` denied. The release app currently has it `granted=false`, which makes the
+experiment free — pair it and see whether the Mac connects. If it does, this page is asking a new
+user for a permission the feature it names does not need, which is worse than a wrong sentence.
+
+**Fix direction:** do not edit the string in place. `PermissionGroup.NEARBY_DEVICES.rationale` is
+shared with the Sync flow, where it is correct. Either the page passes its own copy, or the
+permission moves out of the Mac page entirely — which the measurement above decides.
+
+**Wrong fix to avoid:** rewording the rationale to mention both paths. It is one string used in two
+places that mean different things, and a sentence covering both is how the ambiguity becomes
+permanent.
+
+---
+
+### 70 — the pairing screen's title is painted under the status bar · **closed** 2026-09-02
+
+`QrScanScreen` hosts no `Scaffold` and applied no inset:
+
+```kotlin
+Column(modifier = Modifier.fillMaxSize().padding(16.dp))   // before
+```
+
+The activity draws edge to edge, so *"Pair with your Mac"* rendered behind the system clock, on the
+one screen a new user cannot avoid.
+
+**The interesting part is that no dump could have found it.** `uiautomator` reported the node present
+with correct bounds and correct text — because it *is* present, correctly bounded, and merely painted
+beneath something else. Every automated check in this project would call this screen fine. It was
+found by looking at a screenshot.
+
+That is the counterpart to `CLAUDE.md`'s rule about a screenshot carrying no scale: a **dump** carries
+no z-order and no paint. The two instruments fail in opposite directions and neither substitutes for
+the other — the tile-aspect defect needed a measurement over an eye, and this one needed an eye over
+a measurement.
+
+`OnboardingScreen` was the only file in the app already calling `systemBarsPadding()`, and it does so
+for the identical reason, in a comment that says so. The knowledge existed one directory away.
+
+---
+
+### 71 — "Sync" means two things and onboarding uses the wrong one · **open**
+
+Page 1's feature card:
+
+> **Sync** — Your notifications, texts, calls, photos, files and clipboard, on the Mac.
+
+The app's **Sync tab**, read off the release build's own first run:
+
+```
+Devices · Transfers · Folders · Clip · Feed
+This device — Samsung SM-S938B — Key DC:17:4B:6B:82:EA:2A:59
+Not paired · 100.113.127.25   [Pair]
+```
+
+That is the **v1 Android-to-Android** feature: a discovery list of other phones, with its own pairing
+model, its own fingerprint confirmation (defect 63's real home), and no relationship to the sentence
+the user just read.
+
+**And the flow delivers them there at the worst moment.** F1 lands a paired user on the **Mac** tab
+and an unpaired one on **Sync** — so *"I'll do this later"*, chosen by exactly the person who has not
+got the Mac app yet, ends on the screen least able to help them. The half of F1 that works is the
+half for users who no longer need it.
+
+**Fix direction:** the naming collision is the root and it is a product decision, not a copy edit.
+Either the v2 Mac features stop being called "Sync" in onboarding, or the v1 tab is renamed. Landing
+an unpaired user on the **Mac** tab is a smaller, separate change and can be made first — the tab now
+leads with *Scan pairing code* and a sentence about what pairing gets you (F2), which is the right
+first screen for someone who deferred.
+
+**Wrong fix to avoid:** deleting the Sync card from page 1. The features it lists are real and are
+the reason to install the app; what is wrong is that the word points at the other feature.

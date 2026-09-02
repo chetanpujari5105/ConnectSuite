@@ -429,6 +429,17 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
 These are not habits, they are rules. Both were written after a run where breaking them cost real
 damage on the user's own device or nearly recorded a false result.
 
+- **Every `adb` command that changes a device's state goes through the pin. Reads may stay loose.**
+  Installs, uninstalls, `pm clear`, `pm grant`/`revoke`, `settings put`, `am force-stop`, `am
+  broadcast`, `content insert/delete`, anything writing a file. The call form is
+  `adb -s "$(scripts/target-device.sh)" …`, and the pin refuses rather than guessing, so a wrong
+  device stops the command instead of receiving it.
+
+  The line is drawn at **state change, not risk**: a read on the wrong phone produces a wrong
+  reading, which the rest of this file is about catching, and a write on the wrong phone is somebody
+  else's device altered. Only the second is unrecoverable, and only the second is worth the friction
+  on every call.
+
 - **Check *which device* before anything that writes to one. `scripts/target-device.sh`.**
   `adb install`, `adb shell`, every `pm` and `settings` command targets whatever single device is on
   the bus and tells you nothing about which. Every hardware reading in this repo is from one
