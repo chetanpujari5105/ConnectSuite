@@ -11903,3 +11903,84 @@ in between confirmed the two ended up in the same repository.
 
 **Suite:** 288 Mac tests (was 285) + 248 phone, 0 failures. `npm run typecheck` clean over both
 configs, both builds exit 0, all six commit checks green.
+
+---
+
+## Phase 6 · Slice 4 — the overnight run, and the hole it found in the fix from Slice 3 · 2026-09-02
+
+`scripts/link-night-watch.sh` sampled for **8h57m** — 268 samples, requested interval 120 s,
+observed mean gap 120.2 s — touching nothing on the phone.
+
+### 1. P4 answered by waiting instead of by pressing a button
+
+Slice 2 recorded P4 as *blocked, not deferred*: turning the screen off needs a key event and this
+session was told not to send input. The screen went off on its own, repeatedly:
+
+```
+mScreenState:  OFF 224 samples · ON 39 · DOZE_SUSPEND 5     (5 transitions observed)
+```
+
+**The link was up in every one of them** — `sockets=4/4 est=1` — including all five
+`DOZE_SUSPEND` samples. One process for the whole night (`pid=6617`), and the only samples where
+the link was down are **11:46:11–11:54:14**, which is when the dev Electron was killed to test the
+packaged `.dmg`: `est=0`, `ACQ=none`, and no Mac to hold a session. That is the instrument's own
+doing and is attributed rather than counted as a phone-side drop.
+
+So P4's answer, on the exempt path, on the cable: **screen-off and screen-on do not disturb the
+link.** Its forced version is still unrun and still one sentence of permission away.
+
+### 2. The reading that mattered: a 59m49s hold, eleven seconds from the timeout
+
+```
+longest continuous wakelock hold observed: 59m49s   (at 07:26:45)
+re-arm ticker: every 20m      acquire timeout: 60m
+"Wake lock had lapsed and was re-acquired": 0 occurrences   (control: 35 lines from 2026-09-02 in the same log)
+```
+
+**Slice 3's fix repairs a lapse instead of preventing one.** `acquireLocks()` re-acquired only when
+the lock was *not held*, and the ticker's phase has nothing to do with the acquire's. Worst case: a
+tick at T+59 finds it held and does nothing, the platform drops it at T+60, and the next tick is
+T+79 — **nineteen minutes with no wake lock**, on a link that believes it is holding one.
+
+The 59m49s hold is that gap about to open, caught before it did. What kept it from mattering is the
+same thing that hid the original defect: the link drops often enough that `releaseLocks` resets the
+cycle first — ten fresh acquires across the night — **which is precisely the hiding place Phase 6
+exists to remove.** Fix a link that stays up and this starts happening.
+
+**Corrected: refresh, do not repair.** A tick on a held lock now calls `acquire` again, which on a
+`setReferenceCounted(false)` lock re-arms its timeout rather than stacking a second lock. Three
+counters instead of two — first-acquires, refreshes, lapses — and a lapse now logs at `W`, because
+it should stay at zero and it is an alarm rather than a success.
+
+The assertion changed with it, and the old one was asking the wrong question. *"Do enough ticks fit
+inside a timeout"* is the repair's question; the refresh's question is **"does a dropped tick still
+land inside the timeout"**, so `2 × interval < timeout` is what is asserted now.
+
+| Mutation | Result |
+|---|---|
+| interval 31 min against a 60 min timeout — one tick fits, two misses do not | `failures=2`: *"only 1 re-arm(s) fit inside one timeout"* and *"two missed ticks would outlast the lock"* |
+| restored | `tests=12 failures=0` |
+
+31 is the number to notice: it passes `interval < timeout` comfortably and fails both real
+assertions.
+
+### 3. Installed, and the two autostart routes raced
+
+```
+11:59:54.905  I [autostart] PACKAGE_REPLACED: 1 paired device(s), link not running — starting LinkService
+11:59:54.911  I [autostart] LISTENER_REBIND: 1 paired device(s), link not running — starting LinkService
+11:59:54.950  I [service]   Foreground as PACKAGE_REPLACED, types=0x10
+11:59:54.961  I [server]    Listening on 42501/42502/42503, 1 paired device(s)
+```
+
+Both routes read `running == false` **6 ms apart** and both called `startForegroundService`. The
+idempotence gate is a read, not a lock, so it does not prevent this — the same two-callers-one-state
+shape as the Files pane's race, arriving in code written this morning.
+
+**The outcome is correct and the reason is worth writing down rather than trusting:** Android
+serialises `onStartCommand` for one service, and the second start finds `isForeground` already true
+and skips `startForeground` — so one `Foreground as` line, one listener bind, one start reason, and
+no duplicate. It is recorded as *observed to be harmless* rather than *designed to be*, because the
+thing making it safe is the platform's serialisation and not this code.
+
+`link-up.sh`: three OKs. Grants diffed **identical** to the previous snapshot.

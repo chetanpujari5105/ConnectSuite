@@ -49,8 +49,28 @@ class LinkService : LifecycleService() {
     private var startReason: LinkStartReason = LinkStartReason.UNKNOWN
     private var isForeground = false
 
-    /** Published together so a re-arm count is never read without the denominator beside it. */
+    /**
+     * Published together so a lapse count is never read without the denominators beside it.
+     *
+     * ### Refresh, do not repair — the correction the overnight run forced
+     *
+     * The first version of defect 61's fix re-acquired only when the lock was **not held**, which
+     * repairs a lapse instead of preventing one. With a 60-minute timeout and a 20-minute ticker
+     * whose phase is unrelated to the acquire, the worst case is a tick at T+59 finding it held, the
+     * platform dropping it at T+60, and the next tick at T+79 — **nineteen minutes with no wake
+     * lock**, on a link that believes it is holding one.
+     *
+     * `scripts/link-night-watch.sh` found the shape of it before it bit: a **59m49s** continuous
+     * hold at 07:26:45, eleven seconds short of the timeout. What kept it from mattering is the same
+     * thing that hid the original defect — the link drops often enough that `releaseLocks` resets
+     * the cycle first, which is precisely the hiding place Phase 6 exists to remove.
+     *
+     * So a tick on a held lock now calls `acquire` again, which on a non-reference-counted lock
+     * re-arms its timeout. [wakeLockRearms] counts the lapses that got through anyway, and it should
+     * stay at zero: it is an alarm, not a success, which is why it logs at `W`.
+     */
     private var wakeLockAcquires = 0
+    private var wakeLockRefreshes = 0
     private var wakeLockRearms = 0
 
     override fun onCreate() {
@@ -140,23 +160,41 @@ class LinkService : LifecycleService() {
      */
     private fun acquireLocks() {
         val existing = wakeLock
-        if (existing == null || !existing.isHeld) {
-            if (existing != null) {
-                wakeLockRearms++
-                LinkLog.i(
-                    "service",
-                    "Wake lock had lapsed and was re-acquired — $wakeLockRearms re-arm(s) / " +
-                        "$wakeLockAcquires first-acquire(s) since start",
-                )
-            } else {
+        when {
+            existing == null -> {
                 wakeLockAcquires++
+                val power = getSystemService(Context.POWER_SERVICE) as PowerManager
+                wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ConnectSuite:link")
+                    .apply {
+                        setReferenceCounted(false)
+                        acquire(LinkLockPolicy.TIMEOUT_MS)
+                    }
             }
-            val power = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ConnectSuite:link")
-                .apply {
-                    setReferenceCounted(false)
-                    acquire(LinkLockPolicy.TIMEOUT_MS)
-                }
+            // Held: **extend** it. This is the half the first version of the fix got wrong, and the
+            // overnight run is what found it — see the `refresh, do not repair` note above the class.
+            // `setReferenceCounted(false)` makes a second `acquire` a re-arm of the timeout rather
+            // than a second lock, so this is the whole of the refresh.
+            existing.isHeld -> {
+                wakeLockRefreshes++
+                existing.acquire(LinkLockPolicy.TIMEOUT_MS)
+            }
+            // Not held. The timeout beat the ticker, which means the margin is wrong or a tick was
+            // dropped — so this is an alarm rather than routine, and it is published with the
+            // denominator that makes it readable.
+            else -> {
+                wakeLockRearms++
+                LinkLog.w(
+                    "service",
+                    "Wake lock had lapsed before the ticker reached it — $wakeLockRearms lapse(s) / " +
+                        "$wakeLockRefreshes refresh(es) / $wakeLockAcquires first-acquire(s) since start",
+                )
+                val power = getSystemService(Context.POWER_SERVICE) as PowerManager
+                wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ConnectSuite:link")
+                    .apply {
+                        setReferenceCounted(false)
+                        acquire(LinkLockPolicy.TIMEOUT_MS)
+                    }
+            }
         }
         if (wifiLock == null) {
             val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager

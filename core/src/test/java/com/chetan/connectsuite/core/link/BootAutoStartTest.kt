@@ -118,6 +118,29 @@ class BootAutoStartTest {
     }
 
     /**
+     * The margin, expressed the way the *refresh* needs it rather than the way the repair did.
+     *
+     * The first version of defect 61's fix re-acquired only on `!isHeld`, so the question was "do
+     * enough ticks fit inside a timeout". That was the wrong question: a tick that finds the lock
+     * held has to **extend** it, or the last tick before the timeout is followed by up to one whole
+     * interval with no lock at all. The overnight run measured a 59m49s hold — eleven seconds short
+     * of the 60-minute timeout — which is that gap about to open.
+     *
+     * What this asserts is the property the refresh needs: **the interval must leave room for a
+     * dropped tick.** Two consecutive misses must still land inside the timeout, so the useful
+     * inequality is `2 × interval < timeout`, and `MIN_REARMS_PER_TIMEOUT = 3` is that with one
+     * tick's slack on top.
+     */
+    @Test
+    fun `two consecutive missed ticks still land inside the timeout`() {
+        assertTrue(
+            "with interval=${LinkLockPolicy.REARM_INTERVAL_MS} and timeout=" +
+                "${LinkLockPolicy.TIMEOUT_MS}, two missed ticks would outlast the lock",
+            2 * LinkLockPolicy.REARM_INTERVAL_MS < LinkLockPolicy.TIMEOUT_MS,
+        )
+    }
+
+    /**
      * The backstop must stay a backstop. An indefinite acquire (0 or negative) is the wrong fix
      * recorded against defect 61, and half a day is what the defect shipped with.
      */
