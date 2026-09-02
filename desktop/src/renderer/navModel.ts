@@ -196,6 +196,24 @@ const SCREENS: NavScreen[] = [
     unbuiltHandle: 'no namespace proposed yet',
   },
   {
+    id: 'apps',
+    label: 'Apps',
+    title: 'Apps',
+    // Says what it does and does not overstate it. "Launch phone apps from your Mac" would be the
+    // obvious subtitle and would be the same lie the wire name refuses: the Mac cannot launch
+    // anything, it can ask, and a person taps. The subtitle is the first place a user learns which
+    // of the two this is, four screens before they meet the notification.
+    subtitle: 'Send an app to your phone — one tap on the phone opens it.',
+    icon: 'apps',
+    group: 'MENU',
+    // The twelfth row, and appended rather than inserted. Every existing shortcut and every
+    // existing row position is untouched, which makes this the smallest departure that can carry a
+    // new screen: additive, not a re-order of nine rows of muscle memory. Recorded in
+    // docs/design-departures.md, because a row the designer did not draw is a decision, not a bug.
+    shortcut: '⌘0',
+    state: 'built',
+  },
+  {
     id: 'activity',
     label: 'Activity',
     title: 'Activity',

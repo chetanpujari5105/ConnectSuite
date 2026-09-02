@@ -39,6 +39,20 @@ object NotificationChannels {
      */
     const val CLIPBOARD = "clipboard_offer"
 
+    /**
+     * "Open Instagram?" — the whole of `apps.open.ask`, and high importance for a specific reason.
+     *
+     * There is somebody at a Mac who has just clicked a tile and is watching their phone. The tap
+     * on this notification is not a fallback for a launch that failed; it **is** the launch, because
+     * a backgrounded app on this platform may not start another one (see the Apps section of
+     * docs/protocol.md). A quiet notification would make the feature look broken for exactly as
+     * long as it took them to open the shade.
+     *
+     * Contrast [CLIPBOARD], which is IMPORTANCE_DEFAULT for the opposite reason: an arriving clip
+     * is an offer nobody is waiting on.
+     */
+    const val APP_OPEN_REQUEST = "app_open_request"
+
     fun createAll(context: Context) {
         val manager = context.getSystemService<NotificationManager>() ?: return
         manager.createNotificationChannels(
@@ -88,6 +102,14 @@ object NotificationChannels {
                     NotificationManager.IMPORTANCE_HIGH,
                 ).apply {
                     description = "Asks you to start mirroring when your Mac requests it."
+                },
+                NotificationChannel(
+                    APP_OPEN_REQUEST,
+                    "App open requests",
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    description = "Asks you to open an app when your Mac requests it. Tapping is " +
+                        "what opens it — the Mac cannot open apps on its own."
                 },
             ),
         )

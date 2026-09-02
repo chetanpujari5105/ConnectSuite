@@ -23,6 +23,7 @@ const sharedActivity = require('../shared/activity') as {
   activityCsv: (events: ActivityEvent[]) => string;
 };
 import { FilesClient } from './files';
+import { AppsClient } from './apps';
 import { PhotosClient } from './photos';
 import { NotificationClient } from './notifications';
 import { RemoteClient } from './remote';
@@ -121,6 +122,16 @@ const photos = new PhotosClient(
   () => bulk,
   () => ({ host: link?.status().address ?? null, token: link?.token() ?? null }),
 );
+
+/**
+ * The app grid, and the verb that asks rather than launches.
+ *
+ * Not gated on the `apps` capability, for the same reason the photo browser is not: `apps.list` and
+ * `apps.icon` answer whether or not the chip is green — the chip is gated on POST_NOTIFICATIONS,
+ * which only `apps.open.ask` needs — and a client that refused to ask because the chip was grey
+ * would turn a partly-working feature into a dead one. The pane says which half is missing.
+ */
+const apps = new AppsClient(() => link);
 
 /**
  * Files — the read verbs only. There is no upload method here, deliberately: `push` answers
@@ -526,6 +537,7 @@ app.whenReady().then(() => {
       contacts.clear();
       clip.clear();
       photos.clear();
+      apps.clear();
       remote.clear();
       sms.clear();
       calls.clear();
@@ -1118,6 +1130,25 @@ ipcMain.handle(
 );
 
 ipcMain.handle('media-original', (_event, options: { id: string }) => photos.original(options.id));
+
+ipcMain.handle('apps-list', () => apps.list());
+ipcMain.handle(
+  'apps-icons',
+  async (_event, options: { packages: string[]; maxEdge?: number }) => {
+    const result = await apps.iconsFor(options.packages, options.maxEdge);
+    // Entries rather than a Map, exactly as `media-thumbs` does it: a Map does not survive the
+    // structured clone across the bridge as anything the renderer can read back by key.
+    return result.ok ? { ok: true as const, data: [...result.data.entries()] } : result;
+  },
+);
+/**
+ * `apps.open.ask`, and the handler name is part of the contract.
+ *
+ * Not `apps-launch`, not `apps-open`. The channel a renderer types is the last place the wrong verb
+ * can creep back in, and it would creep back in here first — this is the one name in the feature
+ * that no protocol checker reads.
+ */
+ipcMain.handle('apps-open-ask', (_event, options: { package: string }) => apps.openAsk(options.package));
 
 /**
  * The resume probe — **debug builds only**, registered beside `debugSwitches` for the same reason.

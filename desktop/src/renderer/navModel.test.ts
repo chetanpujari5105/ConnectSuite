@@ -149,10 +149,28 @@ test('a screen with no proposed namespace says so rather than inventing one', ()
   }
 });
 
-test('the sidebar is the handoff eleven, in its groups', () => {
-  assert.equal(SCREENS.length, 11);
-  assert.equal(SCREENS.filter((s: { group: string }) => s.group === 'MENU').length, 9);
+test('the sidebar is the handoff eleven plus Apps, in its groups', () => {
+  // Twelve, and the twelfth is a recorded departure (docs/design-departures.md): the handoff has no
+  // Apps screen because it predates the feature. What this asserts is that it is the *only* one —
+  // the count is here so that a thirteenth row cannot arrive without somebody deciding to.
+  assert.equal(SCREENS.length, 12);
+  assert.equal(SCREENS.filter((s: { group: string }) => s.group === 'MENU').length, 10);
   assert.equal(SCREENS.filter((s: { group: string }) => s.group === 'SYSTEM').length, 2);
+  const apps = SCREENS.find((s: { id: string }) => s.id === 'apps');
+  assert.ok(apps, 'Apps is a screen');
+  // Appended, not inserted. Inserting it would renumber every shortcut after it, which is a much
+  // larger departure wearing the same diff.
+  assert.equal(SCREENS.filter((s: { group: string }) => s.group === 'MENU').at(-1)?.id, 'apps');
+});
+
+test('the Apps screen does not promise a launch', () => {
+  // The wire name is apps.open.ask because this platform refuses a background activity start
+  // silently. The subtitle is where a user first learns which of the two features this is, and
+  // "launch apps from your Mac" would be the same lie one layer up from the protocol.
+  const apps = SCREENS.find((s: { id: string }) => s.id === 'apps') as { subtitle: string; title: string };
+  assert.doesNotMatch(apps.subtitle, /launch/i, 'the Mac does not launch anything; it asks');
+  assert.doesNotMatch(apps.title, /launch/i);
+  assert.match(apps.subtitle, /phone/i, 'it says where the tap happens');
 });
 
 test('no two screens share an id or a shortcut', () => {

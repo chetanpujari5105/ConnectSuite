@@ -10802,6 +10802,46 @@ delivery is a no-op start on a live service.
   boot. Pass criterion when the reboot happens: `scripts/link-up.sh` returning three OKs with nothing
   tapped, and a `[boot] BOOT:` line in `files/logs/link.log`.
 
+### 6b. A second one the tests could not have caught, and the probe reported it clean
+
+The grid shipped its first build as **nine columns of overlapping icons with no names on screen at
+all** — and every check was green, including this slice's own probe reading *"tiles whose label is a
+resolved name rather than the package id → 123 of 123"*.
+
+That reading was **true and about the wrong property.** `textContent` is a fact about the tree; it is
+not a fact about the picture. Measured:
+
+```
+tile height     32px          ← the row
+icon height     48px          ← overflowing it
+label height     0px          ← clipped to nothing, while reading back "AdBlock for Samsung Browser"
+```
+
+A tile is a `<button>`, and the base `button, .button` rule sets `min-height: 32px`. Chromium sizes
+an `auto` grid row from the item's intrinsic block contribution, and for a button that came back as
+the min-height rather than as icon + label. One line fixes it — `grid-auto-rows: max-content` —
+after which the row is 107px and the two-line clamp works exactly as written.
+
+**Two things about how it was found are worth more than the fix.**
+
+*The first: the obvious diagnosis was wrong and an experiment confirmed it.* A label with height 0
+points straight at the `-webkit-line-clamp` above it, and replacing the clamp with `display: block`
+**did** make the text appear — which reads as proof. It was not: that test changed two things at
+once. Measured with the row fixed, the clamp is correct and always was, 2 lines for a long name and
+1 for a short one. One cause, two suspects, and the innocent one had a passing experiment behind it.
+
+*The second: the instrument that measured the candidate fixes was itself broken, silently.* The first
+attempt injected a `<style>` element and reported that **none** of five candidate fixes changed
+anything — identical numbers across all five, which is what a page with `style-src 'self'` does to an
+injected inline stylesheet. No error, no warning. The fix was CSSOM `insertRule` on an existing
+same-origin sheet, and the control that makes it a reading is one line: insert
+`.apps-tile-art { width: 99px !important }`, confirm the element measures **99**, delete the rule,
+confirm it measures **48** again. Without that, "the fix did nothing" and "the fix never applied" are
+the same output.
+
+The probe now reads label **height** as well as label text, because that is the reading that would
+have caught it.
+
 ### 7. Guards, and each one shown red first
 
 `core/src/test/java/com/chetan/connectsuite/core/link/BootAutoStartTest.kt`, 9 tests. Every run below
@@ -12718,3 +12758,161 @@ argued over a half-built verb.
 **R6 (screen off) was not run and cannot change the answer**: screen-on is already blocked, and no
 Android release grants a backgrounded app more activity-start privilege with the screen off. Stated
 rather than left as a silent gap.
+
+---
+
+## Phase 7 · Slice 8 — apps built, and three instrument faults on the way to one measurement · 2026-09-03
+
+Slice 7 measured the wall. This slice builds the feature the measurement allowed: `apps.list`,
+`apps.icon`, `apps.open.ask`, a twelfth nav row on the Mac, and a commit hook that keeps the verb the
+measurement forbade out of the tree.
+
+**Nothing here re-argues the wall.** It was measured, it is in Slice 7, and `docs/protocol.md` now
+carries the contract. What is new is the build on top of it and the four readings that check it.
+
+### 1. Enumeration — 123 of 123, in the unit the app reports
+
+Ground truth, counted **twice on purpose**, because the first version of this comparison would have
+invented a defect:
+
+```
+$ adb -s RZCY12330DT shell cmd package query-activities -a android.intent.action.MAIN \
+    -c android.intent.category.LAUNCHER | grep -c packageName=                       → 246 ACTIVITIES
+$ … | grep -o 'packageName=[^ ]*' | sed 's/packageName=//' | sort -u | wc -l         → 123 PACKAGES
+```
+
+CONTROL — three packages known to be launchable, asserted by name rather than by count:
+`com.android.chrome`, `com.android.settings`, `com.chetan.connectsuite.debug`, all present.
+
+The phone, through the shipping path, on the same device, same minute:
+
+```
+[apps] Enumerated 123 launcher packages — 123 labelled / 0 fell back to the package id.
+       This counts PACKAGES; `adb shell cmd package query-activities` counts ACTIVITIES
+       and is a larger number for the same phone.
+[apps] apps.list → 123 of 123 packages in 1297ms
+```
+
+**123 of 123, and 123 of 123 labelled.** Not one package fell back to its own id, which is the
+reading that says the `<queries>` block is doing its job — Slice 7's R3 control established that
+without the declaration the same query returns 15.
+
+**The units line is in the log because the comparison nearly went the other way.** 123 against 246
+reports a 45% package-visibility gap that does not exist, and — the dangerous part — that fictional
+gap is exactly the shape of defect 28, a real and well-known bug. It would have read as a diagnosis
+rather than as an arithmetic error. Now a rule in `CLAUDE.md`.
+
+Second and third `apps.list` calls: **29 ms** and **50 ms**, against 1297 ms cold. The first call
+pays for 123 `getApplicationInfo` lookups; `AppLabels` caches successes, so the rest are free. Timing
+is published beside the count per the pager rule — this list does not page, and the reason it does
+not is in `docs/protocol.md`.
+
+Icons: four batches of `apps.icon`, **32 / 32 / 32 / 27 made, 0 failed of 123 asked**, edge=96.
+
+### 2. The grid, read through `scripts/apps-pane-probe.mjs`
+
+Every number below carries a control and says how it stopped.
+
+```
+app tiles drawn in the grid                              → 123  [control=1   stopped=settled]
+distinct package handles among those tiles               → 123  [control=123 stopped=immediate]
+tiles whose label is a resolved name, not the package id → 123  [control=123 stopped=immediate]
+tiles showing a real icon (an img with PNG data)         → 123  [control=123 stopped=settled]
+tiles still waiting for an icon                          →   0  [control=123 stopped=immediate]
+actionable controls that are not a tile or the search box→   0  [control=123 stopped=immediate]
+```
+
+**Three separate readings, because a tile count proves none of the claims.** 123 tiles is the same
+number whether the grid holds 123 apps or 123 raw package ids, and the same number whether it holds
+123 icons or 123 empty placeholders. So names and pictures are counted against their own
+denominators, and the sum check — `123 drawn + 0 pending = 123 of 123` — is what says the reading
+covers the whole grid rather than whatever was scrolled into view.
+
+The last row is the pane's own prohibition, counted as **elements** rather than searched as text: no
+retry, no queue, no "open" button. A `/open|launch/` text scan would have matched the banner
+explaining that the phone is what opens an app, which is the fault that once matched an upload
+affordance in the sentence apologising for its absence.
+
+### 3. The tap, end to end, witnessed from the shell
+
+`scripts/apps-open-ask-probe.mjs`, run twice on two targets:
+
+| | Chrome | Settings |
+|---|---|---|
+| top before | `com.sec.android.app.launcher` | `com.sec.android.app.launcher` |
+| notification posted | `"Open Chrome?"` | `"Open Settings?"` |
+| channel / importance | `app_open_request` / 4 | `app_open_request` / 4 |
+| **top after** | **`com.android.chrome`** | **`com.android.settings`** |
+
+The witness is `dumpsys activity activities` from the shell, never the app: the phone's own log says
+it *asked* and cannot say more, by construction, and an in-process `getRunningTasks` is restricted to
+our own tasks. HOME is pressed first and the launcher confirmed topmost, so the reading has somewhere
+to travel from — "Chrome is on top afterwards" means nothing if Chrome was on top before.
+
+The notification's `PendingIntent` shows the allowlist that makes this legal, in the platform's own
+words:
+
+```
+actions={ [0] "Open" -> PendingIntent{… startActivity
+          (allowlist: …/NOTIFICATION_SERVICE/NotificationManagerService)} }
+```
+
+That is the difference between this and Slice 7's refusal, stated by the system rather than inferred:
+the tap runs with a notification-granted background-activity-start allowlist; our own backgrounded
+process has none.
+
+### 4. Three instrument faults, all caught, all in one sitting
+
+None of these was a product bug, and each was one sentence from being written down as one.
+
+| The instrument | What it reported | What it was measuring |
+|---|---|---|
+| `expect: !toast.hidden` after clicking a tile | clicked "AdBlock", told "Sent — YouTube Music" | the toast was **already visible** from a click the *user* had made minutes earlier. The poll returned on its first sample |
+| `grep channelId=app_open_request` | FAIL — wrong channel | the field is `channel=`. The notification was on exactly the right channel at importance 4 |
+| one `uiautomator dump` 1.5 s after expanding the shade | "could not find the notification by name" | 285 nodes and no notification: the shade was mid-animation. **A tree that has not finished drawing is not a negative reading** |
+
+The first is the newest shape and worth the entry: **CLAUDE.md's absence rule with the sign
+flipped.** The catalogue is full of absences read as findings; this was a *presence* that was already
+there. The question is the same one — *what else would satisfy this expectation?* — and the answer
+was "any earlier click, including one a person made while you were not looking". Fixed by naming the
+app in the expectation, so the state under test is *the toast is about the app I just clicked*.
+
+### 5. And a fourth thing, which is Samsung's and is not a fault
+
+**The first tap opened a notification group, not the notification.** With four or more notifications
+outstanding from one package, One UI folds them into an auto-group whose collapsed header *previews
+the newest one* — so a node reading `text="Open Chrome?"` at the top of the shade is the summary, and
+tapping it expands the group. Measured: the node sat at **y=498 collapsed and y=679 expanded**, and
+only the second tap reached Chrome.
+
+This is the coordinate rule's failure mode **with the name correct**: the query matched exactly the
+text it meant to, on a node that was a different thing. The probe re-reads the tree after each tap
+rather than trusting a position, taps at most twice, and **prints how many taps it took** — because
+"one tap opens it" is the product claim and a probe that quietly tapped twice would be concealing the
+one thing worth knowing.
+
+For a user this is the ordinary case only when ConnectSuite has four notifications outstanding at
+once. It is not something this app controls, and it is recorded rather than worked around.
+
+### 6. A renderer defect the view test caught before it shipped
+
+`AppsView.refresh()` returned early on a failed `apps.list`, so the render at the end of the method
+never ran and the pane kept what the render at the *top* had drawn. On a phone with the capability
+off that is the *"your phone cannot show the request"* banner — so **a refused list would have been
+reported to the user as a missing notification permission**: a confident, specific, wrong sentence
+about a different problem, and precisely the two states this pane is required to keep apart.
+
+Found by `appsView.test.ts` on its first run, before a commit. The redraw is in `finally` now. This is
+the whole argument for `check-renderer-views.mjs`, which is also what forced the test to exist — it
+refused the commit until `AppsView` had one.
+
+### 7. Guards
+
+| Check | Result |
+|---|---|
+| `node scripts/check-apps-verb.mjs` | 266 source files, **no `apps.launch` anywhere**; red on both sides under mutation, green after revert |
+| `node --test scripts/check-apps-verb.test.mjs` | 14 fixtures, including *prose about the prohibition must pass* |
+| `node scripts/check-protocol-spec.mjs` | 61 of 63 specified, 2 debt, 0 unaccounted; the three `apps.*` TWIN_EXEMPT entries pruned |
+| `node scripts/check-clip-echo.mjs` | green — **after it refused a `lastSent` field in the new pane**, which was a genuine collision and produced the better name (`lastAsk`) |
+| `:sync-module:testDebugUnitTest`, `:core:testDebugUnitTest` | gradle exit 0; `AppsContractTest` 5, `AppsPayloadsTest` 7, results file written 8 s before it was read |
+| `npm test` (desktop) | **318 pass, 0 fail** |

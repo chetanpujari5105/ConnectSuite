@@ -69,6 +69,22 @@ const ICON_GEOMETRY: Record<string, string> = {
   camera:
     '<path d="M3 8.6A2.4 2.4 0 0 1 5.4 6.2h2l1.3-2h6.6l1.3 2h2A2.4 2.4 0 0 1 21 8.6v8.6a2.4 2.4 0 0 1-2.4 2.4H5.4A2.4 2.4 0 0 1 3 17.2z"/>' +
     '<circle cx="12" cy="12.6" r="3.3"/>',
+  /*
+   * Apps — a 3x3 of dots, which is what an app drawer looks like on every platform anybody has
+   * used. Deliberately not a 2x2 of rounded rects: `overview` is already that, and two nav rows
+   * with the same glyph is the empty-ring defect's cousin — an icon that draws fine and identifies
+   * nothing. Filled rather than stroked, like `dots`, because a 1.5px ring at r=1.35 is mush.
+   */
+  apps:
+    '<circle cx="6" cy="6" r="1.35" fill="currentColor" stroke="none"/>' +
+    '<circle cx="12" cy="6" r="1.35" fill="currentColor" stroke="none"/>' +
+    '<circle cx="18" cy="6" r="1.35" fill="currentColor" stroke="none"/>' +
+    '<circle cx="6" cy="12" r="1.35" fill="currentColor" stroke="none"/>' +
+    '<circle cx="12" cy="12" r="1.35" fill="currentColor" stroke="none"/>' +
+    '<circle cx="18" cy="12" r="1.35" fill="currentColor" stroke="none"/>' +
+    '<circle cx="6" cy="18" r="1.35" fill="currentColor" stroke="none"/>' +
+    '<circle cx="12" cy="18" r="1.35" fill="currentColor" stroke="none"/>' +
+    '<circle cx="18" cy="18" r="1.35" fill="currentColor" stroke="none"/>',
   activity: '<path d="M3 12.4h3.6l2.2-6 3.2 12 2.4-7.4 1.5 3.4H21"/>',
   settings:
     '<circle cx="12" cy="12" r="3"/>' +

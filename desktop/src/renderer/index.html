@@ -519,6 +519,31 @@
                 <div class="clip-list" id="clip-list" aria-label="Clipboard history"></div>
               </div>
             </section>
+            <!-- ================================ Apps ====================================== -->
+            <!--
+              A grid, a search box, and one line that says what happened. What is deliberately
+              absent is any control that would imply this Mac opened something: no per-tile spinner,
+              no retry, no "recently opened". Clicking asks the phone to ask its user, and the
+              answer arrives as a tap on a notification that this Mac never hears about.
+            -->
+            <section class="screen" data-screen="apps" hidden>
+              <div class="pane pane-apps" id="apps-card">
+                <div id="apps-banner" class="apps-banner" hidden></div>
+                <div class="apps-head">
+                  <input
+                    id="apps-search"
+                    class="apps-search"
+                    type="search"
+                    autocomplete="off"
+                    placeholder="Search apps"
+                    aria-label="Search apps"
+                  />
+                  <p class="pane-sub" id="apps-note"></p>
+                </div>
+                <div id="apps-toast" class="apps-toast" role="status" aria-live="polite" hidden></div>
+                <div id="apps-grid" class="apps-grid" role="grid" aria-label="Apps on your phone"></div>
+              </div>
+            </section>
             <section class="screen" data-screen="camera" hidden></section>
             <section class="screen" data-screen="activity" hidden>
               <div id="activity-host"></div>
@@ -590,6 +615,7 @@
     <script src="../shared/filesRoots.js"></script>
     <script src="files.js"></script>
     <script src="photos.js"></script>
+    <script src="apps.js"></script>
     <script src="clipboard.js"></script>
     <script src="../shared/activity.js"></script>
     <script src="activity.js"></script>

@@ -8,6 +8,7 @@ import com.chetan.connectsuite.core.notification.NotificationChannels
 import com.chetan.connectsuite.input.InputFeature
 import com.chetan.connectsuite.mirror.v2.MirrorEngine
 import com.chetan.connectsuite.mirror.v2.MirrorFeature
+import com.chetan.connectsuite.sync.v2.AppsFeature
 import com.chetan.connectsuite.sync.v2.CallFeature
 import com.chetan.connectsuite.sync.v2.ClipFeature
 import com.chetan.connectsuite.sync.v2.ContactsFeature
@@ -89,6 +90,11 @@ class ConnectSuiteApp : Application() {
         // moment MainActivity has window focus, and `clip.request` to a backgrounded phone answers
         // PHONE_NOT_FOREGROUND rather than pretending the clipboard is empty.
         ClipFeature.install(this, link)
+        // Phase 7, the apps slice. Three verbs and no launch verb: this platform refuses a
+        // background activity start *silently*, so opening an app is a notification the user taps.
+        // The capability turns on with POST_NOTIFICATIONS, because that tap is the only route there
+        // is — see CapabilityContract and docs/protocol.md.
+        AppsFeature.install(this, link)
         // Last, because it reads NotificationRelay: the media remote is gated on the notification
         // listener rather than on a permission of its own. See RemoteFeature.
         RemoteFeature.install(this, link)

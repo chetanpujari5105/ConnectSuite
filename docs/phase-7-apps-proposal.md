@@ -6,6 +6,17 @@
 >
 > **Outcome in one line: `apps.launch` will never be implemented; `apps.open.ask` is the feature.**
 >
+> **BUILT 2026-09-03.** All three verbs ship, the Mac has a twelfth nav row, and the run is in
+> `docs/testing.md` → Phase 7 Slice 8: **123 of 123 launcher packages, 123 of 123 with resolved
+> names, 123 of 123 with real icons**, and the tap proven end to end on two targets with
+> `dumpsys` as the witness. The contract moved to `docs/protocol.md`, which wins wherever this
+> document and it disagree — read this one for the *arguments*.
+>
+> The prohibition has an enforcement point rather than a sentence: `scripts/check-apps-verb.mjs`,
+> wired to `PreToolUse` on `git commit`. `MessageType` has no `APPS_LAUNCH` constant at all — a
+> name the measurement refused is deleted, not reserved, because an unused constant with a better
+> name than the one that shipped is one autocomplete from a handler.
+>
 > `apps.list`, `apps.launch` and `apps.icon` have been named in `docs/protocol.md`'s message-type
 > inventory since Phase 2 and implemented nowhere. They are on the Reference behaviour list, and app
 > launching is the largest absent feature in the product.
@@ -184,7 +195,7 @@ force-stopping was harmful when *we* did it deliberately.
   150 on this device (Secure Folder), so the answer is probably "no, and the platform will not even
   tell us they exist". Worth one reading, not worth a design until then.
 
-## 5. Why nothing is built
+## 5. Why nothing was built before §2 ran
 
 Because §2 has not run, and the honest reason is in the table in §2.3: **two of the four outcomes
 produce a different feature, and one produces no feature at all.** Writing `apps.launch` first would

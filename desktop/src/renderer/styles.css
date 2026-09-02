@@ -2391,3 +2391,207 @@ img#qr {
 @media (prefers-reduced-motion: reduce) {
   .deep-reveal { animation: none; border-color: var(--accent); }
 }
+
+/* ============================== Apps ==========================================================
+   The launcher grid. Every selector below is declared only here: tokens.css owns colour, shell.css
+   owns the frame, and a second `.apps-*` block in either would silently win by document order —
+   which is what stylesheets.test.ts refuses and what cost three bugs in one sitting. */
+
+.pane-apps {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.apps-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.apps-search {
+  flex: 0 1 280px;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: var(--well);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.apps-search:focus-visible {
+  border-color: var(--accent-border);
+}
+
+/* --warning, never --destructive. A feature with one switch off is not a failure, and red in a
+   connection product reads as "the link is down". Mirrors .photos-banner deliberately: the two
+   panes are in the same designed state — working, and not fully offered. */
+.apps-banner {
+  border-radius: var(--radius-control);
+  padding: var(--space-4) var(--space-5);
+  display: grid;
+  gap: 4px;
+}
+
+.apps-banner.partial {
+  background: var(--warning-fill);
+  border: 1px solid var(--warning-border);
+}
+
+.apps-banner.unavailable {
+  background: var(--well);
+  border: 1px solid var(--hairline);
+}
+
+.apps-banner-headline {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text-primary);
+}
+
+.apps-banner-detail,
+.apps-banner-fix {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  /*
+   * `max-content`, and it is load-bearing rather than tidy — with the default `auto` the whole grid
+   * drew as columns of overlapping icons with no names at all.
+   *
+   * A tile is a `<button>`, and the base `button` rule two hundred lines up sets `min-height: 32px`.
+   * Chromium sizes an `auto` grid row from the item's intrinsic block contribution, and for a button
+   * that contribution came back as **32px** — the min-height — rather than as the 48px icon plus the
+   * label. So every row was 32px, every tile overflowed it, and the label inside was clipped to
+   * *zero height*. `grid-auto-rows: max-content` makes the row measure the content instead: 107px,
+   * with the two-line clamp working exactly as written.
+   *
+   * Worth recording because the visible symptom pointed at the wrong line. The label had height 0,
+   * so the obvious diagnosis was the `-webkit-line-clamp` below — and a test that replaced the clamp
+   * with `display: block` did make the text appear, which *confirmed* it. Measured with the row
+   * fixed, the clamp is correct and always was: 2 lines for a long name, 1 for a short one. One
+   * cause, two suspects, and the innocent one had a passing experiment behind it.
+   */
+  grid-auto-rows: max-content;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  max-height: 560px;
+  overflow-y: auto;
+  border-radius: var(--radius-panel);
+  background: var(--elev-3);
+  border: 1px solid var(--hairline-primary);
+  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+}
+
+.apps-tile {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  padding: var(--space-4) 8px;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.apps-tile:hover {
+  background: var(--control);
+  border-color: var(--hairline);
+}
+
+.apps-tile-art {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.apps-tile-icon {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  display: block;
+}
+
+/* Flat, not a shimmer: 122 animated placeholders is a lot of motion for a wait measured in
+   hundreds of milliseconds. The same call the photo grid made. */
+.apps-tile-pending {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--well);
+}
+
+.apps-tile-name {
+  font-size: 11.5px;
+  line-height: 1.25;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+/* An unresolved label IS the package id — AppLabels' honest fallback, which must not be "fixed".
+   Drawn in the mono face so it reads as the machine handle it is rather than as a name somebody
+   chose. Departure N5, applied to a second pane. */
+.apps-tile-name.mono {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+/* "Sent to your phone" and nothing more. It does not fade on a timer: it records what this Mac did
+   — ask — and that fact does not expire or turn out to have been wrong. */
+.apps-toast {
+  border-radius: var(--radius-control);
+  padding: 10px var(--space-4);
+  display: grid;
+  gap: 3px;
+  font-size: 12.5px;
+}
+
+.apps-toast.sent {
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  color: var(--text-primary);
+}
+
+.apps-toast.refused {
+  background: var(--warning-fill);
+  border: 1px solid var(--warning-border);
+  color: var(--text-primary);
+}
+
+.apps-toast-fix {
+  color: var(--text-secondary);
+}
+
+.apps-empty {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  padding: var(--space-7) var(--space-5);
+  justify-items: center;
+  text-align: center;
+}
+
+.apps-empty-headline {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.apps-empty-detail {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  max-width: 46ch;
+}

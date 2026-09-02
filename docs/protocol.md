@@ -37,7 +37,7 @@ permission changes.
   "unavailable": [
     { "name": "input", "reason": "missing Accessibility access" },
     { "name": "sms",   "reason": "missing SMS" },
-    { "name": "apps",  "reason": "not built yet — waiting on apps.list, apps.launch" }
+    { "name": "apps",  "reason": "missing Notifications" }
   ]
 }
 ```
@@ -76,7 +76,8 @@ Photos: `media.buckets`, `media.list`, `media.thumb`, `media.original`
 Mirror: `mirror.start`, `mirror.stop`, `mirror.config`, `mirror.keyframe`, `mirror.stats`, `mirror.state`, `mirror.rotate`
 Input: `input.tap`, `input.swipe`, `input.scroll`, `input.key`, `input.text`, `input.global`
 (back/home/recents/notifications/quick-settings/lock-screen — **not** power; see [Input](#input-42501))
-Apps: `apps.list`, `apps.icon`, and **exactly one of** `apps.launch` / `apps.open.ask` — see [Apps](#apps-42501)
+Apps: `apps.list`, `apps.icon`, `apps.open.ask` — see [Apps](#apps-42501). There is deliberately **no**
+`apps.launch`; the measurement that removed it, and the guard that keeps it removed, are in that section
 Media remote: `remote.state`, `remote.command`
 Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`, `pair.rejected`
 System: `ping`, `pong`, `capabilities.changed`, `battery.state`, `net.state`
@@ -1932,49 +1933,134 @@ advertised.
 
 ## Apps (42501)
 
-**Nothing here is implemented.** `docs/phase-7-apps-proposal.md` §2 carries the measurement that
-decides which launch verb ships, and **the names are fixed here first, before the reading, so a
-refusal cannot be absorbed into a verb that promises more than the platform allows.**
+**Built 2026-09-03, on the measurement in `docs/phase-7-apps-proposal.md` §2.4 and not on the shape
+anybody wanted.** Three verbs: `apps.list`, `apps.icon`, `apps.open.ask`. There is no launch verb in
+this namespace and there will not be one — see [The verb that does not exist](#the-verb-that-does-not-exist).
 
-### `apps.list` and `apps.icon`
+### `apps.list`
 
-`apps.list` — request `{}`, response `{ apps: [{ package, label, updatedMs }], count }`. `label` is
-required and resolved through `AppLabels.of`; `package` is a machine handle and never the only thing
-a person reads.
+**Request** `{}`. No cursor, no limit, and that is a decision rather than an omission — see below.
 
-`apps.icon` — request `{ packages: [...] }`, response one entry per package carrying base64 PNG or a
-per-item `error`, the same shape as `media.thumb`: one missing icon must not lose the other 31.
+**Response**
 
-### The launch verb, and why there are two names for one idea
+```json
+{
+  "apps": [
+    { "package": "com.instagram.android", "label": "Instagram", "updatedMs": 1756900000000, "versionName": "312.0.0" }
+  ],
+  "count": 122,
+  "total": 122
+}
+```
 
-**Exactly one of these ships. They are not alternatives a client may choose between, and both must
-never be advertised at once.**
+`label` is required, always present, and resolved through `AppLabels.of`. Where the lookup fails the
+label *is* the package id — that fallback is correct and must not be "fixed" — and the entry then
+carries `labelIsFallback: true` so the Mac can draw it in the mono face as the handle it is. This is
+`CLAUDE.md`'s package-id rule expressed in the payload: a package id may be a machine handle and may
+never be the only thing a person reads.
 
-| Type | Ships when | What its ack means |
+**`count` and `total` are two different numbers and both are sent.** `count` is what is in this
+response; `total` is what the phone enumerated before the 1000-package cap. They are equal in every
+real case and they differ visibly if the cap ever bites. A list that silently returns its first
+thousand rows is the 200-page probe cap wearing a wire format — the Mac would draw the instrument's
+bound and read it as the phone's contents.
+
+**Why there is no pager.** Every other list in this contract pages, and this one does not, because
+the source is an in-memory `PackageManager.queryIntentActivities` call rather than a cursor over a
+provider: there is nothing to hold a position in, and a second page would re-run the whole query.
+More to the point, a pager here could never be *proven*. `CLAUDE.md` requires a pager to be recorded
+on consecutive pages counted on hardware, with the boundary count published beside the totals — and
+122 entries is one page, so no boundary ever lands anywhere and the run would prove exactly nothing.
+The `fs.list` sweep is the worked example: 33 pages, sums reached, `tieBoundaries: 0`, and no
+evidence whatever about the tiebreak. A cap with an honest `total` is a bound that reports itself; an
+unexercised pager is a bound that does not.
+
+**The set is the launcher set.** `queryIntentActivities(MAIN/LAUNCHER)`, deduplicated to distinct
+packages — 122 on the handset this was measured on. The `<queries>` block in
+`sync-module/src/main/AndroidManifest.xml` is what makes that visible, and it was measured with its
+own control: with the block removed the same query returns **15**. `QUERY_ALL_PACKAGES` is refused on
+Play-policy grounds and the launcher set is the right set rather than a lesser one — an app worth
+opening from a Mac is an app with a launcher icon, by definition.
+
+**A units warning, because it has already cost a fictional defect.** `adb shell cmd package
+query-activities` counts **activities** (244 here); every app-side reading counts **distinct
+packages** (122). One package can publish several launcher activities. Comparing the two produces a
+45% visibility gap that does not exist.
+
+### `apps.icon`
+
+**Request** `{ packages: [...], maxEdge?: 96 }` — at most **32** packages per request, `maxEdge`
+between 24 and 192.
+
+**Response** one entry per package, in request order, each carrying either the image or its own
+`error`:
+
+```json
+{ "icons": [
+  { "package": "com.instagram.android", "mime": "image/png", "width": 96, "height": 96, "data": "iVBOR…" },
+  { "package": "com.example.gone", "error": "NOT_FOUND" }
+] }
+```
+
+The same shape as `media.thumb` and for the same reason: one missing icon must not lose the other 31.
+PNG rather than JPEG because launcher icons have transparency and an adaptive icon composited onto an
+opaque background is a different picture from the one on the phone's home screen.
+
+### `apps.open.ask`
+
+**Request** `{ package }`. **Response** `{ asked: true }`.
+
+**The ack means the question was asked, and nothing else.** There is no field reporting whether the
+app opened, because this phone does not know and will not learn: what opens it is a person tapping a
+notification, in their own time, or not at all. A client that wants to display *opened* has to be
+told it cannot, and the absence of anywhere to read it from is how it is told.
+
+The phone posts a high-importance notification — *Open Instagram?* — naming the Mac that asked. The
+launch happens from that tap, in the user's own hands, which is a foreground activity start and is
+permitted. Nothing in this namespace calls `startActivity` from the background.
+
+Errors:
+
+| Code | When |
+|---|---|
+| `NOT_FOUND` | The package has no launcher activity, or is not installed. The Mac's list is stale; refresh it |
+| `NOTIFICATIONS_BLOCKED` | Notifications from ConnectSuite are turned off, so there is nowhere to put the question. **Not** `PERMISSION_DENIED`: the list and the icons still work, and grey­ing the pane would hide a working grid because the thing it opens has no doorbell |
+| `BAD_REQUEST` | No `package` in the payload |
+
+### The verb that does not exist
+
+**There is no `apps.launch`, and its absence is enforced rather than intended.**
+
+Both names were written into this contract *before* the measurement ran, deliberately, so that a
+refusal could not be absorbed into a verb promising more than the platform allows:
+
+| Type | Would have shipped when | What its ack would have meant |
 |---|---|---|
 | `apps.launch` | The phone can start an activity while ConnectSuite is backgrounded | **The app came to the front.** A remote control |
 | `apps.open.ask` | It cannot | **The phone asked its user.** A notification was posted; a person may tap it, or not |
 
-`apps.launch` is reserved. If the measurement lands on the notification path, **`apps.launch` is not
-implemented, not advertised, and not defined** — the namespace ships `apps.open.ask` and the word
-*launch* appears nowhere in it.
+Measured on the SM-S938B, 2026-09-03, with ConnectSuite backgrounded and the screen on:
+`startActivity` for `com.android.settings` **threw nothing, logged nothing, and did not bring the app
+to the front** — `dumpsys activity activities` still named the launcher as `topResumedActivity`. That
+is the proposal's fourth row, the one outcome every automated check calls a pass and which fails only
+in a user's hand.
+
+So `apps.launch` is **not implemented, not advertised, and not defined**. The constant is absent from
+`MessageType` rather than present and unregistered, because an unused constant is one autocomplete
+away from a handler.
 
 **The name is where the lie would live.** A verb called `apps.launch` whose ack means *asked* invites
-the next person to build a remote control on top of it: a Mac-side grid that dims a tile on click, a
-retry when "the launch failed", a queue of pending launches. Every one of those is reasonable against
-the name and wrong against the behaviour. Renaming afterwards does not undo it, because by then the
+the next person to build a remote control on top of it: a grid that dims a tile on click, a retry
+when "the launch failed", a queue of pending launches. Every one of those is reasonable against the
+name and wrong against the behaviour, and renaming afterwards does not undo it, because by then the
 callers exist.
 
-`apps.open.ask` response: `{ asked: true }`, and there is **no** field reporting whether the app
-opened, because the phone does not know and will not learn. A client that wants to display "opened"
-has to be told it cannot, by the absence of anywhere to read it from.
-
-### The outcome that ships nothing
-
-If `startActivity` returns normally and the app does not come to the front — proposal §2.3's fourth
-row — **neither verb is implemented**. A verb that reports success and does nothing is worse than an
-absent feature, and `apps` stays off the capability list with its reason recorded like every other
-unavailable capability.
+**The enforcement point is `scripts/check-apps-verb.mjs`**, wired to `PreToolUse` on `git commit`. A
+rule that only one of two names may ever ship is a rule enforced by someone remembering, and
+`CLAUDE.md` is explicit about what that is worth. The guard refuses the wire literal `"apps.launch"`
+and any `APPS_LAUNCH` identifier anywhere in shipping source on either side — while leaving *prose*
+about it alone, which is the discriminator that keeps it from forbidding the paragraph you are
+reading. Its fixtures are in `scripts/check-apps-verb.test.mjs`.
 
 ## Discovery
 

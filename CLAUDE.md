@@ -133,6 +133,15 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   automated check would call a pass. Two things are already decided and must not be reopened: the
   `<queries>` block exists (defect 28) and `QUERY_ALL_PACKAGES` was refused on Play-policy grounds,
   and a package id is a handle rather than a sentence.
+
+  **The reading landed on the fourth row and the feature shipped anyway, which is the part worth
+  carrying forward.** Rows 3 and 4 turned out to be two different questions: the *mechanism* is row
+  4 — a backgrounded `startActivity` refused **silently** — and the *product* is row 3, a
+  notification the user taps, which the silent block cannot touch because it never calls
+  `startActivity` from the background. So row 4 is a **prohibition on a name**, not on the feature,
+  and that distinction was only available because the names were fixed in `docs/protocol.md` before
+  the experiment ran. `MessageType` has no `APPS_LAUNCH`; `scripts/check-apps-verb.mjs` keeps it
+  that way, and `docs/testing.md` → Phase 7 Slice 8 is the build.
 - `docs/phase-3-input.md` — the Phase 3 brief: input injection via AccessibilityService. **Phase 3
   is closed** (2026-08-31); this is the record of what it built, not a live brief. The current brief
   is `docs/RESUME.md`.
@@ -151,7 +160,7 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 | 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
 | 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **Done** — closed 2026-09-02 against both its conditions (`docs/phase-5-closeout.md`); photos done; **Files is complete** as of 2026-09-01 (both directions with resume, the Folders screen, the Files pane, the grant-free `Download/ConnectSuite` destination, drag to Finder); **contacts shipped in Phase 4** and is not outstanding — see `docs/phase-5-closeout.md`. **Clipboard is built in both directions** — the wall measured (Slice 11, 2026-09-01), the feature landed, and Handoff-style auto-apply added on the Mac with a setting on the phone (Slice 12, 2026-09-02). Both directions are as automatic as their platforms allow — the Mac watches its own clipboard, the phone cannot and no Android app can. Outstanding: the phone has not been reinstalled with the latest copy change |
 | 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | **In progress** — code landed 2026-09-02: `LinkBootReceiver` (defect 60), the wake-lock refresh (61), the crash-serverless fix (62). Forced Doze passes on the **exempt** path with a live message across it. **The reboot happened, 2026-09-02: the receiver fires and the link is up with nothing tapped — but the branch that ran was `already listening`, because the listener rebind beat it by 3.9 s. The boot path has still never started anything (defect 64).** The unexempt path is **out of scope on this handset** — `am set-standby-bucket … 5` is refused, so the bucket cannot be put back; it needs a second device |
-| 7 | Mac UX — packaging, distribution, app launching, and the polish pass | **In progress** — 2026-09-02: the **Activity** pane, palette **deep links**, two view classes off the renderer-view debt list. **Pairing's phone half is now built**: F1-F5 of `docs/phase-7-pairing-flow.md`, all five items that need no protocol change — a fifth onboarding page ending on pairing, the Mac tab reordered behind an **Advanced** fold, and the phone finally saying *which* silence it is in. F6 and F7 change `docs/protocol.md` and are not built. **F2, F4 and F5 are unverified on hardware** — the device left the USB bus before they could be installed |
+| 7 | Mac UX — packaging, distribution, app launching, and the polish pass | **In progress** — **apps landed 2026-09-03**: `apps.list`, `apps.icon`, `apps.open.ask`, a twelfth nav row, and **123 of 123 launcher packages with resolved names and real icons on hardware**. There is no `apps.launch` and a commit hook keeps it that way — the measurement forbade the *name*, not the feature (`docs/phase-7-apps-proposal.md` §2.4). Before that, 2026-09-02: the **Activity** pane, palette **deep links**, two view classes off the renderer-view debt list. **Pairing's phone half is now built**: F1-F5 of `docs/phase-7-pairing-flow.md`, all five items that need no protocol change — a fifth onboarding page ending on pairing, the Mac tab reordered behind an **Advanced** fold, and the phone finally saying *which* silence it is in. F6 and F7 change `docs/protocol.md` and are not built. **F2, F4 and F5 are unverified on hardware** — the device left the USB bus before they could be installed |
 | 9 | Distribution — packaging, signing, release builds | **Started** — 2026-09-02, only the parts needing no Apple account: `docs/phase-9-distribution-audit.md` (thirteen rows, two corrected by measurement), an unsigned `.dmg`, a 25 MB release APK, and one version scheme (`docs/versioning.md`) with a sixth commit hook. **Neither artifact can be given to anyone, and both were measured rather than assumed**: the `.dmg`'s app is *ad-hoc* signed and Gatekeeper returns an error instead of a verdict (D12 — worse than unsigned, since the right-click bypass does not apply), and the release APK is refused by the platform outright with `INSTALL_PARSE_FAILED_NO_CERTIFICATES` (D13). **Nothing signed, notarized or published**; the config for all three is written with credentials blank |
 
 `android-connect-suite-claude-code-prompt.md` is the **v1 plan and is superseded**. Its phases are
@@ -833,6 +842,78 @@ damage on the user's own device or nearly recorded a false result.
   outside the instrument, the second says it must resemble the real thing where it counts. Fail
   either and the result is a confident green over a feature that has never worked.
 
+- **Fix the name before you take the reading, and measure against the name you would have to
+  defend.** A measurement taken while the thing measured is still unnamed will be written up under
+  whichever name flatters the result, and nobody afterwards can tell the difference.
+
+  The worked example is `apps.*`, 2026-09-02 to 09-03. Two names for one idea — `apps.launch` and
+  `apps.open.ask` — were written into `docs/protocol.md` **before** the experiment ran, with a
+  pre-registered table saying which reading produced which. Then the reading came back as the worst
+  row: a backgrounded `startActivity` **returns normally, logs nothing, and brings nothing to the
+  front**.
+
+  Because the names already existed, that result had a place to land, and the place it landed
+  changed what it meant. **The prohibition it produced is on a name, not on the feature.** The
+  original table conflated *how the platform refuses* with *what should be built*, and only the
+  first is a measurement:
+
+  | | The finding |
+  |---|---|
+  | The mechanism | Row 4 — blocked *silently*. This forbids `apps.launch` outright: a verb built on it returns success and does nothing |
+  | The product | Row 3 — a notification the user taps. `apps.open.ask` never calls `startActivity` from the background, so the silent block cannot touch it |
+
+  **That split is only visible because the names were fixed first.** Had the verb been called
+  `apps.launch` throughout the experiment, the same reading would have been written up as *"launch
+  works, via a notification"* — which is a true sentence about a mechanism and a false one about the
+  verb, and it is the shape §"A true sentence about the wrong one of two paths" says nothing in
+  review is aimed at. The ack would have meant *asked*, the callers would have read *opened*, and
+  the correction would have arrived after a Mac-side grid, a retry and a pending-launch queue had
+  all been built on the word.
+
+  So the rule has two halves, and the second is the one people skip:
+
+  - **Name the thing before measuring it**, in the contract, with the alternatives written down.
+  - **Measure against the name you would have to defend, not the one you hope for.** The question is
+    not *did it work* but *would I sign the sentence this name commits me to*. `apps.launch` commits
+    you to "the app came to the front"; the reading could not support that, and no amount of
+    "well, it opens eventually" repairs it.
+
+  The corollary is about deletion. A name the measurement refused is **not** kept around as a
+  reserved constant — `MessageType` has no `APPS_LAUNCH`, and `scripts/check-apps-verb.mjs` is what
+  keeps it that way. An unused constant with a better name than the one that shipped is one
+  autocomplete from a handler.
+
+- **Ground truth and the reading have to be in the same unit before either one is a number.** A
+  comparison across units does not fail loudly; it produces a plausible gap, and somebody spends a
+  day hunting a defect that does not exist.
+
+  It nearly happened twice in this feature, in opposite directions. `adb shell cmd package
+  query-activities` counts **launcher activities** — 244, later 246. Every app-side query counts
+  **distinct packages** — 122, later 123. One package can publish several launcher entries, so both
+  numbers are honest and neither is wrong. Compared to each other they report the app seeing *"122
+  of 244"*: a **45% package-visibility gap** that does not exist, over a result that was in fact
+  *122 of 122*, perfect.
+
+  What makes it dangerous rather than merely wrong is that the fictional gap is **exactly the shape
+  of a real, well-known bug.** Android 11 package visibility hiding half the launcher set is
+  plausible, is what `<queries>` exists for, and is what defect 28 already was. The wrong number
+  does not look like a units error — it looks like a diagnosis.
+
+  So, before a ground truth and a reading are compared:
+
+  - **Say the unit out loud in both, in the same sentence.** "246 activities" against "123 packages"
+    is obviously not a subtraction; "246" against "123" invites one.
+  - **Recount the ground truth in the reading's unit** rather than converting the reading.
+    `… | grep -o packageName= | sort -u | wc -l` is one pipe and it makes the comparison legal.
+  - **Carry the unit into the code and the log.** `AppsPayloads.MAX_APPS` is documented in packages,
+    and the phone's own line says *"this counts PACKAGES; `query-activities` counts ACTIVITIES and
+    is a larger number for the same phone"* — so the next person to run both does not have to
+    rediscover it.
+
+  This is the denominator rule one level down. That rule says a count needs the number that gives it
+  scale; this one says the two numbers have to be **of the same thing** before the ratio means
+  anything at all.
+
 - **A tagged union is a rule about what can be represented, not about who may write it.** Making an
   ambiguous state unrepresentable does nothing about two callers racing to set an unambiguous one,
   and the second writer is free to move the machine back to a state the first had already left.
@@ -1416,10 +1497,33 @@ damage on the user's own device or nearly recorded a false result.
   exactly the six real gaps.
 
   It found two nobody was looking for — `mirror.stop` and `mirror.keyframe`, implemented since Phase
-  2 and described nowhere. And its debt list is **printed on every run with a reason per entry**, so
+  2 and described nowhere.
+
+  **The seventh is `scripts/check-apps-verb.mjs`**, and it guards a rule the contract states in
+  words: exactly one of `apps.launch` / `apps.open.ask` may ever exist, and the measurement chose
+  `apps.open.ask`. It is worth a hook because the forbidden name is the **better** one — shorter,
+  the obvious verb, what anyone would autocomplete to — so this is not guarding against carelessness
+  but against the more attractive option. And the failure would be silent in the usual way: adding
+  the constant breaks nothing, registering a handler breaks nothing, and the whole thing is only
+  wrong at the far end where a person watches an app not open.
+
+  Its discriminator is the one defect 41 taught: a **use** is a quoted wire literal or an
+  identifier; a **mention** is the name in a comment or in Markdown. Comments are stripped before
+  matching, so the KDoc explaining why the sibling verb is absent stays legal — a guard that forbids
+  writing its own other half has broken the pair it is supposed to be, and there is a fixture
+  asserting exactly that case passes. It found a live reference on its first run, in a test nobody
+  had thought to update, and it goes red on the real tree under mutation on both sides. And its debt list is **printed on every run with a reason per entry**, so
   a deliberately-unspecified type stays visible; an entry that becomes specified without leaving the
   list fails the check, because an allowlist nobody prunes is how a guard stops guarding.
 
   This does not mean every rule gets a hook; most do not warrant one. It means the question gets
   asked, and "documented" is not recorded as "handled".
 
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current

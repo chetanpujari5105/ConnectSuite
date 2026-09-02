@@ -81,12 +81,6 @@ export const TWIN_EXEMPT = {
   'mirror.screenoff':
     'Not implemented anywhere. The phone keeps the constant so MirrorContractTest can assert it is ' +
     'never registered; the Mac has no such test and no reason to name it.',
-  'apps.list': 'Phase 7. No handler on either side, and the Mac sends nothing it cannot be answered on.',
-  // Specified in docs/protocol.md as a reserved name; `apps.open.ask` is its
-  // alternative and exactly one of the two will ever be implemented. Which one is
-  // decided by docs/phase-7-apps-proposal.md §2, not by whoever writes the handler.
-  'apps.launch': 'Phase 7. Reserved; the measurement in the proposal decides whether this or apps.open.ask ships.',
-  'apps.icon': 'Phase 7.',
 };
 
 /** Types deliberately absent from the document's own inventory list, with the reason it gives. */

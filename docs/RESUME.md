@@ -1,3 +1,30 @@
+# Resume here — written 2026-09-03, after apps landed
+
+> **Apps is built and proven on hardware.** `apps.list`, `apps.icon`, `apps.open.ask`; a twelfth nav
+> row on the Mac; **123 of 123 launcher packages with resolved names and real icons**, and the tap
+> proven end to end on two targets with `dumpsys` as the witness. Evidence: `docs/testing.md` →
+> Phase 7 Slice 8. Contract: `docs/protocol.md` → Apps.
+>
+> **There is no `apps.launch` and there must never be one.** The measurement forbade the *name*, not
+> the feature: a backgrounded `startActivity` returns normally and opens nothing, so a verb promising
+> a launch would report success and do nothing. `scripts/check-apps-verb.mjs` is wired to
+> `PreToolUse` on `git commit` and the constant is deleted rather than reserved.
+>
+> **What is not done here, and none of it blocks anything:**
+>
+> 1. **The Apps screen is a departure the designer has not seen** (`docs/design-departures.md` X0).
+>    The grid is a guess at the design language rather than an application of it.
+> 2. **One UI groups our notifications at four or more outstanding**, and the collapsed group's
+>    header previews the newest one — so the "Open X?" question can sit one tap deeper. Samsung's
+>    behaviour, not ours; recorded in Slice 8 §5 rather than worked around.
+> 3. **`apps.list` does not page, on purpose.** The reasoning is in `docs/protocol.md`: 123 entries
+>    from an in-memory query, and a pager whose boundary never lands anywhere proves nothing — the
+>    `fs.list` sweep with `tieBoundaries: 0` is the worked example.
+>
+> Everything below this line is from 2026-09-02 and still stands.
+
+---
+
 # Resume here — written 2026-09-02, after the reboot and the pairing-flow build
 
 > **Where work resumes.** Phase 6's reboot has happened and answered less than it looks like;

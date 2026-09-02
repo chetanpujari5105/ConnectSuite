@@ -125,6 +125,32 @@ export interface MediaThumb {
   error?: string;
 }
 
+/**
+ * One app in the launcher grid.
+ *
+ * `label` is never absent. Where the phone could not resolve one it sends the package id as the
+ * label **and** sets `labelIsFallback`, so this side draws a handle as a handle rather than
+ * inventing a second fallback that could disagree with the phone's.
+ */
+export interface AppEntry {
+  package: string;
+  label: string;
+  updatedMs: number;
+  versionName?: string;
+  labelIsFallback?: boolean;
+}
+
+/** One launcher icon, or one per-package failure. A missing icon must not lose the other 31. */
+export interface AppIcon {
+  package: string;
+  mime?: string;
+  width?: number;
+  height?: number;
+  /** Base64 PNG, no data: prefix. PNG because launcher icons have transparency. */
+  data?: string;
+  error?: string;
+}
+
 export const MessageType = {
   HELLO: 'hello',
   HELLO_ACK: 'hello.ack',
@@ -226,6 +252,27 @@ export const MessageType = {
   FS_TRANSFER_PROGRESS: 'fs.transfer.progress',
   FS_TRANSFER_DONE: 'fs.transfer.done',
 
+  /**
+   * The launcher set, one entry per package. No cursor: the phone answers from an in-memory
+   * `PackageManager` query, and the response carries `count` **and** `total` so the cap is visible
+   * if it ever bites. See docs/protocol.md for why this list alone does not page.
+   */
+  APPS_LIST: 'apps.list',
+  /** Batched launcher icons, at most 32 packages per request. Per-item errors, like MEDIA_THUMB. */
+  APPS_ICON: 'apps.icon',
+  /**
+   * *Ask* the phone to open an app. There is no `apps.launch` and there will not be one.
+   *
+   * Measured 2026-09-03: a backgrounded `startActivity` on this platform returns normally, logs
+   * nothing, and does not bring the app to the front — the one refusal shape that looks like a
+   * success to every automated check. So the phone posts a notification and a person taps it, and
+   * the ack means **asked**, never *opened*. There is no field for *opened* because the phone does
+   * not know and will not learn.
+   *
+   * `scripts/check-apps-verb.mjs` is what keeps the other name from reappearing here.
+   */
+  APPS_OPEN_ASK: 'apps.open.ask',
+
   REMOTE_STATE: 'remote.state',
   REMOTE_COMMAND: 'remote.command',
 
@@ -235,6 +282,13 @@ export const MessageType = {
 
 export const ErrorCode = {
   PERMISSION_DENIED: 'PERMISSION_DENIED',
+  /**
+   * `apps.open.ask` had nowhere to put the question: notifications from ConnectSuite are off.
+   *
+   * Not PERMISSION_DENIED, which greys a whole pane. The grid and its icons still work; exactly one
+   * verb of three cannot be delivered, and the pane says so above a list that is still useful.
+   */
+  NOTIFICATIONS_BLOCKED: 'NOTIFICATIONS_BLOCKED',
   FEATURE_UNAVAILABLE: 'FEATURE_UNAVAILABLE',
   SECURE_SURFACE: 'SECURE_SURFACE',
   ENCODER_FAILED: 'ENCODER_FAILED',

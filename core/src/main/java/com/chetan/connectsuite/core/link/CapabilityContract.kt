@@ -99,6 +99,10 @@ object CapabilityContract {
         "android.permission.READ_MEDIA_VIDEO" to "Photos and videos",
         "android.permission.READ_EXTERNAL_STORAGE" to "Photos and videos",
         "android.permission.RECORD_AUDIO" to "Microphone",
+        // Android's own switch is called "Notifications" on the app's Settings page. Named here so
+        // an `apps` chip that is off says "missing Notifications" rather than "missing
+        // POST_NOTIFICATIONS", which is the enum-name mistake SpecialAccess.label already records.
+        "android.permission.POST_NOTIFICATIONS" to "Notifications",
     )
 
     /** [permission]'s Settings name. Falls back to the bare constant, never the full path. */
@@ -285,9 +289,22 @@ object CapabilityContract {
         Capability.APPS to Contract(
             requests = setOf(
                 MessageType.APPS_LIST,
-                MessageType.APPS_LAUNCH,
                 MessageType.APPS_ICON,
+                MessageType.APPS_OPEN_ASK,
             ),
+            // POST_NOTIFICATIONS, and it is a real gate rather than a tidy one.
+            //
+            // On this platform a backgrounded app may not start another app's activity — measured
+            // 2026-09-03, and refused *silently*, which is why there is no `apps.launch` at all.
+            // The only thing that opens an app from here is a person tapping a notification. With
+            // notifications off, one of this capability's three verbs cannot be delivered by any
+            // route, so advertising `apps` would be promising a launcher that cannot launch.
+            //
+            // The Mac still draws the grid — `apps.list` and `apps.icon` answer whether or not the
+            // chip is green, exactly as the three read verbs of `photos` did through slice 2 — and
+            // the pane says which half is missing. An unadvertised capability greys a chip; it does
+            // not have to grey a pane.
+            permissions = setOf("android.permission.POST_NOTIFICATIONS"),
         ),
         // docs/protocol.md defines no `mic.*` messages at all. The capability name exists on both
         // sides but there is no wire protocol to carry it, so it can never be honestly advertised

@@ -89,7 +89,16 @@ class ProtocolNamespaceTest {
         assertEquals(Capability.SMS, FeatureOf.of(MessageType.SMS_SEND))
         assertEquals(Capability.CONTACTS, FeatureOf.of(MessageType.CONTACTS_LIST))
         assertEquals(Capability.REMOTE, FeatureOf.of(MessageType.REMOTE_COMMAND))
-        assertEquals(Capability.APPS, FeatureOf.of(MessageType.APPS_LAUNCH))
+        assertEquals(Capability.APPS, FeatureOf.of(MessageType.APPS_LIST))
+    }
+
+    @Test
+    fun `a two-dot type reports the capability its first segment names`() {
+        // `apps.open.ask` is the first type in this protocol with two dots, and it is the one place
+        // `substringBefore` could plausibly have been written as `substringBeforeLast`. It resolves
+        // to `apps` and must: an error on it greys the Apps pane, and nothing is named `open`.
+        assertEquals(Capability.APPS, FeatureOf.of(MessageType.APPS_OPEN_ASK))
+        assertEquals("apps.open.ask", MessageType.APPS_OPEN_ASK)
     }
 
     @Test

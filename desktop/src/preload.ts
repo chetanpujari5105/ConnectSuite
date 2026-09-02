@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  AppEntry,
   ClipEntry,
   LocalClipEntry,
   ConnectionStatus,
@@ -340,6 +341,24 @@ contextBridge.exposeInMainWorld('connect', {
   debugFsDeleteProbe: (
     options: { rootId: string; path?: string; name: string },
   ): Promise<unknown> => ipcRenderer.invoke('debug-fs-delete-probe', options),
+
+  /**
+   * The app grid. Three verbs, and the third one **asks** rather than launches.
+   *
+   * `appsOpenAsk` returns a plain ack. There is no result to read and there must never be one: the
+   * phone posts a notification and a person taps it, later, or not at all. Anything on this bridge
+   * shaped like `{ opened: boolean }` would be inventing a fact neither machine has.
+   *
+   * `appsIcons` answers with entries rather than a Map, exactly as `mediaThumbs` does. Batching
+   * against the phone's 32-package cap happens in the main process.
+   */
+  appsList: (): Promise<PhoneResult<{ apps: AppEntry[]; count: number; total: number }>> =>
+    ipcRenderer.invoke('apps-list'),
+  appsIcons: (
+    options: { packages: string[]; maxEdge?: number },
+  ): Promise<PhoneResult<Array<[string, string]>>> => ipcRenderer.invoke('apps-icons', options),
+  appsOpenAsk: (options: { package: string }): Promise<PhoneAck> =>
+    ipcRenderer.invoke('apps-open-ask', options),
 
   /** Pulls one photo at full size over the bulk channel and answers with where it landed. */
   mediaOriginal: (

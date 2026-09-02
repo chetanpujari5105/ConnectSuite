@@ -207,6 +207,17 @@ interface ConnectBridge {
     | { ok: false; reason?: string; fixHint?: string }
   >;
 
+  // Phase 7: the app grid. `appsOpenAsk` returns a bare ack on purpose — the phone answers
+  // `{ asked: true }` and there is no field saying whether the app opened, because it does not know.
+  appsList(): Promise<
+    { ok: true; data: { apps: AppRow[]; count: number; total: number } }
+    | { ok: false; reason?: string; fixHint?: string; code?: string }
+  >;
+  appsIcons(options: { packages: string[]; maxEdge?: number }): Promise<
+    { ok: true; data: Array<[string, string]> } | { ok: false; reason?: string; fixHint?: string }
+  >;
+  appsOpenAsk(options: { package: string }): Promise<InputResult>;
+
   // Phase 4: the media remote. `RemoteStateView` comes from remote.ts, a plain script in the same
   // global scope rather than a module.
   remoteState(): Promise<RemoteStateView>;
@@ -293,6 +304,11 @@ function render(status: RendererStatus | null): void {
   // what the pane's banner says — so this call turns the banner off and the Save button on in the
   // same moment the chip goes green, from the same fact.
   photos.setAdvertised(status?.capabilities?.includes('photos') ?? false);
+  // Apps, and it is the Photos rule with one difference worth naming: the grid works either way,
+  // and what the capability decides is whether the *ask* can be delivered at all. The phone's own
+  // reason is passed straight through rather than paraphrased — this side cannot know which switch
+  // is off, and guessing is defect 27's shape.
+  apps.setAdvertised(status?.capabilities?.includes('apps') ?? false, reasons.get('apps') ?? null);
   // The phone's own `reason` is passed straight through — a Mac-side paraphrase would be this side
   // guessing which grant is missing, which is the thing it cannot know.
   files?.setAdvertised(
@@ -463,6 +479,29 @@ const photos = new PhotosView(
 );
 shell.onRoute((id) => {
   if (id === 'photos') void photos.refresh();
+});
+
+// Apps. Fetches on open like Photos and Files — 122 labels and a megabyte of icons is a round trip
+// nobody has asked for until the screen is looked at.
+//
+// Like Photos, it does **not** gate on the capability: `apps.list` and `apps.icon` answer whether or
+// not the chip is green, because the chip is gated on POST_NOTIFICATIONS and only `apps.open.ask`
+// needs it. A grid hidden because the doorbell is off would be a working feature turned into a dead
+// pane.
+const apps = new AppsView(
+  {
+    appsList: () => connect.appsList(),
+    appsIcons: (options) => connect.appsIcons(options),
+    appsOpenAsk: (options) => connect.appsOpenAsk(options),
+  },
+  el('apps-banner'),
+  el('apps-note'),
+  el<HTMLInputElement>('apps-search'),
+  el('apps-grid'),
+  el('apps-toast'),
+);
+shell.onRoute((id) => {
+  if (id === 'apps') void apps.refresh();
 });
 // Files. Fetches on open, like Photos, and for the same reason — the roots are a round trip nobody
 // has asked for until the screen is looked at.

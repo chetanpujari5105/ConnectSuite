@@ -164,8 +164,28 @@ object MessageType {
     const val INPUT_GLOBAL = "input.global"
 
     const val APPS_LIST = "apps.list"
-    const val APPS_LAUNCH = "apps.launch"
     const val APPS_ICON = "apps.icon"
+
+    /**
+     * *Ask* the phone to open an app. Never *launch* it, and the name is the whole point.
+     *
+     * Measured on this handset 2026-09-03 (`docs/phase-7-apps-proposal.md` §2.4): a backgrounded
+     * `startActivity` for a third-party package **returns normally, throws nothing, logs nothing,
+     * and does not bring the app to the front.** That is the proposal's fourth row — the outcome
+     * every automated check calls a pass — so the remote-control verb it was reserved for cannot
+     * exist, and the constant that would carry it is deliberately **absent from this object**
+     * rather than sitting here unregistered.
+     *
+     * Absent, not commented out: an unused `const val APPS_LAUNCH` is one autocomplete away from a
+     * handler, and the ack of a verb called *launch* would mean *asked* to everybody who read the
+     * name instead of the contract. The prohibition has an enforcement point rather than a
+     * sentence — `scripts/check-apps-verb.mjs`, wired to `PreToolUse` on `git commit`.
+     *
+     * The ack is `{ asked: true }` and carries **no** field saying whether the app opened, because
+     * this phone does not know and will not learn: what opens it is a person tapping a
+     * notification, in their own time, or not at all.
+     */
+    const val APPS_OPEN_ASK = "apps.open.ask"
 
     const val REMOTE_STATE = "remote.state"
     const val REMOTE_COMMAND = "remote.command"
@@ -317,6 +337,22 @@ object ErrorCode {
      * different fault from bytes that never arrived.
      */
     const val CHECKSUM_MISMATCH = "CHECKSUM_MISMATCH"
+
+    // ---- Phase 7, apps ---------------------------------------------------------------------------
+
+    /**
+     * `apps.open.ask` had nowhere to put the question, because notifications are turned off.
+     *
+     * **Not [PERMISSION_DENIED]**, for the reason [ROOT_NOT_GRANTED] is not: the feature works —
+     * the grid is drawn, the labels and icons are real — and exactly one verb of three cannot be
+     * delivered. `PERMISSION_DENIED` greys the whole pane, which would hide a working list because
+     * the thing it opens has no doorbell.
+     *
+     * It is also the one refusal in this namespace that must never be silent. The alternative is
+     * posting nothing and answering `{ asked: true }`, which is the fourth row of the proposal's
+     * decision table reintroduced by the Mac's own copy: a success that did not happen.
+     */
+    const val NOTIFICATIONS_BLOCKED = "NOTIFICATIONS_BLOCKED"
 }
 
 /**
