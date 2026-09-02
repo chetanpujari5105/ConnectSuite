@@ -35,6 +35,37 @@ export const MAX_BULK_HEADER_FRAME = 64 * 1024;
 
 export const SERVICE_TYPE = 'connectsuite';
 
+/**
+ * Why the phone refused a pairing attempt — `docs/protocol.md` → `pair.rejected`.
+ *
+ * Reachable only once TLS has succeeded, which means the certificate was already pinned. A Mac that
+ * is not paired at all fails in the handshake with no channel to be told anything on; the phone
+ * shows that case on its own screen. Do not collapse the two into one message.
+ */
+export type PairRejectReason = 'TOKEN_EXPIRED' | 'TOKEN_MISMATCH' | 'TOKEN_MISSING';
+
+export interface PairRejected {
+  reason: PairRejectReason;
+  /** This Mac's own fingerprint as the phone computed it, so a rejection can be told from noise. */
+  fingerprint?: string;
+  /** The phone's fallback sentence. Prefer copy keyed on `reason`; this is for the log. */
+  message?: string;
+}
+
+/**
+ * The TXT attribute a phone publishes between scanning a code and the pairing resolving — F6.
+ *
+ * The value is the first 16 lowercase hex characters of the scanned Mac's fingerprint with colons
+ * removed. **A positive is trustworthy and a negative is not**: mDNS is the least reliable of the
+ * three discovery paths, so absence must never be rendered as "nobody scanned".
+ */
+export const TXT_PAIR_INTENT = 'pair';
+
+/** The form of a fingerprint used in {@link TXT_PAIR_INTENT}. */
+export function pairIntentKey(fingerprint: string): string {
+  return fingerprint.replace(/:/g, '').toLowerCase().slice(0, 16);
+}
+
 /** Heartbeat: a ping every 5s, three unanswered pings and the link is considered dead. */
 export const PING_INTERVAL_MS = 5_000;
 export const MISSED_PONGS_BEFORE_DEAD = 3;
@@ -95,6 +126,12 @@ export interface MediaThumb {
 export const MessageType = {
   HELLO: 'hello',
   HELLO_ACK: 'hello.ack',
+  /**
+   * Sent by the phone immediately before it closes a connection whose `hello` carried a pairing
+   * token it would not accept. Without it this Mac — sitting with a QR on screen that the user is
+   * looking at — learns only that a socket closed, which is what a dropped network looks like too.
+   */
+  PAIR_REJECTED: 'pair.rejected',
   ACK: 'ack',
   ERROR: 'error',
   PING: 'ping',

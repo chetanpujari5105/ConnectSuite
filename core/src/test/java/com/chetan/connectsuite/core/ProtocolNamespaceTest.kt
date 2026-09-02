@@ -41,6 +41,15 @@ class ProtocolNamespaceTest {
             MessageType.HELLO, MessageType.HELLO_ACK, MessageType.ACK, MessageType.ERROR,
             MessageType.PING, MessageType.PONG, MessageType.CAPABILITIES_CHANGED,
             MessageType.BATTERY_STATE, MessageType.NET_STATE,
+            // `pair.rejected` is a handshake message and belongs here for the same reason
+            // `hello.ack` does: it is emitted *before* the session exists, so there are no
+            // capabilities yet and no pane that could be greyed out. Its `pair` prefix is not a
+            // capability and must never become one — the Mac keys its copy on the `reason` field.
+            //
+            // This entry is not the guard being widened to fit new code. It answers the same
+            // question the set already asks — "does this message belong to a feature?" — and the
+            // answer is no, for a reason the test below asserts rather than merely assuming.
+            MessageType.PAIR_REJECTED,
         )
 
         val unmapped = allTypes.filter { it !in system && FeatureOf.of(it) == null }
@@ -56,6 +65,9 @@ class ProtocolNamespaceTest {
         assertNull(FeatureOf.of(MessageType.HELLO))
         assertNull(FeatureOf.of(MessageType.ERROR))
         assertNull(FeatureOf.of(MessageType.CAPABILITIES_CHANGED))
+        // The exemption above is asserted here rather than taken on trust. If someone ever teaches
+        // `FeatureOf` that `pair` is a capability, the set membership would silently hide it.
+        assertNull(FeatureOf.of(MessageType.PAIR_REJECTED))
         // battery.state and net.state have a dot and a prefix that is not a capability. They are
         // system state, not a feature, and must not invent one.
         assertNull(FeatureOf.of(MessageType.BATTERY_STATE))

@@ -67,6 +67,13 @@ object Link {
 object MessageType {
     const val HELLO = "hello"
     const val HELLO_ACK = "hello.ack"
+
+    /**
+     * Sent immediately before the phone closes a connection whose hello carried a pairing token it
+     * would not accept. Without it the Mac — which is showing a QR the user is looking at — learns
+     * only that a socket closed, which is indistinguishable from the network dropping.
+     */
+    const val PAIR_REJECTED = "pair.rejected"
     const val ACK = "ack"
     const val ERROR = "error"
     const val PING = "ping"

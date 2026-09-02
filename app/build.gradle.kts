@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -8,17 +9,42 @@ plugins {
 }
 
 /**
- * Release signing is driven by a keystore.properties file that is deliberately not in git.
- * Without it the release build still assembles, but unsigned - so a missing keystore is a clear
- * failure at install time rather than a silently debug-signed APK shipped to users.
+ * Release signing, and **where the secret lives is part of the design rather than an afterthought.**
+ *
+ * Resolution order, first hit wins:
+ *
+ *  1. `$CONNECTSUITE_KEYSTORE_PROPERTIES` — an explicit path, which is how CI would pass one.
+ *  2. `~/.android-keystores/connectsuite.properties` — **the default, and deliberately outside the
+ *     repository.** That directory is `chmod 700` and carries its own `.gitignore` of `*`, so the
+ *     properties file and the keystore it points at cannot be committed by any repo that happens to
+ *     enclose them — which matters more than it sounds, because this machine has a stray `git init`
+ *     at `~` with no remote and no tracked files.
+ *  3. `<repo>/keystore.properties` — the original location. Still honoured so an existing checkout
+ *     keeps working, still `.gitignore`d, and no longer where anything is put by default.
+ *
+ * **Why 2 rather than 3.** `.gitignore` is one layer and it is the only layer a repo-root file has:
+ * a `git add -f`, an edited ignore file, or a `tar` of the working tree all defeat it. A file that
+ * is not in the tree at all is defeated by none of them. The build tells you which one it used, so
+ * a signed build is never a mystery.
+ *
+ * Without any of the three the release build still assembles, **unsigned** — a clear failure at
+ * install time (`INSTALL_PARSE_FAILED_NO_CERTIFICATES`, measured on hardware 2026-09-02) rather than
+ * a silently debug-signed APK shipped to users.
  */
-val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystorePropertiesFile: File? = listOfNotNull(
+    System.getenv("CONNECTSUITE_KEYSTORE_PROPERTIES")?.let(::File),
+    File(System.getProperty("user.home"), ".android-keystores/connectsuite.properties"),
+    rootProject.file("keystore.properties"),
+).firstOrNull { it.isFile }
+
 val keystoreProperties = Properties().apply {
-    if (keystorePropertiesFile.exists()) {
-        keystorePropertiesFile.inputStream().use(::load)
-    }
+    keystorePropertiesFile?.inputStream()?.use(::load)
 }
 val hasReleaseKeystore = keystoreProperties.getProperty("storeFile") != null
+
+if (hasReleaseKeystore) {
+    logger.lifecycle("Release signing config: $keystorePropertiesFile")
+}
 
 android {
     namespace = "com.chetan.connectsuite"
@@ -49,7 +75,16 @@ android {
     signingConfigs {
         if (hasReleaseKeystore) {
             create("release") {
-                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                // An absolute path is used as-is; a relative one is resolved against the
+                // properties file's own directory, not the repo — so a properties file living
+                // beside its keystore can name it without an absolute path.
+                storeFile = keystoreProperties.getProperty("storeFile").let { configured ->
+                    val asGiven = File(configured.replaceFirst("~", System.getProperty("user.home")))
+                    when {
+                        asGiven.isAbsolute -> asGiven
+                        else -> File(keystorePropertiesFile!!.parentFile, configured)
+                    }
+                }
                 storePassword = keystoreProperties.getProperty("storePassword")
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")

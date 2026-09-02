@@ -155,6 +155,14 @@ class LinkServer(
     private val refusedCount = java.util.concurrent.atomic.AtomicInteger()
     private val acceptedCount = java.util.concurrent.atomic.AtomicInteger()
 
+    // Pairing has its own pair of counters for the same reason: "3 pairings refused" says nothing
+    // until you know whether any has ever succeeded.
+    private val pairRejected = java.util.concurrent.atomic.AtomicInteger()
+    private val pairAccepted = java.util.concurrent.atomic.AtomicInteger()
+
+    fun countPairRejected(): Int = pairRejected.incrementAndGet()
+    fun pairAcceptedCount(): Int = pairAccepted.get()
+
     private val _state = MutableStateFlow(LinkState())
     val state: StateFlow<LinkState> = _state.asStateFlow()
 
@@ -254,6 +262,15 @@ class LinkServer(
     private var armedPairing: ArmedPairing? = null
 
     /** Called by the QR scanner once the user has scanned a Mac's pairing code. */
+    /**
+     * Told the fingerprint this phone is currently expecting, or null when it is expecting nobody.
+     *
+     * `LinkService` points this at the mDNS advertiser. It is a sink rather than a direct call
+     * because `LinkServer` has no business knowing that mDNS exists, and because the advertiser
+     * outlives individual pairings.
+     */
+    var pairIntentSink: ((String?) -> Unit)? = null
+
     suspend fun completePairing(payload: PairingQrPayload) {
         trustStore.trust(payload)
         armedPairing = ArmedPairing(
@@ -261,23 +278,45 @@ class LinkServer(
             token = payload.token,
             expiresAt = System.currentTimeMillis() + Link.PAIR_TOKEN_TTL_MS,
         )
+        // F6: from here until the Mac connects or the token expires, the discovery record says
+        // which Mac this phone is waiting for. That is the only way the Mac can tell "nobody
+        // scanned" from "scanned, and I have not got there yet".
+        runCatching { pairIntentSink?.invoke(payload.peerId) }
+    }
+
+    /** Clears the advertised intent once the pairing is resolved, either way. */
+    private fun clearPairIntent() {
+        runCatching { pairIntentSink?.invoke(null) }
     }
 
     /**
-     * True when this hello may proceed. An armed pairing is consumed by the first matching
-     * connection; a peer that was trusted in an earlier session needs no token at all.
+     * Whether this hello may proceed, and **why not** when it may not.
+     *
+     * This returned a `Boolean` until F7. The Mac was told only that a socket closed, which is
+     * indistinguishable from the network dropping — while it sits showing a QR code the user is
+     * staring at. `docs/protocol.md` → `pair.rejected` is the message; this is the decision behind
+     * it, and it is a `when`-able type rather than a flag so the reason cannot be lost between here
+     * and the wire.
+     *
+     * An armed pairing is consumed by the first matching connection; a peer trusted in an earlier
+     * session needs no token at all.
      */
-    fun acceptPairToken(peerFingerprint: String, pairToken: String?): Boolean {
-        val armed = armedPairing ?: return true
+    fun acceptPairToken(peerFingerprint: String, pairToken: String?): PairTokenVerdict {
+        val armed = armedPairing ?: return PairTokenVerdict.Accepted
         val normalized = PairingQrPayload.normalizeFingerprint(peerFingerprint)
-        if (armed.fingerprint != normalized) return true
+        // A different Mac, already trusted, connecting while a pairing is armed for someone else.
+        if (armed.fingerprint != normalized) return PairTokenVerdict.Accepted
         if (System.currentTimeMillis() > armed.expiresAt) {
             armedPairing = null
-            return false
+            clearPairIntent()
+            return PairTokenVerdict.Rejected(PairRejectReason.TOKEN_EXPIRED)
         }
-        if (pairToken != armed.token) return false
+        if (pairToken == null) return PairTokenVerdict.Rejected(PairRejectReason.TOKEN_MISSING)
+        if (pairToken != armed.token) return PairTokenVerdict.Rejected(PairRejectReason.TOKEN_MISMATCH)
         armedPairing = null
-        return true
+        clearPairIntent()
+        pairAccepted.incrementAndGet()
+        return PairTokenVerdict.Accepted
     }
 
     // ---- lifecycle ----------------------------------------------------------------------

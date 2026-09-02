@@ -78,7 +78,7 @@ Input: `input.tap`, `input.swipe`, `input.scroll`, `input.key`, `input.text`, `i
 (back/home/recents/notifications/quick-settings/lock-screen — **not** power; see [Input](#input-42501))
 Apps: `apps.list`, `apps.launch`, `apps.icon`
 Media remote: `remote.state`, `remote.command`
-Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`
+Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`, `pair.rejected`
 System: `ping`, `pong`, `capabilities.changed`, `battery.state`, `net.state`
 
 #### Namespace rule
@@ -1869,6 +1869,66 @@ The Mac renders a QR code; the phone scans it. Payload:
 `fp` in its trusted-device table and thereafter accepts TLS only from peers whose certificate
 fingerprint is in that table. `token` is single-use and expires 5 minutes after the QR is drawn;
 it is presented in the `hello` payload as `pairToken` on the first connection after a scan.
+
+### `pair.rejected` — phone to Mac
+
+Sent immediately before the phone closes a connection whose `hello` carried a pair token it would
+not accept. The Mac is showing a QR code at that moment and, without this, learns only that a socket
+closed — which is indistinguishable from the network dropping.
+
+```json
+{"type":"pair.rejected","payload":{
+  "reason":"TOKEN_EXPIRED",
+  "fingerprint":"AB:CD:EF:01:23:45:67:89",
+  "message":"The pairing code expired. Show a fresh one on the Mac and scan it again."}}
+```
+
+| `reason` | What happened | What the Mac does |
+|---|---|---|
+| `TOKEN_EXPIRED` | The QR was scanned, but more than `PAIR_TOKEN_TTL_MS` passed before the Mac connected | Draw a fresh code automatically and say the old one timed out |
+| `TOKEN_MISMATCH` | A token was presented and is not the armed one | Draw a fresh code and say the scan did not match — a stale QR was still on screen somewhere |
+| `TOKEN_MISSING` | A pairing is armed for this fingerprint and the `hello` carried no token at all | Same as mismatch. Usually an older Mac build |
+
+`fingerprint` is the **connecting Mac's own** fingerprint as the phone computed it, so a Mac can tell
+a rejection meant for it from one it is merely observing. `message` is a complete sentence for a
+person, and the Mac must prefer its own copy keyed on `reason` — the string is a fallback and a log
+line, not the UI.
+
+**This message is only reachable when TLS succeeded**, which means the certificate was already
+pinned. A Mac that is not paired at all fails during the handshake and there is no channel to send
+anything on; the phone shows *that* case on its own screen instead. The two are different failures
+and neither substitutes for the other.
+
+**The Mac must not treat a rejection as a reason to stop retrying.** The user's next action is to
+scan the fresh code, and the discovery loop has to be running when they do.
+
+### Pairing intent in the discovery record
+
+`_connectsuite._tcp` carries one further TXT attribute, present **only** between a successful scan
+and the pairing completing or expiring:
+
+```
+pair=<first 16 lowercase hex characters of the scanned Mac's fingerprint, colons removed>
+```
+
+It exists to separate two states that are otherwise one picture on the Mac: *nobody has scanned the
+code* and *somebody scanned it and the Mac has not connected yet*. A Mac showing a QR browses for
+its own fingerprint prefix in this attribute; finding it proves a scan happened, which is a fact the
+Mac has no other way to learn — the phone is the listener, so before it accepts a connection there
+is nothing to observe.
+
+**Its absence proves nothing, and the Mac's copy must say so.** mDNS is the third discovery path
+precisely because it is the least reliable one: Samsung's hotspot AP drops multicast, some routers
+filter it, and a phone on a different network is invisible by construction. So:
+
+- **present** → the Mac may state, as a fact, that the phone scanned the code;
+- **absent** → the Mac may say only that it has not seen a scan *yet*, and must offer the same
+  network hint the phone offers. It may **never** render absence as "nobody scanned".
+
+This is the asymmetry the pairing screen is built around, and it is deliberate: a positive signal is
+trustworthy and a negative one is not. Sixteen hex characters is 64 bits of the fingerprint — ample
+to identify which Mac is expected, and not the fingerprint itself, which is pinned rather than
+advertised.
 
 ## Discovery
 

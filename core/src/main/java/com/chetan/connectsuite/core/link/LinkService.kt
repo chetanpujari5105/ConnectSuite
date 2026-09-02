@@ -84,6 +84,9 @@ class LinkService : LifecycleService() {
 
         advertiser = NsdAdvertiser(this, server.identity.deviceName, server.identity.deviceId)
             .also { it.start() }
+        // F6: a scan republishes the discovery record with the fingerprint of the Mac this phone is
+        // now expecting, so a Mac holding a QR can tell it was scanned.
+        server.pairIntentSink = { fingerprint: String? -> advertiser?.setPairIntent(fingerprint) }
 
         // Defect 61: the lock's own timeout is the backstop against a missed release path, and a
         // backstop that is never re-armed is just a leak with a deadline. This is the only thing in

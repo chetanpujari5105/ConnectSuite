@@ -25,6 +25,21 @@ class NsdAdvertiser(context: Context, private val deviceName: String, private va
     private var multicastLock: WifiManager.MulticastLock? = null
     private var listener: NsdManager.RegistrationListener? = null
 
+    /**
+     * The `pair` TXT attribute — F6, and the only thing that lets a Mac tell *nobody scanned* from
+     * *somebody scanned and I have not connected yet*.
+     *
+     * The phone is the listener, so before it accepts a connection there is nothing for the Mac to
+     * observe; a QR on screen looks identical whether or not it has been scanned. This publishes the
+     * one fact the Mac cannot otherwise learn.
+     *
+     * **A positive is trustworthy and a negative is not**, which `docs/protocol.md` states and the
+     * Mac's copy has to respect: mDNS is the least reliable of the three discovery paths — Samsung's
+     * hotspot drops multicast, routers filter it, and a phone on another network is invisible by
+     * construction. So absence must never be rendered as "nobody scanned".
+     */
+    private var pairIntent: String? = null
+
     fun start() {
         if (listener != null) return
 
@@ -48,6 +63,7 @@ class NsdAdvertiser(context: Context, private val deviceName: String, private va
             setAttribute("model", Build.MODEL)
             setAttribute("proto", Link.PROTOCOL_MAJOR.toString())
             setAttribute("id", deviceId.take(32))
+            pairIntent?.let { setAttribute("pair", it) }
         }
 
         val registration = object : NsdManager.RegistrationListener {
@@ -70,6 +86,32 @@ class NsdAdvertiser(context: Context, private val deviceName: String, private va
         listener = registration
         runCatching { nsd.registerService(info, NsdManager.PROTOCOL_DNS_SD, registration) }
             .onFailure { LinkLog.w("nsd", "registerService threw", it) }
+    }
+
+    /**
+     * Announce that this phone has scanned [macFingerprint]'s code and is expecting it, or clear
+     * the announcement when [macFingerprint] is null.
+     *
+     * Re-registers, because `NsdManager` has no API for amending a live registration's TXT records:
+     * the service must be unregistered and registered again. That is why this is a separate call
+     * rather than something folded into [start] — it happens at most twice per pairing.
+     */
+    fun setPairIntent(macFingerprint: String?) {
+        val next = macFingerprint
+            ?.replace(":", "")
+            ?.lowercase()
+            ?.take(16)
+        if (next == pairIntent) return
+        pairIntent = next
+        if (listener == null) return
+        LinkLog.i("nsd", if (next == null) "Pairing intent cleared" else "Advertising pairing intent $next")
+        // A failure here degrades discovery to the other two paths and must not take the link with
+        // it — the same reasoning as the multicast lock above.
+        runCatching {
+            listener?.let { nsd.unregisterService(it) }
+            listener = null
+            start()
+        }.onFailure { LinkLog.w("nsd", "Could not republish with the pairing intent", it) }
     }
 
     fun stop() {

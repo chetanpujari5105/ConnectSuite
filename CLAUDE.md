@@ -319,7 +319,71 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
   the honest test is the one that reaches as far as it can and then **says what it did not reach**.
   The rule: if a test contains a second expression of the rule it is checking, the two will
   disagree eventually and the test will be the one that is wrong. Give the rule one home and let the
-  test call it. Second, prefer
+  test call it.
+
+  **The third variety, and it is the one that looks most like a good test: _the test calls the rule
+  correctly, at a layer the defect is not in._** The two above are recognisable once named — a test
+  that restates the rule, and a rule living where no test can reach. This one passes every review,
+  because by every visible standard it is exemplary: it names the behaviour, it calls the production
+  function rather than a copy, it covers the boundary in both directions, and it goes red under
+  mutation of the thing it tests.
+
+  Defect 67 is the worked example, and the numbers are what make it worth a section.
+  `LinkWaitStatusTest` had **eleven tests, six mutations, both sides of a twenty-second threshold**,
+  green throughout, over a feature that **had never once worked in the field**. The phone's
+  "check your Wi-Fi" hint was supposed to appear after twenty seconds of silence. It appeared
+  instantly, on every phone, for every user, because the elapsed time was measured from
+  `listeningSinceMillis` — written once when the server started — rather than from the start of the
+  wait. `LinkWaitStatus.of` was **correct the entire time**: given a wait that began three seconds
+  ago it withholds the hint, exactly as eleven tests asserted. The defect was in the *write*, in a
+  `copy()` inside `onSessionEnded` that no test could see.
+
+  **The tell is that every test constructs its input by hand:**
+
+  ```kotlin
+  private fun listening(sinceAgo: Long = 0L, …) = LinkState(
+      …,
+      listeningSinceMillis = t0 - sinceAgo,      // ← the TEST decides what this field means
+  )
+  ```
+
+  That line is unremarkable, appears in almost every unit test ever written, and is precisely the
+  problem: the test supplies a **well-formed** value for a field the product fills in wrongly, so the
+  question *does anything real ever produce this?* is never asked. The suite proves the decision and
+  is silent about the state.
+
+  **The diagnostic, and it is one question:** *what writes this field, and is that code in the test's
+  reach?* If the answer is "a `copy()` inside a class needing a `Context`, a socket, or a database",
+  then the decision is tested and the feature is not. Ask it of every field a test constructs — the
+  ones with a plausible-sounding name are the dangerous ones, because the name is what persuades
+  everybody that the test's value and the product's value are the same thing. Here the name *was*
+  the bug: `listeningSince` is a fact about the server, `waitingSince` is a fact about the wait, and
+  the code, the tests and the reasoning all used the first where they meant the second.
+
+  **The fix is structural rather than more tests, and this is the part that generalises.** Adding
+  test cases at the same layer does nothing — proven, not assumed: two tests were added asserting
+  that a two-second-old wait carries no hint however long the phone has been up, the original bug was
+  mutated back in, and the suite **stayed green**, because both new tests also supplied the field by
+  hand. What worked was extracting the transition into a named function on the state —
+  `LinkState.afterSessionEnded(peerName, closeReason, nowMillis)` — which `LinkServer` calls and a
+  JVM test can call too. Three mutations then went red, each on exactly one test, and all three had
+  been green before the extraction.
+
+  So the rule: **when a defect is about _when_ something becomes true rather than _what_ is said
+  about it, the test has to reach the transition.** State machines fail at their edges, and an edge
+  is a write. If the write is somewhere a test cannot go, moving it is the fix, and it comes before
+  writing a single further test about the decision.
+
+  **And the reason this is written down rather than left in the defect record: nothing in this
+  project's practice would have caught it.** Not the red-first rule — the tests were shown red
+  against mutations of `of()`. Not the control rule — the controls were real. Not the
+  no-second-expression rule — the test called the real function. It was found by putting the feature
+  on a screen and looking at it, twenty-five seconds after stopping the Mac app. **A mutation score
+  is a statement about the code the tests reach**, and a suite can be green, mutation-tested, and
+  entirely orthogonal to the defect. When a feature has never been observed working, the honest
+  status is *unproven*, whatever the suite says.
+
+  Second, prefer
   making the code testable over mocking Electron. `src/shared/` is the electron-free layer and is
   where a testable seam belongs; `session.ts` came out of `link.ts` that way.
 - **One selector belongs to exactly one stylesheet.** `tokens.css`, `shell.css` and `styles.css`

@@ -253,13 +253,28 @@ class ControlSession(
         // Fingerprint pinning already proved the certificate, so this only closes the window
         // where a QR photographed off someone's screen could be replayed by a third machine.
         val pairToken = payload["pairToken"]?.jsonPrimitive?.content
-        if (!server.acceptPairToken(peerFingerprint, pairToken)) {
-            sendError(
-                envelope.id,
-                ErrorCode.UNAUTHORIZED,
-                "Pairing token missing or expired. Show a fresh QR code on the Mac and scan it again.",
-            )
-            throw ProtocolException("bad pair token")
+        when (val verdict = server.acceptPairToken(peerFingerprint, pairToken)) {
+            is PairTokenVerdict.Accepted -> Unit
+            is PairTokenVerdict.Rejected -> {
+                // F7. The `error` goes first so an older Mac, which knows nothing of
+                // `pair.rejected`, still sees exactly what it saw before — the new message is
+                // additive and a Mac that ignores it is no worse off than yesterday.
+                sendError(envelope.id, ErrorCode.UNAUTHORIZED, verdict.reason.message)
+                send(
+                    Envelope.of(MessageType.PAIR_REJECTED, envelope.id) {
+                        put("reason", verdict.reason.name)
+                        put("fingerprint", peerFingerprint)
+                        put("message", verdict.reason.message)
+                    },
+                )
+                LinkLog.w(
+                    "control",
+                    "Pairing refused for ${peerFingerprint.take(23)}…: ${verdict.reason} — " +
+                        "${server.countPairRejected()} refused / ${server.pairAcceptedCount()} " +
+                        "paired since start",
+                )
+                throw ProtocolException("bad pair token: ${verdict.reason}")
+            }
         }
 
         val sessionToken = server.sessions.issue(this)
