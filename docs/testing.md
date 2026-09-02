@@ -11624,3 +11624,104 @@ NotificationsView, PhotosView, ShellView, SmsView, each still carrying its reaso
 
 **Suite:** 285 tests, 0 failures (was 261). `npm run typecheck` clean over both configs, build exit
 0, relaunched and re-read at 9222.
+
+---
+
+## Phase 7 · Slice 4 — the pairing flow, proposed and measured, not built · 2026-09-02
+
+The brief: *"Pairing has a screen. This is the real blocker on anyone else using the app — I paired
+by hand in Phase 1 and a stranger has no path from 'app opened' to 'phone connected'."*
+
+`docs/phase-7-pairing-flow.md` is the proposal. It deliberately does **not** repeat the Mac screen's
+design, which `docs/design-departures.md` has carried since 2026-08-30; what it adds is the phone
+half and the join, which nothing had covered.
+
+### 1. Both surfaces, read rather than remembered
+
+`scripts/pairing-probe.mjs`, against the live window, restoring the route it found:
+
+```
+the pairing section → {"cards":1,"buttons":1,"inputs":0,"hasQr":true,
+                       "headings":["Scan this with your phone"]}       [control=12]
+progress rows (the proposal asks for four) → 0                         [control=1]
+a manual-address field on the pairing screen itself → 0                [control=1]
+countdown or expiry → {"mentionsRefresh":false,"noteText":""}          [control=1]
+nav rows / dock tiles / device card → {"navRows":11,"dockTiles":5,"deviceCard":true}
+```
+
+The probe is read-only about pairing state — it never rotates the token, never forgets a device, and
+puts the route back where it found it.
+
+The phone, from source: three tabs (**Sync · Mirror · Mac**), pairing on the third; four onboarding
+pages that **never mention pairing, scanning or a QR code**; and `LinkRoute` leading with *"Ports
+42501, 42502, 42503 · protocol v1"* and *"Not offered yet: … 3 not built"* above the button a new
+user needs.
+
+### 2. Where the path actually breaks — and where it does not
+
+The useful shape of it: **the pairing mechanism is sound and shipped**. Of the seven steps a
+stranger takes, three already work — the Mac forces the pairing route, the QR is drawn, and the scan
+pairs. Four do not, and none of the four is about cryptography:
+
+1. Onboarding ends with **Done** and nothing to do next.
+2. It drops the user on **Sync**, which is the Android-to-Android feature.
+3. The Mac's instruction — *"go to the Mac tab"* — is correct (verified: the tab really is called
+   *Mac* and the button really says *Scan pairing code on Mac*) but it is printed on the device the
+   user is not holding.
+4. The end state is ambiguous on both sides.
+
+**Nothing on either device tells anybody to pair.** That is the blocker, and it is a copy-and-flow
+problem rather than a protocol one.
+
+### 3. The state table, and the row that will hurt
+
+The Mac's inability to tell *nobody scanned* from *scanned and failing* is already recorded (P3).
+**The phone has the mirror image and nobody had written it down:** after a successful scan it shows
+*"Listening for your Mac"* for the Mac not having dialled yet, for a refused handshake, and for a
+phone on the wrong network — all three, indefinitely, on the screen the user is actually holding.
+
+J6 in the table is the worst: **scanned, wrong network — both devices show a state that means
+"everything is fine, wait"**, and neither can detect it alone. A timeout on each side with the
+network hint costs nothing on the wire.
+
+J7 is the cheapest fix in the document: `LinkTls.checkClientTrusted` already logs
+`Rejected unpaired client …`. The fact exists; it never reaches a screen.
+
+### 4. Five of seven need no protocol change
+
+That is the finding that should order the work. **F1 — a fifth onboarding page that ends on
+pairing — converts *"a stranger has no path"* into *"a stranger is walked to it"* and touches no
+wire message.** Only F6 (P3) and F7 (P4) are contract changes, and those go into
+`docs/protocol.md` first.
+
+### 5. Defect 63, found while reading the onboarding copy
+
+Registered separately below, because it is a shipped false statement rather than a proposal.
+
+### Defect 63 — the security note describes a pairing flow this app does not have
+
+`OnboardingScreen.kt`, third page, in a surfaceVariant card:
+
+> *"Devices are paired by confirming a key on both screens, and every connection after that is
+> checked against it. An unpaired device is refused without asking you anything."*
+
+**Nothing is confirmed on both screens.** The Mac draws a QR, the phone scans it, and the
+fingerprint inside is pinned — there is no confirmation step on the Mac and no key shown on the
+phone. The sentence describes a numeric-comparison flow (the shape KDE Connect uses, which this
+project studied for its trust model) and a user who reads it will stand there waiting for a key to
+appear on the Mac that never will.
+
+The second clause is accurate and should survive. Found by reading the onboarding pages against the
+pairing implementation while writing `docs/phase-7-pairing-flow.md` — not by a failure, and not by
+anything a test could have seen: it is a true-sounding sentence about a mechanism, and the only
+check for those is somebody comparing them.
+
+**Fix direction:** replace the first clause with what actually happens — *"Pairing is a code you
+scan once. The certificate behind it is pinned, and every connection after that is checked against
+it — an unpaired device is refused without asking you anything."* It is one string; the risk is
+entirely in nobody noticing the other three onboarding pages make claims of the same kind, so the
+fix is to read all four against the implementation rather than to patch the one that was found.
+
+**Wrong fix to avoid:** deleting the sentence. The security model is the reason this app has no
+account and no server, and it is worth one card in onboarding; the problem is that this card
+describes somebody else's implementation of it.

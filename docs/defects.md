@@ -76,6 +76,7 @@ own heading there, and its own row here.
 | **60** | **The link did not come back after a reboot.** `RECEIVE_BOOT_COMPLETED` was declared in `app/src/main/AndroidManifest.xml` from Phase 1 and **nothing received it** — the control is that the whole project declared two `<receiver>` elements, both in `sync-module`, and neither carried a `BOOT_COMPLETED` filter. `LinkBootReceiver` now takes `BOOT_COMPLETED`, Samsung's `QUICKBOOT_POWERON` and `MY_PACKAGE_REPLACED` — the last closing the *"reinstalling leaves the phone serverless"* hole `CLAUDE.md` documents, by the same route | **fixed** — the `MY_PACKAGE_REPLACED` half is proven on hardware; **the boot half is not, and cannot be from a laptop**: `BOOT_COMPLETED` is a protected broadcast, `adb root` is refused on this production build, and `am broadcast` is denied at uid 2000, so a real restart (H4) is the only stimulus | 2026-09-02: `adb install -r` → `[boot] PACKAGE_REPLACED: 1 paired device(s)` → `Foreground as PACKAGE_REPLACED, types=0x10` → `Listening on 42501/42502/42503`, 1.5 s, with grants diffed empty before and after. Guarded by `BootAutoStartTest` (9 tests), shown red under three separate mutations | `docs/testing.md` → Phase 6 Slice 1 |
 | **61** | **The link wake lock is never re-armed, and the comment on the field claims it is.** `acquireLocks()` guards on `wakeLock == null`, so once the 12-hour `acquire()` timeout lapses it, nothing re-acquires for the rest of the connection. Unreachable in every reading this project holds — the longest observed hold is 31 minutes — **because the link has never stayed up for twelve hours**, which is the problem Phase 6 exists to remove | **closed** | fixed 2026-09-02: `isHeld` guard plus a 20-minute re-arm ticker against a 60-minute timeout. `LinkLockPolicy` + `BootAutoStartTest`, shown red under three mutations including the 59-against-60-minute edit a naive `REARM < TIMEOUT` would pass. The re-arm path itself needs a >20-minute connection and is being sampled overnight | `docs/testing.md` → Phase 6 Slice 2 |
 | **62** | **A crash leaves the phone alive, fully granted, and serverless.** After a kill whose reason is `(adj 0): crash`, `START_STICKY` did not restart `LinkService`; the process came back 10 s later for the notification-listener rebind, every capability went green, and no socket was bound. The third route to the state `CLAUDE.md` documents for `adb install -r`, and the only one that needs nothing but a crash. Silent on both sides — the Mac shows the same reconnect loop it shows for a phone in a lift | **closed** | fixed and reproduced in one run on hardware 2026-09-02: the same `Start proc … for service {…NotificationMirrorService}` signature, and 304 ms later `[autostart] LISTENER_REBIND … starting LinkService` → listening → Mac reconnected 11.4 s after the kill. Originally seen as P5b: `Killing 23016 … (adj 0): crash` → `Start proc 31828 … for service {…NotificationMirrorService}` → 0 sockets, with the control that run 1's death logged `Foreground as UNKNOWN` 0.7 s later and this one logged nothing | `docs/testing.md` → Phase 6 Slice 2 |
+| **63** | **The onboarding security note describes a pairing flow this app does not have.** *"Devices are paired by confirming a key on both screens"* — nothing is confirmed on both screens: the Mac draws a QR, the phone scans it, and the fingerprint is pinned. A user who reads it waits for a key on the Mac that never appears. Shipped user-facing copy, on the third page every new user sees | **open** | source, 2026-09-02, found by reading the four onboarding pages against the pairing implementation while writing `docs/phase-7-pairing-flow.md`; no test could have seen it — it is a true-sounding sentence about a mechanism | `docs/testing.md` → Phase 7 Slice 4 |
 
 ---
 
@@ -1050,3 +1051,29 @@ foreground-service start is permitted for a reason read off this device rather t
 a permanent background job and a fresh failure mode under exactly the battery restrictions this phase
 is about. And the listener rebind must not be sold as a general answer — a phone with that grant off
 gets nothing from it, and that limit belongs in the record rather than in a surprise.
+
+---
+
+### 63 — the onboarding security note describes a pairing flow this app does not have · **open**
+
+`OnboardingScreen.kt`, third page: *"Devices are paired by confirming a key on both screens, and
+every connection after that is checked against it. An unpaired device is refused without asking you
+anything."*
+
+The Mac draws a QR, the phone scans it, the fingerprint inside is pinned. There is no confirmation
+step on the Mac and no key shown on the phone. The sentence describes a numeric-comparison flow —
+the shape KDE Connect uses, which this project studied for its trust model and did not copy — and a
+user who reads it will wait for something that never appears.
+
+The second clause is accurate and should survive.
+
+**Fix direction:** replace the first clause with what happens — *"Pairing is a code you scan once.
+The certificate behind it is pinned, and every connection after that is checked against it — an
+unpaired device is refused without asking you anything."* One string. The real risk is that the
+other three onboarding pages make claims of the same kind and nobody has read them against the
+implementation either, so the fix is a pass over all four rather than a patch to the one that was
+found.
+
+**Wrong fix to avoid:** deleting the card. The security model is why this app has no account and no
+server and it is worth saying; the fault is that this card describes somebody else's implementation
+of it.
