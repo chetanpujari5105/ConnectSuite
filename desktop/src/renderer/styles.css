@@ -2189,3 +2189,189 @@ img#qr {
   padding-left: 12px;
   margin-top: -4px;
 }
+
+/* ============================================================================================
+   Activity  —  built 2026-09-02
+
+   Inside-a-screen component layer, so it lives here and not in shell.css or tokens.css. Every
+   colour is a token; there is no `:root` block below, because a second one is what made the
+   design's violet accent never once get drawn (see the stylesheet rule in CLAUDE.md).
+   ============================================================================================ */
+
+.activity-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+/* One primary card per screen: the table is it. The rail's cards stay at elevation 2. */
+.activity-main {
+  background: var(--elev-3);
+  padding: 14px 16px 12px;
+  min-width: 0;
+}
+
+.activity-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.activity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text-body);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.activity-chip:hover { border-color: var(--hairline-hover); color: var(--text-primary); }
+
+.activity-chip.is-active {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  background: var(--accent-tint);
+}
+
+.activity-chip-count { font-size: 11px; color: var(--text-meta); }
+.activity-chip.is-active .activity-chip-count { color: var(--text-body); }
+
+/* Wide content scrolls inside its own container; the page body never scrolls sideways. */
+.activity-table { overflow-x: auto; }
+
+.activity-head,
+.activity-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 200px) minmax(160px, 1fr) 96px;
+  gap: 12px;
+  align-items: center;
+  min-width: 440px;
+}
+
+.activity-head {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text-meta);
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.activity-row {
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 13px;
+}
+
+.activity-row:last-child { border-bottom: 0; }
+
+.activity-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.activity-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+/* The detail is the one field that carries somebody else's text, so it is clipped rather than
+   allowed to set the column width. The full string is in the title attribute. */
+.activity-detail {
+  color: var(--text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-time { color: var(--text-meta); font-size: 12px; text-align: right; }
+
+.activity-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  font-size: 12px;
+  color: var(--text-meta);
+}
+
+.activity-pages { display: flex; gap: 4px; }
+
+.activity-page {
+  min-width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text-body);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.activity-page.is-active { border-color: var(--accent); color: var(--text-primary); background: var(--accent-tint); }
+
+.activity-rail { display: flex; flex-direction: column; gap: 12px; }
+
+.activity-summary { padding: 14px 16px; }
+.activity-summary h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.activity-donut { display: block; width: 132px; height: 132px; margin: 0 auto 10px; }
+.activity-donut-total { fill: var(--text-primary); font-size: 22px; font-weight: 600; font-family: var(--font-mono); }
+.activity-donut-label { fill: var(--text-meta); font-size: 8.5px; }
+
+.activity-legend { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.activity-legend > div { display: grid; grid-template-columns: 8px 1fr auto; gap: 8px; align-items: center; color: var(--text-body); }
+
+.activity-spark { display: block; width: 100%; height: auto; }
+.activity-axis { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-meta); padding: 0 4px; }
+
+.activity-export { width: 100%; }
+
+.activity-stats { font-size: 10.5px; color: var(--text-meta); margin: 6px 0 0; line-height: 1.5; }
+.activity-empty-note { font-size: 12.5px; color: var(--text-body); margin: 0; line-height: 1.5; }
+
+/* The four nothing-here states. Neutral by default; only A2 takes --warning, because an empty log
+   has not failed and must not read as though it has. */
+.activity-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 28px 24px;
+  min-height: 200px;
+  justify-content: center;
+}
+
+.activity-state-headline {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.activity-state-body { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-body); max-width: 62ch; }
+
+.activity-state--warning .activity-state-headline { color: var(--warning); }

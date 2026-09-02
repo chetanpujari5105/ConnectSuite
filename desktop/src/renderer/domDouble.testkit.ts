@@ -43,9 +43,35 @@ export class FakeElement {
   type = '';
   checked = false;
   disabled = false;
-  private ownText = '';
+  title = '';
+  /**
+   * Attributes, `style` and `dataset` as plain maps.
+   *
+   * Added when the Activity pane needed them, and added here rather than worked around in that
+   * pane's test — this file's own instruction. They are storage and nothing more: the double has
+   * no cascade and no layout, so a `style` written here proves the view *set* something, never
+   * that anything was painted. That is the same division the header states for the DOM as a whole.
+   */
+  readonly attributes = new Map<string, string>();
+  readonly style: Record<string, string> = {};
+  readonly dataset: Record<string, string> = {};
+  /** Set by `createElementNS`, so a test can tell an `<svg>` subtree from an HTML one. */
+  namespace: string | null = null;
 
   constructor(readonly tagName: string) {}
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+    // `class` and `className` are the same thing in a browser, and an SVG element can only be
+    // classed the first way — `className` on an SVGElement is a read-only SVGAnimatedString. A
+    // double that kept them apart would make `queryAll('.foo')` silently miss every SVG node, which
+    // is the hidden-grid failure rebuilt inside the harness.
+    if (name === 'class') this.className = value;
+  }
+
+  getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null;
+  }
 
   /** Concatenates children like the real one, so a container's text is its subtree's text. */
   get textContent(): string {
@@ -72,6 +98,12 @@ export class FakeElement {
 
   append(...kids: FakeElement[]): void {
     this.children.push(...kids);
+  }
+
+  /** The single-child form. Real elements have both and views use whichever reads better. */
+  appendChild(kid: FakeElement): FakeElement {
+    this.children.push(kid);
+    return kid;
   }
 
   replaceChildren(...kids: FakeElement[]): void {
@@ -120,11 +152,22 @@ export class FakeElement {
   }
 }
 
-/** The document double. Only `createElement` is needed: views build their own subtrees. */
+/**
+ * The document double. Views build their own subtrees, so only the two factories are needed.
+ *
+ * `createElementNS` is here because a pane that draws a chart draws SVG, and a double that silently
+ * had no `createElementNS` would fail with a `TypeError` in the test rather than covering the pane
+ * — which is the same outcome as not testing it, arrived at more confusingly.
+ */
 export function installFakeDocument(): { restore: () => void } {
   const before = (globalThis as Record<string, unknown>).document;
   (globalThis as Record<string, unknown>).document = {
     createElement: (tag: string) => new FakeElement(tag),
+    createElementNS: (ns: string, tag: string) => {
+      const element = new FakeElement(tag);
+      element.namespace = ns;
+      return element;
+    },
   };
   return {
     restore: () => {

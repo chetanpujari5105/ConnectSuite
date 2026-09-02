@@ -442,3 +442,35 @@ The consequence, and it bit immediately: **anything counting "how many folders h
 shared" must count `kind === 'tree'`.** The rail's length is not that number, and reading it as one
 made the pane's almost-empty state — where the `Download` wall lives — unreachable for everyone.
 `sharedFolderCount` is the one home for it.
+
+---
+
+## Activity — **built 2026-09-02**, the last unbuilt pane but one
+
+The canvas's structure is kept: a paged table with `ACTIVITY | DETAILS | TIME`, a filter chip row
+above it, and a 320px rail beside it carrying a donut, a seven-day sparkline and **Export log as
+CSV**. What departs is the chip set, and — the row worth reading — the fact that the artboard draws
+**one** state where the pane has five.
+
+| # | Design draws | Built instead | Status | Why | What would make the design's version correct |
+|---|---|---|---|---|---|
+| **A1** | Five chips: **Mirroring · Files · Messages · Calls · System** | The same five in the same order, plus **Clipboard**, and a chip is drawn **only for a category present in the log** | **reshaped** | Clipboard shipped after this artboard was drawn and its events have to land somewhere. Folding them into *System* would make a filter that does not find the thing its user came looking for, which is worse than one more chip. The second half — only drawing a chip for a category that exists — is the rule the count beside it makes necessary: a permanent `Calls 0` chip is a filter that can only ever produce an empty table, which is a fifth state manufactured by the UI | Nothing on the wire. This is the design's chip set plus one feature it predates |
+| **A2** | Nine rows and a pager, and **no other state** | Five states with ids: **A1** reading, **A2** unreadable, **A3** nothing recorded, **A4** nothing matching this filter, **A5** the table | **reshaped** | This is N4 and P5's gap in its sharpest form yet. A3 and A4 are the pair — *nothing has ever happened* and *nothing matches Files* would render as the same blank table, and a user cannot tell "nothing has been transferred" from "nothing is recorded, ever". They differ in four independent ways (headline verb, body, whether the filter is named, whether the chip row survives as a way out) and `shared/activity.test.ts` asserts all four | A drawn *empty* and a drawn *filtered-empty* state in the design language. **Fourth row in this file where the design is missing something** rather than the wire |
+| **A3** | A donut with four fixed legend rows, and `48` in the middle | The donut over **today**, with a legend row only for a non-zero category — and, when today has none, a **sentence instead of the chart** | **reshaped** | A donut with no arcs and a `0` in the middle is a chart of nothing that still looks like a chart. `Calls 0` beside a ring with no calls arc is a row that takes the eye and says nothing. The design's four rows are this rule with the data it happened to have | Nothing |
+| **A4** | A seven-point sparkline with day labels | The same, **including days with zero**, and the **peak printed beneath it** | **reshaped** | Two reasons, both the same rule. Drawing only the days that had events compresses a quiet week into a straight line that looks like a busy one. And a sparkline with no scale is a shape, not a measurement — one event a day and a hundred a day draw the identical curve, which is a count with no denominator wearing a chart | Nothing. A y-axis in the design language would be better than the printed peak |
+| **A5** | `Showing 9 of 48 events` | The same, plus the **filter name** and the unfiltered total: `Showing 9 of 12 Files events · 48 in all` | **reshaped** | With a filter on, `9 of 12` is a true sentence about the wrong denominator, and the design's string cannot say which one it means | Nothing |
+| **A6** | **Export log as CSV** | The same, through a save dialog, RFC 4180 quoted, oldest-first, carrying the sequence number | **shipped** | The quoting is not decoration: a detail can hold a comma, a quote or a newline — a file name, an app label — and a CSV that breaks on the first one loses rows silently. Oldest-first with the `seq` column means two exports can be diffed | Nothing |
+| **A7** | A timeline over "every sync, transfer and session" | Six categories fed from **eleven named recording sites, all in `main.ts`** | **reshaped** | The subtitle promises everything and the store records what the main process can see as an *event* rather than as a log line. Photos, notifications and contacts have no rows yet — deliberately, since none of them has an event the Mac observes rather than a request it makes. Recording sites are enumerated `R1`–`R11` in one file so a hole is something a reader can find | A recording site per feature. It is a small addition each; the design does not constrain it |
+
+**A2 is the row to read if you read one, and it is the fourth of its kind.** N4 was *the phone has
+this feature and is not offering it*; P5 was *the phone is half offering it*; F-series added *the
+grant exists and the folder is gone*. This one is **the Mac's own empty**, and it is the first where
+both halves of the ambiguity are entirely local — no phone, no wire, no permission. The design draws
+populated screens because populated screens are what a design is for; the states that cost users
+their afternoon are the other four, and each time this file records one it is the same request:
+**a drawn language for nothing-here, distinguishing at least empty, filtered-empty, failed and
+loading.**
+
+**Not a departure, recorded so it is not read as one:** the pane deliberately keeps working while
+the link is down. It is the only screen whose data never comes from the phone, and *what happened
+before it dropped* is exactly the question somebody has when it is down.

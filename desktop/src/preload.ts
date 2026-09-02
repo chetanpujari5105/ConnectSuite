@@ -191,6 +191,24 @@ contextBridge.exposeInMainWorld('connect', {
     ipcRenderer.invoke('clip-set-watching', on),
   clipRequest: (): Promise<PhoneResult<ClipEntry>> => ipcRenderer.invoke('clip-request'),
   clipHistory: (): Promise<PhoneResult<LocalClipEntry[]>> => ipcRenderer.invoke('clip-history'),
+
+  /**
+   * The Activity screen's log.
+   *
+   * `error` travels beside `events` rather than replacing them, because an empty list on a failed
+   * read is the one shape that makes A2 and A3 indistinguishable — see `shared/activity.ts`.
+   */
+  activityEvents: (): Promise<
+    PhoneResult<{
+      events: ActivityEvent[];
+      error: string | null;
+      stats: { read: number; skipped: number; recorded: number; dropped: number };
+    }>
+  > => ipcRenderer.invoke('activity-events'),
+
+  /** Opens a save dialog and writes the whole log as CSV. Resolves `ok: false` on cancel. */
+  activityExportCsv: (): Promise<PhoneResult<{ path: string }>> =>
+    ipcRenderer.invoke('activity-csv'),
   clipPhoneHistory: (limit?: number): Promise<PhoneResult<ClipEntry[]>> =>
     ipcRenderer.invoke('clip-phone-history', limit),
   clipUse: (text: string): Promise<PhoneResult<null>> => ipcRenderer.invoke('clip-use', text),

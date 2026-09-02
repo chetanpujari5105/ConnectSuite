@@ -11,3 +11,477 @@
 03:05:18   [samples=4 observed_mean_gap=90.7s]
 03:07:19 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-22s875ms  pid=6617
 03:07:19   [samples=5 observed_mean_gap=96.7s]
+03:09:20 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-2m23s558ms  pid=6617
+03:09:20   [samples=6 observed_mean_gap=100.7s]
+03:11:20 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-4m24s245ms  pid=6617
+03:11:20   [samples=7 observed_mean_gap=103.5s]
+03:13:21 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-6m24s956ms  pid=6617
+03:13:21   [samples=8 observed_mean_gap=105.7s]
+03:15:22 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-8m25s547ms  pid=6617
+03:15:22   [samples=9 observed_mean_gap=107.3s]
+03:17:22 mScreenState=DOZE_SUSPEND mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-10m26s191ms  pid=6617
+03:17:22   [samples=10 observed_mean_gap=108.7s]
+03:19:23 mScreenState=DOZE_SUSPEND mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-12m26s857ms  pid=6617
+03:19:23   [samples=11 observed_mean_gap=109.8s]
+03:21:24 mScreenState=DOZE_SUSPEND mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-14m27s564ms  pid=6617
+03:21:24   [samples=12 observed_mean_gap=110.7s]
+03:23:24 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-16m28s140ms  pid=6617
+03:23:24   [samples=13 observed_mean_gap=111.4s]
+03:25:25 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-18m28s875ms  pid=6617
+03:25:25   [samples=14 observed_mean_gap=112.1s]
+03:27:26 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-20m29s612ms  pid=6617
+03:27:26   [samples=15 observed_mean_gap=112.7s]
+03:29:27 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-22m30s295ms  pid=6617
+03:29:27   [samples=16 observed_mean_gap=113.2s]
+03:31:27 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-24m30s923ms  pid=6617
+03:31:27   [samples=17 observed_mean_gap=113.6s]
+03:33:28 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-26m31s567ms  pid=6617
+03:33:28   [samples=18 observed_mean_gap=114.0s]
+03:35:28 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-28m32s269ms  pid=6617
+03:35:28   [samples=19 observed_mean_gap=114.4s]
+03:37:29 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-30m32s954ms  pid=6617
+03:37:29   [samples=20 observed_mean_gap=114.7s]
+03:39:30 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-32m33s668ms  pid=6617
+03:39:30   [samples=21 observed_mean_gap=115.0s]
+03:41:31 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-34m34s348ms  pid=6617
+03:41:31   [samples=22 observed_mean_gap=115.2s]
+03:43:31 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-36m34s987ms  pid=6617
+03:43:31   [samples=23 observed_mean_gap=115.5s]
+03:45:32 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-38m35s699ms  pid=6617
+03:45:32   [samples=24 observed_mean_gap=115.7s]
+03:47:33 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-40m36s254ms  pid=6617
+03:47:33   [samples=25 observed_mean_gap=115.9s]
+03:49:33 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-42m37s33ms  pid=6617
+03:49:33   [samples=26 observed_mean_gap=116.1s]
+03:51:34 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-44m37s901ms  pid=6617
+03:51:34   [samples=27 observed_mean_gap=116.2s]
+03:53:35 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-46m38s623ms  pid=6617
+03:53:35   [samples=28 observed_mean_gap=116.4s]
+03:55:36 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-48m39s313ms  pid=6617
+03:55:36   [samples=29 observed_mean_gap=116.5s]
+03:57:36 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-50m39s980ms  pid=6617
+03:57:36   [samples=30 observed_mean_gap=116.7s]
+03:59:37 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-52m40s689ms  pid=6617
+03:59:37   [samples=31 observed_mean_gap=116.8s]
+04:01:38 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-54m41s421ms  pid=6617
+04:01:38   [samples=32 observed_mean_gap=116.9s]
+04:03:38 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-56m42s127ms  pid=6617
+04:03:38   [samples=33 observed_mean_gap=117.0s]
+04:05:39 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-58m42s728ms  pid=6617
+04:05:39   [samples=34 observed_mean_gap=117.2s]
+04:07:40 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=none pid=6617
+04:07:40   [samples=35 observed_mean_gap=117.3s]
+04:09:40 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=none pid=6617
+04:09:40   [samples=36 observed_mean_gap=117.4s]
+04:11:41 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=none pid=6617
+04:11:41   [samples=37 observed_mean_gap=117.4s]
+04:13:42 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=none pid=6617
+04:13:42   [samples=38 observed_mean_gap=117.5s]
+04:15:42 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=none pid=6617
+04:15:42   [samples=39 observed_mean_gap=117.6s]
+04:17:43 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=none pid=6617
+04:17:43   [samples=40 observed_mean_gap=117.7s]
+04:19:44 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=none pid=6617
+04:19:44   [samples=41 observed_mean_gap=117.8s]
+04:21:44 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=none pid=6617
+04:21:44   [samples=42 observed_mean_gap=117.8s]
+04:23:45 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=none pid=6617
+04:23:45   [samples=43 observed_mean_gap=117.9s]
+04:25:46 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=none pid=6617
+04:25:46   [samples=44 observed_mean_gap=117.9s]
+04:27:46 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-50s447ms  pid=6617
+04:27:46   [samples=45 observed_mean_gap=118.0s]
+04:29:47 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-2m51s201ms  pid=6617
+04:29:47   [samples=46 observed_mean_gap=118.1s]
+04:31:48 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-4m51s824ms  pid=6617
+04:31:48   [samples=47 observed_mean_gap=118.1s]
+04:33:48 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-6m52s544ms  pid=6617
+04:33:48   [samples=48 observed_mean_gap=118.2s]
+04:35:49 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-8m53s197ms  pid=6617
+04:35:49   [samples=49 observed_mean_gap=118.2s]
+04:37:50 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-10m53s919ms  pid=6617
+04:37:50   [samples=50 observed_mean_gap=118.3s]
+04:39:50 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-12m54s607ms  pid=6617
+04:39:50   [samples=51 observed_mean_gap=118.3s]
+04:41:51 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-14m55s423ms  pid=6617
+04:41:51   [samples=52 observed_mean_gap=118.4s]
+04:43:52 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-16m56s110ms  pid=6617
+04:43:52   [samples=53 observed_mean_gap=118.4s]
+04:45:52 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-18m56s815ms  pid=6617
+04:45:52   [samples=54 observed_mean_gap=118.5s]
+04:47:53 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-20m57s503ms  pid=6617
+04:47:53   [samples=55 observed_mean_gap=118.5s]
+04:49:54 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-22m58s138ms  pid=6617
+04:49:54   [samples=56 observed_mean_gap=118.5s]
+04:51:55 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-24m58s829ms  pid=6617
+04:51:55   [samples=57 observed_mean_gap=118.6s]
+04:53:55 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-26m59s592ms  pid=6617
+04:53:55   [samples=58 observed_mean_gap=118.6s]
+04:55:56 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-29m0s332ms  pid=6617
+04:55:56   [samples=59 observed_mean_gap=118.6s]
+04:57:57 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-31m0s951ms  pid=6617
+04:57:57   [samples=60 observed_mean_gap=118.7s]
+04:59:57 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-33m1s663ms  pid=6617
+04:59:57   [samples=61 observed_mean_gap=118.7s]
+05:01:58 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-35m2s335ms  pid=6617
+05:01:58   [samples=62 observed_mean_gap=118.7s]
+05:03:59 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-37m2s985ms  pid=6617
+05:03:59   [samples=63 observed_mean_gap=118.8s]
+05:05:59 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-39m3s584ms  pid=6617
+05:05:59   [samples=64 observed_mean_gap=118.8s]
+05:08:00 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-41m4s222ms  pid=6617
+05:08:00   [samples=65 observed_mean_gap=118.8s]
+05:10:01 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-43m4s805ms  pid=6617
+05:10:01   [samples=66 observed_mean_gap=118.9s]
+05:12:01 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-45m5s442ms  pid=6617
+05:12:01   [samples=67 observed_mean_gap=118.9s]
+05:14:02 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-47m6s80ms  pid=6617
+05:14:02   [samples=68 observed_mean_gap=118.9s]
+05:16:02 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-49m6s781ms  pid=6617
+05:16:02   [samples=69 observed_mean_gap=118.9s]
+05:18:03 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-51m7s503ms  pid=6617
+05:18:03   [samples=70 observed_mean_gap=119.0s]
+05:20:04 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-53m8s95ms  pid=6617
+05:20:04   [samples=71 observed_mean_gap=119.0s]
+05:22:04 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-55m8s690ms  pid=6617
+05:22:04   [samples=72 observed_mean_gap=119.0s]
+05:24:05 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-57m9s376ms  pid=6617
+05:24:05   [samples=73 observed_mean_gap=119.0s]
+05:26:06 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-59m9s983ms  pid=6617
+05:26:06   [samples=74 observed_mean_gap=119.1s]
+05:28:06 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-1m10s382ms  pid=6617
+05:28:06   [samples=75 observed_mean_gap=119.1s]
+05:30:07 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-3m11s89ms  pid=6617
+05:30:07   [samples=76 observed_mean_gap=119.1s]
+05:32:08 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-5m11s618ms  pid=6617
+05:32:08   [samples=77 observed_mean_gap=119.1s]
+05:34:08 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-7m12s291ms  pid=6617
+05:34:08   [samples=78 observed_mean_gap=119.1s]
+05:36:09 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-9m13s25ms  pid=6617
+05:36:09   [samples=79 observed_mean_gap=119.2s]
+05:38:10 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-11m13s708ms  pid=6617
+05:38:10   [samples=80 observed_mean_gap=119.2s]
+05:40:10 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-13m14s429ms  pid=6617
+05:40:10   [samples=81 observed_mean_gap=119.2s]
+05:42:11 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-15m15s54ms  pid=6617
+05:42:11   [samples=82 observed_mean_gap=119.2s]
+05:44:12 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-17m15s712ms  pid=6617
+05:44:12   [samples=83 observed_mean_gap=119.2s]
+05:46:12 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-19m16s398ms  pid=6617
+05:46:12   [samples=84 observed_mean_gap=119.2s]
+05:48:13 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-21m17s85ms  pid=6617
+05:48:13   [samples=85 observed_mean_gap=119.3s]
+05:50:14 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-23m17s725ms  pid=6617
+05:50:14   [samples=86 observed_mean_gap=119.3s]
+05:52:14 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-25m18s414ms  pid=6617
+05:52:14   [samples=87 observed_mean_gap=119.3s]
+05:54:15 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-27m19s132ms  pid=6617
+05:54:15   [samples=88 observed_mean_gap=119.3s]
+05:56:16 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-29m19s886ms  pid=6617
+05:56:16   [samples=89 observed_mean_gap=119.3s]
+05:58:16 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-31m20s532ms  pid=6617
+05:58:16   [samples=90 observed_mean_gap=119.3s]
+06:00:17 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-33m21s93ms  pid=6617
+06:00:17   [samples=91 observed_mean_gap=119.4s]
+06:02:18 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-35m21s759ms  pid=6617
+06:02:18   [samples=92 observed_mean_gap=119.4s]
+06:04:18 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-37m22s391ms  pid=6617
+06:04:18   [samples=93 observed_mean_gap=119.4s]
+06:06:19 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-39m23s73ms  pid=6617
+06:06:19   [samples=94 observed_mean_gap=119.4s]
+06:08:20 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-41m23s809ms  pid=6617
+06:08:20   [samples=95 observed_mean_gap=119.4s]
+06:10:20 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-43m24s439ms  pid=6617
+06:10:20   [samples=96 observed_mean_gap=119.4s]
+06:12:21 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-45m25s151ms  pid=6617
+06:12:21   [samples=97 observed_mean_gap=119.4s]
+06:14:22 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-47m25s835ms  pid=6617
+06:14:22   [samples=98 observed_mean_gap=119.4s]
+06:16:22 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-49m26s558ms  pid=6617
+06:16:22   [samples=99 observed_mean_gap=119.5s]
+06:18:23 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-51m27s162ms  pid=6617
+06:18:23   [samples=100 observed_mean_gap=119.5s]
+06:20:24 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-53m27s801ms  pid=6617
+06:20:24   [samples=101 observed_mean_gap=119.5s]
+06:22:24 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-55m28s324ms  pid=6617
+06:22:24   [samples=102 observed_mean_gap=119.5s]
+06:24:25 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-57m29s121ms  pid=6617
+06:24:25   [samples=103 observed_mean_gap=119.5s]
+06:26:26 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-59m29s699ms  pid=6617
+06:26:26   [samples=104 observed_mean_gap=119.5s]
+06:28:26 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-1m30s182ms  pid=6617
+06:28:26   [samples=105 observed_mean_gap=119.5s]
+06:30:27 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-3m30s791ms  pid=6617
+06:30:27   [samples=106 observed_mean_gap=119.5s]
+06:32:28 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-5m31s447ms  pid=6617
+06:32:28   [samples=107 observed_mean_gap=119.5s]
+06:34:28 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-7m32s69ms  pid=6617
+06:34:28   [samples=108 observed_mean_gap=119.6s]
+06:36:29 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-9m32s688ms  pid=6617
+06:36:29   [samples=109 observed_mean_gap=119.6s]
+06:38:29 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-11m33s273ms  pid=6617
+06:38:29   [samples=110 observed_mean_gap=119.6s]
+06:40:30 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-13m33s900ms  pid=6617
+06:40:30   [samples=111 observed_mean_gap=119.6s]
+06:42:31 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-15m34s613ms  pid=6617
+06:42:31   [samples=112 observed_mean_gap=119.6s]
+06:44:31 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-17m35s310ms  pid=6617
+06:44:31   [samples=113 observed_mean_gap=119.6s]
+06:46:32 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-19m36s23ms  pid=6617
+06:46:32   [samples=114 observed_mean_gap=119.6s]
+06:48:33 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-21m36s630ms  pid=6617
+06:48:33   [samples=115 observed_mean_gap=119.6s]
+06:50:33 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-23m37s230ms  pid=6617
+06:50:33   [samples=116 observed_mean_gap=119.6s]
+06:52:34 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-25m37s830ms  pid=6617
+06:52:34   [samples=117 observed_mean_gap=119.6s]
+06:54:35 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-27m38s410ms  pid=6617
+06:54:35   [samples=118 observed_mean_gap=119.7s]
+06:56:35 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-29m38s967ms  pid=6617
+06:56:35   [samples=119 observed_mean_gap=119.7s]
+06:58:36 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-31m39s686ms  pid=6617
+06:58:36   [samples=120 observed_mean_gap=119.7s]
+07:00:36 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-33m40s340ms  pid=6617
+07:00:36   [samples=121 observed_mean_gap=119.7s]
+07:02:37 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-35m41s59ms  pid=6617
+07:02:37   [samples=122 observed_mean_gap=119.7s]
+07:04:38 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-37m41s735ms  pid=6617
+07:04:38   [samples=123 observed_mean_gap=119.7s]
+07:06:39 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-39m42s405ms  pid=6617
+07:06:39   [samples=124 observed_mean_gap=119.7s]
+07:08:39 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-41m43s62ms  pid=6617
+07:08:39   [samples=125 observed_mean_gap=119.7s]
+07:10:40 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-43m43s800ms  pid=6617
+07:10:40   [samples=126 observed_mean_gap=119.7s]
+07:12:41 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-45m44s520ms  pid=6617
+07:12:41   [samples=127 observed_mean_gap=119.7s]
+07:14:41 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-47m45s217ms  pid=6617
+07:14:41   [samples=128 observed_mean_gap=119.7s]
+07:16:42 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-49m45s879ms  pid=6617
+07:16:42   [samples=129 observed_mean_gap=119.7s]
+07:18:43 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-51m46s594ms  pid=6617
+07:18:43   [samples=130 observed_mean_gap=119.7s]
+07:20:43 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-53m47s287ms  pid=6617
+07:20:43   [samples=131 observed_mean_gap=119.8s]
+07:22:44 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-55m47s997ms  pid=6617
+07:22:44   [samples=132 observed_mean_gap=119.8s]
+07:24:45 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-57m48s649ms  pid=6617
+07:24:45   [samples=133 observed_mean_gap=119.8s]
+07:26:45 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-59m49s347ms  pid=6617
+07:26:45   [samples=134 observed_mean_gap=119.8s]
+07:28:46 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-1m49s876ms  pid=6617
+07:28:46   [samples=135 observed_mean_gap=119.8s]
+07:30:47 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-3m50s598ms  pid=6617
+07:30:47   [samples=136 observed_mean_gap=119.8s]
+07:32:48 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-5m51s301ms  pid=6617
+07:32:48   [samples=137 observed_mean_gap=119.8s]
+07:34:48 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-7m51s991ms  pid=6617
+07:34:48   [samples=138 observed_mean_gap=119.8s]
+07:36:49 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-9m52s694ms  pid=6617
+07:36:49   [samples=139 observed_mean_gap=119.8s]
+07:38:50 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-11m53s365ms  pid=6617
+07:38:50   [samples=140 observed_mean_gap=119.8s]
+07:40:50 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-13m54s70ms  pid=6617
+07:40:50   [samples=141 observed_mean_gap=119.8s]
+07:42:51 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-15m54s725ms  pid=6617
+07:42:51   [samples=142 observed_mean_gap=119.8s]
+07:44:52 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-17m55s403ms  pid=6617
+07:44:52   [samples=143 observed_mean_gap=119.8s]
+07:46:52 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-19m55s972ms  pid=6617
+07:46:52   [samples=144 observed_mean_gap=119.8s]
+07:48:53 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-21m56s659ms  pid=6617
+07:48:53   [samples=145 observed_mean_gap=119.8s]
+07:50:54 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-23m57s365ms  pid=6617
+07:50:54   [samples=146 observed_mean_gap=119.8s]
+07:52:54 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-25m58s17ms  pid=6617
+07:52:54   [samples=147 observed_mean_gap=119.9s]
+07:54:55 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-27m58s757ms  pid=6617
+07:54:55   [samples=148 observed_mean_gap=119.9s]
+07:56:56 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-29m59s458ms  pid=6617
+07:56:56   [samples=149 observed_mean_gap=119.9s]
+07:58:56 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-32m0s87ms  pid=6617
+07:58:56   [samples=150 observed_mean_gap=119.9s]
+08:00:57 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-34m0s741ms  pid=6617
+08:00:57   [samples=151 observed_mean_gap=119.9s]
+08:02:58 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-36m1s373ms  pid=6617
+08:02:58   [samples=152 observed_mean_gap=119.9s]
+08:04:58 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-38m2s21ms  pid=6617
+08:04:58   [samples=153 observed_mean_gap=119.9s]
+08:06:59 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-40m2s738ms  pid=6617
+08:06:59   [samples=154 observed_mean_gap=119.9s]
+08:09:00 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-42m3s464ms  pid=6617
+08:09:00   [samples=155 observed_mean_gap=119.9s]
+08:11:00 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-44m4s45ms  pid=6617
+08:11:00   [samples=156 observed_mean_gap=119.9s]
+08:13:01 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-46m4s619ms  pid=6617
+08:13:01   [samples=157 observed_mean_gap=119.9s]
+08:15:02 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-48m5s155ms  pid=6617
+08:15:02   [samples=158 observed_mean_gap=119.9s]
+08:17:02 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-50m5s758ms  pid=6617
+08:17:02   [samples=159 observed_mean_gap=119.9s]
+08:19:03 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-52m6s407ms  pid=6617
+08:19:03   [samples=160 observed_mean_gap=119.9s]
+08:21:03 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-54m7s14ms  pid=6617
+08:21:03   [samples=161 observed_mean_gap=119.9s]
+08:23:04 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-56m7s760ms  pid=6617
+08:23:04   [samples=162 observed_mean_gap=119.9s]
+08:25:05 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-58m8s488ms  pid=6617
+08:25:05   [samples=163 observed_mean_gap=119.9s]
+08:27:05 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-8s923ms  pid=6617
+08:27:05   [samples=164 observed_mean_gap=119.9s]
+08:29:06 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-2m9s595ms  pid=6617
+08:29:06   [samples=165 observed_mean_gap=119.9s]
+08:31:07 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-4m10s293ms  pid=6617
+08:31:07   [samples=166 observed_mean_gap=119.9s]
+08:33:07 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-6m10s964ms  pid=6617
+08:33:07   [samples=167 observed_mean_gap=120.0s]
+08:35:08 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-8m11s658ms  pid=6617
+08:35:08   [samples=168 observed_mean_gap=120.0s]
+08:37:09 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-10m12s367ms  pid=6617
+08:37:09   [samples=169 observed_mean_gap=120.0s]
+08:39:09 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-12m13s63ms  pid=6617
+08:39:09   [samples=170 observed_mean_gap=120.0s]
+08:41:10 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-14m13s736ms  pid=6617
+08:41:10   [samples=171 observed_mean_gap=120.0s]
+08:43:11 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-16m14s410ms  pid=6617
+08:43:11   [samples=172 observed_mean_gap=120.0s]
+08:45:12 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-18m15s154ms  pid=6617
+08:45:12   [samples=173 observed_mean_gap=120.0s]
+08:47:12 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-20m15s850ms  pid=6617
+08:47:12   [samples=174 observed_mean_gap=120.0s]
+08:49:13 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-22m16s631ms  pid=6617
+08:49:13   [samples=175 observed_mean_gap=120.0s]
+08:51:14 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-24m17s269ms  pid=6617
+08:51:14   [samples=176 observed_mean_gap=120.0s]
+08:53:14 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-26m18s28ms  pid=6617
+08:53:14   [samples=177 observed_mean_gap=120.0s]
+08:55:15 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-28m18s782ms  pid=6617
+08:55:15   [samples=178 observed_mean_gap=120.0s]
+08:57:16 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-30m19s418ms  pid=6617
+08:57:16   [samples=179 observed_mean_gap=120.0s]
+08:59:17 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-32m20s73ms  pid=6617
+08:59:17   [samples=180 observed_mean_gap=120.0s]
+09:01:17 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-34m20s810ms  pid=6617
+09:01:17   [samples=181 observed_mean_gap=120.0s]
+09:03:18 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-36m21s449ms  pid=6617
+09:03:18   [samples=182 observed_mean_gap=120.0s]
+09:05:19 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-38m22s73ms  pid=6617
+09:05:19   [samples=183 observed_mean_gap=120.0s]
+09:07:19 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-40m22s776ms  pid=6617
+09:07:19   [samples=184 observed_mean_gap=120.0s]
+09:09:20 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-42m23s497ms  pid=6617
+09:09:20   [samples=185 observed_mean_gap=120.0s]
+09:11:21 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-44m24s217ms  pid=6617
+09:11:21   [samples=186 observed_mean_gap=120.0s]
+09:13:21 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-46m24s920ms  pid=6617
+09:13:21   [samples=187 observed_mean_gap=120.0s]
+09:15:22 mScreenState=DOZE_SUSPEND mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-48m25s547ms  pid=6617
+09:15:22   [samples=188 observed_mean_gap=120.0s]
+09:17:23 mScreenState=DOZE_SUSPEND mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-50m26s166ms  pid=6617
+09:17:23   [samples=189 observed_mean_gap=120.0s]
+09:19:23 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-52m26s872ms  pid=6617
+09:19:23   [samples=190 observed_mean_gap=120.0s]
+09:21:24 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-54m27s535ms  pid=6617
+09:21:24   [samples=191 observed_mean_gap=120.0s]
+09:23:25 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-56m28s187ms  pid=6617
+09:23:25   [samples=192 observed_mean_gap=120.0s]
+09:25:25 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-58m28s905ms  pid=6617
+09:25:25   [samples=193 observed_mean_gap=120.0s]
+09:27:26 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-29s229ms  pid=6617
+09:27:26   [samples=194 observed_mean_gap=120.1s]
+09:29:27 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-2m29s803ms  pid=6617
+09:29:27   [samples=195 observed_mean_gap=120.1s]
+09:31:27 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-4m30s467ms  pid=6617
+09:31:27   [samples=196 observed_mean_gap=120.1s]
+09:33:28 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-6m31s99ms  pid=6617
+09:33:28   [samples=197 observed_mean_gap=120.1s]
+09:35:28 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-8m31s736ms  pid=6617
+09:35:28   [samples=198 observed_mean_gap=120.1s]
+09:37:29 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-10m32s374ms  pid=6617
+09:37:29   [samples=199 observed_mean_gap=120.1s]
+09:39:30 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-12m32s978ms  pid=6617
+09:39:30   [samples=200 observed_mean_gap=120.1s]
+09:41:30 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-14m33s673ms  pid=6617
+09:41:30   [samples=201 observed_mean_gap=120.1s]
+09:43:31 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-16m34s359ms  pid=6617
+09:43:31   [samples=202 observed_mean_gap=120.1s]
+09:45:32 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-18m35s121ms  pid=6617
+09:45:32   [samples=203 observed_mean_gap=120.1s]
+09:47:33 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-20m35s780ms  pid=6617
+09:47:33   [samples=204 observed_mean_gap=120.1s]
+09:49:33 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-22m36s398ms  pid=6617
+09:49:33   [samples=205 observed_mean_gap=120.1s]
+09:51:34 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-24m37s7ms  pid=6617
+09:51:34   [samples=206 observed_mean_gap=120.1s]
+09:53:34 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-26m37s682ms  pid=6617
+09:53:34   [samples=207 observed_mean_gap=120.1s]
+09:55:35 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-28m38s340ms  pid=6617
+09:55:35   [samples=208 observed_mean_gap=120.1s]
+09:57:36 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-30m39s4ms  pid=6617
+09:57:36   [samples=209 observed_mean_gap=120.1s]
+09:59:36 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-32m39s683ms  pid=6617
+09:59:36   [samples=210 observed_mean_gap=120.1s]
+10:01:37 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-34m40s354ms  pid=6617
+10:01:37   [samples=211 observed_mean_gap=120.1s]
+10:03:38 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-36m41s81ms  pid=6617
+10:03:38   [samples=212 observed_mean_gap=120.1s]
+10:05:38 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-38m41s784ms  pid=6617
+10:05:38   [samples=213 observed_mean_gap=120.1s]
+10:07:39 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-40m42s484ms  pid=6617
+10:07:39   [samples=214 observed_mean_gap=120.1s]
+10:09:40 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-42m43s67ms  pid=6617
+10:09:40   [samples=215 observed_mean_gap=120.1s]
+10:11:40 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-44m43s769ms  pid=6617
+10:11:40   [samples=216 observed_mean_gap=120.1s]
+10:13:41 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-46m44s499ms  pid=6617
+10:13:41   [samples=217 observed_mean_gap=120.1s]
+10:15:42 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-48m45s236ms  pid=6617
+10:15:42   [samples=218 observed_mean_gap=120.1s]
+10:17:43 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-50m45s883ms  pid=6617
+10:17:43   [samples=219 observed_mean_gap=120.1s]
+10:19:43 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-52m46s552ms  pid=6617
+10:19:43   [samples=220 observed_mean_gap=120.1s]
+10:21:44 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-54m47s87ms  pid=6617
+10:21:44   [samples=221 observed_mean_gap=120.1s]
+10:23:44 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-56m47s796ms  pid=6617
+10:23:44   [samples=222 observed_mean_gap=120.1s]
+10:25:45 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-58m48s484ms  pid=6617
+10:25:45   [samples=223 observed_mean_gap=120.1s]
+10:27:46 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-49s101ms  pid=6617
+10:27:46   [samples=224 observed_mean_gap=120.1s]
+10:29:47 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-2m49s737ms  pid=6617
+10:29:47   [samples=225 observed_mean_gap=120.1s]
+10:31:47 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-4m50s409ms  pid=6617
+10:31:47   [samples=226 observed_mean_gap=120.1s]
+10:33:48 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-6m51s113ms  pid=6617
+10:33:48   [samples=227 observed_mean_gap=120.1s]
+10:35:49 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-8m51s723ms  pid=6617
+10:35:49   [samples=228 observed_mean_gap=120.1s]
+10:37:49 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-10m52s346ms  pid=6617
+10:37:49   [samples=229 observed_mean_gap=120.1s]
+10:39:50 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-12m53s0ms  pid=6617
+10:39:50   [samples=230 observed_mean_gap=120.1s]
+10:41:50 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-14m53s572ms  pid=6617
+10:41:50   [samples=231 observed_mean_gap=120.1s]
+10:43:51 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-16m54s266ms  pid=6617
+10:43:51   [samples=232 observed_mean_gap=120.2s]
+10:45:52 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-18m54s863ms  pid=6617
+10:45:52   [samples=233 observed_mean_gap=120.2s]
+10:47:52 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-20m55s528ms  pid=6617
+10:47:52   [samples=234 observed_mean_gap=120.2s]
+10:49:53 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-22m56s165ms  pid=6617
+10:49:53   [samples=235 observed_mean_gap=120.2s]
+10:51:54 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-24m56s778ms  pid=6617
+10:51:54   [samples=236 observed_mean_gap=120.2s]
+10:53:54 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-26m57s432ms  pid=6617
+10:53:54   [samples=237 observed_mean_gap=120.2s]
+10:55:55 mScreenState=OFF mWakefulness=Dozing deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-28m58s184ms  pid=6617
+10:55:55   [samples=238 observed_mean_gap=120.2s]
+10:57:56 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-30m58s776ms  pid=6617
+10:57:56   [samples=239 observed_mean_gap=120.2s]
+10:59:56 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-17s65ms  pid=6617
+10:59:56   [samples=240 observed_mean_gap=120.2s]
+11:01:57 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-27s844ms  pid=6617
+11:01:57   [samples=241 observed_mean_gap=120.2s]
+11:03:58 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-2m28s544ms  pid=6617
+11:03:58   [samples=242 observed_mean_gap=120.2s]

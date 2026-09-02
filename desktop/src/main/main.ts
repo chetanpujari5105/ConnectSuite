@@ -1,4 +1,6 @@
-import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor, Tray, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor, Tray, Menu,
+  dialog,
+} from 'electron';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
@@ -13,6 +15,13 @@ import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, promises as fsp } from 'node:fs';
 import { BulkClient } from './bulk';
 import { partPathFor } from '../shared/transferFiles';
+import { activity } from './activity';
+// `shared/activity.ts` is a plain script, not a module — it has to be loadable by a `<script>` tag
+// in the CSP-locked renderer, so it has no top-level `export`. Its declarations are global to this
+// TypeScript project; only the runtime value needs fetching.
+const sharedActivity = require('../shared/activity') as {
+  activityCsv: (events: ActivityEvent[]) => string;
+};
 import { FilesClient } from './files';
 import { PhotosClient } from './photos';
 import { NotificationClient } from './notifications';
@@ -153,6 +162,24 @@ const sms = new SmsClient(() => link);
 const calls = new CallClient(() => link);
 
 let wasConnected = false;
+/** Last phase written to the activity log. See R1 — transitions, not ticks. */
+let lastRecordedPhase: ConnectionStatus['phase'] | null = null;
+
+/**
+ * The sentence an activity row carries for a refusal, from whatever shape the caller answered with.
+ *
+ * One function because there are four call sites and the alternative is four slightly different
+ * guesses at where the reason lives. It never returns an empty string: a `Send failed` row with a
+ * blank details column is a row that tells you something went wrong and refuses to say what, which
+ * is worse than not recording it.
+ */
+function describeFailure(result: unknown): string {
+  const r = result as { reason?: unknown; error?: unknown; code?: unknown } | null | undefined;
+  const reason = typeof r?.reason === 'string' && r.reason ? r.reason : undefined;
+  const error = typeof r?.error === 'string' && r.error ? r.error : undefined;
+  const code = typeof r?.code === 'string' && r.code ? ` (${r.code})` : '';
+  return `${reason ?? error ?? 'no reason given'}${code}`;
+}
 let couldRemote = false;
 
 /**
@@ -406,6 +433,8 @@ async function onMirrorState(state: MirrorStatePayload): Promise<void> {
 
 app.whenReady().then(() => {
   initLogger();
+  activity.init();
+  activity.record('system', 'ConnectSuite started', `version ${app.getVersion()}`);
   log.info('app', `ConnectSuite ${app.getVersion()} starting`);
   // Read here, and only here, so a weakened guard announces itself in the first lines of the log
   // rather than when it first bites — by which time a confusing result has already happened and
@@ -465,6 +494,18 @@ app.whenReady().then(() => {
   });
   video.on('closed', (reason: string) => sendAll('mirror-stopped', { reason }));
   link.on('status', (status: ConnectionStatus) => {
+    // R1 (system). Phase transitions only: `status` fires on every retry tick, and a row per tick
+    // would bury every other category under a reconnect loop — the thing the pane exists to make
+    // visible would become the thing hiding it.
+    if (status.phase !== lastRecordedPhase) {
+      const before = lastRecordedPhase;
+      lastRecordedPhase = status.phase;
+      if (status.phase === 'connected') {
+        activity.record('system', 'Connected', status.deviceName ?? status.address ?? 'phone');
+      } else if (before === 'connected') {
+        activity.record('system', 'Disconnected', status.lastError ?? `now ${status.phase}`);
+      }
+    }
     lastStatus = status;
     refreshTray();
     // The session token dies with the control connection, so a video socket outliving it would
@@ -506,6 +547,16 @@ app.whenReady().then(() => {
     sendAll('status', status);
   });
   link.on('phone-error', (payload: unknown) => {
+    // R2 (system). Every phone-side refusal, with the feature it belongs to — the rows a user
+    // needs when a pane has been grey all afternoon.
+    {
+      const e = payload as { code?: string; feature?: string; message?: string };
+      activity.record(
+        'system',
+        `${e?.feature ?? 'phone'} refused`,
+        `${e?.message ?? 'no reason given'}${e?.code ? ` (${e.code})` : ''}`,
+      );
+    }
     // A mirror failure arrives here as an ordinary error with feature "mirror". It is the only
     // thing standing between the user and an idle canvas, so it is forwarded verbatim.
     const error = payload as { code?: string; feature?: string; message?: string; fixHint?: string };
@@ -558,6 +609,14 @@ app.whenReady().then(() => {
     }
     if (message?.type === MessageType.CLIP_PUSH && message.payload) {
       clip.onPush(message.payload);
+      // R9 (clipboard). The *size*, never the text — docs/phase-5-clipboard-proposal.md §6 is
+      // explicit that no clipboard text reaches any file, and this store writes a file.
+      const bytes = Number((message.payload as { bytes?: unknown }).bytes ?? 0);
+      activity.record(
+        'clipboard',
+        'Received from phone',
+        bytes > 0 ? `${bytes} bytes` : 'an entry arrived',
+      );
     }
     if (message?.type === MessageType.REMOTE_STATE && message.payload) {
       remote.onState(message.payload);
@@ -601,8 +660,23 @@ app.whenReady().then(() => {
   // The channel keeps its name because the renderer's contract is unchanged: to the pane, an
   // inbound and an outbound message are the same event — a message entered a thread — and the
   // row's `inbound` field says which. Defects 39 and 44.
-  sms.on('message', (event) => send('sms-received', event));
-  calls.on('changed', (call) => send('call-changed', call));
+  sms.on('message', (event) => {
+    // R10 (messages). Direction and thread, never the body — the same rule R9 obeys, for the same
+    // reason: this store writes a file and an SMS body is somebody's private text.
+    const e = event as { threadId?: string; message?: { inbound?: boolean } };
+    activity.record(
+      'messages',
+      e?.message?.inbound === false ? 'Message sent' : 'Message received',
+      `thread ${e?.threadId ?? 'unknown'}`,
+    );
+    send('sms-received', event);
+  });
+  calls.on('changed', (call) => {
+    // R11 (calls). One row per state change of the live card, with the number as a handle.
+    const c = call as { state?: string; number?: string; name?: string } | null;
+    if (c?.state) activity.record('calls', `Call ${c.state}`, c.name ?? c.number ?? 'unknown');
+    send('call-changed', call);
+  });
 
   tray = new Tray(nativeImage.createEmpty());
   refreshTray();
@@ -684,6 +758,9 @@ ipcMain.handle('mirror-start', async (_event, options: Record<string, unknown> =
     `mirror.start acknowledged in ${Date.now() - requestedAt}ms as "${state.state ?? 'unknown'}"`,
   );
   sendAll('mirror-state', state);
+  // R3 (mirroring). After the ack, not before it: a row for a start the phone never acknowledged
+  // would be the registration-line-as-execution-line fault written into the user's own timeline.
+  activity.record('mirroring', 'Mirroring started', `acknowledged in ${Date.now() - requestedAt}ms`);
   return { ok: true, requestedAt, state };
 });
 
@@ -702,6 +779,8 @@ ipcMain.handle('mirror-stop', async () => {
   if (link?.isConnected()) {
     await link.request('mirror.stop', {}, 10_000).catch(() => undefined);
   }
+  // R4 (mirroring).
+  activity.record('mirroring', 'Mirroring stopped', 'stopped from this Mac');
   return { ok: true };
 });
 
@@ -750,10 +829,14 @@ ipcMain.handle('mirror-capture', async (_event, dataUrl: string) => {
     // failures with no successes beside it is not evidence — see CLAUDE.md.
     captures.saved += 1;
     log.info('video', `Capture saved to ${path} — ${captureTally()}`);
+    // R5 (mirroring). Both branches record, for the reason the tally beside them exists: a
+    // timeline showing only the captures that worked answers "did it save?" with silence.
+    activity.record('mirroring', 'Screenshot saved', path);
     return { ok: true, path };
   } catch (error) {
     captures.failed += 1;
     log.warn('video', `Capture failed: ${String(error)} — ${captureTally()}`);
+    activity.record('mirroring', 'Screenshot failed', String(error));
     return { ok: false, reason: `The capture could not be written (${String(error)}).` };
   }
 });
@@ -823,7 +906,13 @@ ipcMain.handle('notif-dismiss', (_event, key: string) => notifications.dismiss(k
 
 // The manual override, kept: a click is a `user` trigger and is never argued with by the
 // unchanged rule, so pressing it after copying the same thing twice still sends.
-ipcMain.handle('clip-send', () => clip.send('user'));
+ipcMain.handle('clip-send', async () => {
+  // R8 (clipboard).
+  const result = await clip.send('user');
+  if (result?.ok) activity.record('clipboard', 'Sent to phone', 'from this Mac');
+  else activity.record('clipboard', 'Send refused', describeFailure(result));
+  return result;
+});
 ipcMain.handle('clip-watching', () => ({ ok: true, data: { watching: clipWatcher.isRunning } }));
 ipcMain.handle('clip-set-watching', (_event, on: boolean) => {
   if (on) clipWatcher.start();
@@ -871,15 +960,58 @@ const FALLBACK_DRAG_ICON = nativeImage.createFromDataURL(
 );
 
 ipcMain.handle('fs-roots', () => files.roots());
+
+/*
+ * The Activity screen's three reads.
+ *
+ * `activity-events` returns the store's error *beside* the events rather than an empty list on
+ * failure, which is the whole reason the pane can tell A2 (unreadable) from A3 (nothing yet). An
+ * empty array with no error field would have collapsed those two into one picture at the IPC
+ * boundary, before the tagged union in `shared/activity.ts` ever got a chance to keep them apart.
+ */
+ipcMain.handle('activity-events', () => ({
+  ok: true,
+  data: { events: activity.all(), error: activity.error(), stats: activity.stats() },
+}));
+ipcMain.handle('activity-csv', async () => {
+  const target = await dialog.showSaveDialog({
+    title: 'Export activity log',
+    defaultPath: join(app.getPath('downloads'), `ConnectSuite activity ${new Date().toISOString().slice(0, 10)}.csv`),
+    filters: [{ name: 'CSV', extensions: ['csv'] }],
+  });
+  if (target.canceled || !target.filePath) return { ok: false, reason: 'cancelled' };
+  try {
+    await writeFile(target.filePath, sharedActivity.activityCsv(activity.all()), 'utf8');
+    log.info('activity', `Exported ${activity.all().length} event(s) to ${target.filePath}`);
+    return { ok: true, data: { path: target.filePath } };
+  } catch (error) {
+    log.warn('activity', `Export failed: ${String(error)}`);
+    return { ok: false, reason: String(error) };
+  }
+});
+/*
+ * R6 and R7 (files). Recorded here rather than inside `FilesClient` so that every recording site in
+ * this app is in one file — see the note on `ActivityStore`. Both outcomes are written: a transfer
+ * that failed is exactly the row somebody comes to this screen looking for.
+ */
 ipcMain.handle(
   'fs-push',
-  (_event, options: { rootId: string; path: string; source: string; overwrite?: boolean }) =>
-    files.push(options),
+  async (_event, options: { rootId: string; path: string; source: string; overwrite?: boolean }) => {
+    const result = await files.push(options);
+    const name = basename(options.source ?? '');
+    if (result?.ok) activity.record('files', 'Sent to phone', `${name} → ${options.rootId}`);
+    else activity.record('files', 'Send failed', `${name}: ${describeFailure(result)}`);
+    return result;
+  },
 );
 ipcMain.handle(
   'fs-pull',
-  (_event, options: { rootId: string; id: string; name: string; size: number }) =>
-    files.pull(options),
+  async (_event, options: { rootId: string; id: string; name: string; size: number }) => {
+    const result = await files.pull(options);
+    if (result?.ok) activity.record('files', 'Saved to Mac', `${options.name} (${options.size} bytes)`);
+    else activity.record('files', 'Save failed', `${options.name}: ${describeFailure(result)}`);
+    return result;
+  },
 );
 /**
  * The drag itself, which can only start here.

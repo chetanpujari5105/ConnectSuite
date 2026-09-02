@@ -11235,3 +11235,152 @@ the second copy, with a third waiting behind any future route. It is one functio
 
 **Suite:** 248 tests, 0 failures — 88 `core` (11 classes) + 160 `sync-module` (19 classes), every
 result XML 0 s old, `gradle exit: 0`. Grants diffed empty across the reinstall that carried the fix.
+
+---
+
+## Phase 7 · Slice 1 — the Activity pane, and the tenth of eleven screens gets built · 2026-09-02
+
+`navModel.ts` had two screens left at `unbuilt`. **Camera** cannot be built here — a virtual webcam
+is a macOS Camera Extension, which is a signed system extension and therefore a distribution problem
+before it is a code problem, and this session has no Apple account. **Activity** could, and its
+`unbuiltReason` was the specification: *"Nothing stores a session history yet. The rotating log file
+behind Settings → Advanced is the closest thing that exists, and it is a log, not a timeline."*
+
+### 1. What was built, and the one decision that shaped everything else
+
+`main/activity.ts` is a store — a JSONL file in `userData/logs`, a 2,000-event ring, and a
+`record(category, kind, detail)` that never throws into its caller. `shared/activity.ts` is the
+pure half: filtering, paging, the summary, the CSV, and the five-state view model.
+`renderer/activity.ts` draws it.
+
+**It is deliberately not a parser over `connectsuite.log`.** That was the tempting version — the
+data is arguably already there — and it would have been a second expression of every rule the
+emitting code already contains. `CLAUDE.md` is explicit about what happens to the two copies: they
+disagree eventually and the reading is the one that is wrong.
+
+**Every recording site is in `main.ts`**, eleven of them, labelled `R1`–`R11` in comments. Not
+scattered through the feature clients, because `main.ts` is already where every client's events are
+subscribed and every renderer request is handled — so it is the one file that can see all six
+categories, and one file with an enumerated set is something a reader can find a hole in.
+
+Two of those sites are worth naming:
+
+- **R1 records phase *transitions*, not `status` ticks.** `link.on('status')` fires on every retry,
+  and a row per tick would bury every other category under a reconnect loop — the thing the pane
+  exists to make visible becoming the thing that hides it.
+- **R9 and R10 record a size and a direction, never the content.**
+  `docs/phase-5-clipboard-proposal.md` §6 is the first at-rest storage decision in this project and
+  it says no clipboard text reaches any log line. This store writes a file. A handler written the
+  way every other handler here is written would have put people's passwords and SMS bodies on disk,
+  in the pane whose whole subject is a durable record.
+
+### 2. Five states where the artboard draws one
+
+`docs/design-departures.md` §Activity carries all seven rows; A2 is the one that matters. The
+artboard is nine rows and a pager. The pane is in one of **A1** loading, **A2** unreadable, **A3**
+nothing recorded, **A4** nothing matching this filter, **A5** the table.
+
+A3 and A4 are the pair, and they are the fourth sighting of this shape in this file — after N4 (the
+phone has the feature and is not offering it), P5 (the phone is half offering it) and the Files
+rows. This one is the first where **both halves are entirely local**: no phone, no wire, no
+permission. *Nothing has ever happened* and *nothing matches Files* would render as the same blank
+table, and a user cannot tell "nothing has been transferred" from "nothing is recorded, ever".
+
+Four independent differences, asserted rather than described: headline verb, body, whether the
+filter is named, and whether the chip row survives as a way out.
+
+**The state at the IPC boundary is where this could still have collapsed**, and it is the detail to
+copy. `activity-events` returns `{ events, error, stats }` — the store's read error travels
+**beside** the events rather than replacing them with `[]`. An empty array on a failed read would
+have merged A2 into A3 one layer below the tagged union that exists to keep them apart, and the
+union would have had nothing to work with. `activityView.test.ts` has a test named for exactly that
+branch.
+
+### 3. Paging, and an honest note about a tiebreak
+
+`media.list` needed a `(date, id)` tiebreak, and `CLAUDE.md` records both what it cost to prove the
+tiebreak was load-bearing and the `fs.list` run where the boundary count came back **0**. This store
+has no such problem, and the reason is not that it was solved: **the store assigns its own monotonic
+`seq` and pages on that**, so two events in the same millisecond are strictly ordered and there is
+no tie to break. It is written down because the alternative — paging on `at`, watching the pages
+sum, and calling it correct — is precisely the run that looks identical with a tiebreak deleted.
+The test that covers it puts six events on one millisecond and asserts the two pages recover all
+six.
+
+The clamp is the other half. Switching from **All** on page 3 to **Files** with four files returns
+zero rows with a fetch that succeeded and a filter that matched — an empty table produced by
+arithmetic, which none of the state checks would catch because nothing failed.
+
+### 4. Guards — 27 tests, four mutations, each reporting exit code
+
+`shared/activity.test.ts` (12) and `renderer/activityView.test.ts` (15). The second exists because
+of the checker that stopped this commit: **`scripts/hooks/renderer-views-covered.sh` refused it**
+while `ActivityView` was drawn by nobody's test, which is the guard working on the first new view
+class since it was written.
+
+| Mutation | Result |
+|---|---|
+| A4 collapsed into A3 — the pair the pane exists for | `pass 24 / fail 3` — the view test, the four-differences test, and the exhaustive state list |
+| `refresh()` no longer joins a run in flight | `pass 26 / fail 1` |
+| the page clamp removed | `pass 25 / fail 2` |
+| all restored | `tests 27 / pass 27 / fail 0` |
+
+The second mutation is the Files pane's race, pre-empted rather than repeated. That pane reached the
+one state its tagged union existed to forbid because a route opening and a capability arriving both
+called `refresh()` within a frame. This pane has the same two triggers, so a second caller **joins
+the run in flight**, and there is a test that counts bridge calls under three concurrent refreshes.
+
+### 5. The DOM double had to grow, and it says so
+
+`domDouble.testkit.ts` gained `appendChild`, `setAttribute`/`getAttribute`, `style`, `dataset`,
+`title`, and `createElementNS` — added there rather than worked around in the pane's test, which is
+that file's own instruction.
+
+**One of those additions is a bug the double would otherwise have caused.** `setAttribute('class',
+…)` now also writes `className`, because that is the only way to class an SVG element — `className`
+on an `SVGElement` is a read-only `SVGAnimatedString`. Without it, `queryAll('.activity-donut')`
+missed every SVG node and reported the donut absent when it was drawn. That is the hidden-grid
+failure rebuilt inside the harness, and it was caught because the assertion that failed was one
+whose answer was already known.
+
+### 6. Read in the real window, and it found a real defect
+
+`scripts/activity-pane-probe.mjs`, through `probe.mjs`. The DOM double has no cascade and no layout,
+and its own header says so, so the half it cannot see is read here.
+
+```
+the Activity section is visible and has height → 551                     [control=12]
+rows / cards / state / chips / donuts → {"rows":4,"cards":0,"state":"A5","chips":2,"donuts":1}
+PASS  exactly one state is drawn — a table or a card, never both and never neither
+the layout is the two-column grid the design draws → {"display":"grid","columns":"815px 320px"}
+tokens the Activity rules reference that resolve to empty → {"referenced":10,"empty":[]}   [control=38]
+the table scrolls inside itself → {"tableOverflowX":"auto","pageScrollsSideways":false}
+the Activity nav row is not marked unbuilt → {"activityUnbuilt":false,"stillUnbuilt":["Camera"]}
+the export affordance is a real control → 1
+```
+
+**The token check failed on its first run and it was a real defect.** `--accent-fill`,
+`--text-secondary` and `--text-tertiary` do not exist in `tokens.css`; the real names are
+`--accent-tint`, `--text-body` and `--text-meta`. An undefined custom property is not an error —
+it resolves to nothing and paints nothing — which is exactly how this project's violet accent was
+never once drawn. Three of the ten tokens in a brand-new stylesheet block were wrong, `tsc` was
+clean, all 255 tests were green, and the pane rendered in a way that looked deliberate.
+
+`stylesheets.test.ts` could not have caught it: it guards selector collisions and `:root` blocks
+outside `tokens.css`, and an undefined token is neither.
+
+### 7. The probe's own second copy, caught one run later
+
+After the CSS was fixed the probe **still reported the same three tokens empty** — because it
+carried its own hard-typed array of ten token names, and that array had drifted from the stylesheet
+it was checking. A stale second copy of the thing under test, reporting a fault that had been fixed,
+with full confidence.
+
+It reads the names **out of the loaded stylesheet** now — every `var(--…)` in a rule whose selector
+mentions `.activity-` — with a control that counts the rules found at all, since an empty `empty`
+list over a `referenced` of zero is a stylesheet the scan could not read. Same family as the test
+that models the thing instead of calling it, in the instrument rather than in the test, one day
+after that rule was written into `CLAUDE.md` for the third time.
+
+**Suite:** 255 tests, 0 failures (was 240). `tsc` clean, `npm run build` exit 0, Electron relaunched
+with `--force-renderer-accessibility` and read at 9222.

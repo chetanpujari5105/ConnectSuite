@@ -33,6 +33,17 @@ interface RendererStatus {
 
 interface ConnectBridge {
   status(): Promise<RendererStatus | null>;
+  /** The Activity screen's log. `error` rides beside `events` — see shared/activity.ts. */
+  activityEvents(): Promise<{
+    ok: boolean;
+    data?: {
+      events: ActivityEvent[];
+      error: string | null;
+      stats: { read: number; skipped: number; recorded: number; dropped: number };
+    };
+    reason?: string;
+  }>;
+  activityExportCsv(): Promise<{ ok: boolean; data?: { path: string }; reason?: string }>;
   pairingQr(rotate?: boolean): Promise<{ payload: { host: string; name: string }; dataUrl: string }>;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
@@ -465,6 +476,24 @@ const clipboard = new ClipboardView(
   el<HTMLInputElement>('clip-watch'),
 );
 void clipboard;
+
+// Activity. Fetches on open like Files and Photos, and for a different reason: the log is the
+// Mac's own file, so the cost is a disk read rather than a round trip — but a pane nobody has
+// opened has no business reading a file either, and the route hook is the same shape.
+//
+// It is the only pane in the app whose data never comes from the phone, which is why it stays
+// drawable while the link is down. That is deliberate: "what happened before it dropped" is
+// exactly the question somebody has when it is down.
+const activity = new ActivityView(
+  {
+    activityEvents: () => connect.activityEvents(),
+    activityExportCsv: () => connect.activityExportCsv(),
+  },
+  el('activity-host'),
+);
+shell.onRoute((id) => {
+  if (id === 'activity') void activity.refresh();
+});
 
 // Contacts. Same hidden-not-greyed rule as the notifications card above. The search box is wired
 // inside the view because the debounce belongs with the thing it debounces.

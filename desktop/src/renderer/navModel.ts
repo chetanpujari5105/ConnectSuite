@@ -200,12 +200,15 @@ const SCREENS: NavScreen[] = [
     icon: 'activity',
     group: 'SYSTEM',
     shortcut: '',
-    state: 'unbuilt',
-    unbuiltReason:
-      'Nothing stores a session history yet. The rotating log file behind Settings → Advanced is ' +
-      'the closest thing that exists, and it is a log, not a timeline.',
-    unbuiltHeadline: 'Nothing keeps a history to show',
-    unbuiltHandle: 'no session store — see Settings → Advanced for the log',
+    // Built 2026-09-02. The reason this row carried — *"Nothing stores a session history yet. The
+    // rotating log file behind Settings → Advanced is the closest thing that exists, and it is a
+    // log, not a timeline."* — was accurate and is now false, so it goes rather than being left to
+    // describe a screen that no longer matches it. Photos' comment in this file records the same
+    // lesson: user-visible text describing the build is a claim like any other and goes stale the
+    // same way.
+    //
+    // `main/activity.ts` is the store and it is deliberately *not* a parser over that log file.
+    state: 'built',
   },
   {
     id: 'settings',
