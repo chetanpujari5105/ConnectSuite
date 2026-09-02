@@ -123,6 +123,16 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   contaminating the reading, in the phase where that is most expensive. It also carries the first
   Phase 6 defect, found statically: `RECEIVE_BOOT_COMPLETED` is declared and **nothing receives it**,
   so the link does not come back after a reboot.
+- `docs/phase-7-apps-proposal.md` — **app launching, and the measurement comes before the payload.**
+  `apps.list`, `apps.launch` and `apps.icon` have been in the contract's inventory since Phase 2 and
+  implemented nowhere. Shaped like the clipboard proposal rather than the `fs.*` one, because two
+  platform questions decide what the feature *is*: what the app can enumerate, and whether it may
+  launch anything while backgrounded. §2.3 is a **pre-registered decision table** with four outcomes,
+  two of which produce a different feature and one of which produces **no feature** — a verb that
+  returns success and does not launch is worse than an absent one, and it is the outcome every
+  automated check would call a pass. Two things are already decided and must not be reopened: the
+  `<queries>` block exists (defect 28) and `QUERY_ALL_PACKAGES` was refused on Play-policy grounds,
+  and a package id is a handle rather than a sentence.
 - `docs/phase-3-input.md` — the Phase 3 brief: input injection via AccessibilityService. **Phase 3
   is closed** (2026-08-31); this is the record of what it built, not a live brief. The current brief
   is `docs/RESUME.md`.
