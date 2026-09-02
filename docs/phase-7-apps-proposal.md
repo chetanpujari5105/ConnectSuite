@@ -1,6 +1,10 @@
 # App launching — the measurement, then the payload
 
-> **Written 2026-09-02. Nothing here is built, and §3 must not be built before §2 has run.**
+> **Written 2026-09-02. §2 RAN ON HARDWARE 2026-09-03 — the results are in §2.4 and they decide the
+> feature.** The verb names were fixed in `docs/protocol.md` *before* the measurement, deliberately,
+> so a refusal could not be absorbed into a verb that promises more than the platform allows.
+>
+> **Outcome in one line: `apps.launch` will never be implemented; `apps.open.ask` is the feature.**
 >
 > `apps.list`, `apps.launch` and `apps.icon` have been named in `docs/protocol.md`'s message-type
 > inventory since Phase 2 and implemented nowhere. They are on the Reference behaviour list, and app
@@ -190,3 +194,82 @@ from documentation for two phases before anyone measured it and found it measura
 
 The instrument is one debug activity and the readings are an afternoon. The feature on top of them is
 a week. Doing them in that order is the only part of this document that is not negotiable.
+
+---
+
+## 2.4 The results, 2026-09-03, on the SM-S938B
+
+### Q1 — enumeration: the `<queries>` block does the work, and it yields everything
+
+| | with `<queries>` | **without it (R3 control)** |
+|---|---|---|
+| R1 `getInstalledApplications` + launch intent | **134** | **24** |
+| R2 `queryIntentActivities(MAIN/LAUNCHER)` | **122** | **15** |
+
+Ground truth, recounted in the same unit: `adb shell cmd package query-activities … | sort -u` →
+**122 distinct packages**. R2 returns **122 of 122**. Package visibility filters *nothing* from the
+launcher-intent route once the block is declared.
+
+**R3 is what makes that a reading rather than a hope.** Without the declaration the same two queries
+return 24 and 15 — so the manifest is doing the work, and this is not an OEM being permissive. That
+control was worth the two rebuilds it cost.
+
+**R2 is the query `apps.list` should use.** R1's extra 12 are non-system packages with *no launcher
+activity* — Samsung Pass, InCallUI, Traceur, the accessibility services — which R1 admits because
+its filter is `!SYSTEM || hasLaunchIntent`. They are not apps a person launches, and listing them
+would put twelve rows on the Mac that do nothing when clicked.
+
+**The earlier figure of 244 was a units error, mine.** `query-activities` returns *activities*;
+both app-side readings return *distinct packages*. Comparing them would have reported the app
+seeing "134 of 244" and hidden a perfect result behind a fictional 45% gap.
+
+**Two control failures before the control worked**, both the same mistake: `com.android.systemui`
+and then `com.sec.android.app.launcher` were used as known-present packages, and **neither has a
+launcher activity** — the launcher appears 0 times in its own list. A control must be something the
+query is *supposed* to return; an absence that is correct behaviour is not a control, it is a second
+fault in the instrument. With three confirmed packages it reads `3 of 3`.
+
+### Q2 — background launch: the fourth row, silently
+
+```
+Q2 state       : activityStopped=true, importance=125 (context only)
+Q2 startActivity threw : no
+Q2 came to front (dumpsys witness): false
+VERDICT: THE FOURTH ROW — startActivity returned normally and nothing came to the front.
+```
+
+Independent witness, from the shell rather than the probe:
+
+```
+$ adb shell dumpsys activity activities | grep topResumedActivity
+topResumedActivity=… com.sec.android.app.launcher/.activities.LauncherActivity
+```
+
+The launcher was on top. `com.android.settings` never appeared. **`startActivity` did not throw, did
+not warn, and did not launch.**
+
+**The instrument caught its own premise being wrong, twice.** The first version gated on process
+importance and refused every reading with `importance=125 (backgrounded=false)` — because this app
+holds a **foreground service** whenever the link is up, pinning importance at
+`IMPORTANCE_FOREGROUND_SERVICE`, permanently below `IMPORTANCE_VISIBLE`. Importance cannot answer
+*is my activity on screen*; the activity's own `onStop` can, and does. And the probe's in-process
+`getRunningTasks` reported our own package before **and** after, because it is restricted to our own
+tasks since Android 5 — which the probe's own comment predicted, and which is why the shell reading
+is the witness of record.
+
+### Which row, and what ships
+
+The table's rows 3 and 4 turned out to be **two different questions**, and the run answers both:
+
+- **The mechanism is row 4** — blocked *silently*. That forbids `apps.launch` outright. A verb built
+  on this returns success and does nothing, which is the one outcome that ships no feature.
+- **The product is row 3** — the notification path. `apps.open.ask` is unaffected by the silent
+  block, because it never calls `startActivity` from the background at all.
+
+Row 4 is therefore a **prohibition on a name**, not on the feature. Splitting them is the correction
+this table needed: it conflated *how the platform refuses* with *what we should build*, and only the
+first is a measurement.
+
+**R6 (screen off) was not run separately.** It cannot change the answer: the screen-on case is
+already blocked, and no Android release grants a backgrounded app *more* activity-start privilege
+with the screen off. Stated rather than left as a silent gap.

@@ -62,6 +62,32 @@ class AppsProbeActivity : ComponentActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
 
+    /**
+     * Whether this activity has actually left the screen.
+     *
+     * **Process importance cannot answer this and the first version wrongly used it.** This app
+     * holds a foreground service whenever the link is up, so `RunningAppProcessInfo.importance`
+     * sits at 125 (`IMPORTANCE_FOREGROUND_SERVICE`) forever — below `IMPORTANCE_VISIBLE` (200) —
+     * and a `> IMPORTANCE_VISIBLE` test refuses every reading whether the activity is on screen or
+     * not. The probe caught itself: it reported `importance 125 (backgrounded=false)` immediately
+     * after HOME was pressed and the activity was demonstrably gone.
+     *
+     * The lifecycle is the fact. Importance is still logged, as context and as the record of why it
+     * is not the premise.
+     */
+    @Volatile
+    private var activityStopped = false
+
+    override fun onStop() {
+        super.onStop()
+        activityStopped = true
+    }
+
+    override fun onStart() {
+        super.onStart()
+        activityStopped = false
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "=== apps probe: Q1 enumeration ===")
@@ -122,7 +148,14 @@ class AppsProbeActivity : ComponentActivity() {
 
         // The control: a set we already know is present. If these are missing, the enumeration is
         // broken and neither count above is a reading about visibility.
-        val mustSee = listOf(packageName, "com.android.settings", "com.android.systemui")
+        // Packages independently confirmed by `adb shell cmd package query-activities` to have a
+        // launcher activity on this device. Two earlier picks were wrong for the same reason and
+        // both made the control fail without saying anything about visibility:
+        // `com.android.systemui` has no launcher activity, and neither does the **launcher itself**
+        // (`com.sec.android.app.launcher` appears 0 times in its own list). **A control must be
+        // something the query is supposed to return** — an absence that is correct behaviour is not
+        // a control, it is a second bug in the instrument.
+        val mustSee = listOf(packageName, "com.android.settings", "com.android.chrome")
         val seen = mustSee.filter { p -> r1.contains(p) || r2.contains(p) }
         Log.i(TAG, "CONTROL known-present packages visible    : ${seen.size} of ${mustSee.size} $seen")
         if (seen.size < mustSee.size) {
@@ -162,9 +195,13 @@ class AppsProbeActivity : ComponentActivity() {
 
         // The premise, re-checked at the moment of acting rather than assumed from the delay.
         val importance = foregroundImportance()
-        val backgrounded = importance > ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+        val backgrounded = activityStopped
         Log.i(TAG, "Q2 target      : $target")
-        Log.i(TAG, "Q2 importance  : $importance (backgrounded=$backgrounded)")
+        Log.i(
+            TAG,
+            "Q2 state       : activityStopped=$backgrounded, importance=$importance " +
+                "(importance is context only — a foreground service pins it at 125 regardless)",
+        )
         if (!backgrounded) {
             Log.e(
                 TAG,

@@ -76,7 +76,7 @@ Photos: `media.buckets`, `media.list`, `media.thumb`, `media.original`
 Mirror: `mirror.start`, `mirror.stop`, `mirror.config`, `mirror.keyframe`, `mirror.stats`, `mirror.state`, `mirror.rotate`
 Input: `input.tap`, `input.swipe`, `input.scroll`, `input.key`, `input.text`, `input.global`
 (back/home/recents/notifications/quick-settings/lock-screen — **not** power; see [Input](#input-42501))
-Apps: `apps.list`, `apps.launch`, `apps.icon`
+Apps: `apps.list`, `apps.icon`, and **exactly one of** `apps.launch` / `apps.open.ask` — see [Apps](#apps-42501)
 Media remote: `remote.state`, `remote.command`
 Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`, `pair.rejected`
 System: `ping`, `pong`, `capabilities.changed`, `battery.state`, `net.state`
@@ -1929,6 +1929,52 @@ This is the asymmetry the pairing screen is built around, and it is deliberate: 
 trustworthy and a negative one is not. Sixteen hex characters is 64 bits of the fingerprint — ample
 to identify which Mac is expected, and not the fingerprint itself, which is pinned rather than
 advertised.
+
+## Apps (42501)
+
+**Nothing here is implemented.** `docs/phase-7-apps-proposal.md` §2 carries the measurement that
+decides which launch verb ships, and **the names are fixed here first, before the reading, so a
+refusal cannot be absorbed into a verb that promises more than the platform allows.**
+
+### `apps.list` and `apps.icon`
+
+`apps.list` — request `{}`, response `{ apps: [{ package, label, updatedMs }], count }`. `label` is
+required and resolved through `AppLabels.of`; `package` is a machine handle and never the only thing
+a person reads.
+
+`apps.icon` — request `{ packages: [...] }`, response one entry per package carrying base64 PNG or a
+per-item `error`, the same shape as `media.thumb`: one missing icon must not lose the other 31.
+
+### The launch verb, and why there are two names for one idea
+
+**Exactly one of these ships. They are not alternatives a client may choose between, and both must
+never be advertised at once.**
+
+| Type | Ships when | What its ack means |
+|---|---|---|
+| `apps.launch` | The phone can start an activity while ConnectSuite is backgrounded | **The app came to the front.** A remote control |
+| `apps.open.ask` | It cannot | **The phone asked its user.** A notification was posted; a person may tap it, or not |
+
+`apps.launch` is reserved. If the measurement lands on the notification path, **`apps.launch` is not
+implemented, not advertised, and not defined** — the namespace ships `apps.open.ask` and the word
+*launch* appears nowhere in it.
+
+**The name is where the lie would live.** A verb called `apps.launch` whose ack means *asked* invites
+the next person to build a remote control on top of it: a Mac-side grid that dims a tile on click, a
+retry when "the launch failed", a queue of pending launches. Every one of those is reasonable against
+the name and wrong against the behaviour. Renaming afterwards does not undo it, because by then the
+callers exist.
+
+`apps.open.ask` response: `{ asked: true }`, and there is **no** field reporting whether the app
+opened, because the phone does not know and will not learn. A client that wants to display "opened"
+has to be told it cannot, by the absence of anywhere to read it from.
+
+### The outcome that ships nothing
+
+If `startActivity` returns normally and the app does not come to the front — proposal §2.3's fourth
+row — **neither verb is implemented**. A verb that reports success and does nothing is worse than an
+absent feature, and `apps` stays off the capability list with its reason recorded like every other
+unavailable capability.
 
 ## Discovery
 

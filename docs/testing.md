@@ -12633,3 +12633,88 @@ Page 5 is also visually the emptiest screen in the flow — a title, a subtitle,
 roughly a third of the display blank above the buttons — which is the wrong shape for the page the
 whole flow now exists to reach. Recorded as an observation rather than a defect; it is a design
 question, not a mechanism failing.
+
+---
+
+## Phase 7 · Slice 7 — the apps measurement, and revoke proven to revoke · 2026-09-03
+
+### 1. Revoking trust now ends the session — defect 75, measured
+
+```
+before   OK   3. 1 control session(s) ESTABLISHED on 42501 under uid 11011
+00:17:46.711  I [trust]   Forgot 3030c8ebcddcd0fb7ec2118e171ea70acc19b3971a7c63bd6d2b31cc1da5826c
+00:17:46.712  I [trust]   Forgot 3030c8ebcddcd0fb… and closed 1 live session(s) — 0 other session(s) left alone
+00:17:46.716  W [control] Chetans-MacBook-Pro socket dropped :: SocketException: Socket closed
+00:17:46.721  I [clip]    Link dropped; cleared 1 clipboard entries
+00:17:47.768  W [server]  Refused 10.135.144.88, key 30:30:C8:EB… — 1 refused / 1 accepted since start
+after    FAIL 3. no control session on 42501 — the server is up but no Mac is attached
+```
+
+Revoke to closed socket in **1 ms**, clipboard cleared in 10 ms, next reconnect refused a second
+later. Before the fix the same tap left the session `ESTABLISHED` for over a minute with full access.
+The `link-up.sh` FAIL line is the pass condition here, which is worth saying out loud so nobody
+"fixes" it later.
+
+### 2. Q1 — the `<queries>` block is load-bearing, and yields the whole launcher set
+
+| | with `<queries>` | without it (R3) |
+|---|---|---|
+| R1 `getInstalledApplications` + launch intent | 134 | **24** |
+| R2 `queryIntentActivities(MAIN/LAUNCHER)` | **122** | **15** |
+
+Ground truth recounted in the same unit — distinct packages, not activities — is **122**. R2 returns
+122 of 122.
+
+**R3 cost two rebuilds and is the only reason this is evidence.** 122 alone is consistent with the
+manifest working *and* with this OEM simply not filtering; 15 without the block separates them.
+
+**Three faults in my own instrument, all caught before they became findings:**
+
+1. **A units error.** The first ground truth was 244 — *activities*, against two app-side readings
+   in *packages*. It would have reported "134 of 244" and hidden a perfect result behind a fictional
+   45% gap.
+2. **A control that could not pass**, twice. `com.android.systemui` and then
+   `com.sec.android.app.launcher` were used as known-present packages; **neither has a launcher
+   activity** — the launcher appears 0 times in its own list. A control must be something the query
+   is *supposed* to return, or its failure says nothing. With three confirmed packages: `3 of 3`.
+3. **A premise the instrument could not observe.** Q2 gated on process importance and refused every
+   reading with `importance=125 (backgrounded=false)` — because this app holds a **foreground
+   service** whenever the link is up, pinning importance at `IMPORTANCE_FOREGROUND_SERVICE`,
+   permanently below `IMPORTANCE_VISIBLE`. Importance cannot answer *is my activity on screen*. The
+   activity's own `onStop` can.
+
+### 3. Q2 — the fourth row, silently
+
+```
+Q2 state       : activityStopped=true, importance=125 (context only)
+Q2 startActivity threw : no
+Q2 came to front (dumpsys witness): false
+VERDICT: THE FOURTH ROW
+```
+
+Independent witness, from the shell rather than the probe:
+
+```
+topResumedActivity=… com.sec.android.app.launcher/.activities.LauncherActivity
+```
+
+The launcher was on top; `com.android.settings` never appeared. `startActivity` **did not throw, did
+not warn, and did not launch** — and the probe's own in-process `getRunningTasks` reported our
+package before *and* after, exactly as its comment predicted, because it is restricted to our own
+tasks. The shell reading is the witness of record and the probe says so on the line.
+
+### 4. What the run decides
+
+Rows 3 and 4 of the pre-registered table turned out to be **two different questions**:
+
+- **the mechanism is row 4** — refused silently — which forbids `apps.launch` outright;
+- **the product is row 3** — the notification path — which the silent block cannot affect, because
+  it never calls `startActivity` from the background.
+
+Row 4 is a prohibition on a *name*, not on the feature. The names were fixed in `docs/protocol.md`
+**before** this ran, which is the only reason that distinction is available now rather than being
+argued over a half-built verb.
+
+**R6 (screen off) was not run and cannot change the answer**: screen-on is already blocked, and no
+Android release grants a backgrounded app more activity-start privilege with the screen off. Stated
+rather than left as a silent gap.

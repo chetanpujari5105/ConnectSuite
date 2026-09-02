@@ -67,9 +67,6 @@ export const SPECIFIED_UNDER = {
 
 /** Debt: named on the wire, specified nowhere. Every entry carries why. */
 export const UNSPECIFIED = {
-  'apps.list': 'Phase 7. No handler on either side; the capability advertises itself unavailable.',
-  'apps.launch': 'Phase 7. No handler on either side.',
-  'apps.icon': 'Phase 7. No handler on either side.',
   'battery.state': 'Unscheduled. No handler on either side; belongs to no capability.',
   'net.state': 'Unscheduled. No handler on either side; belongs to no capability.',
 };
@@ -85,7 +82,10 @@ export const TWIN_EXEMPT = {
     'Not implemented anywhere. The phone keeps the constant so MirrorContractTest can assert it is ' +
     'never registered; the Mac has no such test and no reason to name it.',
   'apps.list': 'Phase 7. No handler on either side, and the Mac sends nothing it cannot be answered on.',
-  'apps.launch': 'Phase 7.',
+  // Specified in docs/protocol.md as a reserved name; `apps.open.ask` is its
+  // alternative and exactly one of the two will ever be implemented. Which one is
+  // decided by docs/phase-7-apps-proposal.md §2, not by whoever writes the handler.
+  'apps.launch': 'Phase 7. Reserved; the measurement in the proposal decides whether this or apps.open.ask ships.',
   'apps.icon': 'Phase 7.',
 };
 
