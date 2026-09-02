@@ -264,15 +264,84 @@ const COMMANDS: Command[] = [
   { id: 'mirror.capture', label: 'Take screenshot', group: 'Mirror', shortcut: '⌘⇧4' },
 ];
 
+/**
+ * A feature that lives **inside** another screen, and the palette entry that reaches it.
+ *
+ * ### The measurement that produced this list
+ *
+ * Three shipped features have no sidebar row and no dock tile, and — this is the part that was
+ * measured rather than assumed — **the app's own search finds none of them.** Read through
+ * `scripts/homeless-features-probe.mjs` on 2026-09-02, with the control that the same palette
+ * returns six rows for `mirror`:
+ *
+ * ```
+ * palette results for "music"   → []
+ * palette results for "playing" → []
+ * palette results for "remote"  → []
+ * palette results for "contact" → []
+ * ```
+ *
+ * The same run corrected the impression that produced the search: the media remote card is drawn
+ * on Overview at `top: 534` in an 865px viewport, and the contacts card on Messages at `top: 233`.
+ * **Neither is buried.** They are perfectly visible to somebody who already knows where they are,
+ * and unreachable to everybody else — which is a different problem with a different fix, and is
+ * why nothing below moves a card.
+ *
+ * ### Why a third kind rather than a twelfth nav row
+ *
+ * The same reasoning `PAIRING_SCREEN` records: the sidebar is the design's eleven, and inventing
+ * rows the designer did not draw is how a shell stops matching its own handoff. A deep link is a
+ * palette row that routes to a real screen and then **reveals** the card — `docs/design-departures.md`
+ * has the request for a drawn treatment; this is what ships until there is one.
+ *
+ * `reveal` is a DOM id in the target screen. `navModel.test.ts` asserts each one is an id the app
+ * actually has, because a deep link that scrolls to nothing is a palette row that swallows a
+ * keystroke — the failure `runSelected` already refuses to have for commands.
+ */
+interface DeepLink {
+  id: string;
+  label: string;
+  /** The screen this lives inside. Must be a real screen id. */
+  screen: string;
+  /** The element to bring into view and flash once the route has landed. */
+  reveal: string;
+  /** Extra words the palette should match on, for the names a person would actually type. */
+  keywords: string[];
+}
+
+const DEEP_LINKS: DeepLink[] = [
+  {
+    id: 'deep.remote',
+    label: 'Now playing',
+    screen: 'overview',
+    reveal: 'remote-card',
+    // "Media remote" is what this repo calls it and is not what anyone searching for it types.
+    keywords: ['media', 'remote', 'music', 'playing', 'playback', 'pause', 'skip', 'track'],
+  },
+  {
+    id: 'deep.contacts',
+    label: 'Contacts',
+    screen: 'messages',
+    reveal: 'contacts-card',
+    keywords: ['contacts', 'people', 'address book', 'phone book', 'number'],
+  },
+];
+
 interface PaletteResult {
   id: string;
   label: string;
   group: string;
   shortcut: string;
-  /** 'command' or 'navigation' — the shell uses it to pick the tile colour, tests use it to rank. */
-  kind: 'command' | 'navigation';
+  /**
+   * `'command'`, `'navigation'` or `'deep'`. The shell uses it to pick the tile and what activation
+   * does; the tests use it to assert ranking.
+   */
+  kind: 'command' | 'navigation' | 'deep';
   /** For a navigation result whose screen is unbuilt, so the palette can dim it honestly. */
   unbuilt: boolean;
+  /** Deep links only: where to go and what to reveal when this row is chosen. */
+  screen?: string;
+  reveal?: string;
 }
 
 /** Case- and accent-insensitive enough for a two-word query. Not a fuzzy matcher, on purpose. */
@@ -308,7 +377,31 @@ function paletteResults(query: string): PaletteResult[] {
     unbuilt: s.state === 'unbuilt',
   }));
 
-  return [...commands, ...navigation];
+  /*
+   * Deep links rank **last**, and that is deliberate rather than an accident of concatenation.
+   * Typing `c` should not put *Contacts* above *Calls* and *Clipboard*, which are whole screens; a
+   * deep link is a destination inside one, and it earns its place when the query is specific.
+   * `navModel.test.ts` asserts the order, because a later refactor reverses it by joining the
+   * arrays the other way round — which is exactly what the commands-before-navigation comment
+   * above this one was written for.
+   */
+  const deep: PaletteResult[] = DEEP_LINKS.filter(
+    (d) =>
+      q.length === 0 ||
+      matches(d.label, q) ||
+      d.keywords.some((keyword) => matches(keyword, q)),
+  ).map((d) => ({
+    id: d.id,
+    label: d.label,
+    group: `In ${screenById(d.screen)?.label ?? d.screen}`,
+    shortcut: '',
+    kind: 'deep' as const,
+    unbuilt: false,
+    screen: d.screen,
+    reveal: d.reveal,
+  }));
+
+  return [...commands, ...navigation, ...deep];
 }
 
 /** The screen with this id, or undefined. Pairing is included: it is a route, just not a row. */
@@ -406,6 +499,7 @@ if (typeof module !== 'undefined') {
     SCREENS,
     PAIRING_SCREEN,
     COMMANDS,
+    DEEP_LINKS,
     DOCK,
     TOOL_RAIL,
     GLOBAL_ACTIONS,

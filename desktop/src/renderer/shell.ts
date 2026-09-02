@@ -572,6 +572,38 @@ class ShellView {
     });
   }
 
+  /**
+   * Route to a screen and bring one card inside it into view.
+   *
+   * The flash is not decoration. A palette row that routes to Overview and stops has, from the
+   * user's side, done nothing distinguishable from a row that failed — the screen they were
+   * looking for a feature on is the screen they now see, with no indication of which part of it
+   * answered. `runSelected` already refuses that failure for commands with nothing wired to them;
+   * this is the same refusal for a destination that is a card rather than a screen.
+   *
+   * It says so when the target is missing, for the same reason. An id that no longer exists is a
+   * silently dead palette row, and `navModel.test.ts` asserts every `reveal` is a real id — but a
+   * test over the model cannot see an element deleted from `index.html`, so the runtime says it
+   * too.
+   */
+  private revealInScreen(screen: string | undefined, reveal: string | undefined): void {
+    if (!screen || !reveal) return;
+    this.route(screen);
+    // After the route, so the section is no longer `hidden` — a hidden element cannot be scrolled
+    // into view and reports no geometry, which is the measurement fault CLAUDE.md records against
+    // the photo grid, here as a behaviour rather than as a reading.
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(reveal);
+      if (!target) {
+        this.toast(`Nothing on this screen is called “${reveal}” any more`);
+        return;
+      }
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      target.classList.add('deep-reveal');
+      window.setTimeout(() => target.classList.remove('deep-reveal'), 1400);
+    });
+  }
+
   private moveSelection(delta: number): void {
     if (this.paletteRows.length === 0) return;
     const count = this.paletteRows.length;
@@ -594,6 +626,10 @@ class ShellView {
     this.closePalette();
     if (result.kind === 'navigation') {
       this.route(result.id);
+      return;
+    }
+    if (result.kind === 'deep') {
+      this.revealInScreen(result.screen, result.reveal);
       return;
     }
     const run = this.commands.get(result.id);

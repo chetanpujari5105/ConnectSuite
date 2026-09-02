@@ -11384,3 +11384,109 @@ after that rule was written into `CLAUDE.md` for the third time.
 
 **Suite:** 255 tests, 0 failures (was 240). `tsc` clean, `npm run build` exit 0, Electron relaunched
 with `--force-renderer-accessibility` and read at 9222.
+
+---
+
+## Phase 7 · Slice 2 — the features the app's own search could not find · 2026-09-02
+
+The brief was *"six shipped features with no home in the design — media remote most of all, which
+has worked since step 67 and has no pane, no sidebar row, no dock tile."* The sidebar half is exactly
+right. *Most of all* was the wrong diagnosis, and one probe run changed the fix.
+
+### 1. Buried, or unfindable — they look identical and are not the same problem
+
+`scripts/homeless-features-probe.mjs`. **The media remote card is not buried:**
+
+```
+the media remote card → {"drawn":true,"hidden":false,"top":535,"height":100,
+                         "viewportHeight":865,"aboveTheFold":true}
+the contacts card     → {"drawn":true,"hidden":false,"top":233,"height":496,"aboveTheFold":true}
+```
+
+Both on screen, at full height, without scrolling. **What is broken is that nothing can find them** —
+the palette is the app's search and it answered five queries with nothing, with the control that the
+same palette returns six rows for `mirror`, so the empty result is a real absence rather than a dead
+query:
+
+```
+"music" → []   "playing" → []   "remote" → []   "contact" → []   "pair" → []      [control=6 each]
+```
+
+Eleven screens reachable by search; three shipped features not.
+
+**Moving the card would have cost a design departure and fixed nothing.** The rule is the one this
+project keeps re-learning from the other direction: a negative *impression* is no more evidence than
+a negative reading, and *"nobody can find it"* is a claim that can be measured before it is acted on.
+
+### 2. The enumeration also shrank the list from six to three
+
+`docs/phase-7-homeless-features.md` §1 carries every shipped feature against the design. The
+count is **three** — media remote, contacts, pairing — and the rest turned out to be homed by
+something that is not a nav row:
+
+- **Input injection** is not a feature beside the mirror canvas, it *is* the canvas, and
+  `input-note` says so above it: *"Click the picture to tap, drag to swipe, scroll to scroll…"*
+- **Drag to Finder** is stated in the Files pane's own copy: *"…is on this Mac — drag it to Finder
+  from here."*
+- **Manual address, Tailscale, Forget device and the log tail** are all Settings sections.
+
+Recorded rather than quietly corrected, because *"six features have no home"* is a reasonable thing
+to believe from the sidebar, and the sidebar is not where those features live.
+
+### 3. What shipped — a third palette kind
+
+`DEEP_LINKS` in `navModel.ts`, beside `SCREENS` and `COMMANDS`, because that file is already the one
+home for what the palette contains. **Not a twelfth sidebar row**: `PAIRING_SCREEN` already records
+why inventing rows the designer did not draw is how a shell stops matching its handoff.
+
+Three decisions, each of which could have gone the other way:
+
+- **The keywords are what a person types, not what this repo calls it.** Nobody searching for the
+  media remote types *media remote*. A label-only match leaves four of the five measured queries
+  still empty — which is the fourth mutation below.
+- **Deep links rank last.** Typing `c` must not put *Contacts* above *Calls* and *Clipboard*, which
+  are whole screens.
+- **Activating one routes *and then reveals*.** A row that routes to Overview and stops is
+  indistinguishable, from the user's side, from a row that failed — they are on a screen they could
+  already reach with no sign of which part of it answered. The card is scrolled to and flashed once,
+  and the flash is off under `prefers-reduced-motion`. A `reveal` id that no longer resolves raises a
+  toast rather than doing nothing quietly, the same refusal `runSelected` already makes for a
+  command with nothing wired to it.
+
+Re-measured on the live window, same probe, same controls:
+
+```
+"music" → ["Now playing" · In Overview]      "contact" → ["Contacts" · In Messages]
+"playing" → ["Now playing" · In Overview]    "pair"    → []   ← still, and deliberately: item 7
+"remote"  → ["Now playing" · In Overview]
+```
+
+### 4. Four guards, four mutations, all red
+
+A deep link has more ways to rot than a nav row: its screen can be renamed, its card can be deleted,
+its card can *move to another screen*, and its ranking can be reversed by a refactor.
+
+| Mutation | Result |
+|---|---|
+| `reveal` points at a deleted id | `pass 17 / fail 2` — the id scan **and** the section check |
+| the link claims the wrong screen (card is in Messages, link says Calls) | `pass 18 / fail 1` |
+| deep links joined before navigation | `pass 18 / fail 1` — *"a one-letter query still leads with whole screens"* |
+| keyword matching removed, label only | `pass 18 / fail 1` — the five measured queries |
+| restored | `tests 19 / pass 19 / fail 0` |
+
+**The second mutation is the one worth keeping.** `In Overview` is a claim printed in the palette
+row, and a card that moved would send the user to a screen it is not on and then flash nothing —
+a confident wrong answer, which is the shape this project keeps finding. The check reads
+`index.html` and works out which `<section class="screen">` each `reveal` id falls inside, with a
+control asserting the scan found sections at all.
+
+### 5. What was deliberately not built
+
+A dock tile, a sidebar row, a Quick actions tile, and a Contacts screen — each needs a decision
+rather than an implementation, and each is written up in
+`docs/phase-7-homeless-features.md` §3 with the one sentence that would settle it. The Quick actions
+one is the sharpest: the design's header reads `8 available` over eight tiles that are all routes,
+so a ninth tile for a card on the same screen makes that count either wrong or misleading, and
+whether Quick actions means *the eight screens* or *the things you do most* is the designer's call.
+
+**Suite:** 261 tests, 0 failures (was 255). `tsc` clean, build exit 0, relaunched and re-read at 9222.

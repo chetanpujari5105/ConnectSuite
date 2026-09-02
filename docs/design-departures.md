@@ -474,3 +474,12 @@ loading.**
 **Not a departure, recorded so it is not read as one:** the pane deliberately keeps working while
 the link is down. It is the only screen whose data never comes from the phone, and *what happened
 before it dropped* is exactly the question somebody has when it is down.
+
+---
+
+## Cross-cutting, added 2026-09-02 — the palette reaches inside a screen
+
+| # | Design draws | Built instead | Status | Why | What would make the design's version correct |
+|---|---|---|---|---|---|
+| **X8** | A ⌘K palette over **commands and screens** | The same, plus a third kind — **deep links**, which route to a screen and then reveal a card inside it. Two today: *Now playing* (in Overview) and *Contacts* (in Messages) | **reshaped** | Measured on 2026-09-02: the palette returned **nothing** for *music*, *playing*, *remote* and *contact*, with the control that it returns six rows for *mirror*. Eleven screens were reachable by search and three shipped features were not. Both cards are above the fold and perfectly visible — this is a findability gap, not a layout one, which is why nothing moved | Either a drawn treatment for the media remote and for contacts (a screen, a dock tile, a Quick actions slot), or a drawn palette row for a destination that is a card. Until one exists, the deep link is what ships |
+| **X9** | Quick actions: **8 tiles**, header `8 available`, every tile a route | Unchanged — and the media remote is **not** added to it | **unbuilt, needs one sentence from the designer** | A ninth tile for a card on the same screen is a different kind of thing from the eight, and it makes the count line either wrong or misleading | Knowing whether Quick actions means *the eight screens* or *the things you do most*. Under the first nothing changes; under the second the remote belongs there and the header needs rewording |

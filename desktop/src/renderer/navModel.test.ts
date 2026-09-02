@@ -10,6 +10,9 @@
  *    was never authored. Shown to fail by deleting `capture` from ICON_GEOMETRY.
  * 3. **Every unbuilt screen carries a reason, and no built screen carries one.** `CLAUDE.md`
  *    decision 6 as a test. Shown to fail by dropping `unbuiltReason` from Files.
+ * 4. **Every deep link points at a screen that exists and an element that exists.** A palette row
+ *    that routes nowhere is a keystroke swallowed in silence, which is the failure `runSelected`
+ *    already refuses for commands. Shown to fail by pointing `deep.remote` at a deleted id.
  */
 
 import { test } from 'node:test';
@@ -19,6 +22,7 @@ const {
   SCREENS,
   PAIRING_SCREEN,
   COMMANDS,
+  DEEP_LINKS,
   DOCK,
   TOOL_RAIL,
   GLOBAL_ACTIONS,
@@ -172,4 +176,104 @@ test('the pill never leaves the top of the nav, however the list is scrolled', (
   assert.equal(pillOffsetFor(0), 0);
   assert.equal(pillOffsetFor(228), 228);
   assert.equal(pillOffsetFor(-40), 0);
+});
+
+
+// ---- deep links: the three features the app's own search could not find ------------------------
+
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
+
+test('every deep link names a screen that exists', () => {
+  assert.ok(DEEP_LINKS.length > 0, 'a scan over an empty list passes every assertion below it');
+  for (const link of DEEP_LINKS) {
+    assert.ok(
+      screenById(link.screen),
+      `${link.id} routes to "${link.screen}", which is not a screen`,
+    );
+  }
+});
+
+test('every deep link reveals an element index.html actually has', () => {
+  // The model cannot see an element deleted from the page, so the page is read. This is the same
+  // shape as BootAutoStartTest parsing the manifests: the property is about where a name appears,
+  // and only a source scan can see it.
+  const html = readFileSync(join(__dirname, 'index.html'), 'utf8');
+  const ids = new Set([...html.matchAll(/id="([a-z0-9-]+)"/g)].map((m) => m[1]));
+  // Control: the scan must find ids already known to be there, or "not found" means nothing.
+  assert.ok(ids.has('remote-card') || ids.size > 20, `the id scan found ${ids.size} ids`);
+  assert.ok(ids.size > 20, 'the id scan came back suspiciously empty');
+  for (const link of DEEP_LINKS) {
+    assert.ok(ids.has(link.reveal), `${link.id} reveals "${link.reveal}", which is not in index.html`);
+  }
+});
+
+test('the deep link lives inside the screen it says it does', () => {
+  // "In Overview" is a claim about where the card is, printed in the palette row. A link whose
+  // reveal id sits in a different section would send the user to a screen the card is not on and
+  // then flash nothing — a confident wrong answer of exactly the kind this project keeps finding.
+  const html = readFileSync(join(__dirname, 'index.html'), 'utf8');
+  const sections = [...html.matchAll(/<section class="screen" data-screen="([a-z]+)"/g)].map((m) => ({
+    at: m.index,
+    name: m[1],
+  }));
+  assert.ok(sections.length >= 10, `found ${sections.length} screen sections — the scan is wrong`);
+  const screenOf = (id) => {
+    const at = html.indexOf(`id="${id}"`);
+    if (at < 0) return null;
+    let current = null;
+    for (const section of sections) {
+      if (section.at <= at) current = section.name;
+      else break;
+    }
+    return current;
+  };
+  for (const link of DEEP_LINKS) {
+    assert.equal(
+      screenOf(link.reveal),
+      link.screen,
+      `${link.id} says it is in "${link.screen}" and its card is in "${screenOf(link.reveal)}"`,
+    );
+  }
+});
+
+test("the searches that returned nothing on hardware now return the feature", () => {
+  // The exact queries `scripts/homeless-features-probe.mjs` measured as empty on 2026-09-02, with
+  // the control that a query for a screen still works.
+  const found = (query) => paletteResults(query).map((r) => r.label);
+  assert.ok(found('mirror').length > 0, 'control — the palette still answers a screen query');
+  for (const query of ['music', 'playing', 'remote', 'playback', 'track']) {
+    assert.ok(found(query).includes('Now playing'), `"${query}" must reach the media remote`);
+  }
+  for (const query of ['contact', 'people', 'phone book']) {
+    assert.ok(found(query).includes('Contacts'), `"${query}" must reach contacts`);
+  }
+});
+
+test('deep links rank last, so a one-letter query still leads with whole screens', () => {
+  const rows = paletteResults('c');
+  const kinds = rows.map((r) => r.kind);
+  const firstDeep = kinds.indexOf('deep');
+  if (firstDeep !== -1) {
+    assert.ok(
+      kinds.slice(firstDeep).every((k) => k === 'deep'),
+      'once deep links start they must not be followed by a screen',
+    );
+    const labels = rows.map((r) => r.label);
+    assert.ok(
+      labels.indexOf('Calls') < labels.indexOf('Contacts'),
+      'Calls is a screen and Contacts is a card inside one; the screen leads',
+    );
+  }
+});
+
+test('a deep link carries where to go and what to reveal, and nothing else does', () => {
+  for (const row of paletteResults('')) {
+    if (row.kind === 'deep') {
+      assert.ok(row.screen && row.reveal, `${row.id} is a deep link with nowhere to go`);
+      assert.ok(row.group.startsWith('In '), `${row.id} must say which screen it is in`);
+    } else {
+      assert.equal(row.screen, undefined, `${row.id} is not a deep link and must not carry a screen`);
+    }
+  }
 });

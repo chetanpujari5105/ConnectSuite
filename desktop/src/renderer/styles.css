@@ -2375,3 +2375,19 @@ img#qr {
 .activity-state-body { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-body); max-width: 62ch; }
 
 .activity-state--warning .activity-state-headline { color: var(--warning); }
+
+/* The ⌘K deep-link flash. A palette row that routes to a screen and stops is indistinguishable,
+   from the user's side, from one that failed — so the card it meant says which one it was. */
+.deep-reveal {
+  animation: deep-reveal-flash 1.4s ease-out 1;
+}
+
+@keyframes deep-reveal-flash {
+  0%   { box-shadow: 0 0 0 0 var(--accent-glow); border-color: var(--accent-border); }
+  35%  { box-shadow: 0 0 0 6px var(--accent-glow); border-color: var(--accent); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deep-reveal { animation: none; border-color: var(--accent); }
+}
