@@ -81,6 +81,7 @@ own heading there, and its own row here.
 | **65** | **Two deleted features were still being taught to new users.** Onboarding page 1 offered *"See and control another Android device's screen from here… the target needs debugging enabled once"*, and page 3 was three numbered steps walking a new user through developer options and `adb tcpip 5555`. Both describe the **v1 ADB mirror, deleted 2026-08-26**. `adb tcpip 5555` survived in exactly one place in the repository and it was a sentence shown to users, in an app whose first locked decision is *no ADB anywhere*. `README.md` carried it in three more places | **closed** 2026-09-02 | Found by reading all four pages against the implementation rather than patching the one reported. Copy moved to `OnboardingCopy.kt`; `OnboardingCopyTest` freezes the pre-fix strings as a fixture and is red whenever any returns. The `app/` module had **no test source set at all** before this | `docs/testing.md` → Phase 7 Slice 4 |
 | **66** | **A shipped, logged failure had no route to the screen.** `LinkTls.checkClientTrusted` has logged `Rejected unpaired client …` since Phase 1. The Mac tab rendered *"Listening for your Mac"* for a refused handshake, for a Mac that had not dialled, and for a Mac on a different network — three situations, one sentence, forever. The user is holding the phone; it was the one screen that could say something and did not | **closed** — **F2 proven on hardware 2026-09-02; F4 and F5's own states not yet drawn** | `LinkWaitStatus` (pure, in `core/`) + the accept loop publishing `RefusedConnection`. `LinkWaitStatusTest`, 11 tests, red under 6 mutations. On hardware: the reordered tab renders `Connected to Chetans-MacBook-Pro` → `Pair another Mac` → the paired list → `Advanced` **collapsed**, and expands to the ports line and capability diagnostics. The `Waiting` and `Refused` branches need a stopped Mac and an unpaired one and have been seen only in tests | `docs/testing.md` → Phase 7 Slice 4 |
 | **67** | **The phone's wait clock measured the server's uptime, not the wait.** F4's twenty-second network hint was judged against `listeningSinceMillis`, written once when the accept loops came up — so on any phone listening for more than twenty seconds, which is every phone after the first half minute, the hint appeared the instant its Mac went away. *"Check that your Mac is awake and on the same Wi-Fi"* two seconds after closing a lid is exactly the alarming noise the threshold exists to prevent | **closed** 2026-09-02, **proven on hardware** | Found by looking at the screen, 25 s after stopping the Mac app, on the run staged to watch F4 draw. **Eleven unit tests were green throughout and none could have caught it** — they call `LinkWaitStatus.of` and hand it the field by hand, so they test the decision at a layer the defect does not live in. Fixed by extracting `LinkState.afterSessionEnded`, now 16 tests, red under three mutations including the original bug. Re-measured on hardware: hint absent through t+21s after a drop, shown by t+27s | see below |
+| **68** | **A signed release APK was one incidental failure away from being installed on someone else's phone.** `adb install` targets whatever single device is on the bus and says nothing about which. The Samsung had been swapped for an **OPPO CPH1859** and the command was issued against it; what stopped it was `INSTALL_FAILED_OLDER_SDK` (minSdk 29 against SDK 28), which is luck, not a check. **The tell had already appeared and been explained away**: `pm list packages \| grep chetan` returned nothing on a device where the debug build had been installed twenty minutes earlier, and that absence was read as a bad grep | **closed** 2026-09-02 | `scripts/target-device.sh` pins serial *and* model and refuses to guess, printing what is attached instead. All three branches exercised: refuses the wrong device, **passes** when pointed at the device that is present, and refuses a serial whose model does not match | see below |
 
 ---
 
@@ -1381,3 +1382,82 @@ about the decision.
 The tell that this class is present: **every test constructs its input by hand.** That is normal and
 usually fine, and it is exactly what makes the layer confusion invisible — the test's inputs are
 always well-formed, so the question *does anything real produce these?* never comes up.
+
+---
+
+### 68 — the target device was never checked, and an absence had already said so · **closed** 2026-09-02
+
+A signed release APK, built to close defect 13, was issued at a phone that was not the phone.
+
+```
+$ adb install app/build/outputs/apk/release/app-release.apk
+Failure [INSTALL_FAILED_OLDER_SDK: Requires newer sdk version #29 (current version is #28)]
+
+$ adb devices -l
+N7FQS4956LFYUCMJ  device  product:CPH1859 model:CPH1859      ← an OPPO, Android 9
+```
+
+Every hardware reading in this repository is from one **Samsung SM-S938B**, serial `RZCY12330DT`
+(`docs/single-device-audit.md`). That phone was not attached. `adb install` with a single device on
+the bus targets it silently, so the command was correct, unambiguous, and aimed at a stranger's
+handset.
+
+**What stopped it was not a check.** `minSdk 29` against an SDK 28 device is a parse failure, and it
+is the only reason nothing was written. Had the OPPO been running Android 10 the install would have
+succeeded and this would read very differently.
+
+#### The absence that had already reported it
+
+Two commands before the install:
+
+```
+$ adb shell pm list packages | grep -i "chetan.connectsuite"
+(nothing)
+```
+
+`com.chetan.connectsuite.debug` had been installed on the target twenty minutes earlier. An empty
+result was **impossible** on the right phone. It was read as a bad grep pattern and moved past.
+
+That is `CLAUDE.md`'s lookalike rule with the target swapped rather than the query — *what else
+would produce this absence?* was never asked, and the answer was "you are looking at a different
+machine". The rule's own worked examples are all about a query that cannot separate its target from
+a lookalike; this is the case where **the query was fine and the object under it had changed**, which
+no amount of care about the query catches.
+
+The second tell, ignored in the same breath: the same command earlier in the session had returned
+packages *and* a `SecurityException` about user 150, so the shape of its output was already known.
+
+#### The fix
+
+`scripts/target-device.sh` pins **serial and model**, refuses when the expected device is absent,
+prints what is attached instead, and emits `-s <serial>` for callers so an install can never be
+ambiguous. It prints the target to stderr on success too, so every transcript that writes to a
+device carries the device in it.
+
+**It was tested in all three directions**, because a guard only ever seen refusing is half a guard:
+
+```
+wrong device attached            → FAIL, and lists the OPPO
+pointed at the device present    → OK    target N7FQS4956LFYUCMJ (CPH1859, sdk 28)
+right serial, wrong model        → FAIL  reports model 'CPH1859', expected 'SM-S938B'
+```
+
+The middle line is the one that matters. The first version's "attached instead" list printed
+**nothing**, because `adb devices -l` separates with spaces and the pattern looked for a tab — a
+guard that refuses correctly while its diagnostic silently produces an empty list, which is the
+empty-accessibility-query failure inside the fix for a different empty-result failure.
+
+**Wrong fix to avoid:** setting `ANDROID_SERIAL` in a shell profile and considering it handled. It
+is invisible at the call site, it does not survive a new terminal, and it produces the same silent
+targeting with a different default. The check has to be *in the path of the command that writes*.
+
+#### And the release APK is signed, which is the other half of the run
+
+`app-release.apk` — not `-unsigned` — built from `~/.android-keystores/connectsuite.properties`,
+outside the repository, with the build printing which config it used. `apksigner verify` passes with
+a control that proves the verifier can fail (one flipped byte → exit 1). v1 and v2 report `false`
+and that is correct rather than a fault: AGP omits them because `minSdk 29` makes v3 sufficient, so
+the `enableV1Signing` comment about "API < 24 installs" now describes a case this app cannot have.
+
+**Defect 13 is not closed by this run.** The APK is signed and verified; it has never been installed
+on the device this project's claims are about.

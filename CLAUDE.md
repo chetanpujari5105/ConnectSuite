@@ -429,6 +429,30 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
 These are not habits, they are rules. Both were written after a run where breaking them cost real
 damage on the user's own device or nearly recorded a false result.
 
+- **Check *which device* before anything that writes to one. `scripts/target-device.sh`.**
+  `adb install`, `adb shell`, every `pm` and `settings` command targets whatever single device is on
+  the bus and tells you nothing about which. Every hardware reading in this repo is from one
+  SM-S938B (`docs/single-device-audit.md`), and on 2026-09-02 a **signed release APK was issued at
+  an OPPO CPH1859** that had replaced it on the cable. What stopped it was `minSdk 29` against an
+  SDK 28 device — an accident, not a check. On a slightly newer stranger's phone it would have
+  installed.
+
+  **The absence had already reported it and was explained away.** Two commands earlier,
+  `pm list packages | grep chetan` returned nothing on a device where the debug build had been
+  installed twenty minutes before. That result was *impossible* on the right phone; it was read as a
+  bad grep pattern.
+
+  This is the lookalike rule with the **target** swapped instead of the query, and it is the variant
+  no care about queries can catch: the query was correct, the object underneath it had changed. So
+  the question *what else would produce this absence?* has one more answer than the table below
+  lists — **"you are looking at a different machine"** — and it belongs on the list whenever a
+  reading comes off a device.
+
+  The guard pins serial *and* model, refuses to guess, prints what is attached instead, and emits
+  `-s <serial>` so the write cannot be ambiguous. Setting `ANDROID_SERIAL` in a profile is **not**
+  the fix: invisible at the call site, gone in a new terminal, same silent targeting with a
+  different default. The check goes in the path of the command that writes.
+
 - **Never drive the Mac UI or the phone by coordinates when a named target exists.** Press the
   button by its accessibility name, tap the view by its resource id or content description. A
   coordinate is a guess about a layout that is still moving.
