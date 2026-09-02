@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for a hardened-runtime build.
+
+  Present and complete now, though nothing signs today: the hardened runtime is only applied when
+  there is a signing identity, and an entitlements file written on the day the certificate arrives
+  is an entitlements file written in a hurry. Every entry below is here because Electron or this
+  app actually needs it, and the two that are *absent* are the interesting part.
+
+  What is here:
+    - allow-jit / allow-unsigned-executable-memory / allow-dyld-environment-variables
+      V8 needs all three. Without them a hardened Electron app crashes on launch.
+    - network.client — the Mac dials out to the phone (locked decision #2).
+    - files.user-selected.read-write — the file picker for "send to phone" and the CSV export.
+    - files.downloads.read-write — pulls land in ~/Downloads/ConnectSuite.
+
+  What is deliberately NOT here:
+    - com.apple.security.app-sandbox. This is a Developer ID build for direct distribution, not a
+      Mac App Store one. Sandboxing it would require entitlements for the local network listener
+      behaviour and a container-relative Downloads path, and neither has been designed. If this
+      ever goes to the App Store that is a separate piece of work, not a line to add here.
+    - network.server. The Mac never listens; the phone binds every socket. Asking for an
+      entitlement this app does not use is the permission equivalent of a greyed control that will
+      never light up.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+  <key>com.apple.security.files.downloads.read-write</key>
+  <true/>
+</dict>
+</plist>

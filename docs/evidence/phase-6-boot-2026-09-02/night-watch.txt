@@ -535,3 +535,5 @@
 11:52:14   [samples=266 observed_mean_gap=120.2s]
 11:54:14 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=3/4 est=0 ACQ=none pid=6617
 11:54:14   [samples=267 observed_mean_gap=120.2s]
+11:56:15 mScreenState=ON mWakefulness=Awake deep=ACTIVE light=ACTIVE sockets=4/4 est=1 ACQ=-1m43s593ms  pid=6617
+11:56:15   [samples=268 observed_mean_gap=120.2s]

@@ -41,3 +41,13 @@ Mac app UI mockups*/
 # Packaged artefacts. Built on demand by `npm run dist` in desktop/, never checked in — a .dmg is
 # ~100 MB of Electron and it is reproducible from the source beside it.
 desktop/release/
+
+# ...but NOT electron-builder's build resources, which are source.
+#
+# `build/` above is for Gradle's output directories and it swallowed
+# `desktop/build/entitlements.mac.plist` — a file described in electron-builder.yml as "present and
+# complete" that git did not have. A name collision between Gradle's build *output* and
+# electron-builder's build *inputs*, and the sort of thing that is invisible until somebody clones
+# the repo and the signed build fails on a missing entitlements file.
+!desktop/build/
+!desktop/build/**

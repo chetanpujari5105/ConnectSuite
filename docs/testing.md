@@ -11886,5 +11886,20 @@ rather than absent, `publish: null` is set on the target that would otherwise up
 build, and the credentials are named in the config with no values because a credential in a
 checked-in file is a credential in git history.
 
+### 7. And the entitlements file was not in git
+
+Caught immediately after the commit, by checking rather than assuming: `git ls-files desktop/build/`
+came back **empty**. `electron-builder.yml` describes `build/entitlements.mac.plist` as *"present
+and complete"* and the repo did not have it — the root `.gitignore`'s `build/` line, written for
+Gradle's output directories, also matches electron-builder's build **inputs**.
+
+A name collision, invisible until somebody clones the repo and the first signed build fails on a
+missing entitlements file — which is the day the Developer ID account arrives and the worst possible
+day for it. `.gitignore` now carries the exception and says why.
+
+The general form is the one this repo keeps writing down: **a file described in a document is a
+claim, and `git ls-files` is the check.** The document was written and the file was created; nothing
+in between confirmed the two ended up in the same repository.
+
 **Suite:** 288 Mac tests (was 285) + 248 phone, 0 failures. `npm run typecheck` clean over both
 configs, both builds exit 0, all six commit checks green.
