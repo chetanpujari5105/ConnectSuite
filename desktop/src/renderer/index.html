@@ -101,9 +101,16 @@
 
           <div class="sidebar-footer">
             <div class="account-row">
-              <span class="avatar" aria-hidden="true">CP</span>
+              <!--
+                Both of these are filled in at runtime from this Mac's own identity (see
+                `identity.ts`, which already derives a device name from `hostname()`/`userInfo()`).
+                They were hardcoded to the author's name and initials until 2026-09-02 — D1 and D2
+                in `docs/phase-9-distribution-audit.md` — which greeted every user of the app by
+                somebody else's name on the first screen after pairing.
+              -->
+              <span class="avatar" aria-hidden="true" id="account-avatar"></span>
               <div class="account-lines">
-                <div class="account-name">Chetan Pujari</div>
+                <div class="account-name" id="account-name"></div>
                 <!--
                   The handoff draws an account email and a PRO tier here. There is no account and no
                   tier — CLAUDE.md's first line is "no cloud, no account, no relay server" — so the

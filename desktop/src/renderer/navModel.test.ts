@@ -27,6 +27,8 @@ const {
   TOOL_RAIL,
   GLOBAL_ACTIONS,
   iconNamesUsedByTheShell,
+  initialsFor,
+  overviewTitle,
   paletteResults,
   screenById,
   pillOffsetFor,
@@ -276,4 +278,54 @@ test('a deep link carries where to go and what to reveal, and nothing else does'
       assert.equal(row.screen, undefined, `${row.id} is not a deep link and must not carry a screen`);
     }
   }
+});
+
+// ---- D1 / D2: nothing in the shell may be one person's name ------------------------------------
+
+test('no screen title, subtitle or label carries a personal name', () => {
+  // The literal that shipped was `Good morning, Chetan` on the Overview screen. This is the general
+  // form of it: a scan over every user-visible string this file owns, for anything that looks like
+  // a greeting with a name in it. It is not a name detector — it cannot be — it is an assertion
+  // that the *shape* which caused D1 does not come back.
+  const strings = [
+    ...SCREENS.flatMap((s: { title: string; subtitle: string; label: string }) => [
+      s.title,
+      s.subtitle,
+      s.label,
+    ]),
+    PAIRING_SCREEN.title,
+    PAIRING_SCREEN.subtitle,
+  ];
+  assert.ok(strings.length > 20, `the scan found ${strings.length} strings — it is looking in the wrong place`);
+  for (const value of strings) {
+    assert.ok(
+      !/^Good (morning|afternoon|evening),/.test(value),
+      `a greeting with a name in it is back: ${JSON.stringify(value)}`,
+    );
+  }
+});
+
+test('the Overview greeting follows the clock and names nobody', () => {
+  const at = (hour: number) => overviewTitle(new Date(2026, 8, 2, hour, 30));
+  assert.equal(at(0), 'Good morning');
+  assert.equal(at(11), 'Good morning');
+  assert.equal(at(12), 'Good afternoon');
+  assert.equal(at(17), 'Good afternoon');
+  assert.equal(at(18), 'Good evening');
+  assert.equal(at(23), 'Good evening');
+  for (const hour of [0, 6, 12, 18, 23]) {
+    assert.ok(!at(hour).includes(','), 'no name, at any hour — see overviewTitle for why');
+  }
+});
+
+test('avatar initials come from the machine name, and a digit is not an initial', () => {
+  assert.equal(initialsFor("Chetan's MacBook Pro"), 'CM');
+  assert.equal(initialsFor('Chetans-MacBook-Pro'), 'CM');
+  assert.equal(initialsFor('macbook-pro-3'), 'MP', 'the 3 is not an initial');
+  assert.equal(initialsFor('Mac'), 'M');
+  // An unparseable or absent name draws a blank avatar rather than somebody else's initials.
+  assert.equal(initialsFor(''), '');
+  assert.equal(initialsFor(null), '');
+  assert.equal(initialsFor('---'), '');
+  assert.equal(initialsFor('42'), '');
 });

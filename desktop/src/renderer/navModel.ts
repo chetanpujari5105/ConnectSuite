@@ -83,7 +83,10 @@ const SCREENS: NavScreen[] = [
   {
     id: 'overview',
     label: 'Overview',
-    title: 'Good morning, Chetan',
+    // Filled in at runtime by `overviewTitle`. The literal here is a fallback for anything that
+    // reads SCREENS without a clock; the handoff's own string was `Good morning, Chetan`, which
+    // greeted every user of this app by the author's name, at every hour of the day (D1).
+    title: 'Overview',
     subtitle: 'Your phone and Mac are in sync.',
     icon: 'overview',
     group: 'MENU',
@@ -344,6 +347,61 @@ interface PaletteResult {
   reveal?: string;
 }
 
+/**
+ * The Overview screen's title, which is the one that changes with the clock.
+ *
+ * ### Why there is no name in it
+ *
+ * The handoff draws **"Good morning, Chetan"**, and it shipped with that string in it — so every
+ * user of this build was greeted by the author's name, at every hour (`docs/phase-9-distribution-audit.md`
+ * D1). The obvious repair is to substitute a name, and the app has no honest source for one:
+ *
+ * - There is **no account** — `CLAUDE.md`'s first line is *no cloud, no account, no relay server* —
+ *   so nothing has ever asked the user what they are called.
+ * - `os.userInfo().username` is a login name. On this machine it happens to read `chetan`, which is
+ *   why it looks like a solution; on a machine where it reads `jsmith` or `admin` it produces
+ *   *"Good morning, Jsmith"*, and a greeting that gets somebody's name wrong is worse than one that
+ *   does not use it.
+ * - `hostname()` is the **machine's** name, not the person's. *"Good morning, MacBook-Pro-3"* is
+ *   the same mistake wearing a different string.
+ *
+ * So the greeting is the time of day and nothing else, and the departure is recorded rather than
+ * papered over. This is the same reasoning as departures row X2, which cut the account email and
+ * the PRO tier from the sidebar for the same reason: the design draws an account, and there is
+ * none.
+ *
+ * The hour boundaries are the ordinary ones and are deliberately not localised — a build that has
+ * no i18n anywhere else should not grow half of it here.
+ */
+function overviewTitle(now: Date = new Date()): string {
+  const hour = now.getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/**
+ * Up to two initials for an avatar, from whatever the machine calls itself.
+ *
+ * Deliberately conservative about what counts as a word. `Chetans-MacBook-Pro` and
+ * `Chetan's MacBook Pro` should both read `CM`, and `macbook-pro-3` should read `MP` rather than
+ * `M3` — a digit is not an initial. An empty or unparseable name answers `''` and the avatar draws
+ * blank, which is the honest outcome; the hardcoded `CP` this replaces was the author's initials on
+ * every machine that ran the app (D2).
+ */
+function initialsFor(name: string | null | undefined): string {
+  if (!name) return '';
+  const words = name
+    .replace(/['’]s\b/gi, '')
+    .split(/[\s\-_.]+/)
+    .map((word) => word.trim())
+    .filter((word) => /^[\p{L}]/u.test(word));
+  return words
+    .slice(0, 2)
+    .map((word) => word[0]!.toUpperCase())
+    .join('');
+}
+
 /** Case- and accent-insensitive enough for a two-word query. Not a fuzzy matcher, on purpose. */
 function matches(haystack: string, query: string): boolean {
   return haystack.toLowerCase().includes(query.toLowerCase());
@@ -504,6 +562,8 @@ if (typeof module !== 'undefined') {
     TOOL_RAIL,
     GLOBAL_ACTIONS,
     iconNamesUsedByTheShell,
+    initialsFor,
+    overviewTitle,
     paletteResults,
     screenById,
     pillOffsetFor,

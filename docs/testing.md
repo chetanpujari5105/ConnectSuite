@@ -11725,3 +11725,166 @@ fix is to read all four against the implementation rather than to patch the one 
 **Wrong fix to avoid:** deleting the sentence. The security model is the reason this app has no
 account and no server, and it is worth one card in onboarding; the problem is that this card
 describes somebody else's implementation of it.
+
+---
+
+## Phase 9 · Slice 1 — the distribution audit, and the first artefacts · 2026-09-02
+
+The brief put the audit first and called it *the real work*: everything that quietly assumes this
+Mac, this phone, or this person. `docs/phase-9-distribution-audit.md` is the list.
+
+### 1. What the audit found, and the two rows a stranger would have seen first
+
+**D1** — `navModel.ts` shipped the Overview title as the literal **`'Good morning, Chetan'`**. Every
+user of this build is greeted by the author's name, at every hour of the day.
+**D2** — the sidebar's account block was **`Chetan Pujari`** and the initials **`CP`**, hardcoded in
+`index.html`.
+
+Both fixed. **The interesting part is what the fix refuses to do.** The obvious repair is to
+substitute a name, and the app has no honest source for one — there is no account,
+`userInfo().username` is a login name that reads `chetan` here and `jsmith` elsewhere, and
+`hostname()` is the machine's name rather than the person's. **A greeting that gets somebody's name
+wrong is worse than one that does not use it.** So `overviewTitle()` is the time of day and nothing
+else, which is also the first time that string has been correct after noon.
+
+Read back on the running app:
+
+```
+{"accountName":"Chetans-MacBook-Pro","avatar":"CM",
+ "accountSub":"key 3030C8EBCDDCD0FB…","pageTitle":"Good morning"}     [control=11]
+```
+
+The block now says what its second line always claimed it did — **this Mac** — and the key is
+abbreviated the same way the phone's *Paired Macs* list does it, so the two can be compared by eye.
+`initialsFor` treats a digit as not-an-initial (`macbook-pro-3` → `MP`) and answers `''` rather than
+guessing.
+
+### 2. D8 was wrong, and the way it was caught is the point
+
+The audit claimed a **real phone number** had been copied out of a hardware log into shipping source
+and asked for a redaction. The redaction was made — and then reverted, because the claim was false.
+
+Enumerating every match rather than acting on the one the grep surfaced first:
+
+```
++918200000005  +918300000006  +918800000004  +919800000001  +919900000002
+```
+
+Five numbers of the form `91` + two digits + `0000000` + an incrementing digit. **That is an
+anonymisation scheme, not a phone book.** One plausible-looking number is a phone number; five in an
+arithmetic sequence are a placeholder set that somebody already applied.
+
+The revert matters as much as the finding: these are **quoted log excerpts**, and blurring evidence
+to remove a risk that is not there makes the record less faithful for nothing.
+
+### 3. D5 was overstated, and the measurement said so
+
+The audit's sharpest row claimed a missing `appId` was *"a way for a released app to lose its own
+identity between updates"* — `safeStorage` holds the TLS private key and is keyed to the app's
+identity, so a bundle id that moves is a fingerprint the phone will refuse.
+
+The reasoning is sound. The reading is that it did not happen: the packaged app, with
+`CFBundleIdentifier=com.chetan.connectsuite.desktop`, **read the dev build's encrypted key without
+trouble**, and the phone accepted the existing fingerprint —
+
+```
+2026-09-02T11:46:18.520  I [link] Connected to Samsung SM-S938B at 10.47.66.128 via last-known
+```
+
+— from the packaged binary, with the dev instance killed (`pgrep -f "electron \." → 0`), and with
+`cert.pem`/`key.enc` still dated Aug 24. The row is rewritten in place rather than deleted: *a
+mechanism that plausibly bites is not a mechanism that was observed biting, and the difference is
+one run.*
+
+**And the run surfaced something the audit had not predicted — D11.** The packaged app and the
+`npm start` build **share `~/Library/Application Support/connectsuite-desktop`**, because Electron
+derives `userData` from `app.getName()` → `package.json` `name`, not from `appId` or `productName`.
+Harmless for a release; a source of confusing local results, since a change tested against one build
+shows up in the other.
+
+### 4. The .dmg, and it launches from /Applications
+
+`electron-builder.yml`, `build/entitlements.mac.plist`, `npm run dist`.
+
+```
+skipped macOS code signing  reason=identity explicitly is set to null
+default Electron icon is used  reason=application icon is not set     ← D4, confirmed by the build
+building  target=DMG arch=arm64  file=release/ConnectSuite-2.0.0-arm64.dmg   115 MB
+building  target=DMG arch=x64    file=release/ConnectSuite-2.0.0.dmg         117 MB
+```
+
+Mounted, copied to `/Applications`, launched, and read:
+
+| | |
+|---|---|
+| `CFBundleIdentifier` | `com.chetan.connectsuite.desktop` |
+| `CFBundleShortVersionString` | `2.0.0` |
+| `NSLocalNetworkUsageDescription` | present — an empty local-network prompt is one people deny |
+| Launched | one window, titled `ConnectSuite` |
+| Working | contacts, SMS threads and a clipboard push, all through the packaged binary |
+
+Then quit, removed from `/Applications`, and the image detached. `/Applications/ConnectSuite.app:
+No such file or directory`, `/Volumes` clean.
+
+**What this run does not prove, and it is the half that will bite somebody.** The .dmg was built
+locally and never crossed a browser, so it carries `com.apple.provenance` and **no
+`com.apple.quarantine`**. Gatekeeper's quarantine gate therefore never ran. `spctl -a -vvv` rejects
+the bundle outright — *"code has no resources but signature indicates they must be present"*, on an
+ad-hoc `Identifier=Electron` signature — so **a downloaded copy of this .dmg will not open on a
+double-click**, and a user will need right-click → Open or `xattr -d com.apple.quarantine`. That is
+what unsigned means, it is written into `electron-builder.yml`'s header, and it is the thing the
+Developer ID account buys.
+
+### 5. The release APK, and R8 keeping what it was given
+
+`./gradlew :app:assembleRelease` → **25 MB unsigned** against the debug build's 93 MB. Verified
+unsigned by enumerating `META-INF/`: *v1 signature entries: none*, with the control that the archive
+reads as an APK at all — 433 entries, one `classes.dex`, an `AndroidManifest.xml`.
+
+**A manifest entry is a registration line, not an execution line**, so the receiver added tonight was
+chased into the dex as well:
+
+```
+manifest: com.chetan.connectsuite.core.link.LinkBootReceiver     PRESENT
+dex:      LinkBootReceiver  PRESENT   LinkService  PRESENT   ClipApplyReceiver  PRESENT
+          LinkAutoStart     MISSING   LinkLockPolicy  MISSING
+control:  ClipProbeActivity absent, as expected (debug-only)
+```
+
+**`MISSING` is two different facts** — inlined, or removed — and they are not the same news. The
+discriminator is the strings only those classes produce, every one of which is in the dex:
+
+```
+YES  "already listening — nothing to do"           YES  "Foreground as "
+YES  "trust store did not answer in "              YES  "startForeground refused for "
+YES  " paired device(s), link not running"         YES  "Wake lock had lapsed and was re-acquired"
+YES  "android.intent.action.QUICKBOOT_POWERON"     YES  "ConnectSuite:link"
+```
+
+So R8 inlined the two Kotlin `object`s — a `const val` becomes a literal and its holder becomes
+unused — and every branch of tonight's Phase 6 work survives into the release build. The release APK
+has **not been installed or run**; this is a static reading of what is in it.
+
+### 6. The version scheme, and a sixth commit hook
+
+Two numbers that had disagreed since their first commits — Android `1.0.0`, Mac `2.0.0` — with
+nothing in the build reading both. `docs/versioning.md` settles it at **2.0.0** for both, keeps
+`versionCode` as Android's own hand-bumped integer that nothing derives, and keeps
+`Link.PROTOCOL_MAJOR` explicitly out of it, because a copy fix must not force a protocol bump.
+
+`scripts/check-versions.mjs` + `scripts/hooks/versions-in-sync.sh`, six fixtures, fails open like its
+siblings. Red-first: put `1.0.0` back and it reports *"the two apps disagree about the product
+version"*, exit 1; restored, exit 0.
+
+**The fixture that matters is not the disagreement, it is the reader failing.** A regex that stops
+matching — because somebody moves `versionName` into a version catalogue — returns `null`, and two
+`null`s compare equal: a clean pass over a file it could not read. The runner treats a null as
+`INSTRUMENT FAILURE` rather than as agreement, and a fixture holds that.
+
+**Nothing was signed, notarized or published.** `identity: null` and `notarize: false` are explicit
+rather than absent, `publish: null` is set on the target that would otherwise upload on a tagged
+build, and the credentials are named in the config with no values because a credential in a
+checked-in file is a credential in git history.
+
+**Suite:** 288 Mac tests (was 285) + 248 phone, 0 failures. `npm run typecheck` clean over both
+configs, both builds exit 0, all six commit checks green.

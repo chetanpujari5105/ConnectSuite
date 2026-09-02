@@ -37,3 +37,7 @@ Mac app UI mockups (1).zip
 #
 # To add something here deliberately: `git add -f "Mac app UI mockups (1)/<file>"`.
 Mac app UI mockups*/
+
+# Packaged artefacts. Built on demand by `npm run dist` in desktop/, never checked in — a .dmg is
+# ~100 MB of Electron and it is reproducible from the source beside it.
+desktop/release/

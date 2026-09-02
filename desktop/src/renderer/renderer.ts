@@ -33,6 +33,8 @@ interface RendererStatus {
 
 interface ConnectBridge {
   status(): Promise<RendererStatus | null>;
+  /** This Mac's own name and short key, for the sidebar's account block. */
+  selfIdentity(): Promise<{ name: string | null; fingerprint: string | null }>;
   /** The Activity screen's log. `error` rides beside `events` — see shared/activity.ts. */
   activityEvents(): Promise<{
     ok: boolean;
@@ -397,6 +399,26 @@ async function refreshLogs(): Promise<void> {
 // Settings panes registered further down. Only the pairing screen's own button is bound here,
 // because the pairing screen is static markup rather than a built pane.
 el('new-qr').addEventListener('click', () => void showQr(true));
+
+/*
+ * The sidebar's account block, filled from this Mac rather than from the markup.
+ *
+ * D1/D2: it read `Chetan Pujari` and `CP`, hardcoded, so every user of this build had the author's
+ * name and initials in their own sidebar. There is no account to read a person's name from, so the
+ * block says what this Mac is called and what its key is — which is what its second line, `This
+ * Mac`, has always claimed it was doing.
+ *
+ * It fails quietly to the machine's own fallback: `identity.ts` already answers
+ * `${username}'s Mac` when `hostname()` is empty, so there is no state in which this draws nothing
+ * and no explanation.
+ */
+void (async () => {
+  const self = await connect.selfIdentity().catch(() => ({ name: null, fingerprint: null }));
+  const name = self.name ?? 'This Mac';
+  el('account-name').textContent = name;
+  el('account-avatar').textContent = initialsFor(name);
+  if (self.fingerprint) el('account-sub').textContent = `key ${self.fingerprint}…`;
+})();
 
 // Mirroring is only offered when the phone actually advertises it, which is the capability
 // contract doing its job at the UI layer: no button for a promise the phone has not made.

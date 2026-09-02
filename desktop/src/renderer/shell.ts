@@ -338,7 +338,9 @@ class ShellView {
       else row.removeAttribute('aria-current');
     }
 
-    $('page-title').textContent = screen.title;
+    // Overview's title is the only one that depends on when it is drawn, so it is computed at
+    // route time rather than read out of SCREENS. See `overviewTitle` for why it carries no name.
+    $('page-title').textContent = id === 'overview' ? overviewTitle() : screen.title;
     $('page-sub').textContent = screen.subtitle;
     document.querySelector('.app-window')!.setAttribute('data-screen', id);
 

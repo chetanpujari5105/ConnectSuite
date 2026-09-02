@@ -161,6 +161,9 @@ const sms = new SmsClient(() => link);
  */
 const calls = new CallClient(() => link);
 
+/** This Mac's own name and fingerprint, filled in once the identity is loaded. */
+let selfName: string | null = null;
+let selfFingerprint: string | null = null;
 let wasConnected = false;
 /** Last phase written to the activity log. See R1 — transitions, not ticks. */
 let lastRecordedPhase: ConnectionStatus['phase'] | null = null;
@@ -442,6 +445,8 @@ app.whenReady().then(() => {
   if (!app.isPackaged) debugSwitches();
 
   const identity = loadIdentity();
+  selfName = identity.deviceName;
+  selfFingerprint = identity.fingerprint;
   link = new LinkClient(identity);
   video = new VideoClient(identity);
   bulk = new BulkClient(identity);
@@ -1698,6 +1703,25 @@ ipcMain.handle(
 );
 
 ipcMain.handle('status', () => link?.status() ?? null);
+
+/**
+ * This Mac's own name and key, for the sidebar's account block.
+ *
+ * D1/D2 in `docs/phase-9-distribution-audit.md`: that block was `Chetan Pujari` and `CP` in the
+ * markup, so every user of this build saw the author's name in their own sidebar. There is no
+ * account to read a person's name from — `CLAUDE.md`'s first line is *no cloud, no account, no
+ * relay server* — so the block describes **this Mac**, which is what its second line already says
+ * it does, and the name is the one the machine calls itself.
+ *
+ * Read-only and side-effect-free, unlike `pairing-qr`, which is the other place the device name is
+ * reachable and which *arms a pairing token* as it goes.
+ */
+ipcMain.handle('self-identity', () => ({
+  name: selfName,
+  // The first 16 hex characters, matching how the phone's Paired Macs list abbreviates it, so the
+  // two can be compared by eye when somebody is working out which Mac is which.
+  fingerprint: selfFingerprint ? selfFingerprint.replace(/:/g, '').slice(0, 16) : null,
+}));
 
 ipcMain.handle('pairing-qr', async (_event, rotate?: boolean) => {
   if (!link) throw new Error('Link not ready');

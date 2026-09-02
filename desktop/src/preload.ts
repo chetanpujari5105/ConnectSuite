@@ -192,6 +192,10 @@ contextBridge.exposeInMainWorld('connect', {
   clipRequest: (): Promise<PhoneResult<ClipEntry>> => ipcRenderer.invoke('clip-request'),
   clipHistory: (): Promise<PhoneResult<LocalClipEntry[]>> => ipcRenderer.invoke('clip-history'),
 
+  /** This Mac's own name and short key, for the sidebar's account block. Side-effect-free. */
+  selfIdentity: (): Promise<{ name: string | null; fingerprint: string | null }> =>
+    ipcRenderer.invoke('self-identity'),
+
   /**
    * The Activity screen's log.
    *

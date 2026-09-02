@@ -1,0 +1,118 @@
+# Packaging for ConnectSuite on macOS.
+#
+# ## What this file does today, and what it refuses to do
+#
+# It builds an **unsigned, un-notarized** .dmg and .zip. That is the whole of what can honestly be
+# produced without an Apple Developer account, and the signing and notarization settings below are
+# written out in full with their credentials blank rather than omitted — so the day the account
+# exists, the change is filling in two values and flipping one boolean, not designing this section
+# under time pressure.
+#
+# Nothing here signs, notarizes, staples or publishes. `publish: never` is set explicitly on every
+# target for that reason: electron-builder will otherwise try to publish on a tagged build, and a
+# default that uploads is not a default this project wants.
+#
+# ## What an unsigned build costs the person who receives it
+#
+# Stated here because it is the first thing they will hit and the .dmg cannot explain itself:
+#
+#  - macOS quarantines anything downloaded from a browser or copied off a mounted image, and
+#    Gatekeeper refuses to open an unsigned quarantined app on a double-click. The user has to
+#    right-click → Open, or clear the attribute with `xattr -d com.apple.quarantine`.
+#  - A locally built app that never crossed a browser is *not* quarantined and opens normally.
+#  - `safeStorage` — which holds this Mac's TLS private key — is keyed to the bundle identifier, so
+#    an `appId` that changes between builds is an identity that changes with it and a phone that
+#    then refuses the new fingerprint. That is why `appId` is pinned below and must not be edited
+#    casually. See `docs/phase-9-distribution-audit.md` D5.
+
+appId: com.chetan.connectsuite.desktop
+productName: ConnectSuite
+copyright: © 2026 ConnectSuite
+
+directories:
+  output: release
+  buildResources: build
+
+# `dist/` is the compiled output; `entry.js` is the Electron entry point that requires it. Sources
+# and tests are deliberately absent from the package — there is no reason for a user's machine to
+# carry the test suite, and `src/**/*.test.ts` in a shipped app is how a debug seam gets found.
+files:
+  - entry.js
+  - dist/**/*
+  - package.json
+  - '!**/*.map'
+  - '!**/*.test.*'
+  - '!**/*.testkit.*'
+
+asar: true
+
+mac:
+  category: public.app-category.utilities
+  # Both architectures. This project has only ever run on Apple silicon, so the x64 half is
+  # untested — recorded rather than quietly shipped.
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  darkModeSupport: true
+  # The app talks to a phone on the local network and nothing else. `NSLocalNetworkUsageDescription`
+  # is what macOS shows in the permission prompt the first time it does, and an empty prompt is the
+  # sort of thing people deny.
+  extendInfo:
+    NSLocalNetworkUsageDescription: >-
+      ConnectSuite connects to your phone on this network. Nothing leaves your local network and
+      there is no server involved.
+    LSMinimumSystemVersion: '11.0'
+
+  # ---- Signing. Blank on purpose; see the header. ------------------------------------------------
+  #
+  # `identity: null` is what makes this an explicitly *unsigned* build rather than one that picks up
+  # whatever certificate happens to be in the login keychain. That distinction matters: a build
+  # signed by an ad-hoc or unrelated identity is worse than an unsigned one, because it looks
+  # signed and fails differently on somebody else's machine.
+  #
+  # The day there is an account:
+  #   1. `identity: "Developer ID Application: NAME (TEAMID)"`  (or delete the line and let
+  #      electron-builder discover it)
+  #   2. `notarize: true` below, with the credentials in the environment — never in this file
+  #   3. hardenedRuntime is already true and the entitlements file already exists, so nothing else
+  #      changes
+  identity: null
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+  # ---- Notarization. Off, and configured. -------------------------------------------------------
+  #
+  # electron-builder reads APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID from the
+  # environment. They are named here so it is obvious what has to exist, and they are **not** given
+  # values — a credential in a checked-in file is a credential in git history.
+  #
+  #   export APPLE_ID="you@example.com"
+  #   export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"   # appleid.apple.com, not the password
+  #   export APPLE_TEAM_ID="XXXXXXXXXX"
+  #
+  # Then set `notarize: { teamId: "${env.APPLE_TEAM_ID}" }` — or simply `true` — and rebuild.
+  # Notarization uploads the app to Apple. That is an outbound transfer of the whole binary and it
+  # is why this stays false until somebody decides to do it.
+  notarize: false
+
+dmg:
+  # The two-icon layout everybody recognises: the app on the left, /Applications on the right.
+  contents:
+    - x: 140
+      y: 190
+      type: file
+    - x: 400
+      y: 190
+      type: link
+      path: /Applications
+  window:
+    width: 540
+    height: 380
+
+# Never. Not a placeholder — an explicit refusal, on the target that would otherwise upload to a
+# GitHub release on a tagged build.
+publish: null

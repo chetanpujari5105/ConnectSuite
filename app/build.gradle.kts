@@ -28,8 +28,21 @@ android {
         applicationId = "com.chetan.connectsuite"
         minSdk = 29
         targetSdk = 36
+        /*
+         * The version scheme, which is one scheme for two apps. See `docs/versioning.md`.
+         *
+         * `versionName` is the **product** version and must equal `desktop/package.json`'s
+         * `version` — `scripts/check-versions.mjs` fails a commit where they disagree, which they
+         * did until 2026-09-02: this app said 1.0.0 while the Mac said 2.0.0, and nothing in the
+         * repo said which was the version of ConnectSuite.
+         *
+         * `versionCode` is Android's own monotonic integer and is deliberately **not derived** from
+         * the name. Deriving it is the classic trap: any `major*10000 + minor*100 + patch` scheme
+         * breaks the first time a minor or patch reaches 100, and Play refuses a versionCode that
+         * has ever gone down. It is bumped by hand, once per release, and nothing else may read it.
+         */
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = "2.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
