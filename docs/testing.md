@@ -12322,3 +12322,84 @@ some hint appears.
 Nothing in §6 has been seen on a screen. It is written down here as built-and-untested rather than
 as done, because a unit test on `LinkWaitStatus.of` proves the decision and says nothing about
 whether the card draws.
+
+### 8. On hardware, 2026-09-02 13:30 — F2 drawn, F4 and F5 still only in tests
+
+The device returned to the USB bus and the build was installed. Preserved state, as the reinstall
+claim requires:
+
+```
+grants before: 28 granted=true      grants after: 28      diff: (none)
+enabled_notification_listeners  → …/NotificationMirrorService   (1 match, before and after)
+enabled_accessibility_services  → …/ConnectSuiteInputService    (1 match, before and after)
+link-up.sh: OK 1 / OK 2 / OK 3, createTime=-12s208ms
+```
+
+**The control for "the new code is the code running"** — a checksum, not an inference from
+`Success`:
+
+```
+installed  /data/app/~~lLjqqZ…/base.apk   md5 3b82e8609cdc29c8739f504a32736493
+built      app/build/outputs/apk/debug/app-debug.apk   3b82e8609cdc29c8739f504a32736493
+```
+
+Identical. Per this file's own rule that a checksum proves the code is *on the phone* and nothing
+more, the screen was then read.
+
+**A wrong-surface reading first, caught by its own control.** The first `uiautomator dump` returned
+**282 nodes** and contained no `Sync`/`Mirror`/`Mac` tab at all — one sentence from *"the reordered
+tab did not render"*. The dump was of the **notification shade**, pulled down over a perfectly
+healthy app: `topResumedActivity` was `MainActivity` throughout, and the 282 nodes were Samsung's,
+carrying `'airtel'`, `'Battery charging, 78 percent.'` and a screenshot notification. The node count
+passed as a control and was measuring the wrong surface, which is the Files-pane `querySelector`
+failure with a different instrument.
+
+`cmd statusbar collapse`, then re-dump: **71 nodes, `packages: {'com.chetan.connectsuite.debug'}`**
+— one package, which is the control that says the dump is of the app and only the app.
+
+**The Mac tab, tapped by its dumped bounds** — one candidate matched `Mac`, so the target was
+unambiguous rather than remembered:
+
+```
+candidates matching "Mac": 1     bounds (1164,2944)(1255,3004) -> center (1209,2974)
+```
+
+**F2, in document order, collapsed (the default):**
+
+```
+Connected to Chetans-MacBook-Pro      ← the status card, first
+Pair another Mac                      ← secondary, because a Mac IS paired
+Paired Macs / Chetans-MacBook-Pro / Key 3030c8ebcddcd0fb… / Forget
+Advanced                              ← and nothing below it
+```
+
+The ports line is **genuinely absent** from the dump, which is the claim: not styled away, not
+scrolled off — not drawn. Expanded:
+
+```
+Advanced
+Ports 42501, 42502, 42503 · protocol v1
+Available to the Mac: calls, clipboard, contacts, files, mirror, notifications, photos, remote, sms
+Not offered yet: apps, input, mic — 2 not built, 0 awaiting a permission.
+Restart listening
+```
+
+Nothing was deleted; it is one tap away. Both directions of the fold were exercised.
+
+**What this run did NOT see, stated because the screenshot looks like a pass for all of it.** The
+card reads `Connected`, which is the branch *before* both of the states F4 and F5 exist for:
+
+| | Needs | Seen |
+|---|---|---|
+| `Waiting`, no hint | the Mac stopped, < 20 s | no |
+| `Waiting` + network hint | the Mac stopped, ≥ 20 s | no |
+| `Refused` | an **unpaired** Mac attempting a handshake | no |
+
+All three are covered by `LinkWaitStatusTest` and none has been drawn. The `Refused` branch is the
+harder of the two to stage — it wants a second Mac, or this one with its trust entry forgotten —
+and until it is drawn, defect 66's *screen* half rests on a unit test of the decision plus a
+hardware reading of a different branch of the same `when`.
+
+That is the same distinction this file has now made three times in two days: the code is proven, the
+**state** is not, and a card that renders correctly for `Connected` is not evidence that
+`Refused` renders at all.

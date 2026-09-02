@@ -1094,6 +1094,103 @@ damage on the user's own device or nearly recorded a false result.
   difference is a bug away from none. Reachable: distinguish them four ways. Unreachable: do not
   draw it at all.
 
+- **A true sentence about the wrong one of two paths is more durable than a false one, and nothing
+  in review is aimed at it.** A false claim gets deleted on sight by the first person who reads it
+  against the code. An *unqualified true* one survives every reading, because everyone who checks it
+  finds the mechanism it describes and stops there.
+
+  Defect 63 is the worked example, and the way it was filed is part of the lesson. The onboarding
+  security card said *"Devices are paired by confirming a key on both screens, and every connection
+  after that is checked against it."* It was reported — by me — as *"describes a pairing flow this
+  app does not have"*. That was wrong. `PairingRequestDialog` shows an 8-group `displayFingerprint`,
+  `DevicesScreen` shows this device's own `Key …`, `PairingManager.acceptPairing` pins what the peer
+  actually presented, and a person taps **Accept**. **The flow is shipped and works.**
+
+  It is the *Sync* path — v1, Android to Android. What changed underneath the sentence is that v2
+  added a **second** pairing path, to the Mac, with a different trust model: the Mac draws a QR, the
+  phone scans it, the fingerprint is pinned, and nobody confirms anything. Onboarding's subject is
+  now that second path. So the sentence is not a lie about a mechanism — it is a **true statement
+  about the wrong one of two**, four pages before the user meets the other, with nothing telling
+  them which they are reading about.
+
+  **Why this is worse than a false claim, stated as the general rule:** verification of a claim
+  usually asks *does this mechanism exist?* — and for this class the answer is yes, every time,
+  from anyone who looks. The question that catches it is a different one: **which of the things
+  this could be about is it actually about, and is that the one in front of the reader?** Nobody
+  asks that unless they already suspect two paths exist.
+
+  The tell, and it is cheap to look for: **the sentence names no subject.** *"Devices are paired
+  by…"* — which devices, on which path? A claim that would be true of either path, in a product
+  that has two, is unfalsifiable by inspection and wrong half the time in practice. So:
+
+  - **Whenever a product grows a second implementation of something it already had** — a second
+    pairing flow, a second transport, a second storage root — **every existing sentence about the
+    first one becomes ambiguous on the day the second ships**, and none of them will fail a review.
+    The migration is not the risky part; the surviving prose is.
+  - **Name the path in the copy.** The replacement here does: *"Pairing is a code you scan once."*
+    That sentence is false of Sync, which is exactly what makes it checkable.
+  - **Scope the guard to the surface, not the app.** `OnboardingCopy.forbiddenMechanisms` forbids
+    *"a key confirmed on both screens"* **in onboarding copy** and nowhere else, because in
+    `sync-module` it describes something real. A guard that claimed the mechanism did not exist
+    would be repeating the original mistake with more machinery.
+
+  The corollary for defect reports: **a report can be wrong in the direction of being too harsh on
+  the code, and that costs a real finding.** Filed as *"a flow this app does not have"*, the fix is
+  one string. Filed correctly — *"the right sentence about the wrong path"* — it points at every
+  other sentence written before v2 split the path in two, which is where the next one lives.
+
+- **The module with the only user-facing copy in the product was the one module with no test source
+  set. That is a structural gap, not a copy bug.** When a defect survives, ask which *module* could
+  have caught it before asking which *check* was missing — a check cannot be added to a module that
+  has nowhere to put one.
+
+  Defect 65 is the case: onboarding told a new user to enable developer options and run
+  `adb tcpip 5555`, to set up an ADB mirror **deleted a week earlier**, in an app whose first locked
+  architecture decision is *no ADB anywhere*. A stranger's first run walked them into configuring a
+  security-sensitive setting for software that is not in the build.
+
+  It survived for one reason, and it is not that anyone was careless:
+
+  ```
+  sync-module   160 tests      core          100      input-module   44
+  mirror-module  31            desktop       288      app/src/test   DID NOT EXIST
+  ```
+
+  **335 phone tests and 288 Mac tests, and not one of them could see a string in the onboarding
+  flow.** `app/` is the module holding `MainActivity`, `AppNavigation`, `OnboardingScreen` and
+  `LinkRoute` — which is to say **every screen a first-time user meets** — and it had
+  `testImplementation(libs.junit)` sitting in its Gradle file with no `src/test` directory to use
+  it. The dependency was declared; the place to put a test was not.
+
+  **A module contributing zero tests is invisible in a total**, which is why no count ever looked
+  wrong. This file's own summary at the close of Phase 4 read *"the phone's 189 (67 `sync-module` +
+  122 `core`)"* — a sum over two modules of five, written without anyone noticing the other three
+  were missing from it, `app` among them.
+
+  **The generalisation, which is the useful half:** a test suite's coverage is usually discussed as
+  *which behaviours* are covered. The prior question is **which modules are even addressable**, and
+  a module with no test source set does not appear in any coverage report as a gap — it appears as
+  nothing at all. The failure is silent in exactly the way `CLAUDE.md`'s other silent failures are:
+  nothing errors, nothing warns, the suite is green, and the number goes up every phase.
+
+  So, as a check to run rather than a thing to remember: **enumerate the modules, then enumerate the
+  ones with tests, and subtract.** On this project that is one command and it would have returned
+  `app` at any point in the last week —
+
+  ```
+  $ find . -type d -name test -not -path '*/build/*' | cut -d/ -f2 | sort -u
+  core  input-module  mirror-module  sync-module        # app is missing
+  ```
+
+  — and the module it returns is, predictably, the one nearest the user. Modules acquire tests when
+  someone writes a test for a bug; UI modules get fewer bugs *filed* because their defects are read
+  as cosmetic, so they are the last to get a source set and the first to ship prose that lies.
+
+  The fix was not a test. It was a **place to put one**: copy moved out of the composable into
+  `OnboardingCopy.kt` so it could be enumerated, and `app/src/test` created so something could read
+  it. The eight tests came after, and the drift guard exists to stop the copy leaking back into the
+  screen where nothing can reach it.
+
 - **A rule that matters enough to write down is a rule that needs an enforcement point.** Writing
   it in a doc is the start of the job, not the end of it. Ask, in the same sitting: what would have
   stopped this? A hook, a script that does the safe thing, a check in CI, a lint. If the answer is
