@@ -80,6 +80,7 @@ own heading there, and its own row here.
 | **64** | **The boot path has never started anything, and the run that "proved" it could not have.** On the 2026-09-02 restart `LinkBootReceiver` fired and took the `already listening — nothing to do` branch: the notification-listener rebind had started `LinkService` **3.9 s earlier**. `startOrLog` was never reached for `BOOT`, so `foregroundTypesFor(BOOT) = connectedDevice only` — written narrow because `FGS_BOOT_COMPLETED_RESTRICTIONS` may deny `dataSync` — is still unexercised. With the listener enabled the rebind may **always** win, making the BOOT start structurally unreachable on this handset | **open** | source + the boot log, 2026-09-02: `12:41:04.355 [autostart] LISTENER_REBIND … starting LinkService` → `12:41:08.218 [autostart] BOOT: already listening` | see below |
 | **65** | **Two deleted features were still being taught to new users.** Onboarding page 1 offered *"See and control another Android device's screen from here… the target needs debugging enabled once"*, and page 3 was three numbered steps walking a new user through developer options and `adb tcpip 5555`. Both describe the **v1 ADB mirror, deleted 2026-08-26**. `adb tcpip 5555` survived in exactly one place in the repository and it was a sentence shown to users, in an app whose first locked decision is *no ADB anywhere*. `README.md` carried it in three more places | **closed** 2026-09-02 | Found by reading all four pages against the implementation rather than patching the one reported. Copy moved to `OnboardingCopy.kt`; `OnboardingCopyTest` freezes the pre-fix strings as a fixture and is red whenever any returns. The `app/` module had **no test source set at all** before this | `docs/testing.md` → Phase 7 Slice 4 |
 | **66** | **A shipped, logged failure had no route to the screen.** `LinkTls.checkClientTrusted` has logged `Rejected unpaired client …` since Phase 1. The Mac tab rendered *"Listening for your Mac"* for a refused handshake, for a Mac that had not dialled, and for a Mac on a different network — three situations, one sentence, forever. The user is holding the phone; it was the one screen that could say something and did not | **closed** — **F2 proven on hardware 2026-09-02; F4 and F5's own states not yet drawn** | `LinkWaitStatus` (pure, in `core/`) + the accept loop publishing `RefusedConnection`. `LinkWaitStatusTest`, 11 tests, red under 6 mutations. On hardware: the reordered tab renders `Connected to Chetans-MacBook-Pro` → `Pair another Mac` → the paired list → `Advanced` **collapsed**, and expands to the ports line and capability diagnostics. The `Waiting` and `Refused` branches need a stopped Mac and an unpaired one and have been seen only in tests | `docs/testing.md` → Phase 7 Slice 4 |
+| **67** | **The phone's wait clock measured the server's uptime, not the wait.** F4's twenty-second network hint was judged against `listeningSinceMillis`, written once when the accept loops came up — so on any phone listening for more than twenty seconds, which is every phone after the first half minute, the hint appeared the instant its Mac went away. *"Check that your Mac is awake and on the same Wi-Fi"* two seconds after closing a lid is exactly the alarming noise the threshold exists to prevent | **closed** 2026-09-02, **proven on hardware** | Found by looking at the screen, 25 s after stopping the Mac app, on the run staged to watch F4 draw. **Eleven unit tests were green throughout and none could have caught it** — they call `LinkWaitStatus.of` and hand it the field by hand, so they test the decision at a layer the defect does not live in. Fixed by extracting `LinkState.afterSessionEnded`, now 16 tests, red under three mutations including the original bug. Re-measured on hardware: hint absent through t+21s after a drop, shown by t+27s | see below |
 
 ---
 
@@ -1264,3 +1265,119 @@ until the denominator turned out to be zero.
 **Status: built, unit-tested, and not yet seen on hardware.** The device left the USB bus before the
 build could be installed. The install on the phone (13:01, 2026-09-02) carries defects 63 and 65
 only.
+
+---
+
+### 67 — the wait clock measured the server's uptime, not the wait · **closed** 2026-09-02
+
+Found the first time F4 was put on a screen, which is the only reason it was found at all.
+
+The Mac app was stopped and the phone's card sampled every few seconds, expecting the network hint
+to be absent for twenty seconds and then appear. It was present at **t+2s**:
+
+```
+t+  2s  'Listening for your Mac'   hint=Nothing has connected yet. If it stays like this…
+t+  9s  'Listening for your Mac'   hint=…
+t+ 38s  'Listening for your Mac'   hint=…
+```
+
+The log said why:
+
+```
+13:29:56  [server]  Listening on 42501/42502/42503, 1 paired device(s)
+13:45:04  [control] Session with Chetans-MacBook-Pro ended: peer closed the connection
+```
+
+Fifteen minutes apart. `LinkWaitStatus.of` compared `now` against `listeningSinceMillis`, which was
+written **once**, when the accept loops came up, and never again. So the elapsed time it measured was
+the server's uptime. On any phone that had been listening for more than twenty seconds — every phone,
+after the first half minute — the `showNetworkHint = false` branch was **unreachable**, and closing a
+laptop lid produced *"check that your Mac is awake and on the same Wi-Fi"* before the socket had
+finished closing.
+
+**The field name is the bug, stated in one word.** `listeningSince` is a fact about the server;
+`waitingSince` is a fact about the wait. The code, the tests and the reasoning all used the first
+where they meant the second, and nothing in any of the three could see the difference.
+
+#### Eleven passing tests, none of which could have caught it
+
+This is the part worth keeping. `LinkWaitStatusTest` had eleven tests, six mutations, and covered
+both sides of the twenty-second boundary. Every one of them was green while the feature was broken in
+the field, and they were not weak tests — they call the real decision function rather than restating
+it, which is the failure `CLAUDE.md` warns about in `MediaPayloadsTest`.
+
+They were green because **they supply the input the product gets wrong**:
+
+```kotlin
+private fun listening(sinceAgo: Long = 0L, …) = LinkState(
+    …,
+    listeningSinceMillis = t0 - sinceAgo,      // ← the test decides what this means
+)
+```
+
+`of()` was correct the whole time. Given a wait that began three seconds ago it withholds the hint,
+exactly as asserted. **The defect was in the transition that writes the field**, and a pure function
+handed hand-made inputs cannot observe whether anything in the product ever produces them.
+
+So this is a third variety of untestable-by-construction, alongside the two `CLAUDE.md` already
+carries:
+
+| Failure | The test's relationship to the rule |
+|---|---|
+| `MediaPayloadsTest`, first version | restated the rule, so deleting the real one left it green |
+| `showsState` | the rule lived in a renderer no test could reach |
+| **this** | **called the rule correctly, at a layer the defect was not in** |
+
+The third is the least visible, because the test looks exemplary: it names the behaviour, it calls
+the production function, it covers the boundary in both directions, and it goes red under six
+mutations of the decision. None of that touches the write.
+
+**And the first attempt at a fix reproduced the mistake.** Two tests were added asserting that a
+two-second-old wait carries no hint however long the phone has been up — then the actual bug was
+mutated back in, and the suite stayed **green**. Both new tests still supplied the field by hand.
+That mutation run is what forced the real fix.
+
+#### The fix: a named transition, where a test can reach it
+
+`LinkState.afterSessionEnded(peerName, closeReason, nowMillis)` and
+`LinkState.afterListeningStarted(nowMillis)` are now functions on the state, called by `LinkServer`
+and callable by a JVM test. The clock restarts when the **last** client leaves — with a second Mac
+still connected there is no silence to time.
+
+Three mutations, each red on exactly one test, and each was green before the extraction:
+
+```
+the original bug: clock never restarts       RED: the disconnect transition restarts the clock
+clock restarts with a Mac still connected    RED: a second Mac still connected means no wait to time
+listening start no longer clears the refusal RED: starting to listen begins a fresh wait…
+```
+
+16 tests now.
+
+#### Re-measured on hardware, which is where it was found
+
+Mac reconnected, then dropped, sampling the card every ~6 s:
+
+```
+t+  2s  'Listening for your Mac'   hint=absent
+t+  8s  'Listening for your Mac'   hint=absent
+t+ 14s  'Listening for your Mac'   hint=absent
+t+ 21s  'Listening for your Mac'   hint=absent
+t+ 27s  'Listening for your Mac'   hint=SHOWN
+```
+
+**The instrument's own bound, reported rather than elided:** the sample interval is ~6 s, so this run
+establishes the hint is absent through t+21s and present by t+27s. It does **not** establish that it
+fires at exactly 20 s, and nothing here should be read as saying so.
+
+#### The rule
+
+**A pure decision function proves the decision. It proves nothing about whether the product ever
+puts the machine into the state the decision is about.** When a defect is about *when* something
+becomes true rather than *what* is said about it, the test has to reach the transition — and if the
+transition lives somewhere a test cannot go, that is the thing to fix, before writing any more tests
+about the decision.
+
+The tell that this class is present: **every test constructs its input by hand.** That is normal and
+usually fine, and it is exactly what makes the layer confusion invisible — the test's inputs are
+always well-formed, so the question *does anything real produce these?* never comes up.

@@ -127,9 +127,13 @@ sealed interface LinkWaitStatus {
                 return Refused(refusal.fingerprintPrefix, refusal.address)
             }
 
-            val since = state.listeningSinceMillis
-            // A null start time means we are listening and do not know since when. Showing the hint
+            val since = state.waitingSinceMillis
+            // A null start time means we are waiting and do not know since when. Showing the hint
             // would be a guess; withholding it is the reading we actually have.
+            //
+            // `waitingSinceMillis` is the start of *this wait*, not of the server. Defect 67: when
+            // it was the server's start time this whole branch was dead — every phone up for more
+            // than twenty seconds took the hint path the instant its Mac went away.
             val waited = if (since == null) 0L else nowMillis - since
             return Waiting(showNetworkHint = waited >= HINT_AFTER_MS)
         }

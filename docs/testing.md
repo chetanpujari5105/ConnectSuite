@@ -12474,3 +12474,77 @@ The general form is the one this file keeps arriving at from different direction
 succeeding is not a build working, and the check for the second one is to try the thing the user
 will do.** Building a `.dmg` and opening it locally exercises neither the signature nor quarantine —
 the two mechanisms that exist specifically to treat a downloaded file differently from a local one.
+
+---
+
+## Phase 7 · Slice 6 — F4 on a screen, and the defect eleven green tests could not see · 2026-09-02
+
+Asked for F4 to be *seen* rather than trusted, since neither it nor F5 had ever been drawn. Putting
+it on a screen found defect 67 in the first sample.
+
+### 1. The reading that broke it
+
+Mac app stopped, phone's card sampled:
+
+```
+t+  2s  'Listening for your Mac'   hint=Nothing has connected yet. If it stays like this…
+t+ 38s  'Listening for your Mac'   hint=…
+```
+
+The hint is supposed to be absent for twenty seconds. It was there at two. The log gave the cause in
+two lines fifteen minutes apart — `Listening on …` at 13:29:56, `Session … ended` at 13:45:04 — and
+the clock was measuring from the first.
+
+### 2. Why the tests were no help, which is the part worth keeping
+
+`LinkWaitStatusTest` had **eleven tests, green, six mutations, both sides of the boundary covered**,
+over a feature that was broken for every user. They were not weak: they call the real decision
+function rather than restating it, which is the failure this file warns about elsewhere.
+
+They were green because they hand `LinkWaitStatus.of` the very field the product fills in wrongly.
+The decision was always right. The **write** was wrong, and a pure function given hand-made inputs
+cannot see whether anything real produces them.
+
+Third variety of untestable-by-construction, and the least visible of the three:
+
+| Failure | The test's relationship to the rule |
+|---|---|
+| `MediaPayloadsTest` v1 | restated the rule — deleting the real one left it green |
+| `showsState` | the rule lived in a renderer no test could reach |
+| **defect 67** | **called the rule correctly, at a layer the defect was not in** |
+
+**The first fix attempt repeated the mistake.** Two tests were added asserting a fresh wait carries
+no hint however long the phone has been up; the original bug was then mutated back in and the suite
+stayed **green**, because both new tests still supplied the field by hand. Only that mutation run
+forced the real fix — extracting `LinkState.afterSessionEnded` and `afterListeningStarted` so a JVM
+test can reach the transition. Three mutations, each red on exactly one test, all three green before
+the extraction. 16 tests now.
+
+### 3. Re-measured on hardware
+
+Mac reconnected, dropped again, card sampled every ~6 s:
+
+```
+t+  2s  hint=absent      t+ 14s  hint=absent      t+ 27s  hint=SHOWN
+t+  8s  hint=absent      t+ 21s  hint=absent
+```
+
+**The instrument's bound, reported:** sampling is ~6 s, so this establishes *absent through t+21s,
+present by t+27s*. It does **not** establish the hint fires at exactly 20 s and must not be read that
+way.
+
+Every navigation in this run used a target resolved from a `uiautomator` dump with exactly one
+candidate. One tap was **refused** — the regex had dropped the `text=` alternative and matched
+nothing, so `input tap` got no coordinates and errored rather than guessing. The gate working.
+
+### 4. The rule
+
+**A pure decision function proves the decision. It proves nothing about whether the product ever
+puts the machine into the state the decision is about.** When the defect is about *when* something
+becomes true rather than *what* is said about it, the test must reach the transition — and if the
+transition lives where a test cannot go, that is what to fix before writing more tests about the
+decision.
+
+The tell: **every test constructs its input by hand.** Normal, usually fine, and exactly what makes
+the layer confusion invisible — the inputs are always well-formed, so *does anything real produce
+these?* never gets asked.

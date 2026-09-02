@@ -42,12 +42,21 @@ data class LinkState(
     val clients: List<String> = emptyList(),
     val lastError: String? = null,
     /**
-     * When the accept loops came up, so the phone can put a clock on its own silence.
+     * When the **current wait** began — not when the server started.
+     *
+     * The distinction is the whole of defect 67. This was `listeningSinceMillis`, set once when the
+     * accept loops came up, and it made the twenty-second hint fire *instantly* on any phone that
+     * had been listening for longer than twenty seconds — which is every phone, after the first
+     * half minute. Measured on hardware: listening began 13:29:56, the Mac dropped at 13:45:04, and
+     * the "check your Wi-Fi" hint was on screen 2 seconds later.
+     *
+     * So it is reset in two places: when listening starts, and when a session ends. A wait is the
+     * time since there was last a Mac here, and after a disconnect that is *now*.
      *
      * Null means listening with no known start — see `LinkWaitStatus.of`, which withholds the
      * network hint rather than guessing at an elapsed time it does not have.
      */
-    val listeningSinceMillis: Long? = null,
+    val waitingSinceMillis: Long? = null,
     /**
      * The last Mac turned away at the TLS handshake, for F5.
      *
@@ -58,6 +67,45 @@ data class LinkState(
     val lastRefusal: RefusedConnection? = null,
 ) {
     val isConnected: Boolean get() = clients.isNotEmpty()
+
+    /**
+     * The state after the accept loops come up.
+     *
+     * A fresh listen is a fresh wait, and a refusal from the previous session is not an explanation
+     * for this one's silence.
+     */
+    fun afterListeningStarted(nowMillis: Long): LinkState = copy(
+        running = true,
+        lastError = null,
+        waitingSinceMillis = nowMillis,
+        lastRefusal = null,
+    )
+
+    /**
+     * The state after a control session ends — **defect 67 lives here, not in the rendering.**
+     *
+     * This is a named function rather than a `copy()` inside `onSessionEnded` because the bug it
+     * fixes was invisible to eleven passing tests. Those tests call [LinkWaitStatus.of], which
+     * decides what to *say* about a wait; they hand it a `waitingSinceMillis` by hand, and so they
+     * are green whether or not anything in the product ever writes that field correctly. The
+     * decision was right the whole time. **The transition into the state was wrong**, and a pure
+     * function that is never given the product's own inputs cannot see that.
+     *
+     * That is `CLAUDE.md`'s testable-seam rule arriving from a new direction: the usual failure is a
+     * test that restates the rule instead of calling it, and this is a test that calls the rule
+     * correctly at a layer the defect does not live in.
+     *
+     * The clock restarts only when the **last** client leaves. With a second Mac still connected
+     * there is no wait to time.
+     */
+    fun afterSessionEnded(peerName: String, closeReason: String?, nowMillis: Long): LinkState {
+        val remaining = clients.filterNot { it == peerName }
+        return copy(
+            clients = remaining,
+            lastError = closeReason,
+            waitingSinceMillis = if (remaining.isEmpty()) nowMillis else waitingSinceMillis,
+        )
+    }
 }
 
 /**
@@ -259,16 +307,7 @@ class LinkServer(
         acceptJobs += scope.launch { acceptSideChannel(videoSocket!!, "video") { videoChannelSink } }
         acceptJobs += scope.launch { acceptSideChannel(bulkSocket!!, "bulk") { bulkChannelSink } }
 
-        _state.update {
-            it.copy(
-                running = true,
-                lastError = null,
-                listeningSinceMillis = System.currentTimeMillis(),
-                // A fresh listen is a fresh wait: a refusal from the previous session is not an
-                // explanation for this one's silence.
-                lastRefusal = null,
-            )
-        }
+        _state.update { it.afterListeningStarted(System.currentTimeMillis()) }
         LinkLog.i(
             "server",
             "Listening on ${Link.PORT_CONTROL}/${Link.PORT_VIDEO}/${Link.PORT_BULK}, " +
@@ -444,7 +483,11 @@ class LinkServer(
         _state.update { current ->
             val remaining = current.clients.toMutableList()
             remaining.remove(session.peerName)
-            current.copy(clients = remaining, lastError = session.closeReason)
+            current.afterSessionEnded(
+                peerName = session.peerName,
+                closeReason = session.closeReason,
+                nowMillis = System.currentTimeMillis(),
+            )
         }
         // After the bookkeeping, so a feature tearing down here sees a server that already agrees
         // the session is gone. Guarded because a throwing feature must not stop the session from

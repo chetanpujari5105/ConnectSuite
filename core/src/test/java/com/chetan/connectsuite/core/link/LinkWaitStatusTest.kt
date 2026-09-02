@@ -23,7 +23,7 @@ class LinkWaitStatusTest {
     private fun listening(sinceAgo: Long = 0L, refusal: RefusedConnection? = null) = LinkState(
         running = true,
         clients = emptyList(),
-        listeningSinceMillis = t0 - sinceAgo,
+        waitingSinceMillis = t0 - sinceAgo,
         lastRefusal = refusal,
     )
 
@@ -90,11 +90,119 @@ class LinkWaitStatusTest {
     @Test
     fun `an unknown start time withholds the hint rather than guessing`() {
         val status = LinkWaitStatus.of(
-            LinkState(running = true, listeningSinceMillis = null),
+            LinkState(running = true, waitingSinceMillis = null),
             t0,
         )
         assertEquals("Listening for your Mac", status.headline)
         assertNull("no start time is not evidence of a long wait", status.detail)
+    }
+
+    // ---- defect 67: the clock measures the wait, not the server's uptime -----------------------
+
+    @Test
+    fun `the wait clock is about this wait, not about how long the server has been up`() {
+        // Defect 67, and the test the original eleven did not contain. Every one of them supplied
+        // the field as though it were the start of the wait — which is what the *name* said and
+        // not what the product produced. `listeningSinceMillis` was written once, when the accept
+        // loops came up, so after the first twenty seconds of uptime the hint branch was the only
+        // reachable one and the "short wait" case above could never occur in the field.
+        //
+        // Measured on hardware 2026-09-02: listening began 13:29:56, the Mac dropped at 13:45:04,
+        // and the hint was on screen at t+2s. Eleven unit tests were green throughout.
+        //
+        // The distinction this asserts is the one the type cannot: a phone that has been listening
+        // for an hour and lost its Mac two seconds ago is in a SHORT wait.
+        val serverUpForAnHour = 60 * 60 * 1000L
+        val macLeftTwoSecondsAgo = LinkState(
+            running = true,
+            clients = emptyList(),
+            waitingSinceMillis = t0 - 2_000,
+        )
+        assertNull(
+            "a wait that began 2s ago is short, however long the phone has been listening " +
+                "(server up ${serverUpForAnHour}ms)",
+            LinkWaitStatus.of(macLeftTwoSecondsAgo, t0).detail,
+        )
+    }
+
+    @Test
+    fun `the disconnect transition restarts the clock — the layer the defect lived in`() {
+        // The test that actually catches defect 67, and the reason the two above it do not.
+        //
+        // Everything else in this file hands `waitingSinceMillis` to `of()` by hand, so it is green
+        // no matter what the product writes into that field. The bug was in the *write*: the clock
+        // was set once when the accept loops came up and never again, so on a phone listening for
+        // fifteen minutes the hint appeared two seconds after the Mac went away. Deleting the
+        // restart leaves every one of the other twelve tests green; this one goes red.
+        val listeningSinceAnHourAgo = LinkState(
+            running = true,
+            clients = listOf("Chetans-MacBook-Pro"),
+            waitingSinceMillis = t0 - 60 * 60 * 1000,
+        )
+
+        val afterDrop = listeningSinceAnHourAgo.afterSessionEnded(
+            peerName = "Chetans-MacBook-Pro",
+            closeReason = "peer closed the connection",
+            nowMillis = t0,
+        )
+
+        assertEquals("the client is gone", emptyList<String>(), afterDrop.clients)
+        assertEquals("the wait restarts at the disconnect", t0, afterDrop.waitingSinceMillis)
+
+        // And the consequence the user sees, asserted through the real decision rather than
+        // restated: a two-second-old wait carries no hint even after an hour of uptime.
+        assertNull(
+            "an hour of listening must not make a fresh wait look stale",
+            LinkWaitStatus.of(afterDrop, t0 + 2_000).detail,
+        )
+    }
+
+    @Test
+    fun `a second Mac still connected means there is no wait to time`() {
+        val two = LinkState(
+            running = true,
+            clients = listOf("MacA", "MacB"),
+            waitingSinceMillis = t0 - 60 * 60 * 1000,
+        )
+        val afterOneLeaves = two.afterSessionEnded("MacA", null, t0)
+        assertEquals(listOf("MacB"), afterOneLeaves.clients)
+        assertEquals(
+            "with a Mac still here the clock must not move — there is no silence to measure",
+            t0 - 60 * 60 * 1000,
+            afterOneLeaves.waitingSinceMillis,
+        )
+    }
+
+    @Test
+    fun `starting to listen begins a fresh wait and clears a stale refusal`() {
+        val stale = LinkState(
+            running = false,
+            waitingSinceMillis = t0 - 60 * 60 * 1000,
+            lastRefusal = RefusedConnection("ab:cd", null, t0 - 60 * 60 * 1000),
+        )
+        val started = stale.afterListeningStarted(t0)
+        assertTrue(started.running)
+        assertEquals(t0, started.waitingSinceMillis)
+        assertNull("a previous session's refusal does not explain this one's silence",
+            started.lastRefusal)
+    }
+
+    @Test
+    fun `a reconnect and a second disconnect start the clock again`() {
+        // The field is only useful if it is rewritten on every transition into waiting. A version
+        // that reset it on `start()` alone passes the test above and fails this one.
+        val firstWait = LinkState(running = true, waitingSinceMillis = t0 - 10 * 60 * 1000)
+        assertNotNull("a ten-minute wait has the hint", LinkWaitStatus.of(firstWait, t0).detail)
+
+        val reconnected = firstWait.copy(clients = listOf("Chetans-MacBook-Pro"))
+        assertTrue(LinkWaitStatus.of(reconnected, t0) is LinkWaitStatus.Connected)
+
+        // The Mac leaves again: the wait restarts from now, so the hint is gone.
+        val secondWait = reconnected.copy(clients = emptyList(), waitingSinceMillis = t0)
+        assertNull(
+            "the second wait is fresh — the first wait's age must not leak into it",
+            LinkWaitStatus.of(secondWait, t0).detail,
+        )
     }
 
     // ---- F5: the refusal the log has always known about ----------------------------------------
