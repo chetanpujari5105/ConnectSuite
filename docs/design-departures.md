@@ -455,14 +455,16 @@ question for the designer, and it is the only part of state A the build takes a 
 
 ---
 
-## Structural — Settings is two columns against the handoff's three (2026-08-30)
+## Structural — ~~Settings is two columns against the handoff's three~~ **closed 2026-09-04**
 
 Measured in `docs/testing.md`, "Measurement pass, third run", section 5.5. Unlike most rows in this
 file this is not read off the prototype — **the handoff states it in prose**: *"Three columns
 `200px 1fr 320px`. Left: eight panes — General, Connection, Notifications, File transfer, Mirror,
 Security, Advanced, About."*
 
-Measured: design `200px 599px 320px`, build `200px 927px`. The rail carries three of the eight panes.
+~~Measured: design `200px 599px 320px`, build `200px 927px`. The rail carries three of the eight panes.~~
+
+**Built 2026-09-04: `200px 583px 320px`, six panes in the rail.** The 16px difference in the centre column is the gap arithmetic, not a decision. The rows below are kept because the *reasoning* in them is still live — every one of them is either now built or now has a numbered departure of its own.
 
 | Missing | Verdict | Blocked on |
 |---|---|---|
@@ -472,6 +474,50 @@ Measured: design `200px 599px 320px`, build `200px 927px`. The rail carries thre
 | **Mirror** | **already built, elsewhere** — it is the Mirror pane's side panel | a relocation decision, not a gap |
 | **Security** | mostly **cut by X2** — no account means no two-factor and no "Sign out everywhere". Trusted devices is real and lives in Connection | — |
 | the **320px right column** — version, Account, PRO, Manage subscription, Billing history, Help, encryption note | mostly **X2**: subscription and billing do not exist in this product. The real parts (version, the encryption statement) are already our **About** pane | — |
+
+### What the six panes are, and why not eight — rows S13, G1–G7, T1–T3
+
+| Pane | State |
+|---|---|
+| **General** | **built** — Start on login and the appearance segment are real; three rows are cut with a reason each (G1–G4) |
+| **Connection** | built since 2026-08-30 |
+| **Notifications** | **built** — the sound switch, the refusal report, and three rows cut with a reason (G5–G7) |
+| **File transfer** | **built** — every row a value rather than a control, which is the honest shape (T1–T3) |
+| Mirror | **not a pane.** It is the Mirror screen's own side panel and always has been. A second copy in Settings is the second copy that stops matching |
+| Security | **cut by X2.** No account means no two-factor and no "Sign out everywhere"; Trusted devices is real and lives in Connection, beside the thing it is about |
+| **Advanced** | built since 2026-08-30 |
+| **About** | built since 2026-08-30 |
+
+**S13 — the third column arrived with two of its three cards.** The brand-and-version card and the
+encryption note are real. The Account card, the PRO pill, Manage subscription, Billing history and
+Help are X2's cut, and the design's green *"You are up to date"* card became *"Nothing leaves your
+network"*: there is no update server to be up to date with, and the encryption sentence is the half
+this product can actually sign. **This answers the question below in the affirmative** — the 320px
+column is worth drawing without the account block, because two real cards fill it and without it the
+three columns read as two and a floating list.
+
+| # | Design draws | Built instead | Status | Why |
+|---|---|---|---|---|
+| **G1** | **Keep in the menu bar**, a switch | A value: *Always on* | **reshaped** | The tray is created unconditionally at launch and closing the window is what keeps notifications arriving and the clipboard syncing. There is no state to flip. A switch permanently on that cannot be turned off is a control in name only |
+| **G2** | **Appearance** — System / Light / Dark, the first two greyed | The same, unchanged | — | **The one greyed control in this app that is honest**, because the greying is the *designer's* statement — *"Dark is the flagship theme. Light arrives next."* — and not a promise this build is making |
+| **G3** | **Interface sounds** — *"Play a sound on transfers and alerts"* | Cut, tagged **Not yet** | **unbuilt** | Nothing in this app makes a sound except a native notification, and that switch is on the Notifications pane where it belongs. There are no transfer or alert sounds to turn off |
+| **G4** | **Automatic updates** | Cut, tagged **Not yet** | **unbuilt** | There is no update server. Sibling of X2 rather than a new argument |
+| **G5** | **Mirror phone notifications**, a switch | A value: *Follows the grant* | **reshaped** | Mirroring is on whenever the phone's notification-listener grant is, and revoking it is a phone setting. A switch beside a fact is a control that cannot change it |
+| **G6** | **Inline replies**, a switch | A value: *Where the app offers it* | **reshaped** | Whether a reply box exists is the sending app's decision — it is `RemoteInput` on the notification — not a preference |
+| **G7** | **Per-app filters** and **Quiet hours** | Cut, tagged **Not yet** | **unbuilt** | Nothing on the wire carries a per-app rule, and a list held only on this Mac is a filter the phone keeps sending through. macOS already has quiet hours and it applies to these banners like any other; a second schedule would be a rule that silently disagrees with the system's. **The suppression rules that do run are facts about a notification** — group headers, ongoing statuses, replayed backlog — never opinions about an app, and that is deliberate |
+| **T1** | **Save downloads to** — a configurable destination | `~/Downloads/ConnectSuite`, shown and revealable, **not configurable** | **unbuilt** | Configurable means a picker, a persisted path, a security-scoped reference, and an answer for a folder that is renamed, unmounted or on a volume that is not there — with a transfer already in flight. It is a day's work with a real failure surface, not a checkbox. The path is read from `main/downloads.ts`, which is now the **one** place that decides it: it was written out twice, and a third copy on a settings screen is the one that goes stale — a screen showing a folder the app does not use is worse than no screen, because it is what somebody consults when they cannot find their file |
+| **T2** | **Convert HEIC to JPEG** — *Ask* | Cut, tagged **Not yet** | **unbuilt** | Converting means decoding every image on this Mac and handing somebody a file that is not the one on their phone. A decision, not a missing checkbox |
+| **T3** | **Transfer over Wi-Fi only** (in Advanced) | A value: *Always* | **reshaped** | There is nothing else to use. This Mac only ever reaches the phone over the local network or USB — it never leaves the local network at all, so "Wi-Fi only" is not a setting, it is the architecture |
+
+**Reveal in Finder creates the folder first.** `showItemInFolder` on a path that does not exist is a
+silent no-op on macOS — no error, no window — and this folder does not exist until the first
+transfer. A button that does nothing on a fresh install, indistinguishable from a broken one, is the
+silent-no-op shape this project rules out everywhere else.
+
+**Start on login reads the answer back out of macOS.** `setLoginItemSettings` returns `void` and
+there are real conditions in which it does not take — a login item the user disabled in System
+Settings, a translocated bundle. So the switch flips back to what the system reports and says what
+happened, rather than drawing its own intention as a state.
 
 **The question for the designer:** with Security and the account column mostly cut by X2, and Mirror
 already living in the Mirror pane, the design's eight panes reduce to about four for this product —

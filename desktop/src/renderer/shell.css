@@ -1094,14 +1094,74 @@ body {
 }
 
 /* ---- Settings ---------------------------------------------------------------------------------- */
+/*
+ * The handoff states this one in prose rather than only drawing it: *"Three columns
+ * `200px 1fr 320px`. Left: eight panes."* It was `200px 1fr` from 2026-08-30 to 2026-09-04, on the
+ * grounds that the third column is mostly an Account card this product has no equivalent for. Two
+ * of its three cards are real, so the column is here with those two and departures X2 keeps the cut.
+ */
 .settings-grid {
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: 200px minmax(0, 1fr) 320px;
   gap: var(--space-10);
   align-items: start;
 }
 
-.settings-rail { display: flex; flex-direction: column; gap: var(--space-1); }
+.settings-aside { display: flex; flex-direction: column; gap: var(--space-7); }
+
+.settings-brand {
+  padding: var(--space-8);
+  border-radius: var(--radius-panel);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+  text-align: center;
+}
+.settings-brand-glyph { display: block; margin: 0 auto; }
+.settings-brand-name {
+  margin-top: var(--space-5);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-title);
+  color: var(--text-primary);
+}
+.settings-brand-version { font-size: 12px; color: var(--text-body); }
+.settings-brand-line { margin: var(--space-3) 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-body); }
+
+/*
+ * The design's third card is green and says "You are up to date". There is no update server to be
+ * up to date with, so this keeps the half that is true and is the more important half anyway. The
+ * colour is `--live` because it reports a healthy state, which is the role that token has.
+ */
+.settings-assurance {
+  padding: var(--space-7);
+  border-radius: var(--radius-panel);
+  background: rgba(50, 229, 138, 0.06);
+  border: 1px solid rgba(50, 229, 138, 0.18);
+}
+.settings-assurance-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.settings-assurance-glyph { display: flex; color: var(--live); }
+.settings-assurance p { margin: var(--space-3) 0 0; font-size: 12px; line-height: 1.5; color: var(--text-body); }
+
+/* The handoff draws the rail as a card, not as bare text on the ground: `padding:10px`, the
+   elev-2 well, a hairline. Without it the three columns read as two and a floating list. */
+.settings-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border-radius: var(--radius-panel);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+}
 
 .settings-tab {
   display: block;
@@ -1162,6 +1222,76 @@ body {
 .setting-sub { display: block; margin-top: 2px; font-size: 12px; color: var(--text-body); line-height: 1.5; }
 .setting-control { flex: none; display: flex; align-items: center; gap: var(--space-3); }
 .setting-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--text-body); }
+
+/* A path is read, not scanned, so it wraps rather than truncating — the whole point of showing it
+   is that somebody can go and find the folder. */
+.setting-path {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: 11.5px;
+  color: var(--text-meta);
+  overflow-wrap: anywhere;
+}
+/* The handoff's switch: a 42x24 track, an 18px knob at 3px margin, and the accent glow when on. */
+.switch {
+  flex: none;
+  width: 42px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  transition: background 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+.switch.is-on { background: var(--accent); box-shadow: 0 0 18px var(--accent-glow); }
+.switch-knob {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 3px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 160ms var(--ease);
+}
+.switch.is-on .switch-knob { transform: translateX(18px); }
+
+/* A statement above the rows, for a pane whose first fact is not a setting. */
+.setting-note {
+  margin-bottom: var(--space-6);
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-body);
+}
+.setting-note.is-warning {
+  background: var(--warning-fill);
+  border: 1px solid var(--warning-border);
+  color: var(--warning);
+}
+
+/* Drawn exactly as the handoff draws it: System and Light are inert and Dark is selected. This is
+   the one greyed control in the app that is honest, because the greying is the *designer's*
+   statement of intent — "Dark is the flagship theme. Light arrives next." — and not a promise this
+   build is making. */
+.segmented {
+  display: flex;
+  flex: none;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+}
+.segment {
+  height: 30px;
+  line-height: 30px;
+  padding: 0 var(--space-5);
+  font-size: 12px;
+  background: var(--control);
+  color: var(--text-meta);
+}
+.segment.is-on { background: var(--accent-tint-selected); color: var(--text-primary); }
 
 /*
  * The diagnostics block. This is where the old "Connection" debug card's content went — the

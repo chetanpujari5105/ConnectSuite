@@ -111,7 +111,7 @@ class ShellView {
   private toastTimer: number | undefined;
   private readonly navRows = new Map<string, HTMLButtonElement>();
   private readonly commands = new Map<string, () => void>();
-  private readonly settingsPanes = new Map<string, () => HTMLElement>();
+  private readonly settingsPanes = new Map<string, { label: string; build: () => HTMLElement }>();
   private settingsPane = 'connection';
 
   /**
@@ -141,6 +141,10 @@ class ShellView {
 
   private buildBrand(): void {
     $('brand-glyph').replaceChildren(brandGlyph(24));
+    // Settings' third column. Drawn once here rather than in `drawSettings`, because the aside is
+    // static markup outside the pane that gets rebuilt on every tab click.
+    $('settings-brand-glyph').replaceChildren(brandGlyph(56));
+    $('settings-shield').replaceChildren(iconSvg('shield', 16));
     $('device-icon').replaceChildren(iconSvg('phone', 16));
   }
 
@@ -789,27 +793,35 @@ class ShellView {
    * made of controls that talk to the main process.
    */
   addSettingsPane(id: string, label: string, sub: string, build: () => HTMLElement): void {
-    this.settingsPanes.set(id, () => {
-      const wrap = document.createElement('div');
-      const title = document.createElement('h2');
-      title.className = 'settings-title';
-      title.textContent = label;
-      const subtitle = document.createElement('p');
-      subtitle.className = 'settings-sub';
-      subtitle.textContent = sub;
-      wrap.append(title, subtitle, build());
-      return wrap;
+    this.settingsPanes.set(id, {
+      label,
+      build: () => {
+        const wrap = document.createElement('div');
+        const title = document.createElement('h2');
+        title.className = 'settings-title';
+        title.textContent = label;
+        const subtitle = document.createElement('p');
+        subtitle.className = 'settings-sub';
+        subtitle.textContent = sub;
+        wrap.append(title, subtitle, build());
+        return wrap;
+      },
     });
   }
 
   private drawSettings(): void {
     const rail = $('settings-rail');
     rail.replaceChildren();
-    for (const [id] of this.settingsPanes) {
+    // **The rail's label is the pane's own**, not a title-cased id. It was
+    // `id.charAt(0).toUpperCase() + id.slice(1)`, which is right for three panes named after single
+    // words and silently wrong for the fourth: the `transfer` pane is called *File transfer*
+    // everywhere in the design and everywhere in its own heading, and the rail would have called it
+    // *Transfer*. One name, one place.
+    for (const [id, pane] of this.settingsPanes) {
       const tab = document.createElement('button');
       tab.type = 'button';
       tab.className = 'settings-tab';
-      tab.textContent = id.charAt(0).toUpperCase() + id.slice(1);
+      tab.textContent = pane.label;
       tab.setAttribute('aria-current', String(id === this.settingsPane));
       tab.addEventListener('click', () => {
         this.settingsPane = id;
@@ -817,8 +829,8 @@ class ShellView {
       });
       rail.appendChild(tab);
     }
-    const build = this.settingsPanes.get(this.settingsPane);
-    $('settings-body').replaceChildren(build ? build() : document.createElement('div'));
+    const pane = this.settingsPanes.get(this.settingsPane);
+    $('settings-body').replaceChildren(pane ? pane.build() : document.createElement('div'));
   }
 
   /** Redraw the open Settings pane. Called when the data behind it moves. */

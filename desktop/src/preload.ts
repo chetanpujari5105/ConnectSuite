@@ -255,6 +255,23 @@ contextBridge.exposeInMainWorld('connect', {
    * opens whatever a scheme is registered to.
    */
   clipOpen: (text: string): Promise<PhoneResult<null>> => ipcRenderer.invoke('clip-open', text),
+
+  /**
+   * Settings → General and → File transfer.
+   *
+   * `loginItemSet` answers with what macOS **reports afterwards**, not with what was asked for:
+   * `setLoginItemSettings` returns `void` and there are real conditions in which it does not take.
+   * `honoured` is that comparison, made where the answer is, so the pane cannot draw its own
+   * intention as a state.
+   */
+  loginItemGet: (): Promise<PhoneResult<{ openAtLogin: boolean }>> =>
+    ipcRenderer.invoke('login-item-get'),
+  loginItemSet: (on: boolean): Promise<PhoneResult<{ openAtLogin: boolean; honoured: boolean }>> =>
+    ipcRenderer.invoke('login-item-set', on),
+  downloadsFolder: (): Promise<PhoneResult<{ path: string }>> =>
+    ipcRenderer.invoke('downloads-folder'),
+  downloadsReveal: (): Promise<PhoneResult<{ path: string }>> =>
+    ipcRenderer.invoke('downloads-reveal'),
   onClipArrived: (callback: (entry: LocalClipEntry & { applied: boolean }) => void) =>
     ipcRenderer.on('clip-arrived', (_event, entry) => callback(entry)),
   /** The history moved for a reason the renderer did not initiate — a watcher send, or a clear. */

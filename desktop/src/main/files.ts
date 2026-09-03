@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, promises as fsp } from 'node:fs';
-import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { MessageType, type PhoneResult } from '../shared/protocol';
 import type { BulkClient } from './bulk';
+import { downloadsFolder } from './downloads';
 
 // `shared/filesRoots.ts` is a plain script, not a module — it has to be loadable by a `<script>` tag
 // in the CSP-locked renderer, so it has no top-level `export` and a `module.exports` shim instead.
@@ -322,7 +322,7 @@ export class FilesClient {
       };
     }
 
-    const folder = join(homedir(), 'Downloads', 'ConnectSuite');
+    const folder = downloadsFolder();
     await fsp.mkdir(folder, { recursive: true });
     const destination = await freeName(folder, options.name);
 

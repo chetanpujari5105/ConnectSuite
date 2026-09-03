@@ -142,6 +142,12 @@ const ICON_GEOMETRY: Record<string, string> = {
   lock:
     '<rect x="4.5" y="10.4" width="15" height="9.6" rx="2.4"/>' +
     '<path d="M8 10.4V7.6a4 4 0 0 1 8 0v2.8"/>',
+  // The handoff's assurance mark: a shield with a tick. Drawn on Settings' third column and on the
+  // Overview strip, both of which state the same fact about the link. It is in the enumeration
+  // below, which is what stops it becoming another empty ring.
+  shield:
+    '<path d="M12 3l7.5 3v5.4c0 4.4-3 8.2-7.5 9.6-4.5-1.4-7.5-5.2-7.5-9.6V6z"/>' +
+    '<path d="M9 12.2l2.2 2.2 4-4.4"/>',
 
   // ---- Utility marks -----------------------------------------------------------------------
   close: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',

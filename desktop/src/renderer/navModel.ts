@@ -554,6 +554,10 @@ function iconNamesUsedByTheShell(): string[] {
     'close',
     'check',
     'chevron',
+    // Settings' third column and Overview's connection strip. Both draw it directly rather than
+    // through a table, which is exactly the shape that shipped two empty rings — so the name is in
+    // here, where `navModel.test.ts` asserts it resolves.
+    'shield',
   ];
 }
 

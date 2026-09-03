@@ -177,6 +177,23 @@ interface ConnectBridge {
   clipClear(): Promise<
     { ok: true; data: { cleared: number } } | { ok: false; reason?: string; fixHint?: string }
   >;
+  /**
+   * Settings → General and → File transfer.
+   *
+   * `loginItemSet` answers with what macOS reports **afterwards**, and `honoured` is that
+   * comparison. `setLoginItemSettings` returns `void` and there are conditions in which it does not
+   * take, so a toggle drawing its own intention would be a check that does not gate.
+   */
+  loginItemGet(): Promise<
+    { ok: true; data: { openAtLogin: boolean } } | { ok: false; reason?: string }
+  >;
+  loginItemSet(
+    on: boolean,
+  ): Promise<
+    { ok: true; data: { openAtLogin: boolean; honoured: boolean } } | { ok: false; reason?: string }
+  >;
+  downloadsFolder(): Promise<{ ok: true; data: { path: string } } | { ok: false; reason?: string }>;
+  downloadsReveal(): Promise<{ ok: true; data: { path: string } } | { ok: false; reason?: string }>;
   /** Opens an entry that is a web link. The scheme is re-decided in the main process. */
   clipOpen(
     text: string,
@@ -1020,6 +1037,171 @@ function addressControl(
   return wrap;
 }
 
+/**
+ * The version, in one place.
+ *
+ * It is drawn twice — the About row and the third column's brand card — and two literals is the
+ * second one that goes stale. `scripts/check-versions.mjs` already guards `package.json` against the
+ * Android build; this keeps the two on-screen copies from being a third and a fourth number.
+ */
+const APP_VERSION = '2.0.0';
+el('settings-version').textContent = `Version ${APP_VERSION}`;
+
+/**
+ * A row whose control is a checkbox that reports the main process's answer rather than its own.
+ *
+ * `read` runs once at build time and `write` returns what the system says afterwards — the two are
+ * separate because every toggle in this app that matters has a state somebody else owns, and a
+ * checkbox drawing its own `checked` is a check that does not gate. If `write` comes back with a
+ * different value, the box follows the system and `onDisagree` gets to say so.
+ */
+function settingToggle(
+  label: string,
+  sub: string,
+  read: () => Promise<boolean>,
+  write: (on: boolean) => Promise<boolean>,
+  onDisagree?: (asked: boolean, actual: boolean) => void,
+): HTMLElement {
+  // The handoff's switch: a 42x24 track with an 18px knob. A `<button role="switch">` rather than a
+  // styled checkbox, because the design's control has no box to draw and this shape carries the
+  // state in `aria-checked` where a screen reader and `probe.mjs` can both read it.
+  const track = document.createElement('button');
+  track.type = 'button';
+  track.className = 'switch';
+  track.setAttribute('role', 'switch');
+  track.setAttribute('aria-checked', 'false');
+  track.setAttribute('aria-label', label);
+  const knob = document.createElement('span');
+  knob.className = 'switch-knob';
+  knob.setAttribute('aria-hidden', 'true');
+  track.appendChild(knob);
+
+  const paint = (on: boolean) => {
+    track.setAttribute('aria-checked', String(on));
+    track.classList.toggle('is-on', on);
+  };
+  void read().then(paint);
+  track.addEventListener('click', () => {
+    const asked = track.getAttribute('aria-checked') !== 'true';
+    // Painted optimistically and then corrected: the round trip is a few milliseconds and a switch
+    // that waits for it feels broken. What it must not do is *stay* painted on an answer the system
+    // did not give, which is the correction below.
+    paint(asked);
+    void write(asked).then((actual) => {
+      paint(actual);
+      if (actual !== asked) onDisagree?.(asked, actual);
+    });
+  });
+  return settingRow(label, sub, track);
+}
+
+/**
+ * A row for something the design draws and this build does not have, with **which kind** it is.
+ *
+ * The same two words the Mirror pane's limit rows use, and for the same reason: *"Android forbids
+ * this"* and *"nobody has built it"* are different facts, and a person deciding whether to go
+ * looking in Settings needs to know which one they are reading. A greyed control would say neither.
+ */
+function settingLimit(name: string, kind: 'wall' | 'unbuilt', why: string): HTMLElement {
+  const tag = document.createElement('span');
+  tag.className = `limit-tag ${kind}`;
+  tag.textContent = kind === 'wall' ? 'Not possible' : 'Not yet';
+  return settingRow(name, why, tag);
+}
+
+/** A right-aligned value, the design's own row shape for a fact with no control. */
+function settingValue(label: string, sub: string, value: string): HTMLElement {
+  const span = document.createElement('span');
+  span.className = 'setting-value';
+  span.textContent = value;
+  return settingRow(label, sub, span);
+}
+
+/**
+ * Settings → **General**, the handoff's first pane.
+ *
+ * Two of its five rows are real, one is the design's own greyed control, and two are cut with the
+ * reason attached. Departures G1-G4.
+ */
+shell.addSettingsPane(
+  'general',
+  'General',
+  'How ConnectSuite behaves on this Mac.',
+  () => {
+    const body = document.createElement('div');
+
+    body.appendChild(
+      settingToggle(
+        'Start on login',
+        'Open ConnectSuite when you sign in to this Mac. It starts in the menu bar with no window.',
+        async () => {
+          const result = await connect.loginItemGet();
+          return result.ok ? result.data.openAtLogin : false;
+        },
+        async (on) => {
+          const result = await connect.loginItemSet(on);
+          if (!result.ok) return false;
+          if (!result.data.honoured) {
+            // macOS took the call and did not do it. Named rather than swallowed: the usual cause
+            // is a login item the user disabled in System Settings, which no amount of asking again
+            // will change.
+            shell.toast(
+              'macOS did not accept that. Check System Settings → General → Login Items.',
+            );
+          }
+          return result.data.openAtLogin;
+        },
+      ),
+    );
+
+    // A statement, not a toggle: the tray is created unconditionally at launch and closing the
+    // window is what keeps notifications and clipboard sync alive. There is no state to flip, and a
+    // switch that is permanently on and cannot be turned off is a control in name only.
+    body.appendChild(
+      settingValue(
+        'Keep in the menu bar',
+        'Always. Closing the window leaves ConnectSuite running there, which is what keeps ' +
+          'notifications arriving and the clipboard syncing. Quit from the menu bar icon.',
+        'Always on',
+      ),
+    );
+
+    const appearance = document.createElement('span');
+    appearance.className = 'segmented';
+    for (const [name, on] of [['System', false], ['Light', false], ['Dark', true]] as [string, boolean][]) {
+      const seg = document.createElement('span');
+      seg.className = on ? 'segment is-on' : 'segment';
+      seg.textContent = name;
+      appearance.appendChild(seg);
+    }
+    // Drawn exactly as the handoff draws it — System and Light greyed, Dark selected — and this is
+    // the one place in the app where a greyed control is right, because the design itself says
+    // *"Dark is the flagship theme. Light arrives next."* It is a statement of intent by the
+    // designer, not a promise made by this build.
+    body.appendChild(
+      settingRow('Appearance', 'Dark is the only theme this build has. Light is the design’s next one.', appearance),
+    );
+
+    body.appendChild(
+      settingLimit(
+        'Interface sounds',
+        'unbuilt',
+        'Nothing in this app makes a sound except a native notification, and that switch is on the ' +
+          'Notifications pane where it belongs. There are no transfer or alert sounds to turn off.',
+      ),
+    );
+    body.appendChild(
+      settingLimit(
+        'Automatic updates',
+        'unbuilt',
+        'There is no update server. ConnectSuite has no account and talks to nothing but your ' +
+          'phone, so there is nowhere for it to check. Updating means installing a new build.',
+      ),
+    );
+    return body;
+  },
+);
+
 shell.addSettingsPane(
   'connection',
   'Connection',
@@ -1086,6 +1268,173 @@ shell.addSettingsPane(
     const inputs = body.querySelectorAll('input');
     if (inputs[0]) inputs[0].value = savedManual;
     if (inputs[1]) inputs[1].value = savedTailscale;
+    return body;
+  },
+);
+
+/**
+ * Settings → **Notifications**.
+ *
+ * The design's four rows are *Mirror phone notifications*, *Per-app filters*, *Quiet hours* and
+ * *Inline replies*. Two of the four are real here and neither is a toggle: mirroring is on whenever
+ * the phone's listener grant is, and inline reply is on whenever the notification carries a
+ * `RemoteInput`. Both are **facts about a grant**, and a switch beside a fact is a control that
+ * cannot change it. Departures G5-G7.
+ */
+shell.addSettingsPane(
+  'notifications',
+  'Notifications',
+  'What reaches this Mac, and what macOS does with it.',
+  () => {
+    const body = document.createElement('div');
+
+    // The refusal state, first, because it is the one thing that makes everything below moot. It is
+    // **reactive by necessity**: `Notification.isSupported()` returns true on a machine that
+    // refuses every banner, and Electron exposes no way to read macOS authorization. So nothing is
+    // claimed until a post has actually failed, and then this says exactly what macOS said.
+    const state = document.createElement('div');
+    state.className = 'setting-note';
+    state.textContent = 'Checking what macOS has said about notifications…';
+    body.appendChild(state);
+    void connect.notifPermission().then((permission) => {
+      state.className = permission.refused ? 'setting-note is-warning' : 'setting-note';
+      state.textContent = permission.refused
+        ? `${permission.headline ?? 'macOS refused a notification.'} ${permission.body ?? ''}`
+        : 'No banner has been refused by macOS in this session. Nothing is claimed before one is — ' +
+          'there is no way to read the permission itself, so this is a report rather than a check.';
+    });
+
+    body.appendChild(
+      settingToggle(
+        'Play a sound',
+        'Off by default. The phone in your pocket has already made a sound for this notification, ' +
+          'and a second one per message is what makes people uninstall a mirror.',
+        () => connect.notifSoundGet(),
+        (on) => connect.notifSoundSet(on),
+      ),
+    );
+
+    body.appendChild(
+      settingValue(
+        'Mirror phone notifications',
+        'On whenever the phone’s notification-listener grant is. There is no switch here because ' +
+          'there is nothing this Mac could switch — revoking it is a phone setting.',
+        'Follows the grant',
+      ),
+    );
+    body.appendChild(
+      settingValue(
+        'Inline replies',
+        'On for every notification that carries one. Whether a reply box exists is the sending ' +
+          'app’s decision, not a setting.',
+        'Where the app offers it',
+      ),
+    );
+    body.appendChild(
+      settingLimit(
+        'Per-app filters',
+        'unbuilt',
+        'Nothing on the wire carries a per-app rule, and a list held only on this Mac would be a ' +
+          'filter the phone keeps sending through. The suppression rules that do run — group ' +
+          'headers, ongoing statuses, replayed backlog — are facts about a notification rather ' +
+          'than opinions about an app, deliberately.',
+      ),
+    );
+    body.appendChild(
+      settingLimit(
+        'Quiet hours',
+        'unbuilt',
+        'macOS already has one, and it applies to this app’s banners like any other. A second ' +
+          'schedule here would be a rule that silently disagrees with the system’s.',
+      ),
+    );
+    return body;
+  },
+);
+
+/**
+ * Settings → **File transfer**.
+ *
+ * The departures file has carried this pane as *"real; blocked on Phase 5, ships with the
+ * feature"* since 2026-08-30. Phase 5 shipped on 2026-09-01 and the pane did not. Every row is a
+ * value rather than a control, and that is the honest shape: the destination is fixed, the naming
+ * rule is fixed, and there is no conversion. Departures T1-T3.
+ */
+shell.addSettingsPane(
+  'transfer',
+  'File transfer',
+  'Where files land, and what they are called when they get there.',
+  () => {
+    const body = document.createElement('div');
+
+    const reveal = document.createElement('button');
+    reveal.type = 'button';
+    reveal.textContent = 'Reveal in Finder';
+    reveal.addEventListener('click', () => {
+      void connect.downloadsReveal().then((result) => {
+        if (result.ok) shell.toast(`Opened ${result.data.path}`);
+      });
+    });
+    const macRow = settingRow(
+      'Save downloads to',
+      'Where phone files land on this Mac. Not configurable — see the note below.',
+      reveal,
+    );
+    // The path is read from the main process rather than written here, because it is written in
+    // exactly one place (`main/downloads.ts`) and a settings screen showing a folder the app does
+    // not use is worse than no settings screen: it is the screen somebody consults when they cannot
+    // find their file.
+    const path = document.createElement('span');
+    path.className = 'setting-path mono';
+    path.textContent = 'reading…';
+    void connect.downloadsFolder().then((result) => {
+      if (result.ok) path.textContent = result.data.path;
+    });
+    macRow.querySelector('.setting-row-text')?.appendChild(path);
+    body.appendChild(macRow);
+
+    body.appendChild(
+      settingValue(
+        'Send to the phone',
+        'Where files pushed from this Mac arrive. This folder needs no permission of any kind on ' +
+          'the phone — it is the one destination that works on a phone that has shared nothing.',
+        'Download/ConnectSuite',
+      ),
+    );
+    body.appendChild(
+      settingValue(
+        'Duplicate handling',
+        'A name that already exists gets a numbered suffix. Nothing is ever overwritten in either ' +
+          'direction without being asked, and a push over an existing name is refused rather than ' +
+          'silently replacing it.',
+        'Keep both',
+      ),
+    );
+    body.appendChild(
+      settingValue(
+        'Keep original filenames',
+        'The phone’s name is used as-is, apart from the suffix above.',
+        'On',
+      ),
+    );
+    body.appendChild(
+      settingLimit(
+        'Convert HEIC to JPEG',
+        'unbuilt',
+        'Photos arrive exactly as the phone stored them. Converting would mean decoding every ' +
+          'image on this Mac and handing you a file that is not the one on your phone, so it is a ' +
+          'decision rather than a missing checkbox.',
+      ),
+    );
+    body.appendChild(
+      settingValue(
+        'Transfer over Wi-Fi only',
+        'There is nothing else to use. This Mac only ever talks to the phone over your own ' +
+          'network or a USB link — never over mobile data, because it never leaves the local ' +
+          'network at all.',
+        'Always',
+      ),
+    );
     return body;
   },
 );
@@ -1170,7 +1519,7 @@ shell.addSettingsPane(
     const body = document.createElement('div');
     const version = document.createElement('span');
     version.className = 'setting-value';
-    version.textContent = '2.0.0';
+    version.textContent = APP_VERSION;
     body.appendChild(settingRow('Version', 'The Electron app in desktop/.', version));
 
     /*

@@ -10,6 +10,7 @@ import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
 import { ClipboardWatcher } from './clipboardWatcher';
+import { downloadsFolder } from './downloads';
 // The one home for "is this clipboard entry something we may hand to the operating system".
 // The pane requires the same module to decide whether to draw the button; see clipLink.ts.
 const { openableUrl } = require('../shared/clipLink') as {
@@ -1061,6 +1062,50 @@ ipcMain.handle('clip-set-watching', (_event, on: boolean) => {
 ipcMain.handle('clip-request', () => clip.request());
 ipcMain.handle('clip-history', () => ({ ok: true, data: clip.entries() }));
 ipcMain.handle('clip-phone-history', (_event, limit?: number) => clip.phoneHistory(limit));
+/**
+ * Settings → General: **Start on login**.
+ *
+ * Both handlers read the answer back out of macOS rather than reporting what was asked for.
+ * `setLoginItemSettings` cannot fail loudly — it returns `void` — and there are real conditions in
+ * which it does not take: a translocated bundle, a login item the user has disabled in System
+ * Settings → General → Login Items, a sandboxed build. A toggle that draws its own intention is a
+ * check that does not gate, so this one flips back if the system disagrees and the pane says so.
+ *
+ * `openAtLogin` is the only field read. `wasOpenedAtLogin` and friends describe *this* launch and
+ * would be a different question.
+ */
+ipcMain.handle('login-item-get', () => ({
+  ok: true,
+  data: { openAtLogin: app.getLoginItemSettings().openAtLogin },
+}));
+ipcMain.handle('login-item-set', (_event, on: boolean) => {
+  app.setLoginItemSettings({ openAtLogin: on, openAsHidden: true });
+  const actual = app.getLoginItemSettings().openAtLogin;
+  if (actual !== on) {
+    log.warn('app', `Start on login was set to ${on} and macOS reports ${actual}`);
+  } else {
+    log.info('app', `Start on login: ${actual}`);
+  }
+  return { ok: true, data: { openAtLogin: actual, honoured: actual === on } };
+});
+
+/** Settings → File transfer: the real destination, from the one place that owns it. */
+ipcMain.handle('downloads-folder', () => ({ ok: true, data: { path: downloadsFolder() } }));
+/**
+ * Reveal that folder in Finder, creating it first.
+ *
+ * `showItemInFolder` on a path that does not exist is a **silent no-op** on macOS — no error, no
+ * window, nothing to report — and this folder does not exist until the first transfer. A button
+ * that does nothing on a fresh install, with no way to tell that from a broken button, is the
+ * silent-no-op shape this project rules out everywhere else.
+ */
+ipcMain.handle('downloads-reveal', async () => {
+  const folder = downloadsFolder();
+  await fsp.mkdir(folder, { recursive: true });
+  shell.showItemInFolder(folder);
+  return { ok: true, data: { path: folder } };
+});
+
 ipcMain.handle('clip-clear', () => {
   const had = clip.clearHistory();
   activity.record('clipboard', 'History cleared', `${had} entr${had === 1 ? 'y' : 'ies'} removed from this Mac`);

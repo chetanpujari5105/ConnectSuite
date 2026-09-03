@@ -1,6 +1,6 @@
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promises as fs } from 'node:fs';
+import { downloadsFolder } from './downloads';
 import {
   MessageType,
   type MediaBucket,
@@ -206,7 +206,7 @@ export class PhotosClient {
       } as PhoneResult<{ path: string; bytes: number; elapsedMs: number }>;
     }
 
-    const folder = join(homedir(), 'Downloads', 'ConnectSuite');
+    const folder = downloadsFolder();
     await fs.mkdir(folder, { recursive: true });
     const destination = await freeName(folder, ticket.data.name);
 

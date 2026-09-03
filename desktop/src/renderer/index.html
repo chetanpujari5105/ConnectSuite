@@ -624,9 +624,13 @@
 
             <!-- ============================== Settings ==================================== -->
             <!--
-              Three columns in the handoff; two here, because the right-hand column is an About
-              card, an Account card and an update card, and two of those three describe a product
-              with accounts and an update server. See departures X2.
+              The handoff's three columns, `200px 1fr 320px` — built 2026-09-04, having been two
+              since 2026-08-30.
+
+              The third column is **two of the design's three cards**. The brand-and-version card is
+              real and the encryption note is real; the Account card, its PRO pill, Manage
+              subscription and Billing history describe a product with accounts, and this one has
+              none. Departures X2 records that cut; S13 records the column arriving without it.
 
               Advanced is where the old "Connection" debug card's content now lives. The design has
               a mono diagnostics block there and the handoff names its four lines — link, codec,
@@ -636,6 +640,30 @@
               <div class="settings-grid">
                 <nav class="settings-rail" id="settings-rail" aria-label="Settings sections"></nav>
                 <div class="settings-body" id="settings-body"></div>
+                <aside class="settings-aside">
+                  <section class="settings-brand">
+                    <span class="settings-brand-glyph" id="settings-brand-glyph" aria-hidden="true"></span>
+                    <div class="settings-brand-name">ConnectSuite</div>
+                    <div class="settings-brand-version mono" id="settings-version">—</div>
+                    <p class="settings-brand-line">Your phone essentials, on your Mac.</p>
+                  </section>
+                  <!--
+                    The design's green "You are up to date" card, with the half of it that is true.
+                    There is no update server to be up to date with; the encryption sentence is the
+                    part this product can actually sign, and it is the more important half.
+                  -->
+                  <section class="settings-assurance">
+                    <div class="settings-assurance-head">
+                      <span class="settings-assurance-glyph" id="settings-shield" aria-hidden="true"></span>
+                      <span>Nothing leaves your network</span>
+                    </div>
+                    <p>
+                      The Mac talks to the phone over TLS 1.3 on your own network and to nothing
+                      else. There is no account, no telemetry and no relay server, so there is
+                      nowhere for anything to be stored.
+                    </p>
+                  </section>
+                </aside>
               </div>
             </section>
           </div>
