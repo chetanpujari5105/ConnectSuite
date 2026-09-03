@@ -109,3 +109,53 @@ export function notifyCopy(n: PhoneNotification): { title: string; body: string 
   const body = [bodyParts.join(' — '), from].filter((p) => p.length > 0).join('\n');
   return { title, body: body || n.appName };
 }
+
+
+/**
+ * What to tell someone whose notifications macOS refused — and **the two cases need different
+ * sentences, because only one of them has a switch.**
+ *
+ * ### The defect this replaces
+ *
+ * The first version said *"Turn them on in System Settings → Notifications, under Electron"* in
+ * every case. On an unpackaged run **there is no such row**: not switched off, absent. Sending
+ * someone to a Setting that does not exist is worse than saying nothing — it is the
+ * `fixHint`-pointing-at-a-nonexistent-Setting failure that `PHONE_NOT_FOCUSED` got its own error
+ * code to avoid.
+ *
+ * ### Why the row is absent, measured
+ *
+ * macOS lists an app under Notifications only once it has registered as a notification client, and
+ * it will not register a bundle whose identity it cannot verify. A dev run is `linker-signed` with
+ * `Info.plist=not bound` and `Sealed Resources=none`, so the `CFBundleIdentifier` in its Info.plist
+ * is not covered by the signature and the code-signing identifier falls back to a bare `Electron`.
+ * The request is refused *before* any registration happens: no prompt, no record, no row.
+ *
+ * The packaged build is **also ad-hoc**, and it works — `Info.plist entries=33`,
+ * `Sealed Resources version=2`, `Identifier=com.chetan.connectsuite.desktop`. So the discriminator
+ * is the **seal**, not ad-hoc-versus-Developer-ID. `docs/testing.md` → Phase 7 Slice 13.
+ */
+export function refusalCopy(refused: { packaged: boolean }): {
+  headline: string;
+  body: string;
+  /** True only where a Setting genuinely exists to change. */
+  actionable: boolean;
+} {
+  if (refused.packaged) {
+    return {
+      headline: 'macOS is not showing these notifications',
+      body: 'Open System Settings \u2192 Notifications, find ConnectSuite, and turn on Allow Notifications.',
+      actionable: true,
+    };
+  }
+  return {
+    headline: 'Notifications cannot work in this development build',
+    // No instruction, because there is no action. Saying "check System Settings" here would send
+    // someone looking for a row that macOS never created.
+    body:
+      'macOS only registers an app for notifications once its bundle is sealed, and a development ' +
+      'run is not \u2014 so there is no ConnectSuite entry in System Settings to switch on. ' +
+      'Everything else on this screen works normally. Run a packaged build to see banners.',
+    actionable: false,
+  };
+}

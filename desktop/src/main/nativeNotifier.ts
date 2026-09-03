@@ -4,6 +4,7 @@ import {
   type NotifyDecisionValue,
   notifyCopy,
   notifyDecision,
+  refusalCopy,
 } from '../shared/nativeNotify';
 import type { PhoneNotification } from '../shared/protocol';
 import { log } from './logger';
@@ -109,16 +110,26 @@ export class NativeNotifier {
     if (this.unseen.delete(key)) this.refreshBadge();
   }
 
-  /** What the pane needs to draw the degraded banner, and nothing more. */
-  permissionState(): { refused: boolean; message: string | null; bundleName: string } {
-    return {
-      refused: this.refusal !== null,
-      message: this.refusal?.message ?? null,
-      // Named honestly: a dev run and the ad-hoc signed .dmg alike post as `Electron`
-      // (Phase 9, D12), so telling anyone to look for "ConnectSuite" in System Settings would
-      // send them to a row that does not exist.
-      bundleName: app.isPackaged ? 'ConnectSuite' : 'Electron',
-    };
+  /**
+   * What the pane needs to draw the degraded banner, and nothing more.
+   *
+   * The copy is chosen by {@link refusalCopy} on **whether this build is packaged**, because that is
+   * the thing that decides whether a Setting exists at all. An unpackaged run is refused before
+   * macOS ever registers it, so no row is created and there is nothing to switch on — and the first
+   * version of this told people to go and find one.
+   */
+  permissionState(): {
+    refused: boolean;
+    headline: string | null;
+    body: string | null;
+    actionable: boolean;
+    message: string | null;
+  } {
+    if (!this.refusal) {
+      return { refused: false, headline: null, body: null, actionable: false, message: null };
+    }
+    const copy = refusalCopy({ packaged: app.isPackaged });
+    return { refused: true, ...copy, message: this.refusal.message };
   }
 
   /**
@@ -166,11 +177,12 @@ export class NativeNotifier {
       const message = String(error ?? 'unknown');
       if (!this.refusal) {
         this.refusal = { message, atMs: Date.now() };
+        const copy = refusalCopy({ packaged: app.isPackaged });
         log.warn(
           'native-notif',
           `macOS refused a notification — ${message}. ` +
             `Everything since launch: ${this.tallyLine()}. ` +
-            `The switch is under "${this.permissionState().bundleName}" in System Settings → Notifications.`,
+            `${copy.headline}: ${copy.body}`,
         );
       }
     });

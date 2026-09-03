@@ -21,7 +21,7 @@ that one. So every question below was open.
 | `notification.show()` return | **0–3 ms**, always. Fire-and-forget. **It is not a delivery signal** |
 | A refusal | **observable** — the `failed` event fires with `UNErrorDomain error 1` (`notificationsNotAllowed`) |
 | Reading authorization *in advance* | **no API.** Electron exposes no `getNotificationSettings` equivalent on macOS |
-| A dev run's identity | **`com.github.Electron`** — shared with every other Electron dev app on this machine |
+| A dev run's identity | ~~`com.github.Electron`~~ — **wrong, corrected 2026-09-03.** That is what `Info.plist` *declares*; the signature **does not bind Info.plist**, so it is not the identity macOS uses. The code-signing identifier is a bare **`Electron`** |
 
 **The control failed twice before any of this counted**, which is the reason it is trustworthy now.
 A first probe run from the scratch directory got `failed` — and a scratch app with no registered
@@ -197,3 +197,34 @@ otherwise.
   Phase 4, but a reply action needs its own hardware pass against the `seenTitle` target rule. The
   click opens the pane where reply already works.
 - **No claim about a machine whose authorization state was never established.** §0 is explicit.
+
+
+---
+
+## 7 · Correction, 2026-09-03 — there was no switch, and §5 sent people to look for one
+
+**Reported by the user against §5's own sentence.** The banner said *"Turn them on in System Settings
+→ Notifications, under 'Electron'"*. **There is no Electron row in that list** — not off, absent —
+so the copy sent someone hunting for a control that macOS never created. That is the
+`fixHint`-pointing-at-a-nonexistent-Setting failure, and §5 above is where it was written.
+
+**The mechanism, which §0 had half of and drew the wrong conclusion from.** macOS lists an app under
+Notifications only after it registers as a notification client, and it will not register a bundle
+whose identity it cannot verify. A dev run is `linker-signed` with `Info.plist=not bound` and
+`Sealed Resources=none`; the refusal happens *before* registration, so there is no prompt, no record
+and no row.
+
+**The discriminator was the packaged build, and it settles the question §0 left open.** The packaged
+app is **also ad-hoc** — and it posts successfully, with `Info.plist entries=33`,
+`Sealed Resources version=2` and `Identifier=com.chetan.connectsuite.desktop`. So what was missing
+was never an Apple account; it was **the seal**. Control: 3 refusals from dev runs in the same log
+file, 0 after the packaged app started, over 2 successful posts.
+
+**Two defects came out of it** — **81**, the copy, now chosen by `refusalCopy({ packaged })`; and
+**82**, which is the larger one: the packaged app **could not launch at all**, because
+`hardenedRuntime: true` enforces library validation and two ad-hoc signatures have no matching Team
+ID. Fixed with one entitlement, $0. `docs/testing.md` → Phase 7 Slice 13.
+
+**And the operational consequence, which changes how this is tested:** native notification *delivery*
+is untestable from `npm start`, permanently. The decision layer is not — the `→ notify / → replay /
+→ ongoing` lines are written before the post — so only the last step needs a packaged build.

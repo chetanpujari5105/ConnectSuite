@@ -46,7 +46,13 @@ interface ConnectBridge {
   /** Renders an already-armed QR payload. Does not arm a new one — that would rotate the token. */
   pairingQrRender(payload: string): Promise<string | null>;
   onRevealNotification(callback: (key: string) => void): void;
-  notifPermission(): Promise<{ refused: boolean; message: string | null; bundleName: string }>;
+  notifPermission(): Promise<{
+    refused: boolean;
+    headline: string | null;
+    body: string | null;
+    actionable: boolean;
+    message: string | null;
+  }>;
   notifSoundGet(): Promise<boolean>;
   notifSoundSet(on: boolean): Promise<boolean>;
   status(): Promise<RendererStatus | null>;
@@ -549,17 +555,15 @@ async function refreshNotifPermission(): Promise<void> {
     return;
   }
   banner.replaceChildren();
+  const head = document.createElement('p');
+  head.style.margin = '0 0 4px';
+  const strong = document.createElement('strong');
+  strong.textContent = state.headline ?? '';
+  head.appendChild(strong);
   const line = document.createElement('p');
   line.style.margin = '0';
-  const strong = document.createElement('strong');
-  strong.textContent = 'macOS is not showing these notifications.';
-  line.append(strong, document.createTextNode(' '));
-  line.append(
-    document.createTextNode(
-      `Turn them on in System Settings \u2192 Notifications, under \u201c${state.bundleName}\u201d.`,
-    ),
-  );
-  banner.appendChild(line);
+  line.textContent = state.body ?? '';
+  banner.append(head, line);
   if (state.message) {
     const detail = document.createElement('code');
     // macOS's own sentence, verbatim. Paraphrasing a platform's failure text is what defect 57 was.

@@ -175,8 +175,13 @@ contextBridge.exposeInMainWorld('connect', {
   onRevealNotification: (callback: (key: string) => void) =>
     ipcRenderer.on('reveal-notification', (_event, payload) => callback(payload?.key)),
   /** Whether macOS has refused a notification. Reactive — nothing is claimed before a failure. */
-  notifPermission: (): Promise<{ refused: boolean; message: string | null; bundleName: string }> =>
-    ipcRenderer.invoke('notif-permission'),
+  notifPermission: (): Promise<{
+    refused: boolean;
+    headline: string | null;
+    body: string | null;
+    actionable: boolean;
+    message: string | null;
+  }> => ipcRenderer.invoke('notif-permission'),
   notifSoundGet: (): Promise<boolean> => ipcRenderer.invoke('notif-sound-get'),
   notifSoundSet: (on: boolean): Promise<boolean> => ipcRenderer.invoke('notif-sound-set', on),
 

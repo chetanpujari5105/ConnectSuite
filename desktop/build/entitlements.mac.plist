@@ -23,6 +23,24 @@
     - network.server. The Mac never listens; the phone binds every socket. Asking for an
       entitlement this app does not use is the permission equivalent of a greyed control that will
       never light up.
+
+  ## cs.disable-library-validation — added 2026-09-03, and it is load-bearing TODAY
+
+  Without it **the packaged app does not launch at all**, measured:
+
+      dyld: Library not loaded: @rpath/Electron Framework.framework/Electron Framework
+      Reason: ... mapping process and mapped file (non-platform) have different Team IDs
+
+  `hardenedRuntime: true` turns on library validation, which requires every loaded library to carry
+  the *same* Team ID as the process. An ad-hoc signature has **no** Team ID — `TeamIdentifier=not
+  set` on both the app and `Electron Framework.framework` — and macOS does not treat two absent team
+  IDs as a match. So the inside-out ad-hoc signing that fixed D12's "unassessable" verdict produced
+  a bundle that verifies deep, assesses as `rejected` rather than erroring, and cannot be run.
+
+  **The day there is a Developer ID this entitlement should be deleted**, not kept: with a real
+  identity every nested component shares one Team ID, library validation passes on its own, and this
+  line then only weakens a protection that would otherwise be working. It is here for the ad-hoc
+  case and its removal belongs in the same change that fills in `identity:`.
 -->
 <plist version="1.0">
 <dict>
@@ -31,6 +49,9 @@
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
   <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+  <!-- Required while the build is ad-hoc signed. See the header; delete it when signing for real. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
   <true/>
   <key>com.apple.security.network.client</key>
   <true/>

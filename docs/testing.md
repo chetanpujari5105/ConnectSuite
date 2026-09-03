@@ -14020,3 +14020,127 @@ tag; a denominator read off an unscoped grep is the ninth row of this file's own
 which is where `grep -c` has been since Phase 3.
 
 Suite: Mac **348**, 0 failures; `tsc` 0; five hooks green.
+
+---
+
+## Phase 7 · Slice 13 — why there was no switch to flip: defects 81 and 82 · 2026-09-03
+
+**Reported by the user against a sentence this session wrote.** The degraded banner said *"Turn them
+on in System Settings → Notifications, under 'Electron'"*. There is no **Electron** row in that
+list — not off, **absent** — searched, with the control that the list shows duplicate entries for
+other apps and so is not collapsing them.
+
+That is the `fixHint`-pointing-at-a-nonexistent-Setting failure, which is why `PHONE_NOT_FOCUSED`
+has its own error code. **Diagnosed before the copy was touched.**
+
+### Defect 81 — the banner named a Setting that does not exist
+
+#### 1. The mechanism, with the reading
+
+macOS lists an app under Notifications only once it has **registered as a notification client**, and
+it will not register a bundle whose identity it cannot verify. The refusal happens *before* any
+registration, so no prompt is shown, no record is created, and no row appears.
+
+The reading that shows why, and it corrects a claim this session made two slices ago:
+
+```
+dev Electron.app                         Chrome (control, a known-working notifier)
+  Identifier   = Electron                  Identifier   = com.google.Chrome
+  Info.plist   = not bound                 Info.plist   = entries=44
+  Sealed Res.  = none                      Sealed Res.  = version=2 rules=13 files=63
+  _CodeSignature: absent                   _CodeSignature: present
+```
+
+**Slice 11 said the dev run "posts as `com.github.Electron`". That was wrong.** `com.github.Electron`
+is what `Info.plist` *declares* — and the signature **does not bind Info.plist**, so it is not the
+identity macOS uses. The code-signing identifier is a bare `Electron`, from the linker's minimal
+ad-hoc seal. Reading a bundle id out of a plist and calling it the app's identity is the same
+mistake as reading a row's presence and calling it a grant.
+
+#### 2. The discriminator: unsealed bundle, not "no bundle identity"
+
+The user asked for the packaged build as the test, and it settles it — **the packaged app is also
+ad-hoc and it works**:
+
+```
+packaged ConnectSuite.app
+  Identifier  = com.chetan.connectsuite.desktop
+  Signature   = adhoc                 ← still ad-hoc!
+  Info.plist  = entries=33            ← bound
+  Sealed Res. = version=2 rules=13 files=10
+  codesign --verify --deep --strict → VERIFIES
+```
+
+Posting a real notification from the phone to each build:
+
+| Build | Result |
+|---|---|
+| dev (`electron .`) | `→ notify` then **`macOS refused … UNErrorDomain error 1`**, within 5 ms |
+| packaged | `→ notify`, and **no `failed` line at all** |
+
+**The absence is controlled:** the same log file contains **3** refusals from the dev runs, so the
+query can see them; after the packaged app started there are **0**, over **2** successful posts.
+
+So the discriminator is **the seal, not ad-hoc-versus-Developer-ID**. An Apple account is not what
+was missing.
+
+### Defect 82 — the packaged app could not launch, and had never been run
+
+The first packaged run did not start at all:
+
+```
+dyld: Library not loaded: @rpath/Electron Framework.framework/Electron Framework
+Reason: ... code signature not valid for use in process:
+        mapping process and mapped file (non-platform) have different Team IDs
+```
+
+`hardenedRuntime: true` turns on **library validation**, which requires every loaded library to
+carry the same Team ID as the process. An ad-hoc signature has none — `TeamIdentifier=not set` on
+both the app and the framework — and macOS does not treat two absent team IDs as a match.
+
+So D12's inside-out ad-hoc signing fixed *assessability* and produced a bundle that verifies deep,
+assesses as `rejected` rather than erroring, and **cannot be run**. Nobody had noticed, because
+nobody had launched it: Phase 9 measured the signature and the Gatekeeper verdict, which are
+statements about the file, and never the one thing a user does with it. *A build succeeding is not a
+build working* — this file's own sentence, from Phase 9 Slice 2, arriving by a second route.
+
+**The fix is $0 and needs no account:** `com.apple.security.cs.disable-library-validation`.
+Measured after: `LAUNCHED`, then connected to the phone, then posted notifications with no refusal.
+The entitlement is documented as load-bearing **only while ad-hoc** — a real Developer ID gives every
+component one Team ID and the line should be deleted in the same change that fills in `identity:`.
+
+#### 4. The corrected copy
+
+Chosen by `refusalCopy({ packaged })` in `src/shared/`, because **whether a Setting exists is decided
+by whether the bundle is sealed**:
+
+| Build | What it says |
+|---|---|
+| packaged | *"Open System Settings → Notifications, find ConnectSuite, and turn on Allow Notifications."* — `actionable: true` |
+| dev | *"Notifications cannot work in this development build… there is no ConnectSuite entry in System Settings to switch on. Everything else on this screen works normally. Run a packaged build to see banners."* — `actionable: false`, **and no instruction, because there is no action** |
+
+Verified on screen through `probe.mjs` against the dev run:
+
+```
+corrected banner → {"visible":true,
+                    "namesElectronSwitch":false,
+                    "tellsYouToFindConnectSuite":false, …}       [control=1]
+```
+
+5 tests, including one that asserts the dev copy can never name an Electron switch again, and one
+that asserts it still says what *does* work — a dead end with no next step is the silent no-op this
+project rules out.
+
+#### 5. The consequence for how this gets tested from here
+
+**Native notifications are untestable from `npm start`, permanently, and not because of a
+preference.** A dev run is refused before registration and no amount of clicking in System Settings
+can change it, because there is nothing there to click. Anything touching the banner, the click, the
+badge or the sound has to be exercised on a packaged build — `npm run dist:dir`, then
+`open release/mac-arm64/ConnectSuite.app`.
+
+Everything *else* in the app remains testable in dev, including the whole decision layer: the
+`→ notify / → replay / → ongoing` lines are written before the post, so the filter can be verified
+from `npm start` and only the delivery cannot.
+
+Suite: Mac **353**, 0 failures; `tsc` 0; five hooks green.
