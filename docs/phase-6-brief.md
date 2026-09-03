@@ -241,6 +241,38 @@ not.
 whitelist, so it is reversible in one command and does not change the phone's real posture. **This is
 the cheapest approximation of H1** and should be run before asking for H1 at all.
 
+## 2a. What is left, sorted by what it needs — 2026-09-03
+
+Written after H1, defect 64's close and defect 80's wiring, because §2's ordering was made before any
+of them ran.
+
+### Needs nothing but a keyboard — no device state changed, no permission, no waiting
+
+| | |
+|---|---|
+| **77** | `BOOT` and `QUICKBOOT` share one reason name, so a `BOOT:` line cannot be told from an unprotected broadcast. Two enum values and a log string |
+| **52, 53, 51** | Counter and logging defects: one `dropped` counter for three causes in `VideoChannel` and a third that never reaches it; two of the Mac's four call refusals move a counter without leaving a line; the after-send retry reports a loss it does not suffer. All three are the denominator rule, unfixed in three places |
+| **69, 71** | Onboarding copy — a permission whose own copy is about a different feature, and *Sync* naming two different things. `app/src/test` exists now, so these are testable where defect 65's was not |
+| **33** | Package ids in sentences people read. `AppLabels.of` is the route; the work is enumerating every place a raw id reaches a string |
+
+### Needs this handset, and nothing else
+
+| | What it needs |
+|---|---|
+| **80's start half** | Revoke the listener grant, `am crash` the process so `PACKAGE_REPLACED` cannot fire either, and watch whether `ACCESSIBILITY_BIND` starts the link. Same shape that closed 64. ~2 minutes, notification mirroring off for the length of it |
+| **57** | **Newly cheap, and the deferral reasoning has expired.** It was deferred because producing an undecodable `MediaStore` row meant truncating a real photo on somebody's phone. It does not: `Download/ConnectSuite` is a grant-free root of our own, so a deliberately-corrupt JPEG can be *written* there rather than an existing file damaged. Nothing of the owner's is touched |
+| **38** | A volume change on the phone never reaches the Mac. One handset, one observer |
+| **30's other half** | One send to a number with no thread, proving the absence in `mms-sms/conversations` **and** `content://sms` first — orphaned rows outlive a deleted conversation |
+| **P4** | Screen off, wait, screen on. Blocked only on a power-button press, which is a moment of attention rather than an unsolved problem |
+
+### Needs the owner's eyes or an unattended night
+
+| | |
+|---|---|
+| **H2** | Device Care's *Sleeping apps* / *Deep sleeping apps*. **Asked 2026-09-03 and still unanswered** — the reply arrived as an unfilled template, so neither branch is recorded. No adb surface exists; it is a screen |
+| **H3** | An unplugged overnight run. It is also the only route to **P3**, whose three instruments disagree and which therefore still quotes no aggregate |
+| **The unexempt-and-neglected experiment** | H1's banner. No route on this handset that does not leave the phone degraded for days, since P6 is withdrawn |
+
 ## 3. What genuinely requires a second device
 
 Only these, and the list is deliberately short — most Phase 6 questions are answerable here.
@@ -250,6 +282,40 @@ Only these, and the list is deliberately short — most Phase 6 questions are an
 | **Separating Samsung's battery manager from AOSP's Doze** | They are two mechanisms acting on the same process at the same time on this device. Every observation is their sum. No amount of care on one phone decomposes it — a Pixel does it in one run |
 | **Whether any fix we write is a fix or a Samsung-shaped workaround** | A mitigation tuned against Device Care may be a no-op elsewhere or actively wrong. This is the one that makes Phase 6 different from Phases 1–5: earlier phases' vendor assumptions all failed *safely* (`docs/single-device-audit.md` §4), and a reliability fix that only works on one OEM fails **silently and everywhere else** |
 | **Whether the `DUAL_APP` control generalises** | Several permission readings used *user 95 reading `false`* as their control. That user is Samsung-only. Any Phase 6 permission reading needs a different control on a stock device, and we cannot write that control without seeing one |
+
+### Revised 2026-09-03: there is a Realme on the desk, and it answers two of the three
+
+The table above was written when the second device was hypothetical. It is not, and the honest
+reading is that **a Realme answers rows 2 and 3 well and row 1 not at all** — so the Pixel
+recommendation below stands for a different reason than it was made for.
+
+| Row | Does a Realme settle it? |
+|---|---|
+| **Separating Samsung's battery manager from AOSP's Doze** | **No.** ColorOS/realme UI runs its own aggressive battery management. Two heavily-skinned devices give two sums, not a decomposition. Swapping One UI for ColorOS changes which vendor is confounding the reading, not whether one is |
+| **Whether a fix is a fix or a Samsung-shaped workaround** | **Yes, and this is the valuable one.** Two independent skins agreeing makes a behaviour general; disagreeing makes it vendor-specific and names which vendor. That is the row that decides whether Phase 6's fixes are worth anything off this handset, and it does not need the second device to be a Pixel |
+| **Whether the `DUAL_APP` control generalises** | **Yes.** User 95 is Samsung's. A Realme has its own clone feature under a different id, or none, and either answer retires the control |
+
+**And it unblocks a defect the second-device list never mentioned: 17.** *The Mac holds one phone
+structurally and refuses the second rather than evicting it* — deferred since Phase 4 for want of a
+second phone. It is not a battery question at all, and it is the single most concrete thing a second
+handset buys.
+
+**The AOSP half has a cheaper answer than a Pixel for several questions: an emulator.** A stock AOSP
+system image is a free, disposable, resettable control for anything that does not need real hardware
+— standby buckets and Doze transitions, the boot receiver, package visibility, and in particular
+**DocumentsUI's folder refusal**, which `docs/single-device-audit.md` §6.4 flags as the one wall in
+this app with an expiry date nobody controls. It cannot answer: real battery draw, Samsung's Device
+Care, telephony and SMS through a real provider, MediaProjection throughput, or anything about a
+vendor skin.
+
+So the shape is three instruments, not two: **this Samsung** for the product, **the Realme** for
+*is this vendor-specific*, and **an emulator** for *is this AOSP*. A Pixel remains the right purchase
+if one is ever made, but it is now the third priority rather than the first.
+
+**Before the Realme is used for anything, two readings about the instrument itself:** its Android
+version against `minSdk 29` — defect 68 was a release APK aimed at an SDK 28 stranger and only an
+accident stopped it — and `scripts/target-device.sh` teaching, since every write in this repo pins
+serial *and* model and it currently knows one phone.
 
 **The recommendation, since it will be asked:** a cheap Pixel, not a second Samsung. §2 of the audit
 established that this device's DocumentsUI is **Google's, Play-updated** while its telephony provider
