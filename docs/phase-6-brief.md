@@ -44,6 +44,76 @@ survived" would be reporting the exempt case as the general one.
 | **H4** | **A reboot** | Cheap, but disruptive to whatever you are doing. §2 explains why this one matters more than it looks |
 | **H5** | **Whether a second device is worth acquiring**, and which | §3. A Pixel converts more `unknown` rows than any other single purchase |
 
+## 1a. What H1 actually costs — measured 2026-09-03, decision still open
+
+The brief asks for H1 without saying what it costs, which makes it unanswerable. This section is the
+costing. **Nothing here has been done to the phone; every command below is quoted, not run.**
+
+### The current state, re-read after the 11:16 reboot
+
+```
+dumpsys deviceidle whitelist | grep connectsuite  →  user,com.chetan.connectsuite.debug,11011
+am get-standby-bucket com.chetan.connectsuite.debug  →  5   (EXEMPTED)
+dumpsys deviceidle whitelist | grep -c '^user,'   →  10    ← the control: ours is one of ten
+```
+
+### Can it be put back? Yes, three independent ways, and one caveat that matters
+
+| Route | Command or path | Notes |
+|---|---|---|
+| **adb** | `dumpsys deviceidle whitelist +com.chetan.connectsuite.debug` | The `+`/`-` syntax is in *this build's own* `dumpsys deviceidle -h`, not inherited from documentation |
+| **Settings UI** | Apps → ConnectSuite → Battery → **Unrestricted** | No computer needed |
+| **The app itself** | `SpecialAccess.requestIgnoreBatteryOptimizations` fires `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` from onboarding; `AppPermissions.isIgnoringBatteryOptimizations` reads the true state back | The same prompt that granted it originally |
+
+**The caveat, and it is the only genuinely sharp edge: the removal persists across boots.** This
+build's help text draws that distinction itself — `except-idle-whitelist` says *"changes made using
+this won't be persisted across boots"* and plain `whitelist` says no such thing. So **rebooting is
+not an escape hatch**; if the phone is left unexempt and forgotten, it stays unexempt.
+
+**One inference, flagged rather than asserted:** bucket `5` is *derived* from the whitelist — that is
+P6's finding, which is why `am set-standby-bucket … 5` is refused. Re-adding to the whitelist is
+therefore expected to restore `EXEMPTED`, and it is one command to confirm (`am get-standby-bucket`)
+rather than something to assume.
+
+### What stops working while unexempt
+
+Only while the phone is **actually in Doze** — screen off, off charger, stationary, for a while.
+**While the phone is in use, nothing changes.** A foreground service keeps the process alive; it does
+not exempt it from Doze's network restrictions, and a `PARTIAL_WAKE_LOCK` is ignored for a non-exempt
+app in deep idle. So, from what this app is built out of:
+
+| | Expected while idle and unexempt |
+|---|---|
+| Control socket | stalls; the heartbeat (`PING_INTERVAL_MS = 5_000`, `MISSED_PONGS_BEFORE_DEAD = 3`) declares the link dead ~15 s after the network is suspended |
+| Notification mirroring, SMS, call events | stop arriving on the Mac |
+| Clipboard **Mac → phone** | stops — it is a push, and the push has nowhere to land |
+| Recovery | on screen-on/unlock, and it depends on **the Mac's** reconnect, because P4 records that the phone has no screen-off or connectivity handling of its own |
+
+**These are predictions from the code, not readings — producing them is the point of the experiment.**
+
+### The real risk, and it is not the exemption
+
+**Samsung's Device Care may add the app to *Sleeping apps* while it is unexempt**, and that is a
+*separate* list (H2) which the exemption does not govern and which restoring the exemption does not
+necessarily clear. It is a Settings UI toggle, readable and removable by hand, but it is the one
+outcome where undoing H1 does not undo everything H1 caused. Check H2's screen before and after.
+
+### The recommendation: bound it to ~30 minutes, not overnight
+
+**H1 does not need an overnight run, and should not have one.** This phone is a daily driver and the
+clipboard path is in daily use; a night of degraded linking is a real cost for a reading that can be
+taken in half an hour.
+
+P2 already produced deep Doze **on demand** on the exempt path with `dumpsys deviceidle force-idle`,
+which makes the unexempt run a direct A/B against an existing measurement rather than a fresh
+experiment. Shape: read H2's screen, remove the exemption, force idle, take the reading with the
+§0 caveat inverted in every line of it, `unforce`, restore the exemption, confirm the bucket is back
+at 5, re-read H2's screen.
+
+**And the overnight question is separate and belongs on the exempt path anyway** (H3), because exempt
+is what ships. Measuring battery cost unexempt would answer a question about a configuration no user
+of this app is in.
+
 ## 2. What this handset can prove on its own
 
 All of these are runnable with the phone attached and no second device. **Ordered by what they would
