@@ -84,6 +84,29 @@ enum class LinkStartReason {
      */
     LISTENER_REBIND,
 
+    /**
+     * The platform binding [ConnectSuiteInputService] — the accessibility service.
+     *
+     * **Defect 80, and it is the route with no broadcast behind it.** This is the third way this
+     * process comes up, and it was invisible until defect 64's closing run removed the other two
+     * and left it standing alone: with the notification listener revoked, all eight features
+     * installed at 11:54:16 into a process with **no listening socket**, five seconds before
+     * `BOOT` arrived behind it.
+     *
+     * At boot those five seconds close on their own. The cases that matter are the ones where
+     * nothing follows — a low-memory kill, the service being toggled off and on, or a crash
+     * `START_STICKY` did not catch (defect 62's second measured outcome). In each the accessibility
+     * service is rebound, this process returns feature-complete and granted, **and no broadcast is
+     * ever sent**. Before this reason existed the app sat serverless for as long as nobody opened
+     * it.
+     *
+     * A fourth start route was argued against while defect 64 was open, because each one is another
+     * competitor in the race that had to be stripped down to get a reading. That objection is spent:
+     * the race only ever obstructed *proving* the boot branch, 64 is closed, and [ensureRunning] is
+     * idempotent and names its own no-op.
+     */
+    ACCESSIBILITY_BIND,
+
     /** `START_STICKY` handed us back a null intent. We do not know who wanted us. */
     UNKNOWN,
     ;
@@ -225,6 +248,7 @@ object LinkAutoStart {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
             LinkStartReason.PACKAGE_REPLACED,
             LinkStartReason.LISTENER_REBIND,
+            LinkStartReason.ACCESSIBILITY_BIND,
             LinkStartReason.BOOT,
             LinkStartReason.UNKNOWN,
             -> ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE

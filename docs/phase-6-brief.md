@@ -98,6 +98,26 @@ app in deep idle. So, from what this app is built out of:
 necessarily clear. It is a Settings UI toggle, readable and removable by hand, but it is the one
 outcome where undoing H1 does not undo everything H1 caused. Check H2's screen before and after.
 
+### RUN 2026-09-03 — and the caveat travels with the result
+
+**No difference detected**, exempt vs unexempt, over a 150 s forced deep-Doze window — **and the
+standby bucket was `ACTIVE` throughout, never `RARE` or `RESTRICTED`.** Those two clauses are one
+finding and neither may be quoted without the other. Removing the whitelist removes the Doze
+exemption; it does not make the app unused, and the harsh restrictions live in the low buckets.
+**Unexempt and unexempt-and-neglected are different experiments; only the first ran**, and P6 — the
+cheap route to the second — is withdrawn, so the second has no route on this handset that does not
+leave the phone degraded for days. `docs/testing.md` → Phase 6 Slice 8.
+
+Two things settled in passing: P6's inference is now measured (removing the row dropped the bucket
+5 → 10, restoring it put it back to 5 with no bucket command issued), and the probe itself was
+**asserting the condition it was measuring** — `doze-probe.sh` hard-coded "EXEMPT PATH" and would
+have printed it over the opposite. It reads the whitelist at run time now.
+
+**H2 remains unanswered.** It was asked for on 2026-09-03 and the reply came back as an unfilled
+template, so neither branch of it is recorded here. Nothing in this repo knows whether ConnectSuite
+is in Device Care's *Sleeping apps* lists, before H1 or after — which is the one outcome undoing H1
+does not undo.
+
 ### The recommendation: bound it to ~30 minutes, not overnight
 
 **H1 does not need an overnight run, and should not have one.** This phone is a daily driver and the

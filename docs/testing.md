@@ -13350,10 +13350,25 @@ send instead of the phone quietly swallowing it.
 
 ## Phase 6 · Slice 8 — H1, the unexempt path, 30 minutes rather than a night · 2026-09-03
 
-**The headline is a non-finding, and the caveats are what make it worth writing down.** Over a
-150-second forced deep-Doze window with the battery exemption removed, nothing about the link
-changed. That is a much narrower sentence than *"unexempt is fine"*, and §"What this did not
-measure" is the reason.
+> ## The result and its limit, in one breath — do not quote either half alone
+>
+> **No difference detected between the exempt and unexempt paths** over a 150-second forced deep-Doze
+> window: listeners 4/4, one control session, and a live message crossing at `deep=IDLE` on both.
+>
+> **And the standby bucket was `ACTIVE` (10) throughout, never `RARE` or `RESTRICTED`.** Removing the
+> deviceidle whitelist removes the *Doze* exemption. It does not make the app *unused*, and the harsh
+> restrictions in this system belong to the low buckets. **"Unexempt" and "unexempt and neglected for
+> days" are different experiments and only the first one ran.**
+>
+> The cheap route to the second was P6 — `am set-standby-bucket` — and it is **withdrawn**: the shell
+> can move the bucket out of `EXEMPTED` and has no command that puts it back, because `EXEMPTED` is
+> derived from the whitelist row. So the second experiment still has **no route on this handset** that
+> does not leave the phone degraded for days, and *"no difference detected"* is a sentence about a
+> phone in daily use, not about a phone left alone.
+
+Everything below is the working. The three further limits — a forced rather than observed transition,
+150 seconds sampled at 15, and Samsung's own layer untouched — are in §"What this did not measure",
+and none of them is the big one. The big one is in the banner.
 
 ### The instrument was corrected before it was used
 
@@ -13460,3 +13475,44 @@ link                              → 3/3 OK, 1 control session ESTABLISHED
 The phone is in exactly the state it was in before H1, and the diff is over the **whole whitelist**
 rather than over our own row — a row-presence check would not have caught the probe dropping
 somebody else's entry.
+
+---
+
+## Phase 6 · Slice 9 — defect 80 wired, and the start half is deliberately not claimed · 2026-09-03
+
+`ConnectSuiteInputService.onServiceConnected` now calls
+`LinkAutoStart.ensureRunning(this, LinkStartReason.ACCESSIBILITY_BIND)`. The reason carries its own
+name so defect 60's corollary still holds — when several mechanisms can satisfy one guarantee, the
+log must say which one did — and `foregroundTypesFor` puts it with the automatic starts, claiming
+`connectedDevice` only.
+
+### What was proven
+
+The route is delivered to, on the first opportunity after installing:
+
+```
+14:48:46.344  I [autostart] LISTENER_REBIND:    1 paired device(s), link not running — starting LinkService
+14:48:46.344  I [autostart] PACKAGE_REPLACED:   1 paired device(s), link not running — starting LinkService
+14:48:46.378  I [autostart] ACCESSIBILITY_BIND: already listening — nothing to do
+```
+
+### What was NOT proven, and it is the half the defect is about
+
+**`ACCESSIBILITY_BIND` has never started anything.** It took the no-op branch, 34 ms behind two
+routes that both fire on an install and neither of which exists in the cases defect 80 describes.
+This is defect 64's shape exactly, one route further along, and the rule that came out of 64 applies
+unchanged: **a no-op branch is not a pass.** The narrow `connectedDevice` claim, the trust-store
+read, and the actual `LinkService.start` on this path are all untested by this run.
+
+**The stimulus that would prove it**, named rather than left for somebody to invent: revoke the
+notification-listener grant so `LISTENER_REBIND` cannot fire, then kill the process without an
+install so `PACKAGE_REPLACED` cannot either — `am crash`, per Slice 2's P5 — leaving the accessibility
+rebind as the only route back. That is the same shape that closed 64 and it needs the owner's
+say-so, because it turns notification mirroring off for the length of the run.
+
+**Why the fix ships before that proof**, which is a judgement rather than an oversight: the branch it
+replaces is *nothing at all*. Before this, three process-start paths with no broadcast behind them —
+a low-memory kill, this service being toggled, and a crash `START_STICKY` did not catch — left the
+app alive, granted, feature-complete and serverless for as long as nobody opened it. An unproven
+recovery path is worth more than a proven absence of one, and the register says plainly which half is
+which.

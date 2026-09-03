@@ -12,8 +12,10 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.chetan.connectsuite.core.link.LinkAutoStart
 import com.chetan.connectsuite.core.link.LinkController
 import com.chetan.connectsuite.core.link.LinkLog
+import com.chetan.connectsuite.core.link.LinkStartReason
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -50,6 +52,21 @@ class ConnectSuiteInputService : AccessibilityService() {
         // The permission half of the `input` capability has just flipped. Recomputing here is what
         // makes the Mac's chip light up mid-session instead of at the next handshake.
         announceCapabilityChange()
+
+        // **Defect 80.** Being bound is a way this process comes up, and until this line it was the
+        // only one with nothing behind it. At boot a broadcast follows within seconds; after a
+        // low-memory kill, after this service is toggled, or after a crash `START_STICKY` did not
+        // catch, nothing does — and the app sat alive, granted, feature-complete and with no
+        // listening socket for as long as nobody opened it.
+        //
+        // The decision is not here: whether anything is paired, whether the link is already up, and
+        // what to do when the trust store will not answer all live in `LinkAutoStart.ensureRunning`,
+        // which the boot receiver and the notification-listener rebind also call. A rule written
+        // three times would be three things to get wrong. This is idempotent and logs
+        // `already listening — nothing to do` with its reason attached, which is the usual outcome
+        // and is the point: it costs nothing when the link is fine and is the only thing watching
+        // when it is not.
+        LinkAutoStart.ensureRunning(this, LinkStartReason.ACCESSIBILITY_BIND)
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {

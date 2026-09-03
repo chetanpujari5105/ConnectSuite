@@ -43,12 +43,23 @@ class BootAutoStartTest {
      * Shown to fail before it was kept: with the `when` collapsed to always return
      * `connectedDevice or dataSync`, this reports `expected 16 but was 17`.
      */
+    /**
+     * **Derived from the enum, not typed out.** This list used to be three names written by hand,
+     * which meant it did not cover `LISTENER_REBIND` and would not have covered
+     * `ACCESSIBILITY_BIND` when defect 80 added it — a new automatic start route could claim
+     * `dataSync` and this test would stay green while reading as though it guarded every one.
+     *
+     * That is the failure `CLAUDE.md` describes as the test supplying its own input by hand: the
+     * suite proves the decision for the values somebody remembered and is silent about the rest.
+     * `entries - USER` cannot fall behind the type it is testing.
+     */
     @Test
     fun `no automatic start ever claims dataSync`() {
-        val automatic = listOf(
-            LinkStartReason.BOOT,
-            LinkStartReason.PACKAGE_REPLACED,
-            LinkStartReason.UNKNOWN,
+        val automatic = LinkStartReason.entries - LinkStartReason.USER
+        assertEquals(
+            "every reason except USER is an automatic start",
+            LinkStartReason.entries.size - 1,
+            automatic.size,
         )
         for (reason in automatic) {
             val types = LinkAutoStart.foregroundTypesFor(reason, sdkInt = 36)
