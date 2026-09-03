@@ -169,13 +169,24 @@ object NotificationFeature {
             ?: return refuse(session, request, NotificationFailure.BadRequest("text is required"))
 
         val sbn = ready(session, request, key) ?: return
-        if (!targetStillMatches(session, request, sbn)) return
+        if (!targetStillMatches(session, request, sbn, context)) return
         val (action, _) = NotificationRelay.replyActionOf(sbn.notification)
-            ?: return refuse(session, request, NotificationFailure.NoReplyAction(sbn.packageName))
+            // Defect 33: the sentence names the app, not the package id. AppLabels.of falls back
+            // to the package name honestly and counts the fallback, which a raw interpolation here
+            // never could.
+            ?: return refuse(
+                session,
+                request,
+                NotificationFailure.NoReplyAction(AppLabels.of(context, sbn.packageName)),
+            )
 
         val inputs = NotificationRelay.freeFormInputs(action)
         if (inputs.isEmpty()) {
-            return refuse(session, request, NotificationFailure.NoReplyAction(sbn.packageName))
+            return refuse(
+                session,
+                request,
+                NotificationFailure.NoReplyAction(AppLabels.of(context, sbn.packageName)),
+            )
         }
 
         // The reply is delivered by firing the app's own PendingIntent with the text attached, so
@@ -207,7 +218,7 @@ object NotificationFeature {
             ?: return refuse(session, request, NotificationFailure.BadRequest("index is required"))
 
         val sbn = ready(session, request, key) ?: return
-        if (!targetStillMatches(session, request, sbn)) return
+        if (!targetStillMatches(session, request, sbn, context)) return
         val actions: Array<Notification.Action> = sbn.notification.actions
             ?: return refuse(session, request, NotificationFailure.NoSuchAction(index, 0))
         if (index !in actions.indices) {
@@ -272,6 +283,7 @@ object NotificationFeature {
         session: ControlSession,
         request: Envelope,
         sbn: android.service.notification.StatusBarNotification,
+        context: Context,
     ): Boolean {
         val seen = request.str("seenTitle") ?: return true
         val now = sbn.notification.extras
@@ -283,7 +295,7 @@ object NotificationFeature {
         LinkLog.e(
             "notif",
             "REFUSED ${request.type} aimed at the wrong conversation: the Mac was showing " +
-                "\"$seen\" but ${sbn.packageName} now has \"$now\" at that key",
+                "\"$seen\" but ${AppLabels.of(context, sbn.packageName)} now has \"$now\" at that key",
             null,
         )
         refuse(session, request, NotificationFailure.TargetStale(seen, now))
@@ -432,10 +444,19 @@ sealed class NotificationFailure(
      * Named with the package on purpose: "Slack does not offer a reply here" is actionable and
      * "reply is unavailable" is not, and the difference is the one thing the user can check.
      */
-    class NoReplyAction(packageName: String) : NotificationFailure(
+    /**
+     * [appName] is a **resolved label**, never a package id — defect 33.
+     *
+     * The parameter used to be called `packageName` and was handed `sbn.packageName`, so the
+     * sentence this class exists to make actionable read *"That notification from
+     * com.Slack does not offer a reply"*. The KDoc above already described the intent correctly;
+     * only the value was wrong. Resolve through `AppLabels.of`, which falls back to the package
+     * name **and counts that it did**, rather than interpolating one and calling it a name.
+     */
+    class NoReplyAction(appName: String) : NotificationFailure(
         label = "no-reply-action",
         code = ErrorCode.NO_REPLY_ACTION,
-        reason = "That notification from $packageName does not offer a reply, so there is " +
+        reason = "That notification from $appName does not offer a reply, so there is " +
             "nothing for the phone to type into.",
         fixHint = "Only notifications whose app builds in a reply box can be replied to. Open " +
             "the app on the phone to answer this one.",

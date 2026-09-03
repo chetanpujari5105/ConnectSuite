@@ -91,8 +91,18 @@ object OnboardingCopy {
             "server, and nothing uses mobile data.",
         primaryLabel = "Get started",
         body = listOf(
-            // Feature card: Sync.
-            "Sync",
+            // Feature card. **Defect 71: this card was titled "Sync" and that word is taken.**
+            //
+            // The app has a Sync tab, and it is the v1 Android-to-Android feature — a list of other
+            // phones, with its own pairing. This card describes the v2 Mac link, which is a
+            // different thing entirely. A new user read "Sync", opened the Sync tab looking for
+            // their Mac, and found a phone-pairing screen.
+            //
+            // Renaming the card rather than the tab, because the tab's name is right for what the
+            // tab does. And the new name is chosen to be **false of the other path** — defect 63's
+            // rule: a title that would be true of either feature is unfalsifiable by inspection and
+            // wrong half the time.
+            "On your Mac",
             "Your notifications, texts, calls, photos, files and clipboard, on the Mac. " +
                 "Anything you send lands at Wi-Fi speed.",
             // Feature card: Mirror. Rewritten: v2 sends THIS phone's screen TO the Mac, with a
@@ -108,11 +118,29 @@ object OnboardingCopy {
         ),
     )
 
+    /**
+     * **Defect 69.** This page used to ask for `NEARBY_WIFI_DEVICES` under the heading *"Finding your
+     * Mac"*, with a rationale — shared with the Sync flow — explaining **Wi-Fi Direct**.
+     *
+     * Wi-Fi Direct is not how the Mac is found. It is v1 Sync's discovery, phone to phone. The v2
+     * link is the phone advertising over mDNS and the Mac dialling in (locked decision #2), and the
+     * page's title was changed to name the Mac in F1, which made a correct sentence false without
+     * anybody touching it.
+     *
+     * **The permission is gone from this page because it was measured, not argued.** With
+     * `NEARBY_WIFI_DEVICES` revoked on hardware, 2026-09-03: the phone bound all three ports,
+     * `NsdAdvertiser` logged `Registered as ConnectSuite Samsung SM-S938B`, and the Mac established
+     * a control session. Asking a new user for a permission the named feature does not need is worse
+     * than a wrong sentence about it — so this page now asks for exactly one thing, and says so.
+     *
+     * The permission itself is untouched: Sync still needs it, still asks for it, and its rationale
+     * is still correct there. Only this page stopped asking.
+     */
     val permissions = Page(
         id = PERMISSIONS,
-        title = "Finding your Mac",
-        subtitle = "Two permissions, so this phone can see your Mac on the network and tell you " +
-            "what it is doing. Neither is used for anything else.",
+        title = "Staying in touch",
+        subtitle = "One permission, so this phone can tell you what the link is doing. It is not " +
+            "used for anything else, and the Mac is found without it.",
         primaryLabel = "Continue",
         secondaryLabel = "Skip for now",
         body = listOf(
@@ -121,7 +149,7 @@ object OnboardingCopy {
         ),
     )
 
-    /** The label the primary button takes once the nearby-devices grant is in hand. */
+    /** The label the primary button takes once this page's grant is in hand. */
     const val PERMISSIONS_PRIMARY_GRANTED = "Next"
 
     /** The action on every permission card in the flow. */

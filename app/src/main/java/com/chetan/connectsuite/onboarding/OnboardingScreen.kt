@@ -189,22 +189,15 @@ private fun PermissionsPage(onNext: () -> Unit, onSkip: () -> Unit) {
     PageScaffold(
         page = copy,
         onPrimary = onNext,
-        primaryLabel = if (nearby.isGranted) {
+        primaryLabel = if (notifications.isGranted) {
             OnboardingCopy.PERMISSIONS_PRIMARY_GRANTED
         } else {
             copy.primaryLabel
         },
         onSecondary = onSkip,
     ) {
-        item {
-            PermissionCard(
-                title = PermissionGroup.NEARBY_DEVICES.title,
-                rationale = PermissionGroup.NEARBY_DEVICES.rationale,
-                granted = nearby.isGranted,
-                actionLabel = OnboardingCopy.ALLOW,
-                onAction = nearby.request,
-            )
-        }
+        // Defect 69: NEARBY_DEVICES is NOT asked for here. It is v1 Sync's Wi-Fi Direct permission,
+        // and the v2 link was measured to work without it — see OnboardingCopy.permissions.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             item {
                 PermissionCard(

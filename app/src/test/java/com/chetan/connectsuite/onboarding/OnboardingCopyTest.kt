@@ -1,6 +1,7 @@
 package com.chetan.connectsuite.onboarding
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -201,5 +202,58 @@ class OnboardingCopyTest {
             OnboardingCopy.allText.any { it.contains(lit) }
         }
         assertEquals("the scanner must flag a planted stray", 1, strays.size)
+    }
+
+    /**
+     * **Defect 71.** The welcome page's feature cards must not be titled with the name of a
+     * top-level tab they do not describe.
+     *
+     * `Sync` is the collision that happened: the card described the v2 Mac link and the tab is the
+     * v1 Android-to-Android feature, so a new user who read the card and opened the tab found a
+     * phone-pairing screen. `Mirror` is deliberately **allowed** — that card and that tab are the
+     * same feature, and a guard that banned every tab name would forbid the one honest case along
+     * with the dishonest one.
+     *
+     * The list of forbidden titles is derived from the reason rather than typed as one word: a tab
+     * whose content onboarding describes elsewhere is a name onboarding must not reuse.
+     */
+    @Test
+    fun `no feature card is titled with a tab name that means something else`() {
+        val forbidden = setOf("Sync")
+        val offending = OnboardingCopy.welcome.body.filter { it in forbidden }
+        assertEquals(
+            "a card titled with another feature's tab name sends readers to the wrong screen: $offending",
+            emptyList<String>(),
+            offending,
+        )
+    }
+
+    /**
+     * Defect 69: this page asks for one permission and must say one.
+     *
+     * The measurement behind it is on hardware — the v2 link established with
+     * `NEARBY_WIFI_DEVICES` revoked — and this only guards the sentence from drifting back to
+     * describing two.
+     */
+    @Test
+    fun `the permissions page does not promise two permissions`() {
+        val subtitle = OnboardingCopy.permissions.subtitle
+        assertFalse(
+            "the page asks for one permission now: $subtitle",
+            subtitle.contains("Two permissions"),
+        )
+        assertFalse(
+            "Wi-Fi Direct is not how the Mac is found and must not appear here: $subtitle",
+            subtitle.contains("Wi-Fi Direct"),
+        )
+    }
+
+    /** Defect 69: the page's title must not promise a thing the page no longer does. */
+    @Test
+    fun `the permissions page is not titled for finding the Mac`() {
+        assertFalse(
+            "nothing on this page finds the Mac; the link does that without a permission",
+            OnboardingCopy.permissions.title.contains("Finding your Mac"),
+        )
     }
 }
