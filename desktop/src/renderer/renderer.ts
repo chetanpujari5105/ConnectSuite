@@ -32,6 +32,12 @@ interface RendererStatus {
 }
 
 interface ConnectBridge {
+  /** Told to the main process on every route change — see shell.ts and the native notifier. */
+  routeChanged(screen: string): void;
+  onRevealNotification(callback: (key: string) => void): void;
+  notifPermission(): Promise<{ refused: boolean; message: string | null; bundleName: string }>;
+  notifSoundGet(): Promise<boolean>;
+  notifSoundSet(on: boolean): Promise<boolean>;
   status(): Promise<RendererStatus | null>;
   /** This Mac's own name and short key, for the sidebar's account block. */
   selfIdentity(): Promise<{ name: string | null; fingerprint: string | null }>;
@@ -458,6 +464,76 @@ const notifications = new NotificationsView(
   el('notif-detail'),
   connect,
 );
+
+/**
+ * A native notification was clicked.
+ *
+ * Route **and reveal** — routing alone lands the user on a screen they could already reach with no
+ * indication of which row answered, which is indistinguishable from a link that failed. This is the
+ * deep-link lesson (docs/phase-7-homeless-features.md §2) applied to a banner.
+ */
+connect.onRevealNotification((key: string) => {
+  shell.route('notifications');
+  window.requestAnimationFrame(() => {
+    const row = document.querySelector<HTMLElement>(`#notif-list [data-key="${CSS.escape(key)}"]`);
+    if (!row) {
+      // Never a silent no-op: the notification may have been dismissed on the phone between the
+      // banner and the click, and saying so beats landing on a pane with nothing highlighted.
+      shell.toast('That notification is no longer on your phone');
+      return;
+    }
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    row.classList.add('deep-reveal');
+    window.setTimeout(() => row.classList.remove('deep-reveal'), 1400);
+  });
+});
+
+/**
+ * The macOS permission banner, drawn only once a post has actually been refused.
+ *
+ * Nothing is claimed before that: Electron exposes no way to read authorization on macOS, and
+ * `Notification.isSupported()` answers a different question — it returns `true` on a machine that
+ * refuses everything. Measured in docs/phase-7-native-notifications.md §0.
+ */
+async function refreshNotifPermission(): Promise<void> {
+  const state = await connect.notifPermission();
+  const banner = el('notif-permission');
+  if (!state.refused) {
+    banner.hidden = true;
+    return;
+  }
+  banner.replaceChildren();
+  const line = document.createElement('p');
+  line.style.margin = '0';
+  const strong = document.createElement('strong');
+  strong.textContent = 'macOS is not showing these notifications.';
+  line.append(strong, document.createTextNode(' '));
+  line.append(
+    document.createTextNode(
+      `Turn them on in System Settings \u2192 Notifications, under \u201c${state.bundleName}\u201d.`,
+    ),
+  );
+  banner.appendChild(line);
+  if (state.message) {
+    const detail = document.createElement('code');
+    // macOS's own sentence, verbatim. Paraphrasing a platform's failure text is what defect 57 was.
+    detail.textContent = state.message;
+    banner.appendChild(detail);
+  }
+  banner.hidden = false;
+}
+// The sound toggle. Reads its state from the main process rather than from the markup's `checked`
+// attribute, so the box and the stored preference cannot disagree after a restart.
+const notifSound = el<HTMLInputElement>('notif-sound');
+void connect.notifSoundGet().then((on) => {
+  notifSound.checked = on;
+});
+notifSound.addEventListener('change', () => {
+  void connect.notifSoundSet(notifSound.checked);
+});
+
+connect.onNotifChanged(() => void refreshNotifPermission());
+void refreshNotifPermission();
 
 // Photos. Fetches when the screen is opened rather than at launch — 12 albums and a page of
 // thumbnails is a round trip and a megabyte, and nobody has looked at the screen yet. It is the

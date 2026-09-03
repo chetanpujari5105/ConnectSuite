@@ -5,7 +5,7 @@ import { networkInterfaces, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import QRCode from 'qrcode';
-import { ErrorCode, MessageType, type ConnectionStatus } from '../shared/protocol';
+import { ErrorCode, MessageType, type ConnectionStatus, type PhoneNotification } from '../shared/protocol';
 import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
@@ -26,6 +26,7 @@ import { FilesClient } from './files';
 import { AppsClient } from './apps';
 import { PhotosClient } from './photos';
 import { NotificationClient } from './notifications';
+import { NativeNotifier } from './nativeNotifier';
 import { RemoteClient } from './remote';
 import { CallClient } from './calls';
 import { SmsClient } from './sms';
@@ -45,6 +46,15 @@ let window: BrowserWindow | null = null;
  */
 let float: FloatMirrorWindow | null = null;
 let tray: Tray | null = null;
+/**
+ * Edge detector for the native notifier's replay cutoff.
+ *
+ * Deliberately **not** the existing `wasConnected`, which the remote-capability check further down
+ * reads as *the previous value* and updates itself. Sharing it would have made this handler write
+ * the flag before that check read it — a silent behaviour change in unrelated code, caught only
+ * because the two declarations collided.
+ */
+let notifierWasConnected = false;
 let link: LinkClient | null = null;
 let video: VideoClient | null = null;
 /** Serialises input so two gestures never overlap on the phone. See input.ts. */
@@ -52,6 +62,19 @@ const input = new InputClient(() => link);
 
 /** The live notification set, built from events. See notifications.ts. */
 const notifications = new NotificationClient(() => link);
+/**
+ * Native macOS notifications. The reveal callback routes *and* flashes the row, because routing and
+ * stopping is indistinguishable from a link that failed — docs/phase-7-native-notifications.md §2.
+ */
+const nativeNotifier = new NativeNotifier(
+  (key: string) => {
+    if (!window) createWindow();
+    window?.show();
+    window?.focus();
+    send('reveal-notification', { key });
+  },
+  () => store.get('notificationSound'),
+);
 
 /**
  * Contacts: the phone's search, and a number→name cache for the panes that draw numbers.
@@ -298,7 +321,12 @@ function createWindow(): void {
    */
   window.webContents.on('did-finish-load', () => window?.webContents.setZoomLevel(0));
   void window.loadFile(join(__dirname, '..', 'renderer', 'index.html'));
+  window.on('focus', () => nativeNotifier.setWindowFocused(true));
+  window.on('blur', () => nativeNotifier.setWindowFocused(false));
   window.on('closed', () => {
+    // A closed window is not a focused one. Without this the app keeps suppressing banners for a
+    // pane that is not on any screen — the app survives `window-all-closed` by design.
+    nativeNotifier.setWindowFocused(false);
     window = null;
   });
 }
@@ -531,6 +559,14 @@ app.whenReady().then(() => {
         activity.record('system', 'Disconnected', status.lastError ?? `now ${status.phase}`);
       }
     }
+    // The replay cutoff is armed on the transition INTO connected, never on every status tick —
+    // re-arming it mid-session would make the rest of the session's notifications look replayed.
+    if (status.phase === 'connected' && !notifierWasConnected) {
+      nativeNotifier.onSessionReady();
+    } else if (status.phase !== 'connected' && notifierWasConnected) {
+      nativeNotifier.onSessionEnded();
+    }
+    notifierWasConnected = status.phase === 'connected';
     lastStatus = status;
     refreshTray();
     // The session token dies with the control connection, so a video socket outliving it would
@@ -543,6 +579,8 @@ app.whenReady().then(() => {
     // been dealt with on the phone — see notifications.ts. Cleared rather than kept.
     if (status.phase !== 'connected') {
       notifications.clear();
+      // The badge counts rows the pane holds; a badge outliving them counts nothing real.
+      nativeNotifier.onCleared();
       contacts.clear();
       clip.clear();
       photos.clear();
@@ -613,10 +651,20 @@ app.whenReady().then(() => {
     // Phase 4 events. The phone pushes these; nothing here ever requests them, which is why they
     // are handled beside the mirror's events rather than inside a client that owns a request.
     if (message?.type === MessageType.NOTIF_POSTED && message.payload) {
+      // `isUpdate` has to be read BEFORE onPosted stores the key, or every notification looks new.
+      const key = (message.payload as { key?: unknown }).key;
+      const isUpdate = typeof key === 'string' && notifications.has(key);
       notifications.onPosted(message.payload);
+      const decision = nativeNotifier.consider(
+        message.payload as unknown as PhoneNotification,
+        isUpdate,
+      );
+      log.info('native-notif', `${(message.payload as { package?: string }).package} → ${decision}`);
     }
     if (message?.type === MessageType.NOTIF_REMOVED && message.payload) {
+      const key = (message.payload as { key?: unknown }).key;
       notifications.onRemoved(message.payload);
+      if (typeof key === 'string') nativeNotifier.onRemoved(key);
     }
     if (message?.type === MessageType.CALL_INCOMING && message.payload) {
       calls.onIncoming(message.payload);
@@ -921,6 +969,19 @@ ipcMain.handle('input-text', (_event, payload: { text: string; mode?: 'replace' 
 ipcMain.handle('input-global', (_event, action: string) => input.global(action));
 
 // ---- Phase 4: notifications ------------------------------------------------------------------
+ipcMain.on('route-changed', (_event, screen: unknown) => {
+  if (typeof screen === 'string') nativeNotifier.setCurrentScreen(screen);
+});
+
+ipcMain.handle('notif-permission', () => nativeNotifier.permissionState());
+ipcMain.handle('notif-sound-get', () => store.get('notificationSound'));
+ipcMain.handle('notif-sound-set', (_event, on: unknown) => {
+  const value = on === true;
+  store.set('notificationSound', value);
+  log.info('native-notif', `Notification sound ${value ? 'on' : 'off'}`);
+  return value;
+});
+
 ipcMain.handle('notif-list', () => notifications.all());
 ipcMain.handle('notif-reply', (_event, payload: { key: string; text: string }) =>
   notifications.reply(payload.key, payload.text),

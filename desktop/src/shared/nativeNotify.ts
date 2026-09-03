@@ -1,0 +1,111 @@
+import type { PhoneNotification } from './protocol';
+
+/**
+ * Whether one `notif.posted` earns a **native macOS notification**.
+ *
+ * ### Why this is a pure function in `src/shared/`
+ *
+ * The decision has to be testable and it has to have exactly one home. `main.ts` cannot be reached
+ * by a test and a second copy of the rule in the renderer is the shape `CLAUDE.md` warns about —
+ * two expressions of one rule disagree eventually, and the test is the one that turns out to be
+ * wrong. The badge and the banner both call this, so they cannot disagree about whether you saw
+ * something.
+ *
+ * ### The exclusions, and what each one is actually about
+ *
+ * There is **no package allowlist**, deliberately. A curated list of "important apps" is a guess
+ * that is wrong for everybody but its author and fails *silently, in the direction of not telling
+ * you things* — which is the failure this whole feature exists to remove. Every rule below is a
+ * fact about the notification, never an opinion about the app that sent it.
+ *
+ * The one that would have shipped this broken is {@link NotifyDecision.REPLAY}. See
+ * `docs/phase-7-native-notifications.md` §1.4: the phone replays its whole shade as ordinary
+ * `notif.posted` on every session, there is no end-of-replay marker on the wire, and the link
+ * reconnects on every sleep, network change and reboot — so without it, waking a laptop dumps
+ * fourteen banners at once, and the better Phase 6 made the link the more often it happens.
+ */
+export const NotifyDecision = Object.freeze({
+  /** Post it. */
+  NOTIFY: 'notify',
+  /** Android's collapse header: no title, no text — an empty banner. The pane hides these too. */
+  GROUP_SUMMARY: 'group-summary',
+  /** A persistent status, not an event: music, downloads, navigation, our own foreground service. */
+  ONGOING: 'ongoing',
+  /** A key we already hold. A ticking progress bar is one notification, not sixty. */
+  UPDATE: 'update',
+  /** Posted on the phone before this session existed — the replay burst. */
+  REPLAY: 'replay',
+  /** The window is focused *and* the notifications pane is open, so the row is already on screen. */
+  ALREADY_VISIBLE: 'already-visible',
+});
+
+export type NotifyDecisionValue = (typeof NotifyDecision)[keyof typeof NotifyDecision];
+
+/**
+ * How far a phone's clock may be behind this Mac's before a genuinely new notification would be
+ * mistaken for a replayed one.
+ *
+ * It is a **grace on a comparison between two clocks**, not a debounce and not a settling delay —
+ * nothing here waits. Thirty seconds is wide enough for ordinary NTP drift between two devices and
+ * far narrower than the age of anything sitting in a phone's shade.
+ *
+ * The measured skew is logged on every session, so a grace that is wrong is a number somebody can
+ * read rather than a silence.
+ */
+export const CLOCK_SKEW_GRACE_MS = 30_000;
+
+export interface NotifyContext {
+  /** Wall time when the current session became ready. `null` before any session. */
+  sessionReadyAtMs: number | null;
+  /** Whether this key is already in the live set — i.e. this posting is a replace. */
+  isUpdate: boolean;
+  /** The ConnectSuite window is focused. */
+  windowFocused: boolean;
+  /** The renderer's current route. */
+  currentScreen: string;
+}
+
+/**
+ * The decision, as a reason rather than a boolean.
+ *
+ * A boolean would make every suppression look the same in the log, and "no banner appeared" is
+ * exactly the reading that needs to say *which* rule produced it — the same reason
+ * `LinkAutoStart` names its route instead of logging one line for all of them.
+ */
+export function notifyDecision(
+  notification: PhoneNotification,
+  context: NotifyContext,
+): NotifyDecisionValue {
+  if (notification.isGroupSummary) return NotifyDecision.GROUP_SUMMARY;
+  if (notification.ongoing) return NotifyDecision.ONGOING;
+  if (context.isUpdate) return NotifyDecision.UPDATE;
+
+  // Older than this session: it was already in the shade when we connected. `sessionReadyAtMs` of
+  // null means no session has been established, in which case nothing should be posting anyway.
+  if (context.sessionReadyAtMs === null) return NotifyDecision.REPLAY;
+  if (notification.whenMs < context.sessionReadyAtMs - CLOCK_SKEW_GRACE_MS) {
+    return NotifyDecision.REPLAY;
+  }
+
+  // Precise rather than generous: focused on Files or Mirror is *not* suppressed, because the row
+  // is not on screen there and staying quiet would be the silence this feature exists to remove.
+  if (context.windowFocused && context.currentScreen === 'notifications') {
+    return NotifyDecision.ALREADY_VISIBLE;
+  }
+
+  return NotifyDecision.NOTIFY;
+}
+
+/** The banner's two lines. Falls back the way the pane does, never to an empty string. */
+export function notifyCopy(n: PhoneNotification): { title: string; body: string } {
+  const title = n.title?.trim() || n.appName || n.package;
+  const bodyParts = [n.text?.trim(), n.subText?.trim()].filter(
+    (p): p is string => !!p && p.length > 0,
+  );
+  // The app name goes in the body when it is not already the title, because macOS attributes the
+  // banner to *Electron* (docs/phase-7-native-notifications.md §5) and would otherwise show no
+  // indication of which phone app this came from.
+  const from = title === n.appName ? '' : n.appName;
+  const body = [bodyParts.join(' — '), from].filter((p) => p.length > 0).join('\n');
+  return { title, body: body || n.appName };
+}

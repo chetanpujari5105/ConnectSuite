@@ -13805,3 +13805,130 @@ wrong level — each pane is a block containing its grid, and the read returned 
 wrapper. That is an instrument limit, not a finding, and no claim about those four panes' layout is
 made here. `docs/design-departures.md` measured them at a matched 1440 × 920 viewport when each
 landed and remains the record.
+
+---
+
+## Phase 7 · Slice 11 — native notifications built, and macOS refuses them on this Mac · 2026-09-03
+
+The feature `docs/phase-7-state.md` §5.2 named as the one that decides whether this app gets opened
+in week two. Scope written before any code: `docs/phase-7-native-notifications.md`.
+
+### 1. The instrument, before the feature
+
+`Notification` had never been imported in this project. Four readings, each with what it does *not*
+answer stated beside it:
+
+| Reading | Result | What it does not say |
+|---|---|---|
+| `Notification.isSupported()` | `true` | **Nothing about permission.** A static capability answer; it returns `true` on a machine that refuses everything. Gating on it would read one fact as another |
+| `notification.show()` | returns in **0–3 ms** | Not a delivery signal. Fire-and-forget |
+| `failed` event | fires, with `UNErrorDomain error 1` | The *only* permission signal available |
+| authorization, read in advance | **no API in Electron** | — |
+
+**The control failed twice before any of this counted.** A probe run from a scratch directory got
+`failed` — but a scratch app with no registered bundle and a genuinely refused permission produce
+**the same event**, so nothing was known. A signed Swift control app with its own
+`CFBundleIdentifier` was built to establish the positive case: launched directly it reported
+`authorizationStatus = 0 (notDetermined)` with `alertSetting = notSupported` — a launch-path
+artefact, not a permission reading — and relaunched through LaunchServices it registered correctly
+and then **`requestAuthorization` never called back at all**: no grant, no denial, no error, a
+ten-second timeout with `UserNotificationCenter` running.
+
+So **this Mac's authorization state was never established**, and the design does not depend on
+establishing it. That is the finding rather than a gap.
+
+### 2. The replay burst — 16 considered, 0 banners
+
+The reading that justifies the whole `whenMs` rule. On relaunch, with the phone connected:
+
+```
+=== every decision at session start, by reason ===
+   8 → replay
+   5 → group-summary
+   3 → ongoing
+total considered: 16     banners posted: 0
+```
+
+**Without §1.4's rule, relaunching would have stacked 16 banners on screen** — and the link
+reconnects on every sleep, network change and reboot, all of which Phase 6 made reliable. The better
+Phase 6 made the link, the more often this would have fired. The phone replays its whole shade as
+ordinary `notif.posted` with **no end-of-replay marker on the wire**, so a replayed notification and
+a new one are byte-identical; `whenMs` against the session-ready instant is the only discriminator
+that needs no protocol change.
+
+Note the three `ongoing` rows include **this app's own foreground service** — the mirror would have
+notified the user about itself.
+
+### 3. The positive case, and the refusal
+
+A genuinely new notification, posted on the pinned device:
+
+```
+$ adb -s "$(scripts/target-device.sh)" shell cmd notification post -S bigtext -t 'Ana' cstest '…'
+   OK    target RZCY12330DT (SM-S938B, sdk 36)
+
+I [native-notif] com.android.shell → notify
+W [native-notif] macOS refused a notification — The operation couldn't be completed.
+                 (UNErrorDomain error 1.). Everything since launch:
+                 group-summary=5 ongoing=3 replay=8 notify=1.
+                 The switch is under "Electron" in System Settings → Notifications.
+```
+
+**Both halves are readings.** The decision layer is correct — the rule chose to post, for the right
+notification, and the reason is on the line. And macOS refused, so on this machine, in dev, **no
+banner appears.**
+
+### 4. A hypothesis raised and refuted, which is why it is written down
+
+The Swift control app recovered when relaunched through LaunchServices, so the obvious hypothesis
+was that `./node_modules/.bin/electron .` launches the binary in a way macOS will not register.
+Tested directly — the app relaunched with `open -a …/Electron.app --args "$PWD"`, confirmed
+connected (contacts, clipboard and SMS all round-tripping at 17:52:45), and a second notification
+posted:
+
+```
+17:53:25 I [native-notif] com.android.shell → notify
+17:53:25 W [native-notif] macOS refused a notification — …(UNErrorDomain error 1.)…
+```
+
+**Identical.** The launch path is not the cause. `Electron.app` is already a registered bundle; what
+is refused is `com.github.Electron` itself, on this machine. Recorded because the hypothesis was
+reasonable, cheap to test, and wrong — and the next person will have it too.
+
+### 5. The degraded state, measured through `probe.mjs`
+
+```
+permission banner → {"visible":true,
+  "text":"macOS is not showing these notifications. Turn them on in System Settings →
+          Notifications, under “Electron”.The operation couldn't be completed.
+          (UNErrorDomain error 1.)"}                                    [control=1]
+sound toggle      → {"checked":false}                                   [control=1]
+```
+
+It names **Electron**, not ConnectSuite, and that is correct rather than a bug: a dev run and the
+ad-hoc-signed `.dmg` alike post as `com.github.Electron` (Phase 9, **D12**). Telling anyone to look
+for "ConnectSuite" in System Settings would send them to a row that does not exist. **This is the
+first place a Phase 9 signing defect reaches a user-visible sentence**, and it is an argument for
+doing D12 rather than for delaying this.
+
+### 6. Tests
+
+16 tests on `notifyDecision` / `notifyCopy`, in `src/shared/` where a test can reach them. Four
+mutations, each red on exactly the test named for it:
+
+| Mutation | Failures |
+|---|---|
+| replay rule deleted | **3** — including *the whole shade replaying produces zero banners* |
+| suppress whenever focused, ignoring the route | **1** — *focused on a DIFFERENT screen still notifies* |
+| clock-skew grace removed | **1** — *a notification the phone timestamped slightly early* |
+| `ongoing` allowed through | **1** |
+
+Suite: Mac **338**, 0 failures; `tsc` 0; five commit hooks green; `probe.test.mjs` 18/18.
+
+### 7. What is not claimed
+
+- **That a banner has ever been seen on this Mac.** It has not. The decision to post was made and
+  the platform refused. The next reading owed is one posted notification appearing on screen, and it
+  needs either the Electron row enabled in System Settings or a properly signed build.
+- **That a delivered notification can be told from one delivered into a Focus mode that hid it.**
+  macOS reports both as success.

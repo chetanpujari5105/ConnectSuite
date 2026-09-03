@@ -158,6 +158,25 @@ contextBridge.exposeInMainWorld('connect', {
     ipcRenderer.on('notif-changed', (_event, list) => callback(list)),
 
   /**
+   * The renderer's current route, told to the main process.
+   *
+   * The native notifier needs it to answer one question precisely: a banner is suppressed only when
+   * the window is focused **and** the notifications pane is open. Focused on Files is not the same
+   * situation and must still notify — docs/phase-7-native-notifications.md §4.
+   */
+  routeChanged: (screen: string): void => {
+    ipcRenderer.send('route-changed', screen);
+  },
+  /** A native notification was clicked: route there, then reveal and flash that row. */
+  onRevealNotification: (callback: (key: string) => void) =>
+    ipcRenderer.on('reveal-notification', (_event, payload) => callback(payload?.key)),
+  /** Whether macOS has refused a notification. Reactive — nothing is claimed before a failure. */
+  notifPermission: (): Promise<{ refused: boolean; message: string | null; bundleName: string }> =>
+    ipcRenderer.invoke('notif-permission'),
+  notifSoundGet: (): Promise<boolean> => ipcRenderer.invoke('notif-sound-get'),
+  notifSoundSet: (on: boolean): Promise<boolean> => ipcRenderer.invoke('notif-sound-set', on),
+
+  /**
    * Contacts: a search the phone runs, and one contact fetched in full.
    *
    * Both resolve to `{ ok: true, data }` or `{ ok: false, reason, fixHint }` and neither rejects,

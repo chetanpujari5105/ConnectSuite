@@ -338,6 +338,9 @@ class ShellView {
     if (!screen) return;
 
     this.current = id;
+    // Told to the main process so the native notifier can tell "focused on the notifications pane"
+    // from "focused on Files" — two situations that must not be suppressed alike.
+    connect.routeChanged(id);
     if (settingsPane) this.settingsPane = settingsPane;
 
     document.querySelectorAll<HTMLElement>('.screen').forEach((section) => {

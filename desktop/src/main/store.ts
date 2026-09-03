@@ -24,6 +24,14 @@ interface Schema {
    * `docs/protocol.md` rule about nothing at rest is untouched by it.
    */
   watchClipboard: boolean;
+  /**
+   * Play a sound with a native notification.
+   *
+   * **Off by default**, and that is the decision rather than an oversight: the phone in your pocket
+   * has already made a sound for this notification, and a second one per message is what makes
+   * people uninstall a mirror. The banner still appears; only the sound is opt-in.
+   */
+  notificationSound: boolean;
 }
 
 /**
@@ -40,6 +48,7 @@ export const store = new Store<Schema>({
     lastDiscoveryVia: null,
     autoConnect: true,
     watchClipboard: true,
+    notificationSound: false,
   },
 });
 

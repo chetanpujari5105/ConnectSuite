@@ -391,6 +391,23 @@
             <section class="screen" data-screen="notifications" hidden>
               <div class="pane pane-notifications" id="notif-card">
                 <p class="pane-sub" id="notif-note"></p>
+                <!--
+                  The macOS permission banner. Hidden until a native notification has actually been
+                  refused: there is no API to ask in advance, and claiming a permission state the
+                  app cannot read would be inventing one. Reactive by necessity — see
+                  docs/phase-7-native-notifications.md §5.
+                -->
+                <div class="notif-permission" id="notif-permission" hidden></div>
+                <!--
+                  Sound is **off by default** and this is where it is turned on. It sits in the pane
+                  rather than in Settings for the same reason the clipboard watcher does: it is the
+                  control somebody goes looking for at the moment the thing annoys them, and a
+                  preference two screens away from its effect is a preference nobody finds.
+                -->
+                <label class="clip-watch" for="notif-sound">
+                  <input type="checkbox" id="notif-sound" />
+                  <span>Play a sound with these notifications</span>
+                </label>
                 <div class="pane-grid">
                   <!--
                     The left column is a recessed **well** holding the filter pills and the rows,

@@ -66,6 +66,17 @@ export class NotificationClient extends EventEmitter {
     return `${showing} showing${hidden}, ${this.postedCount} posted / ${this.removedCount} removed since launch`;
   }
 
+  /**
+   * Whether this key is already held.
+   *
+   * Read by the native notifier *before* {@link onPosted} stores it, because Android sends an update
+   * as another `posted` with the same key — so without asking first, a download's ticking progress
+   * bar looks like sixty new notifications.
+   */
+  has(key: string): boolean {
+    return this.live.has(key);
+  }
+
   /** Every live notification, newest first — which is the order a shade reads in. */
   all(): PhoneNotification[] {
     return [...this.live.values()].sort((a, b) => b.whenMs - a.whenMs);
