@@ -31,6 +31,11 @@
 # established by uptime BEFORE any line is read, and the greps only ever describe a boot that has
 # already been witnessed.
 #
+# **Defect 77 is fixed as of 2026-09-03 and this paragraph still stands.** The log now says BOOT or
+# QUICKBOOT, so the two actions are distinguishable in the data — but that only means a forged line
+# has to carry the other word. Uptime remains the witness; the reason names make the log honest about
+# WHICH action arrived, not about whether a boot happened.
+#
 # So the controls are now a GATE: this refuses to emit a verdict unless the preconditions hold, and
 # says which one failed. And every count is bounded to lines written since the current boot.
 set -uo pipefail
@@ -89,15 +94,20 @@ echo "=== foreground claims since boot ==="
 printf '%s\n' "$SINCE" | grep 'Foreground as\|startForeground refused' | sed 's/^/  /'
 echo
 
-boot_start=$(printf '%s\n' "$SINCE" | grep -c 'BOOT: .*link not running — starting LinkService')
-boot_noop=$(printf '%s\n'  "$SINCE" | grep -c 'BOOT: already listening')
-boot_zero=$(printf '%s\n'  "$SINCE" | grep -c 'BOOT: 0 paired')
+# Anchored on the tag and the space: "QUICKBOOT:" CONTAINS "BOOT:", so an unanchored grep counts
+# the unprotected action as the protected one — which is the confusion defect 77 just removed from
+# the log, reintroduced in the reader. The instrument has to make the distinction the data now has.
+boot_start=$(printf '%s\n' "$SINCE" | grep -c '\[autostart\] BOOT: .*link not running — starting LinkService')
+boot_noop=$(printf '%s\n'  "$SINCE" | grep -c '\[autostart\] BOOT: already listening')
+boot_zero=$(printf '%s\n'  "$SINCE" | grep -c '\[autostart\] BOOT: 0 paired')
 fg_boot=$(printf '%s\n'    "$SINCE" | grep -c 'Foreground as BOOT, types=0x10')
+quickboot=$(printf '%s\n'  "$SINCE" | grep -c '\[autostart\] QUICKBOOT:')
 fg_other=$(printf '%s\n'   "$SINCE" | grep 'Foreground as BOOT, types=' | grep -cv 'types=0x10')
 
 echo "=== VERDICT ==="
 echo "  startOrLog reached for BOOT      : $boot_start  (no-op branch: $boot_noop, '0 paired': $boot_zero)"
 echo "  'Foreground as BOOT, types=0x10' : $fg_boot  (BOOT at some other type: $fg_other)"
+echo "  QUICKBOOT lines since boot        : $quickboot  ← a DIFFERENT action; unprotected on this handset (77)"
 if [ "$boot_start" -ge 1 ] && [ "$fg_boot" -ge 1 ]; then
   echo "  => DEFECT 64 CLOSED on a real boot with the competing route removed."
 elif [ "$boot_noop" -ge 1 ]; then

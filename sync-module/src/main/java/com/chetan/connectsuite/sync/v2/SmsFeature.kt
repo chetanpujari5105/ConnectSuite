@@ -78,8 +78,12 @@ object SmsFeature {
     private val refused = AtomicLong(0)
     private val received = AtomicLong(0)
     private val dropped = AtomicLong(0)
-    private val sentPushed = AtomicLong(0)
-    private val sentDropped = AtomicLong(0)
+    /**
+     * Defect 51. Replaces `sentPushed` + `sentDropped`, which could not represent the thing that
+     * actually happens: an after-send look that is early, and an observer that delivers it a moment
+     * later. See [SentPushTally].
+     */
+    private val sentTally = SentPushTally()
 
     /**
      * The id of the newest outgoing row already pushed, so one write seen three times pushes once.
@@ -216,12 +220,19 @@ object SmsFeature {
                 // Only a look that followed our own send is a miss worth an `e:` line, and the
                 // caller says which it was — hence `why` on the line rather than a bare count.
                 if (why == AFTER_SEND) {
-                    sentDropped.incrementAndGet()
-                    LinkLog.e(
+                    // **Not an error, and not a loss — defect 51.** The provider write is
+                    // asynchronous; three looks at 150 ms can simply be early, and the content
+                    // observer fires afterwards for that same row and delivers it. Measured 2 of 2
+                    // on Mac-origin sends during step 71, both of which arrived.
+                    //
+                    // `w`, not `e`: an `E` line here said the Mac "will be missing the message",
+                    // which was a prediction, and it was wrong both times it was made.
+                    sentTally.missedAfterSend()
+                    LinkLog.w(
                         "sms",
-                        "sms.sent NOT pushed after $looks lookups following a send — the Mac's " +
-                            "thread will be missing the message it just sent — " +
-                            "${sentPushed.get()} pushed / ${sentDropped.get()} dropped since start",
+                        "sms.sent not found after $looks lookups following a send — the provider " +
+                            "write is asynchronous, so this is deferred to the content observer " +
+                            "rather than lost — ${sentTally.summary()}",
                     )
                 }
                 return
@@ -229,12 +240,18 @@ object SmsFeature {
 
             val (payload, id) = hit
             lastSentId = id
-            sentPushed.incrementAndGet()
+            val outcome = sentTally.pushedNow()
             link.broadcast { session -> session.send(Envelope(type = MessageType.SMS_SENT, payload = payload)) }
+            // A recovery is named. It is the event that proves an earlier deferral was a deferral,
+            // and without it the deferred count is a number nobody can interpret.
+            val made = if (outcome == SentPushTally.Outcome.RECOVERED) {
+                "made good an earlier deferred send"
+            } else {
+                "pushed"
+            }
             LinkLog.i(
                 "sms",
-                "sms.sent pushed after $looks lookup(s) ($why, row $id) — " +
-                    "${sentPushed.get()} pushed / ${sentDropped.get()} dropped since start",
+                "sms.sent $made after $looks lookup(s) ($why, row $id) — ${sentTally.summary()}",
             )
         }
     }

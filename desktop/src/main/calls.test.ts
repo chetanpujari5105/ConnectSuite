@@ -286,3 +286,120 @@ test('a call with no number is named, not left as "from ,"', () => {
     assert.ok(!whoLine(shape).includes('from ,'), `must never render "from ,": ${whoLine(shape)}`);
   }
 });
+
+/*
+ * Defect 53: every refusal that moves the counter leaves a line.
+ *
+ * The assertion is deliberately a **count equality** rather than four separate string checks.
+ * Four checks prove the four sites that exist today are wired; the equality is what a fifth site
+ * has to satisfy, and a fifth site incrementing silently is precisely how this defect arrived.
+ *
+ * What it does not reach: the file. `log.warn` is spied at the module object, so this proves the
+ * call was made with the right shape, not that anything was written to disk.
+ */
+import { log } from './logger';
+
+function captureWarnings(): { lines: string[]; restore: () => void } {
+  const lines: string[] = [];
+  const original = log.warn;
+  log.warn = (where: string, message: string) => {
+    lines.push(`${where}|${message}`);
+  };
+  return { lines, restore: () => { log.warn = original; } };
+}
+
+/**
+ * Only the lines CallClient itself wrote about a refusal.
+ *
+ * The shared `ask` helper logs its own failure line, so a bare count of warnings is not the
+ * discriminator — it counts two different subsystems. The client's refusal lines are the ones
+ * carrying its tally, which is exactly the sentence defect 53 says must accompany the increment.
+ */
+function refusalLines(lines: string[]): string[] {
+  return lines.filter((l) => l.startsWith('calls|') && / refused since launch/.test(l));
+}
+
+/** The refusal count, read out of the tally the client writes rather than a second copy of it. */
+function refusedFrom(lines: string[]): number {
+  const own = refusalLines(lines);
+  const last = own[own.length - 1] ?? '';
+  const m = last.match(/(\d+) refused since launch/);
+  return m ? Number(m[1]) : -1;
+}
+
+test('defect 53: a dial with no number logs the refusal it counts', async () => {
+  const { link } = fakePhone();
+  const calls = new CallClient(() => link);
+  const cap = captureWarnings();
+  try {
+    const result = await calls.dial('   ');
+    assert.equal(result.ok, false);
+    const own = refusalLines(cap.lines);
+    assert.equal(own.length, 1, 'the refusal must leave exactly one line of its own');
+    assert.match(own[0], /no number was given/i);
+  } finally {
+    cap.restore();
+  }
+});
+
+test('defect 53: a dial the phone refuses logs the phone reason', async () => {
+  const link = {
+    isConnected: () => true,
+    request: () => Promise.reject(new Error('the phone said no')),
+  } as unknown as LinkClient;
+  const calls = new CallClient(() => link);
+  const cap = captureWarnings();
+  try {
+    const result = await calls.dial('+15551234567');
+    assert.equal(result.ok, false);
+    const own = refusalLines(cap.lines);
+    assert.equal(own.length, 1, `expected one line of its own, got: ${cap.lines.join(' // ')}`);
+    assert.match(own[0], /call\.dial refused by the phone/);
+    assert.match(own[0], /\+15551234567/, 'a refusal is about a specific attempt');
+  } finally {
+    cap.restore();
+  }
+});
+
+test('defect 53: acting with no call showing logs its refusal', async () => {
+  const { link } = fakePhone();
+  const calls = new CallClient(() => link);
+  const cap = captureWarnings();
+  try {
+    await calls.reject();
+    const own = refusalLines(cap.lines);
+    assert.equal(own.length, 1);
+    assert.match(own[0], /no call is showing/);
+  } finally {
+    cap.restore();
+  }
+});
+
+test('defect 53: the counter and the lines cannot diverge across every refusal path', async () => {
+  const badLink = {
+    isConnected: () => true,
+    request: () => Promise.reject(new Error('nope')),
+  } as unknown as LinkClient;
+  const calls = new CallClient(() => badLink);
+  const cap = captureWarnings();
+  try {
+    await calls.dial('');                       // refused here, empty number
+    await calls.dial('+15550000000');           // refused by the phone
+    await calls.reject();                       // refused here, no call showing
+    calls.onIncoming(RINGING as never);
+    await calls.reject();                       // refused by the phone, live call
+
+    // Every refusal produced a line, and the client's own tally agrees with how many lines there
+    // are. Neither number is written twice in this test: the count comes from the spy, the total
+    // comes from the sentence the client composed.
+    const own = refusalLines(cap.lines);
+    assert.equal(own.length, 4, `expected four refusal lines, got: ${cap.lines.join(' // ')}`);
+    assert.equal(
+      refusedFrom(cap.lines),
+      own.length,
+      'the tally must agree with the number of refusal lines written',
+    );
+  } finally {
+    cap.restore();
+  }
+});

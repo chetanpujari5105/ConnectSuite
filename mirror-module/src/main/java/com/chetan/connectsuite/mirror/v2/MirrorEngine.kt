@@ -231,8 +231,22 @@ object MirrorEngine {
         val existing = videoChannel.getAndSet(null)
         existing?.close()
 
-        val fresh = VideoChannel(channel) { dropped ->
-            if (dropped % 60 == 0) LinkLog.w("mirror", "Dropped $dropped frames; the Mac is behind")
+        val fresh = VideoChannel(channel) { drops ->
+            // **Defect 52.** The old line was `Dropped N frames; the Mac is behind` — a cause the
+            // counter never decided. It guessed right for an evicted stale frame, understated a
+            // shed newcomer, and was flatly wrong for an oversize frame, where the Mac is not
+            // behind and never saw it. `headline()` reports the worst thing that is TRUE, and the
+            // summary carries the denominator so a run of 120 means something.
+            //
+            // An oversize frame reports immediately rather than waiting for a multiple of 60: it is
+            // a correctness fault and there may only ever be one of them.
+            val total = drops.total()
+            if (drops.oversizeCount() > 0 || total % 60 == 0) {
+                LinkLog.w(
+                    "mirror",
+                    "${drops.headline()} — ${drops.summary()}",
+                )
+            }
         }
         videoChannel.set(fresh)
         LinkLog.i("mirror", "Video channel attached for ${channel.session.peerName}")

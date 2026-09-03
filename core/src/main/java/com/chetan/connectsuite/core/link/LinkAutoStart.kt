@@ -65,12 +65,31 @@ enum class LinkStartReason {
      * ```
      *
      * Unprotected means any app could send it, which is why [LinkBootReceiver] stays
-     * `exported="false"`: the system may deliver it and nothing else can. The two are folded into
-     * one reason because the response is identical and because a device that sends both would
-     * otherwise start the service twice — harmless, since a second `startForegroundService` on a
-     * live service is a no-op start, but there is no reason to distinguish them.
+     * `exported="false"`: the system may deliver it and nothing else can.
+     *
+     * **These used to be one reason and that was defect 77.** The argument for folding them was that
+     * the *response* is identical — which is true, and is an argument about `ensureRunning`, not
+     * about the log. What it cost: a `BOOT:` line could be produced by `QUICKBOOT_POWERON`, which is
+     * unprotected here, so the line could not be told from a real restart. Two such lines sit in this
+     * project's log at `2026-09-03T02:13` over a kernel that had been up for twenty-two hours, and a
+     * verdict script read them as boots.
+     *
+     * The correction is defect 60's corollary applied one layer down: it was applied to the three
+     * *reasons* and not to the two *actions* sharing this name. Same response, different names.
      */
     BOOT,
+
+    /**
+     * Samsung's `QUICKBOOT_POWERON`.
+     *
+     * Handled **identically** to [BOOT] everywhere a decision is made — same start, same foreground
+     * types. It exists as a separate constant for one purpose: so a log line says which action
+     * arrived, because this one is **not a protected broadcast on this handset** and [BOOT] is.
+     *
+     * Whether One UI actually sends it in place of `BOOT_COMPLETED` is still unverified; listening
+     * costs nothing and a duplicate delivery is a no-op start on a live service.
+     */
+    QUICKBOOT,
 
     /** `ACTION_MY_PACKAGE_REPLACED` — the `adb install -r` hole, arriving as a broadcast. */
     PACKAGE_REPLACED,
@@ -224,7 +243,8 @@ object LinkAutoStart {
     }
 
     fun reasonFor(action: String?): LinkStartReason? = when (action) {
-        "android.intent.action.BOOT_COMPLETED", ACTION_QUICKBOOT_POWERON -> LinkStartReason.BOOT
+        "android.intent.action.BOOT_COMPLETED" -> LinkStartReason.BOOT
+        ACTION_QUICKBOOT_POWERON -> LinkStartReason.QUICKBOOT
         "android.intent.action.MY_PACKAGE_REPLACED" -> LinkStartReason.PACKAGE_REPLACED
         else -> null
     }
@@ -250,6 +270,7 @@ object LinkAutoStart {
             LinkStartReason.LISTENER_REBIND,
             LinkStartReason.ACCESSIBILITY_BIND,
             LinkStartReason.BOOT,
+            LinkStartReason.QUICKBOOT,
             LinkStartReason.UNKNOWN,
             -> ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
         }

@@ -28,11 +28,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class VideoChannel(
     private val channel: AuthenticatedChannel,
-    private val onDropped: (Int) -> Unit = {},
+    /** Called after any drop, with the running tally so the caller can name the reason (defect 52). */
+    private val onDropped: (VideoDropTally) -> Unit = {},
 ) {
     private val queue = ArrayBlockingQueue<VideoFrame>(QUEUE_DEPTH)
     private val running = AtomicBoolean(true)
-    private var dropped = 0
+    private val drops = VideoDropTally()
 
     private val writer = Thread({ pump(channel.output) }, "mirror-video-writer").apply {
         isDaemon = true
@@ -49,23 +50,26 @@ class VideoChannel(
     fun offer(frame: VideoFrame) {
         if (!running.get()) return
 
-        if (queue.offer(frame)) return
+        if (queue.offer(frame)) {
+            drops.acceptedNow()
+            return
+        }
 
         // Full. Evict the oldest non-keyframe to make room; a stale P-frame is the cheapest thing
         // in the queue to lose.
         val evicted = queue.poll()
         if (evicted != null && !evicted.keyframe && !evicted.config) {
-            dropped++
-            onDropped(dropped)
+            drops.staleEvicted()
+            onDropped(drops)
         } else if (evicted != null) {
             // Only keyframes and parameter sets left: the link is badly behind. Put it back and
             // drop the newcomer, because stranding the decoder is worse than being one frame stale.
             queue.offer(evicted)
-            dropped++
-            onDropped(dropped)
+            drops.newestShed()
+            onDropped(drops)
             return
         }
-        queue.offer(frame)
+        if (queue.offer(frame)) drops.acceptedNow()
     }
 
     private fun pump(output: OutputStream) {
@@ -94,7 +98,18 @@ class VideoChannel(
         val size = frame.data.size
         if (size > Link.MAX_FRAME) {
             // Refusing here keeps the Mac's reader from ever seeing a length it must reject.
-            LinkLog.w("mirror", "Dropping oversized frame: $size bytes")
+            //
+            // **Counted since defect 52.** This is the only channel-level correctness fault the
+            // mirror has, and it used to increment nothing — so it appeared in neither
+            // `droppedCount()` nor the `droppedFrames` field on the wire, which is the one place a
+            // Mac could have seen it.
+            drops.oversize()
+            LinkLog.w(
+                "mirror",
+                "Dropping oversized frame: $size bytes, over Link.MAX_FRAME — the ENCODER produced " +
+                    "something the wire cannot carry; this is not congestion — ${drops.headline()}",
+            )
+            onDropped(drops)
             return
         }
         val header = ByteArray(HEADER_BYTES)
@@ -117,7 +132,11 @@ class VideoChannel(
         output.flush()
     }
 
-    fun droppedCount(): Int = dropped
+    /** Every frame that did not reach the Mac, oversize included — see [VideoDropTally.total]. */
+    fun droppedCount(): Int = drops.total()
+
+    /** The three reasons, for a caller that wants to say which. */
+    fun drops(): VideoDropTally = drops
 
     fun close() {
         if (running.compareAndSet(true, false)) {

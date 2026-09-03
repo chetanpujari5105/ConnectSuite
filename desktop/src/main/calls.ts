@@ -215,6 +215,10 @@ export class CallClient extends EventEmitter {
     const trimmed = number.trim();
     if (!trimmed) {
       this.refused += 1;
+      // Defect 53. This used to move the counter and write nothing, so `N refused` had an unknown
+      // part of N with no line above it anywhere. The number is not logged: it is empty, which is
+      // the whole cause.
+      log.warn('calls', `dial refused here: no number was given — ${this.tally()}`);
       return { ok: false, reason: 'No number was given, so nothing was dialled.' };
     }
     const result = await ask(
@@ -230,6 +234,10 @@ export class CallClient extends EventEmitter {
       return { ok: true };
     }
     this.refused += 1;
+    // Defect 53. The reason reaches the caller and is rendered; it did not reach the log, so the
+    // tally could not be decomposed by anyone reading the file afterwards. The number dialled is
+    // named because a refusal is about a specific attempt.
+    log.warn('calls', `call.dial refused by the phone for ${trimmed}: ${result.reason} — ${this.tally()}`);
     return result;
   }
 

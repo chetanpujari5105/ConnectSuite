@@ -2,6 +2,7 @@ package com.chetan.connectsuite.core.link
 
 import android.content.pm.ServiceInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
@@ -101,7 +102,46 @@ class BootAutoStartTest {
     fun `an action nobody filters maps to nothing`() {
         assertEquals(null, LinkAutoStart.reasonFor("android.intent.action.SCREEN_ON"))
         assertEquals(null, LinkAutoStart.reasonFor(null))
-        assertEquals(LinkStartReason.BOOT, LinkAutoStart.reasonFor(LinkAutoStart.ACTION_QUICKBOOT_POWERON))
+    }
+
+    /**
+     * **Defect 77.** These two actions get the same *response* and must not get the same *name*.
+     *
+     * `QUICKBOOT_POWERON` is not a protected broadcast on this handset — measured, and recorded on
+     * [LinkStartReason.QUICKBOOT] — so anything on the device can send it. While both mapped to
+     * `BOOT`, a `BOOT:` log line could not be told from a real restart, and two such lines are in
+     * this project's own log over a kernel that had been up for twenty-two hours.
+     *
+     * The assertion is on the **names**, because the names are the whole fix.
+     */
+    @Test
+    fun `the two boot-shaped actions map to two different reasons`() {
+        assertEquals(
+            LinkStartReason.BOOT,
+            LinkAutoStart.reasonFor("android.intent.action.BOOT_COMPLETED"),
+        )
+        assertEquals(
+            LinkStartReason.QUICKBOOT,
+            LinkAutoStart.reasonFor(LinkAutoStart.ACTION_QUICKBOOT_POWERON),
+        )
+        assertNotEquals(
+            "a protected action and an unprotected one must not share a log name",
+            LinkAutoStart.reasonFor("android.intent.action.BOOT_COMPLETED"),
+            LinkAutoStart.reasonFor(LinkAutoStart.ACTION_QUICKBOOT_POWERON),
+        )
+    }
+
+    /** Different names, identical handling — the fix must not change what either one does. */
+    @Test
+    fun `QUICKBOOT is treated exactly like BOOT everywhere a decision is made`() {
+        assertEquals(
+            LinkAutoStart.foregroundTypesFor(LinkStartReason.BOOT, sdkInt = 36),
+            LinkAutoStart.foregroundTypesFor(LinkStartReason.QUICKBOOT, sdkInt = 36),
+        )
+        assertEquals(
+            LinkAutoStart.foregroundTypesFor(LinkStartReason.BOOT, sdkInt = 33),
+            LinkAutoStart.foregroundTypesFor(LinkStartReason.QUICKBOOT, sdkInt = 33),
+        )
     }
 
     // ---- the wake-lock relationship, defect 61 ------------------------------------------
