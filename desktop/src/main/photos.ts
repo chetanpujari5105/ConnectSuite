@@ -38,6 +38,15 @@ export class PhotosClient {
   /** Ids that came back with a per-item error, so a dead tile is not asked for on every scroll. */
   private missing = new Set<string>();
 
+  /**
+   * Ids the phone has, and cannot make a thumbnail for.
+   *
+   * Deliberately NOT in [missing]: that set is "stop asking", which is right for a deleted photo
+   * and wrong for a corrupt one — the row is listable and `media.original` may still serve it.
+   * Counted separately so the log line can tell the two apart, which is the whole of defect 57.
+   */
+  private thumbsUnrenderable = 0;
+
   private bucketCount = 0;
   private listCount = 0;
   private thumbsMade = 0;
@@ -131,6 +140,12 @@ export class PhotosClient {
         if (thumb.data) {
           this.thumbs.set(thumb.id, thumb.data);
           this.thumbsMade += 1;
+        } else if (thumb.error === 'NO_THUMBNAIL') {
+          // Defect 57. The photo is THERE and could not be rendered — it is listable, and
+          // `media.original` may well succeed on it. Putting it in `missing` would be the old
+          // conflation moved to this end: the tile would go blank and never be asked for again,
+          // over a file sitting on the phone.
+          this.thumbsUnrenderable += 1;
         } else {
           this.missing.add(thumb.id);
           this.thumbsFailed += 1;
@@ -140,8 +155,8 @@ export class PhotosClient {
 
     log.info(
       'photos',
-      `media.thumb → ${this.thumbsMade} made / ${this.thumbsFailed} failed / ` +
-        `${this.cacheHits} served from cache`,
+      `media.thumb → ${this.thumbsMade} made / ${this.thumbsFailed} gone / ` +
+        `${this.thumbsUnrenderable} undecodable / ${this.cacheHits} served from cache`,
     );
     const answer = new Map<string, string>();
     for (const id of ids) {

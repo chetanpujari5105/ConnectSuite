@@ -292,7 +292,7 @@ recommendation below stands for a different reason than it was made for.
 | Row | Does a Realme settle it? |
 |---|---|
 | **Separating Samsung's battery manager from AOSP's Doze** | **No.** ColorOS/realme UI runs its own aggressive battery management. Two heavily-skinned devices give two sums, not a decomposition. Swapping One UI for ColorOS changes which vendor is confounding the reading, not whether one is |
-| **Whether a fix is a fix or a Samsung-shaped workaround** | **Yes, and this is the valuable one.** Two independent skins agreeing makes a behaviour general; disagreeing makes it vendor-specific and names which vendor. That is the row that decides whether Phase 6's fixes are worth anything off this handset, and it does not need the second device to be a Pixel |
+| **Whether a fix is a fix or a Samsung-shaped workaround** | **Yes, and it is the whole reason to have a second device.** This is not decomposition and should not be sold as it: two skins do not separate vendor from AOSP. What they do is answer the only question Phase 6's value actually rests on — **two skins agreeing makes a behaviour general; two skins disagreeing names the vendor.** Every reliability fix in this phase is currently a hypothesis about one handset, and this row is what converts each one into either a fix or a One UI workaround. It does not need the second device to be a Pixel, and it is worth more than the AOSP baseline it is often confused with |
 | **Whether the `DUAL_APP` control generalises** | **Yes.** User 95 is Samsung's. A Realme has its own clone feature under a different id, or none, and either answer retires the control |
 
 **And it unblocks a defect the second-device list never mentioned: 17.** *The Mac holds one phone

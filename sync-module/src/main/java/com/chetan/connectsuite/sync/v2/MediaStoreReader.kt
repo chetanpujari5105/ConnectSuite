@@ -205,23 +205,50 @@ object MediaStoreReader {
     fun thumbs(context: Context, ids: List<String>, maxEdge: Int): List<JsonObject> {
         val edge = maxEdge.coerceIn(32, MediaPayloads.MAX_THUMB_EDGE)
         var made = 0
-        var failed = 0
+        var missing = 0
+        var unrenderable = 0
+        var bad = 0
 
         val thumbs = ids.map { rawId ->
             val id = rawId.toLongOrNull()
             if (id == null) {
-                failed++
+                bad++
                 return@map buildJsonObject {
                     put("id", rawId)
                     put("error", "BAD_REQUEST")
                 }
             }
             val uri = ContentUris.withAppendedId(collection, id)
-            val bitmap = runCatching {
+            val attempt = runCatching {
                 context.contentResolver.loadThumbnail(uri, Size(edge, edge), null)
-            }.getOrNull()
+            }
+            val bitmap = attempt.getOrNull()
             if (bitmap == null) {
-                failed++
+                // **Defect 57.** `loadThumbnail` answers the same way for two different facts — the
+                // row is gone, and the row is there over bytes that will not decode — and this used
+                // to send `NOT_FOUND` for both. *"That photo is no longer on the phone"* is a lie
+                // about the second one, and it is the lie that makes a person stop looking for a
+                // file that is sitting right there.
+                //
+                // The discriminator is a existence query, which is cheap and only runs on the
+                // failure path. `fs.thumb` has separated these since Phase 5 and this namespace is
+                // adopting its vocabulary rather than inventing a third word.
+                val stillThere = existsById(context, id)
+                if (stillThere) {
+                    unrenderable++
+                    // Logged, with the cause. `getOrNull()` used to swallow the exception entirely,
+                    // so the one branch that had something to say was the silent one.
+                    LinkLog.w(
+                        "media",
+                        "media.thumb $rawId is present in MediaStore and could not be decoded",
+                        attempt.exceptionOrNull(),
+                    )
+                    return@map buildJsonObject {
+                        put("id", rawId)
+                        put("error", "NO_THUMBNAIL")
+                    }
+                }
+                missing++
                 return@map buildJsonObject {
                     put("id", rawId)
                     put("error", "NOT_FOUND")
@@ -241,8 +268,37 @@ object MediaStoreReader {
             }
         }
 
-        LinkLog.i("media", "media.thumb → $made made / $failed failed of ${ids.size} asked, maxEdge=$edge")
+        // Every outcome named, not summed. "4 failed" cannot be told from "4 photos deleted while
+        // the grid was open", which is the ordinary case and not a fault at all.
+        LinkLog.i(
+            "media",
+            "media.thumb → $made made / $missing gone / $unrenderable undecodable / $bad malformed-id " +
+                "of ${ids.size} asked, maxEdge=$edge",
+        )
         return thumbs
+    }
+
+    /**
+     * Whether a `MediaStore` row with this id still exists.
+     *
+     * Only ever called on the thumbnail failure path, so the cost is paid per failed item rather
+     * than per item. It asks for `_ID` alone: the question is existence, and reading columns nobody
+     * needs is how a cheap query stops being cheap.
+     *
+     * A query that itself throws returns `false` — the honest answer when we cannot establish that
+     * the row is there is not to claim it is.
+     */
+    private fun existsById(context: Context, id: Long): Boolean = runCatching {
+        context.contentResolver.query(
+            ContentUris.withAppendedId(collection, id),
+            arrayOf(MediaStore.MediaColumns._ID),
+            null,
+            null,
+            null,
+        )?.use { it.moveToFirst() } ?: false
+    }.getOrElse { failure ->
+        LinkLog.w("media", "media.thumb could not establish whether id $id still exists", failure)
+        false
     }
 
     private inline fun query(

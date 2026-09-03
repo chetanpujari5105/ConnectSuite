@@ -1835,14 +1835,26 @@ base64 — and one that is not is a bug in thumbnail generation that should be v
   inside `maxEdge` and preserves the aspect ratio, so a 4:3 photo at `maxEdge: 256` comes back
   256 × 192.
 
-**The per-item errors are `BAD_REQUEST` and `NOT_FOUND`, and `NOT_FOUND` is wider than its name.**
-An id that is not a number is `BAD_REQUEST`; everything else is `NOT_FOUND` — the row is gone, *or*
-the row is there and the platform could not produce a thumbnail from it. `loadThumbnail` fails
-identically for both, so the phone does not claim to know which, and a Mac must not tell a user a
-photo was deleted on the strength of this code. That is a genuine imprecision rather than a
-simplification, it is **defect 57**, and it is the one place this namespace is less honest than
-`fs.thumb`, which separates `NO_THUMBNAIL` from `NOT_FOUND` precisely because the two want different
-sentences on screen.
+**The per-item errors are `BAD_REQUEST`, `NOT_FOUND` and `NO_THUMBNAIL`** — the same three
+`fs.thumb` uses, and deliberately the same words:
+
+| | Means | The sentence it is for |
+|---|---|---|
+| `BAD_REQUEST` | the id is not a number | the caller asked wrongly — an `fs.*` id, most likely |
+| `NOT_FOUND` | **no `MediaStore` row with that id** | *"That photo is no longer on the phone."* |
+| `NO_THUMBNAIL` | the row is there; the bytes would not decode | *"This one cannot be previewed"* — the file is still on the phone |
+
+**`NOT_FOUND` used to cover both of the last two, and that was defect 57.** `loadThumbnail` answers
+identically whether the row is gone or the row is there over bytes that will not decode, so a
+corrupt photo was reported as a deleted one — which is not a smaller version of the truth, it is the
+sentence that makes somebody stop looking for a file sitting in front of them. The phone now
+distinguishes them with an existence query **on the failure path only**, so the cost is paid per
+failed item rather than per item. If that query itself fails the answer is `NOT_FOUND`, because the
+honest response to *"we could not establish that the row is there"* is not to claim that it is.
+
+**A receiver must not treat `NO_THUMBNAIL` as a missing item.** Dropping such an id from a cache and
+never asking again is right for `NOT_FOUND` and wrong here: the photo exists, it is listable, and
+`media.original` may well succeed on it even though no thumbnail can be made.
 
 **Asked for an `fs.*` id, every item comes back `BAD_REQUEST`** — a SAF document id is not a number —
 and the Mac's client drops errored ids from the map it returns, which is why the Files pane observed

@@ -13516,3 +13516,165 @@ a low-memory kill, this service being toggled, and a crash `START_STICKY` did no
 app alive, granted, feature-complete and serverless for as long as nobody opened it. An unproven
 recovery path is worth more than a proven absence of one, and the register says plainly which half is
 which.
+
+---
+
+## Phase 6 · Slice 10 — defect 80's start half: three attempts, three no-ops, and a fourth route nobody had counted · 2026-09-03
+
+**`ACCESSIBILITY_BIND` has still never started the link.** The run was authorised specifically to
+settle that and it did not, for a reason worth more than the answer would have been.
+
+### The setup, and it was correct
+
+| Precondition | Reading |
+|---|---|
+| listener grant revoked | 5 listeners → 4, ours absent from the setting and from both `dumpsys` views |
+| accessibility service still bound | `…/ConnectSuiteInputService` — the route under test was live |
+| both services in one process | `dumpsys activity services` → both `ServiceRecord`s on `ProcessRecord{…4417}` |
+| link up before the kill | 3/3 OK, one session ESTABLISHED |
+
+`am crash` printed `Shell does not have permission to crash packages for user 150` — the misleading
+refusal `docs/RESUME.md` already documents. It crashed user 0 and declined the Secure Folder clone
+(pid 4805), which is why two pids were present and only one died.
+
+### What happened
+
+```
+15:04:14.373  I [service]   Foreground as UNKNOWN, types=0x10          ← START_STICKY, null intent
+15:04:14.388  I [server]    Listening on 42501/42502/42503
+15:04:14.389  I [input]     Accessibility service connected
+15:04:14.390  I [autostart] ACCESSIBILITY_BIND: already listening — nothing to do
+```
+
+**A fourth route, and it won by 16 milliseconds.** The experiment removed `LISTENER_REBIND` and
+`PACKAGE_REPLACED` and did not remove `START_STICKY`, which restarts a *started* service after a
+process death with a null intent — reason `UNKNOWN`, which is why it did not look like a competitor
+when the routes were being counted.
+
+Attempts 2 and 3 produced the *other* outcome `docs/testing.md` → Slice 2's P5 recorded: a modal
+**`ConnectSuite keeps stopping`** dialog with the process alive. Nothing died, so nothing restarted.
+
+### This corrects defect 80's own record, which over-claimed
+
+That record listed three cases where the app would sit serverless, and one of them is wrong:
+
+| Case | Claimed | Actually |
+|---|---|---|
+| crash `START_STICKY` did not catch | serverless | **stands** — defect 62's measured second outcome |
+| the accessibility service toggled off and on | serverless | **stands** — nothing was started, so nothing is restarted |
+| **a low-memory kill** | serverless | **probably not.** `START_STICKY` restarts a started service after a process kill, which is exactly what was measured above |
+
+So **the window is narrower than the defect said**, and the honest form is: the accessibility bind is
+a safety net for a process start where `LinkService` was *not* already started — so `START_STICKY`
+has nothing to restart — and no broadcast follows. That is a real state and it is rarer than the
+record implied. *A regression report is a reading too*, and this one was not held to the rule it was
+filed under.
+
+### A disagreement recorded rather than resolved
+
+Dismissing the crash dialog with `KEYCODE_BACK` (not **Close app**, which is a force-stop wearing a
+button) was followed by `pidof` returning empty and `scripts/link-up.sh` reporting all three checks
+FAIL. **The log cannot corroborate any of that**: nothing was written between `15:06:48` and
+`15:08:35`, and there is no `[autostart]` or `Foreground as` line after `15:06:46`. Either the
+process died and returned without logging its own start — which nothing in this codebase does — or
+those two readings were taken during a moment the log did not see.
+
+**No story is offered for it.** Two instruments answered one question differently, the third query
+that would settle it was not run before the state moved on, and inventing a reconciliation here is
+the failure this file has a whole section about. It is written down so the next person meets it as a
+known disagreement rather than a fresh mystery.
+
+### State afterwards
+
+Listener grant restored **byte-identical** (sha256 `127f799c…`, five entries, same order); the
+`Application Error` window count is 0; link 3/3 with a live session; and the running process is
+demonstrably the one writing the log — a `clip.push` at `15:08:35` proves it rather than assuming it.
+
+### What would actually settle the start half
+
+Removing the fourth route as well. `START_STICKY` fires only if `LinkService` was started when the
+process died, so the stimulus is: **stop `LinkService` first, then kill the process** with the
+listener revoked. There is no user-facing route to stopping the service alone, so this needs a
+debug-only affordance — the same shape as `ClipProbeActivity` and `SafProbeActivity`, which exist
+for exactly this class of state.
+
+---
+
+## Phase 6 · Slice 11 — defect 57 closed, and the swallowed exception was the whole defect · 2026-09-03
+
+**The deferral expired rather than the defect changing.** Phase 5 carried 57 as *"the branch has
+never been produced: it needs an undecodable `MediaStore` row, which means truncating a file's bytes
+under its own entry on somebody's real phone"*. That reasoning was true when written and stopped
+being true on 2026-09-01, when `Download/ConnectSuite` became a **grant-free root of this app's
+own** — a corrupt file can be *written* there rather than an existing one damaged. Nothing of the
+owner's was involved at any point.
+
+### The stimulus
+
+A 2,059-byte file: JPEG magic, a JFIF header, then bytes. `file(1)` calls it
+`JPEG image data, JFIF standard 0.01` — so `MediaStore` indexes it as `image/jpeg` — and no decoder
+can render it, because there is no image in it.
+
+```
+push → /sdcard/Download/ConnectSuite/defect57-corrupt.jpg
+MEDIA_SCANNER_SCAN_FILE → Broadcast completed: result=0
+content query → Row: 0 _id=1000298876, _display_name=defect57-corrupt.jpg, mime_type=image/jpeg
+```
+
+### The reading
+
+```
+15:15:05.803 W [media] media.thumb 1000298876 is present in MediaStore and could not be decoded
+                       :: FileNotFoundException: Input was incomplete.
+15:15:06.049 I [media] media.thumb → 31 made / 0 gone / 1 undecodable / 0 malformed-id of 32 asked
+15:15:19.319 I [media] media.thumb → 0 made / 0 gone / 1 undecodable / 0 malformed-id of 1 asked
+```
+
+**The exception in that first line is the defect, and it had been swallowed.** `loadThumbnail` throws
+**`FileNotFoundException: Input was incomplete`** for a file that is unambiguously present — the row
+is there, the bytes are there, they are not an image. The old code's `runCatching { … }.getOrNull()`
+discarded it and mapped the null to `NOT_FOUND`, so the phone told the Mac *"That photo is no longer
+on the phone"* about a file sitting in a folder the user could open. An exception whose own name says
+*not found*, about a thing that is found, on a path with no logging: three ways for the wrong answer
+to look right.
+
+### Controls
+
+| | |
+|---|---|
+| **positive** | 31 of 32 in the same batch came back `made`. One bad item did not lose the other 31 — the per-item-error rule holding |
+| **negative** | `0 gone` in every batch of the run. Nothing was misreported as deleted, which is the specific lie being fixed |
+| **discrimination** | the same id, asked alone, returns `1 undecodable` and not `1 gone`. Row present + undecodable is now a different answer from row absent |
+
+### What shipped
+
+- The phone distinguishes them with an existence query **on the failure path only**, so the cost is
+  per failed item, not per item. If that query itself throws, the answer is `NOT_FOUND` — the honest
+  reply to *"could not establish that the row is there"* is not to claim that it is.
+- The exception is logged with its cause instead of being discarded.
+- **The counter stopped summing two facts.** `$made made / $failed failed` became
+  `made / gone / undecodable / malformed-id`. "4 failed" could not be told from "4 photos deleted
+  while the grid was open", which is the ordinary case and not a fault at all.
+- `docs/protocol.md` gains `NO_THUMBNAIL` for `media.thumb`, the same word `fs.thumb` has used since
+  Phase 5 — this namespace adopted its sibling's vocabulary rather than inventing a third.
+- **The Mac must not treat `NO_THUMBNAIL` as missing.** Its `missing` set means *stop asking*, which
+  is right for a deleted photo and wrong for a corrupt one: the row is listable and `media.original`
+  may still serve it. Counted separately there too.
+
+### Two notes on the instrument
+
+The Mac-side probe written for this was **deleted after the run**, and that is the finding worth
+keeping: a probe reading the Mac's DOM here measures a blank tile, and **a blank tile looks identical
+for both causes** — it is the symptom the fix exists to make distinguishable, read from the one end
+that cannot distinguish it. The reading is the phone's line and nowhere else.
+
+Its album selectors also matched **0 elements** while its `expect` predicate reported `landed=true`,
+because tiles were already on screen from a previous route. The stimulus was delivered by accident of
+the pane's state rather than by the click the script thought it made — harmless here, since the phone
+log is the reading, and recorded because a probe whose action does nothing while reporting success is
+the decoration rule in a script.
+
+### Cleanup
+
+The corrupt file and its `MediaStore` row were removed — left in place it is a permanently broken
+tile in the owner's photo browser. Recreating it is three commands and they are above.
