@@ -13183,3 +13183,79 @@ in a binary rather than a DOM. The discriminator is the same one that rule alrea
 text-search a blob for a user-facing claim.** The check that would have been right the first time is
 the one that already exists and runs in the module that owns the copy — `OnboardingCopyTest` asserts
 `forbiddenMechanisms` against the **page copy**, which is an enumeration and not a grep.
+
+---
+
+## Phase 6 · Slice 3 — defect 64 closed on a real boot, with the competing route removed · 2026-09-03
+
+**The boot path started the link, for the first time since it was written.** Three attempts were
+needed and the first two produced **no reading**, which is recorded here at the same weight as the
+pass because the gate refusing is what made the third attempt worth anything.
+
+### The three attempts
+
+| | uptime gate | grant gate | Result |
+|---|---|---|---|
+| 11:00 | **FAIL** — 22h 20m, no reboot | **FAIL** — grant present | NO READING (exit 3) |
+| 11:16 | pass — 43 s | **FAIL** — grant present | NO READING (exit 3). The rebind beat BOOT by **4.2 s** |
+| 11:54 | pass — 50 s | **pass — 0 entries** | **PASS** |
+
+The listener grant was revoked from adb on the third attempt, after two hand toggles failed to
+commit — `cmd notification disallow_listener <component>`, verified by value three ways with a
+**survival control**: 5 listeners before, 4 after, the other four untouched. A revoke, not a wipe.
+Restored afterwards to a string **byte-identical** to the one captured before the first attempt,
+`sha256 127f799c…`, same five entries in the same order.
+
+### The reading
+
+```
+11:53:52                boot                                        ← /proc/uptime, the only witness
+11:54:16.148 … 17.058   features install; [input] Accessibility service connected
+11:54:21.023  [autostart] BOOT: 1 paired device(s), link not running — starting LinkService
+11:54:21.067  [service]   Foreground as BOOT, types=0x10
+11:54:21.094  [tls]       Port 42501 protocols=TLSv1.3 ciphers=18 keyManagers=1     (and 42502, 42503)
+11:54:21.100  [server]    Listening on 42501/42502/42503, 1 paired device(s)
+11:54:21.894  [nsd]       Registered as ConnectSuite Samsung SM-S938B
+11:54:26.607  [control]   Handshake complete with Chetans-MacBook-Pro at 10.231.182.88
+```
+
+**Everything defect 64 said was untested is now exercised.** `startOrLog` was reached with
+`LinkStartReason.BOOT` — the no-op branch count is **0** — and `foregroundTypesFor(BOOT)` claimed
+`types=0x10` (`FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE`) and **nothing else**, which is the narrow
+claim it was deliberately written to make under `FGS_BOOT_COMPLETED_RESTRICTIONS`. The Mac
+reconnected **5.6 s later with nothing tapped**, and the app was never opened —
+`dumpsys activity activities` → **0** ConnectSuite activities, before and after.
+
+### The control that makes it a reading rather than a coincidence
+
+```
+LISTENER_REBIND lines since boot: 0
+```
+
+That is the whole reason the revoke was worth doing. In the two prior attempts the rebind started
+`LinkService` first — by 3.9 s and then 4.2 s — and BOOT arrived into `already listening`. **Two
+independent reboots losing the race the same way is structural, not chance**, which is what
+defect 64's record predicted: on a phone with the listener enabled the rebind may *always* win, and
+the branch is unreachable in the only configuration anybody runs. The revoke removed the competitor,
+and with it removed the branch fired correctly on the first try.
+
+### Two observations from the same log, neither of them defect 64
+
+1. **There is a third route into the process, and it does not start the link.** With the notification
+   listener revoked, the process was still alive at 11:54:16 — five seconds before BOOT — because the
+   **AccessibilityService** was bound at boot (`[input] Accessibility service connected`, 11:54:17).
+   All eight features installed into a process with **no listening socket**. That five-second window
+   is exactly defect 62's *alive, granted and serverless* state, and here it resolved because BOOT
+   arrived behind it. `LinkAutoStart` is wired to the notification-listener rebind and to the two
+   boot broadcasts; it is **not** wired to the accessibility bind. Recorded as an observation rather
+   than a defect: BOOT covers the boot case, and adding a fourth start route would add a fourth
+   competitor to the race this slice just had to remove one from.
+2. **`POST_NOTIFICATIONS` is `granted=false` on this device, and the clipboard notices.**
+   `W [clip] Notifications are not permitted, so the arriving entry was applied to the clipboard
+   without saying so` — **7 occurrences, the earliest at 11:30, twenty minutes before the revoke**, so
+   it is pre-existing and not an artefact of this run. The control matters because the timing made it
+   look like the revoke's doing. The consequence is real though: with phone-side auto-apply on and
+   `POST_NOTIFICATIONS` denied, **the phone's clipboard is replaced from the Mac with nothing shown to
+   the user** — which is the asymmetry Slice 12 reasoned about (the phone cannot see what it would
+   destroy) reached by a second route nobody specified. The degradation is logged, correctly, and is
+   invisible where it matters.
