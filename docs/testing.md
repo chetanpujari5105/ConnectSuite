@@ -14179,3 +14179,59 @@ first *change* — which is what decides the "already focused on the pane" suppr
 **What is still unexercised, and is exactly what the user's run will test:** a banner rendered by
 macOS, a click on it, the reveal firing from that click, and the dock badge appearing and clearing.
 Each has a unit test or a DOM reading behind it and **none has been seen end to end.**
+
+---
+
+## Phase 7 · Slice 14 — the password prompt on first launch of the packaged app · 2026-09-04
+
+**Reported by the user, who typed their password without being told what was asking.** Diagnosed
+from the log and the keychain rather than guessed, because "probably the keychain" is exactly the
+kind of confident answer this file exists to stop.
+
+### What it was: a Keychain access prompt, not admin, network or Gatekeeper
+
+The chain, each link measured:
+
+| # | Reading |
+|---|---|
+| 1 | `identity.ts` calls `safeStorage.decryptString` on every start, before anything else |
+| 2 | `key.enc` begins with the bytes **`v10`** — Chromium/Electron's macOS safeStorage format, meaning the key is wrapped by a key held **in the login keychain** |
+| 3 | That keychain item exists: service **`connectsuite-desktop Safe Storage`**, account `connectsuite-desktop Key`, `cdat` = **`20260824175758Z`** — which matches `key.enc`'s own mtime (Aug 24 23:27 IST) to the minute. **The dev build created it** |
+| 4 | Both builds resolve `app.getName()` to `connectsuite-desktop` — it comes from `package.json`'s `name`, not from `productName`/`CFBundleName` — so the packaged app reaches for **the same item**, which is also why both share one userData directory and one log file |
+| 5 | The packaged app's code signature is **not** the dev binary's, so it is not on that item's ACL, and macOS asks the user to authorise it. The login password is what that dialog wants |
+| 6 | The gap in the log: `01:44:59.643 [app] ConnectSuite 2.0.0 starting` → `01:45:24.731 [link] Trying …` — **25 seconds** with nothing in between, which is the dialog waiting |
+| 7 | It succeeded: the link connected and TLS completed, which cannot happen without the decrypted private key |
+
+Admin, network and Gatekeeper are all ruled out by the same evidence rather than by elimination —
+none of them sits between `starting` and the first socket, and none of them is what `v10` + an ACL
+mismatch produces.
+
+### Would a stranger see it? No on install, and **yes on update while ad-hoc** — one measured, one not
+
+- **Fresh install: no prompt.** There is no existing item, so safeStorage *creates* one and the
+  creating process is on its own ACL. This is mechanism, not measurement — the test would be to
+  delete the keychain item and relaunch, and it is deliberately not run here because it would
+  invalidate `key.enc`, mint a new identity, and make the phone refuse the new fingerprint.
+- **This machine is not a stranger.** The prompt happened because a *dev-created* item was read by a
+  *differently-signed* binary. That is a development artefact.
+- **Update, while ad-hoc signed: predicted to prompt every time, and this one matters.** A keychain
+  ACL matches on the app's **designated requirement**. A Developer ID app's DR is stable across
+  versions, so an update reads its own item silently. An **ad-hoc** signature has no team identity
+  and its DR is pinned to the **cdhash**, which changes with every rebuild — so each new ad-hoc build
+  is a different app to the keychain. **Not measured**, and the test is one line: rebuild, relaunch,
+  see whether it asks again.
+
+**So this is the third distinct thing the missing Developer ID costs**, after Gatekeeper's verdict
+(D12) and library validation (D14) — and unlike those two it would be visible to a real user, as an
+unexplained password prompt on an update.
+
+### The instrument fault in this diagnosis, recorded because it is the table's own pattern
+
+The first search reported **`connectsuite-desktop Safe Storage: not present`**. The item was there.
+`security find-generic-password` prints the service attribute as the raw tag `0x00000007`, not as
+`"svce"`, and the query filtered on `"svce"` — so a record that was returned, with exit code 0, was
+read as an absence. The control that caught it was enumerating **every** `Safe Storage` item and
+finding 15 of them, including this one.
+
+*A `grep` that does not match is not evidence the thing is absent* — second row of `CLAUDE.md`'s
+control table, met here in its exact original form, in the middle of diagnosing something else.
