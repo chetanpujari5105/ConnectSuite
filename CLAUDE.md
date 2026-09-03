@@ -533,6 +533,7 @@ damage on the user's own device or nearly recorded a false result.
   | a Gradle mutation run reading `build/test-results/*.xml` (2026-09-01) | `failures=0` — read as *the guard does not catch this* | the build **did not compile**, so nothing rewrote the file. The reading was the previous run's, served with no indication of its age |
   | `clipboard.read('org.nspasteboard.ConcealedType')` after `clipboard.writeBuffer` of the same type (2026-09-02) | the marker is readable — *the concealed-clipboard check works* | **Chromium wrote it and Chromium read it back.** A password manager writes through `NSPasteboard`, and against that the same call returns `""`. The run proved Chromium agrees with itself |
   | the same check's positive control, which wrote `'1'` as the marker's value | the check fires on a marked clipboard | the convention writes the marker as a **present type carrying empty data**. `read(type) !== ''` is false for every real concealed clip ever written; the control was the only input in the world that could have passed it |
+  | `strings installed.apk | grep -cF 'adb tcpip'` after defect 65's fix (2026-09-03) | **present=1** — read as defect 65 resurrected, ADB copy back in an app whose decision #1 is *no ADB anywhere* | the match is `OnboardingCopy.forbiddenMechanisms`' own `why` string — *the sentence explaining why the phrase is banned*, compiled into the same dex as the copy it guards. KDoc is stripped; a string literal is not |
 
   Between them, false absences and false presences alike, which is the point: the failure is not
   "empty means broken", it is that **the check could not separate signal from lookalike** and said
@@ -1014,6 +1015,50 @@ damage on the user's own device or nearly recorded a false result.
   it: **a measurement has two halves, what you measured and what you measured it on, and only the
   first one ever gets checked.** Before a reading becomes a finding, say out loud what element, what
   rows, what window it came from, and what else would have satisfied that description.
+
+- **Searching for a forbidden thing finds the sentence forbidding it — and after three sightings the
+  location of the hole is known, which is the useful part.** A guard names what it bans. That name is
+  a string. The string ships in the same artifact as the thing it guards. So a text search for the
+  banned thing matches its own prohibition, and reports the ban as a violation.
+
+  Three sightings, in three languages and three artifacts:
+
+  | Search | Reported | The match was |
+  |---|---|---|
+  | `/drop\|upload\|send to phone/` over the Files pane's text | an upload affordance is present | the **degraded banner's own sentence** — *"Sending files to the phone from here does not yet…"* |
+  | `read('org.nspasteboard.ConcealedType')` against a control writing `'1'` | the concealed check fires | the control was the only input that could pass it; real markers carry **empty data** |
+  | `strings installed.apk \| grep -cF 'adb tcpip'` | defect 65 resurrected | `OnboardingCopy.forbiddenMechanisms`' `why` field — **the explanation of the ban**, in the same dex |
+
+  **The instinct after the third is to audit every string guard in the repo. That was done, and it is
+  the wrong target — all of them already carry the discriminator**, each one added after this bit
+  somebody:
+
+  - `check-apps-verb.mjs` strips comments and states the split outright — *a use is a quoted wire
+    literal or an identifier; a mention is the name in a comment or in Markdown* — with a fixture
+    asserting the KDoc explaining the absent verb stays legal.
+  - `check-protocol-spec.mjs` counts a type as specified only where it **opens a heading or a
+    paragraph**, because occurrence-counting passes on a passing mention.
+  - `check-renderer-views.mjs` requires **construction**, not mention.
+  - `check-clip-echo.mjs` declares two homes and expects the names throughout the prose that explains
+    them.
+  - `no-force-stop.sh` strips heredoc bodies and `-m` values, and has six fixtures — three that must
+    deny, three that must pass — after denying the commit that wrote its own rationale.
+
+  **So the hole is not in the committed guards. It is in the one-off read**, and that is exactly
+  where it will always be: nobody writes a use/mention discriminator for a command they intend to run
+  once. All three sightings above are ad-hoc probes, and the third one's number went straight into
+  `CLAUDE.md`'s roadmap row — which is the definition of *a read whose number gets written down*, the
+  scope `scripts/probe.mjs` already claims for DOM reads.
+
+  The rule, then, is not "add a guard". It is: **a text search over a blob is never evidence for a
+  user-facing claim, because the blob contains the prose about the claim.** Ask the question of the
+  enumeration instead — for onboarding copy that is `OnboardingCopyTest` running
+  `forbiddenMechanisms` against the **page list**, which is a list of strings someone chose, not a
+  grep over everything the compiler emitted. When no enumeration exists, the honest report is the
+  match itself and not the count: *what did it match, and who wrote that line*. The second entry in
+  this file's control table has said **look at the matched lines, a `grep -c` is not evidence** since
+  Phase 3; this is that rule meeting a compiled artifact, where the matched line has no file and no
+  author until you go and find it.
 
 - **The DOM-as-instrument rule has a mechanism now: `scripts/probe.mjs`. Use it, do not re-derive it.**
   Every CDP read that feeds a claim in `docs/testing.md` goes through it. `control` is a required

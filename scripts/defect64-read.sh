@@ -15,6 +15,22 @@
 #     regardless is decoration, and it made the transcript worse than useless because it showed the
 #     right readings immediately above the wrong conclusion.
 #
+# ## The rule this script now embodies, added 2026-09-03 (defects 77 and 78)
+#
+# **Uptime is the witness for WHETHER a boot happened. The log is the witness only for WHAT the boot
+# did.** These are two questions and the log has an honest answer to only one of them.
+#
+# `/proc/uptime` is the kernel's own counter: no app can write it, no broadcast can forge it, and it
+# resets on every restart. A `[autostart] BOOT:` line cannot carry that weight, because
+# `LinkAutoStart.reasonFor` maps both `BOOT_COMPLETED` and `QUICKBOOT_POWERON` onto the name `BOOT`,
+# and `QUICKBOOT_POWERON` is NOT a protected broadcast on this handset — so anything on the device
+# can produce a line this script cannot tell from a restart. Two such lines are in the log already,
+# at 2026-09-03T02:13, over a kernel that had been up for twenty-two hours.
+#
+# So: no tightening of the greps below can fix this, and none should be attempted. The boot is
+# established by uptime BEFORE any line is read, and the greps only ever describe a boot that has
+# already been witnessed.
+#
 # So the controls are now a GATE: this refuses to emit a verdict unless the preconditions hold, and
 # says which one failed. And every count is bounded to lines written since the current boot.
 set -uo pipefail
@@ -33,12 +49,18 @@ grant=$(adb -s "$T" shell settings get secure enabled_notification_listeners | g
 LOG=$(adb -s "$T" shell run-as $PKG cat files/logs/link.log 2>/dev/null)
 lines=$(printf '%s\n' "$LOG" | wc -l | tr -d ' ')
 # Lines since boot, by ISO timestamp. Same timezone throughout, so lexical compare is exact.
-SINCE=$(printf '%s\n' "$LOG" | awk -v b="$bootiso" '$1 >= b')
+# Anchored to a timestamp on purpose (defect 78). `$1 >= b` alone admits every untimestamped line
+# in the file: a stack-trace continuation starts with `at `, and "at" > "2026" lexically, so it
+# passes whatever its age. That inflated this control 8.5x on the 2026-09-03 boot -- 549 reported
+# against 64 real -- while the verdict counts below stayed correct, which is the worst combination:
+# a wrong number certifying right ones.
+SINCE=$(printf '%s\n' "$LOG" | awk -v b="$bootiso" '/^[0-9]{4}-[0-9]{2}-[0-9]{2}T/ && $1 >= b')
 sincecount=$(printf '%s\n' "$SINCE" | grep -c . )
 
 echo "controls"
 echo "  log readable      : $lines lines total, [tls] x$(printf '%s\n' "$LOG" | grep -c '\[tls\]')  ← a known-present tag"
 echo "  last real boot    : $bootiso  (uptime ${up}s = $(( up / 3600 ))h $(( (up % 3600) / 60 ))m)"
+echo "                      ^ /proc/uptime is the ONLY witness that a boot happened; no line is (77/78)"
 echo "  lines since boot  : $sincecount   ← every count below is bounded to these"
 echo "  listener grant    : $grant connectsuite entry(ies)   ← MUST be 0, or the competing route is live"
 echo

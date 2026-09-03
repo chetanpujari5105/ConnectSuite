@@ -90,6 +90,8 @@ own heading there, and its own row here.
 | **74** | **The sidebar and the pairing screen disagreed about whether a phone was paired.** *"Samsung SM-S938B · Reconnecting"* in the sidebar while the pairing screen asked for a scan. The sidebar read the remembered device name, the router read `paired`, and nothing reconciled them — defect 27's shape on the first screen a stranger sees | **closed** 2026-09-02 | Both now read `PairingHealth`. A property test asserts the two cannot disagree for any state: `needsPairing(h)` is true exactly when `pairingLabel(h) !== 'Paired'`, over every reachable state | see below |
 | **75** | **Revoking trust did not revoke access.** `TrustStore.forget` deletes the row and reloads the cache, and does nothing to the session that trust already authorised. Measured on hardware 2026-09-03: after a `Forget` tap the control session stayed `ESTABLISHED` for over a minute, with the Mac still reading notifications, texts, files and the clipboard. The refusal only bites on the *next* handshake, which may never come while the link stays up | **closed** 2026-09-03, **re-measured on hardware** | Found by doing the thing rather than reasoning about it: tapped `Forget` to demonstrate the repudiated state, and `scripts/link-up.sh` still reported `1 control session(s) ESTABLISHED`. `LinkServer.forgetAndDisconnect` now forgets **and** closes matching live sessions, logging how many it closed beside how many it left alone. **Verified end to end**: `1 session ESTABLISHED` → Forget tap → `Forgot … and closed 1 live session(s) — 0 other session(s) left alone` → `no control session on 42501`, the whole sequence inside 1.1 s, with the next reconnect refused | see below |
 | **76** | **The repudiated state could not render, because the renderer restated the rule and only one branch was patched.** `shell.ts`'s `toneOf`/`toneLabel` switch on the transport **phase** first, so a repudiated pairing reconnecting forever drew *"Reconnecting"* — the exact sentence the fourth state exists to replace. The shared model was correct and 5 mutations were green over it | **closed** 2026-09-03 | **The unit tests could not see it and a screenshot could.** The precedence now lives in `shared/linkTone.ts` — script-safe in the `appLabel.ts` style so the renderer loads the *same file* rather than a copy — and a test asserts a repudiated pairing never renders as `Reconnecting` in **any** phase, with `connected` still outranking it | see below |
+| **77** | **A `BOOT:` log line proves a boot-shaped *intent*, not a boot.** `LinkAutoStart.reasonFor` maps **two** actions onto one reason name — `BOOT_COMPLETED` *and* `QUICKBOOT_POWERON` — and `core/src/main/AndroidManifest.xml` already records that `QUICKBOOT_POWERON` is **not a protected broadcast on this handset**. So any app, or `am broadcast`, can produce a line indistinguishable from a real restart. Measured 2026-09-03: the log carries `BOOT:` at `02:13:02` and `02:13:05` over a kernel that had been up since the previous midday, 51 minutes after an `adb install -r` | **open** | **Fix direction:** give the two actions two names in the line — `BOOT` vs `QUICKBOOT` — so the reason column says which mechanism fired, exactly as defect 60 forced for `LISTENER_REBIND` / `BOOT` / `PACKAGE_REPLACED`. **The wrong fix is to drop `QUICKBOOT_POWERON` from the filter**: it costs nothing to listen for, One UI may genuinely send it in place of `BOOT_COMPLETED`, and removing it to make the log unambiguous would trade a real recovery path for a tidier grep. **The second wrong fix is to trust the log at all for this question** — see the verdict rule in row 78 |
+| **78** | **`scripts/defect64-read.sh` bounded its counts with `awk '$1 >= bootiso'`, which admits every untimestamped line in the file.** Stack-trace continuations start with `at `, and `"at" > "2026"` lexically, so they pass the filter whatever their age. Measured on the 2026-09-03 11:16 boot: the script reported **549 lines since boot** where the true count is **64** — 485 contaminating lines, an 8.5× inflation of the control that exists to make the verdict trustworthy | **open** | **Fix direction:** anchor the filter to a timestamp — `/^[0-9]{4}-[0-9]{2}-[0-9]{2}T/ && $1 >= b` — and, more importantly, **make uptime the witness for whether a boot happened and the log the witness only for what the boot did**. The gate already reads `/proc/uptime`; the verdict must never infer a boot from a line. **The wrong fix is a tighter grep for `BOOT:`** — row 77 is why that cannot work, since a synthetic `QUICKBOOT_POWERON` inside the gate's 30-minute window would satisfy any string test. **The second wrong fix is to raise the gate's window** to accommodate a slow boot; the window is what keeps a reinstall's lines out |
 
 ---
 
@@ -1728,3 +1730,90 @@ feature working. Between the model and the pixel there is a renderer, and this p
 bitten there three times while its unit suite was green. **A state that has never been seen on a
 screen is unproven, whatever the tests say** — which is exactly what the user said when asking to
 watch this one be drawn rather than take five mutations on it.
+
+---
+
+### 77 — a `BOOT:` line proves an intent, not a boot · **open**
+
+The 2026-09-03 sitting opened by reading defect 64's log and finding this:
+
+```
+2026-09-03T02:13:02.628 I [autostart] BOOT: 1 paired device(s), link not running — starting LinkService
+2026-09-03T02:13:05.134 I [autostart] BOOT: 1 paired device(s), link not running — starting LinkService
+```
+
+The kernel had been up since `2026-09-02T12:40:06` — twenty-two hours. There was no boot at 02:13.
+`lastUpdateTime` for the package is `2026-09-03 01:22:04`, fifty-one minutes earlier.
+
+**The mechanism.** `LinkAutoStart.reasonFor` collapses two actions into one reason:
+
+```kotlin
+"android.intent.action.BOOT_COMPLETED", ACTION_QUICKBOOT_POWERON -> LinkStartReason.BOOT
+```
+
+and `core/src/main/AndroidManifest.xml` already carries the measurement that makes this exploitable
+by accident: on this handset `QUICKBOOT_POWERON` is **not a protected broadcast** — `am broadcast`
+from the shell returns `result=0` rather than a `SecurityException`, which is why the receiver is
+`exported=false`. So a `BOOT:` line can be produced by anything that sends that action, and two of
+them appear in this log with no restart under either.
+
+**Why it is a defect and not a curiosity.** Defect 60 already established the corollary this
+violates: *when two mechanisms can satisfy the same guarantee, the log must say which one did*. That
+was applied to the three **reasons** — `BOOT`, `LISTENER_REBIND`, `PACKAGE_REPLACED` — and it is
+exactly what made defect 64 visible at all. It was not applied one level down, to the two **actions**
+that share the `BOOT` name. The rule was right and its application was one layer too shallow.
+
+**Fix direction.** Two names, `BOOT` and `QUICKBOOT`, carried through `LinkStartReason` and into the
+line. The foreground-type decision stays identical for both; this is about what the log can be asked.
+
+**The wrong fix is to drop `QUICKBOOT_POWERON` from the intent filter.** Listening costs nothing, One
+UI may genuinely send it in place of `BOOT_COMPLETED`, and a duplicate delivery is a no-op start on a
+live service. Trading a real recovery path for an unambiguous grep is the wrong side of that trade.
+
+**The second wrong fix is to keep asking the log this question at all** — see 78.
+
+---
+
+### 78 — the boot verdict's own window admitted lines of any age, and the fix is not a better grep · **open**
+
+`scripts/defect64-read.sh` bounds every count to lines written since the current boot:
+
+```sh
+SINCE=$(printf '%s\n' "$LOG" | awk -v b="$bootiso" '$1 >= b')
+```
+
+`$1` is the first whitespace-delimited field. On a timestamped line that is the ISO timestamp and the
+comparison is exact — same timezone throughout, so a lexical compare is correct. **On a stack-trace
+continuation it is `at`, and `"at" > "2026"`, so every untimestamped line in the file passes the
+filter regardless of when it was written.**
+
+Measured against the 2026-09-03 11:16:07 boot:
+
+| Filter | Lines |
+|---|---|
+| `awk '$1 >= b'` — as shipped | **549** |
+| `/^[0-9]{4}-[0-9]{2}-[0-9]{2}T/ && $1 >= b` | **64** |
+| untimestamped lines admitted | **485** |
+
+An 8.5× inflation, on the control line whose entire job is to tell the reader the counts below it are
+bounded. The verdict counts themselves were not wrong — they match strings that only ever appear on
+timestamped lines — but *the number that certifies them* was, which is the same shape as a probe that
+reports its stimulus instead of its effect.
+
+**Fix direction, and the second half matters more than the first.**
+
+1. Anchor the filter: `/^[0-9]{4}-[0-9]{2}-[0-9]{2}T/ && $1 >= b`.
+2. **Make uptime the witness for *whether a boot happened*, and the log the witness only for *what
+   the boot did*.** These are two questions and only one of them has an honest answer in the log.
+   `/proc/uptime` is the kernel's own counter; it cannot be written by an app, cannot be forged by a
+   broadcast, and resets on every restart including a fast one. The log's `BOOT:` line, per 77, can
+   be produced by anything on the device. The gate already reads uptime — the verdict must never
+   *infer* a boot, only describe one whose occurrence uptime has already established.
+
+**The wrong fix is a tighter grep for `BOOT:`.** Defect 77 is why: a synthetic `QUICKBOOT_POWERON`
+sent inside the gate's 30-minute uptime window would land in the counted set and satisfy any string
+test, however precise. No pattern over the log distinguishes it, because the log genuinely does not
+carry the distinction.
+
+**The second wrong fix is to widen the gate's window** to accommodate a slow first-unlock delivery.
+The window is the only thing keeping a reinstall's lines out, and 02:13's pair is what it keeps out.
