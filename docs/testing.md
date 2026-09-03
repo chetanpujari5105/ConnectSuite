@@ -13186,7 +13186,7 @@ the one that already exists and runs in the module that owns the copy — `Onboa
 
 ---
 
-## Phase 6 · Slice 3 — defect 64 closed on a real boot, with the competing route removed · 2026-09-03
+## Phase 6 · Slice 6 — defect 64 closed on a real boot, with the competing route removed · 2026-09-03
 
 **The boot path started the link, for the first time since it was written.** Three attempts were
 needed and the first two produced **no reading**, which is recorded here at the same weight as the
@@ -13262,7 +13262,7 @@ and with it removed the branch fired correctly on the first try.
 
 ---
 
-## Phase 6 · Slice 4 — the phone stops replacing a clipboard it cannot report · 2026-09-03
+## Phase 6 · Slice 7 — the phone stops replacing a clipboard it cannot report · 2026-09-03
 
 **Found in the defect 64 log, not by looking for it.** `W [clip] Notifications are not permitted, so
 the arriving entry was applied to the clipboard without saying so` — **7 occurrences** on the
@@ -13345,3 +13345,118 @@ applied` — which is the rule that made the original defect visible in the firs
 The phone was left at `granted=false`, the state it was found in. **Turning the feature on is one
 toggle** — Settings → Apps → ConnectSuite → Notifications — and until it is, the Mac says so on every
 send instead of the phone quietly swallowing it.
+
+---
+
+## Phase 6 · Slice 8 — H1, the unexempt path, 30 minutes rather than a night · 2026-09-03
+
+**The headline is a non-finding, and the caveats are what make it worth writing down.** Over a
+150-second forced deep-Doze window with the battery exemption removed, nothing about the link
+changed. That is a much narrower sentence than *"unexempt is fine"*, and §"What this did not
+measure" is the reason.
+
+### The instrument was corrected before it was used
+
+`scripts/doze-probe.sh` hard-coded its own condition:
+
+> *This handset is in the deviceidle whitelist, so it is exempt from Doze's network restrictions.
+> Everything below therefore describes the EXEMPT path.*
+
+A true sentence when written, and **false the moment anybody runs H1** — which is the only reason
+H1 exists. Run unexempt, the probe would have printed `### Forced Doze — EXEMPT PATH` over a
+measurement of the opposite. It now reads the whitelist and the standby bucket at run time and
+prints which path it is on, plus what that implies. The probe also had every one of its
+state-changing calls (`battery unplug`, `force-idle`, `unforce`, `battery reset`) on a bare `adb`;
+they go through `scripts/target-device.sh` now.
+
+### A — exempt baseline, same build, same session
+
+Deliberately re-run rather than compared against 2026-09-02's, so the two halves differ in **one**
+variable instead of a day's worth.
+
+```
+### Forced Doze — EXEMPT PATH   whitelist row: user,com.chetan.connectsuite.debug,11011   bucket: 5
+baseline  deep=ACTIVE light=ACTIVE listen=4/4 established=1
+   0.0s … 76.9s   deep=IDLE light=OVERRIDE listen=4/4 established=1     (6 samples)
+```
+
+### The removal, and what it moved
+
+```
+dumpsys deviceidle whitelist -com.chetan.connectsuite.debug   →  Removed: com.chetan.connectsuite.debug
+user entries: 10 → 9        ← a removal, not a wipe
+standby bucket: 5 → 10      ← EXEMPTED to ACTIVE
+```
+
+**P6's inference is now a measurement.** That section reasoned that `EXEMPTED` is *derived* from the
+whitelist row, which is why `am set-standby-bucket … 5` is refused. Removing the row dropped the
+bucket to `10`, and restoring it put the bucket back to `5` with no bucket command issued at all.
+
+### B — unexempt, 150 s
+
+```
+### Forced Doze — UNEXEMPT PATH
+    whitelist row : <none — this package is NOT in the deviceidle whitelist>
+    standby bucket: 10
+    → Doze's network restrictions APPLY. This is the population the restrictions exist for.
+baseline  deep=ACTIVE light=ACTIVE listen=4/4 established=1
+   0.1s … 138.0s  deep=IDLE light=OVERRIDE listen=4/4 established=1     (10 samples)
+stopped=duration after 10 samples
+```
+
+**`established=1` is not the reading** — that was P2's own warning and it holds here. A TCP record
+outlives its peer. The liveness control is a message that actually crossed, injected **after**
+`deep=IDLE` was confirmed rather than hopefully:
+
+```
+14:27:33  Mac clipboard set to an 18-byte marker
+14:27:33.130 +05:30  W [clip] clip.push ← Mac: 18 bytes, NOT applied and NOT offered …
+             deep=IDLE, read at the moment of the reading
+```
+
+Same second, inside the window, on the unexempt path. The `NOT applied` half is Slice 7 working, not
+a Doze effect — the same line appears with the phone wide awake.
+
+### A vs B
+
+| | Exempt (A) | Unexempt (B) |
+|---|---|---|
+| listeners through the window | 4/4 | 4/4 |
+| control session | 1 | 1 |
+| samples at `deep=IDLE` | 6 over 77 s | 10 over 138 s |
+| a message crossing during `deep=IDLE` | P2: a notification at +16 s | this run: a `clip.push` at +~40 s |
+| `LinkService` restarts | 0 | 0 — uptime 2h18m spanned both runs |
+
+**No difference detected.**
+
+### What this did NOT measure, and the first one is the big one
+
+1. **The standby bucket was `ACTIVE` (10), never `RARE` or `RESTRICTED`.** Removing the whitelist
+   removes the *Doze* exemption; it does not make the app *unused*. The harshest restrictions in
+   this system belong to the low buckets, and this app has been in daily use all day, so it sat in
+   the highest one throughout. **"Unexempt" and "unexempt and neglected for days" are different
+   experiments and only the first was run.** P6 was the cheap route to the second and it is
+   withdrawn — `set-standby-bucket … 5` cannot put `EXEMPTED` back — so the second still has no
+   route on this handset that does not leave the phone degraded for days.
+2. **A forced transition, not an observed one.** `force-idle` skips the staged descent a real Doze
+   makes, and `battery unplug` simulates the charger state while USB stays attached for adb.
+3. **150 seconds, sampled at 15.** Both are bounds and both are in the probe's own output. A drop
+   shorter than one gap is invisible; nothing here speaks to maintenance windows, which is where a
+   real overnight Doze does most of its work.
+4. **Samsung's own layer is untouched.** Device Care's *Sleeping apps* lists are not readable from
+   adb — that is H2, and it stays open. Whether the app was added to one during this window is
+   unknown, and it is the one outcome undoing H1 does not undo.
+
+### Restoration, verified rather than assumed
+
+```
+whole-list diff before vs after   → IDENTICAL
+standby bucket                    → 5    (from 10, with no bucket command issued)
+deep / light                      → ACTIVE / ACTIVE
+battery                           → AC false, USB true      (dumpsys battery reset took)
+link                              → 3/3 OK, 1 control session ESTABLISHED
+```
+
+The phone is in exactly the state it was in before H1, and the diff is over the **whole whitelist**
+rather than over our own row — a row-presence check would not have caught the probe dropping
+somebody else's entry.

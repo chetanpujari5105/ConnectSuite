@@ -1523,7 +1523,7 @@ ever appearing.
 
 This was measured rather than reasoned into existence: on the development handset
 `POST_NOTIFICATIONS` was `granted=false` with auto-apply **on**, and seven entries were written to
-that phone's clipboard with nothing shown to its owner (`docs/testing.md` → Phase 6 Slice 4). The
+that phone's clipboard with nothing shown to its owner (`docs/testing.md` → Phase 6 Slice 7). The
 code had a comment arguing the opposite — that an unreportable *apply* was a smaller problem than an
 *offer* nobody could reach — which is backwards: an offer nobody reaches changes nothing on the
 device, and an unreportable apply destroys a clip the phone cannot read back, cannot keep and cannot
