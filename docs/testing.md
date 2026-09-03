@@ -14144,3 +14144,38 @@ Everything *else* in the app remains testable in dev, including the whole decisi
 from `npm start` and only the delivery cannot.
 
 Suite: Mac **353**, 0 failures; `tsc` 0; five hooks green.
+
+### 6. Two corrections made before the user's own test, 2026-09-04
+
+Both found by asking *what would this test actually exercise* rather than by a failure.
+
+**The update rule would have suppressed the test itself.** The first version suppressed **any**
+re-post of a key already held, to stop a download's progress bar posting sixty times a minute. But
+messaging apps put **one notification per conversation and update it in place** — so a second
+message in a chat you have not read arrives with the *same key*, and the rule would have silenced
+exactly the notification this feature exists for. A WhatsApp test against an already-unread thread
+would have produced no banner and looked like a broken feature.
+
+The discriminator is the timestamp, which was already on the wire: a progress bar redraws keeping its
+original `when`; a new message advances it. The rule is now `previous && whenMs <= previous.whenMs`,
+and `NotifyContext` carries the held notification rather than a boolean — *whether it is a replace*
+was never the question. Shown red against the old rule: 22 pass, **1 fail**, on the test named
+*a SECOND message in an unread chat notifies*.
+
+**The reveal selector was never exercised against a real key.** Android keys look like
+`0|com.chetan.connectsuite.debug|2001|null|11011` — they contain `|`, which is not a legal bare CSS
+identifier. Measured against the live pane before handing over the test:
+
+```
+rows and their keys → {"rows":14,
+                       "sampleKey":"0|com.chetan.connectsuite.debug|2001|null|11011",
+                       "revealSelectorMatches":true,"sameNode":true}      [control=14]
+```
+
+Also confirmed: `ShellView.route('overview')` runs at startup and the route announcement is inside
+`route()`, so the main process's `currentScreen` is correct from the first frame rather than from the
+first *change* — which is what decides the "already focused on the pane" suppression.
+
+**What is still unexercised, and is exactly what the user's run will test:** a banner rendered by
+macOS, a click on it, the reveal firing from that click, and the dock badge appearing and clearing.
+Each has a unit test or a DOM reading behind it and **none has been seen end to end.**

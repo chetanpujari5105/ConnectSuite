@@ -31,7 +31,14 @@ export const NotifyDecision = Object.freeze({
   GROUP_SUMMARY: 'group-summary',
   /** A persistent status, not an event: music, downloads, navigation, our own foreground service. */
   ONGOING: 'ongoing',
-  /** A key we already hold. A ticking progress bar is one notification, not sixty. */
+  /**
+   * A re-post of a key we hold **whose timestamp did not advance** — a ticking progress bar.
+   *
+   * Deliberately *not* every re-post. Messaging apps put one notification per conversation and
+   * update it, so a second message in a chat you have not read arrives as the same key: suppressing
+   * on the key alone would silence exactly the notification this feature exists for. A progress bar
+   * keeps its original `when`; a new message advances it.
+   */
   UPDATE: 'update',
   /** Posted on the phone before this session existed — the replay burst. */
   REPLAY: 'replay',
@@ -57,8 +64,14 @@ export const CLOCK_SKEW_GRACE_MS = 30_000;
 export interface NotifyContext {
   /** Wall time when the current session became ready. `null` before any session. */
   sessionReadyAtMs: number | null;
-  /** Whether this key is already in the live set — i.e. this posting is a replace. */
-  isUpdate: boolean;
+  /**
+   * The notification this one replaces, when its key is already in the live set.
+   *
+   * Carries the timestamp rather than a boolean, because *whether it is a replace* is not the
+   * question — a replace whose `whenMs` advanced is a new event, and one whose `whenMs` stood still
+   * is the same event redrawn.
+   */
+  previous: { whenMs: number } | null;
   /** The ConnectSuite window is focused. */
   windowFocused: boolean;
   /** The renderer's current route. */
@@ -78,7 +91,11 @@ export function notifyDecision(
 ): NotifyDecisionValue {
   if (notification.isGroupSummary) return NotifyDecision.GROUP_SUMMARY;
   if (notification.ongoing) return NotifyDecision.ONGOING;
-  if (context.isUpdate) return NotifyDecision.UPDATE;
+  // Same key, no newer timestamp: the same event redrawn. `<=` rather than `<` because a redraw
+  // that reuses the exact millisecond is the common case, and only a genuine advance counts.
+  if (context.previous && notification.whenMs <= context.previous.whenMs) {
+    return NotifyDecision.UPDATE;
+  }
 
   // Older than this session: it was already in the shade when we connected. `sessionReadyAtMs` of
   // null means no session has been established, in which case nothing should be posting anyway.

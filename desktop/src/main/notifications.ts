@@ -77,6 +77,17 @@ export class NotificationClient extends EventEmitter {
     return this.live.has(key);
   }
 
+  /**
+   * The notification currently held under this key, if any.
+   *
+   * Read by the native notifier *before* {@link onPosted} replaces it, so the two timestamps can be
+   * compared: a re-post whose `whenMs` advanced is a new message in a thread, and one whose `whenMs`
+   * stood still is a progress bar redrawing.
+   */
+  get(key: string): PhoneNotification | null {
+    return this.live.get(key) ?? null;
+  }
+
   /** Every live notification, newest first — which is the order a shade reads in. */
   all(): PhoneNotification[] {
     return [...this.live.values()].sort((a, b) => b.whenMs - a.whenMs);

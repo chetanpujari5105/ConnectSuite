@@ -691,13 +691,13 @@ app.whenReady().then(() => {
     // Phase 4 events. The phone pushes these; nothing here ever requests them, which is why they
     // are handled beside the mirror's events rather than inside a client that owns a request.
     if (message?.type === MessageType.NOTIF_POSTED && message.payload) {
-      // `isUpdate` has to be read BEFORE onPosted stores the key, or every notification looks new.
+      // The held copy has to be read BEFORE onPosted replaces it, or every notification looks new.
       const key = (message.payload as { key?: unknown }).key;
-      const isUpdate = typeof key === 'string' && notifications.has(key);
+      const previous = typeof key === 'string' ? notifications.get(key) : null;
       notifications.onPosted(message.payload);
       const decision = nativeNotifier.consider(
         message.payload as unknown as PhoneNotification,
-        isUpdate,
+        previous,
       );
       log.info('native-notif', `${(message.payload as { package?: string }).package} → ${decision}`);
     }

@@ -32,7 +32,7 @@ function notification(over: Partial<PhoneNotification> = {}): PhoneNotification 
 function context(over: Partial<NotifyContext> = {}): NotifyContext {
   return {
     sessionReadyAtMs: SESSION_AT,
-    isUpdate: false,
+    previous: null,
     windowFocused: false,
     currentScreen: 'overview',
     ...over,
@@ -54,10 +54,34 @@ test('an ongoing notification does not — it is a status, not an event', () => 
   assert.equal(notifyDecision(notification({ ongoing: true }), context()), NotifyDecision.ONGOING);
 });
 
-test('an update to a key we hold does not — a ticking progress bar is one notification', () => {
+test('a re-post whose timestamp did not advance does not — a ticking progress bar', () => {
+  const n = notification();
   assert.equal(
-    notifyDecision(notification(), context({ isUpdate: true })),
+    notifyDecision(n, context({ previous: { whenMs: n.whenMs } })),
     NotifyDecision.UPDATE,
+  );
+});
+
+test('a re-post with an OLDER held copy still counts as the same event', () => {
+  const n = notification({ whenMs: SESSION_AT + 5_000 });
+  assert.equal(
+    notifyDecision(n, context({ previous: { whenMs: SESSION_AT + 9_000 } })),
+    NotifyDecision.UPDATE,
+  );
+});
+
+/*
+ * The case that would have broken a real test of this feature. Messaging apps put one notification
+ * per conversation and update it in place, so a second message in an unread chat arrives with the
+ * SAME key. Suppressing on the key alone silences exactly the notification this feature exists for.
+ */
+test('a SECOND message in an unread chat notifies — same key, later timestamp', () => {
+  const first = notification({ key: 'chat-ana', whenMs: SESSION_AT + 5_000 });
+  const second = notification({ key: 'chat-ana', whenMs: SESSION_AT + 60_000, text: 'still there?' });
+  assert.equal(
+    notifyDecision(second, context({ previous: { whenMs: first.whenMs } })),
+    NotifyDecision.NOTIFY,
+    'a new message in a thread you have not read is a new event, not a redraw',
   );
 });
 

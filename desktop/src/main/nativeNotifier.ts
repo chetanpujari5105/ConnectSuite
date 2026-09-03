@@ -135,13 +135,20 @@ export class NativeNotifier {
   /**
    * One `notif.posted`, already accepted by {@link NotificationClient}.
    *
+   * `previous` is the notification this one replaces, read from the live set **before** it is
+   * overwritten. It carries the timestamp rather than a boolean, because a re-post that advanced its
+   * `whenMs` is a new message in a conversation and a re-post that did not is a redraw.
+   *
    * Returns the decision so the caller can log one line per notification with its reason, rather
    * than a single "posted"/"didn't" that makes every suppression look the same.
    */
-  consider(notification: PhoneNotification, isUpdate: boolean): NotifyDecisionValue {
+  consider(
+    notification: PhoneNotification,
+    previous: PhoneNotification | null,
+  ): NotifyDecisionValue {
     const decision = notifyDecision(notification, {
       sessionReadyAtMs: this.sessionReadyAtMs,
-      isUpdate,
+      previous,
       windowFocused: this.windowFocused,
       currentScreen: this.currentScreen,
     });
