@@ -1016,6 +1016,43 @@ damage on the user's own device or nearly recorded a false result.
   first one ever gets checked.** Before a reading becomes a finding, say out loud what element, what
   rows, what window it came from, and what else would have satisfied that description.
 
+- **A control that is wrong in the *safe* direction is worse than no control, because it makes a
+  correct answer look better-evidenced than it is.** Every other instrument fault in this file
+  corrupts the *reading*. This one leaves the reading perfect and corrupts the **thing that vouches
+  for it** — and there is nothing in the output to notice, because the answer is right.
+
+  Defect 78 is the worked example and the numbers are the whole point. `defect64-read.sh` bounded
+  every count to lines written since the current boot with `awk '$1 >= bootiso'`. That admits every
+  **untimestamped** line in the file: a stack-trace continuation starts with `at `, and `"at" >
+  "2026"` lexically, so it passes whatever its age.
+
+  | | |
+  |---|---|
+  | reported *lines since boot* | **549** |
+  | actual | **64** |
+  | contaminating lines | **485** — an 8.5× inflation |
+  | the verdict those lines certified | **correct**, and correct for the whole time it was wrong |
+
+  The verdict greps match strings that only ever appear on timestamped lines, so **not one counted
+  number changed**. What changed was the credibility of the line printed directly above them —
+  `lines since boot: 549   ← every count below is bounded to these` — which is the sentence whose
+  entire job is to tell a reader the counts are trustworthy.
+
+  **Why this is its own entry rather than a variant of the stale-artifact row:** a stale `failures=0`
+  is *strange on its face* and gets interrogated. An inflated denominator is not strange at all — it
+  is bigger, which reads as *more thorough*. Nobody audits a control for being too generous, because
+  a generous control cannot produce a false pass in the direction anyone is watching for. It produces
+  a **false confidence**, which is invisible until the day the verdict is wrong and the control that
+  should have caught it was never measuring what it claimed.
+
+  So the check, and it is one question asked of the control rather than of the result: **what is this
+  control's number a count of, exactly, and can I name something it includes that it should not?**
+  Here that is one command — `grep -vcE '^[0-9]{4}-'` over the same window — and it returns 485.
+
+  This is the denominator rule turned on itself. That rule says a count with no denominator is not
+  evidence; this one says **a denominator nobody has counted is not evidence either**, and it is
+  more dangerous, because it arrives already wearing the costume of rigour.
+
 - **Searching for a forbidden thing finds the sentence forbidding it — and after three sightings the
   location of the hole is known, which is the useful part.** A guard names what it bans. That name is
   a string. The string ships in the same artifact as the thing it guards. So a text search for the
@@ -1044,11 +1081,19 @@ damage on the user's own device or nearly recorded a false result.
   - `no-force-stop.sh` strips heredoc bodies and `-m` values, and has six fixtures — three that must
     deny, three that must pass — after denying the commit that wrote its own rationale.
 
-  **So the hole is not in the committed guards. It is in the one-off read**, and that is exactly
-  where it will always be: nobody writes a use/mention discriminator for a command they intend to run
-  once. All three sightings above are ad-hoc probes, and the third one's number went straight into
-  `CLAUDE.md`'s roadmap row — which is the definition of *a read whose number gets written down*, the
-  scope `scripts/probe.mjs` already claims for DOM reads.
+  **So the hole is not in the committed guards, and it never will be. It lives permanently in the
+  one-off read.** That is not a backlog item, it is a structural fact about where discriminators come
+  from: **every guard above carries one because it bit somebody first**, and a command you intend to
+  run once has no such history and never accumulates one. Adding a sixth guard does nothing, because
+  the next sighting will be the seventh ad-hoc `grep`, written by someone who knows this rule and is
+  not thinking about it — which is the same reason `scripts/probe.mjs` exists rather than a sixth
+  paragraph about the DOM.
+
+  All three sightings are ad-hoc probes, and the third one's number **went straight into `CLAUDE.md`'s
+  roadmap row** — a read whose number gets written down, which is verbatim the scope `probe.mjs`
+  already claims. So the case in point is not hypothetical and it is not somebody else's: the rule was
+  written in this file, by the person who then broke it, in the same sitting, and the number was
+  published before the match was ever looked at.
 
   The rule, then, is not "add a guard". It is: **a text search over a blob is never evidence for a
   user-facing claim, because the blob contains the prose about the claim.** Ask the question of the

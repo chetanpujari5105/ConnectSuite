@@ -1797,8 +1797,16 @@ Measured against the 2026-09-03 11:16:07 boot:
 
 An 8.5× inflation, on the control line whose entire job is to tell the reader the counts below it are
 bounded. The verdict counts themselves were not wrong — they match strings that only ever appear on
-timestamped lines — but *the number that certifies them* was, which is the same shape as a probe that
-reports its stimulus instead of its effect.
+timestamped lines — but *the number that certifies them* was.
+
+**The shape is worth stating apart from the fix, and it is now a rule in `CLAUDE.md`.** Every other
+instrument fault in this project corrupts the **reading**: a page cap invents an ending, a stale XML
+serves an older moment, a 263 ms window holds nothing at all. Each is unwelcome, and being unwelcome
+is what got it looked at. **This one leaves the reading perfect and corrupts the thing that vouches
+for it.** A control wrong in the *safe* direction — too big, too generous, too inclusive — is worse
+than no control, because it makes a correct answer look better-evidenced than it is, and nobody
+audits a control for being too generous. There is nothing in the output to notice: the verdict was
+right the entire time the number certifying it was wrong by a factor of eight.
 
 **Fix direction, and the second half matters more than the first.**
 
