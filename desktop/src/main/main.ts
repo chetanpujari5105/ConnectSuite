@@ -5,7 +5,7 @@ import { networkInterfaces, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import QRCode from 'qrcode';
-import { ErrorCode, MessageType, type ConnectionStatus, type PhoneNotification } from '../shared/protocol';
+import { ErrorCode, MessageType, type ConnectionStatus, type PhoneNotification, type PairRejected } from '../shared/protocol';
 import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
@@ -27,6 +27,7 @@ import { AppsClient } from './apps';
 import { PhotosClient } from './photos';
 import { NotificationClient } from './notifications';
 import { NativeNotifier } from './nativeNotifier';
+import { pairRejectionCopy } from '../shared/pairRejection';
 import { RemoteClient } from './remote';
 import { CallClient } from './calls';
 import { SmsClient } from './sms';
@@ -546,6 +547,45 @@ app.whenReady().then(() => {
     });
   });
   video.on('closed', (reason: string) => sendAll('mirror-stopped', { reason }));
+  /**
+   * F7 — the phone refused the pair token.
+   *
+   * Three things happen, and the order is the point: the rejection is turned into *this Mac's* copy
+   * keyed on the reason, a fresh code is armed so the user's next action works, and only then is the
+   * screen told. Telling the screen first would put "here is a fresh one" in front of a QR that is
+   * still the refused one.
+   *
+   * Nothing here stops the retry loop. docs/protocol.md is explicit that the user's next action is
+   * to scan the new code and discovery has to be running when they do.
+   */
+  link.on('pair-rejected', (rejection: PairRejected) => {
+    const copy = pairRejectionCopy(rejection, selfFingerprint);
+    if (!copy) {
+      // Another Mac's rejection, observed. Logged with the reason it was ignored, because a
+      // rejection that produces no screen change and no line is indistinguishable from one that
+      // was dropped.
+      log.info(
+        'pairing',
+        `Ignored a pair.rejected meant for ${rejection.fingerprint?.slice(0, 23)}… — not this Mac`,
+      );
+      return;
+    }
+    activity.record('system', 'Pairing refused', copy.headline);
+    let qr: string | null = null;
+    if (copy.refreshCode && link) {
+      try {
+        const payload = link.armPairing(localAddress(), true);
+        qr = JSON.stringify(payload);
+        log.info('pairing', `Fresh QR armed after ${rejection.reason}`);
+      } catch (error) {
+        // The screen still gets the explanation; it simply keeps the code it has. Saying nothing
+        // because the refresh failed would leave the user staring at a refused code with no reason.
+        log.warn('pairing', `Could not arm a fresh QR after ${rejection.reason}: ${String(error)}`);
+      }
+    }
+    send('pair-rejected', { ...copy, reason: rejection.reason, qr });
+  });
+
   link.on('status', (status: ConnectionStatus) => {
     // R1 (system). Phase transitions only: `status` fires on every retry tick, and a row per tick
     // would bury every other category under a reconnect loop — the thing the pane exists to make
@@ -1830,14 +1870,32 @@ ipcMain.handle('self-identity', () => ({
   fingerprint: selfFingerprint ? selfFingerprint.replace(/:/g, '').slice(0, 16) : null,
 }));
 
+/**
+ * How every pairing QR in this app is drawn.
+ *
+ * One home, because there are now two places that render one — arming a code and redrawing it after
+ * a rejection. The first version of the second renderer used a different width and no correction
+ * level, which is the two-expressions-of-one-rule shape the code rules warn about: they would have
+ * drifted, and the visible symptom would have been a code that scans on one path and not the other.
+ */
+const QR_OPTIONS = { errorCorrectionLevel: 'M', margin: 1, width: 320 } as const;
+
+/**
+ * Renders a QR for a payload that is **already armed**.
+ *
+ * Distinct from `pairing-qr` on purpose: that one arms a token as it goes, so calling it to redraw
+ * after a rejection would rotate the code a second time and invalidate the one the main process
+ * just told the user to scan.
+ */
+ipcMain.handle('pairing-qr-render', async (_event, payload: unknown) => {
+  if (typeof payload !== 'string' || payload.length === 0) return null;
+  return QRCode.toDataURL(payload, QR_OPTIONS);
+});
+
 ipcMain.handle('pairing-qr', async (_event, rotate?: boolean) => {
   if (!link) throw new Error('Link not ready');
   const payload = link.armPairing(localAddress(), rotate === true);
-  const dataUrl = await QRCode.toDataURL(JSON.stringify(payload), {
-    errorCorrectionLevel: 'M',
-    margin: 1,
-    width: 320,
-  });
+  const dataUrl = await QRCode.toDataURL(JSON.stringify(payload), QR_OPTIONS);
   log.info('pairing', `QR armed for ${payload.host}`);
   // Arming a code is the user saying "pair now", and the Mac is the only side that dials out.
   // forget-device leaves the client stopped, so without this the phone scans a code that nothing

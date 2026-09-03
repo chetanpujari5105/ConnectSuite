@@ -13932,3 +13932,91 @@ Suite: Mac **338**, 0 failures; `tsc` 0; five commit hooks green; `probe.test.mj
   needs either the Electron row enabled in System Settings or a properly signed build.
 - **That a delivered notification can be told from one delivered into a Focus mode that hid it.**
   macOS reports both as success.
+
+---
+
+## Phase 7 · Slice 12 — `pair.rejected`, the Mac half · 2026-09-03
+
+The departure row said *"not possible — the Mac sees a closed socket and nothing else"*. The message
+has been in `docs/protocol.md`, in `MessageType`, typed in `shared/protocol.ts` and **sent by the
+phone** since F7 was specified; nothing on the Mac listened. This is the handler.
+
+### 1. What was built
+
+`pairRejectionCopy` in `src/shared/`, pure and testable, plus a `pair-rejected` case in `link.ts`,
+a main-process handler that arms a fresh code, and a `--warning` banner on the pairing screen.
+
+Three decisions worth naming:
+
+- **The phone's sentence is not what is rendered.** `docs/protocol.md` is explicit — *"the Mac must
+  prefer its own copy keyed on `reason`; the string is a fallback and a log line, not the UI."* That
+  is the **opposite** of the rule for `error` payloads, where the phone's words go through verbatim
+  (defect 27), and the difference is real: an `error` explains something only the phone knows, and a
+  pairing rejection explains something both ends know on a screen only the Mac draws.
+- **The fingerprint gate returns `null` rather than always answering.** A rejection carrying another
+  Mac's fingerprint is ignored and logged. Rendering it would tell this user their pairing failed
+  when it did not, on the first screen a stranger sees. A rejection with **no** fingerprint *is*
+  accepted — absent means "cannot say", not "not yours", and the field is optional in the contract.
+- **A rejection does not stop the retry loop**, per the contract. The user's next action is to scan
+  the fresh code and discovery must be running when they do.
+
+### 2. One rule that had grown two expressions, caught before it drifted
+
+The redraw-after-rejection path rendered its QR at `width: 640` with no `errorCorrectionLevel`,
+against the arming path's `320` and `'M'`. Two expressions of one rule, which the code rules say
+will disagree eventually — and the visible symptom would have been *a code that scans on one path
+and not the other*, which reads as a flaky phone camera. Given one home as `QR_OPTIONS`.
+
+The second renderer exists at all because redrawing through `pairing-qr` would **arm a new token**,
+rotating the code a second time and invalidating the one the user was just told to scan.
+
+### 3. Tests — 10, with four mutations
+
+| Mutation | Failures |
+|---|---|
+| fingerprint gate removed | **1** — *a rejection meant for ANOTHER Mac is not rendered* |
+| a missing fingerprint treated as "not yours" | **1** |
+| the phone's sentence rendered instead of our copy | **1** |
+| an unknown reason returns null | **3** |
+
+One test asserts no copy leaks a wire constant (`TOKEN_*`) or a fingerprint into a sentence a person
+reads — the package-id rule (defect 33) applied to a different kind of handle.
+
+### 4. What is NOT proven, and the exact stimulus that would prove it
+
+**No `pair.rejected` has ever crossed the wire to this Mac.** The Mac half is unit-tested and has
+never run against a real one, and that is stated rather than papered over: producing one needs the
+**phone** to hold an armed pairing, which needs somebody to scan a code. The phone accepts a
+tokenless `hello` when nothing is armed — otherwise every reconnect would fail — so the branch
+cannot be reached from this end alone.
+
+**The stimulus, in full, for whoever runs it:**
+
+1. On the Mac, open the pairing screen and let it draw a code.
+2. On the phone, **Mac** tab → **Scan pairing code**, scan it. The phone now expects that token.
+3. On the Mac, press **Show a fresh code** *before* the phone's pairing completes. The Mac now holds
+   a different token.
+4. The Mac dials out with the new token → the phone answers `pair.rejected` with `TOKEN_MISMATCH`.
+
+Expected: `W [pairing] The phone refused this pairing: TOKEN_MISMATCH`, the warning banner reading
+*"That code didn't match"*, and a freshly armed QR beside it.
+
+**A synthetic IPC event was deliberately not fired to make this look green.** The renderer would
+have been drawing input this session supplied, which is the degenerate case in `CLAUDE.md` — an
+instrument measuring itself — and it would have proven the drawing while claiming the wire.
+
+### 5. State after the rebuild
+
+```
+19 considered, 0 posted:  10 replay, 6 group-summary, 3 ongoing
+errors in the session log: 0
+```
+
+**And a contaminated count, caught and corrected in the same run.** The first tally used
+`grep -oE "→ [a-z-]+"` across the whole log and reported a fourth reason, `phone`, with one
+occurrence — which is not a decision at all but the clipboard's own line, `clip.push → phone: 1060
+bytes`. Rescoped to `[native-notif]` lines the tally is 19 over three reasons. The arrow is not a
+tag; a denominator read off an unscoped grep is the ninth row of this file's own control table,
+which is where `grep -c` has been since Phase 3.
+
+Suite: Mac **348**, 0 failures; `tsc` 0; five hooks green.

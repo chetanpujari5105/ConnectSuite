@@ -164,6 +164,10 @@ contextBridge.exposeInMainWorld('connect', {
    * the window is focused **and** the notifications pane is open. Focused on Files is not the same
    * situation and must still notify — docs/phase-7-native-notifications.md §4.
    */
+  onPairRejected: (callback: (info: unknown) => void) =>
+    ipcRenderer.on('pair-rejected', (_event, info) => callback(info)),
+  pairingQrRender: (payload: string): Promise<string | null> =>
+    ipcRenderer.invoke('pairing-qr-render', payload),
   routeChanged: (screen: string): void => {
     ipcRenderer.send('route-changed', screen);
   },

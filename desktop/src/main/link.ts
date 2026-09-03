@@ -15,6 +15,7 @@ import {
   type PairingQrPayload,
   type PhoneRequestError,
   type UnavailableCapability,
+  type PairRejected,
 } from '../shared/protocol';
 import { classifyLinkError, pairingHealth, type LinkFailure } from '../shared/linkHealth';
 import { clearedSession, type SessionScoped } from '../shared/session';
@@ -369,6 +370,27 @@ export class LinkClient extends EventEmitter {
     }
 
     switch (envelope.type) {
+      case MessageType.PAIR_REJECTED: {
+        /*
+         * F7. The phone refused the pair token and is about to close.
+         *
+         * Reachable only once TLS succeeded, which means the certificate was already pinned — a Mac
+         * that is not paired at all fails in the handshake with no channel to be told anything on,
+         * and the phone shows that case on its own screen. The two are different failures and this
+         * one must not be made to stand for both.
+         *
+         * **Not a reason to stop retrying**, per docs/protocol.md: the user's next action is to scan
+         * the fresh code, and the discovery loop has to be running when they do. So this emits and
+         * falls through to the ordinary close — it does not touch the backoff.
+         */
+        const rejection = envelope.payload as unknown as PairRejected;
+        log.warn(
+          'pairing',
+          `The phone refused this pairing: ${rejection.reason} — ${rejection.message ?? 'no sentence sent'}`,
+        );
+        this.emit('pair-rejected', rejection);
+        return;
+      }
       case MessageType.HELLO_ACK:
         this.onHelloAck(envelope as unknown as Envelope<HelloAckPayload>, peerFingerprint, onReady);
         return;

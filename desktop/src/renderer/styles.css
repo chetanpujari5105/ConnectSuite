@@ -2615,3 +2615,26 @@ img#qr {
   font-size: 12px;
   color: var(--text-meta);
 }
+
+
+/* F7 — the phone refused a pairing. Warning, not destructive: see index.html for why. */
+.pair-rejection {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius-tile);
+  background: rgba(245, 178, 61, 0.10);
+  border: 1px solid rgba(245, 178, 61, 0.30);
+  text-align: left;
+}
+.pair-rejection .pair-rejection-headline {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.pair-rejection .pair-rejection-body {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-body);
+}

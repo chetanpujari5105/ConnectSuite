@@ -34,6 +34,17 @@ interface RendererStatus {
 interface ConnectBridge {
   /** Told to the main process on every route change — see shell.ts and the native notifier. */
   routeChanged(screen: string): void;
+  onPairRejected(
+    callback: (info: {
+      headline: string;
+      body: string;
+      refreshCode: boolean;
+      reason: string;
+      qr: string | null;
+    }) => void,
+  ): void;
+  /** Renders an already-armed QR payload. Does not arm a new one — that would rotate the token. */
+  pairingQrRender(payload: string): Promise<string | null>;
   onRevealNotification(callback: (key: string) => void): void;
   notifPermission(): Promise<{ refused: boolean; message: string | null; bundleName: string }>;
   notifSoundGet(): Promise<boolean>;
@@ -420,7 +431,42 @@ async function refreshLogs(): Promise<void> {
 // Connect / Disconnect / Retry / Forget / the two addresses / Refresh log all moved into the
 // Settings panes registered further down. Only the pairing screen's own button is bound here,
 // because the pairing screen is static markup rather than a built pane.
-el('new-qr').addEventListener('click', () => void showQr(true));
+el('new-qr').addEventListener('click', () => {
+  hidePairRejection();
+  void showQr(true);
+});
+
+/**
+ * F7 — the phone refused this pairing.
+ *
+ * The main process has already armed a fresh code and sends it in the payload, so this draws the
+ * explanation and the new QR **together**. Drawing the sentence over the old code would say "here
+ * is a fresh one" beside the one that was just refused.
+ */
+function hidePairRejection(): void {
+  el('pair-rejection').hidden = true;
+}
+
+connect.onPairRejected((info) => {
+  if (info.qr) {
+    // Rendered from the payload rather than by re-asking, so the code on screen is the same one the
+    // phone will be shown — a second `pairingQr` call would rotate the token again.
+    void connect.pairingQrRender(info.qr).then((dataUrl) => {
+      if (dataUrl) el<HTMLImageElement>('qr').src = dataUrl;
+    });
+  }
+  const box = el('pair-rejection');
+  box.replaceChildren();
+  const headline = document.createElement('p');
+  headline.className = 'pair-rejection-headline';
+  headline.textContent = info.headline;
+  const body = document.createElement('p');
+  body.className = 'pair-rejection-body';
+  body.textContent = info.body;
+  box.append(headline, body);
+  box.hidden = false;
+  shell.route('pairing');
+});
 
 /*
  * The sidebar's account block, filled from this Mac rather than from the markup.
