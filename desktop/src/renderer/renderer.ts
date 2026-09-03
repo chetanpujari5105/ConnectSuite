@@ -6,6 +6,8 @@
  */
 
 declare function chipLabel(capability: string, available: boolean, reason?: string): string;
+/** `shared/islandRota.js`, loaded before this script. S6. */
+declare function islandLineFor(event: { category: string; kind: string; detail: string }): string | null;
 
 /*
  * `shell` (shell.ts), `GLOBAL_ACTIONS` (navModel.ts) and `chipLabel` (chips.ts) need no import and
@@ -193,6 +195,10 @@ interface ConnectBridge {
     { ok: true; data: { openAtLogin: boolean; honoured: boolean } } | { ok: false; reason?: string }
   >;
   downloadsFolder(): Promise<{ ok: true; data: { path: string } } | { ok: false; reason?: string }>;
+  /** One activity event as it is recorded — the status island's rota, S6. */
+  onActivityRecorded(
+    callback: (event: { category: string; kind: string; detail: string }) => void,
+  ): void;
   downloadsReveal(): Promise<{ ok: true; data: { path: string } } | { ok: false; reason?: string }>;
   /** Opens an entry that is a web link. The scheme is re-decided in the main process. */
   clipOpen(
@@ -1703,6 +1709,19 @@ connect.onPhoneError((payload) => {
   // A phone-side refusal is a session event and belongs in the island's rota: the diagnostics
   // block is where you go to *look* for it, and the island is what tells you to go and look.
   shell.note(text);
+});
+
+/**
+ * S6 — the island narrates real clipboard and transfer events.
+ *
+ * The departure row said *"Both name features that do not exist (Phase 5)"*. Both exist. The
+ * decision about which events reach the rota is `islandLineFor` in `src/shared/`, so it is tested
+ * and so `system` and `mirroring` stay silent — the island already narrates those from the live
+ * link status, and the same fact in two tenses alternating is worse than not having it.
+ */
+connect.onActivityRecorded((event) => {
+  const line = islandLineFor(event);
+  if (line) shell.note(line);
 });
 
 /* ================================================================================================

@@ -32,6 +32,12 @@
  * Plain script, not a module — the CSP-locked page has no module loader.
  */
 
+/** `shared/islandRota.js`, loaded before this script. See its comment for S6. */
+declare function islandStatusChange(
+  previous: { phase?: string; lastError?: string | null } | null,
+  next: { phase?: string; lastError?: string | null } | null,
+): { seize: boolean; note: string | null };
+
 /*
  * No imports and no `declare` re-statements. Every one of these files is a plain script, so tsc
  * puts them in one global scope: `iconSvg` and `brandGlyph` from icons.ts, and `SCREENS`,
@@ -679,6 +685,7 @@ class ShellView {
    */
   setStatus(status: ShellStatus | null): void {
     const wasPaired = this.status?.paired;
+    const previousStatus = this.status;
     this.status = status;
 
     const tone = toneOf(status);
@@ -725,9 +732,35 @@ class ShellView {
     // rule as the Mirror pane's own button: no button for a promise the phone has not made.
     ($('hero-mirror') as HTMLButtonElement).disabled = status?.phase !== 'connected';
 
-    this.setIsland(status?.lastError ?? `${label}${status?.rttMs === undefined ? '' : ` · ${latency}`}`, tone);
-    if (status?.phase === 'connected') this.note(`Connected · ${latency}`);
-    if (status?.lastError) this.note(status.lastError);
+    /*
+     * **The link owns the island while it is changing; the rota owns it the rest of the time.**
+     *
+     * This was `setIsland(...)` unconditionally plus `note('Connected · 9 ms')`, both on **every**
+     * status update — and `rttMs` changes on every heartbeat. So the visible text was overwritten a
+     * second or two after every 5.2 s cycle, and six latency variants filled the whole six-slot
+     * rota inside twenty seconds. The rota was built, it cycled, and it was never seen: a rota that
+     * is always overwritten looks exactly like a rota with one entry in it, which is why nothing in
+     * a month of screenshots looked wrong. `shared/islandRota.ts` holds the rule and the tests.
+     *
+     * The dot's tone follows the link either way — that is a colour on a live fact, not a line of
+     * history, and it must not wait for a cycle.
+     */
+    const change = islandStatusChange(previousStatus, status);
+    $('island-dot').setAttribute('data-state', tone);
+    if (change.seize) {
+      this.setIsland(
+        status?.lastError ?? `${label}${status?.rttMs === undefined ? '' : ` · ${latency}`}`,
+        tone,
+      );
+    }
+    if (change.note) this.note(change.note);
+    // One entry per arrival at `connected`, not one per heartbeat. The latency is the reading at
+    // the moment the link came up, which is what a history entry is for — and when there is not one
+    // yet the entry is the word alone, because "Connected · —" is a glyph a reader has to decode
+    // rather than a fact, which is the same reason the battery slot is removed rather than dashed.
+    if (change.seize && status?.phase === 'connected') {
+      this.note(status.rttMs === undefined ? 'Connected' : `Connected · ${latency}`);
+    }
 
     // Pairing is forced while unpaired and released the moment the phone is trusted, rather than
     // leaving the user on a pairing screen they have already finished with.

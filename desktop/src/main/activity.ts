@@ -40,6 +40,15 @@ const MAX_BYTES = 1024 * 1024;
 const MAX_DETAIL = 300;
 
 class ActivityStore {
+  /**
+   * Called with each event as it is recorded, so the renderer can narrate one without polling.
+   *
+   * Optional and set after construction, because the store is built before any window exists. It is
+   * **not** how the Activity pane gets its rows — that reads the whole list — so a listener that is
+   * absent, slow or broken costs a status-island line and nothing else.
+   */
+  onRecorded: ((event: ActivityEvent) => void) | null = null;
+
   private events: ActivityEvent[] = [];
   private seq = 0;
   private path: string | null = null;
@@ -109,6 +118,14 @@ class ActivityStore {
       if (this.events.length > MAX_EVENTS) this.events = this.events.slice(-MAX_EVENTS);
       this.recorded += 1;
       this.persist(event);
+      // Told to whoever is listening, **after** it is in the list and on disk, and guarded on its
+      // own: a listener that throws must not make this look like an event that could not be
+      // recorded, because that is a different sentence and a different problem.
+      try {
+        this.onRecorded?.(event);
+      } catch (error) {
+        log.warn('activity', `A listener refused a ${category} event :: ${String(error)}`);
+      }
     } catch (error) {
       this.dropped += 1;
       log.warn(

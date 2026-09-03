@@ -40,10 +40,10 @@ the section to act on**, because each is a row whose stated blocker has been rem
 
 | Row | Said | Now | Cost |
 |---|---|---|---|
-| **S6** | Status island cycling *"Clipboard synced"* / *"Transfer complete · 4.2 MB"* — *"Both name features that do not exist (Phase 5)"* | **Both exist.** Clipboard shipped in Slices 11–13; transfers in Slices 3–9. The island still narrates only connection phase and refusals | Small. The rota takes any string |
-| **S10** | Overview's *Recent activity* — *"needs a session store nothing writes yet"* | **`main/activity.ts` is that store**, landed 2026-09-02 with eleven named recording sites | Small. The data is already there |
+| ~~**S6**~~ | Status island cycling *"Clipboard synced"* / *"Transfer complete · 4.2 MB"* | **Built 2026-09-04**, and *"small: the rota takes any string"* was wrong in an interesting way — the rota had never been visible at all, because a status update overwrote it on every heartbeat and six latency variants filled its six slots. See `docs/design-departures.md` → S6 | ~~Small~~ — done |
+| ~~**S10**~~ | Overview's *Recent activity* | **Built 2026-09-04** — `docs/design-departures.md` → O2 | ~~Small~~ — done |
 | **M5** | Mirror tool rail **Transfer** — *"`fs.*` has no payload spec yet. Phase 5"* | **`fs.*` is specified and built**, both directions, with resume | Medium. It is a rail slot and a route |
-| **Settings → File transfer** | *"real; blocked on Phase 5, ships with the feature"* | **Phase 5 shipped and the pane did not** | Small |
+| ~~**Settings → File transfer**~~ | *"real; blocked on Phase 5, ships with the feature"* | **Built 2026-09-04**, with General and Notifications, and the third column. Six panes, not three | ~~Small~~ — done |
 | **Pairing P4** | *"A reason when pairing is refused — **not possible**. The Mac sees a closed socket and nothing else"* | **`pair.rejected` is in `docs/protocol.md`, in `MessageType`, in `shared/protocol.ts` as a typed `PairRejectReason`, and the phone sends it** (`ControlSession.kt`). **No Mac-side handler exists** | Small, and it is the sharpest row here — the wire grew *specifically* to answer this and the Mac never listened |
 | **Pairing P3 / F6** | *"Distinguishing 'nobody has scanned' from 'scanned, and failing' — **not possible**"* | **Specified.** The scan-time mDNS TXT attribute is typed in `shared/protocol.ts`; phone half built | Small–medium |
 | **X5** | Media remote and contacts have *"no pane in the design"* | Still true of the **design**; both are reachable by **deep link** since Slice 2 | Nothing to do until the designer draws one |

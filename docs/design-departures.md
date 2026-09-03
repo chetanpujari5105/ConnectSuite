@@ -418,6 +418,53 @@ clipboard as new and push it to the phone. **Emptying a list must not cause a se
 
 ---
 
+## S6 — the status island narrates real events. **Built 2026-09-04, and the row was hiding a defect**
+
+The row said the handoff's rota — *"Connected · 10 ms"*, *"Clipboard synced"*, *"Transfer complete ·
+4.2 MB"* — named two features that did not exist, and that the fix was *"small: the rota takes any
+string."* Both features shipped in Phase 5. The wiring was indeed small. **What it uncovered was
+not.**
+
+**The rota was built, it cycled every 5.2 s, and it had never once been seen.** Two lines in
+`setStatus` did it, and both look completely ordinary:
+
+| | What it did | What that meant |
+|---|---|---|
+| `setIsland(...)` on **every** status update | `rttMs` changes on every heartbeat, so a status update lands every few seconds | whatever the rota had just cycled to was overwritten a second or two later, permanently |
+| `note('Connected · 9 ms')` on every update, deduplicated against the **exact** previous string | `9 ms`, `8 ms`, `10 ms` are three different strings | six latency variants filled the entire six-slot rota inside twenty seconds |
+
+So *"Clipboard synced"* could not have appeared **even once it was wired**: it would have been
+evicted by latency jitter before the next cycle. And this is why nobody noticed for a month — **a
+rota that is always overwritten looks exactly like a rota with one entry in it.** There is no
+symptom. Every screenshot of the app since 2026-08-30 shows a status island reading
+`Connected · N ms`, which is what it is supposed to read most of the time.
+
+The rule now lives in `src/shared/islandRota.ts` with its tests: **the link owns the island's text
+while the link is changing, and the rota owns it the rest of the time.** Latency is not an event; a
+phase change is, and so is an error — an error seizes the pill immediately, because it is the one
+thing on it somebody needs at the moment it happens rather than up to 5.2 seconds later. The dot's
+tone still follows the link on every update: that is a colour on a live fact, not a line of history.
+
+**Which events are narrated is a named list, not "everything except".** `clipboard`, `files`,
+`messages`, `calls`. `system` and `mirroring` are excluded because the island **already narrates
+those from the live status** — a five-minute-old *"Connected"* history entry alternating with the
+live one is the same fact in two tenses. The corollary is the part worth keeping: a new
+`ActivityCategory` does not silently start narrating, it falls through to silence until somebody
+decides.
+
+**And a second defect fell out of wiring it**, which is the denominator rule inverted. The
+clipboard watcher's automatic send recorded an Activity event **only when the phone refused to
+apply it**. So the Activity pane held *"Phone did not apply it"* rows with no successes beside them,
+in the one pane whose entire job is to say what happened — and the island had nothing to narrate on
+the path that fires most often. It records both now, at the same volume, once per real copy rather
+than once per poll.
+
+Measured on hardware, 2026-09-04: after two real copies made outside the app, the rota held
+`["Connected", "Sent to phone · 57 bytes, automatically", "Sent to phone · 31 bytes, automatically"]`
+and four consecutive 5.5-second samples of the island's text showed three different lines.
+
+---
+
 ## Overview — Quick actions and Recent activity **built 2026-09-04**. Rows O1–O5
 
 Two of the handoff's four cards were missing. Both are here now, in the columns the design puts them

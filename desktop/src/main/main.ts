@@ -135,6 +135,13 @@ const clipWatcher = new ClipboardWatcher(
     // per refused entry, not once per poll, because `send` only gets here past the echo interlock.
     if (result.ok && result.data.applied === false) {
       activity.record('clipboard', 'Phone did not apply it', result.data.note ?? 'the phone did not say why');
+    } else if (result.ok) {
+      // **The success case, at the same volume as the failure.** This branch did not exist: only
+      // the refusal was recorded, so the Activity pane held "Phone did not apply it" rows with no
+      // successes beside them — a failure count with its denominator removed, in the one pane whose
+      // job is to say what happened. It is once per *real copy*, not once per poll: `send` only
+      // reaches here past the echo interlock and the unchanged rule.
+      activity.record('clipboard', 'Sent to phone', `${result.data.bytes} bytes, automatically`);
     }
     return result;
   },
@@ -1180,6 +1187,17 @@ ipcMain.handle('fs-roots', () => files.roots());
  * empty array with no error field would have collapsed those two into one picture at the IPC
  * boundary, before the tagged union in `shared/activity.ts` ever got a chance to keep them apart.
  */
+/**
+ * S6: the status island narrates real clipboard and transfer events.
+ *
+ * Wired to the store rather than to each feature, because `activity.record` is already the one
+ * place every one of those events passes through — eleven named sites — and a second set of
+ * announce-calls sprinkled through `files.ts` and `clipboard.ts` is the second expression of the
+ * rule that stops matching. Which categories reach the island is decided in `shared/islandRota.ts`,
+ * where a test can reach it.
+ */
+activity.onRecorded = (event) => sendAll('activity-recorded', event);
+
 ipcMain.handle('activity-events', () => ({
   ok: true,
   data: { events: activity.all(), error: activity.error(), stats: activity.stats() },

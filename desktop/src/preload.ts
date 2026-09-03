@@ -239,6 +239,16 @@ contextBridge.exposeInMainWorld('connect', {
     }>
   > => ipcRenderer.invoke('activity-events'),
 
+  /**
+   * One activity event as it is recorded, for the status island's rota (S6).
+   *
+   * Not how the Activity pane gets its rows — that reads the whole list on open. This is a
+   * narration channel, and a renderer that missed one loses a line in a pill.
+   */
+  onActivityRecorded: (callback: (event: ActivityEvent) => void): void => {
+    ipcRenderer.on('activity-recorded', (_event, recorded) => callback(recorded));
+  },
+
   /** Opens a save dialog and writes the whole log as CSV. Resolves `ok: false` on cancel. */
   activityExportCsv: (): Promise<PhoneResult<{ path: string }>> =>
     ipcRenderer.invoke('activity-csv'),
