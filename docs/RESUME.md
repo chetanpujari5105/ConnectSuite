@@ -83,7 +83,7 @@
 | **Defect 63** | **Closed.** The onboarding security note — and the report was slightly wrong in a way worth knowing: the key-confirmation flow it describes **is real**, on the Sync path. It is a true sentence about the wrong one of two pairing paths |
 | **Defect 64** | *New, open:* the boot path fired into a state it was not built for and returned success |
 | **Defect 65** | *New, closed:* two deleted features still being taught to new users — onboarding page 3 walked people through `adb tcpip 5555`, for a mirror deleted on 2026-08-26. Found by reading all four pages, which is what 63's fix direction asked for |
-| **Defect 66** | *New, closed, unverified on hardware:* the phone could see a refused handshake and never said so |
+| **Defect 66** | *Closed, and proven on hardware 2026-09-03:* the phone could see a refused handshake and never said so. All three wait states drawn — `docs/testing.md` → Phase 7 Slice 9 |
 | **Phase 7** | **F1-F5 built** — the fifth onboarding page ending on pairing, the Mac tab reordered, the copy corrected, the wait clock, the refusal on screen. F6 and F7 change `docs/protocol.md` and are untouched |
 | **Phase 9** | The distribution audit, an unsigned `.dmg` that launches from `/Applications`, a 25 MB release APK, and one version scheme with a commit hook |
 
@@ -291,10 +291,12 @@ A docs-and-guards sitting, taken while the phone was elsewhere. Evidence: `docs/
    It found two gaps nobody was looking for: **`mirror.stop` and `mirror.keyframe`**, implemented
    since Phase 2 and documented nowhere. 14 fixtures, each with its opposite; the hook was shown to
    deny on a real mutation and the file restored byte-identical.
-3. **The clipboard instrument is built and has never been run.** `ClipProbeActivity`, five readings,
-   each with the lookalike it excludes — including the one that would otherwise sink the run: with
-   reads blocked, *nobody copied* and *every read refused* are the same silence, so the probe reports
-   `stopped=no-stimulus` and refuses to conclude.
+3. ~~**The clipboard instrument is built and has never been run.**~~ **Run on 2026-09-01 —
+   `docs/testing.md` → Slice 11**, and the feature shipped on top of it in Slices 12-13. Five
+   readings, each with the lookalike it excludes — including the one that would otherwise sink the
+   run: with reads blocked, *nobody copied* and *every read refused* are the same silence, so the
+   probe reports `stopped=no-stimulus` and refuses to conclude. It did exactly that on its first
+   attempt, and the refusal was the design working.
 4. **Two harness faults caught in the sitting**, both mine. `${PIPESTATUS[0]}` is empty in zsh, so
    two Gradle runs printed a blank exit code beside `BUILD SUCCESSFUL` — use `${pipestatus[1]}`. And
    `:app:compileDebugKotlin` reported `UP-TO-DATE` on a run containing a brand-new source file:

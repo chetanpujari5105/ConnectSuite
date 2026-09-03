@@ -333,8 +333,10 @@ Named, so nobody reads silence as agreement:
 ## 8. The order to build it in
 
 1. **The five readings in §2, with their controls, recorded in `docs/testing.md`.** Nothing else
-   starts. The instrument is built (`ClipProbeActivity`) and has **never been run** — it was written
-   on a day the phone was not attached. If reading 1 fails, or the run reports `stopped=no-stimulus`,
+   starts. **Done — the instrument ran on 2026-09-01, `docs/testing.md` → Slice 11, and the answer
+   was row 3 of §2's table.** The sentence this line used to carry — *the instrument is built and
+   has never been run, it was written on a day the phone was not attached* — is kept here as the
+   record of the gap rather than deleted. If reading 1 fails, or the run reports `stopped=no-stimulus`,
    there is no reading and the run is repeated rather than interpreted. If reading 3 is a refusal,
    this document is rewritten before any code, because the feature it describes is not the feature
    that is possible — §2's pre-registered table says which one takes its place.

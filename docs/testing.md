@@ -12916,3 +12916,270 @@ refused the commit until `AppsView` had one.
 | `node scripts/check-clip-echo.mjs` | green — **after it refused a `lastSent` field in the new pane**, which was a genuine collision and produced the better name (`lastAsk`) |
 | `:sync-module:testDebugUnitTest`, `:core:testDebugUnitTest` | gradle exit 0; `AppsContractTest` 5, `AppsPayloadsTest` 7, results file written 8 s before it was read |
 | `npm test` (desktop) | **318 pass, 0 fail** |
+
+---
+
+## Phase 7 · Slice 9 — F2, F4 and F5 seen on hardware, and a verdict script that lied · 2026-09-03
+
+F2, F4 and F5 of `docs/phase-7-pairing-flow.md` shipped on 2026-09-02 and had **never been run** —
+the device left the USB bus before the build could be installed, and both `CLAUDE.md` and the flow
+document carried *"F2, F4 and F5 are unverified on hardware"* for a day. All three are now on
+screen. Installed through `scripts/target-device.sh` (RZCY12330DT, SM-S938B, sdk 36), 28 runtime
+grants preserved across `install -r`. Screenshots: `docs/evidence/phase-7-f2-f4-f5/`.
+
+The three strings were taken **from the source that writes them** — `LinkWaitStatus.kt` and
+`LinkRoute.kt` — rather than typed from the proposal, because a pass criterion quoting a string the
+code does not write is a test that can only fail (`[boot]` vs `[autostart]`, same file, one slice
+earlier).
+
+### 1. F2 — the Advanced fold
+
+| Reading | Result |
+|---|---|
+| screen text, Advanced collapsed | 11 strings; order is state → action → paired list → **Advanced** |
+| `Ports 42501` present, collapsed | **0** |
+| `Ports 42501` present, expanded | **1**, with the capability list and *"Not offered yet: input, mic — 1 not built, 1 awaiting a permission."* |
+
+The expanded reading is the control for the collapsed one: it proves the query that reported the
+absence can see the content when it is there. `f2-advanced-collapsed.png`, `f2-advanced-expanded.png`.
+
+### 2. F4 — the wait clock, sampled across the threshold rather than at it
+
+**The first attempt held no reading and was discarded.** It sampled at exactly 20 s — the value of
+`LinkWaitStatus.HINT_AFTER_MS` — so the hint was legitimately showing and the run said nothing about
+whether it is *withheld* before then. That is the 263 ms window again: a sample on the boundary is a
+missing reading, not a negative one. The window was re-opened deliberately (the Mac app relaunched,
+allowed to reconnect, and cut again) rather than the poll being made faster.
+
+Mac app quit at 01:25:21, `HINT_AFTER_MS = 20_000`:
+
+```
+  2s  headline="Listening for your Mac"  hintShown=0
+  7s  headline="Listening for your Mac"  hintShown=0
+ 13s  headline="Listening for your Mac"  hintShown=0
+ 19s  headline="Listening for your Mac"  hintShown=0
+ 24s  headline="Listening for your Mac"  hintShown=1   ← "Nothing has connected yet. If it stays
+                                                          like this, check that your Mac is awake
+                                                          and on the same Wi-Fi as this phone."
+```
+
+**The four withheld samples are the evidence, not the fifth.** Defect 67's build showed the hint
+instantly, on every phone, for every user — so an after-20 s screenshot alone cannot tell the fixed
+build from the broken one. `f4-waiting-13s-no-hint.png`, `f4-waiting-24s-hint.png`.
+
+### 3. F5 — a refused handshake reaching the screen
+
+Two instrument faults, both in the probe, both caught before anything was written down.
+
+- **The stimulus destroyed the state it existed to produce.** `LinkServer` only sets `lastRefusal`
+  when it can read a certificate off the refused session (`prefix != null`). The first probe called
+  `finish()` inside Node's `tls.connect` callback — which in **TLS 1.3 fires before the server has
+  validated the client certificate** — and hung up. The phone logged
+  `Refused …, no usable certificate` and set nothing. A probe that never presented a cert would have
+  produced a clean, confident **false negative on the exact feature under test**.
+- **The probe reported its own optimism as the far end's verdict**, printing `"result": "ACCEPTED"`
+  for a connection the phone refused 4 ms later. Fixed to stay on the wire and read the alert:
+  `ERR_SSL_SSL/TLS_ALERT_CERTIFICATE_UNKNOWN` (alert 46).
+
+With the probe corrected, `scripts/support/refused-handshake-probe.mjs`:
+
+```
+01:29:14.121 W [tls]    Rejected unpaired client 07:63:A2:90:80:FE:8B:21…
+01:29:14.125 W [server] Refused 10.135.144.88, key 07:63:A2:90:80:FE:8B:21… —
+                        3 refused / 2 accepted since start
+```
+
+and on screen, in the error container:
+
+> **A Mac tried to connect and was refused**
+> It is not paired with this phone (from 10.135.144.88). Key 07:63:A2:90:80:FE:8B:21… — if that is
+> your Mac, scan its code again to pair it.
+
+**The discriminator is the key prefix, and it was predicted before the run.** `07:63:A2:90:80:FE:8B:21`
+is the first 23 characters of the SHA-256 of the certificate generated for this probe. Because
+`REFUSAL_VISIBLE_MS` is 60 s, a card on screen could otherwise be a stale refusal; matching the
+prefix to a cert minted seconds earlier is what makes the reading about *this* stimulus.
+`f5-refused-handshake.png`.
+
+**What this does not prove.** The stimulus was a stranger with a self-signed certificate — one of
+the two cases the copy names — and **not the Electron app**. The phone-side path is identical (it
+reads whatever certificate the peer presented), and the same log shows the real Mac taking it at
+`00:20:48` with `key 30:30:C8:EB:CD:DC:D0:FB…` while unpaired. Recorded rather than glossed, because
+verifying a mechanism through a client the product does not use is how defect 50 happened.
+
+### 4. The verdict script that lied, and it was mine
+
+`scripts/defect64-read.sh` was written **in this same sitting**, to avoid the 2026-09-02 trap of
+reading a boot pass off a no-op branch. On its first run it printed:
+
+```
+=> DEFECT 64 CLOSED: the boot path started the service and claimed connectedDevice only.
+```
+
+over a phone that **had not rebooted** and **still had the notification-listener grant enabled**.
+The two lines it counted were from the previous day — lines 982 and 984 of a 3024-line file.
+
+Two faults, and only the first is the obvious one:
+
+1. **The greps had no time bound.** *"since boot"* appeared in the section headers and nowhere in
+   the code. An artifact older than the run is a memory, not a result — the stale-XML row of
+   `CLAUDE.md`'s own table, committed by the script written to avoid it.
+2. **The controls were printed and then ignored.** `uptime` said 13 hours, the grant control said
+   1 entry, and the verdict was computed anyway. That is the decoration rule exactly: a check that
+   reads a target and acts regardless is not a safety measure, and it made the transcript *worse*
+   than no check, because it shows the correct readings immediately above the wrong conclusion.
+
+The rewrite makes the controls a **gate** — it exits 3 with `NO READING. Not a negative result: the
+experiment did not run` — and bounds every count to lines written since the current boot, derived as
+`device clock − /proc/uptime`.
+
+**And the corrected reading found something the first version had buried.** There were two `BOOT`
+events on 2026-09-02, not one:
+
+| Time | Line | What it was |
+|---|---|---|
+| 12:41:08 | `BOOT: already listening — nothing to do` | **the real boot.** `uptime` puts boot at 12:40:05 — 63 s earlier. This is defect 64 |
+| 17:48:15 | `BOOT: 1 paired device(s) … starting LinkService` + `Foreground as BOOT, types=0x10` | **not a boot at all** — uptime rules it out. A synthetic `QUICKBOOT_POWERON`, racing `LISTENER_REBIND` in the *same millisecond*; BOOT happened to win |
+
+So the `BOOT` branch and the `types=0x10` claim are **reachable and correct** — proven by the
+synthetic broadcast — and **defect 64 remains open**, because what is unproven is that a *real* boot
+reaches them when the listener rebind is also armed. On the real boot it lost. Those are two
+different claims and the first version of the script merged them into one number.
+
+### 5. Guards
+
+- `scripts/support/tap-named.sh` — taps a view by text or content-desc resolved from a fresh
+  `uiautomator dump`, and **refuses on 0 matches or >1 matches** rather than taking the first. A tap
+  that lands on whichever of two nodes came first in the dump is a coordinate guess wearing a name.
+- `scripts/defect64-read.sh` — gates on uptime and on the grant, and reports the branch rather than
+  the presence of a line.
+
+---
+
+## Phase 9 · Slice 10 — the gate refused, the signature was re-measured, and a control matched the sentence explaining the absence · 2026-09-03
+
+Three readings in one sitting. **Only one of them is a result**; the other two are a refusal and a
+correction, and they are recorded at the same weight because that is the point of the section.
+
+### 1. Defect 64 — `scripts/defect64-read.sh` returned NO READING, and it was right to
+
+The sitting opened on a stated precondition: *notification access toggled off, phone rebooted, app
+not opened*. The script gates on exactly those two things and refused both:
+
+```
+  last real boot    : 2026-09-02T12:40:06  (uptime 80400s = 22h 20m)
+  listener grant    : 1 connectsuite entry(ies)   ← MUST be 0
+GATE FAIL  uptime is 22h — this phone has not rebooted for this test.
+GATE FAIL  the notification-listener grant is still enabled
+=> NO READING. Not a negative result: the experiment did not run.  (exit 3)
+```
+
+**Neither gate was taken on the script's word.** The grant one is a `grep -c` over a one-line
+setting, which is the count-not-attribute failure this repo has already been bitten by twice, so it
+was re-asked three ways and by value:
+
+| Query | Answer |
+|---|---|
+| `settings get secure enabled_notification_listeners`, split on `:` | `com.chetan.connectsuite.debug/…NotificationMirrorService` — **present**, 1 of 5 entries |
+| `dumpsys notification` → *Allowed notification listeners* | same component, `(user: 0 isPrimary: true)` |
+| `dumpsys notification` → *All notification listeners enabled for current profiles* | same component |
+
+And the *user* question was asked as well, because `pm list packages` threw
+`SecurityException: Shell does not have permission to access user 150` in the same breath — this
+handset has three users (`0`, `95:DUAL_APP`, `150:Secure Folder`). `am get-current-user` → **0**, and
+the reading above is explicitly `--user 0`. So it is not the wrong-user lookalike either.
+
+The reboot gate is a single instrument, but the instrument is the kernel's own counter: `/proc/uptime`
+= 80,461 s across two samples five minutes apart, second field 311,728 idle-CPU-seconds, consistent.
+There was no boot in 22 hours.
+
+**What the phone was actually toggled, and this is the useful half.** `enabled_accessibility_services`
+is now `null`. It was `com.chetan.connectsuite.debug/…ConnectSuiteInputService` in
+`docs/evidence/phase-6-boot-2026-09-02/grants-before.txt` the day before. So a ConnectSuite
+special-access switch *was* turned off — the adjacent one. Notification access and the accessibility
+service sit next to each other in One UI's special-access lists, under the same app name, and the
+grant that was needed off stayed on while the one Phase 3 depends on went off. Recorded as an
+observation with its evidence, not as a claim about anyone's hands.
+
+### 2. `BOOT:` lines that are not boots — the log names the mechanism, and it can still mislead
+
+The log carries `[autostart] BOOT: …` at **2026-09-03T02:13:02** and again at `02:13:05`, over a
+kernel that booted at `2026-09-02T12:40:06`. Two readings of one fact. What each is reading:
+
+- `/proc/uptime` — the kernel's own time since start.
+- the log line — an **intent delivery**. `LinkAutoStart.reasonFor` maps `BOOT_COMPLETED` *and*
+  `QUICKBOOT_POWERON` to `BOOT`, and `core/src/main/AndroidManifest.xml` records that
+  `QUICKBOOT_POWERON` is **not a protected broadcast on this handset**.
+
+So a `BOOT:` line is evidence of a BOOT-shaped *intent*, not of a boot. The 12:41:08 line is the real
+one — 62 s after the kernel came up, taking the `already listening` branch 3.9 s behind the listener
+rebind, which is defect 64 exactly as recorded. The 02:13 pair is 51 minutes after
+`lastUpdateTime=2026-09-03 01:22:04` and has no kernel boot under it at all.
+
+**This is a hole in `defect64-read.sh` and it is named rather than fixed here.** The script bounds its
+greps to lines written since boot, which correctly excludes yesterday's — but a synthetic
+`QUICKBOOT_POWERON` sent *inside* the 30-minute window the uptime gate allows would land in the
+counted set and read as a real boot. The gate narrows the window; it does not close it. The fix, when
+someone takes it, is for `LinkAutoStart` to distinguish the two actions in the line it writes
+(`BOOT` vs `QUICKBOOT`), which is the same corollary defect 60 already produced: **when two mechanisms
+satisfy one guarantee, the log must say which one did** — and here two *actions* satisfy one reason
+name.
+
+### 3. D12 re-measured through the artifact, both quarantine states
+
+Not from the row that describes it, and not from the build directory — mounted from the shipped
+`ConnectSuite-2.0.0-arm64.dmg`, because D3 exists precisely because those differ.
+
+```
+Identifier=com.chetan.connectsuite.desktop      ← ours, not Electron
+Signature=adhoc      flags=0x10002(adhoc,runtime)      TeamIdentifier=not set
+Sealed Resources version=2 rules=13 files=10    Contents/_CodeSignature/CodeResources present
+codesign --verify --deep --strict  → valid on disk / satisfies its Designated Requirement   rc=0
+```
+
+| Condition | `spctl -a -t exec` | rc |
+|---|---|---|
+| **ConnectSuite.app**, as mounted | `rejected` | 3 |
+| **ConnectSuite.app**, `ditto` copy with `com.apple.quarantine` set | `rejected` | 3 |
+| Calculator *(control)* | `accepted / Apple System` | 0 |
+| Google Chrome *(control)* | `accepted / Notarized Developer ID` | 0 |
+
+The quarantined copy was re-verified with `codesign --verify --deep --strict` **after** the `ditto`,
+so a `rejected` there is a verdict about the signature and not about a copy that broke in transit.
+Both controls came back `accepted` in the same run.
+
+**`error → rejected`, in both quarantine states, is the whole change.** It does not notarize, does
+not remove the warning dialog, and does not make the app safe to hand to a stranger. What it buys is
+that a `rejected` app has a user-facing override — System Settings → Privacy & Security → **Open
+Anyway** — and an *unassessable* one gets *"damaged, move to Trash"* and has none.
+
+### 4. The APK copy check, and the control that matched the sentence explaining the absence
+
+CLAUDE.md's Phase 5 row carried *"the phone has not been reinstalled with the latest copy change"*.
+Checked by reading the APK on the device rather than by trusting `lastUpdateTime`: `pm path` →
+`adb pull` → `strings`.
+
+| String | Present | |
+|---|---|---|
+| `Copied on your Mac` | 1 | Slice 12-13 copy |
+| `On your clipboard` | 1 | |
+| `Copy to this phone` | 2 | |
+| `Pairing is a code you scan once` | 1 | defect 63's replacement |
+| `Copied on your Commodore` | **0** | negative control |
+| `ConnectSuite` | **177** | positive control |
+
+So the note was stale and is struck.
+
+**The fourth probe is the one worth keeping.** `adb tcpip` came back **present=1** — which reads as
+defect 65 resurrected, in an app whose locked decision #1 is *no ADB anywhere*. It is not. The match
+is `OnboardingCopy.forbiddenMechanisms`, whose `tcpip` entry carries
+`why = "Same decision. \`adb tcpip 5555\` survived in exactly one place in this repository and it was
+a sentence shown to users."` — **the guard's own explanation of the ban, compiled into the same dex as
+the copy it guards.** KDoc is stripped; a string literal is not.
+
+This is the Files-pane regex failure exactly — *the degraded banner's own sentence contains the words
+for the affordance it says is missing* — reached from a different direction, in a different language,
+in a binary rather than a DOM. The discriminator is the same one that rule already names: **do not
+text-search a blob for a user-facing claim.** The check that would have been right the first time is
+the one that already exists and runs in the module that owns the copy — `OnboardingCopyTest` asserts
+`forbiddenMechanisms` against the **page copy**, which is an enumeration and not a grep.

@@ -51,3 +51,9 @@ desktop/release/
 # the repo and the signed build fails on a missing entitlements file.
 !desktop/build/
 !desktop/build/**
+
+# graphify's generated knowledge graph. 284 files, ~3.8 MB, rebuilt on demand by the command in
+# CLAUDE.md's graphify section. Same category as desktop/release/: derived from the source beside
+# it, so checking it in means every code change carries a second, larger, mechanical diff nobody
+# reads — and a stale graph in git is worse than no graph, because it reads as current.
+graphify-out/

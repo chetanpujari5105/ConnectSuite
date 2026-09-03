@@ -67,10 +67,19 @@ mac:
 
   # ---- Signing. Blank on purpose; see the header. ------------------------------------------------
   #
-  # `identity: null` is what makes this an explicitly *unsigned* build rather than one that picks up
-  # whatever certificate happens to be in the login keychain. That distinction matters: a build
-  # signed by an ad-hoc or unrelated identity is worse than an unsigned one, because it looks
-  # signed and fails differently on somebody else's machine.
+  # `identity: null` stops electron-builder picking up whatever certificate is in the login keychain.
+  #
+  # **It does not produce an unsigned build, and the original wording here was wrong twice.** It was
+  # measured on 2026-09-03: with `identity: null` the packaged app had no `Contents/_CodeSignature`
+  # at all and every nested component kept its upstream `Electron*` identifier, so the bundle carried
+  # a seal describing an app that no longer existed. Gatekeeper answered with an ERROR rather than a
+  # verdict. The second wrong claim was that ad-hoc is "worse than unsigned": a properly ad-hoc-signed
+  # copy of this same app assesses as `rejected`, which is bypassable, where the shipped one is
+  # unassessable, which is not. See docs/phase-9-distribution-audit.md D12.
+  #
+  # `identity: "-"` is NOT the fix: electron-builder 25.1.8 reads "-" as a keychain identity name and
+  # logs "skipped macOS application code signing". The ad-hoc signing is done by the afterPack hook
+  # below, which signs inside-out and fails the build if the result does not verify.
   #
   # The day there is an account:
   #   1. `identity: "Developer ID Application: NAME (TEAMID)"`  (or delete the line and let
@@ -98,6 +107,10 @@ mac:
   # Notarization uploads the app to Apple. That is an outbound transfer of the whole binary and it
   # is why this stays false until somebody decides to do it.
   notarize: false
+
+# Ad-hoc signs the packaged app inside-out. See build/adhoc-sign.mjs for what this buys ($0,
+# error -> rejected) and what it does not (notarization, and therefore the warning dialog).
+afterPack: build/adhoc-sign.mjs
 
 dmg:
   # The two-icon layout everybody recognises: the app on the left, /Applications on the right.

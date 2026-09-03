@@ -180,8 +180,12 @@ differently per component, and only a non-Samsung device separates them.
 
 ## 5. What this brief does not claim
 
-- **No measurement has been taken yet** beyond the four `dumpsys` reads in §0 and the static manifest
-  finding in P1. Everything else is a plan.
+- ~~**No measurement has been taken yet** beyond the four `dumpsys` reads in §0 and the static
+  manifest finding in P1.~~ **Stale as of 2026-09-02 and struck 2026-09-03.** P1, P2, P3, P5 and P6
+  all carry results now — see each one's blockquote, and `docs/testing.md` → Phase 6 Slices 1 and 2.
+  What remains a plan is **P4** (blocked on one sentence of permission to send input), **H1-H3, H5**,
+  and the whole of §3. The struck sentence is kept because it is the same failure this brief is about
+  catching: a summary written once and not revisited while the sections above it moved.
 - **The §0 exemption reading is one device's.** It says nothing about what a fresh install looks like
   on a phone whose owner declined the onboarding prompt — which is a real user and is not represented
   by anything measured here.

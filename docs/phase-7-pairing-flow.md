@@ -19,8 +19,15 @@
 >   on this hardware is 1.5 s at worst, so 20 s is already more than ten times the observed worst
 >   case.
 >
-> **F2, F4 and F5 are unverified on hardware** — the device left the USB bus before the build could
-> be installed.
+> **F2, F4 and F5 were proven on hardware 2026-09-03** — `docs/testing.md` → Phase 7 Slice 9, with
+> screenshots in `docs/evidence/phase-7-f2-f4-f5/`. They had been unverified for a day because the
+> device left the USB bus before the build could be installed. Two readings are worth more than the
+> three passes: F4's evidence is the **four samples where the hint is withheld** (2/7/13/19 s), not
+> the one at 24 s where it appears — defect 67's build showed the hint instantly, so an after-20 s
+> screenshot cannot tell the two apart; and F5's stimulus was a **stranger with a self-signed
+> certificate, not the Electron app**, which is the other case the copy names. Note that
+> `docs/defects.md` had recorded F2 as proven on 2026-09-02 while this banner called it unverified —
+> the two disagreed for a day and nothing in the build could notice.
 >
 > **Original note follows.** **Nothing here is built.** The Mac's *screen* already has a proposal, in
 > `docs/design-departures.md` → "A request, not a departure: the pairing screen", and this does not
