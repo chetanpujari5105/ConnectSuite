@@ -13684,3 +13684,124 @@ the decoration rule in a script.
 
 The corrupt file and its `MediaStore` row were removed — left in place it is a permanently broken
 tile in the owner's photo browser. Recreating it is three commands and they are above.
+
+---
+
+## Phase 7 · Slice 10 — the design audit, measured rather than recalled · 2026-09-03
+
+`docs/design-departures.md` is prose written pane by pane as each landed, over five weeks. Prose
+goes stale exactly the way this repo's own phase table did, so before answering *what is left in
+Phase 7* the questions were re-asked of the running app. `scripts/phase7-audit-probe.mjs`, through
+`scripts/probe.mjs`, every reading with a control.
+
+**The instrument failed twice before it produced anything, and both failures are the harness
+working.** The first run guessed a global (`globalThis.__navModel`) for the palette and
+`ProbeControlFailure` refused the reading outright — *"the control returned 0. The reading was not
+taken."* Asking `navModel` would have been asking the thing under test to describe itself, which is
+the degenerate case in `CLAUDE.md`; the fix was to drive the real palette UI. The second run emitted
+a broken nested template into the page and the page threw. Neither produced a number, which is the
+whole point — the failure mode this harness exists to prevent is a plausible number from an
+instrument that could not see its target.
+
+**Preconditions established before any empty count below was read as an absence:** the app was
+**connected** to the phone (`Connected · 9 ms`, island text), and the clipboard pane held **4 real
+history rows**. Both matter — `0 kind badges` over an empty list would have proven nothing about
+whether kind badges exist, and `0 dialpad keys` on a disconnected app would have been a reading
+about the link.
+
+### 1. The sidebar — 12 rows, exactly one admits to being unbuilt
+
+```
+control = 12 rows enumerated
+Overview Mirror Files Photos Messages Notifications Clipboard Calls Apps Activity Settings  → built
+Camera                                                    aria="Camera — not built yet"     → unbuilt
+```
+
+One unbuilt pane in the whole app. Eleven of the handoff's eleven plus Apps (X0).
+
+### 2. Settings — 3 of the handoff's 8 panes, and 2 of its 3 columns
+
+```
+settings rail tabs        → ["Connection","Advanced","About"]        [control=3]
+settings grid template    → "200px 916px"                            [control=1]
+handoff (stated in prose) →  200px 1fr 320px, eight panes
+```
+
+Unchanged since it was measured on 2026-08-30, which is the finding: **General**, **Notifications**
+and **File transfer** are all real, Mac-side, and blocked on nothing. File transfer's own row in
+`docs/design-departures.md` says *"Phase 5, ships with the feature"* — Phase 5 shipped on 2026-09-02
+and the pane did not.
+
+### 3. What the app's own search cannot find — control = 6 rows for `mirror`, re-typed each query
+
+| Query | Result |
+|---|---|
+| `music` | `Now playing · In Overview` — the deep link works |
+| `contact` | `Contacts · In Messages` — the deep link works |
+| `camera` / `webcam` | `Camera · Not built yet · ⌘9` |
+| `transfer` | `Activity` only — **not** the Files pane, and not a transfer control |
+| `pair` | **[]** |
+| `battery` | **[]** |
+| `record` | **[]** |
+| `keypad` | **[]** |
+| `signal` | **[]** |
+| `restore` `displaced` `history` | **[]** — the clipboard's undo has no searchable name |
+| `forget` `trust` `unpair` | **[]** — trusted devices is in Settings → Connection and search cannot reach it |
+| `login` `menu bar` `appearance` | **[]** — the unbuilt General pane, correctly absent |
+
+`pair` returning nothing is deliberate and recorded (`docs/phase-7-homeless-features.md`, item 7).
+The rest were not deliberate: **the clipboard's Restore and the trust controls are shipped, working
+and unreachable by search**, which is precisely the gap slice 2 measured for the media remote and
+fixed with deep links. The same fix applies and has not been made.
+
+### 4. Calls — the handoff's centre and right columns are absent, not merely restyled
+
+```
+buttons in the pane      → 51        [control=51]
+  … by class             → { "button": 1, "secondary small": 50 }
+dialpad keys             → 0
+mute / speaker controls  → 0
+waveform elements        → 0
+top-level grid           → none (the pane is one block)
+messages grid, measured  → "804px 320px"     vs handoff "280px 539px 300px"
+```
+
+The 51 buttons are one dial button and 50 call-log / contact rows — so the count is real and the
+absences are absences. The handoff draws a 3×4 dialer, a 40-bar waveform, and a Mute / Keypad /
+Speaker row; none exists. **Six of the eight gaps need nothing from the wire** (`call.dial` already
+exists); mute and DTMF need an `InCallService` and two messages, and are the designer's to confirm.
+
+### 5. Clipboard — over a list with 4 real rows
+
+```
+history rows drawn       → 4         [control=1 list element]
+buttons in the pane      → 5         [control=5]
+History/Favourites/Pinned tabs → 0
+kind badges (URL, Aa, IMG, {}, FILE) → 0
+star / pin actions       → 0
+three-step sync timeline → 0
+```
+
+Four populated rows and zero of the handoff's furniture. This is the pane where the build is
+furthest from the drawing while being fully functional.
+
+### 6. Overview — two of the handoff's three right-column cards are missing
+
+```
+cards drawn → [ "Samsung SM-S938B", "What this phone can do", "Media remote" ]   [control=3]
+handoff     →   Quick actions (8 tiles) · Device · Recent activity
+battery slots → device-battery, strip-battery, strip-divider-battery — all present, all hidden=true
+```
+
+`S4` is confirmed still accurate: the battery slots exist in the DOM and are hidden, because
+`battery.state` is on `check-protocol-spec.mjs`'s debt list with **no handler on either side**.
+`S10` is now stale in one direction — *"Recent activity needs a session store nothing writes yet"*
+stopped being true on 2026-09-02 when `main/activity.ts` landed.
+
+### What this slice did not measure, stated so nothing is read as covered
+
+The inner grids of **Photos**, **Files**, **Notifications** and **Activity** were probed at the
+wrong level — each pane is a block containing its grid, and the read returned `cols: none` for the
+wrapper. That is an instrument limit, not a finding, and no claim about those four panes' layout is
+made here. `docs/design-departures.md` measured them at a matched 1440 × 920 viewport when each
+landed and remains the record.
