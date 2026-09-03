@@ -347,3 +347,52 @@ differently per component, and only a non-Samsung device separates them.
   by anything measured here.
 - **`docs/protocol.md` is untouched by this phase so far**, and should stay that way unless a
   reliability fix needs a wire change. If one does, it goes in the contract first.
+
+---
+
+## 6. What Phase 6 can honestly claim, and what stays hypothesis — 2026-09-03
+
+Written to be quoted. The first table is what this handset settled; the second is what it cannot, and
+the second is not a to-do list — several rows have **no route on this device at all**, which is a
+different and more important statement than "not done yet".
+
+### Claimable, on one SM-S938B running One UI on Android 16
+
+Each of these was observed on hardware with a control, and each carries the single-device caveat
+`docs/single-device-audit.md` sets out.
+
+| | What is claimable | What proved it |
+|---|---|---|
+| **The link returns after a restart** | `BOOT_COMPLETED` reaches `LinkBootReceiver`, `startOrLog` runs, `connectedDevice` is claimed and nothing else, ports bind, the Mac reconnects with nothing tapped | Slice 6, with `LISTENER_REBIND lines since boot: 0` as the control |
+| **…and after an app update** | `MY_PACKAGE_REPLACED` does the same | Slice 1, and again on every install this phase |
+| **A deep-Doze transition does not drop the link** | listeners 4/4, one session, and a **message that actually crossed** at `deep=IDLE` | P2 (exempt) and Slice 8 (unexempt, bucket `ACTIVE`) |
+| **A crash does not leave the phone serverless** | `START_STICKY` restarts `LinkService`; where it does not, the listener rebind covers it | defect 62, and Slice 10 measured `START_STICKY` winning by 16 ms |
+| **The wake lock does not lapse** | re-armed before its timeout rather than repaired after | defect 61, overnight |
+| **The phone does not silently overwrite a clipboard it cannot report** | refused at `granted=false`, applied at `granted=true`, refused again after restoring | Slice 7, both directions |
+| **`media.thumb` tells a corrupt photo from a deleted one** | `31 made / 0 gone / 1 undecodable` on a deliberately corrupt file | Slice 11 |
+
+### Hypothesis, and why — the rows with no route are marked
+
+| | Why it is not settled | Route on this device? |
+|---|---|---|
+| **Whether any Phase 6 fix is a fix or a One UI workaround** | This is the load-bearing one. Every row above is one vendor's behaviour. Two skins agreeing makes a behaviour general; disagreeing names the vendor — and nothing here has a second skin | **None.** Needs a second device, and the Realme is gone |
+| **The unexempt *and neglected* case** | H1 removed the Doze exemption; it did not make the app unused, so the bucket stayed `ACTIVE` and the harsh restrictions of `RARE`/`RESTRICTED` were never reached | **None.** P6 is withdrawn: the shell can leave `EXEMPTED` and cannot return to it |
+| **Samsung's own battery layer** | Device Care's *Sleeping apps* lists are not readable from `adb` — H2 — and were **asked for and never answered**, so this repo does not know whether the app is in them, before H1 or after | Owner's eyes only |
+| **Battery cost** | needs an unplugged night (H3), which is also the only route to **P3**, whose three instruments disagree and which therefore quotes no aggregate | Owner's time |
+| **Defect 80's start half** | `ACCESSIBILITY_BIND` has fired three times and started the link zero times, each time behind a faster route | Yes — stop `LinkService`, then kill, with the listener revoked. Needs a debug affordance |
+| **Doze as it actually happens** | every Doze reading is `force-idle`: a forced transition with USB attached, not an observed descent through the staged states with maintenance windows | Partly — H3 |
+| **Defect 17, two phones** | the Mac refuses a second phone rather than managing them | **None.** One phone |
+
+### The sentence to ship with
+
+> **Phase 6's fixes are proven on one Samsung handset and are hypotheses everywhere else.** The boot
+> path, the Doze survival, the wake lock and the crash recovery were each observed with a control on
+> an SM-S938B running One UI on Android 16. None has been seen on a second vendor, on stock Android,
+> on a phone in a low standby bucket, or on a phone left alone overnight. Battery management is the
+> most vendor-specific surface on Android, so the gap between "works here" and "works" is wider in
+> this phase than in any before it.
+
+**That sentence is the deliverable, not an apology for one.** A reliability phase that shipped
+claiming more would be making exactly the error the rest of this repository is written to avoid — and
+unlike a wrong reading, a fix tuned to one OEM fails **silently, everywhere else**, which is the one
+failure mode nothing in the build can catch.
