@@ -28,10 +28,34 @@ export interface ClipItem {
    */
   kind: 'text' | 'empty' | 'sensitive' | 'displaced';
   text?: string;
+  /**
+   * The **sender's** clock. `docs/protocol.md`: it orders that side's history and is trusted for
+   * nothing else.
+   *
+   * On a phone entry this is *not when somebody copied* — Android forbids a background read, so the
+   * phone reads its clipboard when ConnectSuite comes to the front, which may be an hour later. Any
+   * label drawn from this field has to say "the phone read it", never "copied on the phone", or it
+   * is a true sentence about the wrong moment.
+   */
   atMs: number;
   source: 'phone' | 'mac';
   package?: string;
   appName?: string;
+  /**
+   * This Mac's clock when the entry entered this history. **Local; never on the wire.**
+   *
+   * The only timestamp in an entry that this machine can vouch for, and therefore the only one the
+   * sync timeline may draw as a fact about this Mac. Absent on entries this side originated, where
+   * it would be a second reading of the same instant.
+   */
+  receivedAtMs?: number;
+  /**
+   * Whether this entry reached this Mac's pasteboard. **Local; never on the wire.**
+   *
+   * Present only on entries that arrived. `undefined` means *nobody asked this question of this
+   * entry*, which is a different fact from `false`, and the pane draws the two differently.
+   */
+  applied?: boolean;
 }
 
 /** UTF-8 bytes, not `String.length` — an emoji is 2 units and 4 bytes, and the wire carries bytes. */

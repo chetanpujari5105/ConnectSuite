@@ -245,6 +245,16 @@ contextBridge.exposeInMainWorld('connect', {
   clipPhoneHistory: (limit?: number): Promise<PhoneResult<ClipEntry[]>> =>
     ipcRenderer.invoke('clip-phone-history', limit),
   clipUse: (text: string): Promise<PhoneResult<null>> => ipcRenderer.invoke('clip-use', text),
+  /** Empties the list. Not the pasteboard, and not the echo interlock — see `clearHistory`. */
+  clipClear: (): Promise<PhoneResult<{ cleared: number }>> => ipcRenderer.invoke('clip-clear'),
+  /**
+   * Opens an entry that is a web link.
+   *
+   * The renderer decides whether to *draw* the button; the main process decides whether to *open*,
+   * with the same function. A string that arrived from a phone is not this Mac's, and `openExternal`
+   * opens whatever a scheme is registered to.
+   */
+  clipOpen: (text: string): Promise<PhoneResult<null>> => ipcRenderer.invoke('clip-open', text),
   onClipArrived: (callback: (entry: LocalClipEntry & { applied: boolean }) => void) =>
     ipcRenderer.on('clip-arrived', (_event, entry) => callback(entry)),
   /** The history moved for a reason the renderer did not initiate — a watcher send, or a clear. */

@@ -173,6 +173,14 @@ interface ConnectBridge {
     { ok: true; data: ClipEntryRow[] } | { ok: false; reason?: string; fixHint?: string }
   >;
   clipUse(text: string): Promise<{ ok: true; data: null } | { ok: false; reason?: string }>;
+  /** Empties the list. Not the pasteboard and not the echo interlock — see `clearHistory`. */
+  clipClear(): Promise<
+    { ok: true; data: { cleared: number } } | { ok: false; reason?: string; fixHint?: string }
+  >;
+  /** Opens an entry that is a web link. The scheme is re-decided in the main process. */
+  clipOpen(
+    text: string,
+  ): Promise<{ ok: true; data: null } | { ok: false; reason?: string; fixHint?: string }>;
   onClipChanged(callback: () => void): void;
   onClipArrived(callback: (entry: ClipEntryRow) => void): void;
 
@@ -661,6 +669,10 @@ const clipboard = new ClipboardView(
   el<HTMLButtonElement>('clip-send'),
   el<HTMLButtonElement>('clip-request'),
   el<HTMLInputElement>('clip-watch'),
+  el('clip-tabs'),
+  el('clip-detail'),
+  el('clip-foot'),
+  el<HTMLButtonElement>('clip-clear'),
 );
 void clipboard;
 

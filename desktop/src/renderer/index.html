@@ -541,33 +541,55 @@
               nothing arrived — and "Use this" is the only control on the page that writes this
               Mac's clipboard.
             -->
+            <!--
+              Two columns, `1fr 340px`, which is the handoff's Clipboard shape: the list, and the
+              selected entry beside it.
+
+              What the tab strip does NOT carry is Favourites and Pinned. Both mean *this survives*,
+              and this history is memory-only by decision — docs/phase-5-clipboard-proposal.md §6:
+              20 entries, cleared on disconnect, gone on restart, never written to disk. A star that
+              vanished when the phone went out of range would be a lie about the word. The strip
+              carries the filters the data actually supports instead. Rows K1-K6 in
+              docs/design-departures.md.
+            -->
             <section class="screen" data-screen="clipboard" hidden>
-              <div class="pane pane-clipboard" id="clipboard-card">
-                <div class="clip-actions">
-                  <button id="clip-send" class="button-primary" type="button">
-                    Send this Mac's clipboard
-                  </button>
-                  <button id="clip-request" class="button-secondary" type="button">
-                    Ask the phone for its clipboard
-                  </button>
+              <div class="clip-grid" id="clipboard-card">
+                <section class="clip-panel">
+                  <div class="clip-head">
+                    <div class="clip-tabs" id="clip-tabs" role="tablist" aria-label="Clipboard filter"></div>
+                    <button id="clip-clear" class="clip-clear" type="button">Clear all</button>
+                  </div>
+                  <div class="clip-actions">
+                    <button id="clip-send" class="button-primary" type="button">
+                      Send this Mac's clipboard
+                    </button>
+                    <button id="clip-request" class="button-secondary" type="button">
+                      Ask the phone for its clipboard
+                    </button>
+                    <!--
+                      A checkbox rather than a button, because it reports a state as much as it
+                      changes one. This is the only control in the app that decides whether something
+                      reads your clipboard all day, so it says what it is doing while it does it.
+                    -->
+                    <label class="clip-watch" for="clip-watch">
+                      <input type="checkbox" id="clip-watch" checked />
+                      <span>Send what I copy automatically</span>
+                    </label>
+                  </div>
+                  <div class="clip-notice" id="clip-notice" role="status" hidden></div>
+                  <div class="clip-list" id="clip-list" aria-label="Clipboard history"></div>
+                  <div class="clip-foot" id="clip-foot"></div>
+                </section>
+
+                <aside class="clip-detail" id="clip-detail" aria-live="polite">
                   <!--
-                    A checkbox rather than a button, because it reports a state as much as it
-                    changes one. This is the only control in the app that decides whether something
-                    reads your clipboard all day, so it says what it is doing while it does it.
+                    The two walls live here rather than above the list. They are standing copy in
+                    every state — the pane says the shape of the feature before anybody trips over
+                    it — and this is the column that is legible when the list is long.
                   -->
-                  <label class="clip-watch" for="clip-watch">
-                    <input type="checkbox" id="clip-watch" checked />
-                    <span>Send what I copy automatically</span>
-                  </label>
-                </div>
-                <div class="clip-wall" id="clip-wall"></div>
-                <!--
-                  The phone half, in its own block. It is a platform fact and not a roadmap item,
-                  and the two read identically unless one of them says whose limit it is.
-                -->
-                <div class="clip-wall clip-wall-phone" id="clip-wall-phone"></div>
-                <div class="clip-notice" id="clip-notice" role="status" hidden></div>
-                <div class="clip-list" id="clip-list" aria-label="Clipboard history"></div>
+                  <div class="clip-wall" id="clip-wall"></div>
+                  <div class="clip-wall clip-wall-phone" id="clip-wall-phone"></div>
+                </aside>
               </div>
             </section>
             <!-- ================================ Apps ====================================== -->
@@ -667,6 +689,7 @@
     <script src="files.js"></script>
     <script src="photos.js"></script>
     <script src="apps.js"></script>
+    <script src="../shared/clipLink.js"></script>
     <script src="clipboard.js"></script>
     <script src="../shared/activity.js"></script>
     <script src="activity.js"></script>

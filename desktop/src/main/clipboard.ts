@@ -142,7 +142,7 @@ export class ClipboardClient {
     this.received += 1;
     const text = entry.text;
     if (text === undefined || entry.kind !== 'text') {
-      this.history.add(entry);
+      this.history.add({ ...entry, receivedAtMs: Date.now(), applied: false });
       this.notify({ ...entry, applied: false });
       log.info(
         'clipboard',
@@ -157,7 +157,9 @@ export class ClipboardClient {
     this.echo.wroteLocally(text);
     this.applied += 1;
 
-    this.history.add(entry);
+    // `receivedAtMs` is this Mac's clock and `atMs` is the phone's; both are kept because the sync
+    // timeline needs to say which machine's clock each of its rows came from. See `ClipItem`.
+    this.history.add({ ...entry, receivedAtMs: Date.now(), applied: true });
     this.notify({ ...entry, applied: true });
     log.info(
       'clipboard',
@@ -333,6 +335,23 @@ export class ClipboardClient {
     this.echo.linkDropped();
     this.onChanged();
     log.info('clipboard', `Cleared ${had} clipboard entries: the link dropped`);
+    return had;
+  }
+
+  /**
+   * **Clear all**, from the pane. The list only — the interlock is deliberately untouched.
+   *
+   * [clear] above also calls `echo.linkDropped()`, and that is right for a dropped link and wrong
+   * here: `linkDropped` forgets what this side last *sent*, so the next watcher poll would read
+   * this Mac's unchanged clipboard as new and push it to the phone. Emptying a list is not a copy,
+   * and it must not cause a send. The clipboards themselves are not touched either — this button
+   * empties a history, and a button that silently also blanked your pasteboard would be the most
+   * surprising thing in the app.
+   */
+  clearHistory(): number {
+    const had = this.history.clear();
+    this.onChanged();
+    log.info('clipboard', `Cleared ${had} clipboard entries: asked to by the person using the app`);
     return had;
   }
 }

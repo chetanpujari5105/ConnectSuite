@@ -2312,100 +2312,249 @@ img#qr {
   min-height: 0;
 }
 
-.clip-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+/* ---- Clipboard ------------------------------------------------------------------------------ */
+/*
+ * The handoff's two columns, `1fr 340px`: the list, and the selected entry.
+ *
+ * The tab strip carries All / From phone / From this Mac rather than History / Favourites / Pinned.
+ * Both cut tabs mean *this survives*, and the history is memory-only by decision — 20 entries,
+ * cleared on disconnect, gone on restart, never on disk. See departures K1.
+ */
+.clip-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--space-7);
+  align-items: start;
+}
+.clip-grid > * { min-width: 0; }
+
+.clip-panel {
+  border-radius: var(--radius-panel);
+  background: var(--elev-3);
+  border: 1px solid var(--hairline-primary);
+  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+  overflow: hidden;
 }
 
-/* Standing copy, in every state. Muted rather than alarming: it describes the shape of the
-   feature, not a fault. */
-.clip-wall {
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.5;
-  border-left: 2px solid var(--border);
-  padding-left: 10px;
+.clip-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-7);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.clip-tabs { display: flex; gap: var(--space-2); flex: 1; min-width: 0; }
+.clip-tab {
+  height: 28px;
+  padding: 0 var(--space-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-body);
+  font: var(--text-control);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 180ms var(--ease), color 180ms var(--ease);
+}
+.clip-tab:hover { color: var(--text-on-control); }
+.clip-tab[aria-selected='true'] {
+  background: var(--accent-tint-selected);
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+}
+
+/* `--destructive` because clearing is the one irreversible thing on this screen: the history is
+   memory-only, so a cleared entry exists nowhere else. The confirming state fills rather than
+   tints, which is the same escalation the dialler's Call button uses. */
+.clip-clear {
+  flex: none;
+  height: 28px;
+  padding: 0 var(--space-5);
+  border: 1px solid var(--destructive-border);
+  border-radius: var(--radius-control);
+  background: var(--destructive-fill);
+  color: var(--destructive);
+  font: var(--text-control);
+  cursor: pointer;
+}
+.clip-clear.is-confirming { background: var(--destructive); color: var(--accent-on-fill); }
+
+.clip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-7);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .clip-notice {
+  margin: var(--space-4) var(--space-7) 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.04);
   font-size: 12px;
-  color: var(--text-muted);
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--surface-2);
+  line-height: 1.5;
+  color: var(--text-body);
 }
-
 .clip-notice.is-problem {
-  color: var(--text);
-  border: 1px solid var(--border);
+  background: var(--warning-fill);
+  border: 1px solid var(--warning-border);
+  color: var(--warning);
 }
 
-.clip-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-  min-height: 0;
-}
+.clip-list { display: flex; flex-direction: column; max-height: 430px; overflow-y: auto; }
 
 .clip-row {
   display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas: 'meta use' 'body use';
-  gap: 2px 12px;
-  align-items: start;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-2);
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: center;
+  width: 100%;
+  min-height: 72px;
+  padding: var(--space-4) var(--space-7);
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-left: 2px solid transparent;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms var(--ease);
+}
+.clip-row:hover { background: rgba(255, 255, 255, 0.04); }
+/* Selection is carried two ways — a tint and a left rule — because a tint alone at this contrast is
+   one theme tweak away from invisible, and the row is what the whole right column is about. */
+.clip-row.is-selected {
+  background: var(--accent-tint);
+  border-left-color: var(--accent);
 }
 
-.clip-meta {
-  grid-area: meta;
-  font-size: 11px;
-  color: var(--text-muted);
+/*
+ * The kind badge. Five in the design, of which IMG, FILE and {} cannot occur here: `clip.push`
+ * carries text only, and "code" is a guess no heuristic gets right. See departures K2.
+ */
+.clip-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
 }
+.clip-badge-lg { width: 44px; height: 44px; font-size: 12px; }
+.clip-badge.is-url { background: var(--accent-tint-selected); color: var(--accent-text); }
+.clip-badge.is-text { background: rgba(96, 165, 250, 0.16); color: #9ec5fb; }
+.clip-badge.is-warn { background: var(--warning-fill); color: var(--warning); }
+.clip-badge.is-undo { background: rgba(45, 212, 191, 0.16); color: #6fe0d2; }
+.clip-badge.is-muted { background: rgba(255, 255, 255, 0.05); color: var(--text-meta); }
+
+.clip-lines { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 
 .clip-body {
-  grid-area: body;
   font-size: 13px;
   line-height: 1.45;
+  color: var(--text-primary);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 2.9em;
+  overflow: hidden;
+}
+.clip-body.is-muted { color: var(--text-body); font-style: italic; }
+.clip-meta { font-size: 11.5px; color: var(--text-meta); }
+
+.clip-empty {
+  padding: var(--space-9) var(--space-7);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-body);
+}
+.clip-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: var(--space-4) var(--space-7);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--text-meta);
+}
+
+/* ---- The detail column ----------------------------------------------------------------------- */
+.clip-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-8);
+  border-radius: var(--radius-panel);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+}
+.clip-detail-block { display: flex; flex-direction: column; gap: var(--space-3); }
+.clip-headline {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text-primary);
   overflow-wrap: anywhere;
   max-height: 5.8em;
   overflow: hidden;
 }
-
-.clip-body.is-muted {
-  color: var(--text-muted);
-  font-style: italic;
+.clip-headline.is-muted { font-weight: 500; font-style: italic; color: var(--text-body); }
+.clip-detail-actions { display: flex; gap: var(--space-3); margin-top: var(--space-2); }
+.clip-detail-actions button { flex: 1; }
+.clip-detail-title {
+  margin: var(--space-6) 0 var(--space-1);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
-
-.clip-use {
-  grid-area: use;
-  align-self: center;
-}
-
-.clip-empty,
-.clip-footnote {
+.clip-info {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
   font-size: 12px;
-  color: var(--text-muted);
-  padding: 4px 2px;
 }
+.clip-info dt { color: var(--text-meta); }
+.clip-info dd { margin: 0; color: var(--text-on-control); text-align: right; overflow-wrap: anywhere; }
+
+.clip-step { display: flex; gap: var(--space-4); padding-bottom: var(--space-5); }
+.clip-step-dot {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-tint-selected);
+}
+/* The three tones are three different facts and are never drawn alike: something happened,
+   something was refused, and *this was not recorded* — which is not the same as "no". */
+.clip-step.is-refused .clip-step-dot { background: var(--warning-fill); }
+.clip-step.is-unknown .clip-step-dot { background: rgba(255, 255, 255, 0.05); }
+.clip-step-label { display: block; font-size: 12.5px; color: var(--text-on-control); }
+.clip-step.is-unknown .clip-step-label { color: var(--text-body); }
+.clip-step-when { display: block; font-size: 11px; color: var(--text-meta); }
 
 /*
  * The clipboard watcher's toggle and the phone-side limit.
  *
- * `styles.css` owns what lives inside a screen — the division `stylesheets.test.ts` enforces — so
- * these belong here and their colours come from tokens rather than from a second `:root`.
+ * `styles.css` owns what lives inside a screen — the division `stylesheets.test.ts` enforces —
+ * so these belong here and their colours come from tokens rather than from a second `:root`.
  */
 .clip-watch {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--text-body);
   cursor: pointer;
   user-select: none;
 }
@@ -2415,14 +2564,19 @@ img#qr {
   accent-color: var(--accent);
 }
 
+.clip-wall {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-body);
+}
+
 /*
  * Set apart from the line above it on purpose. This one is a statement about Android rather than
  * about ConnectSuite, and a reader who skims two identical paragraphs takes both as ours.
  */
 .clip-wall-phone {
-  border-left: 2px solid var(--border);
-  padding-left: 12px;
-  margin-top: -4px;
+  border-left: 2px solid var(--warning-border);
+  padding-left: var(--space-5);
 }
 
 /* ============================================================================================

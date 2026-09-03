@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor, Tray, Menu,
-  dialog,
+  dialog, shell,
 } from 'electron';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -10,6 +10,11 @@ import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
 import { ClipboardWatcher } from './clipboardWatcher';
+// The one home for "is this clipboard entry something we may hand to the operating system".
+// The pane requires the same module to decide whether to draw the button; see clipLink.ts.
+const { openableUrl } = require('../shared/clipLink') as {
+  openableUrl: (text: string | undefined | null) => string | null;
+};
 import { ContactsClient } from './contacts';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, promises as fsp } from 'node:fs';
@@ -1056,6 +1061,34 @@ ipcMain.handle('clip-set-watching', (_event, on: boolean) => {
 ipcMain.handle('clip-request', () => clip.request());
 ipcMain.handle('clip-history', () => ({ ok: true, data: clip.entries() }));
 ipcMain.handle('clip-phone-history', (_event, limit?: number) => clip.phoneHistory(limit));
+ipcMain.handle('clip-clear', () => {
+  const had = clip.clearHistory();
+  activity.record('clipboard', 'History cleared', `${had} entr${had === 1 ? 'y' : 'ies'} removed from this Mac`);
+  return { ok: true, data: { cleared: had } };
+});
+/**
+ * Open a clipboard entry that is a link.
+ *
+ * **The scheme is re-decided here and not trusted from the renderer.** The string originated on a
+ * phone, `openExternal` opens whatever a scheme is registered to on this Mac — `file://` opens
+ * Finder, `x-apple.systempreferences://` opens a Settings pane, and every installed app may claim
+ * its own — and the renderer is where a future change would most easily widen it by accident. Same
+ * rule as everywhere else in this repo: the check runs where the action is, and it is the same
+ * function the pane used to decide whether to draw the button, so the two cannot disagree.
+ */
+ipcMain.handle('clip-open', async (_event, text: string) => {
+  const url = openableUrl(text);
+  if (!url) {
+    return {
+      ok: false,
+      reason: 'That entry is not a web link, so there is nothing to open.',
+      fixHint: 'Only http and https links can be opened from here.',
+    };
+  }
+  await shell.openExternal(url);
+  activity.record('clipboard', 'Opened a link', new URL(url).host);
+  return { ok: true, data: null };
+});
 // A click on an older row, or Restore on a displaced entry. Arriving entries are applied by
 // `ClipboardClient.receive` without coming through here.
 ipcMain.handle('clip-use', (_event, text: string) => {

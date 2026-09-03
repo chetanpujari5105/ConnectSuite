@@ -386,6 +386,38 @@ typed. A contact with no number is drawn *and says so*: "not in the list" and "i
 nothing to dial" are different facts about a person, and hiding the second makes the search look
 broken.
 
+## Clipboard — **built 2026-09-04**, two columns. Rows K1–K6
+
+`1fr 340px`, measured back at `795px 340px` in a 1151px content column: the list with its filter
+strip and **Clear all**, and the selected entry beside it with Information and the sync timeline.
+
+| # | Design draws | Built instead | Status | Why | What would make the design's version correct |
+|---|---|---|---|---|---|
+| **K1** | Tabs: **History / Favourites / Pinned** | **All / From phone / From this Mac**, each with its count | **reshaped** | Favourites and Pinned both mean *this survives*. `docs/phase-5-clipboard-proposal.md` §6 is the first at-rest storage decision in this project and it says the opposite: 20 entries, **memory only**, cleared on disconnect, gone on restart, never on disk. A star that vanished when the phone went out of range would be a lie about the word — and the fix for that is a database, which is the decision §6 declined to make. The strip carries the filters the data supports instead | A decision to persist the history. That is a §6 reversal, not a UI change, and it would want the same standard §6 was written to: what is on disk, for how long, and what reads it |
+| **K2** | Five kind badges: `URL`, `Aa`, `IMG`, `{}`, `FILE` | `URL`, `Aa`, plus one per state kind — `LOCK`, `UNDO`, `—`, `64KB`, `?` | **reshaped** | **Three of the five cannot occur.** `docs/protocol.md`: `clip.push` carries `kind` of `text`, `empty` or `sensitive` and a text body — there is no image, file or attachment in this namespace. A badge that can never be drawn is a promise in a legend. **`{}` is cut for a different reason and it is the more interesting one:** *code* is a guess. Braces, semicolons and indentation all mislabel a shopping list, and a badge that is wrong some of the time is worse than an absent one because nothing on screen says which you are looking at. `URL` is **not** a guess — `openableUrl` either parses the whole string as an http(s) URL or it does not | An image or file clipboard, which is a `clip.*` redesign. The `{}` badge needs nothing from the wire and a rule somebody will defend |
+| **K3** | Row actions: **copy** and a **star** | The row selects; the actions are in the detail column | **reshaped** | The star is K1's. Copy moved because the detail column is where the entry is shown in full, and two Copy buttons for one entry is the second copy that stops matching |
+| **K4** | Detail actions: **Copy / Open / Share** | **Copy** (or **Restore**), and **Open** only for a link | **reshaped** | macOS's share sheet is `NSSharingServicePicker` and Electron does not expose it; there is nothing to substitute that is not a different feature wearing the label. **Open is drawn by the same function that decides whether opening is permitted** — `src/shared/clipLink.ts` — and it is strict on purpose: an entry is a string a phone sent, and `openExternal` opens whatever a scheme is registered to on this Mac (`file://` opens Finder, `x-apple.systempreferences://` opens a Settings pane, every installed app may claim its own). http and https only, and prose containing a link is **not** a link, because otherwise the button and the row disagree about what is about to happen | Electron exposing the share sheet |
+| **K5** | Sync timeline: *Copied on phone 09:42:03* → *Synced to ConnectSuite 09:42:04* → *Available on Mac 09:42:04* | *The phone read its clipboard* → *Arrived on this Mac* → *Put on this Mac's clipboard* / *Not put* / *not recorded*, each dated step labelled with **whose clock** | **reshaped** | **"Copied on phone" is the wrong sentence, not a missing timestamp.** Android forbids a background clipboard read — measured, Slice 11, 90 of 90 refused — so the phone reads its clipboard when ConnectSuite comes to the front, which may be an hour after somebody copied. `atMs` is *when the phone read it*. Drawing it as "copied" is a true-sounding sentence about the wrong moment, which is precisely the shape defect 63 was: nobody checking it would find it false, because the mechanism it names is real and is not the one in front of the reader. The clock labels are the second half: `atMs` is the phone's and `receivedAtMs` is this Mac's, with **no correction between them**, and a timeline that stacked them unlabelled invites somebody to subtract one from the other and call the difference latency | Nothing on the design's side. This is the build being more precise than the drawing, and the drawing should adopt it |
+| **K6** | Footer: *128 items in history* | *N of 20 entries, in memory only — cleared when the phone disconnects, gone when this app restarts, never written to disk* | **reshaped** | Same §6. The bound is the interesting half of the number, and a bare count invites the assumption K1 cuts |
+
+**A Mac→phone entry gets one recorded step and a pointer.** The `clip.push` ack says whether the
+phone applied it and this history does not keep that — the Activity log records all three outcomes
+as distinct rows. So the second step says so and carries no time, rather than inventing one.
+
+**`undefined` and `false` are two different final steps.** `applied === false` is *not put on this
+Mac's clipboard*; `applied === undefined` is *whether it reached this Mac's clipboard was not
+recorded* — an entry from before the field existed. Collapsing them is the absence-read-as-a-negative
+failure inside a timeline.
+
+**Clear all confirms, and says what it did not touch.** The history is memory-only, so a cleared
+entry is gone from everywhere; and the thing a person will fear is that the button also emptied
+their pasteboard. It did not, and it does not touch the echo interlock either — `clearHistory` is
+separate from the disconnect path's `clear` for exactly that reason: `linkDropped()` forgets what
+this side last *sent*, so reusing it would make the next watcher poll read this Mac's unchanged
+clipboard as new and push it to the phone. **Emptying a list must not cause a send.**
+
+---
+
 ## Open question — when does latency stop being green?
 
 The prototype draws the Overview latency figure in `#32E58A`, the success colour. The build draws it
