@@ -114,3 +114,104 @@ Ordered by **what it changes for a person using the app**, not by size.
 
 Deliberately **not** in Phase 7: Camera (needs Phase 8's signing), and anything requiring a second
 device.
+
+---
+
+## 5 · The honest product question — a fresh install, a paired phone, one week
+
+Two questions, deliberately kept apart, because they have different answers and different fixes.
+**What annoys you** is friction you route around and keep using. **What makes you stop** is the
+thing that removes the reason to open it at all. Everything below is grounded in a reading, and each
+reading names where it came from.
+
+### 5.1 The first thing that annoys you — hour one, not week one
+
+**You copy something on your phone, switch to the Mac, press ⌘V, and get the thing you copied an
+hour ago.**
+
+`ClipFeature.onWindowFocused` carries the comment that makes this exact: *"This is the whole
+phone-to-Mac path. There is no observer to hook and no background read to take; a person copies
+something in another app, comes back to ConnectSuite, and this runs."* The wall behind it is
+measured, not inherited — `docs/testing.md` → Slice 11: **90 of 90** reads refused with the
+accessibility service bound, **60 of 60** with it disabled, over clips proven readable with focus
+half a second earlier.
+
+So the phone half of *"copy on either machine, paste on the other"* requires **opening ConnectSuite
+on the phone first**. The Mac half is genuinely automatic — a watcher polls `NSPasteboard`, applies
+on arrival, and keeps what it displaced behind Restore. The asymmetry is real, it is the platform's,
+and no Android app can do better.
+
+**Why it is an annoyance rather than a dealbreaker:** you learn the gesture in about three days and
+it becomes a reflex. **Why it still costs the most of any single thing:** it fires several times a
+day, every day, and it fires on the feature the subtitle promises in the sidebar. There is no fix,
+only mitigation — the pane's standing copy already says it, and what would help is making the phone
+gesture cheap (a share-sheet target, a quick-settings tile) rather than pretending the wall is not
+there.
+
+**Second, close behind, and also a wall:** mirroring asks for consent on the phone **every single
+time**. `MirrorConsentActivity` says so — *"MediaProjection consent cannot be cached — Android 14
+re-asks every time, by design."* Start mirroring, pick up the phone, tap. Every session.
+
+Neither of these is a defect and neither is fixable. They are the tax this product pays for having
+no cloud and no account, and they should be stated in onboarding rather than discovered.
+
+### 5.2 The first thing that makes you stop using it — and it is not a wall
+
+**The Mac app is completely silent. Close the window and the product ceases to exist.**
+
+Measured, with a control that is non-trivially true:
+
+```
+electron named imports across 91 files in desktop/src  →  13 symbols
+  BrowserWindow, Menu, Tray, app, clipboard, contextBridge, dialog,
+  ipcMain, ipcRenderer, nativeImage, powerMonitor, safeStorage, screen
+
+'Notification' among them            →  false
+new Notification / requestPermission →  0 matches in src/ (the two hits are
+                                        NotificationsView and NotificationClient)
+app.dock                             →  never used
+setBadge / badgeCount / flashFrame   →  0
+tray.setTitle                        →  '● CS' / '○ CS' — connection state only
+```
+
+A phone notification arrives, crosses TLS, is parsed, is stored, is rendered into a pane, and is
+counted on a sidebar row that reads `Notifications14` — and **nothing on the Mac tells you.** No
+banner, no dock badge, no bounce, no sound. The tray glyph says whether the link is up and nothing
+about what came over it.
+
+**This is the death spiral, and it is a spiral rather than a complaint:**
+
+1. Notification mirroring is the feature that justifies a phone-link app. It is the reason to have
+   one running.
+2. It only reaches you while the ConnectSuite window is in front of you.
+3. A window that has to be in front to be useful competes with your actual work, so it goes behind.
+4. Behind, the app delivers nothing — so you glance at your phone instead, exactly as before.
+5. In week two you notice the app has been running for days and has never once been the reason you
+   learned something. You quit it, and you do not reopen it, because nothing prompts you to.
+
+Every step is caused by step 2 and step 2 is roughly forty lines of Electron.
+
+**The comparison that makes the size of this clear.** The product's own reference target does the
+opposite: a notification arrives, macOS shows it, you reply from the banner, and you never open the
+app. Here the phone half is finished — the listener, the reply path, `AppLabels`, the ongoing flag,
+`notif.reply` proven on hardware in Phase 4 — and it terminates in a pane. **The expensive half is
+built and the cheap half is missing**, which is why this is the highest-value item in Phase 7 and
+why it is item 2 in §4.
+
+### 5.3 The distinction, stated plainly
+
+| | The annoyance | The killer |
+|---|---|---|
+| **What** | Clipboard phone → Mac needs the app open on the phone | The Mac never notifies you of anything |
+| **When** | Hour one, then several times a day forever | Week two, silently, as a decision you never consciously make |
+| **Cause** | An Android platform wall, measured 90/90 and 60/60 | A missing Mac-side feature |
+| **Fixable** | **No.** Only mitigated — cheaper phone-side gestures, honest copy | **Yes.** `new Notification(...)` plus a reply action |
+| **Cost if ignored** | Daily friction; the product still earns its place | The product stops being opened |
+
+**The uncomfortable part, and the reason this belongs in the repo rather than in a chat:** the
+annoyance has been documented, argued and measured at length — Slice 11 exists, the wall has a
+decision table, the copy was rewritten twice. The killer has never been written down anywhere. It
+is not in `docs/design-departures.md`, because the handoff draws an app you are looking at and every
+departure row is measured against the drawing. **A design audit cannot find a missing feature that
+the design never drew, and this whole document is a design audit** — which is why §5 is here and
+why it is the section to act on.

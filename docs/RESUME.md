@@ -1,3 +1,51 @@
+# Resume here — written 2026-09-03, after Phase 6 closed and Phase 7 was audited
+
+> **Phase 6 is closed** — `docs/phase-6-closeout.md`, against an honest accounting rather than a
+> pass list. Seven behaviours claimable with a control each; seven hypothesis, **three with no route
+> on this device**. Never quote the first list without the second.
+>
+> **Phase 7's remaining surface is measured**, not recalled — `docs/phase-7-state.md`, from readings
+> in `docs/testing.md` → Phase 7 Slice 10.
+>
+> ## The next thing to build, and it is not a departure
+>
+> **The Mac never notifies you of anything.** `Notification` is not among the 13 electron symbols
+> imported across 91 files in `desktop/src`; `app.dock` is never used; there is no badge, no bounce,
+> no sound. A phone notification crosses TLS, is parsed, stored, rendered into a pane and counted on
+> a sidebar row — and nothing tells the person. The phone half is finished and proven since Phase 4.
+>
+> It is **absent from `docs/design-departures.md`** because that file measures the build against a
+> drawing, and the drawing has no notion of an app you are *not* looking at. `docs/phase-7-state.md`
+> §5.2 is the argument; §5.3 is why it outranks everything else in the phase.
+>
+> ## Then, in order
+>
+> 1. **`pair.rejected` on the Mac.** The departure row says *"not possible — the Mac sees a closed
+>    socket"*; the message is now in `docs/protocol.md`, in `MessageType`, typed in
+>    `shared/protocol.ts`, and **sent by the phone**. There is no Mac-side handler. One handler
+>    removes an indefinite silent wait from the first screen a stranger sees.
+> 2. **Deep links for Restore and the trust controls.** Both shipped, both return `[]` from the
+>    app's own search against a control of 6. Same gap slice 2 fixed for the media remote, two lines
+>    each.
+> 3. **Settings → General / Notifications / File transfer.** Three of eight panes exist. File
+>    transfer's row says *"ships with the feature"*; the feature shipped on 2026-09-02.
+> 4. **Calls' three columns and the keypad** — six of eight gaps need nothing from the wire.
+>
+> ## Still needing your hands, none of it blocking
+>
+> - **H2** — Samsung Device Care's *Sleeping apps* lists. Asked twice, never answered; no `adb`
+>   surface exists. It is the one outcome that undoing H1 does not undo.
+> - **H3** — one unplugged night. Also the only route to **P3**, which quotes no aggregate because
+>   its three instruments disagree.
+> - **Defect 80's start half** — needs a debug affordance to stop `LinkService` before the kill.
+>
+> Phase 8 stays shut (no Apple account). Phase 9 stays at hand-it-to-someone-you-know: the `.dmg` is
+> ad-hoc signed and **Gatekeeper returns an error rather than a verdict**, which is worse than
+> unsigned — the right-click bypass does not apply — and the release APK is refused outright with
+> `INSTALL_PARSE_FAILED_NO_CERTIFICATES`.
+
+---
+
 # Resume here — written 2026-09-03, after apps landed
 
 > **Apps is built and proven on hardware.** `apps.list`, `apps.icon`, `apps.open.ask`; a twelfth nav

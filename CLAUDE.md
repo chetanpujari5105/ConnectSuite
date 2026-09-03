@@ -126,7 +126,25 @@ The Android app is a multi-module Gradle build at the repo root (there is no `an
   behind an AOSP package name**. Read §4 before assuming a vendor claim is safe, and §6.4 for the
   one wall in this app with an expiry date nobody controls.
 - `docs/RESUME.md` — where work resumes and how to pick it up. **Read it first.** It currently holds
-  the Phase 5 opening brief: what the proposals decide, what they leave open, and the first slice.
+  the post-Phase-6 brief and the ordered Phase 7 list.
+- `docs/phase-7-state.md` — **what is actually left in Phase 7, measured against the running app**
+  rather than recalled from `docs/design-departures.md`, which is prose written pane by pane over
+  five weeks. §1 is the panes (Camera is the only unbuilt one, and is correctly parked behind Phase
+  8's signing; **Calls, Clipboard, Settings and Overview all work and do not look like the design**).
+  §2 is the six departure rows the wire has **overtaken** — `pair.rejected` is the sharp one, a row
+  reading *"not possible"* over a message now in the contract, in `MessageType`, typed on the Mac and
+  **sent by the phone**, with no Mac-side handler. §3 settles the homeless count at **six, not
+  seven**, and finds two more that arrived after the list was written.
+
+  **§5 is the section to read, and it is the one a design audit structurally cannot produce.** The
+  first thing that annoys a user and the first thing that makes them stop are different questions
+  with different answers: the annoyance is the clipboard's phone→Mac wall (measured, unfixable,
+  daily), and the killer is that **the Mac never notifies anyone of anything** — `Notification` is
+  not among the 13 electron symbols imported across 91 files, `app.dock` is never used, and there is
+  no badge, bounce or sound. The phone half has been finished and proven since Phase 4 and it
+  terminates in a pane nobody is looking at. It is **absent from `docs/design-departures.md`**
+  because that file measures the build against a drawing, and the drawing has no notion of an app
+  you are *not* looking at.
 - `docs/phase-6-closeout.md` — **the Phase 6 ledger, and the phase IS closed — 2026-09-03.**
   Read its §2 before claiming anything in Phase 6 is finished. §1 is what is claimable with a
   control each; **§2 is what is not, with a route column whose value is `None` on three rows** —
