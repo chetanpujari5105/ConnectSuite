@@ -1053,6 +1053,104 @@ damage on the user's own device or nearly recorded a false result.
   evidence; this one says **a denominator nobody has counted is not evidence either**, and it is
   more dangerous, because it arrives already wearing the costume of rigour.
 
+- **An exception's name is a claim about the platform's world, not about yours — and
+  `runCatching { … }.getOrNull()` is where that claim goes to die unread.** Defect 57 is the sharpest
+  defect this project has found, and it is worth keeping because **no single one of its parts is a
+  mistake anyone would flag in review.**
+
+  `contentResolver.loadThumbnail` on a `MediaStore` row that is present, over bytes that are not an
+  image, throws:
+
+  ```
+  FileNotFoundException: Input was incomplete.
+  ```
+
+  **An exception whose own name says *not found*, thrown about a thing that is found.** It is not
+  lying — to `MediaProvider`, "no decodable stream" and "no file" arrive at the same `openTypedAssetFile`
+  failure — but the name is about *the platform's* notion of the operation, and it was read as being
+  about ours.
+
+  **Three independent things had to be true, and each is idiomatic on its own:**
+
+  | | The line | Why nobody flags it |
+  |---|---|---|
+  | 1 | `FileNotFoundException` for a present file | the platform's word, not ours. Trusting an exception type is normal |
+  | 2 | `runCatching { … }.getOrNull()` | the standard Kotlin shape for *"I have a fallback"*. It is also a **complete discard of the diagnosis** |
+  | 3 | no log on the failure path | the fallback looked total, so there was nothing to say |
+  | 4 | one error code for two facts | `NOT_FOUND` covered *row gone* and *row present, undecodable* |
+
+  Remove any one and the defect is visible. Keep all four and the phone tells somebody *"That photo is
+  no longer on the phone"* about a file they can open in a folder, and every layer is behaving as
+  written.
+
+  **The rule, and it is about `getOrNull` rather than about `MediaStore`:** a `runCatching` whose
+  failure branch discards the exception is asserting *"the reason cannot matter"*. That is a strong
+  claim and it is almost never true on a platform call, because the platform's failure modes are not
+  ours and its names are chosen for its own model. So: **either the exception reaches a log with its
+  type intact, or the code has to say in a comment why the reason genuinely cannot matter.**
+  `getOrElse { }` with an empty body is the same discard wearing a different name.
+
+  The corollary about error codes is the one that generalises furthest: **when a platform call fails
+  identically for two facts, the honest handler asks a second question rather than picking the more
+  likely answer.** Here that is an existence query on the failure path only — cheap, because it runs
+  per *failed* item. And when the second question cannot be answered either, the reply is the one that
+  claims less: *"could not establish that the row is there"* becomes `NOT_FOUND`, never a confident
+  claim that it is.
+
+- **Measure from the end that can tell the difference, and delete the probe that cannot.** A probe
+  was written against the Mac's DOM to verify defect 57 and then **deleted after the run**, which is
+  the finding rather than a tidy-up.
+
+  A photo that was deleted and a photo that cannot be decoded both draw **the same blank tile**. The
+  Mac is therefore the one end in the system that is structurally incapable of separating them — which
+  is the entire defect. A probe reading it would have been measuring the *symptom the fix exists to
+  make distinguishable*, from the end that cannot distinguish it, and it would have returned a
+  perfectly stable, perfectly useless number in both the fixed and unfixed builds.
+
+  So before writing an instrument, ask **which end holds the distinction** — not which end is easiest
+  to read, and not which end the user looks at. Here the answer is one log line on the phone, and
+  everything else is decoration. The general form: *if this fix worked and if it did not, would this
+  instrument's output differ?* If not, the instrument is pointed at the wrong end, however convenient
+  that end is.
+
+  (Its second fault is the smaller one and is recorded in `docs/testing.md` → Phase 6 Slice 11: its
+  album selectors matched **0** elements while its `expect` predicate reported `landed=true`, because
+  the tiles were already on screen from an earlier route. **A script whose action does nothing while
+  reporting success is the decoration rule in an instrument**, and it only failed harmlessly because
+  the reading was somewhere else.)
+
+- **A route is invisible when nothing in your source code is its call site.** This is what let a whole
+  slice about *removing competitors from a race* run with an uncounted competitor in it, and it is the
+  rule that would find the fifth.
+
+  Defect 80's run revoked the notification-listener grant and avoided an install, which removed
+  `LISTENER_REBIND` and `PACKAGE_REPLACED`. It did not remove **`START_STICKY`**, which restarted
+  `LinkService` with a null intent and beat the route under test by 16 milliseconds.
+
+  **Why it was not counted, and every reason generalises:**
+
+  | | `START_STICKY` | The general form |
+  |---|---|---|
+  | It has **no call site** | it is a *return value* from `onStartCommand`, not a call to `ensureRunning` | grepping your own code for start routes finds the routes **you wrote**, and nothing else |
+  | It has **no name of its own** | it arrives with a null intent, so the reason is `UNKNOWN` | a route that reuses a generic label is invisible in exactly the log that was built to name routes |
+  | It is a **platform** behaviour | one flag, set once, years ago | the enumeration lives in the framework's documentation, not in this repository |
+  | It fires only in a **state you do not produce** | needs the process to die while the service is started | the routes you meet daily are the ones you enumerate |
+
+  **So the enumeration has to run in the other direction: not "where does our code start the link?"
+  but "what can cause this process or service to exist at all?", asked of the platform.** On Android
+  that list is finite and short — an explicit `startService`/`startForegroundService`, a **bound**
+  service (accessibility, notification listener, any `AccessibilityService`/`NotificationListenerService`
+  the system binds), a manifest `<receiver>`, a `ContentProvider` being queried by another app, a
+  `START_STICKY` restart, `JobScheduler`/`WorkManager`, an `AlarmManager` alarm, and an app widget
+  update. Walk it against the manifest and each entry is either wired, deliberately not wired, or a
+  route nobody has thought about — and the third column is where the fifth one is.
+
+  **The corollary defect 60 already established gets one word stronger.** It said: when two mechanisms
+  can satisfy one guarantee, the log must say which one did. `UNKNOWN` satisfies that letter and
+  defeats its purpose — it names *that* we do not know rather than *which* route it was. A reason
+  enum needs no generic member that a real, regularly-occurring route falls into; if one exists,
+  every occurrence of it is a route somebody has not identified yet.
+
 - **Searching for a forbidden thing finds the sentence forbidding it — and after three sightings the
   location of the hole is known, which is the useful part.** A guard names what it bans. That name is
   a string. The string ships in the same artifact as the thing it guards. So a text search for the

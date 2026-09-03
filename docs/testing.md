@@ -13579,10 +13579,16 @@ FAIL. **The log cannot corroborate any of that**: nothing was written between `1
 process died and returned without logging its own start — which nothing in this codebase does — or
 those two readings were taken during a moment the log did not see.
 
-**No story is offered for it.** Two instruments answered one question differently, the third query
-that would settle it was not run before the state moved on, and inventing a reconciliation here is
-the failure this file has a whole section about. It is written down so the next person meets it as a
-known disagreement rather than a fresh mystery.
+**No story is offered for it, and none is to be added later.** Two instruments answered one question
+differently, the third query that would settle it was not run before the state moved on, and
+inventing a reconciliation here is the failure this file has a whole section about.
+
+> **A standing instruction to any later session, including me.** This entry is **not** an open
+> question to be tidied up on a quiet afternoon. Do not reconcile it from reasoning; the state is
+> gone and no amount of thinking recovers it. It may only be replaced by a **new run that reproduces
+> the disagreement and takes the third reading** — dismissing a crash dialog while sampling `pidof`,
+> `dumpsys activity services` and the log's mtime together. Anything else is a story, and a plausible
+> story here is worse than the gap, because the gap is honest about what nobody saw.
 
 ### State afterwards
 
