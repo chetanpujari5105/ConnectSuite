@@ -115,6 +115,15 @@ class ShellView {
   private settingsPane = 'connection';
 
   /**
+   * The sidebar badge's number, kept so the Overview tile can read it.
+   *
+   * Read rather than recomputed: the tile and the badge are the same claim in two places, and two
+   * places that count the same thing separately eventually disagree — which on this screen would
+   * mean a dashboard tile and a sidebar badge showing different numbers of unread notifications.
+   */
+  private notificationCount = 0;
+
+  /**
    * Session events, newest last, for the island to cycle.
    *
    * Only real events go in. The handoff's island cycles "Clipboard synced" and "Transfer complete ·
@@ -776,6 +785,7 @@ class ShellView {
 
   /** The sidebar badge. Hidden at zero — a badge reading "0" is a count nobody needs. */
   setNotificationCount(count: number): void {
+    this.notificationCount = count;
     const badge = document.getElementById('nav-badge-notifications');
     if (!badge) return;
     badge.hidden = count <= 0;
@@ -840,6 +850,11 @@ class ShellView {
 
   get screen(): string {
     return this.current;
+  }
+
+  /** What the sidebar badge is showing. See [notificationCount]. */
+  get unread(): number {
+    return this.notificationCount;
   }
 }
 

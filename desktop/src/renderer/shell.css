@@ -963,6 +963,151 @@ body {
  */
 .hero { grid-column: 1; }
 .overview-wide { grid-column: 1 / -1; }
+
+/* ---- Quick actions (the handoff's second Overview card) --------------------------------------- */
+/*
+ * Column two, beside the hero, which is where the design puts it. Not a `.card`: the design draws
+ * this one as a heading over a grid of tiles on the window ground, with the *tiles* carrying the
+ * surface. A card around it would put two borders around every tile.
+ */
+.quick { grid-column: 2; }
+.quick-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+}
+.quick-count { font: var(--text-meta-size); letter-spacing: var(--tracking-meta); color: var(--text-meta); }
+.quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+
+.quick-tile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-tile);
+  background: var(--control);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset;
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms var(--ease), border-color 160ms var(--ease), transform 160ms var(--ease);
+}
+.quick-tile:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--hairline-hover); }
+.quick-tile:active { transform: scale(0.99); }
+/* Marked, not removed. State A's rule: removing Camera leaves a seven-tile grid that reflows the
+   day it ships, and a marked tile carries the same information without the composition moving. */
+.quick-tile.is-unbuilt { opacity: 0.5; }
+.quick-tile.is-unbuilt .quick-name { color: var(--text-meta); }
+
+.quick-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-control);
+  background: var(--accent-tint);
+  color: var(--accent-text);
+}
+/* One tint per screen, matching the dock's. They are decoration in the sense that nothing depends
+   on reading them, and identity in the sense that the same screen is the same colour everywhere. */
+.tint-mirror { background: rgba(139, 107, 255, 0.14); color: #8b7aff; }
+.tint-files { background: rgba(96, 165, 250, 0.14); color: #60a5fa; }
+.tint-photos { background: rgba(45, 212, 191, 0.14); color: #2dd4bf; }
+.tint-notifications { background: rgba(245, 178, 61, 0.14); color: #f5b23d; }
+.tint-messages { background: rgba(50, 229, 138, 0.14); color: #32e58a; }
+.tint-clipboard { background: rgba(139, 107, 255, 0.14); color: #8b7aff; }
+.tint-calls { background: rgba(34, 211, 238, 0.14); color: #22d3ee; }
+.tint-camera { background: rgba(244, 114, 182, 0.14); color: #f472b6; }
+
+.quick-lines { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.quick-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.quick-sub {
+  font-size: 11.5px;
+  color: var(--text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Recent activity --------------------------------------------------------------------------- */
+.recent { grid-column: 1; }
+.recent-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.recent-all {
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+  font: var(--text-control);
+  cursor: pointer;
+  padding: 0;
+}
+.recent-list { display: flex; flex-direction: column; }
+.recent-row {
+  display: grid;
+  grid-template-columns: 74px 26px minmax(0, 1fr) auto;
+  gap: var(--space-5);
+  align-items: center;
+  height: 52px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.recent-row:last-child { border-bottom: 0; }
+.recent-when { font-size: 11.5px; color: var(--text-meta); }
+.recent-dot { width: 26px; height: 26px; border-radius: var(--radius-control); }
+.recent-text {
+  font-size: 13px;
+  color: var(--text-on-control);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-detail {
+  font-size: 11.5px;
+  color: var(--text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 45%;
+  justify-self: end;
+}
+.recent-empty { padding: var(--space-6) 0; font-size: 12.5px; line-height: 1.55; color: var(--text-body); }
+.recent-empty.is-problem { color: var(--warning); }
+
+/* ---- The footer strip -------------------------------------------------------------------------- */
+.overview-strip {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-7);
+  padding: var(--space-6) var(--space-8);
+  border-radius: var(--radius-tile);
+  background: rgba(22, 24, 34, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.overview-strip-text { display: flex; align-items: center; gap: var(--space-4); font-size: 12.5px; color: var(--text-body); }
+.overview-strip-glyph { display: flex; color: var(--live); }
+/* The one security sentence on this screen must not be drawn over a link that is down. */
+.overview-strip.is-idle .overview-strip-glyph { color: var(--text-meta); }
+.overview-disconnect {
+  flex: none;
+  height: 28px;
+  padding: 0 var(--space-5);
+  border: 1px solid var(--destructive-border);
+  border-radius: var(--radius-pill);
+  background: var(--destructive-fill);
+  color: var(--destructive);
+  font: var(--text-control);
+  cursor: pointer;
+}
+.overview-disconnect:disabled { opacity: 0.4; cursor: default; }
 .hero-body { display: flex; gap: var(--space-9); }
 
 .hero-phone {

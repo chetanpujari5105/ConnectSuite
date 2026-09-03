@@ -418,6 +418,31 @@ clipboard as new and push it to the phone. **Emptying a list must not cause a se
 
 ---
 
+## Overview — Quick actions and Recent activity **built 2026-09-04**. Rows O1–O5
+
+Two of the handoff's four cards were missing. Both are here now, in the columns the design puts them
+in, plus the full-width footer strip.
+
+| # | Design draws | Built instead | Status | Why |
+|---|---|---|---|---|
+| **O1** | **Quick actions**, eight tiles, *"8 available"* | The same eight, generated from `navModel.SCREENS`, counted as *"7 of 8 available"* | **reshaped** | The count is of the ones that **work**, with the total beside it. The design's 8 counts tiles; ours would be a bare 8 over a grid with a dead tile in it, which is the denominator rule with the denominator taken out. Camera is the dead one and stays **marked rather than removed** — state A's rule: removing it leaves a seven-tile grid that reflows the day it ships |
+| **O2** | **Recent activity**, five rows and *View all* | The same | — | The row for this said it *"needs a session store nothing writes yet"*. `main/activity.ts` became that store on 2026-09-02 with eleven recording sites. **S10 is discharged** |
+| **O3** | Tile captions: *Mirror & control*, *3 new*, … | The screen's own subtitle, and the live unread count where there is one | **reshaped** | A caption written on the dashboard is a claim about a screen, made somewhere the screen cannot correct it. The subtitle is the sentence the screen already owns. `0 new` is never drawn — the rule the sidebar badge follows |
+| **O4** | **Device status** — battery, storage and memory rings | Not drawn | **unbuilt** | `battery.state` and `net.state` are both on `check-protocol-spec.mjs`'s debt list with **no handler on either side**, and there is no storage or memory message at all. Unchanged from **S4 / S5**, which say plainly: do not "fix" this. Three rings over three numbers nobody sends would be the most decorative thing in the app |
+| **O5** | The footer strip: an encryption sentence and **Disconnect** | The same, and it goes quiet when the link is down | — | Both halves are real: our link *is* TLS 1.3 with a pinned certificate on both ends, and Disconnect is the call Settings → Connection makes. It is deliberately **not** the badge X1 and C4 cut — those were claims about an SMS and about a cellular call, neither of which this Mac carries a byte of. This one is about the only thing that is ours, and when nothing is connected it says *"Not connected. Nothing is being sent anywhere."* rather than leaving the screen's one security sentence standing over a dead link |
+
+**The Overview drawing now lives in `OverviewView`, not in `renderer.ts`, and that move is the
+finding.** It was three functions in `renderer.ts` for about an hour and shipped a bug in that hour:
+the card took `events.slice(0, 5)` from a store that returns events **oldest first**, and drew the
+five oldest things that had ever happened under a heading reading *Recent activity*. Nothing in the
+suite could see it — `renderer.ts` needs `connect`, `shell` and a live DOM at module scope, so every
+line of drawing in it is outside the project's entire test surface. It was caught by looking at a
+screenshot, which is the fourth time a renderer-only break has been found that way.
+`check-renderer-views.mjs` refused the commit until the new class had a test, which is the guard
+working on the run that created its subject.
+
+---
+
 ## Open question — when does latency stop being green?
 
 The prototype draws the Overview latency figure in `#32E58A`, the success colour. The build draws it

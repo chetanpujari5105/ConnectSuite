@@ -574,6 +574,17 @@ function pillOffsetFor(rowOffsetTop: number): number {
   return Math.max(0, rowOffsetTop);
 }
 
+// The same names on `globalThis`, for the reason `shared/activity.ts` carries this block: in the
+// renderer these are already global, and under `node --test` this file is a CommonJS module whose
+// declarations are module-scoped — so `OverviewView.drawQuickActions` would throw
+// `SCREENS is not defined` the moment a view test mounted the pane.
+{
+  const g = globalThis as Record<string, unknown>;
+  g.SCREENS = SCREENS;
+  g.DEEP_LINKS = DEEP_LINKS;
+  g.GLOBAL_ACTIONS = GLOBAL_ACTIONS;
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     SCREENS,

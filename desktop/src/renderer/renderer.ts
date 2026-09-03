@@ -410,6 +410,15 @@ function render(status: RendererStatus | null): void {
 
     caps.append(chip);
   }
+
+  // Quick actions and the footer strip both follow the link, so they are redrawn from the same
+  // status the rest of this function reads rather than from a second subscription that could be a
+  // frame behind it.
+  overview.setStatus(
+    status?.phase === 'connected',
+    status?.deviceName ?? null,
+    shell.unread,
+  );
 }
 
 function describe(status: RendererStatus): string {
@@ -1036,6 +1045,42 @@ function addressControl(
   wrap.append(input, button);
   return wrap;
 }
+
+// Overview's two new cards. `View all` is the design's own link and goes to the pane that holds
+// the same events; Disconnect is the call Settings → Connection makes.
+/**
+ * Overview's Quick actions, Recent activity and footer strip.
+ *
+ * A view class rather than three functions in this file, and that is the point: `renderer.ts` is
+ * reachable by no test — it needs `connect`, `shell` and a live DOM at module scope — so anything
+ * that draws in here is outside every test in the project. `check-renderer-views.mjs` exists
+ * because three renderer-only defects shipped green from exactly that position, and the *fourth*
+ * was found here by looking at a screenshot: the card took the head of the events array, which the
+ * store returns oldest-first, and drew the five oldest events under a heading reading "Recent
+ * activity". Moving the drawing into a class is the fix that makes the next one catchable.
+ */
+const overview = new OverviewView(
+  {
+    activityEvents: () => connect.activityEvents(),
+    disconnect: () => connect.disconnect(),
+  },
+  el('quick-grid'),
+  el('quick-count'),
+  el('recent-list'),
+  el('overview-strip'),
+  el('overview-strip-line'),
+  el<HTMLButtonElement>('overview-disconnect'),
+  (id) => shell.route(id),
+);
+el('recent-all').addEventListener('click', () => shell.route('activity'));
+el('overview-shield').replaceChildren(iconSvg('shield', 16));
+// The card is redrawn when the screen is opened rather than on a timer: it is five rows off a
+// store the main process already holds, and a dashboard that silently refetches every second is a
+// cost with nothing behind it.
+shell.onRoute((id) => {
+  if (id === 'overview') void overview.refresh();
+});
+void overview.refresh();
 
 /**
  * The version, in one place.

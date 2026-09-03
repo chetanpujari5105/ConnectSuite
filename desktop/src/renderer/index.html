@@ -239,6 +239,33 @@
                 </div>
 
                 <!--
+                  Quick actions. The handoff's second card, eight tiles in two columns. They are
+                  generated from `navModel` rather than written out here, for the reason the sidebar
+                  rows are: eight hand-written tiles are a second list that stops matching the first
+                  one the day a screen is renamed. Departures O1-O3.
+                -->
+                <section class="quick" id="quick-card">
+                  <div class="quick-head">
+                    <h3 class="card-title">Quick actions</h3>
+                    <span class="quick-count" id="quick-count"></span>
+                  </div>
+                  <div class="quick-grid" id="quick-grid"></div>
+                </section>
+
+                <!--
+                  Recent activity. The departure row for this said it *"needs a session store
+                  nothing writes yet"*; `main/activity.ts` became that store on 2026-09-02 with
+                  eleven named recording sites, and this is the row being discharged.
+                -->
+                <section class="card recent" id="recent-card">
+                  <div class="recent-head">
+                    <h3 class="card-title">Recent activity</h3>
+                    <button type="button" class="recent-all" id="recent-all">View all</button>
+                  </div>
+                  <div class="recent-list" id="recent-list"></div>
+                </section>
+
+                <!--
                   Capabilities. The design has no home for this list at all (departures X5) and it
                   is the pane that answers "why can't I do X", so it sits on the dashboard rather
                   than being buried. Each chip carries the phone's own reason, verbatim.
@@ -263,6 +290,19 @@
                   <p class="card-sub" id="remote-note"></p>
                   <div id="remote-body" class="remote-body"></div>
                   <div id="remote-notice" class="mirror-notice" hidden></div>
+                </div>
+
+                <!--
+                  The handoff's full-width footer strip. Both halves are real: the link is TLS 1.3
+                  with a pinned fingerprint, and Disconnect is the same call Settings → Connection
+                  makes. It is the one place on this screen that states what the connection is.
+                -->
+                <div class="overview-strip" id="overview-strip">
+                  <div class="overview-strip-text">
+                    <span class="overview-strip-glyph" id="overview-shield" aria-hidden="true"></span>
+                    <span id="overview-strip-line"></span>
+                  </div>
+                  <button type="button" class="overview-disconnect" id="overview-disconnect">Disconnect</button>
                 </div>
               </div>
             </section>
@@ -721,6 +761,9 @@
     <script src="clipboard.js"></script>
     <script src="../shared/activity.js"></script>
     <script src="activity.js"></script>
+    <!-- Overview's Quick actions, Recent activity and footer strip. Loaded after shared/activity.js
+         because it calls `activityPage` and `activityWhen`, and after navModel.js for `SCREENS`. -->
+    <script src="overview.js"></script>
     <script src="shell.js"></script>
     <script src="renderer.js"></script>
   </body>

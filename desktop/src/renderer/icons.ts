@@ -245,6 +245,14 @@ function brandGlyph(size = 24): SVGSVGElement {
   return svg;
 }
 
+// Same reason as `navModel.ts`'s block: a view test mounts a pane that calls `iconSvg`, and under
+// `node --test` this file's declarations are module-scoped.
+{
+  const g = globalThis as Record<string, unknown>;
+  g.iconSvg = iconSvg;
+  g.brandGlyph = brandGlyph;
+}
+
 // Reachable from the page (plain scripts, one global scope) and from `node --test` (the shim).
 if (typeof module !== 'undefined') {
   module.exports = { ICON_GEOMETRY, ICON_NAMES, FILLED_ICONS, strokeForSize, iconSvg, brandGlyph };
