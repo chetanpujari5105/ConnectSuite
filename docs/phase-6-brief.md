@@ -1,6 +1,15 @@
 # Phase 6 — background reliability on One UI
 
-> **Status: open, no code written.** This is the brief, and it answers one question before anything
+> ## ⚠️ **Superseded for anything quotable — the phase is CLOSED, 2026-09-03.**
+> The ledger is **`docs/phase-6-closeout.md`**, and its §2 (*what is hypothesis, with the route or
+> `None`*) is what a reader needs before claiming anything here is finished. This file is kept for
+> the **arguments and the costings** — §0's exemption finding, §1a's H1 costing, §3's second-device
+> reasoning — none of which the close-out repeats. Its §6 was promoted into the close-out and the
+> close-out wins wherever the two disagree.
+>
+> ~~**Status: open, no code written.**~~ **Struck 2026-09-03**, and kept because it is this file's
+> own lesson: a status line written once and not revisited while every section above it moved.
+> This is the brief, and it answers one question before anything
 > else: **what can this handset actually prove.** Phase 6 is the first phase where
 > `docs/single-device-audit.md` stops being a footnote — battery management is the most
 > vendor-specific surface on Android, and every reading this project holds comes from one SM-S938B.
