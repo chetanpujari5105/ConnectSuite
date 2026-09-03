@@ -42,6 +42,8 @@ export class FakeElement {
   hidden = false;
   type = '';
   checked = false;
+  /** How many times [focus] was called. Storage only — see that method. */
+  focusCount = 0;
   disabled = false;
   title = '';
   /** Form-control fields. Storage only: the double has no validation and no range clamping. */
@@ -165,6 +167,18 @@ export class FakeElement {
 
   click(): void {
     this.dispatch('click');
+  }
+
+  /**
+   * Records that focus was asked for; it does not model focus.
+   *
+   * Added when the Calls dialler started calling it — the double's own instruction is to extend it
+   * rather than work around it. What a test may assert is that a view *asked* for focus. Whether
+   * anything is focused, whether a `focus` event fired, and what `:focus-visible` then paints are
+   * browser semantics this file does not have and never claims to.
+   */
+  focus(): void {
+    this.focusCount += 1;
   }
 
   /**

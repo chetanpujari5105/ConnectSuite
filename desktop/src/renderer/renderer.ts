@@ -723,6 +723,9 @@ const calls = new CallsView(
   el<HTMLInputElement>('call-number'),
   el<HTMLButtonElement>('call-dial'),
   el('calls-notice'),
+  el('calls-tabs'),
+  el('call-keypad'),
+  el('call-frequent'),
   connect,
 );
 

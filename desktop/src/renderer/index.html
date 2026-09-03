@@ -443,16 +443,43 @@
               because there is no audio path between the phone and this Mac and there never will
               be. Dialling takes two clicks: there is no dialler screen to cancel on.
             -->
+            <!--
+              Three columns, `300px 1fr 300px`, which is the handoff's Calls shape. What is NOT
+              here is as deliberate as what is: no waveform (there is no audio on this Mac and an
+              animated bar chart over silence is a drawn lie), no Mute/Speaker (they need an
+              `InCallService` and two messages the wire does not carry), no DTMF keypad *during* a
+              call, and no "End-to-end encrypted" badge — our TLS covers the link, and the call
+              itself is a cellular call we do not carry a single byte of. See
+              docs/design-departures.md rows C1-C6.
+            -->
             <section class="screen" data-screen="calls" hidden>
-              <div class="pane primary" id="calls-card">
-                <div id="call-live" class="call-live hidden"></div>
-                <div class="row">
-                  <input id="call-number" type="tel" placeholder="Number to call" />
-                  <button type="button" id="call-dial" class="button">Call</button>
-                </div>
-                <p class="pane-sub" id="calls-note"></p>
-                <div id="calls-body"></div>
-                <div id="calls-notice" class="mirror-notice" hidden></div>
+              <div class="calls-grid" id="calls-card">
+                <section class="calls-log-panel">
+                  <div class="calls-tabs" id="calls-tabs" role="tablist" aria-label="Call log filter"></div>
+                  <div class="calls-log-scroll">
+                    <p class="calls-note" id="calls-note"></p>
+                    <div id="calls-body"></div>
+                  </div>
+                </section>
+
+                <section class="calls-stage" id="calls-stage">
+                  <div id="call-live" class="call-live"></div>
+                </section>
+
+                <aside class="calls-dialer">
+                  <h3 class="calls-aside-title">Dialler</h3>
+                  <input id="call-number" type="tel" placeholder="Number to call" aria-label="Number to call" />
+                  <div class="dialpad" id="call-keypad"></div>
+                  <button type="button" id="call-dial" class="dial-call">Call</button>
+                  <h3 class="calls-aside-title">Frequently called</h3>
+                  <!--
+                    Derived here from the phone's own call log — the number that appears most often
+                    in it — rather than from a "favourites" the wire does not carry. The count is
+                    shown because the count is the basis for the word "frequently".
+                  -->
+                  <div id="call-frequent" class="calls-frequent"></div>
+                  <div id="calls-notice" class="mirror-notice" hidden></div>
+                </aside>
               </div>
             </section>
 

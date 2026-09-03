@@ -337,7 +337,7 @@ what it is.
 | Screen | Design | Build |
 |---|---|---|
 | Messages | `grid(280px 539px 300px)` — list, open thread, and *this conversation's* detail, side by side | `grid(815px 320px)` — list **or** thread with a back link, plus a global contacts directory |
-| Calls | `grid(300px 519px 300px)` — list, live-call card, dialer keypad | one full-width pane holding all three, with no keypad and no in-call controls |
+| Calls | `grid(300px 519px 300px)` — list, live-call card, dialer keypad | ~~one full-width pane holding all three, with no keypad and no in-call controls~~ — **built 2026-09-04 as `300px 1fr 300px`**, with the filter strip, the running clock and the keypad. The in-call controls stay cut; see rows C1–C7 below |
 
 **Six of the eight gaps need nothing on the wire** and are Mac-side layout: the three-column shapes,
 the All/SMS/Chat and All/Missed/Contacts filter tabs, the running call timer, and the keypad
@@ -355,6 +355,36 @@ the All/SMS/Chat and All/Missed/Contacts filter tabs, the running call timer, an
 the design says *"Audio is routed through Galaxy S26 Ultra"*, the build says *"Audio stays on the
 phone — pair the Mac to it over Bluetooth"*. Both state the platform wall; only ours names the
 remedy. The design's copy should adopt it.
+
+---
+
+## Calls — **built 2026-09-04**, three columns. Rows C1–C7
+
+The structural row above is discharged for Calls: the pane is `300px 1fr 300px`, with the
+All / Missed / Contacts strip, the running call clock, the 3×4 keypad and *Frequently called*. What
+follows is the list of things the handoff draws that are **not** on screen, one row each, and every
+one of them is a capability the wire cannot back rather than an omission.
+
+| # | Design draws | Built instead | Status | Why | What would make the design's version correct |
+|---|---|---|---|---|---|
+| **C1** | A **40-bar waveform** under the caller's name, animated | Nothing. The card goes name → number → clock → controls | **wall** | **There is no audio on this Mac, in either direction.** `CAPTURE_AUDIO_OUTPUT` is system-only and AccessibilityService call recording violates Play policy — `CLAUDE.md`'s first platform wall. A waveform is a *picture of a signal*, so drawing one over silence is the most literal available form of claiming a capability the wire does not have. An idling flat line would be worse, not better: it reads as *the other person is not speaking* | Nothing. Not "no protocol yet" — no route exists for any app |
+| **C2** | **Mute** and **Speaker** on the live card | One line: *"Mute, speaker and keypad tones are on the phone. Nothing on the wire carries them."* | **unbuilt** | `call.*` is `incoming`, `ended`, `log`, `dial`, `answer`, `reject`. Nothing carries a mute or an audio route, and the phone half needs an `InCallService` — a role the user grants, not a permission | Two messages and an `InCallService`. Still the designer's call, unchanged from the row above: is a Mute you press on a Mac you cannot hear through worth the role prompt? |
+| **C3** | **Keypad** as an in-call control (DTMF) | The keypad is on the right and types a number **before** a call. It cannot send a tone into one | **unbuilt** | No message carries a DTMF digit. The distinction matters and is drawn in the pane rather than hidden: a keypad that looks in-call and does nothing is worse than an absent one | A `call.dtmf` verb. An IVR is the only real use |
+| **C4** | **"End-to-end encrypted"**, lock glyph, on the live-call card | Cut | **reshaped** | Our *link* is TLS 1.3. The **call** is a cellular call this Mac does not carry one byte of, and a lock badge on a call card is a claim about the call. Identical reasoning to **X1**, which cut the same badge from a Messages thread — this is the second sighting, and the pattern is that the badge is correct on the *connection* strip and false on anything the phone does independently of us |
+| **C5** | Twelve keys, no delete | Thirteen: the design's 3×4, plus **⌫** under `#` | **reshaped** | A keypad with no way back is unusable the first time a finger slips, and the field is 300px away from where the eye is. The 3×4 the handoff draws keeps its shape; the delete sits under it | A drawn delete key. This is a **design gap**, not a wire one — the fifth row in this file where the gap runs that way |
+| **C6** | Only a call **in progress**. There is no drawn state for *no call* | A headline, what will appear here, and the audio wall | **reshaped** | This is the **fifth pane to invent its own empty state** — after N4 (Notifications), P5 (Photos), F7 (Files) and A2 (Activity). Recorded loudly rather than styled quietly: four could be bad luck, five is a missing vocabulary. See *How to read the "missing from the design" rows* | The one drawn *unavailable / partial / failed / empty* set that four rows have now asked for |
+| **C7** | *Frequently called* — three people, each labelled **Mobile** | The three most-called **numbers** from the phone's own log, each labelled with **how many calls** | **reshaped** | There is no favourites list on the wire, so the list is derived. It is grouped by number because a number is what you can dial. The count is drawn because the count is what the word *frequently* asserts — a list of three names with the basis removed is the denominator rule in a sidebar. The number's *type* (Mobile / Work) is not in `call.log` and is not guessed at | `call.log` carrying the number type, or a favourites verb. Neither is worth a message on its own |
+
+**The clock is a measurement and is drawn as one.** `00:02:18`, three fields always, ticking on a
+one-second interval from `startedAtMs` — not a formatted label. `callsView.test.ts` asserts the
+interval exists, because a clock that does not tick is a label wearing a clock's formatting and the
+two are indistinguishable in a screenshot.
+
+**The Contacts tab asks the phone.** It is not a filter over the call log — there is no book on the
+Mac to filter, and a local filter stops finding people whose number is stored in a format nobody
+typed. A contact with no number is drawn *and says so*: "not in the list" and "in the list with
+nothing to dial" are different facts about a person, and hiding the second makes the search look
+broken.
 
 ## Open question — when does latency stop being green?
 

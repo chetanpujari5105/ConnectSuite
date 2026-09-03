@@ -14,6 +14,21 @@
  * phone: once `call.dial` is sent the call is being placed. The confirmation is a second click on
  * the same button rather than a modal, because a modal blocks the renderer and cannot be driven by
  * the accessibility tooling this project tests with.
+ *
+ * ### What the design draws that is deliberately not here
+ *
+ * The handoff's centre column carries four things this build refuses, and each refusal is a
+ * capability claim the wire cannot back. They are rows C1–C4 in `docs/design-departures.md`:
+ *
+ * | Drawn | Why it is not here |
+ * |---|---|
+ * | A **40-bar waveform** | There is no audio on this Mac. A bar chart animated over silence is a picture of a signal that does not exist — the most literal form of claiming a capability the wire does not have |
+ * | **Mute** and **Speaker** | `call.*` is `incoming`, `ended`, `log`, `dial`, `answer`, `reject`. Nothing carries a mute or an audio route, and the phone half needs an `InCallService` |
+ * | **Keypad** during a call (DTMF) | No message carries a DTMF digit. The dialler on the right types a number *before* a call; it cannot send a tone into one |
+ * | **"End-to-end encrypted"** on the call card | Our *link* is TLS 1.3. The **call** is a cellular call this Mac does not carry one byte of, and a lock badge on a call card is a claim about the call. Same rule that cut the Messages thread badge (X1) |
+ *
+ * The three controls that *are* drawn — Answer on phone, Hang up, and the dialler — each map to a
+ * verb the wire has.
  */
 
 interface CallCard {
@@ -33,6 +48,12 @@ interface CallLogRow {
   durationMs: number;
 }
 
+interface CallContactRow {
+  id: string;
+  displayName: string;
+  numbers: { value: string; label: string }[];
+}
+
 type CallsResult<T> = { ok: true; data: T } | { ok: false; reason?: string; fixHint?: string };
 
 interface CallsAck {
@@ -50,261 +71,38 @@ interface CallsBridge {
   callReject(): Promise<CallsAck>;
   callDial(number: string): Promise<CallsAck>;
   onCallChanged(callback: (call: CallCard | null) => void): void;
+  contactsList(options: { query?: string; limit?: number }): Promise<
+    CallsResult<{ contacts: CallContactRow[]; hasMore: boolean }>
+  >;
 }
 
-class CallsView {
-  private call: CallCard | null = null;
-  private log: CallLogRow[] = [];
-  private logHasMore = false;
-  private loaded = false;
+/** Which of the three log filters is showing. The design's tab strip, over the data we have. */
+type CallsTab = 'all' | 'missed' | 'contacts';
 
-  /** The number awaiting a second click. Cleared by any other interaction. See the file comment. */
-  private pendingDial: string | null = null;
+/**
+ * The dialler's twelve keys, in the handoff's order and with its sub-labels.
+ *
+ * The letter groups are typography, not a capability: every phone keypad ever made carries them and
+ * nothing in this app claims to do anything with them. `0`'s sub-label is the exception and it is
+ * **real** — holding it types `+`, which is what a phone does and what an Indian number needs.
+ */
+const DIAL_KEYS: { digit: string; sub: string; hold?: string }[] = [
+  { digit: '1', sub: '' },
+  { digit: '2', sub: 'ABC' },
+  { digit: '3', sub: 'DEF' },
+  { digit: '4', sub: 'GHI' },
+  { digit: '5', sub: 'JKL' },
+  { digit: '6', sub: 'MNO' },
+  { digit: '7', sub: 'PQRS' },
+  { digit: '8', sub: 'TUV' },
+  { digit: '9', sub: 'WXYZ' },
+  { digit: '✱', sub: '' },
+  { digit: '0', sub: '+', hold: '+' },
+  { digit: '#', sub: '' },
+];
 
-  private noticeTimer: number | null = null;
-
-  constructor(
-    private readonly card: HTMLElement,
-    private readonly note: HTMLElement,
-    private readonly live: HTMLElement,
-    private readonly body: HTMLElement,
-    private readonly dialInput: HTMLInputElement,
-    private readonly dialButton: HTMLButtonElement,
-    private readonly notice: HTMLElement,
-    private readonly bridge: CallsBridge,
-  ) {
-    bridge.onCallChanged((call) => {
-      this.call = call;
-      this.renderLive();
-      // A call that has just ended is a new row in the log.
-      if (!call && this.loaded) void this.loadLog();
-    });
-    this.dialButton.addEventListener('click', () => void this.dial());
-    this.dialInput.addEventListener('input', () => {
-      // Editing the number withdraws the confirmation. A pending confirm that survived an edit
-      // would place a call to a number nobody confirmed.
-      if (this.pendingDial !== null) {
-        this.pendingDial = null;
-        this.renderDialButton();
-      }
-    });
-  }
-
-  setAdvertised(advertised: boolean): void {
-    this.card.classList.toggle('hidden', !advertised);
-    if (!advertised) {
-      this.call = null;
-      this.log = [];
-      this.loaded = false;
-      this.pendingDial = null;
-      this.renderLive();
-      this.renderLog();
-      this.renderDialButton();
-      return;
-    }
-    if (!this.loaded) void this.loadLog();
-    void this.refreshCurrent();
-  }
-
-  async refresh(): Promise<void> {
-    if (this.card.classList.contains('hidden')) return;
-    await this.refreshCurrent();
-    await this.loadLog();
-  }
-
-  private async refreshCurrent(): Promise<void> {
-    this.call = await this.bridge.callCurrent().catch(() => null);
-    this.renderLive();
-  }
-
-  private async loadLog(): Promise<void> {
-    const result = await this.bridge.callLog({ limit: 50 }).catch(
-      (error): CallsResult<{ calls: CallLogRow[]; hasMore: boolean }> => ({
-        ok: false,
-        reason: `The Mac could not reach its own calls channel (${String(error)}).`,
-      }),
-    );
-    if (!result.ok) {
-      this.showNotice(result.reason ?? 'The call log could not be read.', result.fixHint);
-      return;
-    }
-    this.loaded = true;
-    this.log = result.data.calls;
-    this.logHasMore = result.data.hasMore;
-    this.renderLog();
-  }
-
-  /** The live card: the one call that can be acted on, or nothing. */
-  private renderLive(): void {
-    this.live.textContent = '';
-    if (!this.call) {
-      this.live.classList.add('hidden');
-      return;
-    }
-    this.live.classList.remove('hidden');
-
-    const who = document.createElement('div');
-    who.className = 'call-who';
-    // Name when contacts can supply one, number when it cannot, never blank — the same rule as
-    // the SMS thread list, and the reason contacts was brought forward into this phase.
-    //
-    // Defect 35: this was `??`, which does not catch an empty string. `"" ?? x` is `""`, so a
-    // phone that reported `number: ""` walked straight past the fallback chain written to
-    // prevent exactly this, and the card drew a blank. Emptiness, not nullishness.
-    who.textContent = callWho(this.call);
-
-    const state = document.createElement('div');
-    state.className = 'muted small';
-    state.textContent = callStatus(this.call);
-
-    const bar = document.createElement('div');
-    bar.className = 'row';
-
-    if (this.call.state === 'ringing') {
-      const answer = document.createElement('button');
-      answer.id = 'call-answer';
-      answer.textContent = 'Answer on phone';
-      // The label says where it answers. There is no audio path and there never will be — see the
-      // file comment and docs/permissions.md — so a bare "Answer" would be a promise this cannot keep.
-      answer.title = 'Answers on the phone. There is no audio between the phone and this Mac.';
-      answer.addEventListener('click', () => void this.run(this.bridge.callAnswer()));
-      bar.appendChild(answer);
-    }
-
-    const reject = document.createElement('button');
-    reject.id = 'call-reject';
-    reject.className = 'danger';
-    reject.textContent = this.call.state === 'active' ? 'Hang up' : 'Reject';
-    reject.addEventListener('click', () => void this.run(this.bridge.callReject()));
-    bar.appendChild(reject);
-
-    const audio = document.createElement('div');
-    audio.className = 'muted small';
-    audio.textContent =
-      'Audio stays on the phone — pair the Mac to it over Bluetooth to listen through the Mac.';
-
-    this.live.append(who, state, bar, audio);
-  }
-
-  private renderLog(): void {
-    this.body.textContent = '';
-    if (!this.loaded) {
-      this.note.textContent = 'Reading the phone’s call log…';
-      return;
-    }
-    if (this.log.length === 0) {
-      this.note.textContent = 'There are no calls in the phone’s log.';
-      return;
-    }
-    // Both numbers again: a call log is a column of phone numbers without contacts.
-    const named = this.log.filter((c) => c.contactName).length;
-    const missed = this.log.filter((c) => c.type === 'missed').length;
-    this.note.textContent =
-      `${this.log.length} recent call${this.log.length === 1 ? '' : 's'}, ` +
-      `${named} showing a contact name, ${missed} missed.` +
-      (this.logHasMore ? ' Older calls are not shown.' : '');
-
-    const list = document.createElement('div');
-    list.className = 'call-log';
-    for (const entry of this.log) list.appendChild(this.logRow(entry));
-    this.body.appendChild(list);
-  }
-
-  private logRow(entry: CallLogRow): HTMLElement {
-    const row = document.createElement('div');
-    row.className = `call-row ${entry.type}`;
-
-    const who = document.createElement('span');
-    who.className = 'call-log-who';
-    who.textContent = firstNonEmpty(entry.contactName, entry.number) ?? 'Unknown number';
-
-    const kind = document.createElement('span');
-    kind.className = 'muted small';
-    // An unrecognised type is shown as itself rather than guessed at — the protocol has an
-    // `unknown` member precisely so a new platform value is not silently drawn as "incoming".
-    kind.textContent = entry.type;
-
-    const when = document.createElement('span');
-    when.className = 'muted small';
-    when.textContent =
-      timeOfCall(entry.dateMs) + (entry.durationMs ? ` · ${duration(entry.durationMs)}` : '');
-
-    const dial = document.createElement('button');
-    dial.className = 'secondary small';
-    dial.textContent = 'Call back';
-    dial.addEventListener('click', () => {
-      // Fills the dialler rather than placing the call: the confirm step is the dialler's, and
-      // there is exactly one of it.
-      this.dialInput.value = entry.number;
-      this.pendingDial = null;
-      this.renderDialButton();
-      this.dialInput.focus();
-    });
-
-    row.append(who, kind, when, dial);
-    return row;
-  }
-
-  /**
-   * Two clicks, one call.
-   *
-   * The first click arms; the second places. Between them the button says exactly who is about to
-   * be called, because the number in the box is the only thing that decides it and a mistyped
-   * digit reaches a stranger.
-   */
-  private async dial(): Promise<void> {
-    const number = this.dialInput.value.trim();
-    if (!number) {
-      this.showNotice('Type a number to call.');
-      return;
-    }
-    if (this.pendingDial !== number) {
-      this.pendingDial = number;
-      this.renderDialButton();
-      return;
-    }
-    this.pendingDial = null;
-    this.renderDialButton();
-    const result = await this.bridge.callDial(number).catch((error): CallsAck => ({
-      ok: false,
-      reason: `The Mac could not reach its own calls channel (${String(error)}).`,
-    }));
-    if (result.ok) this.showNotice(`Calling ${number} from the phone.`);
-    else this.showNotice(result.reason ?? 'The call was not placed.', result.fixHint);
-  }
-
-  private renderDialButton(): void {
-    this.dialButton.textContent = this.pendingDial
-      ? `Confirm — call ${this.pendingDial}`
-      : 'Call';
-    this.dialButton.classList.toggle('danger', this.pendingDial !== null);
-  }
-
-  private async run(intent: Promise<CallsAck>): Promise<void> {
-    const result = await intent.catch((error): CallsAck => ({
-      ok: false,
-      reason: `The Mac could not reach its own calls channel (${String(error)}).`,
-    }));
-    if (!result.ok) this.showNotice(result.reason ?? 'That did not work.', result.fixHint);
-  }
-
-  private showNotice(text: string, hint?: string): void {
-    this.notice.hidden = false;
-    this.notice.textContent = text;
-    if (hint) {
-      const line = document.createElement('div');
-      line.className = 'hint';
-      line.textContent = ` ${hint}`;
-      this.notice.appendChild(line);
-    }
-    if (this.noticeTimer !== null) window.clearTimeout(this.noticeTimer);
-    this.noticeTimer = window.setTimeout(() => {
-      this.noticeTimer = null;
-      this.notice.hidden = true;
-      this.notice.textContent = '';
-    }, 6_000);
-  }
-}
+/** How long a press on `0` has to last before it types `+` instead. A phone's own feel. */
+const HOLD_MS = 450;
 
 /**
  * The first of these that is actually a string with something in it.
@@ -341,6 +139,732 @@ function callStatus(call: { state: string; number?: string }): string {
   return number ? `${label} · ${number}` : label;
 }
 
+/**
+ * Up to two characters for the avatar disc the design draws.
+ *
+ * A name gives its initials; a bare number gives `#`, which is what the handoff's own placeholder
+ * row uses for an unknown caller. It never returns an empty string, because an empty disc reads as
+ * a rendering failure rather than as an unknown caller.
+ */
+function callInitials(entry: { contactName?: string; number?: string }): string {
+  const name = firstNonEmpty(entry.contactName);
+  if (!name) return '#';
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .filter((word) => /[\p{L}\p{N}]/u.test(word));
+  if (words.length === 0) return '#';
+  const letters = words.slice(0, 2).map((word) => {
+    const match = word.match(/[\p{L}\p{N}]/u);
+    return match ? match[0].toUpperCase() : '';
+  });
+  return letters.join('') || '#';
+}
+
+/**
+ * The rows one tab shows.
+ *
+ * `contacts` is **not** a filter over the log — it is a different source entirely, so this returns
+ * an empty list for it rather than pretending. The view swaps in the contact search there.
+ */
+function filterCallLog(log: CallLogRow[], tab: CallsTab): CallLogRow[] {
+  if (tab === 'missed') return log.filter((entry) => entry.type === 'missed');
+  if (tab === 'contacts') return [];
+  return log;
+}
+
+/**
+ * The design's *Frequently called* list, derived from the log rather than from a favourites list
+ * the wire does not carry.
+ *
+ * Grouped by number, because a number is the thing you can dial and a name is not. The count comes
+ * out with each row: it is the basis for the word "frequently", and a list of three names with no
+ * numbers beside them is a claim with its denominator removed — the rule this project keeps
+ * rewriting. Ties break on the most recent call, so the list does not reorder itself at random
+ * between two equally-called numbers.
+ */
+function frequentlyCalled(
+  log: CallLogRow[],
+  limit = 3,
+): { number: string; label: string; count: number; lastMs: number }[] {
+  const byNumber = new Map<string, { number: string; label: string; count: number; lastMs: number }>();
+  for (const entry of log) {
+    const number = firstNonEmpty(entry.number);
+    if (!number) continue;
+    const held = byNumber.get(number);
+    if (held) {
+      held.count += 1;
+      if (entry.dateMs > held.lastMs) held.lastMs = entry.dateMs;
+      if (held.label === number) held.label = firstNonEmpty(entry.contactName) ?? number;
+    } else {
+      byNumber.set(number, {
+        number,
+        label: firstNonEmpty(entry.contactName) ?? number,
+        count: 1,
+        lastMs: entry.dateMs,
+      });
+    }
+  }
+  return [...byNumber.values()]
+    .sort((a, b) => b.count - a.count || b.lastMs - a.lastMs)
+    .slice(0, limit);
+}
+
+/**
+ * `HH:MM:SS` for a call that is happening now.
+ *
+ * The design draws `00:02:18` — three fields, always — and that is kept rather than shortened to
+ * `2:18`, because a clock whose width changes at the minute boundary makes the whole card twitch.
+ * A negative elapsed (two clocks disagreeing) is clamped to zero rather than drawn as `-00:00:03`.
+ */
+function callClock(elapsedMs: number): string {
+  const total = Math.max(0, Math.floor(elapsedMs / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
+}
+
+class CallsView {
+  private call: CallCard | null = null;
+  private log: CallLogRow[] = [];
+  private logHasMore = false;
+  private loaded = false;
+  private tab: CallsTab = 'all';
+
+  private contacts: CallContactRow[] = [];
+  private contactsQuery = '';
+  private contactsState: 'idle' | 'loading' | 'ready' | 'failed' = 'idle';
+  private contactsReason = '';
+  /** Generation counter: a late contacts reply must not overwrite a newer one. */
+  private contactsRuns = 0;
+
+  /** The number awaiting a second click. Cleared by any other interaction. See the file comment. */
+  private pendingDial: string | null = null;
+
+  private noticeTimer: number | null = null;
+  /** The live card's second-hand. One interval for the pane, started and stopped with the card. */
+  private clockTimer: number | null = null;
+  private holdTimer: number | null = null;
+
+  constructor(
+    private readonly card: HTMLElement,
+    private readonly note: HTMLElement,
+    private readonly live: HTMLElement,
+    private readonly body: HTMLElement,
+    private readonly dialInput: HTMLInputElement,
+    private readonly dialButton: HTMLButtonElement,
+    private readonly notice: HTMLElement,
+    private readonly tabs: HTMLElement,
+    private readonly keypad: HTMLElement,
+    private readonly frequent: HTMLElement,
+    private readonly bridge: CallsBridge,
+  ) {
+    bridge.onCallChanged((call) => {
+      this.call = call;
+      this.renderLive();
+      // A call that has just ended is a new row in the log.
+      if (!call && this.loaded) void this.loadLog();
+    });
+    this.dialButton.addEventListener('click', () => void this.dial());
+    this.dialInput.addEventListener('input', () => {
+      // Editing the number withdraws the confirmation. A pending confirm that survived an edit
+      // would place a call to a number nobody confirmed.
+      if (this.pendingDial !== null) {
+        this.pendingDial = null;
+        this.renderDialButton();
+      }
+    });
+    this.renderKeypad();
+    this.renderTabs();
+    this.renderLive();
+    this.renderFrequent();
+  }
+
+  setAdvertised(advertised: boolean): void {
+    this.card.classList.toggle('hidden', !advertised);
+    if (!advertised) {
+      this.call = null;
+      this.log = [];
+      this.loaded = false;
+      this.pendingDial = null;
+      this.renderLive();
+      this.renderLog();
+      this.renderDialButton();
+      this.renderTabs();
+      this.renderFrequent();
+      return;
+    }
+    if (!this.loaded) void this.loadLog();
+    void this.refreshCurrent();
+  }
+
+  async refresh(): Promise<void> {
+    if (this.card.classList.contains('hidden')) return;
+    await this.refreshCurrent();
+    await this.loadLog();
+  }
+
+  private async refreshCurrent(): Promise<void> {
+    this.call = await this.bridge.callCurrent().catch(() => null);
+    this.renderLive();
+  }
+
+  private async loadLog(): Promise<void> {
+    const result = await this.bridge.callLog({ limit: 50 }).catch(
+      (error): CallsResult<{ calls: CallLogRow[]; hasMore: boolean }> => ({
+        ok: false,
+        reason: `The Mac could not reach its own calls channel (${String(error)}).`,
+      }),
+    );
+    if (!result.ok) {
+      this.showNotice(result.reason ?? 'The call log could not be read.', result.fixHint);
+      return;
+    }
+    this.loaded = true;
+    this.log = result.data.calls;
+    this.logHasMore = result.data.hasMore;
+    this.renderLog();
+    this.renderTabs();
+    this.renderFrequent();
+  }
+
+  // ---- The tab strip -----------------------------------------------------------------------
+
+  /**
+   * All / Missed / Contacts, which is the handoff's strip with its own counts.
+   *
+   * The **Missed** count is drawn only once the log has actually been read. Before that a `0`
+   * would be a reading taken of nothing — an absence with no control behind it — and it is the one
+   * number on this screen somebody would act on.
+   */
+  private renderTabs(): void {
+    this.tabs.replaceChildren();
+    const missed = this.log.filter((entry) => entry.type === 'missed').length;
+    const labels: [CallsTab, string][] = [
+      ['all', 'All'],
+      ['missed', this.loaded ? `Missed ${missed}` : 'Missed'],
+      ['contacts', 'Contacts'],
+    ];
+    for (const [id, label] of labels) {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'calls-tab';
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', String(id === this.tab));
+      tab.textContent = label;
+      tab.addEventListener('click', () => {
+        if (this.tab === id) return;
+        this.tab = id;
+        this.renderTabs();
+        this.renderLog();
+        if (id === 'contacts' && this.contactsState === 'idle') void this.loadContacts('');
+      });
+      this.tabs.appendChild(tab);
+    }
+  }
+
+  // ---- The live card -----------------------------------------------------------------------
+
+  /** The live card: the one call that can be acted on, or the state that says there is none. */
+  private renderLive(): void {
+    this.live.textContent = '';
+    if (this.clockTimer !== null) {
+      window.clearInterval(this.clockTimer);
+      this.clockTimer = null;
+    }
+    if (!this.call) {
+      this.live.classList.add('is-idle');
+      this.renderNoCall();
+      return;
+    }
+    this.live.classList.remove('is-idle');
+
+    const disc = document.createElement('span');
+    disc.className = 'call-disc';
+    disc.setAttribute('aria-hidden', 'true');
+    disc.textContent = callInitials(this.call);
+
+    const who = document.createElement('div');
+    who.className = 'call-who';
+    // Name when contacts can supply one, number when it cannot, never blank — the same rule as
+    // the SMS thread list, and the reason contacts was brought forward into this phase.
+    //
+    // Defect 35: this was `??`, which does not catch an empty string. `"" ?? x` is `""`, so a
+    // phone that reported `number: ""` walked straight past the fallback chain written to
+    // prevent exactly this, and the card drew a blank. Emptiness, not nullishness.
+    who.textContent = callWho(this.call);
+
+    const state = document.createElement('div');
+    state.className = 'call-state mono';
+    state.textContent = callStatus(this.call);
+
+    // The design's running clock. It is `startedAtMs` against this Mac's clock, ticking, and it is
+    // the one number on the card that is a measurement rather than a label.
+    const clock = document.createElement('div');
+    clock.className = 'call-clock mono';
+    clock.id = 'call-clock';
+    const started = this.call.startedAtMs;
+    const tick = () => {
+      clock.textContent = callClock(Date.now() - started);
+    };
+    tick();
+    this.clockTimer = window.setInterval(tick, 1_000);
+
+    const bar = document.createElement('div');
+    bar.className = 'call-actions';
+
+    if (this.call.state === 'ringing') {
+      const answer = document.createElement('button');
+      answer.id = 'call-answer';
+      answer.type = 'button';
+      answer.className = 'call-answer';
+      answer.textContent = 'Answer on phone';
+      // The label says where it answers. There is no audio path and there never will be — see the
+      // file comment and docs/permissions.md — so a bare "Answer" would be a promise this cannot keep.
+      answer.title = 'Answers on the phone. There is no audio between the phone and this Mac.';
+      answer.addEventListener('click', () => void this.run(this.bridge.callAnswer()));
+      bar.appendChild(answer);
+    }
+
+    const reject = document.createElement('button');
+    reject.id = 'call-reject';
+    reject.type = 'button';
+    reject.className = 'call-hangup';
+    reject.textContent = this.call.state === 'active' ? 'Hang up' : 'Reject';
+    reject.addEventListener('click', () => void this.run(this.bridge.callReject()));
+    bar.appendChild(reject);
+
+    const audio = document.createElement('div');
+    audio.className = 'call-audio-note';
+    audio.textContent =
+      'Audio stays on the phone — pair the Mac to it over Bluetooth to listen through the Mac.';
+
+    // Where the design's Mute / Keypad / Speaker row sits. Saying the three controls are on the
+    // phone is a smaller lie than drawing three buttons that do nothing, and a much smaller one
+    // than drawing three that look like they might.
+    const controlled = document.createElement('div');
+    controlled.className = 'call-controlled-note';
+    controlled.textContent =
+      'Mute, speaker and keypad tones are on the phone. Nothing on the wire carries them.';
+
+    this.live.append(disc, who, state, clock, bar, audio, controlled);
+  }
+
+  /**
+   * The state the design does not draw: no call.
+   *
+   * The handoff's Calls screen only ever shows a call in progress, so this is a fifth pane
+   * inventing its own empty state — after Notifications (N4), Photos (P5), Files (F7) and Activity
+   * (A2). It is recorded in `docs/design-departures.md` rather than quietly styled, because the
+   * fifth invention is the one that proves the vocabulary is missing rather than that four panes
+   * were unlucky.
+   */
+  private renderNoCall(): void {
+    const headline = document.createElement('div');
+    headline.className = 'call-idle-headline';
+    headline.textContent = 'No call in progress';
+
+    const body = document.createElement('p');
+    body.className = 'call-idle-body';
+    body.textContent =
+      'A call ringing on the phone appears here, and you can answer or reject it from this Mac. ' +
+      'Dial from the keypad on the right.';
+
+    const audio = document.createElement('p');
+    audio.className = 'call-idle-body';
+    audio.textContent =
+      'There is no audio between the phone and this Mac in either direction — Android does not ' +
+      'let any app capture call audio. Pair the Mac to the phone over Bluetooth to listen ' +
+      'through it.';
+
+    this.live.append(headline, body, audio);
+  }
+
+  // ---- The log -----------------------------------------------------------------------------
+
+  private renderLog(): void {
+    this.body.textContent = '';
+    if (this.tab === 'contacts') {
+      this.renderContacts();
+      return;
+    }
+    if (!this.loaded) {
+      this.note.textContent = 'Reading the phone’s call log…';
+      return;
+    }
+    const rows = filterCallLog(this.log, this.tab);
+    if (this.log.length === 0) {
+      this.note.textContent = 'There are no calls in the phone’s log.';
+      return;
+    }
+    if (rows.length === 0) {
+      // A4/A3's distinction, one pane over: nothing matching is not nothing recorded, and the
+      // sentence names the filter so the way out is obvious.
+      this.note.textContent = `No missed calls in the ${this.log.length} the phone sent.`;
+      return;
+    }
+    // Both numbers again: a call log is a column of phone numbers without contacts.
+    const named = rows.filter((c) => c.contactName).length;
+    const missed = this.log.filter((c) => c.type === 'missed').length;
+    this.note.textContent =
+      this.tab === 'missed'
+        ? `${rows.length} missed of ${this.log.length} recent calls.`
+        : `${rows.length} recent call${rows.length === 1 ? '' : 's'}, ` +
+          `${named} showing a contact name, ${missed} missed.` +
+          (this.logHasMore ? ' Older calls are not shown.' : '');
+
+    const list = document.createElement('div');
+    list.className = 'call-log';
+    for (const entry of rows) list.appendChild(this.logRow(entry));
+    this.body.appendChild(list);
+  }
+
+  /**
+   * One log row, and **the row is the button**.
+   *
+   * The first build put a *Call back* button in a fourth grid column. At 300px it reserved its
+   * width whether it was visible or not, and what it squeezed out was the caller's name — the one
+   * thing on this list anybody reads. The design has no button in the row either: `.cs-row` carries
+   * `cursor: pointer` and the whole thing is the target. A `<button>` rather than a `<div>` so it
+   * is reachable from the keyboard and announces itself.
+   */
+  private logRow(entry: CallLogRow): HTMLElement {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = `call-row ${entry.type}`;
+
+    const disc = document.createElement('span');
+    disc.className = 'call-disc call-disc-sm';
+    disc.setAttribute('aria-hidden', 'true');
+    disc.textContent = callInitials(entry);
+
+    const lines = document.createElement('span');
+    lines.className = 'call-row-lines';
+
+    const who = document.createElement('span');
+    who.className = 'call-log-who';
+    who.textContent = firstNonEmpty(entry.contactName, entry.number) ?? 'Unknown number';
+
+    const kind = document.createElement('span');
+    kind.className = 'call-log-kind';
+    // An unrecognised type is shown as itself rather than guessed at — the protocol has an
+    // `unknown` member precisely so a new platform value is not silently drawn as "incoming".
+    kind.textContent =
+      entry.type + (entry.durationMs ? ` · ${duration(entry.durationMs)}` : '');
+
+    lines.append(who, kind);
+
+    const when = document.createElement('span');
+    when.className = 'call-log-when mono';
+    when.textContent = timeOfCall(entry.dateMs);
+
+    // Fills the dialler rather than placing the call: the confirm step is the dialler's, and there
+    // is exactly one of it. The label says so, because a row that dialled on one click over a log
+    // of real phone numbers is the coordinate-click accident with a nicer surface.
+    row.title = `Put ${firstNonEmpty(entry.contactName, entry.number) ?? 'this number'} in the dialler`;
+    row.addEventListener('click', () => this.fillDialler(entry.number));
+
+    row.append(disc, lines, when);
+    return row;
+  }
+
+  // ---- The Contacts tab --------------------------------------------------------------------
+
+  /**
+   * The phone does the matching, exactly as the Contacts pane does.
+   *
+   * There is no book on the Mac to filter, and a local filter would stop finding people whose
+   * number is stored in a format nobody typed. This tab is a way to reach the dialler, not a
+   * second contacts pane: one line per person and one button.
+   */
+  private async loadContacts(query: string): Promise<void> {
+    const mine = ++this.contactsRuns;
+    this.contactsQuery = query;
+    this.contactsState = 'loading';
+    this.renderLog();
+    const result = await this.bridge
+      .contactsList({ query, limit: 30 })
+      .catch((error): CallsResult<{ contacts: CallContactRow[]; hasMore: boolean }> => ({
+        ok: false,
+        reason: `The Mac could not reach its own contacts channel (${String(error)}).`,
+      }));
+    // A second keystroke's reply may land first; a run that is no longer the newest discards its
+    // own result rather than drawing it over a fresher one. Same rule as the clipboard pane's
+    // refresh, and the Files pane paid for its absence.
+    if (mine !== this.contactsRuns) return;
+    if (!result.ok) {
+      this.contactsState = 'failed';
+      this.contactsReason = result.reason ?? 'The phone did not answer.';
+    } else {
+      this.contactsState = 'ready';
+      this.contacts = result.data.contacts;
+    }
+    this.renderLog();
+  }
+
+  private renderContacts(): void {
+    this.note.textContent =
+      this.contactsState === 'ready'
+        ? `${this.contacts.length} contact${this.contacts.length === 1 ? '' : 's'} from the phone.`
+        : this.contactsState === 'failed'
+          ? this.contactsReason
+          : 'Asking the phone for its contacts…';
+
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'calls-contact-search';
+    search.id = 'calls-contact-search';
+    search.placeholder = 'Search contacts';
+    search.setAttribute('aria-label', 'Search contacts');
+    search.value = this.contactsQuery;
+    search.addEventListener('input', () => void this.loadContacts(search.value));
+    this.body.appendChild(search);
+
+    if (this.contactsState !== 'ready') return;
+
+    const list = document.createElement('div');
+    list.className = 'call-log';
+    for (const contact of this.contacts) {
+      const number = firstNonEmpty(contact.numbers[0]?.value);
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'call-row';
+      // A contact with no number is drawn and **disabled**, not filtered out: "not in the list" and
+      // "in the list with nothing to dial" are different facts about a person, and hiding the
+      // second makes the search look broken.
+      if (!number) row.disabled = true;
+      else {
+        row.title = `Put ${contact.displayName} in the dialler`;
+        row.addEventListener('click', () => this.fillDialler(number));
+      }
+
+      const disc = document.createElement('span');
+      disc.className = 'call-disc call-disc-sm';
+      disc.setAttribute('aria-hidden', 'true');
+      disc.textContent = callInitials({ contactName: contact.displayName });
+
+      const lines = document.createElement('span');
+      lines.className = 'call-row-lines';
+      const who = document.createElement('span');
+      who.className = 'call-log-who';
+      who.textContent = contact.displayName;
+      const sub = document.createElement('span');
+      sub.className = 'call-log-kind';
+      // A contact with no number is drawn and its row says so, rather than being filtered out:
+      // "not in the list" and "in the list with nothing to dial" are different facts about a
+      // person, and hiding the second makes the search look broken.
+      sub.textContent = number ?? 'No number on this contact';
+      lines.append(who, sub);
+
+      const when = document.createElement('span');
+      when.className = 'call-log-when mono';
+      when.textContent = contact.numbers[0]?.label ?? '';
+
+      row.append(disc, lines, when);
+      list.appendChild(row);
+    }
+    this.body.appendChild(list);
+  }
+
+  // ---- The dialler -------------------------------------------------------------------------
+
+  /**
+   * The handoff's 3×4 keypad.
+   *
+   * It types into the field rather than dialling — the confirm step is the Call button's and there
+   * is exactly one of it. A keypad that dialled on the twelfth key would place a call from a
+   * mistyped digit with nothing between the two.
+   */
+  private renderKeypad(): void {
+    this.keypad.replaceChildren();
+    for (const key of DIAL_KEYS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'dialkey';
+      button.setAttribute('aria-label', key.hold ? `${key.digit}, hold for ${key.hold}` : key.digit);
+
+      const digit = document.createElement('span');
+      digit.className = 'dialkey-digit mono';
+      digit.textContent = key.digit;
+      const sub = document.createElement('span');
+      sub.className = 'dialkey-sub';
+      sub.textContent = key.sub;
+      button.append(digit, sub);
+
+      if (key.hold) {
+        // Hold-to-type-`+`, which is what a phone does. `held` is what stops the click that
+        // follows a hold from typing a `0` after the `+` — the mouse fires both.
+        let held = false;
+        button.addEventListener('mousedown', () => {
+          held = false;
+          this.holdTimer = window.setTimeout(() => {
+            held = true;
+            this.holdTimer = null;
+            this.type(key.hold as string);
+          }, HOLD_MS);
+        });
+        const cancel = () => {
+          if (this.holdTimer !== null) {
+            window.clearTimeout(this.holdTimer);
+            this.holdTimer = null;
+          }
+        };
+        button.addEventListener('mouseup', cancel);
+        button.addEventListener('mouseleave', cancel);
+        button.addEventListener('click', () => {
+          if (held) {
+            held = false;
+            return;
+          }
+          this.type(key.digit);
+        });
+      } else {
+        button.addEventListener('click', () => this.type(key.digit));
+      }
+      this.keypad.appendChild(button);
+    }
+
+    // Not in the design, and it has to be: a keypad with no way back is unusable the first time a
+    // finger slips. Recorded as departure C5.
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'dialkey dialkey-back';
+    back.setAttribute('aria-label', 'Delete the last digit');
+    back.textContent = '⌫';
+    back.addEventListener('click', () => {
+      this.dialInput.value = this.dialInput.value.slice(0, -1);
+      this.withdrawConfirm();
+    });
+    this.keypad.appendChild(back);
+  }
+
+  private type(text: string): void {
+    this.dialInput.value += text;
+    this.withdrawConfirm();
+  }
+
+  /** Any edit to the number withdraws an armed confirmation. See [dial]. */
+  private withdrawConfirm(): void {
+    if (this.pendingDial !== null) {
+      this.pendingDial = null;
+      this.renderDialButton();
+    }
+  }
+
+  private fillDialler(number: string): void {
+    this.dialInput.value = number;
+    this.pendingDial = null;
+    this.renderDialButton();
+    this.dialInput.focus();
+  }
+
+  /**
+   * The design's *Frequently called*, over the phone's log.
+   *
+   * Drawn only once the log has been read. Before that the list would be empty for two different
+   * reasons — nothing read yet, and nobody called twice — and they look identical.
+   */
+  private renderFrequent(): void {
+    this.frequent.replaceChildren();
+    if (!this.loaded) {
+      const waiting = document.createElement('div');
+      waiting.className = 'calls-frequent-note';
+      waiting.textContent = 'Read from the phone’s call log once it arrives.';
+      this.frequent.appendChild(waiting);
+      return;
+    }
+    const rows = frequentlyCalled(this.log);
+    if (rows.length === 0) {
+      const none = document.createElement('div');
+      none.className = 'calls-frequent-note';
+      none.textContent = 'Nothing in the log to count yet.';
+      this.frequent.appendChild(none);
+      return;
+    }
+    for (const entry of rows) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'calls-frequent-row';
+      const disc = document.createElement('span');
+      disc.className = 'call-disc call-disc-xs';
+      disc.setAttribute('aria-hidden', 'true');
+      disc.textContent = callInitials({ contactName: entry.label, number: entry.number });
+      const label = document.createElement('span');
+      label.className = 'calls-frequent-label';
+      label.textContent = entry.label;
+      const count = document.createElement('span');
+      count.className = 'calls-frequent-count';
+      // The count, not "Mobile". We do not know the number's type and the count is what the word
+      // "frequently" is actually asserting.
+      count.textContent = `${entry.count} call${entry.count === 1 ? '' : 's'}`;
+      row.append(disc, label, count);
+      row.addEventListener('click', () => this.fillDialler(entry.number));
+      this.frequent.appendChild(row);
+    }
+  }
+
+  /**
+   * Two clicks, one call.
+   *
+   * The first click arms; the second places. Between them the button says exactly who is about to
+   * be called, because the number in the box is the only thing that decides it and a mistyped
+   * digit reaches a stranger.
+   */
+  private async dial(): Promise<void> {
+    const number = this.dialInput.value.trim();
+    if (!number) {
+      this.showNotice('Type a number to call.');
+      return;
+    }
+    if (this.pendingDial !== number) {
+      this.pendingDial = number;
+      this.renderDialButton();
+      return;
+    }
+    this.pendingDial = null;
+    this.renderDialButton();
+    const result = await this.bridge.callDial(number).catch((error): CallsAck => ({
+      ok: false,
+      reason: `The Mac could not reach its own calls channel (${String(error)}).`,
+    }));
+    if (result.ok) this.showNotice(`Calling ${number} from the phone.`);
+    else this.showNotice(result.reason ?? 'The call was not placed.', result.fixHint);
+  }
+
+  private renderDialButton(): void {
+    this.dialButton.textContent = this.pendingDial
+      ? `Confirm — call ${this.pendingDial}`
+      : 'Call';
+    this.dialButton.classList.toggle('is-confirming', this.pendingDial !== null);
+  }
+
+  private async run(intent: Promise<CallsAck>): Promise<void> {
+    const result = await intent.catch((error): CallsAck => ({
+      ok: false,
+      reason: `The Mac could not reach its own calls channel (${String(error)}).`,
+    }));
+    if (!result.ok) this.showNotice(result.reason ?? 'That did not work.', result.fixHint);
+  }
+
+  private showNotice(text: string, hint?: string): void {
+    this.notice.hidden = false;
+    this.notice.textContent = text;
+    if (hint) {
+      const line = document.createElement('div');
+      line.className = 'hint';
+      line.textContent = ` ${hint}`;
+      this.notice.appendChild(line);
+    }
+    if (this.noticeTimer !== null) window.clearTimeout(this.noticeTimer);
+    this.noticeTimer = window.setTimeout(() => {
+      this.noticeTimer = null;
+      this.notice.hidden = true;
+      this.notice.textContent = '';
+    }, 6_000);
+  }
+}
+
 function timeOfCall(whenMs: number): string {
   if (!whenMs) return '';
   const at = new Date(whenMs);
@@ -366,4 +890,16 @@ function duration(ms: number): string {
 // hung on the global for src/renderer/calls.test.ts to reach. In the browser this is one property
 // nobody reads; in the test it is what makes defect 35 assertable against the code that draws it,
 // rather than against a second copy of the rule that could drift from it.
-(globalThis as Record<string, unknown>).__callLabels = { firstNonEmpty, callWho, callStatus };
+(globalThis as Record<string, unknown>).__callLabels = {
+  firstNonEmpty,
+  callWho,
+  callStatus,
+  callInitials,
+  filterCallLog,
+  frequentlyCalled,
+  callClock,
+  DIAL_KEYS,
+};
+// The view class itself, for `callsView.test.ts` — the debt-list entry this removes was
+// "the drawing half is not [tested]", and three renderer-only breaks have shipped green.
+(globalThis as Record<string, unknown>).CallsView = CallsView;

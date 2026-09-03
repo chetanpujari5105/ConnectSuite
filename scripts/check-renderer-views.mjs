@@ -56,7 +56,6 @@ const RENDERER = 'desktop/src/renderer';
 export const UNCOVERED = new Map([
   ['PhotosView', 'The grid paged and measured through probe.mjs; no view-level test yet'],
   ['SmsView', 'Phase 4, proven on hardware across 5 pager pages; retro-fitting is Phase 6 work'],
-  ['CallsView', 'Pure half already tested (calls.test.ts); the drawing half is not'],
   ['NotificationsView', 'Phase 4'],
   ['ContactsView', 'Phase 4'],
   ['MirrorView', 'Needs a canvas and a video element the DOM double deliberately does not model'],

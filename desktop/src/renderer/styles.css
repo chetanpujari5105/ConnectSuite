@@ -464,35 +464,270 @@ img#qr {
 #sms-card { position: relative; }
 
 /* ---- Calls --------------------------------------------------------------------------------- */
-/* The live card is bordered and the log is not: one of them can be acted on and the other is
-   history, and that difference has to be visible before a button is pressed. */
-.call-live {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px;
-  margin-bottom: 10px;
-  border: 1px solid #4a6a4a;
-  border-radius: 8px;
-  background: #1a231a;
+/*
+ * The handoff's three columns, `300px 1fr 300px`. The middle one is the screen's single elev-3
+ * surface — the call you can act on — and the two flanks are elev-2 panels, which is the same
+ * "one primary card per screen" rule the rest of the app follows.
+ */
+.calls-grid {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 300px;
+  gap: var(--space-7);
+  align-items: start;
 }
-.call-live.hidden { display: none; }
-.call-who { font-size: 15px; color: #f2f2f5; }
-.call-log { display: flex; flex-direction: column; gap: 3px; max-height: 260px; overflow-y: auto; }
+.calls-grid.hidden { display: none; }
+.calls-grid > * { min-width: 0; }
+
+.calls-log-panel {
+  border-radius: var(--radius-panel);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+  overflow: hidden;
+}
+
+.calls-tabs {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.calls-tab {
+  height: 28px;
+  padding: 0 var(--space-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-body);
+  font: var(--text-control);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 180ms var(--ease), color 180ms var(--ease);
+}
+.calls-tab:hover { color: var(--text-on-control); }
+.calls-tab[aria-selected='true'] {
+  background: var(--accent-tint-selected);
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+}
+
+.calls-log-scroll { padding: var(--space-3); max-height: 470px; overflow-y: auto; }
+.calls-note { margin: var(--space-2) var(--space-3) var(--space-4); font: var(--text-meta-size); color: var(--text-meta); }
+.calls-contact-search { width: 100%; margin: 0 0 var(--space-3); }
+
+/* The stage keeps a floor so the three columns read as a row rather than as a wide banner over
+   two tall ones. The design's centre card is the tallest thing on the screen; ours is only that
+   tall while a call is up, and a 190px card between two 620px ones reads as a mistake. */
+.calls-stage { min-height: 400px; }
+
+/*
+ * The avatar disc. The handoff fills it with a per-contact gradient; this one is a flat accent
+ * tint, because a gradient keyed to a name is a decoration that reads as a status colour on a
+ * screen where two other colours already mean something (missed, live).
+ */
+.call-disc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  background: var(--accent-tint-selected);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-text);
+  font-size: 30px;
+  font-weight: 600;
+}
+.call-disc-sm { width: 32px; height: 32px; font-size: 11px; border-radius: 50%; }
+.call-disc-xs { width: 26px; height: 26px; font-size: 10px; }
+
+.call-log { display: flex; flex-direction: column; gap: 2px; }
+/*
+ * The whole row is the control, which is the design's own shape (`.cs-row` carries
+ * `cursor:pointer` and there is no button in it). The first build put a *Call back* button in a
+ * fourth grid column: at 300px it reserved its width whether or not it was visible, and the names
+ * it squeezed out — "Vishakha Raj…" — are the one thing on this list somebody is reading.
+ */
 .call-row {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
-  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-4);
   align-items: center;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: #17171d;
+  width: 100%;
+  height: 56px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-tile);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 180ms var(--ease);
 }
-.call-log-who { font-size: 13px; line-height: var(--leading-13); color: #f0f0f4; }
+.call-row:hover { background: rgba(255, 255, 255, 0.04); }
+.call-row[disabled] { cursor: default; opacity: 0.72; }
+.call-row[disabled]:hover { background: transparent; }
+.call-row-lines { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.call-log-who {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: var(--leading-13);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.call-log-kind { font-size: 11.5px; color: var(--text-body); }
 /* Missed is the one type worth colouring, because it is the one people scan for. It keeps its
    text label too — the colour is not the only carrier of the state. */
-.call-row.missed .call-log-who { color: #e0a0a0; }
-#call-number { flex: 1; max-width: 220px; }
+.call-row.missed .call-log-kind { color: var(--destructive); }
+.call-log-when { font-size: 11px; color: var(--text-meta); }
+
+/* ---- The live-call stage ------------------------------------------------------------------- */
+.calls-stage {
+  padding: var(--space-10) var(--space-9);
+  border-radius: var(--radius-panel);
+  background: var(--elev-3);
+  border: 1px solid var(--hairline-primary);
+  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+}
+.call-live { display: flex; flex-direction: column; align-items: center; gap: var(--space-4); }
+.call-who { font-size: 22px; font-weight: 600; letter-spacing: var(--tracking-title); color: var(--text-primary); }
+.call-state { font-size: 12.5px; color: var(--text-body); }
+/* Green because a call in progress is the one live thing on this screen — the same role `--live`
+   carries on the connection chip. It is a *state* colour, not a decoration. */
+.call-clock { font-size: 14px; font-variant-numeric: tabular-nums; color: var(--live); }
+.call-actions { display: flex; gap: var(--space-4); margin-top: var(--space-6); }
+.call-answer {
+  height: 40px;
+  padding: 0 var(--space-8);
+  border: 0;
+  border-radius: var(--radius-tile);
+  background: var(--live);
+  color: var(--accent-on-fill);
+  font: var(--text-body-size);
+  font-weight: 600;
+  cursor: pointer;
+}
+.call-hangup {
+  height: 40px;
+  padding: 0 var(--space-8);
+  border: 1px solid var(--destructive-border);
+  border-radius: var(--radius-tile);
+  background: var(--destructive-fill);
+  color: var(--destructive);
+  font: var(--text-body-size);
+  font-weight: 600;
+  cursor: pointer;
+}
+.call-audio-note,
+.call-controlled-note {
+  margin-top: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: var(--radius-tile);
+  background: var(--well);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-body);
+}
+.call-controlled-note { margin-top: var(--space-2); }
+
+/* The state the design does not draw. Departure C6. */
+.call-live.is-idle { align-items: flex-start; text-align: left; }
+.call-idle-headline { font: var(--text-card-title); letter-spacing: var(--tracking-title); color: var(--text-primary); }
+.call-idle-body { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--text-body); }
+
+/* ---- The dialler ---------------------------------------------------------------------------- */
+.calls-dialer {
+  padding: var(--space-7);
+  border-radius: var(--radius-panel);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+}
+.calls-aside-title {
+  margin: 0 0 var(--space-5);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.calls-aside-title + .calls-aside-title,
+.dial-call + .calls-aside-title,
+.calls-frequent + .calls-aside-title { margin-top: var(--space-9); }
+.calls-dialer #call-number { width: 100%; box-sizing: border-box; margin-bottom: var(--space-4); }
+
+.dialpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
+.dialkey {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  height: 46px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-tile);
+  background: var(--control);
+  cursor: pointer;
+  transition: background 160ms var(--ease), border-color 160ms var(--ease);
+}
+.dialkey:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--hairline-hover); }
+.dialkey-digit { font-size: 17px; color: var(--text-primary); }
+.dialkey-sub { font-size: 8.5px; letter-spacing: 0.1em; color: var(--text-meta); }
+/* Not in the design — a keypad with no delete. Departure C5. It sits under the `#` key rather than
+   in the grid so the 3×4 the handoff draws keeps its shape. */
+.dialkey-back {
+  grid-column: 3;
+  font-size: 15px;
+  color: var(--text-body);
+}
+.dial-call {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 44px;
+  margin-top: var(--space-4);
+  border: 0;
+  border-radius: var(--radius-tile);
+  background: var(--accent);
+  color: var(--accent-on-fill);
+  font: var(--text-body-size);
+  font-weight: 600;
+  cursor: pointer;
+}
+.dial-call.is-confirming { background: var(--destructive); }
+
+.calls-frequent { display: flex; flex-direction: column; gap: 1px; }
+.calls-frequent-note { font-size: 11.5px; color: var(--text-meta); }
+.calls-frequent-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.calls-frequent-row:hover { background: rgba(255, 255, 255, 0.04); }
+.calls-frequent-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text-on-control);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.calls-frequent-count { flex: none; font-size: 11px; color: var(--text-meta); }
+
 #calls-card { position: relative; }
 
 /* ================================================================================================
