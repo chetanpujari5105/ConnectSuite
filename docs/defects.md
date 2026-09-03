@@ -92,6 +92,8 @@ own heading there, and its own row here.
 | **76** | **The repudiated state could not render, because the renderer restated the rule and only one branch was patched.** `shell.ts`'s `toneOf`/`toneLabel` switch on the transport **phase** first, so a repudiated pairing reconnecting forever drew *"Reconnecting"* — the exact sentence the fourth state exists to replace. The shared model was correct and 5 mutations were green over it | **closed** 2026-09-03 | **The unit tests could not see it and a screenshot could.** The precedence now lives in `shared/linkTone.ts` — script-safe in the `appLabel.ts` style so the renderer loads the *same file* rather than a copy — and a test asserts a repudiated pairing never renders as `Reconnecting` in **any** phase, with `connected` still outranking it | see below |
 | **77** | **A `BOOT:` log line proves a boot-shaped *intent*, not a boot.** `LinkAutoStart.reasonFor` maps **two** actions onto one reason name — `BOOT_COMPLETED` *and* `QUICKBOOT_POWERON` — and `core/src/main/AndroidManifest.xml` already records that `QUICKBOOT_POWERON` is **not a protected broadcast on this handset**. So any app, or `am broadcast`, can produce a line indistinguishable from a real restart. Measured 2026-09-03: the log carries `BOOT:` at `02:13:02` and `02:13:05` over a kernel that had been up since the previous midday, 51 minutes after an `adb install -r` | **open** | **Fix direction:** give the two actions two names in the line — `BOOT` vs `QUICKBOOT` — so the reason column says which mechanism fired, exactly as defect 60 forced for `LISTENER_REBIND` / `BOOT` / `PACKAGE_REPLACED`. **The wrong fix is to drop `QUICKBOOT_POWERON` from the filter**: it costs nothing to listen for, One UI may genuinely send it in place of `BOOT_COMPLETED`, and removing it to make the log unambiguous would trade a real recovery path for a tidier grep. **The second wrong fix is to trust the log at all for this question** — see the verdict rule in row 78 |
 | **78** | **`scripts/defect64-read.sh` bounded its counts with `awk '$1 >= bootiso'`, which admits every untimestamped line in the file.** Stack-trace continuations start with `at `, and `"at" > "2026"` lexically, so they pass the filter whatever their age. Measured on the 2026-09-03 11:16 boot: the script reported **549 lines since boot** where the true count is **64** — 485 contaminating lines, an 8.5× inflation of the control that exists to make the verdict trustworthy | **open** | **Fix direction:** anchor the filter to a timestamp — `/^[0-9]{4}-[0-9]{2}-[0-9]{2}T/ && $1 >= b` — and, more importantly, **make uptime the witness for whether a boot happened and the log the witness only for what the boot did**. The gate already reads `/proc/uptime`; the verdict must never infer a boot from a line. **The wrong fix is a tighter grep for `BOOT:`** — row 77 is why that cannot work, since a synthetic `QUICKBOOT_POWERON` inside the gate's 30-minute window would satisfy any string test. **The second wrong fix is to raise the gate's window** to accommodate a slow boot; the window is what keeps a reinstall's lines out |
+| **79** | **The phone replaced its own clipboard while unable to tell its owner it had.** `POST_NOTIFICATIONS` is `granted=false` on the development handset and phone-side auto-apply was on; `ClipNotifications.post` checked deliverability **after** `applyToClipboard` had run and no-opped politely. 7 occurrences on the author's own phone before anyone looked. Two rules already in this repo were broken on one path: a check that does not gate the action, and one rule with two expressions — `AppsNotifications.canPost` asked two questions where `ClipNotifications.canPost` asked one, and the weaker copy was the one writing somebody's clipboard | **fixed** 2026-09-03 — deliverability is now a precondition of the write (`ClipArrival`), `NotificationDelivery` is the single home for the two-part check, and the `clip.push` ack says what the receiver *did*. Red-first: 4 of 6 tests fail with the gate removed. Proven on hardware in both directions with the permission flipped and restored — `docs/testing.md` → Phase 6 Slice 4 | — |
+| **80** | **The AccessibilityService is a start route into the process that installs every feature and binds no socket, and nothing follows it.** Seen in defect 64's closing run: with the notification listener revoked, the process was alive at 11:54:16 with all eight features installed and **no listening port**, five seconds before `BOOT` arrived behind it. `LinkAutoStart` is wired to the listener rebind and to the two boot broadcasts; it is **not** wired to the accessibility bind | **open** | **Why the 5 s window is not the measure of it.** At boot a broadcast follows, so the window closes. The window that does **not** close is a process the accessibility service rebinds at any other time — after a low-memory kill, after the service is toggled, after a crash `START_STICKY` did not catch (defect 62's second outcome). No broadcast follows any of those, so the app sits alive, granted, feature-complete and **serverless indefinitely**, which is defect 62's exact state reached by a path nobody specified. **Fix direction:** call `LinkAutoStart.ensureRunning(context, ACCESSIBILITY_BIND)` from `ConnectSuiteInputService.onServiceConnected`, with its own reason name so the log still says which mechanism started the link. **The objection this answers:** a fourth start route means a fourth competitor in the race defect 64 had to remove one from — true, and it no longer matters, because that race was only ever a problem for *proving* the boot branch, and 64 is closed. `ensureRunning` is idempotent and its no-op branch says so. **The wrong fix is to leave it on the grounds that BOOT covers it** — BOOT covers exactly one of the four ways this process starts |
 
 ---
 
@@ -1850,3 +1852,111 @@ carry the distinction.
 
 **The second wrong fix is to widen the gate's window** to accommodate a slow first-unlock delivery.
 The window is the only thing keeping a reinstall's lines out, and 02:13's pair is what it keeps out.
+
+
+---
+
+### 79 — the phone replaced a clipboard it could not report · **fixed** 2026-09-03
+
+Found while reading defect 64's log for something else:
+
+```
+W [clip] Notifications are not permitted, so the arriving entry was applied to the
+         clipboard without saying so; it is also in the history          × 7
+```
+
+`POST_NOTIFICATIONS` is `granted=false` on this handset, phone-side auto-apply is on, and between
+them the Mac had replaced this phone's clipboard **seven times with nothing shown to its owner**.
+
+**Why this is a defect and not a permission somebody declined.** `docs/protocol.md` builds the
+clipboard namespace on one asymmetry: the Mac applies on arrival *because* it reads its own clipboard
+first and keeps the displaced entry, so `Restore` is a real undo. The phone may not read its
+clipboard while unfocused (Slice 11: 90/90 and 60/60), so it cannot see what it would destroy, cannot
+keep it, and cannot put it back. **The notification is the entire compensation for that missing
+undo.** Without it, auto-apply is a different feature from the one the setting describes.
+
+**The code contained the opposite argument, in a comment, which is why it lasted:**
+
+> *with auto-apply on, the clipboard **was** written and only the telling failed, which is a
+> materially smaller problem than an offer nobody can reach*
+
+That is backwards, and the correction is kept beside it in `ClipNotifications.kt` rather than
+deleted. An offer nobody reaches changes nothing on the device; an unreportable apply destroys
+something unrecoverable.
+
+**Two rules this repo already had, both broken on one path.**
+
+1. **A check that does not gate the action.** Deliverability was checked *after* `applyToClipboard`
+   had run, and the check then no-opped politely.
+2. **One rule, two expressions.** `AppsNotifications.canPost` asked two questions —
+   `POST_NOTIFICATIONS` **and** `areNotificationsEnabled` — and its own comment said a check reading
+   only the grant "would report the question deliverable to a shade that will silently drop it".
+   `ClipNotifications.canPost` asked one. The weaker of the two copies was the one on the path that
+   writes somebody's clipboard.
+
+**The fix.** `ClipArrival.of(autoApply, canNotify)` decides before anything is written, `canNotify`
+gates **both** branches, and `NotificationDelivery` is the single home for the two-part check. The
+`clip.push` ack now reports what the receiver *did* — `applied`, `arrival`, `reason` — so the Mac,
+the only screen the phone can still reach, shows the refusal on both send triggers.
+
+**Red first:** deleting `!canNotify -> KEEP_ONLY` fails 4 of `ClipArrivalTest`'s 6 tests.
+
+**Proven on hardware in both directions**, which is what actually closes it, because the test reaches
+the decision and not the write: refused at `granted=false`, applied at `granted=true`, refused again
+after restoring `granted=false`. `docs/testing.md` → Phase 6 Slice 4.
+
+**The wrong fix, for whoever meets this next: do not gate the `clipboard` capability on
+`POST_NOTIFICATIONS`.** That was considered and rejected. Phone→Mac sending is unaffected by the
+permission and works fine, and the history is still populated — turning the whole capability off
+would remove three working verbs to fix one branch, and would tell the Mac the phone has no clipboard
+at all, which is false.
+---
+
+### 80 — the accessibility bind starts the process and nothing starts the link · **open**
+
+From defect 64's closing run, with the notification-listener grant revoked so that route could not
+fire:
+
+```
+11:53:52                boot
+11:54:16.148  [caps]  Capabilities now: none …
+11:54:16.911  [fs]    Files feature installed with 7 of 6 verbs; 5 root(s) …
+11:54:17.054  [input] Accessibility service connected
+11:54:21.023  [autostart] BOOT: 1 paired device(s), link not running — starting LinkService
+```
+
+Every feature installed into a process with **no listening socket**, for five seconds. The
+`AccessibilityService` is a bound service the system starts on its own schedule, and it is the third
+way this process comes up — after the notification-listener rebind (defect 62) and the two boot
+broadcasts (defect 60). Only the first two are wired to `LinkAutoStart`.
+
+**The five seconds are not the finding.** At boot a broadcast follows and closes the window. The
+question is what happens when one does not, and there are at least three such cases, none of them
+exotic:
+
+| How the process starts | Does a broadcast follow? |
+|---|---|
+| Boot | **Yes** — `BOOT_COMPLETED` after first unlock |
+| `adb install -r` / app update | **Yes** — `MY_PACKAGE_REPLACED` |
+| Notification-listener rebind | n/a — that path calls `ensureRunning` itself |
+| **Accessibility rebind after a low-memory kill** | **No** |
+| **Accessibility rebind after the service is toggled off and on** | **No** |
+| **Accessibility rebind after a crash `START_STICKY` did not catch** (defect 62's second outcome) | **No** |
+
+In those three the window does not close at all. The app is alive, granted, feature-complete and
+**serverless for as long as nobody opens it** — which is precisely the state defect 62 describes,
+reached by a route nobody specified and nothing watches.
+
+**Fix direction.** `ConnectSuiteInputService.onServiceConnected` calls
+`LinkAutoStart.ensureRunning(context, LinkStartReason.ACCESSIBILITY_BIND)`, with its own reason name
+so the corollary defect 60 established still holds: when several mechanisms can satisfy one
+guarantee, the log must say which one did.
+
+**The objection, and why it no longer stands.** A fourth start route is a fourth competitor in the
+race that defect 64 had to strip a competitor out of to get a reading. That was real, and it was a
+problem about **provability**, not about correctness — `ensureRunning` is idempotent and logs
+`already listening — nothing to do` with its reason attached. Defect 64 is closed, so the reason to
+keep the route count low is spent.
+
+**The wrong fix is to leave it on the grounds that BOOT covers it.** BOOT covers one of the ways this
+process starts. The three rows above are the others, and they are the ones where nobody is watching.

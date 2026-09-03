@@ -117,11 +117,5 @@ object AppsNotifications {
      * permission would report the question deliverable to a shade that will silently drop it —
      * which is a check that does not gate the action, one layer down.
      */
-    fun canPost(context: Context): Boolean {
-        val app = context.applicationContext
-        val granted = ContextCompat.checkSelfPermission(app, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
-        val enabled = app.getSystemService<NotificationManager>()?.areNotificationsEnabled() ?: false
-        return granted && enabled
-    }
+    fun canPost(context: Context): Boolean = NotificationDelivery.canPost(context)
 }

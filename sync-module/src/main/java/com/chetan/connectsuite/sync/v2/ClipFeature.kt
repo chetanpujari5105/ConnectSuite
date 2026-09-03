@@ -359,7 +359,14 @@ object ClipFeature {
             LinkLog.w("clip", "Could not read the auto-apply setting; holding for a tap instead", failure)
             false
         }
-        if (autoApply) {
+
+        // Deliverability is a **precondition of the write**, not a check made after it. See
+        // [ClipArrival]: this phone does not replace a clipboard it cannot tell you it replaced,
+        // because unlike the Mac it has no undo to offer afterwards.
+        val undeliverable = NotificationDelivery.reasonCannotPost(context)
+        val arrival = ClipArrival.of(autoApply = autoApply, canNotify = undeliverable == null)
+
+        if (arrival.writesClipboard) {
             applyToClipboard(context, text)
             applied.incrementAndGet()
         }
@@ -367,18 +374,34 @@ object ClipFeature {
         _state.value = _state.value.copy(
             lastReceivedPreview = text,
             lastReceivedAtMs = System.currentTimeMillis(),
-            lastReceivedApplied = autoApply,
+            lastReceivedApplied = arrival.writesClipboard,
             historySize = history.size,
             linkUp = true,
         )
-        ClipNotifications.post(context, text, applied = autoApply)
-        session.ack(request)
-        LinkLog.i(
-            "clip",
-            "clip.push ← Mac: ${ClipboardPayloads.byteLength(text)} bytes, " +
-                (if (autoApply) "applied to this phone's clipboard" else "held for a tap") +
-                " — ${tally()}",
-        )
+        if (arrival != ClipArrival.KEEP_ONLY) {
+            ClipNotifications.post(context, text, applied = arrival.writesClipboard)
+        }
+
+        // The ack says which of the three happened. The Mac is the only screen this phone can still
+        // reach when its own notifications are off, so the refusal is reported there or nowhere.
+        session.ack(request) {
+            put("applied", kotlinx.serialization.json.JsonPrimitive(arrival.writesClipboard))
+            put("arrival", kotlinx.serialization.json.JsonPrimitive(arrival.name))
+            if (undeliverable != null) {
+                put("reason", kotlinx.serialization.json.JsonPrimitive(undeliverable))
+            }
+        }
+
+        val what = when (arrival) {
+            ClipArrival.APPLY -> "applied to this phone's clipboard"
+            ClipArrival.OFFER -> "held for a tap"
+            // Success beside failure: this line carries what was kept as well as what was refused,
+            // so "12 refused" can be told from "12 of 12 refused".
+            ClipArrival.KEEP_ONLY ->
+                "NOT applied and NOT offered — $undeliverable; kept in history only"
+        }
+        val line = "clip.push ← Mac: ${ClipboardPayloads.byteLength(text)} bytes, $what — ${tally()}"
+        if (arrival == ClipArrival.KEEP_ONLY) LinkLog.w("clip", line) else LinkLog.i("clip", line)
     }
 
     private fun onHistory(session: ControlSession, request: Envelope) {

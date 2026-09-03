@@ -1513,6 +1513,42 @@ revisiting it meant adding an undo rather than removing the confirmation. That i
   same reason: a clip copied while ConnectSuite was backgrounded was never read, so it is not in the
   phone's history either.
 
+**The phone will not replace a clipboard it cannot tell you it replaced.** Auto-apply has no undo —
+that is the whole of the paragraph above — and the notification is the entire compensation for it. So
+deliverability is a **precondition of the write**, checked before it, not a courtesy attempted after:
+if `POST_NOTIFICATIONS` is not granted, or notifications for the app are switched off in Settings,
+an arriving entry is **kept in the history and not applied and not offered**, whatever the setting
+says. Both conditions are checked, because the second can be turned off without any permission dialog
+ever appearing.
+
+This was measured rather than reasoned into existence: on the development handset
+`POST_NOTIFICATIONS` was `granted=false` with auto-apply **on**, and seven entries were written to
+that phone's clipboard with nothing shown to its owner (`docs/testing.md` → Phase 6 Slice 4). The
+code had a comment arguing the opposite — that an unreportable *apply* was a smaller problem than an
+*offer* nobody could reach — which is backwards: an offer nobody reaches changes nothing on the
+device, and an unreportable apply destroys a clip the phone cannot read back, cannot keep and cannot
+restore.
+
+**The `clip.push` ack therefore says what the receiver did, not merely that it heard.**
+
+```json
+{"applied": false, "arrival": "KEEP_ONLY",
+ "reason": "the phone has not been given permission to show notifications, so it cannot tell its owner what arrived"}
+```
+
+- **`applied`** — whether the receiver's own clipboard was written. Always present.
+- **`arrival`** — `APPLY`, `OFFER` or `KEEP_ONLY`. `OFFER` means a notification is on screen and the
+  owner has not tapped it yet; `KEEP_ONLY` means nothing was shown and nothing was written.
+- **`reason`** — present only when something could not be delivered, and it is a sentence for a
+  person rather than a code. The two causes carry **different sentences**, because a revoked runtime
+  grant and a switched-off channel send somebody to different screens.
+
+**A sender must not report `applied: false` as success.** The push succeeded and the entry is in the
+receiver's history, so the transfer is not an error — but "sent to phone" is a true sentence about
+delivery and a false one about what the person wanted, and this namespace has already been bitten
+once by an ack that meant *asked* while its caller read *done*. The Mac surfaces it as a distinct
+Activity row on both triggers, the watcher's and the button's.
+
 Same platform question, opposite answers, and the reason is one measurement rather than two
 opinions.
 

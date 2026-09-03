@@ -55,14 +55,22 @@ object ClipNotifications {
         val app = context.applicationContext
         val manager = app.getSystemService<NotificationManager>() ?: return
         if (!canPost(app)) {
-            // Not fatal and not silent, and the sentence differs by case — with auto-apply on, the
-            // clipboard **was** written and only the telling failed, which is a materially smaller
-            // problem than an offer nobody can reach and should not be logged as the same thing.
+            // **The reasoning that used to be here was wrong, and it is worth keeping the
+            // correction visible.** It read: *with auto-apply on the clipboard was written and only
+            // the telling failed, which is a materially smaller problem than an offer nobody can
+            // reach.* That is backwards. An offer nobody can reach changes nothing on the device;
+            // an unreportable apply destroys a clip the phone cannot read back, cannot keep and
+            // cannot restore — the exact asymmetry `docs/protocol.md` builds this namespace on. It
+            // happened seven times on the author's own phone before anyone looked.
+            //
+            // `ClipFeature` now decides deliverability **before** writing (see [ClipArrival]), so
+            // reaching this line with `applied = true` means somebody added a caller that skipped
+            // that decision. It is logged as the louder case for exactly that reason.
             LinkLog.w(
                 "clip",
                 if (applied) {
-                    "Notifications are not permitted, so the arriving entry was applied to the " +
-                        "clipboard without saying so; it is also in the history"
+                    "BUG: a clipboard entry was applied on a phone that cannot report it. The " +
+                        "apply must be gated on NotificationDelivery.canPost — see ClipArrival."
                 } else {
                     "Notifications are not permitted, so the arriving clipboard entry could not be " +
                         "offered; it is in the history and can be applied from the app"
@@ -107,9 +115,11 @@ object ClipNotifications {
         context.applicationContext.getSystemService<NotificationManager>()?.cancel(NOTIFICATION_ID)
     }
 
-    private fun canPost(context: Context): Boolean =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
+    // One home for this rule: [NotificationDelivery]. This file used to ask only about the runtime
+    // grant and so called a notification deliverable to a shade that will drop it — the same rule
+    // AppsNotifications already asked correctly, two expressions, and the weaker one was on the path
+    // that writes somebody's clipboard.
+    private fun canPost(context: Context): Boolean = NotificationDelivery.canPost(context)
 }
 
 /**

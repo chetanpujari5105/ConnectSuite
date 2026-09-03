@@ -13259,3 +13259,89 @@ and with it removed the branch fired correctly on the first try.
    the user** — which is the asymmetry Slice 12 reasoned about (the phone cannot see what it would
    destroy) reached by a second route nobody specified. The degradation is logged, correctly, and is
    invisible where it matters.
+
+---
+
+## Phase 6 · Slice 4 — the phone stops replacing a clipboard it cannot report · 2026-09-03
+
+**Found in the defect 64 log, not by looking for it.** `W [clip] Notifications are not permitted, so
+the arriving entry was applied to the clipboard without saying so` — **7 occurrences** on the
+author's own phone. `POST_NOTIFICATIONS` is `granted=false` on this device, phone-side auto-apply is
+on, and the two together meant the Mac was replacing the phone's clipboard with **nothing shown to
+its owner**.
+
+### Why it is a defect rather than a permission the user declined
+
+`docs/protocol.md` builds this whole namespace on one asymmetry: the Mac may apply on arrival
+because it reads its own clipboard first and keeps the displaced entry, so **Restore is a real
+undo**. The phone may not read its clipboard while unfocused — Slice 11, 90/90 and 60/60 — so it
+**cannot see what it would destroy, cannot keep it, and cannot put it back**. The notification is the
+entire compensation for that missing undo. Remove it and auto-apply is not a faster version of the
+same feature; it is a different one, and not the one anybody consented to when they turned the
+setting on.
+
+**The code contained the opposite argument, written down**, which is why it survived:
+
+> *Not fatal and not silent, and the sentence differs by case — with auto-apply on, the clipboard
+> **was** written and only the telling failed, which is a materially smaller problem than an offer
+> nobody can reach.*
+
+Backwards. An offer nobody can reach changes nothing on the device. An unreportable apply destroys
+something unrecoverable. The comment is kept in `ClipNotifications.kt` with the correction beside it.
+
+### Two rules, both already in this repo, both broken on this path
+
+1. **The check did not gate the action.** `ClipNotifications.post` checked deliverability *after*
+   `applyToClipboard` had already run, and no-opped politely. A check that reads a value and then
+   acts regardless is decoration.
+2. **One rule, two expressions.** `AppsNotifications.canPost` asked **two** questions —
+   `POST_NOTIFICATIONS` *and* `areNotificationsEnabled` — with a comment explaining that a check
+   reading only the grant "would report the question deliverable to a shade that will silently drop
+   it". `ClipNotifications.canPost` asked **one**. Same rule, two copies, and the weaker copy was on
+   the path that writes somebody's clipboard. Now one home: `NotificationDelivery`.
+
+### The fix
+
+**Deliverability is a precondition of the write.** `ClipArrival.of(autoApply, canNotify)` returns
+`APPLY`, `OFFER` or `KEEP_ONLY`, and `canNotify` gates **both** branches — an `OFFER` nobody can be
+shown is not a gentler failure, it is an entry the owner is never told about.
+
+| autoApply | canNotify | arrival | writes clipboard |
+|---|---|---|---|
+| true | true | `APPLY` | **yes** |
+| false | true | `OFFER` | no |
+| true | **false** | `KEEP_ONLY` | **no** ← was `APPLY` |
+| false | false | `KEEP_ONLY` | no |
+
+The entry still enters the history in every row; it is never discarded. And the **ack now says what
+the receiver did** (`applied`, `arrival`, `reason`) rather than merely that it heard — `clip.push` in
+`docs/protocol.md`. The Mac is the only screen the phone can still reach when its own notifications
+are off, so the refusal surfaces there as a distinct Activity row, on **both** triggers.
+
+### Red first
+
+`ClipArrivalTest`, 6 tests. The defect was reintroduced by deleting `!canNotify -> KEEP_ONLY`:
+**4 of 6 failed**. Restored: `sync-module` **178 tests, `failures="0"` on all 22 suites,
+gradle exit 0, results file written 0 s ago.** Mac: **318 pass, 0 fail**, `tsc --noEmit` clean.
+
+**What the test does not reach, stated rather than implied.** It reaches the *decision*, not the
+*write* — `onPush` needs a `Context`, a `ControlSession` and a live `ClipboardManager`. That is
+defect 67's shape, so the hardware run below is what closes it, not the suite.
+
+### On hardware, both directions, with the state restored afterwards
+
+Installed at 12:11, link back up through `MY_PACKAGE_REPLACED` (defect 60's other half, working).
+
+| `POST_NOTIFICATIONS` | Stimulus | Phone log |
+|---|---|---|
+| `granted=false` | Mac clipboard set to a 22-byte marker | `W … NOT applied and NOT offered — the phone has not been given permission to show notifications, so it cannot tell its owner what arrived; kept in history only` |
+| **`granted=true`** *(control)* | 19-byte marker | `I … applied to this phone's clipboard — 1 of 3 applied` |
+| `granted=false` *(restored)* | 20-byte marker | `W … NOT applied and NOT offered — …` |
+
+**The control is what makes this a reading**: the refusal tracks the permission in both directions,
+so it is the gate and not a broken push path. The tally carries its own denominator — `1 of 3
+applied` — which is the rule that made the original defect visible in the first place.
+
+The phone was left at `granted=false`, the state it was found in. **Turning the feature on is one
+toggle** — Settings → Apps → ConnectSuite → Notifications — and until it is, the Mac says so on every
+send instead of the phone quietly swallowing it.

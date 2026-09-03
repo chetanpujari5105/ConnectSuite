@@ -98,7 +98,16 @@ const clipWatcher = new ClipboardWatcher(
   // `automatic`, and that word is the whole difference between a watcher and a button held down:
   // it is what makes the unchanged rule apply, so an unaltered clipboard is sent once rather than
   // twice a second forever.
-  () => clip.send('automatic'),
+  async () => {
+    const result = await clip.send('automatic');
+    // The watcher has no other voice. A silent automatic send that the phone refused to apply is
+    // exactly the state this whole fix exists to end, so it reaches the Activity pane too — once
+    // per refused entry, not once per poll, because `send` only gets here past the echo interlock.
+    if (result.ok && result.data.applied === false) {
+      activity.record('clipboard', 'Phone did not apply it', result.data.note ?? 'the phone did not say why');
+    }
+    return result;
+  },
 );
 
 /**
@@ -926,7 +935,13 @@ ipcMain.handle('notif-dismiss', (_event, key: string) => notifications.dismiss(k
 ipcMain.handle('clip-send', async () => {
   // R8 (clipboard).
   const result = await clip.send('user');
-  if (result?.ok) activity.record('clipboard', 'Sent to phone', 'from this Mac');
+  if (result?.ok && result.data.applied === false) {
+    // Reached the phone and was NOT put on its clipboard. Distinct from both other outcomes on
+    // purpose: "Sent to phone" would be a true sentence about delivery and a false one about the
+    // thing the person actually wanted, which is the ack meaning *asked* while the caller reads
+    // *done*.
+    activity.record('clipboard', 'Phone did not apply it', result.data.note ?? 'the phone did not say why');
+  } else if (result?.ok) activity.record('clipboard', 'Sent to phone', 'from this Mac');
   else activity.record('clipboard', 'Send refused', describeFailure(result));
   return result;
 });

@@ -218,7 +218,9 @@ export class ClipboardClient {
    * would stop it — it is the failure the button was hiding, and it is why this parameter exists
    * rather than the watcher reusing the click's path.
    */
-  async send(trigger: SendTrigger = 'user'): Promise<PhoneResult<{ bytes: number }>> {
+  async send(
+    trigger: SendTrigger = 'user',
+  ): Promise<PhoneResult<{ bytes: number; applied?: boolean; note?: string }>> {
     const text = clipboard.readText();
     if (!text) {
       return { ok: false, reason: 'This Mac’s clipboard has no text in it.' };
@@ -262,14 +264,30 @@ export class ClipboardClient {
       'clipboard',
       MessageType.CLIP_PUSH,
       { kind: 'text', text, atMs: entry.atMs, source: 'mac' },
-      () => ({ bytes: byteLength(text) }),
+      // The ack says what the phone DID, not merely that it heard. A phone that cannot show a
+      // notification refuses to replace its own clipboard — see ClipArrival on the phone side and
+      // `clip.push` in docs/protocol.md — and this is the only screen left that can say so.
+      (ack) => ({
+        bytes: byteLength(text),
+        applied: ack?.applied === true,
+        note: typeof ack?.reason === 'string' ? ack.reason : undefined,
+      }),
     );
     if (result.ok) {
+      // Counted, echoed and historied whatever the phone did with it: the transfer happened, the
+      // entry is in the phone's history, and the interlock MUST be armed either way — an arrival
+      // the phone kept can still come back on its next focused read, and disarming here would be
+      // an echo loop that only appears on phones with notifications switched off.
       this.sent += 1;
       this.echo.sent(text);
       this.history.add(entry);
       this.onChanged();
-      log.info('clipboard', `clip.push → phone: ${byteLength(text)} bytes — ${this.tally()}`);
+      const what = result.data.applied
+        ? 'applied on the phone'
+        : `NOT applied — ${result.data.note ?? 'the phone did not say why'}`;
+      const line = `clip.push → phone: ${byteLength(text)} bytes, ${what} — ${this.tally()}`;
+      if (result.data.applied) log.info('clipboard', line);
+      else log.warn('clipboard', line);
     }
     return result;
   }
