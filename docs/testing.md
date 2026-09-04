@@ -14235,3 +14235,121 @@ finding 15 of them, including this one.
 
 *A `grep` that does not match is not evidence the thing is absent* — second row of `CLAUDE.md`'s
 control table, met here in its exact original form, in the middle of diagnosing something else.
+
+---
+
+## Phase 7 · Slice 15 — the design pass: four panes, six overtaken departures, and three defects nothing could have noticed · 2026-09-04
+
+**What ran.** The four panes `docs/phase-7-state.md` §1 named as *working and not looking like the
+design* were built against `ConnectSuite.dc.html`, every departure from it recorded with its reason,
+and each got a view test as it was built. Then the six departures §2 says the wire had overtaken.
+
+**Where the numbers came from, and a correction to how they were first taken.** Eleven readings,
+through `scripts/phase7-panes-probe.mjs` — `probe.mjs`, so a required control on each, no fixed
+sleep expressible, and routing done with `probe.act` whose `expect` is the screen actually being on
+show rather than the route call returning.
+
+The first version of the same readings was a hand-rolled CDP eval in a scratchpad file.
+`probe.test.mjs`'s scan passed throughout, because it scans `scripts/` and a scratchpad file is not
+under it. That is not a gap in the guard: `CLAUDE.md` says the hole lives *permanently in the
+one-off read*, and this is that, in the sitting that quotes it.
+
+### The readings
+
+The instrument's own bound is printed first, and it turned out to matter:
+
+```
+the viewport, and whether the page is showing a scrollbar
+  value:   {"inner":1440,"outer":1440,"scrollbarPx":11,"pageScrolls":true}
+  control: 1440   (innerWidth === outerWidth, or zero — a zoomed page makes every width below wrong)
+```
+
+| Question | Value | Control |
+|---|---|---|
+| Calls: grid columns, against the handoff's `300px 1fr 300px` | `300px 508px 300px` | 50 call rows |
+| Calls: dialler keys — twelve as drawn plus a delete | **13** | 3 filter tabs |
+| Calls: controls on the live card with no call — must be zero | **0** | 17 controls in the dialler |
+| Clipboard: grid columns, against `1fr 340px` | `784px 340px` | 3 filter tabs |
+| Clipboard: filter tabs, and neither is Favourites or Pinned | **3** | 2 action buttons |
+| Settings: grid columns, against `200px 1fr 320px` | `200px 572px 320px` | 6 rail tabs |
+| Settings: rail panes | **6** (from 3) | 5 setting rows |
+| Overview: Quick action tiles | **8** | 2 hero buttons |
+| Overview: Recent activity rows | **5** | 8 quick tiles |
+| Overview: the count beside Quick actions | `7 of 8 available` | 8 quick tiles |
+| Mirror: tool-rail buttons, three since M5 | **3** | 1 readout |
+
+**The `1fr` figures moved by 11px between two honest readings, and that is the entry worth keeping.**
+The ad-hoc read gave 519 / 583 / 795; the probe gave 508 / 572 / 784. Neither is wrong — a `1fr`
+column is a fraction of a content column that is narrower by a scrollbar when the page has one, and
+the two runs caught the same grids in two scroll states. It is the *two readings, one fact* family
+with an entirely mundane cause, and the discipline it demands is one line: **quote the scrollbar
+state with the number**, or the next person hunts a regression that does not exist.
+
+**The Calls live-card zero is a real absence, and its control is what makes it one.** `#call-live
+button` is 0 while `.calls-dialer button` is 17 in the same read — so the query can see buttons on
+that screen and is reporting their absence from that card, rather than reporting a blank pane.
+
+### Three defects that no check in this repo could have found
+
+| | What was wrong | Why nothing noticed |
+|---|---|---|
+| **The status island's rota had never once been visible** | `setIsland` ran on **every** status update and `rttMs` changes on every heartbeat, so the rota's text was overwritten a second after each 5.2 s cycle; and `note('Connected · 9 ms')` also ran per update, deduplicated against the *exact* previous string, so six latency variants filled the whole six-slot history inside twenty seconds | **A rota that is always overwritten looks exactly like a rota with one entry in it.** There is no symptom. Every screenshot since 2026-08-30 shows `Connected · N ms`, which is what it should read most of the time. *"Clipboard synced"* could not have appeared even once wired |
+| **The clipboard watcher recorded only its failures** | The automatic send wrote an Activity event when the phone refused to apply the clip and **nothing** when it worked | The denominator rule inverted: the Activity pane held *"Phone did not apply it"* rows with no successes beside them, in the one pane whose job is to say what happened |
+| **Overview's Recent activity drew the five _oldest_ events** | `events.slice(0, 5)` over a store that returns insertion order; the Activity pane sorts by `seq` descending before paging | Found by **looking at a screenshot**. The fourth renderer-only break found that way, and the reason the drawing moved out of `renderer.ts` into `OverviewView` |
+
+**Verified on hardware after the island fix**, over two real copies made outside the app:
+
+```
+rota:  ["Connected",
+        "Sent to phone · 57 bytes, automatically",
+        "Sent to phone · 31 bytes, automatically"]
+island, four consecutive 5.5 s samples:  three different lines
+```
+
+### F6 / P3 — built, and the sighting is unproven
+
+The Mac can now tell *"nobody has scanned this code"* from *"scanned, and now searching"*. What is
+proven: the comparison (`shared/pairIntent.test.ts`, 6 tests, the load-bearing one being **a phone
+pairing with a different Mac does not match**), and that the watch **arms** with the code —
+
+```
+09:25:22.150 I [pairing]     QR armed for 10.231.182.88
+09:25:22.153 I [pair-intent] Watching mDNS for a phone publishing 3030c8ebcddcd0fb
+                             — a sighting only; an absence means nothing
+lines written in the same window: 2   ← so the absence of anything else is a reading
+```
+
+**A registration line is not an execution line.** That the watch is armed says nothing about whether
+a phone publishes the record, whether this Mac's browser sees it, or whether the screen draws the
+line. All three need an unpaired phone and a scan; unpairing would leave this Mac unable to
+reconnect until somebody walks over with the handset. **The stimulus is named instead:** forget the
+phone, open the pairing screen, scan, and watch for the line *before* the link comes up — that
+ordering is the whole feature.
+
+### The renderer-view debt list
+
+**5 covered / 7 outstanding → 11 covered / 2.** `CallsView`, `ClipboardView` (extended),
+`OverviewView` (new), `ContactsView`, `SmsView`, `NotificationsView`, `PhotosView`. The two that
+remain do so for stated reasons: `MirrorView` needs a canvas and a video element the double
+deliberately does not model, and `ShellView` is the window frame whose rules `stylesheets.test.ts`
+already guards.
+
+`ContactsView`'s test found a state that was unreachable in the situation it described: the
+*"Reading the phone's contacts…"* sentence was only ever drawn by the **un**-advertised path, so a
+first advertise showed a **blank** note until the reply landed — a fourth empty nobody wrote, on the
+pane whose whole care is telling empties apart. It was found by **holding the reply open rather than
+racing it**; the state lasts exactly one round trip, and the first version of the test sampled it,
+which is the 263 ms window rebuilt inside a harness.
+
+Mac tests **462**, `tsc` clean on both projects, all six commit hooks green.
+
+### What this slice did NOT do, said plainly
+
+- **The screenshots are from the dev run, not the packaged app.** The packaged app cannot be started
+  unattended — **D15**, measured here and predicted by `cd9de69`. The renderer is byte-identical
+  (both load the same `dist/`); native notification registration is not, and none of these
+  screenshots are about that.
+- **Nothing was driven on the phone.** Reads over `adb` only; no taps, no installs, no reboots.
+- **The clipboard synthetic screenshot is labelled synthetic**, its `displaced` row carried
+  `REDACTED-NEVER-DRAWN`, a DOM-wide search for that string returned `false`, and the pane was put
+  back on the phone's real data with `refresh()` afterwards.
