@@ -15084,3 +15084,51 @@ with the toolbar route as the cheaper gesture — written before defect 86 was k
 gesture that does not exist until a four-tap setup nobody has heard of. It now leads with the route
 that always works and qualifies the other with *"once it is set up on the phone"*. That is the third
 version of this sentence, and the second time it was the **wrong one of two paths**.
+
+---
+
+## Phase 7 · Slice 21 — the reachable set, and the wall under it · 2026-09-04
+
+**The user finished the toolbar table by hand, and it closes the question.**
+
+| App | Surface | What appeared |
+|---|---|---|
+| WhatsApp | message bubble | **its own bar** — emoji reactions, no Cut/Copy/Paste |
+| Telegram | message bubble | **its own bar** |
+| Telegram | search field | platform toolbar (measured here, Slice 20) |
+| Chrome | omnibox | platform toolbar — **and `Send to Mac` delivers from the overflow** |
+| Gmail, Keep | search fields | platform toolbar |
+
+**The wall, in one sentence: an app that draws its own selection UI cannot be reached by
+`ACTION_PROCESS_TEXT`, because those items are inserted by the framework's `Editor` into the
+*platform* action mode, and an app that never starts one is not a place the entry can exist.**
+
+It is the app's choice, there is no API that would change it, and there should not be — an app's own
+long-press UI is its own. Recorded in `CLAUDE.md` under *Platform walls*, **not** as a defect: no
+version of this app fixes it, which is the test that separates the two.
+
+**Nothing is being built for the unreachable apps.** Opening ConnectSuite on the phone stays the
+path there. That is one gesture, it always works, and the clipboard screen already says so.
+
+### The one case still untested, with the prediction written before the test
+
+The WhatsApp **compose box** — a text field the user typed into, not a message bubble. Written down
+in advance so the reading cannot be rationalised afterwards, which is the pre-registration rule this
+repo uses for anything whose answer would otherwise be easy to explain either way.
+
+**Expected: the platform toolbar, with `Send to Mac` present in the `⋮` overflow.** The compose box
+is an `EditText` subclass and WhatsApp adds *formatting* items to it (bold, italic, strikethrough,
+monospace) rather than replacing the menu — adding to the platform action mode keeps `Editor`'s
+`PROCESS_TEXT` insertion intact.
+
+Three outcomes, and what each would mean:
+
+| What is seen | Reading |
+|---|---|
+| `Cut Copy Paste …` **and** `Send to Mac` in the `⋮` | as predicted. WhatsApp is reachable in its compose box and unreachable in its bubbles — **one app, both sides of the wall**, which is the sharpest illustration of it |
+| `Cut Copy Paste` **but no** `Send to Mac` anywhere in the `⋮` | WhatsApp adds its items *and* prunes the menu (`menu.removeItem`). Still the wall, still not a defect — but it would mean an app can be selectively hostile to third-party entries while keeping the platform ones, which is worth knowing and is **not** something the four apps measured here do |
+| WhatsApp's own bar again, with no Cut/Copy/Paste | the compose box is custom too, and WhatsApp is simply unreachable everywhere |
+
+**A crowded overflow is expected either way** and must not be read as absence: WhatsApp's formatting
+items land in the same menu, so `Send to Mac` may sit below them and need a scroll. Slice 19's rule
+applies — `uiautomator dump` cannot see this surface, so the instrument is a screenshot and a person.

@@ -268,6 +268,23 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
 - Screen capture returns black frames for FLAG_SECURE surfaces (lock screen, banking apps, DRM video). This is enforced by Android. Detect and show a message, do not retry.
 - MediaProjection consent cannot be cached across sessions. Every capture start needs a fresh user tap on Android 14+.
 - Background clipboard reads are blocked since Android 10 unless the app has an enabled AccessibilityService or is the default IME.
+- **An app that draws its own selection UI cannot be reached by `ACTION_PROCESS_TEXT`, and that is
+  the app's choice rather than a limitation to work around.** Confirmed on hardware 2026-09-04:
+  WhatsApp and Telegram **message bubbles** raise their own bars — an emoji reaction row, not a
+  text selection — while Chrome, Telegram's search field, Gmail and Keep all raise the platform
+  toolbar and deliver from it. `PROCESS_TEXT` items are inserted by the framework's `Editor` into
+  the *platform* action mode; an app that never starts one, or builds its own menu instead, is
+  simply not a place this entry can exist. **Do not build for these apps.** Opening ConnectSuite on
+  the phone stays the path there, and it is the honest one. `docs/testing.md` → Phase 7 Slice 21.
+
+  Two consequences worth stating so nobody re-derives them:
+
+  - It is **not a per-app fix and not a permission**. There is no API by which an app asks another
+    app's custom UI to carry its menu item, and there should not be.
+  - The reachable set is not ours to enumerate once and trust: an app can switch from the platform
+    action mode to its own in any update, silently. `scripts/selection-toolbar-probe.sh` is how a
+    given app is re-checked, and it reports **`NO READING`** as a third outcome rather than folding
+    a missed stimulus into a negative.
 - Arbitrary key injection is impossible. There is no public API for an AccessibilityService to
   synthesise a `KeyEvent`; `INJECT_EVENTS` is signature-level and will never be available to this
   app. Volume, power and hardware keys cannot be pressed remotely. `input.key` is therefore text
