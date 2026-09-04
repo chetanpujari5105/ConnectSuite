@@ -418,6 +418,44 @@ clipboard as new and push it to the phone. **Emptying a list must not cause a se
 
 ---
 
+## F6 / P3 — the Mac can tell "nobody scanned" from "scanned, and searching". **Built 2026-09-04, unproven on hardware**
+
+`docs/phase-7-pairing-flow.md` J1 and J2 are the same Mac screen: *code up, nothing scanned* and
+*code up, scanned, phone now looking for us*. To the person holding the phone those are entirely
+different situations, and one sentence for both means **the first thirty seconds of a failed pairing
+are indistinguishable from the first thirty seconds of a working one** — on the first screen a
+stranger ever sees.
+
+`TXT_PAIR_INTENT` was already in `docs/protocol.md` and typed in `shared/protocol.ts`, and the phone
+half was built. This is the Mac listening: while a code is on screen it browses
+`_connectsuite._tcp` for a service publishing `pairIntentKey` of **this Mac's own** fingerprint, and
+adds one line to the pairing screen when it sees one.
+
+**There is no negative, and that is the contract's own instruction rather than caution.** From the
+declaration in `docs/protocol.md`: *a positive is trustworthy and a negative is not*, because mDNS is
+the least reliable of the three discovery paths — dropped by client isolation, by some routers'
+multicast handling, and by a phone that has simply not published yet. So the watch only ever *adds*
+a line, there is no "nobody has scanned" event, and there must never be one.
+
+| What is proven | How |
+|---|---|
+| The comparison is right | `shared/pairIntent.test.ts`, 6 tests. The one that matters is **a phone pairing with a different Mac does not match** — a Mac matching any `pair` attribute would announce somebody else's pairing as its own, silently and flatteringly, on the one screen where a stranger cannot check it |
+| The watch arms with the code | Measured on the running app: arming a QR wrote `[pair-intent] Watching mDNS for a phone publishing 3030c8ebcddcd0fb`, with 2 lines total in the window, so the absence of anything else is a reading rather than a missed sample |
+
+**What is NOT proven, and it is most of it.** *A registration line is not an execution line.* That
+the watch is armed says nothing about whether a real phone publishes the record, whether this Mac's
+browser sees it, or whether the screen then draws the line. All three need **an unpaired phone and a
+scan**, and unpairing this phone would leave its owner with a Mac that cannot reconnect until
+somebody walks over with the handset. So it is recorded as unproven with the stimulus named, in
+preference to a pass criterion nothing met.
+
+**The stimulus that would prove it:** forget the phone on the Mac, open the pairing screen, and scan
+the code. The line should appear *before* the link comes up — that ordering is the whole feature,
+because after the link is up the screen is gone. `[pair-intent]` in the Mac's log carries both the
+arm and the sighting.
+
+---
+
 ## S6 — the status island narrates real events. **Built 2026-09-04, and the row was hiding a defect**
 
 The row said the handoff's rota — *"Connected · 10 ms"*, *"Clipboard synced"*, *"Transfer complete ·

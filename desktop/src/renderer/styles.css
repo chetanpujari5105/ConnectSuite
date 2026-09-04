@@ -3015,6 +3015,21 @@ img#qr {
   border: 1px solid rgba(245, 178, 61, 0.30);
   text-align: left;
 }
+
+/*
+ * F6 / P3 — a phone has scanned this code. `--live`, not `--warning`: a scan is the thing going
+ * right, and the pairing screen's only other inline block is a refusal.
+ */
+.pair-scanned {
+  margin: var(--space-5) 0 0;
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-control);
+  background: rgba(50, 229, 138, 0.08);
+  border: 1px solid rgba(50, 229, 138, 0.22);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--live);
+}
 .pair-rejection .pair-rejection-headline {
   margin: 0 0 4px;
   font-size: 14px;

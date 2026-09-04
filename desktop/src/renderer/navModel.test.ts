@@ -85,7 +85,11 @@ test('the enumeration covers the two glyphs the defect was about', () => {
   const asked = iconNamesUsedByTheShell();
   assert.ok(asked.includes('capture'), 'Capture is not covered by the icon guard');
   assert.ok(asked.includes('refresh'), 'Refresh is not covered by the icon guard');
-  assert.equal(TOOL_RAIL.length, 2);
+  // Three since 2026-09-04: Capture, Refresh and Transfer (M5). The count is asserted rather than
+  // left open because the rail is a composition the designer drew, and a fourth arriving without a
+  // decision is the thing this line is here to make somebody notice.
+  assert.equal(TOOL_RAIL.length, 3);
+  assert.ok(asked.includes('files'), 'Transfer is not covered by the icon guard');
   assert.equal(GLOBAL_ACTIONS.length, 6, 'six actions performGlobalAction can genuinely perform');
 });
 

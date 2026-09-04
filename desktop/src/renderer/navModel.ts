@@ -518,6 +518,12 @@ const DOCK: { id: string; label: string; icon: string; tint: string }[] = [
 const TOOL_RAIL: { id: string; label: string; icon: string }[] = [
   { id: 'capture', label: 'Capture', icon: 'capture' },
   { id: 'refresh', label: 'Refresh', icon: 'refresh' },
+  // **Transfer**, added 2026-09-04. Departure M5's blocker — *"`fs.*` has no payload spec yet"* —
+  // was removed when Files shipped on 2026-09-01. It routes to the Files pane rather than opening
+  // its own picker: a second push path is the second expression of a rule that stops matching, and
+  // the Files pane is where both directions, the resume logic and the destination copy already
+  // live. Recorded as a reshape rather than presented as the design's version.
+  { id: 'transfer', label: 'Transfer', icon: 'files' },
 ];
 
 const GLOBAL_ACTIONS: { id: string; label: string; icon: string; action: string }[] = [

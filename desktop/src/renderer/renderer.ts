@@ -195,6 +195,8 @@ interface ConnectBridge {
     { ok: true; data: { openAtLogin: boolean; honoured: boolean } } | { ok: false; reason?: string }
   >;
   downloadsFolder(): Promise<{ ok: true; data: { path: string } } | { ok: false; reason?: string }>;
+  /** A phone published this Mac's fingerprint over mDNS — it scanned the code. F6. */
+  onPairScanned(callback: (payload: { deviceName: string | null }) => void): void;
   /** One activity event as it is recorded — the status island's rota, S6. */
   onActivityRecorded(
     callback: (event: { category: string; kind: string; detail: string }) => void,
@@ -449,7 +451,32 @@ async function showQr(rotate = false): Promise<void> {
   const { payload, dataUrl } = await connect.pairingQr(rotate);
   el<HTMLImageElement>('qr').src = dataUrl;
   el('qr-note').textContent = `${payload.name} at ${payload.host} — valid while this code is on screen.`;
+  // A new code invalidates a sighting of the old one. The main process replaces its watch for the
+  // same reason; this is the screen's half of it.
+  el('pair-scanned').hidden = true;
 }
+
+/**
+ * F6 / P3 — the Mac tells *"nobody has scanned this"* from *"scanned, and now looking for you"*.
+ *
+ * `docs/phase-7-pairing-flow.md` J1 and J2 are the same Mac screen today, which means the first
+ * thirty seconds of a failed pairing look exactly like the first thirty seconds of a working one.
+ * The phone publishes this Mac's fingerprint over mDNS from the moment it scans; this is the Mac
+ * listening for it.
+ *
+ * **There is no negative.** `docs/protocol.md` says it where the attribute is declared: a positive
+ * is trustworthy and an absence is not, because mDNS is dropped by client isolation, by some
+ * routers, and by a phone that has not published yet. So this only ever *adds* a line. A Mac saying
+ * "nobody has scanned this code" over a phone that scanned it forty seconds ago would be a
+ * confident wrong answer in the one place a stranger has no way to check it.
+ */
+connect.onPairScanned((payload) => {
+  const line = el('pair-scanned');
+  line.hidden = false;
+  line.textContent = payload.deviceName
+    ? `${payload.deviceName} has scanned this code and is looking for this Mac. Keep both on the same Wi-Fi.`
+    : 'A phone has scanned this code and is looking for this Mac. Keep both on the same Wi-Fi.';
+});
 
 /**
  * Keeps the displayed code alive. The token does not change, so a code scanned minutes ago still
@@ -925,6 +952,18 @@ el('mirror-capture').addEventListener('click', () => void mirror.saveStill());
 
 /** `mirror.keyframe`. What to press when the picture has torn and is not recovering. */
 el('mirror-refresh').addEventListener('click', () => void connect.mirrorKeyframe());
+/*
+ * M5 — the rail's Transfer slot. Its blocker was `fs.*` having no payload spec; that was removed
+ * when Files shipped on 2026-09-01.
+ *
+ * It **routes** rather than opening its own picker. A second push path here would be a second
+ * expression of the rule Files already owns — the destination, the resume logic, the overwrite
+ * refusal and the copy that explains where things land — and the second expression is the one that
+ * stops matching. The mirror session is unaffected by the route: the pane keeps its state, and the
+ * floating window exists for watching while doing something else.
+ */
+el('mirror-transfer').title = 'Opens Files, where transfers in both directions live';
+el('mirror-transfer').addEventListener('click', () => shell.route('files'));
 
 /*
  * The "Floating window" button.

@@ -68,6 +68,29 @@ export function pairIntentKey(fingerprint: string): string {
   return fingerprint.replace(/:/g, '').toLowerCase().slice(0, 16);
 }
 
+/**
+ * Whether one mDNS service's TXT record says *"I have scanned **this** Mac's code"*.
+ *
+ * Pulled out of the browser callback so it can be tested without a network. The comparison is
+ * against **our own** fingerprint, which is the whole of what makes a sighting a statement about
+ * this Mac rather than about any phone pairing with anything on the same network — and the reason
+ * that matters is that the failure it would produce is silent and flattering: a Mac that matched
+ * any `pair` attribute would say *"a phone has scanned this code"* over somebody else's pairing.
+ *
+ * Case is normalised on both sides because a TXT value is bytes and neither end owns the other's
+ * formatting. Anything absent, empty or not a string is not a match — never a throw, because this
+ * runs inside a browser callback over records published by devices this app has never met.
+ */
+export function pairIntentMatches(
+  txt: Record<string, unknown> | undefined | null,
+  ourFingerprint: string,
+): boolean {
+  if (!txt || !ourFingerprint) return false;
+  const published = txt[TXT_PAIR_INTENT];
+  if (typeof published !== 'string' || published.length === 0) return false;
+  return published.toLowerCase() === pairIntentKey(ourFingerprint);
+}
+
 /** Heartbeat: a ping every 5s, three unanswered pings and the link is considered dead. */
 export const PING_INTERVAL_MS = 5_000;
 export const MISSED_PONGS_BEFORE_DEAD = 3;

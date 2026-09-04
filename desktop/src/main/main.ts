@@ -11,6 +11,8 @@ import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
 import { ClipboardWatcher } from './clipboardWatcher';
 import { downloadsFolder } from './downloads';
+// F6 / P3: the mDNS watch that tells "nobody has scanned" from "scanned, and now searching".
+import { watchForPairIntent } from './discovery';
 // The one home for "is this clipboard entry something we may hand to the operating system".
 // The pane requires the same module to decide whether to draw the button; see clipLink.ts.
 const { openableUrl } = require('../shared/clipLink') as {
@@ -661,6 +663,10 @@ app.whenReady().then(() => {
     if (nowConnected && canRemote && wasConnected && !couldRemote) void remote.refresh();
     wasConnected = nowConnected;
     couldRemote = canRemote;
+    // The pair-intent watch holds a socket and is only worth anything while a code is on screen.
+    // Pairing resolving is the end of that window — the phone stops publishing the attribute too,
+    // but a Mac that waited to notice would keep a browser open on every paired session.
+    if (status.paired && nowConnected) stopPairIntentWatch();
     sendAll('status', status);
   });
   link.on('phone-error', (payload: unknown) => {
@@ -1988,11 +1994,32 @@ ipcMain.handle('pairing-qr-render', async (_event, payload: unknown) => {
   return QRCode.toDataURL(payload, QR_OPTIONS);
 });
 
+/**
+ * The mDNS watch for a phone that has scanned this Mac's code — F6 / P3.
+ *
+ * Armed with the code and torn down when pairing resolves or the code is rotated, because it holds
+ * a socket. It is deliberately **not** started at launch: the only time this question has an answer
+ * worth anything is while a code is on screen.
+ */
+let pairIntentWatch: { stop: () => void } | null = null;
+function stopPairIntentWatch(): void {
+  pairIntentWatch?.stop();
+  pairIntentWatch = null;
+}
+
 ipcMain.handle('pairing-qr', async (_event, rotate?: boolean) => {
   if (!link) throw new Error('Link not ready');
   const payload = link.armPairing(localAddress(), rotate === true);
   const dataUrl = await QRCode.toDataURL(JSON.stringify(payload), QR_OPTIONS);
   log.info('pairing', `QR armed for ${payload.host}`);
+  // A new code invalidates any sighting of the old one, so the watch is replaced rather than added
+  // to: a phone that scanned the previous code is not a phone that has scanned this one.
+  stopPairIntentWatch();
+  if (selfFingerprint) {
+    pairIntentWatch = watchForPairIntent(selfFingerprint, (deviceName) => {
+      sendAll('pair-scanned', { deviceName: deviceName as string | null });
+    });
+  }
   // Arming a code is the user saying "pair now", and the Mac is the only side that dials out.
   // forget-device leaves the client stopped, so without this the phone scans a code that nothing
   // is dialling for: it trusts us, we never call, and pairing can never complete. start() is a

@@ -171,6 +171,18 @@ contextBridge.exposeInMainWorld('connect', {
   routeChanged: (screen: string): void => {
     ipcRenderer.send('route-changed', screen);
   },
+  /**
+   * A phone has published this Mac's fingerprint over mDNS — it has **scanned the code** (F6 / P3).
+   *
+   * **A sighting only.** There is no "nobody scanned" event and there must not be one: mDNS is the
+   * least reliable of the three discovery paths, so an absence here is not evidence of anything and
+   * a screen that rendered one would be making a confident wrong claim in the place a stranger has
+   * no way to check it.
+   */
+  onPairScanned: (callback: (payload: { deviceName: string | null }) => void): void => {
+    ipcRenderer.on('pair-scanned', (_event, payload) => callback(payload));
+  },
+
   /** A native notification was clicked: route there, then reveal and flash that row. */
   onRevealNotification: (callback: (key: string) => void) =>
     ipcRenderer.on('reveal-notification', (_event, payload) => callback(payload?.key)),

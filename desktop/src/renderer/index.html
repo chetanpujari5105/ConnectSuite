@@ -200,6 +200,13 @@
                   Hidden until a rejection actually arrives; the screen claims nothing before then.
                 -->
                 <div class="pair-rejection" id="pair-rejection" role="status" hidden></div>
+                <!--
+                  F6 / P3. Hidden until a phone actually publishes this Mac's fingerprint over
+                  mDNS — a sighting is trustworthy, an absence is not, so there is no counterpart
+                  saying "nobody has scanned this". `--live` rather than `--warning`: a scan is the
+                  thing going right.
+                -->
+                <div class="pair-scanned" id="pair-scanned" role="status" hidden></div>
                 <img id="qr" alt="Pairing QR code" width="320" height="320" />
                 <p class="card-meta mono" id="qr-note"></p>
                 <button type="button" id="new-qr" class="button">Show a fresh code</button>
