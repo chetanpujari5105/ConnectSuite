@@ -55,20 +55,27 @@ const QUICK_ACTION_IDS = [
  * The tile's second line.
  *
  * A **live number** where there is one — the design's own *"3 new"* on the Notifications tile — and
- * the screen's own subtitle otherwise. The subtitle is reused rather than a second set of captions
- * being written here, for the same reason the ids are read from the table: a caption written in
- * this file is a claim about a screen, made somewhere the screen cannot correct it.
+ * the screen's own `tileCaption` otherwise.
+ *
+ * It reads a field from `navModel` rather than holding captions here, for the same reason the ids
+ * are read from the table: a caption written in this file is a claim about a screen, made somewhere
+ * the screen cannot correct it.
+ *
+ * It was `screen.subtitle` until 2026-09-05, which is the right *source* and the wrong *length*: a
+ * tile is half a 1fr column, and a page subtitle put into it truncated **five of the eight tiles**.
+ * An ellipsis is not a caption. `tileCaption` is the same owner at the length this space can pay
+ * for, and `navModel.ts` carries the reasoning beside the field.
  *
  * The unread count is drawn **only above zero**. A tile reading "0 new" is a count nobody needs,
  * and it is the rule the sidebar badge already follows.
  */
 function quickTileSub(
-  screen: { id: string; subtitle: string; state: string },
+  screen: { id: string; tileCaption: string; state: string },
   unread: number,
 ): string {
   if (screen.state !== 'built') return 'Not built yet';
   if (screen.id === 'notifications' && unread > 0) return `${unread} new`;
-  return screen.subtitle;
+  return screen.tileCaption;
 }
 
 /**

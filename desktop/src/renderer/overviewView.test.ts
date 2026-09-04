@@ -173,7 +173,18 @@ test('the Notifications tile shows a live count above zero and its subtitle at z
     const at = pane.grid.queryAll('.quick-name').findIndex((n) => n.textContent === label);
     return pane.grid.queryAll('.quick-sub')[at]?.textContent;
   };
-  assert.match(subOf('Notifications') ?? '', /Show every phone notification|notification/i);
+  // The screen's **own** caption, read from `navModel` rather than matched against words this test
+  // chose. A regex here was asserting a second expression of the rule: it read /notification/i and
+  // went red the moment the caption became `Mirror & reply`, over a pane behaving exactly as
+  // specified. What the rule actually says is *the tile shows the screen's caption when there is no
+  // count*, and that is what this asserts.
+  const notifications = (globalThis as Record<string, unknown>).SCREENS as Array<{
+    id: string;
+    tileCaption: string;
+  }>;
+  const caption = notifications.find((one) => one.id === 'notifications')!.tileCaption;
+  assert.ok(caption.length > 0, 'control: the screen table actually carries a caption');
+  assert.equal(subOf('Notifications'), caption);
 
   pane.view.setStatus(true, 'Phone', 17);
   assert.equal(subOf('Notifications'), '17 new');

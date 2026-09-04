@@ -145,6 +145,55 @@ if (prep) {
 }
 
 
+/*
+ * The page is scrolled to the top before the shutter, and this was a bug first.
+ *
+ * `#page` keeps its scroll position across routes, so a shot taken after any earlier probe that
+ * scrolled — or after a `--prep` that clicked something low in a list — captures a pane with its
+ * own title off screen and its first card cut. The Overview shot did exactly that: the page heading
+ * and the top of the sidebar were missing, and the image looked like a *design* difference rather
+ * than like an instrument that had not been told where to start.
+ *
+ * It is done after `--prep` rather than before, because a set-up may legitimately scroll to reach
+ * what it clicks; the shutter still opens at the top.
+ */
+await probe.rawEvaluate(
+  `(() => { const p = document.querySelector('#page'); if (p) p.scrollTop = 0; scrollTo(0, 0); return true; })()`,
+);
+await new Promise((r) => setTimeout(r, 120));
+
+/*
+ * And then it is **checked**, because resetting the scroll is not the same as knowing the page is
+ * at the top — the difference between a reading and an intention, which this repo has paid for
+ * before.
+ *
+ * The Overview shot went out twice with the page heading and the top of the sidebar missing.
+ * Nothing was scrolled — `document.scrollingElement.scrollTop` and `#page.scrollTop` both read 0 —
+ * and yet `.page-head` measured at **y = −121**: the whole window's content sat above the viewport.
+ * It did not reproduce after a clean relaunch, so the cause is **not established** and is not
+ * claimed here; what is established is that a session's accumulated probing can leave the page in a
+ * state where every scroll offset reads zero and the picture is still wrong.
+ *
+ * So this is a precondition on the image rather than a fix for a defect: if the pane's own head is
+ * not where it should be, the run refuses and says what it measured, instead of writing a file that
+ * will be read as a design difference. Relaunching the app is the remedy and the message says so.
+ */
+const anchored = await probe.rawEvaluate(`(() => {
+  const head = document.querySelector('.page-head');
+  if (!head) return { ok: true, why: 'no .page-head to check' };
+  const y = Math.round(head.getBoundingClientRect().top);
+  return { ok: y >= 0 && y < 200, y };
+})()`);
+if (!anchored.ok) {
+  console.error(
+    `shot.mjs REFUSED: the page head sits at y=${anchored.y}, so the window's content is not at ` +
+      'the top of the viewport and the shot would be missing the pane heading. Nothing was ' +
+      'captured. Relaunch the app and re-run — this has been seen after a long probing session ' +
+      'with every scroll offset still reading zero.',
+  );
+  exit(1);
+}
+
 // A short second settle for the set-up's own paint.
 if (prep) await new Promise((r) => setTimeout(r, 350));
 
@@ -167,6 +216,7 @@ const sidecar = {
   settleMs,
   ready: ready ?? null,
   prep: prep ?? null,
+  scrolledToTop: true,
   full: flag('full'),
   zoomChecked: 'innerWidth === outerWidth',
 };

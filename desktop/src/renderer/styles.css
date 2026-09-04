@@ -2677,7 +2677,29 @@ img#qr {
   and a gradient always paints something. `data-tone` carries the state so the colour is one switch
   and a check can read the state without sampling a pixel.
 */
-.device-status-card { display: flex; flex-direction: column; gap: var(--space-5); }
+/*
+ * Device status is **column two, beside Recent activity**, which is where the design draws it.
+ *
+ * It was `overview-wide`, so it sat under everything else and the rings — the one card on this
+ * screen whose whole content is a *number about the phone right now* — were below the fold on an
+ * 841px window. That is the reachable-but-not-visible case `card-visibility-sweep.mjs` was written
+ * for, and a state card is the one thing the sweep's own rule says must be visible at rest: a
+ * person asking "how is the battery" does not scroll to find out whether an answer exists.
+ *
+ * `.caps` follows it in the same column rather than beside it — a list of eleven chips is not a
+ * card and does not want half the screen.
+ *
+ * The `grid-column` lives **here** rather than beside `.overview-grid` in shell.css, even though
+ * every other Overview column rule is there. One selector belongs to exactly one sheet, and this
+ * one already had a rule in this file; splitting it across two would be resolved by load order,
+ * silently. `stylesheets.test.ts` caught the split version on its first run.
+ */
+.device-status-card {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
 .ring-row { display: flex; gap: var(--space-8); flex-wrap: wrap; }
 .ring-cell { display: grid; justify-items: center; gap: 2px; min-width: 104px; }
 .ring-svg { width: 72px; height: 72px; transform: rotate(-90deg); }

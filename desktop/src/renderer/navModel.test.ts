@@ -351,3 +351,62 @@ test('avatar initials come from the machine name, and a digit is not an initial'
   assert.equal(initialsFor('---'), '');
   assert.equal(initialsFor('42'), '');
 });
+
+// ---- Tile captions ------------------------------------------------------------------------------
+
+/**
+ * Every screen carries a `tileCaption`, and it is meaningfully shorter than its page subtitle.
+ *
+ * The field exists because reusing `subtitle` on Overview's quick-action tiles truncated **five of
+ * the eight** — a tile is half a 1fr column and a page subtitle is a sentence. So the thing to
+ * assert is not a spelling but the property that made the field necessary: it has to fit.
+ *
+ * The threshold is a **character count**, which is a proxy for width and is said to be one here
+ * rather than pretended otherwise. The real check is the probe against the running app —
+ * `scrollWidth > clientWidth` on every `.quick-sub`, which reads 0 of 8 — and this is the cheap
+ * guard that catches a caption someone writes as a sentence months from now, before it reaches a
+ * window.
+ */
+test('every screen has a tile caption, and it is short enough to be one', () => {
+  const screens = (globalThis as Record<string, unknown>).SCREENS as Array<{
+    id: string;
+    subtitle: string;
+    tileCaption: string;
+  }>;
+  assert.ok(screens.length >= 11, `control: only ${screens.length} screens were read`);
+
+  const tooLong: string[] = [];
+  for (const screen of screens) {
+    assert.ok(screen.tileCaption?.length, `${screen.id} has no tileCaption`);
+    // 26 characters is the longest that measured un-truncated in the real tile at 1440px
+    // ("Everything at a glance" is 22, "Copy on either side" is 19). A caption over this has not
+    // been measured and should be.
+    if (screen.tileCaption.length > 26) tooLong.push(`${screen.id}: ${screen.tileCaption}`);
+  }
+  assert.deepEqual(
+    tooLong,
+    [],
+    'these captions are longer than anything measured un-truncated in a quick-action tile:\n  ' +
+      tooLong.join('\n  '),
+  );
+});
+
+test('a tile caption is not the page subtitle wearing a different name', () => {
+  const screens = (globalThis as Record<string, unknown>).SCREENS as Array<{
+    id: string;
+    subtitle: string;
+    tileCaption: string;
+  }>;
+  // The control: the subtitles this is comparing against are real sentences, or the assertion
+  // below is vacuous.
+  const sentences = screens.filter((s) => s.subtitle.length > 26).length;
+  assert.ok(sentences >= 8, `control: only ${sentences} screens have a sentence-length subtitle`);
+
+  for (const screen of screens) {
+    assert.notEqual(
+      screen.tileCaption,
+      screen.subtitle,
+      `${screen.id}'s caption is its subtitle — which is the thing that truncated`,
+    );
+  }
+});

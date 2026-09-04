@@ -964,6 +964,7 @@ body {
 .hero { grid-column: 1; }
 .overview-wide { grid-column: 1 / -1; }
 
+
 /* ---- Quick actions (the handoff's second Overview card) --------------------------------------- */
 /*
  * Column two, beside the hero, which is where the design puts it. Not a `.card`: the design draws
@@ -1050,9 +1051,22 @@ body {
   padding: 0;
 }
 .recent-list { display: flex; flex-direction: column; }
+/*
+ * Four tracks, and the fourth is a **share of the row** rather than `auto`.
+ *
+ * It was `… minmax(0, 1fr) auto` with `max-width: 45%` on the detail item, which is circular: the
+ * `1fr` label track takes the free space first, the `auto` track is then squeezed toward
+ * min-content, and a percentage max-width on the item resolves against whatever is left of it. The
+ * result on real data was a detail column two characters wide — `3819 byt…`, `Samsu…`, `ver…`,
+ * `a…` — an ellipsis where the value should be, on four rows out of four.
+ *
+ * A percentage track is measured against the grid, not against the leftovers, so the two text
+ * columns now share the row in a fixed ratio and each truncates on its own content. The label still
+ * wins the larger share, because a person scans the label and reads the detail.
+ */
 .recent-row {
   display: grid;
-  grid-template-columns: 74px 26px minmax(0, 1fr) auto;
+  grid-template-columns: 64px 26px minmax(0, 1fr) minmax(0, 38%);
   gap: var(--space-5);
   align-items: center;
   height: 52px;
@@ -1074,7 +1088,6 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 45%;
   justify-self: end;
 }
 .recent-empty { padding: var(--space-6) 0; font-size: 12.5px; line-height: 1.55; color: var(--text-body); }

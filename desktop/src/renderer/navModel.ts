@@ -42,6 +42,21 @@ interface NavScreen {
   title: string;
   /** Page subtitle, 13.5px. The handoff's own copy, verbatim where it exists. */
   subtitle: string;
+  /**
+   * The Overview quick-action tile's second line, and the reason it is a **second** field rather
+   * than the subtitle reused.
+   *
+   * Overview's tiles are half a 1fr column wide. Reusing `subtitle` there put a full sentence into
+   * that space and **five of the eight tiles truncated** — *"Control your phone from your Mac…"*,
+   * *"View, organise and import photos …"*, *"Send and receive SMS and chat m…"*, *"Copy on either
+   * machine, paste on …"*, *"Make and receive phone calls fro…"*. An ellipsis is not a caption; it
+   * is a sentence the layout could not afford, and the design's own tiles carry two or three words.
+   *
+   * It lives **here**, in the table the screen owns, for exactly the reason the subtitle was reused
+   * in the first place: a caption written in `overview.ts` would be a claim about a screen, made
+   * somewhere that screen cannot correct it. One owner, two lengths.
+   */
+  tileCaption: string;
   /** A key of ICON_GEOMETRY in icons.ts. `navModel.test.ts` asserts every one of them resolves. */
   icon: string;
   group: 'MENU' | 'SYSTEM';
@@ -88,6 +103,7 @@ const SCREENS: NavScreen[] = [
     // greeted every user of this app by the author's name, at every hour of the day (D1).
     title: 'Overview',
     subtitle: 'Your phone and Mac are in sync.',
+    tileCaption: 'Everything at a glance',
     icon: 'overview',
     group: 'MENU',
     shortcut: '⌘1',
@@ -98,6 +114,7 @@ const SCREENS: NavScreen[] = [
     label: 'Mirror',
     title: 'Screen mirror',
     subtitle: 'Control your phone from your Mac in real time.',
+    tileCaption: 'Mirror & control',
     icon: 'mirror',
     group: 'MENU',
     shortcut: '⌘2',
@@ -108,6 +125,7 @@ const SCREENS: NavScreen[] = [
     label: 'Files',
     title: 'Files',
     subtitle: 'Browse and move files between your phone and Mac.',
+    tileCaption: 'Browse & transfer',
     icon: 'files',
     group: 'MENU',
     shortcut: '⌘3',
@@ -118,6 +136,7 @@ const SCREENS: NavScreen[] = [
     label: 'Photos',
     title: 'Photos',
     subtitle: 'View, organise and import photos from your phone.',
+    tileCaption: 'View & import',
     icon: 'photos',
     group: 'MENU',
     shortcut: '⌘4',
@@ -136,6 +155,7 @@ const SCREENS: NavScreen[] = [
     label: 'Messages',
     title: 'Messages',
     subtitle: 'Send and receive SMS and chat messages.',
+    tileCaption: 'Send & receive',
     icon: 'messages',
     group: 'MENU',
     shortcut: '⌘5',
@@ -146,6 +166,7 @@ const SCREENS: NavScreen[] = [
     label: 'Notifications',
     title: 'Notifications',
     subtitle: 'Mirror and reply to phone notifications.',
+    tileCaption: 'Mirror & reply',
     icon: 'notifications',
     group: 'MENU',
     shortcut: '⌘6',
@@ -165,6 +186,7 @@ const SCREENS: NavScreen[] = [
     // the *mechanism*: two clauses about which machine may transmit when, and nothing about the
     // thing a person actually wants, which is that ⌘V works.
     subtitle: 'Copy on either machine, paste on the other — the phone sends while it is open.',
+    tileCaption: 'Copy on either side',
     icon: 'clipboard',
     group: 'MENU',
     shortcut: '⌘7',
@@ -175,6 +197,7 @@ const SCREENS: NavScreen[] = [
     label: 'Calls',
     title: 'Calls',
     subtitle: 'Make and receive phone calls from your Mac.',
+    tileCaption: 'Make & receive',
     icon: 'calls',
     group: 'MENU',
     shortcut: '⌘8',
@@ -185,6 +208,7 @@ const SCREENS: NavScreen[] = [
     label: 'Camera',
     title: 'Camera',
     subtitle: 'Use your phone camera as a Mac webcam.',
+    tileCaption: 'Use as a webcam',
     icon: 'camera',
     group: 'MENU',
     shortcut: '⌘9',
@@ -204,6 +228,7 @@ const SCREENS: NavScreen[] = [
     // anything, it can ask, and a person taps. The subtitle is the first place a user learns which
     // of the two this is, four screens before they meet the notification.
     subtitle: 'Send an app to your phone — one tap on the phone opens it.',
+    tileCaption: 'Open on the phone',
     icon: 'apps',
     group: 'MENU',
     // The twelfth row, and appended rather than inserted. Every existing shortcut and every
@@ -218,6 +243,7 @@ const SCREENS: NavScreen[] = [
     label: 'Activity',
     title: 'Activity',
     subtitle: 'Every sync, transfer and session, logged.',
+    tileCaption: 'What happened',
     icon: 'activity',
     group: 'SYSTEM',
     shortcut: '',
@@ -236,6 +262,7 @@ const SCREENS: NavScreen[] = [
     label: 'Settings',
     title: 'Settings',
     subtitle: 'Tune ConnectSuite to your workflow.',
+    tileCaption: 'Tune this Mac',
     icon: 'settings',
     group: 'SYSTEM',
     shortcut: '⌘,',
@@ -258,6 +285,9 @@ const PAIRING_SCREEN: NavScreen = {
   label: 'Pair a phone',
   title: 'Pair your phone',
   subtitle: 'Scan this code once. After that the Mac reconnects on its own.',
+  // Never drawn as a quick-action tile — pairing replaces the whole nav rather than appearing
+  // beside it — but the field is required so a screen cannot exist without one.
+  tileCaption: 'Scan the code once',
   icon: 'link',
   group: 'MENU',
   shortcut: '',

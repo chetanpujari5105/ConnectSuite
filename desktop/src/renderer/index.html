@@ -277,6 +277,18 @@
                   is the pane that answers "why can't I do X", so it sits on the dashboard rather
                   than being buried. Each chip carries the phone's own reason, verbatim.
                 -->
+                <!--
+                  O4 — Device status. Two rings, not the design's three: there is no memory ring,
+                  because free RAM on Android is not a fact a person can act on. The reasoning is in
+                  `src/shared/deviceVitals.ts` and the departure is recorded at O4.
+
+                  The rings are drawn as SVG rather than a CSS conic-gradient so that an UNKNOWN
+                  state can omit the arc entirely. A gradient always paints something, and "paints
+                  nothing" is exactly the state this card has to be able to express.
+                -->
+                <div class="card device-status-card" id="device-status-card">
+                  <h3 class="card-title">Device status</h3>
+                  <div class="ring-row" id="ring-row"></div>
                 <div class="card">
                   <h3 class="card-title">What this phone can do</h3>
                   <p class="card-sub">
@@ -299,18 +311,6 @@
                   <div id="remote-notice" class="mirror-notice" hidden></div>
                 </div>
 
-                <!--
-                  O4 — Device status. Two rings, not the design's three: there is no memory ring,
-                  because free RAM on Android is not a fact a person can act on. The reasoning is in
-                  `src/shared/deviceVitals.ts` and the departure is recorded at O4.
-
-                  The rings are drawn as SVG rather than a CSS conic-gradient so that an UNKNOWN
-                  state can omit the arc entirely. A gradient always paints something, and "paints
-                  nothing" is exactly the state this card has to be able to express.
-                -->
-                <div class="card overview-wide device-status-card" id="device-status-card">
-                  <h3 class="card-title">Device status</h3>
-                  <div class="ring-row" id="ring-row"></div>
                 </div>
 
                 <!--

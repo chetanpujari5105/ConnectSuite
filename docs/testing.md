@@ -16059,3 +16059,91 @@ helpful. The fallback is removed; a heading with no text is not a card.
 Connection and the design opens on General, and a comparison of two different panes is not a
 comparison. Sweep after: **23 cards, 20 visible at rest, 3 reachable, 0 stranded.** Mac suite
 **545 → 549**.
+
+---
+
+## Phase 7 · Slice 30 — the design pass: Overview · 2026-09-05
+
+### Two truncation defects, both measured rather than eyeballed
+
+`scrollWidth > clientWidth` over every text node in the pane, before and after:
+
+| | before | after |
+|---|---|---|
+| `.quick-sub` truncated | **5 of 8** | **0 of 8** |
+| `.recent-detail` truncated | **4 of 4** (`3819 byt…`, `Samsu…`, `ver…`, `a…`) | **0 of 5** |
+| `.recent-text` truncated | 0 | 0 |
+
+**The quick-tile captions.** `quickTileSub` reused the screen's page `subtitle`, and the reasoning
+for that was sound and is preserved: *"a caption written in this file is a claim about a screen,
+made somewhere the screen cannot correct it."* It was the right **source** and the wrong **length**
+— a tile is half a 1fr column and a page subtitle is a sentence, so *"Control your phone from your
+Mac…"*, *"View, organise and import photos …"*, *"Send and receive SMS and chat m…"*, *"Copy on
+either machine, paste on …"* and *"Make and receive phone calls fro…"* all ended in an ellipsis. An
+ellipsis is not a caption; it is a sentence the layout could not afford.
+
+The fix keeps the ownership and changes the length: `tileCaption` is a **second field on
+`NavScreen`**, in the same table, beside the subtitle. One owner, two lengths. Twelve screens plus
+the pairing screen carry one; the compiler refuses a screen without it.
+
+**The recent-activity detail column.** The tracks were `74px 26px minmax(0, 1fr) auto` with
+`max-width: 45%` on the item, which is circular: the `1fr` label track takes the free space, the
+`auto` track is squeezed toward min-content, and a percentage max-width on the item then resolves
+against whatever is left of it. Four rows out of four showed two characters and an ellipsis where a
+value belonged. A **percentage track** is measured against the grid rather than against the
+leftovers, so `minmax(0, 38%)` gives the two text columns a fixed ratio and each truncates on its
+own content. `3819 bytes, automatically` and `Samsung SM-S938B` now read in full.
+
+### Device status moved to the column the design draws it in
+
+O4's rings were `overview-wide`, so they sat below Recent activity and *What this phone can do*, off
+the bottom of an 841px window. The design puts Device status in **column two, beside Recent
+activity**, and that is where they are now — measured at `top=543` in a 841px viewport, visible at
+rest.
+
+This is the sweep's own sharper rule rather than a preference: a card carrying a **state** must be
+visible at rest, not merely reachable, because a person asking *how is the battery* does not scroll
+to find out whether an answer exists. It is the one card on the screen whose entire content is a
+number about the phone right now.
+
+### Two guards caught the change while it was being made
+
+- **`stylesheets.test.ts`**: the `grid-column` went into `shell.css` beside the other Overview
+  column rules, while `.device-status-card` already had a rule in `styles.css`. One selector, two
+  sheets, resolved by load order, silently — caught on the first run. It is one rule in
+  `styles.css` now, with a note saying why it is not next to its siblings.
+- **`overviewView.test.ts`**: the Notifications tile's zero-state assertion was
+  `assert.match(sub, /notification/i)`, which went red the moment the caption became *"Mirror &
+  reply"* — **over a pane behaving exactly as specified.** That is a test asserting a second
+  expression of its own rule: what the rule says is *the tile shows the screen's caption when there
+  is no count*, so it reads `tileCaption` out of `SCREENS` and compares, with a control that the
+  table carries one at all.
+
+### `shot.mjs` grew two preconditions from its own bad images
+
+**It captured Overview twice with the page heading and the top of the sidebar missing.** Nothing was
+scrolled: `document.scrollingElement.scrollTop` and `#page.scrollTop` both read **0**, and
+`.page-head` measured at **y = −121** — the whole window's content above the viewport. It did not
+reproduce after a clean relaunch, so **the cause is not established and is not claimed**; what is
+established is that a session's accumulated probing can leave the page in a state where every scroll
+offset reads zero and the picture is still wrong.
+
+So the shot now resets the scroll *and then checks the pane's head is where it should be*, refusing
+otherwise — the difference between an intention and a measurement, which is this file's own
+recurring lesson. The reset runs **after** `--prep`, because a set-up may legitimately scroll to
+reach what it clicks.
+
+### Not changed
+
+The design's Recent activity stamps a clock (`09:42`); this build shows elapsed time (`1m ago`).
+Left alone: a dashboard list that is minutes old reads better relatively, and the Activity pane
+carries the absolute times.
+
+The design's title is *"Good morning, Chetan"*. This build's is *"Good morning"* with no name, which
+is not an omission — the handoff's literal greeted every user of this app by the author's name at
+every hour of the day, which is defect D1 in `docs/phase-9-distribution-audit.md`. The time-of-day
+half is real and is drawn.
+
+**Evidence:** `docs/evidence/phase-7-design-2026-09-05/overview-build.png`, `overview-design.png`,
+`overview-compare.png`. Sweep after: **22 cards, 18 visible at rest, 4 reachable, 0 stranded.** Mac
+suite **549 → 551**.
