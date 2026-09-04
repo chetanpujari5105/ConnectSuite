@@ -858,3 +858,8 @@ function timeOf(whenMs: number): string {
     ? at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     : at.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
+
+// The view class, for `notificationsView.test.ts`. `notifications.ts` touches no DOM at module
+// scope, so a test can import it and construct the class against `domDouble.testkit.ts` — which is
+// what takes it off `check-renderer-views.mjs`'s debt list, where its reason was "Phase 4".
+(globalThis as Record<string, unknown>).NotificationsView = NotificationsView;

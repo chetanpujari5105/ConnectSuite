@@ -44,6 +44,20 @@ export class FakeElement {
   checked = false;
   /** How many times [focus] was called. Storage only — see that method. */
   focusCount = 0;
+  /**
+   * Layout and scroll numbers, as **storage with no layout behind them**.
+   *
+   * They are here because views read them — the notifications pane anchors its scroll to a row so
+   * an arriving notification does not throw the reader back to the top. A test can set them to
+   * construct a scrolled list and assert what the view does with the numbers; what it can never
+   * assert is that the numbers are *right*, because nothing here lays anything out. That division
+   * is the same one this file states for the DOM as a whole, and it is why the scroll-anchoring
+   * behaviour itself belongs to a probe read against the real page.
+   */
+  scrollTop = 0;
+  offsetTop = 0;
+  offsetHeight = 0;
+  selectionStart: number | null = null;
   disabled = false;
   title = '';
   /** Form-control fields. Storage only: the double has no validation and no range clamping. */
@@ -61,7 +75,26 @@ export class FakeElement {
    * that anything was painted. That is the same division the header states for the DOM as a whole.
    */
   readonly attributes = new Map<string, string>();
-  readonly style: Record<string, string> = {};
+  /**
+   * `style` as a plain map, plus the two methods a custom property needs.
+   *
+   * `el.style.foo = 'x'` covers a named property; a **custom** property has to go through
+   * `setProperty`, because `--tint` is not a valid identifier. The notifications pane sets one per
+   * row, so without these the whole pane throws rather than drawing. Storage either way: there is
+   * no cascade and no layout here, so a `style` written proves the view *set* something and never
+   * that anything was painted.
+   */
+  readonly style: Record<string, string> & {
+    setProperty(name: string, value: string): void;
+    getPropertyValue(name: string): string;
+  } = Object.assign(Object.create(null) as Record<string, string>, {
+    setProperty(this: Record<string, string>, name: string, value: string) {
+      this[name] = value;
+    },
+    getPropertyValue(this: Record<string, string>, name: string) {
+      return this[name] ?? '';
+    },
+  });
   readonly dataset: Record<string, string> = {};
   /** Set by `createElementNS`, so a test can tell an `<svg>` subtree from an HTML one. */
   namespace: string | null = null;
@@ -136,21 +169,28 @@ export class FakeElement {
     };
   }
 
+  /** Set by every insertion, so [closest] has a chain to walk. */
+  parent: FakeElement | null = null;
+
   append(...kids: FakeElement[]): void {
     this.absorbOwnText();
+    for (const kid of kids) kid.parent = this;
     this.children.push(...kids);
   }
 
   /** The single-child form. Real elements have both and views use whichever reads better. */
   appendChild(kid: FakeElement): FakeElement {
     this.absorbOwnText();
+    kid.parent = this;
     this.children.push(kid);
     return kid;
   }
 
   replaceChildren(...kids: FakeElement[]): void {
+    for (const gone of this.children) gone.parent = null;
     this.children.length = 0;
     this.ownText = '';
+    for (const kid of kids) kid.parent = this;
     this.children.push(...kids);
   }
 
@@ -181,6 +221,28 @@ export class FakeElement {
     this.focusCount += 1;
   }
 
+  /** Storage, like the layout numbers. The double has no selection model. */
+  setSelectionRange(start: number, _end: number): void {
+    this.selectionStart = start;
+  }
+
+  /**
+   * `closest`, over the same tiny grammar as [queryAll], walking up through [parent].
+   *
+   * Added for the notifications pane, which asks whether the focused input is inside its reply box.
+   * It needs a parent chain, which is why [parent] exists — the double had none until now, and a
+   * `closest` that always answered `null` would have made the pane's focus rule untestable *and*
+   * silently green.
+   */
+  closest(selector: string): FakeElement | null {
+    let node: FakeElement | null = this;
+    while (node) {
+      if (node.matches(selector)) return node;
+      node = node.parent;
+    }
+    return null;
+  }
+
   /**
    * `matches` for the handful of selectors views actually use.
    *
@@ -207,22 +269,42 @@ export class FakeElement {
   }
 
   /**
-   * A deliberately tiny selector engine: `tag`, `.class`, and `tag.class`. Nothing else.
+   * A deliberately tiny selector engine: `tag`, `.class`, `tag.class`, and a **descendant chain**
+   * of those separated by spaces (`.notif-reply input`). Nothing else — no `>`, no attributes, no
+   * commas.
    *
    * It refuses anything it does not understand rather than returning `[]`, because a selector this
    * cannot parse silently matching nothing is the *hidden grid* failure from `CLAUDE.md` rebuilt
    * inside the test harness — a query that cannot see its target reporting an absence.
+   *
+   * The descendant form was added for the notifications pane, which reaches its reply input as
+   * `.notif-reply input`. It is a **descendant** match and not a child match, which is what the
+   * space means in CSS; anyone adding `>` should add it explicitly rather than letting this stand
+   * in for it.
    */
   queryAll(selector: string): FakeElement[] {
-    const match = /^([a-z]+)?(?:\.([\w-]+))?$/.exec(selector.trim());
-    if (!match || (!match[1] && !match[2])) {
+    const steps = selector.trim().split(/\s+/);
+    if (steps.length === 0) {
       throw new Error(`domDouble: unsupported selector ${JSON.stringify(selector)} — extend the double rather than working around it`);
     }
-    const [, tag, className] = match;
-    return this.descendants().filter(
-      (el) =>
-        (!tag || el.tagName === tag) && (!className || el.className.split(' ').includes(className)),
-    );
+    let scope: FakeElement[] = [this];
+    for (const step of steps) {
+      const match = /^([a-z]+)?(?:\.([\w-]+))?$/.exec(step);
+      if (!match || (!match[1] && !match[2])) {
+        throw new Error(`domDouble: unsupported selector ${JSON.stringify(selector)} — extend the double rather than working around it`);
+      }
+      const [, tag, className] = match;
+      const next: FakeElement[] = [];
+      for (const root of scope) {
+        for (const el of root.descendants()) {
+          if ((!tag || el.tagName === tag) && (!className || el.className.split(' ').includes(className))) {
+            if (!next.includes(el)) next.push(el);
+          }
+        }
+      }
+      scope = next;
+    }
+    return scope;
   }
 }
 
@@ -249,7 +331,27 @@ export function installFakeDocument(): { restore: () => void } {
       node.textContent = text;
       return node;
     },
+    /**
+     * **Always null unless a test sets it.** The double has no focus model — nothing here can take
+     * focus, and [FakeElement.focus] only records that it was asked for.
+     *
+     * It exists because a view reading `document.activeElement` would otherwise get `undefined` and
+     * die on the `instanceof` below. A test that wants the focused-input branch assigns this
+     * directly, which is the honest shape: the branch is exercised, and the *focus* is a fiction the
+     * test is declaring rather than a state the harness produced.
+     */
+    activeElement: null as FakeElement | null,
   };
+  /*
+   * `HTMLInputElement` exists so `active instanceof HTMLInputElement` is answerable at all.
+   * `FakeElement` extends it, so **every** double element passes that check — the double cannot
+   * tell an input from a div, and a view relying on the distinction alone is untested here. The
+   * notifications pane does not: it narrows with `closest('.notif-reply')` immediately after, which
+   * this double does model.
+   */
+  if (!(globalThis as Record<string, unknown>).HTMLInputElement) {
+    (globalThis as Record<string, unknown>).HTMLInputElement = FakeElement;
+  }
   return {
     restore: () => {
       (globalThis as Record<string, unknown>).document = before;

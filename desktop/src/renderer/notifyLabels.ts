@@ -202,6 +202,28 @@ function userVisibleStringsOf(one: LabelSource): string[] {
   ];
 }
 
+// The same names on `globalThis`, for the reason `shared/activity.ts` and `navModel.ts` carry this
+// block: in the renderer these are already global, and under `node --test` this file is a CommonJS
+// module whose declarations are module-scoped — so `NotificationsView.appTile` throws
+// `tileInitialOf is not defined` the moment a view test mounts the pane. **The whole enumeration is
+// exported**, not the two the first mount happened to reach: a partial list here would be a second
+// list to keep in step with `userVisibleStringsOf`, which is the enumeration defect 28's guard runs
+// over.
+{
+  const g = globalThis as Record<string, unknown>;
+  g.appLabelOf = appLabelOf;
+  g.tileInitialOf = tileInitialOf;
+  g.appTileNameOf = appTileNameOf;
+  g.replyPlaceholderOf = replyPlaceholderOf;
+  g.repliedNoticeOf = repliedNoticeOf;
+  g.replyButtonLabelOf = replyButtonLabelOf;
+  g.fallbackChipOf = fallbackChipOf;
+  g.dismissButtonNameOf = dismissButtonNameOf;
+  g.noReplyActionNoteOf = noReplyActionNoteOf;
+  g.sendButtonNameOf = sendButtonNameOf;
+  g.userVisibleStringsOf = userVisibleStringsOf;
+}
+
 // Reachable from the pane (plain scripts, one global scope) and from `node --test` (the shim).
 // `typeof` on an undeclared identifier is safe in JS, so the shim is a no-op in the browser.
 if (typeof module !== 'undefined') {
