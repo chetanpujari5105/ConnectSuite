@@ -129,11 +129,32 @@ globalThis.__probe = {
       return { verdict: 'stranded', atRest: at_rest, afterScroll: at_rest, viewportH: h,
                scrolledBy: 0, scroller: null, why: 'no scrolling ancestor — scrolling cannot reach it' };
     }
+    /*
+     * Every scrollable ancestor is recorded, not just the one \`scroller()\` chose.
+     *
+     * \`scrollIntoView\` scrolls **all** of them — including ancestors with \`overflow: hidden\`,
+     * which are still scroll ports and simply have no scrollbar. Restoring one and walking away
+     * left \`.app-window\` sitting at \`scrollTop: 199.5\` with its own header and sidebar above
+     * the viewport, invisibly, for the rest of the session: no scrollbar to show it, no wheel
+     * target to undo it, and every scroll offset anyone would think to read still saying zero.
+     *
+     * It cost two screenshots before \`shot.mjs\` grew a precondition that refuses them, and the
+     * cause was this line. An instrument that leaves the app in a state it did not find it in is a
+     * stimulus with an unreported side effect — the same shape as a probe reporting bytes queued
+     * as bytes delivered, one layer over.
+     */
+    var chain = [];
+    for (var node = el; node && node !== document.documentElement; node = node.parentElement) {
+      chain.push([node, node.scrollTop, node.scrollLeft]);
+    }
     var held = box.scrollTop;
     el.scrollIntoView({ block: 'center' });
     var after = seen();
     var moved = box.scrollTop - held;
-    box.scrollTop = held;
+    for (var j = 0; j < chain.length; j++) {
+      chain[j][0].scrollTop = chain[j][1];
+      chain[j][0].scrollLeft = chain[j][2];
+    }
     var name = box.id ? '#' + box.id : box.tagName.toLowerCase() + '.' + String(box.className || '').split(' ')[0];
     return {
       verdict: after.fraction >= 1 ? 'reachable' : 'stranded',

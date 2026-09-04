@@ -1,0 +1,12 @@
+{
+  "file": "docs/evidence/phase-7-design-2026-09-05/clipboard-compare.png",
+  "build": "/Users/chetan/Desktop/ConnectSuite/docs/evidence/phase-7-design-2026-09-05/clipboard-build.png",
+  "design": "/Users/chetan/Desktop/ConnectSuite/docs/evidence/phase-7-design-2026-09-05/clipboard-design.png",
+  "commonWidthPx": 1440,
+  "naturalWidths": {
+    "a": 2880,
+    "b": 1440
+  },
+  "note": "Both panels are drawn at the same CSS width. The build is captured at DPR 2 and the design at DPR 1, so an unscaled pairing would show the build at twice the size.",
+  "takenAt": "2026-09-04T20:51:44.929Z"
+}

@@ -16147,3 +16147,79 @@ half is real and is drawn.
 **Evidence:** `docs/evidence/phase-7-design-2026-09-05/overview-build.png`, `overview-design.png`,
 `overview-compare.png`. Sweep after: **22 cards, 18 visible at rest, 4 reachable, 0 stranded.** Mac
 suite **549 → 551**.
+
+---
+
+## Phase 7 · Slice 31 — Clipboard re-diff, and defect 91: the frame was a scroll port · 2026-09-05
+
+### Defect 91 — `.app-window` could be scrolled out of place, permanently and invisibly
+
+`shot.mjs` refused a Clipboard screenshot with *"the page head sits at y=−199"*. The precondition
+added one slice earlier had done its job, and this time the cause was chased rather than relaunched
+away:
+
+```
+.app-window   scrollTop: 199.5      overflow: hidden
+document.scrollingElement.scrollTop: 0
+#page.scrollTop:                     0
+.page-head top:                   −199
+```
+
+**`overflow: hidden` removes the scrollbars and still makes the element a scroll port.** It can be
+scrolled by `scrollIntoView`, by the browser revealing a focused descendant, or by any script that
+sets `scrollTop` — and once it is, there is no scrollbar to show it and no wheel target to undo it.
+The app's own header and sidebar sit above the viewport and stay there, while every scroll offset a
+person would think to read still says zero.
+
+**Who moved it, established rather than assumed.** Two candidates and they were separated by
+measurement, not by argument:
+
+| candidate | reading |
+|---|---|
+| ordinary keyboard focus on a control below the fold | focusing the Overview *Disconnect* button at `top=1085` scrolled **`#page` by 354** and left `.app-window` at **0** — correct behaviour, **not** the cause |
+| `probe.mjs`'s `__probe.onScreen` | `el.scrollIntoView({ block: 'center' })` scrolls **every** scrollable ancestor and it restored only `box`, the one `scroller()` had chosen |
+
+So the trigger was our own instrument, and that is fixed where it belongs: `onScreen` now records
+the scroll position of every ancestor before the call and restores all of them. **An instrument that
+leaves the app in a state it did not find it in is a stimulus with an unreported side effect** — the
+same shape as a probe reporting bytes queued as bytes delivered, one layer over.
+
+**The frame is hardened anyway, because "only our tooling can do it" is a statement about today.**
+`.app-window` is `overflow: clip` now. `clip` cuts identically — the rounded corners and the ambient
+blobs at `inset: −10%` are unaffected — and creates **no scroll container**, so nothing can scroll
+this element by any route. Proven after the change: `win.scrollTop = 200` reads back **0**, and
+`scrollIntoView` on a below-fold control leaves it at **0** with `.page-head` at **0**.
+
+This window has exactly one scroller by design, `#page`, and now that is enforced by the platform
+rather than by nobody happening to call the wrong thing.
+
+### Clipboard, re-diffed and already matching
+
+| | design | build |
+|---|---|---|
+| grid | `1fr 340px`, gap 16 | `795px 340px`, gap 16 |
+| panel | `#1c1f2b`, radius 20 | `rgb(28,31,43)`, radius 20 |
+| row | 72px | 75px (the extra 3 is the selection border) |
+| kind badge | 36×36, radius 10 | 36×36, radius 10 |
+| filter pill | 28px, radius 999 | 28px, radius 999 |
+| Clear all | 28px, radius 9 | 28px, radius 10 |
+
+**Two of those were wrong an hour earlier and are fixed by defect 90**: the filter pills and *Clear
+all* both declare 28px and were drawing at 32px under the button floor. The clipboard re-diff's real
+finding is that its own numbers had been right all along and the cascade was overriding them.
+
+### One design affordance deliberately not built
+
+The design's clipboard rows carry two hover actions — a **Copy** button and a **Star**. Neither is
+built:
+
+- **Star is Favourites**, and Favourites is already cut (K1–K6): this history is memory-only by
+  decision — 20 entries, cleared on disconnect, gone on restart — and a star that vanished when the
+  phone went out of range would be a lie about the word.
+- **Copy is real and is one click away already**, in the detail panel. It is not added *inside the
+  row* because `.clip-row` is a `<button>`: a button inside a button is invalid HTML and gives one
+  target two meanings. Making the row a `div[role=button]` to gain a hover affordance would trade
+  working keyboard semantics for a shortcut, on a pane where the action is already reachable.
+
+**Evidence:** `docs/evidence/phase-7-design-2026-09-05/clipboard-build.png`, `clipboard-design.png`,
+`clipboard-compare.png`.

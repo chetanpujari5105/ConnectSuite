@@ -67,11 +67,30 @@ body {
  * A real Mac window has nothing behind it, so the gradient simply does not exist here. The three
  * drifting blobs below are the part that *is* inside the window in the prototype, and they stay.
  */
+/*
+ * `overflow: clip`, not `hidden`, and the difference is the whole point.
+ *
+ * `hidden` removes the scrollbars and **still makes the element a scroll port**. It can be scrolled
+ * programmatically — by `scrollIntoView`, by the browser revealing a focused descendant, by any
+ * script that sets `scrollTop` — and once it is, there is no scrollbar to show it and no wheel
+ * target to undo it. The app's own header and sidebar go above the viewport and stay there, with
+ * every scroll offset a person would think to read still saying zero.
+ *
+ * That is not hypothetical: it happened twice in one sitting, measured at
+ * `.app-window { scrollTop: 199.5 }`, and it took two refused screenshots to notice. The immediate
+ * cause was a tool (`probe.mjs`'s `onScreen`, which restored one scroller after `scrollIntoView`
+ * had moved several) and that is fixed there — but a frame that *can* end up in an unreachable
+ * scroll position is a hazard whoever moves it, and there is exactly one scroller on this window by
+ * design: `#page`.
+ *
+ * `clip` clips identically — the rounded corners and the ambient blobs at `inset: -10%` are cut the
+ * same way — and creates no scroll container, so nothing can scroll this element ever again.
+ */
 .app-window {
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  overflow: clip;
   background: var(--canvas);
 }
 
