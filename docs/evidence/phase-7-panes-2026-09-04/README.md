@@ -9,6 +9,16 @@ user data directory, so a stray ⌘− survives every relaunch and would render 
 the half-pixel at 72% with nothing on screen saying so. The design shots are clipped to the one
 `div` whose inline `style.width` is `1440px`, with the clip read *after* the artboard settled.
 
+## Start with the `*-compare.png` files
+
+`calls-compare.png`, `clipboard-compare.png`, `settings-compare.png`, `overview-compare.png` and
+`mirror-compare.png` are the build and the design **side by side in one image**, both scaled to the
+same 1440 width first — the app is captured at DPR 2 and the design artboard at DPR 1, so without
+that step the build would appear at twice the size and every comparison of proportion would be
+wrong. Build on the left, design on the right, labelled.
+
+The individual files below are the sources, at full resolution.
+
 ## What is in each
 
 | File | What it shows |
