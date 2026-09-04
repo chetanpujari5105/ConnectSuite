@@ -1,3 +1,81 @@
+# Resume here — written 2026-09-04, after the Phase 7 design pass
+
+> **Four panes that worked and did not look like `ConnectSuite.dc.html` now look like it**, and all
+> six departures the wire had overtaken are discharged. Every pane built in this pass got a view
+> test as it was built. The **renderer-view debt list went from 5 covered / 7 outstanding to 11 / 2**,
+> and the two that remain stay for stated reasons rather than for want of a sitting.
+>
+> **Screenshots, build against design, are in `docs/evidence/phase-7-panes-2026-09-04/`** with a
+> README saying what each one shows, that neither side is zoomed, and which single image is
+> synthetic and why.
+>
+> ## The one thing that needs your hands, and it is new
+>
+> **The packaged app can no longer be started unattended — D15.** A rebuilt `dist:dir` bundle stalls
+> on a macOS Keychain dialog *before its window is created*: `[app] ConnectSuite 2.0.0 starting` and
+> then nothing for 4m40s, with `SecurityAgent` spawned in the same second and port 9222 bound. This
+> was **predicted** by `cd9de69` and labelled unmeasured; it is measured now. `identity.ts` decrypts
+> through `safeStorage` ahead of the first paint, and an ad-hoc signature's designated requirement is
+> pinned to the cdhash, which changes on every rebuild — so the Keychain ACL never matches twice.
+>
+> A stranger installing fresh is unaffected. What it costs is **this repo's own workflow**: the
+> instruction to relaunch the packaged app after every visible change now needs somebody at the
+> keyboard, and unattended screenshots or probes against the packaged build are impossible. It is
+> the fourth thing the missing Developer ID costs, after D12, D14 and defect 81. **The screenshots in
+> this pass are therefore from the dev run**, which draws the identical renderer — both load the same
+> `dist/` — and differs only in native notification registration, which none of them are about.
+>
+> ## What is built and unproven, on purpose
+>
+> **F6 / P3 — the Mac can now tell "nobody has scanned this code" from "scanned, and searching".**
+> The comparison is unit-tested six ways and the watch is *measured arming*. The sighting itself has
+> **never been observed**, because proving it needs an unpaired phone and a scan — and unpairing
+> would leave this Mac unable to reconnect until somebody walks over with the handset. A
+> registration line is not an execution line, and it is recorded that way rather than as a pass.
+>
+> **The stimulus that would prove it, when you have five minutes:** forget the phone on the Mac,
+> open the pairing screen, scan the code, and watch for the green line *before* the link comes up —
+> that ordering is the whole feature. `[pair-intent]` in the Mac's log carries both the arm and the
+> sighting.
+>
+> ## What this pass found that was not the work
+>
+> Three things were wrong in ways nothing in the build could have noticed, and all three are worth
+> more than the panes:
+>
+> 1. **The status island's rota had never once been visible.** It was built, it cycled every 5.2 s,
+>    and `setIsland` ran on every status update — and `rttMs` changes on every heartbeat, so the
+>    text was overwritten a second after every cycle, while six latency variants filled its whole
+>    six-slot history. *"Clipboard synced"* could not have appeared even once wired. Nobody noticed
+>    for a month because **a rota that is always overwritten looks exactly like a rota with one entry
+>    in it** — there is no symptom. `docs/design-departures.md` → S6.
+> 2. **The clipboard watcher recorded an Activity event only when the phone *refused* the clip.** So
+>    the Activity pane held *"Phone did not apply it"* rows with no successes beside them, in the one
+>    pane whose job is to say what happened. The denominator rule, inverted.
+> 3. **Overview's Recent activity drew the five _oldest_ events**, under that heading, because the
+>    store returns them in insertion order and the card sliced the head. Found by looking at a
+>    screenshot — the fourth renderer-only break found that way, and the reason the drawing moved out
+>    of `renderer.ts` into `OverviewView`.
+>
+> ## Where the design still needs the designer
+>
+> **The *unavailable / partial / failed / empty* vocabulary, once, in the design's language.** Calls
+> is now the **fifth** pane to invent its own — after Notifications (N4), Photos (P5), Files (F7) and
+> Activity (A2). Four could be bad luck. Five is a missing vocabulary, and it is the single most
+> useful hour available. `docs/design-departures.md` → C6 and *How to read the "missing from the
+> design" rows*.
+>
+> ## Then, in order
+>
+> 1. **Camera** is the only unbuilt pane and is correctly parked behind Phase 8's signing.
+> 2. **Messages' three columns** — the other half of the structural row Calls just discharged.
+>    `grid(280px 539px 300px)` against the build's list-or-thread.
+> 3. **The Apps grid** is a guess at the design language rather than an application of it (X0).
+> 4. **`docs/design-departures.md` is now the first file to read before touching any pane.** Rows C1–C7,
+>    K1–K6, G1–G7, T1–T3, O1–O5, S6, S13, F6/P3 and M5 were all written or discharged in this pass.
+
+---
+
 # Resume here — written 2026-09-03, after Phase 6 closed and Phase 7 was audited
 
 > **Phase 6 is closed** — `docs/phase-6-closeout.md`, against an honest accounting rather than a

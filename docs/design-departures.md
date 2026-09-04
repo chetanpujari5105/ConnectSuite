@@ -360,8 +360,19 @@ remedy. The design's copy should adopt it.
 
 ## Calls — **built 2026-09-04**, three columns. Rows C1–C7
 
-The structural row above is discharged for Calls: the pane is `300px 1fr 300px`, with the
-All / Missed / Contacts strip, the running call clock, the 3×4 keypad and *Frequently called*. What
+The structural row above is discharged for Calls: the pane is `300px 1fr 300px`, measured at
+`300px 508px 300px` with the page scrolling, with the All / Missed / Contacts strip, the running
+call clock, the 3×4 keypad and *Frequently called*.
+> **A `1fr` figure here depends on whether the page is showing a scrollbar, and two honest readings
+> of the same grid differ by 11px because of it.** The numbers below were re-taken through
+> `scripts/phase7-panes-probe.mjs`, which prints the viewport, the scrollbar width and whether the
+> page scrolls **before** any width — `{inner: 1440, outer: 1440, scrollbarPx: 11, pageScrolls: true}`
+> on this run. An earlier ad-hoc read of the same grids, on a page that happened not to be
+> scrolling, gave 519 / 583 / 795. Neither is wrong; they are readings of two different content
+> column widths, and it is the *two readings, one fact* family with an entirely mundane cause. Quote
+> the scrollbar state with the number or the next person will hunt an 11px regression that does not
+> exist.
+ What
 follows is the list of things the handoff draws that are **not** on screen, one row each, and every
 one of them is a capability the wire cannot back rather than an omission.
 
@@ -388,8 +399,9 @@ broken.
 
 ## Clipboard — **built 2026-09-04**, two columns. Rows K1–K6
 
-`1fr 340px`, measured back at `795px 340px` in a 1151px content column: the list with its filter
-strip and **Clear all**, and the selected entry beside it with Information and the sync timeline.
+`1fr 340px`, measured at `784px 340px` with the page scrolling: the list with its filter strip and
+**Clear all**, and the selected entry beside it with Information and the sync timeline. See the
+scrollbar note under **Calls** for why that figure moves by 11px between two honest readings.
 
 | # | Design draws | Built instead | Status | Why | What would make the design's version correct |
 |---|---|---|---|---|---|
@@ -574,7 +586,7 @@ Security, Advanced, About."*
 
 ~~Measured: design `200px 599px 320px`, build `200px 927px`. The rail carries three of the eight panes.~~
 
-**Built 2026-09-04: `200px 583px 320px`, six panes in the rail.** The 16px difference in the centre column is the gap arithmetic, not a decision. The rows below are kept because the *reasoning* in them is still live — every one of them is either now built or now has a numbered departure of its own.
+**Built 2026-09-04: `200px 572px 320px` with the page scrolling, six panes in the rail.** The difference from the design's `200px 599px 320px` is gap arithmetic plus an 11px scrollbar, not a decision — see the scrollbar note under **Calls**. The rows below are kept because the *reasoning* in them is still live — every one of them is either now built or now has a numbered departure of its own.
 
 | Missing | Verdict | Blocked on |
 |---|---|---|
