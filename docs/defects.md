@@ -97,6 +97,7 @@ own heading there, and its own row here.
 | **81** | **The degraded banner told the user to flip a switch that does not exist on their Mac.** Native notifications were refused, and the banner said *"Turn them on in System Settings → Notifications, under 'Electron'"*. There is no **Electron** row in that list — not switched off, **absent** — because macOS never registered the dev build as a notification client at all. This is the `fixHint`-pointing-at-a-nonexistent-Setting failure that `PHONE_NOT_FOCUSED` got its own error code to avoid, and it was **reported by the user against a sentence this session wrote** | **fixed** 2026-09-03 — the copy is chosen by `refusalCopy({ packaged })` in `src/shared/`, because whether a Setting exists at all is decided by whether the bundle is sealed. A packaged build is told exactly where the switch is; a dev run is told the mechanism, that everything else on the screen works, and to use a packaged build — **and is given no instruction, because there is no action**. 5 tests, one asserting the dev copy can never name an Electron switch again | user report, then measured both ways: dev run refused, packaged build posted with 0 refusals against a control of 3 in the same file | `docs/testing.md` → Phase 7 Slice 13 |
 | **82** | **The packaged app could not launch at all, and had presumably never been run.** `dyld: Library not loaded: @rpath/Electron Framework.framework/Electron Framework — mapping process and mapped file (non-platform) have different Team IDs`. `hardenedRuntime: true` turns on **library validation**, which requires every loaded library to carry the same Team ID as the process; an ad-hoc signature has **none** (`TeamIdentifier=not set` on both the app and the framework), and macOS does not treat two absent team IDs as a match. So D12's inside-out ad-hoc signing fixed *assessability* and produced a bundle that verifies deep, assesses as `rejected` rather than erroring, and **cannot be run** | **fixed** 2026-09-03 — `com.apple.security.cs.disable-library-validation` added to `build/entitlements.mac.plist`, $0 and no account. The entitlement is documented as **load-bearing only while ad-hoc**: with a real Developer ID every nested component shares one Team ID, validation passes on its own, and the line should be deleted in the same change that fills in `identity:` | measured 2026-09-03: launch refused before the fix, `LAUNCHED` after, then connected and posted notifications | `docs/testing.md` → Phase 7 Slice 13 |
 | **83** | **A native notification could be posted and not clicked — the banner was live and its handler was gone.** Electron delivers `click` through the `Notification` instance and `post()` held it in a local `const`, so once the function returned nothing referenced it; a collected instance takes its listeners with it while its banner stays on screen. Clicked minutes after posting the click went nowhere; clicked within a second it was delivered — window to the front, routed to Notifications, from minimised. **Case 1 of three that look identical from outside**, and the click handler wrote **no log line**, so its only trace was the Dock badge — a number with four writers, two of which fired during the run that read it | **fixed and closed on hardware** 2026-09-04 — `LiveNotifications<T>` in `src/shared/` holds the unseen keys **and** their handles in one container (two containers over one lifetime is defect 67's shape), released on click, on phone-side removal and on `markAllSeen`, with a superseded banner closed rather than left unclickable. The residual is chosen: a banner still showing when its key leaves stops being clickable, because Electron's `close` is not guaranteed on macOS and the alternative is an unbounded leak. The click handler now logs before it acts. 5 tests, red-first against the two-container mutation — 4 stay green, the invariant test fails | badge == posts at 10:20 and 10:23 (control: Finder `missing value` in the same run) proved the handler never ran; `already-visible` at 11:15:47.919 plus the user's sighting proved the young-banner click did. **Closed on hardware 2026-09-04 in the state the defect describes**: a banner left sitting several minutes, then clicked, routed and revealed — the pass criterion, met, and deliberately not the young-banner click that already worked with the bug in place | `docs/testing.md` → Phase 7 Slice 16 |
+| **84** | **One notification produced eleven native banners.** Since the 11:51:27 launch of 2026-09-04, `com.jio.myjio` was **posted once and updated 119 times**, decided as **88 `ongoing` / 21 `update` / 11 `notify`** — eleven banners for one notification in about three and a half minutes. **The mechanism needs both halves, and either alone suppresses nothing.** `UPDATE` fires only when `whenMs <= previous.whenMs`; that rule was measured against a messaging app and **is correct for it** — its comment says *"a progress bar keeps its original `when`; a new message advances it"*, and WhatsApp's second message in one conversation must banner. **Jio advances `when` on every tick**, so each tick reads as a new message; and **the `ongoing` flag flaps on the same key**, so the leak is exactly the frames where `ongoing` read false *with* an advanced timestamp. A key that advanced `when` but stayed `ongoing` would be silent; one that flapped `ongoing` without advancing `when` would be caught by `UPDATE`. This is the `REPLAY` failure — a burst about something already known — through a door `REPLAY` does not cover | **open** — **fix direction: a per-key cooldown**, and it is a **product judgement rather than a bug fix**, since it decides how soon one key may banner twice. **The wrong fix is a package allowlist**: the right answer for this app is *sometimes* — the same key must banner for a real message and must not while ticking — and a list of important apps cannot express that, is wrong for everybody but its author, and fails silently in the direction of not telling you things. `nativeNotify.ts` already refuses an allowlist and that refusal stands | measured 2026-09-04, one launch. **Control in the same window, read as lines rather than a count**: `com.whatsapp posted=4 updated=3` against `com.jio.myjio posted=1 updated=119`. **The pane's rows went 38 → 39 across the whole burst**, which is what proves one row redrawn rather than a flood of arrivals — eleven banners and eleven messages are the same observation without it | `docs/testing.md` → Phase 7 Slice 16 |
 
 ---
 
@@ -2013,3 +2014,49 @@ log while leaving the grep unanchored would have moved the ambiguity from the da
 instrument — the same defect, one layer out, in the script written to detect it. The greps are
 anchored on `[autostart] BOOT:` now and the verdict prints a `QUICKBOOT lines since boot` count
 beside the others.
+
+---
+
+### 84 — one notification, eleven banners · **open** · found 2026-09-04
+
+Found while waiting for check 3 of the native-notification run, and filed before those checks were
+completed: a defect found while waiting for something else is the one that gets lost when the thing
+you were waiting for arrives.
+
+Since the 11:51:27 launch, `com.jio.myjio` was **posted once and updated 119 times**:
+
+```
+com.jio.myjio    posted=1   updated=119     →  88 ongoing / 21 update / 11 notify
+com.whatsapp     posted=4   updated=3       →   1 notify          (control, same window)
+```
+
+Eleven native banners for one notification in about three and a half minutes. **The pane's row count
+went 38 → 39 across the whole burst** — that is the number that makes the rest mean anything, because
+without it "eleven banners" and "eleven messages" are the same observation. The control was read as
+lines, not as a count, for the reason the second row of `CLAUDE.md`'s table exists.
+
+**The mechanism, and it needs both halves.**
+
+- **The `whenMs` rule is correct for what it was measured against.** `UPDATE` suppresses only when
+  `whenMs <= previous.whenMs`, and its comment states why: *"A progress bar keeps its original
+  `when`; a new message advances it."* WhatsApp's second message in an unread conversation arrives
+  under the same key with an advanced timestamp and **must** banner — suppressing on the key alone
+  would silence exactly the notification this feature exists for. **Jio advances `when` on every
+  tick**, so every tick reads as that new message.
+- **The `ongoing` flag flaps on the same key.** 88 ticks carried `ongoing: true` and were suppressed
+  correctly. The eleven that leaked are the frames where `ongoing` read **false** *and* the timestamp
+  had advanced.
+
+Either fact alone suppresses nothing: a key advancing `when` while staying `ongoing` is silent, and a
+key flapping `ongoing` without advancing `when` is caught by `UPDATE`. It is the `REPLAY` failure — a
+burst of banners about something already known — arriving through a door `REPLAY` does not cover.
+
+**Fix direction: a per-key cooldown** — how soon one key may banner again. It is deliberately **not**
+written as part of a defect fix, because it is a product judgement — the number is a statement
+about what a person wants, and there is no reading that settles it.
+
+**The wrong fix is a package allowlist.** The right answer for this app is *sometimes*: the same key
+must banner when it carries a real message and must not while it ticks. A list of important apps
+cannot express *sometimes*, is wrong for everybody but its author, and fails silently in the
+direction of not telling you things — which is the failure the whole feature exists to remove.
+`nativeNotify.ts` refuses an allowlist in its own comment and that refusal stands.

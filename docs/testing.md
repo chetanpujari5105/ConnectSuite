@@ -14479,3 +14479,52 @@ Checks 3 (the badge clearing when the pane is focused) and 4 (no banner while si
 are untested on this build. `already-visible` was observed once at 11:15:47.919 — but on the
 *previous* binary, as a side effect of the click diagnosis rather than as a test, and a decision
 observed in passing is not a check that was run.
+
+### Defect 84 — eleven banners from one notification, found while waiting for check 3
+
+Filed before checks 3 and 4 were run, deliberately: a defect found while waiting for something else
+is the one that gets lost when the thing you were waiting for arrives.
+
+Since the 11:51:27 launch, `com.jio.myjio` was **posted once and updated 119 times**. Its 119 updates
+were decided as **88 `ongoing`, 21 `update`, 11 `notify`** — eleven native banners, for one
+notification, in roughly three and a half minutes.
+
+**The pane's row count went 38 → 39 across the entire burst.** That is the number that matters: it
+proves this is one row being redrawn rather than a flood of arrivals, and without it eleven banners
+is indistinguishable from eleven messages.
+
+The control, in the same window, taken by looking at the lines rather than trusting a count:
+
+```
+com.whatsapp     posted=4  updated=3
+com.jio.myjio    posted=1  updated=119
+```
+
+### The mechanism needs both halves — either one alone suppresses nothing
+
+- **`whenMs` was measured against a messaging app and is correct for it.** `UPDATE` fires only when
+  `whenMs <= previous.whenMs`, and the rule's own comment states the reasoning: *"A progress bar
+  keeps its original `when`; a new message advances it."* That is true of WhatsApp, which is why one
+  conversation's second message must banner. **Jio advances `when` on every tick**, so each tick
+  reads as a new message and the rule declines to suppress it.
+- **The `ongoing` flag flaps on the same key.** 88 of the ticks carried `ongoing: true` and were
+  suppressed correctly. The leak is precisely the frames where `ongoing` read **false** *and* the
+  timestamp had advanced — 11 of them.
+
+Neither fact produces the defect alone. A key that advanced `when` but stayed `ongoing` would be
+silent; a key that flapped `ongoing` without advancing `when` would be caught by `UPDATE`. This is
+the `REPLAY` failure — a burst of banners about something already known — arriving through a door
+`REPLAY` does not cover.
+
+### Fix direction, and what is not a fix
+
+A **per-key cooldown** is the obvious candidate, and it is a **product judgement rather than a bug
+fix**: it decides how soon one key may banner twice, which is a question about what a person wants,
+not about what the code got wrong. It is not being written inside a defect fix.
+
+**No package allowlist solves this**, and this is the sharper half. The correct answer for
+`com.jio.myjio` is *sometimes* — the same key legitimately banners when it carries a real message and
+must not when it is ticking. A list of "important apps" cannot express *sometimes*, is wrong for
+everybody but its author, and fails silently in the direction of not telling you things, which is
+the failure this whole feature exists to remove. `nativeNotify.ts` already refuses an allowlist for
+that reason and the refusal stands.
