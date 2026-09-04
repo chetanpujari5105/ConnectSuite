@@ -554,3 +554,8 @@ function timeOfSms(whenMs: number): string {
 // The testable seam: the pane is a plain script, so the pure rule is hung on globalThis and the
 // test runs *this* function rather than a second copy that can drift. See CLAUDE.md.
 (globalThis as unknown as { dedupeByThread: typeof dedupeByThread }).dedupeByThread = dedupeByThread;
+
+// The view class itself, for `smsView.test.ts`. `sms.ts` touches no DOM at module scope, so a test
+// can import it and construct the class against `domDouble.testkit.ts` — which is what took this
+// off `check-renderer-views.mjs`'s debt list, where its reason was "retro-fitting is Phase 6 work".
+(globalThis as Record<string, unknown>).SmsView = SmsView;
