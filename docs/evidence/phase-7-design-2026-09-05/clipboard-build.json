@@ -1,7 +1,7 @@
 {
   "file": "docs/evidence/phase-7-design-2026-09-05/clipboard-build.png",
   "screen": "clipboard",
-  "takenAt": "2026-09-04T20:51:43.739Z",
+  "takenAt": "2026-09-04T21:01:28.472Z",
   "window": {
     "inner": 1440,
     "innerH": 841,
@@ -9,7 +9,7 @@
   },
   "scrollbarPx": 0,
   "pageScrolls": true,
-  "settleMs": 1800,
+  "settleMs": 2000,
   "ready": null,
   "prep": null,
   "scrolledToTop": true,

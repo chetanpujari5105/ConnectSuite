@@ -8,5 +8,5 @@
     "b": 1440
   },
   "note": "Both panels are drawn at the same CSS width. The build is captured at DPR 2 and the design at DPR 1, so an unscaled pairing would show the build at twice the size.",
-  "takenAt": "2026-09-04T20:26:34.841Z"
+  "takenAt": "2026-09-04T21:01:40.140Z"
 }

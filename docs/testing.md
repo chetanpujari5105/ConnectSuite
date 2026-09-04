@@ -16322,3 +16322,34 @@ restoring `var(--text-muted)` to `.ring-caption`; put back.
 | keyframes in the design and not here | `win-in` (the mockup's own window entrance — this app *is* the window), `shimmer` (a loading skeleton; this build uses flat placeholders deliberately, because a grid of animated placeholders over a wait measured in milliseconds is a lot of motion) |
 
 Mac suite **551 → 555**.
+
+### A correction to a number this repo has published: the sweep was scrolling the app as it measured
+
+`docs/RESUME.md` and Slice 25 carry **"23 blocks, 21 visible at rest, 2 reachable, 0 stranded"** at
+1440×865. Today's run of the same script reads:
+
+```
+23 cards: 15 visible at rest, 8 reachable by scrolling, 0 stranded
+```
+
+**That is not a regression, and the earlier number should not be quoted again.** Defect 91 is the
+reason: `__probe.onScreen` called `scrollIntoView`, which scrolls every scrollable ancestor, and
+restored only the one scroller it had chosen — so `.app-window` accumulated scroll *during the
+sweep*. The first pane measured was measured correctly and every pane after it was measured with the
+frame progressively pushed up, which makes cards appear **higher** than they are and inflates
+"visible at rest". The instrument's own error pointed in the flattering direction, which is the
+variety this file records as the hardest to notice.
+
+The evidence for the mechanism, rather than the story: individual cards read **~120px lower** today
+than they did before the fix — Photos' state line at `top=247` against `top=127` — and after a full
+sweep the frame now reads `.app-window { scrollTop: 0, overflow: clip }` with `.page-head` at `0`,
+where before it was found at `199.5` and `−199`.
+
+**What is not established is the split.** The window is also **841px** tall now rather than 865 —
+the previous sitting's window-fit work (defect 87) — so 24 of the difference is a smaller viewport
+and the rest is the scrolling instrument. Separating the two would need the old probe run against
+the old window, and neither exists any more. Both causes are named; the arithmetic between them is
+not claimed.
+
+**0 stranded is the number that carries across both runs**, and it is the one the file exists to
+report.

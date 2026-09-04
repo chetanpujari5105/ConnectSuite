@@ -1,7 +1,7 @@
 {
   "file": "docs/evidence/phase-7-design-2026-09-05/calls-build.png",
   "screen": "calls",
-  "takenAt": "2026-09-04T20:26:33.273Z",
+  "takenAt": "2026-09-04T21:01:21.470Z",
   "window": {
     "inner": 1440,
     "innerH": 841,
@@ -12,6 +12,7 @@
   "settleMs": 2000,
   "ready": null,
   "prep": null,
+  "scrolledToTop": true,
   "full": false,
   "zoomChecked": "innerWidth === outerWidth"
 }

@@ -103,7 +103,15 @@ ${title ? `<div class="title">${title} — build against design, both at ${width
 const pagePath = `/tmp/compare-shot-${process.pid}.html`;
 writeFileSync(pagePath, page);
 
-const port = Number(arg('port', '9334'));
+/*
+ * A per-process port by default.
+ *
+ * A fixed one collided when five comparisons were composed in a loop: the previous headless Chrome
+ * had exited but its debugging port was still held, and the run failed with a stack rather than a
+ * message. The default is derived from the pid so concurrent or back-to-back runs cannot fight;
+ * `--port=` still pins it when someone wants to attach.
+ */
+const port = Number(arg('port', String(9400 + (process.pid % 400))));
 const chrome = spawn(
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   [

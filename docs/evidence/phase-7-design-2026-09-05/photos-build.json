@@ -1,7 +1,7 @@
 {
   "file": "docs/evidence/phase-7-design-2026-09-05/photos-build.png",
   "screen": "photos",
-  "takenAt": "2026-09-04T20:07:26.193Z",
+  "takenAt": "2026-09-04T21:01:19.115Z",
   "window": {
     "inner": 1440,
     "innerH": 841,
@@ -9,9 +9,10 @@
   },
   "scrollbarPx": 0,
   "pageScrolls": true,
-  "settleMs": 3000,
+  "settleMs": 2500,
   "ready": "document.querySelectorAll('section[data-screen=\"photos\"] .photos-tile').length > 8",
   "prep": "document.querySelector('section[data-screen=\"photos\"] .photos-tile').click()",
+  "scrolledToTop": true,
   "full": false,
   "zoomChecked": "innerWidth === outerWidth"
 }
