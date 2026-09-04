@@ -93,6 +93,20 @@ class ContactsView {
       this.debounce = null;
       void this.run(this.search.value.trim());
     });
+
+    /*
+     * **Drawn once here, and the reason is a state that was unreachable.**
+     *
+     * `render()` carries a sentence for `!searched` — *"Reading the phone's contacts…"* — and until
+     * this line it was only ever reached by `setAdvertised(false)`, which is the *un*-advertised
+     * path. On the path it was written for, a first advertise, the pane asked the phone and drew
+     * nothing at all until the reply came back: a **blank** note, which is a fourth empty nobody
+     * wrote, on the pane whose whole care is telling four empties apart.
+     *
+     * Found by `contactsView.test.ts` holding the reply open instead of racing it — the state lasts
+     * exactly one round trip, and a test that sampled it would have held no reading at all.
+     */
+    this.render();
   }
 
   /**
@@ -291,3 +305,8 @@ function labelled(label: string, value: string): [HTMLElement, HTMLElement] {
   detail.textContent = value;
   return [term, detail];
 }
+
+// The seam. `contacts.ts` touches no DOM at module scope, so a test can import it and construct the
+// class against `domDouble.testkit.ts` — which is what takes this off `check-renderer-views.mjs`'s
+// debt list, where its reason was the single word "Phase 4".
+(globalThis as Record<string, unknown>).ContactsView = ContactsView;
