@@ -32,6 +32,29 @@
  * the real case, which is exactly why the display rule does not depend on it.
  */
 
+/**
+ * Defect 85's state model. Declared here rather than imported: the renderer loads plain scripts, so
+ * the shared module is concatenated into the bundle and its exports hang on `globalThis` — see the
+ * bottom of this file and `src/renderer/calls.ts` for the same seam.
+ */
+declare function describeClipPhone(facts: {
+  connected: boolean;
+  advertised: boolean;
+  unavailableReason: string | null;
+  lastArrivedAtMs: number | null;
+  nowMs: number;
+}): {
+  id: string;
+  headline: string;
+  detail: string;
+  tone: string;
+  icon: 'phone' | 'check' | 'unlink' | 'lock';
+  action: string | null;
+};
+declare function lastArrivalFromPhone(
+  entries: readonly { source?: string; receivedAtMs?: number }[],
+): number | null;
+
 interface ClipEntryRow {
   kind: 'text' | 'empty' | 'sensitive' | 'displaced' | string;
   text?: string;
@@ -251,12 +274,37 @@ class ClipboardView {
   /** Generation counter for [refresh]; see its comment for the race it closes. */
   private refreshes = 0;
 
+  /**
+   * What the shell last told us about the link — defect 85.
+   *
+   * Held rather than read on demand because the phone-direction line has to be **live**: it redraws
+   * on a status change and on every arrival, and a value fetched at draw time would be whatever the
+   * last render happened to see.
+   */
+  private connected = false;
+  private advertised = false;
+  private unavailableReason: string | null = null;
+
+  /**
+   * Repaints the age on the `received` line without waiting for traffic.
+   *
+   * A line reading "just now" that still reads "just now" twenty minutes later is a stale fact
+   * presented as a live one, which is this repo's most-repeated failure wearing a clock. 30 s is
+   * under the smallest unit [ago] prints, so the text can never be more than one unit behind.
+   */
+  private ageTimer: ReturnType<typeof setInterval> | null = null;
+
   constructor(
     private readonly bridge: ClipBridge,
     private readonly list: HTMLElement,
     private readonly wall: HTMLElement,
     private readonly phoneWall: HTMLElement,
     private readonly notice: HTMLElement,
+    private readonly phoneState: HTMLElement,
+    private readonly phoneStateIcon: HTMLElement,
+    private readonly phoneStateHeadline: HTMLElement,
+    private readonly phoneStateDetail: HTMLElement,
+    private readonly phoneStateAction: HTMLButtonElement,
     sendButton: HTMLButtonElement,
     requestButton: HTMLButtonElement,
     watchToggle: HTMLInputElement,
@@ -463,7 +511,67 @@ class ClipboardView {
     return `${entry.kind}:${entry.atMs}:${entry.source}`;
   }
 
+  /**
+   * The phone direction's line — defect 85, and the reason it is called from [draw] rather than
+   * only from the status callback.
+   *
+   * Both an arrival and a link change alter it, and the Files pane has already paid for two correct
+   * triggers assembling a wrong picture between them. Drawing it from the one place that redraws
+   * on both means it cannot be left describing the previous state.
+   */
+  private drawPhoneState(): void {
+    const view = describeClipPhone({
+      connected: this.connected,
+      advertised: this.advertised,
+      unavailableReason: this.unavailableReason,
+      lastArrivedAtMs: lastArrivalFromPhone(this.entries),
+      nowMs: Date.now(),
+    });
+    this.phoneState.dataset.tone = view.tone;
+    this.phoneState.dataset.state = view.id;
+    // Glyphs, not an icon-name lookup: `icons.ts` holds nav geometry and this is a 13px badge.
+    // The name is still in `dataset.state`, so a check can assert the state without reading a glyph.
+    this.phoneStateIcon.textContent = { phone: '\u25CF', check: '\u2713', unlink: '\u2715', lock: '\u26A0' }[view.icon];
+    this.phoneStateHeadline.textContent = view.headline;
+    this.phoneStateDetail.textContent = view.detail;
+    this.phoneStateAction.textContent = view.action ?? '';
+    this.phoneStateAction.hidden = view.action === null;
+
+    // Only the `received` line ages, so only it holds a timer. A timer running over a state with no
+    // clock in it is work that can never change a pixel.
+    const needsTimer = view.id === 'received';
+    if (needsTimer && this.ageTimer === null) {
+      this.ageTimer = setInterval(() => this.drawPhoneState(), 30_000);
+      // `unref` where it exists (Node, and therefore the tests). A repainting timer must never be
+      // the reason a process stays alive — it held `node --test` open on its first run, which is a
+      // harmless symptom of a real property: this timer's job is to redraw a pane, and a pane that
+      // is gone does not need redrawing. In the browser there is no `unref` and none is needed.
+      (this.ageTimer as unknown as { unref?: () => void }).unref?.();
+    } else if (!needsTimer && this.ageTimer !== null) {
+      clearInterval(this.ageTimer);
+      this.ageTimer = null;
+    }
+  }
+
+  /**
+   * Told by the shell, on every status frame.
+   *
+   * `advertised` is asked of the capability list and `connected` of the phase, because they are two
+   * different facts: a phone can be connected and not offering clipboard, and a stale capability
+   * list on a dropped link would otherwise report a connection problem as a permission one.
+   */
+  setLinkState(connected: boolean, advertised: boolean, reason: string | null): void {
+    if (this.connected === connected && this.advertised === advertised && this.unavailableReason === reason) {
+      return;
+    }
+    this.connected = connected;
+    this.advertised = advertised;
+    this.unavailableReason = reason;
+    this.drawPhoneState();
+  }
+
   private draw(): void {
+    this.drawPhoneState();
     this.renderTabs();
     this.list.replaceChildren();
     const rows = filterClips(this.entries, this.tab);

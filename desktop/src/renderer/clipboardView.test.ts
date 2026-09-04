@@ -4,6 +4,8 @@ import { FakeElement, installFakeDocument, el } from './domDouble.testkit';
 // The real page loads `clipLink.js` before `clipboard.js`; `clipRowBadge` calls `openableUrl` off
 // the global it hangs itself on. Importing it here is the same wiring, not a stub.
 import '../shared/clipLink';
+// Defect 85's state model, wired the way the page wires it — a script tag before clipboard.js.
+import '../shared/clipPhoneState';
 // A plain side-effecting import, and it is safe because `clipboard.ts` touches no DOM at module
 // scope — it only hangs its class and its two pure functions on `globalThis`. The document double
 // goes in around each mount instead, where the drawing actually happens.
@@ -94,6 +96,12 @@ interface Pane {
   detail: FakeElement;
   foot: FakeElement;
   clear: FakeElement;
+  phoneState: FakeElement;
+  phoneIcon: FakeElement;
+  phoneHeadline: FakeElement;
+  phoneDetail: FakeElement;
+  phoneAction: FakeElement;
+  view: unknown;
 }
 
 // Installed for the whole file rather than around each mount. The first version restored it when
@@ -114,6 +122,11 @@ function mount(history: Row[] = [], watching = true): Pane {
   const wall = el('div');
   const phoneWall = el('div');
   const notice = el('div');
+  const phoneState = el('div');
+  const phoneIcon = el('span');
+  const phoneHeadline = el('p');
+  const phoneDetail = el('p');
+  const phoneAction = el('button');
   const send = el('button');
   const request = el('button');
   const watch = el('input');
@@ -125,8 +138,8 @@ function mount(history: Row[] = [], watching = true): Pane {
   // rather than over them. A double that left them outside would let a bug that wipes them pass.
   detail.append(wall, phoneWall);
   const View = (globalThis as Record<string, unknown>).ClipboardView as new (...args: unknown[]) => unknown;
-  new View(bridge, list, wall, phoneWall, notice, send, request, watch, tabs, detail, foot, clear);
-  return { bridge, list, notice, wall, phoneWall, watch, tabs, detail, foot, clear };
+  const pane = new View(bridge, list, wall, phoneWall, notice, phoneState, phoneIcon, phoneHeadline, phoneDetail, phoneAction, send, request, watch, tabs, detail, foot, clear);
+  return { bridge, list, notice, wall, phoneWall, watch, tabs, detail, foot, clear, phoneState, phoneIcon, phoneHeadline, phoneDetail, phoneAction, view: pane };
 }
 
 /** The view's async work is fire-and-forget promises; this lets them settle. */
@@ -359,4 +372,75 @@ test('an undated step draws no clock line, so "not recorded" cannot land under a
   assert.equal(clocks.length, 2, 'only the two dated steps carry a clock line');
   assert.ok(clocks.every((c) => /clock/.test(c)), 'a clock line always says whose clock');
   assert.ok(!pane.detail.textContent.includes('not recorded'));
+});
+
+/**
+ * Defect 85 — the pane must look different when the feature is working than when it is broken.
+ *
+ * These run the **view class**, in the left column's elements, rather than `describeClipPhone` on
+ * its own — that decision already has its own tests in `clipPhoneState.test.ts`. The thing being
+ * checked here is that the pane wires it up at all, which is exactly the layer defects 58 and 59
+ * lived in and the layer `clipboard.test.ts` deletes before evaluating.
+ */
+type LinkSetter = { setLinkState(c: boolean, a: boolean, r: string | null): void };
+
+test('defect 85 — the left column says the feature is working before anything arrives', async () => {
+  const pane = mount([]);
+  await settle();
+  (pane.view as LinkSetter).setLinkState(true, true, null);
+  assert.equal(pane.phoneState.dataset.state, 'waiting');
+  assert.equal(pane.phoneState.dataset.tone, 'ready');
+  // The recipe, in the column the user reads. It was 828px down the other one.
+  assert.match(pane.phoneDetail.textContent, /open ConnectSuite there/);
+  assert.match(pane.phoneDetail.textContent, /Android/);
+  // Nothing to do, because nothing is wrong.
+  assert.equal(pane.phoneAction.hidden, true);
+});
+
+test('defect 85 — a dropped link does not look like the Android limit', async () => {
+  const pane = mount([]);
+  await settle();
+  (pane.view as LinkSetter).setLinkState(false, false, null);
+  assert.equal(pane.phoneState.dataset.state, 'offline');
+  assert.equal(pane.phoneState.dataset.tone, 'warning');
+  assert.equal(pane.phoneAction.hidden, false);
+  assert.match(pane.phoneDetail.textContent, /not the Android/i);
+});
+
+test('defect 85 — working and broken differ in the pane, not only in the model', async () => {
+  const working = mount([]);
+  const broken = mount([]);
+  await settle();
+  (working.view as LinkSetter).setLinkState(true, true, null);
+  (broken.view as LinkSetter).setLinkState(false, false, null);
+  // The four differences, read off the drawn elements.
+  assert.notEqual(working.phoneState.dataset.tone, broken.phoneState.dataset.tone);
+  assert.notEqual(working.phoneIcon.textContent, broken.phoneIcon.textContent);
+  assert.notEqual(working.phoneHeadline.textContent, broken.phoneHeadline.textContent);
+  assert.notEqual(working.phoneAction.hidden, broken.phoneAction.hidden);
+});
+
+test('defect 85 — an arrival flips the line, and dates it by this Mac\'s clock', async () => {
+  const pane = mount([]);
+  await settle();
+  (pane.view as LinkSetter).setLinkState(true, true, null);
+  assert.equal(pane.phoneState.dataset.state, 'waiting');
+
+  // `atMs` is the phone's clock and is deliberately old; `receivedAtMs` is ours and is now. A line
+  // built on the wrong one of these would read "9 hours ago" for a clip that just landed.
+  pane.bridge.history = [
+    { kind: 'text', text: 'guvgu', atMs: 1, source: 'phone', receivedAtMs: Date.now() } as Row,
+  ];
+  pane.bridge.fireChanged();
+  await settle();
+  assert.equal(pane.phoneState.dataset.state, 'received');
+  assert.match(pane.phoneHeadline.textContent, /just now/);
+});
+
+test('defect 85 — a connected phone not offering clipboard speaks in its own words', async () => {
+  const pane = mount([]);
+  await settle();
+  (pane.view as LinkSetter).setLinkState(true, false, 'Notification access is off.');
+  assert.equal(pane.phoneState.dataset.state, 'unavailable');
+  assert.equal(pane.phoneDetail.textContent, 'Notification access is off.');
 });

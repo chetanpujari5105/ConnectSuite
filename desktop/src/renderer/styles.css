@@ -2403,6 +2403,73 @@ img#qr {
   color: var(--warning);
 }
 
+/*
+  Defect 85 — the phone direction's live state, in the left column.
+
+  The four tones are the machine-readable half of "working must not look like broken". `ready` is
+  its own tone rather than a reuse of neutral: the resting state of a working feature has to read
+  as working, and a grey card reads as an absence of news. Colour is one of the four differences
+  and the weakest of them — the icon, the headline verb and the presence of the action carry it
+  for anyone who cannot see the hue.
+*/
+.clip-phone-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-4);
+  margin: var(--space-4) var(--space-7) 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+}
+.clip-phone-icon {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 1;
+}
+.clip-phone-headline {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.clip-phone-detail {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.clip-phone-action {
+  align-self: center;
+  padding: 4px 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--warning-border);
+  background: transparent;
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.clip-phone-state[data-tone='ready'] {
+  background: var(--accent-tint);
+  border-color: var(--accent-border);
+}
+.clip-phone-state[data-tone='ready'] .clip-phone-icon { color: var(--accent-text); }
+.clip-phone-state[data-tone='done'] {
+  background: rgba(50, 229, 138, 0.09);
+  border-color: rgba(50, 229, 138, 0.28);
+}
+.clip-phone-state[data-tone='done'] .clip-phone-icon { color: var(--live); }
+.clip-phone-state[data-tone='warning'] {
+  background: var(--warning-fill);
+  border-color: var(--warning-border);
+}
+.clip-phone-state[data-tone='warning'] .clip-phone-icon { color: var(--warning); }
+
 .clip-list { display: flex; flex-direction: column; max-height: 430px; overflow-y: auto; }
 
 .clip-row {

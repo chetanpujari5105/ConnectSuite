@@ -373,6 +373,14 @@ function render(status: RendererStatus | null): void {
   );
   // The media remote rides the notification-listener grant, so this lights together with
   // `notifications` — one grant, two features. See docs/protocol.md.
+  // Defect 85. Two facts, kept apart on purpose: `connected` is the phase and `advertised` is the
+  // capability list. A phone can be connected and not offering clipboard, and a stale capability
+  // list read on a dropped link would report a connection problem as a permission one.
+  clipboard.setLinkState(
+    status?.phase === 'connected',
+    status?.capabilities?.includes('clipboard') ?? false,
+    reasons.get('clipboard') ?? null,
+  );
   remote.setAdvertised(status?.capabilities?.includes('remote') ?? false);
   sms.setAdvertised(status?.capabilities?.includes('sms') ?? false);
   calls.setAdvertised(status?.capabilities?.includes('calls') ?? false);
@@ -725,6 +733,11 @@ const clipboard = new ClipboardView(
   el('clip-wall'),
   el('clip-wall-phone'),
   el('clip-notice'),
+  el('clip-phone-state'),
+  el('clip-phone-icon'),
+  el('clip-phone-headline'),
+  el('clip-phone-detail'),
+  el<HTMLButtonElement>('clip-phone-action'),
   el<HTMLButtonElement>('clip-send'),
   el<HTMLButtonElement>('clip-request'),
   el<HTMLInputElement>('clip-watch'),

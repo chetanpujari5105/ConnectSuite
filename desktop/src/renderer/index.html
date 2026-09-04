@@ -623,6 +623,20 @@
                       <span>Send what I copy automatically</span>
                     </label>
                   </div>
+                  <!--
+                    Defect 85. The phone direction's live state, in the LEFT column, because that
+                    is the column a person reads and the explanation used to sit 828px down the
+                    other one. `aria-live="polite"` and not `assertive`: this changes on arrival and
+                    on the link dropping, neither of which should interrupt a screen reader mid-row.
+                  -->
+                  <div class="clip-phone-state" id="clip-phone-state" role="status" aria-live="polite">
+                    <span class="clip-phone-icon" id="clip-phone-icon" aria-hidden="true"></span>
+                    <div class="clip-phone-copy">
+                      <p class="clip-phone-headline" id="clip-phone-headline"></p>
+                      <p class="clip-phone-detail" id="clip-phone-detail"></p>
+                    </div>
+                    <button class="clip-phone-action" id="clip-phone-action" type="button" hidden></button>
+                  </div>
                   <div class="clip-notice" id="clip-notice" role="status" hidden></div>
                   <div class="clip-list" id="clip-list" aria-label="Clipboard history"></div>
                   <div class="clip-foot" id="clip-foot"></div>
@@ -767,6 +781,7 @@
     <script src="photos.js"></script>
     <script src="apps.js"></script>
     <script src="../shared/clipLink.js"></script>
+    <script src="../shared/clipPhoneState.js"></script>
     <script src="clipboard.js"></script>
     <script src="../shared/activity.js"></script>
     <script src="activity.js"></script>
