@@ -27,7 +27,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SHEETS = ['tokens.css', 'shell.css', 'styles.css'] as const;
@@ -658,4 +658,119 @@ test('the floor is still 32px, and this test knows it from the sheet rather than
   );
   assert.ok(base, 'control: the base button rule was not found at all');
   assert.match(base!.body, new RegExp(`min-height:\\s*${BUTTON_FLOOR_PX}px`));
+});
+
+// ---- Defect 92: a custom property used but never declared ----------------------------------------
+
+/**
+ * Every `--name` a stylesheet declares, **plus every one the renderer sets at runtime**.
+ *
+ * The second half is not an allowance, it is the other half of the codebase. `--dock-tint` is set
+ * per tile by `shell.ts` from `navModel.DOCK` and is deliberately absent from every sheet; so is
+ * `--disc-hue`, set per contact by `calls.ts`. A check that read only the CSS would report both as
+ * orphans, and the fix would be an exception list — which is how a guard stops guarding.
+ *
+ * Reading `setProperty('--x', …)` out of the TypeScript keeps one question with one answer: a
+ * property is declared if *something in this app declares it*, wherever that is.
+ */
+function declaredProperties(): Set<string> {
+  const declared = new Set<string>();
+  for (const sheet of SHEETS) {
+    for (const rule of declarationBlocks(read(sheet), sheet)) {
+      for (const match of rule.body.matchAll(/(^|[;{\s])(--[A-Za-z0-9_-]+)\s*:/g)) {
+        declared.add(match[2]!);
+      }
+    }
+  }
+  for (const file of readdirSync(__dirname).filter((f) => f.endsWith('.ts'))) {
+    const source = readFileSync(join(__dirname, file), 'utf8');
+    for (const match of source.matchAll(/setProperty\(\s*['"`](--[A-Za-z0-9_-]+)['"`]/g)) {
+      declared.add(match[1]!);
+    }
+  }
+  return declared;
+}
+
+/** Every `var(--name)` referenced, with where it was referenced from. */
+function referencedProperties(): Array<{ name: string; where: string }> {
+  const used: Array<{ name: string; where: string }> = [];
+  for (const sheet of SHEETS) {
+    for (const rule of declarationBlocks(read(sheet), sheet)) {
+      for (const match of rule.body.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)\s*(,|\))/g)) {
+        // `var(--x, fallback)` is a deliberate optional read and cannot break: skip it.
+        if (match[2] === ',') continue;
+        used.push({ name: match[1]!, where: `${rule.sheet}:${rule.line} ${rule.selector}` });
+      }
+    }
+  }
+  return used;
+}
+
+/**
+ * **Defect 92.** `var(--text-strong)` and `var(--text-muted)` were used **five times** and declared
+ * nowhere.
+ *
+ * A custom property that has never been declared makes the whole declaration *invalid at
+ * computed-value time*: the property is not skipped and it does not fall back to a sensible
+ * default — it becomes `inherit`. So `color: var(--text-strong)` silently means *whatever my parent
+ * is*, and nothing errors, nothing warns, `tsc` is clean and no selector collides.
+ *
+ * Measured in the running app before the fix. Two of the five were **correct by accident** —
+ * `.ring-value` inherited `#f4f4f7`, which is what `--text-primary` would have given it anyway. The
+ * other three were not: `.ring-caption` drew `#f4f4f7` where `--text-meta` (`#5b5e6e`) belonged, so
+ * the caption *Charging* was set at exactly the weight of the 13px/600 value directly above it and
+ * the pair had no hierarchy at all.
+ *
+ * That mixture is what makes this class of fault survive. Some of it looks right, some of it looks
+ * like a design decision, and the same misspelling produces both.
+ *
+ * The guard is the natural sibling of *"only tokens.css declares a colour token"* one test up: that
+ * one says where a token may be **born**, and this one says a token must be born before it is
+ * **used**.
+ */
+test('every custom property used is declared somewhere', () => {
+  const declared = declaredProperties();
+  const orphans = referencedProperties().filter((one) => !declared.has(one.name));
+  assert.deepEqual(
+    orphans.map((o) => `${o.name} at ${o.where}`),
+    [],
+    'defect 92: an undeclared custom property makes the whole declaration invalid at ' +
+      'computed-value time, so the property silently becomes `inherit` — it does not error and it ' +
+      'does not fall back',
+  );
+});
+
+test('control_the undeclared-property check can see the defect it is named for', () => {
+  // The two verbatim rules that shipped, restored for one assertion.
+  const shipped = `.ring-value { font-size: 13px; color: var(--text-strong); }
+.ring-caption { font-size: 11px; color: var(--text-muted); }`;
+  const declared = declaredProperties();
+  const rules = declarationBlocks(shipped, 'fixture.css');
+  assert.equal(rules.length, 2, 'control: the parser found both rules');
+  const orphans = rules.flatMap((rule) =>
+    [...rule.body.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)\s*\)/g)]
+      .map((m) => m[1]!)
+      .filter((name) => !declared.has(name)),
+  );
+  assert.deepEqual(orphans, ['--text-strong', '--text-muted']);
+});
+
+test('control_a fallback read is not an orphan, and a real token is not either', () => {
+  // `var(--x, 260)` cannot break — the fallback is the point — and the apps and calls panes both
+  // set a hue that way. Flagging those would be an exception list a week later.
+  const declared = declaredProperties();
+  const fine = `.tile { --tile-hue: 260; background: hsl(var(--tile-hue, 260) 60% 62%); color: var(--text-primary); }`;
+  const rules = declarationBlocks(fine, 'fixture.css');
+  const orphans = [...rules[0]!.body.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)\s*\)/g)]
+    .map((m) => m[1]!)
+    .filter((name) => !declared.has(name));
+  assert.deepEqual(orphans, []);
+});
+
+test('control_the property scan saw a real number of declarations and uses', () => {
+  // Both halves non-trivially non-empty, or the check above is vacuously green.
+  const declared = declaredProperties();
+  const used = referencedProperties();
+  assert.ok(declared.size > 40, `only ${declared.size} custom properties declared`);
+  assert.ok(used.length > 200, `only ${used.length} var() reads found`);
 });

@@ -16223,3 +16223,102 @@ built:
 
 **Evidence:** `docs/evidence/phase-7-design-2026-09-05/clipboard-build.png`, `clipboard-design.png`,
 `clipboard-compare.png`.
+
+---
+
+## Phase 7 · Slice 32 — the polish audit, and defect 92 · 2026-09-05
+
+The brief's last item is polish: *hover states, the nav pill travelling from live offsetTop, route
+transition and card stagger, progress rings, toggles*. Each was **measured** rather than assumed,
+and the audit found one defect and corrected one of my own readings.
+
+### The nav pill: correct, and my first reading of it was not
+
+The rule the pill is supposed to follow is that its Y comes from the **live `offsetTop` of the
+current row**, never from an assumed pitch — group headers and the notification badge change the
+rhythm, so an assumed pitch desynchronises.
+
+The first measurement clicked all twelve rows in one synchronous loop and read
+`getComputedStyle(pill).transform` immediately. It reported **9 of 12 mismatched**, every one stuck
+at `pillY: 258`. That is the transition being read **mid-flight**: the pill has
+`transition: transform var(--dur-pill)`, and a computed transform during a transition is the
+current animated value, not the target.
+
+Re-taken one row at a time, each click reported through `act` (the row must actually have become
+current) and each read settled with `until: pillY === offsetTop`:
+
+```
+rows: 12   pill Y === row offsetTop: 12
+```
+
+**The pill is correct on every row.** So is the 40px pill over a 38px row — the pill is `top: -1px`
+with a 1px border, so its 38px interior sits exactly on the row and the border falls outside it.
+That was very nearly written up as a two-pixel defect.
+
+Both halves are worth recording: **an animated property read at the moment it is animating is not a
+reading**, and *"the number does not match"* is one sentence away from a change nobody needed.
+
+### Defect 92 — eleven uses of four custom properties that do not exist
+
+`.ring-value` and `.ring-caption` referenced `var(--text-strong)` and `var(--text-muted)`. **Neither
+token is declared anywhere.**
+
+A custom property that has never been declared makes the whole declaration **invalid at
+computed-value time** — the property is not skipped and it does not fall back to a sensible default;
+it becomes `inherit`. So `color: var(--text-strong)` silently means *whatever my parent is*, with no
+error, no warning, a clean `tsc` and no selector collision.
+
+Measured in the running app before the fix, and the mixture is what makes this class survive:
+
+| site | should be | drew | |
+|---|---|---|---|
+| `.ring-value` | `--text-primary` `#f4f4f7` | `#f4f4f7` | **correct by accident**, inherited |
+| `.ring-caption` | `--text-meta` `#5b5e6e` | `#f4f4f7` | **wrong** — the caption *Charging* set at the exact weight of the 13px/600 value directly above it, so the pair had no hierarchy at all |
+
+After: `.ring-caption` reads `rgb(91, 94, 110)` against a parent of `rgb(244, 244, 247)`.
+
+**Some of it looked right, some of it looked like a design decision, and one misspelling produced
+both.**
+
+### The guard found five sites I had not, and then forced a better discriminator
+
+Written as *every `var(--x)` must be declared somewhere*, it came back with **six more references**
+than the two I had found by hand:
+
+| orphan | uses | verdict |
+|---|---|---|
+| `--text-secondary` | **4**, all in the Apps pane | a real orphan; `--text-body` was meant |
+| `--dock-tint` | 2, in `.dock-tile` | **not an orphan** — `shell.ts` sets it per tile from `navModel.DOCK` |
+
+`--dock-tint` is the useful half. A check that read only the stylesheets would have called it a
+defect, and the fix would have been an exception list — which is how a guard stops guarding. It
+reads `setProperty('--x', …)` out of the TypeScript instead, so a property is declared if *something
+in this app declares it*, wherever that is. `--disc-hue` from this morning's Calls work is covered by
+the same clause.
+
+**What is not claimed:** the four `--text-secondary` sites are `.apps-banner-detail`,
+`.apps-banner-fix`, `.apps-tile-name.mono`, `.apps-toast-fix` and `.apps-empty-detail` — a refusal
+banner, a fallback label for a package with no launcher name, a toast hint and an empty state. **None
+of them renders on this device**: all 122 launcher packages resolve their names, the phone is
+advertising `apps`, and there is nothing to be empty about. So the defect is established
+**statically** — an undeclared property is invalid at computed-value time by specification, not by
+inference — and its *visible* consequence in that pane is **unmeasured**, said here rather than
+implied.
+
+The guard is the natural sibling of *"only tokens.css declares a colour token"*: that one says where
+a token may be **born**, and this one says a token must be born before it is **used**. Shown red by
+restoring `var(--text-muted)` to `.ring-caption`; put back.
+
+### The rest of the polish list, as measured
+
+| | reading |
+|---|---|
+| hover states | **47** selectors carry a `:hover` rule across the three sheets |
+| route transition | `page-in`, keyed to `.page.route-in`, re-added by `shell.ts` per navigation |
+| card stagger | `float-in` — **built this sitting** (Slice 28); five panes opt in |
+| progress rings | drawn as SVG with `transition: stroke-dashoffset 240ms`; a transition fires on a *change*, and the arc is created at its final offset, so **the rings do not sweep in** — the design toggles a `rings` flag 140ms after mount to make them. Left as is and recorded: it is a one-line addition that changes what the pane does on every redraw, and this pane redraws on every `battery.state` |
+| toggles | 42×24 as of defect 90, three hours ago; they had drawn at 42×32 since they were written |
+| keyframes present | `page-in`, `float-in`, `cmdk-in`, `toast-in`, `halo`, `drift`, `deep-reveal-flash` |
+| keyframes in the design and not here | `win-in` (the mockup's own window entrance — this app *is* the window), `shimmer` (a loading skeleton; this build uses flat placeholders deliberately, because a grid of animated placeholders over a wait measured in milliseconds is a lot of motion) |
+
+Mac suite **551 → 555**.

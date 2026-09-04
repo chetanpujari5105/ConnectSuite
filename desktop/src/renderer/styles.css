@@ -2715,10 +2715,14 @@ img#qr {
 }
 .ring-cell[data-tone='ok'] .ring-arc { stroke: var(--live); }
 .ring-cell[data-tone='low'] .ring-arc { stroke: var(--warning); }
-.ring-value { margin-top: -46px; font-size: 13px; font-weight: 600; color: var(--text-strong); }
+.ring-value { margin-top: -46px; font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .ring-label { margin-top: 26px; font-size: 12px; color: var(--text-body); }
-.ring-caption { font-size: 11px; color: var(--text-muted); text-align: center; }
-.ring-cell[data-tone='unknown'] .ring-value { color: var(--text-muted); }
+/* `--text-meta`, and it was `--text-strong`/`--text-muted` — **two tokens that do not exist**
+   (defect 92). An undeclared custom property makes the whole declaration invalid at computed-value
+   time, so `color` fell back to inherit: this caption drew `#f4f4f7` under the 13px/600 value
+   directly above it, at the same weight of colour, and the pair had no hierarchy at all. */
+.ring-caption { font-size: 11px; color: var(--text-meta); text-align: center; }
+.ring-cell[data-tone='unknown'] .ring-value { color: var(--text-meta); }
 
 .clip-phone-state {
   display: grid;
@@ -2742,13 +2746,13 @@ img#qr {
   margin: 0;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-strong);
+  color: var(--text-primary);
 }
 .clip-phone-detail {
   margin: 2px 0 0;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--text-muted);
+  color: var(--text-meta);
 }
 .clip-phone-action {
   align-self: center;
@@ -3217,7 +3221,7 @@ img#qr {
 .apps-banner-detail,
 .apps-banner-fix {
   font-size: 12.5px;
-  color: var(--text-secondary);
+  color: var(--text-body);
 }
 
 .apps-grid {
@@ -3328,7 +3332,7 @@ img#qr {
 .apps-tile-name.mono {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--text-secondary);
+  color: var(--text-body);
 }
 
 /* "Sent to your phone" and nothing more. It does not fade on a timer: it records what this Mac did
@@ -3354,7 +3358,7 @@ img#qr {
 }
 
 .apps-toast-fix {
-  color: var(--text-secondary);
+  color: var(--text-body);
 }
 
 .apps-empty {
@@ -3373,7 +3377,7 @@ img#qr {
 
 .apps-empty-detail {
   font-size: 12.5px;
-  color: var(--text-secondary);
+  color: var(--text-body);
   max-width: 46ch;
 }
 
