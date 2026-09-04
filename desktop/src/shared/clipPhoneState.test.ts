@@ -52,9 +52,28 @@ test('every route the product has is named in the copy a waiting user reads', ()
   for (const route of routes) assert.ok(detail.includes(route), `the copy does not mention ${route}`);
 });
 
-test('the received state points at the cheaper route for next time', () => {
+test('the toolbar route is never promised unqualified — defect 86', () => {
+  // It does not exist until a per-app switch is flipped on the phone, and One UI ships that off.
+  // An unqualified mention is a promise this Mac cannot keep and cannot even check.
+  for (const view of [describeClipPhone(facts()), describeClipPhone(facts({ lastArrivedAtMs: T0 - 1000 }))]) {
+    if (!view.detail.includes('Send to Mac')) continue;
+    assert.match(view.detail, /set up on the phone/, `"${view.id}" promises the toolbar route flatly`);
+  }
+});
+
+test('the route that always works is stated before the one that needs setting up', () => {
+  const detail = describeClipPhone(facts()).detail;
+  assert.ok(
+    detail.indexOf('open ConnectSuite there') < detail.indexOf('Send to Mac'),
+    'the conditional route leads, so a user without the switch reads a promise first',
+  );
+});
+
+test('the received state does not send people to a toolbar entry that may be off', () => {
+  // It used to read "For the next one, select it on the phone and tap Send to Mac" — a flat
+  // instruction for a gesture most phones do not have yet.
   const view = describeClipPhone(facts({ lastArrivedAtMs: T0 - 1000 }));
-  assert.match(view.detail, /Send to Mac/);
+  if (view.detail.includes('Send to Mac')) assert.match(view.detail, /set up on the phone/);
 });
 
 test('an arrival is dated on THIS Mac\'s clock', () => {

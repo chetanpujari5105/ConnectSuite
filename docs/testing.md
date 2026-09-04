@@ -14983,3 +14983,104 @@ this feature driven by a tap on the real toolbar rather than by `am start`.
 **`Send to Mac` is switched ON for this handset** and the other ten rows were left untouched. That
 is a change to the user's phone made in the course of proving the mechanism, and it is recorded here
 rather than left for someone to find.
+
+---
+
+## Phase 7 · Slice 20 — position is not ours to influence, and which apps can reach the entry · 2026-09-04
+
+### 1. Can we move the entry? Three levers, all measured, all dead
+
+| Lever | Measured | Result |
+|---|---|---|
+| `android:priority="999"` on the intent-filter | declared, built, installed, re-queried | **recorded as `priority=0`.** Position unchanged — still 9th, between Claude and DeepSeek |
+| an `android:icon` on the activity | vector added, installed, overflow screenshotted | **not drawn.** The One UI overflow is text-only for every item, built-ins included |
+| a shorter label | — | **cannot matter.** The entry is in a text-only vertical list; length changes no position |
+
+**The control on priority is the strongest part:** across all twelve `PROCESS_TEXT` filters on this
+device — Google, Samsung ×3, Adobe ×2, Claude, DeepSeek, ChatGPT, Truecaller and ours —
+`priority=` is **`0` twelve times out of twelve**. Nobody holds a non-zero one, including us after
+declaring 999. The platform clamps third-party filter priority; it is not a lever anyone is winning.
+
+**And the first row is full before any app is considered.** Measured across four apps:
+
+```
+Chrome omnibox   ✨ Cut Copy Paste Translate            ⋮
+Telegram search     Cut Copy Paste Translate            ⋮
+Google Keep         Cut Copy Paste Translate Share Undo Clipboard ⋮
+Gmail search        Cut Copy Paste Translate Share Undo Clipboard ⋮
+```
+
+Seven built-ins at maximum width. `PROCESS_TEXT` items are ordered *after* all of them by the
+framework, so **no app entry reaches the first row on this phone** — not ours, not ChatGPT's. With
+exactly one app entry enabled it still went to the overflow.
+
+**So the answer is nothing, and nothing was shipped.** The priority attribute was reverted and the
+icon deleted rather than left in the manifest: a declared-but-clamped value reads to the next person
+as a lever that works, which is the dead-config failure this repo already records.
+
+**The one case this cannot speak to:** a phone with few enough `PROCESS_TEXT` apps that an entry
+reaches the first row, where an icon might then be drawn. Unmeasurable here — this handset has ten.
+`docs/single-device-audit.md`.
+
+### 2. Which apps can reach it — the category, measured
+
+`scripts/selection-toolbar-probe.sh`, one app at a time. Three outcomes, and the third is the one an
+ad-hoc run loses: **PLATFORM** (Cut/Copy/Paste present), **CUSTOM** (a toolbar without them), and
+**NO READING** (no toolbar, or no text field found — the stimulus did not land).
+
+| App | Field | Verdict |
+|---|---|---|
+| Chrome | omnibox | **PLATFORM** — and `Send to Mac` delivered from here, 28 bytes, Slice 19 |
+| Telegram | search | **PLATFORM** |
+| Google Keep | search | **PLATFORM** |
+| Gmail | search | **PLATFORM** |
+| Instagram, X | first screen | **NO READING** — no `EditText` on the launch screen |
+| Samsung Notes | first screen | **NO READING** — same |
+| **WhatsApp** | — | **NO READING — behind a biometric lock.** Needs a human finger |
+
+**Every app that uses a standard text field got the platform toolbar.** No app in this run drew its
+own. That is four for four, and it is *not* a proof that none does — the three `NO READING` rows are
+missing readings, not passes.
+
+**The probe cannot classify, and says so.** `uiautomator dump` **cannot see the floating toolbar**
+(Slice 19), so the script drives the stimulus and captures a frame for a person to read. A script
+that guessed a verdict from a tree structurally incapable of containing the answer would be the
+decoration rule with a shell prompt.
+
+#### The instrument fault in this slice, and it produced a false CUSTOM
+
+The probe's first version long-pressed the **centre** of the text field. On a short string that is
+empty space past the end of the text, so the long-press selected nothing and raised no toolbar —
+and Telegram came back looking like an app with no selection toolbar at all. It has the ordinary
+one. Pressing 70 px inside the left edge, where typed text actually starts, produced
+`Cut Copy Paste Translate ⋮` immediately. **A stimulus aimed at the wrong pixel is a missing
+reading**, and it presented as a finding about the app.
+
+### 3. The fix for defect 86, on hardware
+
+`ClipboardCopy.kt` — strings out of the composable so they can be enumerated, the `OnboardingCopy`
+shape and the same reason. Rendered on the device, all four steps in walking order:
+
+```
+Send text without opening this app
+Select text anywhere on this phone and you can send it straight to your Mac …
+1. Select some text in any app and let the little toolbar appear.
+2. Tap the three dots at the end of that toolbar.
+3. Tap Manage apps.
+4. Turn on ConnectSuite — the row says Send to Mac.
+After that, Send to Mac is in the same three-dot menu whenever you select text. It will not
+appear next to Copy — this phone keeps that first row for its own buttons.
+Your phone ships this switched off for every app that offers it, not just this one.
+```
+
+The step order is load-bearing and tested: the switch is reachable **only from inside the selection
+toolbar**, so a list opening with *"go to Settings"* would send people where the destination does not
+exist. That mutation goes red on two tests. Also tested: the *not next to Copy* line, without which
+the setup reads as having failed; and that the copy says **"your phone"** rather than *"Android"*,
+because the screen is `com.samsung.android.settings.*` and one handset is not the platform.
+
+**And the Mac's copy was wrong again, in the same place, for a new reason.** The `waiting` recipe led
+with the toolbar route as the cheaper gesture — written before defect 86 was known, so it promised a
+gesture that does not exist until a four-tap setup nobody has heard of. It now leads with the route
+that always works and qualifies the other with *"once it is set up on the phone"*. That is the third
+version of this sentence, and the second time it was the **wrong one of two paths**.

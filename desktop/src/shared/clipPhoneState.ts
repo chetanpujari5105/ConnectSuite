@@ -137,18 +137,25 @@ function ago(ms: number): string {
  * stays where it is for someone reading the pane cold — it is *repeated* at the one moment a person
  * is asking the question it answers.
  *
- * **It names two routes, and it was rewritten the hour the second one shipped.** Its first version
- * said only *"copy on the phone, then open ConnectSuite there"*, which was true and became the
- * *wrong one of two paths* the moment `SendSelectionActivity` landed — the exact failure defect 63
- * records, where a second implementation of something the product already had leaves every existing
- * sentence about the first quietly ambiguous. Nothing in the build could have flagged it: the
- * sentence was still accurate, still tested, and describing the slower route as though it were the
- * only one. The toolbar route is named **first** because it is the cheaper gesture.
+ * **It names two routes, and it has now been rewritten twice — the second time downwards.** The
+ * first version said only *"copy on the phone, then open ConnectSuite there"*, which was true and
+ * became the *wrong one of two paths* the hour `SendSelectionActivity` landed: defect 63 exactly.
+ * The second version led with the toolbar route as the cheaper gesture.
+ *
+ * **That was wrong too, and for a reason no amount of care about the first mistake would have
+ * caught.** Defect 86: the toolbar entry is invisible on this handset until a per-app switch is
+ * flipped, and One UI ships that switch **off**. So the sentence promised a gesture that, for
+ * anybody who has not done a four-tap setup they have never heard of, does not exist. Leading with
+ * it made the *Mac* the place a user learns about a *phone* setup, which is the wrong end.
+ *
+ * The order now is: the route that always works first, then the quicker one **qualified by
+ * "once it is set up on the phone"**. The qualification is the whole of the fix — an unqualified
+ * mention is a promise, and this feature cannot keep it by itself.
  */
 const RECIPE =
-  'Select the text on the phone and tap “Send to Mac”, or copy it and open ConnectSuite there. ' +
-  'Android only lets an app read the clipboard while it is on screen — a rule for every app, not ' +
-  'a missing piece of this one — so the toolbar route is the quicker of the two.';
+  'Copy on the phone and open ConnectSuite there, and it arrives. Android only lets an app read ' +
+  'the clipboard while it is on screen — a rule for every app, not a missing piece of this one. ' +
+  'There is a quicker way once it is set up on the phone: select text, then “Send to Mac”.';
 
 /**
  * The state, from the facts.
@@ -201,7 +208,7 @@ function describeClipPhone(facts: ClipPhoneFacts): ClipPhoneView {
     headline: `Arrived from the phone ${ago(facts.nowMs - facts.lastArrivedAtMs)}`,
     detail:
       'It went straight onto this Mac’s clipboard, so ⌘V pastes it. ' +
-      'For the next one, select it on the phone and tap “Send to Mac”.',
+      'The next one needs ConnectSuite open on the phone again.',
     tone: 'done',
     icon: 'check',
     action: null,

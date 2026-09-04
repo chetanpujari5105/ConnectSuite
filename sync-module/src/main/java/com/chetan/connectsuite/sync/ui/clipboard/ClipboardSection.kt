@@ -96,6 +96,27 @@ fun ClipboardSection(
             }
         }
 
+        // Defect 86 — the toolbar route exists and is invisible until a switch is flipped. Placed
+        // directly under "How this works" because it is the answer to the limit stated there: that
+        // card says the phone can only send while this screen is open, and this one is the way
+        // round it. Separating them by a card would make the reader take the limit as final.
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(ClipboardCopy.SEND_TO_MAC_TITLE, style = MaterialTheme.typography.titleMedium)
+                    Text(ClipboardCopy.SEND_TO_MAC_WHAT, style = MaterialTheme.typography.bodyMedium)
+                    // Numbered rather than a paragraph: it is four taps and the third is invisible
+                    // from the first, so a person has to be able to hold their place while they
+                    // walk it on the phone they are reading it on.
+                    ClipboardCopy.SEND_TO_MAC_STEPS.forEachIndexed { index, step ->
+                        Text("${index + 1}. $step", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Text(ClipboardCopy.SEND_TO_MAC_WHERE, style = MaterialTheme.typography.bodyMedium)
+                    Text(ClipboardCopy.SEND_TO_MAC_WHY_OFF, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
