@@ -1,5 +1,11 @@
 <resources>
     <string name="app_name">ConnectSuite</string>
+    <!--
+      The text-selection toolbar label. Two or three words is the whole budget there — the toolbar
+      truncates and the app's own name is the icon's job. "Send to Mac" says the destination, which
+      is the only thing a person choosing between Copy, Share and Translate needs.
+    -->
+    <string name="send_selection_label">Send to Mac</string>
     <string name="tab_sync">Sync</string>
     <string name="tab_mirror">Mirror</string>
 </resources>

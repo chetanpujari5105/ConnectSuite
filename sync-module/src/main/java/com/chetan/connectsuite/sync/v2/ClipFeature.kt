@@ -230,22 +230,41 @@ object ClipFeature {
             ClipEcho.Decision.Send -> Unit
         }
 
+        deliver(server, text, clip.packageName, clip.appName, "focus")
+    }
+
+    /**
+     * The send half, shared by every route that has text to give the Mac.
+     *
+     * Extracted when [sendSelectedText] arrived. It is **one function rather than two similar ones**
+     * for the reason this repo keeps writing down: a second expression of a rule is a second thing
+     * to get wrong, and the parts most likely to drift are exactly the ones that matter — arming the
+     * echo interlock, counting the send, and adding to history in the same shape the Mac expects.
+     */
+    private fun deliver(
+        server: LinkServer,
+        text: String,
+        packageName: String?,
+        appName: String?,
+        route: String,
+    ) {
+        val now = System.currentTimeMillis()
         val payload = ClipboardPayloads.entry(
             kind = ClipboardPayloads.KIND_TEXT,
             text = text,
-            atMs = System.currentTimeMillis(),
+            atMs = now,
             source = ClipboardPayloads.SOURCE_PHONE,
-            packageName = clip.packageName,
-            appName = clip.appName,
+            packageName = packageName,
+            appName = appName,
         )
         history.add(
             ClipboardPayloads.History.Item(
                 kind = ClipboardPayloads.KIND_TEXT,
                 text = text,
-                atMs = System.currentTimeMillis(),
+                atMs = now,
                 source = ClipboardPayloads.SOURCE_PHONE,
-                packageName = clip.packageName,
-                appName = clip.appName,
+                packageName = packageName,
+                appName = appName,
             ),
         )
         echo.sent(text)
@@ -253,16 +272,61 @@ object ClipFeature {
         server.broadcast { session -> session.send(Envelope(type = MessageType.CLIP_PUSH, payload = payload)) }
         _state.value = _state.value.copy(
             lastSentPreview = text,
-            lastSentAtMs = System.currentTimeMillis(),
+            lastSentAtMs = now,
             historySize = history.size,
             linkUp = server.anyLiveSession() != null,
         )
+        // The route is on the line because there are now two of them, and a single "clip.push → Mac"
+        // could not say which. Defect 60's corollary: when two mechanisms satisfy one guarantee, the
+        // log must name the one that did.
         LinkLog.i(
             "clip",
-            "clip.push → Mac: ${ClipboardPayloads.byteLength(text)} bytes from " +
-                "${clip.appName ?: "an unnamed app"} — ${tally()}",
+            "clip.push → Mac via $route: ${ClipboardPayloads.byteLength(text)} bytes from " +
+                "${appName ?: "an unnamed app"} — ${tally()}",
         )
     }
+
+    /**
+     * Text the user selected and handed us from another app's selection toolbar — `ACTION_PROCESS_TEXT`.
+     *
+     * **This route never touches the clipboard, which is the whole point.** Android refuses a
+     * background clipboard read to every app (Slice 11, and Slice 17 re-measured it against three
+     * more entry points), so the phone can only *read* while ConnectSuite is focused. Here there is
+     * nothing to read: the text arrives in the Intent, so the platform rule does not apply — it is
+     * not circumvented, it is not engaged.
+     *
+     * The trigger is [ClipEcho.Trigger.USER] because a person tapped a menu item. That skips the
+     * *unchanged* refusal — sending the same selection twice on purpose must work — and keeps the
+     * *echo* refusal, which is not about intent: bouncing back the text the Mac just sent would be
+     * wrong however deliberately it was asked for.
+     *
+     * Returns what to tell the user, because this is called from an activity with no UI of its own
+     * and a route that silently does nothing is worse than an absent one.
+     */
+    fun sendSelectedText(context: Context, text: String, fromPackage: String?): SelectionSend.Outcome {
+        val server = link
+        val outcome = SelectionSend.decide(
+            text = text,
+            hasLiveSession = server?.anyLiveSession() != null,
+            tooLarge = ClipboardPayloads::tooLarge,
+            // `USER`, because a person tapped a menu item. That skips the *unchanged* refusal —
+            // sending the same selection twice on purpose must work — and keeps the *echo* refusal,
+            // which is not about intent: bouncing back what the Mac just sent is wrong however
+            // deliberately it is asked for.
+            echo = { echo.maySend(it, ClipEcho.Trigger.USER) },
+        )
+        if (outcome is SelectionSend.Outcome.Sent && server != null) {
+            // Through `AppLabels`, always — including when it falls back to the package name, so the
+            // fallback is counted rather than a raw id being interpolated somewhere that never asks.
+            // Defects 28 and 33.
+            val label = fromPackage?.let { AppLabels.of(context, it) }
+            deliver(server, text.trim(), fromPackage, label, "selection")
+        } else {
+            LinkLog.i("clip", "selection not sent: ${outcome.javaClass.simpleName} — ${tally()}")
+        }
+        return outcome
+    }
+
 
     // --- the three handlers -----------------------------------------------------------------------
 

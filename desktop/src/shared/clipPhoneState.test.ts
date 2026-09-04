@@ -35,10 +35,26 @@ test('connected, advertised, nothing yet — the resting state of a working feat
 
 test('the waiting state carries the recipe, which was 828px below the fold', () => {
   const view = describeClipPhone(facts());
+  // **Both** routes. The first version of this named only the slower one, and stayed true and
+  // misleading the hour the selection toolbar shipped — defect 63's shape.
+  assert.match(view.detail, /Send to Mac/);
   assert.match(view.detail, /open ConnectSuite there/);
   // And it names the owner of the rule, so it cannot read as our unfinished work.
   assert.match(view.detail, /Android/);
   assert.match(view.detail, /every app/);
+});
+
+test('every route the product has is named in the copy a waiting user reads', () => {
+  // The guard against the next second-path drift: when a third way to send arrives, this fails
+  // until somebody decides whether it belongs in the sentence. That decision is the point.
+  const detail = describeClipPhone(facts()).detail;
+  const routes = ['Send to Mac', 'open ConnectSuite there'];
+  for (const route of routes) assert.ok(detail.includes(route), `the copy does not mention ${route}`);
+});
+
+test('the received state points at the cheaper route for next time', () => {
+  const view = describeClipPhone(facts({ lastArrivedAtMs: T0 - 1000 }));
+  assert.match(view.detail, /Send to Mac/);
 });
 
 test('an arrival is dated on THIS Mac\'s clock', () => {

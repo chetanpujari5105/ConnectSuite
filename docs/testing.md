@@ -14761,3 +14761,129 @@ of a working feature, and a warning that is usually wrong is one people learn to
 
 **The related finding, not a defect.** Route 4 above is the only measured way to make the trigger
 cheaper, and it is a different feature rather than a fix to this one.
+
+---
+
+## Phase 7 · Slice 18 — defect 85 fixed, and the cheap trigger built · 2026-09-04
+
+### 1. The live line, proven at the geometry the report came from
+
+`src/shared/clipPhoneState.ts` — four states as a tagged union, differing four independent ways.
+The pair that must never converge is **`waiting` against `offline`**: working-and-quiet against
+broken-and-quiet, which is what drew one picture.
+
+| state | tone | icon | headline | action |
+|---|---|---|---|---|
+| `waiting` | `ready` | ● | Ready for anything you copy on the phone | *none* |
+| `received` | `done` | ✓ | Arrived from the phone *just now* | *none* |
+| `offline` | `warning` | ✕ | Not connected to your phone | Reconnect |
+| `unavailable` | `warning` | ⚠ | Your phone is not offering its clipboard | Check the phone |
+
+**`waiting` is not a warning, and that is the design constraint rather than a styling choice.**
+Nothing-has-arrived is the resting state of a working feature, so a banner there would show almost
+always and be right almost never. It has its own tone, an affirmative verb, and **no action** —
+offering a Retry would assert a problem that does not exist.
+
+**Proven at 1440 × 865, unzoomed, in a window with a populated list** — the report's own geometry:
+
+```
+#clip-phone-state   top=360  bottom=438   100% on screen,  above the list (listTop=438)
+#clip-wall-phone    top=769               55% on screen,   and that is fine now
+left-column chrome  299 → 492 chars       namesAndroid=true, namesTheRecipe=true
+```
+
+All four states were driven and screenshotted at that size (`state-*.png`); each read back 100% on
+screen with its four fields distinct. The three broken/synthetic ones are **labelled synthetic** —
+`setLinkState` was called directly and the pane put back on the phone's real status afterwards, with
+the restored read printed. `received` is **not** synthetic: it was produced by a real send in §2.
+
+**This needed a third instrument, and that is the finding rather than an aside.**
+`clipboard-pane-probe.mjs` passes all nine of its checks over the *unfixed* pane, because it asks
+whether the copy is in the DOM and it was — at 21% on screen. The new view tests run against a DOM
+double with **no layout at all**. Neither layer can see a defect about *where* something is, so
+`scripts/clipboard-silence-probe.mjs` reads rectangles from a real window and every check is
+*is it inside the viewport*, never *is it in the document*.
+
+**Three mutations, red on exactly the right tests:** `waiting` sharing a tone with the broken states
+(3 red), the broken states dropping their action (2 red), and dating the line by the phone's clock
+instead of this Mac's (1 red).
+
+#### The failure that no test could see, and it shipped for an hour
+
+The first version of `clipPhoneState.ts` used `export function`. `tsc` emits CommonJS, the renderer
+loads `shared/*.js` as **plain `<script>` tags**, and the module died on its first line:
+
+```
+EXC: ReferenceError: exports is not defined
+    at describeClipPhone (dist/shared/clipPhoneState.js:85:17)
+    at ClipboardView.drawPhoneState (dist/renderer/clipboard.js:438:22)
+```
+
+**484 tests green, and the line had never once drawn.** The tests reach the module through `tsx`,
+which is a path the renderer never takes — verbatim `CLAUDE.md`'s rule about `SmsStore` and defect
+50, *a test that reaches the thing by a path the app never takes can pass forever over a feature
+that has never worked*. It was found the way defect 67 was: by opening the page and reading the
+console. The file's header now carries it, because the `export` keywords are the obvious thing for
+someone to "tidy" back in.
+
+### 2. `ACTION_PROCESS_TEXT` — the cheap trigger, built and proven end to end
+
+`SendSelectionActivity` (app) + `SelectionSend` (sync-module, the pure decision). The gesture is
+**long-press → "Send to Mac"**, in the same toolbar as Copy.
+
+**It never touches the clipboard, which is the whole point.** The text arrives in
+`EXTRA_PROCESS_TEXT`, so the background-read rule is not circumvented — it is not engaged. Slice 17
+measured that rule against three other entry points and all three were refused.
+
+End to end, phone backgrounded, nothing on screen:
+
+```
+phone  13:22:49.030 [clip] clip.push → Mac via selection: 31 bytes from Shell
+                          — 1 sent / 1 received / 1 of 1 applied / 0 refused-unfocused …
+phone  13:22:49.030 [clip] selection route: action=…PROCESS_TEXT from=com.android.shell
+                          chars=31 readOnly=false → Sent
+Mac    13:22:49.092 [clipboard] Applied an arriving entry to this Mac's clipboard: 31 bytes,
+                          previous clipboard captured — 6 sent / 1 received / 1 of 1 applied
+$ pbpaste
+selection-route-end-to-end-1347
+```
+
+**`pbpaste` is the reading, not the log line** — the far end, measured, rather than the stimulus
+reported. And the pane flipped to `received` / `done` / *"Arrived from the phone just now"* in the
+same run, which is the one state §1 could not produce synthetically.
+
+Two controls on the resolution:
+
+- **11 packages** answer `PROCESS_TEXT`/`text/plain` on this device, ours among them, and the other
+  ten are shipping apps (ChatGPT, Claude, Perplexity, DeepSeek, Adobe Reader, Truecaller, Samsung
+  Pass, Samsung Pay, Interpreter, Google). An empty list would have meant a manifest that did not
+  take; a list containing only us would have meant a mechanism nobody uses.
+- **Exactly one of our activities** answers it. The debug probe's filters were removed once the real
+  feature shipped — two activities answering one intent puts *two* ConnectSuite entries in the
+  user's selection toolbar. Counting `grep -c connectsuite` said **12**; counting *activities* said
+  **1**. That is the units rule, on the same day it was written about, in the same file.
+
+`SelectionSendTest` — 8 tests. The ordering tests pass **throwing** functions for the later guards,
+so a guard that runs when it should not takes the test down rather than returning a coincidentally
+equal answer. The mutation that matters — moving the `NoLink` guard below the echo rule, which would
+make a disconnected phone answer *"that already came from your Mac"* — goes red on exactly one test.
+
+### 3. The copy went stale the hour the feature shipped, and nothing could have flagged it
+
+The `waiting` recipe originally read *"copy on the phone, then open ConnectSuite there"*. True when
+written; **the wrong one of two paths** as soon as `SendSelectionActivity` landed, which is defect
+63's shape exactly — a second implementation of something the product already had, leaving every
+existing sentence about the first quietly ambiguous. The sentence stayed accurate, stayed tested,
+and described the slower route as though it were the only one.
+
+Rewritten to name both, toolbar route first because it is the cheaper gesture, and there is now a
+test asserting **every route the product has appears in the copy a waiting user reads** — so a third
+way to send fails it until somebody decides whether it belongs in the sentence.
+
+### 4. Unproven, with the stimulus named
+
+**Whether "Send to Mac" appears in the selection toolbar of apps the user actually copies from.**
+The intent resolves — that is a statement about the package manager, and a registration line is not
+an execution line. Some apps use custom selection toolbars, some suppress third-party entries, and
+the toolbar caps its visible items. The stimulus is one long-press in three real apps, and it needs
+the user's hands.

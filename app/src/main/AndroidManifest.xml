@@ -124,6 +124,39 @@
             </intent-filter>
         </activity>
 
+        <!--
+          **Send selected text to the Mac** — the only cheap trigger Android permits, measured in
+          `docs/testing.md` → Phase 7 Slice 17. `ACTION_PROCESS_TEXT` puts this in the text-selection
+          toolbar beside Copy; `ACTION_SEND` puts it in the share sheet. **Neither reads the
+          clipboard** — the text arrives in the Intent — which is why they are not subject to the
+          background-read rule that makes the phone→Mac direction need the app on screen.
+
+          Translucent and `noHistory`: it has no UI, finishes in `onCreate`, and must never be
+          something the back gesture returns to. `excludeFromRecents` for the same reason — a
+          recents card for an activity that lives 40ms is litter.
+
+          The label is what the user reads in the toolbar, where there is room for two or three
+          words and the app's own name is already the icon's job.
+        -->
+        <activity
+            android:name=".SendSelectionActivity"
+            android:exported="true"
+            android:label="@string/send_selection_label"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

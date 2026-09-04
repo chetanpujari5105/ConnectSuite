@@ -1229,6 +1229,57 @@ damage on the user's own device or nearly recorded a false result.
   Phase 3; this is that rule meeting a compiled artifact, where the matched line has no file and no
   author until you go and find it.
 
+- **Three faults in one afternoon, and the middle one would have certified the bug as fixed.** All
+  three came from a single sitting measuring defect 85, all three produced a clean confident number,
+  and none of them errored. They are recorded together because the set is the lesson: the same
+  session that is being careful about one instrument is not being careful about the next two.
+
+  | | The instrument | Reported | Actually |
+  |---|---|---|---|
+  | 1 | `querySelectorAll('[data-clip-row], li')` over the clipboard list | **0 rows** — an empty pane | the rows are `#clip-list > *`. `clipboard-pane-probe.mjs` read **13** the same second |
+  | 2 | `.clip-panel.textContent.includes('Android')` | **true** — the left column names the limit | **32,569 characters**, of which 32,270 are the user's own clipboard history. The pane's own chrome was 299 characters and named nothing |
+  | 3 | `adb -s "$(target-device.sh` piped through `awk '{print $3}')" …` | **0 `PROCESS_TEXT` resolvers** — the intent-filter did not take | the script prints its `OK target …` banner on **stderr** and the serial on **stdout**, so `$3` over the merged stream was empty and the flag was `-s ""` |
+
+  **The middle one is the sharpest thing in this file about text search, and it is a new source for
+  a failure already recorded three times.** The existing entries are all *the blob contains the prose
+  about the claim* — a degraded banner apologising for the affordance, a `why` string explaining a
+  banned phrase. This one is different and worse: **the blob contained the user's data.**
+
+  A clipboard pane's text *is* whatever the user copied. So a search of it for a word the copy ought
+  to contain will find that word for any user who has ever copied it — and the more the person uses
+  the feature, the more certainly the check passes. It is a test whose pass rate rises with usage and
+  whose correlation with the truth is zero.
+
+  What makes it worse than the prose case is the direction it fails in. Faults 1 and 3 reported a
+  **zero** — unwelcome, surprising, immediately interrogated, and both were caught within a minute.
+  Fault 2 reported **true**, which is the answer the fix is supposed to produce, so nothing about it
+  invites a second look. Had it run after the fix instead of before it, it would have **certified
+  the pane as correct** — and the fix was a *placement* change, so the certification would have been
+  over a sentence still sitting 828 px below the fold, in a pane still unable to say why nothing had
+  arrived. The bug and its green check would have shipped together.
+
+  The rule, stated so it covers all three: **name what the reading came off, and say what else is in
+  there.** Not *what did I search for* but *what is the haystack made of, and who wrote it*. Three
+  answers, three different owners — the DOM's structure (which I guessed wrong), the user's own data
+  (which will contain anything), and a shell stream carrying two writers on one pipe (stdout and
+  stderr are not one text). None of those owners is you, and the instrument does not say so.
+
+  Concretely, and each is one line:
+
+  - **Structure** — take a control from a second instrument that counts the same thing a different
+    way, *before* believing a zero. The 13 was already on screen.
+  - **User data** — remove it from the haystack, and **print the size of what is left**.
+    `chromeChars: 299` beside `withListChars: 32569` makes the fault unmissable; either number alone
+    is unreadable. Better still, do not text-search at all: `data-state` is written by one place and
+    read by one place, which is why the fix's probe asserts on that and not on a regex.
+  - **Streams** — capture stdout alone (`2>/dev/null`, or the value the script actually returns).
+    A helper that prints a friendly banner is printing it *somewhere*, and "somewhere" is a
+    positional argument away from a silent empty string.
+
+  And the standing precondition still does the most work: **prove the query returns a known positive
+  before believing a negative.** Fault 3 died in one command — 11 resolver packages where the check
+  expected more than zero — and fault 1 would have died in the same command had it been asked.
+
 - **The DOM-as-instrument rule has a mechanism now: `scripts/probe.mjs`. Use it, do not re-derive it.**
   Every CDP read that feeds a claim in `docs/testing.md` goes through it. `control` is a required
   argument with no default; a fixed sleep cannot be expressed (`settle: {until, within}` returns

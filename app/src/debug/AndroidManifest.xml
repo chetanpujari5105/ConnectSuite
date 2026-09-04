@@ -50,27 +50,18 @@
             android:theme="@style/Theme.ConnectSuite" />
 
         <!--
-          Route 3 and route 4's landing point. The two intent-filters are the whole of route 4:
-          ACTION_PROCESS_TEXT puts an entry in the text-selection toolbar beside Copy, and
-          ACTION_SEND puts one in the share sheet. Both carry the text IN THE INTENT, so neither
-          asks the clipboard anything — which is why they are not subject to the wall.
+          Route 3's landing point. **Its `ACTION_PROCESS_TEXT` and `ACTION_SEND` filters were
+          removed once the real feature shipped** — `SendSelectionActivity` in `app/src/main`. Two
+          activities answering the same intent puts *two* ConnectSuite entries in the user's
+          selection toolbar, and the debug one wins nothing and confuses the hand test. The route 4
+          measurement it was written for is recorded in `docs/testing.md` → Phase 7 Slice 17 and
+          does not need to be re-runnable to stay true.
         -->
         <activity
             android:name="com.chetan.connectsuite.probe.ClipTriggerSinkActivity"
             android:exported="true"
             android:label="Clip sink probe"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar">
-            <intent-filter>
-                <action android:name="android.intent.action.PROCESS_TEXT" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-        </activity>
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!--
           Exported for the same reason every probe here is: so `adb shell am broadcast -n` can

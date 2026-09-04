@@ -136,11 +136,19 @@ function ago(ms: number): string {
  * This is the sentence that was 828 px below the fold. It is not moved here — the standing copy
  * stays where it is for someone reading the pane cold — it is *repeated* at the one moment a person
  * is asking the question it answers.
+ *
+ * **It names two routes, and it was rewritten the hour the second one shipped.** Its first version
+ * said only *"copy on the phone, then open ConnectSuite there"*, which was true and became the
+ * *wrong one of two paths* the moment `SendSelectionActivity` landed — the exact failure defect 63
+ * records, where a second implementation of something the product already had leaves every existing
+ * sentence about the first quietly ambiguous. Nothing in the build could have flagged it: the
+ * sentence was still accurate, still tested, and describing the slower route as though it were the
+ * only one. The toolbar route is named **first** because it is the cheaper gesture.
  */
 const RECIPE =
-  'Copy on the phone, then open ConnectSuite there and it arrives — Android only lets an app ' +
-  'read the clipboard while it is on screen, which is a rule for every app, not a missing piece ' +
-  'of this one.';
+  'Select the text on the phone and tap “Send to Mac”, or copy it and open ConnectSuite there. ' +
+  'Android only lets an app read the clipboard while it is on screen — a rule for every app, not ' +
+  'a missing piece of this one — so the toolbar route is the quicker of the two.';
 
 /**
  * The state, from the facts.
@@ -193,7 +201,7 @@ function describeClipPhone(facts: ClipPhoneFacts): ClipPhoneView {
     headline: `Arrived from the phone ${ago(facts.nowMs - facts.lastArrivedAtMs)}`,
     detail:
       'It went straight onto this Mac’s clipboard, so ⌘V pastes it. ' +
-      'The next one needs ConnectSuite open on the phone again.',
+      'For the next one, select it on the phone and tap “Send to Mac”.',
     tone: 'done',
     icon: 'check',
     action: null,
