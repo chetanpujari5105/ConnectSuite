@@ -15618,3 +15618,198 @@ now logs asked-beside-got with the display it landed on, so a window the server 
 
 `scripts/window-fit-probe.mjs` is kept, through `probe.mjs` with a required control: it is the one
 instrument that separates the two faults, and the report will recur.
+
+---
+
+## Phase 7 · Slice 27 — the design pass: Photos · 2026-09-05
+
+The brief: *make the app look like `ConnectSuite.dc.html`* — layout, spacing, type scale, radii,
+elevation, motion — measured against the design file rather than recalled, and breaking nothing.
+Photos first, because its grid was reported unusable.
+
+### The identity column, and three tokens that were wrong for the whole build
+
+Before any pane, the design file's own colour literals were counted rather than reasoned about from
+`tokens.css`'s prose. Four departures, three of them chromatic:
+
+| Role | `tokens.css` had | The design file has | Evidence |
+|---|---|---|---|
+| accent fill | `#8b6bff` = rgb(**139**,107,255) | `#7c6bff` = rgb(**124**,107,255) | `#7c6bff` **34** times, `rgba(124,107,255,…)` **59** times, `rgb(139,…)` **zero** |
+| success / live | `#32e58a` | `#34d399` | **34** occurrences |
+| destructive | `#ff5d5d` | `#ff6b81` | **17** occurrences |
+| panel radius | `18px` | `20px` | **34** occurrences, the second-commonest radius after the pill |
+
+**Nothing renders wrong when an accent is fifteen steps off in one channel.** A violet is a violet,
+`stylesheets.test.ts` has no opinion about which one, and every screenshot comparison in
+`docs/evidence/` was read for layout. The four alpha tints below `--accent` had all inherited the
+wrong base as `rgba(139,107,255,…)`, and six hand-written literals in `shell.css` and `float.css`
+had it too.
+
+`--radius-media: 12px` was **missing entirely** — 40 occurrences in the design, its commonest
+non-pill radius — so the photo grid drew `--radius-control` and a photograph had the shape of a
+button.
+
+The `--accent-on-fill` contrast note was recomputed rather than left standing: `#0b0b12` on the
+corrected accent is **5.05:1** (was 5.27), white is **3.89:1** (was 3.72). Both moved; the argument
+— near-black, not white, because white fails AA at 13.5px/600 — did not. That is why the ratio is
+recorded and not the verdict.
+
+### Defect 88 — the Photos grid drew every tile on top of the two below it
+
+The report was *thumbnails stacked and overlapping vertically*. Three causes were named in advance
+and are different bugs: no height constraint on the tiles, collapsing grid rows, or images
+overflowing their containers. The measurement, in the running app at the real display size:
+
+```
+container  display:grid  cols: 116px x5  gap: 8px  max-height: 560px
+           grid-template-rows: 32px x 24          <- 24 rows of 32px
+tile       116 x 116, aspect-ratio 1/1, overflow hidden
+img        114 x 114 inside it
+worst vertical overlap between any two of 24 tiles: 79px
+```
+
+So: **the tiles were never unconstrained** (116px throughout, from `aspect-ratio`) and **the images
+were never overflowing** (114px inside a 116px box that clips). The rows collapsed — pitch 40px
+under a 116px tile — and two of the three candidates are ruled out by the same reading.
+
+Which property, isolated one at a time in the live page:
+
+| tried | rows resolved to |
+|---|---|
+| as shipped | `32px` |
+| `max-height: none` | **`119px`** — correct |
+| `overflow-y: visible` | `32px` |
+| `align-content: start` | `32px` |
+| `grid-auto-rows: auto` | `32px` |
+| an explicit `height` on the tile | `116px` — correct |
+
+**A grid container with a definite block size sizes its `auto` rows against the space it has rather
+than against its items' transferred `aspect-ratio` height** — and `aspect-ratio` on the item then
+wins anyway and overflows the track it was given. `align-content` does not reach it; neither does
+`grid-auto-rows`. A control run in a clean container confirmed the ordinary case works — an empty
+`aspect-ratio: 1` item in a `repeat(4,1fr)` grid with no height gives **144px** rows — so the item
+was never the fault.
+
+**The fix is structural.** `.photos-scroll` owns the height and the overflow; `.photos-grid` owns
+the columns and no height at all. A property tweak would put both jobs back on one element for the
+next person to re-merge — and `.apps-grid` is the proof that this happens, having met the same
+collapse once already and answered it with `grid-auto-rows: max-content`, which survives only
+because an apps tile's height comes from its content. That grid is split the same way now.
+
+**After, same instrument, same window:**
+
+```
+cols: 131.25px x4   rows: 131.25px   gap: 10px   radius: 12px
+tile 131 x 131, square                worst vertical overlap: 0px
+5 day-groups: Yesterday, Thursday, Wednesday, Tuesday, Monday
+scroller is a grid: false
+```
+
+The restructure also buys the design's date grouping — `Today`, `Yesterday`, `14 May 2024` — which
+was impossible while the scroller *was* the grid, because a scroller holding several headed grids
+needs the grids to be separate elements.
+
+**Where the guard went, and why not where the defect was.** `photosView.test.ts` renders this pane
+against a DOM double and **passed throughout**. A double has no layout, so a grid whose rows have
+collapsed and one whose rows are correct produce the identical tree. Adding view tests would have
+been `CLAUDE.md`'s defect-67 shape exactly: more assertions at the layer that was already right. The
+fault is two CSS declarations in one rule, and `stylesheets.test.ts` is the only file in the repo
+that can see one. The rule it now holds: **a scrolling grid never also carries its own height.**
+
+Its own control caught two instrument faults while it was being written, both worth recording:
+
+- **The first parser silently dropped every rule nested inside an `@media`** — a parser wrong in the
+  *safe* direction, which is the variety this repo records as worse than no check at all. Its
+  control (*the parser saw the real sheets*) is what found it.
+- **The first predicate had only two conditions** — grid + definite height — and flagged **eight**
+  rules of which **all eight were fine**: five `place-items: center` icon boxes on a fixed square,
+  two single fixed-height rows, and `.apps-grid`. One true positive in nine is a guard that gets an
+  exception list, and an exception list nobody prunes is how a guard stops guarding. The
+  discriminator is that **the defect needs more than one row**, and what guarantees more than one
+  row is that the grid is *also the scroller*. All eight are fixtures now.
+
+Shown red by restoring the shipped rule verbatim; put back.
+
+### Defect 89 — what the album rail is actually showing
+
+The rail draws **150 albums**, including `1389444597` as a name and two rows both reading *WhatsApp
+Images*. Read off the device rather than guessed at:
+
+```
+bucket_id=-1829889111  Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/
+bucket_id=318896427    Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/
+bucket_id=278607672    WhatsApp/Media/WhatsApp Images/          <- pre-scoped-storage
+bucket_id=1432227631   Android/.Trash/com.sec.android.gallery3d/.../WhatsApp Images/
+```
+
+`BUCKET_DISPLAY_NAME` is the **leaf directory name only**, so distinct paths collide. The fourth row
+is Samsung Gallery's **trash**: the pane is showing the user their deleted photographs as an
+ordinary album. It is not flagged `is_trashed` — that column returns nothing on this device, because
+Samsung Gallery manages its own `.Trash` directory instead of using `MediaStore`'s trash. **Only the
+path separates them, and `media.buckets` does not carry one.**
+
+The numeric names are the same class of thing and are *correct*: real directories some app created
+and named with a Unix timestamp. Prettifying them would invent a name for a place a person can
+navigate to.
+
+**Two surface-only workarounds were built, drawn, and removed** — and both were true sentences that
+answered nothing:
+
+| tried | what appeared on screen |
+|---|---|
+| append the item count | `Instagram / 34 / 34 items` — the count **is already the row's second column** |
+| append `newestMs` | `WhatsApp · Latest Sep 4, …` on **both** rows it was meant to separate, truncated in a 188px rail |
+
+Neither was caught by a test, because in each case the assertion and the defect were the same
+sentence. Both were caught by looking at the running app. Nothing is drawn now: the counts already
+differ and are already on the row, which is the whole of what this wire supports.
+
+### The three refusals in the Photos detail column
+
+The design's Quick actions card draws four controls. `media.*` is four verbs — `buckets`, `list`,
+`thumb`, `original` — checked against `docs/protocol.md`:
+
+| Design's control | Verb it needs | Verdict |
+|---|---|---|
+| Import to Mac | `media.original` | **kept**, gated on the phone advertising the bulk channel |
+| Share | none | **removed** |
+| Set as Mac wallpaper | none | **removed** |
+| Delete from phone | none — `fs.delete` is a *SAF path* compare-and-delete and cannot address a `MediaStore` id | **removed** |
+
+Removed rather than greyed: a disabled control is a promise that it might light up, and these three
+are not waiting on a permission or a reconnect. One line replaces all three, and it is **new copy,
+flagged unratified**: *"Sharing, wallpaper and deleting are on the phone. Nothing on the wire carries
+them."* No sentence in `docs/empty-and-failure-states.md` fits; the closest is Calls' *"Mute, speaker
+and keypad tones are on the phone. Nothing on the wire carries them."* — the right shape with the
+wrong subject, so this is that shape rather than a fourth new grammar.
+
+The design's metadata grid reads Taken / Camera / ISO / Size. `media.list` carries **no filename and
+no EXIF**, so **Camera and ISO are not drawn** — a row labelled `ISO` over an empty value is worse
+than its absence. Kind, Type and *Saved by* are real and the design has no row for them, so they get
+one; `Saved by` resolves through `ownerAppName` and the package id never reaches the row.
+
+### Two instruments, both new, both in the repo
+
+`scripts/shot.mjs` had been **named in `docs/evidence/phase-7-panes-2026-09-04/README.md` since the
+last design pass and did not exist** — the shots were taken by a scratchpad script that no longer
+survives, which is the complaint `phase7-panes-probe.mjs` opens with about its own numbers. It
+refuses rather than writing a file it cannot vouch for: it aborts on a zoomed window
+(`innerWidth !== outerWidth`, which Chromium persists across relaunches) and on a route that did not
+land, and writes a sidecar carrying every bound it imposed.
+
+`scripts/design-shot.mjs` renders one artboard of the design canvas in a separate headless Chrome —
+separate because the design loads a `_ds_bundle.js` and a Google Fonts stylesheet that the app's own
+CSP blocks — clicks the nav row, waits for the pane, and clips to the `1440px` artboard. The page is
+a **stimulus that reports its effect**: a typo in `--page` refuses and lists the artboard's real nav
+ids rather than silently screenshotting Overview under another pane's filename.
+
+Both grew a check from their own first failure. `--prep` (a set-up click before the shutter) ran
+**before** the settle in its first version: the click landed, its `expect` went true, and the pane's
+own in-flight `refresh()` then cleared the selection during the settle — so the shot showed an empty
+detail column under a stimulus that had genuinely succeeded. A set-up is only a set-up if nothing
+overwrites it before the shutter, so it runs after. `--ready` was added the same way, after a
+`--prep` correctly refused because it had fired at a grid that had not loaded yet.
+
+**Evidence:** `docs/evidence/phase-7-design-2026-09-05/` — `photos-before.png` (the smear),
+`photos-build.png`, `photos-design.png`, each with a `.json` sidecar naming the window size, the DPR,
+the scrollbar state and the settle.

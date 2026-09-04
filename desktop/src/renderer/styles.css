@@ -1692,17 +1692,28 @@ img#qr {
   padding: 0 var(--space-3) var(--space-4);
 }
 
+/* The design's album row is **one line**: name at the left, count right-aligned and mono. It was
+   three stacked lines here, which turned a 6-row rail into a 150-row column three times taller than
+   it needed to be, and put the count where the eye reads a subtitle.
+
+   The subtitle line survives, but only when there is something to say — an app label, or the
+   disambiguator a repeated name earns. Most rows have neither and are a single 38px line. */
 .photos-album {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
   width: 100%;
+  min-height: 38px;
   text-align: left;
-  padding: var(--space-3);
-  margin-bottom: var(--space-1);
+  padding: 0 var(--space-3);
+  margin-bottom: 2px;
   border-radius: var(--radius-control);
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-on-control);
   cursor: pointer;
+  transition: background var(--dur-hover) var(--ease);
 }
 
 .photos-album:hover { background: var(--control); }
@@ -1714,25 +1725,38 @@ img#qr {
 
 .photos-album-name {
   font: var(--text-control);
+  font-size: 12.5px;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .photos-album-count {
+  grid-column: 2;
+  grid-row: 1;
   font: var(--text-meta-size);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--text-meta);
-  margin-top: 2px;
 }
 
+/* The second line, when a row has earned one. It spans both columns so it sits under the name
+   rather than beside the count. */
 .photos-album-source {
+  grid-column: 1 / -1;
   font: var(--text-meta-size);
   color: var(--accent-text);
-  margin-top: 2px;
+  padding-bottom: var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------------------------------------------------
    The grid, and the reason it is two elements rather than one.
 
-   **Defect 87.** `.photos-tiles` was one element carrying both jobs — `display: grid` *and*
+   **Defect 88.** `.photos-tiles` was one element carrying both jobs — `display: grid` *and*
    `max-height: 560px; overflow-y: auto` — and the second silently destroyed the first. Measured in
    the running app: with `max-height` set, the 24 auto rows resolved to **32px each** while every
    tile painted at its aspect-ratio height of **116px**. Row pitch 40px, tile height 116px, so each
@@ -1911,15 +1935,76 @@ img#qr {
    real size, blurry, and tall enough to push the metadata below the window: measured at a 792px
    detail column inside a 562px panel. `max-*` with `width: auto` lets a small image stay small,
    and `object-fit: contain` keeps the aspect ratio whatever shape arrives. */
-.photos-detail-preview {
-  max-width: 100%;
-  max-height: 220px;
-  width: auto;
-  height: auto;
-  object-fit: contain;
+/* ------------------------------------------------------------------------------------------------
+   The detail column: a preview card and an actions card, which is the design's shape.
+
+   Three of the design's four Quick actions have no verb on this wire and are **removed rather than
+   drawn grey** — see `photos.ts` for which and why. A disabled control is a promise that it might
+   light up.
+------------------------------------------------------------------------------------------------ */
+
+.photos-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+
+.photos-detail-card {
+  padding: var(--space-7);
+  border-radius: var(--radius-panel);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+}
+
+/* The design's 4:3 preview well. `object-fit: cover` on a thumbnail whose real aspect is unknown —
+   a portrait photo in a landscape frame is cropped, not letterboxed, which is what every photo app
+   does and what the design draws. */
+.photos-detail-frame {
+  aspect-ratio: 4 / 3;
   border-radius: var(--radius-tile);
+  overflow: hidden;
+  background: var(--control);
+  border: 1px solid var(--hairline);
+  display: grid;
+  place-items: center;
+}
+
+/* The design's label/value grid: `auto 1fr`, 4px row gap, 12px column gap, 11.5px. */
+.photos-detail-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1) var(--space-5);
+  margin-top: var(--space-4);
+  font-size: 11.5px;
+}
+
+.photos-detail-fact-label { color: var(--text-meta); }
+.photos-detail-fact-value { color: var(--text-on-control); min-width: 0; overflow-wrap: anywhere; }
+.photos-detail-fact-value.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.photos-detail-actions-title {
+  margin: 0 0 var(--space-4);
+  font: var(--text-section);
+  color: var(--text-primary);
+}
+
+/* The refusal line, under the one action that exists. `--text-body`, never `--warning`: nothing
+   here has failed and nothing is degraded — three of these verbs were never built. */
+.photos-detail-refusal {
+  margin-top: var(--space-4);
+  font: var(--text-meta-size);
+  line-height: 1.5;
+  color: var(--text-body);
+}
+
+/* Inside `.photos-detail-frame`, so it fills the 4:3 well the design draws rather than sizing
+   itself. `contain` would letterbox a portrait photo into grey bars; the design's well is filled. */
+.photos-detail-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   display: block;
-  margin-bottom: var(--space-5);
 }
 
 .photos-detail-title {
@@ -3036,9 +3121,26 @@ img#qr {
    */
   grid-auto-rows: max-content;
   gap: var(--space-3);
-  padding: var(--space-5);
+}
+
+/*
+ * The panel and the scroller, split off `.apps-grid` on 2026-09-05.
+ *
+ * The rule above kept its `grid-auto-rows: max-content` — that fix is real and its reasoning is
+ * intact — but it was carrying `max-height` and `overflow-y` too, which is defect 88's shape: a
+ * grid container with a definite block size sizes its auto rows against the space it has rather
+ * than against its items. `max-content` happens to survive that because an apps tile's height comes
+ * from its content. A tile whose height came from `aspect-ratio` would not, and the photo grid two
+ * thousand lines down is the proof.
+ *
+ * So the height lives on an element that is not a grid, and `stylesheets.test.ts` now refuses the
+ * combination outright rather than trusting the next person to know which row-sizing keywords
+ * happen to escape it.
+ */
+.apps-scroll {
   max-height: 560px;
   overflow-y: auto;
+  padding: var(--space-5);
   border-radius: var(--radius-panel);
   background: var(--elev-3);
   border: 1px solid var(--hairline-primary);

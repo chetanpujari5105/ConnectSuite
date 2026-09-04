@@ -265,3 +265,72 @@ test('thumbnails are asked for once per page, for that page’s ids', async () =
   await pane.view.refresh();
   assert.deepEqual(pane.bridge.thumbCalls, [['a', 'b']]);
 });
+
+// ---- Defect 88: the shape the fix rests on --------------------------------------------------------
+
+/**
+ * The tiles live inside a `.photos-grid` inside a `.photos-group` inside the scroller — never as
+ * direct children of the scroller itself.
+ *
+ * **This test would not have caught defect 88 and it is important to say so.** The defect was two
+ * CSS declarations in one rule; a DOM double has no layout, so a grid whose rows have collapsed and
+ * a grid whose rows are correct produce the identical tree. `stylesheets.test.ts` is where that
+ * check lives, because that is the only file in the repo that can see a stylesheet.
+ *
+ * What this covers is the *other half* of the same fix: the structure the CSS now assumes. If the
+ * grouping is ever flattened back to tiles-under-the-scroller, `.photos-grid` stops existing, every
+ * tile becomes a child of an element with `max-height` and no `display: grid`, and the pane silently
+ * reverts to a single column. That is reachable from here, and it is the half a stylesheet check
+ * cannot see.
+ */
+test('tiles are grouped by day, inside a grid that is not the scroller', async () => {
+  const pane = mount();
+  pane.bridge.buckets = [bucket('camera', 3)];
+  // Anchored to **local midnight**, not to `now - N hours`. The first version used hours-ago and
+  // went red on its own control at 01:44, because "one hour ago" and "two hours ago" straddled
+  // midnight and produced three groups. A test whose result depends on the hour the suite runs at
+  // is a test that will be green on the machine that wrote it and red at 00:30 on somebody else's.
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const todayAt = (h: number) => new Date(midnight).setHours(h);
+  const daysBack = (d: number) => new Date(midnight).setDate(midnight.getDate() - d);
+  pane.bridge.pages = [
+    {
+      items: [
+        item('a', todayAt(11)),
+        item('b', todayAt(9)),
+        // Far enough back to be a different heading whatever day of the week the suite runs on.
+        item('c', daysBack(40)),
+      ],
+      hasMore: false,
+    },
+  ];
+  await pane.view.refresh();
+
+  const groups = pane.tiles.queryAll('.photos-group');
+  assert.equal(groups.length, 2, 'control: three items across two days made two groups');
+  assert.equal(groups[0]!.queryAll('.photos-group-title').length, 1, 'a group has one heading');
+
+  // The load-bearing assertion: every tile has a `.photos-grid` parent, and the scroller has none
+  // of its own.
+  const grids = pane.tiles.queryAll('.photos-grid');
+  assert.equal(grids.length, 2, 'one grid per day-group');
+  const tilesInGrids = grids.reduce((n, g) => n + g.queryAll('.photos-tile').length, 0);
+  assert.equal(tilesInGrids, 3, 'every tile sits inside a grid');
+  assert.equal(
+    pane.tiles.children.every((child) => child.className.includes('photos-group')),
+    true,
+    'the scroller holds only groups — a tile directly under it is defect 88 coming back',
+  );
+});
+
+test('an album with nothing in it draws no groups and no grids at all', async () => {
+  // The control for the test above: it must be able to see zero, or "two groups" says nothing.
+  const pane = mount();
+  pane.bridge.buckets = [bucket('empty', 0)];
+  pane.bridge.pages = [{ items: [], hasMore: false }];
+  await pane.view.refresh();
+  assert.equal(pane.tiles.queryAll('.photos-group').length, 0);
+  assert.equal(pane.tiles.queryAll('.photos-grid').length, 0);
+  assert.equal(pane.tiles.queryAll('.photos-empty').length, 1, 'and the empty sentence is drawn');
+});

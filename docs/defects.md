@@ -101,6 +101,8 @@ own heading there, and its own row here.
 | **85** | **The Clipboard pane cannot say why nothing arrived from the phone.** Its one live strip (`#clip-notice`) is about Mac → phone; the Android explanation is standing copy in the *other* column at `top=828` in an 865 px window — **37 of 173 px, 21% on screen** — while the list the user reads is 100% visible. So *Android refused the read*, *the link is down* and *the app crashed* draw the identical picture, and the user who filed this concluded the feature was broken. **Every existing check passed**: `clipboard-pane-probe.mjs` asserts the copy is in the DOM, and it is — nothing here measures where a sentence sits relative to what it explains | **fixed and proven at real geometry** 2026-09-04 — a phone-direction state in the LEFT column, beside `#clip-notice` and equally live, saying when the phone last sent and that it sends only while open. The number already exists; the filter tab reads `From phone 1`. Distinguish it from a broken link the four ways the Files pane separates empty from failed, both being reachable here. **The wrong fix is moving the wall copy up or enlarging it** — the defect is that the pane has no *state* for this direction, so the sentence must be permanent, and a permanent sentence is read once and then unseen. **The second wrong fix is a banner when nothing has arrived**: that is the resting state of a working feature, and a warning that is usually wrong gets ignored | measured before and after at **1440x865, unzoomed, with a populated list**: the line reads `top=360 bottom=438`, **100% on screen and above the list**, where the explanation had been `top=828`, **21%**. Left-column chrome **299 -> 492 chars**. `scripts/clipboard-silence-probe.mjs` is the proof and is a **third** instrument on purpose — the pane probe passes over the unfixed pane, and the view tests have no layout. 3 mutations red on the right tests | `docs/testing.md` → Phase 7 Slices 17 and 18 |
 | **86** | **The `Send to Mac` toolbar entry is invisible until a Samsung switch nobody knows about is flipped.** Slice 18 shipped it *permitted, sighting unproven*; the user's hand test in WhatsApp, Chrome and a text field saw it **nowhere**. It was never absent — One UI ships `ACTION_PROCESS_TEXT` as a **per-app opt-in, off by default**, in a screen reachable only from **inside** the selection toolbar (long-press → ⋮ → Manage apps). Our row was present, correctly labelled, `checked=false`, **alongside ten others all `false`** — ChatGPT, Claude, Perplexity, DeepSeek, Adobe ×2, Samsung Pass, Samsung Wallet, Truecaller, Google. Switched on it appears, **in the overflow**, since the framework orders every `PROCESS_TEXT` item after Cut/Copy/Paste/Share/Select-all | **fixed** 2026-09-04, on hardware — a card on the phone's clipboard screen, with the path in walking order (*select text → ⋮ → Manage apps → Send to Mac*), and stop the Mac's `waiting` copy promising a toolbar entry that may be off. **The wrong fix is a deep link** to `SecProcessTextManageAppsFragment` — a Samsung internal fragment, not a documented action, renameable by an update nobody controls. **The second wrong fix is reading the switch's state**: no documented key carries it, and a wrong reading warns people whose feature works | measured 2026-09-04. **Control: zero of fourteen registered `PROCESS_TEXT` activities appeared** — the absence was everybody's, not ours, which is what makes it a platform finding. Then one variable: ours on, neighbours off (`Ask Claude: false`, `Send to Mac: true`, `Ask ChatGPT: false`), and the entry appeared and delivered — `from=com.android.chrome`, 28 bytes, `pbpaste` changed | `docs/testing.md` → Phase 7 Slice 19 |
 | **87** | **The app window asked for a size 55px taller than the display it opens on, and only AppKit was stopping it.** `createWindow` requested a flat `1440x920` — the handoff's canvas — with no reference to any display. This Mac's **primary** panel offers a **1512 x 865** work area (982 less a 33px menu bar and an 84px Dock), so the request did not fit the default display. Nothing in the repo noticed because `constrainFrameRect:toScreen:` shrinks an oversized window to the visible frame, and the 865-tall window that appeared looked deliberate. **The report that found it — title bar sliced, right column apparently outside the frame — was not reproduced from here and is not claimed:** AppKit re-constrained on every route driven, including a move to the smaller display and a `setBounds` with an explicitly oversized height. What is established is that the app depends on a platform rescue it neither owns nor invokes, which fires when AppKit sets the frame and **not** when the work area shrinks under an open window — a Dock un-hiding, a display disconnecting, Stage Manager claiming space. **Present identically in the packaged build** (read out of `app.asar`: `width: 1440`, `height: 920`, no `workArea`, no `getDisplay*`), so D14 does not apply | **fixed 2026-09-05.** `src/shared/windowGeometry.ts`, pure arithmetic in the electron-free layer — the same seam `floatGeometry` uses, which learned this in Phase 2 (*"clamping drag alone is not enough"*) and has derived the float window's size from the available height ever since; the main window, which every pane inherits, never did. The design is a **ceiling capped per axis independently**, so a short display costs height and not width. **The wrong fix is capping the opening size alone**: `minHeight: 700` left intact on a 600pt work area hands Electron a contradiction, the minimum wins, and the defect returns by another route on exactly the small displays the change is for — so the minimums are preferences, honoured only where the display can. **The second wrong fix is trusting AppKit**, which is what the code already did | measured 2026-09-05 through Electron's own `screen` module, not `system_profiler`. **Control separating the two candidate faults**: all **3675** laid-out elements measured against the viewport — 30 sit past it and **all 30 are clipped by an `overflow:hidden` ancestor**, so **zero paint past the window edge** and it is the window, not the panes. 8 unit tests, **3 mutations red on the tests named for them** (the original bug takes 4), 523 green restored. End-to-end on the offending display via the product's own compiled `fitWindow`: `1440x841 at (36,45)`, **unchanged by AppKit**, 12px clear of menu bar and Dock. In the running app, three instruments agree — the log, CDP, and System Events both reading `1752, 95, 1440, 920` | `docs/testing.md` → Phase 7 Slice 26 |
+| **88** | **The Photos grid drew every tile on top of the two below it.** `.photos-tiles` was one element carrying `display: grid` **and** `max-height: 560px; overflow-y: auto`, and the second silently destroyed the first: measured in the running app, the 24 auto rows resolved to **32px each** while every tile painted at its `aspect-ratio` height of **116px**. Row pitch 40px against a 116px tile, so each bled **79px** into its neighbours and a photo grid read as five smeared vertical columns. Of the three candidate causes named before measuring, two are ruled out by it — the tiles were **not** unconstrained (116px throughout) and the images were **not** overflowing (114px inside a 116px box with `overflow: hidden`); only the **rows** collapsed. Isolated one property at a time: `max-height: none` → **119px rows, correct**; `overflow-y: visible`, `align-content: start` and `grid-auto-rows: auto` each → still 32px | **fixed and proven at real geometry** 2026-09-05 — **structurally**, not by a property: `.photos-scroll` owns the height and the overflow, `.photos-grid` owns the columns and no height at all, which also buys the design's `Today` / `Yesterday` date grouping because a scroller holding several headed grids was impossible while the scroller *was* the grid. **The wrong fix is `align-content: start` or `grid-auto-rows`** — both were tried in the live page and both left the rows at 32px. **The second wrong fix is a property tweak of any kind**, which puts the two jobs back on one element for the next person to re-merge; `.apps-grid` is the proof, having met this same collapse once and answered it with `grid-auto-rows: max-content` | measured in the running app before and after: rows **32px → 131.25px**, worst vertical overlap between any two of 24 tiles **79px → 0px**, tiles square (131×131), 4 columns, 5 day-groups. Guarded in `stylesheets.test.ts`, which is the **only file in the repo that can see a stylesheet** — a DOM double has no layout, so the view test passed throughout and could not have caught it. Shown red by restoring the shipped rule verbatim | `docs/testing.md` → Phase 7 Slice 27 |
+| **89** | **The album rail lists Samsung Gallery's trash as an ordinary album, and cannot tell four folders apart.** `MediaStore.BUCKET_DISPLAY_NAME` is the **leaf directory name only**, so distinct paths collide: this handset draws two rows reading *WhatsApp Images*, three *WhatsApp Video*, four *WhatsApp Documents*. Read off the device, the four *WhatsApp Images* buckets are `Android/media/com.whatsapp/…` (twice, different ids), the pre-scoped-storage `WhatsApp/Media/…`, and — the real finding — **`Android/.Trash/com.sec.android.gallery3d/…`**, which is the user's **deleted** photographs shown as a normal album. It is not flagged `is_trashed` either: that column returns nothing on this device, because Samsung Gallery moves files into its own `.Trash` directory rather than using `MediaStore`'s trash. **Only the path separates them, and `media.buckets` does not carry one.** The numeric album names (`1389444597`, `1650884749188`) are the same class of thing and are *correct* — real directories some app named with a Unix timestamp | **open** — needs `relativePath` (or a `trashed` flag) on `media.buckets`, which is a wire change and was out of scope for the design pass. Then: drop `Android/.Trash/**` from the bucket list, and disambiguate a repeated name with its parent segment. **Two surface-only workarounds were built and both removed after being drawn** — appending the item count produced `Instagram / 34 / 34 items`, because the count *is already the row's second column*; appending `newestMs` produced the identical `Latest 4 Sep 2026` on both rows it was meant to separate, and truncated in a 188px rail. Each was a true sentence that answered nothing. **The wrong fix is renaming the numeric albums**: they are real folder names and a person can navigate to them | — | `docs/testing.md` → Phase 7 Slice 27 |
 
 ---
 
@@ -2239,3 +2241,64 @@ rolled (0 lines matching `^09-04 11:5`), so no direct audio-focus record for tha
 can be recovered. The standing contrast — Jio in bucket **40 (RARE)** and not battery-exempt, ours
 **5 (EXEMPTED)** and whitelisted, on the One UI handset Phase 6 exists because of — is a sufficient
 alternative cause pointing away from us, offered as that rather than as the established one.
+
+---
+
+### 89 — the album rail lists the phone's trash as an ordinary album · **open** · found 2026-09-05
+
+**What is on screen.** The Photos rail draws 150 albums. Two of them read *WhatsApp Images*, three
+read *WhatsApp Video*, four read *WhatsApp Documents*, and several are bare numbers —
+`1389444597`, `1650884749188`, `1662119105741`.
+
+**What they actually are**, read off the device rather than guessed at:
+
+```
+bucket_id=-1829889111  Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/
+bucket_id=318896427    Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/
+bucket_id=278607672    WhatsApp/Media/WhatsApp Images/          ← pre-scoped-storage
+bucket_id=1432227631   Android/.Trash/com.sec.android.gallery3d/…/WhatsApp Images/
+```
+
+`MediaStore.BUCKET_DISPLAY_NAME` is the **leaf directory name only**, so two different directories
+collide the moment their last segment matches. The duplicate rows are not a bug in the pane; they
+are four real folders with one name between them.
+
+**The finding is the fourth row.** `Android/.Trash/com.sec.android.gallery3d/` is Samsung Gallery's
+trash, so the pane is showing somebody their **deleted photographs** as a normal album, indexed and
+thumbnailed alongside the live ones. It is not flagged `is_trashed` either — that column returns
+nothing at all on this device, because Samsung Gallery moves files into its own `.Trash` directory
+rather than using `MediaStore`'s trash. **Only the path separates them.**
+
+The numeric names are the same class of thing and are **correct**. They are real directories some
+app created and named with a Unix timestamp, and `CLAUDE.md`'s package-id rule does not cover them:
+that rule is about a package id appearing where a sentence belongs, and a folder's own name is not
+that. A person can navigate to `1389444597` on their phone.
+
+**Fix direction.** `media.buckets` carries `bucketId`, `bucketName`, `count`, `newestMs`, `coverId`
+and — for app-owned buckets — `packageName`/`appName`. It carries **no path**. Add `relativePath`
+(or a `trashed` boolean derived from it phone-side, which leaks less), then:
+
+1. drop `Android/.Trash/**` from the bucket list entirely — a deleted photo is not an album; and
+2. disambiguate a repeated `bucketName` with its parent segment, so *WhatsApp Images* under
+   `Android/media/com.whatsapp/…` and under `WhatsApp/Media/…` read differently.
+
+It is a wire change and `docs/protocol.md` is the contract, so it changes there first.
+
+**Two wrong fixes, both of which were built and drawn before being removed.** Neither was caught by
+a test, because in each case the assertion and the defect were the same sentence — both were found
+by looking at the running app:
+
+| tried | what appeared |
+|---|---|
+| append the item count as a subtitle | `Instagram / 34 / 34 items` — the count **is already the row's own second column**, so this was the same number twice, three lines deep |
+| append `newestMs` as *Latest 4 Sep 2026* | **identical on both rows it was meant to separate**, and truncated to `WhatsApp · Latest Sep 4, …` in a 188px rail |
+
+Each was a true statement that answered nothing, which is why the pane now draws neither: the counts
+already differ and are already on the row, and that is the whole of what this wire supports. A third
+surface-only attempt would be the same mistake again.
+
+**A third wrong fix worth naming before someone reaches for it: renaming the numeric albums.** They
+are the folders' real names. Prettifying one invents a name for a place the user can navigate to,
+and then the app and the phone disagree about what it is called.
+
+**Evidence:** `docs/testing.md` → Phase 7 Slice 27.

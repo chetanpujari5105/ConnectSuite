@@ -305,3 +305,212 @@ test('control_the modifier check can see a modifier, and a losing position', () 
   const inStyles = 2 * 1_000_000 + 1;
   assert.ok(inShell < inStyles, 'sheet order must dominate line number in the cascade position');
 });
+
+// ---- Defect 88: a grid container may not also carry a definite block size ------------------------
+
+/**
+ * Every top-level rule, as `{ selector, body, sheet, line }`.
+ *
+ * The two parsers above answer "which selectors exist"; this one is needed because the defect below
+ * is about **two declarations inside one body**, which a selector set cannot see.
+ */
+function declarationBlocks(css: string, sheet: string): Array<{
+  selector: string;
+  body: string;
+  sheet: string;
+  line: number;
+}> {
+  const blanked = css.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+  const blocks: Array<{ selector: string; body: string; sheet: string; line: number }> = [];
+
+  // A stack, because the first version of this walked depth with a single `head` and silently
+  // dropped every rule nested inside an `@media` — which is a parser wrong in the **safe**
+  // direction, the variety `CLAUDE.md` records as worse than no check at all, since it makes a
+  // clean result look better-evidenced than it is. Its own control caught it, which is what the
+  // control is for.
+  //
+  // The unit is the *innermost* block: a block whose body contains no `{` is a declaration block,
+  // whatever it is nested in. An at-rule's outer block is therefore never mistaken for a rule.
+  const stack: Array<{ head: string; line: number; start: number }> = [];
+  let head = '';
+  let line = 1;
+
+  for (let i = 0; i < blanked.length; i += 1) {
+    const character = blanked[i]!;
+    if (character === '\n') line += 1;
+    if (character === '{') {
+      stack.push({ head: head.trim(), line, start: i + 1 });
+      head = '';
+    } else if (character === '}') {
+      const open = stack.pop();
+      if (open) {
+        const body = blanked.slice(open.start, i);
+        const selector = open.head.replace(/\s+/g, ' ');
+        if (!body.includes('{') && selector && !selector.startsWith('@')) {
+          blocks.push({ selector, body, sheet, line: open.line });
+        }
+      }
+      head = '';
+    } else {
+      head += character;
+    }
+  }
+  return blocks;
+}
+
+/** `display: grid` or `inline-grid`, ignoring `grid-template-*` and friends. */
+const DECLARES_GRID = /(^|[;{\s])display\s*:\s*(inline-)?grid\b/;
+
+/**
+ * A **definite** block size. `min-height` is not one: it is a floor, it cannot shrink a track, and
+ * several legitimate panels use it. `height: 100%` and `height: auto` are not one either — the
+ * first inherits an indefiniteness and the second is the default.
+ */
+const DEFINITE_BLOCK_SIZE = /(^|[;{\s])(max-)?height\s*:\s*(?!auto|100%|inherit|none|fit-content)[^;}]*(px|vh|rem|em)\b/;
+
+/**
+ * The element scrolls its own overflow.
+ *
+ * This is the third condition and it is what makes the check *keepable*, which is worth stating
+ * because the first version did not have it and was wrong in the expensive direction — not by
+ * missing the defect, but by flagging eight rules that were all fine:
+ *
+ * | flagged | what it is |
+ * |---|---|
+ * | `.app-tile`, `.icon-button`, `.state-banner-glyph`, `.clip-phone-icon`, `.apps-tile-art` | `display: grid; place-items: center` on a fixed square — a **one-cell** grid, which has no row to collapse |
+ * | `.recent-row`, `.call-row` | one row, height stated outright |
+ * | `.apps-grid` | **a real instance**, and it had already met this defect once |
+ *
+ * Eight false positives against one true one is a guard that gets an exception list, and an
+ * exception list nobody prunes is how a guard stops guarding. The discriminator that separates them
+ * is not subtle once looked for: **the defect needs more than one row**, and the thing that
+ * guarantees more than one row is that the grid is *also the scroller*. A one-cell centering box
+ * never scrolls; a photo grid always does.
+ */
+const SCROLLS_ITSELF = /(^|[;{\s])overflow(-y)?\s*:\s*(auto|scroll)\b/;
+
+/**
+ * **Defect 88.** A grid container with a definite block size and `auto` rows sizes those rows
+ * against the space it has rather than against its items' transferred `aspect-ratio` height — and
+ * `aspect-ratio` on the item then wins anyway, so every item overflows the track it was given.
+ *
+ * Measured in the running app rather than reasoned about: the photo grid's 24 rows resolved to
+ * **32px each** under **116px** tiles, so each tile bled 79px into the two below and the grid read
+ * as five smeared vertical columns. `max-height: none` restored the rows to 119px; `overflow-y`,
+ * `align-content: start` and `grid-auto-rows: auto` each changed nothing.
+ *
+ * ### Why this test is here and not in a view test
+ *
+ * `CLAUDE.md`'s defect-67 rule: when a defect is in a *write* a test cannot reach, adding tests at
+ * the layer that is already correct does nothing. `photosView.test.ts` renders the pane against a
+ * DOM double and passed throughout — a double has no layout, so a grid that has collapsed and a
+ * grid that has not are the same tree. The fault is two CSS declarations in one body, and this file
+ * is the only place in the repo that can see one.
+ *
+ * The fix is structural for the same reason: the scroller and the grid are different elements now,
+ * so the combination cannot be re-created without also failing here.
+ */
+/** All three at once: a grid, a definite block size, and its own scrollbar. */
+const isScrollingGridWithHeight = (body: string): boolean =>
+  DECLARES_GRID.test(body) && DEFINITE_BLOCK_SIZE.test(body) && SCROLLS_ITSELF.test(body);
+
+test('a scrolling grid never also carries its own height — the scroller is a separate element', () => {
+  const offenders: string[] = [];
+  for (const sheet of SHEETS) {
+    for (const rule of declarationBlocks(read(sheet), sheet)) {
+      if (isScrollingGridWithHeight(rule.body)) offenders.push(`${rule.sheet}:${rule.line} ${rule.selector}`);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    'defect 88: a grid container with a definite block size sizes its auto rows against the space ' +
+      'it has rather than against its items, and aspect-ratio items then overflow the tracks they ' +
+      'were given — measured at 32px rows under 116px tiles. Split the scroller off the grid, as ' +
+      `.photos-scroll/.photos-grid and .apps-scroll/.apps-grid do:\n  ${offenders.join('\n  ')}`,
+  );
+});
+
+test('control_the grid-height check can see the defect it is named for', () => {
+  // The verbatim rule that shipped, restored for the length of one assertion. Without this the
+  // check passes identically against a regex that matches nothing — and it *did* pass against an
+  // earlier draft whose `display:\s*grid` had no word boundary and so never fired on real CSS.
+  const shipped = `.photos-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-6);
+  max-height: 560px;
+  overflow-y: auto;
+}`;
+  const rules = declarationBlocks(shipped, 'fixture.css');
+  assert.equal(rules.length, 1, 'control: the parser found the rule at all');
+  assert.equal(DECLARES_GRID.test(rules[0]!.body), true, 'the check cannot see display:grid');
+  assert.equal(DEFINITE_BLOCK_SIZE.test(rules[0]!.body), true, 'the check cannot see max-height:560px');
+  assert.equal(SCROLLS_ITSELF.test(rules[0]!.body), true, 'the check cannot see overflow-y:auto');
+  assert.equal(isScrollingGridWithHeight(rules[0]!.body), true, 'the whole predicate does not fire');
+});
+
+test('control_the check clears the eight shapes the first version wrongly flagged', () => {
+  // Every one of these is real code from this repo that the two-condition version reported as a
+  // defect. A guard whose true-positive rate is one in nine gets an exception list instead of a fix.
+  const innocent = [
+    `.app-tile { display: grid; place-items: center; width: 34px; height: 34px; }`,
+    `.icon-button { width: 24px; height: 24px; display: grid; place-items: center; }`,
+    `.state-banner-glyph { flex: none; width: 16px; height: 16px; display: grid; place-items: center; }`,
+    `.clip-phone-icon { width: 18px; height: 18px; display: grid; place-items: center; }`,
+    `.apps-tile-art { width: 48px; height: 48px; display: grid; place-items: center; }`,
+    `.recent-row { display: grid; grid-template-columns: 74px 26px minmax(0, 1fr) auto; height: 52px; }`,
+    `.call-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; height: 56px; }`,
+    `.apps-grid { display: grid; grid-auto-rows: max-content; gap: 8px; }`,
+  ];
+  for (const css of innocent) {
+    const rule = declarationBlocks(css, 'fixture.css')[0]!;
+    assert.equal(isScrollingGridWithHeight(rule.body), false, `false positive on ${rule.selector}`);
+  }
+});
+
+test('control_the grid-height check does not fire on the shapes that are fine', () => {
+  const fine = [
+    // A grid with no height at all — the fix.
+    `.photos-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }`,
+    // A scroller with a height and no grid — the other half of the fix.
+    `.photos-scroll { padding: 14px; max-height: 560px; overflow-y: auto; }`,
+    // A floor is not a definite size: it cannot shrink a track.
+    `.thing { display: grid; min-height: 32px; }`,
+    // `grid-template-rows` is not `display: grid`, and `height: auto` is not definite.
+    `.other { grid-template-columns: 1fr; height: auto; max-height: 100%; }`,
+  ];
+  for (const css of fine) {
+    const rule = declarationBlocks(css, 'fixture.css')[0]!;
+    assert.equal(isScrollingGridWithHeight(rule.body), false, `false positive on: ${rule.selector}`);
+  }
+});
+
+test('control_the block parser saw the real sheets, and sees inside @media', () => {
+  // An empty rule list would make the check above vacuously green — the same shape as an empty
+  // accessibility query, which reads as evidence and is not.
+  const counts = SHEETS.map((s) => declarationBlocks(read(s), s).length);
+  // The real shape, named rather than a round threshold, so a parser that starts dropping half the
+  // file fails here instead of squeaking past a `> 20`. tokens.css is legitimately tiny — four
+  // blocks, of which one is the `:root` carrying almost the whole sheet — and asserting a big
+  // number for it is how the first draft of this control failed on correct code.
+  const [tokens, shell, styles] = counts as [number, number, number];
+  assert.ok(tokens >= 4, `tokens.css parsed to only ${tokens} declaration blocks`);
+  assert.ok(shell > 150, `shell.css parsed to only ${shell} declaration blocks`);
+  assert.ok(styles > 300, `styles.css parsed to only ${styles} declaration blocks`);
+
+  // The half the first parser got wrong: a rule nested inside an at-rule is still a rule, and a
+  // grid/height collision inside a media query is exactly as broken as one outside it.
+  const nested = declarationBlocks(
+    '@media (max-width: 700px) { .inner { display: grid; max-height: 400px; } }',
+    'fixture.css',
+  );
+  assert.equal(nested.length, 1, 'the parser cannot see inside an at-rule');
+  assert.equal(nested[0]!.selector, '.inner');
+  assert.equal(
+    isScrollingGridWithHeight(`${nested[0]!.body} overflow-y: auto;`),
+    true,
+    'the whole predicate does not fire inside an at-rule',
+  );
+});

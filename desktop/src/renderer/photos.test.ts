@@ -144,11 +144,6 @@ const headings = (globalThis as Record<string, unknown>).__photoLabels as {
     heading: string;
     items: Array<{ id: string }>;
   }>;
-  albumSubtitle(
-    album: { bucketName: string; count: number; appName?: string },
-    counts: ReadonlyMap<string, number>,
-  ): string | null;
-  albumNameCounts(albums: ReadonlyArray<{ bucketName: string }>): Map<string, number>;
 };
 
 /** 15 May 2024, 14:30 local — the design's own week. */
@@ -225,33 +220,81 @@ test('groupByDay does not sort — a day arriving twice draws twice', () => {
 
 // ---- The album rail's duplicate names -------------------------------------------------------------
 
-test('a unique album name keeps the app label alone as its subtitle', () => {
-  const albums = [{ bucketName: 'Camera', count: 16420 }, { bucketName: 'Screenshots', count: 3760 }];
-  const counts = headings.albumNameCounts(albums);
-  assert.equal(headings.albumSubtitle({ bucketName: 'Camera', count: 16420 }, counts), null);
+/**
+ * The duplicate-album disambiguators are gone and there is deliberately no test here.
+ *
+ * Two were built — the item count, then `newestMs` — and both were removed after being drawn: the
+ * count repeated the row's own second column, and the date was identical on the two rows it was
+ * meant to separate. `photos.ts` carries the measurement and defect 88 carries the fix, which is a
+ * wire change. A test asserting the absence of a feature nobody built would be the fourth version
+ * of the same mistake.
+ */
+
+// ---- The detail card, and the rows it refuses to draw ---------------------------------------------
+
+const facts = (globalThis as Record<string, unknown>).__photoLabels as unknown as {
+  detailFacts(item: Record<string, unknown>): Array<[string, string, boolean]>;
+  PHOTO_ACTION_REFUSAL: string;
+};
+
+const photo = (over: Record<string, unknown> = {}) => ({
+  id: '1',
+  kind: 'image',
+  mime: 'image/jpeg',
+  size: 3_874_112,
+  width: 4032,
+  height: 3024,
+  dateMs: at(2024, 4, 15, 12),
+  durationMs: null,
+  ...over,
+});
+
+test('the detail card draws no Camera or ISO row — there is no EXIF on this wire', () => {
+  // The design's grid reads Taken / Camera / ISO / Size. `media.list` sends none of the middle two,
+  // and a row labelled `ISO` over an empty value is worse than its absence.
+  const labels = facts.detailFacts(photo()).map(([label]) => label);
+  assert.deepEqual(labels, ['Kind', 'Taken', 'Size', 'Type']);
+  assert.equal(labels.includes('Camera'), false);
+  assert.equal(labels.includes('ISO'), false);
+});
+
+test('dimensions join the size row when the provider has them, and are absent when it has not', () => {
+  const withDims = facts.detailFacts(photo()).find(([l]) => l === 'Size')!;
+  assert.equal(withDims[1], '3.7 MB · 4032 × 3024');
+  // Null width/height is ordinary — a file another app wrote that the provider never measured.
+  const without = facts.detailFacts(photo({ width: null, height: null })).find(([l]) => l === 'Size')!;
+  assert.equal(without[1], '3.7 MB');
+  assert.doesNotMatch(without[1], /×|null|undefined/);
+});
+
+test('a video gains a Length row; a photo has none', () => {
+  const video = facts.detailFacts(photo({ kind: 'video', durationMs: 15_400, mime: 'video/mp4' }));
+  assert.deepEqual(video.map(([l]) => l), ['Kind', 'Taken', 'Size', 'Length', 'Type']);
+  assert.equal(video.find(([l]) => l === 'Length')![1], '0:15');
+  assert.equal(video.find(([l]) => l === 'Kind')![1], 'Video');
+  // The control: the same call over a photo does not grow the row.
+  assert.equal(facts.detailFacts(photo()).some(([l]) => l === 'Length'), false);
+});
+
+test('the owning app appears as a name and the package id never does', () => {
+  const owned = facts.detailFacts(photo({ ownerAppName: 'WhatsApp', ownerPackage: 'com.whatsapp' }));
+  const saved = owned.find(([l]) => l === 'Saved by')!;
+  assert.equal(saved[1], 'WhatsApp');
+  // The package-id rule, asserted on the pane that has the most chances to break it.
   assert.equal(
-    headings.albumSubtitle({ bucketName: 'Camera', count: 16420, appName: 'Camera app' }, counts),
-    'Camera app',
+    owned.some(([, value]) => value.includes('com.whatsapp')),
+    false,
+    'a package id reached a row a person reads',
   );
 });
 
-test('two albums with one name are told apart by the only thing on the wire', () => {
-  // This phone draws two rows both reading "WhatsApp Images" — 500 items and 5,781 — because
-  // bucket_display_name is the leaf directory name and two different directories collide.
-  const albums = [
-    { bucketName: 'WhatsApp Images', count: 500 },
-    { bucketName: 'WhatsApp Images', count: 5781 },
-    { bucketName: 'Camera', count: 16420 },
-  ];
-  const counts = headings.albumNameCounts(albums);
-  assert.equal(
-    headings.albumSubtitle({ bucketName: 'WhatsApp Images', count: 500, appName: 'WhatsApp' }, counts),
-    'WhatsApp · 500 items',
-  );
-  assert.equal(
-    headings.albumSubtitle({ bucketName: 'WhatsApp Images', count: 5781, appName: 'WhatsApp' }, counts),
-    'WhatsApp · 5,781 items',
-  );
-  // The control: the row that does not collide is untouched by the disambiguation.
-  assert.equal(headings.albumSubtitle({ bucketName: 'Camera', count: 16420 }, counts), null);
+test('the refusal line names all three removed controls and claims nothing about failure', () => {
+  // Removed, not greyed: Share, Set as Mac wallpaper and Delete from phone have no verb in
+  // `media.*`, which is four verbs and no more. One sentence replaces three controls.
+  const line = facts.PHOTO_ACTION_REFUSAL;
+  for (const word of ['Sharing', 'wallpaper', 'deleting']) {
+    assert.ok(line.includes(word), `the refusal does not name ${word}`);
+  }
+  // It must not read as a failure or a degradation — nothing broke, these were never built.
+  assert.doesNotMatch(line, /fail|error|unavailable|try again|not right now/i);
 });

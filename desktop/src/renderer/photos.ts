@@ -217,16 +217,14 @@ function groupByDay(
 }
 
 /**
- * The second line under an album name, when the rail would otherwise draw the same name twice.
+ * ### Defect 89 — the duplicate album names, measured and then *not* worked around
  *
- * ### What was actually on screen, and what it turned out to be
- *
- * This phone's rail draws **150 albums**, and among them two rows both reading *WhatsApp Images* —
- * one at 500 items, one at 5,781 — plus three *WhatsApp Video*, four *WhatsApp Documents*, and
- * names like `1389444597` and `1650884749188`.
+ * The rail on this handset draws **150 albums**, among them two rows both reading *WhatsApp
+ * Images* (500 items and 5,781), three *WhatsApp Video*, four *WhatsApp Documents*, and names like
+ * `1389444597` and `1650884749188`.
  *
  * Measured on the device rather than guessed at. `bucket_display_name` is the **leaf directory name
- * only**, so two different directories collide the moment their last path segment matches:
+ * only**, so two different directories collide the moment their last segment matches:
  *
  * ```
  * bucket_id=-1829889111  Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/
@@ -235,41 +233,32 @@ function groupByDay(
  * bucket_id=1432227631   Android/.Trash/com.sec.android.gallery3d/…/WhatsApp Images/
  * ```
  *
- * The numeric names are the same thing and are **not ours to fix**: they are real directories on
- * the phone that some app created and named with a Unix timestamp. `CLAUDE.md`'s package-id rule
+ * **The fourth one is Samsung Gallery's trash**, and it is the real finding: this pane is showing
+ * somebody their deleted photographs as an ordinary album. It is not flagged `is_trashed` either —
+ * that column returns nothing on this device, because Samsung Gallery moves files into its own
+ * `.Trash` directory rather than using `MediaStore`'s trash. Only the path separates them.
+ *
+ * The numeric names are the same class of thing and are **not ours to fix**: they are real
+ * directories some app created and named with a Unix timestamp. `CLAUDE.md`'s package-id rule
  * covers a package id appearing where a sentence belongs; a folder's own name is not that, and
- * prettifying it would be inventing a name for a place the user can navigate to.
+ * prettifying it would invent a name for a place the user can navigate to.
  *
- * ### What this function does and deliberately does not do
+ * ### Two disambiguators were built here and both were removed, which is the part worth keeping
  *
- * It disambiguates and nothing else. When a name is unique in the rail it returns the app label if
- * there is one, exactly as before. When a name repeats, the rows get the one thing that separates
- * them **and is already on the wire** — how many items each holds — so two identical rows become
- * two distinguishable ones without a wire change and without the pane claiming to know more than it
- * does.
+ * The first appended the item count. It drew `Instagram / 34 / 34 items` — the same number twice,
+ * three lines deep — because **the count is already the row's own second column**. True, and it
+ * added nothing.
  *
- * The honest fix is upstream and is recorded rather than half-applied: `media.buckets` carries no
- * path, so this pane **cannot** tell the reader that one of those four is Samsung Gallery's trash.
- * Showing somebody their deleted photos as an ordinary album is a real defect; it is defect 88, it
- * needs `relativePath` on the wire, and tonight's brief is the frame and not the wire.
+ * The second appended `newestMs` as *Latest 4 Sep 2026*. On the real data **both** WhatsApp Images
+ * rows carry the same latest date, so it disambiguated nothing and truncated to
+ * `WhatsApp · Latest Sep 4, …` in a 188px rail.
+ *
+ * Both were found by looking at the running app, not by a test — and each was a true sentence that
+ * did not answer the question. So nothing is drawn: the count already differs and is already on the
+ * row, which is the whole of what this wire supports. Telling these apart properly needs
+ * `relativePath` on `media.buckets`, and hiding the trash bucket needs it too. That is **defect
+ * 89**, it is a wire change, and it is recorded rather than half-applied.
  */
-function albumSubtitle(
-  album: MediaBucketRow,
-  nameCounts: ReadonlyMap<string, number>,
-): string | null {
-  const source = albumSource(album);
-  const collides = (nameCounts.get(album.bucketName) ?? 0) > 1;
-  if (!collides) return source || null;
-  const items = `${albumCount(album.count)} items`;
-  return source ? `${source} · ${items}` : items;
-}
-
-/** How many albums share each name, so a colliding row can say so. */
-function albumNameCounts(albums: readonly MediaBucketRow[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const album of albums) counts.set(album.bucketName, (counts.get(album.bucketName) ?? 0) + 1);
-  return counts;
-}
 
 /**
  * The label under an album, which is where the package-id rule lands on this pane.
@@ -489,9 +478,6 @@ class PhotosView {
 
   private renderRail(): void {
     this.rail.textContent = '';
-    // Counted once per render rather than once per row: 150 albums is 150 rows, and a per-row scan
-    // of the same list is the quadratic version of a question with one answer.
-    const nameCounts = albumNameCounts(this.albums);
     for (const album of this.albums) {
       const row = document.createElement('button');
       row.type = 'button';
@@ -504,8 +490,8 @@ class PhotosView {
       row.appendChild(name);
       row.appendChild(count);
 
-      const subtitle = albumSubtitle(album, nameCounts);
-      if (subtitle) row.appendChild(photoLine('photos-album-source', subtitle));
+      const source = albumSource(album);
+      if (source) row.appendChild(photoLine('photos-album-source', source));
 
       row.addEventListener('click', () => {
         if (this.selectedAlbum === album.bucketId) return;
@@ -624,6 +610,34 @@ class PhotosView {
     }
   }
 
+  /**
+   * The design's right column: a preview card and an actions card.
+   *
+   * ### Three of the design's four Quick actions are removed, not greyed
+   *
+   * The canvas draws **Import to Mac**, **Share**, **Set as Mac wallpaper** and **Delete from
+   * phone**. `media.*` is four verbs — `buckets`, `list`, `thumb`, `original` — and that is the
+   * whole namespace, checked against `docs/protocol.md` rather than remembered:
+   *
+   * | Design's control | Verb it would need | Verdict |
+   * |---|---|---|
+   * | Import to Mac | `media.original` | **kept** — it exists, and it is gated on the phone advertising the bulk channel |
+   * | Share | none | removed |
+   * | Set as Mac wallpaper | none | removed |
+   * | Delete from phone | none — `fs.delete` is a *SAF path* compare-and-delete and cannot address a `MediaStore` id | removed |
+   *
+   * Removed rather than disabled, because a greyed control is a promise that it might light up, and
+   * these three are not waiting on a permission or a reconnect — nothing was ever built behind
+   * them. One line of copy replaces all three, which is the same shape the Calls pane already uses
+   * for Mute, speaker and keypad.
+   *
+   * ### And the metadata grid carries what the wire carries
+   *
+   * The design's grid reads Taken / Camera / ISO / Size. `media.list` sends no filename and no EXIF
+   * at all, so **Camera and ISO are not drawn** — an empty row labelled `ISO` would be worse than
+   * its absence, and inventing a value is not on the table. Taken and Size are real; kind, MIME and
+   * the owning app are real and the design has no row for them, so they get one.
+   */
   private renderDetail(): void {
     this.detail.textContent = '';
     const item = this.items.find((one) => one.id === this.selectedItem);
@@ -638,20 +652,38 @@ class PhotosView {
       return;
     }
 
+    // ---- the preview card ----
+    const card = document.createElement('section');
+    card.className = 'photos-detail-card';
+
+    const frame = document.createElement('div');
+    frame.className = 'photos-detail-frame';
     const preview = this.thumbs.get(item.id);
     if (preview) {
       const img = document.createElement('img');
       img.className = 'photos-detail-preview';
       img.src = `data:image/jpeg;base64,${preview}`;
       img.alt = '';
-      this.detail.appendChild(img);
+      frame.appendChild(img);
     }
-    this.detail.appendChild(photoLine('photos-detail-title', item.kind === 'video' ? 'Video' : 'Photo'));
-    this.detail.appendChild(photoLine('photos-detail-meta', itemSummary(item)));
-    this.detail.appendChild(photoLine('photos-detail-mime mono', item.mime));
-    if (item.ownerAppName) {
-      this.detail.appendChild(photoLine('photos-detail-owner', `Saved by ${item.ownerAppName}`));
+    card.appendChild(frame);
+
+    const facts = document.createElement('div');
+    facts.className = 'photos-detail-facts';
+    for (const [label, value, mono] of detailFacts(item)) {
+      facts.appendChild(photoLine('photos-detail-fact-label', label));
+      facts.appendChild(photoLine(`photos-detail-fact-value${mono ? ' mono' : ''}`, value));
     }
+    card.appendChild(facts);
+    this.detail.appendChild(card);
+
+    // ---- the actions card ----
+    const actions = document.createElement('section');
+    actions.className = 'photos-detail-card';
+    const title = document.createElement('h3');
+    title.className = 'photos-detail-actions-title';
+    title.textContent = 'Quick actions';
+    actions.appendChild(title);
 
     if (this.advertised) {
       const button = document.createElement('button');
@@ -661,12 +693,12 @@ class PhotosView {
       button.disabled = this.pulling !== null;
       button.textContent = busy ? 'Saving…' : 'Save to Mac';
       button.addEventListener('click', () => void this.pull(item));
-      this.detail.appendChild(button);
+      actions.appendChild(button);
 
       if (this.lastPull && !busy) {
         // Where the file went, in full. A "saved" toast that does not say where leaves someone
         // hunting through Finder for a file they were told they already have.
-        this.detail.appendChild(
+        actions.appendChild(
           photoLine(
             'photos-detail-saved',
             `Saved ${fileSize(this.lastPull.bytes)} to ${this.lastPull.path}`,
@@ -677,14 +709,69 @@ class PhotosView {
       // Said here as well as in the banner, because this is the moment someone reaches for it: the
       // detail card is where the Save button lives, and its absence needs a sentence rather than an
       // empty space.
-      this.detail.appendChild(
+      actions.appendChild(
         photoLine(
           'photos-detail-limit',
           'The full-size original stays on the phone — this phone is not offering the file channel.',
         ),
       );
     }
+
+    actions.appendChild(photoLine('photos-detail-refusal', PHOTO_ACTION_REFUSAL));
+    this.detail.appendChild(actions);
   }
+}
+
+/**
+ * The one line that replaces three removed controls.
+ *
+ * **New copy, and unratified.** `docs/empty-and-failure-states.md` has 83 sentences and none of them
+ * fits: the closest is the Calls pane's *"Mute, speaker and keypad tones are on the phone. Nothing
+ * on the wire carries them."* — the right shape with the wrong subject, so this is that shape with
+ * this pane's nouns rather than a fourth new grammar. It is listed for the vocabulary decision
+ * along with everything else and should be read against its siblings rather than on its own.
+ */
+const PHOTO_ACTION_REFUSAL =
+  'Sharing, wallpaper and deleting are on the phone. Nothing on the wire carries them.';
+
+/**
+ * The detail card's label/value rows: `[label, value, mono]`, skipping whatever the phone did not
+ * send.
+ *
+ * Pure and on the global, because the decision it makes is *which rows exist*, and a row that draws
+ * an empty value is the defect this replaces. A test that asserted a second copy of the list would
+ * assert nothing.
+ */
+function detailFacts(item: MediaItemRow): Array<[string, string, boolean]> {
+  const rows: Array<[string, string, boolean]> = [];
+  rows.push(['Kind', item.kind === 'video' ? 'Video' : 'Photo', false]);
+  rows.push([
+    'Taken',
+    new Date(item.dateMs).toLocaleString([], {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    false,
+  ]);
+  // The design's `3.2 MB · 4032 × 3024` on one row. `width`/`height` are null for a file another app
+  // wrote and the provider never measured, which is ordinary rather than exceptional — so the
+  // dimensions join the row when they exist and the row is just a size when they do not.
+  rows.push([
+    'Size',
+    item.width && item.height
+      ? `${fileSize(item.size)} · ${item.width} × ${item.height}`
+      : fileSize(item.size),
+    true,
+  ]);
+  if (item.kind === 'video' && item.durationMs) {
+    rows.push(['Length', clockOf(item.durationMs), true]);
+  }
+  rows.push(['Type', item.mime, true]);
+  if (item.ownerAppName) rows.push(['Saved by', item.ownerAppName, false]);
+  return rows;
 }
 
 function photoLine(className: string, text: string): HTMLElement {
@@ -705,8 +792,8 @@ function photoLine(className: string, text: string): HTMLElement {
   albumSource,
   dayHeading,
   groupByDay,
-  albumSubtitle,
-  albumNameCounts,
+  detailFacts,
+  PHOTO_ACTION_REFUSAL,
 };
 
 // The view class, for `photosView.test.ts`. `photos.ts` touches no DOM at module scope, so a test

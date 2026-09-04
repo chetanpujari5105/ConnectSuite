@@ -592,12 +592,12 @@
                     <!--
                       The scroller, and only the scroller. The grids are inside it, one per day, and
                       neither this element nor they may carry both a definite height and
-                      `display: grid` — that combination is defect 87 and it collapsed every row to
+                      `display: grid` — that combination is defect 88 and it collapsed every row to
                       32px under 116px tiles. styles.css carries the measurement.
                     -->
                     <div class="photos-scroll" id="photos-tiles" aria-label="Photos"></div>
                   </div>
-                  <aside class="pane-detail" id="photos-detail" aria-live="polite"></aside>
+                  <aside class="pane-detail photos-detail" id="photos-detail" aria-live="polite"></aside>
                 </div>
               </div>
             </section>
@@ -695,7 +695,16 @@
                   <p class="pane-sub" id="apps-note"></p>
                 </div>
                 <div id="apps-toast" class="apps-toast" role="status" aria-live="polite" hidden></div>
-                <div id="apps-grid" class="apps-grid" role="grid" aria-label="Apps on your phone"></div>
+                <!--
+                  Scroller outside, grid inside — defect 88's structural rule. This pane met the
+                  same collapse once already and answered it with `grid-auto-rows: max-content`,
+                  which works for a tile whose height comes from its content and would not work for
+                  one whose height comes from `aspect-ratio`. The split removes the hazard rather
+                  than the symptom.
+                -->
+                <div class="apps-scroll">
+                  <div id="apps-grid" class="apps-grid" role="grid" aria-label="Apps on your phone"></div>
+                </div>
               </div>
             </section>
             <section class="screen" data-screen="camera" hidden></section>

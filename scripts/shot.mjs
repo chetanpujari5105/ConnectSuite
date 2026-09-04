@@ -90,10 +90,63 @@ if (screen) {
   }
 }
 
+// An optional stimulus after the route, for a shot that needs a state the pane does not open in —
+// a photo selected, a thread open, a tab picked. It is an `act` like any other, so `--prep-expect`
+// is **required** with it: a shot of the state you meant to set up and did not is the same failure
+// as a shot of the wrong pane, and it is the harder one to notice afterwards.
+const prep = arg('prep');
+const prepExpect = arg('prep-expect');
+const ready = arg('ready');
+
+/*
+ * `--ready` gates `--prep` on the pane having finished loading.
+ *
+ * Added after the first `--prep` run refused: the click fired against a grid that had not been
+ * filled yet, so `run` found nothing to click, `expect` never came true, and the shot was correctly
+ * declined. That refusal was the tool working — but the cause was the stimulus arriving before the
+ * thing it acts on existed, which is `CLAUDE.md`'s eighth control-table row exactly: an absence read
+ * before the action had happened is not a negative reading, it is no reading at all.
+ */
+if (ready) {
+  const deadline = Date.now() + 20000;
+  for (;;) {
+    if (await probe.rawEvaluate(ready)) break;
+    if (Date.now() >= deadline) {
+      console.error(`shot.mjs REFUSED: --ready never became true within 20000ms — the pane had not loaded, so any set-up below it would have acted on nothing.`);
+      exit(1);
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+if (prep && !prepExpect) {
+  console.error('shot.mjs: --prep requires --prep-expect. A stimulus with no effect to check is a request, not a set-up.');
+  exit(2);
+}
 // Not a bare sleep dressed up: this is settling *paint*, after the route has already been confirmed
 // landed by its own predicate above. There is nothing to poll for — a transition's final frame is
 // not observable from script — so the wait is declared in the sidecar rather than hidden.
 await new Promise((r) => setTimeout(r, settleMs));
+
+/*
+ * The set-up runs **after** the settle, not before it, and that ordering was a bug first.
+ *
+ * The first version clicked as soon as `--ready` came true. The click landed, its `expect` went
+ * true — and then the pane's own in-flight `refresh()` completed during the settle and cleared the
+ * selection, so the shot showed an empty detail column under a stimulus that had genuinely
+ * succeeded. The stimulus reported its effect honestly; the effect was simply undone afterwards.
+ * A set-up is only a set-up if nothing overwrites it before the shutter.
+ */
+if (prep) {
+  const done = await probe.act({ what: 'prep', run: prep, expect: prepExpect, within: 6000 });
+  if (!done.landed) {
+    console.error(`shot.mjs REFUSED: --prep did not land after ${done.waitedMs}ms. Nothing was captured.`);
+    exit(1);
+  }
+}
+
+
+// A short second settle for the set-up's own paint.
+if (prep) await new Promise((r) => setTimeout(r, 350));
 
 const clip = flag('full')
   ? await probe.rawEvaluate(`(() => { const d = document.documentElement;
@@ -112,6 +165,8 @@ const sidecar = {
   scrollbarPx: geom.scrollbarPx,
   pageScrolls: geom.pageScrolls,
   settleMs,
+  ready: ready ?? null,
+  prep: prep ?? null,
   full: flag('full'),
   zoomChecked: 'innerWidth === outerWidth',
 };
