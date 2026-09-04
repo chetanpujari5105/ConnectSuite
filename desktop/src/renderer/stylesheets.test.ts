@@ -514,3 +514,148 @@ test('control_the block parser saw the real sheets, and sees inside @media', () 
     'the whole predicate does not fire inside an at-rule',
   );
 });
+
+// ---- Defect 90: the 32px button floor silently raises anything shorter --------------------------
+
+/** The floor every button sits on, declared once in styles.css and read from it rather than typed. */
+const BUTTON_FLOOR_PX = 32;
+
+/**
+ * Whether a selector names something that inherits the `button` floor.
+ *
+ * Only a `<button>` or a `.button` does — a `<span>` inside one does not, and neither does a
+ * pseudo-element. Both of those were false positives on the first version of this check, which
+ * matched the control vocabulary as a **substring** anywhere in the selector:
+ *
+ * | flagged | what it is |
+ * |---|---|
+ * | `.switch-knob` (18px) | the `<span>` **inside** the switch — matched on "switch" |
+ * | `.pill-tab.unbuilt::after` (5px) | a 5px dot — matched on "tab" |
+ *
+ * So the test is on the **trailing token**: the last class in the selector, whole, against a
+ * vocabulary of control suffixes. `switch-knob` is not `switch`; `-tab` still catches `.calls-tab`
+ * and `.clip-tab`. Pseudo-elements are excluded outright — an `::after` is never a button.
+ *
+ * This is the same discipline the guard above it needed: a substring match over selector text finds
+ * the thing's children and its decorations, and an exception list is not the fix.
+ */
+function looksLikeAControl(selector: string): boolean {
+  if (selector.includes('::')) return false;
+  for (const part of selector.split(',')) {
+    const simple = part.trim().split(/[\s>+~]+/).pop() ?? '';
+    const last = simple.split('.').pop() ?? '';
+    if (/^button$/i.test(simple)) return true;
+    if (/^(switch|button)$/i.test(last)) return true;
+    if (/-(tab|button|btn|clear|disconnect|key)$/i.test(last)) return true;
+  }
+  return false;
+}
+
+/** An explicit pixel height, if the body declares one. */
+function declaredHeightPx(body: string): number | null {
+  const match = /(^|[;{\s])height\s*:\s*(\d+(?:\.\d+)?)px/.exec(body);
+  return match ? Number(match[2]) : null;
+}
+
+/** `min-height: 0` — the only thing that releases the floor. */
+const RELEASES_FLOOR = /(^|[;{\s])min-height\s*:\s*0(px)?\s*[;}]/;
+
+/**
+ * **Defect 90.** `button, .button { min-height: 32px }` is a floor, and a floor beats `height` in
+ * the cascade — always, in every browser, silently.
+ *
+ * The base rule's own comment reasons only about controls that need to be *taller*: *"32px is the
+ * design's control height and the floor everything sits on; anything that needs to be taller simply
+ * is."* Nothing considered a control that needs to be **shorter**, and the design has several.
+ *
+ * Measured in the running app, each on its own routed pane, every one of them wrong since it was
+ * written:
+ *
+ * | rule | declares | drew |
+ * |---|---|---|
+ * | `.switch` | `24px` | **32px** |
+ * | `.calls-tab` | `28px` | **32px** |
+ * | `.clip-tab` | `28px` | **32px** |
+ * | `.clip-clear` | `28px` | **32px** |
+ * | `.overview-disconnect` | `28px` | **32px** |
+ *
+ * The switch is the sharpest: its own comment says *"a 42×24 track, an 18px knob at 3px margin"*,
+ * its declared value is exactly that, and inside a 32px track the knob sat 3px from the top and
+ * 11px from the bottom — off-centre, on five panes, with the correct number written directly above
+ * it.
+ *
+ * Nothing could have caught it. `tsc` is clean, no selector collides, the declaration is right, and
+ * a screenshot of a toggle that is 8px too tall looks like a toggle. It was found by asking a
+ * different question — *which rules declare a height under the floor?* — rather than by looking.
+ */
+test('a control shorter than the button floor releases it explicitly', () => {
+  const offenders: string[] = [];
+  for (const sheet of SHEETS) {
+    for (const rule of declarationBlocks(read(sheet), sheet)) {
+      const height = declaredHeightPx(rule.body);
+      if (height === null || height >= BUTTON_FLOOR_PX) continue;
+      if (RELEASES_FLOOR.test(rule.body)) continue;
+      if (!looksLikeAControl(rule.selector)) continue;
+      offenders.push(`${rule.sheet}:${rule.line} ${rule.selector} — height: ${height}px`);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    'defect 90: `button, .button { min-height: 32px }` beats `height` in the cascade, so each of ' +
+      'these draws at 32px however tall it says it is. Add `min-height: 0` beside the height:\n  ' +
+      offenders.join('\n  '),
+  );
+});
+
+test('control_the floor check can see the defect it is named for', () => {
+  // The verbatim rule that shipped for months, restored for one assertion.
+  const shipped = `.switch {
+  flex: none;
+  width: 42px;
+  height: 24px;
+  padding: 0;
+  border-radius: 999px;
+}`;
+  const rule = declarationBlocks(shipped, 'fixture.css')[0]!;
+  assert.equal(declaredHeightPx(rule.body), 24, 'the check cannot read the declared height');
+  assert.equal(RELEASES_FLOOR.test(rule.body), false, 'the check thinks an unreleased rule is released');
+});
+
+test('control_the floor check clears the shapes that are fine', () => {
+  const fine = [
+    // Released — the fix.
+    `.switch { width: 42px; height: 24px; min-height: 0; }`,
+    // At or above the floor: unaffected by it.
+    `.toolbar-button { height: 32px; }`,
+    `.dialkey { height: 52px; }`,
+    // Not a control. A 7px dot is a span and inherits nothing from the button rule.
+    `.activity-dot { width: 7px; height: 7px; }`,
+    `.clip-step-dot { height: 24px; }`,
+    // The two the first version of this check wrongly flagged, verbatim: a span **inside** the
+    // switch, and a pseudo-element. Neither is a button and neither inherits the floor.
+    `.switch-knob { width: 18px; height: 18px; margin: 3px; }`,
+    `.pill-tab.unbuilt::after { width: 5px; height: 5px; }`,
+  ];
+  for (const css of fine) {
+    const rule = declarationBlocks(css, 'fixture.css')[0]!;
+    const height = declaredHeightPx(rule.body);
+    const flagged =
+      height !== null &&
+      height < BUTTON_FLOOR_PX &&
+      !RELEASES_FLOOR.test(rule.body) &&
+      looksLikeAControl(rule.selector);
+    assert.equal(flagged, false, `false positive on ${rule.selector}`);
+  }
+});
+
+test('the floor is still 32px, and this test knows it from the sheet rather than from memory', () => {
+  // A threshold typed from memory is a pass criterion quoting a string the code does not write —
+  // this file's own sibling failure. If someone changes the base rule, this goes red rather than
+  // guarding a number that no longer exists.
+  const base = declarationBlocks(read('styles.css'), 'styles.css').find(
+    (r) => r.selector === 'button, .button',
+  );
+  assert.ok(base, 'control: the base button rule was not found at all');
+  assert.match(base!.body, new RegExp(`min-height:\\s*${BUTTON_FLOOR_PX}px`));
+});

@@ -495,6 +495,7 @@ img#qr {
 
 .calls-tab {
   height: 28px;
+  min-height: 0;
   padding: 0 var(--space-5);
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
@@ -1170,6 +1171,7 @@ img#qr {
 .icon-button {
   width: 24px;
   height: 24px;
+  min-height: 0;
   display: grid;
   place-items: center;
   border-radius: var(--radius-control);
@@ -2600,6 +2602,7 @@ img#qr {
 .clip-tabs { display: flex; gap: var(--space-2); flex: 1; min-width: 0; }
 .clip-tab {
   height: 28px;
+  min-height: 0;
   padding: 0 var(--space-5);
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
@@ -2623,6 +2626,7 @@ img#qr {
 .clip-clear {
   flex: none;
   height: 28px;
+  min-height: 0;
   padding: 0 var(--space-5);
   border: 1px solid var(--destructive-border);
   border-radius: var(--radius-control);

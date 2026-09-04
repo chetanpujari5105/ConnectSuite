@@ -15931,3 +15931,131 @@ the link is encrypted and an SMS is not, and a badge on the message pane claims 
 `calls-compare.png`. Measured after: stage `400px` with `112 / 112` above and below, rows `56px` at
 `12px`, keys `52px`, six discs six distinct fills with the three `VENKY SIT` rows correctly sharing
 one. Mac suite **539 → 545**.
+
+---
+
+## Phase 7 · Slice 29 — the design pass: Settings, and defect 90 · 2026-09-05
+
+### Defect 90 — every control the design draws shorter than 32px has been drawing at 32px
+
+`button, .button { min-height: 32px }` is the app's control floor. Its own comment reasons about one
+direction only:
+
+> *"32px is the design's control height and the floor everything sits on; anything that needs to be
+> taller simply is."*
+
+**Nothing considered a control that needs to be shorter**, and `min-height` beats `height` in the
+cascade, always, silently. Measured in the running app, each routed to its own pane first:
+
+| rule | declares | drew |
+|---|---|---|
+| `.switch` | `24px` | **32px** |
+| `.calls-tab` | `28px` | **32px** |
+| `.clip-tab` | `28px` | **32px** |
+| `.clip-clear` | `28px` | **32px** |
+| `.overview-disconnect` | `28px` | **32px** |
+| `.icon-button` | `24px` | *not measurable — it draws at 0 height on every pane it appears on, which is a separate question and not this one* |
+
+The switch is the sharpest of them. Its own comment reads *"a 42×24 track, an 18px knob at 3px
+margin"*, its declared value is exactly that, and inside a 32px track the knob sat 3px from the top
+and **11px from the bottom** — off-centre, on five panes, with the correct number written directly
+above it.
+
+**Nothing in the repo could have caught it.** `tsc` is clean, no selector collides,
+`stylesheets.test.ts` had no opinion, and a screenshot of a toggle 8px too tall looks like a toggle.
+It was not found by looking; it was found by asking a different question — *which rules declare a
+height under the floor?* — of the loaded stylesheets in the running app.
+
+**The fix is `min-height: 0` on each of the six**, and the guard is in `stylesheets.test.ts`, which
+reads the floor **out of the base rule** rather than holding `32` as a literal: a threshold typed
+from memory is a pass criterion quoting a value the code does not write, which is a failure this
+file already records. Shown red by removing the `min-height: 0` from `.switch`; put back.
+
+#### The scan that found it was wrong twice first, and both faults are the ones this repo names
+
+**1. It saw 17 rules out of 760 and reported nothing wrong, confidently.** The walk asked
+`if (r.cssRules)` to decide whether a rule was a container. In Chromium a `CSSStyleRule` has a
+**truthy, empty** `cssRules` — CSS Nesting — so every ordinary rule was treated as a container,
+iterated over its zero children, and never examined. The output was a clean `[]`, which is the
+answer anyone would have hoped for.
+
+**2. Its first run was against a pane that was not routed**, so `querySelectorAll('.switch')`
+returned nothing and the scan reported no distorted controls. The control it was given —
+`document.styleSheets.length` — came back `3` and was **true and irrelevant**: it proved the sheets
+were readable and said nothing about whether the elements were there. Changing the control to
+`document.querySelectorAll('.switch').length` is what turned the second empty result into a visible
+contradiction (control `1`, findings `0`) and led to fault 1.
+
+**3. Five of the six then reported `drawn: 0`**, because they sit on panes that were hidden at the
+time. Zero is not a height; it is the instrument's own limit. Each was re-measured after routing to
+its own pane, and `.icon-button` — the one that still reads 0 — is recorded as **not measured**
+rather than folded into the table as a pass or a failure.
+
+#### And the guard's first version had two false positives
+
+It matched the control vocabulary as a **substring anywhere in the selector**:
+
+| flagged | what it is |
+|---|---|
+| `.switch-knob` (18px) | the `<span>` **inside** the switch — matched on "switch" |
+| `.pill-tab.unbuilt::after` (5px) | a 5px dot — matched on "tab" |
+
+Neither is a button and neither inherits the floor. The test is on the **trailing token** now — the
+last class in the selector, whole — and pseudo-elements are excluded outright. Both are fixtures.
+This is the same discipline the grid guard in Slice 27 needed, one slice later: a substring match
+over selector text finds the thing's children and its decorations.
+
+### Settings, measured against the design
+
+| | Was | Design | Now |
+|---|---|---|---|
+| grid gap | 24px | 16px | 16px — it was the only three-column pane in the app not using `--space-7` |
+| rail row | padded box, 34px, 10px radius | 38px, 11px radius, 12.5px | 38px / 11px / 12.5px |
+| rail row selection | grew a 1px border when picked, with `calc(… − 1px)` padding to undo the shift | — | a transparent border always present, colour only |
+| pane title | `--text-card-title`, 21px | 19px | 19px |
+| pane sub | 6px above, 20px below | flush under the title, 18px below | `0 0 18px` |
+| row hover | none | `.cs-row` hover | `rgba(255,255,255,.02)` |
+| toggle | 42×**32** | 42×24 | 42×24 (defect 90) |
+
+Columns were already the design's `200px / 1fr / 320px`, verified at **200 / 583 / 320**.
+
+**The selected rail row's `calc(… − 1px)` padding is worth naming as a shape rather than a bug.** It
+was compensation: the row grew a border on selection, every row below it shifted two pixels, and the
+padding was reduced by one to cancel it. A transparent border that is always present cannot shift
+anything and needs no compensation. Wherever a `calc(… − 1px)` appears next to a conditional border,
+it is the same thing.
+
+### What is *not* changed: the row copy
+
+The build's Settings descriptions run to two and three lines where the design's run to one — *"There
+is no update server. ConnectSuite has no account and talks to nothing but your phone, so there is
+nowhere for it to check."* against the design's *"Check for new versions in the background."* That
+makes the pane taller than the design's and pushes its last row below the fold.
+
+It is left alone. Those sentences are the *reason* beside each **Not yet**, they were written
+deliberately as rows G3/G4/G7 in `docs/design-departures.md`, and shortening them to match a
+mockup's rhythm would trade a true explanation for a shorter one. The pane scrolls and the sweep
+reports the rows **reachable, 0 stranded**; a long pane is allowed to be long.
+
+### The sweep accused a pane it should have stayed silent about
+
+`scripts/card-visibility-sweep.mjs` reported, for Photos:
+
+```
+undefined  (untitled)   top=0 onScreen=0   gone  (scroller none)
+```
+
+`gone` is the one verdict that file exists to raise the alarm on. It was not a stranded card — the
+Photos `.pane-sub` (`#photos-note`) is **empty until the first page of the album lands**, and the
+sweep's `(untitled)` fallback manufactured a name for a nameless node, which then could not be
+resolved back by that name.
+
+That is worse than the gap the file already documents. `files` reporting **NOT MEASURED** was an
+honest silence; this was a **false accusation**, produced by a fallback whose whole job was to be
+helpful. The fallback is removed; a heading with no text is not a card.
+
+**Evidence:** `docs/evidence/phase-7-design-2026-09-05/settings-build.png`, `settings-design.png`,
+`settings-compare.png` — shot on the **General** pane with `--prep`, because the build opens on
+Connection and the design opens on General, and a comparison of two different panes is not a
+comparison. Sweep after: **23 cards, 20 visible at rest, 3 reachable, 0 stranded.** Mac suite
+**545 → 549**.

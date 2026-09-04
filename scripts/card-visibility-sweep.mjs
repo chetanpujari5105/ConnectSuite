@@ -73,6 +73,20 @@ for (const screen of screens) {
   // `.pane-*`, `.clip-panel`, `.files-panel`, `.calls-log-panel`), and *that* is worth its own
   // line in the audit. What every pane does have is headings, which is what a person navigates by
   // and therefore the right thing to ask about.
+  /*
+   * A heading with no text is **not a card**, and reporting it as one is an instrument fault.
+   *
+   * The Photos pane's `.pane-sub` (`#photos-note`) is empty until the first page of the album
+   * lands. This sweep used to name it `(untitled)`, fail to resolve it back by heading text, and
+   * print `top=0 onScreen=0 gone (scroller none)` — a **stranded card**, which is the one verdict
+   * this file exists to raise the alarm on. It was a selector gap wearing the costume of the defect
+   * it hunts, which is worse than the gap this file already documents: `files` reporting NOT
+   * MEASURED was an honest silence, and this was a false accusation.
+   *
+   * The `(untitled)` fallback is what did it — it manufactured a name where there was none, so a
+   * nameless node became a nameable card and then could not be found again by that name. Removing
+   * the fallback is the fix; the filter below already drops anything with no name.
+   */
   const cards = JSON.parse(
     await probe.rawEvaluate(`(function(){
       var pane = document.querySelector('section[data-screen="${screen}"]');
@@ -80,7 +94,7 @@ for (const screen of screens) {
       var seen = [];
       return JSON.stringify(Array.from(heads).map(function (el, i) {
         var name = (el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 34);
-        return { index: i, name: name || '(untitled)', id: el.id || null };
+        return { index: i, name: name, id: el.id || null };
       }).filter(function (c) {
         if (!c.name || seen.indexOf(c.name) >= 0) return false;
         seen.push(c.name);
