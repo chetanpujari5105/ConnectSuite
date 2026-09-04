@@ -508,6 +508,24 @@ app.whenReady().then(() => {
   // would be blamed on the feature. Packaged builds never reach this.
   if (!app.isPackaged) debugSwitches();
 
+  /*
+   * The window comes first, and the order is load-bearing rather than tidy — D15.
+   *
+   * `loadIdentity` decrypts through `safeStorage`, and on an ad-hoc-signed build the Keychain ACL is
+   * pinned to a cdhash that changes with every rebuild, so macOS puts up a password dialog and
+   * **blocks the main process inside the call**. With the window created after it, a rebuilt app
+   * wrote its first log line and then nothing for 4m40s: the process was alive and bound to :9222,
+   * and there was no window, which reads as a crash rather than as a prompt.
+   *
+   * Creating it here does not remove the prompt — only a Developer ID does that, since a stable
+   * designated requirement is what makes the ACL match across rebuilds. It removes the symptom: the
+   * window is on screen, painted by its own renderer process, with the dialog over an app that
+   * visibly exists. Everything below still registers inside this same synchronous callback, so no
+   * `ipcMain` handler is late — the renderer's first `invoke` cannot be serviced until this callback
+   * returns either way.
+   */
+  createWindow();
+
   const identity = loadIdentity();
   selfName = identity.deviceName;
   selfFingerprint = identity.fingerprint;
@@ -813,7 +831,7 @@ app.whenReady().then(() => {
 
   tray = new Tray(nativeImage.createEmpty());
   refreshTray();
-  createWindow();
+  // The window is created at the top of this callback now, ahead of `loadIdentity` — see D15 there.
 
   if (store.get('autoConnect')) link.start();
 

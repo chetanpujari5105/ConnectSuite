@@ -14353,3 +14353,129 @@ Mac tests **462**, `tsc` clean on both projects, all six commit hooks green.
 - **The clipboard synthetic screenshot is labelled synthetic**, its `displaced` row carried
   `REDACTED-NEVER-DRAWN`, a DOM-wide search for that string returned `false`, and the pane was put
   back on the phone's real data with `refresh()` afterwards.
+
+---
+
+## Phase 7 · Slice 16 — the banner nobody could click: defect 83, and two instrument faults in the run that found it · 2026-09-04
+
+The first native notification test on hardware. **Check 1 passed** — one banner, correct content, no
+replay burst — and **check 2 failed**: the banner was clicked, it vanished, and the app stayed on
+Photos. Three different bugs produce that from outside, and they need three different fixes.
+
+### The three cases, and the reading that chose between them
+
+| | The case | How it would show |
+|---|---|---|
+| 1 | the click never reached the main process | nothing anywhere — **the click handler wrote no log line** |
+| 2 | it reached main, the route did not happen | app stays put |
+| 3 | it routed, the reveal found no row | app lands on Notifications, nothing highlighted |
+
+Case 3 was excluded outright by the user's own observation (the app stayed on Photos). Cases 1 and 2
+were separated by the **Dock badge**, which is upstream of everything else the handler does:
+
+```js
+native.on('click', () => {
+  this.unseen.delete(n.key);   // ← first statement
+  this.refreshBadge();         // ← app.setBadgeCount(unseen.size)
+  this.reveal(n.key);          // ← show, focus, then send('reveal-notification')
+});
+```
+
+| Reading | Value | Control, same run |
+|---|---|---|
+| `AXStatusLabel` on the Dock's ConnectSuite item, 10:20 | **1** | Finder → `missing value` |
+| same, 10:23 | **3** | Finder → `missing value` |
+| `→ notify` decisions since 10:14 | **3** — 10:14:04.726, 10:22:23.050, 10:22:37.705 | 27 in the whole file, all sessions |
+
+Badge equalled posts at both readings. `unseen` is decremented only by the click handler, by a
+phone-side removal, or by `markAllSeen` (focused **and** on Notifications — the app was on Photos
+throughout). `unseen.delete` cannot throw. **Case 1: the closure never ran.**
+
+The renderer half was then measured *by parts* in the packaged build, since the IPC hop cannot be
+injected over CDP — this proves what the handler would have done, not that it ran:
+`shell.route('notifications')` landed in **44 ms** (`stopped: settled`, so not a blocked no-op);
+**32** rows carried a `data-key`; and **32 of 32** keys re-found their own row through the handler's
+`CSS.escape` selector shape — including a WhatsApp key carrying `+`, `/`, `=` **and an embedded
+newline**, which was a fourth candidate wearing the same symptom.
+
+### The mechanism: lifetime, and the discriminator that chose it
+
+Two candidates, neither ruled out by the above: the `Notification` instance is unretained
+(`const native = …` is local, and a collected instance takes its listeners with it), or macOS never
+delivered the click to an ad-hoc-signed process launched outside LaunchServices.
+
+The discriminating stimulus was a banner clicked **within a second** rather than after minutes. It
+came back as: the window came to the front and switched to Notifications **by itself**, from
+minimised, with the Dock untouched — reported by the user, and corroborated in the log by a
+`com.whatsapp → already-visible` decision at 11:15:47.919, a line reachable only through
+`windowFocused && currentScreen === 'notifications'`.
+
+**Young banner delivered, old banner lost. The mechanism is object lifetime.**
+
+### Two instrument faults in this run, both mine, neither a product bug
+
+- **The badge baseline was invalidated before the first banner posted.** The link dropped at
+  10:31:31 (`no pong in 15s`) and reconnected at 11:09:18; the notification set is cleared on
+  disconnect, which cleared `unseen` and the badge with it. The promised 3 → 4 arithmetic was dead
+  on arrival, and the `missing value` the probe read six seconds after the banner was not a reading
+  about any click.
+- **The control was the wrong shape.** Finder returns `missing value` for `AXStatusLabel` too, so
+  once ConnectSuite read `missing value` a broken query and an empty badge gave the same answer. A
+  negative control cannot distinguish those; it needed **something with a badge in the same run**.
+  The earlier readings of `1` and `3` were sound for exactly this reason and the later one was not,
+  which is the whole distinction.
+
+Both are this file's own table with the instrument on the wrong end, and the second is the
+`CLAUDE.md` control rule broken by the person who had just quoted it.
+
+### Defect 83 — the fix, and what it costs
+
+`LiveNotifications<T>` in `src/shared/` holds **the unseen keys and their banner handles in one
+container**, because two containers holding one lifetime is defect 67's shape: the invariant would
+live in writes inside a class that needs Electron, where no test can reach it. The badge is
+`live.size`; retention is the same map. Released on click, on phone-side removal, and on
+`markAllSeen`; a re-post under a held key hands back the superseded banner, which is closed rather
+than left on screen unclickable.
+
+**The residual is chosen, not missed:** a banner still showing when its key leaves stops being
+clickable. Holding the handle longer means holding it until macOS reports the banner closed, and
+Electron's `close` is not guaranteed on macOS — a bounded silence against an unbounded leak in an
+app meant to run all day.
+
+**5 tests, shown red first.** The mutation is the two-container version this replaces — `release`
+returning the handle without deleting it. Four tests stay green and the invariant test fails at the
+first release, which is the point: the four describe the decision, the fifth describes the state.
+
+### Also in this build
+
+- **The click handler logs.** `click <package> — handle held | HANDLE ALREADY RELEASED …, N still
+  unseen — C clicked / P posted since launch`, written **before** the work, so a click that arrives
+  and then throws still leaves evidence that it arrived. This diagnosis depended on inference from a
+  number with four writers; it will not again.
+- **`createWindow()` now precedes `loadIdentity()`** (D15). It does not remove the Keychain prompt —
+  only a stable designated requirement does — it removes the *hung-with-no-window* symptom that made
+  a 4m40s block read as a crash. Verified in the shipped `app.asar`, not the source:
+  `main.js:466 createWindow()` immediately above `main.js:467 loadIdentity()`.
+- **The clock-skew claim is deleted rather than repaired.** Two comments said the measured skew was
+  logged every session; the file held **10** `Session ready` lines and **0** skew lines. Nothing on
+  the wire carries the phone's clock at the instant the cutoff is armed, so `CLOCK_SKEW_GRACE_MS` is
+  a judgement with no reading behind it, and now says so.
+
+Mac tests **467**, `tsc` clean on both projects.
+
+### The verdict, on hardware
+
+**Defect 83 is closed.** A banner that had been sitting **several minutes** was clicked, and the app
+routed and revealed the row. That is the pass criterion as written above and it is deliberately not
+the young-banner click, which already worked with the bug in place — a fix observed only in the
+state where the bug does not bite is not a fix that has been observed.
+
+**Fix 3 confirmed in the same launch**: the window is visibly behind the Keychain dialog, where
+before there was no window at all. It does not remove the prompt and was never going to.
+
+### Still not claimed
+
+Checks 3 (the badge clearing when the pane is focused) and 4 (no banner while sitting on that pane)
+are untested on this build. `already-visible` was observed once at 11:15:47.919 — but on the
+*previous* binary, as a side effect of the click diagnosis rather than as a test, and a decision
+observed in passing is not a check that was run.

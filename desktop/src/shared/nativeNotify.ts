@@ -56,8 +56,13 @@ export type NotifyDecisionValue = (typeof NotifyDecision)[keyof typeof NotifyDec
  * nothing here waits. Thirty seconds is wide enough for ordinary NTP drift between two devices and
  * far narrower than the age of anything sitting in a phone's shade.
  *
- * The measured skew is logged on every session, so a grace that is wrong is a number somebody can
- * read rather than a silence.
+ * **It is a judgement, not a measurement, and this comment used to claim otherwise** — it said the
+ * measured skew was logged on every session, and no line in this repo has ever written one. The
+ * session handshake carries no phone clock, so there is nothing to compare against at the instant
+ * the cutoff is armed; see `NativeNotifier.onSessionReady`. Thirty seconds is chosen against the
+ * two numbers it sits between — ordinary NTP drift, and the age of anything sitting in a shade —
+ * and a grace that turns out to be wrong will show up as a genuine notification suppressed as
+ * `replay`, in the per-reason tally, rather than as a skew reading.
  */
 export const CLOCK_SKEW_GRACE_MS = 30_000;
 

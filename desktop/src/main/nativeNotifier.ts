@@ -6,6 +6,7 @@ import {
   notifyDecision,
   refusalCopy,
 } from '../shared/nativeNotify';
+import { LiveNotifications } from '../shared/liveNotifications';
 import type { PhoneNotification } from '../shared/protocol';
 import { log } from './logger';
 
@@ -46,8 +47,15 @@ export class NativeNotifier {
   private windowFocused = false;
   private currentScreen = 'overview';
 
-  /** Keys posted natively and not yet seen in the pane. The badge is this set's size. */
-  private unseen = new Set<string>();
+  /**
+   * Keys posted natively and not yet seen in the pane, **each holding its own banner**. The badge is
+   * this registry's size.
+   *
+   * The handle is held because Electron delivers `click` through the instance and nothing in the
+   * platform keeps that instance alive — see {@link LiveNotifications}. Measured on 2026-09-04: a
+   * banner clicked minutes after posting was lost, one clicked within a second was delivered.
+   */
+  private live = new LiveNotifications<Notification>();
 
   /** Set by the first `failed`. Until then nothing is claimed — see the class comment. */
   private refusal: { message: string; atMs: number } | null = null;
@@ -61,6 +69,9 @@ export class NativeNotifier {
    */
   private tally: Record<string, number> = {};
 
+  /** Clicks delivered to this process. The denominator for it is `notify` in {@link tally}. */
+  private clicks = 0;
+
   constructor(
     private readonly reveal: (key: string) => void,
     private readonly soundEnabled: () => boolean,
@@ -69,8 +80,14 @@ export class NativeNotifier {
   /**
    * A session became ready. Everything the phone replays now is older than this instant.
    *
-   * The skew between the two clocks is logged rather than corrected: a grace that turns out to be
-   * wrong should be a number somebody can read, not a silence.
+   * **No skew is measured here, and this comment used to say one was.** It claimed the skew between
+   * the two clocks was logged every session so that a wrong grace would be a number somebody could
+   * read — over ten `Session ready` lines and zero skew lines in the same file. Measuring it needs
+   * the phone's clock at a known instant on this one, and nothing on the wire carries it: the only
+   * phone timestamps that reach here are each notification's own `whenMs`, which is when the
+   * notification happened rather than when the session began. So {@link CLOCK_SKEW_GRACE_MS} is a
+   * fixed 30 s with judgement behind it and no reading, which is a smaller claim than the one this
+   * comment was making. Adding a timestamp to the session handshake is what would change that.
    */
   onSessionReady(nowMs = Date.now()): void {
     this.sessionReadyAtMs = nowMs;
@@ -95,19 +112,30 @@ export class NativeNotifier {
 
   /** The pane is in front of the person, so nothing is outstanding any more. */
   private markAllSeen(): void {
-    if (this.unseen.size === 0) return;
-    this.unseen.clear();
+    const released = this.live.releaseAll();
+    if (released.length === 0) return;
     this.refreshBadge();
+    log.info('native-notif', `pane is in front — ${released.length} marked seen, ${this.tallyLine()}`);
   }
 
   /** Dropped with the set the pane holds — a badge outliving its rows counts nothing real. */
   onCleared(): void {
-    this.unseen.clear();
+    this.live.releaseAll();
     this.refreshBadge();
   }
 
+  /**
+   * The phone removed it, so it stops being outstanding here and its handle is let go.
+   *
+   * A banner still on screen at this instant stops being clickable — the same defect in a narrower
+   * window, and it is chosen rather than missed. Holding the handle longer means holding it until
+   * macOS reports the banner closed, and Electron's `close` is not guaranteed to arrive on macOS, so
+   * the alternative trades a bounded silence for an unbounded leak in an app meant to run all day.
+   * Closing the banner here instead would be a product change — a notification dismissed on the
+   * phone vanishing from the Mac — and is not one to make inside a defect fix.
+   */
   onRemoved(key: string): void {
-    if (this.unseen.delete(key)) this.refreshBadge();
+    if (this.live.release(key)) this.refreshBadge();
   }
 
   /**
@@ -170,7 +198,25 @@ export class NativeNotifier {
     });
 
     native.on('click', () => {
-      this.unseen.delete(n.key);
+      /*
+       * Logged first, and logged at all.
+       *
+       * This handler used to write nothing, and its only trace was the Dock badge — a number with
+       * four writers, two of which fired during the run that tried to read it. A click that never
+       * arrived and a click whose reveal failed were the same observation from outside, and the
+       * three candidate bugs behind them are three different fixes. The line goes before the work so
+       * a click that arrives and then throws still leaves evidence that it arrived.
+       *
+       * `held` is the discriminator that matters now: a click for a key this registry no longer
+       * holds is the failure this retention exists to prevent, arriving by another route.
+       */
+      const held = this.live.release(n.key);
+      this.clicks += 1;
+      log.info(
+        'native-notif',
+        `click ${n.package} — ${held ? 'handle held' : 'HANDLE ALREADY RELEASED (seen, removed, or lost)'}, ` +
+          `${this.live.size} still unseen — ${this.clicks} clicked / ${this.tally[NotifyDecision.NOTIFY] ?? 0} posted since launch`,
+      );
       this.refreshBadge();
       // Routing to the pane and stopping is doing nothing — the deep-link lesson. The row itself
       // is revealed, through the same mechanism the palette's deep links use.
@@ -195,7 +241,15 @@ export class NativeNotifier {
     });
 
     native.show();
-    this.unseen.add(n.key);
+    /*
+     * Retained here, and this line is the fix.
+     *
+     * A second post under one key is ordinary — a messaging app keeps one notification per
+     * conversation and advances it, which {@link notifyDecision} deliberately treats as a new event.
+     * Only one handle can be held per key, so the banner this one supersedes is closed rather than
+     * left on screen with nothing able to deliver its click.
+     */
+    this.live.retain(n.key, native)?.close();
     this.refreshBadge();
   }
 
@@ -203,7 +257,7 @@ export class NativeNotifier {
     // Counts what you have not seen, never what the phone holds. A badge reading `14` because a
     // shade holds 14 is permanent furniture, and permanent furniture stops being read. This is the
     // Mac-side "seen in this pane" that departure row N2 says such a thing would have to be.
-    app.setBadgeCount(this.unseen.size);
+    app.setBadgeCount(this.live.size);
   }
 
   private tallyLine(): string {
