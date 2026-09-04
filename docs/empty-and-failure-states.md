@@ -177,6 +177,35 @@ The only pair in the whole set that is already consistent.
 
 ---
 
+## Where these sentences sit — the below-the-fold sweep
+
+Asked of every pane at **1440 × 865, unzoomed**, with `scripts/card-visibility-sweep.mjs`. It is
+worth having in the same document as the copy, because a sentence below the fold and a sentence that
+does not exist are the same sentence to a reader.
+
+**23 blocks: 21 visible at rest, 2 reachable by scrolling, 0 stranded.**
+
+| | |
+|---|---|
+| **Overview → Device status** | `top=865` in an 865 px window — entirely below the fold at rest, reachable by scrolling `#page` |
+| **Mirror → Advanced** | `top=480`, 99% visible; clipped by a few pixels |
+
+Nothing is unreachable, which is the floor rather than the finding. **The finding is that
+reachability is not the bar for a card that carries a state** — defect 85 was reachable and still
+failed, because a person asking *why is nothing here* does not scroll to discover whether an answer
+exists. Neither of the two above carries a state sentence: Device status draws its own three states
+*inside* the visible card once scrolled to, and Advanced is a settings group. So no state sentence in
+this document is currently below the fold.
+
+**A second finding fell out of the sweep and is the designer's, not a defect.** The panes use
+**seven different container conventions** for what is visually one thing — `.card`, `.side-card`,
+`.pane-*`, `.clip-panel`, `.files-panel`, `.calls-log-panel`, `.files-rail-title`. The first version
+of the sweep counted `.card` and reported *"no cards"* for nine of thirteen panes, which is a fact
+about a selector rather than about those panes. It matters here because a vocabulary decision that
+says *"the empty state goes in the card header"* has seven places to land.
+
+---
+
 ## What was excluded, and why
 
 - **Settings row descriptions** (`renderer.ts` 1167–1570) — explanatory copy for a control, not a

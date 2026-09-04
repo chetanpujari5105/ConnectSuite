@@ -15401,3 +15401,84 @@ Storage reads `low` correctly: **2.8% free**, below the 10% threshold. Screensho
   `Method put in org.json.JSONObject not mocked`. The house type is kotlinx `JsonObject`, as
   `ClipboardPayloads` already uses. The rule this module carries about Android statics in a pure
   file extends to `org.json`, which does not look like an Android class and is one.
+
+---
+
+## Phase 7 · Slice 25 — the below-the-fold sweep, and two rules with enforcement · 2026-09-05
+
+### 1 · Where every card sits, measured
+
+`scripts/card-visibility-sweep.mjs`, every pane, **1440 × 865, unzoomed**.
+
+```
+23 blocks: 21 visible at rest, 2 reachable by scrolling, 0 stranded.
+
+Overview → Device status   top=865   entirely below the fold, reachable via #page
+Mirror   → Advanced        top=480   99% visible, clipped by a few pixels
+```
+
+**Nothing is stranded**, which is the floor and not the finding. The finding is that neither of the
+two below-the-fold blocks carries a *state* sentence — Device status draws its three states inside
+the card, Advanced is a settings group — so **no sentence in the vocabulary audit is currently below
+the fold**. Defect 85 was reachable and still failed; reachability is the floor, and a state
+sentence has to be visible at rest.
+
+### 2 · Four instrument faults in one sweep, and each was caught by a control
+
+| | Reported | Actually |
+|---|---|---|
+| `rawEvaluate` without the prelude | `__probe is not defined` on every card | the helpers are installed by `read`/`presence`, not by the raw transport |
+| counting `.card` | *"no .card elements"* on **9 of 13 panes** | a fact about a **selector**. The panes use **seven** container conventions |
+| `/\s+/g` inside a template literal | headings rendered `Sam ung`, `La t 7 day` | `\s` in a template literal resolves to a bare `s`, so the regex was `/s+/g` and **every letter s became a space** |
+| `files` — no heading matched | *"no headings found"* | a seventh convention, `.files-rail-title`. Its pane ends at 648 in an 865 window and was never at risk |
+
+The third is the one to keep: **the instrument silently rewrote the data it was reporting**, and the
+only reason it was caught is that a phone model with an `s` in it was in the output. `Samsung` →
+`Sam ung` is visible; a pane called `Overview` would have come through untouched and the fault would
+have shipped into the audit.
+
+The second produced the sweep's other finding, which is the designer's: **seven container
+conventions for what is visually one thing** — `.card`, `.side-card`, `.pane-*`, `.clip-panel`,
+`.files-panel`, `.calls-log-panel`, `.files-rail-title`. A vocabulary decision that says *"the empty
+state goes in the card header"* has seven places to land.
+
+### 3 · `__probe.onScreen` — one function, not a probe per sitting
+
+Defect 85 measured a card at 828 px in an 865 px window. Three days later O4's card landed at
+1007 px **in the pane being fixed**, and the probe written to check it scrolled the pane's own
+`section`, read no movement, and reported the card unreachable. **The section is not the scroller** —
+every pane's section has `scrollHeight === clientHeight`; the overflow is on `#page`.
+
+`onScreen` **finds** the scroller by walking ancestors and reading computed `overflow-y`, and
+returns `visible` / `reachable` / `stranded` — three outcomes, because *off screen right now* is not
+one answer. `scripts/probe.test.mjs` still passes at 18.
+
+### 4 · The debt list can deny something now
+
+`check-protocol-spec.mjs` printed `debt: battery.state — Unscheduled. No handler on either side` on
+every run for a phase. `docs/RESUME.md` then said it was *"already on the wire"*, and the O4 sitting
+opened on that. **The list was right and nobody read it.**
+
+Printing it harder fixes nothing: a debt list is printed at the end of a **passing** run, and the
+output of a passing check is not read — that is what passing is for. And the false claim was in
+prose, which no code checker looks at.
+
+`scripts/check-debt-claims.mjs` reads the debt list out of the spec checker so there is one list and
+not two, and refuses a commit whose prose names a debt-listed type *and* claims it works *and* does
+not also say it is owed. **Its first fixture is the verbatim `RESUME.md` sentence that got through**,
+with `battery.state` restored to the debt list for the length of one run — because a guard never run
+against the failure it was written for has not been tested against the only case it is known to have
+missed. 5 fixtures, both directions, plus an instrument-failure case that must pass rather than deny.
+
+Eighth commit hook.
+
+### 5 · The audit's own numbers were wrong, four times
+
+`docs/empty-and-failure-states.md` claimed 24, 15 and 6 sentences in groups whose tables held 28, 19
+and 9; a total of 86 against 83; and 17 panes. **In the one document whose entire job is to be
+counted** — and it understated its own largest group by four.
+
+The pane count then went wrong twice more *while being fixed*: **24** from counting files rather
+than panes, then **23** from a checker that assumed every table had three columns when group 7 has
+two. It is **19**. `scripts/check-state-vocabulary.mjs` derives every number from the tables and
+counts columns rather than assuming them; seventh commit hook.

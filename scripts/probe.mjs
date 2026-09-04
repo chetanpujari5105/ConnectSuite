@@ -70,7 +70,76 @@ globalThis.__probe = {
     return el;
   },
   count: function (sel) { return document.querySelectorAll(sel).length; },
-  text: function (sel) { return (globalThis.__probe.one(sel).textContent || '').replace(/\\s+/g, ' ').trim(); }
+  text: function (sel) { return (globalThis.__probe.one(sel).textContent || '').replace(/\\s+/g, ' ').trim(); },
+
+  /*
+   * The scrolling ancestor of an element — FOUND, never assumed.
+   *
+   * Written because the assumption was wrong twice in one week, both times costing a false
+   * finding. The Files pane's probe scrolled \`section[data-screen=...]\` and read no movement;
+   * O4's probe did the same and reported a card unreachable. Neither section is the scroller:
+   * \`#page\` is, and every pane's section reports scrollHeight === clientHeight because the
+   * overflow is one level up. A probe that scrolls the wrong node gets a stationary rect and a
+   * confident wrong answer, which is this repo's most-repeated failure with a CSS costume.
+   *
+   * So: walk up, read the computed overflow, and take the first ancestor that can actually
+   * scroll. Returns null when nothing can, which is a real answer and not a failure.
+   */
+  scroller: function (el) {
+    var node = el.parentElement;
+    while (node && node !== document.documentElement) {
+      var overflow = getComputedStyle(node).overflowY;
+      if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight) return node;
+      node = node.parentElement;
+    }
+    return null;
+  },
+
+  /*
+   * Is this element on screen, and if not, can a person get to it?
+   *
+   * **The one thing every pane uses**, replacing the per-sitting geometry probe. Defect 85 was a
+   * card 828px down an 865px window; three days later O4 landed a card at 1007px in the same
+   * window, in the pane being fixed. Twice is a pattern, and a rule nobody can call is a rule
+   * that gets re-derived per sitting and re-derived wrongly.
+   *
+   * It reports THREE outcomes, because "not visible right now" is not one answer:
+   *
+   *   visible    — on screen as the pane sits
+   *   reachable  — off screen, and scrolling its scroller brings it fully into view
+   *   stranded   — off screen and scrolling does not help. This is the defect.
+   *
+   * It restores the scroll position it found, so a reading does not leave the pane somewhere the
+   * next reading did not expect.
+   */
+  onScreen: function (sel) {
+    var el = globalThis.__probe.one(sel);
+    var h = window.innerHeight;
+    var seen = function () {
+      var r = el.getBoundingClientRect();
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height),
+               fraction: r.height ? +(Math.max(0, Math.min(r.bottom, h) - Math.max(r.top, 0)) / r.height).toFixed(2) : 0 };
+    };
+    var at_rest = seen();
+    if (at_rest.fraction >= 1) {
+      return { verdict: 'visible', atRest: at_rest, viewportH: h, scrolledBy: 0, scroller: null };
+    }
+    var box = globalThis.__probe.scroller(el);
+    if (!box) {
+      return { verdict: 'stranded', atRest: at_rest, afterScroll: at_rest, viewportH: h,
+               scrolledBy: 0, scroller: null, why: 'no scrolling ancestor — scrolling cannot reach it' };
+    }
+    var held = box.scrollTop;
+    el.scrollIntoView({ block: 'center' });
+    var after = seen();
+    var moved = box.scrollTop - held;
+    box.scrollTop = held;
+    var name = box.id ? '#' + box.id : box.tagName.toLowerCase() + '.' + String(box.className || '').split(' ')[0];
+    return {
+      verdict: after.fraction >= 1 ? 'reachable' : 'stranded',
+      atRest: at_rest, afterScroll: after, viewportH: h, scrolledBy: moved, scroller: name
+    };
+  }
 };
 'ok'
 `;

@@ -1317,6 +1317,32 @@ damage on the user's own device or nearly recorded a false result.
   vanished wall. **Scope: reads whose numbers get written down.** Ad-hoc poking stays ad-hoc, and
   widening it further is how people start routing around it.
 
+- **Whether a card is on screen is one function every pane calls, not a probe written per sitting.**
+  `__probe.onScreen(selector)` in `scripts/probe.mjs`; `scripts/card-visibility-sweep.mjs` runs it
+  over every pane.
+
+  It exists because the same measurement was re-derived twice in one week and **re-derived wrongly
+  the second time**. Defect 85 was excellent copy 828 px down an 865 px window — 21% on screen, in
+  the column nobody reads. Three days later the O4 card landed at 1007 px in the same window, *in
+  the pane being fixed*, and the probe written to check it scrolled `section[data-screen="…"]`, read
+  no movement, and reported the card unreachable. **The section is not the scroller** — every pane's
+  section has `scrollHeight === clientHeight` because the overflow is one level up, on `#page`. The
+  instrument produced a stationary rect and a confident wrong answer.
+
+  `onScreen` therefore **finds** the scroller by walking ancestors and reading computed
+  `overflow-y`, never assumes it, and reports **three** outcomes rather than two:
+
+  | | |
+  |---|---|
+  | `visible` | on screen as the pane sits |
+  | `reachable` | off screen, and an ordinary scroll brings it fully into view |
+  | `stranded` | off screen and scrolling does not help — the defect |
+
+  The middle one is not a fault: a long pane is allowed to be long. What defect 85 shows is the
+  sharper rule — **a card carrying a *state* must be visible at rest, not merely reachable**,
+  because a person asking "why is nothing here" does not scroll to find out whether an answer
+  exists. Reachability is the floor; a state below the fold is still a defect.
+
 - **The instrument gets a control before the reading does — and the DOM is an instrument.**
   The rule above is usually applied to a device or a provider. It applies unchanged to the thing
   drawing the UI, and it was broken twice in one sitting on 2026-08-31, in both directions:
@@ -1735,6 +1761,47 @@ damage on the user's own device or nearly recorded a false result.
   `OnboardingCopy.kt` so it could be enumerated, and `app/src/test` created so something could read
   it. The eight tests came after, and the drift guard exists to stop the copy leaking back into the
   screen where nothing can reach it.
+
+- **A debt list is read only if something reads it. A correct list nobody consults costs exactly
+  what an empty list costs.**
+
+  `check-protocol-spec.mjs` printed `debt: battery.state — Unscheduled. No handler on either side`
+  on **every run for a whole phase**. The list was correct, complete, and in the output every time.
+  Then `docs/RESUME.md` said the type was *"already on the wire"*, a sitting opened on that premise,
+  and its first hour went on discovering that the wire did not exist. **Nothing was wrong with the
+  list.** It was ignored, which is the only failure mode a list has.
+
+  **Printing it harder would not have helped, and that is the part worth understanding.** The debt
+  list is printed at the end of a **passing** run, and nobody reads the output of a check that
+  passes — that is what passing is *for*. Colour, ordering and volume change nothing, because the
+  reader is not there. And the false claim was not in code at all; it was in prose, which no code
+  checker looks at.
+
+  So the rule is not *make the list louder*:
+
+  > **A debt entry has to be able to deny something. A list that can only inform is decoration.**
+
+  And the moment to deny is **not** when the debt is created — creating it is deliberate and fine.
+  It is the moment somebody writes a sentence that contradicts it, because that is when a person is
+  present, deciding, and can be told. `scripts/check-debt-claims.mjs` is that: it reads the debt
+  list out of the spec checker so there is one list and not two, scans `CLAUDE.md` and `docs/` for a
+  sentence that names a debt-listed type *and* claims it works, and refuses the commit.
+
+  **Its discriminator is the one this file has now needed four times.** A guard searching prose for
+  a banned name matches the paragraph *recording* the ban — the entry above, this paragraph, the
+  checker's own header. So a sentence violates only when it names the type, claims it works, and
+  does **not** also say it is owed; claim words and debt words are both enumerated, and
+  `check-debt-claims.test.mjs` carries fixtures for both directions plus an instrument-failure case.
+
+  **The fixture that matters is the first: the verbatim sentence that actually got through.** A
+  guard written after a failure and never run against that failure has not been tested against the
+  only case it is known to have missed — so the test restores `battery.state` to the debt list for
+  the length of one run and asserts the real `RESUME.md` sentence is denied.
+
+  The general form, past this repo: **every list of known-incomplete things — a debt list, a TODO
+  register, a deferred column, a known-issues file — has to name the claim it invalidates, and
+  something has to check claims against it.** Otherwise the list records what was known at the
+  moment it was written, read by the person who wrote it and by nobody after.
 
 - **A rule that matters enough to write down is a rule that needs an enforcement point.** Writing
   it in a doc is the start of the job, not the end of it. Ask, in the same sitting: what would have
