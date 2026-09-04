@@ -15482,3 +15482,139 @@ The pane count then went wrong twice more *while being fixed*: **24** from count
 than panes, then **23** from a checker that assumed every table had three columns when group 7 has
 two. It is **19**. `scripts/check-state-vocabulary.mjs` derives every number from the tables and
 counts columns rather than assuming them; seventh commit hook.
+
+## Phase 7 · Slice 26 — defect 87: the app window did not fit the display it opened on · 2026-09-05
+
+Reported from the user's screen at 12:47: the window taller than the display, the title bar and the
+top of the device card sliced off, and the right-hand column and the dock appearing to render
+*outside* the window frame with nothing behind them.
+
+**Three readings before any change, because the report names two different bugs that produce one
+screenshot** — a window genuinely larger than the screen and clipped by it, or panes painting
+outside the `BrowserWindow`'s own bounds.
+
+### Defect 87 — the app window did not fit the display it opened on
+
+#### 1. What is requested, against what the display actually offers
+
+`screen.getAllDisplays()`, read through Electron's own module rather than `system_profiler`, because
+the fix consumes this API and a reading taken through a different client is a reading about a
+different mechanism:
+
+| Display | Bounds | Work area | Holds 1440x920 |
+|---|---|---|---|
+| 1, built-in, **primary** | 1512 x 982 | **1512 x 865** | **no — 55px too tall** |
+| 2, external | 1920 x 1080 | 1920 x 1050 | yes |
+
+865 is 982 less a 33px menu bar and an 84px Dock. `createWindow` asked for a flat `1440 x 920` with
+no reference to either display.
+
+#### 2. Which of the two bugs it is
+
+**Not the panes.** All 3675 laid-out elements were measured against the viewport: **30 sit past it
+and all 30 are contained by an `overflow:hidden` ancestor** — 21 under `#page`, which is the
+scroller, and the rest the ambient blobs at their deliberate `inset:-10%`. **Zero paint past the
+window edge.** `html`, `body` and `.app-window` are each `height:100%; overflow:hidden`, so this is
+what the stylesheet predicts; the point is that it was measured rather than deduced.
+
+So it is the window. And the window was **being rescued by AppKit**, which is why nothing in this
+repo had ever noticed:
+
+```
+REQUEST 1440x920 on display 1 (workArea 1512x865) -> GRANTED 1440x865   heightLost=55
+REQUEST 1440x920 on display 2 (workArea 1920x1050) -> GRANTED 1440x920  heightLost=0
+```
+
+`constrainFrameRect:toScreen:` shrinks an oversized window to the visible frame, so the window that
+appeared was 865 tall and looked deliberate.
+
+**A hypothesis was raised and refuted, and it is recorded because refuting it is the finding.** The
+obvious mechanism for the user's screenshot is a window born 920 tall on the external display and
+then moved to the built-in. It is wrong: AppKit **does** re-constrain on move, and on `setBounds`
+with an explicitly oversized height. The instrument could have shown either — a re-constraining
+AppKit reports 865, a permissive one reports 920 — and it reported 865 on every route:
+
+```
+born on big display  -> {"x":1522,"y":40,"width":1440,"height":920}
+moved to small       -> {"x":10,"y":33,"width":1440,"height":865}   NOT reproduced
+setBounds 920 on small -> {"x":10,"y":33,"width":1440,"height":865} NOT representable
+```
+
+**So the user's exact screenshot was not reproduced from here, and this slice does not claim it
+was.** What is established is the defect underneath it: the app requests a size 55px taller than the
+display it opens on by default, and the only thing standing between that and a clipped window is a
+platform behaviour this app neither owns nor invokes. AppKit applies it when *it* sets the frame; it
+does not fire when the work area shrinks under a window that is already open — the Dock un-hiding,
+a display disconnecting, Stage Manager or Split View claiming space. Those routes were not driven
+and are named rather than claimed.
+
+#### 3. Dev run or packaged build
+
+**Both.** The packaged `ConnectSuite.app` was opened by parsing its `app.asar` header and reading
+`dist/main/main.js` out of it — the matched lines, not a count, since a text search over a build
+artifact matches the prose about the claim:
+
+```
+259: width: 1440,
+260: height: 920,
+261: minWidth: 1100,
+262: minHeight: 700,
+```
+
+No `workArea`, no `getDisplay*` anywhere in the file. Identical constants, identical absent clamp.
+This is not a dev-only fault and D14 does not apply.
+
+#### The fix
+
+`src/shared/windowGeometry.ts` — pure arithmetic in the electron-free layer, the same seam
+`floatGeometry` uses, which learned this exact lesson in Phase 2 and recorded it: *"clamping drag
+alone is not enough."* The detached mirror window has derived its size from the available height
+since then; the main window, which every pane inherits, never did.
+
+The design's size is a **maximum**, capped per axis independently, so a short display costs height
+and not width. **The minimums are capped too**, and that is the half that would have survived the
+obvious fix: leaving `minHeight: 700` on a display with 600 points of work area hands Electron a
+contradiction and the minimum wins, reintroducing the defect by a different route on exactly the
+small displays the change is for.
+
+#### Verification
+
+Unit: 8 tests, written against the failure and against the two measured work areas as facts rather
+than examples. **Three mutations, each red on the tests named for it**, green restored at 523:
+
+| Mutation | Red |
+|---|---|
+| `sizeFor` returns the design unconditionally — *the original bug* | **4 tests**, incl. "the built-in display no longer receives a window taller than its work area" |
+| `minimumsFor` ignores the fitted size | 1 — "the resize minimums cannot force a window taller than the screen" |
+| `positionFor` pins to the origin instead of centring | 1 — "positionFor centres rather than pinning to the origin" |
+
+End-to-end on the display that caused it, calling the product's **own compiled** `fitWindow` with
+only the display choice varied:
+
+```
+workArea  : {"x":0,"y":33,"width":1512,"height":865}
+fitWindow : {"x":36,"y":45,"width":1440,"height":841} min={"width":1100,"height":700}
+granted   : {"x":36,"y":45,"width":1440,"height":841}
+unchanged by AppKit: true          ← we fit it ourselves; no rescue was needed
+WHOLE WINDOW INSIDE WORK AREA: true
+  top vs menu bar : 12px clear
+  bottom vs Dock  : 12px clear
+```
+
+And in the running app, agreed by three independent instruments — the app's own log, CDP through
+`scripts/probe.mjs`, and System Events:
+
+```
+[window] asked 1440x920 at (1752,95); got 1440x920 at (1752,95) on display 2
+         (work area 1920x1050) — granted as requested; fits work area: true
+System Events -> 1752, 95, 1440, 920
+```
+
+**A disagreement between two of those is what produced the third.** The first relaunch logged
+`opened 1440x920` while CDP and System Events both read `1436x865` on the built-in — the window had
+been moved between launch and probe. The log line was reporting the **request**, which is the fault
+this file already carries about a probe reporting bytes queued as bytes delivered. `ready-to-show`
+now logs asked-beside-got with the display it landed on, so a window the server changes says so.
+
+`scripts/window-fit-probe.mjs` is kept, through `probe.mjs` with a required control: it is the one
+instrument that separates the two faults, and the report will recur.

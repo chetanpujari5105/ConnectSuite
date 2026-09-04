@@ -380,6 +380,26 @@ export async function openProbe({ port = 9222, endpoint = 'http://localhost', us
     ws.onerror = () => reject(new Error(`probe: could not open ${page.webSocketDebuggerUrl}`));
   });
 
+  /**
+   * One CDP command over the single socket. `evaluate` and `rawCapture` are both built on it.
+   *
+   * Kept private and unexported: the rule `probe.test.mjs` enforces is that there is **one
+   * transport**, and widening this into a general escape hatch would defeat it. The two things
+   * built on it are named, and a third needs a reason written down here first.
+   */
+  const send = (method, params) =>
+    new Promise((resolve, reject) => {
+      const id = ++nextId;
+      pending.set(id, (msg) => {
+        if (msg.error) {
+          reject(new Error(`probe: ${method} failed — ${msg.error.message ?? JSON.stringify(msg.error)}`));
+          return;
+        }
+        resolve(msg.result);
+      });
+      ws.send(JSON.stringify({ id, method, params }));
+    });
+
   const evaluate = (expression) =>
     new Promise((resolve, reject) => {
       const id = ++nextId;
@@ -418,6 +438,24 @@ export async function openProbe({ port = 9222, endpoint = 'http://localhost', us
      * in `probe.test.mjs` is that there is **one transport**, not that there is one caller.
      */
     rawEvaluate: evaluate,
+
+    /**
+     * A PNG of the page, base64, for `shot.mjs`.
+     *
+     * A picture is not a reading and nothing here quotes a pixel — which is exactly why it does not
+     * go through [read]: a `control` on an image would be theatre. The preconditions that make a
+     * shot comparable (not zoomed, the routed pane is the visible one) are `shot.mjs`'s, taken
+     * through `act` and `rawEvaluate`, and they **gate the capture** rather than sitting beside it.
+     */
+    rawCapture: async ({ clip } = {}) => {
+      const result = await send('Page.captureScreenshot', {
+        format: 'png',
+        captureBeyondViewport: Boolean(clip),
+        ...(clip ? { clip } : {}),
+      });
+      return result.data;
+    },
+
     close: () => ws.close(),
   };
 }

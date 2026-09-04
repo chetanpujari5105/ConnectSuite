@@ -50,8 +50,8 @@
  * lights up whenever you click it competes with the picture it exists to show.
  */
 .float-frame.focused {
-  border-color: rgba(139, 107, 255, 0.34);
-  box-shadow: 0 0 0 1px rgba(139, 107, 255, 0.14), 0 26px 60px rgba(0, 0, 0, 0.56);
+  border-color: rgba(124, 107, 255, 0.34);
+  box-shadow: 0 0 0 1px rgba(124, 107, 255, 0.14), 0 26px 60px rgba(0, 0, 0, 0.56);
 }
 
 /* ---- Title bar ---------------------------------------------------------------------------- */

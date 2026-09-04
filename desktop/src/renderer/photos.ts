@@ -153,6 +153,125 @@ function clockOf(ms: number): string {
 }
 
 /**
+ * The heading over one day's photos — `Today`, `Yesterday`, `Saturday`, `14 May 2024`.
+ *
+ * `nowMs` is a parameter rather than a `Date.now()` inside, and that is the whole reason this
+ * function is testable at all. `CLAUDE.md`'s worked example for defect 67 is a field whose value
+ * the test supplies by hand while the product fills it in from somewhere a test cannot reach — the
+ * diagnostic being *what writes this, and is that code in the test's reach?* Here the answer is
+ * "the caller", every caller is in this file, and the boundary a test needs to sit either side of
+ * is midnight, which is not reachable by waiting.
+ *
+ * Midnight is local and computed by `setHours(0,0,0,0)`, not by subtracting 86,400,000 — a day is
+ * not always 24 hours, and on the two days a year it is not, arithmetic on milliseconds puts
+ * yesterday's photos under `Today`.
+ */
+function dayHeading(dateMs: number, nowMs: number): string {
+  const midnight = new Date(nowMs);
+  midnight.setHours(0, 0, 0, 0);
+  const startOfToday = midnight.getTime();
+  const startOfYesterday = new Date(startOfToday - 1).setHours(0, 0, 0, 0);
+
+  if (dateMs >= startOfToday) return 'Today';
+  if (dateMs >= startOfYesterday) return 'Yesterday';
+
+  // Inside the last week, a weekday name is what a person actually holds in their head. Beyond it,
+  // a weekday is ambiguous and a date is not.
+  const sixDaysBack = new Date(startOfToday);
+  sixDaysBack.setDate(sixDaysBack.getDate() - 6);
+  if (dateMs >= sixDaysBack.getTime()) {
+    return new Date(dateMs).toLocaleDateString([], { weekday: 'long' });
+  }
+
+  const then = new Date(dateMs);
+  return then.toLocaleDateString([], {
+    day: 'numeric',
+    month: 'long',
+    // The year only when it is not this one — "14 May 2024" in the design, "14 May" this year.
+    ...(then.getFullYear() === new Date(nowMs).getFullYear() ? {} : { year: 'numeric' }),
+  });
+}
+
+/**
+ * The items, cut into the day-groups the design draws, **in the order they arrived**.
+ *
+ * It does not sort. `media.list` already returns `date DESC, id DESC` and the pager's whole
+ * correctness argument rests on that ordering being the phone's; re-sorting here would put a second
+ * expression of the same rule in a second place, which is the mistake `CLAUDE.md` names as the one
+ * that makes a test assert a copy. A group therefore closes as soon as the heading changes, and a
+ * day that appears twice in the stream would draw twice — which is a visible defect report rather
+ * than a silently repaired one.
+ */
+function groupByDay(
+  items: readonly MediaItemRow[],
+  nowMs: number,
+): Array<{ heading: string; items: MediaItemRow[] }> {
+  const groups: Array<{ heading: string; items: MediaItemRow[] }> = [];
+  for (const item of items) {
+    const heading = dayHeading(item.dateMs, nowMs);
+    const open = groups[groups.length - 1];
+    if (open && open.heading === heading) open.items.push(item);
+    else groups.push({ heading, items: [item] });
+  }
+  return groups;
+}
+
+/**
+ * The second line under an album name, when the rail would otherwise draw the same name twice.
+ *
+ * ### What was actually on screen, and what it turned out to be
+ *
+ * This phone's rail draws **150 albums**, and among them two rows both reading *WhatsApp Images* —
+ * one at 500 items, one at 5,781 — plus three *WhatsApp Video*, four *WhatsApp Documents*, and
+ * names like `1389444597` and `1650884749188`.
+ *
+ * Measured on the device rather than guessed at. `bucket_display_name` is the **leaf directory name
+ * only**, so two different directories collide the moment their last path segment matches:
+ *
+ * ```
+ * bucket_id=-1829889111  Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/
+ * bucket_id=318896427    Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/
+ * bucket_id=278607672    WhatsApp/Media/WhatsApp Images/          ← the pre-scoped-storage location
+ * bucket_id=1432227631   Android/.Trash/com.sec.android.gallery3d/…/WhatsApp Images/
+ * ```
+ *
+ * The numeric names are the same thing and are **not ours to fix**: they are real directories on
+ * the phone that some app created and named with a Unix timestamp. `CLAUDE.md`'s package-id rule
+ * covers a package id appearing where a sentence belongs; a folder's own name is not that, and
+ * prettifying it would be inventing a name for a place the user can navigate to.
+ *
+ * ### What this function does and deliberately does not do
+ *
+ * It disambiguates and nothing else. When a name is unique in the rail it returns the app label if
+ * there is one, exactly as before. When a name repeats, the rows get the one thing that separates
+ * them **and is already on the wire** — how many items each holds — so two identical rows become
+ * two distinguishable ones without a wire change and without the pane claiming to know more than it
+ * does.
+ *
+ * The honest fix is upstream and is recorded rather than half-applied: `media.buckets` carries no
+ * path, so this pane **cannot** tell the reader that one of those four is Samsung Gallery's trash.
+ * Showing somebody their deleted photos as an ordinary album is a real defect; it is defect 88, it
+ * needs `relativePath` on the wire, and tonight's brief is the frame and not the wire.
+ */
+function albumSubtitle(
+  album: MediaBucketRow,
+  nameCounts: ReadonlyMap<string, number>,
+): string | null {
+  const source = albumSource(album);
+  const collides = (nameCounts.get(album.bucketName) ?? 0) > 1;
+  if (!collides) return source || null;
+  const items = `${albumCount(album.count)} items`;
+  return source ? `${source} · ${items}` : items;
+}
+
+/** How many albums share each name, so a colliding row can say so. */
+function albumNameCounts(albums: readonly MediaBucketRow[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const album of albums) counts.set(album.bucketName, (counts.get(album.bucketName) ?? 0) + 1);
+  return counts;
+}
+
+/**
  * The label under an album, which is where the package-id rule lands on this pane.
  *
  * A bucket owned by an app carries `packageName` **and** `appName` from the phone. What a person
@@ -370,6 +489,9 @@ class PhotosView {
 
   private renderRail(): void {
     this.rail.textContent = '';
+    // Counted once per render rather than once per row: 150 albums is 150 rows, and a per-row scan
+    // of the same list is the quadratic version of a question with one answer.
+    const nameCounts = albumNameCounts(this.albums);
     for (const album of this.albums) {
       const row = document.createElement('button');
       row.type = 'button';
@@ -382,8 +504,8 @@ class PhotosView {
       row.appendChild(name);
       row.appendChild(count);
 
-      const source = albumSource(album);
-      if (source) row.appendChild(photoLine('photos-album-source', source));
+      const subtitle = albumSubtitle(album, nameCounts);
+      if (subtitle) row.appendChild(photoLine('photos-album-source', subtitle));
 
       row.addEventListener('click', () => {
         if (this.selectedAlbum === album.bucketId) return;
@@ -417,7 +539,28 @@ class PhotosView {
       return;
     }
 
-    for (const item of this.items) {
+    // One `Date.now()` for the whole render, so a grid that happens to be drawn across midnight
+    // cannot put its first rows under `Today` and its last under `Yesterday`.
+    const nowMs = Date.now();
+    for (const group of groupByDay(this.items, nowMs)) {
+      const section = document.createElement('div');
+      section.className = 'photos-group';
+      section.appendChild(photoLine('photos-group-title', group.heading));
+
+      const grid = document.createElement('div');
+      grid.className = 'photos-grid';
+      grid.setAttribute('role', 'grid');
+      grid.setAttribute('aria-label', group.heading);
+      section.appendChild(grid);
+      this.tiles.appendChild(section);
+
+      for (const item of group.items) grid.appendChild(this.tileFor(item));
+    }
+  }
+
+  /** One tile. Extracted so the grouping loop above reads as grouping and nothing else. */
+  private tileFor(item: MediaItemRow): HTMLElement {
+    {
       const tile = document.createElement('button');
       tile.type = 'button';
       tile.className = `photos-tile${item.id === this.selectedItem ? ' on' : ''}`;
@@ -451,7 +594,7 @@ class PhotosView {
         this.selectedItem = item.id;
         this.render();
       });
-      this.tiles.appendChild(tile);
+      return tile;
     }
   }
 
@@ -560,6 +703,10 @@ function photoLine(className: string, text: string): HTMLElement {
   fileSize,
   clockOf,
   albumSource,
+  dayHeading,
+  groupByDay,
+  albumSubtitle,
+  albumNameCounts,
 };
 
 // The view class, for `photosView.test.ts`. `photos.ts` touches no DOM at module scope, so a test

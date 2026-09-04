@@ -1729,29 +1729,100 @@ img#qr {
   margin-top: 2px;
 }
 
-.photos-tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-  gap: var(--space-3);
+/* ------------------------------------------------------------------------------------------------
+   The grid, and the reason it is two elements rather than one.
+
+   **Defect 87.** `.photos-tiles` was one element carrying both jobs — `display: grid` *and*
+   `max-height: 560px; overflow-y: auto` — and the second silently destroyed the first. Measured in
+   the running app: with `max-height` set, the 24 auto rows resolved to **32px each** while every
+   tile painted at its aspect-ratio height of **116px**. Row pitch 40px, tile height 116px, so each
+   tile bled **79px** into the two below it and the grid read as five smeared vertical columns
+   rather than as photos.
+
+   The mechanism, isolated one property at a time rather than guessed:
+
+   | tried | rows resolved to |
+   |---|---|
+   | as shipped | `32px` |
+   | `max-height: none` | **`119px`** — correct |
+   | `overflow-y: visible` | `32px` |
+   | `align-content: start` | `32px` |
+   | `grid-auto-rows: auto` | `32px` |
+   | an explicit `height` on the tile | `116px` — correct |
+
+   So it is the **definite block size**, and nothing else: a grid container with a definite height
+   and `auto` rows sizes those rows against the space it has rather than against the items'
+   transferred aspect-ratio height, and `aspect-ratio` on the item then wins anyway and overflows
+   the track it was given. `align-content` does not reach it and neither does `grid-auto-rows`.
+
+   The three candidate causes were named before the measurement and two are ruled out by it: the
+   tiles were **not** missing a height constraint (they were 116px throughout, from `aspect-ratio`),
+   and the images were **not** overflowing (114px inside a 116px box with `overflow: hidden`). Only
+   the rows were collapsing.
+
+   The fix is structural rather than a property tweak, because a property tweak would put the two
+   jobs back on one element for the next person to re-merge: **the scroller and the grid are
+   different elements now.** `.photos-scroll` owns the height and the overflow; `.photos-grid` owns
+   the columns and owns no height at all. Nothing can give a `display: grid` element a definite
+   block size without also removing it from this file.
+
+   It also buys the design's date grouping for free — `Today`, `Yesterday`, `14 May 2024` — because
+   a scroller holding several headed grids is exactly the shape the design draws, and was impossible
+   while the scroller *was* the grid.
+------------------------------------------------------------------------------------------------ */
+
+.photos-scroll {
   padding: var(--space-6);
   max-height: 560px;
   overflow-y: auto;
+}
+
+.photos-group + .photos-group { margin-top: var(--space-8); }
+
+/* The design's date heading: 12px/600, body-grey, sitting 10px above its own grid. */
+.photos-group-title {
+  font: var(--text-control);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-meta);
+  color: var(--text-body);
+  margin: 0 0 var(--space-4);
+}
+
+/* Four up, as the design draws it, with a floor so a narrow window packs rather than shears. */
+.photos-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 1180px) {
+  .photos-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
 }
 
 .photos-tile {
   position: relative;
   aspect-ratio: 1;
   padding: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-media);
   overflow: hidden;
   border: 1px solid var(--hairline);
   background: var(--control);
   cursor: pointer;
+  transition: transform var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease),
+    box-shadow var(--dur-hover) var(--ease);
 }
 
+.photos-tile:hover {
+  transform: translateY(-2px);
+  border-color: var(--hairline-hover);
+}
+
+/* The design's selected tile is a 1.5px accent border rather than a ring, and the border is drawn
+   *inside* the tile's box so the grid rhythm does not shift by a pixel when a photo is picked. */
 .photos-tile.on {
-  border-color: var(--accent-border);
-  box-shadow: 0 0 0 2px var(--accent-glow);
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 .photos-thumb {
@@ -1770,19 +1841,22 @@ img#qr {
   background: var(--well);
 }
 
+/* Bottom-*left*, which is where the design puts a video's duration. It was bottom-right here, and
+   on a grid of stills the one thing a badge must not do is sit where the eye is not looking for it. */
 .photos-tile-badge {
   position: absolute;
-  right: var(--space-2);
-  bottom: var(--space-2);
-  padding: 2px 6px;
+  left: var(--space-3);
+  bottom: var(--space-3);
+  padding: 1px 5px;
   border-radius: 6px;
-  background: rgba(7, 7, 10, 0.72);
-  color: var(--text-on-control);
+  background: rgba(7, 7, 10, 0.6);
+  color: #fff;
   font: var(--text-meta-size);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
 }
 
 .photos-empty {
-  grid-column: 1 / -1;
   padding: var(--space-11) var(--space-7);
   text-align: center;
 }

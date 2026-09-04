@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor, Tray, Menu,
-  dialog, shell,
+  dialog, shell, screen,
 } from 'electron';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -45,6 +45,7 @@ import { debugSwitches } from './debugSwitches';
 import { store } from './store';
 import { VideoClient, type VideoFrame } from './video';
 import { FloatMirrorWindow } from './float';
+import { fitWindow, DESIGN } from '../shared/windowGeometry';
 
 let window: BrowserWindow | null = null;
 /**
@@ -305,6 +306,14 @@ let lastStatus: ConnectionStatus | null = null;
  * Notifications detail column and the Mirror side column start fighting, and under 700 the dock
  * and the page header collide.
  *
+ * **Both are now ceilings and preferences rather than fixed values**, because neither is available
+ * on every display. This Mac's built-in panel offers a 1512 x 865 work area — 55px short of the
+ * canvas — and the window that appeared was 865 tall only because AppKit silently shrank it. A
+ * rescue that belongs to the platform, is applied only when AppKit sets the frame, and does not
+ * fire when the work area changes under a window that is already open, is not a guarantee this app
+ * can rely on. `src/shared/windowGeometry.ts` derives both from the work area instead, and carries
+ * the readings.
+ *
  * `titleBarStyle: 'hidden'` with `trafficLightPosition` puts the **real** macOS traffic lights
  * into the 52px row the sidebar reserves for them, at the handoff's 20px inset. Three coloured
  * divs would have matched the mockup more literally and would have needed their own close,
@@ -317,11 +326,30 @@ let lastStatus: ConnectionStatus | null = null;
  * the design at once, including the flash of window ground before the first paint.
  */
 function createWindow(): void {
+  /*
+   * The display the window is about to open on — the one under the pointer, which is where macOS
+   * puts a new window and where the user is looking. `getPrimaryDisplay` would be wrong on exactly
+   * the setup that found this: two displays, the app launched from the second one.
+   *
+   * `fitWindow` then caps the design against that display's **work area** — the screen less the
+   * menu bar and the Dock — rather than its bounds. See src/shared/windowGeometry.ts for why the
+   * minimums have to be capped too, and why AppKit's own rescue is not a substitute.
+   */
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const { bounds, minimum } = fitWindow(area);
+  if (bounds.width < DESIGN.width || bounds.height < DESIGN.height) {
+    // Logged because it is a real, invisible degradation: every pane below is laid out against the
+    // handoff's canvas and is now drawing into less than it. The success case is logged beside it
+    // rather than only the shortfall — a count with no denominator is not evidence.
+    log.info('window', `opened ${bounds.width}x${bounds.height} — capped from the design's ${DESIGN.width}x${DESIGN.height} ` +
+      `by a ${area.width}x${area.height} work area on this display`);
+  } else {
+    log.info('window', `opened ${bounds.width}x${bounds.height} — the design's full size fits this ${area.width}x${area.height} work area`);
+  }
   window = new BrowserWindow({
-    width: 1440,
-    height: 920,
-    minWidth: 1100,
-    minHeight: 700,
+    ...bounds,
+    minWidth: minimum.width,
+    minHeight: minimum.height,
     title: 'ConnectSuite',
     backgroundColor: '#07070a',
     titleBarStyle: 'hidden',
@@ -346,6 +374,33 @@ function createWindow(): void {
    * not enough on its own and this Mac kept rendering at 0.72 after it was added. Setting the level
    * after the load is what actually holds. Level 0 is factor 1.
    */
+  /*
+   * The window as it actually is, not as it was asked to be.
+   *
+   * These are two different numbers and only the second one is on the user's screen. The request
+   * above is a hope: AppKit constrains it, a work-area change can shrink it, and macOS may place
+   * the window on a different display than the one it was centred for. Logging the request alone is
+   * the same fault as a probe reporting bytes it queued rather than bytes that arrived — it reads
+   * as a measurement and is not one.
+   *
+   * `ready-to-show` is after AppKit has had its say, so a disagreement here is real and worth the
+   * line. The denominator is on it: the request beside the result, and the display it landed on.
+   */
+  window.once('ready-to-show', () => {
+    const got = window?.getBounds();
+    if (!got) return;
+    const landedOn = screen.getDisplayMatching(got);
+    const asked = `${bounds.width}x${bounds.height} at (${bounds.x},${bounds.y})`;
+    const actual = `${got.width}x${got.height} at (${got.x},${got.y})`;
+    const fits = got.width <= landedOn.workArea.width && got.height <= landedOn.workArea.height;
+    log.info(
+      'window',
+      `asked ${asked}; got ${actual} on display ${landedOn.id} ` +
+        `(work area ${landedOn.workArea.width}x${landedOn.workArea.height}) — ` +
+        (asked === actual ? 'granted as requested' : 'CHANGED by the window server') +
+        `; fits work area: ${fits}`,
+    );
+  });
   window.webContents.on('did-finish-load', () => window?.webContents.setZoomLevel(0));
   void window.loadFile(join(__dirname, '..', 'renderer', 'index.html'));
   window.on('focus', () => nativeNotifier.setWindowFocused(true));

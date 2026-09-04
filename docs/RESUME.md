@@ -50,9 +50,12 @@ Working tree clean. All eight commit hooks green.
 
 ## 4 · What needs your hands, and why
 
-**1. The vocabulary decision.** `docs/empty-and-failure-states.md`, published at
-**https://claude.ai/code/artifact/6fe1bf9b-da4d-4453-9f35-a3f1d8c9aa82** — 83 sentences grouped by
-meaning. The numbers that make the case: **28 sentences for "there is nothing here"** with four
+**1. The vocabulary decision.** **`docs/empty-and-failure-states.md` in this repo is the
+deliverable** — 83 sentences grouped by meaning.
+
+> It was also published as a hosted page and **that link is dead**; the publish reported success
+> twice and left nothing the account can open. The file is complete and is the source the page was
+> generated from, so nothing is lost. Ask for it to be re-published if a link is wanted. The numbers that make the case: **28 sentences for "there is nothing here"** with four
 grammatical openings, **three verbs** for failure, **three words** for unavailability, Files stating
 one condition two ways *within a single pane*, and one sentence appearing twice with different
 punctuation. This is the blocking item for the rest of Phase 7.

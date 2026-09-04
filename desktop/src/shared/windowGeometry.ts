@@ -1,0 +1,128 @@
+/**
+ * The app window's opening size. Pure arithmetic, no Electron.
+ *
+ * ### Why this exists
+ *
+ * `createWindow` asked for a fixed `1440 x 920` — the handoff's canvas — on whatever display it
+ * happened to open on. Measured on this Mac, 2026-09-05:
+ *
+ * | Display | Work area | 1440x920 fits |
+ * |---|---|---|
+ * | built-in, primary | 1512 x 865 | **no — 55px too tall** |
+ * | external | 1920 x 1050 | yes |
+ *
+ * The work area is the screen minus the menu bar (33) and the Dock (84), and it is the only height
+ * a window may occupy. The request exceeded it by 55px on the display the app opens on by default,
+ * and nothing in this repository noticed, because **AppKit was quietly rescuing it**:
+ * `constrainFrameRect:toScreen:` shrinks an oversized window to the visible frame, so the window
+ * that appeared was 865 tall and looked deliberate.
+ *
+ * ### Why relying on that rescue is the bug, even though it works
+ *
+ * The rescue is not ours and it is applied at *specific moments* — when AppKit sets the frame. The
+ * work area, meanwhile, can change **under a window that is already open**, and that path takes no
+ * `setFrame` at all: the Dock un-hides, a display is disconnected, Stage Manager or Split View
+ * reserves space, the menu bar auto-hide setting changes. A window sized to the old work area is
+ * then taller than the new one, with nothing to shrink it.
+ *
+ * This is the same shape as `floatGeometry`'s own founding bug — *"clamping drag alone is not
+ * enough; presets and corner-resize escape the desktop without it"* — and the answer is the same:
+ * the size is **derived from the height actually available**, never a constant. The detached mirror
+ * window has done this since Phase 2; the main window, which every pane inherits, never did.
+ *
+ * ### The rule this encodes
+ *
+ * The design's size is a **maximum**, not a value. On a display that can hold 1440x920 the window is
+ * exactly that, and the handoff's grid is drawn as specified. On a display that cannot, every axis
+ * that does not fit is reduced to what does, independently — a short display loses height and keeps
+ * its width.
+ */
+
+/** A rectangle in screen coordinates, matching Electron's `Display.workArea` shape. */
+export type Area = { x: number; y: number; width: number; height: number };
+
+/** A window's bounds, matching Electron's `BrowserWindow` bounds shape. */
+export type Bounds = { x: number; y: number; width: number; height: number };
+
+/** The handoff's canvas. A ceiling now rather than a fixed size — see the header. */
+export const DESIGN = Object.freeze({ width: 1440, height: 920 });
+
+/**
+ * Clearance kept between the window and every edge of the work area.
+ *
+ * It only ever binds on an axis that is **already constrained**: 1440 + 2*12 is still under the
+ * 1512 this display offers, so a fitting axis is untouched and the margin costs nothing there. On
+ * the axis that does not fit it buys the window a visible gap from the menu bar and the Dock
+ * instead of sitting flush against both, and it leaves a little room for the work area to shrink
+ * slightly without immediately clipping again.
+ */
+export const MARGIN = 12;
+
+/**
+ * The smallest window whose grids are still honest, from `createWindow`'s own note: under 1100 the
+ * Notifications detail column and the Mirror side column fight, and under 700 the dock and the page
+ * header collide.
+ *
+ * These are a floor on *resizing*, and they are deliberately **not** a floor on the opening size —
+ * see [minimumsFor]. A minimum that forces a window taller than the screen reintroduces the defect
+ * this file exists to remove, one layer down and harder to see.
+ */
+export const MIN = Object.freeze({ width: 1100, height: 700 });
+
+/** The larger of two numbers, floored at zero, so a pathological work area cannot go negative. */
+function atLeastZero(n: number): number {
+  return n > 0 ? n : 0;
+}
+
+/**
+ * The size to open at on a given work area: the design, capped per-axis by what is available.
+ *
+ * Each axis is capped **independently**. A display that is wide and short reduces the height and
+ * keeps the full width, which is what the grid wants — the sidebar is a fixed 233 and the columns
+ * beside it are the part that should absorb a narrow screen, not a uniform scale.
+ */
+export function sizeFor(area: Pick<Area, 'width' | 'height'>, design = DESIGN): { width: number; height: number } {
+  return {
+    width: Math.min(design.width, atLeastZero(area.width - MARGIN * 2)),
+    height: Math.min(design.height, atLeastZero(area.height - MARGIN * 2)),
+  };
+}
+
+/**
+ * The resize minimums, themselves capped by the window we are actually opening at.
+ *
+ * This is the subtle half, and it is the one that would have survived the obvious fix. Capping the
+ * opening size while leaving `minHeight: 700` on a display whose work area is 600 hands Electron a
+ * contradiction — a window that must be at least 700 tall on a screen with room for 576 — and the
+ * minimum wins. The window is oversized again, by a different route, on exactly the small displays
+ * this change is for.
+ *
+ * So a minimum is a *preference*, applied only where the display can honour it.
+ */
+export function minimumsFor(size: { width: number; height: number }): { width: number; height: number } {
+  return {
+    width: Math.min(MIN.width, size.width),
+    height: Math.min(MIN.height, size.height),
+  };
+}
+
+/**
+ * Where to put the window: centred in the work area, and never starting outside it.
+ *
+ * The clamp is not redundant with the centring. A window wider than the work area — which
+ * [sizeFor] does not produce, but a caller passing its own `design` could — centres to a negative
+ * offset, and the top-left corner is the one that carries the title bar and the traffic lights. Off
+ * the top is unrecoverable by the user; off the bottom is merely ugly.
+ */
+export function positionFor(area: Area, size: { width: number; height: number }): { x: number; y: number } {
+  return {
+    x: Math.max(area.x, Math.round(area.x + (area.width - size.width) / 2)),
+    y: Math.max(area.y, Math.round(area.y + (area.height - size.height) / 2)),
+  };
+}
+
+/** The whole decision in one call: the bounds to open at, and the minimums to allow. */
+export function fitWindow(area: Area, design = DESIGN): { bounds: Bounds; minimum: { width: number; height: number } } {
+  const size = sizeFor(area, design);
+  return { bounds: { ...positionFor(area, size), ...size }, minimum: minimumsFor(size) };
+}

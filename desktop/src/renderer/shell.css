@@ -501,7 +501,7 @@ body {
   letter-spacing: 0.06em;
   color: var(--accent-text);
   background: var(--accent-tint);
-  border: 1px solid rgba(139, 107, 255, 0.24);
+  border: 1px solid rgba(124, 107, 255, 0.24);
   border-radius: var(--radius-pill);
   padding: 2px 7px;
 }
@@ -581,7 +581,7 @@ body {
 .tb-icon.accent { color: var(--accent-text); }
 
 #open-palette { color: var(--text-body); }
-#mirror-float:hover { border-color: rgba(139, 107, 255, 0.34); }
+#mirror-float:hover { border-color: rgba(124, 107, 255, 0.34); }
 
 /* The Floating window button is a Mirror-screen control. The design draws it only there, and the
  * shell now has screens to enforce that with. */
@@ -1014,12 +1014,12 @@ body {
 }
 /* One tint per screen, matching the dock's. They are decoration in the sense that nothing depends
    on reading them, and identity in the sense that the same screen is the same colour everywhere. */
-.tint-mirror { background: rgba(139, 107, 255, 0.14); color: #8b7aff; }
+.tint-mirror { background: rgba(124, 107, 255, 0.14); color: #8b7aff; }
 .tint-files { background: rgba(96, 165, 250, 0.14); color: #60a5fa; }
 .tint-photos { background: rgba(45, 212, 191, 0.14); color: #2dd4bf; }
 .tint-notifications { background: rgba(245, 178, 61, 0.14); color: #f5b23d; }
-.tint-messages { background: rgba(50, 229, 138, 0.14); color: #32e58a; }
-.tint-clipboard { background: rgba(139, 107, 255, 0.14); color: #8b7aff; }
+.tint-messages { background: rgba(52, 211, 153, 0.14); color: var(--live); }
+.tint-clipboard { background: rgba(124, 107, 255, 0.14); color: #8b7aff; }
 .tint-calls { background: rgba(34, 211, 238, 0.14); color: #22d3ee; }
 .tint-camera { background: rgba(244, 114, 182, 0.14); color: #f472b6; }
 
@@ -1118,7 +1118,7 @@ body {
   border-radius: var(--radius-panel);
   background: linear-gradient(150deg, #2b1f52, #123043 55%, #0f2a2f);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 0 0 1px rgba(139, 107, 255, 0.18), 0 18px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 1px var(--accent-glow), 0 18px 40px rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
 

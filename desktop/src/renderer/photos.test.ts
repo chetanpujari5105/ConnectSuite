@@ -127,3 +127,131 @@ test('a count is grouped, because six figures of photos is otherwise unreadable'
   assert.equal(labels.albumCount(16369), (16369).toLocaleString());
   assert.notEqual(labels.albumCount(16369), '16369');
 });
+
+// ---- Day headings, and the boundary a test has to sit either side of ------------------------------
+
+/**
+ * `dayHeading` takes `nowMs` as a parameter, which is what makes these tests possible at all.
+ *
+ * `CLAUDE.md`'s defect 67 is the case where a suite proves a decision and is silent about the state,
+ * because the field under test is written somewhere a test cannot reach. Midnight is the same shape
+ * of problem — it cannot be reached by waiting — so the transition is a parameter and every test
+ * below crosses it on purpose.
+ */
+const headings = (globalThis as Record<string, unknown>).__photoLabels as {
+  dayHeading(dateMs: number, nowMs: number): string;
+  groupByDay(items: ReadonlyArray<{ id: string; dateMs: number }>, nowMs: number): Array<{
+    heading: string;
+    items: Array<{ id: string }>;
+  }>;
+  albumSubtitle(
+    album: { bucketName: string; count: number; appName?: string },
+    counts: ReadonlyMap<string, number>,
+  ): string | null;
+  albumNameCounts(albums: ReadonlyArray<{ bucketName: string }>): Map<string, number>;
+};
+
+/** 15 May 2024, 14:30 local — the design's own week. */
+const NOW = new Date(2024, 4, 15, 14, 30).getTime();
+const at = (y: number, m: number, d: number, h = 12) => new Date(y, m, d, h).getTime();
+
+test('a photo from this morning is Today, and one from 00:00 today still is', () => {
+  assert.equal(headings.dayHeading(at(2024, 4, 15, 9), NOW), 'Today');
+  assert.equal(headings.dayHeading(new Date(2024, 4, 15, 0, 0, 0, 0).getTime(), NOW), 'Today');
+});
+
+test('one millisecond before midnight is Yesterday, not Today', () => {
+  // The boundary in the direction that matters: a photo taken at 23:59:59.999 is emphatically not
+  // "today" to the person who took it, and an off-by-one here is invisible except at that minute.
+  const lastMoment = new Date(2024, 4, 15, 0, 0, 0, 0).getTime() - 1;
+  assert.equal(headings.dayHeading(lastMoment, NOW), 'Yesterday');
+});
+
+test('inside the last week a weekday name, beyond it a date', () => {
+  // 12 May 2024 was a Sunday; three days back is inside the window.
+  assert.equal(headings.dayHeading(at(2024, 4, 12), NOW), 'Sunday');
+  // Eight days back is outside it, and a weekday name would be ambiguous rather than helpful.
+  assert.match(headings.dayHeading(at(2024, 4, 7), NOW), /^7 May$|^May 7$/);
+});
+
+test('a photo from another year carries the year; one from this year does not', () => {
+  assert.match(headings.dayHeading(at(2023, 4, 14), NOW), /2023/);
+  assert.doesNotMatch(headings.dayHeading(at(2024, 3, 14), NOW), /2024/);
+});
+
+test('midnight is a real day boundary, not now minus 86,400,000', () => {
+  // The two days a year a day is not 24 hours are exactly when subtraction puts yesterday's photos
+  // under Today. Asserted through the local-midnight path rather than by picking a DST date, which
+  // would make the test depend on the runner's timezone.
+  const justAfterMidnight = new Date(2024, 4, 15, 0, 0, 1).getTime();
+  const nowJustAfterMidnight = new Date(2024, 4, 15, 0, 0, 30).getTime();
+  assert.equal(headings.dayHeading(justAfterMidnight, nowJustAfterMidnight), 'Today');
+  const twentyThreeHoursEarlier = justAfterMidnight - 23 * 3600 * 1000;
+  assert.equal(headings.dayHeading(twentyThreeHoursEarlier, nowJustAfterMidnight), 'Yesterday');
+});
+
+test('groupByDay cuts on the heading changing and preserves arrival order', () => {
+  const items = [
+    { id: 'a', dateMs: at(2024, 4, 15, 11) },
+    { id: 'b', dateMs: at(2024, 4, 15, 9) },
+    { id: 'c', dateMs: at(2024, 4, 14, 20) },
+    { id: 'd', dateMs: at(2024, 3, 2) },
+  ];
+  const groups = headings.groupByDay(items, NOW);
+  assert.deepEqual(
+    groups.map((g) => [g.heading, g.items.map((i) => i.id)]),
+    [
+      ['Today', ['a', 'b']],
+      ['Yesterday', ['c']],
+      [groups[2].heading, ['d']],
+    ],
+  );
+});
+
+test('groupByDay does not sort — a day arriving twice draws twice', () => {
+  // Deliberate. `media.list` owns the ordering and its whole paging argument rests on that; a
+  // second expression of the same rule here is the shape that makes a test assert a copy. So an
+  // out-of-order stream produces a visible repeat rather than a silently repaired one.
+  const groups = headings.groupByDay(
+    [
+      { id: 'a', dateMs: at(2024, 4, 15, 11) },
+      { id: 'b', dateMs: at(2024, 4, 14, 11) },
+      { id: 'c', dateMs: at(2024, 4, 15, 8) },
+    ],
+    NOW,
+  );
+  assert.deepEqual(groups.map((g) => g.heading), ['Today', 'Yesterday', 'Today']);
+});
+
+// ---- The album rail's duplicate names -------------------------------------------------------------
+
+test('a unique album name keeps the app label alone as its subtitle', () => {
+  const albums = [{ bucketName: 'Camera', count: 16420 }, { bucketName: 'Screenshots', count: 3760 }];
+  const counts = headings.albumNameCounts(albums);
+  assert.equal(headings.albumSubtitle({ bucketName: 'Camera', count: 16420 }, counts), null);
+  assert.equal(
+    headings.albumSubtitle({ bucketName: 'Camera', count: 16420, appName: 'Camera app' }, counts),
+    'Camera app',
+  );
+});
+
+test('two albums with one name are told apart by the only thing on the wire', () => {
+  // This phone draws two rows both reading "WhatsApp Images" — 500 items and 5,781 — because
+  // bucket_display_name is the leaf directory name and two different directories collide.
+  const albums = [
+    { bucketName: 'WhatsApp Images', count: 500 },
+    { bucketName: 'WhatsApp Images', count: 5781 },
+    { bucketName: 'Camera', count: 16420 },
+  ];
+  const counts = headings.albumNameCounts(albums);
+  assert.equal(
+    headings.albumSubtitle({ bucketName: 'WhatsApp Images', count: 500, appName: 'WhatsApp' }, counts),
+    'WhatsApp · 500 items',
+  );
+  assert.equal(
+    headings.albumSubtitle({ bucketName: 'WhatsApp Images', count: 5781, appName: 'WhatsApp' }, counts),
+    'WhatsApp · 5,781 items',
+  );
+  // The control: the row that does not collide is untouched by the disambiguation.
+  assert.equal(headings.albumSubtitle({ bucketName: 'Camera', count: 16420 }, counts), null);
+});

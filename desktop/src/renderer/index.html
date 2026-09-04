@@ -589,7 +589,13 @@
                       <div class="photos-rail-title">ALBUMS</div>
                       <div id="photos-albums" role="listbox" aria-label="Albums"></div>
                     </div>
-                    <div class="photos-tiles" id="photos-tiles" role="grid" aria-label="Photos"></div>
+                    <!--
+                      The scroller, and only the scroller. The grids are inside it, one per day, and
+                      neither this element nor they may carry both a definite height and
+                      `display: grid` — that combination is defect 87 and it collapsed every row to
+                      32px under 116px tiles. styles.css carries the measurement.
+                    -->
+                    <div class="photos-scroll" id="photos-tiles" aria-label="Photos"></div>
                   </div>
                   <aside class="pane-detail" id="photos-detail" aria-live="polite"></aside>
                 </div>

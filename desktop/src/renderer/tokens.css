@@ -69,14 +69,26 @@
   --text-meta: #5b5e6e;                      /* 10–11px meta ONLY         —  2.6:1, never body */
   --text-on-control: #e7e7ee;                /* button labels, list rows */
 
-  --accent: #8b6bff;                         /* selected state, primary action fill */
+  /*
+   * The accent, and the note is here because this token was **wrong for the whole build** and
+   * nothing could have caught it.
+   *
+   * It read `#8b6bff` — rgb(139,107,255) — against the design's `#7c6bff`, rgb(124,107,255). One
+   * channel, fifteen steps, and it was inherited into all four alpha tints below as
+   * `rgba(139,107,255,…)`. Nothing renders wrong: a violet is a violet, `stylesheets.test.ts` has
+   * no opinion about which one, and every screenshot comparison in `docs/evidence/` was read for
+   * layout. It was found by counting the design file's own literals — `#7c6bff` 34 times,
+   * `rgba(124,107,255,…)` 59 times, `rgb(139,…)` **zero** — which is the identity column doing the
+   * one thing reasoning from tokens cannot: it reads the source rather than the summary of it.
+   */
+  --accent: #7c6bff;                         /* selected state, primary action fill */
   --accent-text: #8b7aff;                    /* accent text and icons — lighter, for contrast */
-  --accent-tint: rgba(139, 107, 255, 0.13);
+  --accent-tint: rgba(124, 107, 255, 0.13);
   /*
    * The fill behind *the thing you are currently on* — nav pill, Settings rail tab, notification
    * filter pill. One value, because it is one role.
    *
-   * The design uses `rgba(139,107,255,.15)` for all three. This build used three different values
+   * The design uses `rgba(124,107,255,.15)` for all three. This build used three different values
    * from three different sources: the nav pill had **the literal hardcoded** in shell.css (right
    * number, wrong place — tokens.css owns colour, and `stylesheets.test.ts` only catches a stray
    * `--token:` declaration, not a raw rgba), the Settings tab took `--accent-tint` (.13) and the
@@ -87,25 +99,28 @@
    * it became a colour nothing draws. A token kept "in case" is a second answer to a question that
    * now has one.
    */
-  --accent-tint-selected: rgba(139, 107, 255, 0.15);
-  --accent-border: rgba(139, 107, 255, 0.28);
-  --accent-glow: rgba(139, 107, 255, 0.18);
+  --accent-tint-selected: rgba(124, 107, 255, 0.15);
+  --accent-border: rgba(124, 107, 255, 0.28);
+  --accent-glow: rgba(124, 107, 255, 0.18);
   /*
    * Text and glyphs sitting *on* the accent fill. Near-black, not white: the design draws
-   * `#0b0b12` on `#8b6bff`, which is **5.27:1** and clears AA. White on the same fill is
-   * **3.72:1** and fails it at the 13.5px/600 the CTA is set in — 3.72 would only pass as large
+   * `#0b0b12` on `#7c6bff`, which is **5.05:1** and clears AA. White on the same fill is
+   * **3.89:1** and fails it at the 13.5px/600 the CTA is set in — 3.89 would only pass as large
    * text, which starts at 18.66px bold. Measured off the prototype's Start-mirroring button.
+   *
+   * Both numbers moved on 2026-09-05 when the accent was corrected below; the argument did not,
+   * which is the point of recording the ratio rather than the verdict.
    */
   --accent-on-fill: #0b0b12;
 
   --secondary: #22d3ee;                      /* secondary data accent */
-  --live: #32e58a;                           /* connection state, LIVE badge, success */
+  --live: #34d399;                           /* connection state, LIVE badge, success — 9.72:1 on --well */
   --warning: #f5b23d;                        /* weak link, paused, and capability-unavailable */
   --warning-fill: rgba(245, 178, 61, 0.1);
   --warning-border: rgba(245, 178, 61, 0.3);
-  --destructive: #ff5d5d;                    /* destructive actions and failure states ONLY */
-  --destructive-fill: rgba(255, 93, 93, 0.1);
-  --destructive-border: rgba(255, 93, 93, 0.3);
+  --destructive: #ff6b81;                    /* destructive and failed ONLY — 6.82:1 on --well */
+  --destructive-fill: rgba(255, 107, 129, 0.1);
+  --destructive-border: rgba(255, 107, 129, 0.3);
 
   /* ---- Type ---------------------------------------------------------------------------------
    * The handoff specifies Archivo and then sanctions the swap we take: "substitute the codebase's
@@ -175,8 +190,14 @@
 
   /* ---- Radius ------------------------------------------------------------------------------- */
   --radius-control: 10px;                    /* controls, chips */
+  /*
+   * A photo, a thumbnail, a video still. 12px in the design, and it is the single most-used radius
+   * there after the pill — 40 occurrences against `--radius-tile`'s 28. It was missing, so the
+   * photo grid drew `--radius-control` and the shape of a photo was the shape of a button.
+   */
+  --radius-media: 12px;                      /* photos, thumbnails, media stills */
   --radius-tile: 14px;                       /* tiles, inner cards */
-  --radius-panel: 18px;                      /* panels */
+  --radius-panel: 20px;                      /* panels */
   --radius-window: 24px;                     /* app window, phone body */
   --radius-pill: 999px;
 
@@ -230,7 +251,7 @@
  * A native `<input type=range>` fills its track with `accent-color: auto`, which on macOS is the
  * **user's own System Settings accent** — blue by default, and pink or graphite or whatever else on
  * someone else's Mac. The Overview media remote's two sliders were drawing that blue, on a screen
- * whose every other accent is `#8b6bff`, and nothing in this repo could see it: it is not a token,
+ * whose every other accent is `var(--accent)`, and nothing in this repo could see it: it is not a token,
  * not a rule, and not a value any stylesheet mentions.
  *
  * That makes it the third instance of the pattern this file already records twice — a colour the
