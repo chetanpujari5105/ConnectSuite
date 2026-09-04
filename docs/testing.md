@@ -14887,3 +14887,99 @@ The intent resolves — that is a statement about the package manager, and a reg
 an execution line. Some apps use custom selection toolbars, some suppress third-party entries, and
 the toolbar caps its visible items. The stimulus is one long-press in three real apps, and it needs
 the user's hands.
+
+---
+
+## Phase 7 · Slice 19 — the toolbar entry was drawn all along, behind a Samsung switch · 2026-09-04
+
+The user hand-tested Slice 18's `ACTION_PROCESS_TEXT` entry in WhatsApp, Chrome and a plain text
+field and **did not see it in any of them**. Two questions came back: is it drawn at all, and is it
+behind the overflow rather than absent.
+
+**It is drawn, it was never absent, and the reason it did not appear is neither of the two things
+the question offered.** One UI ships `ACTION_PROCESS_TEXT` as an **opt-in, per-app switch that is
+off by default**, in a Settings screen reached only from inside the selection toolbar itself.
+
+### The control is what makes this a platform finding rather than our bug
+
+The toolbar in Chrome's omnibox, before anything was changed:
+
+```
+✨ | Cut | Copy | Paste | Translate | ⋮
+⋮ → Share · Undo · Clipboard · Manage apps
+```
+
+**Zero third-party entries** — no ChatGPT, no Claude, no Perplexity, no us — against **fourteen
+activities** that answer `PROCESS_TEXT`/`text/plain` on this device. The absence is not ours; it is
+everybody's, which is the enumerate-the-whole-surface control doing its job. Had only our entry been
+missing, this would have been a defect.
+
+`Manage apps` opens `com.samsung.android.settings.display.SecProcessTextManageAppsFragment` —
+*"Select apps to show in the contextual menu"* — and every row in it read `checked=false`:
+
+| Row | switch |
+|---|---|
+| Google · Ask Gemini | false |
+| Samsung Pass · Save to Samsung Pass | false |
+| Perplexity · Ask Perplexity | false |
+| Adobe Acrobat · Add to Acrobat PDF Spaces | false |
+| Adobe Acrobat · Create PDF in Acrobat | false |
+| Claude · Ask Claude | false |
+| **ConnectSuite · Send to Mac** | **false** |
+| DeepSeek · Ask DeepSeek | false |
+| ChatGPT · Ask ChatGPT | false |
+| Samsung Wallet · Pay with Pix | false |
+| Truecaller · Search in Truecaller | false |
+
+**Our row is present, correctly labelled, and off — like all ten others.** So the manifest, the
+intent-filter and the `android:label` were all right; nothing in the app could have made it appear.
+
+### Then the causal step, one variable at a time
+
+Ours switched on, neighbours left off (`Ask Claude: false`, `Send to Mac: true`, `Ask ChatGPT:
+false`), and a fresh selection raised in the same field:
+
+```
+first row   ✨ | Cut | Copy | Paste | Translate | ⋮      ← still not here
+⋮        →  Share · Undo · Clipboard · Send to Mac · Manage apps
+```
+
+**So the answer to the second half of the question is yes: behind the overflow, not on the first
+row.** The framework orders every `PROCESS_TEXT` item at `MENU_ITEM_ORDER_PROCESS_TEXT_INTENT_ACTIONS`,
+after Cut/Copy/Paste/Share/Select-all — and this phone has ten of them competing, with ours ninth in
+resolution order.
+
+Then the real gesture, in a real foreign app:
+
+```
+13:57:54.121 [clip] clip.push → Mac via selection: 28 bytes from Chrome — 4 sent / 11 received …
+13:57:54.121 [clip] selection route: action=…PROCESS_TEXT from=com.android.chrome chars=28 → Sent
+
+Mac pbpaste, before:  MAC-CLIPBOARD-BEFORE-THE-TAP
+Mac pbpaste, after:   probeselectiprobeselectionon
+```
+
+`from=com.android.chrome`, resolved through `AppLabels` to **Chrome** — the first end-to-end run of
+this feature driven by a tap on the real toolbar rather than by `am start`.
+
+### Three instrument faults, and the first two are the same one twice
+
+- **`uiautomator dump` cannot see the floating toolbar.** Four consecutive dumps returned 36–64
+  nodes with **no Cut, no Copy, no Paste** — and the toolbar was on screen throughout, as a
+  screenshot showed. Every one of those was a *missing* reading, and the first was one sentence from
+  *"the toolbar does not appear"*. The control is the rule already in this file: the dump must return
+  the items you know are there before its silence about a third one means anything. It never did, so
+  it never held a reading. **A screenshot was the only instrument that could see this surface.**
+- **`input keycombination 113 29` (Ctrl+A) selects without raising the toolbar.** The stimulus was
+  reported as applied and the thing it was supposed to produce never existed — the sixth row of
+  `CLAUDE.md`'s table, where the window never opened rather than closing between samples.
+- **`sort -u` over the resolver list destroyed the ordering**, which is the one property that decides
+  whether an item lands on the first row or in the overflow. It was re-run unsorted, and only then
+  was ours locatable at 9 of 14. A sort is a transformation the instrument imposes, and it belongs in
+  the same category as a page cap: it must appear in what the instrument reports.
+
+### The state this run left on the device
+
+**`Send to Mac` is switched ON for this handset** and the other ten rows were left untouched. That
+is a change to the user's phone made in the course of proving the mechanism, and it is recorded here
+rather than left for someone to find.
