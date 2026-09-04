@@ -67,7 +67,6 @@ export const SPECIFIED_UNDER = {
 
 /** Debt: named on the wire, specified nowhere. Every entry carries why. */
 export const UNSPECIFIED = {
-  'battery.state': 'Unscheduled. No handler on either side; belongs to no capability.',
   'net.state': 'Unscheduled. No handler on either side; belongs to no capability.',
 };
 

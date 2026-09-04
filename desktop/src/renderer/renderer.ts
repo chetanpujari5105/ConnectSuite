@@ -306,6 +306,17 @@ interface ConnectBridge {
   callDial(number: string): Promise<InputResult>;
   onCallChanged(callback: (call: CallCard | null) => void): void;
   onStatus(callback: (status: RendererStatus) => void): void;
+  /** O4's Device status card. `null` means never reported, which is drawn differently. */
+  deviceVitals(): Promise<{
+    battery: Record<string, unknown> | null;
+    storage: Record<string, unknown> | null;
+  }>;
+  onDeviceVitals(
+    callback: (state: {
+      battery: Record<string, unknown> | null;
+      storage: Record<string, unknown> | null;
+    }) => void,
+  ): void;
   onPhoneError(callback: (payload: { code: string; message: string; fixHint?: string }) => void): void;
 }
 
@@ -1110,7 +1121,13 @@ const overview = new OverviewView(
   el('overview-strip-line'),
   el<HTMLButtonElement>('overview-disconnect'),
   (id) => shell.route(id),
+  el('ring-row'),
 );
+
+// O4. Both a fetch and a subscription: the fetch covers a window that opened after the phone
+// reported, which for storage is a minute of "waiting" and for a stationary battery can be an hour.
+void connect.deviceVitals().then((v) => overview.setVitals(v.battery, v.storage));
+connect.onDeviceVitals((v) => overview.setVitals(v.battery, v.storage));
 el('recent-all').addEventListener('click', () => shell.route('activity'));
 el('overview-shield').replaceChildren(iconSvg('shield', 16));
 // The card is redrawn when the screen is opened rather than on a timer: it is five rows off a

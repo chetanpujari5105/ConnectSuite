@@ -459,6 +459,25 @@ contextBridge.exposeInMainWorld('connect', {
     ipcRenderer.on('remote-changed', (_event, state) => callback(state)),
 
   /**
+   * O4's Device status card: the phone's battery and storage.
+   *
+   * Both a fetch and a subscription, for the reason `remoteState` is: a pane that routes in after
+   * the phone reported would otherwise sit at "waiting" until the next tick — a minute for storage,
+   * and for a stationary battery an hour. `null` means never reported, which the card draws
+   * differently from reported-as-unknown.
+   */
+  deviceVitals: (): Promise<{
+    battery: Record<string, unknown> | null;
+    storage: Record<string, unknown> | null;
+  }> => ipcRenderer.invoke('device-vitals'),
+  onDeviceVitals: (
+    callback: (state: {
+      battery: Record<string, unknown> | null;
+      storage: Record<string, unknown> | null;
+    }) => void,
+  ) => ipcRenderer.on('device-vitals', (_event, state) => callback(state)),
+
+  /**
    * SMS: a thread list, a page of messages, and one send.
    *
    * `smsSend` takes a thread id and a body and **no recipient**, which is the send rule expressed

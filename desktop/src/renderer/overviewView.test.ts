@@ -7,6 +7,7 @@ import { FakeElement, installFakeDocument, el } from './domDouble.testkit';
 import './navModel';
 import './icons';
 import '../shared/activity';
+import '../shared/deviceVitals';
 import './overview';
 
 /**
@@ -61,6 +62,7 @@ function mount(events: Event[] = []): Pane {
     strip: el('div'),
     stripLine: el('span'),
     disconnect: el('button'),
+    ringRow: el('div'),
   };
   const routed: string[] = [];
   const View = (globalThis as Record<string, unknown>).OverviewView as new (
@@ -75,6 +77,7 @@ function mount(events: Event[] = []): Pane {
     parts.stripLine,
     parts.disconnect,
     (id: string) => routed.push(id),
+    parts.ringRow,
   );
   return { bridge, ...parts, routed, view };
 }
@@ -210,4 +213,60 @@ test('Disconnect calls the bridge, and only that', async () => {
   pane.disconnect.click();
   await settle();
   assert.deepEqual(pane.bridge.calls.filter((c) => c === 'disconnect'), ['disconnect']);
+});
+
+// ---- O4, Device status rings --------------------------------------------------------------------
+
+/**
+ * These drive the **view**, not `deviceVitals.ts` — that decision has its own tests. What is checked
+ * here is that the pane wires it up and that the three states reach the DOM differently, which is
+ * the layer defects 58, 59 and 85 all lived in.
+ */
+type Vitals = { setVitals(b: unknown, s: unknown): void };
+
+test('O4 — a phone that has never reported draws no arc at all', () => {
+  const pane = mount();
+  (pane.view as unknown as Vitals).setVitals(null, null);
+  const cells = pane.ringRow.children;
+  assert.equal(cells.length, 2, 'two rings, and neither of them is memory');
+  for (const cell of cells) {
+    assert.equal(cell.dataset.tone, 'unknown');
+    // A gradient would paint something here. The absence of the arc element IS the state.
+    // `querySelector` rather than `querySelectorAll`: the DOM double implements the first and not
+    // the second, and a test that reaches past what the double models is testing the double.
+    assert.equal(cell.querySelector('.ring-arc'), null);
+  }
+});
+
+test('O4 — reported-as-unknown and never-reported are different sentences', () => {
+  const never = mount();
+  (never.view as unknown as Vitals).setVitals(null, null);
+  const cannot = mount();
+  (cannot.view as unknown as Vitals).setVitals(
+    { level: null, charging: false, capacityUnknown: true },
+    null,
+  );
+  const a = never.ringRow.children[0].querySelector('.ring-caption').textContent;
+  const b = cannot.ringRow.children[0].querySelector('.ring-caption').textContent;
+  assert.notEqual(a, b, 'a phone that cannot report reads the same as one that has not yet');
+});
+
+test('O4 — a real reading draws an arc and says the number', () => {
+  const pane = mount();
+  (pane.view as unknown as Vitals).setVitals(
+    { level: 72, charging: true, capacityUnknown: false },
+    { freeBytes: 41_231_908_864, totalBytes: 511_000_000_000 },
+  );
+  const [battery, storage] = Array.from(pane.ringRow.children);
+  assert.equal(battery.dataset.tone, 'ok');
+  assert.notEqual(battery.querySelector('.ring-arc'), null);
+  assert.equal(battery.querySelector('.ring-value').textContent, '72%');
+  assert.equal(battery.querySelector('.ring-caption').textContent, 'Charging');
+  assert.match(storage.querySelector('.ring-caption').textContent, /^free of /);
+});
+
+test('O4 — a low battery is toned differently from a healthy one', () => {
+  const low = mount();
+  (low.view as unknown as Vitals).setVitals({ level: 5, charging: false, capacityUnknown: false }, null);
+  assert.equal(low.ringRow.children[0].dataset.tone, 'low');
 });

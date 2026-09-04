@@ -301,6 +301,8 @@ export const MessageType = {
 
   BATTERY_STATE: 'battery.state',
   NET_STATE: 'net.state',
+  /** Phone to Mac, unsolicited: shared-volume free and total bytes. See docs/protocol.md. */
+  STORAGE_STATE: 'storage.state',
 } as const;
 
 export const ErrorCode = {

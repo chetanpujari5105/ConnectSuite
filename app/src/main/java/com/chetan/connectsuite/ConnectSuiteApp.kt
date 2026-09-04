@@ -11,6 +11,7 @@ import com.chetan.connectsuite.mirror.v2.MirrorFeature
 import com.chetan.connectsuite.sync.v2.AppsFeature
 import com.chetan.connectsuite.sync.v2.CallFeature
 import com.chetan.connectsuite.sync.v2.ClipFeature
+import com.chetan.connectsuite.sync.v2.VitalsFeature
 import com.chetan.connectsuite.sync.v2.ContactsFeature
 import com.chetan.connectsuite.sync.v2.FsFeature
 import com.chetan.connectsuite.sync.v2.MediaFeature
@@ -90,6 +91,8 @@ class ConnectSuiteApp : Application() {
         // moment MainActivity has window focus, and `clip.request` to a backgrounded phone answers
         // PHONE_NOT_FOREGROUND rather than pretending the clipboard is empty.
         ClipFeature.install(this, link)
+        // O4's Device status card. Handles nothing — it only pushes battery.state and storage.state.
+        VitalsFeature.install(this, link)
         // Phase 7, the apps slice. Three verbs and no launch verb: this platform refuses a
         // background activity start *silently*, so opening an app is a notification the user taps.
         // The capability turns on with POST_NOTIFICATIONS, because that tap is the only route there

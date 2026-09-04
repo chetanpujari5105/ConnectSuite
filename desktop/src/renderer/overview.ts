@@ -89,6 +89,14 @@ function overviewStripLine(connected: boolean, deviceName: string | null): strin
     : 'Not connected. Nothing is being sent anywhere.';
 }
 
+/** The two circles share their geometry; one place for it rather than two literal lists. */
+function setCircle(circle: SVGElement): void {
+  circle.setAttribute('cx', '20');
+  circle.setAttribute('cy', '20');
+  circle.setAttribute('r', '16');
+  circle.setAttribute('fill', 'none');
+}
+
 class OverviewView {
   /** Generation counter for [refresh]: a route open, a launch and a reconnect can all begin one. */
   private refreshes = 0;
@@ -102,6 +110,8 @@ class OverviewView {
     private readonly stripLine: HTMLElement,
     private readonly disconnect: HTMLButtonElement,
     private readonly route: (id: string) => void,
+    /** O4's Device status rings. Optional so the view test can mount without them. */
+    private readonly ringRow: HTMLElement | null = null,
   ) {
     this.disconnect.addEventListener('click', () => void this.bridge.disconnect());
     this.setStatus(false, null, 0);
@@ -113,6 +123,65 @@ class OverviewView {
     this.stripLine.textContent = overviewStripLine(connected, deviceName);
     this.strip.classList.toggle('is-idle', !connected);
     this.disconnect.disabled = !connected;
+  }
+
+  /**
+   * O4 — the Device status rings.
+   *
+   * Drawn as SVG rather than a conic-gradient because **a gradient always paints something**, and
+   * the state this card most has to express is *no arc at all*: a phone that has not reported, and
+   * a phone that reported it cannot tell us, are both rings with no value — and neither may be
+   * drawn as an empty circle that reads as zero.
+   */
+  setVitals(battery: unknown, storage: unknown): void {
+    if (!this.ringRow) return;
+    // `deviceVitals.ts` carries no `export`, so its declarations are in the same global scope this
+    // file is in — no import, and no `declare` either. A `declare` here was a second signature for
+    // one function, which is the two-expressions-of-one-rule trap in its smallest form.
+    const rings = deviceStatusRings(
+      battery as BatteryState | null,
+      storage as StorageState | null,
+    );
+    this.ringRow.replaceChildren();
+    for (const ring of rings) {
+      const cell = document.createElement('div');
+      cell.className = 'ring-cell';
+      cell.dataset.ring = ring.id;
+      // The tone is on the element rather than only in a colour, so a check can read the state
+      // without sampling a pixel — and so the CSS has one thing to switch on.
+      cell.dataset.tone = ring.tone;
+
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 40 40');
+      svg.setAttribute('class', 'ring-svg');
+      svg.setAttribute('aria-hidden', 'true');
+      const track = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      track.setAttribute('class', 'ring-track');
+      setCircle(track);
+      svg.appendChild(track);
+      if (ring.fraction !== null) {
+        const arc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        arc.setAttribute('class', 'ring-arc');
+        setCircle(arc);
+        const circumference = 2 * Math.PI * 16;
+        arc.setAttribute('stroke-dasharray', String(circumference));
+        arc.setAttribute('stroke-dashoffset', String(circumference * (1 - ring.fraction)));
+        svg.appendChild(arc);
+      }
+
+      const value = document.createElement('div');
+      value.className = 'ring-value';
+      value.textContent = ring.value;
+      const label = document.createElement('div');
+      label.className = 'ring-label';
+      label.textContent = ring.label;
+      const caption = document.createElement('div');
+      caption.className = 'ring-caption';
+      caption.textContent = ring.caption;
+
+      cell.append(svg, value, label, caption);
+      this.ringRow.appendChild(cell);
+    }
   }
 
   private drawQuickActions(unread: number): void {

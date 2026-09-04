@@ -250,6 +250,17 @@ let couldRemote = false;
  * Frames dropped on the phone were never sent to this Mac, and `ptsUs`/`monoUs` are the anchor
  * that turns a frame's PTS into a latency. See docs/protocol.md.
  */
+/**
+ * The phone's last reported vitals — O4.
+ *
+ * `null` means **never reported**, which the card draws differently from *reported as unknown*.
+ * Cleared on disconnect for the same reason `NotifyCooldown` resets: these are facts about the
+ * phone that is connected now, and showing the previous phone's battery would be a confident wrong
+ * answer of exactly the kind this project keeps writing rules about.
+ */
+let lastBatteryState: Record<string, unknown> | null = null;
+let lastStorageState: Record<string, unknown> | null = null;
+
 let lastPhoneMirrorStats: Record<string, number> | null = null;
 
 /**
@@ -638,6 +649,11 @@ app.whenReady().then(() => {
       nativeNotifier.onSessionReady();
     } else if (status.phase !== 'connected' && notifierWasConnected) {
       nativeNotifier.onSessionEnded();
+      // O4. These are facts about the phone that WAS connected; keeping them would draw the last
+      // phone's battery over the next one's card.
+      lastBatteryState = null;
+      lastStorageState = null;
+      send('device-vitals', { battery: null, storage: null });
     }
     notifierWasConnected = status.phase === 'connected';
     lastStatus = status;
@@ -771,6 +787,18 @@ app.whenReady().then(() => {
     }
     if (message?.type === MessageType.REMOTE_STATE && message.payload) {
       remote.onState(message.payload);
+    }
+    // O4's Device status card. Held rather than forwarded blind: the renderer may not be listening
+    // yet when the phone replays these on session-ready, and a value that arrived before anyone was
+    // watching would otherwise be lost until the next battery tick — which for storage is a minute
+    // and for a stationary battery can be an hour.
+    if (message?.type === MessageType.BATTERY_STATE && message.payload) {
+      lastBatteryState = message.payload as Record<string, unknown>;
+      send('device-vitals', { battery: lastBatteryState, storage: lastStorageState });
+    }
+    if (message?.type === MessageType.STORAGE_STATE && message.payload) {
+      lastStorageState = message.payload as Record<string, unknown>;
+      send('device-vitals', { battery: lastBatteryState, storage: lastStorageState });
     }
     if (message?.type === MessageType.MIRROR_STATS && message.payload) {
       lastPhoneMirrorStats = message.payload as Record<string, number>;
@@ -1963,6 +1991,9 @@ ipcMain.handle('sms-send-new', (_event, payload: { addresses: string[]; body: st
 );
 
 ipcMain.handle('remote-state', () => remote.current());
+// O4. The renderer asks once when Overview opens, because a pane that routes in after the phone
+// reported would otherwise sit at "waiting" until the next tick.
+ipcMain.handle('device-vitals', () => ({ battery: lastBatteryState, storage: lastStorageState }));
 ipcMain.handle(
   'remote-command',
   (_event, payload: { action: string; extra?: Record<string, unknown> }) =>

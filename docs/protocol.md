@@ -80,7 +80,7 @@ Apps: `apps.list`, `apps.icon`, `apps.open.ask` — see [Apps](#apps-42501). The
 `apps.launch`; the measurement that removed it, and the guard that keeps it removed, are in that section
 Media remote: `remote.state`, `remote.command`
 Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`, `pair.rejected`
-System: `ping`, `pong`, `capabilities.changed`, `battery.state`, `net.state`
+System: `ping`, `pong`, `capabilities.changed`, `battery.state`, `storage.state`, `net.state`
 
 #### Namespace rule
 
@@ -2109,6 +2109,52 @@ rule that only one of two names may ever ship is a rule enforced by someone reme
 and any `APPS_LAUNCH` identifier anywhere in shipping source on either side — while leaving *prose*
 about it alone, which is the discriminator that keeps it from forbidding the paragraph you are
 reading. Its fixtures are in `scripts/check-apps-verb.test.mjs`.
+
+## Device vitals (42501)
+
+Two unsolicited pushes behind the Overview pane's **Device status** card. Neither is a request: the
+phone sends them when a session becomes ready and again when the value changes, the same shape as
+`remote.state`.
+
+They exist because the card could not honestly be drawn without them. `battery.state` sat in this
+document's type list, **specified nowhere and handled on neither side, since Phase 2** — and
+`docs/design-departures.md` → O4 refused to draw the card over it: *three rings over three numbers
+nobody sends would be the most decorative thing in the app*. That refusal stands and this is what
+lifts it.
+
+### `battery.state`
+
+Phone to Mac, unsolicited. Sent on session ready, and on every change the phone observes.
+
+```json
+{ "level": 72, "charging": true, "capacityUnknown": false }
+```
+
+- `level` — integer 0-100, or **`null`** when the platform reports `BATTERY_PROPERTY_CAPACITY` as
+  absent. It is nullable because a device that cannot report it exists, and a `0` in that case would
+  be a full-looking empty ring rather than an unknown one.
+- `charging` — `true` while plugged in *or* charging wirelessly.
+- `capacityUnknown` — `true` when `level` is null, stated as its own field rather than left for the
+  reader to infer from a null. **The Mac must draw the two differently**, which is the same rule the
+  Files pane's empty-versus-failed separation follows.
+
+### `storage.state`
+
+Phone to Mac, unsolicited. Sent on session ready, and at most once a minute thereafter.
+
+```json
+{ "freeBytes": 41231908864, "totalBytes": 511000000000 }
+```
+
+Both are of the **shared** volume, not the app's private directory — a person reading "12 GB free"
+means their phone, not this app's sandbox. Either may be **`null`** if the platform refuses, and
+null is not zero.
+
+**There is no memory ring, and there is not going to be one.** The design draws three; this ships
+two. Free RAM on Android is not a fact about a phone that a person can act on — the OS deliberately
+fills it, so "1.2 GB free of 12 GB" is alarming and meaningless, and a number that looks like
+information and is not is the decoration this project rules out everywhere else. Recorded as a
+departure in `docs/design-departures.md` → O4 rather than left as an omission somebody will "fix".
 
 ## Discovery
 

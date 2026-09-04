@@ -15321,3 +15321,83 @@ standing bucket contrast is the best available account and it points away from u
 writing this down: `adb logcat -b all | grep -iE "AudioFocus|MediaSession|ActivityManager.*jio"`,
 running before the stop, plus `am get-standby-bucket com.jio.myjio` at the moment. Ten seconds of
 capture during the event is worth more than any amount of reconstruction afterwards.
+
+---
+
+## Phase 7 · Slice 24 — O4, the Device status rings, and the wire under them · 2026-09-04
+
+**O4 was not a drawing job.** `docs/design-departures.md` recorded it as `unbuilt` with an explicit
+refusal — *three rings over three numbers nobody sends would be the most decorative thing in the
+app* — and that refusal was right: `battery.state` sat in the contract's type list, **specified
+nowhere and handled on neither side since Phase 2**, and there was no storage message at all. So
+this slice is the wire first and the rings second.
+
+**A claim in `docs/RESUME.md` was wrong and is corrected here.** It said the two types were "already
+on the wire". They were on the *inventory* — which is exactly the `media.*` gap
+`check-protocol-spec.mjs` exists to catch, and the checker had them both on its debt list the whole
+time. Being in the type list is not being implemented, and I read the first as the second.
+
+### The contract
+
+`battery.state` specified, `storage.state` added. The hook caught two things on the first run and
+both were real: the stale debt entry (*"remove it from the list rather than leaving an allowlist
+nobody prunes"*) and a missing inventory line. `net.state` stays on the debt list, unimplemented and
+now alone.
+
+### Two rings, not three
+
+There is **no memory ring**. Free RAM on Android is not a fact a person can act on — the OS
+deliberately fills it, so *"1.2 GB free of 12 GB"* is alarming, meaningless, and looks exactly like
+information. Recorded as a departure rather than an omission, in the contract, in
+`src/shared/deviceVitals.ts` and at O4.
+
+### Three states per ring, and the middle one is the point
+
+| State | Ring | Battery caption |
+|---|---|---|
+| never reported | **no arc** | *Waiting for the phone to report* |
+| reported as unknown | **no arc** | *This phone does not report its level* |
+| a real reading of 0 | arc at 0 | *On battery*, tone `low` |
+
+The first two are both an absence and must not read the same — one resolves on its own and the other
+never will. That is defect 85's separation, one card over. **The rings are SVG rather than a
+conic-gradient for exactly this**: a gradient always paints something, and *paints nothing* is the
+state this card most has to express. The absence of the `.ring-arc` element **is** the state, and
+the view test asserts it that way.
+
+### On hardware, with real values
+
+```
+phone 16:06:53.873 [vitals] battery.state → Mac: 79%, charging=true — 1 battery / 0 storage sent …
+phone 16:06:53.874 [vitals] storage.state → Mac: 13667364864 free of 489993273344 bytes — …
+
+Mac   [{"ring":"battery","tone":"ok","value":"79%","caption":"Charging","hasArc":true},
+       {"ring":"storage","tone":"low","value":"13.7 GB","caption":"free of 490 GB","hasArc":true}]
+```
+
+Storage reads `low` correctly: **2.8% free**, below the 10% threshold. Screenshot in
+`docs/evidence/phase-7-o4-2026-09-04/`. Suite **500 → 514**.
+
+### Two faults this slice produced, and neither was in a test
+
+- **The card was below the fold.** First reading: `top=1007` in an 865 px viewport,
+  `fractionOnScreen: 0` — defect 85's shape, three days later, in the pane I was adding to. Then the
+  *instrument* was wrong too: scrolling `section[data-screen="overview"]` moved nothing, because its
+  `scrollHeight === clientHeight` and **the scroller is `#page`** (1170 vs 667). Walking the parent
+  chain and reading `overflow-y` found it; scrolled properly, the card is **100% on screen**. Two
+  readings of one fact, and neither was right until a third query settled it.
+- **`13.7 GB free` overflowed the 72 px ring.** Seen in a screenshot, in no test, because the DOM
+  double has no layout — every assertion about that string passed while it spilled over its arc.
+  The word *free* moved to the caption. This is the fourth renderer-only break found by looking at a
+  picture, and it is the argument for taking one every time a pane changes.
+
+### Guards that fired, and both were right
+
+- **`check-clip-echo.mjs` refused the phone feature** for declaring a field named the way the
+  clipboard echo interlock names its own. It is a battery change filter and has nothing to do with
+  the interlock — so it took a name that says so, which is the guard's own instruction for that
+  case. A third home for those names is how a copy of that rule gets made.
+- **`org.json.JSONObject` is not mocked in JVM tests**, so the first `VitalsPayloads` died on
+  `Method put in org.json.JSONObject not mocked`. The house type is kotlinx `JsonObject`, as
+  `ClipboardPayloads` already uses. The rule this module carries about Android statics in a pure
+  file extends to `org.json`, which does not look like an Android class and is one.

@@ -192,6 +192,9 @@ object MessageType {
 
     const val BATTERY_STATE = "battery.state"
     const val NET_STATE = "net.state"
+
+    /** Phone to Mac, unsolicited: shared-volume free and total bytes. See docs/protocol.md. */
+    const val STORAGE_STATE = "storage.state"
 }
 
 object ErrorCode {
