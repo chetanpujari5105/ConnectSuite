@@ -6,6 +6,7 @@ import {
   notifyDecision,
   refusalCopy,
 } from '../shared/nativeNotify';
+import { NotifyCooldown } from '../shared/notifyCooldown';
 import { LiveNotifications } from '../shared/liveNotifications';
 import type { PhoneNotification } from '../shared/protocol';
 import { log } from './logger';
@@ -69,6 +70,12 @@ export class NativeNotifier {
    */
   private tally: Record<string, number> = {};
 
+  /**
+   * Per-key history for defect 84's cooldown. The store is in `src/shared/` on purpose: its
+   * **writes** are the part that goes wrong, and a write inside this class is one no test can reach.
+   */
+  private readonly cooldown = new NotifyCooldown();
+
   /** Clicks delivered to this process. The denominator for it is `notify` in {@link tally}. */
   private clicks = 0;
 
@@ -92,11 +99,16 @@ export class NativeNotifier {
   onSessionReady(nowMs = Date.now()): void {
     this.sessionReadyAtMs = nowMs;
     this.tally = {};
+    // `seenOngoing` is a claim about *this* session. A phone that reconnects after a reboot has a
+    // different set of live notifications, and carrying the old shape across would silence a key on
+    // the strength of what a previous session saw.
+    this.cooldown.reset();
     log.info('native-notif', `Session ready at ${new Date(nowMs).toISOString()} — replay cutoff armed`);
   }
 
   onSessionEnded(): void {
     this.sessionReadyAtMs = null;
+    this.cooldown.reset();
     this.publishTally('session ended');
   }
 
@@ -175,14 +187,37 @@ export class NativeNotifier {
     notification: PhoneNotification,
     previous: PhoneNotification | null,
   ): NotifyDecisionValue {
+    // One clock read for the decision and the write alike. Two `Date.now()` calls either side of a
+    // branch is a window, and a window is what this defect is made of.
+    const nowMs = Date.now();
     const decision = notifyDecision(notification, {
       sessionReadyAtMs: this.sessionReadyAtMs,
       previous,
       windowFocused: this.windowFocused,
       currentScreen: this.currentScreen,
+      history: this.cooldown.historyFor(notification.key),
+      nowMs,
     });
     this.tally[decision] = (this.tally[decision] ?? 0) + 1;
-    if (decision !== NotifyDecision.NOTIFY) return decision;
+    // Recorded for **every** decision, not only the ones that banner: `ongoing` is how a key is
+    // known to be status-shaped, and it is a decision that never posts.
+    this.cooldown.record(notification.key, decision, nowMs);
+    if (decision !== NotifyDecision.NOTIFY) {
+      if (decision === NotifyDecision.COOLDOWN) {
+        // The denominator rule, on the path that exists because a count without one hid this defect
+        // for a month: the suppression says which window held it, how long is left, and how many
+        // have bannered — so "quiet" can be told from "broken" without reading the code.
+        const held = this.cooldown.historyFor(notification.key);
+        const window = held.seenOngoing ? 'status' : 'event';
+        log.info(
+          'native-notif',
+          `cooldown ${notification.package} (${window} key, ${notification.key}) — ` +
+            `${this.tally[NotifyDecision.COOLDOWN] ?? 0} held / ${this.tally[NotifyDecision.NOTIFY] ?? 0} posted ` +
+            `since launch, ${this.cooldown.size} keys tracked`,
+        );
+      }
+      return decision;
+    }
 
     this.post(notification);
     return decision;

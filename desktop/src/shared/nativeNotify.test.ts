@@ -8,6 +8,7 @@ import {
   refusalCopy,
   type NotifyContext,
 } from './nativeNotify';
+import { NO_HISTORY } from './notifyCooldown';
 import type { PhoneNotification } from './protocol';
 
 const SESSION_AT = 1_700_000_000_000;
@@ -35,6 +36,12 @@ function context(over: Partial<NotifyContext> = {}): NotifyContext {
     previous: null,
     windowFocused: false,
     currentScreen: 'overview',
+    // Defect 84. `NO_HISTORY` is the honest default here: these tests are about the *other* rules,
+    // and a key that has never bannered is never in a cooldown. The cooldown's own tests drive the
+    // real store rather than constructing histories by hand — the field a test supplies is never
+    // the field the product gets wrong.
+    history: NO_HISTORY,
+    nowMs: SESSION_AT + 1_000,
     ...over,
   };
 }

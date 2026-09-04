@@ -1,4 +1,5 @@
 import type { PhoneNotification } from './protocol';
+import { withinCooldown, type KeyHistory } from './notifyCooldown';
 
 /**
  * Whether one `notif.posted` earns a **native macOS notification**.
@@ -44,6 +45,15 @@ export const NotifyDecision = Object.freeze({
   REPLAY: 'replay',
   /** The window is focused *and* the notifications pane is open, so the row is already on screen. */
   ALREADY_VISIBLE: 'already-visible',
+  /**
+   * This key bannered recently — defect 84.
+   *
+   * The door `UPDATE` and `ONGOING` between them do not stand in: a key that **advances its
+   * timestamp** on every tick *and* **flaps its `ongoing` flag** is caught by neither, and produced
+   * eleven native banners for one notification in three and a half minutes. How long "recently" is
+   * depends on whether the key has ever been `ongoing`; see `notifyCooldown.ts`.
+   */
+  COOLDOWN: 'cooldown',
 });
 
 export type NotifyDecisionValue = (typeof NotifyDecision)[keyof typeof NotifyDecision];
@@ -81,6 +91,16 @@ export interface NotifyContext {
   windowFocused: boolean;
   /** The renderer's current route. */
   currentScreen: string;
+  /**
+   * What this key has done before — defect 84. `NO_HISTORY` for a key never seen.
+   *
+   * Passed in rather than looked up, so this function stays pure and the **write** that produces it
+   * lives in `NotifyCooldown`, where a test can reach it. A decision fed by an untestable write is
+   * defect 67.
+   */
+  history: KeyHistory;
+  /** Now, on this Mac's clock. Injected so the window is testable without waiting. */
+  nowMs: number;
 }
 
 /**
@@ -114,6 +134,12 @@ export function notifyDecision(
   if (context.windowFocused && context.currentScreen === 'notifications') {
     return NotifyDecision.ALREADY_VISIBLE;
   }
+
+  // Last, and deliberately so: this is the gate on a notification that has passed every other rule
+  // — a genuine, new, unseen event whose only problem is that its key said the same thing moments
+  // ago. Ahead of `ALREADY_VISIBLE` it would report a quiet window as a cooldown and lose the
+  // distinction the per-reason tally exists for.
+  if (withinCooldown(context.history, context.nowMs)) return NotifyDecision.COOLDOWN;
 
   return NotifyDecision.NOTIFY;
 }

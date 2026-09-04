@@ -15132,3 +15132,80 @@ Three outcomes, and what each would mean:
 **A crowded overflow is expected either way** and must not be read as absence: WhatsApp's formatting
 items land in the same menu, so `Send to Mac` may sit below them and need a scroll. Slice 19's rule
 applies — `uiautomator dump` cannot see this surface, so the instrument is a screenshot and a person.
+
+---
+
+## Phase 7 · Slice 22 — defect 84 fixed: a per-key cooldown, sized by a signal the phone already sends · 2026-09-04
+
+### The door neither existing guard stands in
+
+`com.jio.myjio`, one key, three and a half minutes: **posted once, updated 119 times**, decided as
+**88 `ongoing` / 21 `update` / 11 `notify`**. Eleven native banners for one notification.
+
+`ONGOING` catches ticks that declare themselves persistent. `UPDATE` catches re-posts whose
+timestamp stood still. Jio **advances `when` on every tick** *and* **flaps `ongoing` on the same
+key**, so the eleven leaks are exactly the frames where the flag read false with an advanced
+timestamp — and both guards are correct: `UPDATE`'s rule was measured against a messaging app, where
+a second message in one conversation *must* banner.
+
+### The fix, and why a single number was not it
+
+A per-key cooldown, with the **window chosen by whether the key has ever been `ongoing` in this
+session** — the phone's own word about its own notification, not our opinion about its package.
+
+| | Window | Why |
+|---|---|---|
+| event-shaped (never `ongoing`) | `EVENT_COOLDOWN_MS` **20 s** | a burst typed in one breath is one banner; a genuine follow-up a minute later is its own |
+| status-shaped (seen `ongoing`) | `STATUS_COOLDOWN_MS` **10 min** | against Jio's measured cadence of a banner roughly every 19 s |
+
+One number for every app cannot work: short enough to leave a chat responsive is too short to
+quieten a ticker, and long enough for a ticker silences the second message in a conversation.
+
+**There is still no package allowlist.** `nativeNotify.ts` refuses one and that refusal stands —
+a curated list of important apps is wrong for everybody but its author and fails silently in the
+direction of not telling you things. This asks the same question of every key.
+
+#### The objection this design had to survive
+
+A download posts progress as `ongoing`, then posts *"Download complete"* on **the same key**, not
+ongoing — a real event, on a key that is status-shaped by the rule above. Does the ten-minute window
+eat it?
+
+**No, because the cooldown is armed by a banner and never by a post.** Progress ticks decide
+`ONGOING`, which never banners, so they arm nothing; the completion is the first banner that key has
+produced and it goes out. Jio is the opposite case — it *does* banner, so its first one arms the
+window and the other ten are held. There is a test for exactly this, and it goes red under the
+mutation that arms the window on every post.
+
+### What is proven, and by what
+
+Driven through the **real** decision and the **real** store together, in the shape `consider` uses:
+
+| Sequence | Result |
+|---|---|
+| Jio's measured shape — one key, `ongoing` flapping, `when` advancing, 19 s apart, 30 posts | **1 banner**, was 11 |
+| the control from the same run — a chat key, never `ongoing`, three messages 2 min apart | **3 banners**, untouched |
+| three messages 3 s apart on one chat key | **1 banner** |
+| 20 `ongoing` progress ticks then one completion | **1 banner** — the completion |
+
+**Three mutations, each red on exactly the right tests:** removing the gate (the defect itself) reds
+the Jio and burst tests; asking whether the **last** post was ongoing rather than **ever** reds the
+store's session test — and that is the mutation that matters, because a ticker *flaps*, so the
+last-post question lets every other frame through; arming the window on every post rather than on a
+banner reds three, including the download completion.
+
+Suite **500**, from 488.
+
+### Unproven on hardware, with the stimulus named
+
+**The `cooldown` branch has not fired on this device.** Ninety seconds of live traffic after the
+build decided `39 replay / 10 group-summary / 7 ongoing` and **zero `notify`** — so there was no
+banner to hold, and the zero is a **missing reading rather than a pass**. The control says why:
+`com.jio.myjio` is present in the phone's shade (3 records of 55) but is **not currently ticking**;
+the 119-update burst happened while it was active, and it is not producible on demand.
+
+A registration line is not an execution line, so this is recorded the way F6/P3 is: **built, tested,
+unproven in the field.** The stimulus is any app that advances `when` while flapping `ongoing` —
+Jio's next active period. The evidence when it comes will be self-announcing: the suppression logs
+its window kind, how many it has held and how many have posted, so a `cooldown` line in
+`link.log` beside a stable banner count is the pass.
