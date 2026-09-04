@@ -98,6 +98,7 @@ own heading there, and its own row here.
 | **82** | **The packaged app could not launch at all, and had presumably never been run.** `dyld: Library not loaded: @rpath/Electron Framework.framework/Electron Framework — mapping process and mapped file (non-platform) have different Team IDs`. `hardenedRuntime: true` turns on **library validation**, which requires every loaded library to carry the same Team ID as the process; an ad-hoc signature has **none** (`TeamIdentifier=not set` on both the app and the framework), and macOS does not treat two absent team IDs as a match. So D12's inside-out ad-hoc signing fixed *assessability* and produced a bundle that verifies deep, assesses as `rejected` rather than erroring, and **cannot be run** | **fixed** 2026-09-03 — `com.apple.security.cs.disable-library-validation` added to `build/entitlements.mac.plist`, $0 and no account. The entitlement is documented as **load-bearing only while ad-hoc**: with a real Developer ID every nested component shares one Team ID, validation passes on its own, and the line should be deleted in the same change that fills in `identity:` | measured 2026-09-03: launch refused before the fix, `LAUNCHED` after, then connected and posted notifications | `docs/testing.md` → Phase 7 Slice 13 |
 | **83** | **A native notification could be posted and not clicked — the banner was live and its handler was gone.** Electron delivers `click` through the `Notification` instance and `post()` held it in a local `const`, so once the function returned nothing referenced it; a collected instance takes its listeners with it while its banner stays on screen. Clicked minutes after posting the click went nowhere; clicked within a second it was delivered — window to the front, routed to Notifications, from minimised. **Case 1 of three that look identical from outside**, and the click handler wrote **no log line**, so its only trace was the Dock badge — a number with four writers, two of which fired during the run that read it | **fixed and closed on hardware** 2026-09-04 — `LiveNotifications<T>` in `src/shared/` holds the unseen keys **and** their handles in one container (two containers over one lifetime is defect 67's shape), released on click, on phone-side removal and on `markAllSeen`, with a superseded banner closed rather than left unclickable. The residual is chosen: a banner still showing when its key leaves is no longer protected — releasing the reference makes the instance collectable rather than destroying it, so clicking it becomes a race with the collector, because Electron's `close` is not guaranteed on macOS and the alternative is an unbounded leak. **Seen in the field the same day, 8 s after a `markAllSeen`, and the click was delivered** — `HANDLE ALREADY RELEASED` on the line, handler ran. An earlier draft of this row said such a banner *stops* being clickable, which is a stronger claim than the code makes. The click handler now logs before it acts. 5 tests, red-first against the two-container mutation — 4 stay green, the invariant test fails | badge == posts at 10:20 and 10:23 (control: Finder `missing value` in the same run) proved the handler never ran; `already-visible` at 11:15:47.919 plus the user's sighting proved the young-banner click did. **Closed on hardware 2026-09-04 in the state the defect describes**: a banner left sitting several minutes, then clicked, routed and revealed — the pass criterion, met, and deliberately not the young-banner click that already worked with the bug in place | `docs/testing.md` → Phase 7 Slice 16 |
 | **84** | **One notification produced eleven native banners.** Since the 11:51:27 launch of 2026-09-04, `com.jio.myjio` was **posted once and updated 119 times**, decided as **88 `ongoing` / 21 `update` / 11 `notify`** — eleven banners for one notification in about three and a half minutes. **The mechanism needs both halves, and either alone suppresses nothing.** `UPDATE` fires only when `whenMs <= previous.whenMs`; that rule was measured against a messaging app and **is correct for it** — its comment says *"a progress bar keeps its original `when`; a new message advances it"*, and WhatsApp's second message in one conversation must banner. **Jio advances `when` on every tick**, so each tick reads as a new message; and **the `ongoing` flag flaps on the same key**, so the leak is exactly the frames where `ongoing` read false *with* an advanced timestamp. A key that advanced `when` but stayed `ongoing` would be silent; one that flapped `ongoing` without advancing `when` would be caught by `UPDATE`. This is the `REPLAY` failure — a burst about something already known — through a door `REPLAY` does not cover | **open** — **fix direction: a per-key cooldown**, and it is a **product judgement rather than a bug fix**, since it decides how soon one key may banner twice. **The wrong fix is a package allowlist**: the right answer for this app is *sometimes* — the same key must banner for a real message and must not while ticking — and a list of important apps cannot express that, is wrong for everybody but its author, and fails silently in the direction of not telling you things. `nativeNotify.ts` already refuses an allowlist and that refusal stands | measured 2026-09-04, one launch. **Control in the same window, read as lines rather than a count**: `com.whatsapp posted=4 updated=3` against `com.jio.myjio posted=1 updated=119`. **The pane's rows went 38 → 39 across the whole burst**, which is what proves one row redrawn rather than a flood of arrivals — eleven banners and eleven messages are the same observation without it | `docs/testing.md` → Phase 7 Slice 16 |
+| **85** | **The Clipboard pane cannot say why nothing arrived from the phone.** Its one live strip (`#clip-notice`) is about Mac → phone; the Android explanation is standing copy in the *other* column at `top=828` in an 865 px window — **37 of 173 px, 21% on screen** — while the list the user reads is 100% visible. So *Android refused the read*, *the link is down* and *the app crashed* draw the identical picture, and the user who filed this concluded the feature was broken. **Every existing check passed**: `clipboard-pane-probe.mjs` asserts the copy is in the DOM, and it is — nothing here measures where a sentence sits relative to what it explains | **open** — **fix direction: a phone-direction state in the LEFT column**, beside `#clip-notice` and equally live, saying when the phone last sent and that it sends only while open. The number already exists; the filter tab reads `From phone 1`. Distinguish it from a broken link the four ways the Files pane separates empty from failed, both being reachable here. **The wrong fix is moving the wall copy up or enlarging it** — the defect is that the pane has no *state* for this direction, so the sentence must be permanent, and a permanent sentence is read once and then unseen. **The second wrong fix is a banner when nothing has arrived**: that is the resting state of a working feature, and a warning that is usually wrong gets ignored | measured 2026-09-04 against the packaged build on :9222 — geometry, and left-column chrome of **299 chars** with `mentionsAndroid=false`. Control: the same search over the column *including* the history read `true` across **32,569 chars** of the user's own clipboard data | `docs/testing.md` → Phase 7 Slice 17 |
 
 ---
 
@@ -2060,3 +2061,55 @@ must banner when it carries a real message and must not while it ticks. A list o
 cannot express *sometimes*, is wrong for everybody but its author, and fails silently in the
 direction of not telling you things — which is the failure the whole feature exists to remove.
 `nativeNotify.ts` refuses an allowlist in its own comment and that refusal stands.
+
+---
+
+### 85 — the Clipboard pane cannot say why nothing arrived · **open** · found 2026-09-04
+
+**Reported by the user, who was right about the symptom and refused the obvious diagnosis.** They
+copied on the phone, pressed ⌘V on the Mac, got the Mac's own last clip, looked at the Clipboard
+pane, saw nothing, and concluded the feature was broken. It was not: Slice 11's wall was behaving
+exactly as measured, and opening ConnectSuite on the phone delivered the clip immediately. Their
+filing is the useful half — *the pane gave me no way to tell "nothing has arrived because Android
+won't let it" from "nothing has arrived because something is wrong"*.
+
+**The measurement, against the packaged build on :9222.** The copy is present and it is good — it
+names Android as the owner of the rule, denies being unfinished work, and gives the recipe. It is
+also in the wrong column and below the fold:
+
+| Element | top | bottom | on screen |
+|---|---|---|---|
+| `#clip-list` — what the user reads | 399 | 829 | **100%** |
+| `#clip-wall-phone` — the explanation | 828 | 1001 | **37 px of 173, 21%** |
+
+The wall begins one pixel before the list ends, in the right-hand `aside`, under the *Mac*-direction
+wall that fills the visible part of that column. The left column's entire chrome is **299
+characters** and mentions neither Android nor the limit, and its one live strip, `#clip-notice`,
+said *"On this Mac's clipboard now — ⌘V to paste."* — the direction that works.
+
+**So the pane has no state for the phone direction at all**, and *Android refused the read*, *the
+link is down* and *the app has crashed* draw the identical picture. This is empty-versus-failed, in
+the app that wrote a proposal revision to separate exactly that, and it is F6/P3's
+nobody-scanned-versus-scanned-and-failing one pane over.
+
+**Why every check passed over it.** `scripts/clipboard-pane-probe.mjs` asserts the copy is **in the
+DOM**, and it is — all nine of its checks are green. Nothing in this repo measures *where* a
+sentence sits relative to the thing it explains, and `clipboardView.test.ts` constructs the pane's
+state by hand, which is defect 67's tell: the field a test supplies is never the field a layout gets
+wrong. It is `showsState` a third time — a correct string in a place nobody in that state is looking.
+
+**Fix direction.** The pane already computes what it needs: the filter tab reads `From phone 1`, so
+the two directions are counted separately today. Put a phone-direction line in the **left column**,
+beside `#clip-notice` and under the same liveness — when the phone last sent, and that it can only
+send while open — and separate it from a broken link the four ways the Files pane separates empty
+from failed, since both states are reachable here.
+
+**The wrong fix is to move the wall copy up, or to make it bigger.** The defect is not that the
+sentence is too small; it is that the pane has no *state* for this direction, which forces the
+sentence to be permanent, and a permanent sentence is one a user reads once and then stops seeing.
+**The second wrong fix is a banner when nothing has arrived** — nothing-has-arrived is the resting
+state of a working feature, and a warning that is usually wrong is one people train themselves past.
+
+**Not a fix for this, and worth its own decision:** `ACTION_PROCESS_TEXT` (Slice 17 route 4) is the
+one measured way to make the trigger cheaper than opening the app. It is a different feature, and it
+is permitted-but-unsighted until someone selects text in three real apps.

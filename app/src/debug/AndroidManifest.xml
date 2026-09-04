@@ -38,5 +38,61 @@
             android:exported="true"
             android:label="Fs probe"
             android:theme="@style/Theme.ConnectSuite" />
+
+        <!--
+          The trigger probe — four candidate routes to "cheaper than opening the app", each
+          measured rather than deduced from Slice 11's focus rule. See ClipTriggerProbe.kt.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.ClipTriggerProbeActivity"
+            android:exported="true"
+            android:label="Clip trigger probe"
+            android:theme="@style/Theme.ConnectSuite" />
+
+        <!--
+          Route 3 and route 4's landing point. The two intent-filters are the whole of route 4:
+          ACTION_PROCESS_TEXT puts an entry in the text-selection toolbar beside Copy, and
+          ACTION_SEND puts one in the share sheet. Both carry the text IN THE INTENT, so neither
+          asks the clipboard anything — which is why they are not subject to the wall.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.ClipTriggerSinkActivity"
+            android:exported="true"
+            android:label="Clip sink probe"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Exported for the same reason every probe here is: so `adb shell am broadcast -n` can
+          reach it. The delivery client differs from the product path — a notification tap, not a
+          shell broadcast — and that difference is recorded with the reading rather than waved at,
+          because "verify a mechanism through the same client the product uses" is a rule here. It
+          does not move the gate: `ClipboardService` tests the calling uid's **window focus**, and a
+          BroadcastReceiver has no window on either delivery path.
+        -->
+        <receiver
+            android:name="com.chetan.connectsuite.probe.ClipTriggerReceiver"
+            android:exported="true" />
+
+        <service
+            android:name="com.chetan.connectsuite.probe.ClipTriggerTile"
+            android:exported="true"
+            android:icon="@android:drawable/ic_menu_send"
+            android:label="Clip trigger probe"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

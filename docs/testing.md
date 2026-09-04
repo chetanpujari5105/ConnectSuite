@@ -14559,3 +14559,205 @@ destroy the instance, it makes it collectable, so the residual is *a race with t
 *unclickable*. Both the code comments and defect 83's row said "stops being clickable" and now say
 what happened. A later click in the same sitting logged `handle held, … 3 clicked / 14 posted`, which
 is the protected path for contrast.
+
+---
+
+## Phase 7 · Slice 17 — the clipboard pane's silence, and four trigger routes measured · 2026-09-04
+
+**Reported by the user, and the report was right about the symptom and right to refuse the obvious
+diagnosis.** They copied `guvgu` on the phone, pressed ⌘V on the Mac, got the Mac's own last clip,
+looked at the Clipboard pane, saw nothing, and concluded the feature was broken. Then they opened
+ConnectSuite on the phone and it arrived immediately.
+
+That is Slice 11's wall behaving exactly as measured, and they said so: **do not fix the wall.** What
+they filed instead is a UI defect — *the pane gave me no way to tell "nothing has arrived because
+Android won't let it" from "nothing has arrived because something is wrong"* — which is the same
+shape as nobody-scanned versus scanned-and-failing (F6/P3), and the same shape as the Files pane's
+empty-versus-failed, the thing an entire proposal revision was written to separate.
+
+### 1. What the pane says right now, read from the running app
+
+Read through `scripts/probe.mjs` against the **packaged** build on :9222 (`release/mac-arm64`), which
+is what the user was looking at. `scripts/clipboard-pane-probe.mjs` **passes every check it has**,
+and that is the first finding rather than a reassurance:
+
+```
+does the phone-side block still state the one-directional limit? → true
+does the limit name Android as its owner, and deny being unfinished work? → "true,true,true,true"
+All reportable.
+```
+
+The copy exists, and it is good copy. `#clip-wall-phone` reads, in full:
+
+> The other direction is Android's rule, not an unfinished feature. Android forbids every app from
+> reading the clipboard while it is in the background — no Android app can do what an iPhone does
+> here, and ConnectSuite is not an exception to it. So the phone can only send its clipboard while
+> ConnectSuite is open on screen: copy on the phone, open ConnectSuite there, and it arrives.
+
+**It names the owner, denies being unfinished work, and gives the recipe. And the user did not read
+it, because it is not where they were looking.** Geometry, same run, `innerWidth === outerWidth`
+(unzoomed) and the pane visible:
+
+| Element | top | bottom | height | on screen |
+|---|---|---|---|---|
+| `#clip-list` — what they read | 399 | 829 | — | **100%** |
+| `#clip-wall-phone` — the explanation | 828 | 1001 | 173 | **37 px, 21%** |
+
+The wall **begins one pixel before the list ends**, in the right-hand `aside`, below the Mac-direction
+wall that occupies the visible part of that column. In an 865 px window, 136 of its 173 px are below
+the fold. The screenshot is `docs/evidence/phase-7-clipboard-silence-2026-09-04/clipboard-pane.png`
+and the bottom of the right column is mid-sentence in the *other* wall.
+
+**The left column — the whole of it, chrome only — is 299 characters and says nothing about the
+limit:**
+
+```
+All 13 | From phone 1 | From this Mac 12 | Clear all
+Send this Mac's clipboard | Ask the phone for its clipboard | Send what I copy automatically
+On this Mac's clipboard now — ⌘V to paste.
+13 of 20 entries, in memory only — cleared when the phone disconnects, gone when this app
+restarts, never written to disk.
+```
+
+`mentionsAndroid: false`, `mentionsOpenOnScreen: false`. And `#clip-notice` — **the one live status
+strip in the column the user was reading, not hidden, updating** — said
+*"On this Mac's clipboard now — ⌘V to paste."*, which is the direction that works. `namesPhoneDirection:
+false`.
+
+So the pane's only live state is about Mac → phone, and the phone → Mac explanation is standing copy
+in the other column, below the fold. **Nothing on that screen is wrong. The user still could not
+answer their question from it**, and there is no state in the pane that would have differed had the
+link been genuinely broken.
+
+One more reading, because it sharpens the defect rather than softening it: `guvgu` **was in the
+list** — drawn as `Gucgu · Phone · 12:15:32 PM` — and the filter tab read **`From phone 1`**. The
+pane already counts the two directions separately. It has the number and does not use it to say
+anything.
+
+#### Two instrument faults in this run, both caught by their controls
+
+- **The row selector.** `[data-clip-row], li` returned **0 rows** while `clipboard-pane-probe.mjs`
+  read **13** the same moment. Rows are `#clip-list > *`. A zero from a wrong selector is the second
+  entry in `CLAUDE.md`'s table wearing a CSS costume, and it was caught only because a second
+  instrument had already counted the same thing.
+- **A text search over a pane whose content is user data.** Asking `.clip-panel` whether it
+  *mentions Android* returned **true** — over **32,569 characters**, of which 32,270 are thirteen
+  rows of the user's own clipboard history. The pane's own chrome is 299 characters and does not
+  mention it. This is *searching for a forbidden thing finds the sentence forbidding it*, with a new
+  source for the lookalike: **not the prose about the claim, but the user's data flowing through the
+  thing being measured.** A clipboard pane will match any word, given a user who copied it. The fix
+  is one line — clone the node, remove `#clip-list`, then search — and the chars are printed beside
+  the verdict so a hit over 32k can never again be read as a hit over the copy.
+
+### 2. Is there a cheaper trigger than opening the app? Four routes, measured
+
+`ClipTriggerProbe.kt` — debug-only, `app/src/debug/`, four routes, each reporting `focused=` and
+`importance=` on its read line so the answer is attributable rather than deduced.
+
+**Why this was measured and not computed.** Slice 11 established the discriminator — focus, not the
+accessibility grant, not foreground-service importance — and from it every row below can be
+*deduced*. That deduction is right, and it is not a measurement; the last load-bearing platform claim
+this project inherited rather than measured (the accessibility exception) turned out not to operate
+on this handset at all.
+
+| # | Route | `focused` | `importance` | clipboard read | platform denial |
+|---|---|---|---|---|---|
+| 1 | notification action → **broadcast** | false | 125 | **refused** — `returned=false items=0` | yes, same millisecond |
+| 2 | quick-settings **tile** `onClick` | false | 125 | **refused** — `returned=false items=0` | yes, same millisecond |
+| 3 | notification action → **activity** | true | 100 | **1,623 characters** | — |
+| 4 | **`ACTION_PROCESS_TEXT`** | — | 100 | *never asked* — text was in the Intent | — |
+
+**The control is routes 1 and 3 in one four-second window, over one clipboard**: 0 characters
+unfocused at 12:50:03.617, 1,623 characters focused at 12:50:05.864, and again at 12:50:07.920. Same
+app, same device, same clip. The difference is focus and nothing else, which is Slice 11's finding
+reproduced against three new entry points.
+
+```
+12:50:03.617 READ route=notification-broadcast focused=false importance=125 returned=false items=0 threw=no
+12:50:03.617 E/ClipboardService: Denying clipboard access to com.chetan.connectsuite.debug,
+                                 application is not in focus nor is it a system service for user 0
+12:50:05.864 READ route=notification-activity  focused=true  importance=100 returned=true  items=1 length=1623
+```
+
+`threw=no` on both refusals is worth its own line: **the refusal is silent at the API.**
+`primaryClip` returns null and raises nothing, so a handler written with `runCatching { … }
+.getOrNull()` would see no failure to log — defect 57's shape, on a path where the platform is
+writing an `E` line about us at the same millisecond.
+
+**So: for reading the clipboard, a focused activity is the only route on this device.** Routes 1 and
+2 are the cheap ones and both are refused. That is the answer to the question as asked, and it is
+recorded as a stop.
+
+#### Route 4 is not a way around the wall — it never approaches it
+
+`ACTION_PROCESS_TEXT` puts an entry in the **text-selection floating toolbar**, beside Copy. The
+selected text arrives in `EXTRA_PROCESS_TEXT`; the clipboard is never consulted, so no rule about
+reading it applies. Measured:
+
+```
+12:47:24.079 ARMED route=sink action=android.intent.action.PROCESS_TEXT
+             textArrivedInIntent=true intentTextLength=31
+```
+
+31 characters, the exact length of the string sent. And it **resolves on this handset** — 11 packages
+answer `PROCESS_TEXT`/`text/plain`, ours among them, and the other ten are shipping apps that use
+this exact mechanism for the same reason:
+
+```
+ai.perplexity.app.android   com.anthropic.claude    com.openai.chatgpt      com.deepseek.chat
+com.adobe.reader            com.truecaller          com.samsung.android.samsungpass
+com.samsung.android.spay    com.samsung.android.app.interpreter
+com.google.android.googlequicksearchbox
+```
+
+That list is the control: an empty result would have meant a manifest that did not take, and a list
+containing only us would have meant a mechanism nobody uses.
+
+**A third instrument fault, and it produced a clean zero.** The first resolver query ran as
+`adb -s "" …` — `scripts/target-device.sh` prints its `OK target …` line on **stderr** and the serial
+on stdout, and `awk '{print $3}'` over the merged stream yielded an empty string. It reported
+**0 PROCESS_TEXT resolvers**, which reads exactly like *the intent-filter did not take*. The control
+that catches it is the one already in this file: a count that should be non-trivially greater than
+zero, checked before the count that matters.
+
+### 3. What this does and does not license
+
+**Measured:** a focused activity is the only route that can read the clipboard here (routes 1-3);
+`ACTION_PROCESS_TEXT` delivers text without reading it and resolves on this device (route 4).
+
+**Not measured, and not claimed:** whether a `PROCESS_TEXT` entry actually *appears* in the selection
+toolbar of the apps the user copies from. The intent resolves — that is a statement about the package
+manager, and a **registration line is not an execution line**. Several apps use custom text-selection
+toolbars and some suppress third-party entries; the toolbar also caps its visible items. The stimulus
+that would settle it is one long-press-and-select in three apps the user actually copies from, and it
+needs their hands. Route 4 is therefore recorded as **permitted, sighting unproven, stimulus named**
+— the same status F6/P3 carries, and for the same reason.
+
+### Defect 85 — the Clipboard pane cannot say why nothing arrived
+
+**The pane has no state for the one thing that is always true about the phone direction.** Its only
+live strip, `#clip-notice`, is about Mac → phone; the Android explanation is standing copy 828 px
+down the *other* column, 21% on screen. A user who copies on the phone, looks, and sees nothing gets
+the same picture whether Android refused the read, the link is down, or the app has crashed — and
+the user who filed this concluded, reasonably, that the feature was broken.
+
+**Why every existing check passed over it.** `clipboard-pane-probe.mjs` asserts the copy is **in the
+DOM** and it is. Nothing in this repo measures *where* a sentence is relative to the thing it
+explains, and the pane's own view test constructs its state by hand — the field a test supplies is
+never the field a layout gets wrong. This is `showsState` again: a correct string in a place no user
+in that state is looking.
+
+**Fix direction.** The pane already computes the number it needs — the filter tab reads `From phone
+1` — so this is a placement and a state, not new plumbing. Put a phone-direction line in the **left
+column**, beside `#clip-notice` and subject to the same liveness, saying when the phone last sent and
+that it can only send while open; and make it distinguishable from a broken link the four ways the
+Files pane separates empty from failed, since here both are reachable.
+
+**The wrong fix is to move the wall copy up, or to make it bigger.** The defect is not that the
+sentence is too small — it is that the pane has *no state* for the phone direction, so the sentence
+has to be permanent, and a permanent sentence is one a user reads once and stops seeing. The second
+wrong fix is a banner that appears when nothing has arrived: nothing-has-arrived is the resting state
+of a working feature, and a warning that is usually wrong is one people learn to ignore.
+
+**The related finding, not a defect.** Route 4 above is the only measured way to make the trigger
+cheaper, and it is a different feature rather than a fix to this one.
