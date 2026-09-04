@@ -5,11 +5,24 @@
  *
  * Defect 84: `com.jio.myjio` was **posted once and updated 119 times** in three and a half minutes,
  * decided as **88 `ongoing` / 21 `update` / 11 `notify`** — eleven native banners for one
- * notification. The two existing guards each cover a real case and neither covers this one:
- * `ONGOING` catches the ticks that declare themselves persistent, and `UPDATE` catches re-posts
- * whose timestamp stood still. Jio **advances `when` on every tick** *and* **flaps the `ongoing`
- * flag on the same key**, so the eleven leaks are exactly the frames where `ongoing` read false
- * with an advanced timestamp — a door neither guard is standing in.
+ * notification.
+ *
+ * **The notification was telling the truth every time, and the first write-up of this said
+ * otherwise.** It was a music player, and playback really was stopping and restarting: eleven
+ * genuine new playback sessions, each with a fresh timestamp, each correctly not `ongoing` in the
+ * gap. Nothing about Jio's notification was misbehaving — the cause was upstream of it, in whatever
+ * was interrupting playback (see `docs/testing.md` → Phase 7 Slice 23).
+ *
+ * That correction does not change the fix, and it is worth saying why. The two existing guards each
+ * cover a real case and neither covers this one: `ONGOING` catches posts that declare themselves
+ * persistent, and `UPDATE` catches re-posts whose timestamp stood still. **A key that stops and
+ * genuinely restarts is neither** — it is not ongoing in the gap, and its timestamp really did
+ * advance. So both guards are right to let it through, and the thing that has to say *no* is a rule
+ * about **how often one key may interrupt somebody**, which is what this is.
+ *
+ * The distinction matters for the next person: this is not a guard against a lying notification. It
+ * is a rate limit on a truthful one, and a truthful notification is exactly the kind you must be
+ * careful rate-limiting.
  *
  * A flat per-key cooldown closes it, and choosing one number for every app is where it goes wrong:
  * short enough to leave a chat responsive is too short to quieten a ticker, and long enough to
@@ -19,7 +32,10 @@
  * ### The signal: has this key ever been `ongoing` in this session?
  *
  * A key that has been `ongoing` is status-shaped — a download, a media session, a ticker. A key that
- * never has is event-shaped — a message, a mention, a completed transfer. That is the phone's own
+ * never has is event-shaped — a message, a mention, a completed transfer. Jio's key was a media
+ * session, which is `ongoing` whenever it is playing, so it classifies status-shaped on the first
+ * frame and stays there across every stop and restart — which is precisely the run of events a
+ * person experiences as one thing. That is the phone's own
  * word about its own notification, not our opinion about its package.
  *
  * **There is still no package allowlist, and this is not one.** A list of important apps is a guess

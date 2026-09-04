@@ -15209,3 +15209,115 @@ unproven in the field.** The stimulus is any app that advances `when` while flap
 Jio's next active period. The evidence when it comes will be self-announcing: the suppression logs
 its window kind, how many it has held and how many have posted, so a `cooldown` line in
 `link.log` beside a stable banner count is the pass.
+
+---
+
+## Phase 7 · Slice 23 — defect 84's mechanism corrected, and was it us? · 2026-09-04
+
+### The correction, and it came from the user rather than from any log
+
+Defect 84 was written up as *a ticker flapping its `ongoing` flag* — a notification misbehaving.
+**It was not.** Jio was playing music, and playback really was stopping and restarting: eleven
+genuine new playback sessions, each with a fresh timestamp, each correctly not `ongoing` in the gap.
+**The notification told the truth eleven times.**
+
+Nothing in the log could have said this. `88 ongoing / 21 update / 11 notify` on one key is
+identical whether the flag is flapping dishonestly or the music is genuinely restarting — the two
+hypotheses produce **byte-identical** evidence, and the one on the table got written down. What
+separated them was a person who knew what the phone was doing at the time.
+
+**It does not change the fix, and the reason is worth keeping.** `ONGOING` catches posts that
+declare themselves persistent; `UPDATE` catches re-posts whose timestamp stood still. A session that
+genuinely stops and restarts is **neither** — so both guards are *right* to let it through, and the
+thing that has to say no is a rule about how often one key may interrupt somebody. The cooldown is
+that rule. What changed is what it is: **a rate limit on a truthful notification, not a guard
+against a lying one** — and a truthful notification is exactly the kind to be careful rate-limiting.
+
+### Then the question nobody asked: was it us?
+
+We hold a wake lock, run a foreground service, and Phase 6 changed service lifetime. If ConnectSuite
+disturbs playback on the phone, that is a real defect and Jio would have been blamed for months.
+
+#### What is established, positively
+
+**1. This app links no audio API at all.** Every audio symbol in the entire Kotlin source:
+
+```
+RemoteFeature.kt:231  AudioManager.ADJUST_RAISE   ← inside remote.command "volume_up"
+RemoteFeature.kt:232  AudioManager.ADJUST_LOWER   ← inside remote.command "volume_down"
+```
+
+No `requestAudioFocus`, no `AudioFocusRequest`, no `MediaPlayer`, no `SoundPool`, no `AudioRecord`,
+no `AudioPlaybackCaptureConfiguration`, no `setAudioSource`. **An app that never requests audio focus
+cannot take it from another app** — that is structural, not an absence in a log. Mirroring is
+video-only: there is no audio-capture configuration anywhere in `mirror-module`.
+
+**2. Every media action we can take writes a log line, and no path escapes it.** Read rather than
+assumed: in `RemoteFeature.handleCommand` every `transport.*()` call sits inside one `when` whose
+result flows to a single `LinkLog.i("remote", "remote.command $action delivered …")`. The only early
+returns are the `Unsupported` / `BadRequest` branches, which return **before** touching the
+controller. So "no line" genuinely means "no action".
+
+**3. The log covers the window, and it is empty of us.** Control first: `link.log` holds **10 lines**
+timestamped `11:5x` on 2026-09-04, so a zero in it is a reading rather than a gap.
+
+| | |
+|---|---|
+| burst window | handshake `11:51:48.763` → about `11:55` |
+| `remote.command` sent to anything in that window | **0** — the nearest are nine to Spotify at `09:xx`, two hours earlier |
+| `notif.action` sent to `com.jio.myjio` in that window | **0** |
+| the only Jio action we have **ever** sent | `11:56:31.624` — **4m43s after the handshake, and after the burst ended** |
+
+That last row is stated rather than buried: we did press an action on a Jio notification once, and
+it was after the eleven banners, not among them. It is the feature doing what somebody asked.
+
+#### What is **not** established, and will not be
+
+**The direct audio-focus record for that window no longer exists.** `logcat` has rolled: **0 lines**
+match `^09-04 11:5` across all buffers. So the reading that would have shown focus changing hands at
+11:51–11:55 cannot be taken now, by anyone, and no amount of care recovers it. Anything below is
+weaker than that reading would have been.
+
+**The control the user asked for — the same pattern in windows when ConnectSuite was not running —
+cannot be taken retrospectively** for the same reason. It would need either notification history
+that is not kept, or a forward experiment against an intermittent event.
+
+The live audio-focus stack was read and ConnectSuite appears **0 times in a 1611-line
+`dumpsys audio`** — but the stack was **empty** at the time, because nothing was playing, so that
+zero is a weak reading and is recorded as one rather than counted as evidence.
+
+#### A sufficient alternative cause, standing on the device right now
+
+```
+am get-standby-bucket com.jio.myjio               → 40   (RARE)
+am get-standby-bucket com.chetan.connectsuite     →  5   (EXEMPTED)
+dumpsys deviceidle whitelist | grep -iE jio\|connectsuite
+                                                  → user,com.chetan.connectsuite.debug,11011
+                                                    (Jio is not on it)
+```
+
+**Jio sits in the RARE bucket with no battery-optimisation exemption, on the One UI handset whose
+battery manager this project spent an entire phase surviving.** Phase 6 exists because this device
+kills backgrounded apps that lack an exemption; our app needed one and got it, and Jio has not got
+one. That is a complete explanation for music stopping and restarting, and it requires nothing of
+ours to be true.
+
+It is a **standing condition, not a measurement of that window** — bucket `40` today is not proof of
+bucket `40` at 11:51 — so it is offered as a sufficient alternative cause rather than as the
+established one.
+
+### The verdict, with its limits attached
+
+**ConnectSuite cannot have taken audio focus from the music, because it never asks for it — that is
+structural and holds for every window, including the ones nobody logged.** Within the burst window
+we sent the phone no media command and no Jio action of any kind, in a log proven to cover it. The
+one Jio action we have ever sent was 4m43s later.
+
+What remains genuinely open is narrower than *"was it us"* and should be stated in its own words:
+**no reading exists of what did interrupt playback at 11:51–11:55**, and none can be taken now. The
+standing bucket contrast is the best available account and it points away from us.
+
+**If it happens again, the reading to take *while it is happening*** — this is the whole value of
+writing this down: `adb logcat -b all | grep -iE "AudioFocus|MediaSession|ActivityManager.*jio"`,
+running before the stop, plus `am get-standby-bucket com.jio.myjio` at the moment. Ten seconds of
+capture during the event is worth more than any amount of reconstruction afterwards.

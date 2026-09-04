@@ -48,10 +48,12 @@ export const NotifyDecision = Object.freeze({
   /**
    * This key bannered recently — defect 84.
    *
-   * The door `UPDATE` and `ONGOING` between them do not stand in: a key that **advances its
-   * timestamp** on every tick *and* **flaps its `ongoing` flag** is caught by neither, and produced
-   * eleven native banners for one notification in three and a half minutes. How long "recently" is
-   * depends on whether the key has ever been `ongoing`; see `notifyCooldown.ts`.
+   * The door `UPDATE` and `ONGOING` between them do not stand in — and **not because anything is
+   * lying**. A media session that genuinely stops and restarts is not `ongoing` in the gap and its
+   * timestamp really has advanced, so both guards correctly let it through; eleven restarts in
+   * three and a half minutes became eleven banners. This is a rate limit on a **truthful**
+   * notification. How long "recently" is depends on whether the key has ever been `ongoing`; see
+   * `notifyCooldown.ts`.
    */
   COOLDOWN: 'cooldown',
 });

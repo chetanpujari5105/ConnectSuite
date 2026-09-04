@@ -99,10 +99,11 @@ function run(posts: PhoneNotification[]): Record<string, number> {
   return tally;
 }
 
-test('defect 84 — a ticker that advances its clock AND flaps ongoing banners once, not eleven times', () => {
-  // Jio's measured shape: one key, ongoing flapping, `when` advancing every tick, ~19 s apart.
-  // Neither existing guard stands in this door: ONGOING misses the frames where the flag reads
-  // false, and UPDATE misses them because the timestamp genuinely advanced.
+test('defect 84 — a media session that really stops and restarts banners once, not eleven times', () => {
+  // Jio's measured shape, and the shape is honest: a music player whose playback genuinely stopped
+  // and restarted, ~19 s apart. Each post is a real new session — not ongoing in the gap, with a
+  // genuinely advanced timestamp — so ONGOING and UPDATE are both RIGHT to let it through. What
+  // has to say no is a limit on how often one key may interrupt somebody.
   const posts: PhoneNotification[] = [];
   for (let i = 0; i < 30; i += 1) {
     posts.push(notif({ whenMs: T0 + i * 19_000, ongoing: i % 3 !== 0 }));
