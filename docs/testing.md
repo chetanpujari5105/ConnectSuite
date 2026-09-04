@@ -14437,10 +14437,11 @@ live in writes inside a class that needs Electron, where no test can reach it. T
 `markAllSeen`; a re-post under a held key hands back the superseded banner, which is closed rather
 than left on screen unclickable.
 
-**The residual is chosen, not missed:** a banner still showing when its key leaves stops being
-clickable. Holding the handle longer means holding it until macOS reports the banner closed, and
-Electron's `close` is not guaranteed on macOS — a bounded silence against an unbounded leak in an
-app meant to run all day.
+**The residual is chosen, not missed:** a banner still showing when its key leaves is no longer
+protected. Releasing the reference makes the instance collectable rather than destroying it, so a
+click on it becomes a race with the collector. Holding the handle longer means holding it until
+macOS reports the banner closed, and Electron's `close` is not guaranteed on macOS — a bounded
+silence against an unbounded leak in an app meant to run all day.
 
 **5 tests, shown red first.** The mutation is the two-container version this replaces — `release`
 returning the handle without deleting it. Four tests stay green and the invariant test fails at the
@@ -14528,3 +14529,33 @@ must not when it is ticking. A list of "important apps" cannot express *sometime
 everybody but its author, and fails silently in the direction of not telling you things, which is
 the failure this whole feature exists to remove. `nativeNotify.ts` already refuses an allowlist for
 that reason and the refusal stands.
+
+### Checks 3 and 4 — both pass, and the residual appeared between them
+
+```
+12:06:20.797  com.whatsapp → notify                     ← badge 1 → 2 (jio's key still unseen)
+12:07:06.882  pane is in front — 2 marked seen, …       ← badge = missing value
+12:07:14.390  click com.whatsapp — HANDLE ALREADY RELEASED (seen, removed, or lost), 0 still unseen
+                                                          — 2 clicked / 13 posted since launch
+12:07:18.423  com.whatsapp → already-visible            ← no banner
+```
+
+**Check 3 passes on both halves**, and the line is the half that matters. The badge clearing is
+corroboration; `pane is in front — 2 marked seen` is what separates `markAllSeen` from the three
+other things that clear that number, and it was written precisely because yesterday's diagnosis had
+to infer the clearer from a badge with four writers. Positive control for the badge attribute in the
+same run: it read `1` and `2` during the burst before clearing, so `missing value` here is an empty
+badge rather than a blind query — the fault that cost the first discriminator.
+
+**Check 4 passes**: `→ already-visible` at 12:07:18 with the pane focused, and no banner. "No banner"
+is an absence, so the decision line is the evidence — every other route to silence (`replay`,
+`ongoing`, `group-summary`, `update`, a macOS refusal) writes its own distinct line, and none of them
+is on this one.
+
+**The line between them is defect 83's documented residual, occurring in ordinary use eight seconds
+after the release** — and it corrects the wording. The click was **delivered**: the handler ran, the
+tally advanced to `2 clicked / 13 posted`, and `reveal` was called. Releasing the reference does not
+destroy the instance, it makes it collectable, so the residual is *a race with the collector*, not
+*unclickable*. Both the code comments and defect 83's row said "stops being clickable" and now say
+what happened. A later click in the same sitting logged `handle held, … 3 clicked / 14 posted`, which
+is the protected path for contrast.

@@ -127,8 +127,9 @@ export class NativeNotifier {
   /**
    * The phone removed it, so it stops being outstanding here and its handle is let go.
    *
-   * A banner still on screen at this instant stops being clickable — the same defect in a narrower
-   * window, and it is chosen rather than missed. Holding the handle longer means holding it until
+   * A banner still on screen at this instant is no longer protected — releasing the reference makes
+   * the instance collectable rather than destroying it, so a click on it becomes a race. Chosen
+   * rather than missed. Holding the handle longer means holding it until
    * macOS reports the banner closed, and Electron's `close` is not guaranteed to arrive on macOS, so
    * the alternative trades a bounded silence for an unbounded leak in an app meant to run all day.
    * Closing the banner here instead would be a product change — a notification dismissed on the

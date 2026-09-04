@@ -25,8 +25,12 @@
  * ### The residual, stated rather than hidden
  *
  * A handle is released when its key leaves — clicked, removed on the phone, or marked seen. A banner
- * still on screen at that moment stops being clickable, which is the same defect in a narrower
- * window. Holding it longer means holding it until macOS says it closed, and Electron's `close` is
+ * still on screen at that moment is no longer *protected*: releasing the reference does not destroy
+ * the instance, it makes it collectable, so clicking it becomes a race with the collector — the
+ * original defect narrowed to that window rather than eliminated. **Observed in the field on
+ * 2026-09-04, 8 seconds after a `markAllSeen`: the click was delivered and the handler ran, with
+ * `HANDLE ALREADY RELEASED` on the line.** So the honest statement is *may* stop being clickable;
+ * an earlier draft of this comment said *stops*, which is a stronger claim than the code makes. Holding it longer means holding it until macOS says it closed, and Electron's `close` is
  * not guaranteed to arrive on macOS, so that trade is a bounded silence against an unbounded leak on
  * an app meant to run all day. The bounded one is chosen deliberately; `NativeNotifier.onRemoved`
  * carries the note.
