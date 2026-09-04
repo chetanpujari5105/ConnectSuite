@@ -4,12 +4,21 @@ Extracted from the built source, comments stripped, then each string annotated w
 that guards it. **Only strings that reach a person** — Settings row *descriptions* and standing wall
 copy are excluded and listed at the end so nothing is silently dropped.
 
-**86 states across 17 files.** They are grouped by what they *mean*, not by pane, because the
+**83 states across 19 panes.** They are grouped by what they *mean*, not by pane, because the
 question is how many different sentences say the same thing.
+
+**Three of these counts were wrong when this was first written** — groups 1, 2 and 4 claimed 24, 15
+and 6 against tables of 28, 19 and 9, the total read 86 against 83, and the pane count read 17. The pane count then went wrong twice
+more while being fixed — 24 from counting files rather than panes, then 23 from a checker that
+assumed every table had three columns when group 7 has two. It is **19**, and the checker counts
+columns now instead of assuming them. They were typed while
+grouping rather than counted from the tables, which is the counting-by-hand failure this repo has a
+rule about. Every number here is now produced by parsing the tables below; re-run it with
+`scripts/check-state-vocabulary.mjs`.
 
 ---
 
-## 1 · "There is nothing here" — 24 sentences for one idea
+## 1 · "There is nothing here" — 28 sentences for one idea
 
 | Pane | Condition | Verbatim |
 |---|---|---|
@@ -48,7 +57,7 @@ or the other.
 
 ---
 
-## 2 · "It failed" — 15 sentences
+## 2 · "It failed" — 19 sentences
 
 | Pane | Condition | Verbatim |
 |---|---|---|
@@ -97,7 +106,7 @@ and `This phone isn’t offering Files right now` — differing in contraction, 
 
 ---
 
-## 4 · "Not connected" — 6 sentences
+## 4 · "Not connected" — 9 sentences
 
 | Pane | Condition | Verbatim |
 |---|---|---|
@@ -181,7 +190,7 @@ The only pair in the whole set that is already consistent.
 
 ## The count that answers the question
 
-**Nine ideas. 86 sentences.** The largest group is "there is nothing here" at 28 uses with **four**
+**Eight ideas. 83 sentences.** The largest group is "there is nothing here" at 28 uses with **four**
 distinct grammatical openings; failures use **three** different verbs; unavailability uses **three**
 different words for the same predicate. Two panes state one condition two ways within themselves
 (Files, Apps), and one sentence appears twice with different punctuation (the activity log).
