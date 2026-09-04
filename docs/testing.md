@@ -15813,3 +15813,121 @@ overwrites it before the shutter, so it runs after. `--ready` was added the same
 **Evidence:** `docs/evidence/phase-7-design-2026-09-05/` — `photos-before.png` (the smear),
 `photos-build.png`, `photos-design.png`, each with a `.json` sidecar naming the window size, the DPR,
 the scrollbar state and the settle.
+
+---
+
+## Phase 7 · Slice 28 — the design pass: Calls, and the motion that was never built · 2026-09-05
+
+Calls was already structurally right from the last pass — three columns at the design's
+`300px / 1fr / 300px`, the filter strip, the running clock, the 3×4 keypad. What was left was
+surface, and one thing the whole app was missing.
+
+### Measured against the design, then changed
+
+| | Was | Design | Now |
+|---|---|---|---|
+| call-row radius | `--radius-tile` 14px | 12px | `--radius-media` |
+| dial key height | 46px | 52px | 52px |
+| Call button | flat `--accent`, 44px | `linear-gradient(135deg, …)`, 48px | gradient, 48px, and it **keeps its word** |
+| row avatar | one accent tint for every contact | a solid per-contact fill, `#0b0b12` initials | `hsl(var(--disc-hue) 62% 66%)` |
+| foot-of-card note | a plain paragraph | a `#111219` strip with a phone glyph | the design's strip, in every state |
+
+**The Call button keeps its label rather than becoming the design's bare phone glyph**, and that is
+a deliberate refusal of the design rather than an omission: this button has a second state,
+`is-confirming`, which is the only thing between a mistyped number and a real call. A state a
+control can express *only* by changing colour is one a colour-blind user cannot read at all.
+
+### The avatar discs, and why the colour is keyed on the name
+
+Fifty call rows carried fifty identical violet circles — a mark with no information in it — and the
+initials inside were `--accent-text` on `--accent-tint`, **2.4:1**, which is a decoration rather
+than a label. The design gives each contact a solid individual fill with near-black initials.
+
+**The hue is keyed on the name (or the number when there is none), never on the initials**, and this
+handset is why. Its log has six consecutive `VENKY SIT` rows — correctly one colour — and an `SB`
+that is a different person from another `SB` two rows below. Keying on the two letters in the circle
+would give different people the same disc, which is exactly the confusion the colour exists to
+break. The test carries its own control: it asserts the two names *do* share initials before
+asserting their hues differ, so it cannot pass over a pair that was never ambiguous.
+
+**Saturation and lightness stay in the stylesheet.** A per-contact *colour* is the design's intent;
+a per-contact *contrast ratio* is not, and a hash that produced lightness too would give some
+contacts black-on-dark initials with nothing reporting which.
+
+### `hueOf` moved rather than being copied
+
+`notifications.ts` already had this function, for app tiles. A second one in `calls.ts` would have
+been wrong twice: every renderer file is loaded as a plain script into one global scope, so a second
+top-level `hueOf` is a redeclaration the compiler catches and the browser would not — and, more
+importantly, two hash functions mean one person is teal on Calls and amber on Notifications with
+nothing ever reporting it. It is `src/shared/discHue.ts` now, one rule with one home.
+
+**Moving it produced the export/CommonJS trap this file already records, twice in a row.** The pane
+threw `ReferenceError: iconSvg is not defined`, and then — one fix later — `discHue is not defined`.
+Both are the same shape: the page provides these by loading them as plain scripts *before* their
+callers, and under `node --test` nothing does, so a view test mounting the pane dies on the first
+row it draws. Both symbols had been green a moment earlier because neither had a caller yet. The
+tests now import them in the page's own order, and `discHue.ts` hangs itself on the global the way
+`icons.ts` does.
+
+### Card stagger — the design's `float-in`, and the reason a route change read as a cut
+
+The design animates each top-level column of a pane in separately: `float-in .3s
+cubic-bezier(.22,1,.36,1)`, then `.05s`, then `.1s`. **It was never built.** `page-in` moves the
+whole page as one block, so every card landed at the same instant and the eye was given no order to
+read them in.
+
+Three decisions, each with a wrong version that is identical in a still:
+
+- **It hangs off `.page.route-in`**, which `shell.ts` re-adds on every navigation. A bare
+  `animation` on the cards would run once at first paint and never again, because panes are shown
+  and hidden with `hidden` rather than created — and a stagger you see once is decoration.
+- **The delay comes from `nth-child`**, not a class per column. The DOM already knows the order;
+  asking each column to declare its own position is a second expression of one fact.
+- **It is opt-in per pane** (`.stagger`), not `.page > * > *`. A list of fifty call rows is not a
+  card, and a 0.3s entrance on things that redraw continuously — the notification list, a live call
+  card whose clock ticks every second — would animate on every tick.
+
+Applied to Overview, Calls, Photos, Clipboard and Settings. The reduced-motion block in `tokens.css`
+already switches every animation off globally.
+
+### The idle card's void, and a duplicate selector under the threshold
+
+`.calls-stage` carries `min-height: 400px` so the three columns read as a row rather than as a wide
+banner over two tall ones. With the idle copy pinned to the top that left a **170px void** beneath
+it, which reads as something that failed to load. It is centred now — measured at **112px above and
+112px below** in a 400px card.
+
+Getting there needed the flex chain fixed: `.calls-stage` was a block, so the idle state's
+`min-height: 100%` resolved against an indefinite height, came out `auto`, and `justify-content:
+center` had nothing to centre within. The first version of this fix **looked identical in the
+screenshot** and was measured rather than eyeballed.
+
+`min-height` also turned out to live in its own `.calls-stage` block **ninety lines** above the
+main one. `stylesheets.test.ts`'s dead-declaration check treats a same-sheet duplicate under 100
+lines apart as a deliberate override, so it passed — correctly, by its own definition. The threshold
+is left alone: it was derived from a real population (every deliberate override 5–19 lines, a dead
+block 408 apart) and retuning it on one data point would be replacing evidence with a guess. The two
+rules are merged into one instead.
+
+### The three remaining refusals from the brief, checked against the wire rather than recalled
+
+| Design draws | Verb it would need | Verdict |
+|---|---|---|
+| **Video call** (Messages aside) | none — `call.dial` is `ACTION_CALL` and there is no video verb | **refused**; a video call is another app's, not ours to place |
+| **Block contact** | none — and `BlockedNumberContract` is restricted to the **default dialer or SMS app**, which this is not and will not be | **refused, and it is a platform wall** rather than a missing verb |
+| **Shared media** (Messages aside) | none — there is no MMS-parts verb on this wire at all; `sms.messages` carries text | **refused** |
+
+The whole `sms` / `call` / `contacts` surface is thirteen verbs — `sms.threads`, `sms.messages`,
+`sms.send`, `sms.received`, `sms.sent`, `call.log`, `call.dial`, `call.answer`, `call.reject`,
+`call.incoming`, `call.ended`, `contacts.list`, `contacts.get` — enumerated out of
+`docs/protocol.md` rather than remembered. **None of the three is drawn today**, so this records why
+they must not be added rather than a change.
+
+The **End-to-end encrypted** badge on Calls and **Encrypted** on Messages stay cut, as they were:
+the link is encrypted and an SMS is not, and a badge on the message pane claims the second.
+
+**Evidence:** `docs/evidence/phase-7-design-2026-09-05/calls-build.png`, `calls-design.png`,
+`calls-compare.png`. Measured after: stage `400px` with `112 / 112` above and below, rows `56px` at
+`12px`, keys `52px`, six discs six distinct fills with the three `VENKY SIT` rows correctly sharing
+one. Mac suite **539 → 545**.

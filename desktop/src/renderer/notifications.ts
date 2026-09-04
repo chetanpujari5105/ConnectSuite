@@ -430,7 +430,7 @@ class NotificationsView {
     tile.setAttribute('aria-label', appTileNameOf(one));
     // A stable hue per app, derived from the label so the same app keeps its colour across
     // restarts. Decorative only: nothing is distinguished by hue alone.
-    tile.style.setProperty('--tile-hue', String(hueOf(appLabelOf(one).label)));
+    tile.style.setProperty('--tile-hue', String(discHue(appLabelOf(one).label)));
     return tile;
   }
 
@@ -824,13 +824,11 @@ function stateBlock(kind: string, headline: string, explain: string): HTMLElemen
  * accessible name and the row always carries the app's text — because a colour that is the sole
  * carrier of meaning is defect 26 exactly.
  */
-function hueOf(label: string): number {
-  let hash = 0;
-  for (let i = 0; i < label.length; i += 1) {
-    hash = (hash * 31 + label.charCodeAt(i)) % 360;
-  }
-  return hash;
-}
+// Moved to `src/shared/discHue.ts` on 2026-09-05, when Calls needed the same rule. It is declared
+// there and loaded before this file; a second copy here would be a redeclaration the compiler
+// catches and the browser would not, and — worse — two hash functions would put one person in two
+// different colours on two panes with nothing ever reporting it.
+declare function discHue(label: string): number;
 
 /**
  * Escapes a notification key for use inside an attribute selector.

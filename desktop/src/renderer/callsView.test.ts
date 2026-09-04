@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeElement, installFakeDocument, installFakeWindow, el } from './domDouble.testkit';
+// The two globals the page provides by loading these as plain scripts *before* calls.js. Under
+// `node --test` nothing loads them, so the pane would throw on its first `iconSvg` — which is what
+// happened, and is the export/CommonJS trap this repo already records: a green suite exercising a
+// loader the renderer never uses. Imported in the page's own order, for the same reason.
+import './icons';
+import '../shared/discHue';
 // Side-effecting import, safe because `calls.ts` touches no DOM at module scope — it only hangs
 // the view class and the pure label rules on `globalThis`.
 import './calls';

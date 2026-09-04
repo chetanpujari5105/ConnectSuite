@@ -215,7 +215,7 @@
 
             <!-- ============================== Overview ==================================== -->
             <section class="screen" data-screen="overview" hidden>
-              <div class="overview-grid">
+              <div class="overview-grid stagger">
                 <!-- The ONE primary card on this screen. Nothing else here is elev-3. -->
                 <div class="card primary hero">
                   <div class="hero-body">
@@ -514,7 +514,7 @@
               docs/design-departures.md rows C1-C6.
             -->
             <section class="screen" data-screen="calls" hidden>
-              <div class="calls-grid" id="calls-card">
+              <div class="calls-grid stagger" id="calls-card">
                 <section class="calls-log-panel">
                   <div class="calls-tabs" id="calls-tabs" role="tablist" aria-label="Call log filter"></div>
                   <div class="calls-log-scroll">
@@ -583,7 +583,7 @@
               <div class="pane pane-photos" id="photos-card">
                 <div id="photos-banner" class="photos-banner" hidden></div>
                 <p class="pane-sub" id="photos-note"></p>
-                <div class="photos-grid-wrap">
+                <div class="photos-grid-wrap stagger">
                   <div class="photos-panel">
                     <div class="photos-rail">
                       <div class="photos-rail-title">ALBUMS</div>
@@ -620,7 +620,7 @@
               docs/design-departures.md.
             -->
             <section class="screen" data-screen="clipboard" hidden>
-              <div class="clip-grid" id="clipboard-card">
+              <div class="clip-grid stagger" id="clipboard-card">
                 <section class="clip-panel">
                   <div class="clip-head">
                     <div class="clip-tabs" id="clip-tabs" role="tablist" aria-label="Clipboard filter"></div>
@@ -727,7 +727,7 @@
               session, reconnects — so the HUD was moved into that shape rather than deleted.
             -->
             <section class="screen" data-screen="settings" hidden>
-              <div class="settings-grid">
+              <div class="settings-grid stagger">
                 <nav class="settings-rail" id="settings-rail" aria-label="Settings sections"></nav>
                 <div class="settings-body" id="settings-body"></div>
                 <aside class="settings-aside">
@@ -799,6 +799,7 @@
     <!-- S6: which recorded events the status island narrates. -->
     <script src="../shared/islandRota.js"></script>
     <script src="../shared/appLabel.js"></script>
+    <script src="../shared/discHue.js"></script>
     <script src="notifyLabels.js"></script>
     <script src="notifications.js"></script>
     <script src="contacts.js"></script>

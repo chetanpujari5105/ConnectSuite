@@ -146,6 +146,8 @@ function callStatus(call: { state: string; number?: string }): string {
  * row uses for an unknown caller. It never returns an empty string, because an empty disc reads as
  * a rendering failure rather than as an unknown caller.
  */
+declare function discHue(label: string): number;
+
 function callInitials(entry: { contactName?: string; number?: string }): string {
   const name = firstNonEmpty(entry.contactName);
   if (!name) return '#';
@@ -159,6 +161,50 @@ function callInitials(entry: { contactName?: string; number?: string }): string 
     return match ? match[0].toUpperCase() : '';
   });
   return letters.join('') || '#';
+}
+
+/**
+ * The design's foot-of-card strip: a phone glyph and one sentence on a `--well` panel.
+ *
+ * One function rather than three, because all three uses say the same kind of thing — *this
+ * capability lives on the phone* — and a sentence about a platform wall that is styled differently
+ * in three places reads as three unrelated problems.
+ */
+function audioStrip(text: string): HTMLElement {
+  const strip = document.createElement('div');
+  strip.className = 'call-audio-note';
+  strip.appendChild(iconSvg('phone', 15));
+  const line = document.createElement('span');
+  line.textContent = text;
+  strip.appendChild(line);
+  return strip;
+}
+
+/**
+ * The disc for a contact: initials on the one colour that person always has.
+ *
+ * One function for all three sites — the log row, the Contacts row, and Frequently called — because
+ * they draw the same person and a per-site copy is how the same contact ends up two colours on one
+ * screen. The hue comes from `src/shared/discHue.ts`, which is also what the Notifications tiles
+ * use, so an app and a contact are coloured by the same rule.
+ *
+ * **The identity keyed on is the name if there is one, and the number otherwise** — not the initials.
+ * Keying on initials would give every `VS` on this phone's log the same disc, which is precisely the
+ * confusion the colour exists to break: this handset's log has six consecutive `VENKY SIT` rows and
+ * an `SB` that is a different person from the `SB` two rows down.
+ */
+function callDisc(entry: { contactName?: string; number?: string }, size: 'sm' | 'xs'): HTMLElement {
+  const disc = document.createElement('span');
+  disc.className = `call-disc call-disc-${size}`;
+  disc.setAttribute('aria-hidden', 'true');
+  disc.textContent = callInitials(entry);
+  disc.style.setProperty('--disc-hue', String(discHue(discKeyOf(entry))));
+  return disc;
+}
+
+/** What a disc's colour is keyed on. Pure, and exported for the test that pins the rule. */
+function discKeyOf(entry: { contactName?: string; number?: string }): string {
+  return firstNonEmpty(entry.contactName) ?? firstNonEmpty(entry.number) ?? '';
 }
 
 /**
@@ -435,18 +481,17 @@ class CallsView {
     reject.addEventListener('click', () => void this.run(this.bridge.callReject()));
     bar.appendChild(reject);
 
-    const audio = document.createElement('div');
-    audio.className = 'call-audio-note';
-    audio.textContent =
-      'Audio stays on the phone — pair the Mac to it over Bluetooth to listen through the Mac.';
+    const audio = audioStrip(
+      'Audio stays on the phone — pair the Mac to it over Bluetooth to listen through the Mac.',
+    );
 
     // Where the design's Mute / Keypad / Speaker row sits. Saying the three controls are on the
     // phone is a smaller lie than drawing three buttons that do nothing, and a much smaller one
     // than drawing three that look like they might.
-    const controlled = document.createElement('div');
-    controlled.className = 'call-controlled-note';
-    controlled.textContent =
-      'Mute, speaker and keypad tones are on the phone. Nothing on the wire carries them.';
+    const controlled = audioStrip(
+      'Mute, speaker and keypad tones are on the phone. Nothing on the wire carries them.',
+    );
+    controlled.classList.add('call-controlled-note');
 
     this.live.append(disc, who, state, clock, bar, audio, controlled);
   }
@@ -471,12 +516,17 @@ class CallsView {
       'A call ringing on the phone appears here, and you can answer or reject it from this Mac. ' +
       'Dial from the keypad on the right.';
 
-    const audio = document.createElement('p');
-    audio.className = 'call-idle-body';
-    audio.textContent =
+    // The design's own strip at the foot of the call card — a `--well` panel with a phone glyph,
+    // reading *"Audio is routed through Galaxy S26 Ultra"*. The **shape** is taken and the sentence
+    // is not: the design's line describes a routing that exists, and here there is no audio path at
+    // all and never will be. This is that shape carrying the true sentence, in every state rather
+    // than only during a call, because someone who has not yet made a call is exactly the person
+    // who needs to know before they try.
+    const audio = audioStrip(
       'There is no audio between the phone and this Mac in either direction — Android does not ' +
-      'let any app capture call audio. Pair the Mac to the phone over Bluetooth to listen ' +
-      'through it.';
+        'let any app capture call audio. Pair the Mac to the phone over Bluetooth to listen ' +
+        'through it.',
+    );
 
     this.live.append(headline, body, audio);
   }
@@ -534,10 +584,7 @@ class CallsView {
     row.type = 'button';
     row.className = `call-row ${entry.type}`;
 
-    const disc = document.createElement('span');
-    disc.className = 'call-disc call-disc-sm';
-    disc.setAttribute('aria-hidden', 'true');
-    disc.textContent = callInitials(entry);
+    const disc = callDisc(entry, 'sm');
 
     const lines = document.createElement('span');
     lines.className = 'call-row-lines';
@@ -639,10 +686,7 @@ class CallsView {
         row.addEventListener('click', () => this.fillDialler(number));
       }
 
-      const disc = document.createElement('span');
-      disc.className = 'call-disc call-disc-sm';
-      disc.setAttribute('aria-hidden', 'true');
-      disc.textContent = callInitials({ contactName: contact.displayName });
+      const disc = callDisc({ contactName: contact.displayName }, 'sm');
 
       const lines = document.createElement('span');
       lines.className = 'call-row-lines';
@@ -786,10 +830,7 @@ class CallsView {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'calls-frequent-row';
-      const disc = document.createElement('span');
-      disc.className = 'call-disc call-disc-xs';
-      disc.setAttribute('aria-hidden', 'true');
-      disc.textContent = callInitials({ contactName: entry.label, number: entry.number });
+      const disc = callDisc({ contactName: entry.label, number: entry.number }, 'xs');
       const label = document.createElement('span');
       label.className = 'calls-frequent-label';
       label.textContent = entry.label;
@@ -895,6 +936,7 @@ function duration(ms: number): string {
   callWho,
   callStatus,
   callInitials,
+  discKeyOf,
   filterCallLog,
   frequentlyCalled,
   callClock,

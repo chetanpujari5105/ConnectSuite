@@ -5,6 +5,9 @@ import { FakeElement, installFakeDocument, installFakeWindow, el } from './domDo
 // string the pane puts in front of a person comes from `notifyLabels.ts`, which reads `appLabel.ts`.
 import '../shared/appLabel';
 import './notifyLabels';
+// Loaded before the pane, exactly as the page loads it — `notifications.ts` calls `discHue` for
+// each app tile's hue, and under `node --test` nothing else puts it on the global.
+import '../shared/discHue';
 import './notifications';
 
 /**
