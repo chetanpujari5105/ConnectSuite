@@ -54,7 +54,6 @@ const RENDERER = 'desktop/src/renderer';
  * sitting.
  */
 export const UNCOVERED = new Map([
-  ['PhotosView', 'The grid paged and measured through probe.mjs; no view-level test yet'],
   ['MirrorView', 'Needs a canvas and a video element the DOM double deliberately does not model'],
   ['ShellView', 'The window frame; its rules live in shell.css and stylesheets.test.ts guards those'],
 ]);

@@ -55,6 +55,8 @@ export class FakeElement {
    * behaviour itself belongs to a probe read against the real page.
    */
   scrollTop = 0;
+  scrollHeight = 0;
+  clientHeight = 0;
   offsetTop = 0;
   offsetHeight = 0;
   selectionStart: number | null = null;

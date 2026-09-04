@@ -561,3 +561,10 @@ function photoLine(className: string, text: string): HTMLElement {
   clockOf,
   albumSource,
 };
+
+// The view class, for `photosView.test.ts`. `photos.ts` touches no DOM at module scope, so a test
+// can construct it against `domDouble.testkit.ts` — which is what takes it off
+// `check-renderer-views.mjs`'s debt list, where its reason was "the grid paged and measured through
+// probe.mjs; no view-level test yet". The probe reading stays the evidence for the *grid*; this
+// covers the cursor, the paging guard and the states, which are the parts a probe could not isolate.
+(globalThis as Record<string, unknown>).PhotosView = PhotosView;
