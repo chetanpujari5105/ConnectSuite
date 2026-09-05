@@ -51,6 +51,22 @@ let stranded = 0;
 let below = 0;
 let total = 0;
 
+/*
+ * Clear any temporary id a previous run left behind, before measuring anything.
+ *
+ * Not defensive tidying: until the `finally` below existed, a single throw left `#__sweep_target`
+ * on the page and every later run inherited it — so the sweep's own output degraded across runs
+ * with nothing saying why. An instrument that can be poisoned by its own history reports the
+ * history rather than the app.
+ */
+{
+  const stale = await probe.rawEvaluate(
+    `(() => { let n = 0; for (const el of document.querySelectorAll('#__sweep_target')) { el.removeAttribute('id'); n++; }
+      return String(n); })()`,
+  );
+  if (Number(stale) > 0) console.log(`cleared ${stale} stale sweep marker(s) from a previous run\n`);
+}
+
 for (const screen of screens) {
   // Route by accessible name, never a coordinate — and skip a pane the shell will not open.
   const routed = await probe.rawEvaluate(`(function(){
@@ -126,14 +142,43 @@ for (const screen of screens) {
         // The block the heading titles, not the heading itself: a one-line h2 is almost always in
         // view while the card under it is not.
         var block = target.closest('.card, .side-card, [class*="-panel"], [class*="pane-"]') || target.parentElement;
+
+        /*
+         * Deliberately hidden is not stranded, and asking about it is what broke this file.
+         *
+         * A heading inside a '[hidden]' subtree — the Messages pane's New conversation panel, say —
+         * is not a card nobody can reach; it is a card nobody has asked for. 'onScreen' refuses to
+         * measure a hidden element, correctly, so the question has to not be asked.
+         */
+        if (typeof block.checkVisibility === 'function' && !block.checkVisibility({ checkVisibilityCSS: true })) {
+          return JSON.stringify({ verdict: 'hidden', atRest: { top: 0, fraction: 0 }, scroller: null });
+        }
+
+        /*
+         * The temporary id is removed in a 'finally', and that is the fix rather than tidiness.
+         *
+         * It used to be removed on the line after the measurement — so any throw from 'onScreen'
+         * left '#__sweep_target' on the page, the next card added a second one, '__probe.one' then
+         * refused *both* as ambiguous, and every card after the first failure cascaded. One run
+         * reported 'PROBE_AMBIGUOUS: 13 nodes match' and 12 cards of 23, which reads as a pane that
+         * vanished rather than as an instrument that poisoned itself.
+         *
+         * A cleanup on the success path is not a cleanup.
+         */
         var held = block.id;
         if (!held) block.id = '__sweep_target';
-        var out = __probe.onScreen('#' + (held || '__sweep_target'));
-        if (!held) block.removeAttribute('id');
-        return JSON.stringify(out);
+        try {
+          return JSON.stringify(__probe.onScreen('#' + (held || '__sweep_target')));
+        } finally {
+          if (!held) block.removeAttribute('id');
+        }
       })()`));
     } catch (error) {
       console.log(`   ?  ${card.name.padEnd(36)} ${String(error.message).split('\n')[0].slice(0, 70)}`);
+      continue;
+    }
+    if (result.verdict === 'hidden') {
+      console.log(`   —  ${card.name.padEnd(36)} not shown (inside a hidden subtree)`);
       continue;
     }
     total += 1;
