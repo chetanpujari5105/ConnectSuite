@@ -41,9 +41,19 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** Pulled from the spec checker so there is one debt list and not two. */
+/**
+ * Pulled from the spec checker so there is one debt list and not two.
+ *
+ * `DEBT_SOURCE` overrides the path, and exists only so the fixtures can restore a type to the list
+ * without **writing to the real file**. They used to patch `check-protocol-spec.mjs` in place for
+ * the length of a run, which is a mutation of shared state that `node --test` runs files in
+ * parallel over: `check-protocol-spec.test.mjs` would read the patched copy and report
+ * `battery.state is on the debt list and is in fact specified` — a true statement about a file that
+ * existed for forty milliseconds. It surfaced when a ninth test file changed the scheduling, which
+ * is the way a latent race always surfaces: something unrelated moves and an unrelated test fails.
+ */
 function debtTypes() {
-  const source = readFileSync('scripts/check-protocol-spec.mjs', 'utf8');
+  const source = readFileSync(process.env.DEBT_SOURCE ?? 'scripts/check-protocol-spec.mjs', 'utf8');
   const block = /const UNSPECIFIED\s*=\s*\{([\s\S]*?)\n\};/.exec(source);
   if (!block) return null;
   return [...block[1].matchAll(/'([a-z]+\.[a-z.]+)'\s*:/g)].map((m) => m[1]);

@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createProbe, ProbeControlFailure, STOPPED, format, PRELUDE } from './probe.mjs';
+import { createProbe, ProbeControlFailure, STOPPED, format, formatAct, PRELUDE } from './probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -299,4 +299,40 @@ test('the scan actually looked at some files', () => {
   const files = scriptSources();
   assert.ok(files.length >= 3, `the scan found only ${files.length} scripts`);
   assert.ok(files.some((f) => f.name === 'probe.mjs'), 'probe.mjs itself was not seen by the scan');
+});
+
+// ---- format vs formatAct ---------------------------------------------------------------------
+
+/**
+ * The fixture is the sentence that actually got printed, over a stimulus that had landed.
+ *
+ * A guard written after a failure and never run against that failure has not been tested against
+ * the one case it is known to have missed.
+ */
+test('fixture — formatting an act result as a read is refused', () => {
+  const acted = { what: 'route to calls', landed: true, waitedMs: 26, stopped: STOPPED.SETTLED };
+  assert.throws(() => format(acted), /that is an `act` result/);
+});
+
+test('control for the fixture above — a real read still formats', () => {
+  const read = {
+    question: 'how many rows',
+    value: 50,
+    control: 3,
+    polls: 1,
+    waitedMs: 8,
+    stopped: STOPPED.SETTLED,
+    reportable: true,
+  };
+  assert.match(format(read), /how many rows → 50/);
+  assert.doesNotMatch(format(read), /NOT REPORTABLE/);
+});
+
+test('formatAct says landed, and says plainly when it did not', () => {
+  const landed = { what: 'route to calls', landed: true, waitedMs: 26, stopped: STOPPED.SETTLED };
+  const missed = { what: 'route to calls', landed: false, waitedMs: 5000, stopped: STOPPED.DEADLINE };
+  assert.match(formatAct(landed), /route to calls → landed/);
+  assert.doesNotMatch(formatAct(landed), /NOT A PREMISE/);
+  assert.match(formatAct(missed), /DID NOT LAND/);
+  assert.match(formatAct(missed), /NOT A PREMISE/);
 });

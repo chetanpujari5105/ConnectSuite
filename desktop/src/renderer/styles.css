@@ -1005,6 +1005,34 @@ img#qr {
 .call-disc-sm { width: 32px; height: 32px; font-size: 11px; }
 .call-disc-xs { width: 26px; height: 26px; font-size: 10px; }
 
+/*
+ * The contact's own photograph, painted over the disc rather than replacing it.
+ *
+ * The initials and the hue stay underneath and are only made invisible, which is what makes the
+ * fallback free: a fetch that is refused, fails, or never returns leaves the disc this pane has
+ * always drawn, and there is no loading state because the thing a spinner would cover is already
+ * the right answer. It is also the failure mode if the image itself will not decode — the disc
+ * goes back to being a disc rather than a hole.
+ *
+ * `color: transparent` rather than emptying the element: the text is the fallback, and a disc that
+ * threw its initials away the moment a photo arrived could not go back. The disc is `aria-hidden`,
+ * so nothing is announced either way.
+ *
+ * The photos are 96px on this handset (720px for the few contacts that have a display-size one),
+ * so `cover` on a 104px card disc is drawing a 96px source at 208 device pixels. That is soft and
+ * it is still the picture the user set; the alternative is a letter.
+ */
+.call-disc.has-photo {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  color: transparent;
+  /* `--hairline`, not `--border`: there is no `--border` token, and defect 92 is the record of
+     what an undeclared custom property does — the declaration is invalid at computed-value time
+     and inherits, it does not fall back. Checked against tokens.css rather than remembered. */
+  border-color: var(--hairline);
+}
+
 .call-log { display: flex; flex-direction: column; gap: 2px; }
 /*
  * The whole row is the control, which is the design's own shape (`.cs-row` carries

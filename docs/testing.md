@@ -16537,3 +16537,169 @@ on the vocabulary list with the others.
 
 **Evidence:** `docs/evidence/phase-7-design-2026-09-05/messages-build.png`, `messages-design.png`,
 `messages-compare.png`. Mac suite **555 → 565**.
+
+## Phase 7 · Slice 34 — contact photographs on the Calls pane · 2026-09-05
+
+The avatar disc has been a placeholder for a picture the phone already held. This puts the picture
+in it, and the way the wire is already shaped meant **no contract change**: `docs/protocol.md` keeps
+binary out of the control messages with `contacts.get` named as one of two bounded exceptions —
+one contact, on demand, a base64 PNG capped at 64 KiB and downscaled by the phone rather than
+refused. That verb has been implemented on both sides since Phase 4 and the Contacts pane already
+used it. Calls simply never asked.
+
+### The measurement, taken first
+
+Two `adb` reads against `content://com.android.contacts`, both with a control, before any code was
+written. The question is what a photograph *is* on this handset, because "the contact has a photo"
+is two different columns with a 42× size difference between them.
+
+| | contacts | share of the book | source size |
+|---|---|---|---|
+| rows total | **665** | — | — |
+| `photo_id` not null — a **thumbnail**, in the provider's own database | **224** | 34% | 96 px |
+| `photo_file_id` not null — a **display photo**, the full-size file | **17** | 2.6% | 720 px |
+| no picture of any kind | **441** | 66% | — |
+
+`content://com.android.contacts/photo_dimensions` reports `display_max_dim=720,
+thumbnail_max_dim=96`, which is where the two sizes come from rather than from documentation.
+
+**Controls, both directions.** The presence control is the matched rows and not the count — five
+`photo_id=` rows printed verbatim, and five `photo_file_id=` rows printed to show that a count of 17
+is not a count of zero misread. The absence control is the query itself: the same command with the
+same projection returns 665 rows, so a zero in either column would have been a fact about the
+column rather than about the query.
+
+**One reading in that run is worth keeping on its own.** `grep -c '^Row: '` returns **664** and
+`grep -o 'photo_id=' | wc -l` returns **665**. One contact's `display_name` contains a newline, so
+the row-per-line assumption is false on this phone's real book. The larger number is the honest one,
+and this is the `grep -c` failure from the control table in `CLAUDE.md` arriving one more time: the
+count was of *lines*, and the thing being counted was *rows*.
+
+### What was built
+
+`ContactPhotos` (`desktop/src/shared/contactPhotos.ts`) — one store for the pane, keyed on number,
+holding an image source or `null`. Consequences worth stating:
+
+- **A miss is cached exactly as hard as a hit.** Two thirds of this book has no picture, so *there
+  isn't one* is the ordinary answer, and a store that only remembered successes would re-ask the
+  common case on every redraw.
+- **A second caller joins the run in flight.** The live card and a log row are routinely the same
+  person drawn in the same frame from two code paths — the race `CLAUDE.md` records from the Files
+  pane, where two correct triggers assembled the one state the type was built to prevent.
+- **A failure is counted and *not* cached.** A photograph that failed because the link dropped is a
+  question that was never answered; caching it would mean the face never returns on a link that has.
+- **It is dropped on disconnect**, for the same reason the main process drops its name cache.
+
+`photoWorthAsking` decides whether to spend a request at all, and the middle row is an inference
+rather than a fact, so it is written down: `call.log` carries **no photo field**, only whether the
+phone resolved a `contactName`. A name and a photograph come from the *same* `PhoneLookup` match on
+the *same* number, so a row the phone could not name has no contact behind it and cannot have a
+picture. What that costs is one case — a contact with a photograph and no display name — and
+`ContactsStore.list` already refuses to list those rows (`DISPLAY_NAME_PRIMARY IS NOT NULL`), so it
+is a face this app has never been able to show anywhere.
+
+The photograph is painted **over** a disc that is already correct: `background-image` plus
+`color: transparent`, initials and hue intact underneath. There is no loading state, because the
+thing a spinner would cover is the right answer already, and every refusal — no photo, no contact,
+contacts not granted, link gone, an image that will not decode — degrades to the disc this pane has
+always drawn.
+
+### On hardware
+
+`scripts/call-photos-probe.mjs`, through `probe.mjs` because these numbers are written down here.
+
+```
+route to calls → landed  [waited=11ms stopped=settled]
+how many call-log rows are drawn → 50  [control=3 polls=1 stopped=settled]
+call-log discs carrying a photograph → {"discs":53,"withPhoto":22,"paintedKeepingInitials":22,
+                                        "sample":["SC → url(\"data:image/png;base64,iVBORw0…"]}
+                                        [control=53 stopped=settled]
+  PASS  at least one photograph is drawn — 22 of 53 discs
+  PASS  every painted disc still carries its initials underneath — 22 of 22
+  what the photo store says it did → "6 found / 11 none / 0 failed, 9 not asked,
+                                      cache 52 hit / 50 missed, 17 held"
+switch to Missed and back to All, which redraws every disc → landed
+  the tally after a full redraw → "6 found / 11 none / 0 failed, 15 not asked, cache 104 hit …"
+  PASS  a redraw fetched nothing new — found 6 → 6
+```
+
+**Two instruments on one fact, deliberately.** The DOM says 22 discs carry a photograph. The store
+says 6 were found across 17 distinct numbers. Those disagree and both are right: 50 log rows are 17
+distinct numbers, and one contact appears on many rows — so *photographs fetched* and *discs
+painted* are counts of different things, which is the units rule from `CLAUDE.md` met head-on. The
+number that would have been wrong is any ratio between them.
+
+The pair is also what separates the two stories a picture cannot: a pane drawing six faces because
+six contacts have pictures, and one drawing six because the fetch died after six, look identical.
+`0 failed` is the discriminator, and `cache 52 hit / found 6 → 6` across a full redraw is the
+evidence that the cache is the feature rather than an optimisation.
+
+The live card was measured separately, because a ring cannot be scheduled: a **synthetic** call was
+driven onto it from a real log row that has a photograph, giving `104x104`, `hasPhoto: true`,
+`initialsUnderneath: "SC"`. It is synthetic and is labelled so; the pane was put back on the phone's
+real state with `calls.refresh()` afterwards, verified by the idle card returning.
+
+**Evidence:** `docs/evidence/phase-7-call-photos-2026-09-05/calls-with-photos.png` (the real log)
+and `live-card-synthetic.png` (the driven card, and the only synthetic image in this slice).
+
+### Defect 94 — a shared script with an `export` had never run, and worked anyway
+
+The feature did not draw at all on its first run: `ContactPhotos` was `undefined` in the page while
+`photoKey`, declared four lines from it in the same file, was a `function`.
+
+`src/shared/*.ts` files are loaded two ways — `require`d by tests, and dropped into `index.html` as
+classic `<script>` tags. A file carrying an `export` is a **module**, and tsc compiles a module to
+CommonJS whose first emitted statement is `Object.defineProperty(exports, …)`. There is no `exports`
+in a classic script, so the file throws on its first line and **every declaration below it is dead**
+— including the `globalThis` block at the bottom that each of these files carries and that each
+file's own comment credits for making it work.
+
+**The part that makes this worth a defect number rather than a fix: `discHue.ts` had been in that
+state for a phase, and the app was fine.** A `function` declaration is hoisted onto `globalThis`
+before the body executes, so it survives the throw. A `class` is not. So the same mistake is
+invisible for a file of functions and fatal for one with a class, and nothing in this repo could
+report either:
+
+| | |
+|---|---|
+| `tsc` | clean — it is valid TypeScript |
+| `npm test` | green — tests `require` the file, where `exports` exists |
+| the page | **works**, when the file exports only functions |
+
+Eight of the ten renderer-loaded shared files already avoid `export`; nobody had written down why,
+so the ninth did not. Fixed in both files, and the comment in `discHue.ts` that credited the wrong
+mechanism now records what was actually happening.
+
+**Enforcement**, because a rule this repo has now paid for twice is not a rule anyone remembers:
+`scripts/check-renderer-scripts.mjs`, wired to `PreToolUse` on `git commit` as the **eighth** hook.
+Scope comes from `index.html` rather than from the directory — `src/shared/` also holds modules the
+main process imports normally, and those keep their exports. The matcher is anchored on a
+*declaration*, so prose about the rule stays legal; that is defect 41's lesson and there are
+fixtures in both directions, including the verbatim `export function discHue` that shipped. Its
+control fails loudly on an empty scan, and a second test reads the **built** `dist/shared/*.js` for
+a top-level `exports` reference, which is the backstop if the source matcher is ever wrong in the
+permissive direction. Shown to deny with the defect reintroduced, and to fall silent with it
+restored.
+
+### Two instrument faults from this sitting, both caught before anything was written down
+
+- **`probe.mjs`'s own `format()` printed `NOT REPORTABLE` over a stimulus that landed perfectly.**
+  An `act` result carries `what`/`landed`; `format` reads `question`/`value`/`reportable`, so it
+  printed `undefined → undefined … NOT REPORTABLE — the instrument gave up` twice in one run, beside
+  readings that were correct. That is the instrument reporting a failure of its own that did not
+  happen — the same family `probe.mjs` exists to stop, inside `probe.mjs`. `format` now refuses an
+  act result outright and `formatAct` is its counterpart, with the fixture being the sentence that
+  actually got printed.
+- **A parallel-test race that a ninth test file exposed.** `check-debt-claims.test.mjs` patched
+  `scripts/check-protocol-spec.mjs` **on disk** for the length of a run and restored it in a
+  `finally`. `node --test` runs files in parallel, so `check-protocol-spec.test.mjs` read the patched
+  copy and failed with an accurate message about a file that existed for forty milliseconds. It had
+  been latent since the guard was written; adding an unrelated ninth file changed the scheduling and
+  surfaced it, which is how a latent race always surfaces. The fixtures write a **copy** now and
+  point the subprocess at it with `DEBT_SOURCE`; nothing shared is mutated. Verified by ten
+  consecutive parallel runs at `fail 0`, and by a checksum of the real file before and after a run.
+
+**Tests:** Mac **565 → 580** (nine for the store, six for the pane's drawing). Six mutations of the
+store and six of the pane were each shown to go red on exactly the test named for them, with the
+restored source green. Phone: `sync-module` compiles and its suite passes; two log lines were added
+and no behaviour changed.

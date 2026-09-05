@@ -7,6 +7,7 @@ import { FakeElement, installFakeDocument, installFakeWindow, el } from './domDo
 // loader the renderer never uses. Imported in the page's own order, for the same reason.
 import './icons';
 import '../shared/discHue';
+import '../shared/contactPhotos';
 // Side-effecting import, safe because `calls.ts` touches no DOM at module scope — it only hangs
 // the view class and the pure label rules on `globalThis`.
 import './calls';
@@ -78,6 +79,22 @@ class FakeBridge {
     return { ok: true as const, data: { contacts: this.contacts, hasMore: false } };
   }
 
+  /** number → base64 the phone would return. A number that is absent here has no photograph. */
+  photos: Record<string, string> = {};
+  /** Every number `contacts.get` was called with, in order. The denominator for the skip rule. */
+  readonly photoAsks: string[] = [];
+  /** When true `contacts.get` refuses, which is what a revoked contacts grant looks like. */
+  photosRefuse = false;
+
+  async contactsGet(options: { number?: string; withPhoto?: boolean }) {
+    this.photoAsks.push(options.number ?? '');
+    if (this.photosRefuse) {
+      return { ok: false as const, reason: 'This phone is not sharing its contacts.' };
+    }
+    const photo = this.photos[options.number ?? ''];
+    return { ok: true as const, data: photo ? { photo } : {} };
+  }
+
   fireCall(call: Call | null): void {
     this.changed?.(call);
   }
@@ -88,6 +105,8 @@ const fakeWindow = installFakeWindow();
 
 interface Pane {
   bridge: FakeBridge;
+  /** The view itself. `renderer.ts` calls `setAdvertised` on every status change; so can a test. */
+  view: { setAdvertised(on: boolean): void };
   card: FakeElement;
   note: FakeElement;
   live: FakeElement;
@@ -135,7 +154,7 @@ function mount(log: LogRow[] = [], current: Call | null = null): Pane {
   // How the real app drives it: `renderer.ts` calls this the moment the phone advertises `calls`.
   // Constructing without it would test a pane in a state the app never puts it in.
   view.setAdvertised(true);
-  return { bridge, ...parts };
+  return { bridge, view, ...parts };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -381,4 +400,130 @@ test('a ringing call offers Answer on phone; an active one offers only Hang up',
   pane.bridge.fireCall(active);
   await settle();
   assert.deepEqual(pane.live.queryAll('button').map((b) => b.textContent), ['Hang up']);
+});
+
+// ---- Contact photographs -------------------------------------------------------------------
+
+/**
+ * The photograph is drawn **over** a disc that was already correct, and both halves are asserted.
+ *
+ * The second assertion is the one that matters and it is the easy one to leave out: the initials
+ * and the hue are still there underneath. That is the entire fallback story — a fetch that fails,
+ * is refused, or never returns leaves the disc this pane has always drawn — and a version that
+ * emptied the disc before painting would pass the first assertion and ship a hole.
+ */
+test('a log row with a contact draws that contact photograph over its initials', async () => {
+  const pane = mount([row('1', { contactName: 'Ada Lovelace', number: '+911234500001' })]);
+  pane.bridge.photos['+911234500001'] = 'QUFB';
+  await settle();
+  await settle();
+
+  const discs = pane.body.queryAll('.call-disc');
+  assert.equal(discs.length, 1, 'control: one row, one disc — the query finds the thing');
+  const disc = discs[0]!;
+
+  assert.equal(disc.style.backgroundImage, 'url("data:image/png;base64,QUFB")');
+  assert.ok(disc.classList.contains('has-photo'), 'the stylesheet is told to reveal it');
+  assert.equal(disc.textContent, 'AL', 'the initials are still underneath, not thrown away');
+  assert.ok(disc.style['--disc-hue'], 'and so is the hue');
+});
+
+/**
+ * The inference `photoWorthAsking` makes, asserted as a **request count** rather than as a picture.
+ *
+ * A row the phone could not name has no contact behind it, so it cannot have a photograph, so it
+ * is not worth a round trip. Asserting the absence of a photo would pass for the wrong reason —
+ * there is no photo for that number in the fake either. The number of requests is the only thing
+ * that separates "did not draw one" from "did not ask".
+ */
+test('a row the phone could not name is not asked about at all', async () => {
+  const pane = mount([
+    row('1', { contactName: 'Ada Lovelace', number: '+911234500001' }),
+    row('2', { number: '+911234500002' }),
+  ]);
+  await settle();
+  await settle();
+
+  assert.deepEqual(
+    pane.bridge.photoAsks,
+    ['+911234500001'],
+    'the named row is asked about — control — and the unnamed one is not',
+  );
+});
+
+test('the same person on the card and in the log costs one request, not two', async () => {
+  const call: Call = {
+    callId: 'c1',
+    number: '+911234500001',
+    contactName: 'Ada Lovelace',
+    startedAtMs: Date.now(),
+    state: 'ringing',
+  };
+  const pane = mount([row('1', { contactName: 'Ada Lovelace', number: '+911234500001' })], call);
+  pane.bridge.photos['+911234500001'] = 'QUFB';
+  pane.bridge.fireCall(call);
+  await settle();
+  await settle();
+
+  assert.deepEqual(pane.bridge.photoAsks, ['+911234500001'], 'the second draw joined the first run');
+  const live = pane.live.queryAll('.call-disc');
+  assert.equal(live.length, 1, 'control: the live card has a disc');
+  assert.equal(live[0]!.style.backgroundImage, 'url("data:image/png;base64,QUFB")');
+});
+
+/**
+ * A refusal is a disc, not a hole and not a banner.
+ *
+ * `contacts.get` refuses outright when the contacts grant is off, which is a state a user can be
+ * in for a perfectly good reason while still wanting their call log.
+ */
+test('a refused photograph leaves the disc exactly as it was', async () => {
+  const pane = mount([row('1', { contactName: 'Ada Lovelace', number: '+911234500001' })]);
+  pane.bridge.photosRefuse = true;
+  await settle();
+  await settle();
+
+  const disc = pane.body.queryAll('.call-disc')[0]!;
+  assert.equal(disc.textContent, 'AL');
+  assert.ok(!disc.classList.contains('has-photo'));
+  assert.equal(disc.style.backgroundImage, undefined, 'nothing was painted');
+  assert.equal(pane.notice.textContent, '', 'and no banner: the row is readable without a face');
+});
+
+/**
+ * The one place a value off the wire reaches a stylesheet, checked at the boundary.
+ *
+ * The phone writes a base64 PNG and nothing else does, but `url("…")` is a CSS context and a
+ * string that closed the quote would be a declaration this app did not write.
+ */
+test('a photo field that is not base64 is not painted', async () => {
+  const pane = mount([row('1', { contactName: 'Ada Lovelace', number: '+911234500001' })]);
+  pane.bridge.photos['+911234500001'] = 'AAA"); background-image: url("http://evil/';
+  await settle();
+  await settle();
+
+  const disc = pane.body.queryAll('.call-disc')[0]!;
+  assert.equal(disc.style.backgroundImage, undefined);
+  assert.equal(disc.textContent, 'AL', 'and it degrades to the disc, like every other refusal');
+});
+
+test('the photographs are dropped when the phone stops advertising calls', async () => {
+  const pane = mount([row('1', { contactName: 'Ada Lovelace', number: '+911234500001' })]);
+  pane.bridge.photos['+911234500001'] = 'QUFB';
+  await settle();
+  await settle();
+  assert.deepEqual(pane.bridge.photoAsks, ['+911234500001'], 'control: it was asked once');
+
+  // The link dropped and came back, which is exactly what `renderer.ts` drives on a status change.
+  pane.bridge.photoAsks.length = 0;
+  pane.view.setAdvertised(false);
+  pane.view.setAdvertised(true);
+  await settle();
+  await settle();
+
+  assert.deepEqual(
+    pane.bridge.photoAsks,
+    ['+911234500001'],
+    'the face was re-fetched rather than served from a cache the link had invalidated',
+  );
 });

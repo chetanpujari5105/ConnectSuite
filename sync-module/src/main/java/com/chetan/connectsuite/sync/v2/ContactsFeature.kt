@@ -41,7 +41,21 @@ object ContactsFeature {
     private val delivered = AtomicLong(0)
     private val refused = AtomicLong(0)
 
+    /**
+     * Photo requests, and how they came out.
+     *
+     * Three numbers rather than one, because the Mac now asks for a photo per caller and the
+     * ordinary answer is *there is not one* — 441 of this handset's 665 contacts have no picture.
+     * A lone "photos sent" count would fall as the feature started working correctly on a book
+     * with few photographs, which is the denominator rule this project keeps paying for: a number
+     * on its own reads as whichever story the reader already believes.
+     */
+    private val photosAsked = AtomicLong(0)
+    private val photosSent = AtomicLong(0)
+
     private fun tally(): String = "${delivered.get()} delivered / ${refused.get()} refused since start"
+
+    private fun photoTally(): String = "${photosSent.get()} photos of ${photosAsked.get()} asked"
 
     fun install(context: Context, link: LinkServer) {
         if (installed) return
@@ -129,7 +143,17 @@ object ContactsFeature {
         } ?: return refuse(session, request, ContactsFailure.NoSuchContact(id ?: number!!))
 
         delivered.incrementAndGet()
-        LinkLog.i("contacts", "contacts.get → ${id ?: number} found — ${tally()}")
+        val sentPhoto = contact.containsKey("photo")
+        if (withPhoto) {
+            photosAsked.incrementAndGet()
+            if (sentPhoto) photosSent.incrementAndGet()
+        }
+        LinkLog.i(
+            "contacts",
+            "contacts.get → ${id ?: number} found" +
+                (if (withPhoto) ", photo=$sentPhoto" else ", photo not asked for") +
+                " — ${tally()}, ${photoTally()}",
+        )
         session.ack(request) { contact.forEach { (key, value) -> put(key, value) } }
     }
 

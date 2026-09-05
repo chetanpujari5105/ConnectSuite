@@ -42,7 +42,7 @@
  * non-empty disc, but a disc is drawn from whatever a provider sent and this must not be the thing
  * that fails.
  */
-export function discHue(label: string): number {
+function discHue(label: string): number {
   let hash = 0;
   for (let i = 0; i < label.length; i += 1) {
     hash = (hash * 31 + label.charCodeAt(i)) % 360;
@@ -58,13 +58,25 @@ export function discHue(label: string): number {
  * That is the export/CommonJS trap this repo already records — a green suite exercising a loader
  * the renderer never uses — and it cost two rounds here: the pane threw first on `iconSvg` and then
  * on this, both with every test green a moment earlier because neither symbol had a caller yet.
+ *
+ * **And this block had never once run in the browser, which is the part worth keeping.** Until
+ * 2026-09-05 the declaration above was `export function discHue`, which compiles to CommonJS whose
+ * first emitted statement is `Object.defineProperty(exports, …)`. `exports` does not exist in a
+ * classic script, so the file threw on its first line and everything below — this block included —
+ * was dead. `discHue` was on the page anyway, because a **function declaration is hoisted onto
+ * `globalThis` before the body executes**. The comment claiming this block was what made it work
+ * was wrong for a whole phase, and nothing could have reported it: the page worked, the tests were
+ * green, and the mechanism everyone believed in was not the mechanism operating.
+ *
+ * It came out when the same shape was written with a `class`, which is **not** hoisted that way —
+ * `ContactPhotos` was simply `undefined` in the page while `photoKey`, four lines from it in the
+ * same file, was a function. `scripts/check-renderer-scripts.mjs` is the guard.
  */
 {
   const g = globalThis as Record<string, unknown>;
   g.discHue = discHue;
 }
 
-declare const module: { exports: Record<string, unknown> } | undefined;
 // The renderer loads this as a plain script; `module` is undefined there, so this is a no-op in the
 // browser and the export exists only for the tests.
 if (typeof module !== 'undefined') {

@@ -12,9 +12,15 @@ import { writeFileSync, rmSync, mkdirSync, readFileSync } from 'node:fs';
  */
 const FIXTURE_DIR = 'docs/.debt-claim-fixtures';
 
-function run() {
+function run(env = {}) {
   try {
-    return { code: 0, out: execFileSync('node', ['scripts/check-debt-claims.mjs'], { encoding: 'utf8' }) };
+    return {
+      code: 0,
+      out: execFileSync('node', ['scripts/check-debt-claims.mjs'], {
+        encoding: 'utf8',
+        env: { ...process.env, ...env },
+      }),
+    };
   } catch (error) {
     return { code: error.status, out: `${error.stdout ?? ''}${error.stderr ?? ''}` };
   }
@@ -30,27 +36,41 @@ function withFixture(name, body, fn) {
   }
 }
 
-/** Put a type back on the debt list for the length of one check. */
+/**
+ * Put a type back on the debt list for the length of one check, **in a copy**.
+ *
+ * This wrote the patched source over the real `check-protocol-spec.mjs` and restored it in a
+ * `finally`. That is correct in isolation and wrong under `node --test`, which runs test *files* in
+ * parallel: `check-protocol-spec.test.mjs` reads the same path, and for the few milliseconds the
+ * patch was on disk it saw a debt list with `battery.state` on it and failed with a perfectly
+ * accurate message about a file nobody wrote.
+ *
+ * The fixture now writes its own copy and points the subprocess at it with `DEBT_SOURCE`. Nothing
+ * shared is mutated, so the ordering of the suite cannot change the result.
+ */
 function withDebt(type, fn) {
-  const path = 'scripts/check-protocol-spec.mjs';
-  const held = readFileSync(path, 'utf8');
-  const patched = held.replace(
-    /const UNSPECIFIED = \{/,
-    `const UNSPECIFIED = {\n  '${type}': 'fixture — restored for one test run',`,
+  const held = readFileSync('scripts/check-protocol-spec.mjs', 'utf8');
+  const copy = `${FIXTURE_DIR}/spec-with-${type.replace(/\W/g, '-')}.mjs`;
+  mkdirSync(FIXTURE_DIR, { recursive: true });
+  writeFileSync(
+    copy,
+    held.replace(
+      /const UNSPECIFIED = \{/,
+      `const UNSPECIFIED = {\n  '${type}': 'fixture — restored for one test run',`,
+    ),
   );
-  writeFileSync(path, patched);
   try {
-    return fn();
+    return fn(copy);
   } finally {
-    writeFileSync(path, held);
+    rmSync(copy, { force: true });
   }
 }
 
 test('DENIES the sentence that actually got through — RESUME.md, 2026-09-04', () => {
   // Verbatim from the handoff that started the O4 sitting on a false premise. The debt list held
   // battery.state the whole time and printed it on every run.
-  const result = withDebt('battery.state', () =>
-    withFixture('resume', 'O4, the Device status rings. The last genuinely unbuilt design row whose data already exists on the wire — `battery.state` and `net.state` are both already on the wire, so no protocol work.', run),
+  const result = withDebt('battery.state', (spec) =>
+    withFixture('resume', 'O4, the Device status rings. The last genuinely unbuilt design row whose data already exists on the wire — `battery.state` and `net.state` are both already on the wire, so no protocol work.', () => run({ DEBT_SOURCE: spec })),
   );
   assert.equal(result.code, 1, 'the sentence that cost a sitting was not caught');
   assert.match(result.out, /battery\.state/);
@@ -59,8 +79,8 @@ test('DENIES the sentence that actually got through — RESUME.md, 2026-09-04', 
 test('ALLOWS the sentence that records the debt', () => {
   // The exculpatory case, and the reason this guard needs a discriminator at all: a checker that
   // matched the type name alone would deny the paragraph explaining why the type is owed.
-  const result = withDebt('battery.state', () =>
-    withFixture('record', '`battery.state` sat in the inventory, specified nowhere and with no handler on either side, since Phase 2.', run),
+  const result = withDebt('battery.state', (spec) =>
+    withFixture('record', '`battery.state` sat in the inventory, specified nowhere and with no handler on either side, since Phase 2.', () => run({ DEBT_SOURCE: spec })),
   );
   assert.equal(result.code, 0, 'the guard denied its own record of the debt');
 });
@@ -71,22 +91,27 @@ test('ALLOWS a claim about a type that is NOT on the debt list', () => {
 });
 
 test('DENIES a second claim phrasing, so the list is not one string wide', () => {
-  const result = withDebt('battery.state', () =>
-    withFixture('second', 'The Device status card works today because `battery.state` is handled on both sides.', run),
+  const result = withDebt('battery.state', (spec) =>
+    withFixture('second', 'The Device status card works today because `battery.state` is handled on both sides.', () => run({ DEBT_SOURCE: spec })),
   );
   assert.equal(result.code, 1);
 });
 
 test('reports its own instrument failure rather than passing silently', () => {
   // If the debt list cannot be read, nothing was checked — and that must not look like a pass.
-  const path = 'scripts/check-protocol-spec.mjs';
-  const held = readFileSync(path, 'utf8');
-  writeFileSync(path, held.replace(/const UNSPECIFIED\s*=\s*\{/, 'const RENAMED_AWAY = {'));
+  //
+  // Against a **copy** with the block renamed away, for the same reason as `withDebt`: this used to
+  // rename `UNSPECIFIED` in the real `check-protocol-spec.mjs`, which the sibling test file reads
+  // in parallel.
+  const held = readFileSync('scripts/check-protocol-spec.mjs', 'utf8');
+  const broken = `${FIXTURE_DIR}/spec-with-no-debt-block.mjs`;
+  mkdirSync(FIXTURE_DIR, { recursive: true });
+  writeFileSync(broken, held.replace(/const UNSPECIFIED\s*=\s*\{/, 'const RENAMED_AWAY = {'));
   try {
-    const result = run();
+    const result = run({ DEBT_SOURCE: broken });
     assert.equal(result.code, 0);
     assert.match(result.out, /INSTRUMENT FAILURE/);
   } finally {
-    writeFileSync(path, held);
+    rmSync(broken, { force: true });
   }
 });

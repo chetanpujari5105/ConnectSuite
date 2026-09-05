@@ -1,4 +1,11 @@
-import { discHue } from '../shared/discHue';
+import { createRequire } from 'node:module';
+
+// `createRequire`, not `import`. `discHue.ts` carries no `export` keyword — a shared file that does
+// compiles to CommonJS and throws on its first line in the browser, which is what
+// `scripts/check-renderer-scripts.mjs` now refuses.
+const { discHue } = createRequire(import.meta.url)('../shared/discHue.ts') as {
+  discHue(label: string): number;
+};
 import assert from 'node:assert/strict';
 import test from 'node:test';
 

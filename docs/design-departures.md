@@ -386,6 +386,24 @@ one of them is a capability the wire cannot back rather than an omission.
 | **C6** | Only a call **in progress**. There is no drawn state for *no call* | A headline, what will appear here, and the audio wall | **reshaped** | This is the **fifth pane to invent its own empty state** — after N4 (Notifications), P5 (Photos), F7 (Files) and A2 (Activity). Recorded loudly rather than styled quietly: four could be bad luck, five is a missing vocabulary. See *How to read the "missing from the design" rows* | The one drawn *unavailable / partial / failed / empty* set that four rows have now asked for |
 | **C7** | *Frequently called* — three people, each labelled **Mobile** | The three most-called **numbers** from the phone's own log, each labelled with **how many calls** | **reshaped** | There is no favourites list on the wire, so the list is derived. It is grouped by number because a number is what you can dial. The count is drawn because the count is what the word *frequently* asserts — a list of three names with the basis removed is the denominator rule in a sidebar. The number's *type* (Mobile / Work) is not in `call.log` and is not guessed at | `call.log` carrying the number type, or a favourites verb. Neither is worth a message on its own |
 
+**C8 — the design's contact photographs, and they are drawn now (2026-09-05).** The design fills
+every avatar disc with a photograph, and the build drew initials on a per-contact hue. That was the
+one Calls row where the design was simply ahead of the build rather than ahead of the wire:
+`contacts.get` has carried an optional base64 PNG since Phase 4 as one of the contract's two
+deliberate exceptions to *no binary in JSON*, and the Contacts pane already used it. So this needed
+no protocol change and no new verb — only for the Calls pane to ask.
+
+It is drawn on all four discs (live card, log row, Contacts row, *Frequently called*), over initials
+that stay underneath, so every refusal degrades to exactly the disc that was there before. Measured
+on this handset: **22 of 53 discs carry a photograph**, from **224 of 665 contacts** that have one.
+
+The one place the design still cannot be matched is **resolution**, and it is a phone fact rather
+than a decision: 207 of those 224 pictures exist only as a 96px thumbnail (`photo_id`), and just
+**17** have a 720px display photo (`photo_file_id`). The card's disc is 104px at DPR 2, so most
+faces are drawn from a 96px source at 208 device pixels and are soft. There is no larger image to
+fetch — `photo_dimensions` reports `thumbnail_max_dim=96` — and the alternative is a letter.
+`docs/testing.md` → Phase 7 Slice 34.
+
 **The clock is a measurement and is drawn as one.** `00:02:18`, three fields always, ticking on a
 one-second interval from `startedAtMs` — not a formatted label. `callsView.test.ts` asserts the
 interval exists, because a clock that does not tick is a label wearing a clock's formatting and the

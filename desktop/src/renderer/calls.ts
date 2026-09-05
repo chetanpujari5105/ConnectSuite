@@ -51,6 +51,7 @@ interface CallLogRow {
 interface CallContactRow {
   id: string;
   displayName: string;
+  hasPhoto?: boolean;
   numbers: { value: string; label: string }[];
 }
 
@@ -73,6 +74,18 @@ interface CallsBridge {
   onCallChanged(callback: (call: CallCard | null) => void): void;
   contactsList(options: { query?: string; limit?: number }): Promise<
     CallsResult<{ contacts: CallContactRow[]; hasMore: boolean }>
+  >;
+  /**
+   * One contact, fetched by number, optionally with the photograph the user set on their phone.
+   *
+   * This is the only message in `call.*`'s neighbourhood that carries an image, and it is not in
+   * `call.*` at all: `docs/protocol.md` keeps binary out of these messages with `contacts.get` as
+   * one of two bounded exceptions, capped at 64 KiB and downscaled by the phone. Drawing a face on
+   * a call row therefore needs **no contract change** — it needs one request per distinct number
+   * and somewhere to keep the answer, which is `ContactPhotos`.
+   */
+  contactsGet(options: { id?: string; number?: string; withPhoto?: boolean }): Promise<
+    CallsResult<{ displayName?: string; photo?: string }>
   >;
 }
 
@@ -193,13 +206,86 @@ function audioStrip(text: string): HTMLElement {
  * confusion the colour exists to break: this handset's log has six consecutive `VENKY SIT` rows and
  * an `SB` that is a different person from the `SB` two rows down.
  */
-function callDisc(entry: { contactName?: string; number?: string }, size: 'sm' | 'xs'): HTMLElement {
+function callDisc(entry: DiscEntry, size: 'lg' | 'sm' | 'xs', photos: ContactPhotos): HTMLElement {
   const disc = document.createElement('span');
-  disc.className = `call-disc call-disc-${size}`;
+  // `lg` is the live card's one big disc and carries no hue, which is what it has always drawn:
+  // an accent tint reads correctly for a single disc, and the per-contact fill exists to break up
+  // a *column* of them. The size is the only thing that varies here; the stylesheet owns the rest.
+  disc.className = size === 'lg' ? 'call-disc' : `call-disc call-disc-${size}`;
   disc.setAttribute('aria-hidden', 'true');
   disc.textContent = callInitials(entry);
-  disc.style.setProperty('--disc-hue', String(discHue(discKeyOf(entry))));
+  if (size !== 'lg') disc.style.setProperty('--disc-hue', String(discHue(discKeyOf(entry))));
+  attachPhoto(disc, entry, photos);
   return disc;
+}
+
+/** What every disc is drawn from. `hasPhoto` is present only where a list actually carries it. */
+interface DiscEntry {
+  contactName?: string;
+  number?: string;
+  hasPhoto?: boolean;
+}
+
+/**
+ * Whether this row could have a photograph at all, asked before spending a request on it.
+ *
+ * Three sources, three answers, and the middle one is an inference worth stating rather than
+ * burying:
+ *
+ * | Source | Signal |
+ * |---|---|
+ * | `contacts.list` | `hasPhoto`, which the phone reads straight off `Contacts.PHOTO_ID`. Exact |
+ * | `call.log` / `call.incoming` | **no photo field at all** — only whether the phone resolved a `contactName` |
+ * | anything with no number | nothing to look up |
+ *
+ * The middle row is the inference: a call row's `contactName` and a photograph are resolved from
+ * the *same* `PhoneLookup` match on the *same* number, so a row the phone could not name is a row
+ * with no contact behind it, and a contact is the only thing that can hold a photograph. On this
+ * handset that skips roughly half the log for free.
+ *
+ * What it costs, stated because an unstated assumption is the one that goes wrong: a contact with
+ * a photograph and **no display name** would be skipped. `ContactsStore.list` already refuses to
+ * list those rows at all (`DISPLAY_NAME_PRIMARY IS NOT NULL`), so such a contact cannot be reached
+ * anywhere else in this app either — the cost is a face this app has never been able to show.
+ */
+function photoWorthAsking(entry: DiscEntry): boolean {
+  if (!firstNonEmpty(entry.number)) return false;
+  if (typeof entry.hasPhoto === 'boolean') return entry.hasPhoto;
+  return firstNonEmpty(entry.contactName) !== undefined;
+}
+
+/**
+ * Draws the photograph over the disc's initials, now if it is known and later if it is not.
+ *
+ * **The initials are never removed.** The disc is built complete and correct first, and a photo is
+ * painted on top of it; a fetch that fails, is refused, or never returns leaves exactly the disc
+ * this pane has always drawn. That is the whole degradation story and it needs no state of its own
+ * — there is no loading spinner, because the thing under the spinner is already the right answer.
+ *
+ * No liveness check on `disc` before painting. A redraw builds a *new* disc which takes the cached
+ * value synchronously in the same frame; painting a detached element is a write to something
+ * nobody can see, which is cheaper than tracking whether it is still in the document.
+ */
+function attachPhoto(disc: HTMLElement, entry: DiscEntry, photos: ContactPhotos): void {
+  const number = firstNonEmpty(entry.number);
+  if (!number || !photoWorthAsking(entry)) {
+    photos.countSkipped();
+    return;
+  }
+  const held = photos.cached(number);
+  if (held !== undefined) {
+    if (held) paintPhoto(disc, held);
+    return;
+  }
+  void photos.resolve(number).then((source) => {
+    if (source) paintPhoto(disc, source);
+  });
+}
+
+/** The one place a photo source reaches the DOM, so the one place it has to be checked. */
+function paintPhoto(disc: HTMLElement, source: string): void {
+  disc.style.backgroundImage = `url("${source}")`;
+  disc.classList.add('has-photo');
 }
 
 /** What a disc's colour is keyed on. Pure, and exported for the test that pins the rule. */
@@ -288,6 +374,15 @@ class CallsView {
   /** The number awaiting a second click. Cleared by any other interaction. See the file comment. */
   private pendingDial: string | null = null;
 
+  /**
+   * Every contact photograph this pane has drawn, keyed on number.
+   *
+   * One store for the pane rather than one per list: the live card, a log row and a *Frequently
+   * called* row are routinely the same person, and three caches would fetch the same face three
+   * times and could disagree about whether it exists.
+   */
+  private readonly photos: ContactPhotos;
+
   private noticeTimer: number | null = null;
   /** The live card's second-hand. One interval for the pane, started and stopped with the card. */
   private clockTimer: number | null = null;
@@ -306,6 +401,16 @@ class CallsView {
     private readonly frequent: HTMLElement,
     private readonly bridge: CallsBridge,
   ) {
+    this.photos = new ContactPhotos(
+      (number) => this.fetchPhoto(number),
+      // Printed when the batch has actually settled, so `found` and `none` are counts of answers
+      // rather than of requests. Read by `scripts/probe.mjs` over CDP; one line per batch.
+      (tally) => console.info(`[calls] contact photos — ${tally}`),
+    );
+    // The store's own accounting, reachable from `scripts/call-photos-probe.mjs`. The DOM says how
+    // many faces are on screen; this says how many were asked for and what came back, and the two
+    // together are what separate "the book has four photographs" from "the fetch died after four".
+    (globalThis as Record<string, unknown>).__callPhotos = () => this.photos.tally();
     bridge.onCallChanged((call) => {
       this.call = call;
       this.renderLive();
@@ -327,6 +432,24 @@ class CallsView {
     this.renderFrequent();
   }
 
+  /**
+   * Turns a number into something a disc can draw, or `null`.
+   *
+   * Every refusal collapses to `null` because the caller's answer to all of them is the same: keep
+   * the initials. The base64 is checked before it is interpolated into a CSS `url()` — the phone
+   * is the only thing that writes this field and it writes a PNG, but this is the one place a
+   * value from the wire reaches a stylesheet, and a check at the boundary costs one regex.
+   */
+  private async fetchPhoto(number: string): Promise<string | null> {
+    const result = await this.bridge
+      .contactsGet({ number, withPhoto: true })
+      .catch(() => null);
+    if (!result || !result.ok) return null;
+    const photo = result.data.photo;
+    if (typeof photo !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(photo)) return null;
+    return `data:image/png;base64,${photo}`;
+  }
+
   setAdvertised(advertised: boolean): void {
     this.card.classList.toggle('hidden', !advertised);
     if (!advertised) {
@@ -334,6 +457,9 @@ class CallsView {
       this.log = [];
       this.loaded = false;
       this.pendingDial = null;
+      // A face outliving its link is the same stale claim as a name outliving it, and the main
+      // process drops its name cache here for exactly this reason.
+      this.photos.clear();
       this.renderLive();
       this.renderLog();
       this.renderDialButton();
@@ -426,10 +552,10 @@ class CallsView {
     }
     this.live.classList.remove('is-idle');
 
-    const disc = document.createElement('span');
-    disc.className = 'call-disc';
-    disc.setAttribute('aria-hidden', 'true');
-    disc.textContent = callInitials(this.call);
+    // Through `callDisc` like the other three sites. This was a fourth, hand-built copy, and it
+    // had already drifted — it never set `--disc-hue`. That drift is harmless (the big disc is
+    // deliberately hue-less) and it is exactly the shape the one-function rule exists to stop.
+    const disc = callDisc(this.call, 'lg', this.photos);
 
     const who = document.createElement('div');
     who.className = 'call-who';
@@ -584,7 +710,7 @@ class CallsView {
     row.type = 'button';
     row.className = `call-row ${entry.type}`;
 
-    const disc = callDisc(entry, 'sm');
+    const disc = callDisc(entry, 'sm', this.photos);
 
     const lines = document.createElement('span');
     lines.className = 'call-row-lines';
@@ -686,7 +812,11 @@ class CallsView {
         row.addEventListener('click', () => this.fillDialler(number));
       }
 
-      const disc = callDisc({ contactName: contact.displayName }, 'sm');
+      const disc = callDisc(
+        { contactName: contact.displayName, number, hasPhoto: contact.hasPhoto },
+        'sm',
+        this.photos,
+      );
 
       const lines = document.createElement('span');
       lines.className = 'call-row-lines';
@@ -830,7 +960,11 @@ class CallsView {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'calls-frequent-row';
-      const disc = callDisc({ contactName: entry.label, number: entry.number }, 'xs');
+      // `label` falls back to the number when the phone could not name the caller, so it is not
+      // a contact name and must not be handed over as one — `photoWorthAsking` reads it as the
+      // evidence that a contact exists, and a number is evidence of the opposite.
+      const named = entry.label === entry.number ? undefined : entry.label;
+      const disc = callDisc({ contactName: named, number: entry.number }, 'xs', this.photos);
       const label = document.createElement('span');
       label.className = 'calls-frequent-label';
       label.textContent = entry.label;

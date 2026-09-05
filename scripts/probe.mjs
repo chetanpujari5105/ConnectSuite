@@ -368,11 +368,38 @@ function defaultSleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** One line carrying everything a reviewer needs: the value, its control, and how it stopped. */
+/**
+ * One line carrying everything a reviewer needs: the value, its control, and how it stopped.
+ *
+ * **Refuses an `act` result**, and that refusal is the whole reason this check exists. An act
+ * carries `what`/`landed`, not `question`/`value`/`reportable`, so passing one here used to print
+ *
+ *     undefined → undefined  [control=undefined …] NOT REPORTABLE — the instrument gave up
+ *
+ * over a stimulus that had **landed perfectly** — a confident, specific, wrong answer about the
+ * instrument's own run, which is the exact family `probe.mjs` exists to stop. It was hit by the
+ * probe written for contact photographs on 2026-09-05, twice in one run, next to readings that
+ * were correct. Use [formatAct] for a stimulus; they are different things and now say so.
+ */
 export function format(result) {
+  if (result && result.landed !== undefined && result.question === undefined) {
+    throw new TypeError(
+      'probe.format: that is an `act` result, not a read. Use formatAct() — formatting a stimulus ' +
+        'as a reading prints "NOT REPORTABLE" over an action that landed.',
+    );
+  }
   const head = `${result.question} → ${JSON.stringify(result.value)}`;
   const prov = `control=${JSON.stringify(result.control)} polls=${result.polls} waited=${result.waitedMs}ms stopped=${result.stopped}`;
   return result.reportable ? `${head}  [${prov}]` : `${head}  [${prov}] NOT REPORTABLE — the instrument gave up, this is not a reading`;
+}
+
+/** One line for a stimulus: what it did, whether it landed, and how long it waited to find out. */
+export function formatAct(result) {
+  const head = `${result.what} → ${result.landed ? 'landed' : 'DID NOT LAND'}`;
+  const prov = `waited=${result.waitedMs}ms stopped=${result.stopped}`;
+  return result.landed
+    ? `${head}  [${prov}]`
+    : `${head}  [${prov}] NOT A PREMISE — nothing measured after this is about the state you wanted`;
 }
 
 /**

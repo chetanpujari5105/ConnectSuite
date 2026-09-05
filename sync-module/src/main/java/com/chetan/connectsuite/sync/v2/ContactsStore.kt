@@ -249,7 +249,27 @@ object ContactsStore {
         }
     }
 
-    /** Base64 PNG, downscaled until it fits [MAX_PHOTO_BYTES], or null when there is no photo. */
+    /**
+     * Base64 PNG, downscaled until it fits [MAX_PHOTO_BYTES], or null when there is no photo.
+     *
+     * `preferHighres = true` asks for the *display* photo and falls back to the thumbnail, which
+     * is the right way round and worth stating because of how lopsided the two are on a real
+     * phone. Measured on this handset, 2026-09-05 (docs/testing.md, Phase 7 Slice 22):
+     *
+     * | | contacts | source size |
+     * |---|---|---|
+     * | a thumbnail (`PHOTO_ID`) | **224** of 665 | 96 px |
+     * | a display photo (`PHOTO_FILE_ID`) | **17** of 665 | 720 px |
+     *
+     * So for 207 of the 224 this returns a 96 px image however it is asked, and the Mac's largest
+     * disc is 104 px at DPR 2. That is soft, and it is the picture the user chose; there is no
+     * larger one to fetch.
+     *
+     * The size of what it produced is logged rather than inferred. A photo is the only thing this
+     * feature puts on the control channel and [MAX_PHOTO_BYTES] is the only thing bounding it, so
+     * a downscale loop that stopped in the wrong place would be invisible until the frame-length
+     * check refused a frame.
+     */
     private fun photoFor(context: Context, contactId: String): String? = runCatching {
         val stream = ContactsContract.Contacts.openContactPhotoInputStream(
             context.contentResolver,
@@ -275,6 +295,12 @@ object ContactsStore {
             )
             encoded = encode(bitmap)
         }
+        LinkLog.i(
+            "contacts",
+            "Photo for $contactId: ${full.width}x${full.height} source, " +
+                "sent ${bitmap.width}x${bitmap.height} at ${encoded.length * 3 / 4} bytes " +
+                "of $MAX_PHOTO_BYTES allowed",
+        )
         encoded
     }.onFailure { LinkLog.w("contacts", "Photo for $contactId failed: ${it.message}") }.getOrNull()
 
