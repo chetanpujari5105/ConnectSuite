@@ -271,9 +271,14 @@ export class FakeElement {
   }
 
   /**
-   * A deliberately tiny selector engine: `tag`, `.class`, `tag.class`, and a **descendant chain**
-   * of those separated by spaces (`.notif-reply input`). Nothing else — no `>`, no attributes, no
-   * commas.
+   * A deliberately tiny selector engine: `tag`, `.class`, `tag.class`, `[attr]`, and a **descendant
+   * chain** of those separated by spaces (`.notif-reply input`). Nothing else — no `>`, no
+   * attribute *values*, no commas.
+   *
+   * `[attr]` is presence only, added for the Calls pane's `[data-app-call]` strip. Presence rather
+   * than `[attr="value"]` on purpose: a test that matches the value is asserting the value twice,
+   * once in the selector and once in the assertion, and the selector half fails by matching
+   * nothing — which is the silent-absence shape this whole engine refuses.
    *
    * It refuses anything it does not understand rather than returning `[]`, because a selector this
    * cannot parse silently matching nothing is the *hidden grid* failure from `CLAUDE.md` rebuilt
@@ -291,15 +296,19 @@ export class FakeElement {
     }
     let scope: FakeElement[] = [this];
     for (const step of steps) {
-      const match = /^([a-z]+)?(?:\.([\w-]+))?$/.exec(step);
-      if (!match || (!match[1] && !match[2])) {
+      const match = /^([a-z]+)?(?:\.([\w-]+))?(?:\[([\w-]+)\])?$/.exec(step);
+      if (!match || (!match[1] && !match[2] && !match[3])) {
         throw new Error(`domDouble: unsupported selector ${JSON.stringify(selector)} — extend the double rather than working around it`);
       }
-      const [, tag, className] = match;
+      const [, tag, className, attribute] = match;
       const next: FakeElement[] = [];
       for (const root of scope) {
         for (const el of root.descendants()) {
-          if ((!tag || el.tagName === tag) && (!className || el.className.split(' ').includes(className))) {
+          if (
+            (!tag || el.tagName === tag) &&
+            (!className || el.className.split(' ').includes(className)) &&
+            (!attribute || el.getAttribute(attribute) !== null)
+          ) {
             if (!next.includes(el)) next.push(el);
           }
         }

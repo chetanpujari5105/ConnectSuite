@@ -115,10 +115,37 @@ globalThis.__probe = {
   onScreen: function (sel) {
     var el = globalThis.__probe.one(sel);
     var h = window.innerHeight;
+    /*
+     * The visible band, which is the viewport intersected with **every clipping ancestor**.
+     *
+     * The first version of this used the viewport alone, and it was wrong in the one direction
+     * that matters: an element inside a scroll port whose box ends *above* the viewport bottom
+     * reads as fully visible while its lower part is clipped by the port. On this app that is not
+     * a corner case — \`#page\` is \`overflow-y: auto\` and its bottom sits ~46px above the viewport
+     * because the dock is under it, so every card near the foot of a pane was measured wrong.
+     *
+     * Caught 2026-09-05 on the Calls pane's app-call note: viewport 841, note bottom 826, verdict
+     * \`visible\` with \`fraction: 1\` — and \`#page\` ending at 795, so 31px of the sentence was not
+     * drawn. This is defect 85's own instrument having defect 85's bug.
+     */
+    var band = function () {
+      var top = 0, bottom = h;
+      for (var node = el.parentElement; node && node !== document.documentElement; node = node.parentElement) {
+        var cs = getComputedStyle(node);
+        if (cs.overflowY === 'visible' && cs.overflowX === 'visible') continue;
+        var nb = node.getBoundingClientRect();
+        if (nb.top > top) top = nb.top;
+        if (nb.bottom < bottom) bottom = nb.bottom;
+      }
+      return { top: top, bottom: bottom };
+    };
     var seen = function () {
       var r = el.getBoundingClientRect();
+      var b = band();
+      var shown = Math.max(0, Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top));
       return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height),
-               fraction: r.height ? +(Math.max(0, Math.min(r.bottom, h) - Math.max(r.top, 0)) / r.height).toFixed(2) : 0 };
+               clipTop: Math.round(b.top), clipBottom: Math.round(b.bottom),
+               fraction: r.height ? +(shown / r.height).toFixed(2) : 0 };
     };
     var at_rest = seen();
     if (at_rest.fraction >= 1) {

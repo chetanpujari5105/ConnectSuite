@@ -16703,3 +16703,125 @@ restored.
 store and six of the pane were each shown to go red on exactly the test named for them, with the
 restored source green. Phone: `sync-module` compiles and its suite passes; two log lines were added
 and no behaviour changed.
+
+## Phase 7 · Slice 35 — naming a call the phone network is not hosting · 2026-09-05
+
+### What was reachable, and what was not
+
+Asked before building, because the brief asked for `"WhatsApp video call"` and only part of that
+sentence is supportable. Each row says what backs it.
+
+| | Reachable? | What backs it, or what does not |
+|---|---|---|
+| **The call exists at all** | **yes, already** | `CallWatcher` sees it: a 68-minute WhatsApp video call produced a full episode with correct timing (`docs/defects.md` → 47). This was never the missing half |
+| **The caller's name** | **yes** | the app's own `notif.posted` `title`. It is WhatsApp's name for the person, from WhatsApp's address book — not ours, and not a number |
+| **Which app** | **yes** | `package` plus `appName`, already resolved through `AppLabels.of` on the phone |
+| **Audio or video** | **no** | `Notification.category` is `"call"` for both. The distinction lives in the app's own prose (*"Incoming video call"*), which is another app's copy in the user's locale and can change in any update; or in `CallStyle`'s `EXTRA_CALL_IS_VIDEO`, which is structured and which this phone does not put on the wire. **So the card says *"WhatsApp call"*, never *"WhatsApp video call"*** |
+| **Ringing → answered** | **yes, already** | the telephony state transition, not the notification. `CallWatcher` reports it and always has |
+| **The end of the call** | **yes, already** | `call.ended`, with a duration that agreed with telecom's own analytics to within the ringing period |
+| **Answering / rejecting from the Mac** | **unmeasured** | `call.answer` is `TelecomManager.acceptRingingCall()` and `call.reject` is `endCall()`. Whether either reaches a self-managed call is a device question. **Not guessed into the UI in either direction** |
+
+So four of the seven were already built, two are new, and one is a measurement nobody has taken.
+
+### What the notification alone can honestly claim
+
+A notification says *an app believes a call exists, and here is who it says it is with*. It does not
+carry the platform's call state — but this app does not need it to, because `CallWatcher` already
+has the real thing. The notification supplies **identity only**, and that is exactly the half that
+was missing.
+
+### The discriminator, and the reason it is not "there is a call notification"
+
+The phone's own dialer posts a `category: "call"` notification for a cellular call too, so presence
+does not separate them; the **package** does. `TELEPHONY_PACKAGES` in `src/shared/appCall.ts` is an
+exclusion set, it is a list from one handset, and that is stated in the file rather than assumed
+away — a dialer package not on it would have its call named after the dialer.
+
+Which is why the rule **only ever adds a name**. It does not remove a control, gate an action or
+change what any button does. The worst case for a wrong answer is a wrong label on a card whose
+buttons behave exactly as before; the other direction would take Reject away from a real ringing
+call, and this repo has already hung up one of those.
+
+Two further guards, both asserted: the episode must have **no number** (a call with a number came
+from the phone network whatever is on screen), and the notification must be **ongoing** (a
+`category: "call"` notification that is dismissible is a *missed-call* summary, and naming a live
+card from one would put an hour-old caller on screen).
+
+### Control: the field is real on this device
+
+Before relying on `category`, the live list was read through `probe.mjs`: **7 notifications,
+categories `msg` 1 / `service` 1 / `status` 1 / none 4, ongoing 3**. So `category` is populated and
+`ongoing` discriminates. There was no `call`-category row, which is correct with no call in
+progress — and it is why the rule itself is still **unverified against a live WhatsApp call**. That
+stimulus is one incoming WhatsApp call and it needs the user's phone.
+
+### On the running app
+
+Driven synthetically — there is no WhatsApp call happening — through the real pane and the real
+render path, with the pane restored afterwards:
+
+```
+what the card says for an app-hosted call → {
+  "who":"Sahil Chaudhary", "status":"Ringing · WhatsApp",
+  "buttons":["Answer on phone","Reject"],
+  "strips":["Audio stays on the phone — pair the Mac to it over Blu",
+            "WhatsApp is hosting this call, not the phone network. "],
+  "hostedFor":"com.whatsapp" }                       [control=2 stopped=immediate]
+```
+
+The `buttons` line is asserted in the test suite as well as read here: **naming a call must not
+add, remove or relabel a control.**
+
+**Evidence:** `docs/evidence/phase-7-app-call-2026-09-05/app-call-card-synthetic.png`, which is
+synthetic and named so.
+
+### Defect 95 — `__probe.onScreen` measured against the viewport, not against the scroller
+
+Found by disbelieving it. The app-call note looked clipped in a screenshot; `onScreen` said
+`visible`, `fraction: 1`. Per this repo's own rule a measurement beats an impression, so the
+disagreement was taken to a third query — every clipping ancestor of the element:
+
+```
+noteBottom: 826,  viewportH: 841        → inside the viewport, which is what onScreen measured
+#page  overflowY: auto  bottom: 795     → clipsNote: true
+```
+
+`#page` is the scroll port and its bottom sits ~46px above the viewport because the dock is under
+it. `seen()` intersected the element's rect with `window.innerHeight` alone, so **anything ending in
+that 46px band read as fully visible while its lower part was not drawn.** 31px of the sentence was
+missing and the instrument reported the card as whole.
+
+This is defect 85's own instrument carrying defect 85's bug, and it is the third time in this repo
+an instrument has been wrong about the thing it was built for. `seen()` now intersects with every
+ancestor whose overflow is not `visible`, and reports `clipTop` / `clipBottom` so the reader can see
+what did the clipping. Three fixtures: the failure with its real numbers (841 / 826 / 795 → `0.68`,
+`reachable`), a control with a port that contains the element (`1`, `visible`), and a control
+proving an ancestor with `overflow: visible` does not clip however small its box. Shown red against
+the viewport-only expression and green with it restored.
+
+**Two published numbers are superseded and are corrected here rather than left standing.** Slice 29
+recorded *23 blocks: 21 visible at rest, 2 reachable* and Slice 30 *23 cards, 20 visible at rest, 3
+reachable, 0 stranded*. Both splits were computed from the viewport-only fraction, so **`visible`
+was over-reported**, and — because the same fraction decides the second split — `stranded` could
+have been under-reported too. The card totals are unaffected. Today's run with the corrected
+instrument, on today's pane contents: **21 cards, 12 visible at rest, 9 reachable, 0 stranded.**
+That is not the same population as either earlier run and is not a before/after comparison; it is
+the first honest reading.
+
+### The note is two strips, not three, and that is the measurement talking
+
+The first build appended the hosted note as a **third** strip. Measured: `top: 728, bottom: 826`
+against `#page` ending at 795 — `fraction: 0.69`, `reachable`. A card carrying a *state* has to be
+visible at rest and not merely reachable, and nobody scrolls a card while a phone is ringing. So for
+an app call the note **replaces** the mute/speaker strip and carries what that sentence said, which
+is asserted in the test rather than trusted. After: `top: 642, bottom: 722, fraction: 1, visible`.
+
+**Tests:** Mac **580 → 601**. Seven mutations of the naming rule and six of the pane were each shown
+red on exactly the test named for them. Two of those pane tests **passed for the wrong reason first**
+and were rewritten: one asserted a fetch that a second code path also performed, the other checked
+for a strip after a call that had been nulled anyway, so the idle card satisfied it whatever the
+field held. Both now go red.
+
+The DOM double grew `[attr]` presence matching, which it asks for explicitly rather than being
+worked around: presence only, never `[attr="value"]`, because a selector that matches the value is
+asserting it twice and fails by matching nothing.

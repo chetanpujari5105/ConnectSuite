@@ -8,6 +8,7 @@ import { FakeElement, installFakeDocument, installFakeWindow, el } from './domDo
 import './icons';
 import '../shared/discHue';
 import '../shared/contactPhotos';
+import '../shared/appCall';
 // Side-effecting import, safe because `calls.ts` touches no DOM at module scope — it only hangs
 // the view class and the pure label rules on `globalThis`.
 import './calls';
@@ -85,6 +86,32 @@ class FakeBridge {
   readonly photoAsks: string[] = [];
   /** When true `contacts.get` refuses, which is what a revoked contacts grant looks like. */
   photosRefuse = false;
+
+  /** The live notification list the naming rule reads. Empty unless a test puts a call in it. */
+  notifs: {
+    package: string;
+    appName?: string;
+    title?: string;
+    category?: string;
+    ongoing: boolean;
+  }[] = [];
+  notifListCalls = 0;
+  /** When true `notifList` rejects, which is what an ungranted notification listener looks like. */
+  notifsUnavailable = false;
+  private notifChanged: ((list: unknown[]) => void) | null = null;
+
+  async notifList() {
+    this.notifListCalls += 1;
+    if (this.notifsUnavailable) throw new Error('notifications are not shared');
+    return this.notifs;
+  }
+  onNotifChanged(cb: (list: unknown[]) => void) {
+    this.notifChanged = cb;
+  }
+  fireNotifs(list: typeof this.notifs): void {
+    this.notifs = list;
+    this.notifChanged?.(list);
+  }
 
   async contactsGet(options: { number?: string; withPhoto?: boolean }) {
     this.photoAsks.push(options.number ?? '');
@@ -526,4 +553,213 @@ test('the photographs are dropped when the phone stops advertising calls', async
     ['+911234500001'],
     'the face was re-fetched rather than served from a cache the link had invalidated',
   );
+});
+
+// ---- Naming a call the phone network is not hosting ------------------------------------------
+
+const whatsappCall = {
+  package: 'com.whatsapp',
+  appName: 'WhatsApp',
+  title: 'Sahil Chaudhary',
+  category: 'call',
+  ongoing: true,
+};
+
+const appCall: Call = {
+  callId: 'c1',
+  number: '',
+  startedAtMs: Date.now() - 4_000,
+  state: 'ringing',
+};
+
+test('a call with no number is named from the app notification, headline and status line', async () => {
+  // `current` as well as `fireCall`: `setAdvertised(true)` kicks off `refreshCurrent()`, which
+  // resolves after this line and would otherwise put the card back to idle.
+  const pane = mount([], appCall);
+  pane.bridge.notifs = [whatsappCall];
+  pane.bridge.fireCall(appCall);
+  await settle();
+  await settle();
+
+  const who = pane.live.queryAll('.call-who')[0]!;
+  const state = pane.live.queryAll('.call-state')[0]!;
+  assert.equal(who.textContent, 'Sahil Chaudhary', 'not "Unknown number"');
+  assert.equal(state.textContent, 'Ringing · WhatsApp');
+});
+
+/**
+ * The note is asserted **and** the controls are asserted unchanged, in the same test.
+ *
+ * The second half is the point: this feature adds a name and touches nothing else. A version that
+ * hid Answer or Reject for an app call would pass every assertion about the note.
+ */
+test('the app-call note is drawn, and the two controls are exactly as they were', async () => {
+  // `current` as well as `fireCall`: `setAdvertised(true)` kicks off `refreshCurrent()`, which
+  // resolves after this line and would otherwise put the card back to idle.
+  const pane = mount([], appCall);
+  pane.bridge.notifs = [whatsappCall];
+  pane.bridge.fireCall(appCall);
+  await settle();
+  await settle();
+
+  const hosted = pane.live.queryAll('[data-app-call]');
+  assert.equal(hosted.length, 1, 'control: the strip is found');
+  assert.match(hosted[0]!.textContent, /WhatsApp is hosting this call/);
+  assert.match(hosted[0]!.textContent, /not measured/);
+
+  const buttons = pane.live.queryAll('button').map((b) => b.textContent);
+  assert.deepEqual(
+    buttons,
+    ['Answer on phone', 'Reject'],
+    'naming a call must not add, remove or relabel a control',
+  );
+});
+
+test('an ordinary call with a number is untouched, note and all', async () => {
+  const ordinary: Call = { ...appCall, number: '+919604375820', contactName: 'Ada Lovelace' };
+  const pane = mount([], ordinary);
+  pane.bridge.notifs = [whatsappCall];
+  pane.bridge.fireCall(ordinary);
+  await settle();
+  await settle();
+
+  assert.equal(pane.live.queryAll('.call-who')[0]!.textContent, 'Ada Lovelace');
+  assert.equal(pane.live.queryAll('.call-state')[0]!.textContent, 'Ringing · +919604375820');
+  assert.equal(pane.live.queryAll('[data-app-call]').length, 0, 'no hosted strip');
+  // Control: the same tree does carry the other two strips, so the absence above is a reading.
+  assert.equal(pane.live.queryAll('.call-audio-note').length, 2);
+});
+
+/**
+ * The second trigger, and the reason it exists: the notification is routinely posted a beat after
+ * the call state changes. A card drawn only on `onCallChanged` says `Unknown number` and stays.
+ */
+test('a notification arriving after the call names the card without a second call event', async () => {
+  const pane = mount([], appCall);
+  pane.bridge.notifs = [];
+  pane.bridge.fireCall(appCall);
+  await settle();
+  await settle();
+  assert.equal(pane.live.queryAll('.call-who')[0]!.textContent, 'Unknown number', 'before');
+
+  pane.bridge.fireNotifs([whatsappCall]);
+  await settle();
+  assert.equal(pane.live.queryAll('.call-who')[0]!.textContent, 'Sahil Chaudhary', 'after');
+});
+
+test('the phone own dialer notification does not rename a withheld-number call', async () => {
+  const pane = mount([], appCall);
+  pane.bridge.notifs = [
+    { package: 'com.samsung.android.incallui', appName: 'Phone', category: 'call', ongoing: true },
+  ];
+  pane.bridge.fireCall(appCall);
+  await settle();
+  await settle();
+
+  assert.equal(pane.live.queryAll('.call-who')[0]!.textContent, 'Unknown number');
+  assert.equal(pane.live.queryAll('[data-app-call]').length, 0);
+});
+
+test('a phone not sharing notifications leaves the card exactly as it was, with no banner', async () => {
+  const pane = mount([], appCall);
+  pane.bridge.notifsUnavailable = true;
+  pane.bridge.fireCall(appCall);
+  await settle();
+  await settle();
+
+  assert.ok(pane.bridge.notifListCalls > 0, 'control: it did ask');
+  assert.equal(pane.live.queryAll('.call-who')[0]!.textContent, 'Unknown number');
+  assert.equal(pane.notice.textContent, '', 'and no notice: the card is readable without a name');
+});
+
+/**
+ * The derived name is dropped with the link, asserted at the only place that can see it.
+ *
+ * The first version checked the strip was gone right after `setAdvertised(false)`, and passed with
+ * the clearing deleted — that call also nulls the call and draws the idle card, which has no strip
+ * whatever `appCall` holds. The assertion was true for a reason unrelated to the line it names.
+ *
+ * So it reconnects and puts up a *different* nameless call with nothing on the notification list.
+ * If the old list survived the drop, this call would be named after a WhatsApp call that ended
+ * before the link went away.
+ */
+test('the app name and the notification list are dropped when the link goes', async () => {
+  const pane = mount([], appCall);
+  pane.bridge.notifs = [whatsappCall];
+  pane.bridge.fireCall(appCall);
+  await settle();
+  await settle();
+  assert.equal(pane.live.queryAll('.call-who')[0]!.textContent, 'Sahil Chaudhary', 'control');
+
+  pane.view.setAdvertised(false);
+  // The phone comes back and something else rings, with nothing on the notification list now.
+  pane.bridge.notifs = [];
+  pane.bridge.notifsUnavailable = true;
+  pane.view.setAdvertised(true);
+  pane.bridge.fireCall({ ...appCall, callId: 'c2' });
+  await settle();
+  await settle();
+
+  assert.equal(
+    pane.live.queryAll('.call-who')[0]!.textContent,
+    'Unknown number',
+    'a name from the previous link must not survive it',
+  );
+  assert.equal(pane.live.queryAll('[data-app-call]').length, 0);
+});
+
+/**
+ * A call arriving while the pane is already up is named **without** waiting for a notification
+ * change — and this test is written the way it is because the obvious version could not fail.
+ *
+ * `mount(log, current)` seeds `bridge.current`, so `setAdvertised(true)` runs `refreshCurrent()`,
+ * which fetches the list by its own route; an assertion on "did it fetch" was satisfied by a code
+ * path it was not about, and stayed green with the fetch under test deleted. Here `current` is
+ * deliberately **null** and `onNotifChanged` is never fired, so the fetch in `onCallChanged` is the
+ * only thing that can populate the list.
+ *
+ * The real gap it guards: on a cold pane nothing has fired `onNotifChanged` yet, because that fires
+ * only on a *change*. Without this fetch the first call of a session reads `Unknown number` until
+ * some unrelated notification happens to move.
+ */
+test('a call arriving on a cold pane is named without any notification change', async () => {
+  const pane = mount([], null);
+  pane.bridge.notifs = [whatsappCall];
+  await settle();
+  const asksBefore = pane.bridge.notifListCalls;
+
+  pane.bridge.fireCall(appCall);
+  await settle();
+  await settle();
+
+  assert.ok(
+    pane.bridge.notifListCalls > asksBefore,
+    'the call itself must ask for the list; nothing else will on a cold pane',
+  );
+  assert.equal(pane.live.queryAll('.call-who')[0]!.textContent, 'Sahil Chaudhary');
+});
+
+/**
+ * An app call has **two** strips, not three, and that is a layout measurement rather than taste.
+ *
+ * Three put the last one at 728–826 inside a `#page` scroll port ending at 795 — 31px clipped,
+ * `fraction: 0.69`, measured with `__probe.onScreen`. A card carrying a state has to be visible at
+ * rest and not merely reachable (defect 85), and nobody scrolls a card while a phone is ringing.
+ *
+ * So the strip count is asserted, and so is the fact that nothing the replaced sentence said was
+ * dropped: mute and speaker still appear, inside the one strip that remains.
+ */
+test('an app call replaces the mute strip rather than adding a third one', async () => {
+  const pane = mount([], appCall);
+  pane.bridge.notifs = [whatsappCall];
+  pane.bridge.fireCall(appCall);
+  await settle();
+  await settle();
+
+  const strips = pane.live.queryAll('.call-audio-note');
+  assert.equal(strips.length, 2, 'two strips, or the last one is drawn below the fold');
+  const hosted = pane.live.queryAll('[data-app-call]')[0]!;
+  assert.match(hosted.textContent, /Mute, speaker and keypad tones are on the phone/,
+    'the replaced sentence must not lose what it said');
+  assert.match(hosted.textContent, /WhatsApp is hosting this call/);
 });

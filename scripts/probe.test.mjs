@@ -336,3 +336,111 @@ test('formatAct says landed, and says plainly when it did not', () => {
   assert.match(formatAct(missed), /DID NOT LAND/);
   assert.match(formatAct(missed), /NOT A PREMISE/);
 });
+
+// --- onScreen measures against the clipping scroller, not the viewport -------------------------
+
+/**
+ * Runs the PRELUDE's `onScreen` against a stub DOM.
+ *
+ * The stub is the shape that actually broke it: an element low in a pane, a `#page` scroll port
+ * whose bottom sits above the viewport bottom because the dock is under it, and a viewport taller
+ * than both. The rule under test is the one the page executes, not a copy of it.
+ */
+function runPreludeOnScreen({ rect, ancestors, viewportH }) {
+  // The rect is mutable so `scrollIntoView` can actually move it, the way a real scroll does. A
+  // stub whose `scrollIntoView` did nothing would make every clipped element read as `stranded`,
+  // which is a different wrong answer rather than no answer.
+  let current = rect;
+  const el = {
+    hidden: false,
+    checkVisibility: () => true,
+    getBoundingClientRect: () => current,
+    scrollIntoView: () => {
+      const port = ancestors.find((a) => a.overflowY && a.overflowY !== 'visible');
+      if (!port) return;
+      const top = port.rect.top + (port.rect.bottom - port.rect.top - rect.height) / 2;
+      current = { top, bottom: top + rect.height, height: rect.height };
+    },
+    parentElement: null,
+  };
+  let tail = el;
+  for (const a of ancestors) {
+    const node = {
+      getBoundingClientRect: () => a.rect,
+      __overflowY: a.overflowY ?? 'visible',
+      parentElement: null,
+      scrollTop: 0,
+      scrollLeft: 0,
+      scrollHeight: a.scrollHeight ?? 100,
+      clientHeight: a.clientHeight ?? 100,
+      id: a.id ?? '',
+      tagName: 'DIV',
+      className: a.className ?? 'page',
+    };
+    tail.parentElement = node;
+    tail = node;
+  }
+  const documentElement = {};
+  tail.parentElement = documentElement;
+
+  const globalThisStub = {
+    window: { innerHeight: viewportH },
+    getComputedStyle: (n) => ({ overflowY: n.__overflowY ?? 'visible', overflowX: 'visible' }),
+  };
+  const document = { querySelectorAll: () => [el], documentElement };
+  // eslint-disable-next-line no-new-func
+  new Function('globalThis', 'document', 'window', 'getComputedStyle', PRELUDE)(
+    globalThisStub,
+    document,
+    globalThisStub.window,
+    globalThisStub.getComputedStyle,
+  );
+  return globalThisStub.__probe.onScreen('#anything');
+}
+
+/**
+ * The fixture is the measurement that was actually wrong, with its real numbers.
+ *
+ * Calls pane, 2026-09-05: viewport 841, the app-call note at 728–826, and `#page` — `overflow-y:
+ * auto` — ending at 795 because the dock sits under it. 31px of the sentence was not drawn and
+ * `onScreen` returned `visible` with `fraction: 1`.
+ */
+test('fixture — an element clipped by a scroll port is not reported as fully visible', () => {
+  const result = runPreludeOnScreen({
+    rect: { top: 728, bottom: 826, height: 98 },
+    ancestors: [
+      { rect: { top: 152, bottom: 795 }, overflowY: 'auto', clientHeight: 643, scrollHeight: 737 },
+    ],
+    viewportH: 841,
+  });
+  assert.equal(result.atRest.fraction, 0.68, '67 of 98 pixels are inside the port, not 98');
+  assert.equal(result.atRest.clipBottom, 795, 'and it must say where the clipping happened');
+  assert.notEqual(result.verdict, 'visible', 'the whole point: this was `visible` before');
+  // `reachable` is the honest verdict here — the note IS one scroll away. What was wrong was
+  // calling it `visible`, which says a reader sees it without doing anything.
+  assert.equal(result.verdict, 'reachable');
+});
+
+test('control for the fixture above — the same element inside a port that contains it is visible', () => {
+  const result = runPreludeOnScreen({
+    rect: { top: 728, bottom: 826, height: 98 },
+    ancestors: [
+      { rect: { top: 152, bottom: 841 }, overflowY: 'auto', clientHeight: 689, scrollHeight: 689 },
+    ],
+    viewportH: 841,
+  });
+  assert.equal(result.atRest.fraction, 1);
+  assert.equal(result.verdict, 'visible');
+});
+
+test('control — an ancestor with visible overflow does not clip, however small its box', () => {
+  // A short ancestor with `overflow: visible` does not clip its children; treating it as a port
+  // would report every card inside a compact wrapper as cut.
+  const result = runPreludeOnScreen({
+    rect: { top: 100, bottom: 200, height: 100 },
+    ancestors: [{ rect: { top: 100, bottom: 120 }, overflowY: 'visible' }],
+    viewportH: 841,
+  });
+  assert.equal(result.atRest.fraction, 1);
+  assert.equal(result.verdict, 'visible');
+});

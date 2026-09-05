@@ -87,7 +87,34 @@ interface CallsBridge {
   contactsGet(options: { id?: string; number?: string; withPhoto?: boolean }): Promise<
     CallsResult<{ displayName?: string; photo?: string }>
   >;
+  /**
+   * The live notification list, which is how a call the phone network is not hosting gets a name.
+   *
+   * `CallWatcher` sees a WhatsApp call — proven, defect 47 — but a self-managed call carries no
+   * number, so the card reads `Unknown number`, which is indistinguishable from a withheld-number
+   * cellular call. The app's own ongoing call notification is the only thing on this Mac that can
+   * tell them apart, and it is already here: `notif.posted` carries `package`, `appName`,
+   * `category` and `ongoing`. No contract change, no new grant.
+   */
+  notifList(): Promise<CallNotifRow[]>;
+  /** Fired when that list changes — the notification can arrive after the call state does. */
+  onNotifChanged(callback: (list: CallNotifRow[]) => void): void;
 }
+
+/** Only the fields the call-naming rule reads. The Notifications pane holds the full shape. */
+interface CallNotifRow {
+  package: string;
+  appName?: string;
+  title?: string;
+  text?: string;
+  category?: string;
+  ongoing: boolean;
+}
+
+// No `declare function` for `appCallFor` and friends: `src/shared/appCall.ts` carries no `export`,
+// so it is a global script and its declarations are already in scope here. Re-declaring them is how
+// the two mismatched ones became "incompatible overload" errors — and the two that *matched* merged
+// silently, which is a second copy of a signature waiting to drift.
 
 /** Which of the three log filters is showing. The design's tab strip, over the data we have. */
 type CallsTab = 'all' | 'missed' | 'contacts';
@@ -375,6 +402,18 @@ class CallsView {
   private pendingDial: string | null = null;
 
   /**
+   * The app hosting the current call, when the phone network is not — or `null`.
+   *
+   * Held rather than recomputed inside `renderLive` because it is written from **two** triggers,
+   * the call changing and the notification list changing, and both must reach one field through
+   * one function.
+   */
+  private appCall: { appName: string; package: string; who?: string } | null = null;
+
+  /** The live notification list as last seen. Empty is a legitimate answer, not a failure. */
+  private notifs: CallNotifRow[] = [];
+
+  /**
    * Every contact photograph this pane has drawn, keyed on number.
    *
    * One store for the pane rather than one per list: the live card, a log row and a *Frequently
@@ -413,9 +452,21 @@ class CallsView {
     (globalThis as Record<string, unknown>).__callPhotos = () => this.photos.tally();
     bridge.onCallChanged((call) => {
       this.call = call;
+      // Derived from what is already held, so the card draws at once with whatever is known, and
+      // again below if the notification list turns out to have moved.
+      this.applyAppCall();
       this.renderLive();
+      if (call) void this.refreshNotifs();
       // A call that has just ended is a new row in the log.
       if (!call && this.loaded) void this.loadLog();
+    });
+    // The second trigger. An app's call notification is routinely posted a beat after the call
+    // state changes, so a card drawn only on `onCallChanged` would read `Unknown number` and stay
+    // there. Both triggers run the **same** derivation rather than each drawing its own answer —
+    // two correct triggers owning separate copies of one state is the Files pane's race.
+    bridge.onNotifChanged((list) => {
+      this.notifs = list ?? [];
+      if (this.applyAppCall()) this.renderLive();
     });
     this.dialButton.addEventListener('click', () => void this.dial());
     this.dialInput.addEventListener('input', () => {
@@ -440,6 +491,47 @@ class CallsView {
    * is the only thing that writes this field and it writes a PNG, but this is the one place a
    * value from the wire reaches a stylesheet, and a check at the boundary costs one regex.
    */
+  /**
+   * Re-derive [appCall] from the call and the notification list already held.
+   *
+   * Returns whether it changed, so a caller can decide whether a redraw is owed — an unconditional
+   * `renderLive()` on every notification change would rebuild the card, and its running clock, on
+   * every notification this phone posts.
+   */
+  private applyAppCall(): boolean {
+    const found = appCallFor(this.call, this.notifs);
+    const before = this.appCall?.package ?? null;
+    const after = found?.package ?? null;
+    this.appCall = found;
+    return before !== after;
+  }
+
+  /**
+   * Ask for the notification list, and say what came back.
+   *
+   * Never throws. The notification-listener grant is a different capability from `calls`, and a
+   * phone sharing calls but not notifications is an ordinary configuration rather than an error —
+   * it just means a call with no number stays `Unknown number`, which is what it said before.
+   */
+  private async refreshNotifs(): Promise<void> {
+    const list = await this.bridge.notifList().catch(() => null);
+    if (list === null) {
+      // Logged rather than swallowed: this is the branch where naming silently stops working, and
+      // the tally beside it is what makes "no app calls today" distinguishable from "never asked".
+      console.info('[calls] notifList unavailable — a call with no number stays unnamed');
+      return;
+    }
+    this.notifs = list;
+    if (this.applyAppCall()) {
+      console.info(
+        `[calls] call named from a notification: ${this.appCall?.appName ?? 'none'} ` +
+          `— ${list.length} notifications, ${list.filter((n) => n.category === 'call').length} in ` +
+          'category call',
+      );
+      this.renderLive();
+    }
+  }
+
   private async fetchPhoto(number: string): Promise<string | null> {
     const result = await this.bridge
       .contactsGet({ number, withPhoto: true })
@@ -460,6 +552,9 @@ class CallsView {
       // A face outliving its link is the same stale claim as a name outliving it, and the main
       // process drops its name cache here for exactly this reason.
       this.photos.clear();
+      // And so is an app name derived from a notification list this Mac can no longer see.
+      this.appCall = null;
+      this.notifs = [];
       this.renderLive();
       this.renderLog();
       this.renderDialButton();
@@ -479,7 +574,11 @@ class CallsView {
 
   private async refreshCurrent(): Promise<void> {
     this.call = await this.bridge.callCurrent().catch(() => null);
+    this.applyAppCall();
     this.renderLive();
+    // A call replayed on connect needs naming too. `call.incoming` is replayed after `hello.ack`
+    // for a call already in progress, and that path does not go through `onCallChanged`.
+    if (this.call) void this.refreshNotifs();
   }
 
   private async loadLog(): Promise<void> {
@@ -565,11 +664,18 @@ class CallsView {
     // Defect 35: this was `??`, which does not catch an empty string. `"" ?? x` is `""`, so a
     // phone that reported `number: ""` walked straight past the fallback chain written to
     // prevent exactly this, and the card drew a blank. Emptiness, not nullishness.
-    who.textContent = callWho(this.call);
+    //
+    // An app-hosted call is the one case with neither a number nor a contact name, and the app's
+    // own notification is the only thing on this Mac that can name it. See `src/shared/appCall.ts`.
+    who.textContent = this.appCall ? appCallWho(this.appCall) : callWho(this.call);
 
     const state = document.createElement('div');
     state.className = 'call-state mono';
-    state.textContent = callStatus(this.call);
+    // `Ringing · WhatsApp` rather than a bare `Ringing`. The separator belongs to whatever follows
+    // it — defect 35's rule — and for an app call what follows is the app rather than a number.
+    state.textContent = this.appCall
+      ? appCallStatus(this.call.state, this.appCall)
+      : callStatus(this.call);
 
     // The design's running clock. It is `startedAtMs` against this Mac's clock, ticking, and it is
     // the one number on the card that is a measurement rather than a label.
@@ -614,10 +720,24 @@ class CallsView {
     // Where the design's Mute / Keypad / Speaker row sits. Saying the three controls are on the
     // phone is a smaller lie than drawing three buttons that do nothing, and a much smaller one
     // than drawing three that look like they might.
-    const controlled = audioStrip(
-      'Mute, speaker and keypad tones are on the phone. Nothing on the wire carries them.',
-    );
+    // The second strip **replaces** the third rather than joining it, and that is a measurement
+    // rather than a preference. Three strips put the last one at 728–826 inside a `#page` scroll
+    // port ending at 795 — 31px clipped, `fraction: 0.69`. A card carrying a *state* has to be
+    // visible at rest and not merely reachable (defect 85), and nobody scrolls a ringing call.
+    //
+    // So for an app-hosted call one strip says both things. It claims only what is established:
+    // which app owns the call, that mute and speaker live on the phone, and that the reach of the
+    // two buttons above is **unmeasured**. It does not say "cannot", because nobody has shown
+    // that; and it does not say audio or video, because `Notification.category` is `"call"` for
+    // both and this phone puts no `EXTRA_CALL_IS_VIDEO` on the wire.
+    const controlled = this.appCall
+      ? audioStrip(appCallNote(this.appCall.appName))
+      : audioStrip('Mute, speaker and keypad tones are on the phone. Nothing on the wire carries them.');
     controlled.classList.add('call-controlled-note');
+    if (this.appCall) {
+      controlled.classList.add('call-hosted-note');
+      controlled.setAttribute('data-app-call', this.appCall.package);
+    }
 
     this.live.append(disc, who, state, clock, bar, audio, controlled);
   }
