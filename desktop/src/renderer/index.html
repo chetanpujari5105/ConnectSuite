@@ -427,22 +427,75 @@
               The compose box sends a thread id and a body and never a recipient: the send rule in
               docs/protocol.md, expressed in the markup by there being nowhere to type one.
             -->
+            <!--
+              Three columns — `280px 1fr 300px` — which is the design's Messages shape and was not
+              built until 2026-09-05. Before that this pane was a single column that swapped a
+              thread list for a thread, with the *contacts directory* occupying the third column
+              where the design puts the open conversation's own person.
+
+              The three regions are separate elements rather than one `#sms-body`, because they
+              have different lifetimes: the thread list survives opening a conversation, the chat
+              is replaced by it, and the person card follows the chat.
+            -->
             <section class="screen" data-screen="messages" hidden>
-              <div class="messages-grid">
-                <div class="pane primary" id="sms-card">
-                  <p class="pane-sub" id="sms-note"></p>
-                  <div id="sms-body"></div>
-                  <div id="sms-notice" class="mirror-notice" hidden></div>
-                </div>
-                <aside class="side-card" id="contacts-card">
-                  <h3 class="side-title">Contacts</h3>
-                  <div class="row">
-                    <input id="contacts-search" type="search" placeholder="Search name or number" />
+              <div class="sms-grid stagger" id="sms-card">
+                <section class="sms-threads">
+                  <div class="sms-threads-head">
+                    <div class="sms-tabs" id="sms-tabs" role="tablist" aria-label="Conversation filter"></div>
+                    <button type="button" class="sms-new" id="sms-new" aria-label="New conversation">
+                      <span class="sms-new-glyph" id="sms-new-glyph" aria-hidden="true"></span>
+                    </button>
                   </div>
-                  <p class="side-meta" id="contacts-note"></p>
-                  <div id="contacts-list" class="contact-list"></div>
-                  <div id="contacts-notice" class="mirror-notice" hidden></div>
-                </aside>
+                  <div class="sms-thread-scroll" id="sms-thread-scroll">
+                    <p class="sms-list-note" id="sms-note"></p>
+                    <div id="sms-list" role="listbox" aria-label="Conversations"></div>
+                  </div>
+                </section>
+
+                <section class="sms-chat" id="sms-chat">
+                  <div class="sms-chat-head" id="sms-chat-head"></div>
+                  <div class="sms-chat-body cs-scroll" id="sms-chat-body"></div>
+                  <div class="sms-composer" id="sms-composer"></div>
+                </section>
+
+                <!--
+                  The design's third column: the person this conversation is with. It was the
+                  contacts *directory* — a different feature, in the one place the design reserves
+                  for the open thread. The directory is not lost: it is the recipient picker inside
+                  New conversation, which is where a person actually needs to search by name.
+                -->
+                <aside class="sms-person" id="sms-person" aria-live="polite"></aside>
+              </div>
+              <div id="sms-notice" class="mirror-notice" hidden></div>
+
+              <!--
+                New conversation, and the contacts directory with it. Hidden until asked for; kept
+                in the DOM so the palette's `deep.contacts` row has something real to reveal.
+              -->
+              <div class="sms-newpanel" id="contacts-card" hidden>
+                <div class="sms-newpanel-head">
+                  <h3 class="sms-newpanel-title">New conversation</h3>
+                  <button type="button" class="sms-newpanel-close" id="sms-new-cancel">Cancel</button>
+                </div>
+                <div class="sms-newpanel-body">
+                  <div class="sms-newpanel-form">
+                    <input id="sms-new-to" type="text" placeholder="Phone number" />
+                    <input id="sms-new-body" type="text" placeholder="Message" />
+                    <button type="button" id="sms-new-send" class="button primary-action">Send</button>
+                  </div>
+                  <!--
+                    The contacts directory's own element, separate from the panel around it.
+                    `ContactsView` toggles a `hidden` *class* here for the unadvertised state, while
+                    `SmsView` sets the `hidden` *attribute* on the panel for the composing state.
+                    Two owners of one element's visibility is how one of them silently wins.
+                  -->
+                  <div class="sms-newpanel-people" id="contacts-people">
+                    <input id="contacts-search" type="search" placeholder="Search name or number" />
+                    <p class="sms-list-note" id="contacts-note"></p>
+                    <div id="contacts-list" class="contact-list"></div>
+                    <div id="contacts-notice" class="mirror-notice" hidden></div>
+                  </div>
+                </div>
               </div>
             </section>
 

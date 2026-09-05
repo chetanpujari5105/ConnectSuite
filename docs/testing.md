@@ -16353,3 +16353,187 @@ not claimed.
 
 **0 stranded is the number that carries across both runs**, and it is the one the file exists to
 report.
+
+---
+
+## Phase 7 · Slice 33 — the design pass: Messages · 2026-09-05
+
+Messages was not in the previous sitting's brief and was never touched by it. It was the pane
+furthest from the canvas: one column that swapped a thread list for a thread, on hand-written hex
+colours predating the token file, with the contacts **directory** occupying the third column where
+the design puts the open conversation's own person.
+
+### Defect 93 — the preview has been on the wire since Phase 4 and had never once been drawn
+
+The thread list showed sender ids and dates and no preview text. The first question was whether the
+wire carries one, because the two answers are different work: `sms.threads` sends **`snippet`**, and
+this pane had always rendered it.
+
+Measured in the running app, before anything was changed:
+
+```
+.sms-thread   50 rows,  height 32px,  display: flex, flex-direction: column
+.sms-snippet  50 elements, 50 with real text, 50 at height 0
+              "(no preview)" count: 0        ← every one had something to say
+```
+
+**Fifty sentences, present, correct, and invisible.**
+
+#### The mechanism, and the first answer was wrong
+
+Varying the row's own properties in the live page looked decisive:
+
+| tried | row | preview |
+|---|---|---|
+| as shipped | 32px | **0** |
+| `min-height: 0` on the row | 18px | **0** |
+| `height: auto` on the row | 32px | **0** |
+| `flex-shrink: 0` on the preview | 32px | 18px, overflowing |
+| `display: block` on the row | 32px | 18px |
+
+The row never grew, so the conclusion written down was *a `<button>` does not grow to its flex
+content*. **That was wrong**, and it was caught by insisting the new guard go red first: the fix was
+reintroduced to prove the probe could see it, and **the row grew to 119px with its text intact**.
+
+Rebuilt off-screen from the shipped rule, varying the **parent**:
+
+| parent of the rows | row | preview |
+|---|---|---|
+| **as shipped** — `display: flex; flex-direction: column; max-height: 300px` | 32px | **0** |
+| the same, but `display: block` | 52px | 18px |
+| flex column, **no** `max-height` | 52px | 18px |
+
+**A column flex container with a constrained height shrinks its children**, because a flex item
+defaults to `flex-shrink: 1` — and inside each shrunken row the deficit came out of the text. Both
+conditions are needed; neither alone does anything, and the row's own `display: flex` was
+incidental, which is exactly why changing it appeared to help.
+
+The lesson generalises past this pane: **the properties you can vary are not necessarily the ones
+responsible.** Varying the row changed the symptom, so the row looked like the cause. Only rebuilding
+the whole structure separated them — and nothing would have forced that step except a guard that had
+to be shown failing.
+
+#### Why nothing in the repo caught it, and where the guard went
+
+- A **DOM double has no layout**. `smsView.test.ts` rendered the element, asserted its text, and
+  passed — for months, over a line no user had ever read.
+- A **stylesheet parser has no tags and no tree**. `display: flex` with no height is correct on a
+  `div`; the fault needed a *parent*, a *child* and a *constraint* together.
+- A **screenshot comparison** shows a missing line as a design difference, which is how this
+  survived a design pass three days earlier.
+
+`scripts/zero-height-text-probe.mjs` sweeps every pane for elements that carry text and draw at zero
+height. It is deliberately aimed at the **symptom** rather than the mechanism — given how wrong the
+first reading of the mechanism was, a net cast at "a sentence with no box" is worth more than one
+shaped around a cause. It excludes what is *meant* to have no box: `display: none` subtrees, `hidden`
+nodes, and the `visually-hidden` convention.
+
+**Its control is built in, not a sibling file.** `--self-test` plants a `height: 0` text node in a
+live pane, runs the sweep, asserts it was reported, and removes it. A `*.test.mjs` beside it would
+need the running app and so could never run in the suite — and this repo has already shipped a file
+that named an instrument which did not exist.
+
+```
+13 of 13 panes measured, 0 text nodes drawn at zero height.
+self-test: the planted node was reported (1 found), and it has been removed.
+```
+
+### The rebuild, measured against the canvas
+
+| | design | build |
+|---|---|---|
+| grid | `280px 1fr 300px`, gap 16 | `280 / 539 / 300`, gap 16 |
+| thread row | 60px, radius 12 | 60px, radius 12, `display: grid` |
+| row avatar | 34px | 34px |
+| person avatar | 72px | 72px |
+| filter pill | 26px, radius 999 | 26px, radius 999 |
+| previews with text / at zero height | — | **50 / 0** |
+| composer in the viewport | — | yes, bottom at 758 of 841 |
+
+**The grid does not take the design's literal `height: 600px`.** The canvas is a 920px window with
+about 200px of chrome above the grid; this app's window is **841px** after defect 87's fit, and the
+page head plus the device strip take about 300 — so a literal 600 put the composer, the one control
+on the screen, below the fold. The pane opts into the viewport-bounded screen the way Files does and
+the grid is `height: 100%` of it.
+
+**Single-word senders get two initials.** Most of this phone's list is machine sender ids —
+`AD-SUJAMK-P`, `VM-TNSBIC-P`, `CP-INUTRA-P` — which are one word by any rule a computer can apply,
+so first-letter-per-word drew a column of discs reading `A`, `V`, `C`. And `threadInitials` had to
+learn that *Unknown number* is a placeholder rather than a name: taking initials from `threadWho`'s
+own fallback gave an unidentified sender a confident `UN` disc, a placeholder promoted to a name one
+function later. `#` now, which is the Calls pane's convention for the same situation.
+
+### The two diagnostic strings, and why both are the same fault
+
+Removed:
+
+> *"50 conversations, 2 showing a contact name, 586 unread. Older conversations are not shown yet."*
+>
+> *"50 contacts, and more the phone did not send — narrow the search. Sorted by name, which is the
+> only order a book can be read in."*
+
+Every clause of both is a fact about **our implementation**: how many rows one page happens to hold,
+how well contact resolution is working, that a pager exists, and what the sort order is. They were
+written to satisfy hardware steps and they stayed on a screen a user reads.
+
+**The denominator rule in `CLAUDE.md` is about logs and evidence**, where a count with no scale is
+not evidence. It was never a licence to put the instrument's readout on screen, and the second
+string does not even have that excuse — *"the only order a book can be read in"* is a justification
+addressed to a reviewer.
+
+What replaces them is nothing, in the state they occupied. A loaded list explains itself by being a
+list, and the unread counts are already on the rows that have them. **The three states that survive
+are the ones about the user's phone rather than about us**: still reading it, nothing on it, and a
+filter that matched none of it — and each is a sentence that already existed.
+
+**One of those three had never been reachable.** `setAdvertised` started the fetch and only rendered
+when it returned, so *"Reading the phone's conversations…"* went from blank straight to a list and
+was never once on screen. Found by a test asserting the state and getting an empty string; the pane
+draws before it awaits now.
+
+### Where Contacts belongs
+
+The question was asked and it has a definite answer:
+
+- **There is no `contacts` screen** in `navModel`. The directory existed only as the third column of
+  Messages.
+- **The design's sidebar has no Contacts row** — eleven rows, none of them contacts.
+- **The design's Messages third column is the open conversation's person**: avatar, name, number,
+  actions.
+- **A directory already has a built home**: the Calls pane's Contacts tab, over the same
+  `contacts.list`, where picking someone fills the dialler.
+
+So the third column is the person now, and the directory moved into the **New conversation** panel,
+which is where searching a person by name is what you are actually doing. Nothing is lost: the
+capability moved to where the verb is.
+
+The palette's `deep.contacts` row was pointed at `messages` / `contacts-card`. A palette row cannot
+usefully reveal something that is only on screen while composing, so it points at **Calls** now.
+
+**And the two views nearly ended up fighting over one element.** `ContactsView` toggles a `hidden`
+*class* on its card for the unadvertised state while `SmsView` sets the `hidden` *attribute* on the
+panel for the composing state — the same element, two mechanisms, and an unadvertised `contacts`
+capability would have kept the New conversation panel shut for reasons nobody could see. They have
+separate elements: `#contacts-card` is the panel, `#contacts-people` is the directory.
+
+### What the design draws and this wire cannot serve
+
+| Design draws | Verb it would need | Verdict |
+|---|---|---|
+| **SMS** and **Chat** filter tabs | a kind per *thread*; `kind` exists only per **message**, and *Chat* means RCS, which this app does not implement | **refused** — the strip is `All` / `Unread`, and `unread` is on every thread row |
+| **Encrypted** badge in the chat header | — | stays cut: the link is encrypted, an SMS is not |
+| attachment **card** with a file name and size | `hasAttachments` is a boolean and there is no MMS-parts verb | a marker, not a card — the name and size would both be invented |
+| **Video call** | none | removed |
+| **Block contact** | none, and `BlockedNumberContract` is restricted to the default dialer or SMS app | removed |
+| **Shared media** | none | removed |
+| **Mute notifications** | none — the phone does not tell the Mac what is muted | removed |
+| **phone call** button | `call.dial` — **exists** | not drawn here: it lives on the Calls pane, and a second entry point that silently changes screens is worse than the one that says where it goes |
+
+One line replaces the four removed controls, and it is **new copy, flagged unratified**: *"Calling
+is on the Calls screen. Video, blocking and shared media are on the phone — nothing on the wire
+carries them."* That is the **third** sentence of this shape in the app, after Calls' and Photos'.
+Three uses is either a house style or a rut, and it is the designer's call rather than mine; it goes
+on the vocabulary list with the others.
+
+**Evidence:** `docs/evidence/phase-7-design-2026-09-05/messages-build.png`, `messages-design.png`,
+`messages-compare.png`. Mac suite **555 → 565**.

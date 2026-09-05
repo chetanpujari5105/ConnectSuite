@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeElement, installFakeDocument, installFakeWindow, el } from './domDouble.testkit';
+import './icons';
+import '../shared/discHue';
 import './sms';
 
 /**
@@ -76,19 +78,73 @@ interface Pane {
   bridge: FakeBridge;
   card: FakeElement;
   note: FakeElement;
-  body: FakeElement;
   notice: FakeElement;
+  tabs: FakeElement;
+  list: FakeElement;
+  chatHead: FakeElement;
+  chatBody: FakeElement;
+  composer: FakeElement;
+  person: FakeElement;
+  newPanel: FakeElement;
+  newButton: FakeElement;
+  newCancel: FakeElement;
+  newTo: FakeElement;
+  newBody: FakeElement;
+  newSend: FakeElement;
   view: { setAdvertised(on: boolean): void; refresh(): Promise<void> };
 }
 
+/**
+ * The pane draws into four regions rather than one body as of 2026-09-05.
+ *
+ * `body` is gone from this mount on purpose: keeping it as an alias for one of the new regions
+ * would let a test go on asserting against "the pane's output" without saying which column it
+ * meant — and the whole point of the rebuild is that the thread list, the conversation and the
+ * person are three different lifetimes.
+ */
 function mount(threads: Thread[] = []): Pane {
   const bridge = new FakeBridge();
   bridge.threads = threads;
-  const parts = { card: el('div'), note: el('p'), body: el('div'), notice: el('div') };
+  const parts = {
+    card: el('div'),
+    note: el('p'),
+    notice: el('div'),
+    tabs: el('div'),
+    list: el('div'),
+    chatHead: el('div'),
+    chatBody: el('div'),
+    composer: el('div'),
+    person: el('aside'),
+    newPanel: el('div'),
+    newButton: el('button'),
+    newCancel: el('button'),
+    newTo: el('input'),
+    newBody: el('input'),
+    newSend: el('button'),
+  };
   const View = (globalThis as Record<string, unknown>).SmsView as new (
     ...args: unknown[]
   ) => Pane['view'];
-  const view = new View(parts.card, parts.note, parts.body, parts.notice, bridge);
+  const view = new View(
+    parts.card,
+    parts.note,
+    {
+      tabs: parts.tabs,
+      list: parts.list,
+      chatHead: parts.chatHead,
+      chatBody: parts.chatBody,
+      composer: parts.composer,
+      person: parts.person,
+      newPanel: parts.newPanel,
+      newButton: parts.newButton,
+      newCancel: parts.newCancel,
+      newTo: parts.newTo,
+      newBody: parts.newBody,
+      newSend: parts.newSend,
+    },
+    parts.notice,
+    bridge,
+  );
   return { bridge, ...parts, view };
 }
 
@@ -121,7 +177,7 @@ test('a thread shows a name, then a number, and never nothing', async () => {
   pane.view.setAdvertised(true);
   await settle();
 
-  assert.deepEqual(pane.body.queryAll('.sms-who').map((w) => w.textContent), [
+  assert.deepEqual(pane.list.queryAll('.sms-who').map((w) => w.textContent), [
     'R. Sharma',
     '+91980000002',
     // The fallback chain is written out rather than defaulted, so an empty `addresses` still
@@ -130,13 +186,67 @@ test('a thread shows a name, then a number, and never nothing', async () => {
   ]);
 });
 
-test('the list count carries what it is a count of, both numbers', async () => {
+test('a loaded list says nothing about itself, and each of its three real states does', async () => {
+  /*
+   * This test used to assert the opposite, and the inversion is the point.
+   *
+   * It read: `2 conversations, 1 showing a contact name, 2 unread` — and every clause of that is a
+   * fact about **our implementation**: how many rows one page happens to hold, how well contact
+   * resolution is working, and how many are unread when the rows already carry that. It was written
+   * to satisfy a hardware step, and it stayed on the screen a user reads.
+   *
+   * The states that survive are the ones about *the phone*: still reading it, nothing on it, and a
+   * filter that matched none of it.
+   */
   const pane = mount([thread('1', { contactName: 'R. Sharma', unread: 2 }), thread('2')]);
+
+  // Advertised, and the fetch has not come back yet. This is the moment the loading state exists,
+  // and it did not draw at all until `setAdvertised` was made to render before awaiting the bridge.
+  pane.view.setAdvertised(true);
+  assert.match(pane.note.textContent, /Reading/);
+
+  await settle();
+  assert.equal(pane.note.textContent, '', 'a working list explains itself by being a list');
+  assert.equal(pane.list.queryAll('.sms-thread').length, 2, 'control: the rows really are drawn');
+
+  // Genuinely empty is a different sentence from a filter matching nothing.
+  const none = mount([]);
+  none.view.setAdvertised(true);
+  await settle();
+  assert.match(none.note.textContent, /no conversations on the phone/i);
+});
+
+test('the Unread tab filters the list, and an empty filter is not an empty phone', async () => {
+  const pane = mount([thread('1', { unread: 2 }), thread('2'), thread('3')]);
   pane.view.setAdvertised(true);
   await settle();
-  // A count of threads says nothing about whether contact resolution is working, which is the
-  // thing this pane's hardware step was actually checking.
-  assert.match(pane.note.textContent, /2 conversations, 1 showing a contact name, 2 unread/);
+
+  const tabs = pane.tabs.queryAll('.sms-tab');
+  assert.deepEqual(tabs.map((t) => t.dataset.tab), ['all', 'unread'], 'two tabs, not the design\u2019s three');
+  assert.equal(pane.list.queryAll('.sms-thread').length, 3, 'control: All shows everything');
+
+  tabs[1].click();
+  assert.equal(pane.list.queryAll('.sms-thread').length, 1);
+  assert.equal(pane.note.textContent, '', 'a filter with matches says nothing');
+
+  // And with nothing unread it is a different sentence from an empty phone.
+  const read = mount([thread('9')]);
+  read.view.setAdvertised(true);
+  await settle();
+  read.tabs.queryAll('.sms-tab')[1].click();
+  assert.match(read.note.textContent, /No unread conversations/);
+  assert.doesNotMatch(read.note.textContent, /no conversations on the phone/i);
+});
+
+test('the preview is drawn, which it had not been since it reached the wire', async () => {
+  // Defect 93. `snippet` has been sent by the phone since Phase 4 and rendered by this pane the
+  // whole time, at `height: 0` on every row. A DOM double has no layout and cannot see that — this
+  // asserts the element and its text exist, and `stylesheets.test.ts` guards the height.
+  const pane = mount([thread('1'), thread('2', { snippet: '' })]);
+  pane.view.setAdvertised(true);
+  await settle();
+  const previews = pane.list.queryAll('.sms-preview').map((p) => p.textContent);
+  assert.deepEqual(previews, ['snippet 1', 'No preview']);
 });
 
 test('an unread count reaches a screen reader, not only a coloured pill', async () => {
@@ -144,7 +254,7 @@ test('an unread count reaches a screen reader, not only a coloured pill', async 
   const pane = mount([thread('1', { unread: 3 })]);
   pane.view.setAdvertised(true);
   await settle();
-  const badge = pane.body.queryAll('.sms-unread')[0];
+  const badge = pane.list.queryAll('.sms-unread')[0];
   assert.ok(badge, 'control: the badge is drawn');
   assert.match(badge.textContent, /3 unread/);
 });
@@ -160,17 +270,17 @@ test('a thread repeated across a page boundary appears once, keeping the newer r
   pane.bridge.threadsHasMore = true;
   pane.view.setAdvertised(true);
   await settle();
-  assert.equal(pane.body.queryAll('.sms-thread').length, 2, 'control: page one drew two');
+  assert.equal(pane.list.queryAll('.sms-thread').length, 2, 'control: page one drew two');
 
   pane.bridge.threads = [thread('2'), thread('1', { snippet: 'stale repeat' }), thread('3')];
   pane.bridge.threadsHasMore = false;
-  pane.body.queryAll('button').find((b) => b.id === 'sms-older-threads')?.click();
+  pane.list.queryAll('button').find((b) => b.id === 'sms-older-threads')?.click();
   await settle();
 
-  const ids = pane.body.queryAll('.sms-thread').map((t) => t.dataset.threadId);
+  const ids = pane.list.queryAll('.sms-thread').map((t) => t.dataset.threadId);
   assert.deepEqual(ids, ['1', '2', '3']);
-  assert.match(pane.body.textContent, /newest/);
-  assert.ok(!pane.body.textContent.includes('stale repeat'), 'the later, staler row won');
+  assert.match(pane.list.textContent, /newest/);
+  assert.ok(!pane.list.textContent.includes('stale repeat'), 'the later, staler row won');
 });
 
 test('a fresh load replaces rather than appends', async () => {
@@ -180,7 +290,7 @@ test('a fresh load replaces rather than appends', async () => {
   pane.view.setAdvertised(true);
   await settle();
   await pane.view.refresh();
-  assert.equal(pane.body.queryAll('.sms-thread').length, 2);
+  assert.equal(pane.list.queryAll('.sms-thread').length, 2);
 });
 
 test('the control that lifts the limit is drawn beside the sentence describing it', async () => {
@@ -190,14 +300,23 @@ test('the control that lifts the limit is drawn beside the sentence describing i
   pane.bridge.threadsHasMore = true;
   pane.view.setAdvertised(true);
   await settle();
-  assert.match(pane.note.textContent, /Older conversations are not shown yet/);
-  assert.ok(pane.body.queryAll('button').some((b) => b.id === 'sms-older-threads'));
+  // The sentence that used to sit here is gone — see the note-content test above — and the control
+  // is what is left, which is the half that was ever any use.
+  assert.equal(pane.note.textContent, '');
+  assert.ok(pane.list.queryAll('button').some((b) => b.id === 'sms-older-threads'));
+
+  // Not on a filtered view: paging "older" while showing a subset would append rows the filter then
+  // hides, and the button would look broken.
+  pane.tabs.queryAll('.sms-tab')[1].click();
+  assert.ok(!pane.list.queryAll('button').some((b) => b.id === 'sms-older-threads'));
+  pane.tabs.queryAll('.sms-tab')[0].click();
+  assert.ok(pane.list.queryAll('button').some((b) => b.id === 'sms-older-threads'), 'control: it comes back');
 
   pane.bridge.threadsHasMore = false;
   await pane.view.refresh();
   // The control on that assertion: with nothing more to load the button is gone, so its presence
   // above is the condition working rather than a button that is always there.
-  assert.ok(!pane.body.queryAll('button').some((b) => b.id === 'sms-older-threads'));
+  assert.ok(!pane.list.queryAll('button').some((b) => b.id === 'sms-older-threads'));
 });
 
 // ---- A reply that arrives after the reader moved on ----------------------------------------------
@@ -219,27 +338,31 @@ test('a slow thread load does not draw over the thread now open', async () => {
   // action that silently does not happen while the run carries on. Every click below is asserted to
   // exist first.
   pane.bridge.holdMessages = () => undefined;
-  const first = pane.body.queryAll('.sms-thread')[0];
+  const first = pane.list.queryAll('.sms-thread')[0];
   assert.ok(first, 'control: thread 1 is clickable');
   first.click();
   await settle();
 
   const release = pane.bridge.holdMessages;
   pane.bridge.holdMessages = null;
-  const back = pane.body.queryAll('button').find((b) => b.textContent.includes('All conversations'));
-  assert.ok(back, 'control: the back link is drawn while a thread is open');
-  back.click();
-
-  const second = pane.body.queryAll('.sms-thread')[1];
+  /*
+   * No back step any more, and its absence is the improvement rather than a shortcut.
+   *
+   * The original comment here said the step "is not optional", because opening a thread *replaced*
+   * the list and the second click would land on a row no longer in the tree. In three columns the
+   * list never goes away, so the second row is clickable without navigating anywhere first — and it
+   * is still asserted to exist before being clicked, which is the part that mattered.
+   */
+  const second = pane.list.queryAll('.sms-thread')[1];
   assert.ok(second, 'control: thread 2 is clickable again');
   second.click();
   await settle();
   release?.();
   await settle();
 
-  assert.match(pane.note.textContent, /\+91980000002/, 'thread 2 is the one open');
-  assert.ok(pane.body.textContent.includes('body b'));
-  assert.ok(!pane.body.textContent.includes('body a'), 'a stale reply drew over the open thread');
+  assert.match(pane.chatHead.textContent, /\+91980000002/, 'thread 2 is the one open');
+  assert.ok(pane.chatBody.textContent.includes('body b'));
+  assert.ok(!pane.chatBody.textContent.includes('body a'), 'a stale reply drew over the open thread');
 });
 
 test('a message arriving in the open thread is appended; one arriving elsewhere refreshes the list', async () => {
@@ -247,12 +370,12 @@ test('a message arriving in the open thread is appended; one arriving elsewhere 
   pane.bridge.messages.set('1', [message('a', '1', 100)]);
   pane.view.setAdvertised(true);
   await settle();
-  pane.body.queryAll('.sms-thread')[0].click();
+  pane.list.queryAll('.sms-thread')[0].click();
   await settle();
 
   pane.bridge.fireReceived('1', message('c', '1', 300));
   await settle();
-  assert.ok(pane.body.textContent.includes('body c'));
+  assert.ok(pane.chatBody.textContent.includes('body c'));
 
   // One arriving elsewhere must still move the list's snippet and unread count. A pane that only
   // updated the open thread would leave the list quietly wrong.
@@ -273,15 +396,15 @@ test('a new conversation opens the thread the PHONE names, not one the pane assu
   pane.view.setAdvertised(true);
   await settle();
 
-  pane.body.queryAll('button').find((b) => b.id === 'sms-new')?.click();
-  const to = pane.body.queryAll('input').find((i) => i.id === 'sms-new-to');
-  const body = pane.body.queryAll('input').find((i) => i.id === 'sms-new-body');
+  pane.newButton.click();
+  const to = pane.newTo;
+  const body = pane.newBody;
   assert.ok(to && body, 'control: the compose surface is drawn');
   to.value = '+919800000009';
   to.dispatch('input');
   body.value = 'first message';
   body.dispatch('input');
-  pane.body.queryAll('button').find((b) => b.id === 'sms-new-send')?.click();
+  pane.newSend.click();
   await settle();
   await settle();
 
@@ -297,7 +420,7 @@ test('un-advertised forgets the open thread as well as the list', () => {
   pane.view.setAdvertised(true);
   pane.view.setAdvertised(false);
   assert.ok(pane.card.classList.contains('hidden'));
-  assert.equal(pane.body.queryAll('.sms-thread').length, 0);
+  assert.equal(pane.list.queryAll('.sms-thread').length, 0);
   // Back to "reading", not to "there are no conversations" — a pane that has stopped knowing must
   // not claim the phone has nothing.
   assert.match(pane.note.textContent, /Reading the phone’s conversations…/);

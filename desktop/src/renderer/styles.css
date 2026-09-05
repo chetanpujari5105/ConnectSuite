@@ -396,71 +396,514 @@ img#qr {
 #remote-card { position: relative; }
 
 /* ---- Messages ------------------------------------------------------------------------------ */
-.sms-list { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
-.sms-thread {
+/* ================================================================================================
+   Messages — the design's three columns, `280px 1fr 300px`
+   ================================================================================================
+
+   Rebuilt 2026-09-05. What was here before was a single column that swapped a thread list for a
+   thread, on hand-written hex colours predating the token file, with the contacts *directory* in
+   the third column where the canvas puts the open conversation's own person.
+
+   The one rule worth stating before the numbers: **`.sms-thread` carries an explicit height.** It
+   was a `<button>` with `display: flex; flex-direction: column` and no height, and a button does
+   not grow to its flex content — so the preview line, which is the only shrinkable child, was
+   squeezed to `height: 0` on every row while carrying real text. Defect 93. The design says 60px;
+   the row says 60px; nothing has to grow.
+------------------------------------------------------------------------------------------------ */
+
+/*
+ * Messages opts into the viewport-bounded screen, the same way Files does and for the same reason:
+ * three columns that scroll inside themselves need something definite to be a fraction of.
+ *
+ * Every link in the chain carries `min-height: 0` so a flex item may shrink below its content —
+ * without it a flex child's automatic minimum is its content, the grid never shrinks, and each
+ * column's `overflow: auto` never has anything to do.
+ */
+.screen[data-screen="messages"] {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  min-height: 0;
+}
+
+.sms-grid {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 300px;
+  gap: var(--space-7);
+  align-items: stretch;
+  /*
+   * The design says `height: 600px`. This takes the **available** height instead, and the reason is
+   * arithmetic rather than taste: the canvas is a 920px window with about 200px of chrome above
+   * this grid, so 600 fits it with room. This app's window is **841px** after defect 87's fit, and
+   * the page head plus the device strip take about 300 — so a literal 600 put the composer, the one
+   * control on the screen, below the fold.
+   *
+   * A definite height is still what makes the three columns scroll inside themselves rather than
+   * the page growing to the longest one, which on a 50-thread list is the difference between three
+   * panels and one very tall page. `100%` of a viewport-bounded screen is that, at whatever height
+   * the display actually has.
+   */
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+}
+.sms-grid > * { min-width: 0; min-height: 0; }
+.sms-grid.hidden { display: none; }
+
+@media (max-width: 1180px) {
+  /* The person card is the first thing to go: it is the only column that repeats what the chat
+     header already says. */
+  .sms-grid { grid-template-columns: 260px minmax(0, 1fr); }
+  .sms-person { display: none; }
+}
+
+/* ---- Column one: the conversations ------------------------------------------------------------ */
+
+.sms-threads {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+}
+
+.sms-threads-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  padding: var(--space-5) var(--space-7);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.sms-tabs { display: flex; gap: var(--space-2); flex: 1; min-width: 0; }
+
+/* The design's 26px filter pill. */
+.sms-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 26px;
+  min-height: 0;
+  padding: 0 var(--space-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-body);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
+}
+.sms-tab:hover { background: rgba(255, 255, 255, 0.04); color: var(--text-on-control); }
+.sms-tab.on {
+  background: var(--accent-tint-selected);
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+}
+.sms-tab-count { font-size: 10.5px; color: var(--text-meta); }
+.sms-tab.on .sms-tab-count { color: var(--accent-text); }
+
+/* New conversation. An icon button rather than the design's absent control — the canvas has no way
+   to start one, which is defect 30's whole subject. */
+.sms-new {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  padding: 0;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  color: var(--text-body);
+  cursor: pointer;
+}
+.sms-new:hover { color: var(--text-primary); border-color: var(--hairline-hover); }
+.sms-new-glyph::before { content: '+'; font-size: 15px; line-height: 1; }
+
+.sms-thread-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+.sms-list-note {
+  margin: var(--space-2) var(--space-3) var(--space-4);
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+}
+.sms-list-note:empty { display: none; }
+
+/*
+ * The row. **60px explicit, and that is the fix for defect 93** — see the note at the top of this
+ * block. Grid rather than flex, three tracks, so the middle one can be the only thing that shrinks.
+ */
+.sms-thread {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-4);
   width: 100%;
-  padding: 8px 10px;
-  border: 1px solid #2a2a33;
-  border-radius: 8px;
-  background: #17171d;
+  height: 60px;
+  min-height: 0;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-media);
+  background: transparent;
   text-align: left;
   cursor: pointer;
-  color: inherit;
-  font: inherit;
+  transition: background var(--dur-hover) var(--ease);
 }
-.sms-thread:hover { background: #1d1d25; }
-.sms-thread.unread { border-color: #3a4a63; }
-.sms-thread-head { display: flex; align-items: baseline; gap: 8px; }
-/*
- * `min-width: 0` is the whole fix for a 1602px horizontal overflow.
- *
- * A flex child defaults to `min-width: auto`, which means "never shrink below max-content". This
- * span holds a contact name, so the thread button grew to its longest name, the list grew to the
- * button, and the `1fr` grid column grew to the list — the Messages screen scrolled sideways by
- * 1602px. The page body must never scroll horizontally; wide content scrolls inside its own box.
- */
+.sms-thread:hover { background: rgba(255, 255, 255, 0.035); }
+.sms-thread.on { background: var(--accent-tint-selected); }
+
+.sms-lines { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+
 .sms-who {
-  font-size: 13px;
-  line-height: var(--leading-13);
-  color: #f2f2f5;
-  flex: 1;
-  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sms-snippet { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sms-unread {
-  flex: none;
-  min-width: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: #2f4a7a;
-  color: #e8eefc;
-  font-size: 11px;
-  text-align: center;
+
+/* The preview. It has been on the wire since Phase 4 and this is the first stylesheet in which it
+   has a height. */
+.sms-preview {
+  font-size: 11.5px;
+  color: var(--text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.sms-messages {
+.sms-thread.unread .sms-preview { color: var(--text-on-control); }
+
+.sms-thread-meta {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 300px;
-  overflow-y: auto;
-  padding: 6px 0;
+  align-items: flex-end;
+  gap: var(--space-2);
+  flex: none;
 }
-.sms-message { max-width: 80%; padding: 6px 9px; border-radius: 10px; }
-.sms-message.inbound { align-self: flex-start; background: #1f1f27; }
-.sms-message.outbound { align-self: flex-end; background: #24384f; }
-.sms-body { font-size: 13px; color: #f0f0f4; white-space: pre-wrap; word-break: break-word; }
-/* An attachment marker is content, not decoration: it is the only thing saying the message on
-   screen is not the whole message. Phase 5 fetches these over the bulk channel. */
-.sms-attachment { margin-top: 3px; color: #cbb98a; }
-.sms-when { margin-top: 2px; }
-.sms-compose { display: flex; gap: 6px; margin-top: 8px; }
-.sms-compose input { flex: 1; }
+.sms-when { font-size: 10.5px; color: var(--text-meta); }
+
+.sms-unread {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-on-fill);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+
+.sms-older {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-3);
+  height: 32px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text-body);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.sms-older:hover { background: var(--control); color: var(--text-on-control); }
+
+/* ---- Column two: the conversation -------------------------------------------------------------- */
+
+/* The screen's one elevation-3 surface: the conversation you are actually reading. */
+.sms-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  background: var(--elev-3);
+  border: 1px solid var(--hairline-primary);
+  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+}
+
+.sms-chat-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex: none;
+  padding: var(--space-6) var(--space-7);
+  border-bottom: 1px solid var(--hairline);
+}
+.sms-chat-head:empty { display: none; }
+.sms-chat-who { min-width: 0; }
+.sms-chat-name { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+.sms-chat-number { font-size: 11px; color: var(--text-meta); }
+
+.sms-chat-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-9);
+}
+
+.sms-chat-empty { margin: auto; text-align: center; padding: var(--space-9); }
+.sms-chat-empty-head { font: var(--text-section); color: var(--text-primary); }
+.sms-chat-empty-body {
+  margin-top: var(--space-2);
+  font: var(--text-body-size);
+  color: var(--text-body);
+  max-width: 320px;
+}
+
+/* The design's date separator: a centred pill, not a rule across the pane. */
+.sms-day {
+  align-self: center;
+  padding: 3px var(--space-4);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 11px;
+  color: var(--text-meta);
+}
+
+/*
+ * The bubbles. The design's asymmetric radius is the whole tell for direction — 6px on the corner
+ * nearest its own side — and it does more work than the colour does, because it survives being
+ * looked at by someone who cannot tell the two fills apart.
+ */
+.sms-bubble {
+  max-width: 65%;
+  padding: 9px var(--space-5);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.sms-bubble.inbound {
+  align-self: flex-start;
+  border-radius: 16px 16px 16px 6px;
+  background: var(--control);
+  border: 1px solid var(--hairline);
+  color: var(--text-on-control);
+}
+.sms-bubble.outbound {
+  align-self: flex-end;
+  border-radius: 16px 16px 6px 16px;
+  background: var(--accent);
+  color: #fff;
+}
+.sms-bubble-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.sms-bubble-text.is-muted { opacity: 0.65; font-style: italic; }
+
+.sms-bubble-when {
+  margin-top: var(--space-1);
+  font-size: 10px;
+  color: var(--text-meta);
+}
+.sms-bubble.outbound .sms-bubble-when { color: rgba(255, 255, 255, 0.66); }
+
+/* A marker, not the design's attachment card — this wire carries `hasAttachments: true` and no
+   name, size or type to put on one. */
+.sms-attachment {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.sms-bubble.outbound .sms-attachment { background: rgba(0, 0, 0, 0.18); }
+.sms-attachment-glyph { flex: none; }
+
+.sms-composer {
+  flex: none;
+  padding: var(--space-5) var(--space-7);
+  border-top: 1px solid var(--hairline);
+}
+.sms-composer[hidden] { display: none; }
+.sms-composer-row { display: flex; align-items: center; gap: var(--space-4); }
+
+.sms-composer-row input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-pill);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  color: var(--text-primary);
+  font: var(--text-body-size);
+}
+.sms-composer-row input:focus { border-color: var(--accent-border); outline: none; }
+
+/* The design's gradient send button, 38px round. */
+.sms-send {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--secondary));
+  color: var(--accent-on-fill);
+  cursor: pointer;
+  transition: filter var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
+}
+.sms-send:hover { filter: brightness(1.06); }
+.sms-send:active { transform: scale(0.96); }
+.sms-send:disabled { opacity: 0.5; cursor: default; }
+
+/* ---- Column three: the person -------------------------------------------------------------------- */
+
+.sms-person {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-8) var(--space-7);
+  border-radius: var(--radius-panel);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+.sms-person-head { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.sms-person-name {
+  margin-top: var(--space-5);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-section);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.sms-person-number { font-size: 12px; color: var(--text-body); }
+
+.sms-person-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1) var(--space-5);
+  margin-top: var(--space-8);
+  font-size: 11.5px;
+}
+.sms-person-fact-label { color: var(--text-meta); }
+.sms-person-fact-value { color: var(--text-on-control); text-align: right; overflow-wrap: anywhere; }
+
+/* `--text-body`, never `--warning`: nothing here has failed. Four of these controls were never
+   built and one of them lives on another screen. */
+.sms-person-refusal {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--hairline);
+  font: var(--text-meta-size);
+  line-height: 1.5;
+  color: var(--text-body);
+}
+
+/* ---- The avatar discs ---------------------------------------------------------------------------- */
+
+/*
+ * Same rule as the Calls rows: a solid per-person fill from `discHue`, near-black initials. Keyed
+ * on the conversation's resolved name rather than on the initials, because this phone's list is
+ * full of `AD-…` senders whose two letters collide and are different senders.
+ */
+.sms-disc {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  background: hsl(var(--disc-hue, 260) 62% 66%);
+  color: #0b0b12;
+  font-weight: 600;
+}
+.sms-disc-sm { width: 34px; height: 34px; font-size: 11.5px; }
+.sms-disc-md { width: 34px; height: 34px; font-size: 11.5px; }
+.sms-disc-lg { width: 72px; height: 72px; font-size: 22px; }
+
+/* ---- New conversation, and the contacts directory with it ------------------------------------------ */
+
+/*
+ * An overlay panel rather than a fourth column. It is on screen only while composing, and the
+ * design has no drawing for it at all — starting a conversation is defect 30's subject and the
+ * canvas assumes every thread already exists.
+ */
+.sms-newpanel {
+  margin-top: var(--space-7);
+  border-radius: var(--radius-panel);
+  background: var(--elev-3);
+  border: 1px solid var(--hairline-primary);
+  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+}
+.sms-newpanel[hidden] { display: none; }
+
+.sms-newpanel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-6) var(--space-7);
+  border-bottom: 1px solid var(--hairline);
+}
+.sms-newpanel-title { margin: 0; font: var(--text-section); color: var(--text-primary); }
+.sms-newpanel-close {
+  height: 28px;
+  min-height: 0;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text-body);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sms-newpanel-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-7);
+  padding: var(--space-7);
+  align-items: start;
+}
+@media (max-width: 980px) {
+  .sms-newpanel-body { grid-template-columns: minmax(0, 1fr); }
+}
+
+.sms-newpanel-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.sms-newpanel-form input {
+  height: 38px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-control);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  color: var(--text-primary);
+  font: var(--text-body-size);
+}
+
+.sms-newpanel-people { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.sms-newpanel-people.hidden { display: none; }
+.sms-newpanel-people input {
+  height: 32px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-control);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  color: var(--text-primary);
+  font-size: 12.5px;
+}
+
 #sms-card { position: relative; }
 
 /* ---- Calls --------------------------------------------------------------------------------- */

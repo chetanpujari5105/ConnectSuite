@@ -780,7 +780,7 @@ shell.onRoute((id) => {
 // Contacts. Same hidden-not-greyed rule as the notifications card above. The search box is wired
 // inside the view because the debounce belongs with the thing it debounces.
 const contacts = new ContactsView(
-  el('contacts-card'),
+  el('contacts-people'),
   el('contacts-note'),
   el<HTMLInputElement>('contacts-search'),
   el('contacts-list'),
@@ -799,10 +799,26 @@ const remote = new RemoteView(
 );
 
 // Messages. The pane holds no recipient and offers no way to type one; see sms.ts.
+// Four regions rather than one body: the pane is the design's three columns plus the New
+// conversation panel as of 2026-09-05, and they have different lifetimes — the thread list survives
+// opening a conversation, the chat is replaced by it, and the person card follows the chat.
 const sms = new SmsView(
   el('sms-card'),
   el('sms-note'),
-  el('sms-body'),
+  {
+    tabs: el('sms-tabs'),
+    list: el('sms-list'),
+    chatHead: el('sms-chat-head'),
+    chatBody: el('sms-chat-body'),
+    composer: el('sms-composer'),
+    person: el('sms-person'),
+    newPanel: el('contacts-card'),
+    newButton: el('sms-new'),
+    newCancel: el('sms-new-cancel'),
+    newTo: el<HTMLInputElement>('sms-new-to'),
+    newBody: el<HTMLInputElement>('sms-new-body'),
+    newSend: el<HTMLButtonElement>('sms-new-send'),
+  },
   el('sms-notice'),
   connect,
 );

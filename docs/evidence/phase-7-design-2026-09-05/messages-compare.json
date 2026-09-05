@@ -1,0 +1,12 @@
+{
+  "file": "docs/evidence/phase-7-design-2026-09-05/messages-compare.png",
+  "build": "/Users/chetan/Desktop/ConnectSuite/docs/evidence/phase-7-design-2026-09-05/messages-build.png",
+  "design": "/Users/chetan/Desktop/ConnectSuite/docs/evidence/phase-7-design-2026-09-05/messages-design.png",
+  "commonWidthPx": 1440,
+  "naturalWidths": {
+    "a": 2880,
+    "b": 1440
+  },
+  "note": "Both panels are drawn at the same CSS width. The build is captured at DPR 2 and the design at DPR 1, so an unscaled pairing would show the build at twice the size.",
+  "takenAt": "2026-09-05T01:07:08.953Z"
+}

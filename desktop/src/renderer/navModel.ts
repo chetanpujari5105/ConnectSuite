@@ -372,8 +372,20 @@ const DEEP_LINKS: DeepLink[] = [
   {
     id: 'deep.contacts',
     label: 'Contacts',
-    screen: 'messages',
-    reveal: 'contacts-card',
+    /*
+     * Calls, not Messages, as of 2026-09-05.
+     *
+     * The contacts *directory* used to be the third column of Messages, where the design puts the
+     * open conversation's own person; it is the recipient picker inside New conversation now, which
+     * is only on screen while you are composing. A palette row cannot usefully reveal something
+     * that is usually hidden.
+     *
+     * The Calls pane's Contacts tab is a permanent, built surface over the same `contacts.list`,
+     * and placing a call or filling the dialler is what a person browsing a directory is usually
+     * about to do. So the row points at a screen where the list is always reachable.
+     */
+    screen: 'calls',
+    reveal: 'calls-card',
     keywords: ['contacts', 'people', 'address book', 'phone book', 'number'],
   },
 ];

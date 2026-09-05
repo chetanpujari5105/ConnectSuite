@@ -74,6 +74,212 @@ function dedupeByThread<T extends { threadId: string }>(rows: T[]): T[] {
   return out;
 }
 
+/**
+ * The four regions this pane draws into.
+ *
+ * An object rather than nine positional constructor arguments: the pane went from one `#sms-body`
+ * to three columns plus a panel on 2026-09-05, and a nine-argument constructor is a place where two
+ * elements get swapped and nothing complains — every one of them is an `HTMLElement`.
+ */
+interface SmsRegions {
+  tabs: HTMLElement;
+  list: HTMLElement;
+  chatHead: HTMLElement;
+  chatBody: HTMLElement;
+  composer: HTMLElement;
+  person: HTMLElement;
+  newPanel: HTMLElement;
+  newButton: HTMLElement;
+  newCancel: HTMLElement;
+  newTo: HTMLInputElement;
+  newBody: HTMLInputElement;
+  newSend: HTMLButtonElement;
+}
+
+type SmsTabId = 'all' | 'unread';
+
+/**
+ * The filter strip, and it is two tabs where the design draws three.
+ *
+ * The reasoning is on [SmsView.renderTabs] because that is where someone reading the pane will look
+ * for it; the short version is that neither *SMS* nor *Chat* is answerable from `sms.threads`, and
+ * `unread` is.
+ */
+const SMS_TABS: ReadonlyArray<{ id: SmsTabId; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'unread', label: 'Unread' },
+];
+
+/** The rows one tab shows. Pure, and the tab counts are taken from it rather than recomputed. */
+function filterThreads(threads: readonly SmsThreadRow[], tab: SmsTabId): SmsThreadRow[] {
+  return tab === 'unread' ? threads.filter((one) => one.unread > 0) : [...threads];
+}
+
+/**
+ * Who a conversation is with: the contact name, else the first address, else words.
+ *
+ * One function, because four sites draw this — the row, the chat header, the person card and its
+ * number line — and a fallback chain written four times is a fallback chain that disagrees with
+ * itself the first time one of them is edited.
+ */
+const UNKNOWN_THREAD = 'Unknown number';
+
+function threadWho(thread: SmsThreadRow): string {
+  const name = (thread.contactName ?? '').trim();
+  if (name) return name;
+  const address = (thread.addresses[0] ?? '').trim();
+  // Emptiness, not nullishness — defect 35's rule. `"" ?? x` is `""`, and a phone that reported an
+  // empty address walked straight past a `??` chain written to prevent exactly this.
+  return address || UNKNOWN_THREAD;
+}
+
+/**
+ * Initials for the disc. `#` for a bare number and for a thread with nothing at all.
+ *
+ * It checks the **placeholder** as well as the shape, and that is not fussiness: `threadWho` falls
+ * back to the words *Unknown number*, which are letters, so taking initials from its output gave an
+ * unidentified sender a confident `UN` disc — a placeholder promoted to a name one function later.
+ * `#` is the Calls pane's convention for the same situation and this now matches it.
+ */
+function threadInitials(thread: SmsThreadRow): string {
+  const who = threadWho(thread);
+  if (who === UNKNOWN_THREAD) return '#';
+  if (!/[\p{L}]/u.test(who)) return '#';
+  const words = who.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word));
+  /*
+   * A single word gives its **first two** letters, not its first one.
+   *
+   * Most of this phone's list is machine sender ids — `AD-SUJAMK-P`, `VM-TNSBIC-P`, `CP-INUTRA-P` —
+   * which are one word by any rule a computer can apply, so first-letter-per-word drew a column of
+   * discs reading `A`, `V`, `C`. Two letters is both what the design draws and what makes those ids
+   * tell each other apart, since the part a reader recognises is the prefix.
+   */
+  if (words.length === 1) {
+    const letters = (words[0]!.match(/[\p{L}\p{N}]/gu) ?? []).slice(0, 2);
+    return letters.join('').toUpperCase() || '#';
+  }
+  const letters = words.slice(0, 2).map((word) => word.match(/[\p{L}\p{N}]/u)?.[0]?.toUpperCase() ?? '');
+  return letters.join('') || '#';
+}
+
+/**
+ * The person facts the wire can actually fill in.
+ *
+ * `messageCount` is the phone's own total for the thread, not the number of rows this Mac has
+ * paged in — those are different numbers and only one of them is about the user's phone.
+ */
+function personFacts(thread: SmsThreadRow): Array<[string, string]> {
+  const rows: Array<[string, string]> = [];
+  rows.push([
+    'Messages',
+    `${thread.messageCount.toLocaleString()} on the phone`,
+  ]);
+  if (thread.unread > 0) rows.push(['Unread', String(thread.unread)]);
+  if (thread.addresses.length > 1) {
+    // A group thread. Saying so is better than showing one address and implying it is the only one.
+    rows.push(['Recipients', String(thread.addresses.length)]);
+  }
+  if (thread.dateMs) {
+    rows.push([
+      'Latest',
+      new Date(thread.dateMs).toLocaleString([], {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    ]);
+  }
+  return rows;
+}
+
+/**
+ * The one line under the person card, replacing four controls the design draws and this wire
+ * cannot serve.
+ *
+ * **New copy, and unratified** — the third sentence of this shape in the app, after Calls' *"Mute,
+ * speaker and keypad tones are on the phone. Nothing on the wire carries them."* and Photos'
+ * *"Sharing, wallpaper and deleting are on the phone. Nothing on the wire carries them."* Three
+ * uses is either a house style or a rut, and that is the designer's call rather than mine; it is
+ * listed with the others for the vocabulary decision.
+ */
+const SMS_PERSON_REFUSAL =
+  'Calling is on the Calls screen. Video, blocking and shared media are on the phone — nothing on ' +
+  'the wire carries them.';
+
+/**
+ * The messages with a date separator inserted wherever the day changes.
+ *
+ * Pure and exported, because "when does a new day start" is the kind of decision that gets written
+ * a second time inside a test and then disagrees. It reads the **local** day, not a 24-hour
+ * subtraction: a day is not always 24 hours, and on the two days a year it is not, arithmetic on
+ * milliseconds puts yesterday's messages under today's heading.
+ *
+ * The first message always gets a separator. A conversation that opens mid-day with no heading
+ * reads as though the messages above it were cut off.
+ */
+function withDaySeparators(
+  messages: readonly SmsMessageRow[],
+): Array<{ kind: 'day'; label: string } | { kind: 'message'; message: SmsMessageRow }> {
+  const out: Array<{ kind: 'day'; label: string } | { kind: 'message'; message: SmsMessageRow }> = [];
+  let openDay: string | null = null;
+  for (const message of messages) {
+    const day = new Date(message.dateMs).toDateString();
+    if (day !== openDay) {
+      out.push({ kind: 'day', label: dayLabelOf(message.dateMs, Date.now()) });
+      openDay = day;
+    }
+    out.push({ kind: 'message', message });
+  }
+  return out;
+}
+
+/** `Today`, `Yesterday`, `Wednesday, 14 May`. `nowMs` is a parameter so a test can cross midnight. */
+function dayLabelOf(dateMs: number, nowMs: number): string {
+  const midnight = new Date(nowMs);
+  midnight.setHours(0, 0, 0, 0);
+  const startOfToday = midnight.getTime();
+  const startOfYesterday = new Date(startOfToday - 1).setHours(0, 0, 0, 0);
+  if (dateMs >= startOfToday) return 'Today';
+  if (dateMs >= startOfYesterday) return 'Yesterday';
+  const then = new Date(dateMs);
+  return then.toLocaleDateString([], {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    ...(then.getFullYear() === new Date(nowMs).getFullYear() ? {} : { year: 'numeric' }),
+  });
+}
+
+/** A line of text with a class. The pane builds a lot of these. */
+function smsLine(className: string, text: string): HTMLElement {
+  const el = document.createElement('div');
+  el.className = className;
+  el.textContent = text;
+  return el;
+}
+
+/**
+ * The avatar disc, coloured by who the conversation is with.
+ *
+ * `discHue` is the app's one hue rule — the same function the Calls rows and the Notifications
+ * tiles use — so a person is the same colour wherever they appear. It is keyed on [threadWho], not
+ * on the initials: this phone's list has several `AD-…` senders whose two letters collide and are
+ * different senders, which is the confusion the colour exists to break.
+ */
+function smsDisc(thread: SmsThreadRow, size: 'sm' | 'md' | 'lg'): HTMLElement {
+  const disc = document.createElement('span');
+  disc.className = `sms-disc sms-disc-${size}`;
+  disc.setAttribute('aria-hidden', 'true');
+  disc.textContent = threadInitials(thread);
+  disc.style.setProperty('--disc-hue', String(discHue(threadWho(thread))));
+  return disc;
+}
+
+declare function discHue(label: string): number;
+declare function iconSvg(name: string, size?: number): SVGSVGElement;
+
 const PAGE = 50;
 
 class SmsView {
@@ -94,13 +300,17 @@ class SmsView {
 
   private noticeTimer: number | null = null;
 
+  /** Which filter tab is showing. See [SMS_TABS] for why there are two and not the design's three. */
+  private tab: SmsTabId = 'all';
+
   constructor(
     private readonly card: HTMLElement,
     private readonly note: HTMLElement,
-    private readonly body: HTMLElement,
+    private readonly regions: SmsRegions,
     private readonly notice: HTMLElement,
     private readonly bridge: SmsBridge,
   ) {
+    this.bindNewConversation();
     bridge.onSmsReceived((event) => {
       // A message arriving in the conversation on screen is appended; one arriving elsewhere
       // refreshes the list so its snippet and unread count move. Both, because a pane that only
@@ -123,7 +333,14 @@ class SmsView {
       this.render();
       return;
     }
-    if (!this.loaded) void this.loadThreads();
+    if (!this.loaded) {
+      // Draw *before* the fetch, not after it. `loadThreads` awaits the bridge and only then
+      // renders, so the "Reading the phone's conversations" state — which exists, and is one of the
+      // three the list is allowed to talk about — was never once on screen: the pane went from
+      // blank straight to a list. Found by a test asserting the state and getting an empty string.
+      this.render();
+      void this.loadThreads();
+    }
   }
 
   async refresh(): Promise<void> {
@@ -226,97 +443,66 @@ class SmsView {
   }
 
   private render(): void {
-    this.body.textContent = '';
-    if (this.composingNew) this.renderNewConversation();
-    else if (this.openThreadId) this.renderThread();
-    else this.renderList();
+    this.renderTabs();
+    this.renderList();
+    this.renderChat();
+    this.renderPerson();
+    this.regions.newPanel.hidden = !this.composingNew;
   }
 
+  // ---- Column one: the conversations -------------------------------------------------------------
+
   /**
-   * Defect 30 — the surface that can name a recipient.
+   * The design's filter strip, with the tabs this wire can actually answer.
    *
-   * The pane could reply into a thread the phone already knew about and could not address a number
-   * that had none, so there was no path to a first message. `docs/protocol.md` has specified the
-   * shape for this the whole time (`{"addresses":[…],"body":"…"}` with no `threadId`) and the phone
-   * has always implemented it; what was missing was here.
+   * The canvas draws **All / SMS / Chat**. Neither of the last two is serveable and the reasons are
+   * different, which is why both are refused rather than one being faked:
    *
-   * On success the pane opens **the thread the phone names**, not one it assumes it created: a
-   * first message to a number that already has a thread is merged into that thread by the provider.
+   *  - **SMS** would need a kind per *thread*. `sms.threads` carries `threadId`, `addresses`,
+   *    `snippet`, `dateMs`, `unread`, `messageCount` and `contactName` — and no kind. `kind` exists
+   *    only per **message** (`sms.messages`), so answering that tab would mean opening all fifty
+   *    conversations in order to label the list.
+   *  - **Chat** means RCS. This app does not implement RCS, there is no verb for it anywhere in
+   *    `docs/protocol.md`, and a tab that silently means "SMS again" is worse than no tab.
+   *
+   * `unread` **is** on every thread row, so *Unread* is a real filter over data already in hand,
+   * and on this phone it is the one a person with 586 of them actually wants. Same strip as the
+   * design; different labels, because these are the ones that can be true. The Calls pane set the
+   * precedent — its strip is All / Missed / Contacts, not the canvas's literal three.
    */
-  private renderNewConversation(): void {
-    this.note.textContent = 'A new conversation. The phone checks the number before anything is sent.';
-
-    const wrap = document.createElement('div');
-    wrap.className = 'sms-compose sms-compose-new';
-
-    const to = document.createElement('input');
-    to.type = 'text';
-    to.id = 'sms-new-to';
-    to.placeholder = 'Phone number';
-    to.value = this.newRecipient;
-    to.addEventListener('input', () => {
-      this.newRecipient = to.value;
-    });
-
-    const body = document.createElement('input');
-    body.type = 'text';
-    body.id = 'sms-new-body';
-    body.placeholder = 'Message';
-    body.value = this.newBody;
-    body.addEventListener('input', () => {
-      this.newBody = body.value;
-    });
-
-    const send = document.createElement('button');
-    send.id = 'sms-new-send';
-    send.textContent = 'Send';
-
-    const cancel = document.createElement('button');
-    cancel.className = 'secondary small';
-    cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => {
-      this.composingNew = false;
-      this.render();
-    });
-
-    const submit = async (): Promise<void> => {
-      send.disabled = true;
-      to.disabled = true;
-      body.disabled = true;
-      const result = await this.bridge
-        .smsSendNew([this.newRecipient], this.newBody)
-        .catch((error): { ok: boolean; reason?: string; fixHint?: string; threadId?: string } => ({
-          ok: false,
-          reason: `The Mac could not reach its own SMS channel (${String(error)}).`,
-        }));
-      send.disabled = false;
-      to.disabled = false;
-      body.disabled = false;
-      if (!result.ok) {
-        this.showNotice(result.reason ?? 'The message was not sent.', result.fixHint);
-        return;
+  private renderTabs(): void {
+    this.regions.tabs.textContent = '';
+    for (const spec of SMS_TABS) {
+      const count = filterThreads(this.threads, spec.id).length;
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = `sms-tab${spec.id === this.tab ? ' on' : ''}`;
+      tab.dataset.tab = spec.id;
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', String(spec.id === this.tab));
+      tab.textContent = spec.label;
+      // The count rides the tab only when it is non-zero and not the total — the rule the sidebar
+      // badge and the Calls strip already follow. A tab reading "Unread 0" is a number nobody
+      // needs, and "All 50" beside a list of fifty is the list counting itself.
+      if (spec.id !== 'all' && count > 0) {
+        const badge = document.createElement('span');
+        badge.className = 'sms-tab-count mono';
+        badge.textContent = String(count);
+        tab.appendChild(badge);
       }
-      this.newRecipient = '';
-      this.newBody = '';
-      this.composingNew = false;
-      this.showNotice('Sent.');
-      await this.loadThreads();
-      // The phone's threadId, not an assumption. A number that already had a thread is merged
-      // into it by the provider, and opening a thread we invented would show an empty pane.
-      if (result.threadId) await this.openThread(result.threadId);
-      else this.render();
-    };
-
-    send.addEventListener('click', () => void submit());
-    body.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') void submit();
-    });
-
-    wrap.append(to, body, send, cancel);
-    this.body.appendChild(wrap);
+      tab.addEventListener('click', () => {
+        if (this.tab === spec.id) return;
+        this.tab = spec.id;
+        this.render();
+      });
+      this.regions.tabs.appendChild(tab);
+    }
   }
 
   private renderList(): void {
+    const list = this.regions.list;
+    list.textContent = '';
+
     if (!this.loaded) {
       this.note.textContent = 'Reading the phone’s conversations…';
       return;
@@ -325,158 +511,213 @@ class SmsView {
       this.note.textContent = 'There are no conversations on the phone.';
       return;
     }
-    // Both numbers. A count of threads says nothing about whether contact resolution is working,
-    // and the second number is what makes step 59's two states visible without opening anything.
-    const named = this.threads.filter((t) => t.contactName).length;
-    const unread = this.threads.reduce((sum, t) => sum + (t.unread || 0), 0);
-    this.note.textContent =
-      `${this.threads.length} conversation${this.threads.length === 1 ? '' : 's'}, ` +
-      `${named} showing a contact name, ${unread} unread.` +
-      (this.threadsHasMore ? ' Older conversations are not shown yet.' : '');
 
-    const bar = document.createElement('div');
-    bar.className = 'sms-bar';
-    const compose = document.createElement('button');
-    compose.className = 'secondary small';
-    compose.id = 'sms-new';
-    compose.textContent = 'New conversation';
-    compose.addEventListener('click', () => {
-      this.composingNew = true;
-      this.render();
-    });
-    bar.appendChild(compose);
-    this.body.appendChild(bar);
+    const rows = filterThreads(this.threads, this.tab);
+    if (rows.length === 0) {
+      // A filter matching nothing is not the same as nothing being there — the distinction the
+      // Calls and Notifications panes already draw, in the same shape of words.
+      this.note.textContent = 'No unread conversations.';
+      return;
+    }
 
-    const list = document.createElement('div');
-    list.className = 'sms-list';
-    for (const thread of this.threads) list.appendChild(this.threadRow(thread));
-    this.body.appendChild(list);
+    /*
+     * **And nothing else.** This line used to read:
+     *
+     *   "50 conversations, 2 showing a contact name, 586 unread. Older conversations are not shown
+     *    yet."
+     *
+     * Every clause of that is a fact about *our implementation*: how many rows one page happens to
+     * hold, how well contact resolution is working, and that a pager exists. The denominator rule
+     * in `CLAUDE.md` is about **logs and evidence**, where a count with no scale is not evidence —
+     * it was never a licence to put the instrument's readout on screen. A person opening Messages
+     * wants their conversations; the unread counts are already on the rows that have them, and the
+     * design has no such line at all.
+     *
+     * The three states above are kept, because each is about *the user's phone* rather than about
+     * us: still reading, genuinely empty, filtered to nothing.
+     */
+    this.note.textContent = '';
 
-    // Defect 32. The prose above used to end here and the reader had nowhere to go. A sentence
-    // describing a limit is not the same as a control that lifts it.
-    if (this.threadsHasMore) {
+    for (const thread of rows) list.appendChild(this.threadRow(thread));
+
+    if (this.threadsHasMore && this.tab === 'all') {
       const older = document.createElement('button');
-      older.className = 'secondary small';
+      older.type = 'button';
+      older.className = 'sms-older';
       older.id = 'sms-older-threads';
-      older.textContent = 'Load older conversations';
+      older.textContent = 'Older conversations';
       older.addEventListener('click', () => void this.loadOlderThreads());
-      this.body.appendChild(older);
+      list.appendChild(older);
     }
   }
 
   private threadRow(thread: SmsThreadRow): HTMLElement {
     const row = document.createElement('button');
-    row.className = thread.unread > 0 ? 'sms-thread unread' : 'sms-thread';
+    row.type = 'button';
+    const open = thread.threadId === this.openThreadId;
+    row.className = `sms-thread${thread.unread > 0 ? ' unread' : ''}${open ? ' on' : ''}`;
     row.dataset.threadId = thread.threadId;
+    row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', String(open));
 
-    const head = document.createElement('div');
-    head.className = 'sms-thread-head';
+    row.appendChild(smsDisc(thread, 'sm'));
+
+    const lines = document.createElement('span');
+    lines.className = 'sms-lines';
+
     const who = document.createElement('span');
     who.className = 'sms-who';
     // The name when contacts can supply one, the number when it cannot, and never blank. That is
     // step 59's whole expectation, and the fallback chain is written out rather than defaulted so
     // an empty `addresses` still produces words.
-    who.textContent = thread.contactName ?? thread.addresses[0] ?? 'Unknown number';
+    who.textContent = threadWho(thread);
+
+    /*
+     * The preview, which **has been on the wire since Phase 4 and had never once been visible**.
+     *
+     * `sms.threads` sends `snippet` and this pane has always drawn it. It measured `height: 0` on
+     * every one of fifty rows, each carrying real text: the row was a `<button>` with
+     * `display: flex; flex-direction: column`, a button does not grow to its flex content, and the
+     * deficit came out of the only shrinkable child — this one. Defect 93. The row carries the
+     * design's explicit 60px now, so nothing has to grow.
+     */
+    const preview = document.createElement('span');
+    preview.className = 'sms-preview';
+    preview.textContent = thread.snippet || 'No preview';
+
+    lines.append(who, preview);
+    row.appendChild(lines);
+
+    const meta = document.createElement('span');
+    meta.className = 'sms-thread-meta';
     const when = document.createElement('span');
-    when.className = 'muted small';
+    when.className = 'sms-when mono';
     when.textContent = timeOfSms(thread.dateMs);
-    head.append(who, when);
+    meta.appendChild(when);
 
-    const snippet = document.createElement('div');
-    snippet.className = 'sms-snippet muted small';
-    snippet.textContent = thread.snippet || '(no preview)';
-
-    row.append(head, snippet);
     if (thread.unread > 0) {
       const badge = document.createElement('span');
-      badge.className = 'sms-unread';
+      badge.className = 'sms-unread mono';
       badge.textContent = String(thread.unread);
       // Part of the accessible name, not only a coloured pill — defect 26's rule.
       const spoken = document.createElement('span');
       spoken.className = 'visually-hidden';
       spoken.textContent = ` ${thread.unread} unread`;
       badge.append(spoken);
-      head.append(badge);
+      meta.appendChild(badge);
     }
+    row.appendChild(meta);
+
     row.addEventListener('click', () => void this.openThread(thread.threadId));
     return row;
   }
 
-  private renderThread(): void {
-    const thread = this.threads.find((t) => t.threadId === this.openThreadId);
-    const who = thread?.contactName ?? thread?.addresses[0] ?? 'this conversation';
-    this.note.textContent = thread
-      ? `${who} — ${thread.messageCount} message${thread.messageCount === 1 ? '' : 's'} on the phone.`
-      : who;
+  // ---- Column two: the conversation --------------------------------------------------------------
 
-    const bar = document.createElement('div');
-    bar.className = 'row';
-    const back = document.createElement('button');
-    back.className = 'secondary small';
-    back.textContent = '← All conversations';
-    back.addEventListener('click', () => {
-      this.openThreadId = null;
-      this.messages = [];
-      this.render();
-    });
-    bar.appendChild(back);
-    this.body.appendChild(bar);
+  private renderChat(): void {
+    const { chatHead, chatBody, composer } = this.regions;
+    chatHead.textContent = '';
+    chatBody.textContent = '';
+    composer.textContent = '';
+
+    const thread = this.openThreadRow();
+    if (!thread) {
+      // The canvas draws no empty chat, because its artboard always has one open. This is the
+      // pane's resting state on first open and it is real, so it is drawn rather than left blank.
+      const empty = document.createElement('div');
+      empty.className = 'sms-chat-empty';
+      empty.appendChild(smsLine('sms-chat-empty-head', 'No conversation open'));
+      empty.appendChild(
+        smsLine('sms-chat-empty-body', 'Pick a conversation on the left to read and reply to it.'),
+      );
+      chatBody.appendChild(empty);
+      composer.hidden = true;
+      return;
+    }
+    composer.hidden = false;
+
+    chatHead.appendChild(smsDisc(thread, 'md'));
+    const who = document.createElement('div');
+    who.className = 'sms-chat-who';
+    who.appendChild(smsLine('sms-chat-name', threadWho(thread)));
+    const number = thread.addresses[0];
+    // Only when it is not already the name. A thread whose contact never resolved would otherwise
+    // print the same number twice, one line above the other.
+    if (number && number !== threadWho(thread)) {
+      who.appendChild(smsLine('sms-chat-number mono', number));
+    }
+    chatHead.appendChild(who);
 
     if (this.messagesHasMore) {
       const older = document.createElement('button');
-      older.className = 'secondary small';
-      older.textContent = 'Load older messages';
+      older.type = 'button';
+      older.className = 'sms-older';
+      older.textContent = 'Older messages';
       older.addEventListener('click', () => void this.loadOlder());
-      bar.appendChild(older);
+      chatBody.appendChild(older);
     }
-
-    const list = document.createElement('div');
-    list.className = 'sms-messages';
-    for (const message of this.messages) list.appendChild(this.messageRow(message));
-    this.body.appendChild(list);
+    for (const item of withDaySeparators(this.messages)) {
+      chatBody.appendChild(
+        item.kind === 'day' ? smsLine('sms-day', item.label) : this.bubble(item.message),
+      );
+    }
     // Newest at the bottom, and that is where a conversation is read from.
-    list.scrollTop = list.scrollHeight;
+    chatBody.scrollTop = chatBody.scrollHeight;
 
-    if (this.openThreadId) this.body.appendChild(this.composer(this.openThreadId));
+    composer.appendChild(this.composerFor(thread.threadId));
   }
 
-  private messageRow(message: SmsMessageRow): HTMLElement {
-    const row = document.createElement('div');
-    row.className = message.inbound ? 'sms-message inbound' : 'sms-message outbound';
+  private bubble(message: SmsMessageRow): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = `sms-bubble ${message.inbound ? 'inbound' : 'outbound'}`;
 
-    const body = document.createElement('div');
-    body.className = 'sms-body';
-    body.textContent = message.body || (message.hasAttachments ? '' : '(empty message)');
-    row.appendChild(body);
+    if (message.body) wrap.appendChild(smsLine('sms-bubble-text', message.body));
 
     if (message.hasAttachments) {
-      // Never silently omitted. A text-only rendering of an MMS presents a fragment as the whole
-      // message; saying an attachment is here and not fetched is the honest version. Phase 5.
+      /*
+       * A marker, and deliberately **not** the design's attachment card.
+       *
+       * The canvas draws a card with a file name and a size — `Q2_review.pptx`, `12.4 MB`. This
+       * wire carries `hasAttachments: true` and nothing else: no name, no size, no type, and no
+       * verb that would fetch one. Drawing the card would mean inventing both values.
+       *
+       * It is not silently omitted either. A text-only rendering of an MMS presents a fragment as
+       * the whole message; saying an attachment is here and not fetched is the honest version.
+       */
       const marker = document.createElement('div');
-      marker.className = 'sms-attachment small';
-      marker.textContent = '📎 This message has an attachment, which this Mac cannot show yet.';
-      row.appendChild(marker);
+      marker.className = 'sms-attachment';
+      marker.appendChild(smsLine('sms-attachment-glyph', '\u{1F4CE}'));
+      marker.appendChild(
+        smsLine('sms-attachment-text', 'Attachment — on the phone; this Mac cannot fetch it yet.'),
+      );
+      wrap.appendChild(marker);
     }
 
-    const when = document.createElement('div');
-    when.className = 'muted small sms-when';
-    when.textContent = timeOfSms(message.dateMs) + (message.kind === 'mms' ? ' · MMS' : '');
-    row.appendChild(when);
-    return row;
+    if (!message.body && !message.hasAttachments) {
+      wrap.appendChild(smsLine('sms-bubble-text is-muted', 'Empty message'));
+    }
+
+    wrap.appendChild(smsLine('sms-bubble-when mono', timeOfSms(message.dateMs)));
+    return wrap;
   }
 
-  private composer(threadId: string): HTMLElement {
+  private composerFor(threadId: string): HTMLElement {
     const wrap = document.createElement('div');
-    wrap.className = 'sms-compose';
+    wrap.className = 'sms-composer-row';
 
     const input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = 'Message';
+    input.id = 'sms-composer-input';
+    input.placeholder = 'Type a message';
     input.value = this.drafts.get(threadId) ?? '';
     input.addEventListener('input', () => this.drafts.set(threadId, input.value));
 
     const send = document.createElement('button');
-    send.textContent = 'Send';
+    send.type = 'button';
+    send.id = 'sms-send';
+    send.className = 'sms-send';
+    send.setAttribute('aria-label', 'Send');
+    send.appendChild(iconSvg('chevron', 17));
 
     const submit = async (): Promise<void> => {
       const body = input.value.trim();
@@ -519,6 +760,132 @@ class SmsView {
     return wrap;
   }
 
+  // ---- Column three: the person ------------------------------------------------------------------
+
+  /**
+   * The design's third column: who this conversation is with.
+   *
+   * It held the **contacts directory** until 2026-09-05 — a different feature standing in the one
+   * place the canvas reserves for the open thread. The directory moved into the New conversation
+   * panel, where searching a person by name is what you are actually doing.
+   *
+   * Five of the design's controls are not drawn, each for its own reason, checked against
+   * `docs/protocol.md` rather than recalled:
+   *
+   * | Design draws | Verb it would need | Verdict |
+   * |---|---|---|
+   * | phone call | `call.dial` | **exists**, and is on the Calls pane. A second entry point that silently changes screens is worse than the one that says where it goes |
+   * | video call | none | removed |
+   * | Block contact | none — and `BlockedNumberContract` is restricted to the default dialer or SMS app, which this is not and will not be | removed |
+   * | Shared media | none — there is no MMS-parts verb on this wire at all | removed |
+   * | Mute notifications | none — the phone does not tell the Mac what is muted (the Notifications pane already says so) | removed |
+   *
+   * What is left is what the wire holds: who, their number, and how much of the conversation the
+   * phone has.
+   */
+  private renderPerson(): void {
+    const person = this.regions.person;
+    person.textContent = '';
+    const thread = this.openThreadRow();
+    if (!thread) {
+      person.appendChild(smsLine('pane-detail-empty', 'Open a conversation to see who it is with.'));
+      return;
+    }
+
+    const head = document.createElement('div');
+    head.className = 'sms-person-head';
+    head.appendChild(smsDisc(thread, 'lg'));
+    head.appendChild(smsLine('sms-person-name', threadWho(thread)));
+    const number = thread.addresses[0];
+    if (number && number !== threadWho(thread)) {
+      head.appendChild(smsLine('sms-person-number mono', number));
+    }
+    person.appendChild(head);
+
+    const facts = document.createElement('div');
+    facts.className = 'sms-person-facts';
+    for (const [label, value] of personFacts(thread)) {
+      facts.appendChild(smsLine('sms-person-fact-label', label));
+      facts.appendChild(smsLine('sms-person-fact-value', value));
+    }
+    person.appendChild(facts);
+    person.appendChild(smsLine('sms-person-refusal', SMS_PERSON_REFUSAL));
+  }
+
+  /** The open thread's row, or null. `openThread` is the verb; this is the noun. */
+  private openThreadRow(): SmsThreadRow | null {
+    if (!this.openThreadId) return null;
+    return this.threads.find((one) => one.threadId === this.openThreadId) ?? null;
+  }
+
+  // ---- New conversation ---------------------------------------------------------------------------
+
+  /**
+   * Defect 30 — the surface that can name a recipient.
+   *
+   * The pane could reply into a thread the phone already knew about and could not address a number
+   * that had none, so there was no path to a first message. `docs/protocol.md` has specified the
+   * shape the whole time (`{"addresses":[…],"body":"…"}` with no `threadId`) and the phone has
+   * always implemented it; what was missing was here.
+   *
+   * On success the pane opens **the thread the phone names**, not one it assumes it created: a
+   * first message to a number that already has a thread is merged into that thread by the provider.
+   *
+   * **Wired once, from static markup**, rather than rebuilt on every render. The panel now holds the
+   * contacts directory beside it, and a directory that is torn down and re-created on each keystroke
+   * would lose its scroll position and its in-flight search.
+   */
+  private bindNewConversation(): void {
+    const open = this.regions.newButton;
+    const cancel = this.regions.newCancel;
+    const to = this.regions.newTo;
+    const body = this.regions.newBody;
+    const send = this.regions.newSend;
+
+    open.addEventListener('click', () => {
+      this.composingNew = true;
+      this.render();
+      to.focus();
+    });
+    cancel.addEventListener('click', () => {
+      this.composingNew = false;
+      this.render();
+    });
+
+    const submit = async (): Promise<void> => {
+      send.disabled = true;
+      to.disabled = true;
+      body.disabled = true;
+      const result = await this.bridge
+        .smsSendNew([to.value.trim()], body.value)
+        .catch((error): { ok: boolean; reason?: string; fixHint?: string; threadId?: string } => ({
+          ok: false,
+          reason: `The Mac could not reach its own SMS channel (${String(error)}).`,
+        }));
+      send.disabled = false;
+      to.disabled = false;
+      body.disabled = false;
+      if (!result.ok) {
+        this.showNotice(result.reason ?? 'The message was not sent.', result.fixHint);
+        return;
+      }
+      to.value = '';
+      body.value = '';
+      this.composingNew = false;
+      this.showNotice('Sent.');
+      await this.loadThreads();
+      // The phone's threadId, not an assumption. A number that already had a thread is merged into
+      // it by the provider, and opening a thread we invented would show an empty pane.
+      if (result.threadId) await this.openThread(result.threadId);
+      else this.render();
+    };
+
+    send.addEventListener('click', () => void submit());
+    body.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') void submit();
+    });
+  }
+
   private showNotice(text: string, hint?: string): void {
     this.notice.hidden = false;
     this.notice.textContent = text;
@@ -554,6 +921,19 @@ function timeOfSms(whenMs: number): string {
 // The testable seam: the pane is a plain script, so the pure rule is hung on globalThis and the
 // test runs *this* function rather than a second copy that can drift. See CLAUDE.md.
 (globalThis as unknown as { dedupeByThread: typeof dedupeByThread }).dedupeByThread = dedupeByThread;
+
+// The pane's pure rules, for `sms.test.ts`. The test runs *these* functions rather than a second
+// copy of the same idea — the rule this repo keeps paying for when it is skipped.
+(globalThis as Record<string, unknown>).__smsRules = {
+  filterThreads,
+  threadWho,
+  threadInitials,
+  personFacts,
+  withDaySeparators,
+  dayLabelOf,
+  SMS_TABS,
+  SMS_PERSON_REFUSAL,
+};
 
 // The view class itself, for `smsView.test.ts`. `sms.ts` touches no DOM at module scope, so a test
 // can import it and construct the class against `domDouble.testkit.ts` — which is what took this
