@@ -1,123 +1,157 @@
-# Resume here — written 2026-09-05, end of the vocabulary-audit sitting
+# Resume here — written 2026-09-05, end of the design-pass sitting
 
 > A state report, not a note to myself. Written to be handed to someone who was not here.
 
 ## 0 · One-line state
 
-**Phase 7's build work is done and the phase is waiting on one hour of the designer's time.** The
-copy audit is finished and published; the below-the-fold sweep is clean; two rules the last sitting
-owed now have enforcement. No defect touching a shipped feature is open.
+**The design pass ran on five panes and found five defects, four of which nothing in this repo could
+have seen.** Photos' grid was drawing every tile on top of the two below it; the app's accent has
+been the wrong violet for the whole build; every control the design draws shorter than 32px was
+drawing at 32px; the app window could be scrolled out of place permanently; and eleven CSS
+references pointed at four custom properties that do not exist. All fixed, all guarded, all shot
+against the design at the real display size.
 
 ## 1 · What is built, and what proved it
 
 | Built | Proof |
 |---|---|
-| **The vocabulary audit** — 83 states, 8 ideas, 19 panes, verbatim, with the guard condition for each | `docs/empty-and-failure-states.md`, and published at the link in §4. Generated from the source, not retyped; every number parsed out of its own tables |
-| **The below-the-fold sweep** across every pane | `scripts/card-visibility-sweep.mjs` at 1440×865: **23 blocks, 21 visible at rest, 2 reachable, 0 stranded** |
-| **`__probe.onScreen`** — the one on-screen check every pane uses | `scripts/probe.test.mjs`, 18 pass. Finds the scroller by walking ancestors instead of assuming it |
-| **`check-debt-claims.mjs`** — the debt list can deny a false claim now | 5 fixtures, both directions. The first is the verbatim `RESUME.md` sentence that got through |
-| **`check-state-vocabulary.mjs`** — the audit's numbers derive from its tables | Both wired as commit hooks; there are **8** now |
-| **O4 — Device status rings**, and the `battery.state` / `storage.state` wire under them | On hardware: `79% / Charging` green, `13.7 GB / free of 490 GB` amber at 2.8% free |
+| **Photos**, rebuilt — square 4-up grid, date groups, the design's rail row, a two-card detail column | 131px square tiles, **0px** overlap where there had been 79; `photos-compare.png` |
+| **Calls** — per-contact avatar fills, the design's foot-of-card strip, 52px keys, gradient Call | rows 56px/12px, keys 52px, six discs six fills; `calls-compare.png` |
+| **Settings** — 16px gap, 38px rail rows, 19px titles, a border that no longer shifts the rows below it | columns **200 / 583 / 320**; `settings-compare.png` |
+| **Overview** — Device status moved to the design's column, two truncation defects closed | `.quick-sub` truncated **5/8 → 0/8**, `.recent-detail` **4/4 → 0/5**; `overview-compare.png` |
+| **Clipboard**, re-diffed — already matching, and two of its numbers were being overridden | `1fr 340px`, 36px badges, 28px pills; `clipboard-compare.png` |
+| **Card stagger** — the design's `float-in`, which had never been built | five panes opt in; keyed to `.page.route-in` so it replays per navigation |
+| **The identity column** — accent, `--live`, `--destructive`, `--radius-panel`, `--radius-media` | counted out of the design file's own literals: `#7c6bff` ×34, `rgb(139,…)` **zero** |
 
-**Tests:** Mac **514** (`cd desktop && npm test`). Phone: `+9` `VitalsPayloads`, `+8`
-`SelectionSend`, `+7` `ClipboardCopy`.
+**Tests:** Mac **555** (`cd desktop && npm test`), from 514. Phone untouched.
+
+**Three new instruments, all in the repo**: `scripts/shot.mjs` (named in an evidence README since
+the last design pass and did not exist), `scripts/design-shot.mjs`, `scripts/compare-shot.mjs`.
+Each refuses rather than writing a file it cannot vouch for.
 
 ## 2 · Committed
 
 ```
-4008bd0  A debt list that can deny, one on-screen check, and the pane sweep
-0a71840  The state enumeration's own numbers were wrong; they are checked now
-fdde030  The empty and failure states, enumerated
-1010604  O4: Device status rings, and the wire they needed first
-e4dba7c  Defect 84: the mechanism was wrong, and we are not the cause
-82cb830  Defect 84: a per-key cooldown, sized by a signal the phone already sends
-8f38065  The selection-toolbar wall, recorded as a wall
-84b3983  Defect 86 fixed: the four taps, in walking order, on the phone
-a28b7ea  Defect 85: a live phone-direction line, in the column people read
+9dda4b5  The sweep was scrolling the app as it measured, and its published number is corrected
+2a9f846  Defect 92: eleven references to four custom properties that do not exist
+7f62b2a  Defect 91: the frame was a scroll port, and the Clipboard re-diff
+5daddff  Overview: two truncation defects, and the rings moved to the design's column
+e3d36f0  Settings against the design, and defect 90: the floor that raised every short control
+2ac38b2  Calls: the surface against the design, and the stagger the app never had
+         compare-shot.mjs: the build and the design at one width, in one image
+39e4b40  Photos: defect 88, the grid that drew every tile over the two below it
 ```
 
 Working tree clean. All eight commit hooks green.
 
+**One thing to know about the history.** Commit `25208fa` — *"RESUME.md: the audit's link was
+dead"* — carries the first ninety minutes of this sitting's work in it as well. A **concurrent
+`claude` session** in this repo committed with `-a` at 01:23 and swept up everything uncommitted at
+that moment: `tokens.css`, `photos.ts`, `probe.mjs`, `shot.mjs` and the first Photos evidence.
+Nothing is lost and nothing is wrong in the tree; the message simply does not describe half of what
+the commit contains. If you are reading `git log` to find when the accent was corrected, it is
+there and not in `39e4b40`.
+
 ## 3 · Half-built and readable
 
-- **`scripts/card-visibility-sweep.mjs`** — reports `NOT MEASURED` as a third outcome rather than
-  folding a selector gap into a clean pane. Its heading selector is a **known-incomplete
-  enumeration**: seven container conventions exist and it names them, so an eighth will show up as
-  `NOT MEASURED` rather than as a pass.
-- **`scripts/selection-toolbar-probe.sh`** — captures a frame for a person to read; cannot classify,
-  because `uiautomator dump` cannot see the floating toolbar.
-- **Nothing is mid-edit.** No file is in a state that will not compile.
+- **Nothing is mid-edit.** No file is in a state that will not compile, and `npm test` is green.
+- **`.icon-button`** is in defect 90's table with `drawn: 0` rather than a number: it draws at zero
+  height on every pane it appears on. That is a **separate question** from the 32px floor, it is not
+  investigated, and it is recorded as unmeasured rather than folded in as a pass.
+- **The device-status rings do not sweep in.** They carry `transition: stroke-dashoffset 240ms`, and
+  a transition fires on a *change* while the arc is created at its final offset. The design toggles a
+  flag 140ms after mount to make them animate. Left undone deliberately — it is one line that changes
+  what the pane does on **every** redraw, and this pane redraws on every `battery.state`.
 
 ## 4 · What needs your hands, and why
 
-**1. The vocabulary decision.** **`docs/empty-and-failure-states.md` in this repo is the
-deliverable** — 83 sentences grouped by meaning.
+**1. The vocabulary decision — still the blocking item, and it grew by one.**
+`docs/empty-and-failure-states.md` has 83 sentences. This sitting added **one new unratified
+sentence**, on the Photos detail card, replacing three controls the wire cannot serve:
 
-> It was also published as a hosted page and **that link is dead**; the publish reported success
-> twice and left nothing the account can open. The file is complete and is the source the page was
-> generated from, so nothing is lost. Ask for it to be re-published if a link is wanted. The numbers that make the case: **28 sentences for "there is nothing here"** with four
-grammatical openings, **three verbs** for failure, **three words** for unavailability, Files stating
-one condition two ways *within a single pane*, and one sentence appearing twice with different
-punctuation. This is the blocking item for the rest of Phase 7.
+> *"Sharing, wallpaper and deleting are on the phone. Nothing on the wire carries them."*
 
-**2. If the music stops and restarts again — run this _while it is happening_.** The reconstruction
-is impossible after the fact; `logcat` had already rolled last time (0 lines matching the window).
+It is deliberately the **same shape** as Calls' existing *"Mute, speaker and keypad tones are on the
+phone. Nothing on the wire carries them."* rather than a fourth new grammar. Nothing else in the 83
+fitted. Read the two together and decide whether the shape is the house style or whether both should
+change.
 
-```sh
-adb -s "$(scripts/target-device.sh)" logcat -b all -v time \
-  | grep -iE "AudioFocus|MediaSession|audio_focus|ActivityManager.*jio"
-```
+**2. Defect 89 — your phone's deleted photographs are listed as an ordinary album.**
+`Android/.Trash/com.sec.android.gallery3d/…/WhatsApp Images` is one of four buckets whose leaf
+directory name is *WhatsApp Images*, and `media.buckets` carries no path, so the Mac cannot tell it
+from the live one. It needs `relativePath` (or a phone-side `trashed` flag) on the wire — a contract
+change, out of scope for a design pass. Two surface-only workarounds were built, drawn, and removed;
+the register says why, so nobody builds a third.
 
-Start it **before** the music stops, leave it running, and take this at the moment it happens:
-
-```sh
-adb -s "$(scripts/target-device.sh)" shell am get-standby-bucket com.jio.myjio
-```
-
-The standing reading is bucket **40 (RARE)** with no battery exemption — a sufficient cause on its
-own, pointing away from us, but it is a condition today rather than a measurement of that window.
-
-**3. The WhatsApp compose box** — prediction pre-registered in `docs/testing.md` → Slice 21 so it
-cannot be rationalised afterwards. Expected: the platform toolbar with `Send to Mac` in the `⋮`.
-
-**4. Instagram, X, Samsung Notes** — returned `NO READING` (no text field on the launch screen). One
-long-press each finishes the table.
-
-**5. Defect 84's cooldown branch has never fired.** Needs Jio's next active period; not producible
-on demand. The line will read `cooldown <package> (status key, …) — N held / M posted`.
-
-**6. F6 / P3 — the pairing sighting.** Needs the phone forgotten on the Mac and a re-scan; unpairing
-leaves this Mac unable to reconnect until someone walks over.
+**3. Everything the last handoff listed is still open and unchanged** — the WhatsApp compose box,
+Instagram/X/Samsung Notes returning `NO READING`, defect 84's cooldown branch, and F6/P3's pairing
+sighting. None of them was touched tonight.
 
 ## 5 · Where the panes stand
 
-All four were rebuilt in the design pass. Of the 28 feature rows inside them: **21 `reshaped`**,
-**6 `unbuilt` and tagged *Not yet*** with a reason each (G3 sounds, G4 auto-update, G7 per-app
-filters, T2 HEIC, C1 waveform), and **O4 built**.
+Five compared side by side at your real display size, in
+`docs/evidence/phase-7-design-2026-09-05/`. Start with the `*-compare.png` files: build on the left,
+design on the right, **both scaled to 1440** because the build is captured at DPR 2 and the artboard
+at DPR 1, and each panel carries its own sidecar (window size, DPR, scrollbar, settle) drawn into
+the image.
 
-**Nothing in the pane set is unbuilt for want of a sitting.** What remains is either a stated
-*Not yet* or the designer's decision.
+What the build still refuses to draw, with the reason checked against `docs/protocol.md` rather than
+recalled:
+
+| Design draws | Verdict |
+|---|---|
+| Photos: **Share**, **Set as Mac wallpaper**, **Delete from phone** | `media.*` is four verbs and none of them is these. Removed, not greyed |
+| Photos: **Camera** / **ISO** metadata rows | `media.list` carries no EXIF and no filename |
+| Calls: waveform, **Mute**, **Speaker**, in-call **Keypad** | call audio is a permanent platform wall |
+| Messages: **Video call**, **Block contact**, **Shared media** | no verb for any; and blocking is restricted to the default dialer, which this is not |
+| Clipboard: row **Star** | Favourites is cut — this history is memory-only |
+| Both: **End-to-end encrypted** / **Encrypted** badges | the link is; an SMS is not |
 
 ## 6 · What I would do next, and why
 
-1. **Apply the vocabulary once it is decided** — every pane at once, in one pass, because the value
-   is in their agreeing rather than in any single sentence. The audit already lists every site, and
-   the sweep says where each one sits.
-2. **Then Phase 8 signing.** It unblocks Camera, the packaged-app relaunch (D15), and D12/D13, and
-   it is the only thing standing between the two artifacts and anyone else being able to run them.
-   It needs an Apple account, which is yours to open.
-3. **Not defect 30's no-thread half, not 17, not 38** — all deferred with fix directions, none
-   blocking.
+1. **Apply the vocabulary once it is decided.** Unchanged from the last handoff and now one sentence
+   larger. Every pane at once, in one pass — the value is in their agreeing.
+2. **The remaining panes have not been diffed against the design this sitting**: Mirror, Files,
+   Messages, Notifications, Contacts, Apps, Activity. Four of the five defects found tonight were
+   app-wide (the accent, the button floor, the frame, the orphan tokens) and are already fixed
+   everywhere; what is left for those panes is their own layout. `scripts/shot.mjs --screen=<id>`
+   and `scripts/design-shot.mjs --page=<id>` make each one about ten minutes.
+3. **Then Phase 8 signing**, unchanged: it unblocks Camera, D15, D12 and D13, and it needs an Apple
+   account, which is yours to open.
 
 ## 7 · Left changed on your devices
 
-- **The phone: `Send to Mac` is switched ON** in *Manage apps*. The other ten rows untouched.
-- **The phone: auto-rotate was toggled and restored.**
-- **The Mac: one dev Electron run on `--remote-debugging-port=9222`.** Earlier in this sitting there
-  were **two** instances and the older one held the port — the stale-window trap `CLAUDE.md` warns
-  about. `pkill -f "ConnectSuite/desktop/node_modules/electron"` does **not** match a run launched
-  as `./node_modules/.bin/electron .` from `desktop/`; `pkill -f "node_modules/.bin/electron"` does.
-  Worth knowing before the next reading.
-- The packaged app in `release/mac-arm64` is stopped and was not restarted — it cannot start
-  unattended anyway (D15, the Keychain dialog).
-- Clipboard history on both sides holds probe strings. Memory only; gone on restart.
+- **The phone: nothing.** No taps, no installs, no writes. Two `adb` **reads** only — a
+  `content query` against `media/external` to find out what the duplicate album rows are.
+- **The Mac: one dev Electron run on `--remote-debugging-port=9222`**, relaunched several times
+  during the sitting; the last relaunch is the one running. `pkill -f "node_modules/.bin/electron"`
+  is the one that matches it.
+- **Headless Chrome** was started and killed once per design/compare shot. None should be left; if
+  one is, it is on a port in the 9333–9800 range with a `/tmp/design-shot-*` or `/tmp/compare-shot-*`
+  profile.
+- **Clipboard history on both sides holds probe strings.** Memory only; gone on restart.
+- Nothing was force-stopped, nothing was uninstalled, and the phone's `Send to Mac` switch is as you
+  left it.
+
+## 8 · The four findings worth carrying past this repo
+
+Each is in `docs/testing.md` with its measurement; these are the sentences.
+
+1. **A grid container with a definite block size sizes its `auto` rows against the space it has,
+   not against its items' `aspect-ratio` height** — and the item then wins anyway and overflows the
+   track it was given. `align-content` does not reach it and neither does `grid-auto-rows`. The fix
+   is structural: the scroller and the grid are different elements.
+2. **`min-height` beats `height`, silently, in the direction nobody reasons about.** A control floor
+   written as *"anything that needs to be taller simply is"* also raises everything that needs to be
+   shorter, and a toggle 8px too tall looks like a toggle.
+3. **An undeclared custom property makes the whole declaration invalid at computed-value time** — it
+   becomes `inherit`, not a default. Some of the eleven sites were correct by accident and some were
+   not, from one misspelling.
+4. **`overflow: hidden` still makes an element a scroll port.** It removes the scrollbar, which is
+   the thing that would have told you.
+
+And one about instruments, which cost the most time tonight: **three of the five defects were found
+by asking a different question of the running app, not by looking at it** — *which rules declare a
+height under the floor?*, *which `var()` names are never declared?*, *what is each of these two
+readings actually reading?* Every one of those questions was cheap. None of them would have been
+asked by someone reviewing a screenshot.
