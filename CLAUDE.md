@@ -368,6 +368,28 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
   it: the test runs the code that draws the card, rather than a second copy of the rule that can
   drift from it.
 
+  **"Cannot use `export`" is literal, it applies to `src/shared/` files the page loads too, and one
+  had been breaking it for a phase with no symptom** (defect 94). A file with an `export` compiles
+  to CommonJS whose first emitted statement is `Object.defineProperty(exports, …)`; there is no
+  `exports` in a classic script, so the file **throws on its first line and every declaration below
+  it is dead** — including the `globalThis` block at the bottom that these files carry and that each
+  file's own comment credits for making it work.
+
+  **The reason nobody noticed is the part to carry forward: a `function` declaration is hoisted onto
+  `globalThis` before the body executes, and a `class` is not.** So `discHue.ts` shipped in this
+  state and the app was fine, its comment describing a mechanism that had never run; the same shape
+  written with a class left `ContactPhotos` `undefined` in the page while `photoKey`, four lines away
+  in the same file, was a function. `tsc` was clean, `npm test` was green — the tests `require` the
+  file, where `exports` exists — and the page worked. **Every layer was reporting on a loader the
+  browser does not use.**
+
+  Enforced by `scripts/check-renderer-scripts.mjs` on `git commit`. Its scope comes from
+  `index.html` rather than from the directory, because `src/shared/` also holds modules the main
+  process imports normally and those keep their exports — the same discriminator as counting a
+  heading rather than an occurrence. And it carries a second reading against the **built**
+  `dist/shared/*.js`, because a source matcher that is ever wrong in the permissive direction is
+  exactly the failure this rule is about.
+
   **The same rule applies on the phone, with `Telephony` in the place of Electron.** A JVM unit
   test that merely *references* an object holding an Android static in a field initializer dies
   with `ExceptionInInitializerError` — `SmsStore` does, via `CONTENT_CONVERSATIONS_URI`. The answer
