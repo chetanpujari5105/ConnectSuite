@@ -4,12 +4,12 @@
 
 ## 0 · One-line state
 
-**The design pass ran on five panes and found five defects, four of which nothing in this repo could
-have seen.** Photos' grid was drawing every tile on top of the two below it; the app's accent has
-been the wrong violet for the whole build; every control the design draws shorter than 32px was
-drawing at 32px; the app window could be scrolled out of place permanently; and eleven CSS
-references pointed at four custom properties that do not exist. All fixed, all guarded, all shot
-against the design at the real display size.
+**The design pass ran on six panes and found six defects, five of which nothing in this repo could
+have seen.** Photos' grid drew every tile on top of the two below it; fifty SMS previews were on the
+wire, in the DOM, and drawn at zero height; the app's accent has been the wrong violet for the whole
+build; every control the design draws shorter than 32px was drawing at 32px; the app window could be
+scrolled out of place permanently; and eleven CSS references pointed at four custom properties that
+do not exist. All fixed, all guarded, all shot against the design at the real display size.
 
 ## 1 · What is built, and what proved it
 
@@ -26,9 +26,10 @@ against the design at the real display size.
 
 **Tests:** Mac **565** (`cd desktop && npm test`), from 514. Phone untouched.
 
-**Three new instruments, all in the repo**: `scripts/shot.mjs` (named in an evidence README since
-the last design pass and did not exist), `scripts/design-shot.mjs`, `scripts/compare-shot.mjs`.
-Each refuses rather than writing a file it cannot vouch for.
+**Four new instruments, all in the repo**: `scripts/shot.mjs` (named in an evidence README since
+the last design pass and did not exist), `scripts/design-shot.mjs`, `scripts/compare-shot.mjs`, and
+`scripts/zero-height-text-probe.mjs`. Each refuses rather than writing a file it cannot vouch for,
+and the last one carries its control inside it (`--self-test`).
 
 ## 2 · Committed
 
@@ -101,7 +102,7 @@ sighting. None of them was touched tonight.
 
 ## 5 · Where the panes stand
 
-Five compared side by side at your real display size, in
+Six compared side by side at your real display size, in
 `docs/evidence/phase-7-design-2026-09-05/`. Start with the `*-compare.png` files: build on the left,
 design on the right, **both scaled to 1440** because the build is captured at DPR 2 and the artboard
 at DPR 1, and each panel carries its own sidecar (window size, DPR, scrollbar, settle) drawn into
