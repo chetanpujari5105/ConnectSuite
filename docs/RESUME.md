@@ -1,4 +1,4 @@
-# Resume here — written 2026-09-05, end of the design-pass sitting
+# Resume here — written 2026-09-05, end of the design-pass sitting (Messages added later the same day)
 
 > A state report, not a note to myself. Written to be handed to someone who was not here.
 
@@ -20,10 +20,11 @@ against the design at the real display size.
 | **Settings** — 16px gap, 38px rail rows, 19px titles, a border that no longer shifts the rows below it | columns **200 / 583 / 320**; `settings-compare.png` |
 | **Overview** — Device status moved to the design's column, two truncation defects closed | `.quick-sub` truncated **5/8 → 0/8**, `.recent-detail` **4/4 → 0/5**; `overview-compare.png` |
 | **Clipboard**, re-diffed — already matching, and two of its numbers were being overridden | `1fr 340px`, 36px badges, 28px pills; `clipboard-compare.png` |
+| **Messages**, rebuilt to three columns — thread list with avatars and previews, chat with bubbles and date separators, a composer, and the person card | `280 / 539 / 300`, 60px rows, 34px/72px discs; previews **50 with text / 0 at zero height**; `messages-compare.png` |
 | **Card stagger** — the design's `float-in`, which had never been built | five panes opt in; keyed to `.page.route-in` so it replays per navigation |
 | **The identity column** — accent, `--live`, `--destructive`, `--radius-panel`, `--radius-media` | counted out of the design file's own literals: `#7c6bff` ×34, `rgb(139,…)` **zero** |
 
-**Tests:** Mac **555** (`cd desktop && npm test`), from 514. Phone untouched.
+**Tests:** Mac **565** (`cd desktop && npm test`), from 514. Phone untouched.
 
 **Three new instruments, all in the repo**: `scripts/shot.mjs` (named in an evidence README since
 the last design pass and did not exist), `scripts/design-shot.mjs`, `scripts/compare-shot.mjs`.
@@ -32,6 +33,9 @@ Each refuses rather than writing a file it cannot vouch for.
 ## 2 · Committed
 
 ```
+95495c4  The card sweep poisoned itself, and one throw was enough
+e546b8b  Messages: the design's three columns, and defect 93 — fifty invisible previews
+34185c9  RESUME.md: the design-pass sitting, as a handoff
 9dda4b5  The sweep was scrolling the app as it measured, and its published number is corrected
 2a9f846  Defect 92: eleven references to four custom properties that do not exist
 7f62b2a  Defect 91: the frame was a scroll port, and the Clipboard re-diff
@@ -65,16 +69,24 @@ there and not in `39e4b40`.
 
 ## 4 · What needs your hands, and why
 
-**1. The vocabulary decision — still the blocking item, and it grew by one.**
-`docs/empty-and-failure-states.md` has 83 sentences. This sitting added **one new unratified
-sentence**, on the Photos detail card, replacing three controls the wire cannot serve:
+**1. The vocabulary decision — still the blocking item, and it grew by two.**
+`docs/empty-and-failure-states.md` has 83 sentences. Two new unratified ones were added, both
+replacing controls the wire cannot serve:
 
-> *"Sharing, wallpaper and deleting are on the phone. Nothing on the wire carries them."*
+> Photos: *"Sharing, wallpaper and deleting are on the phone. Nothing on the wire carries them."*
+>
+> Messages: *"Calling is on the Calls screen. Video, blocking and shared media are on the phone —
+> nothing on the wire carries them."*
 
-It is deliberately the **same shape** as Calls' existing *"Mute, speaker and keypad tones are on the
-phone. Nothing on the wire carries them."* rather than a fourth new grammar. Nothing else in the 83
-fitted. Read the two together and decide whether the shape is the house style or whether both should
-change.
+Both are deliberately the **same shape** as Calls' existing *"Mute, speaker and keypad tones are on
+the phone. Nothing on the wire carries them."* rather than two new grammars. That makes **three uses
+of one sentence pattern**, which is either a house style or a rut — your call, not mine. Nothing
+else in the 83 fitted.
+
+**Two diagnostic strings were deleted outright** and need no replacement, but you should know they
+are gone: Messages' *"50 conversations, 2 showing a contact name, 586 unread…"* and Contacts'
+*"Sorted by name, which is the only order a book can be read in."* Both were facts about our
+implementation on a screen a user reads.
 
 **2. Defect 89 — your phone's deleted photographs are listed as an ordinary album.**
 `Android/.Trash/com.sec.android.gallery3d/…/WhatsApp Images` is one of four buckets whose leaf
@@ -111,8 +123,8 @@ recalled:
 
 1. **Apply the vocabulary once it is decided.** Unchanged from the last handoff and now one sentence
    larger. Every pane at once, in one pass — the value is in their agreeing.
-2. **The remaining panes have not been diffed against the design this sitting**: Mirror, Files,
-   Messages, Notifications, Contacts, Apps, Activity. Four of the five defects found tonight were
+2. **The remaining panes have not been diffed against the design**: Mirror, Files, Notifications,
+   Apps, Activity. Four of the five defects found tonight were
    app-wide (the accent, the button floor, the frame, the orphan tokens) and are already fixed
    everywhere; what is left for those panes is their own layout. `scripts/shot.mjs --screen=<id>`
    and `scripts/design-shot.mjs --page=<id>` make each one about ten minutes.
@@ -133,7 +145,25 @@ recalled:
 - Nothing was force-stopped, nothing was uninstalled, and the phone's `Send to Mac` switch is as you
   left it.
 
-## 8 · The four findings worth carrying past this repo
+## 7b · Messages, and where Contacts went
+
+The pane was rebuilt to the canvas: three columns at `280px 1fr 300px`, 60px thread rows with
+avatars, **previews** and timestamps, a chat panel with asymmetric bubbles and date separators, a
+composer, and a person card.
+
+**Contacts is not in the right column any more, and the answer to "where should it live" is
+definite.** There is no `contacts` screen in `navModel`; the design's sidebar has no Contacts row;
+the design's third column is the open conversation's person. A directory already has a built home —
+the **Calls pane's Contacts tab**, over the same `contacts.list`, where picking someone fills the
+dialler. So the directory moved into **New conversation**, where searching by name is the verb you
+are actually performing, and the palette's *Contacts* row points at Calls.
+
+**The filter tabs are `All` / `Unread`, not the design's `All` / `SMS` / `Chat`.** `sms.threads`
+carries no kind — `kind` exists only per *message* — so an SMS tab would mean opening all fifty
+conversations to label the list, and *Chat* means RCS, which this app does not implement. `unread`
+is on every thread row, so that tab is real.
+
+## 8 · The five findings worth carrying past this repo
 
 Each is in `docs/testing.md` with its measurement; these are the sentences.
 
@@ -149,6 +179,12 @@ Each is in `docs/testing.md` with its measurement; these are the sentences.
    not, from one misspelling.
 4. **`overflow: hidden` still makes an element a scroll port.** It removes the scrollbar, which is
    the thing that would have told you.
+5. **A column flex container with a constrained height shrinks its children**, and the text inside
+   them goes first — fifty SMS previews were present, correct and invisible for a whole phase. The
+   sharper half is that **the properties you can vary are not necessarily the ones responsible**:
+   varying the row changed the symptom, so the row looked like the cause, and only rebuilding the
+   whole structure separated them. The first written-down mechanism was wrong and was caught by
+   insisting the new guard go red first.
 
 And one about instruments, which cost the most time tonight: **three of the five defects were found
 by asking a different question of the running app, not by looking at it** — *which rules declare a
