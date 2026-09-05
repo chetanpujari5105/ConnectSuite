@@ -1,10 +1,18 @@
-# Every empty and failure state currently drawn · 2026-09-04
+# Every empty and failure state currently drawn · 2026-09-05
 
 Extracted from the built source, comments stripped, then each string annotated with the condition
-that guards it. **Only strings that reach a person** — Settings row *descriptions* and standing wall
+that guards it.
+
+**Re-verified against the source on 2026-09-05, and that check is not the one the hook performs.**
+`scripts/check-state-vocabulary.mjs` verifies this file's **prose numbers against its own tables**;
+it does not verify the tables against the code, so a pane rebuilt after this file was written could
+leave a row here describing a sentence nobody draws any more. Three panes were rebuilt between the
+2026-09-04 revision and this one. Every row's text was matched back to a source file: **0 stale
+rows**, and the four that a first pass reported missing were false negatives from sentences the
+source concatenates across lines — checked one at a time rather than counted. **Only strings that reach a person** — Settings row *descriptions* and standing wall
 copy are excluded and listed at the end so nothing is silently dropped.
 
-**83 states across 19 panes.** They are grouped by what they *mean*, not by pane, because the
+**84 states across 19 panes.** They are grouped by what they *mean*, not by pane, because the
 question is how many different sentences say the same thing.
 
 **Three of these counts were wrong when this was first written** — groups 1, 2 and 4 claimed 24, 15
@@ -136,7 +144,7 @@ and `This phone isn’t offering Files right now` — differing in contraction, 
 
 ---
 
-## 6 · "This build / this Mac cannot" — 7 sentences
+## 6 · "This build / this Mac cannot" — 8 sentences
 
 | Pane | Condition | Verbatim |
 |---|---|---|
@@ -146,7 +154,8 @@ and `This phone isn’t offering Files right now` — differing in contraction, 
 | Notifications | mute list (body) | The phone does not tell the Mac which apps are muted, so this list cannot be built here. |
 | Overview | `screen.state !== 'built'` | Not built yet |
 | Nav model | camera | There is no virtual camera on this Mac |
-| Calls | live card | Mute, speaker and keypad tones are on the phone. Nothing on the wire carries them. |
+| Calls | live card, `!appCall` | Mute, speaker and keypad tones are on the phone. Nothing on the wire carries them. |
+| Calls | live card, `appCall` — **replaces** the row above | WhatsApp is hosting this call, not the phone network. Mute, speaker and keypad tones are on the phone, and whether Answer and Reject reach an in-app call is not measured — if nothing happens, answer on the phone. |
 
 ---
 
@@ -219,7 +228,7 @@ says *"the empty state goes in the card header"* has seven places to land.
 
 ## The count that answers the question
 
-**Eight ideas. 83 sentences.** The largest group is "there is nothing here" at 28 uses with **four**
+**Eight ideas. 84 sentences.** The largest group is "there is nothing here" at 28 uses with **four**
 distinct grammatical openings; failures use **three** different verbs; unavailability uses **three**
 different words for the same predicate. Two panes state one condition two ways within themselves
 (Files, Apps), and one sentence appears twice with different punctuation (the activity log).
