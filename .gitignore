@@ -57,3 +57,9 @@ desktop/release/
 # it, so checking it in means every code change carries a second, larger, mechanical diff nobody
 # reads — and a stale graph in git is worse than no graph, because it reads as current.
 graphify-out/
+
+# `npm test`'s own record of its run, read by scripts/check-suites-run.mjs. It is evidence about a
+# local run, exactly like Gradle's test-results XML one line up — a committed one would be somebody
+# else's reading, served with no indication of whose.
+desktop/.test-run.json
+desktop/.test-run.tap

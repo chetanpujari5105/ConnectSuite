@@ -17630,3 +17630,100 @@ the third-variety test failure with a probe in the place of a unit test.
   handset at a time — defect 17.
 - **The float window.** `RATIO = 19.5 / 9` in `shared/floatGeometry.ts` is still live and is the same
   defect in a third place, deliberately left until §1 plumbs the geometry through.
+
+---
+
+## Phase 7 Slice 41 — the half that was never asked (2026-09-11)
+
+Two records from the 102/104 sitting, both of them about instruments rather than features.
+
+### 1 · A green is a statement about the suite that ran
+
+`ProtocolNamespaceTest > every feature message names a real capability` was committed **red** and
+lived on this branch for days. The commit that broke it added `MessageType.STORAGE_STATE` without
+its system-set exemption, ran `npm test` in `desktop/`, saw **623 green**, and committed. The
+phone's suite was never asked.
+
+**Nine commit hooks existed and not one read a test result.** All nine read documents — the defect
+register, the protocol spec, the renderer views, the version scheme. The practice that was supposed
+to cover the rest was *run the suite*, which is a rule enforced by someone remembering, in the file
+that says what that is worth.
+
+`scripts/check-suites-run.mjs` + `scripts/hooks/suites-were-run.sh`, the **ninth** enforcement point:
+
+| | |
+|---|---|
+| what it reads | Gradle's `*.xml` per module, and `desktop/.test-run.json` |
+| where the Mac record comes from | `desktop/scripts/run-tests.mjs`, now behind `npm test`, writing **on every run, pass or fail** |
+| what it denies | a touched half that is `RED`, `UNRUN` or `STALE` |
+| what it always says | **which half it did not check**, as `NOT CHECKED`, rather than by silence |
+
+**It does not run the suites.** Both halves on every commit is ~15 s warm and minutes cold, and a
+hook that slow is routed around inside a week — which is the failure mode the enforcement section is
+about. It reads the artifacts and prints their age, which is the repo's own stale-XML rule turned
+into a check: *an artifact older than the run is a memory, not a result.*
+
+**Three verdicts, not two.** `UNRUN` (this half has said nothing), `STALE` (it said something about
+different bytes) and `RED` (it answered, and the answer was no) are different findings needing
+different sentences. Collapsing them is the empty-versus-failed mistake.
+
+**Its instrument is `mtime`, and it says so in its own output.** An operation that restores old
+mtimes — a `git stash pop`, a checkout of an older revision — can leave a source looking older than
+an artifact that never tested it. So it prints the two timestamps it compared and states that it
+checks *whether you ran it*, not that the artifact is of these exact bytes.
+
+#### The readings
+
+Red-first against the **verbatim** historical case, which is the only case it is known to have
+missed:
+
+```
+C · RED    exemption for MessageType.STORAGE_STATE removed — the defect exactly
+           gradle exit: 1
+           phone: RED — 442 tests, 0s old, 1 failing            CHECKER EXIT: 1
+D · CONTROL restored
+           phone: NOT CHECKED — this commit does not touch it   CHECKER EXIT: 0
+
+A · STALE  a staged Kotlin change with older artifacts
+           phone: STALE — 442 tests, 2040s old                  EXIT: 1
+B · CONTROL the same change, Gradle re-run in the same shell
+           phone: GREEN — 442 tests, 0s old                     EXIT: 0
+```
+
+The hook itself was driven with a staged change and returned `deny` with the report in the reason.
+14 fixtures, each carrying its opposite, including *a docs-only commit touches neither half* — the
+control that keeps this from firing on every documentation edit and being switched off.
+
+#### And it caught a regression of its own author, immediately
+
+Moving the test glob out of `desktop/package.json` and into the new wrapper made **all 53** Mac test
+files read as orphans on the first run of `check-orphan-tests.mjs`. The guard was right: it reads
+the discovery rule out of that script, so the glob stays there and reaches the wrapper as argv.
+**A guard that reads a rule out of one file is a reason not to move the rule.**
+
+### 2 · A test that asserted a likeness, and the mutation that found it
+
+The first guard for defect 104 asserted that no two stop sentences were **too alike**, by word-set
+overlap. It is not a silly check — it went red against the original pair and against several
+mutations. It **passed with the exact defect sentence restored**.
+
+```
+M7   AndroidRevoked.sentence := "Screen capture was stopped on the phone."
+     → 46 tests completed, 0 failed          NO TEST WENT RED
+```
+
+The sibling had been reworded in the same change, from *"Stopped on the phone."* to *"You stopped
+mirroring on the phone."*, so the pair was no longer close while the defect was fully back.
+
+**A distance is a claim about two things, and either of them can move.** The rule constrains one
+sentence; the test constrained a gap, and a gap is satisfiable by moving the thing that was never
+wrong. `MirrorStopReason.Actor` is the fix — a closed enum on the type, and an assertion that *a
+reason whose actor is `ANDROID` names Android and never says "you"*, which is one sentence
+constrained by itself. M7 then goes red on the first clause whatever the other eight say.
+
+Recorded in `CLAUDE.md` twice: as the **fourth variety** of test that cannot fail (beside the test
+that restates the rule, the rule a test cannot reach, and the test at the wrong layer), and as a row
+in the control table. Its relatives there are both **queries** — step 49's shared button label, and
+the `/drop|upload|send to phone/` regex that matched the banner apologising for the absent
+affordance. This is the first time the shape got into the suite, where no reading and no control can
+see it and only mutation can.

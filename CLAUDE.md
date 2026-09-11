@@ -478,6 +478,50 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
   entirely orthogonal to the defect. When a feature has never been observed working, the honest
   status is *unproven*, whatever the suite says.
 
+  **The fourth variety, and the cheapest to write by accident: _the test asserts a likeness where
+  the rule is a fact._** The first three are all about *where* a test reaches. This one is about
+  *what it asserts*, and it is the only one that can be introduced and broken by the same commit.
+
+  Defect 104 is the worked example. The rule is that a stop Android caused must not be worded as a
+  stop the phone's owner caused — the defect was eight sessions telling their owner they had done
+  something they had not. The first guard asserted, instead, that **no two stop sentences were too
+  alike**, by word-set overlap: a reasonable-looking proximity check over the nine reasons, red
+  against the original pair, and green against everything else.
+
+  It passed with **the exact defect sentence restored**. Mutation M7 put
+  *"Screen capture was stopped on the phone."* back as the platform revoke and the suite stayed
+  green — because the *sibling* sentence had been reworded in the same change from
+  *"Stopped on the phone."* to *"You stopped mirroring on the phone."*, so the pair was no longer
+  close while the defect was fully back.
+
+  **That is the failure mode in one line: a likeness assertion is a statement about two things, and
+  either of them can move.** The rule constrained one sentence; the test constrained a *distance*,
+  and a distance is satisfiable by moving the thing that was never wrong. Nothing in review catches
+  it, because the check is not wrong — it is measuring something real, and it goes red under plenty
+  of mutations, just not the one it exists for.
+
+  The fix is not a tighter threshold. It is to **put the fact on the type and assert against that**:
+  `MirrorStopReason.Actor` is a closed enum, and the test says *a reason whose actor is `ANDROID`
+  names Android and never says "you"* — one sentence constrained by itself, with no second party
+  that can drift. M7 then goes red on the first clause whatever the other eight say.
+
+  The tell, and it is greppable: **an assertion whose subject is a pair or a set rather than a
+  value.** `assertTrue(distance(a, b) > n)`, `assertNotEquals(a, b)`, "no two of these are…", "at
+  least one of these contains…". Each is a proxy for some fact about *one* of them that nobody
+  wrote down, and the proxy holds only while the other one stays put. Ask: *which single thing is
+  this really a claim about, and can I assert that instead?*
+
+  **And only mutation finds it.** Not review — the check reads as thorough. Not the red-first rule
+  as usually practised, which shows a test red against *some* mutation; this one was red against
+  several. It takes reintroducing **the specific defect the test is named for**, which is why that
+  is the form the rule takes in this repo rather than "show it can fail".
+
+  Its relatives are already in the control table and they are all **queries**: step 49's button
+  labels, where the Mac's own Reply affordance shared the label *and* the CSS class with the thing
+  being counted, and the `/drop|upload|send to phone/` regex that matched the banner apologising for
+  the absent affordance. Same mistake — matching on an attribute two things share — and this is the
+  first time it got into the suite, where no reading and no control can see it.
+
   Second, prefer
   making the code testable over mocking Electron. `src/shared/` is the electron-free layer and is
   where a testable seam belongs; `session.ts` came out of `link.ts` that way.
@@ -601,6 +645,7 @@ damage on the user's own device or nearly recorded a false result.
   | `strings installed.apk | grep -cF 'adb tcpip'` after defect 65's fix (2026-09-03) | **present=1** — read as defect 65 resurrected, ADB copy back in an app whose decision #1 is *no ADB anywhere* | the match is `OnboardingCopy.forbiddenMechanisms`' own `why` string — *the sentence explaining why the phrase is banned*, compiled into the same dex as the copy it guards. KDoc is stripped; a string literal is not |
   | the FGS stop landing 2-6 ms after the `*launch*` wake lock is released, **twice out of two** (2026-09-10) | *the background-start allowance is withdrawn when the launch transition settles* — written into defect 100 as an established root cause | **a correlation, not a mechanism.** The same event carries `PROC_STATE_TOP`, so the process had never left the foreground and no TOP-conditional allowance could lapse. Two-for-two on a 4 ms lag is a strong correlation and still names nothing; it was retracted an hour later, from the register rather than from a conversation |
   | `S=$(scripts/target-device.sh samsung 2>&1 \| tail -1)` (2026-09-10) | a pinned serial | the guard's **stderr banner**, merged into the value by `2>&1`. `adb -s ""` then failed, and a `\|\|` fallback turned that failure into *"NOT in the deviceidle whitelist"* — a confident false claim about the user's battery-optimisation state from a command that never ran |
+  | a test asserting no two mirror stop sentences were **too alike**, by word-set overlap (2026-09-11) | the two sentences three words apart can no longer both exist — defect 104 is guarded | **a distance is a claim about two things, and either can move.** Mutation M7 restored the exact defect sentence and the suite stayed green, because the *sibling* had been reworded in the same change from *"Stopped on the phone."* to *"You stopped mirroring on the phone."* The proxy held; the rule did not. See the fourth test variety above |
 
   Between them, false absences and false presences alike, which is the point: the failure is not
   "empty means broken", it is that **the check could not separate signal from lookalike** and said
@@ -1994,6 +2039,53 @@ damage on the user's own device or nearly recorded a false result.
   fallback cannot manufacture a finding from it; and stdin is closed, which also removes the third
   fault of that afternoon — `adb shell` eating a `while read` loop's input, so a control set of
   eight packages silently ran once and reported one row.
+
+  **The ninth is `scripts/check-suites-run.mjs`, and it exists because the other eight all read
+  documents and not one of them reads a test result.**
+
+  `ProtocolNamespaceTest > every feature message names a real capability` was committed **red** and
+  lived on the branch for days. The commit that broke it added `MessageType.STORAGE_STATE` without
+  its system-set exemption, ran `npm test` in `desktop/`, saw **623 green**, and committed. The
+  phone's suite was never asked.
+
+  **A green is a statement about the suite that ran.** That is the defect-65 entry one level up —
+  *a module contributing zero tests is invisible in a total* becomes **a suite that is not run is
+  invisible in a green** — and it is the worse of the two, because the number it hides behind is
+  real, current, and correct for what it covers. There is nothing to notice.
+
+  **It does not run the suites, and that is a decision rather than a shortcut.** Both halves on
+  every `git commit` is ~15 s warm and minutes cold, and a hook that slow is a hook people route
+  around, which is the failure mode this whole section is about. So it reads what the runners left
+  behind — Gradle's XML, and `desktop/.test-run.json`, which `npm test` now writes through
+  `desktop/scripts/run-tests.mjs` **on every run, pass or fail**, because a wrapper that records
+  only successes leaves a green memory behind a red run.
+
+  Two things about its output are the point rather than decoration:
+
+  - **It names the half it did not check, on every commit**, as `NOT CHECKED` rather than by
+    silence. A hook that guards one half and says nothing about the other is the original failure
+    wearing a badge.
+  - **`unrun`, `stale` and `red` are three findings, not one.** A half with no artifact has said
+    nothing; a half with an old one said something about different bytes; a half with a failing one
+    has answered and the answer was no. Collapsing them is the empty-versus-failed mistake this
+    repo has a whole proposal about.
+
+  It reports the **two timestamps it compared**, because its instrument is `mtime` and `mtime` has a
+  known blind direction: a `git stash pop` or a checkout of an older revision can leave a source
+  looking older than an artifact that never tested it. It is a check on *whether you ran it*, not a
+  proof that the artifact is of these exact bytes, and it says so in its own output — the rule that
+  every bound an instrument imposes must appear in what it reports.
+
+  **Red-first, against the verbatim case.** Removing `MessageType.STORAGE_STATE` from the exemption
+  set — the historical defect exactly — produces `RED — 442 tests, 0s old, 1 failing` and a denied
+  commit; restoring it returns 0. A staged Kotlin change with older artifacts produces `STALE`, and
+  re-running Gradle turns it `GREEN` in the same shell. 14 fixtures, each with its opposite.
+
+  **And it caught a regression of mine while being built**, which is the best thing about it being
+  a pair with `check-orphan-tests.mjs`: moving the test glob out of `desktop/package.json` and into
+  the new wrapper made **all 53** Mac test files read as orphans on the first run. The glob is the
+  discovery rule, the guard reads it from that script, and so it stays there and arrives in the
+  wrapper as argv. A guard that reads a rule out of one file is a reason not to move the rule.
 
   This does not mean every rule gets a hook; most do not warrant one. It means the question gets
   asked, and "documented" is not recorded as "handled".
