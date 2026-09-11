@@ -1,6 +1,9 @@
 package com.chetan.connectsuite.link
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -40,6 +43,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chetan.connectsuite.core.data.ConnectSuiteDatabase
+import com.chetan.connectsuite.core.link.BackgroundRestriction
+import com.chetan.connectsuite.core.link.heldBackSummary
 import com.chetan.connectsuite.core.link.LinkController
 import com.chetan.connectsuite.core.link.LinkService
 import com.chetan.connectsuite.core.link.LinkWaitStatus
@@ -156,6 +161,49 @@ fun LinkRoute() {
 
             lastPaired?.let { Text("Paired with $it.") }
 
+            // 1b. The wall the phone put up on its own, and the only one here that nobody chose.
+            //
+            // At rest, above Advanced, and not in the "Not offered yet" line — defect 85's rule:
+            // a card carrying a *state* has to be visible where the person is, because somebody
+            // asking "why did mirroring not start" does not open Advanced to find out whether an
+            // answer exists. It draws only while the restriction is set, so the common phone shows
+            // nothing at all.
+            if (capStatuses.any { it.backgroundRestricted }) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            BackgroundRestriction.HEADLINE,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(BackgroundRestriction.BODY, style = MaterialTheme.typography.bodyMedium)
+                        Text(BackgroundRestriction.STEPS, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            BackgroundRestriction.NOT_THE_SAME_SWITCH,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        // Opens App info and stops there. There is no public action for the
+                        // Battery page inside it, so the two remaining taps are named above
+                        // rather than promised by a button that cannot make them.
+                        OutlinedButton(onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.fromParts("package", context.packageName, null),
+                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }) { Text(BackgroundRestriction.ACTION_LABEL) }
+                    }
+                }
+            }
+
             // 2. The action. Primary while nothing is paired; secondary once something is.
             if (pairedMacs.isEmpty()) {
                 Button(onClick = { scanning = true }, modifier = Modifier.fillMaxWidth()) {
@@ -234,13 +282,14 @@ fun LinkRoute() {
                         )
                         // A capability is only advertised once its handlers exist, so this list is
                         // what the Mac will actually grey out — and saying why beats a blank line.
-                        val heldBack = capStatuses.filterNot { it.advertised }
-                        if (heldBack.isNotEmpty()) {
+                        //
+                        // The sentence is built in `core/` by `heldBackSummary`, not here. It used
+                        // to be assembled inline out of two counts that could not add up to the
+                        // list they annotated, and a rule written only inside a @Composable is one
+                        // nothing in the build can check — the `showsState` lesson, twice.
+                        heldBackSummary(capStatuses)?.let { summary ->
                             Text(
-                                "Not offered yet: " + heldBack.joinToString(", ") { it.name } +
-                                    " — " + heldBack.count { !it.implemented } + " not built, " +
-                                    heldBack.count { it.implemented && !it.permitted } +
-                                    " awaiting a permission.",
+                                summary,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

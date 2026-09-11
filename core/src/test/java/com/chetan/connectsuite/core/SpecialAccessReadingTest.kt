@@ -68,6 +68,7 @@ class SpecialAccessReadingTest {
         registeredTypes = registered,
         videoServed = false,
         bulkServed = false,
+        backgroundRestricted = false,
     )
 
     @Test

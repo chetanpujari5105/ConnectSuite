@@ -53,13 +53,28 @@ data class CapabilityStatus(
      * rule about "the Settings-toggle capabilities" in general.
      */
     val running: Boolean = true,
+    /**
+     * Android has background-restricted this app **and** this capability needs a foreground
+     * service. The fourth gate, and the only one that is a fact about the whole app.
+     *
+     * False for every capability that does not need a foreground service, even while the app is
+     * restricted — the restriction really does leave `sms`, `contacts` and the rest working, so
+     * flagging them would be a wall drawn where there is none. See
+     * [CapabilityContract.blockedByBackgroundRestriction].
+     */
+    val backgroundRestricted: Boolean = false,
 ) {
-    val advertised: Boolean get() = permitted && running && implemented
+    val advertised: Boolean get() = permitted && running && implemented && !backgroundRestricted
 
     /** One line explaining why this is not on offer, or null when it is. */
     val reason: String?
         get() = when {
             advertised -> null
+            // First, and ahead of the permission branches, because it is the only one the user
+            // cannot discover by trying: a missing permission produces a prompt, and this
+            // produces a feature that starts, runs for a tenth of a second and stops. It is also
+            // the only one that can appear without anybody having changed anything.
+            backgroundRestricted -> BackgroundRestriction.CAPABILITY_REASON
             !permitted && !implemented ->
                 "not built yet, and missing ${missingPermissions.joinToString(", ")}"
             // Names *which* switch rather than saying "permission not granted", and names it as
@@ -75,6 +90,69 @@ data class CapabilityStatus(
                     "again to rebind it"
             else -> "not built yet — waiting on ${missing.joinToString(", ")}"
         }
+}
+
+/**
+ * Why one capability is being held back, as **one** bucket per capability.
+ *
+ * Exists because the phone's Mac screen drew the held-back list beside a tally of two categories —
+ * *"N not built, N awaiting a permission"* — and the tally could not add up to the list. A
+ * capability granted and built whose component is not bound (the reinstalled notification listener,
+ * which is every development install) appeared **by name with neither number counting it**, and the
+ * fourth gate would have added a second such hole. A count beside a list exists to say what the
+ * list is made of; one that omits a category is the denominator rule failing in its own sentence.
+ *
+ * Ordered, and the order is the answer to *what does this person do next*: a thing nobody has built
+ * cannot be fixed from a phone, a restriction supersedes a missing permission because the feature
+ * will not run even once it is granted, and a bound-component problem is the one whose obvious
+ * advice is wrong.
+ */
+enum class CapabilityHold(val summary: String) {
+    /** No handler, no channel, or no wire protocol at all. Nothing the user can do. */
+    NOT_BUILT("not built"),
+
+    /** Android has restricted this app and the capability needs a foreground service. */
+    BACKGROUND_RESTRICTED("restricted by Android"),
+
+    /** A permission or Settings toggle is off. */
+    AWAITING_PERMISSION("awaiting a permission"),
+
+    /** Granted, built, and the component behind it is not running. See [CapabilityStatus.running]. */
+    NOT_RUNNING("granted but not running"),
+}
+
+/**
+ * Which bucket [CapabilityStatus] falls in, or null when it is advertised and held back by nothing.
+ *
+ * Total over every combination of the four gates, which is what makes the tally sum — and what
+ * `CapabilityHoldTest` asserts by enumerating all sixteen rather than by checking the cases
+ * somebody thought of.
+ */
+val CapabilityStatus.hold: CapabilityHold?
+    get() = when {
+        advertised -> null
+        !implemented -> CapabilityHold.NOT_BUILT
+        backgroundRestricted -> CapabilityHold.BACKGROUND_RESTRICTED
+        !permitted -> CapabilityHold.AWAITING_PERMISSION
+        else -> CapabilityHold.NOT_RUNNING
+    }
+
+/**
+ * The one line the phone draws under the held-back list: every bucket that has anything in it,
+ * in [CapabilityHold] order, and none that does not.
+ *
+ * Returns null when nothing is held back, so the caller has no emptiness rule of its own to get
+ * wrong.
+ */
+fun heldBackSummary(statuses: List<CapabilityStatus>): String? {
+    val held = statuses.filter { it.hold != null }
+    if (held.isEmpty()) return null
+    val counts = CapabilityHold.entries
+        .mapNotNull { bucket ->
+            held.count { it.hold == bucket }.takeIf { it > 0 }?.let { "$it ${bucket.summary}" }
+        }
+    return "Not offered yet: " + held.joinToString(", ") { it.name } + " — " +
+        counts.joinToString(", ") + "."
 }
 
 /**
@@ -335,6 +413,7 @@ class CapabilityDetector(
         val granted = grantedPermissions()
         val grantedSpecial = specialAccessGranted()
         val liveSpecial = specialAccessRunning()
+        val restricted = isBackgroundRestricted()
         return CapabilityContract.allCapabilities.sorted().map { name ->
             val needs = CapabilityContract.contracts[name]?.specialAccess
             CapabilityStatus(
@@ -348,6 +427,8 @@ class CapabilityDetector(
                 missing = CapabilityContract.missingFor(name, registered, video, bulk),
                 missingPermissions =
                     CapabilityContract.missingPermissionsFor(name, granted, grantedSpecial),
+                backgroundRestricted =
+                    CapabilityContract.blockedByBackgroundRestriction(name, restricted),
             )
         }
     }
@@ -360,6 +441,7 @@ class CapabilityDetector(
         registeredTypes = registeredTypes(),
         videoServed = videoChannelServed(),
         bulkServed = bulkChannelServed(),
+        backgroundRestricted = isBackgroundRestricted(),
     )
 
     /**
@@ -400,6 +482,41 @@ class CapabilityDetector(
 
     private fun granted(permission: String): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Whether Android has background-restricted this app. Defect 102, and one call.
+     *
+     * `ActivityManager.isBackgroundRestricted()` is public since API 28 and this app is minSdk 29,
+     * so there is no version branch: a guard here would be a branch that can never be taken, and
+     * an unreachable branch is the "state that cannot be reached" rule wearing a version check.
+     *
+     * ### Read on every refresh rather than watched, and the gap that leaves
+     *
+     * `AppOpsManager.startWatchingMode` is public, but the op string this needs
+     * (`android:run_any_in_background`) is **not** — there is no public `OPSTR_` constant for it —
+     * so watching it would mean hardcoding an undocumented string and depending on it firing.
+     * Instead this is re-read on every [refresh], which happens at handshake, on app resume, on
+     * every handler registration, and on every component bind.
+     *
+     * **App resume is the one that matters** and it is the one the fix path actually takes: a user
+     * who follows the phone's card leaves for Settings, changes the switch, and comes back, which
+     * resumes the app and refreshes this. What it does *not* catch is One UI restricting the app
+     * while ConnectSuite is backgrounded and nothing else happening — so the mirror also re-reads
+     * this at the moment a projection is revoked, where the answer is what turns an unexplained
+     * stop into a sentence. Two readings of one fact, on purpose, and both from this method.
+     *
+     * The reading itself, and its failure contract, live in [BackgroundRestrictionReading] —
+     * `MirrorEngine` asks the same question at revoke time and the two must not drift.
+     */
+    private fun isBackgroundRestricted(): Boolean =
+        BackgroundRestrictionReading.isSet(context) { failure ->
+            LinkLog.w(
+                "caps",
+                "Could not read isBackgroundRestricted (${failure.javaClass.simpleName}: " +
+                    "${failure.message}); treating the app as unrestricted, so the mirror stays " +
+                    "advertised and a revoke will have to explain itself",
+            )
+        }
 
     /**
      * There is no API to ask "is my accessibility service on"; the enabled list is a

@@ -17442,3 +17442,128 @@ app for a write the instrument made. Screenshot:
 
 **One handset of three.** The moto g34, moto g45 and the vivo are still owed, and they are the point
 of the exercise — 720×1600 is a third ratio and the vivo's is unread.
+
+---
+
+## Phase 7 Slice 39 — the restriction gets a name, and the mirror gets nine (2026-09-11)
+
+Defects **102** and **104**, both from a keyboard. No device was touched in this slice and that is
+stated up front, because the one thing it does not establish is the one a device would.
+
+### 1 · What was built
+
+| | |
+|---|---|
+| `core/.../link/BackgroundRestriction.kt` | the copy (pure, no Android symbol) **and** `BackgroundRestrictionReading`, the single home for `ActivityManager.isBackgroundRestricted()` |
+| `CapabilityContract` | `Contract.needsForegroundService`, true for `mirror`; `blockedByBackgroundRestriction`; `advertisable` takes `backgroundRestricted` with **no default** |
+| `Capabilities.kt` | `CapabilityStatus.backgroundRestricted`, the fourth gate on `advertised`, the reason branch, and `CapabilityHold` / `heldBackSummary` |
+| `app/.../LinkRoute.kt` | the card, **at rest** above Advanced, with a deep link to App info |
+| `mirror-module/.../MirrorStopReason.kt` | nine reasons, each with an `Actor`; `stop()` takes one instead of a `String` |
+
+### 2 · The measurement that decided the shape, and it is a negative one
+
+**The restriction is not blanket.** With `RUN_ANY_IN_BACKGROUND: ignore` set on the S25 for twelve
+hours on 2026-09-10, `sms`, `contacts`, `notifications`, `files` and the rest answered normally; the
+only thing that failed was the only thing that needs a foreground service. So the gate is declared
+per capability by `Contract.needsForegroundService`, and the test asserts the **whole** reached set
+— `assertEquals(listOf(mirror), reached)` — rather than mirror's membership of it, because
+`assertTrue(mirror in reached)` passes just as well when the restriction blankets everything, which
+is the tempting wrong fix.
+
+### 3 · Two readings of one fact, deliberately
+
+`CapabilityDetector` reads the restriction on every `refresh()`; `MirrorEngine` reads it again at
+the instant a projection is revoked. That is not redundancy. One UI can set the op while the app is
+backgrounded, which is the exact window no refresh covers, and the revoke is the moment the answer
+buys something. There is no watcher: `AppOpsManager.startWatchingMode` is public, the op string
+`android:run_any_in_background` is **not** (no `OPSTR_` constant in `android.jar` 36.1), and
+hardcoding an undocumented string to depend on it firing is worse than re-reading.
+
+### 4 · What the platform does not supply, checked rather than recalled
+
+```
+$ javap -classpath <android.jar 36.1> android.media.projection.MediaProjection\$Callback
+  public void onCapturedContentResize(int, int);
+  public void onCapturedContentVisibilityChanged(boolean);
+  public void onStop();                                   ← no reason, at 36.1
+$ javap … android.media.projection.MediaProjection
+  public void stop();                                     ← and none to give
+```
+
+Both `android-36` and `android-36.1` were read. So the stop reason is **derived**, and
+`AndroidRevoked` names the two causes it cannot separate rather than picking the likelier one.
+
+### 5 · Red-first: 12 mutations, 12 red
+
+Each reintroduces the defect its test is named for. The harness prints the gradle exit code beside
+every verdict and refuses a verdict from a build that did not compile — the stale-XML row in
+`CLAUDE.md`.
+
+| | mutation | went red |
+|---|---|---|
+| M1 | `mirror` stops declaring `needsForegroundService` | withholds-mirror-and-nothing-else; not-advertisable |
+| M2 | `advertisable` stops applying the fourth gate | not-advertisable |
+| M3 | the restriction blankets every capability | withholds-mirror-and-nothing-else; sms-and-contacts-go-on-working |
+| M4 | `advertised` stops consulting the restriction | the reason; the summary; the 16-combination enumeration |
+| M5 | the hold buckets revert to the two the phone used to count | the summary; the enumeration |
+| M6 | the two revoke sentences collapse into one | a-revoke-on-a-restricted-phone |
+| **M7** | **the platform revoke goes back to `"Screen capture was stopped on the phone."`** | **names-Android-and-never-the-person** |
+| M8 | the restricted revoke drops its fix hint | names-the-restriction; only-stop-that-sends-anyone-to-a-setting |
+| M9 | the unrestricted revoke claims the user tapped Stop | claims-neither-cause |
+| M10 | the copy offers a retry (wrong fix 1) | no-copy-offers-a-retry |
+| M11 | the copy points at battery optimisation (wrong fix 2) | no-copy-sends-to-battery-optimisation |
+| M12 | the button claims to reach the Battery page | names-the-two-taps |
+
+**M7 is the one worth the row, because it was green first.** The original test asserted that no two
+sentences were *too alike*, by word-set overlap — a proxy for the rule, and a proxy that passed with
+the **exact defect sentence restored**, because the sibling sentence had been reworded in the same
+change so the pair was no longer close while the defect was back. The rule is **attribution**, not
+similarity. `Actor` is now a field on the type and the test asserts the sentence agrees with it; M7
+goes red on the first clause, whatever the other eight sentences say.
+
+That is this project's third-variety test failure — *the test calls the rule correctly, at a layer
+the defect is not in* — caught by mutation rather than by review, which is the only thing that
+catches it.
+
+### 6 · Counts, with the artifact age beside them
+
+```
+core 126 · mirror-module 49 · input-module 44 · app 11 · sync-module 212   =  442, 0 failures
+results files written 12s ago; gradle exit 0
+```
+
+Up from 431 at the start of the slice, of which **one was failing**: `ProtocolNamespaceTest > every
+feature message names a real capability` had been red on this branch since O4 added
+`MessageType.STORAGE_STATE` without its system-set exemption. It is fixed here, and the reason it
+survived is the module-blindness of defect 65 with the modules the other way round — the commit that
+added the type ran `npm test` in `desktop/` and not the phone's suite. Two new classes:
+`BackgroundRestrictionTest` (12) and `MirrorStopReasonTest` (11).
+
+### 7 · What this slice does **not** establish
+
+**`isBackgroundRestricted()` has never returned `true` on any device in this project.** The op was
+restored to `allow` on the S25 at the owner's instruction and is unset on both Motorolas and the
+vivo. So the *decision* is proven and the *write* is not — which is the `LinkWaitStatus` split
+stated in advance instead of discovered in six weeks: eleven green tests over a decision, and a
+feature that had never once worked, because no test could reach the line that filled the field in.
+
+The stimulus, one command, with its control:
+
+```
+scripts/adb-pinned.sh samsung shell cmd appops set com.chetan.connectsuite.debug RUN_ANY_IN_BACKGROUND ignore
+#  expect: the phone's Mac screen draws the restriction card at rest;
+#          `mirror` leaves the advertised set; the Mac's Mirror pane greys with CAPABILITY_REASON;
+#          a mirror.start refused, and the stop sentence naming Android and the restriction
+scripts/adb-pinned.sh samsung shell cmd appops set com.chetan.connectsuite.debug RUN_ANY_IN_BACKGROUND allow
+#  control: the card must GO AWAY and `mirror` must come back. A card that draws in both
+#           states is a card that is reading nothing.
+```
+
+The control is the second half and it is the half that matters: without it the reading is a card
+that might be drawn unconditionally, which is the hidden-grid failure in a new pane.
+
+**And `MirrorEngine.onStop` itself is unreached by any test**, because it is a platform callback
+inside a class needing a `Context`, a live `MediaProjection` and an encoder. The decision was
+extracted to `MirrorStopReason.revoked` so a JVM test can call it; what remains in the callback is
+taking the reading and passing it in, and the honest status of that line is **unproven**, by the
+same stimulus above.

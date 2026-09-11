@@ -39,6 +39,7 @@ class CapabilityContractTest {
             registeredTypes = emptySet(),
             videoServed = false,
             bulkServed = false,
+            backgroundRestricted = false,
         )
 
         assertEquals(
@@ -146,6 +147,7 @@ class CapabilityContractTest {
                 registeredTypes = contacts,
                 videoServed = true,
                 bulkServed = true,
+                backgroundRestricted = false,
             ),
         )
         assertEquals(
@@ -157,6 +159,7 @@ class CapabilityContractTest {
                 registeredTypes = emptySet(),
                 videoServed = true,
                 bulkServed = true,
+                backgroundRestricted = false,
             ),
         )
         assertEquals(
@@ -168,6 +171,7 @@ class CapabilityContractTest {
                 registeredTypes = contacts,
                 videoServed = true,
                 bulkServed = true,
+                backgroundRestricted = false,
             ),
         )
     }

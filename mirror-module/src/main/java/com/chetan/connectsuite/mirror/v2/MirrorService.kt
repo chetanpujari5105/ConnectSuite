@@ -111,7 +111,7 @@ class MirrorService : Service() {
         // than STOP_FOREGROUND, so its absence here is as informative as the line above's presence.
         LinkLog.w("mirror", "INSTRUMENT (defect 100): MirrorService.onDestroy")
         super.onDestroy()
-        MirrorEngine.stop("mirror service destroyed")
+        MirrorEngine.stop(MirrorStopReason.ServiceDestroyed)
     }
 
     private fun foregroundType(): Int =

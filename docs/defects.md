@@ -115,8 +115,9 @@ own heading there, and its own row here.
 | **99** | **The Mirror stage asserted a 9:19.5 phone, and `pointAt` divided by the element.** One assumption in three places — the stage's `aspect-ratio` in styles.css, `RATIO` in `shared/floatGeometry.ts`, and a sentence in `pointAt`'s doc comment saying there was no letterbox to account for. The first two draw bars on **every phone measured so far**, and the SM-S938B is **exactly 19.5:9** (1440×3120), so the hard-coded box matched the reference handset perfectly and drew **no bars at all** on it in portrait — which is why one device hid it for a phase. An earlier claim here that the reference device was itself ~20:9 was inferred from a stale canvas backing store and is withdrawn. The third **moves the user's finger**: with `object-fit: contain` inside a fixed box, taps were scaled and offset by the size of the bars — ~20 capture px at the edges in portrait on a 720×1600 moto, and **427 px of 1080 in landscape**, where a tap on the top of the phone landed 40% of the way down it. Underneath both, `#mirror-canvas`'s `max-height: 60vh` (id, specificity 1,0,0) beat `.pane-mirror .mirror-stage canvas` (0,2,1) and clamped the canvas 11px short of its own stage, so the element was not even the ratio the stage asserted | **fixed** 2026-09-10, Mirror pane. The stage takes `--capture-aspect` from the geometry the phone already announces in `mirror.state` and re-announces in `mirror.rotate`; the mapping goes through `captureFit.ts`, which computes the contained picture and maps against **that** rather than the element. Landscape makes the **box** landscape. The hairline moved from `border` to an inset shadow, because `aspect-ratio` sizes the border box and a 1px border makes the content box a different ratio — measured at 1.2px of residual letterbox. **The wrong fix is sizing the stage from `canvas.width`**: the announced geometry is what the phone checks a coordinate stamp against, and an encoder may pad the coded frame to a macroblock boundary. **The second wrong fix is a default aspect inside `captureAspect`** — that is the 19.5:9 assumption returning silently, which is how it survived; no geometry returns null and the CSS carries the empty-stage fallback. **The float window's `RATIO` is the same defect in a third place and is still live** — it needs the geometry plumbing §1 adds | **Mac-side measured, hardware pending.** Four geometries driven through the real stylesheet in the packaged app: stage aspect equals stream aspect and the letterbox is **0.00px** at 1080×2408, 720×1600, 2408×1080 and 1600×720; `max-height` on the canvas reads `none`. `captureFit.test.ts` is red-first against the element mapping (2 of 6 fail). **Not yet proven on a phone**: no run has watched a real `mirror.rotate` resize the box, and the three-handset run the fix exists for has not happened | `docs/testing.md` → Phase 7 Slice 37 |
 | **100** | **The mirror has never survived its own start, and no log in this repo has ever shown it working.** Consent is granted (8 of 8, zero denials), the `MediaProjection` token is issued, the `VirtualDisplay` is created, the encoder reaches `RUNNING` and emits its output format — and **107 ms later** `MirrorService` loses its foreground status and Android revokes the projection: `am_foreground_service_stop [MirrorService, …, STOP_FOREGROUND, type=32]` followed by `Stopped MediaProjection due to foreground service change`, `stopReason=7`, `wasCaptureInProgress=true`. The `SecurityException: Cannot create VirtualDisplay with non-current MediaProjection` seen once is the same fault landing a few ms earlier. **The user-visible sentence for all of it is `Screen capture was stopped on the phone`**, which is one of eight reasons `MirrorEngine.stop(String)` funnels into one line — two of which differ by three words | **open, mechanism partly established** 2026-09-10. The FGS ends 106-116 ms in, recorded `STOP_FOREGROUND` with `fgsType=32`, leaving the package with **zero** foreground services (`updateNumberOfVisibleRunningPackagesLocked: 0`) — which is what the projection service reacts to. `LinkService` has lost its foreground state too, so the mirror's is the only one left to lose. **What issues the stop is not known**: nothing here calls `stopForeground`, cancels 3001 or calls `cancelAll`. A *provisional background-start allowance* explanation was recorded and is **retracted** — the stop event carries `PROC_STATE_TOP`, so the process never left the foreground. The planned instrument could not be built (`Service.stopForeground` is `final`) and its substitute read nothing (a visible Activity masks the importance signal) | **Not verified — and the control is the finding.** `Encoded +N frames`, the 2-second stats ticker that only runs while a session is live, is **0** across both surviving log files (2026-09-06 → 2026-09-10, 4,720 lines). Seven `Mirror session started` and not one frame tick. Eliminated with evidence: our session-ended hook (grep empty), `MirrorFeature.uninstall` (no caller), the accessibility toggle, `MirrorNotifications.clear` (cancels 3002, not 3001), a second projection or process (one uid, one pid, `dumpsys media_projection` null), a third-party app, a stale installed build (`MirrorService.kt` unchanged since 08-28, APK 09-04), a notification-id collision (fixed ids 1001–3202; mirrored ids `300000 + (hash & 0xFFFF)`) | `docs/testing.md` → Phase 7 Slice 38 |
 | **101** | **`ConnectionService` re-posts notification 1001 twice every eight seconds, forever** — `notification_enqueue` ×2 per tick, each waking `NotificationManagerService` and taking two partial wake locks (`power_partial_wake_state` DIS/REL ×2). Nobody was looking for it: it was found because **it rotated the platform's `events` buffer past the failure under investigation**, destroying the `am_foreground_service_*` records defect 100 needed. An instrument destroyed by our own noise, and the second time in this project that the app's own output has eaten the evidence about the app | **fixed** 2026-09-10, and **the emitter is named rather than debounced**: `UdpDiscovery.ANNOUNCE_INTERVAL_MS = 8_000L`. The discovery heartbeat re-emitted the same device list, `combine` fired because either upstream had emitted, the same status string rendered, and the same notification posted. `.distinctUntilChanged()` on the mapped flow — the notification follows the **rendered text**, not the heartbeat. The 8-second announce is correct and untouched. **The wrong fix is lowering the notification's importance** — that hides the symptom in the shade and leaves the wake locks and the buffer churn exactly where they are. **The second wrong fix is a fixed-interval throttle**, which would make a genuine status change late as well as making the churn quieter | **Measured both ways, 2026-09-10.** BEFORE: `notification_enqueue [11011,8229,…,1001,…]` at 10:26:36.295 **and** .301, again at 10:26:44.301/.306, 10:26:52.307/.311, 10:27:00.305/.307, 10:27:08.315/.319 — five consecutive 8-second ticks, two enqueues each, four wake-lock transitions per tick — about **15 posts a minute**. AFTER, in a 60-second settled window with the Mac connected (`link-up.sh` 3/3 OK, rtt 7 ms): **`READING 0 of 186 lines match 'notification_enqueue.*connectsuite'`**. Positive control on the other half — the dedupe must not suppress a *real* change: the live 1001 notification was last posted **23:30:38**, ten minutes before the window, and reads `Connected to Chetans-MacBook-Pro`, having moved there from `Looking for devices…`. Identical posts suppressed, genuine changes through | `docs/testing.md` → Phase 7 Slice 38 |
-| **102** | **The app cannot tell it has been background-restricted, so it fails at 116 ms with a sentence about screen capture.** On 2026-09-10 this handset reported `RUN_ANY_IN_BACKGROUND: ignore` for `com.chetan.connectsuite.debug` — the AOSP background restriction — while **6 of 8** comparable third-party apps on the same device read `allow` or unset. `SUPPORT_BG_AD_RESTRICTION_BY_AI=1` is on, which is One UI's automatic *unused apps* restriction, and the **only other** restricted app in the sample is `com.coindcx.btc`: the two apps the owner does not open daily. A user's phone can therefore put this app into a state where it cannot hold a foreground service, **on its own, with no notice**, and everything downstream — the mirror, and `LinkService` — then fails with a message about something else | **open.** Detection exists and is one call: `ActivityManager.isBackgroundRestricted()`, public since API 28. It belongs beside the other capability probes in `Capabilities.kt`, surfaced the way every other unavailable feature is (*"unavailable, here is why"*), with a deep link to the app's battery settings. **The wrong fix is retrying the foreground start** — each retry buys another allowance and another withdrawal, which is exactly what seven taps bought on 2026-09-10. **The second wrong fix is asking for the battery-optimisation exemption again**: it is a different switch, and this app already holds the onboarding prompt for it (`OnboardingScreen.kt:258`) while being restricted anyway | Not fixed. Readings and their control are in `docs/testing.md` → Phase 7 Slice 38 | `docs/testing.md` → Phase 7 Slice 38 |
+| **102** | **The app cannot tell it has been background-restricted, so it fails at 116 ms with a sentence about screen capture.** On 2026-09-10 this handset reported `RUN_ANY_IN_BACKGROUND: ignore` for `com.chetan.connectsuite.debug` — the AOSP background restriction — while **6 of 8** comparable third-party apps on the same device read `allow` or unset. `SUPPORT_BG_AD_RESTRICTION_BY_AI=1` is on, which is One UI's automatic *unused apps* restriction, and the **only other** restricted app in the sample is `com.coindcx.btc`: the two apps the owner does not open daily. A user's phone can therefore put this app into a state where it cannot hold a foreground service, **on its own, with no notice**, and everything downstream — the mirror, and `LinkService` — then fails with a message about something else | **open.** Detection exists and is one call: `ActivityManager.isBackgroundRestricted()`, public since API 28. It belongs beside the other capability probes in `Capabilities.kt`, surfaced the way every other unavailable feature is (*"unavailable, here is why"*), with a deep link to the app's battery settings. **The wrong fix is retrying the foreground start** — each retry buys another allowance and another withdrawal, which is exactly what seven taps bought on 2026-09-10. **The second wrong fix is asking for the battery-optimisation exemption again**: it is a different switch, and this app already holds the onboarding prompt for it (`OnboardingScreen.kt:258`) while being restricted anyway | **Detection built 2026-09-11; the reading is unproven on hardware and that is the whole of what is owed.** `ActivityManager.isBackgroundRestricted()` is read in `BackgroundRestrictionReading`, asked by `CapabilityDetector` on every refresh and again by `MirrorEngine` at the instant a projection is revoked; `Contract.needsForegroundService` says it reaches `mirror` and **nothing else** (measured: every other capability answered normally for twelve hours with the op set); the Mac gets `BackgroundRestriction.CAPABILITY_REASON` through the existing `unavailable` map with no protocol change; the phone draws a card **at rest** on the Mac screen with a deep link to App info. 23 tests, 12 mutations all red — including the original defect sentence restored. **What has not happened: the call has never once returned `true` on any device here**, because the op was restored to `allow` on the only handset that ever had it set. That is a registration-line-is-not-an-execution-line gap and it is named rather than papered over — the stimulus is one command and is written down in Slice 39 | `docs/testing.md` → Phase 7 Slices 38 and 39 |
 | **103** | **`LinkService` believes it is foreground forever, so it can never re-claim it.** `private var isForeground` is declared `false` at `LinkService.kt:50`, read at `:108` as the guard `if (!isForeground) { startForegroundWithStatus(...) }`, and set `true` at `:244` — **and never set back to `false` anywhere in the file.** The moment the platform demotes the service for any reason, the service's own bookkeeping still says foreground, every later `onStartCommand` skips the re-claim, and it runs unforegrounded until the process dies. Observed: `isForeground=false types=0x00000000` on a service alive 12 hours with `startForegroundCount=1`, and `scripts/link-up.sh` check 1 failing all morning while checks 2 and 3 passed. **This is defect 97's shape on the phone** — a field assigned in one place and cleared in none — and it is the reason lifting the background restriction fixed the mirror and did **not** fix the link: `MirrorService` calls `startForeground` unconditionally on every `onStartCommand` and so recovered by itself | **open.** The flag has to be reset wherever the foreground state can end, and the honest version does not track it in a field at all — `onStartCommand` can call `startForeground` unconditionally, which is what `MirrorService` does and why it recovered. If a field is kept, it needs the same treatment defect 97 got: one writer for each direction, not one writer and no reader of the platform's actual state. **The wrong fix is polling the platform** for the real foreground state; there is no public API, and a proxy through process importance is masked by any visible Activity | **Static fact, verified by reading; the runtime confirmation is owed.** The intended test — deliver a start command and watch the re-claim be skipped — **did not run**: `am start-foreground-service` was refused with `Requires permission not exported from uid 11011`, so the `isForeground=false` reading after it is not evidence about the guard | `docs/testing.md` → Phase 7 Slice 38 |
+| **104** | **Eight hand-written mirror stop sentences, two of them three words apart, and the platform's revoke collapsed into the pair's friendlier half.** `MirrorEngine.stop` took a free `String` and eight call sites each wrote their own. *"Stopped on the phone."* was the person tapping Stop in the Mirror tab; *"Screen capture was stopped on the phone."* was `MediaProjection.Callback.onStop` — **Android taking the projection away** — and during defect 102 it was the only thing the app said while eight consecutive sessions died at 107-116 ms. A stop the *platform* caused was worded as a stop the *phone's owner* caused, so the owner was told eight times that they had done something they had not, and the one fact that would have ended the hunt on the first attempt — that this app was background-restricted — was never on screen | **Fixed 2026-09-11.** `MirrorStopReason` is a closed set of nine, each carrying an `Actor`, a sentence and an optional fix hint; `stop()` takes one instead of a `String`. `onStop` **derives** its reason — the callback carries none at any SDK level this app compiles against (`android.jar` 36.1 is `onStop()`, and `MediaProjection.stop()` takes no argument), so the derivation reads `isBackgroundRestricted()` at that instant and nothing more is claimed than that reading supports. **There is deliberately no third member for "the user tapped Stop in the shade"**: it is indistinguishable from an unexplained revoke from inside the app, so `AndroidRevoked` names both and asserts neither — the folder-picker rule. **The wrong fix is a string-distance check over the sentences**: one was written, it passed with the original defect sentence restored, and it was replaced by the attribution rule the defect was actually about | Fixed, and the attribution rule is red-first proven — mutation M7 restores the exact defect sentence and goes red | `docs/testing.md` → Phase 7 Slice 39 |
 
 ---
 
@@ -2410,7 +2411,7 @@ leaves the wake locks and the buffer churn exactly where they are.
 **The second wrong fix is a fixed-interval throttle**, which makes a genuine status change late as
 well as making the churn quieter — the failure is *redundant* posts, not *frequent* ones.
 
-### 102 — the app cannot tell it has been background-restricted · **open** · found 2026-09-10
+### 102 — the app cannot tell it has been background-restricted · **detection built 2026-09-11, reading unproven on hardware** · found 2026-09-10
 
 `RUN_ANY_IN_BACKGROUND: ignore` on this handset, against `allow` or unset for 6 of 8 comparable
 third-party apps read the same minute. The op is the AOSP background restriction; One UI sets it
@@ -2438,6 +2439,50 @@ and a user who has already said yes.
 **Relationship to defect 100:** if the appop experiment shows the foreground service surviving with
 the op set to `allow`, then 100 is not a code defect at all and this is the whole of it. If it does
 not, the op is a red herring and 100 stays open on its own terms.
+
+---
+
+**What was built on 2026-09-11, and the one thing that was not.**
+
+The fix direction above, taken as written and no further:
+
+| | |
+|---|---|
+| the reading | `BackgroundRestrictionReading.isSet` — `ActivityManager.isBackgroundRestricted()`, one home, two callers on purpose |
+| the gate | `Contract.needsForegroundService`, true for `mirror` and **nothing else** |
+| to the Mac | `BackgroundRestriction.CAPABILITY_REASON` through the existing `unavailable` map. **No protocol change** — this is what that map is |
+| on the phone | a card at rest on the Mac screen, above Advanced, with the two taps named and a deep link to App info |
+| at the stop | `MirrorStopReason.AndroidRevokedWhileRestricted` — see defect 104 |
+
+**The restriction is not blanket, and that is a measurement rather than caution.** With the op set
+on this handset for twelve hours, `sms`, `contacts`, `notifications` and the rest went on answering
+normally; the one thing that failed was the one thing that needs a foreground service. Withholding
+everything would have drawn a wall where there is none, and `BackgroundRestrictionTest` asserts the
+**whole** reached set rather than mirror's membership of it, so widening has to be deliberate.
+
+**Two callers for one reading, on purpose.** `CapabilityDetector` asks on every refresh, which
+decides whether `mirror` is advertised; `MirrorEngine` asks again when a projection is revoked,
+which decides what the stop sentence says. One UI can set the op while the app is backgrounded —
+the exact window no refresh covers — so the second reading is not redundant. There is no watcher
+because there is no public `OPSTR_` constant for `android:run_any_in_background`, and hardcoding an
+undocumented string to depend on it firing is worse than re-reading.
+
+**The part that is not done, stated as a gap rather than a caveat: this call has never once returned
+`true` on any device in this project.** The op was restored to `allow` on the S25 at the owner's
+instruction, and it is unset on both Motorolas and the vivo. So what is proven is the rule — 23
+tests, 12 mutations, every one red, including the original defect sentence restored — and what is
+unproven is the *write*, which is precisely the `LinkWaitStatus` split: eleven green tests over a
+decision, and a feature that had never worked. The stimulus is one command and costs a minute:
+
+```
+scripts/adb-pinned.sh samsung shell cmd appops set com.chetan.connectsuite.debug RUN_ANY_IN_BACKGROUND ignore
+# expect: the phone's Mac screen draws the card; `mirror` leaves the advertised set;
+#         the Mac's Mirror pane greys with CAPABILITY_REASON
+scripts/adb-pinned.sh samsung shell cmd appops set com.chetan.connectsuite.debug RUN_ANY_IN_BACKGROUND allow
+```
+
+Its control is the second command: the card must **go away**, and `mirror` must come back. A card
+that draws in both states is a card that is not reading anything.
 
 ### 103 — `LinkService` believes it is foreground forever · **open** · found 2026-09-10
 
@@ -2470,3 +2515,48 @@ foreground", and the obvious proxy — process importance — is masked by any v
 the service is `exported=false` and adb's shell uid is refused — so the test needs an in-app trigger
 or a fresh process, and until it runs this defect rests on reading the source.
 
+
+
+### 104 — eight stop sentences, two three words apart · **fixed 2026-09-11** · found 2026-09-11
+
+```
+"restarted by the Mac"      "the Mac disconnected"      "mirror feature uninstalled"
+"restarted from the phone"  "stopped on the phone"      "mirror service destroyed"
+"stopped by the Mac"        "screen capture was stopped on the phone"   ← the platform's
+```
+
+`MirrorEngine.stop` took a free `String`. Eight call sites, eight sentences, no type. Two of them
+are three words apart, and the three words are the whole meaning: *"Stopped on the phone."* is a
+person tapping Stop, *"Screen capture was stopped on the phone."* is Android revoking the
+projection.
+
+**The cost is measured, not hypothetical.** Through defect 102 the second sentence was the only
+thing the app ever said, eight times in a row, while the mirror died at 107-116 ms — so the phone's
+owner was told eight times that the stop had happened *on the phone*, which is true of the location
+and false of the agent, and the fact that would have ended it in one reading was never shown.
+
+**The platform hands back no reason.** `MediaProjection.Callback` on `android.jar` 36.1 is
+`onStop()`, `onCapturedContentResize` and `onCapturedContentVisibilityChanged`; `MediaProjection.stop()`
+takes no argument. Checked rather than recalled, because the fix depends on it. So the reason is
+**derived** from the one question the app can answer at that instant.
+
+**Why there is no third revoke member.** *"You stopped it from the notification shade"* is the
+commonest benign revoke and would be a pleasant sentence. From inside the app it is
+indistinguishable from an unexplained revoke — same callback, no argument, no extra, foreground
+service alive in both — so `AndroidRevoked` names both possibilities and claims neither. This is
+the folder-picker rule: when the platform returns one result for two intents, nothing may be
+explained afterwards.
+
+**The wrong fix, written and then thrown away, is the part worth keeping.** The first test asserted
+that no two sentences were *too alike*, by word-set overlap. It is a proxy for the rule, it looked
+rigorous, and it **passed with the exact defect sentence restored** — because the sibling sentence
+had meanwhile been reworded, so the pair was no longer close even though the defect was back. The
+rule is **attribution**, not similarity: a stop Android caused must name Android and must not say
+*you*. That is now an `Actor` on the type and an assertion that the sentence agrees with it, and
+mutation M7 goes red on it.
+
+One more thing fell out. `fail()` used to stringify the failure's sentence into `stop()`, watch
+`stop()` overwrite it with a mechanical one, and then restore it on top — three writes to one field
+to end where one would do, which is `CLAUDE.md`'s two-writers-on-one-surface with the writers a few
+lines apart. `MirrorStopReason.Failed` carries the failure through, and `stop()` publishes the
+`fixHint` it was throwing away.

@@ -85,7 +85,7 @@ object MirrorFeature {
         }
 
         MessageType.MIRROR_STOP -> MessageHandler { session, request ->
-            MirrorEngine.stop("stopped by the Mac")
+            MirrorEngine.stop(MirrorStopReason.StoppedByMac)
             MirrorService.stop(appContext)
             session.ack(request)
         }
@@ -117,7 +117,7 @@ object MirrorFeature {
     fun uninstall(server: LinkServer) {
         if (!installed) return
         installed = false
-        MirrorEngine.stop("mirror feature uninstalled")
+        MirrorEngine.stop(MirrorStopReason.FeatureUninstalled)
         server.videoChannelSink = null
         server.sideChannelRejected = null
         server.sessionEndedSink = null

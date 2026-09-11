@@ -14,6 +14,7 @@ import android.view.Display
 import android.view.Surface
 import com.chetan.connectsuite.core.app.AppForeground
 import com.chetan.connectsuite.core.link.AuthenticatedChannel
+import com.chetan.connectsuite.core.link.BackgroundRestrictionReading
 import com.chetan.connectsuite.core.link.ControlSession
 import com.chetan.connectsuite.core.link.LinkController
 import com.chetan.connectsuite.core.link.LinkLog
@@ -280,7 +281,7 @@ object MirrorEngine {
         val startedAt = System.currentTimeMillis()
         if (isRunning) {
             LinkLog.i("mirror", "mirror.start while already running; restarting")
-            stop("restarted by the Mac")
+            stop(MirrorStopReason.RestartedByMac)
         }
         owner = session
         requestId = request.id
@@ -393,7 +394,7 @@ object MirrorEngine {
         owner = session
         if (isRunning) {
             LinkLog.i("mirror", "Start tapped while already running; restarting")
-            stop("restarted from the phone")
+            stop(MirrorStopReason.RestartedFromPhone)
             owner = session
         }
         LinkLog.i("mirror", "Mirroring started from the phone for ${session.peerName}")
@@ -420,7 +421,7 @@ object MirrorEngine {
         owner = null
         if (!wasLive) return
         LinkLog.i("mirror", "Control session with ${session.peerName} ended; stopping capture")
-        stop("the Mac disconnected")
+        stop(MirrorStopReason.MacDisconnected)
         // stop() releases the projection and the encoder but not the foreground service that hosts
         // them — that is stopFromPhone's pairing too, and without it the recording notification
         // outlives the capture it announces.
@@ -429,7 +430,7 @@ object MirrorEngine {
 
     /** `mirror.stop` from the phone's Mirror tab. */
     fun stopFromPhone(context: Context) {
-        stop("stopped on the phone")
+        stop(MirrorStopReason.StoppedFromPhone)
         MirrorService.stop(context.applicationContext)
     }
 
@@ -482,8 +483,26 @@ object MirrorEngine {
         live.registerCallback(
             object : MediaProjection.Callback() {
                 override fun onStop() {
-                    LinkLog.i("mirror", "Projection stopped by the system or the user")
-                    stop("screen capture was stopped on the phone")
+                    // The callback carries no reason at any SDK level this app compiles against,
+                    // so the reason is derived from the one question the app can answer right
+                    // now. Read here rather than reused from the last capability refresh: One UI
+                    // can set the restriction while the app is backgrounded, which is exactly the
+                    // window no refresh covers, and this is the moment it costs something.
+                    val restricted = BackgroundRestrictionReading.isSet(context) { failure ->
+                        LinkLog.w(
+                            "mirror",
+                            "Projection revoked and isBackgroundRestricted could not be read " +
+                                "(${failure.javaClass.simpleName}: ${failure.message}); the stop " +
+                                "sentence will not name the restriction",
+                        )
+                    }
+                    val reason = MirrorStopReason.revoked(restricted)
+                    LinkLog.i(
+                        "mirror",
+                        "Projection stopped by Android: ${reason.label} " +
+                            "(backgroundRestricted=$restricted)",
+                    )
+                    stop(reason)
                 }
             },
             null,
@@ -799,8 +818,14 @@ object MirrorEngine {
             displayHeight = reading.heightPixels,
         )
 
-    /** `mirror.stop`, and every internal teardown. */
-    fun stop(reason: String) {
+    /**
+     * `mirror.stop`, and every internal teardown.
+     *
+     * Takes a [MirrorStopReason] rather than a `String`, which is defect 104: eight call sites
+     * each wrote their own sentence and two of them ended up three words apart, one meaning *you
+     * did this* and the other meaning *Android took it away*.
+     */
+    fun stop(reason: MirrorStopReason) {
         val hadSession = isRunning
         // Nothing from the outgoing encoder counts from here: a codec being torn down can still
         // report an error, and that error belongs to a session that is already over.
@@ -823,17 +848,19 @@ object MirrorEngine {
         ScreenGeometryRegistry.clear()
         naturalPortrait = null
         contentBlocked = false
-        if (hadSession) LinkLog.i("mirror", "Mirror stopped: $reason")
+        if (hadSession) LinkLog.i("mirror", "Mirror stopped: ${reason.label} — ${reason.sentence}")
 
         // Announced only when there was something to end. Publishing "stopped" over an idle engine
         // would overwrite the failure the Mirror tab is showing with a line about nothing.
         if (hadSession || _status.value.phase.isPending()) {
-            val sentence = asSentence(reason)
             _status.update {
                 it.copy(
                     phase = MirrorPhase.STOPPED,
-                    message = sentence,
-                    fixHint = null,
+                    message = reason.sentence,
+                    // Carried now rather than always null. The revoke reasons are the only stops
+                    // with anything for the user to do, and before this they had nowhere to put
+                    // it — which is half of why eight sessions died without advice.
+                    fixHint = reason.fixHint,
                     awaitingTap = false,
                     geometry = null,
                 )
@@ -841,7 +868,8 @@ object MirrorEngine {
             owner?.event(MessageType.MIRROR_STATE) {
                 put("state", MirrorPhase.STOPPED.wire)
                 requestId?.let { put("requestId", it) }
-                put("message", sentence)
+                put("message", reason.sentence)
+                reason.fixHint?.let { put("fixHint", it) }
             }
         }
 
@@ -1112,15 +1140,6 @@ object MirrorEngine {
         }
     }
 
-    /**
-     * Teardown reasons are written as fragments ("stopped by the Mac") so they read in a log line;
-     * the same text goes on a Mac canvas, where it has to be a sentence.
-     */
-    private fun asSentence(reason: String): String {
-        val capitalised = reason.replaceFirstChar(Char::uppercase)
-        return if (capitalised.lastOrNull() in setOf('.', '!', '?')) capitalised else "$capitalised."
-    }
-
     /** Phases where something has been asked for and no answer has arrived. */
     private fun MirrorPhase.isPending(): Boolean =
         this == MirrorPhase.AWAITING_FOREGROUND || this == MirrorPhase.REQUESTING_CONSENT
@@ -1153,12 +1172,12 @@ object MirrorEngine {
             )
         }
         if (!transient) {
-            stop(failure.reason)
-            // stop() publishes "stopped" with its own wording, which is the *mechanical* reason.
-            // The failure is the one the user needs, so it is restored on top.
-            _status.update {
-                it.copy(message = failure.reason, fixHint = failure.fixHint, lastError = failure.reason)
-            }
+            // The failure's own sentence travels *into* stop() as the reason. It used to be
+            // stringified here, overwritten by stop()'s mechanical wording, and then restored on
+            // top afterwards — three writes to one field to end up where one would do, and the
+            // shape `CLAUDE.md` calls two writers on one surface.
+            stop(MirrorStopReason.Failed(failure))
+            _status.update { it.copy(lastError = failure.reason) }
         }
     }
 

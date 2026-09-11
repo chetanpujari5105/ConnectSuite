@@ -41,6 +41,13 @@ class ProtocolNamespaceTest {
             MessageType.HELLO, MessageType.HELLO_ACK, MessageType.ACK, MessageType.ERROR,
             MessageType.PING, MessageType.PONG, MessageType.CAPABILITIES_CHANGED,
             MessageType.BATTERY_STATE, MessageType.NET_STATE,
+            // `storage.state` sits beside `battery.state` for the same reason and was missed when
+            // O4's Device status card added it: it is pushed by the phone, has no inbound verb,
+            // and there is no `storage` pane to grey out. **This test was red on `main` from the
+            // moment that type landed** — the commit that added it ran the Mac suite and not the
+            // phone's, which is the module-blindness of `CLAUDE.md`'s defect-65 entry with the
+            // modules the other way round.
+            MessageType.STORAGE_STATE,
             // `pair.rejected` is a handshake message and belongs here for the same reason
             // `hello.ack` does: it is emitted *before* the session exists, so there are no
             // capabilities yet and no pane that could be greyed out. Its `pair` prefix is not a
@@ -65,6 +72,7 @@ class ProtocolNamespaceTest {
         assertNull(FeatureOf.of(MessageType.HELLO))
         assertNull(FeatureOf.of(MessageType.ERROR))
         assertNull(FeatureOf.of(MessageType.CAPABILITIES_CHANGED))
+        assertNull(FeatureOf.of(MessageType.STORAGE_STATE))
         // The exemption above is asserted here rather than taken on trust. If someone ever teaches
         // `FeatureOf` that `pair` is a capability, the set membership would silently hide it.
         assertNull(FeatureOf.of(MessageType.PAIR_REJECTED))

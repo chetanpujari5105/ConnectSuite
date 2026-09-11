@@ -44,6 +44,7 @@ class EmptyCapabilitiesTest {
             registeredTypes = emptySet(),
             videoServed = false,
             bulkServed = false,
+            backgroundRestricted = false,
         )
 
         assertTrue("no permissions and no handlers must advertise nothing", advertisable.isEmpty())
@@ -62,6 +63,7 @@ class EmptyCapabilitiesTest {
             registeredTypes = emptySet(),
             videoServed = false,
             bulkServed = false,
+            backgroundRestricted = false,
         )
 
         assertTrue("an unimplemented capability is not advertisable", advertisable.isEmpty())

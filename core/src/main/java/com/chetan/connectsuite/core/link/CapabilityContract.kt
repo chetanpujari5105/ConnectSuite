@@ -139,6 +139,11 @@ object CapabilityContract {
         val specialAccess: SpecialAccess? = null,
         val needsVideoChannel: Boolean = false,
         val needsBulkChannel: Boolean = false,
+        /**
+         * This capability cannot run without a foreground service, so a phone that has been
+         * **background-restricted** cannot honour it. See [blockedByBackgroundRestriction].
+         */
+        val needsForegroundService: Boolean = false,
     )
 
     /**
@@ -158,6 +163,11 @@ object CapabilityContract {
             // Mirroring without the video socket served is a control channel that says "started"
             // and then never delivers a frame.
             needsVideoChannel = true,
+            // From Android 14 a MediaProjection is handed to a foreground service with the
+            // `mediaProjection` type, and it is revoked the instant that service loses foreground
+            // status. A background-restricted app cannot hold one — measured on this handset on
+            // 2026-09-10, where every attempt died 107-116 ms in. See defect 102.
+            needsForegroundService = true,
         ),
         Capability.INPUT to Contract(
             requests = setOf(
@@ -362,6 +372,40 @@ object CapabilityContract {
     }
 
     /**
+     * True when [capability] needs a foreground service and this phone will not let the app hold
+     * one — the **fourth gate**, and the first that is a fact about the app rather than about one
+     * capability's grants.
+     *
+     * ### Why a device-wide state is asked per capability
+     *
+     * The restriction is one boolean for the whole package, so the temptation is to advertise
+     * nothing at all when it is set. That would be wrong and would be wrong *loudly*: with the op
+     * set on this handset on 2026-09-10, `sms`, `contacts`, `notifications` and the rest all went
+     * on answering normally for twelve hours. The one thing that failed was the one thing that
+     * needs a foreground service. So the restriction is a device fact and [Contract] says which
+     * capabilities it reaches — which is the same shape as [Contract.needsVideoChannel], a
+     * process-wide resource named by the capabilities that cannot work without it.
+     *
+     * ### What this is measured on, and what it is not
+     *
+     * **One handset, one vendor.** The reading behind it is a Samsung SM-S938B on One UI, where
+     * `RUN_ANY_IN_BACKGROUND: ignore` stopped the `mediaProjection` foreground service 107-116 ms
+     * after every start — *including while the process was `PROC_STATE_TOP`*, which is the part
+     * AOSP's documented behaviour does not predict. Whether another skin demotes a restricted
+     * app's foreground service while the user is looking at it is **unknown and untested**; see
+     * `docs/single-device-audit.md`.
+     *
+     * The consequence of being wrong here is bounded and recoverable in one direction only, which
+     * is why it is written this way round: a capability wrongly withheld says so in a sentence the
+     * user can act on, and a capability wrongly advertised is a Start button that dies at 116 ms
+     * behind a message about screen capture.
+     */
+    fun blockedByBackgroundRestriction(capability: String, backgroundRestricted: Boolean): Boolean {
+        if (!backgroundRestricted) return false
+        return contracts[capability]?.needsForegroundService == true
+    }
+
+    /**
      * Every permission [capability] needs and does not have, for the sentence a user reads.
      *
      * Returns **Settings names**, not permission constants — see [permissionLabels]. Nothing
@@ -425,9 +469,16 @@ object CapabilityContract {
         registeredTypes: Set<String>,
         videoServed: Boolean,
         bulkServed: Boolean,
+        /**
+         * `ActivityManager.isBackgroundRestricted()`. **Deliberately not defaulted** — the
+         * `permissionsAnyOf` change of 2026-08-31 is the precedent: a new gate with a default is a
+         * gate every existing call site inherits the old meaning of without anyone reading it.
+         */
+        backgroundRestricted: Boolean,
     ): Set<String> = contracts.keys
         .filter { isPermitted(it, grantedPermissions, specialAccessHeld) }
         .filter { isImplemented(it, registeredTypes, videoServed, bulkServed) }
+        .filterNot { blockedByBackgroundRestriction(it, backgroundRestricted) }
         .toSet()
 
     /**

@@ -35,6 +35,7 @@ class InputContractTest {
             registeredTypes = registered,
             videoServed = false,
             bulkServed = false,
+            backgroundRestricted = false,
         ).contains(capability)
 
     @Test

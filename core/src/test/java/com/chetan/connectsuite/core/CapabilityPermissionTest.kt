@@ -210,16 +210,16 @@ class CapabilityPermissionTest {
         assertEquals(
             "permitted but unimplemented must stay off",
             emptySet<String>(),
-            CapabilityContract.advertisable(permission, emptySet(), emptySet(), false, false),
+            CapabilityContract.advertisable(permission, emptySet(), emptySet(), false, false, false),
         )
         assertEquals(
             "implemented but unpermitted must stay off — this is the half that was missing",
             emptySet<String>(),
-            CapabilityContract.advertisable(emptySet(), emptySet(), contract.requests, false, false),
+            CapabilityContract.advertisable(emptySet(), emptySet(), contract.requests, false, false, false),
         )
         assertEquals(
             setOf(Capability.CONTACTS),
-            CapabilityContract.advertisable(permission, emptySet(), contract.requests, false, false),
+            CapabilityContract.advertisable(permission, emptySet(), contract.requests, false, false, false),
         )
     }
 
@@ -251,6 +251,7 @@ class CapabilityPermissionTest {
                 registeredTypes = notifications + remote + input,
                 videoServed = false,
                 bulkServed = false,
+                backgroundRestricted = false,
             ),
         )
     }
@@ -268,7 +269,7 @@ class CapabilityPermissionTest {
 
         // Still never advertisable: photos has no handlers. Both halves, always.
         assertTrue(
-            CapabilityContract.advertisable(modern, emptySet(), emptySet(), false, false).isEmpty(),
+            CapabilityContract.advertisable(modern, emptySet(), emptySet(), false, false, false).isEmpty(),
         )
     }
 
@@ -348,11 +349,12 @@ class CapabilityPermissionTest {
                 registeredTypes = allFour,
                 videoServed = false,
                 bulkServed = true,
+                backgroundRestricted = false,
             ),
         )
         // And neither half on its own.
         assertTrue(
-            CapabilityContract.advertisable(granted, emptySet(), allFour, false, false).isEmpty(),
+            CapabilityContract.advertisable(granted, emptySet(), allFour, false, false, false).isEmpty(),
         )
         assertTrue(
             CapabilityContract.advertisable(
@@ -361,6 +363,7 @@ class CapabilityPermissionTest {
                 allFour - MessageType.MEDIA_ORIGINAL,
                 false,
                 true,
+                false,
             ).isEmpty(),
         )
     }
