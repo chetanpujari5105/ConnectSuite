@@ -17562,6 +17562,22 @@ scripts/adb-pinned.sh samsung shell cmd appops set com.chetan.connectsuite.debug
 The control is the second half and it is the half that matters: without it the reading is a card
 that might be drawn unconditionally, which is the hidden-grid failure in a new pane.
 
+**Written as a script on 2026-09-11 — `scripts/defect102-read.sh` — before the phone was on the
+bus.** Three phases (BEFORE / DURING / AFTER), the op restored by a trap on every exit path
+including a mid-run failure, the pass criterion **read out of `BackgroundRestriction.kt`** rather
+than typed from memory, and every UI dump checked for an anchor known to be on that screen so an
+empty dump reports `NO READING` instead of an absence.
+
+It also carries a **precondition that refuses**, found statically while writing it and worth more
+than the script: `LinkRoute` holds its diagnostics as `remember(capabilities) { … }`, keyed on the
+**advertised set**. The card therefore moves only when `mirror` enters or leaves that set — and
+`mirror` needs the video channel served, which needs a Mac connected. On a phone with no Mac,
+`mirror` is already withheld, the set does not change when the op is set, and **the card never
+appears**. That would read as *"detection does not work"*; it is the different sentence *this
+reading cannot be taken in this state*, and confusing the two is the entire subject of this defect.
+So the script checks the advertised set first and exits 2 with that explanation rather than
+producing a false negative.
+
 **And `MirrorEngine.onStop` itself is unreached by any test**, because it is a platform callback
 inside a class needing a `Context`, a live `MediaProjection` and an encoder. The decision was
 extracted to `MirrorStopReason.revoked` so a JVM test can call it; what remains in the callback is
