@@ -1,115 +1,110 @@
-# Resume here — written 2026-09-11, end of the mirror sitting
+# Resume here — written 2026-09-11, end of the detection sitting
 
 > A state report, not a note to myself. Written to be handed to someone who was not here.
 >
-> **Nothing is committed.** `git status` is the inventory. This sitting touched the Mac renderer, one
-> phone module, one core service, four scripts, and six documents.
+> **Everything is committed.** Two commits: `61e70b8` is the whole of the previous (mirror) sitting,
+> which had run a full day with no revert point; `881b14b` is this one.
 >
-> **The headline: the mirror was never broken.** It has never produced a frame in any surviving log,
-> and the cause was not in this repo — the app had been **background-restricted by One UI**, so it
-> could not hold the foreground service `MediaProjection` requires, and Android revoked the
-> projection 107-116 ms into every attempt. Lifting one app op produced a **6 min 33 s session at
-> ~100 fps** on the first tap. See defects 100 and 102.
+> **The headline: the restriction has a name now, and the mirror has nine.** Defect 102's detection
+> is built and defect 104 — eight hand-written stop sentences, two of them three words apart — is
+> fixed. What is *not* done is the reading: `isBackgroundRestricted()` has never returned `true` on
+> any device in this project, and that gap is written into the register and Slice 39 rather than
+> implied.
 
 ## 0 · One-line state
 
-Four mirror problems were reported; §3 (fit) is **fixed and verified on 1 of 3 ratios**, §1 (the
-float) is **diagnosed and untouched**, §4 (latency) is **diagnosed and untouched**, §2 (float input)
-is **unstarted**. Three defects were found that nobody was looking for (101, 102, 103), one of which
-had been eating the evidence for the others.
+Defects **102** (detection) and **104** (stop sentences) are built, tested and committed; **99**'s
+hardware half is **pre-registered and not run** because no phone is on the bus; **103**, **§1** (the
+float) and **§4** (latency) are untouched and all three have a stated precondition.
 
 ## 1 · What changed in the tree
 
 | area | file | what |
 |---|---|---|
-| Mac renderer | `src/renderer/captureFit.ts` **+ test** | new: `captureAspect`, `containedPicture`, `pointInCapture` — the picture-fitting rule, red-first proven |
-| | `src/renderer/mirror.ts` | `pointAt` maps against the **picture**, not the element; `applyCaptureAspect()` on all three writers of `this.capture` |
-| | `src/renderer/styles.css` | stage takes `--capture-aspect` from the stream; both Phase 2 legacy rules deleted; hairline moved to an inset shadow so `aspect-ratio` is not fighting a border |
-| | `src/renderer/index.html`, `renderer.ts` | `#mirror-stage` id, script tag, constructor arg |
-| Mac main | `src/main/input.ts` | every gesture logs **where it was aimed** and the geometry stamp — its absence is why defect 99 could not have been found from a log |
-| phone | `mirror/v2/MirrorService.kt` | **instrument only** for defect 100, and it returned nothing — see §4 |
-| phone | `core/service/ConnectionService.kt` | `.distinctUntilChanged()` — defect 101 |
-| scripts | `adb-pinned.sh`, `adb-count.sh` **+ test** | new enforcement points — see §3 |
-| docs | `defects.md`, `testing.md` (Slices 37, 38), `mirror-diagnosis-2026-09-09.md`, `fourth-device-vivo.md`, `third-device-moto-g45.md`, `CLAUDE.md` | |
+| phone · core | `link/BackgroundRestriction.kt` **new** | the copy (pure, no Android symbol) **and** `BackgroundRestrictionReading`, the single home for `ActivityManager.isBackgroundRestricted()` |
+| | `link/CapabilityContract.kt` | `Contract.needsForegroundService` (mirror only), `blockedByBackgroundRestriction`, `advertisable`'s fourth gate **with no default** |
+| | `link/Capabilities.kt` | `CapabilityStatus.backgroundRestricted`, the reason branch, `CapabilityHold` + `heldBackSummary` |
+| phone · app | `link/LinkRoute.kt` | the restriction card, **at rest** above Advanced, deep link to App info |
+| phone · mirror | `v2/MirrorStopReason.kt` **new** | nine reasons, each with an `Actor`; `stop()` takes one instead of a `String` |
+| | `v2/MirrorEngine.kt` | eight call sites converted; `onStop` derives; `fail()` stops writing one field three times |
+| scripts | `mirror-fit-probe.mjs` **new** | the live fit instrument — reads the stream's shape by **two** routes |
+| docs | `defects.md` (102 rewritten, **104** added), `testing.md` (Slices **39** and **40**), this file | |
 
-`npm test` 623 pass · all six commit hooks green · `check-defects` 87 rows.
+Phone suite **442 tests, 0 failures** (from 431, **of which one was failing** — see §4). Mac suite
+**623**, untouched this sitting. All ten commit hooks green. `:app:assembleDebug` clean.
 
 ## 2 · The defects, in the order they matter
 
-- **100 · the mirror never survived its own start** — *not a code defect.* Consent granted 8/8, token
-  issued, display created, encoder running — then the foreground service is stopped at 106-116 ms and
-  the projection goes with it. Cause is **102**. Proven by lifting the op: 6 min 33 s, 196 stats
-  ticks, ended by a deliberate stop.
-- **102 · the app cannot tell it has been background-restricted** — **open, and the most important
-  one.** `RUN_ANY_IN_BACKGROUND: ignore` on the S25 while 6 of 8 comparable apps read allow.
-  `SUPPORT_BG_AD_RESTRICTION_BY_AI=1`; the only other restricted app is the other one its owner
-  rarely opens. Fix is one call — `ActivityManager.isBackgroundRestricted()` — beside the other
-  probes in `Capabilities.kt`, surfaced as an `unavailable` reason with a deep link. **Wrong fixes
-  are named in the register.**
-- **103 · `LinkService` believes it is foreground forever** — open. `isForeground` set at `:244`,
-  never reset; the guard at `:108` then skips the re-claim for the life of the process. Defect 97's
-  shape on the phone. `MirrorService` recovered by itself because it calls `startForeground`
-  unconditionally — that is the fix shape.
-- **101 · notification churn** — **fixed and measured both ways.** 15 posts/min → `READING 0 of 186`
-  in a settled window, with a positive control that a *real* change still posts.
-- **99 · the fit** — **fixed; verified on the S25 only.** Live session, real rotation, box
-  560 × 258.5 landscape, letterbox **0 px**, 8425 frames at 119 fps.
+- **102 · the app cannot tell it has been background-restricted** — **detection built, reading
+  unproven.** Detection only, as the register specified: **no retry** (each start buys another
+  allowance and another withdrawal) and **no second prompt for the battery exemption** (a different
+  switch this app already holds). Both wrong fixes have tests that go red when the copy drifts
+  toward them. The gate reaches **`mirror` and nothing else**, which is a measurement — with the op
+  set for twelve hours every other capability answered normally.
+- **104 · eight stop sentences, two three words apart** — **fixed.** *"Stopped on the phone."* was a
+  person tapping Stop; *"Screen capture was stopped on the phone."* was Android revoking, and it was
+  the only thing the app said through all eight deaths of defect 102. `onStop` carries no reason at
+  any SDK level this app compiles against — checked against `android.jar` 36 **and** 36.1 — so the
+  reason is derived from the restriction reading, and there is deliberately no third member for
+  *"the user tapped Stop in the shade"* because it is indistinguishable from an unexplained revoke.
+- **99 · the fit** — fixed, verified on the **S25 only**, and the second ratio is **pre-registered
+  and not run**. See §3.
+- **103 · `LinkService` believes it is foreground forever** — **untouched.** Still the sharpest
+  cheap fix left: `MirrorService` is the worked example in the same codebase, and it is why lifting
+  the restriction fixed the mirror and did nothing for the link.
 
-## 3 · Two new enforcement points, and why prose was not enough
+## 3 · Where to pick up, and every item's precondition
 
-- **`scripts/adb-pinned.sh`** — the serial never passes through the caller. A `2>&1` merged the pin's
-  stderr banner into the value, `adb -s ""` failed, and a `||` fallback printed a confident false
-  claim about the owner's battery state. The control table already named that failure; **a table is
-  consulted by someone who already suspects a problem, and nobody suspects one while capturing a
-  serial they have captured twenty times.** Removing the value from the call site is the fix — the
-  same reasoning as the status island's single writer.
-- **`scripts/adb-count.sh` + 5 fixtures** — a tally that ran over nothing cannot be reported as a
-  count of zero. It caught a bad pattern in the first reading it was used for: `42 of 133` beside a
-  control of `0 of 133` — without the denominator, a false regression.
+1. **The fit on the g45. Pre-registered in `docs/testing.md` → Slice 40; the phone is not on the
+   bus.** `adb devices` is empty as of the end of this sitting. The run is
+   `scripts/mirror-fit-probe.mjs moto45` against a live session, then a **physical** rotation, then a
+   tap near a short edge. Six outcomes are written down, and **rows 4 and 5 are the expensive ones**
+   — row 4 (`--capture-aspect` never written) would reopen 99 and make Slice 37's four green rows a
+   measurement of the stylesheet and not of the feature.
+   **Precondition: the swap.** Defect 17 means pairing the g45 costs the S25's pairing, and the S25
+   must be re-scanned afterwards. The vivo (2.22963) is 0.3% from the g45 and is **not** covered by
+   a g45 reading — it stays owed.
+2. **Defect 102's own reading.** One command each way, with its control, in Slice 39 §7. The op was
+   restored to `allow` on the S25 at the owner's instruction, so nothing here has ever seen this
+   call return `true`. The control is the *second* command: the card must **go away**.
+3. **Defect 103.** No precondition beyond a build — but its runtime confirmation is blocked
+   (`am start-foreground-service` is refused, `exported=false`), so the fix lands as a static change
+   with its verification owed, and that should be said in the commit rather than discovered later.
+4. **§1, the float.** Precondition: **take the A/B latency reading first** — it cannot be taken
+   afterwards. The keyframe path logs nothing at either end and there is still no evidence a single
+   `mirror.keyframe` has ever produced an IDR.
+5. **§4's anchor**, which must be fixed before any latency number is published again, and **then
+   §2**.
 
-## 4 · What was tried and did not work — do not repeat
+## 4 · One thing found that nobody was looking for
 
-- **Overriding `Service.stopForeground`** to name the caller. It is **`final`**. Cannot be done.
-- **Process-importance sampling** as a substitute: a visible Activity reports `IMPORTANCE_FOREGROUND`
-  (100), which outranks and masks `IMPORTANCE_FOREGROUND_SERVICE` (125). 120 samples, all 100, no
-  reading. **The instrument is still in `MirrorService` and still returns nothing while the app is on
-  screen** — remove it or leave it, but do not read it as a negative.
-- **`am start-foreground-service`** to test defect 103 — refused, `exported=false`.
+`ProtocolNamespaceTest > every feature message names a real capability` had been **red on this
+branch** since O4 added `MessageType.STORAGE_STATE` without its system-set exemption. It was
+committed in `61e70b8` along with everything else, red, and found only because this sitting ran the
+phone suite.
 
-## 5 · Two claims I published and then withdrew
+**The reason it survived is worth more than the fix.** The commit that added the type ran `npm test`
+in `desktop/` and not the phone's suite — which is `CLAUDE.md`'s defect-65 entry with the modules
+the other way round. That entry says *a module contributing zero tests is invisible in a total*;
+this is the sibling failure — **a module whose suite is not run is invisible in a green**.
 
-Both are corrected in place with the retraction visible rather than tidied away:
+## 5 · One test I wrote, watched pass, and threw away
 
-- *"The reference device was already wrong (~20:9, 1.6px bars)"* — **withdrawn.** The SM-S938B is
-  1440×3120 = exactly 19.5:9. It came from a **stale canvas backing store** read off a days-old app
-  instance. The box matched the reference handset perfectly, which is a cleaner reason for a phase of
-  invisibility than bars too small to see.
-- *"A provisional background-start allowance, withdrawn when the launch transition settles"* —
-  **withdrawn.** The stop event carries `PROC_STATE_TOP`, so nothing had left the foreground. It was a
-  correlation confirmed two-for-two on a 4 ms lag, and **a correlation confirmed twice is not a
-  mechanism** — now a row in the control table.
+The first guard for 104 asserted that no two stop sentences were *too alike*, by word-set overlap.
+It looked rigorous and it **passed with the exact defect sentence restored** — because the sibling
+sentence had been reworded in the same change, so the pair was no longer close while the defect was
+back.
 
-## 6 · Where to pick up
+Similarity was a proxy. The rule is **attribution**: a stop Android caused must name Android and
+must not say *you*. That is an `Actor` on the type now, and mutation **M7** — which restores
+*"Screen capture was stopped on the phone."* — goes red on it. Twelve mutations, twelve red; the
+table is in Slice 39 §5.
 
-1. **The fit run is 1 of 3.** vivo (2.22963) and moto g45 (2.22222) are **installed, launched, not
-   paired**. Both need a pairing, and **defect 17** makes that a swap that costs the S25. The g34
-   shares the g45's build fingerprint, so the two Motorolas are one image.
-2. **Defect 102's cross-vendor question needs days, not commands.** Baselines are recorded on both
-   non-Samsung handsets on their install date: ours unset, 8 of 8 controls unset, on both. Re-read the
-   same two lines after several days of neglect. Samsung is currently the only vendor that writes the
-   op at all.
-3. **Then §1** — the float's start contract and rate limit, with the observability fixed first
-   (the keyframe path logs nothing at either end, and there is still no evidence a single
-   `mirror.keyframe` has ever produced an IDR). **Take the A/B latency reading before fixing**: it
-   cannot be taken afterwards.
-4. **Then §4's anchor**, which must be fixed before any latency number is published again, and
-   **then §2**.
+## 6 · Device state
 
-## 7 · Device state left changed
-
-- **S25: `RUN_ANY_IN_BACKGROUND` is `allow`** — deliberately left, at the owner's instruction. The
-  original (`ignore`) is recorded in defect 102 and saved at
-  `scratchpad/hw/appop-original.txt`.
-- **vivo and moto g45**: app installed and launched once; nothing else touched; not paired.
-- The S25's phone log is the only one with mirror history worth keeping — it is quoted in Slice 38
-  rather than left on the device.
+- **Nothing is on the bus.** `adb devices` empty, daemon started, `target-device.sh` refusing
+  correctly.
+- **S25: `RUN_ANY_IN_BACKGROUND` is `allow`**, deliberately, at the owner's instruction. The original
+  (`ignore`) is in defect 102 and at `scratchpad/hw/appop-original.txt`. **Setting it back is the
+  stimulus for §3.2** and is one command.
+- **vivo and moto g45**: installed and launched once, **not paired**, nothing else touched.

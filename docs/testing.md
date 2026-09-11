@@ -17567,3 +17567,66 @@ inside a class needing a `Context`, a live `MediaProjection` and an encoder. The
 extracted to `MirrorStopReason.revoked` so a JVM test can call it; what remains in the callback is
 taking the reading and passing it in, and the honest status of that line is **unproven**, by the
 same stimulus above.
+
+---
+
+## Phase 7 Slice 40 — the fit on a second ratio: **pre-registered, not yet run** (2026-09-11)
+
+**Written before the phone was on the bus, and that is the point.** Slice 37 proved the box rule
+against `--capture-aspect` values a probe set by hand. What it could not reach is whether `mirror.ts`
+*writes* that property when a real `mirror.state` or `mirror.rotate` arrives — three call sites, no
+test, `MirrorView` on `check-renderer-views.mjs`'s debt list. Only a phone settles it, and the swap
+costs the S25's pairing (defect 17), so the expectations go down first.
+
+### The instrument
+
+`scripts/mirror-fit-probe.mjs <label>`, against a **live** session. It reads the stream's shape
+**twice, by two different routes**:
+
+| | route | written from |
+|---|---|---|
+| `announcedAspect` | `--capture-aspect` on `#mirror-stage` | `this.capture` — what the phone announced on the **control** channel |
+| `decodedAspect` | the canvas's intrinsic `width`/`height` | `frame.displayWidth/Height` — a **decoded frame** off the video socket |
+
+Agreement between them is the thing that says the announcement path and the pixel path describe one
+phone. Disagreement is a finding and is reported as one.
+
+**The lookalike it refuses.** An untouched canvas is **300×150** — aspect **2.000** — which sits one
+decimal place from the moto's 2.2222 and the vivo's 2.2296 and would be read as a successful
+landscape reading by anyone rounding to two figures. The probe exits 3 and prints `NOT A READING`
+rather than reporting it.
+
+### The device
+
+```
+moto g45 5G   ZN4222NSN6   Android 15 / sdk 35   720x1600 @280dpi
+label: moto45        (`moto` is the g34 and must not be merged with it)
+```
+
+720 / 1600 = **0.45** portrait, 1600 / 720 = **2.22222** landscape. The vivo is **2.22963** and the
+two are 0.3% apart, so one of the pair answers the ratio for now; the vivo is not thereby proven and
+is not to be recorded as if it were.
+
+### Pre-registered outcomes
+
+| # | reading | what it means | what happens next |
+|---|---|---|---|
+| 1 | portrait stage aspect **0.4500 ± 0.005**, bars 0, and `announcementAgreesWithPixels` | the write happens on `mirror.state`; Slice 37's box rule holds on a second ratio | rotate the phone and take row 2 |
+| 2 | after a **physical** rotation the stage aspect becomes **2.2222 ± 0.005** and the box turns | the `mirror.rotate` write happens too — the half no Mac-side stimulus can produce | take row 3 |
+| 3 | a tap near a **short edge** lands within a few capture px of the intended point, per `input.ts`'s aimed-at line and the phone's own receipt | `pointInCapture` maps against the picture on a non-19.5:9 phone — the half that was moving fingers | defect 99's hardware half is discharged for two ratios of three |
+| 4 | `announcedAspect` is **null** with a live session | `mirror.ts` never wrote the property; Slice 37 proved a stylesheet over a path that does not run | defect 99 **reopens**, and the box rule is unproven on every device including the S25 |
+| 5 | the two aspects **disagree** | the phone announces one geometry and sends frames of another — a *new* defect, and it would make the S25's clean run a coincidence of that phone's cap | file it before touching the fit; the fit reading is not takeable until it is understood |
+| 6 | stage matches `announcedAspect` but bars are non-zero | the stage is right and the canvas is not filling it — a CSS fault, not a geometry one | the specificity collision is back; check `maxHeightOnCanvas` in the same output |
+
+Rows **4 and 5 are the ones that cost something**, and they are written down here because they are
+the two a person who has just fixed this bug would least like to read. Row 4 in particular would mean
+Slice 37's four green rows measured the stylesheet correctly and the feature not at all — which is
+the third-variety test failure with a probe in the place of a unit test.
+
+### What this run will **not** establish, whatever it returns
+
+- **The vivo.** 2.22963 is near-identical and is *not* covered by a moto reading; it stays owed.
+- **The S25.** It must be re-scanned after the swap, and until it is, this project has **one** paired
+  handset at a time — defect 17.
+- **The float window.** `RATIO = 19.5 / 9` in `shared/floatGeometry.ts` is still live and is the same
+  defect in a third place, deliberately left until §1 plumbs the geometry through.
