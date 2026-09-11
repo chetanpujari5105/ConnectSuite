@@ -2,8 +2,9 @@
 
 > A state report, not a note to myself. Written to be handed to someone who was not here.
 >
-> **Everything is committed.** Two commits: `61e70b8` is the whole of the previous (mirror) sitting,
-> which had run a full day with no revert point; `881b14b` is this one.
+> **Everything is committed.** Three commits: `61e70b8` is the whole of the previous (mirror)
+> sitting, which had run a full day with no revert point; `881b14b` is defects 102 and 104;
+> `9b918dd` is the fit instrument, Slice 40's pre-registration and this file.
 >
 > **The headline: the restriction has a name now, and the mirror has nine.** Defect 102's detection
 > is built and defect 104 — eight hand-written stop sentences, two of them three words apart — is
