@@ -1,0 +1,12 @@
+--------- beginning of main
+09-08 16:01:21.851 19635 19635 I ClipProbe: --- clip probe: mode=watch window=30s interval=500ms ---
+09-08 16:01:21.853 19635 19635 I ClipProbe: ENV sdk=35 targetSdk=36 package=com.chetan.connectsuite.debug accessibilityServiceOfOurs=true defaultImeIsOurs=false
+09-08 16:01:21.853 19635 19635 I ClipProbe: ENV enabled_accessibility_services=com.chetan.connectsuite.debug/com.chetan.connectsuite.input.ConnectSuiteInputService
+09-08 16:01:21.853 19635 19635 I ClipProbe: ENV default_input_method=com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME
+09-08 16:01:21.856 19635 19635 I ClipProbe: waiting for window focus before any read
+09-08 16:01:21.999 19635 19635 I ClipProbe: window focus = true (importance=100)
+09-08 16:01:22.002 19635 19635 I ClipProbe: CONTROL focused read of the EXISTING clip: focused=true importance=100 returned=false length=-1 description=<none>
+09-08 16:01:22.002 19635 19635 W ClipProbe: stopped=control-failed — nothing readable even with focus, so a background null would say nothing. Copy something in another app first, then re-run watch.
+09-08 16:01:40.051 19635 19635 I ClipProbe: window focus = false (importance=100)
+09-08 16:01:43.189 19635 19635 I ClipProbe: window focus = true (importance=100)
+09-08 16:01:44.355 19635 19635 I ClipProbe: window focus = false (importance=100)

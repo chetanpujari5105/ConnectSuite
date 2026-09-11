@@ -203,3 +203,44 @@ change. That is a maintenance obligation and it is recorded here rather than ass
 every entry. A chip that opens somewhere unexpected costs one tap; the `Download` constraint is the
 only place a wrong verdict would cost more, and it is enforced by a test rather than by the reading
 holding.
+
+---
+
+## Added 2026-09-05 — **the second device exists.** moto g34 5G, and what it converted
+
+`docs/second-device-moto-g34.md` is the full record with its controls; this section is the audit's
+own rows, updated. §6 asked for four things in priority order and this device answers **1, 2 and 3**.
+
+**§5's first line — *"It did not test a second device, which is the only thing that can convert most
+of the `unknown` rows"* — is now out of date, and the conversions are smaller than that sentence
+implies.** Both handsets run **Google's** DocumentsUI, so the SAF rows moved from *one device* to
+*two vendors and two component versions* and **not** to *Android*.
+
+| Audit row | Was | Now | On what |
+|---|---|---|---|
+| Storage root not grantable (§3.A) | `AOSP / Mainline`, one device | **Two vendors, two DocumentsUI versions (16 and 17), identical behaviour** | `button1 enabled=false` + refusal strings, with an enabled sibling button in the same dump |
+| `Download` not grantable (§3.A) | same | same | same |
+| Folders inside `Download` grantable | same | same | `enabled=true`, no refusal message, one level deeper |
+| **`EXTRA_INITIAL_URI` — "a bad aim degrades to the parent"** (Slice 9 addendum) | `unknown, single-device` | **CONTRADICTED on this device.** A bad aim landed in `DCIM` — not the parent, not the last-visited folder, and not a folder we held a grant on (all three ruled out by measurement) | See `second-device-moto-g34.md` §3.2 |
+| **Defect 50** — bound `date < ?` empty cursor (§3.C) | `unknown, single-device` | **Still `unknown`.** §6.2's one command was run and the provider here is **stock `TelephonyProvider`**, not `SecTelephonyProvider` — but that is *provenance*, and this file's §2 is precisely the rule that **a package name is not provenance**. The behavioural reading was not taken | `pm list packages -f` |
+| Telephony / call log / dialer are Samsung's (§2) | vendor, by package name | **Strengthened.** This device carries stock `TelephonyProvider`, stock `ContactsProvider`, and **Google's** dialer with no separate in-call package. The three Samsung packages have no counterpart here | `pm list packages -f` |
+| **Users 95 `DUAL_APP` / 150 Secure Folder (§3.E)** | vendor | **Confirmed vendor, and §6.3 is settled.** This device has **no full clone user** — user 11 is a *disabled profile* flagged `VAULT_PROFILE`. The "user 95 reads `false`" control **does not exist here** | `pm list users`, `dumpsys user` |
+| **One UI's battery manager kills backgrounded FGS** (§3.E) | vendor, the premise of Phase 6 | **Not yet comparable.** Motorola's equivalent (`com.motorola.batterycare`) exists, but **zero packages device-wide** are restricted via `RUN_ANY_IN_BACKGROUND`, so it does not enforce through the AOSP op. Whether it kills a backgrounded service is **unmeasured** — that needs the overnight run | `dumpsys appops` |
+| §6.4 — the picker is Play-updated and can change under us | a maintenance worry | **Measured.** The two devices are on **different versions of the deciding component** (16 vs 17) and behave identically. Evidence the refusal is stable across the range seen so far; **not** a claim about 18 | `dumpsys package com.google.android.documentsui` |
+
+**Two things this device settled that §6 did not think to ask for:**
+
+- **Package visibility now has its R3 control.** `<queries>` present → **109 of 109** launcher
+  packages; removed → **3**; restored → **109**. Defect 28's fix is load-bearing on a second vendor
+  rather than Samsung being permissive. The Samsung run never had this control.
+- **A device that is *not* battery-exempt out of the box.** `phase-6-brief.md` §0's central
+  complaint — the instrument was already exempt — has a counter-example: this handset shipped
+  un-exempt (`notLaunched=true`, absent from a 110-entry whitelist that contained a known positive).
+  **The follow-on reading was then lost to a third party changing the setting mid-run**, which is
+  the same failure with the contaminating hand outside the experiment instead of inside it.
+
+**And one new entry for §4 (what is at risk if a verdict is wrong):** the *"bad aim degrades to the
+parent"* sentence was written as a flat platform fact from one device and is **false on the second
+one tested**. Nothing breaks — the constraint it justified (no quick-pick chip may point inside
+`Download`) is still correct on both handsets, for a different reason on each. The cost is to the
+prose, and it is the exact failure §1 names: a true reading taken for a claim about "Android".

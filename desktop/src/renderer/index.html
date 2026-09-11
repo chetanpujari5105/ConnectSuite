@@ -359,7 +359,7 @@
                         </div>
                       </div>
 
-                      <div class="mirror-stage">
+                      <div class="mirror-stage" id="mirror-stage">
                         <canvas id="mirror-canvas"></canvas>
                         <!-- Never left blank and silent: every failure path writes its reason here. -->
                         <div id="mirror-overlay" class="mirror-overlay">Not mirroring.</div>
@@ -842,6 +842,9 @@
 
     <script src="icons.js"></script>
     <script src="navModel.js"></script>
+    <!-- Before mirror.js: it holds the picture-fitting rule mirror.js calls, and a
+         classic script has to be in scope before its caller runs. -->
+    <script src="captureFit.js"></script>
     <script src="mirror.js"></script>
     <!-- The float button's two states, tested in floatButton.test.ts. -->
     <script src="floatButton.js"></script>
@@ -849,8 +852,8 @@
     <!-- shared/ is the electron-free layer; appLabel.js is loaded first because both
          notifyLabels.js and remote.js call into it. Defect 46. -->
     <script src="../shared/linkTone.js"></script>
-    <!-- S6: which recorded events the status island narrates. -->
-    <script src="../shared/islandRota.js"></script>
+    <!-- The status island's whole rule: current state, computed from the link the strip reads. -->
+    <script src="../shared/islandState.js"></script>
     <script src="../shared/appLabel.js"></script>
     <script src="../shared/discHue.js"></script>
     <script src="../shared/contactPhotos.js"></script>

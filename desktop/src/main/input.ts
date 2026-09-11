@@ -144,7 +144,7 @@ export class InputClient {
       // Logged at the same volume as the refusal below, and carrying the same tally, because a
       // count of refusals with no denominator is not evidence — see CLAUDE.md, and defect 18,
       // which hid behind exactly that.
-      log.info('input', `${type} delivered — ${this.tally()}`);
+      log.info('input', `${type} delivered ${aimOf(payload)} — ${this.tally()}`);
       return { ok: true };
     } catch (error) {
       // The phone's own sentence — "No text field has focus…", "That click was worked out against
@@ -155,7 +155,7 @@ export class InputClient {
       // clause. Joining them here is what produced `…typing yet.On the phone: Settings > …`.
       const failure = error as PhoneRequestError;
       this.refused += 1;
-      log.warn('input', `${type} refused: ${failure.message} — ${this.tally()}`);
+      log.warn('input', `${type} refused ${aimOf(payload)}: ${failure.message} — ${this.tally()}`);
       return {
         ok: false,
         reason: failure.phoneMessage ?? failure.message ?? String(error),
@@ -166,4 +166,42 @@ export class InputClient {
       this.queued -= 1;
     }
   }
+}
+
+/**
+ * Where a gesture was aimed, for the log line beside it.
+ *
+ * **This was absent, and its absence is why defect 99 could not have been found from a log.** The
+ * delivered line said `input.tap delivered — 14 delivered / 0 refused`: proof that a tap went, and
+ * silent about *where* — so a mapping that was scaling and offsetting every coordinate by the size
+ * of a letterbox produced a log indistinguishable from a correct one, for a phase.
+ *
+ * The geometry stamp travels with it because a coordinate without the screen shape it was measured
+ * against is not a location. `#7 1080x2408` is what makes `x=1063` readable as *17 pixels from the
+ * right edge* rather than as a number.
+ *
+ * Rounded to whole pixels: the phone dispatches at integer precision and a log line carrying six
+ * decimals of a value nobody can act on is noise dressed as rigour.
+ */
+function aimOf(payload: Record<string, unknown>): string {
+  const stamp = payload.geom as { id?: number; width?: number; height?: number } | undefined;
+  const screen = stamp?.width ? `#${stamp.id ?? '?'} ${stamp.width}x${stamp.height}` : 'no stamp';
+
+  const points = payload.points as Array<{ x: number; y: number }> | undefined;
+  if (Array.isArray(points) && points.length > 0) {
+    const first = points[0]!;
+    const last = points[points.length - 1]!;
+    return `(${Math.round(first.x)},${Math.round(first.y)} → ${Math.round(last.x)},${Math.round(last.y)}, ${points.length} pts on ${screen})`;
+  }
+
+  if (typeof payload.x === 'number' && typeof payload.y === 'number') {
+    const scroll =
+      typeof payload.dx === 'number' && typeof payload.dy === 'number'
+        ? ` by ${Math.round(payload.dx)},${Math.round(payload.dy)}`
+        : '';
+    return `(${Math.round(payload.x)},${Math.round(payload.y)}${scroll} on ${screen})`;
+  }
+
+  // input.key and input.text carry no coordinates and there is nothing to aim.
+  return `(on ${screen})`;
 }

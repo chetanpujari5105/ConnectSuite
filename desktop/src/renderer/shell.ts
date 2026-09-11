@@ -32,11 +32,18 @@
  * Plain script, not a module — the CSP-locked page has no module loader.
  */
 
-/** `shared/islandRota.js`, loaded before this script. See its comment for S6. */
-declare function islandStatusChange(
-  previous: { phase?: string; lastError?: string | null } | null,
-  next: { phase?: string; lastError?: string | null } | null,
-): { seize: boolean; note: string | null };
+/** `shared/islandState.js`, loaded before this script. It holds the whole island rule. */
+declare function islandState(
+  link: {
+    phase?: string;
+    pairing?: { kind: 'unpaired' | 'paired' | 'repudiated' };
+    paired?: boolean;
+    rttMs?: number;
+    lastError?: string | null;
+    lastFailureKind?: string | null;
+  } | null,
+  work: { verb: string; subject: string } | null,
+): { text: string; tone: LinkTone };
 
 /*
  * No imports and no `declare` re-statements. Every one of these files is a plain script, so tsc
@@ -56,6 +63,8 @@ interface ShellStatus {
   via?: string;
   rttMs?: number;
   lastError?: string;
+  /** `LinkFailure.kind`. The island's only failure input; the sentence is for wider surfaces. */
+  lastFailureKind?: string;
   paired: boolean;
   /**
    * Pairing as three states — the renderer's copy of `PairingHealth`. Declared inline rather than
@@ -130,15 +139,21 @@ class ShellView {
   private notificationCount = 0;
 
   /**
-   * Session events, newest last, for the island to cycle.
+   * What this Mac is doing **right now**, or null. The island's only non-connection input.
    *
-   * Only real events go in. The handoff's island cycles "Clipboard synced" and "Transfer complete ·
-   * 4.2 MB"; neither feature exists, so neither string does. An island that narrates transfers this
-   * app cannot perform is the most visible possible version of the thing decision 6 forbids.
+   * ### What was here, and why it is gone rather than filtered
+   *
+   * A six-slot ring of strings and a 5.2-second timer that cycled them into the pill. It had no
+   * clock — `ActivityEvent.at` was dropped at the boundary and the ring was never cleared, on
+   * disconnect or reconnect or anything else — so a line's maximum age was the whole session. And
+   * the timer wrote the ring's *text* with the link's *tone* in one statement, so a refusal from
+   * ten minutes ago cycled in green beside a strip reading `Connected · 12 ms`.
+   *
+   * History belongs to the Activity pane, which records all eleven categories and timestamps them.
+   * The island shows current state, so it holds one nullable fact set by whoever starts the work
+   * and cleared by whoever finishes it — see [setWork].
    */
-  private readonly events: string[] = [];
-  private eventIndex = 0;
-  private islandTimer: number | undefined;
+  private work: { verb: string; subject: string } | null = null;
 
   constructor() {
     this.buildBrand();
@@ -149,7 +164,7 @@ class ShellView {
     this.bindPalette();
     this.bindWindow();
     this.route('overview');
-    this.startIsland();
+    this.renderIsland();
   }
 
   // ---- Sidebar -------------------------------------------------------------------------------
@@ -350,7 +365,10 @@ class ShellView {
       ? (this.status.pairing ? this.status.pairing.kind !== 'paired' : !this.status.paired)
       : false;
     if (blocked && id !== 'pairing') {
-      this.setIsland('Pair a phone first — there is nothing to show until you do.', 'working');
+      // The toast, not the island. This is an answer to a click — true for the two seconds after
+      // the user pressed something — and the island now holds current state only, which for an
+      // unpaired Mac is already `No phone paired` in the pill they are looking at.
+      this.toast('Pair a phone first — there is nothing to show until you do.');
       return;
     }
     const screen = screenById(id);
@@ -467,29 +485,38 @@ class ShellView {
   // ---- The status island ------------------------------------------------------------------------
 
   /**
-   * Push a real session event onto the island's rota.
+   * Say that a piece of work has started, or that it has finished.
    *
-   * Deduplicated against the last one so a reconnect loop does not fill the rota with one sentence
-   * repeated eleven times, which would look like a cycling island that is in fact stuck.
+   * The contract is the whole of it: **the caller that starts the work clears it**, in a `finally`,
+   * so the island cannot outlive the thing it describes. Nothing expires on a timer, because a line
+   * that keeps talking after its subject is over is the defect this file just lost — whether it
+   * lasts five seconds or the rest of the session.
+   *
+   * A clipboard sync is deliberately not one of these. `clip-send` is a request and its reply and
+   * `clip-arrived` is an instant; neither has a duration, so both are history the moment they
+   * exist. They go to Activity, and the toast gives them the acknowledgement a moment deserves.
    */
-  note(text: string): void {
-    if (this.events[this.events.length - 1] === text) return;
-    this.events.push(text);
-    if (this.events.length > 6) this.events.shift();
+  setWork(work: { verb: string; subject: string } | null): void {
+    this.work = work;
+    this.renderIsland();
   }
 
-  setIsland(text: string, tone: LinkTone): void {
-    $('island-text').textContent = text;
-    $('island-dot').setAttribute('data-state', tone);
-  }
-
-  /** ~5.2s per the handoff. Cycles the rota; with one event it simply holds it. */
-  private startIsland(): void {
-    this.islandTimer = window.setInterval(() => {
-      if (this.events.length === 0) return;
-      this.eventIndex = (this.eventIndex + 1) % this.events.length;
-      this.setIsland(this.events[this.eventIndex]!, toneOf(this.status));
-    }, 5200);
+  /**
+   * **The island's only writer.**
+   *
+   * It takes no arguments and returns nothing: everything it draws is computed by `islandState`
+   * from `this.status`, using the same `linkTone` and `linkToneLabel` the strip, the device card
+   * and the hero call. There is no way to tell this function what to say, which is the point — the
+   * old defect was a second writer on a 5.2-second timer, sourcing text from a history ring and
+   * tone from the live link, so the pill routinely asserted a connection state the strip denied.
+   *
+   * Called from exactly two places: [setStatus] and [setWork]. If a third appears, it is a line
+   * that is not current state, and its home is the toast or the Activity pane.
+   */
+  private renderIsland(): void {
+    const island = islandState(this.status, this.work);
+    $('island-text').textContent = island.text;
+    $('island-dot').setAttribute('data-state', island.tone);
   }
 
   // ---- Toast -------------------------------------------------------------------------------------
@@ -668,7 +695,10 @@ class ShellView {
     }
     const run = this.commands.get(result.id);
     if (!run) {
-      this.setIsland(`“${result.label}” is not wired up on this build.`, 'working');
+      // Also the toast, and for the same reason: an unwired command is a fact about the keystroke
+      // that just happened, not about the link. It used to sit in the island until a rota tick
+      // replaced it with something unrelated.
+      this.toast(`“${result.label}” is not wired up on this build.`);
       return;
     }
     run();
@@ -685,7 +715,6 @@ class ShellView {
    */
   setStatus(status: ShellStatus | null): void {
     const wasPaired = this.status?.paired;
-    const previousStatus = this.status;
     this.status = status;
 
     const tone = toneOf(status);
@@ -733,34 +762,19 @@ class ShellView {
     ($('hero-mirror') as HTMLButtonElement).disabled = status?.phase !== 'connected';
 
     /*
-     * **The link owns the island while it is changing; the rota owns it the rest of the time.**
+     * **The island is the fifth view of this one fact, and now it is fed like the other four.**
      *
-     * This was `setIsland(...)` unconditionally plus `note('Connected · 9 ms')`, both on **every**
-     * status update — and `rttMs` changes on every heartbeat. So the visible text was overwritten a
-     * second or two after every 5.2 s cycle, and six latency variants filled the whole six-slot
-     * rota inside twenty seconds. The rota was built, it cycled, and it was never seen: a rota that
-     * is always overwritten looks exactly like a rota with one entry in it, which is why nothing in
-     * a month of screenshots looked wrong. `shared/islandRota.ts` holds the rule and the tests.
+     * It used to be the exception: a seize on transitions, and then a 5.2-second timer that wrote
+     * text from a six-slot history ring and tone from `toneOf(this.status)` — two clocks in one
+     * pill. There was no "one function so the four cannot disagree" for the island, and it
+     * disagreed constantly. `renderIsland` reads the same `status` this function just assigned, and
+     * `islandState` derives the connection claim from the same `linkToneLabel` two lines up.
      *
-     * The dot's tone follows the link either way — that is a colour on a live fact, not a line of
-     * history, and it must not wait for a cycle.
+     * Unconditional, and that is safe now for the reason the seize existed to work around: the
+     * output is a pure function of the status, so a heartbeat that only moves `rttMs` redraws the
+     * latency and nothing else. There is nothing underneath it to overwrite.
      */
-    const change = islandStatusChange(previousStatus, status);
-    $('island-dot').setAttribute('data-state', tone);
-    if (change.seize) {
-      this.setIsland(
-        status?.lastError ?? `${label}${status?.rttMs === undefined ? '' : ` · ${latency}`}`,
-        tone,
-      );
-    }
-    if (change.note) this.note(change.note);
-    // One entry per arrival at `connected`, not one per heartbeat. The latency is the reading at
-    // the moment the link came up, which is what a history entry is for — and when there is not one
-    // yet the entry is the word alone, because "Connected · —" is a glyph a reader has to decode
-    // rather than a fact, which is the same reason the battery slot is removed rather than dashed.
-    if (change.seize && status?.phase === 'connected') {
-      this.note(status.rttMs === undefined ? 'Connected' : `Connected · ${latency}`);
-    }
+    this.renderIsland();
 
     // Pairing is forced while unpaired and released the moment the phone is trusted, rather than
     // leaving the user on a pairing screen they have already finished with.
@@ -898,3 +912,14 @@ class ShellView {
  * renderer.ts's first `render()` reach it before the nav exists.
  */
 const shell = new ShellView();
+
+/**
+ * The class itself, so `shellIsland.test.ts` drives the real one rather than a paraphrase.
+ *
+ * `ShellView` was on `scripts/check-renderer-views.mjs`'s debt list with the reason *"the window
+ * frame; its rules live in shell.css and stylesheets.test.ts guards those"*. That was true of the
+ * frame and false of this file's other job: it owns the **status island and the connected-device
+ * strip**, which are two surfaces that must agree about one fact, and no test could see either
+ * being written. The island contradicted the strip for a month underneath a green suite.
+ */
+(globalThis as Record<string, unknown>).ShellView = ShellView;

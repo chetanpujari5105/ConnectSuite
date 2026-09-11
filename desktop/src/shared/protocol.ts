@@ -4,7 +4,7 @@
  * first, then both files.
  */
 
-import type { PairingHealth } from './linkHealth';
+import type { PairingHealth, LinkFailureKind } from './linkHealth';
 
 export const PROTOCOL_MAJOR = 1;
 
@@ -752,6 +752,15 @@ export interface ConnectionStatus {
   lastError?: string;
   /** The original text, for the debug HUD and the log only. Never rendered as prose. */
   lastErrorRaw?: string;
+  /**
+   * The failure's `LinkFailure.kind`, for surfaces with no room for [lastError]'s sentence.
+   *
+   * The status island reads this and never the message. The classified prose for a dropped socket
+   * is *"The connection to your phone dropped. Reconnecting."* — a sentence that **names a
+   * connection state**, which in a pill beside a strip reading `Disconnected` is the island
+   * contradicting the strip while carrying a current fact. A closed enum cannot express that.
+   */
+  lastFailureKind?: LinkFailureKind;
   nextRetryInMs?: number;
   /**
    * @deprecated Two states where there are three. Read `pairing` instead — a stored pairing the

@@ -1,0 +1,887 @@
+2026-09-08T15:56:07.236+05:30 I [caps] Capabilities now: none — clipboard not built yet — waiting on clip.history, clip.push, clip.request; files not built yet — waiting on fs.delete, fs.list, fs.mkdir, fs.stat, fs.transfer.begin, fs.transfer.cancel, bulk channel unserved; mirror not built yet — waiting on mirror.stop
+2026-09-08T15:56:07.241+05:30 I [caps] Capabilities now: mirror
+2026-09-08T15:56:07.248+05:30 I [mirror] Mirror feature installed; capabilities now: [mirror]
+2026-09-08T15:56:07.269+05:30 I [caps] Capabilities unchanged (mirror); reason changed: input — missing Accessibility
+2026-09-08T15:56:07.277+05:30 I [input] Input feature installed; accessibility service is off; capabilities now: [mirror]
+2026-09-08T15:56:07.284+05:30 I [caps] Capabilities unchanged (mirror); reason changed: contacts — missing Contacts
+2026-09-08T15:56:07.288+05:30 I [contacts] Contacts feature installed; READ_CONTACTS not granted; capabilities now: [mirror]
+2026-09-08T15:56:07.298+05:30 I [caps] Capabilities unchanged (mirror); reason changed: notifications — missing Notification access
+2026-09-08T15:56:07.302+05:30 I [notif] Notification feature installed; listener is not bound; capabilities now: [mirror]
+2026-09-08T15:56:07.315+05:30 I [caps] Capabilities unchanged (mirror); reason changed: sms — missing SMS
+2026-09-08T15:56:07.315+05:30 I [sms] Not watching the sent mailbox: SMS permissions not granted
+2026-09-08T15:56:07.323+05:30 I [sms] SMS feature installed; permissions not granted; telephony present; capabilities now: [mirror]
+2026-09-08T15:56:07.336+05:30 I [caps] Capabilities unchanged (mirror); reason changed: calls — missing Call logs, Phone
+2026-09-08T15:56:07.338+05:30 I [calls] Call watcher idle: READ_PHONE_STATE not granted
+2026-09-08T15:56:07.342+05:30 I [calls] Calls feature installed; permissions not granted; telephony present; capabilities now: [mirror]
+2026-09-08T15:56:07.357+05:30 I [caps] Capabilities unchanged (mirror); reason changed: files — not built yet — waiting on fs.delete, fs.list, fs.mkdir, fs.stat, fs.transfer.begin, fs.transfer.cancel; photos — missing Photos and videos
+2026-09-08T15:56:07.358+05:30 I [media] Media feature installed with all 4 photos verbs and the bulk channel served; read permission not granted; capabilities now: [mirror]
+2026-09-08T15:56:07.366+05:30 I [caps] Capabilities unchanged (mirror); reason changed: files — not built yet — waiting on fs.delete, fs.mkdir, fs.stat, fs.transfer.begin, fs.transfer.cancel
+2026-09-08T15:56:07.368+05:30 I [caps] Capabilities unchanged (mirror); reason changed: files — not built yet — waiting on fs.delete, fs.mkdir, fs.transfer.begin, fs.transfer.cancel
+2026-09-08T15:56:07.379+05:30 I [caps] Capabilities unchanged (mirror); reason changed: files — not built yet — waiting on fs.delete, fs.transfer.begin, fs.transfer.cancel
+2026-09-08T15:56:07.388+05:30 I [caps] Capabilities unchanged (mirror); reason changed: files — not built yet — waiting on fs.transfer.begin, fs.transfer.cancel
+2026-09-08T15:56:07.393+05:30 I [caps] Capabilities unchanged (mirror); reason changed: files — not built yet — waiting on fs.transfer.cancel
+2026-09-08T15:56:07.397+05:30 I [caps] Capabilities now: files,mirror
+2026-09-08T15:56:07.408+05:30 I [fs] Files feature installed with 7 of 6 verbs; 2 root(s): downloads:connectsuite, app:files; capabilities now: [files, mirror]
+2026-09-08T15:56:07.414+05:30 I [caps] Capabilities unchanged (files,mirror); reason changed: clipboard — not built yet — waiting on clip.history, clip.request
+2026-09-08T15:56:07.420+05:30 I [caps] Capabilities unchanged (files,mirror); reason changed: clipboard — not built yet — waiting on clip.history
+2026-09-08T15:56:07.425+05:30 I [caps] Capabilities now: clipboard,files,mirror
+2026-09-08T15:56:07.428+05:30 I [clip] Clipboard feature installed with all 3 verbs; phone reads are focus-gated on this platform, writes are not; capabilities now: [clipboard, files, mirror]
+2026-09-08T15:56:07.431+05:30 I [vitals] Device vitals installed; battery.state and storage.state will be pushed — 0 battery / 0 storage sent / 0 storage refused since start
+2026-09-08T15:56:07.441+05:30 I [caps] Capabilities unchanged (clipboard,files,mirror); reason changed: apps — missing Notifications
+2026-09-08T15:56:07.444+05:30 I [apps] Apps feature installed with all 3 verbs and no launch verb — background activity starts are refused silently on this platform, so opening is a notification the user taps. Notifications currently BLOCKED, so apps.open.ask cannot be delivered; capabilities now: [clipboard, files, mirror]
+2026-09-08T15:56:07.451+05:30 I [caps] Capabilities unchanged (clipboard,files,mirror); reason changed: remote — missing Notification access
+2026-09-08T15:56:07.452+05:30 I [remote] Media session listener not attached yet: notification listener is not bound
+2026-09-08T15:56:07.455+05:30 I [remote] Media remote installed; listener is not bound; capabilities now: [clipboard, files, mirror]
+2026-09-08T15:56:08.349+05:30 I [service] Foreground as USER, types=0x11
+2026-09-08T15:56:08.414+05:30 I [tls] Port 42501 protocols=TLSv1.3 ciphers=18 keyManagers=1
+2026-09-08T15:56:08.417+05:30 I [tls] Port 42502 protocols=TLSv1.3 ciphers=18 keyManagers=1
+2026-09-08T15:56:08.420+05:30 I [tls] Port 42503 protocols=TLSv1.3 ciphers=18 keyManagers=1
+2026-09-08T15:56:08.424+05:30 I [server] Listening on 42501/42502/42503, 0 paired device(s)
+2026-09-08T15:56:09.264+05:30 I [nsd] Registered as ConnectSuite Motorola moto g45 5G
+2026-09-08T15:56:12.666+05:30 I [caps] Capabilities now: apps,clipboard,files,mirror
+2026-09-08T15:56:52.984+05:30 W [tls] Rejected unpaired client B3:87:F9:1B:DD:37:A2:32…
+2026-09-08T15:56:52.995+05:30 W [server] Refused 10.231.182.88, key B3:87:F9:1B:DD:37:A2:32… — 1 refused / 0 accepted since start :: SSLHandshakeException: This Mac is not paired with the phone. Scan the pairing QR code first.
+      at com.android.org.conscrypt.SSLUtils.toSSLHandshakeException(SSLUtils.java:369)
+      at com.android.org.conscrypt.ConscryptEngine.convertException(ConscryptEngine.java:1041)
+      at com.android.org.conscrypt.ConscryptEngine.readPlaintextData(ConscryptEngine.java:991)
+      at com.android.org.conscrypt.ConscryptEngine.unwrap(ConscryptEngine.java:776)
+    caused by java.security.cert.CertificateException: This Mac is not paired with the phone. Scan the pairing QR code first.
+2026-09-08T15:56:53.588+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,mirror,photos,sms
+2026-09-08T15:56:58.940+05:30 I [trust] Paired with Chetans-MacBook-Pro (b387f91bdd37a232…)
+2026-09-08T15:56:58.941+05:30 I [nsd] Advertising pairing intent b387f91bdd37a232
+2026-09-08T15:56:58.945+05:30 I [nsd] Unregistered
+2026-09-08T15:56:59.762+05:30 I [nsd] Registered as ConnectSuite Motorola moto g45 5G
+2026-09-08T15:57:01.362+05:30 I [nsd] Pairing intent cleared
+2026-09-08T15:57:01.366+05:30 I [nsd] Unregistered
+2026-09-08T15:57:01.389+05:30 I [notif] No replay for Chetans-MacBook-Pro: notification access is off
+2026-09-08T15:57:01.395+05:30 I [vitals] battery.state → Mac: 38%, charging=false — 1 battery / 0 storage sent / 0 storage refused since start
+2026-09-08T15:57:01.397+05:30 I [vitals] storage.state → Mac: 83339358208 free of 119386648576 bytes — 1 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T15:57:01.398+05:30 I [control] Handshake complete with Chetans-MacBook-Pro at 10.231.182.88
+2026-09-08T15:57:01.595+05:30 I [clip] clip.push ← Mac: 1829 bytes, held for a tap — 0 sent / 1 received / 0 of 1 applied / 0 refused-unfocused / 0 refused-sensitive / 0 refused-too-large since start
+2026-09-08T15:57:01.794+05:30 I [calls] call.log → 50 entries, hasMore=true — 1 delivered / 0 refused since start
+2026-09-08T15:57:01.973+05:30 W [contacts] contacts.get refused: no-such-contact — 0 delivered / 1 refused since start
+2026-09-08T15:57:01.983+05:30 W [contacts] contacts.get refused: no-such-contact — 0 delivered / 2 refused since start
+2026-09-08T15:57:01.989+05:30 W [contacts] contacts.get refused: no-such-contact — 0 delivered / 3 refused since start
+2026-09-08T15:57:01.991+05:30 W [contacts] contacts.get refused: no-such-contact — 0 delivered / 4 refused since start
+2026-09-08T15:57:01.998+05:30 W [contacts] contacts.get refused: no-such-contact — 0 delivered / 5 refused since start
+2026-09-08T15:57:01.998+05:30 W [contacts] contacts.get refused: no-such-contact — 0 delivered / 6 refused since start
+2026-09-08T15:57:02.074+05:30 I [contacts] contacts.get → +919527305274 found, photo=false — 1 delivered / 6 refused since start, 0 photos of 1 asked
+2026-09-08T15:57:02.075+05:30 I [contacts] contacts.get → +919850874493 found, photo=false — 2 delivered / 6 refused since start, 0 photos of 2 asked
+2026-09-08T15:57:02.086+05:30 I [contacts] contacts.get → +918197007285 found, photo=false — 3 delivered / 6 refused since start, 0 photos of 3 asked
+2026-09-08T15:57:02.093+05:30 I [contacts] contacts.get → +917776060872 found, photo=false — 4 delivered / 6 refused since start, 0 photos of 4 asked
+2026-09-08T15:57:02.135+05:30 I [contacts] Photo for 489: 226x225 source, sent 226x225 at 49140 bytes of 65536 allowed
+2026-09-08T15:57:02.141+05:30 I [contacts] contacts.get → +919657237871 found, photo=true — 5 delivered / 6 refused since start, 1 photos of 5 asked
+2026-09-08T15:57:02.273+05:30 I [nsd] Registered as ConnectSuite Motorola moto g45 5G
+2026-09-08T15:57:02.416+05:30 I [contacts] Photo for 488: 480x480 source, sent 120x120 at 29277 bytes of 65536 allowed
+2026-09-08T15:57:02.417+05:30 I [contacts] contacts.get → +919689021523 found, photo=true — 6 delivered / 6 refused since start, 2 photos of 6 asked
+2026-09-08T15:57:02.511+05:30 I [contacts] Photo for 503: 480x480 source, sent 120x120 at 30450 bytes of 65536 allowed
+2026-09-08T15:57:02.515+05:30 I [contacts] contacts.get → +919850850263 found, photo=true — 7 delivered / 6 refused since start, 3 photos of 7 asked
+2026-09-08T15:57:02.548+05:30 I [contacts] Photo for 8: 512x512 source, sent 128x128 at 34626 bytes of 65536 allowed
+2026-09-08T15:57:02.553+05:30 I [contacts] contacts.get → +919665603895 found, photo=true — 8 delivered / 6 refused since start, 4 photos of 8 asked
+2026-09-08T15:57:03.085+05:30 I [contacts] contacts.list → 45 rows, hasMore=false — 9 delivered / 6 refused since start
+2026-09-08T15:57:04.434+05:30 I [sms] sms.threads delivered (50 threads, hasMore=true) — 1 delivered / 0 refused since start
+2026-09-08T15:57:05.427+05:30 I [fs] fs.list (roots) → 2 root(s): 1 app-private and 0 granted folder(s) — 1 delivered / 0 refused since start
+2026-09-08T15:57:05.491+05:30 I [fs] fs.list downloads:connectsuite/ → 0 of 0 entries, hasMore=false, cursor=FIRST_PAGE — 2 delivered / 0 refused since start
+2026-09-08T15:57:05.911+05:30 I [vitals] battery.state → Mac: 38%, charging=true — 2 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T15:57:12.140+05:30 I [applabel] com.whatsapp resolves to "WhatsApp" — 1 resolved / 0 fell back since start
+2026-09-08T15:57:12.142+05:30 I [media] media.buckets → 5 buckets over 876 items in 54ms
+2026-09-08T15:57:12.142+05:30 I [media] media.buckets → 5 buckets, 876 items in total — 1 delivered / 0 refused since start
+2026-09-08T15:57:12.197+05:30 I [applabel] com.motorola.camera3 resolves to "Camera" — 2 resolved / 0 fell back since start
+2026-09-08T15:57:12.212+05:30 I [media] media.list bucket=all → 120 items of 121 scanned, hasMore=true, before=null beforeId=null — 2 delivered / 0 refused since start
+2026-09-08T15:57:12.964+05:30 I [media] media.thumb → 32 made / 0 gone / 0 undecodable / 0 malformed-id of 32 asked, maxEdge=256
+2026-09-08T15:57:13.739+05:30 I [media] media.thumb → 32 made / 0 gone / 0 undecodable / 0 malformed-id of 32 asked, maxEdge=256
+2026-09-08T15:57:14.444+05:30 I [media] media.thumb → 32 made / 0 gone / 0 undecodable / 0 malformed-id of 32 asked, maxEdge=256
+2026-09-08T15:57:14.924+05:30 I [media] media.thumb → 24 made / 0 gone / 0 undecodable / 0 malformed-id of 24 asked, maxEdge=256
+2026-09-08T15:57:21.694+05:30 I [sms] sms.messages delivered (thread 62, 50 messages, hasMore=true) — 2 delivered / 0 refused since start
+2026-09-08T15:57:28.820+05:30 I [vitals] battery.state → Mac: 39%, charging=true — 3 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T15:57:29.248+05:30 I [sms] sms.messages delivered (thread 119, 4 messages, hasMore=false) — 3 delivered / 0 refused since start
+2026-09-08T15:57:43.848+05:30 I [applabel] com.android.chrome resolves to "Chrome" — 3 resolved / 0 fell back since start
+2026-09-08T15:57:43.856+05:30 I [applabel] com.android.settings resolves to "Settings" — 4 resolved / 0 fell back since start
+2026-09-08T15:57:43.860+05:30 I [applabel] com.android.vending resolves to "Google Play Store" — 5 resolved / 0 fell back since start
+2026-09-08T15:57:43.865+05:30 I [applabel] com.google.android.apps.docs resolves to "Drive" — 6 resolved / 0 fell back since start
+2026-09-08T15:57:43.871+05:30 I [applabel] com.google.android.apps.maps resolves to "Maps" — 7 resolved / 0 fell back since start
+2026-09-08T15:57:43.877+05:30 I [applabel] com.google.android.apps.messaging resolves to "Messages" — 8 resolved / 0 fell back since start
+2026-09-08T15:57:43.881+05:30 I [applabel] com.google.android.apps.photos resolves to "Photos" — 9 resolved / 0 fell back since start
+2026-09-08T15:57:43.887+05:30 I [applabel] com.google.android.apps.tachyon resolves to "Meet" — 10 resolved / 0 fell back since start
+2026-09-08T15:57:43.891+05:30 I [applabel] com.google.android.apps.youtube.music resolves to "YouTube Music" — 11 resolved / 0 fell back since start
+2026-09-08T15:57:43.895+05:30 I [applabel] com.google.android.calculator resolves to "Calculator" — 12 resolved / 0 fell back since start
+2026-09-08T15:57:43.899+05:30 I [applabel] com.google.android.calendar resolves to "Calendar" — 13 resolved / 0 fell back since start
+2026-09-08T15:57:43.904+05:30 I [applabel] com.google.android.contacts resolves to "Contacts" — 14 resolved / 0 fell back since start
+2026-09-08T15:57:43.908+05:30 I [applabel] com.google.android.deskclock resolves to "Clock" — 15 resolved / 0 fell back since start
+2026-09-08T15:57:43.913+05:30 I [applabel] com.google.android.dialer resolves to "Phone" — 16 resolved / 0 fell back since start
+2026-09-08T15:57:43.918+05:30 I [applabel] com.google.android.gm resolves to "Gmail" — 17 resolved / 0 fell back since start
+2026-09-08T15:57:43.924+05:30 I [applabel] com.google.android.youtube resolves to "YouTube" — 18 resolved / 0 fell back since start
+2026-09-08T15:57:43.931+05:30 I [applabel] com.motorola.securityhub resolves to "Moto Secure" — 19 resolved / 0 fell back since start
+2026-09-08T15:57:43.935+05:30 I [applabel] com.magiconnect.tcast resolves to "MagiConnect" — 20 resolved / 0 fell back since start
+2026-09-08T15:57:43.941+05:30 I [applabel] com.truecaller resolves to "Truecaller" — 21 resolved / 0 fell back since start
+2026-09-08T15:57:43.947+05:30 I [applabel] com.yandex.searchapp resolves to "Yandex" — 22 resolved / 0 fell back since start
+2026-09-08T15:57:43.951+05:30 I [applabel] com.android.stk resolves to "SIM Toolkit" — 23 resolved / 0 fell back since start
+2026-09-08T15:57:43.954+05:30 I [applabel] com.google.android.apps.googleassistant resolves to "Assistant" — 24 resolved / 0 fell back since start
+2026-09-08T15:57:43.958+05:30 I [applabel] com.google.android.apps.nbu.files resolves to "Files by Google" — 25 resolved / 0 fell back since start
+2026-09-08T15:57:43.965+05:30 I [applabel] com.google.android.googlequicksearchbox resolves to "Google" — 26 resolved / 0 fell back since start
+2026-09-08T15:57:43.969+05:30 I [applabel] com.motorola.audiorecorder resolves to "Recorder" — 27 resolved / 0 fell back since start
+2026-09-08T15:57:43.973+05:30 I [applabel] com.motorola.dolby.dolbyui resolves to "Dolby Atmos" — 28 resolved / 0 fell back since start
+2026-09-08T15:57:43.976+05:30 I [applabel] com.motorola.fmplayer resolves to "FM Radio" — 29 resolved / 0 fell back since start
+2026-09-08T15:57:43.980+05:30 I [applabel] com.motorola.gamemode resolves to "Games" — 30 resolved / 0 fell back since start
+2026-09-08T15:57:43.984+05:30 I [applabel] com.motorola.genie resolves to "Device Help" — 31 resolved / 0 fell back since start
+2026-09-08T15:57:43.988+05:30 I [applabel] com.motorola.help resolves to "Moto feedback" — 32 resolved / 0 fell back since start
+2026-09-08T15:57:43.992+05:30 I [applabel] com.motorola.livewallpaper3 resolves to "Interactive wallpapers" — 33 resolved / 0 fell back since start
+2026-09-08T15:57:43.997+05:30 I [applabel] com.motorola.moto resolves to "Moto" — 34 resolved / 0 fell back since start
+2026-09-08T15:57:44.002+05:30 I [applabel] com.motorola.spaces resolves to "Family Space" — 35 resolved / 0 fell back since start
+2026-09-08T15:57:44.007+05:30 I [applabel] androidtv.smart.tv.remote.control resolves to "Android Remote" — 36 resolved / 0 fell back since start
+2026-09-08T15:57:44.008+05:30 I [applabel] com.chetan.connectsuite.debug resolves to "ConnectSuite" — 37 resolved / 0 fell back since start
+2026-09-08T15:57:44.010+05:30 I [applabel] com.chetan.stackup resolves to "StackUp" — 38 resolved / 0 fell back since start
+2026-09-08T15:57:44.014+05:30 I [applabel] com.google.android.apps.adm resolves to "Find Hub" — 39 resolved / 0 fell back since start
+2026-09-08T15:57:44.019+05:30 I [applabel] com.google.android.apps.chromecast.app resolves to "Home" — 40 resolved / 0 fell back since start
+2026-09-08T15:57:44.024+05:30 I [applabel] com.google.android.apps.fitness resolves to "Fit" — 41 resolved / 0 fell back since start
+2026-09-08T15:57:44.028+05:30 I [applabel] com.google.android.apps.nbu.paisa.user resolves to "GPay" — 42 resolved / 0 fell back since start
+2026-09-08T15:57:44.032+05:30 I [applabel] com.google.android.apps.subscriptions.red resolves to "Google One" — 43 resolved / 0 fell back since start
+2026-09-08T15:57:44.034+05:30 I [applabel] com.graymatrix.did resolves to "ZEE5" — 44 resolved / 0 fell back since start
+2026-09-08T15:57:44.039+05:30 I [applabel] com.inmobi.weather resolves to "Weather" — 45 resolved / 0 fell back since start
+2026-09-08T15:57:44.046+05:30 I [applabel] com.instagram.android resolves to "Instagram" — 46 resolved / 0 fell back since start
+2026-09-08T15:57:44.052+05:30 I [applabel] com.linkedin.android resolves to "LinkedIn" — 47 resolved / 0 fell back since start
+2026-09-08T15:57:44.056+05:30 I [applabel] com.localweather.radar.climate resolves to " Local Weather" — 48 resolved / 0 fell back since start
+2026-09-08T15:57:44.061+05:30 I [applabel] com.meesho.supply resolves to "Meesho" — 49 resolved / 0 fell back since start
+2026-09-08T15:57:44.067+05:30 I [applabel] com.phonepe.app resolves to "PhonePe" — 50 resolved / 0 fell back since start
+2026-09-08T15:57:44.068+05:30 I [applabel] com.sbi.lotusintouch resolves to "YONO SBI" — 51 resolved / 0 fell back since start
+2026-09-08T15:57:44.071+05:30 I [applabel] gallery.photogallery.memory.photoeditor.vault.album resolves to "#Gallery" — 52 resolved / 0 fell back since start
+2026-09-08T15:57:44.071+05:30 I [apps] Enumerated 52 launcher packages — 52 labelled / 0 fell back to the package id. This counts PACKAGES; `adb shell cmd package query-activities` counts ACTIVITIES and is a larger number for the same phone.
+2026-09-08T15:57:44.082+05:30 I [apps] apps.list → 52 of 52 packages in 253ms — 1 lists / 0 icon batches / 0 asked / 0 refused since start
+2026-09-08T15:57:44.732+05:30 I [apps] apps.icon → 32 made / 0 failed of 32 asked, edge=96
+2026-09-08T15:57:45.234+05:30 I [apps] apps.icon → 20 made / 0 failed of 20 asked, edge=96
+2026-09-08T15:57:48.854+05:30 I [apps] Enumerated 52 launcher packages — 52 labelled / 0 fell back to the package id. This counts PACKAGES; `adb shell cmd package query-activities` counts ACTIVITIES and is a larger number for the same phone.
+2026-09-08T15:57:48.866+05:30 I [apps] apps.list → 52 of 52 packages in 26ms — 2 lists / 2 icon batches / 0 asked / 0 refused since start
+2026-09-08T15:57:49.994+05:30 I [apps] apps.open.ask → asked to open "Instagram" (com.instagram.android); whether it opens is the user's tap and this phone will never know — 2 lists / 2 icon batches / 1 asked / 0 refused since start
+2026-09-08T15:58:28.955+05:30 I [fs] Folders screen: 0 folder(s) shared, 0 resolving, 0 gone
+2026-09-08T15:58:29.686+05:30 I [fs] Folders screen: 0 folder(s) shared, 0 resolving, 0 gone
+2026-09-08T15:58:36.185+05:30 I [caps] A Settings toggle changed; re-checking capabilities
+2026-09-08T15:58:36.197+05:30 I [caps] Capabilities unchanged (apps,calls,clipboard,contacts,files,mirror,photos,sms); reason changed: input — granted in Settings, but Android has not started the service — this happens after the app is reinstalled or force-stopped; turn the switch off and on again to rebind it
+2026-09-08T15:58:36.197+05:30 I [caps] Capabilities unchanged (apps,calls,clipboard,contacts,files,mirror,photos,sms); reason changed: input — granted in Settings, but Android has not started the service — this happens after the app is reinstalled or force-stopped; turn the switch off and on again to rebind it
+2026-09-08T15:58:36.261+05:30 I [input] Accessibility service connected
+2026-09-08T15:58:36.268+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,input,mirror,photos,sms
+2026-09-08T15:58:36.276+05:30 I [autostart] ACCESSIBILITY_BIND: already listening — nothing to do
+2026-09-08T15:58:38.768+05:30 I [mirror] Mirroring started from the phone for Chetans-MacBook-Pro
+2026-09-08T15:58:41.362+05:30 I [mirror] Screen capture consent granted
+2026-09-08T15:58:41.430+05:30 I [mirror] Display 720x1600 @306dpi -> capture 720x1600 @306dpi (cap 1080)
+2026-09-08T15:58:41.658+05:30 I [mirror] Encoding 720x1600 @306dpi 60fps 8Mbps (cap 1080p)
+2026-09-08T15:58:41.660+05:30 I [mirror] Mirror session started
+2026-09-08T15:58:41.745+05:30 I [server] video channel authorised for Chetans-MacBook-Pro
+2026-09-08T15:58:41.750+05:30 I [mirror] Video channel attached for Chetans-MacBook-Pro
+2026-09-08T15:58:41.858+05:30 I [mirror] Encoder output format: {max-bitrate=8000000, crop-right=719, mime=video/avc, profile=8, bitrate=8000000, priority=0, intra-refresh-period=0, color-standard=1, feature-secure-playback=0, csd-1=java.nio.HeapByteBuffer[pos=0 lim=9 cap=9], color-transfer=3, crop-bottom=1599, prepend-sps-pps-to-idr-frames=0, video-qp-average=0, crop-left=0, width=720, bitrate-mode=1, color-range=2, crop-top=0, frame-rate=60, height=1600, csd-0=java.nio.HeapByteBuffer[pos=0 lim=22 cap=22]}
+2026-09-08T15:58:43.661+05:30 I [mirror] Encoded +46 frames (23.0/s, +335296 B) last keyframe 44656B [new encoder]
+2026-09-08T15:58:45.667+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 44656B
+2026-09-08T15:58:47.671+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 44656B
+2026-09-08T15:58:49.675+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 44656B
+2026-09-08T15:58:50.878+05:30 I [input] Gesture landed in 140ms (124ms stroke, 624ms budget)
+2026-09-08T15:58:50.878+05:30 I [input] input.tap delivered — 1 delivered / 0 refused since start
+2026-09-08T15:58:51.677+05:30 I [mirror] Encoded +55 frames (27.5/s, +2567088 B) last keyframe 44656B
+2026-09-08T15:58:52.028+05:30 I [caps] A Settings toggle changed; re-checking capabilities
+2026-09-08T15:58:53.678+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 44656B
+2026-09-08T15:58:53.907+05:30 I [input] Gesture landed in 225ms (217ms stroke, 717ms budget)
+2026-09-08T15:58:53.907+05:30 I [input] input.swipe delivered — 2 delivered / 0 refused since start
+2026-09-08T15:58:55.680+05:30 I [mirror] Encoded +82 frames (41.0/s, +2505664 B) last keyframe 284464B
+2026-09-08T15:58:56.700+05:30 I [input] Gesture landed in 292ms (283ms stroke, 783ms budget)
+2026-09-08T15:58:56.700+05:30 I [input] input.swipe delivered — 3 delivered / 0 refused since start
+2026-09-08T15:58:57.685+05:30 I [mirror] Encoded +73 frames (36.5/s, +2171520 B) last keyframe 276288B
+2026-09-08T15:58:58.326+05:30 I [input] Gesture landed in 74ms (66ms stroke, 566ms budget)
+2026-09-08T15:58:58.327+05:30 I [input] input.tap delivered — 4 delivered / 0 refused since start
+2026-09-08T15:58:59.689+05:30 I [mirror] Encoded +64 frames (32.0/s, +823856 B) last keyframe 276288B
+2026-09-08T15:59:01.692+05:30 I [mirror] Encoded +125 frames (62.5/s, +668096 B) last keyframe 34000B
+2026-09-08T15:59:02.315+05:30 I [mirror] Display 720x1600 @306dpi -> capture 720x1600 @306dpi (cap 720)
+2026-09-08T15:59:02.315+05:30 I [mirror] Resolution cap 1080 -> 720
+2026-09-08T15:59:02.407+05:30 I [mirror] Encoding 720x1600 @306dpi 60fps 8Mbps (cap 720p)
+2026-09-08T15:59:02.444+05:30 I [mirror] Encoder swapped (resolution cap 720): now 720x1600 @306dpi
+2026-09-08T15:59:02.520+05:30 I [mirror] Encoder output format: {max-bitrate=8000000, crop-right=719, mime=video/avc, profile=8, bitrate=8000000, priority=0, intra-refresh-period=0, color-standard=1, feature-secure-playback=0, csd-1=java.nio.HeapByteBuffer[pos=0 lim=9 cap=9], color-transfer=3, crop-bottom=1599, prepend-sps-pps-to-idr-frames=0, video-qp-average=0, crop-left=0, width=720, bitrate-mode=1, color-range=2, crop-top=0, frame-rate=60, height=1600, csd-0=java.nio.HeapByteBuffer[pos=0 lim=22 cap=22]}
+2026-09-08T15:59:03.694+05:30 I [mirror] Encoded +1 frames (0.5/s, +36944 B) last keyframe 36944B [new encoder]
+2026-09-08T15:59:04.153+05:30 I [mirror] Display 720x1600 @306dpi -> capture 480x1066 @204dpi (cap 480)
+2026-09-08T15:59:04.153+05:30 I [mirror] Resolution cap 720 -> 480
+2026-09-08T15:59:04.237+05:30 I [mirror] Encoding 480x1066 @204dpi 60fps 8Mbps (cap 480p)
+2026-09-08T15:59:04.271+05:30 I [mirror] Encoder swapped (resolution cap 480): now 480x1066 @204dpi
+2026-09-08T15:59:04.303+05:30 I [mirror] Encoder output format: {max-bitrate=8000000, crop-right=479, mime=video/avc, profile=8, bitrate=8000000, priority=0, intra-refresh-period=0, color-standard=1, feature-secure-playback=0, csd-1=java.nio.HeapByteBuffer[pos=0 lim=9 cap=9], color-transfer=3, crop-bottom=1065, prepend-sps-pps-to-idr-frames=0, video-qp-average=0, crop-left=0, width=480, bitrate-mode=1, color-range=2, crop-top=0, frame-rate=60, height=1066, csd-0=java.nio.HeapByteBuffer[pos=0 lim=23 cap=23]}
+2026-09-08T15:59:05.698+05:30 I [mirror] Encoded +3 frames (1.5/s, +-7120 B) last keyframe 27760B
+2026-09-08T15:59:06.207+05:30 I [input] Gesture landed in 120ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:06.207+05:30 I [input] input.scroll delivered — 5 delivered / 0 refused since start
+2026-09-08T15:59:06.357+05:30 I [input] Gesture landed in 107ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:06.357+05:30 I [input] input.scroll delivered — 6 delivered / 0 refused since start
+2026-09-08T15:59:06.521+05:30 I [input] Gesture landed in 129ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:06.522+05:30 I [input] input.scroll delivered — 7 delivered / 0 refused since start
+2026-09-08T15:59:06.693+05:30 I [input] Gesture landed in 107ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:06.694+05:30 I [input] input.scroll delivered — 8 delivered / 0 refused since start
+2026-09-08T15:59:07.700+05:30 I [mirror] Encoded +108 frames (54.0/s, +564176 B) last keyframe 27760B
+2026-09-08T15:59:08.485+05:30 I [input] Gesture landed in 106ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:08.486+05:30 I [input] input.scroll delivered — 9 delivered / 0 refused since start
+2026-09-08T15:59:08.831+05:30 I [input] Gesture landed in 108ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:08.831+05:30 I [input] input.scroll delivered — 10 delivered / 0 refused since start
+2026-09-08T15:59:08.972+05:30 I [input] Gesture landed in 106ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:08.973+05:30 I [input] input.scroll delivered — 11 delivered / 0 refused since start
+2026-09-08T15:59:09.704+05:30 I [mirror] Encoded +112 frames (56.0/s, +222400 B) last keyframe 200160B
+2026-09-08T15:59:10.743+05:30 I [input] Gesture landed in 107ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:10.743+05:30 I [input] input.scroll delivered — 12 delivered / 0 refused since start
+2026-09-08T15:59:10.892+05:30 I [input] Gesture landed in 108ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:10.893+05:30 I [input] input.scroll delivered — 13 delivered / 0 refused since start
+2026-09-08T15:59:11.026+05:30 I [input] Gesture landed in 109ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:11.027+05:30 I [input] input.scroll delivered — 14 delivered / 0 refused since start
+2026-09-08T15:59:11.165+05:30 I [input] Gesture landed in 109ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:11.165+05:30 I [input] input.scroll delivered — 15 delivered / 0 refused since start
+2026-09-08T15:59:11.538+05:30 I [input] Gesture landed in 107ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:11.538+05:30 I [input] input.scroll delivered — 16 delivered / 0 refused since start
+2026-09-08T15:59:11.664+05:30 I [input] Gesture landed in 106ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:11.665+05:30 I [input] input.scroll delivered — 17 delivered / 0 refused since start
+2026-09-08T15:59:11.708+05:30 I [mirror] Encoded +83 frames (41.5/s, +675328 B) last keyframe 211328B
+2026-09-08T15:59:11.789+05:30 I [input] Gesture landed in 108ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:11.789+05:30 I [input] input.scroll delivered — 18 delivered / 0 refused since start
+2026-09-08T15:59:13.711+05:30 I [mirror] Encoded +14 frames (7.0/s, +59152 B) last keyframe 211328B
+2026-09-08T15:59:15.184+05:30 I [mirror] Mirror stopped: stopped by the Mac
+2026-09-08T15:59:15.187+05:30 I [mirror] Projection stopped by the system or the user
+2026-09-08T15:59:15.863+05:30 I [mirror] mirror.start from Chetans-MacBook-Pro; app is backgrounded
+2026-09-08T15:59:23.013+05:30 I [mirror] Mirroring started from the phone for Chetans-MacBook-Pro
+2026-09-08T15:59:25.404+05:30 I [mirror] Screen capture consent granted
+2026-09-08T15:59:25.431+05:30 I [mirror] Display 720x1600 @306dpi -> capture 480x1066 @204dpi (cap 480)
+2026-09-08T15:59:25.560+05:30 I [mirror] Encoding 480x1066 @204dpi 30fps 8Mbps (cap 480p)
+2026-09-08T15:59:25.562+05:30 I [mirror] Mirror session started
+2026-09-08T15:59:25.596+05:30 I [mirror] Encoder output format: {max-bitrate=8000000, crop-right=479, mime=video/avc, profile=8, bitrate=8000000, priority=0, intra-refresh-period=0, color-standard=1, feature-secure-playback=0, csd-1=java.nio.HeapByteBuffer[pos=0 lim=9 cap=9], color-transfer=3, crop-bottom=1065, prepend-sps-pps-to-idr-frames=0, video-qp-average=0, crop-left=0, width=480, bitrate-mode=1, color-range=2, crop-top=0, frame-rate=30, height=1066, csd-0=java.nio.HeapByteBuffer[pos=0 lim=23 cap=23]}
+2026-09-08T15:59:25.671+05:30 I [server] video channel authorised for Chetans-MacBook-Pro
+2026-09-08T15:59:25.672+05:30 I [mirror] Video channel attached for Chetans-MacBook-Pro
+2026-09-08T15:59:27.564+05:30 I [mirror] Encoded +53 frames (26.5/s, +258240 B) last keyframe 37776B [new encoder]
+2026-09-08T15:59:27.778+05:30 I [input] Gesture landed in 108ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:27.779+05:30 I [input] input.scroll delivered — 19 delivered / 0 refused since start
+2026-09-08T15:59:27.902+05:30 I [input] Gesture landed in 105ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:27.903+05:30 I [input] input.scroll delivered — 20 delivered / 0 refused since start
+2026-09-08T15:59:28.033+05:30 I [input] Gesture landed in 109ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:28.033+05:30 I [input] input.scroll delivered — 21 delivered / 0 refused since start
+2026-09-08T15:59:28.160+05:30 I [input] Gesture landed in 107ms (100ms stroke, 600ms budget)
+2026-09-08T15:59:28.161+05:30 I [input] input.scroll delivered — 22 delivered / 0 refused since start
+2026-09-08T15:59:29.048+05:30 I [input] Gesture landed in 113ms (108ms stroke, 608ms budget)
+2026-09-08T15:59:29.049+05:30 I [input] input.tap delivered — 23 delivered / 0 refused since start
+2026-09-08T15:59:29.567+05:30 I [mirror] Encoded +47 frames (23.5/s, +1267072 B) last keyframe 131504B
+2026-09-08T15:59:31.311+05:30 I [input] Gesture landed in 82ms (75ms stroke, 575ms budget)
+2026-09-08T15:59:31.311+05:30 I [input] input.tap delivered — 24 delivered / 0 refused since start
+2026-09-08T15:59:31.573+05:30 I [mirror] Encoded +22 frames (11.0/s, +97920 B) last keyframe 131504B
+2026-09-08T15:59:33.577+05:30 I [mirror] Encoded +157 frames (78.5/s, +2207552 B) last keyframe 222288B
+2026-09-08T15:59:34.637+05:30 I [input] Gesture landed in 160ms (150ms stroke, 650ms budget)
+2026-09-08T15:59:34.638+05:30 I [input] input.tap delivered — 25 delivered / 0 refused since start
+2026-09-08T15:59:34.887+05:30 I [input] Gesture landed in 124ms (117ms stroke, 617ms budget)
+2026-09-08T15:59:34.887+05:30 I [input] input.tap delivered — 26 delivered / 0 refused since start
+2026-09-08T15:59:35.581+05:30 I [mirror] Encoded +91 frames (45.5/s, +1655584 B) last keyframe 148016B
+2026-09-08T15:59:36.469+05:30 I [input] Gesture landed in 97ms (91ms stroke, 591ms budget)
+2026-09-08T15:59:36.470+05:30 I [input] input.tap delivered — 27 delivered / 0 refused since start
+2026-09-08T15:59:36.547+05:30 I [vitals] battery.state → Mac: 40%, charging=true — 4 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T15:59:37.583+05:30 I [mirror] Encoded +85 frames (42.5/s, +1429600 B) last keyframe 122960B
+2026-09-08T15:59:39.586+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 122960B
+2026-09-08T15:59:41.589+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 122960B
+2026-09-08T15:59:43.595+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 122960B
+2026-09-08T15:59:45.599+05:30 I [mirror] Encoded +1 frames (0.5/s, +1488 B) last keyframe 122960B
+2026-09-08T15:59:47.601+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 122960B
+2026-09-08T15:59:49.604+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 122960B
+2026-09-08T15:59:51.609+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 122960B
+2026-09-08T15:59:53.613+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 122960B
+2026-09-08T15:59:55.620+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 122960B
+2026-09-08T15:59:57.624+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 122960B
+2026-09-08T15:59:59.629+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 122960B
+2026-09-08T16:00:01.632+05:30 I [mirror] Encoded +64 frames (32.0/s, +3248640 B) last keyframe 95984B
+2026-09-08T16:00:03.476+05:30 I [input] Accessibility service disconnected
+2026-09-08T16:00:03.491+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,mirror,photos,sms
+2026-09-08T16:00:03.634+05:30 I [mirror] Encoded +47 frames (23.5/s, +86480 B) last keyframe 12672B
+2026-09-08T16:00:04.571+05:30 I [input] Accessibility service connected
+2026-09-08T16:00:04.573+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,input,mirror,photos,sms
+2026-09-08T16:00:04.577+05:30 I [autostart] ACCESSIBILITY_BIND: already listening — nothing to do
+2026-09-08T16:00:05.638+05:30 I [mirror] Encoded +4 frames (2.0/s, +128 B) last keyframe 12672B
+2026-09-08T16:00:07.641+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 12672B
+2026-09-08T16:00:09.644+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 12672B
+2026-09-08T16:00:11.647+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 12672B
+2026-09-08T16:00:13.651+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 12672B
+2026-09-08T16:00:15.654+05:30 I [mirror] Encoded +2 frames (1.0/s, +64 B) last keyframe 12672B
+2026-09-08T16:00:17.655+05:30 I [mirror] Encoded +60 frames (30.0/s, +60336 B) last keyframe 4624B
+2026-09-08T16:00:19.176+05:30 I [input] Accessibility service disconnected
+2026-09-08T16:00:19.190+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,mirror,photos,sms
+2026-09-08T16:00:19.657+05:30 I [mirror] Encoded +29 frames (14.5/s, +303024 B) last keyframe 10304B
+2026-09-08T16:00:20.328+05:30 I [input] Accessibility service connected
+2026-09-08T16:00:20.332+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,input,mirror,photos,sms
+2026-09-08T16:00:20.346+05:30 I [autostart] ACCESSIBILITY_BIND: already listening — nothing to do
+2026-09-08T16:00:21.660+05:30 I [mirror] Encoded +7 frames (3.5/s, +6160 B) last keyframe 10304B
+2026-09-08T16:00:23.663+05:30 I [mirror] Encoded +16 frames (8.0/s, +79488 B) last keyframe 51952B
+2026-09-08T16:00:25.666+05:30 I [mirror] Encoded +31 frames (15.5/s, +3328 B) last keyframe 51952B
+2026-09-08T16:00:27.668+05:30 I [mirror] Encoded +4 frames (2.0/s, +1584 B) last keyframe 51952B
+2026-09-08T16:00:29.670+05:30 I [mirror] Encoded +4 frames (2.0/s, +55312 B) last keyframe 53936B
+2026-09-08T16:00:31.673+05:30 I [mirror] Encoded +4 frames (2.0/s, +1568 B) last keyframe 53936B
+2026-09-08T16:00:33.676+05:30 I [mirror] Encoded +4 frames (2.0/s, +1600 B) last keyframe 53936B
+2026-09-08T16:00:35.678+05:30 I [mirror] Encoded +4 frames (2.0/s, +55456 B) last keyframe 54288B
+2026-09-08T16:00:37.682+05:30 I [mirror] Encoded +4 frames (2.0/s, +1552 B) last keyframe 54288B
+2026-09-08T16:00:39.688+05:30 I [mirror] Encoded +4 frames (2.0/s, +1552 B) last keyframe 54288B
+2026-09-08T16:00:41.692+05:30 I [mirror] Encoded +4 frames (2.0/s, +55296 B) last keyframe 53936B
+2026-09-08T16:00:43.683+05:30 I [input] Accessibility service disconnected
+2026-09-08T16:00:43.691+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,mirror,photos,sms
+2026-09-08T16:00:43.696+05:30 I [mirror] Encoded +4 frames (2.0/s, +1648 B) last keyframe 53936B
+2026-09-08T16:00:44.781+05:30 I [input] Accessibility service connected
+2026-09-08T16:00:44.789+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,input,mirror,photos,sms
+2026-09-08T16:00:44.798+05:30 I [autostart] ACCESSIBILITY_BIND: already listening — nothing to do
+2026-09-08T16:00:45.698+05:30 I [mirror] Encoded +9 frames (4.5/s, +55728 B) last keyframe 54288B
+2026-09-08T16:00:47.703+05:30 I [mirror] Encoded +4 frames (2.0/s, +1632 B) last keyframe 54288B
+2026-09-08T16:00:49.707+05:30 I [mirror] Encoded +4 frames (2.0/s, +1584 B) last keyframe 54288B
+2026-09-08T16:00:51.713+05:30 I [mirror] Encoded +4 frames (2.0/s, +55296 B) last keyframe 53936B
+2026-09-08T16:00:53.716+05:30 I [mirror] Encoded +4 frames (2.0/s, +1568 B) last keyframe 53936B
+2026-09-08T16:00:55.721+05:30 I [mirror] Encoded +4 frames (2.0/s, +1600 B) last keyframe 53936B
+2026-09-08T16:00:57.724+05:30 I [mirror] Encoded +4 frames (2.0/s, +55456 B) last keyframe 54288B
+2026-09-08T16:00:59.730+05:30 I [mirror] Encoded +4 frames (2.0/s, +1552 B) last keyframe 54288B
+2026-09-08T16:01:01.736+05:30 I [mirror] Encoded +5 frames (2.5/s, +2000 B) last keyframe 54288B
+2026-09-08T16:01:03.738+05:30 I [mirror] Encoded +7 frames (3.5/s, +96000 B) last keyframe 58256B
+2026-09-08T16:01:05.743+05:30 I [mirror] Encoded +168 frames (84.0/s, +3871056 B) last keyframe 86160B
+2026-09-08T16:01:07.747+05:30 I [mirror] Encoded +112 frames (56.0/s, +2163952 B) last keyframe 93696B
+2026-09-08T16:01:09.750+05:30 I [mirror] Encoded +93 frames (46.5/s, +1869680 B) last keyframe 58288B
+2026-09-08T16:01:11.752+05:30 I [mirror] Encoded +4 frames (2.0/s, +1472 B) last keyframe 58288B
+2026-09-08T16:01:13.754+05:30 I [mirror] Encoded +4 frames (2.0/s, +1456 B) last keyframe 58288B
+2026-09-08T16:01:15.757+05:30 I [mirror] Encoded +4 frames (2.0/s, +59152 B) last keyframe 57872B
+2026-09-08T16:01:17.759+05:30 I [mirror] Encoded +4 frames (2.0/s, +1520 B) last keyframe 57872B
+2026-09-08T16:01:19.762+05:30 I [mirror] Encoded +4 frames (2.0/s, +1472 B) last keyframe 57872B
+2026-09-08T16:01:21.764+05:30 I [mirror] Encoded +4 frames (2.0/s, +59248 B) last keyframe 58256B
+2026-09-08T16:01:23.767+05:30 I [mirror] Encoded +42 frames (21.0/s, +163600 B) last keyframe 58256B
+2026-09-08T16:01:25.770+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 58256B
+2026-09-08T16:01:27.773+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 58256B
+2026-09-08T16:01:29.777+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 58256B
+2026-09-08T16:01:31.780+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 58256B
+2026-09-08T16:01:33.783+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 58256B
+2026-09-08T16:01:35.168+05:30 I [clip] clip.push ← Mac: 52 bytes, held for a tap — 0 sent / 2 received / 0 of 2 applied / 0 refused-unfocused / 0 refused-sensitive / 0 refused-too-large since start
+2026-09-08T16:01:35.786+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 58256B
+2026-09-08T16:01:37.789+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 58256B
+2026-09-08T16:01:39.793+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 58256B
+2026-09-08T16:01:41.795+05:30 I [mirror] Encoded +95 frames (47.5/s, +2066656 B) last keyframe 84896B
+2026-09-08T16:01:43.797+05:30 I [mirror] Encoded +73 frames (36.5/s, +1082144 B) last keyframe 14032B
+2026-09-08T16:01:44.636+05:30 I [vitals] battery.state → Mac: 41%, charging=true — 5 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T16:01:45.800+05:30 I [mirror] Encoded +108 frames (54.0/s, +1412688 B) last keyframe 41344B
+2026-09-08T16:01:47.804+05:30 I [mirror] Encoded +196 frames (98.0/s, +1542672 B) last keyframe 57920B
+2026-09-08T16:01:49.807+05:30 I [mirror] Encoded +65 frames (32.5/s, +87584 B) last keyframe 58160B
+2026-09-08T16:01:51.809+05:30 I [mirror] Encoded +4 frames (2.0/s, +1904 B) last keyframe 58160B
+2026-09-08T16:01:53.812+05:30 I [mirror] Encoded +14 frames (7.0/s, +64240 B) last keyframe 59824B
+2026-09-08T16:01:55.818+05:30 I [mirror] Encoded +4 frames (2.0/s, +1456 B) last keyframe 59824B
+2026-09-08T16:01:57.822+05:30 I [mirror] Encoded +4 frames (2.0/s, +1504 B) last keyframe 59824B
+2026-09-08T16:01:59.824+05:30 I [mirror] Encoded +4 frames (2.0/s, +60144 B) last keyframe 59024B
+2026-09-08T16:02:01.829+05:30 I [mirror] Encoded +5 frames (2.5/s, +1984 B) last keyframe 59024B
+2026-09-08T16:02:03.833+05:30 I [mirror] Encoded +4 frames (2.0/s, +56272 B) last keyframe 55312B
+2026-09-08T16:02:05.836+05:30 I [mirror] Encoded +5 frames (2.5/s, +1936 B) last keyframe 55312B
+2026-09-08T16:02:07.840+05:30 I [mirror] Encoded +4 frames (2.0/s, +1600 B) last keyframe 55312B
+2026-09-08T16:02:09.846+05:30 I [mirror] Encoded +4 frames (2.0/s, +59184 B) last keyframe 57808B
+2026-09-08T16:02:11.850+05:30 I [mirror] Encoded +4 frames (2.0/s, +1472 B) last keyframe 57808B
+2026-09-08T16:02:13.855+05:30 I [mirror] Encoded +4 frames (2.0/s, +1456 B) last keyframe 57808B
+2026-09-08T16:02:15.860+05:30 I [mirror] Encoded +4 frames (2.0/s, +60496 B) last keyframe 59216B
+2026-09-08T16:02:17.867+05:30 I [mirror] Encoded +4 frames (2.0/s, +1520 B) last keyframe 59216B
+2026-09-08T16:02:19.872+05:30 I [mirror] Encoded +4 frames (2.0/s, +1472 B) last keyframe 59216B
+2026-09-08T16:02:21.879+05:30 I [mirror] Encoded +4 frames (2.0/s, +60592 B) last keyframe 59600B
+2026-09-08T16:02:23.883+05:30 I [mirror] Encoded +4 frames (2.0/s, +1472 B) last keyframe 59600B
+2026-09-08T16:02:25.890+05:30 I [mirror] Encoded +4 frames (2.0/s, +1520 B) last keyframe 59600B
+2026-09-08T16:02:27.894+05:30 I [mirror] Encoded +54 frames (27.0/s, +1145040 B) last keyframe 59216B
+2026-09-08T16:02:29.896+05:30 I [mirror] Encoded +76 frames (38.0/s, +1116096 B) last keyframe 22208B
+2026-09-08T16:02:31.898+05:30 I [mirror] Encoded +115 frames (57.5/s, +368976 B) last keyframe 27136B
+2026-09-08T16:02:33.899+05:30 I [mirror] Encoded +76 frames (38.0/s, +241744 B) last keyframe 108624B
+2026-09-08T16:02:34.351+05:30 I [input] Accessibility service disconnected
+2026-09-08T16:02:34.359+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,mirror,photos,sms
+2026-09-08T16:02:35.901+05:30 I [mirror] Encoded +62 frames (31.0/s, +260944 B) last keyframe 89360B
+2026-09-08T16:02:37.904+05:30 I [mirror] Encoded +49 frames (24.5/s, +122608 B) last keyframe 85280B
+2026-09-08T16:02:38.804+05:30 I [input] Accessibility service connected
+2026-09-08T16:02:38.806+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,input,mirror,photos,sms
+2026-09-08T16:02:38.808+05:30 I [autostart] ACCESSIBILITY_BIND: already listening — nothing to do
+2026-09-08T16:02:39.906+05:30 I [mirror] Encoded +50 frames (25.0/s, +132256 B) last keyframe 90560B
+2026-09-08T16:02:41.909+05:30 I [mirror] Encoded +42 frames (21.0/s, +472816 B) last keyframe 90560B
+2026-09-08T16:02:43.912+05:30 I [mirror] Encoded +42 frames (21.0/s, +132400 B) last keyframe 96656B
+2026-09-08T16:02:45.918+05:30 I [mirror] Encoded +37 frames (18.5/s, +183504 B) last keyframe 102656B
+2026-09-08T16:02:47.923+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 102656B
+2026-09-08T16:02:48.642+05:30 I [vitals] battery.state → Mac: 42%, charging=true — 6 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T16:02:49.925+05:30 I [mirror] Encoded +1 frames (0.5/s, +448 B) last keyframe 102656B
+2026-09-08T16:02:51.928+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 102656B
+2026-09-08T16:02:53.931+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 102656B
+2026-09-08T16:02:55.932+05:30 I [mirror] Encoded +3 frames (1.5/s, +240 B) last keyframe 102656B
+2026-09-08T16:02:57.934+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 102656B
+2026-09-08T16:02:59.936+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 102656B
+2026-09-08T16:03:01.937+05:30 I [mirror] Encoded +16 frames (8.0/s, +124944 B) last keyframe 89616B
+2026-09-08T16:03:03.942+05:30 I [mirror] Encoded +55 frames (27.5/s, +144800 B) last keyframe 89696B
+2026-09-08T16:03:05.944+05:30 I [mirror] Encoded +107 frames (53.5/s, +234608 B) last keyframe 87456B
+2026-09-08T16:03:07.948+05:30 I [mirror] Encoded +55 frames (27.5/s, +140624 B) last keyframe 82960B
+2026-09-08T16:03:09.950+05:30 I [mirror] Encoded +69 frames (34.5/s, +152816 B) last keyframe 89616B
+2026-09-08T16:03:11.952+05:30 I [mirror] Encoded +55 frames (27.5/s, +144592 B) last keyframe 89584B
+2026-09-08T16:03:13.955+05:30 I [mirror] Encoded +55 frames (27.5/s, +145456 B) last keyframe 89568B
+2026-09-08T16:03:15.957+05:30 I [mirror] Encoded +55 frames (27.5/s, +143840 B) last keyframe 87376B
+2026-09-08T16:03:17.962+05:30 I [mirror] Encoded +55 frames (27.5/s, +138432 B) last keyframe 82976B
+2026-09-08T16:03:19.967+05:30 I [mirror] Encoded +56 frames (28.0/s, +146160 B) last keyframe 88768B
+2026-09-08T16:03:21.969+05:30 I [mirror] Encoded +55 frames (27.5/s, +143472 B) last keyframe 88848B
+2026-09-08T16:03:23.971+05:30 I [mirror] Encoded +55 frames (27.5/s, +144064 B) last keyframe 88784B
+2026-09-08T16:03:25.974+05:30 I [mirror] Encoded +55 frames (27.5/s, +142096 B) last keyframe 86608B
+2026-09-08T16:03:27.978+05:30 I [mirror] Encoded +55 frames (27.5/s, +138368 B) last keyframe 82992B
+2026-09-08T16:03:29.983+05:30 I [mirror] Encoded +99 frames (49.5/s, +231072 B) last keyframe 89936B
+2026-09-08T16:03:31.987+05:30 I [mirror] Encoded +66 frames (33.0/s, +150960 B) last keyframe 89616B
+2026-09-08T16:03:33.995+05:30 I [mirror] Encoded +57 frames (28.5/s, +147712 B) last keyframe 89584B
+2026-09-08T16:03:35.997+05:30 I [mirror] Encoded +55 frames (27.5/s, +141888 B) last keyframe 87344B
+2026-09-08T16:03:38.004+05:30 I [mirror] Encoded +56 frames (28.0/s, +141760 B) last keyframe 82912B
+2026-09-08T16:03:40.006+05:30 I [mirror] Encoded +55 frames (27.5/s, +144400 B) last keyframe 89488B
+2026-09-08T16:03:42.008+05:30 I [mirror] Encoded +55 frames (27.5/s, +143360 B) last keyframe 89152B
+2026-09-08T16:03:44.014+05:30 I [mirror] Encoded +55 frames (27.5/s, +143984 B) last keyframe 88624B
+2026-09-08T16:03:46.016+05:30 I [mirror] Encoded +64 frames (32.0/s, +255648 B) last keyframe 90192B
+2026-09-08T16:03:48.019+05:30 I [mirror] Encoded +79 frames (39.5/s, +278672 B) last keyframe 69408B
+2026-09-08T16:03:50.023+05:30 I [mirror] Encoded +55 frames (27.5/s, +119136 B) last keyframe 64128B
+2026-09-08T16:03:52.026+05:30 I [mirror] Encoded +56 frames (28.0/s, +119776 B) last keyframe 64144B
+2026-09-08T16:03:54.029+05:30 I [mirror] Encoded +25 frames (12.5/s, +156656 B) last keyframe 64160B
+2026-09-08T16:03:56.033+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 64160B
+2026-09-08T16:03:58.038+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 64160B
+2026-09-08T16:04:00.043+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 64160B
+2026-09-08T16:04:02.045+05:30 I [mirror] Encoded +1 frames (0.5/s, +672 B) last keyframe 64160B
+2026-09-08T16:04:04.047+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 64160B
+2026-09-08T16:04:06.049+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 64160B
+2026-09-08T16:04:08.051+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 64160B
+2026-09-08T16:04:10.054+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 64160B
+2026-09-08T16:04:12.058+05:30 I [mirror] Encoded +93 frames (46.5/s, +2317056 B) last keyframe 58176B
+2026-09-08T16:04:14.069+05:30 I [mirror] Encoded +180 frames (90.0/s, +235264 B) last keyframe 58016B
+2026-09-08T16:04:16.073+05:30 I [mirror] Encoded +53 frames (26.5/s, +66928 B) last keyframe 62416B
+2026-09-08T16:04:18.077+05:30 I [mirror] Encoded +1 frames (0.5/s, +48 B) last keyframe 62416B
+2026-09-08T16:04:20.081+05:30 I [mirror] Encoded +32 frames (16.0/s, +43232 B) last keyframe 62416B
+2026-09-08T16:04:22.084+05:30 I [mirror] Encoded +4 frames (2.0/s, +59280 B) last keyframe 57984B
+2026-09-08T16:04:24.087+05:30 I [mirror] Encoded +4 frames (2.0/s, +1520 B) last keyframe 57984B
+2026-09-08T16:04:26.092+05:30 I [mirror] Encoded +4 frames (2.0/s, +1472 B) last keyframe 57984B
+2026-09-08T16:04:28.098+05:30 I [mirror] Encoded +4 frames (2.0/s, +59360 B) last keyframe 58368B
+2026-09-08T16:04:30.101+05:30 I [mirror] Encoded +4 frames (2.0/s, +1472 B) last keyframe 58368B
+2026-09-08T16:04:32.108+05:30 I [mirror] Encoded +4 frames (2.0/s, +1520 B) last keyframe 58368B
+2026-09-08T16:04:34.112+05:30 I [mirror] Encoded +4 frames (2.0/s, +59216 B) last keyframe 57984B
+2026-09-08T16:04:36.117+05:30 I [mirror] Encoded +4 frames (2.0/s, +1504 B) last keyframe 57984B
+2026-09-08T16:04:38.121+05:30 I [mirror] Encoded +4 frames (2.0/s, +59376 B) last keyframe 58368B
+2026-09-08T16:04:40.126+05:30 I [mirror] Encoded +4 frames (2.0/s, +1488 B) last keyframe 58368B
+2026-09-08T16:04:42.131+05:30 I [mirror] Encoded +4 frames (2.0/s, +1456 B) last keyframe 58368B
+2026-09-08T16:04:44.136+05:30 I [mirror] Encoded +4 frames (2.0/s, +59264 B) last keyframe 57984B
+2026-09-08T16:04:46.141+05:30 I [mirror] Encoded +4 frames (2.0/s, +1520 B) last keyframe 57984B
+2026-09-08T16:04:48.147+05:30 I [mirror] Encoded +4 frames (2.0/s, +1472 B) last keyframe 57984B
+2026-09-08T16:04:50.151+05:30 I [mirror] Encoded +4 frames (2.0/s, +59360 B) last keyframe 58368B
+2026-09-08T16:04:52.156+05:30 I [mirror] Encoded +77 frames (38.5/s, +2690720 B) last keyframe 199024B
+2026-09-08T16:04:54.168+05:30 I [mirror] Encoded +144 frames (72.0/s, +228368 B) last keyframe 92064B
+2026-09-08T16:04:55.938+05:30 I [vitals] battery.state → Mac: 43%, charging=true — 7 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T16:04:56.172+05:30 I [mirror] Encoded +2 frames (1.0/s, +672 B) last keyframe 92064B
+2026-09-08T16:04:58.173+05:30 I [mirror] Encoded +69 frames (34.5/s, +897696 B) last keyframe 108000B
+2026-09-08T16:05:00.176+05:30 I [mirror] Encoded +1 frames (0.5/s, +1184 B) last keyframe 108000B
+2026-09-08T16:05:00.475+05:30 I [input] Accessibility service disconnected
+2026-09-08T16:05:00.488+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,mirror,photos,sms
+2026-09-08T16:05:01.587+05:30 I [input] Accessibility service connected
+2026-09-08T16:05:01.588+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,input,mirror,photos,sms
+2026-09-08T16:05:01.596+05:30 I [autostart] ACCESSIBILITY_BIND: already listening — nothing to do
+2026-09-08T16:05:02.177+05:30 I [mirror] Encoded +4 frames (2.0/s, +3568 B) last keyframe 108000B
+2026-09-08T16:05:04.180+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 108000B
+2026-09-08T16:05:06.184+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 108000B
+2026-09-08T16:05:08.188+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 108000B
+2026-09-08T16:05:10.190+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 108000B
+2026-09-08T16:05:12.192+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 108000B
+2026-09-08T16:05:14.198+05:30 I [mirror] Encoded +34 frames (17.0/s, +398400 B) last keyframe 104160B
+2026-09-08T16:05:16.202+05:30 I [mirror] Encoded +197 frames (98.5/s, +2092400 B) last keyframe 124400B
+2026-09-08T16:05:17.688+05:30 I [input] Accessibility service disconnected
+2026-09-08T16:05:17.700+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,mirror,photos,sms
+2026-09-08T16:05:18.205+05:30 I [mirror] Encoded +224 frames (112.0/s, +902144 B) last keyframe 117424B
+2026-09-08T16:05:18.914+05:30 I [input] Accessibility service connected
+2026-09-08T16:05:18.922+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,input,mirror,photos,sms
+2026-09-08T16:05:18.931+05:30 I [autostart] ACCESSIBILITY_BIND: already listening — nothing to do
+2026-09-08T16:05:20.207+05:30 I [mirror] Encoded +142 frames (71.0/s, +565184 B) last keyframe 125232B
+2026-09-08T16:05:22.211+05:30 I [mirror] Encoded +230 frames (115.0/s, +973024 B) last keyframe 125424B
+2026-09-08T16:05:24.215+05:30 I [mirror] Encoded +183 frames (91.5/s, +624304 B) last keyframe 123840B
+2026-09-08T16:05:26.218+05:30 I [mirror] Encoded +180 frames (90.0/s, +845344 B) last keyframe 124192B
+2026-09-08T16:05:28.220+05:30 I [mirror] Encoded +180 frames (90.0/s, +632352 B) last keyframe 117616B
+2026-09-08T16:05:30.221+05:30 I [mirror] Encoded +177 frames (88.5/s, +1372096 B) last keyframe 124544B
+2026-09-08T16:05:32.223+05:30 I [mirror] Encoded +159 frames (79.5/s, +659712 B) last keyframe 103264B
+2026-09-08T16:05:34.227+05:30 I [mirror] Encoded +163 frames (81.5/s, +317616 B) last keyframe 100864B
+2026-09-08T16:05:36.230+05:30 I [mirror] Encoded +171 frames (85.5/s, +212560 B) last keyframe 103264B
+2026-09-08T16:05:38.234+05:30 I [mirror] Encoded +54 frames (27.0/s, +203808 B) last keyframe 103264B
+2026-09-08T16:05:40.237+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 103264B
+2026-09-08T16:05:42.239+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 103264B
+2026-09-08T16:05:44.245+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 103264B
+2026-09-08T16:05:46.251+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 103264B
+2026-09-08T16:05:48.252+05:30 I [mirror] Encoded +25 frames (12.5/s, +408848 B) last keyframe 92816B
+2026-09-08T16:05:50.256+05:30 I [mirror] Encoded +45 frames (22.5/s, +1805776 B) last keyframe 94416B
+2026-09-08T16:05:52.259+05:30 I [mirror] Encoded +26 frames (13.0/s, +100576 B) last keyframe 94416B
+2026-09-08T16:05:54.260+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:05:56.263+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:05:58.268+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:00.272+05:30 I [mirror] Encoded +1 frames (0.5/s, +544 B) last keyframe 94416B
+2026-09-08T16:06:02.273+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:04.277+05:30 I [mirror] Encoded +2 frames (1.0/s, +192 B) last keyframe 94416B
+2026-09-08T16:06:06.282+05:30 I [mirror] Encoded +1 frames (0.5/s, +208 B) last keyframe 94416B
+2026-09-08T16:06:08.286+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:10.288+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:12.291+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:14.293+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:16.299+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:18.303+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:20.306+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:22.311+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:24.314+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:26.319+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:28.324+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 94416B
+2026-09-08T16:06:29.957+05:30 I [input] Gesture landed in 107ms (97ms stroke, 597ms budget)
+2026-09-08T16:06:29.957+05:30 I [input] input.tap delivered — 28 delivered / 0 refused since start
+2026-09-08T16:06:30.329+05:30 I [mirror] Encoded +33 frames (16.5/s, +433024 B) last keyframe 90320B
+2026-09-08T16:06:31.461+05:30 I [input] Gesture landed in 86ms (83ms stroke, 583ms budget)
+2026-09-08T16:06:31.461+05:30 I [input] input.tap delivered — 29 delivered / 0 refused since start
+2026-09-08T16:06:32.329+05:30 I [input] Gesture landed in 108ms (100ms stroke, 600ms budget)
+2026-09-08T16:06:32.329+05:30 I [input] input.tap delivered — 30 delivered / 0 refused since start
+2026-09-08T16:06:32.337+05:30 I [mirror] Encoded +72 frames (36.0/s, +2300144 B) last keyframe 148960B
+2026-09-08T16:06:34.341+05:30 I [mirror] Encoded +107 frames (53.5/s, +749648 B) last keyframe 92000B
+2026-09-08T16:06:36.345+05:30 I [mirror] Encoded +107 frames (53.5/s, +191824 B) last keyframe 89872B
+2026-09-08T16:06:37.236+05:30 I [input] Gesture landed in 590ms (575ms stroke, 1075ms budget)
+2026-09-08T16:06:37.237+05:30 I [input] input.swipe delivered — 31 delivered / 0 refused since start
+2026-09-08T16:06:38.348+05:30 I [mirror] Encoded +142 frames (71.0/s, +2005648 B) last keyframe 76512B
+2026-09-08T16:06:38.792+05:30 I [input] Gesture landed in 271ms (267ms stroke, 767ms budget)
+2026-09-08T16:06:38.794+05:30 I [input] input.swipe delivered — 32 delivered / 0 refused since start
+2026-09-08T16:06:40.350+05:30 I [mirror] Encoded +51 frames (25.5/s, +322384 B) last keyframe 76624B
+2026-09-08T16:06:42.352+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 76624B
+2026-09-08T16:06:44.354+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 76624B
+2026-09-08T16:06:46.357+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 76624B
+2026-09-08T16:06:47.484+05:30 I [input] Gesture landed in 231ms (225ms stroke, 725ms budget)
+2026-09-08T16:06:47.484+05:30 I [input] input.swipe delivered — 33 delivered / 0 refused since start
+2026-09-08T16:06:48.363+05:30 I [mirror] Encoded +65 frames (32.5/s, +729680 B) last keyframe 70304B
+2026-09-08T16:06:50.366+05:30 I [mirror] Encoded +38 frames (19.0/s, +782880 B) last keyframe 70304B
+2026-09-08T16:06:52.368+05:30 I [mirror] Encoded +176 frames (88.0/s, +3241632 B) last keyframe 37456B
+2026-09-08T16:06:54.370+05:30 I [mirror] Encoded +1 frames (0.5/s, +1632 B) last keyframe 37456B
+2026-09-08T16:06:56.372+05:30 I [mirror] Encoded +127 frames (63.5/s, +2955392 B) last keyframe 93568B
+2026-09-08T16:06:58.373+05:30 I [mirror] Encoded +146 frames (73.0/s, +463664 B) last keyframe 116640B
+2026-09-08T16:07:00.376+05:30 I [mirror] Encoded +185 frames (92.5/s, +451280 B) last keyframe 116656B
+2026-09-08T16:07:02.379+05:30 I [mirror] Encoded +153 frames (76.5/s, +707712 B) last keyframe 116672B
+2026-09-08T16:07:03.182+05:30 I [vitals] battery.state → Mac: 44%, charging=true — 8 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T16:07:04.382+05:30 I [mirror] Encoded +181 frames (90.5/s, +1014336 B) last keyframe 116864B
+2026-09-08T16:07:06.385+05:30 I [mirror] Encoded +180 frames (90.0/s, +446848 B) last keyframe 111088B
+2026-09-08T16:07:08.389+05:30 I [mirror] Encoded +181 frames (90.5/s, +463136 B) last keyframe 116928B
+2026-09-08T16:07:10.392+05:30 I [mirror] Encoded +180 frames (90.0/s, +855600 B) last keyframe 110816B
+2026-09-08T16:07:12.394+05:30 I [mirror] Encoded +179 frames (89.5/s, +451360 B) last keyframe 116864B
+2026-09-08T16:07:12.994+05:30 I [input] input.global delivered — 34 delivered / 0 refused since start
+2026-09-08T16:07:14.047+05:30 I [input] input.global delivered — 35 delivered / 0 refused since start
+2026-09-08T16:07:14.396+05:30 I [mirror] Encoded +130 frames (65.0/s, +2971360 B) last keyframe 198832B
+2026-09-08T16:07:14.627+05:30 I [input] input.global delivered — 36 delivered / 0 refused since start
+2026-09-08T16:07:16.400+05:30 I [mirror] Encoded +52 frames (26.0/s, +1108896 B) last keyframe 204416B
+2026-09-08T16:07:18.406+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 204416B
+2026-09-08T16:07:20.408+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 204416B
+2026-09-08T16:07:20.460+05:30 I [input] Gesture landed in 127ms (119ms stroke, 619ms budget)
+2026-09-08T16:07:20.460+05:30 I [input] input.tap delivered — 37 delivered / 0 refused since start
+2026-09-08T16:07:21.271+05:30 I [input] Gesture landed in 101ms (84ms stroke, 584ms budget)
+2026-09-08T16:07:21.271+05:30 I [input] input.tap delivered — 38 delivered / 0 refused since start
+2026-09-08T16:07:22.411+05:30 I [mirror] Encoded +73 frames (36.5/s, +287408 B) last keyframe 19600B
+2026-09-08T16:07:24.413+05:30 I [mirror] Encoded +77 frames (38.5/s, +261568 B) last keyframe 18272B
+2026-09-08T16:07:26.414+05:30 I [mirror] Encoded +105 frames (52.5/s, +186288 B) last keyframe 40160B
+2026-09-08T16:07:28.416+05:30 I [mirror] Encoded +138 frames (69.0/s, +466176 B) last keyframe 117808B
+2026-09-08T16:07:30.419+05:30 I [mirror] Encoded +180 frames (90.0/s, +490288 B) last keyframe 111872B
+2026-09-08T16:07:32.421+05:30 I [mirror] Encoded +181 frames (90.5/s, +477360 B) last keyframe 118128B
+2026-09-08T16:07:34.424+05:30 I [mirror] Encoded +179 frames (89.5/s, +499728 B) last keyframe 101984B
+2026-09-08T16:07:36.426+05:30 I [mirror] Encoded +180 frames (90.0/s, +482352 B) last keyframe 116016B
+2026-09-08T16:07:38.427+05:30 I [mirror] Encoded +180 frames (90.0/s, +474096 B) last keyframe 116016B
+2026-09-08T16:07:40.428+05:30 I [mirror] Encoded +180 frames (90.0/s, +484176 B) last keyframe 111232B
+2026-09-08T16:07:42.429+05:30 I [mirror] Encoded +179 frames (89.5/s, +502272 B) last keyframe 116640B
+2026-09-08T16:07:44.430+05:30 I [mirror] Encoded +179 frames (89.5/s, +451808 B) last keyframe 100080B
+2026-09-08T16:07:46.433+05:30 I [mirror] Encoded +180 frames (90.0/s, +496832 B) last keyframe 116304B
+2026-09-08T16:07:48.439+05:30 I [mirror] Encoded +181 frames (90.5/s, +480304 B) last keyframe 116768B
+2026-09-08T16:07:50.440+05:30 I [mirror] Encoded +181 frames (90.5/s, +502112 B) last keyframe 111008B
+2026-09-08T16:07:52.443+05:30 I [mirror] Encoded +180 frames (90.0/s, +463856 B) last keyframe 115888B
+2026-09-08T16:07:54.445+05:30 I [mirror] Encoded +180 frames (90.0/s, +482624 B) last keyframe 100400B
+2026-09-08T16:07:56.448+05:30 I [mirror] Encoded +179 frames (89.5/s, +497200 B) last keyframe 116976B
+2026-09-08T16:07:58.449+05:30 I [mirror] Encoded +180 frames (90.0/s, +485184 B) last keyframe 116192B
+2026-09-08T16:08:00.450+05:30 I [mirror] Encoded +181 frames (90.5/s, +472992 B) last keyframe 110720B
+2026-09-08T16:08:02.404+05:30 I [caps] A Settings toggle changed; re-checking capabilities
+2026-09-08T16:08:02.408+05:30 I [input] Accessibility service disconnected
+2026-09-08T16:08:02.417+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,mirror,photos,sms
+2026-09-08T16:08:02.451+05:30 I [mirror] Encoded +180 frames (90.0/s, +498288 B) last keyframe 116448B
+2026-09-08T16:08:04.452+05:30 I [mirror] Encoded +179 frames (89.5/s, +464192 B) last keyframe 100944B
+2026-09-08T16:08:06.454+05:30 I [mirror] Encoded +181 frames (90.5/s, +501664 B) last keyframe 116400B
+2026-09-08T16:08:08.458+05:30 I [mirror] Encoded +178 frames (89.0/s, +468000 B) last keyframe 116112B
+2026-09-08T16:08:10.459+05:30 I [mirror] Encoded +180 frames (90.0/s, +500320 B) last keyframe 111072B
+2026-09-08T16:08:12.460+05:30 I [mirror] Encoded +180 frames (90.0/s, +469440 B) last keyframe 116624B
+2026-09-08T16:08:14.462+05:30 I [mirror] Encoded +180 frames (90.0/s, +482864 B) last keyframe 100752B
+2026-09-08T16:08:16.469+05:30 I [mirror] Encoded +178 frames (89.0/s, +377008 B) last keyframe 116048B
+2026-09-08T16:08:18.470+05:30 I [mirror] Encoded +180 frames (90.0/s, +483440 B) last keyframe 100656B
+2026-09-08T16:08:20.471+05:30 I [mirror] Encoded +168 frames (84.0/s, +1369472 B) last keyframe 116736B
+2026-09-08T16:08:22.473+05:30 I [mirror] Encoded +129 frames (64.5/s, +1408576 B) last keyframe 100816B
+2026-09-08T16:08:24.477+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 100816B
+2026-09-08T16:08:26.481+05:30 I [mirror] Encoded +1 frames (0.5/s, +112 B) last keyframe 100816B
+2026-09-08T16:08:28.486+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 100816B
+2026-09-08T16:08:30.489+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 100816B
+2026-09-08T16:08:32.494+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 100816B
+2026-09-08T16:08:34.497+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 100816B
+2026-09-08T16:08:36.502+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 100816B
+2026-09-08T16:08:38.505+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 100816B
+2026-09-08T16:08:40.509+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 100816B
+2026-09-08T16:08:42.513+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 100816B
+2026-09-08T16:08:44.517+05:30 I [mirror] Encoded +1 frames (0.5/s, +160 B) last keyframe 160B
+2026-09-08T16:08:46.521+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:08:48.524+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:08:50.528+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:08:52.532+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:08:54.539+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:08:56.546+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:08:58.551+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:00.558+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:02.566+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:04.574+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:06.579+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:08.584+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:10.468+05:30 I [vitals] battery.state → Mac: 45%, charging=true — 9 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T16:09:10.589+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:12.591+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:14.594+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:16.599+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:17.663+05:30 I [caps] A Settings toggle changed; re-checking capabilities
+2026-09-08T16:09:17.696+05:30 I [caps] Capabilities unchanged (apps,calls,clipboard,contacts,files,mirror,photos,sms); reason changed: input — granted in Settings, but Android has not started the service — this happens after the app is reinstalled or force-stopped; turn the switch off and on again to rebind it
+2026-09-08T16:09:17.697+05:30 I [caps] Capabilities unchanged (apps,calls,clipboard,contacts,files,mirror,photos,sms); reason changed: input — granted in Settings, but Android has not started the service — this happens after the app is reinstalled or force-stopped; turn the switch off and on again to rebind it
+2026-09-08T16:09:17.733+05:30 I [input] Accessibility service connected
+2026-09-08T16:09:17.734+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,input,mirror,photos,sms
+2026-09-08T16:09:17.736+05:30 I [autostart] ACCESSIBILITY_BIND: already listening — nothing to do
+2026-09-08T16:09:18.606+05:30 I [mirror] Encoded +2 frames (1.0/s, +64 B) last keyframe 160B
+2026-09-08T16:09:20.614+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:22.622+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:24.630+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:26.637+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:28.643+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:30.649+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:32.657+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:34.665+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:34.914+05:30 W [mirror] Secure surface after 73237ms of blank output (keyframe 160B); probes 32 → 1 blank, 31 content
+2026-09-08T16:09:34.919+05:30 W [mirror] Mirror failed: secure-surface — The phone is showing content that Android blocks from being captured, so the screen would appear black.
+2026-09-08T16:09:36.670+05:30 I [mirror] Encoded +14 frames (7.0/s, +832 B) last keyframe 160B
+2026-09-08T16:09:38.678+05:30 I [mirror] Encoded +1 frames (0.5/s, +32 B) last keyframe 160B
+2026-09-08T16:09:39.239+05:30 I [input] Accessibility service disconnected
+2026-09-08T16:09:39.248+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,mirror,photos,sms
+2026-09-08T16:09:40.358+05:30 I [input] Accessibility service connected
+2026-09-08T16:09:40.363+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,input,mirror,photos,sms
+2026-09-08T16:09:40.371+05:30 I [autostart] ACCESSIBILITY_BIND: already listening — nothing to do
+2026-09-08T16:09:40.685+05:30 I [mirror] Encoded +5 frames (2.5/s, +416 B) last keyframe 160B
+2026-09-08T16:09:42.692+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:44.698+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:46.705+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:48.713+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:50.718+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:52.724+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:54.727+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:09:54.868+05:30 I [input] Accessibility service disconnected
+2026-09-08T16:09:54.877+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,mirror,photos,sms
+2026-09-08T16:09:55.998+05:30 I [input] Accessibility service connected
+2026-09-08T16:09:56.000+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,input,mirror,photos,sms
+2026-09-08T16:09:56.006+05:30 I [autostart] ACCESSIBILITY_BIND: already listening — nothing to do
+2026-09-08T16:09:56.736+05:30 I [mirror] Encoded +5 frames (2.5/s, +416 B) last keyframe 160B
+2026-09-08T16:09:58.744+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:10:00.748+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:10:02.753+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:10:04.762+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:10:06.770+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:10:08.778+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:10:10.783+05:30 I [mirror] Encoded +0 frames (0.0/s, +0 B) last keyframe 160B
+2026-09-08T16:10:12.787+05:30 I [mirror] Encoded +27 frames (13.5/s, +249312 B) last keyframe 160B
+2026-09-08T16:10:13.199+05:30 I [mirror] Secure surface over: keyframe back to 207776B; probes 38 → 7 blank, 31 content
+2026-09-08T16:10:13.200+05:30 I [mirror] Capturable content is back; the secure surface is gone
+2026-09-08T16:10:14.788+05:30 I [mirror] Encoded +208 frames (104.0/s, +1789792 B) last keyframe 205088B
+2026-09-08T16:10:16.789+05:30 I [mirror] Encoded +217 frames (108.5/s, +185632 B) last keyframe 2768B
+2026-09-08T16:10:18.793+05:30 I [mirror] Encoded +241 frames (120.5/s, +226432 B) last keyframe 2768B
+2026-09-08T16:10:20.794+05:30 I [mirror] Encoded +223 frames (111.5/s, +213200 B) last keyframe 2832B
+2026-09-08T16:10:22.796+05:30 I [mirror] Encoded +230 frames (115.0/s, +219392 B) last keyframe 2880B
+2026-09-08T16:10:24.800+05:30 I [mirror] Encoded +229 frames (114.5/s, +216192 B) last keyframe 3200B
+2026-09-08T16:10:26.805+05:30 I [mirror] Encoded +225 frames (112.5/s, +213968 B) last keyframe 3120B
+2026-09-08T16:10:28.808+05:30 I [mirror] Encoded +230 frames (115.0/s, +220528 B) last keyframe 2768B
+2026-09-08T16:10:30.810+05:30 I [mirror] Encoded +231 frames (115.5/s, +219136 B) last keyframe 2528B
+2026-09-08T16:10:32.814+05:30 I [mirror] Encoded +230 frames (115.0/s, +217584 B) last keyframe 2928B
+2026-09-08T16:10:34.818+05:30 I [mirror] Encoded +236 frames (118.0/s, +224352 B) last keyframe 3168B
+2026-09-08T16:10:36.821+05:30 I [mirror] Encoded +229 frames (114.5/s, +216576 B) last keyframe 3216B
+2026-09-08T16:10:38.825+05:30 I [mirror] Encoded +239 frames (119.5/s, +224656 B) last keyframe 2992B
+2026-09-08T16:10:40.828+05:30 I [mirror] Encoded +233 frames (116.5/s, +219520 B) last keyframe 3152B
+2026-09-08T16:10:42.831+05:30 I [mirror] Encoded +227 frames (113.5/s, +217424 B) last keyframe 3088B
+2026-09-08T16:10:44.835+05:30 I [mirror] Encoded +228 frames (114.0/s, +218096 B) last keyframe 2656B
+2026-09-08T16:10:46.839+05:30 I [mirror] Encoded +229 frames (114.5/s, +218800 B) last keyframe 3056B
+2026-09-08T16:10:48.840+05:30 I [mirror] Encoded +229 frames (114.5/s, +219712 B) last keyframe 2992B
+2026-09-08T16:10:50.842+05:30 I [mirror] Encoded +223 frames (111.5/s, +211296 B) last keyframe 3152B
+2026-09-08T16:10:52.843+05:30 I [mirror] Encoded +227 frames (113.5/s, +216720 B) last keyframe 2816B
+2026-09-08T16:10:54.845+05:30 I [mirror] Encoded +225 frames (112.5/s, +215216 B) last keyframe 2944B
+2026-09-08T16:10:56.852+05:30 I [mirror] Encoded +221 frames (110.5/s, +212528 B) last keyframe 3152B
+2026-09-08T16:10:58.857+05:30 I [mirror] Encoded +232 frames (116.0/s, +222208 B) last keyframe 3136B
+2026-09-08T16:11:00.858+05:30 I [mirror] Encoded +222 frames (111.0/s, +211520 B) last keyframe 2656B
+2026-09-08T16:11:02.861+05:30 I [mirror] Encoded +222 frames (111.0/s, +214464 B) last keyframe 3104B
+2026-09-08T16:11:04.864+05:30 I [mirror] Encoded +227 frames (113.5/s, +216496 B) last keyframe 3120B
+2026-09-08T16:11:06.870+05:30 I [mirror] Encoded +225 frames (112.5/s, +215504 B) last keyframe 3152B
+2026-09-08T16:11:08.874+05:30 I [mirror] Encoded +223 frames (111.5/s, +214960 B) last keyframe 2640B
+2026-09-08T16:11:10.880+05:30 I [mirror] Encoded +221 frames (110.5/s, +212352 B) last keyframe 3184B
+2026-09-08T16:11:12.882+05:30 I [mirror] Encoded +225 frames (112.5/s, +214640 B) last keyframe 3136B
+2026-09-08T16:11:14.885+05:30 I [mirror] Encoded +230 frames (115.0/s, +218944 B) last keyframe 2944B
+2026-09-08T16:11:16.887+05:30 I [mirror] Encoded +231 frames (115.5/s, +219744 B) last keyframe 2672B
+2026-09-08T16:11:18.133+05:30 I [vitals] battery.state → Mac: 46%, charging=true — 10 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T16:11:18.889+05:30 I [mirror] Encoded +229 frames (114.5/s, +219584 B) last keyframe 2816B
+2026-09-08T16:11:20.893+05:30 I [mirror] Encoded +226 frames (113.0/s, +217072 B) last keyframe 2960B
+2026-09-08T16:11:22.895+05:30 I [mirror] Encoded +226 frames (113.0/s, +214096 B) last keyframe 3216B
+2026-09-08T16:11:24.897+05:30 I [mirror] Encoded +223 frames (111.5/s, +214928 B) last keyframe 2880B
+2026-09-08T16:11:26.900+05:30 I [mirror] Encoded +223 frames (111.5/s, +213680 B) last keyframe 2864B
+2026-09-08T16:11:28.905+05:30 I [mirror] Encoded +225 frames (112.5/s, +216112 B) last keyframe 2976B
+2026-09-08T16:11:30.909+05:30 I [mirror] Encoded +217 frames (108.5/s, +207776 B) last keyframe 3008B
+2026-09-08T16:11:32.914+05:30 I [mirror] Encoded +225 frames (112.5/s, +215344 B) last keyframe 2704B
+2026-09-08T16:11:34.917+05:30 I [mirror] Encoded +226 frames (113.0/s, +216448 B) last keyframe 3152B
+2026-09-08T16:11:36.919+05:30 I [mirror] Encoded +224 frames (112.0/s, +213648 B) last keyframe 3136B
+2026-09-08T16:11:38.921+05:30 I [mirror] Encoded +234 frames (117.0/s, +221728 B) last keyframe 3104B
+2026-09-08T16:11:40.925+05:30 I [mirror] Encoded +225 frames (112.5/s, +214224 B) last keyframe 2880B
+2026-09-08T16:11:42.928+05:30 I [mirror] Encoded +224 frames (112.0/s, +215440 B) last keyframe 2976B
+2026-09-08T16:11:44.930+05:30 I [mirror] Encoded +228 frames (114.0/s, +220160 B) last keyframe 2992B
+2026-09-08T16:11:46.934+05:30 I [mirror] Encoded +229 frames (114.5/s, +215600 B) last keyframe 3168B
+2026-09-08T16:11:48.940+05:30 I [mirror] Encoded +231 frames (115.5/s, +219072 B) last keyframe 3072B
+2026-09-08T16:11:50.941+05:30 I [mirror] Encoded +223 frames (111.5/s, +214128 B) last keyframe 2688B
+2026-09-08T16:11:52.943+05:30 I [mirror] Encoded +226 frames (113.0/s, +216576 B) last keyframe 2896B
+2026-09-08T16:11:54.946+05:30 I [mirror] Encoded +227 frames (113.5/s, +217088 B) last keyframe 3184B
+2026-09-08T16:11:56.948+05:30 I [mirror] Encoded +223 frames (111.5/s, +212096 B) last keyframe 3088B
+2026-09-08T16:11:58.954+05:30 I [mirror] Encoded +227 frames (113.5/s, +215744 B) last keyframe 2688B
+2026-09-08T16:12:00.955+05:30 I [mirror] Encoded +235 frames (117.5/s, +222768 B) last keyframe 2704B
+2026-09-08T16:12:02.956+05:30 I [mirror] Encoded +226 frames (113.0/s, +216080 B) last keyframe 3088B
+2026-09-08T16:12:04.960+05:30 I [mirror] Encoded +228 frames (114.0/s, +218016 B) last keyframe 3248B
+2026-09-08T16:12:06.962+05:30 I [mirror] Encoded +222 frames (111.0/s, +211856 B) last keyframe 2928B
+2026-09-08T16:12:08.965+05:30 I [mirror] Encoded +227 frames (113.5/s, +218112 B) last keyframe 2624B
+2026-09-08T16:12:10.968+05:30 I [mirror] Encoded +221 frames (110.5/s, +211392 B) last keyframe 3104B
+2026-09-08T16:12:12.969+05:30 I [mirror] Encoded +224 frames (112.0/s, +213792 B) last keyframe 3184B
+2026-09-08T16:12:14.971+05:30 I [mirror] Encoded +224 frames (112.0/s, +215200 B) last keyframe 2880B
+2026-09-08T16:12:16.975+05:30 I [mirror] Encoded +223 frames (111.5/s, +213744 B) last keyframe 2736B
+2026-09-08T16:12:18.979+05:30 I [mirror] Encoded +229 frames (114.5/s, +220784 B) last keyframe 3168B
+2026-09-08T16:12:20.980+05:30 I [mirror] Encoded +225 frames (112.5/s, +212368 B) last keyframe 3136B
+2026-09-08T16:12:22.650+05:30 I [vitals] battery.state → Mac: 47%, charging=true — 11 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T16:12:22.984+05:30 I [mirror] Encoded +225 frames (112.5/s, +215840 B) last keyframe 2672B
+2026-09-08T16:12:24.985+05:30 I [mirror] Encoded +225 frames (112.5/s, +216864 B) last keyframe 2784B
+2026-09-08T16:12:26.991+05:30 I [mirror] Encoded +227 frames (113.5/s, +215952 B) last keyframe 3104B
+2026-09-08T16:12:28.995+05:30 I [mirror] Encoded +231 frames (115.5/s, +220832 B) last keyframe 3216B
+2026-09-08T16:12:30.998+05:30 I [mirror] Encoded +224 frames (112.0/s, +213104 B) last keyframe 3072B
+2026-09-08T16:12:33.001+05:30 I [mirror] Encoded +226 frames (113.0/s, +217472 B) last keyframe 2528B
+2026-09-08T16:12:35.005+05:30 I [mirror] Encoded +232 frames (116.0/s, +221232 B) last keyframe 3024B
+2026-09-08T16:12:37.009+05:30 I [mirror] Encoded +220 frames (110.0/s, +213536 B) last keyframe 3248B
+2026-09-08T16:12:39.010+05:30 I [mirror] Encoded +223 frames (111.5/s, +213616 B) last keyframe 3072B
+2026-09-08T16:12:41.013+05:30 I [mirror] Encoded +226 frames (113.0/s, +216432 B) last keyframe 2576B
+2026-09-08T16:12:43.017+05:30 I [mirror] Encoded +228 frames (114.0/s, +219040 B) last keyframe 3056B
+2026-09-08T16:12:45.019+05:30 I [mirror] Encoded +233 frames (116.5/s, +221776 B) last keyframe 3216B
+2026-09-08T16:12:47.023+05:30 I [mirror] Encoded +227 frames (113.5/s, +216608 B) last keyframe 3152B
+2026-09-08T16:12:49.026+05:30 I [mirror] Encoded +221 frames (110.5/s, +213088 B) last keyframe 2608B
+2026-09-08T16:12:51.028+05:30 I [mirror] Encoded +228 frames (114.0/s, +217200 B) last keyframe 2848B
+2026-09-08T16:12:53.030+05:30 I [mirror] Encoded +223 frames (111.5/s, +214304 B) last keyframe 3232B
+2026-09-08T16:12:55.033+05:30 I [mirror] Encoded +227 frames (113.5/s, +217856 B) last keyframe 3152B
+2026-09-08T16:12:57.034+05:30 I [mirror] Encoded +222 frames (111.0/s, +212320 B) last keyframe 2400B
+2026-09-08T16:12:59.036+05:30 I [mirror] Encoded +217 frames (108.5/s, +211664 B) last keyframe 3104B
+2026-09-08T16:13:01.037+05:30 I [mirror] Encoded +220 frames (110.0/s, +213792 B) last keyframe 3104B
+2026-09-08T16:13:03.040+05:30 I [mirror] Encoded +227 frames (113.5/s, +215936 B) last keyframe 2768B
+2026-09-08T16:13:05.043+05:30 I [mirror] Encoded +227 frames (113.5/s, +216432 B) last keyframe 2672B
+2026-09-08T16:13:07.046+05:30 I [mirror] Encoded +229 frames (114.5/s, +217872 B) last keyframe 3072B
+2026-09-08T16:13:09.049+05:30 I [mirror] Encoded +228 frames (114.0/s, +216544 B) last keyframe 3248B
+2026-09-08T16:13:11.055+05:30 I [mirror] Encoded +224 frames (112.0/s, +212736 B) last keyframe 3040B
+2026-09-08T16:13:13.057+05:30 I [mirror] Encoded +228 frames (114.0/s, +217968 B) last keyframe 2432B
+2026-09-08T16:13:15.060+05:30 I [mirror] Encoded +225 frames (112.5/s, +215712 B) last keyframe 3008B
+2026-09-08T16:13:17.064+05:30 I [mirror] Encoded +228 frames (114.0/s, +218400 B) last keyframe 3248B
+2026-09-08T16:13:19.067+05:30 I [mirror] Encoded +233 frames (116.5/s, +220880 B) last keyframe 3200B
+2026-09-08T16:13:21.070+05:30 I [mirror] Encoded +222 frames (111.0/s, +212240 B) last keyframe 2800B
+2026-09-08T16:13:23.073+05:30 I [mirror] Encoded +223 frames (111.5/s, +214608 B) last keyframe 2848B
+2026-09-08T16:13:25.077+05:30 I [mirror] Encoded +230 frames (115.0/s, +219232 B) last keyframe 3168B
+2026-09-08T16:13:27.080+05:30 I [mirror] Encoded +241 frames (120.5/s, +226224 B) last keyframe 3168B
+2026-09-08T16:13:29.082+05:30 I [mirror] Encoded +222 frames (111.0/s, +214000 B) last keyframe 3264B
+2026-09-08T16:13:31.085+05:30 I [mirror] Encoded +225 frames (112.5/s, +215888 B) last keyframe 2848B
+2026-09-08T16:13:33.089+05:30 I [mirror] Encoded +226 frames (113.0/s, +216320 B) last keyframe 2832B
+2026-09-08T16:13:35.095+05:30 I [mirror] Encoded +230 frames (115.0/s, +219376 B) last keyframe 3168B
+2026-09-08T16:13:37.097+05:30 I [mirror] Encoded +226 frames (113.0/s, +216144 B) last keyframe 3248B
+2026-09-08T16:13:39.100+05:30 I [mirror] Encoded +225 frames (112.5/s, +217072 B) last keyframe 2672B
+2026-09-08T16:13:41.104+05:30 I [mirror] Encoded +224 frames (112.0/s, +213168 B) last keyframe 2704B
+2026-09-08T16:13:43.105+05:30 I [mirror] Encoded +226 frames (113.0/s, +216464 B) last keyframe 3152B
+2026-09-08T16:13:45.107+05:30 I [mirror] Encoded +226 frames (113.0/s, +216736 B) last keyframe 3248B
+2026-09-08T16:13:47.111+05:30 I [mirror] Encoded +230 frames (115.0/s, +218816 B) last keyframe 2832B
+2026-09-08T16:13:49.114+05:30 I [mirror] Encoded +223 frames (111.5/s, +211424 B) last keyframe 2576B
+2026-09-08T16:13:51.116+05:30 I [mirror] Encoded +225 frames (112.5/s, +214960 B) last keyframe 3136B
+2026-09-08T16:13:53.119+05:30 I [mirror] Encoded +221 frames (110.5/s, +214128 B) last keyframe 3248B
+2026-09-08T16:13:55.122+05:30 I [mirror] Encoded +221 frames (110.5/s, +211440 B) last keyframe 2864B
+2026-09-08T16:13:57.125+05:30 I [mirror] Encoded +221 frames (110.5/s, +214800 B) last keyframe 2976B
+2026-09-08T16:13:59.127+05:30 I [mirror] Encoded +219 frames (109.5/s, +211264 B) last keyframe 3264B
+2026-09-08T16:14:01.131+05:30 I [mirror] Encoded +232 frames (116.0/s, +220208 B) last keyframe 3104B
+2026-09-08T16:14:03.133+05:30 I [mirror] Encoded +222 frames (111.0/s, +212336 B) last keyframe 2528B
+2026-09-08T16:14:05.134+05:30 I [mirror] Encoded +221 frames (110.5/s, +214464 B) last keyframe 3120B
+2026-09-08T16:14:07.136+05:30 I [mirror] Encoded +227 frames (113.5/s, +215712 B) last keyframe 3248B
+2026-09-08T16:14:09.137+05:30 I [mirror] Encoded +225 frames (112.5/s, +215728 B) last keyframe 3024B
+2026-09-08T16:14:11.140+05:30 I [mirror] Encoded +230 frames (115.0/s, +217200 B) last keyframe 2784B
+2026-09-08T16:14:13.147+05:30 I [mirror] Encoded +222 frames (111.0/s, +215200 B) last keyframe 2976B
+2026-09-08T16:14:15.150+05:30 I [mirror] Encoded +222 frames (111.0/s, +213952 B) last keyframe 3264B
+2026-09-08T16:14:17.154+05:30 I [mirror] Encoded +233 frames (116.5/s, +220928 B) last keyframe 3152B
+2026-09-08T16:14:19.160+05:30 I [mirror] Encoded +218 frames (109.0/s, +209456 B) last keyframe 2528B
+2026-09-08T16:14:21.164+05:30 I [mirror] Encoded +227 frames (113.5/s, +216544 B) last keyframe 3136B
+2026-09-08T16:14:23.166+05:30 I [mirror] Encoded +223 frames (111.5/s, +213552 B) last keyframe 3264B
+2026-09-08T16:14:25.169+05:30 I [mirror] Encoded +229 frames (114.5/s, +218800 B) last keyframe 3104B
+2026-09-08T16:14:27.172+05:30 I [mirror] Encoded +221 frames (110.5/s, +211552 B) last keyframe 2704B
+2026-09-08T16:14:29.173+05:30 I [mirror] Encoded +225 frames (112.5/s, +215568 B) last keyframe 3184B
+2026-09-08T16:14:29.809+05:30 I [vitals] battery.state → Mac: 48%, charging=true — 12 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T16:14:31.175+05:30 I [mirror] Encoded +227 frames (113.5/s, +215904 B) last keyframe 3248B
+2026-09-08T16:14:33.178+05:30 I [mirror] Encoded +231 frames (115.5/s, +219504 B) last keyframe 3136B
+2026-09-08T16:14:35.181+05:30 I [mirror] Encoded +218 frames (109.0/s, +209712 B) last keyframe 2608B
+2026-09-08T16:14:37.185+05:30 I [mirror] Encoded +226 frames (113.0/s, +215952 B) last keyframe 3184B
+2026-09-08T16:14:39.191+05:30 I [mirror] Encoded +225 frames (112.5/s, +216672 B) last keyframe 3232B
+2026-09-08T16:14:41.195+05:30 I [mirror] Encoded +225 frames (112.5/s, +213344 B) last keyframe 2864B
+2026-09-08T16:14:43.200+05:30 I [mirror] Encoded +231 frames (115.5/s, +219328 B) last keyframe 2560B
+2026-09-08T16:14:45.201+05:30 I [mirror] Encoded +230 frames (115.0/s, +218592 B) last keyframe 2896B
+2026-09-08T16:14:48.978+05:30 I [caps] Capabilities now: none — apps not built yet — waiting on apps.icon, apps.list, apps.open.ask; calls not built yet — waiting on call.answer, call.dial, call.log, call.reject; clipboard not built yet — waiting on clip.history, clip.push, clip.request; contacts not built yet — waiting on contacts.get, contacts.list; files not built yet — waiting on fs.delete, fs.list, fs.mkdir, fs.stat, fs.transfer.begin, fs.transfer.cancel, bulk channel unserved; input granted in Settings, but Android has not started the service — this happens after the app is reinstalled or force-stopped; turn the switch off and on again to rebind it; mirror not built yet — waiting on mirror.stop; photos not built yet — waiting on media.buckets, media.list, media.original, media.thumb, bulk channel unserved; sms not built yet — waiting on sms.messages, sms.send, sms.threads
+2026-09-08T16:14:48.981+05:30 I [caps] Capabilities now: mirror
+2026-09-08T16:14:48.998+05:30 I [mirror] Mirror feature installed; capabilities now: [mirror]
+2026-09-08T16:14:49.055+05:30 I [input] Input feature installed; accessibility service is off; capabilities now: [mirror]
+2026-09-08T16:14:49.071+05:30 I [caps] Capabilities unchanged (mirror); reason changed: contacts — not built yet — waiting on contacts.get
+2026-09-08T16:14:49.085+05:30 I [caps] Capabilities now: contacts,mirror
+2026-09-08T16:14:49.099+05:30 I [contacts] Contacts feature installed; READ_CONTACTS granted; capabilities now: [contacts, mirror]
+2026-09-08T16:14:49.138+05:30 I [caps] Capabilities unchanged (contacts,mirror); reason changed: notifications — missing Notification access
+2026-09-08T16:14:49.152+05:30 I [notif] Notification feature installed; listener is not bound; capabilities now: [contacts, mirror]
+2026-09-08T16:14:49.162+05:30 I [caps] Capabilities unchanged (contacts,mirror); reason changed: sms — not built yet — waiting on sms.messages, sms.send
+2026-09-08T16:14:49.168+05:30 I [caps] Capabilities unchanged (contacts,mirror); reason changed: sms — not built yet — waiting on sms.send
+2026-09-08T16:14:49.180+05:30 I [caps] Capabilities now: contacts,mirror,sms
+2026-09-08T16:14:49.234+05:30 I [sms] Watching the sent mailbox for outgoing messages; newest already-sent row is 1345 and will not be pushed
+2026-09-08T16:14:49.257+05:30 I [sms] SMS feature installed; permissions granted; telephony present; capabilities now: [contacts, mirror, sms]
+2026-09-08T16:14:49.261+05:30 I [caps] Capabilities unchanged (contacts,mirror,sms); reason changed: calls — not built yet — waiting on call.answer, call.dial, call.reject
+2026-09-08T16:14:49.264+05:30 I [caps] Capabilities unchanged (contacts,mirror,sms); reason changed: calls — not built yet — waiting on call.answer, call.reject
+2026-09-08T16:14:49.267+05:30 I [caps] Capabilities unchanged (contacts,mirror,sms); reason changed: calls — not built yet — waiting on call.reject
+2026-09-08T16:14:49.269+05:30 I [caps] Capabilities now: calls,contacts,mirror,sms
+2026-09-08T16:14:49.287+05:30 I [calls] Watching PHONE_STATE for the inbound number
+2026-09-08T16:14:49.287+05:30 I [calls] Call watcher started
+2026-09-08T16:14:49.292+05:30 I [calls] Calls feature installed; permissions granted; telephony present; capabilities now: [calls, contacts, mirror, sms]
+2026-09-08T16:14:49.305+05:30 I [caps] Capabilities unchanged (calls,contacts,mirror,sms); reason changed: photos — not built yet — waiting on media.list, media.original, media.thumb, bulk channel unserved
+2026-09-08T16:14:49.314+05:30 I [caps] Capabilities unchanged (calls,contacts,mirror,sms); reason changed: photos — not built yet — waiting on media.original, media.thumb, bulk channel unserved
+2026-09-08T16:14:49.327+05:30 I [caps] Capabilities unchanged (calls,contacts,mirror,sms); reason changed: photos — not built yet — waiting on media.original, bulk channel unserved
+2026-09-08T16:14:49.340+05:30 I [caps] Capabilities unchanged (calls,contacts,mirror,sms); reason changed: photos — not built yet — waiting on bulk channel unserved
+2026-09-08T16:14:49.351+05:30 I [caps] Capabilities now: calls,contacts,mirror,photos,sms
+2026-09-08T16:14:49.352+05:30 I [media] Media feature installed with all 4 photos verbs and the bulk channel served; read permission granted; capabilities now: [calls, contacts, mirror, photos, sms]
+2026-09-08T16:14:49.370+05:30 I [caps] Capabilities unchanged (calls,contacts,mirror,photos,sms); reason changed: files — not built yet — waiting on fs.delete, fs.mkdir, fs.stat, fs.transfer.begin, fs.transfer.cancel
+2026-09-08T16:14:49.374+05:30 I [caps] Capabilities unchanged (calls,contacts,mirror,photos,sms); reason changed: files — not built yet — waiting on fs.delete, fs.mkdir, fs.transfer.begin, fs.transfer.cancel
+2026-09-08T16:14:49.381+05:30 I [caps] Capabilities unchanged (calls,contacts,mirror,photos,sms); reason changed: files — not built yet — waiting on fs.delete, fs.transfer.begin, fs.transfer.cancel
+2026-09-08T16:14:49.387+05:30 I [caps] Capabilities unchanged (calls,contacts,mirror,photos,sms); reason changed: files — not built yet — waiting on fs.transfer.begin, fs.transfer.cancel
+2026-09-08T16:14:49.400+05:30 I [caps] Capabilities unchanged (calls,contacts,mirror,photos,sms); reason changed: files — not built yet — waiting on fs.transfer.cancel
+2026-09-08T16:14:49.411+05:30 I [caps] Capabilities now: calls,contacts,files,mirror,photos,sms
+2026-09-08T16:14:49.427+05:30 I [fs] Files feature installed with 7 of 6 verbs; 2 root(s): downloads:connectsuite, app:files; capabilities now: [calls, contacts, files, mirror, photos, sms]
+2026-09-08T16:14:49.446+05:30 I [caps] Capabilities unchanged (calls,contacts,files,mirror,photos,sms); reason changed: clipboard — not built yet — waiting on clip.history, clip.request
+2026-09-08T16:14:49.458+05:30 I [caps] Capabilities unchanged (calls,contacts,files,mirror,photos,sms); reason changed: clipboard — not built yet — waiting on clip.history
+2026-09-08T16:14:49.468+05:30 I [caps] Capabilities now: calls,clipboard,contacts,files,mirror,photos,sms
+2026-09-08T16:14:49.478+05:30 I [clip] Clipboard feature installed with all 3 verbs; phone reads are focus-gated on this platform, writes are not; capabilities now: [calls, clipboard, contacts, files, mirror, photos, sms]
+2026-09-08T16:14:49.484+05:30 I [vitals] Device vitals installed; battery.state and storage.state will be pushed — 0 battery / 0 storage sent / 0 storage refused since start
+2026-09-08T16:14:49.495+05:30 I [caps] Capabilities unchanged (calls,clipboard,contacts,files,mirror,photos,sms); reason changed: apps — not built yet — waiting on apps.icon, apps.open.ask
+2026-09-08T16:14:49.505+05:30 I [caps] Capabilities unchanged (calls,clipboard,contacts,files,mirror,photos,sms); reason changed: apps — not built yet — waiting on apps.open.ask
+2026-09-08T16:14:49.513+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,mirror,photos,sms
+2026-09-08T16:14:49.524+05:30 I [apps] Apps feature installed with all 3 verbs and no launch verb — background activity starts are refused silently on this platform, so opening is a notification the user taps. Notifications currently permitted; capabilities now: [apps, calls, clipboard, contacts, files, mirror, photos, sms]
+2026-09-08T16:14:49.537+05:30 I [caps] Capabilities unchanged (apps,calls,clipboard,contacts,files,mirror,photos,sms); reason changed: remote — missing Notification access
+2026-09-08T16:14:49.537+05:30 I [remote] Media session listener not attached yet: notification listener is not bound
+2026-09-08T16:14:49.542+05:30 I [remote] Media remote installed; listener is not bound; capabilities now: [apps, calls, clipboard, contacts, files, mirror, photos, sms]
+2026-09-08T16:14:49.751+05:30 I [service] Foreground as UNKNOWN, types=0x10
+2026-09-08T16:14:49.766+05:30 I [input] Accessibility service connected
+2026-09-08T16:14:49.775+05:30 I [caps] Capabilities now: apps,calls,clipboard,contacts,files,input,mirror,photos,sms
+2026-09-08T16:14:49.788+05:30 I [autostart] ACCESSIBILITY_BIND: 1 paired device(s), link not running — starting LinkService
+2026-09-08T16:14:49.797+05:30 I [tls] Port 42501 protocols=TLSv1.3 ciphers=18 keyManagers=1
+2026-09-08T16:14:49.801+05:30 I [tls] Port 42502 protocols=TLSv1.3 ciphers=18 keyManagers=1
+2026-09-08T16:14:49.803+05:30 I [tls] Port 42503 protocols=TLSv1.3 ciphers=18 keyManagers=1
+2026-09-08T16:14:49.821+05:30 I [server] Listening on 42501/42502/42503, 1 paired device(s)
+2026-09-08T16:14:50.494+05:30 I [nsd] Registered as ConnectSuite Motorola moto g45 5G
+2026-09-08T16:14:52.674+05:30 I [vitals] battery.state → Mac: 48%, charging=true — 1 battery / 0 storage sent / 0 storage refused since start
+2026-09-08T16:14:52.674+05:30 I [notif] No replay for Chetans-MacBook-Pro: notification access is off
+2026-09-08T16:14:52.678+05:30 I [vitals] battery.state → Mac: 48%, charging=true — 2 battery / 0 storage sent / 0 storage refused since start
+2026-09-08T16:14:52.682+05:30 I [vitals] storage.state → Mac: 83325255680 free of 119386648576 bytes — 2 battery / 1 storage sent / 0 storage refused since start
+2026-09-08T16:14:52.683+05:30 I [control] Handshake complete with Chetans-MacBook-Pro at 10.231.182.88
+2026-09-08T16:14:52.757+05:30 I [fs] fs.list (roots) → 2 root(s): 1 app-private and 0 granted folder(s) — 1 delivered / 0 refused since start
+2026-09-08T16:14:52.809+05:30 I [fs] fs.list downloads:connectsuite/ → 0 of 0 entries, hasMore=false, cursor=FIRST_PAGE — 2 delivered / 0 refused since start
+2026-09-08T16:14:53.059+05:30 I [calls] call.log → 50 entries, hasMore=true — 1 delivered / 0 refused since start
+2026-09-08T16:14:53.461+05:30 I [clip] clip.push ← Mac: 52 bytes, held for a tap — 0 sent / 1 received / 0 of 1 applied / 0 refused-unfocused / 0 refused-sensitive / 0 refused-too-large since start
+2026-09-08T16:14:53.510+05:30 W [contacts] contacts.get refused: no-such-contact — 0 delivered / 1 refused since start
+2026-09-08T16:14:53.511+05:30 W [contacts] contacts.get refused: no-such-contact — 0 delivered / 2 refused since start
+2026-09-08T16:14:53.516+05:30 W [contacts] contacts.get refused: no-such-contact — 0 delivered / 3 refused since start
+2026-09-08T16:14:53.517+05:30 W [contacts] contacts.get refused: no-such-contact — 0 delivered / 4 refused since start
+2026-09-08T16:14:53.535+05:30 W [contacts] contacts.get refused: no-such-contact — 0 delivered / 6 refused since start
+2026-09-08T16:14:53.535+05:30 W [contacts] contacts.get refused: no-such-contact — 0 delivered / 5 refused since start
+2026-09-08T16:14:53.583+05:30 I [contacts] contacts.get → +918197007285 found, photo=false — 1 delivered / 6 refused since start, 0 photos of 1 asked
+2026-09-08T16:14:53.588+05:30 I [contacts] contacts.get → +919527305274 found, photo=false — 2 delivered / 6 refused since start, 0 photos of 2 asked
+2026-09-08T16:14:53.590+05:30 I [contacts] contacts.get → +917776060872 found, photo=false — 3 delivered / 6 refused since start, 0 photos of 3 asked
+2026-09-08T16:14:53.604+05:30 I [contacts] contacts.get → +919850874493 found, photo=false — 4 delivered / 6 refused since start, 0 photos of 4 asked
+2026-09-08T16:14:53.619+05:30 I [contacts] Photo for 489: 226x225 source, sent 226x225 at 49140 bytes of 65536 allowed
+2026-09-08T16:14:53.622+05:30 I [contacts] contacts.get → +919657237871 found, photo=true — 5 delivered / 6 refused since start, 1 photos of 5 asked
+2026-09-08T16:14:53.842+05:30 I [contacts] Photo for 503: 480x480 source, sent 120x120 at 30450 bytes of 65536 allowed
+2026-09-08T16:14:53.844+05:30 I [contacts] contacts.get → +919850850263 found, photo=true — 6 delivered / 6 refused since start, 2 photos of 6 asked
+2026-09-08T16:14:53.854+05:30 I [contacts] Photo for 488: 480x480 source, sent 120x120 at 29277 bytes of 65536 allowed
+2026-09-08T16:14:53.856+05:30 I [contacts] contacts.get → +919689021523 found, photo=true — 7 delivered / 6 refused since start, 3 photos of 7 asked
+2026-09-08T16:14:53.975+05:30 I [contacts] Photo for 8: 512x512 source, sent 128x128 at 34626 bytes of 65536 allowed
+2026-09-08T16:14:53.980+05:30 I [contacts] contacts.get → +919665603895 found, photo=true — 8 delivered / 6 refused since start, 4 photos of 8 asked
+2026-09-08T16:14:54.081+05:30 I [contacts] contacts.list → 45 rows, hasMore=false — 9 delivered / 6 refused since start
+2026-09-08T16:14:55.671+05:30 I [sms] sms.threads delivered (50 threads, hasMore=true) — 1 delivered / 0 refused since start

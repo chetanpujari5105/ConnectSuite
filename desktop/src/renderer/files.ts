@@ -139,6 +139,47 @@ class FilesView {
   /** Ids currently being copied, so a second drag on the same row does not start a second transfer. */
   private copying = new Set<string>();
 
+  /**
+   * The name of the file being pushed right now, or null. Pushes are serial by protocol — one
+   * `transferId`, one file, one bulk connection — so one name is the whole of it.
+   */
+  private pushing: string | null = null;
+
+  /**
+   * Told what this pane is doing, so the status island can say it while it is happening.
+   *
+   * A transfer is the one thing on this Mac that is *in flight* rather than instantaneous, which is
+   * what qualifies it for the island under the current-state rule. Reported from the same two
+   * places that already track it — [copying] and [pushing] — rather than from a third count, so the
+   * island cannot claim a transfer the pane is not running.
+   */
+  onWorkChanged: ((work: { verb: string; subject: string } | null) => void) | null = null;
+
+  /**
+   * The one place that turns the two in-flight sets into a sentence, called from every edge of
+   * both. A pull and a push cannot overlap in practice — a drop and a drag are two gestures — but
+   * if they ever do, the count is honest rather than the pane picking a favourite.
+   */
+  private reportWork(): void {
+    const total = this.copying.size + (this.pushing === null ? 0 : 1);
+    if (total === 0) {
+      this.onWorkChanged?.(null);
+      return;
+    }
+    if (total > 1) {
+      this.onWorkChanged?.({ verb: 'Transferring', subject: `${total} files` });
+      return;
+    }
+    if (this.pushing !== null) {
+      this.onWorkChanged?.({ verb: 'Sending', subject: this.pushing });
+      return;
+    }
+    this.onWorkChanged?.({ verb: 'Copying', subject: this.copyingName ?? 'a file' });
+  }
+
+  /** The name behind the single id in [copying], kept so [reportWork] has something to say. */
+  private copyingName: string | null = null;
+
   /** What the last copy said. The pull's own sentence, including the phone's refusal. */
   private lastPull: { ok: boolean; text: string } | null = null;
 
@@ -326,12 +367,20 @@ class FilesView {
         continue;
       }
       this.lastPush = { ok: true, text: `Sending ${file.name}…` };
+      this.pushing = file.name;
+      this.reportWork();
       this.render();
-      const result = await this.bridge.fsPush({
-        rootId: this.selectedRoot,
-        path: this.path,
-        source,
-      });
+      let result;
+      try {
+        result = await this.bridge.fsPush({
+          rootId: this.selectedRoot,
+          path: this.path,
+          source,
+        });
+      } finally {
+        this.pushing = null;
+        this.reportWork();
+      }
       this.lastPush = result.ok
         ? { ok: true, text: `${file.name} sent. The phone reports whether it arrived intact.` }
         : {
@@ -536,6 +585,8 @@ class FilesView {
     if (this.selectedRoot === null || entry.dir) return;
     if (this.copying.has(entry.id) || this.localCopies.has(entry.id)) return;
     this.copying.add(entry.id);
+    this.copyingName = entry.name;
+    this.reportWork();
     this.lastPull = { ok: true, text: `Copying ${entry.name} to this Mac…` };
     this.render();
     try {
@@ -563,6 +614,11 @@ class FilesView {
       }
     } finally {
       this.copying.delete(entry.id);
+      if (this.copying.size === 0) this.copyingName = null;
+      // In the `finally`, so a throw cannot leave the island narrating a copy that is over. That is
+      // the whole contract of `setWork` — nothing expires on a timer, so whoever starts the work
+      // owes the clear on every path out.
+      this.reportWork();
       this.render();
     }
   }

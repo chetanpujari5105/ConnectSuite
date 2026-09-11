@@ -197,7 +197,7 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 | 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
 | 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **Done** — closed 2026-09-02 against both its conditions (`docs/phase-5-closeout.md`); photos done; **Files is complete** as of 2026-09-01 (both directions with resume, the Folders screen, the Files pane, the grant-free `Download/ConnectSuite` destination, drag to Finder); **contacts shipped in Phase 4** and is not outstanding — see `docs/phase-5-closeout.md`. **Clipboard is built in both directions** — the wall measured (Slice 11, 2026-09-01), the feature landed, and Handoff-style auto-apply added on the Mac with a setting on the phone (Slice 12, 2026-09-02). Both directions are as automatic as their platforms allow — the Mac watches its own clipboard, the phone cannot and no Android app can. ~~Outstanding: the phone has not been reinstalled with the latest copy change~~ — **closed 2026-09-03 by reading the installed APK rather than the install date.** `pm path` → `adb pull` → `strings`: *"Copied on your Mac"*, *"On your clipboard"* and *"Copy to this phone"* are all present in the APK actually on the device (`lastUpdateTime=2026-09-03 01:22:04`), with a negative control at 0 (*"Copied on your Commodore"*) and a positive control at 177 (*"ConnectSuite"*). **Phase 5 has nothing outstanding.** A fourth probe in the same run is the one worth keeping: `adb tcpip` came back **present=1**, which reads as defect 65 resurrected and is not — it is `OnboardingCopy.forbiddenMechanisms`' own `why` string, the sentence explaining why the phrase is banned, compiled into the same dex. The copy describing an absence contains the words for the thing that is absent |
 | 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | **Done — closed 2026-09-03 against an honest accounting rather than a pass list (`docs/phase-6-closeout.md`).** The closing condition is stated in that file and is *not* "everything works": **every question with a route on this handset has been taken, and every remaining one carries its route or the word `None`.** **Seven behaviours are claimable**, each with a control — the link returns after a **real boot** with the competing route removed (defect 64, `LISTENER_REBIND lines since boot: 0`) and after an update; a deep-Doze transition does not drop the link, proven by **a message that actually crossed** at `deep=IDLE`; a crash does not leave the phone serverless (62); the wake lock is re-armed **before** its timeout rather than repaired after (61, measured at **59m49s against 60 minutes** before the second fix); the phone will not overwrite a clipboard it cannot report (79); `media.thumb` tells a corrupt photo from a deleted one (57). **Seven are hypothesis and three have no route on this device at all** — whether any of these fixes is a fix or a One UI workaround (needs a second skin), the unexempt *and neglected* case (H1 removed the exemption and the bucket stayed `ACTIVE`; P6 is withdrawn, so nothing can return to `EXEMPTED`), and defect 17. **Never quote the first list without the second**: a reliability fix tuned to one OEM fails silently everywhere else. Fifteen defects closed (57, 60, 61, 62, 64, 77, 78, 79, 51, 52, 53, 69, 71, 33) plus **80 fixed with its start half explicitly unclaimed**. Three readings outlived the fixes and are rules in this file now: the instrument's own state contaminating the reading (the phone was **already exempt**), a start route with **no call site** (`START_STICKY`, a return value that reported itself `UNKNOWN`), and a control wrong in the **safe** direction (78 — a denominator inflated 8.5× over a correct verdict) |
-| 7 | Mac UX — packaging, distribution, app launching, and the polish pass | **In progress** — **the design pass landed 2026-09-04**: the four panes that worked and did not look like `ConnectSuite.dc.html` — **Calls** (three columns, the filter strip, a running clock, the 3×4 keypad), **Clipboard** (two columns, kind badges, a sync timeline), **Settings** (three columns, six panes from three) and **Overview** (Quick actions, Recent activity, the footer strip). Rows C1–C7, K1–K6, G1–G7, T1–T3, O1–O5 and S13 in `docs/design-departures.md`; screenshots against the design in `docs/evidence/phase-7-panes-2026-09-04/`. **All six departures the wire had overtaken are discharged** — S6, S10, M5, Settings → File transfer, `pair.rejected`, and F6/P3 (Mac half built, **sighting unproven, stimulus named**). **Renderer-view debt: 11 covered / 2 outstanding**, from 5 / 7. Three defects fell out that nothing in the build could have noticed: the status island’s rota **had never once been visible**, the clipboard watcher recorded only its failures, and Overview’s *Recent activity* drew the five **oldest** events. **What still needs the designer is one hour**: the *unavailable / partial / failed / empty* vocabulary, once — Calls is the **fifth** pane to invent its own. Before that, 2026-09-03: **apps landed** — `apps.list`, `apps.icon`, `apps.open.ask`, a twelfth nav row, and **123 of 123 launcher packages with resolved names and real icons on hardware**. There is no `apps.launch` and a commit hook keeps it that way. 2026-09-02: the **Activity** pane, palette **deep links**, and pairing’s phone half (F1–F5), with F2, F4 and F5 proven on hardware 2026-09-03 |
+| 7 | Mac UX — packaging, distribution, app launching, and the polish pass | **In progress** — **2026-09-08, the status island was rebuilt as current state and the rota deleted** (defects 96 and 97, `docs/testing.md` → Phase 7 Slice 36). It had **no clock**: `ActivityEvent.at` was dropped at the boundary and a six-slot ring was never cleared, so a line's maximum age was the session — and one statement wrote the ring's *text* with the live link's *tone*, so the pill contradicted the connected-device strip two inches away, daily. **The fix a filter would have been**: the ring is gone, the island is a pure function of the same status the strip reads, and a failure reaches it as `LinkFailure.kind` rather than as prose whose `dropped` sentence *names a connection state*. Underneath it, `lastFailure` was **assigned in four places and cleared in none**, so every status after one failure carried a dead sentence forever — collapsed to one field with two writers, which also unpins the user from the pairing screen after a re-pair. **Renderer-view debt 12 covered / 1**, `ShellView` off the list. **The design pass landed 2026-09-04**: the four panes that worked and did not look like `ConnectSuite.dc.html` — **Calls** (three columns, the filter strip, a running clock, the 3×4 keypad), **Clipboard** (two columns, kind badges, a sync timeline), **Settings** (three columns, six panes from three) and **Overview** (Quick actions, Recent activity, the footer strip). Rows C1–C7, K1–K6, G1–G7, T1–T3, O1–O5 and S13 in `docs/design-departures.md`; screenshots against the design in `docs/evidence/phase-7-panes-2026-09-04/`. **All six departures the wire had overtaken are discharged** — S6, S10, M5, Settings → File transfer, `pair.rejected`, and F6/P3 (Mac half built, **sighting unproven, stimulus named**). **Renderer-view debt: 11 covered / 2 outstanding**, from 5 / 7. Three defects fell out that nothing in the build could have noticed: the status island’s rota **had never once been visible**, the clipboard watcher recorded only its failures, and Overview’s *Recent activity* drew the five **oldest** events. (The rota was then made visible, and **that** is when it turned out to be the wrong surface — see the 2026-09-08 entry above. A feature nobody had seen working was fixed twice: once to appear, and once to be deleted.) **What still needs the designer is one hour**: the *unavailable / partial / failed / empty* vocabulary, once — Calls is the **fifth** pane to invent its own. Before that, 2026-09-03: **apps landed** — `apps.list`, `apps.icon`, `apps.open.ask`, a twelfth nav row, and **123 of 123 launcher packages with resolved names and real icons on hardware**. There is no `apps.launch` and a commit hook keeps it that way. 2026-09-02: the **Activity** pane, palette **deep links**, and pairing’s phone half (F1–F5), with F2, F4 and F5 proven on hardware 2026-09-03 |
 | 9 | Distribution — packaging, signing, release builds | **Started** — 2026-09-02, only the parts needing no Apple account: `docs/phase-9-distribution-audit.md` (thirteen rows, two corrected by measurement), an unsigned `.dmg`, a 25 MB release APK, and one version scheme (`docs/versioning.md`) with a sixth commit hook. **Neither artifact can be given to anyone, and both were measured rather than assumed**: the `.dmg`'s app is *ad-hoc* signed and Gatekeeper returns an error instead of a verdict (D12 — worse than unsigned, since the right-click bypass does not apply), and the release APK is refused by the platform outright with `INSTALL_PARSE_FAILED_NO_CERTIFICATES` (D13). **Nothing signed, notarized or published**; the config for all three is written with credentials blank |
 
 `android-connect-suite-claude-code-prompt.md` is the **v1 plan and is superseded**. Its phases are
@@ -599,6 +599,8 @@ damage on the user's own device or nearly recorded a false result.
   | `clipboard.read('org.nspasteboard.ConcealedType')` after `clipboard.writeBuffer` of the same type (2026-09-02) | the marker is readable — *the concealed-clipboard check works* | **Chromium wrote it and Chromium read it back.** A password manager writes through `NSPasteboard`, and against that the same call returns `""`. The run proved Chromium agrees with itself |
   | the same check's positive control, which wrote `'1'` as the marker's value | the check fires on a marked clipboard | the convention writes the marker as a **present type carrying empty data**. `read(type) !== ''` is false for every real concealed clip ever written; the control was the only input in the world that could have passed it |
   | `strings installed.apk | grep -cF 'adb tcpip'` after defect 65's fix (2026-09-03) | **present=1** — read as defect 65 resurrected, ADB copy back in an app whose decision #1 is *no ADB anywhere* | the match is `OnboardingCopy.forbiddenMechanisms`' own `why` string — *the sentence explaining why the phrase is banned*, compiled into the same dex as the copy it guards. KDoc is stripped; a string literal is not |
+  | the FGS stop landing 2-6 ms after the `*launch*` wake lock is released, **twice out of two** (2026-09-10) | *the background-start allowance is withdrawn when the launch transition settles* — written into defect 100 as an established root cause | **a correlation, not a mechanism.** The same event carries `PROC_STATE_TOP`, so the process had never left the foreground and no TOP-conditional allowance could lapse. Two-for-two on a 4 ms lag is a strong correlation and still names nothing; it was retracted an hour later, from the register rather than from a conversation |
+  | `S=$(scripts/target-device.sh samsung 2>&1 \| tail -1)` (2026-09-10) | a pinned serial | the guard's **stderr banner**, merged into the value by `2>&1`. `adb -s ""` then failed, and a `\|\|` fallback turned that failure into *"NOT in the deviceidle whitelist"* — a confident false claim about the user's battery-optimisation state from a command that never ran |
 
   Between them, false absences and false presences alike, which is the point: the failure is not
   "empty means broken", it is that **the check could not separate signal from lookalike** and said
@@ -1022,6 +1024,59 @@ damage on the user's own device or nearly recorded a false result.
 
   The corollary worth keeping: a type system reasons about one thread's values, a race is about two
   threads' order, and no amount of care in the first buys anything in the second.
+
+- **A surface with one job gets one writer, and a value's text and its colour come from the same
+  source.** Two writers on one element is a race nobody calls a race, because it has no threads in
+  it — just two code paths, on two schedules, reading two different facts, and the later one wins.
+
+  The status island is the worked example and it ran for a month (defect 96). One statement:
+
+  ```ts
+  this.setIsland(this.events[this.eventIndex]!, toneOf(this.status));
+  ```
+
+  **Text from a six-slot history ring, tone from the live link.** Every ingredient was correct —
+  the ring held real events, `toneOf` was the same function the strip called, the rule deciding
+  which events entered was pure and had nine passing tests. What was wrong is that the two halves of
+  one pill answered to different clocks, so a refusal from ten minutes ago was drawn in the green of
+  a link that was up, two inches from a strip reading `Connected · 12 ms`.
+
+  **The tell is a composition, not a bug:** any expression that takes its *content* from one source
+  and its *presentation* from another is asserting that the two agree, and nothing checks that
+  assertion. Grep for it — a render call whose arguments come from two different fields is where
+  this lives.
+
+  Three things follow, and the second is the one that is easy to get wrong:
+
+  - **A history surface and a live surface are different products.** The design asked for a cycling
+    island; this app also has an Activity pane that timestamps and filters eleven categories. Once
+    both exist, the island narrating the past is the same fact in two tenses, and the tense is what
+    the user cannot see. History gets a timestamp column; the chrome gets the present.
+  - **The fix is a projection, not a filter.** The tempting repair is to keep the rota and screen
+    what enters it. That leaves the second writer in place, deciding from another source on another
+    clock — and a filter over prose passes until somebody writes a new sentence. Here the classified
+    error for a dropped socket is *"The connection to your phone dropped. Reconnecting."*, which
+    **names a connection state**; in a pill beside a strip reading `Disconnected` it contradicts the
+    strip while being perfectly current. The island reads `LinkFailure.kind` — a closed enum of five
+    — so the wrong thing is not expressible rather than merely filtered out.
+  - **A duration is what earns a line; an instant does not.** A transfer has a beginning, a middle
+    and an end, so *"Copying clip.mp4"* is a fact about now. A clipboard sync is a request and its
+    reply — it is history the moment it exists, and it belongs to the toast and the log. Ask of any
+    proposed status line: *is there a moment at which this is still true?*
+
+  **And the test has to assert the projection, not the absence of the bad words.** This was learned
+  from a mutation rather than reasoned out: reinstating the rota with a ring holding
+  `Sent to phone · 57 bytes` **passed** a check for contradicting labels — it names no connection
+  state, and the old code always painted the dot from the live link, which was the one thing it got
+  right. The assertion that catches every version is `assert.equal(rendered, rule(liveState))`,
+  calling the production rule rather than restating it: any second writer fails it on its first
+  tick, whatever it says.
+
+  The sibling rule, from the same sitting: **two fields that must be cleared together will be
+  cleared apart.** `link.ts` held `lastError` and `lastFailure`, and a successful handshake cleared
+  the first — assigned in four places, cleared in none, so every status after one failure carried a
+  dead sentence forever, `connected` included (defect 97). The fix is not the missing line. It is
+  one field with two named writers, after which the state cannot be half-retired.
 
 - **The instrument gets its own control before the reading counts — third sitting, and now from
   three directions at once.** The rule above this one is about a device or a provider lying; the one
@@ -1455,6 +1510,26 @@ damage on the user's own device or nearly recorded a false result.
   for the line, and refuses the reject if it never comes, so a build whose visible change did not
   happen does not get a call spent on it. Anyone asking for pre-ring proof of option 4 should be
   pointed here.
+
+  **Fourth sighting, 2026-09-10, and the first where the wrong line was offered as a _passing
+  control_.** Asked to diagnose a mirror that would not start, the phone's log was read and the
+  control reported as passed: *"7 `Mirror session started`, the most recent this morning — so an
+  absence now means something."* `Mirror session started` is written at the end of `onServiceReady`.
+  It means **we got this far**. The execution line is the 2-second stats ticker, `Encoded +N frames`,
+  and it stands at **0 across both surviving log files** — 4,720 lines, 2026-09-06 to 2026-09-10.
+  Seven starts, no session that ever produced a frame.
+
+  What makes this one worth adding rather than counting: the previous three were wrong readings
+  *taken*, and this was a wrong reading **volunteered as the thing that licenses every reading
+  below it**. A control is the sentence that says *the rest of this is evidence* — so a registration
+  line in that position does not merely mislead, it certifies. The question to ask of a control is
+  the one this rule already asks of a finding, one level up: **what would this line say if the
+  feature had never once worked?** For `Mirror session started` the answer is *exactly what it says
+  now*, and that disqualifies it.
+
+  The corollary for choosing one: **prefer a line that only a running thing can emit — a periodic
+  tick, a counter that advances, a byte total** — over any line written once at the end of a setup
+  path. `docs/testing.md` → Phase 7 Slice 38, defect 100.
 
 - **A fix verified only at the moment it fires is not verified against the state it was meant to
   prevent.** The rule above asks whether a reading is *about* the target. This one asks a question
@@ -1897,6 +1972,28 @@ damage on the user's own device or nearly recorded a false result.
   had thought to update, and it goes red on the real tree under mutation on both sides. And its debt list is **printed on every run with a reason per entry**, so
   a deliberately-unspecified type stays visible; an entry that becomes specified without leaving the
   list fails the check, because an allowlist nobody prunes is how a guard stops guarding.
+
+  **The eighth is `scripts/adb-pinned.sh`, and it is the first one written because a rule in this
+  file failed while being followed.** The control table has named *a stream carrying two writers read
+  as one text* since the `PROCESS_TEXT` sitting. On 2026-09-10 the serial was captured as
+  `S=$(scripts/target-device.sh samsung 2>&1 | tail -1)` — the guard's stderr banner merged into the
+  value — `adb -s ""` failed, and a `||` fallback turned that failure into *"NOT in the deviceidle
+  whitelist"*: a confident, specific, wrong claim about the owner's battery-optimisation state, from
+  a command that never ran.
+
+  **The table could not have helped, and that is the point rather than an excuse.** A table is
+  consulted by someone who already suspects a problem, and **nobody suspects one while capturing a
+  serial they have captured twenty times.** So the fix is not a better warning about capturing the
+  value — it is to **remove the value from the call site entirely**:
+
+      scripts/adb-pinned.sh samsung shell dumpsys deviceidle whitelist
+
+  There is no serial to capture, so there is no capture to get wrong. The same reasoning as the
+  status island's single writer: the island did not get a filter over what the second writer could
+  say, it stopped having a second writer. An empty serial exits before `adb` is reached, so a
+  fallback cannot manufacture a finding from it; and stdin is closed, which also removes the third
+  fault of that afternoon — `adb shell` eating a `while read` loop's input, so a control set of
+  eight packages silently ran once and reported one row.
 
   This does not mean every rule gets a hook; most do not warrant one. It means the question gets
   asked, and "documented" is not recorded as "handled".

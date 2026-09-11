@@ -294,6 +294,13 @@ class MirrorView {
     private readonly canvas: HTMLCanvasElement,
     private readonly overlay: HTMLElement,
     private readonly notice: HTMLElement,
+    /**
+     * The box the picture lives in, whose aspect ratio is this class's to set.
+     *
+     * Passed in rather than looked up so that the one element whose shape has to track the phone
+     * is visible at the construction site, beside the canvas it contains.
+     */
+    private readonly stage: HTMLElement,
     private readonly bridge: MirrorBridge,
   ) {
     bridge.onVideoFrame((frame) => this.onFrame(frame));
@@ -364,6 +371,10 @@ class MirrorView {
         dpi: rotate.dpi ?? this.capture?.dpi,
         geometryId: rotate.geometryId ?? this.capture?.geometryId,
       };
+      // The box turns with the phone. Before the new parameter sets arrive the stage is briefly the
+      // new shape around the old picture, which is the honest order: the phone has already turned,
+      // and the alternative is a portrait box holding a landscape picture for a few frames.
+      this.applyCaptureAspect();
     }
     // The picture on this canvas is still the old one until the phone's new parameter sets arrive
     // and a frame decodes. Until then there is nothing here worth clicking on.
@@ -383,6 +394,9 @@ class MirrorView {
     if (state.width && state.height) {
       this.capture = state;
       if (typeof state.rotation === 'number') this.rotation = state.rotation;
+      // `running` carries width/height/dpi/rotation/geometryId, so the stage is the right shape
+      // before the first frame is decoded rather than after it.
+      this.applyCaptureAspect();
     }
     if (state.state === 'running') {
       if (this.framesDecoded === 0) {
@@ -476,6 +490,10 @@ class MirrorView {
     this.telemetry = null;
     this.capture = null;
     this.rotation = null;
+    // The third writer of `this.capture`, and it clears it — so the stage goes back to the CSS
+    // fallback rather than keeping the shape of a phone that is no longer sending anything. Three
+    // writers, one setter: two fields that must move together will otherwise move apart.
+    this.applyCaptureAspect();
     this.awaitingFreshFrame = false;
     this.cancelledByTurn = false;
     this.drag = null;
@@ -762,22 +780,60 @@ class MirrorView {
    * Where a click landed, in capture-frame pixels, with the stamp that names the screen it was
    * measured against.
    *
-   * The element's box *is* the picture — the canvas is sized by `max-width`/`max-height` alone, so
-   * the browser scales it with the aspect ratio preserved and there is no letterboxing inside the
-   * element to account for. The announced capture geometry is used rather than `canvas.width`
-   * because an encoder may pad the coded frame to a macroblock boundary: the two are equal in
-   * practice, and where they are not, the announced one is the one the phone will check against.
+   * **This used to divide by the element**, on the strength of a sentence saying *"the element's
+   * box is the picture … there is no letterboxing inside the element to account for"*. That was
+   * true of the Phase 2 canvas, which was sized by `max-width`/`max-height` alone. It stopped being
+   * true when the design pass gave the canvas `object-fit: contain` inside a fixed 9:19.5 stage,
+   * and nothing failed — the sentence stayed, correct about a layout that no longer existed, while
+   * every tap on every phone that is not 19.5:9 was scaled and offset by the size of the bars. In
+   * landscape a tap on the top of the phone landed 40% of the way down it.
+   *
+   * So the mapping goes through [pointInCapture], which computes the contained picture and maps
+   * against *that*. With the stage now taking its ratio from the same geometry the bars are zero to
+   * within a rounding pixel and the two agree — but the expression no longer depends on that being
+   * true, which is the whole point: the previous version was correct only by a coincidence nobody
+   * was checking.
+   *
+   * The announced capture geometry is used rather than `canvas.width` because an encoder may pad
+   * the coded frame to a macroblock boundary: the two are equal in practice, and where they are
+   * not, the announced one is the one the phone will check against.
    */
   private pointAt(event: PointerEvent | WheelEvent): { x: number; y: number; geom: GeometryStamp } | null {
     const capture = this.capture;
     if (!capture?.width || !capture.height || capture.geometryId === undefined) return null;
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
+    const mapped = pointInCapture(
+      { x: event.clientX, y: event.clientY },
+      { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+      { width: capture.width, height: capture.height },
+    );
     return {
-      x: ((event.clientX - rect.left) / rect.width) * capture.width,
-      y: ((event.clientY - rect.top) / rect.height) * capture.height,
+      x: mapped.x,
+      y: mapped.y,
       geom: { id: capture.geometryId, width: capture.width, height: capture.height },
     };
+  }
+
+  /**
+   * Point the stage at the shape the phone says it is capturing.
+   *
+   * Called from the two places `this.capture` is written and nowhere else, which is what keeps the
+   * box and the coordinate mapping reading one fact. `--capture-aspect` is consumed by
+   * `.pane-mirror .mirror-stage` in styles.css; removing it restores the CSS fallback, which is the
+   * right behaviour for a session that has ended — an empty stage has no stream to be the shape of.
+   */
+  private applyCaptureAspect(): void {
+    const aspect = captureAspect(
+      this.capture?.width && this.capture?.height
+        ? { width: this.capture.width, height: this.capture.height }
+        : null,
+    );
+    if (aspect === null) {
+      this.stage.style.removeProperty('--capture-aspect');
+      return;
+    }
+    this.stage.style.setProperty('--capture-aspect', String(aspect));
   }
 
   /**

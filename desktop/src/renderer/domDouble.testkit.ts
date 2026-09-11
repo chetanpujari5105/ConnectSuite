@@ -128,6 +128,11 @@ export class FakeElement {
     return this.attributes.get(name) ?? null;
   }
 
+  removeAttribute(name: string): void {
+    this.attributes.delete(name);
+    if (name === 'class') this.className = '';
+  }
+
   /** Concatenates children like the real one, so a container's text is its subtree's text. */
   get textContent(): string {
     if (this.children.length === 0) return this.ownText;
@@ -326,9 +331,61 @@ export class FakeElement {
  * had no `createElementNS` would fail with a `TypeError` in the test rather than covering the pane
  * — which is the same outcome as not testing it, arrived at more confusingly.
  */
-export function installFakeDocument(): { restore: () => void } {
+export function installFakeDocument(options: { byId?: boolean } = {}): {
+  restore: () => void;
+  /** Every element `getElementById` has handed out, by id. Empty unless `byId` was asked for. */
+  ids: Map<string, FakeElement>;
+  /** Register an element for `document.querySelector`, which otherwise finds nothing. */
+  register: (element: FakeElement) => void;
+} {
   const before = (globalThis as Record<string, unknown>).document;
+  /**
+   * The id registry, for a view that reaches elements by `document.getElementById` rather than
+   * taking them as constructor arguments.
+   *
+   * `ShellView` is the only one, and it is the reason this exists: it is the file that owns the
+   * status island and the connected-device strip — the two surfaces that must agree — so a test
+   * that cannot construct it can only ever check the *decision* and never the **write**. That
+   * distinction is defect 67 exactly, and the island was that shape: a pure rule with tests, and a
+   * write in `setStatus` that no test could see.
+   *
+   * Ids **auto-vivify**, and that is a deliberate modelling choice with a cost. A real
+   * `getElementById` returns null for an id that is not in the page, so this double cannot catch a
+   * typo'd id or an element the HTML does not have — `check-renderer-scripts.mjs` and a probe read
+   * against the real page are what cover that. What it can do is let the view run, and then be
+   * asked what it wrote to which id, which is the half the missing tests were missing.
+   */
+  const ids = new Map<string, FakeElement>();
+  const registered: FakeElement[] = [];
   (globalThis as Record<string, unknown>).document = {
+    getElementById: options.byId
+      ? (id: string) => {
+          let element = ids.get(id);
+          if (!element) {
+            element = new FakeElement('div');
+            element.id = id;
+            ids.set(id, element);
+            registered.push(element);
+          }
+          return element;
+        }
+      : undefined,
+    querySelector: (selector: string) => {
+      for (const root of registered) {
+        const hit = [root, ...root.descendants()].find((el) => matchesSimple(el, selector));
+        if (hit) return hit;
+      }
+      return null;
+    },
+    querySelectorAll: (selector: string) => {
+      const out: FakeElement[] = [];
+      for (const root of registered) {
+        for (const el of [root, ...root.descendants()]) {
+          if (matchesSimple(el, selector) && !out.includes(el)) out.push(el);
+        }
+      }
+      return out;
+    },
     createElement: (tag: string) => new FakeElement(tag),
     createElementNS: (ns: string, tag: string) => {
       const element = new FakeElement(tag);
@@ -367,7 +424,32 @@ export function installFakeDocument(): { restore: () => void } {
     restore: () => {
       (globalThis as Record<string, unknown>).document = before;
     },
+    ids,
+    register: (element: FakeElement) => {
+      registered.push(element);
+    },
   };
+}
+
+/**
+ * One tag / `.class` / `#id` / `[attr]` term, matched against one element.
+ *
+ * Deliberately smaller than the selector engine in [FakeQuery]: `document.querySelector` here is
+ * used for the app frame's one or two landmark elements, and a full parser reachable two ways is
+ * two implementations of one rule. Anything more complicated throws rather than silently missing,
+ * which is this file's standing rule about extending the double instead of working around it.
+ */
+function matchesSimple(el: FakeElement, selector: string): boolean {
+  const term = selector.trim();
+  if (term.startsWith('.')) return el.className.split(' ').includes(term.slice(1));
+  if (term.startsWith('#')) return el.id === term.slice(1);
+  if (term.startsWith('[') && term.endsWith(']')) {
+    return el.getAttribute(term.slice(1, -1)) !== null;
+  }
+  if (/^[a-z][a-z0-9-]*$/i.test(term)) return el.tagName === term;
+  throw new Error(
+    `domDouble: document.querySelector(${JSON.stringify(selector)}) is beyond this double — extend it rather than working around it`,
+  );
 }
 
 /**
@@ -387,8 +469,11 @@ export function installFakeWindow(): {
   restore: () => void;
   timers: { id: number; kind: 'timeout' | 'interval'; delay: number; fn: () => void }[];
   fireTimer: (id: number) => void;
+  /** Window-level listeners, recorded and never fired on their own. Same division as the timers. */
+  listeners: Map<string, Listener[]>;
 } {
   const before = (globalThis as Record<string, unknown>).window;
+  const listeners = new Map<string, Listener[]>();
   const timers: { id: number; kind: 'timeout' | 'interval'; delay: number; fn: () => void }[] = [];
   let next = 1;
   const schedule = (kind: 'timeout' | 'interval') => (fn: () => void, delay = 0) => {
@@ -409,6 +494,22 @@ export function installFakeWindow(): {
       fn();
       return 0;
     },
+    /*
+     * Recorded, never fired. A view binds `resize` and `keydown` on the window; letting the double
+     * dispatch them on its own would make a test's result depend on what the harness happened to
+     * do, which is the same reason the timers here do not run.
+     */
+    addEventListener: (type: string, fn: Listener) => {
+      const list = listeners.get(type) ?? [];
+      list.push(fn);
+      listeners.set(type, list);
+    },
+    removeEventListener: (type: string, fn: Listener) => {
+      const list = listeners.get(type);
+      if (!list) return;
+      const at = list.indexOf(fn);
+      if (at >= 0) list.splice(at, 1);
+    },
   };
   return {
     restore: () => {
@@ -416,6 +517,7 @@ export function installFakeWindow(): {
     },
     timers,
     fireTimer: (id: number) => timers.find((t) => t.id === id)?.fn(),
+    listeners,
   };
 }
 

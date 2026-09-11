@@ -55,7 +55,6 @@ const RENDERER = 'desktop/src/renderer';
  */
 export const UNCOVERED = new Map([
   ['MirrorView', 'Needs a canvas and a video element the DOM double deliberately does not model'],
-  ['ShellView', 'The window frame; its rules live in shell.css and stylesheets.test.ts guards those'],
 ]);
 
 function walk(dir, out = []) {

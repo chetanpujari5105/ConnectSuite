@@ -22,6 +22,7 @@ import com.chetan.connectsuite.core.pairing.PairingEvent
 import com.chetan.connectsuite.core.pairing.PairingManager
 import com.chetan.connectsuite.core.repository.DeviceRepository
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /**
@@ -63,7 +64,29 @@ class ConnectionService : LifecycleService() {
                     scanning -> getString(R.string.connection_service_scanning)
                     else -> getString(R.string.connection_service_idle)
                 }
-            }.collect(::updateStatus)
+            }
+                // **Defect 101.** `combine` emits whenever *either* upstream does, and
+                // `UdpDiscovery.ANNOUNCE_INTERVAL_MS` is 8 seconds — so the discovery heartbeat
+                // re-emitted the same device list every 8 seconds, the same status string was
+                // rendered, and the same notification was posted again. Twice a tick, forever:
+                // two `notification_enqueue` records and four `power_partial_wake_state`
+                // transitions for a notification whose text had not changed.
+                //
+                // It cost more than battery. The churn rotated the platform's `events` buffer past
+                // the failure under investigation **twice in one day**, destroying the
+                // `am_foreground_service_*` records defect 100 needed — an instrument destroyed by
+                // our own noise.
+                //
+                // The notification follows the **rendered text**, not the heartbeat. A status that
+                // has not changed is not news.
+                //
+                // Deliberately not a throttle: a fixed interval would make a genuine change late as
+                // well as making the churn quieter, and the fault is redundant posts rather than
+                // frequent ones. And deliberately not upstream — the 8-second announce is correct
+                // and is how this phone advertises itself; what was wrong was a notification
+                // treating a heartbeat as an event.
+                .distinctUntilChanged()
+                .collect(::updateStatus)
         }
 
         lifecycleScope.launch {

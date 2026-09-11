@@ -33,6 +33,18 @@
             android:label="Fs probe"
             android:theme="@style/Theme.ConnectSuite" />
 
+        <!--
+          Defect 50's first instrument. Reading A asks whether this provider honours a BOUND
+          selection; reading B pages through the product's own client. It reads counts, thread ids
+          and dates and NO message content — which is what makes it takeable on a handset whose
+          owner is not the developer.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.SmsProbeActivity"
+            android:exported="true"
+            android:label="SMS probe"
+            android:theme="@style/Theme.ConnectSuite" />
+
         <activity
             android:name="com.chetan.connectsuite.probe.AppsProbeActivity"
             android:exported="true"

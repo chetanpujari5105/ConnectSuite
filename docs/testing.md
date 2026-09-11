@@ -16825,3 +16825,620 @@ field held. Both now go red.
 The DOM double grew `[attr]` presence matching, which it asks for explicitly rather than being
 worked around: presence only, never `[attr="value"]`, because a selector that matches the value is
 asserting it twice and fails by matching nothing.
+
+---
+
+## Phase 7 Slice 36 — the status island, rebuilt as current state (2026-09-08)
+
+Reported by the user: *"It says random things while the phone is connected, and sometimes shows
+errors that are not happening. I see it on almost every screen, with Connected and a live latency
+drawn two inches away."* The rule they gave, which is what was built: **the island shows current
+state and nothing else; a recorded event is history and history is what Activity is for.**
+
+### The diagnosis, read from the source rather than recalled
+
+The island had **five writers and two clocks**. Four of the five were ordinary. The fifth was
+`startIsland`, a `setInterval(…, 5200)` that cycled a six-slot ring of strings, and one statement in
+it is the whole defect:
+
+```ts
+this.setIsland(this.events[this.eventIndex]!, toneOf(this.status));   // shell.ts:491
+```
+
+**Text from history, tone from the live link.** A stale sentence painted in the live colour is a
+claim that the sentence is current.
+
+Three questions were asked of it and each has a file-and-line answer:
+
+| | |
+|---|---|
+| **What replaces a line?** | the 5.2 s timer, unconditionally, and nothing else. Eviction from the ring was by count (6), FIFO, deduped only against the immediately preceding string |
+| **How old can a line be?** | **unbounded.** `ActivityEvent` carries `at: Date.now()` (`main/activity.ts:112`) and `islandLineFor` took `{ category, kind, detail }` — **the timestamp was dropped at the boundary** and `note()` stored a bare `string`. The ring was never cleared: not on disconnect, not on reconnect, not on a pairing change. The oldest line survived the session and came round every ~31 s |
+| **Which lines contradict the strip?** | a `lastError` or a phone refusal, cycling in **green** after recovery; `Connected · N ms` — pushed as a *history* entry at `shell.ts:762` — cycling in **amber** during a reconnect; any feature line (`Sent to phone · 57 bytes`) cycling in **red** during an outage, asserting a send that is not happening |
+
+**Why the strip was not the authority: nothing ever made it one.** `setStatus`'s own comment claims
+*"one function so the four cannot disagree"*, and the island is not one of the four. It got a seize
+on transitions and was then handed to a timer that had never heard of `status`.
+
+### The fourth contradiction, upstream of the island
+
+`link.ts` held **two** failure fields, `lastError` (raw) and `lastFailure` (classified), and
+`status()` returned `lastFailure?.message ?? lastError`. A successful handshake cleared the raw one
+and **not the classified one** — assigned in four places, cleared in none — so after a single
+failure **every** subsequent status carried that sentence forever, `phase: 'connected'` included.
+The island was narrating a genuinely stale field.
+
+Same field, sharper consequence: `status()` feeds `lastFailure` to `pairingHealth`, so one
+certificate refusal left `pairing` at `repudiated` **through a successful re-pair**, and the shell's
+`mustPair` then pins the user to the pairing screen while connected.
+
+**The fix is one field, not the missing line.** Adding `this.lastFailure = null` would have fixed
+the instance; two fields that must be cleared together, in a class with six assignment sites, is the
+defect. `LinkFailure` already carries `raw` beside `message` and `kind`, so there is now one field
+and exactly two things that write it — `failed(raw)` and `succeeded()`. Three of the six sites had
+been setting only the raw field, producing a status whose `lastError` was an unclassified fragment
+(`no pong in 15s`) with no kind beside it; they are classified like everything else now.
+
+### The rule, and what the island says in each state
+
+One pure function in `src/shared/islandState.ts`, one writer in `shell.ts` (`renderIsland`), no
+ring, no timer, **no timestamp anywhere in the file** — the fix expressed as a type, since a
+function with no clock cannot show a stale line.
+
+| Live state | Island | Tone |
+|---|---|---|
+| no status yet | `Starting…` | idle |
+| unpaired | `Not paired` | idle |
+| repudiated | `Pairing was removed on the phone` | down |
+| searching | `Looking for phone` | working |
+| connecting / handshaking | `Connecting` | working |
+| reconnecting | `Reconnecting`, or `Reconnecting · no answer on any known address` | working |
+| failed | `Disconnected · the phone closed the connection` | down |
+| connected, idle | `Connected · 12 ms`, or `Connected` before the first heartbeat | live |
+| transfer in flight | `Copying clip_final.mp4` / `Sending report.pdf` / `Transferring 3 files` | live |
+| clipboard sync | **nothing** — see below | live |
+
+**A clipboard sync gets no island line, and that is the rule rather than an omission.** `clip-send`
+is a request and its reply; `clip-arrived` is an instant. Neither has a duration, so under the
+user's own rule both are history the moment they exist. They are recorded in Activity, which
+timestamps and filters them, and acknowledged by the toast, which is what a moment gets. A transfer
+is the one thing on this Mac that is genuinely *in flight*, and it is the only work the island shows.
+
+### Why the reason is a `kind` and never the classified sentence
+
+`ConnectionStatus` gained `lastFailureKind`. The island reads it and never `lastError`, because
+`classifyLinkError`'s prose for a dropped socket is **"The connection to your phone dropped.
+Reconnecting."** — a sentence that *names a connection state*. In a pill beside a strip reading
+`Disconnected`, that is the island contradicting the strip while carrying a perfectly current fact.
+
+This is the difference between a rule and a filter, and it was demonstrated rather than argued.
+Mutating `islandState` to render the message instead of the kind produces:
+
+```
+AssertionError: “Disconnected · The connection to your phone dropped. Reconnecting.”
+  names a connection state other than “Disconnected”
+```
+
+A filter testing the prose for connection words would pass until somebody wrote a new sentence. A
+closed enum of five cannot express the wrong thing.
+
+### The tests, and the second assertion a mutation forced
+
+Two files, because a pure test alone is defect 67's shape — a correct decision and an untested
+write, which is exactly what `islandRota.ts` was: nine tests, all correct, over a pill that
+contradicted the strip daily.
+
+- **`src/shared/islandState.test.ts`** — the decision, over a **cross-product** of 9 phases × 4
+  pairing kinds × 2 `paired` × 4 latencies × 8 failure kinds = **2,304 states**, including a phase
+  and a failure kind *"added after this test was written"*. The set of connection labels is
+  **derived** from `linkToneLabel` and `pairingLabel` rather than typed, so a label added tomorrow
+  joins the invariant automatically. Control: the product reaches all four tones.
+- **`src/renderer/shellIsland.test.ts`** — the **write**, driving the real `ShellView` against the
+  DOM double through an eleven-step session (connect, heartbeat, transfer, drop mid-transfer,
+  nothing answers, recover, repudiate, re-pair, unpair), asserting after every step **and after
+  firing every timer the shell has scheduled**.
+
+**The second assertion exists because the first mutation caught the test being too weak, not the
+code being wrong.** Reinstating the rota with a ring holding `Sent to phone · 57 bytes,
+automatically` **passed** the contradiction check: it names no connection state, and the old code
+always painted the dot from the live link, which was the one thing it got right. Yet the pill was
+asserting a send over a socket that was gone.
+
+So the check is not *does the text avoid the wrong words* but **is the text the one the current
+state produces** — `assert.equal(islandText, islandState(status, work).text)`, calling the
+production rule rather than restating it. Any second writer fails it on its first tick, whatever it
+says.
+
+Red-first, three mutations, each on the tests named for it:
+
+| Mutation | What went red |
+|---|---|
+| reinstate the 5.2 s rota | `the island never contradicts the strip…` — *“TIMEOUT: the phone stopped answering” where the live state produces “Looking for phone” — something other than the state wrote the pill*; and `the island holds no timer of its own` — *the shell scheduled 1 interval(s): 5200ms* |
+| render `lastError` instead of `lastFailureKind` | 5 of 13 in `islandState.test.ts`, including the `Reconnecting.` sentence quoted above |
+| draw a failure while the tone is `live` | `a stale failure left on a connected status is not drawn`, in both files |
+
+`ShellView` came **off** `scripts/check-renderer-views.mjs`'s debt list — 11 covered / 2 outstanding
+→ **12 / 1**. Its debt reason was *"the window frame; its rules live in shell.css"*, which was true
+of the frame and false of this file's other job: it owns the island **and** the strip, two surfaces
+that must agree about one fact, and no test could see either being written. The DOM double grew
+`getElementById` (auto-vivifying, with the cost of that stated), `removeAttribute`, a small
+`document.querySelector`, and recorded window listeners.
+
+Suite: **616 pass, 0 fail** (from 598).
+
+### On hardware, 2026-09-08 — SM-S938B, `scripts/target-device.sh` not needed (no device writes)
+
+Read through `scripts/probe.mjs`. The strip is `display: none` on `overview` and `pairing`
+(`shell.css:664`), so **the first run was refused** with `PROBE_NOT_VISIBLE: #strip-state-label
+(hidden=false, height=0)` rather than reporting what an unlaid-out element says about itself — the
+refusal working. Routed to Notifications by pressing the nav row by name, route confirmed landed
+before anything was read.
+
+| Reading | Value |
+|---|---|
+| island / strip, same instant | `Connected · 7 ms` · `Samsung SM-S938B` `Connected` `7 ms` |
+| tones | `live` / `live` — agree |
+| island's text begins with the strip's state | **true** |
+| 15 samples over 30 s | **5 distinct readings, all `Connected · N ms`** with the card reading `Connected` in every one. The only thing that varied was the measured latency |
+| transfer in flight | `{"island":"Copying inbox-probe.bin","tone":"live","strip":"Connected","stripTone":"live"}` — the work line landed **2 ms** after the click |
+| after the copy | settled back to `Connected · 6 ms` |
+
+The instrument's bound is stated: a small copy can finish inside one poll interval, so the sighting
+was taken with `probe.act`'s `expect` (100 ms poll, explicit deadline, `landed` reported either
+way). A `landed: false` would have been *not seen in this run*, never *does not work*.
+
+Screenshot: `docs/evidence/island-2026-09-08/island-and-strip.png`, clipped to the two elements'
+real bounding boxes read from the page rather than to coordinates guessed off an image.
+
+### Defect 96 — the status island had no clock, and drew history in the live tone
+
+Recorded above. Fixed and proven on hardware 2026-09-08.
+
+### Defect 97 — `lastFailure` was assigned in four places and cleared in none
+
+Recorded above. Fixed 2026-09-08; the stale-error half is proven on hardware by 30 s of samples
+carrying no failure text, and the **repudiation** half is *unproven* — reproducing it needs a
+certificate refusal followed by a successful re-pair, which needs the phone's Mac tab tapped
+twice. The stimulus is named rather than the fix claimed: `Forget` on the phone, re-scan, then read
+`pairing.kind` on a connected status.
+
+### Slice 36, second sitting — the states the first window could not reach
+
+The first 30-second sample had a healthy link throughout, so every non-`live` state was carried by
+2,304 cross-product cases and the DOM session test and **not** by a sighting. That was recorded as a
+named gap with its stimulus. The phone then went away on its own — `ECONNREFUSED` on the last-known
+address, the phone's app not listening — which supplied the stimulus for free.
+
+**It found a defect neither test layer could see.** The pill read:
+
+```
+Connecting · no answer on any known address
+```
+
+Both halves true. The reason describes the **last completed** attempt and the label describes the
+one **in flight**, and joining them in one sentence presents two moments as one — it is dialling
+something while saying nothing answered. It contradicts nothing: the strip said `Connecting` too, so
+the invariant passed, and `assert.equal(text, islandState(status, work).text)` passed because the
+island was faithfully rendering what the rule said. **A rule can be self-consistent and wrong**, and
+the only instrument that sees that is a person looking at the screen. Same way defect 67 was found.
+
+Fixed by `DIALLING = {searching, connecting, handshaking}`: a reason accompanies a **settled** state
+— `Disconnected · …`, and `Reconnecting · …`, which by construction means *the last attempt failed
+and I am waiting to try again* — and is withheld while a socket attempt is actually open. The pill
+alternates as the discovery order sweeps candidates, and both readings are true when drawn.
+
+Red-first: emptying `DIALLING` fails with *`searching` drew a reason for the previous attempt:
+"Looking for phone · no answer on any known address"*. The test carries the control that makes it
+mean something — the same failure in `reconnecting` and `disconnected` **does** render its reason,
+so it is not passing because the reason never draws.
+
+**On hardware, on the fixed build — 330 samples at 120 ms through a real outage:**
+
+| | Reading |
+|---|---|
+| 283× | `Reconnecting · no answer on any known address` [working] · card `Reconnecting` [working] |
+| 47× | `Connecting` [working] · card `Connecting` [working] |
+| **0** | readings where the island disagreed with the card |
+
+Two distinct readings, both led by the card's own state, tones agreeing in every sample. Screenshot:
+`docs/evidence/island-2026-09-08/island-reconnecting.png`.
+
+**And a second, independent healthy-link sample was recovered**, from a run whose output had been
+read as empty: 15 samples over 30 s, `{"island":"Connected · 6 ms","card":"Connected"}`, three
+distinct readings, all `Connected · N ms`, tones agreeing throughout. So the healthy-link claim
+rests on **30 samples across two runs** taken hours apart, not 15.
+
+That recovery is itself a lookalike worth the line. The output file was read while the process was
+still running and came back **0 bytes**, and the conclusion drawn was *the process was killed*. It
+had not been: node buffers stdout when it is a pipe rather than a TTY, and flushed the whole thing on
+exit. **An empty file is not an empty result when nothing has flushed yet** — the same shape as the
+263 ms window, one layer down: a reading that did not exist *yet*, read as one that did not exist. It
+cost nothing because the run was repeated, and the repeat is why there are two samples instead of one.
+
+### A safety finding, established before the stimulus rather than after
+
+The plan for reaching the non-`live` states without the user's hands was the product's own
+Disconnect button, then Retry to restore. Reading `link.ts` first:
+
+```ts
+stop(reason)  { this.running = false; … }
+retryNow(why) { if (!this.running || this.isConnected()) return; … }   // ← returns immediately
+```
+
+**Retry cannot undo Disconnect.** Only `start()` can, behind `ipcMain.handle('connect')`. A script
+that had reached for the obviously-named recovery would have left the user's phone link down and
+reported a clean pass — `CLAUDE.md`'s decoration rule exactly: the check that matters is the one that
+gates the action, and here the gate was knowing which call actually restores the state.
+
+In the event the induced outage was never needed, and the restore ran in a `finally` regardless. The
+link's final state is `running = true` with `Retrying in 30000ms` in the log — recovering on its own
+whenever the phone comes back, which is the state it was in before any of this.
+
+### Defect 98 — a reason for the last attempt, drawn beside the label for the next one
+
+Recorded above. Fixed and proven on hardware 2026-09-08, 330 samples.
+
+### Slice 36, third sitting — defect 97 proven through a real failure → recovery cycle
+
+The user reconnected the phone, which closed the last reading that mattered. **The earlier hardware
+runs could not test defect 97 at all**: the first had a healthy link for its whole window, so there
+was no failure to fail to clear, and the second had a failure that never recovered. What was needed
+was one process containing both, and this is it.
+
+**The branch under test actually ran with something to do**, which is the precondition `CLAUDE.md`
+requires — a no-op branch is not a pass. In one process (`/tmp/cs-app2.log`):
+
+| | |
+|---|---|
+| `ECONNREFUSED` failures, 15:33:58 → 15:34:45 | **13**, backing off 1s → 30s |
+| successful connects | **2**, first at 15:37:28 (`Paired with Samsung SM-S938B`) |
+
+So `succeeded()` was reached with a real `LinkFailure` set. Four minutes later, read from **the
+status object the renderer holds** rather than from the pill:
+
+```json
+{ "phase": "connected", "rttMs": 11, "lastError": null, "lastErrorRaw": null,
+  "lastFailureKind": null, "pairing": "paired", "deviceName": "Samsung SM-S938B" }
+```
+
+| Claim | |
+|---|---|
+| `lastError` retired after recovery | **true** |
+| `lastErrorRaw` retired with it | **true** |
+| `lastFailureKind` retired with it | **true** |
+| `pairing` recomputed to `paired` | **true** |
+
+Before the fix all four were impossible: `status()` returned `lastFailure?.message ?? lastError`,
+`lastFailure` was assigned in four places and cleared in none, and this exact sequence — thirteen
+`unreachable` failures then a successful handshake — would have left *"Could not reach your phone.
+Check that both are on the same Wi-Fi…"* on **every** connected status for the rest of the session.
+
+**Read from the status object and not from the pill, deliberately.** The island is now structurally
+incapable of drawing an error while the tone is `live`, so reading the pill would measure the
+island's rule and say nothing about whether the field underneath it was retired — `CLAUDE.md`'s rule
+about measuring from the end that can tell the difference. The control is that a status actually
+arrived and is the connected one; without it a `null` `lastError` is indistinguishable from *no
+status has been delivered yet*.
+
+**The pill, in the same window — 330 samples at 120 ms:**
+
+| | Reading |
+|---|---|
+| 161× | `Connected · 8 ms` |
+| 72× | `Connected · 9 ms` |
+| 40× | `Connected · 7 ms` |
+| 40× | `Connected · 11 ms` |
+| 17× | `Connected · 10 ms` |
+| **0** | readings where the island disagreed with the card |
+
+Five distinct readings, one sentence, the only variation being the measured latency — which is what
+a surface showing current state is supposed to look like. Island against the strip at the same
+instant: `Connected · 8 ms` [live] against `Samsung SM-S938B` `Connected` `8 ms` [live].
+Screenshot: `docs/evidence/island-2026-09-08/island-after-recovery.png`.
+
+**Running total across the three sittings: 990 samples, 0 disagreements**, spanning a healthy link,
+a real outage with its retry sweep, and the recovery between them.
+
+**Still unproven, and the stimulus unchanged:** defect 97's *repudiation* half and the island's
+`Pairing was removed on the phone` state. Both need a **certificate refusal**, which needs `Forget`
+on the phone's Mac tab followed by a re-scan. This session's outage was `unreachable`, not
+`certificate-refused`, so it exercised neither. (Incidentally the log shows `Paired with Samsung
+SM-S938B` at 15:37:28 — the Mac's store had no pairing and paired fresh, so the app also passed
+through `Not paired` → `Connected` in this process without incident.)
+
+---
+
+## Phase 7 Slice 37 — the mirror takes the shape of the stream (2026-09-10)
+
+**Why this slice exists.** Four mirror problems were reported together, in priority order, after a
+floating window hung during an investor demo. The diagnosis is `docs/mirror-diagnosis-2026-09-09.md`
+and the agreed order is **§3 (fit) → §1 (float start) → §4 (latency anchor) → §2 (float input)**.
+This is §3, and it lands the box and the coordinate mapping **together**, because they are one
+assumption written in three places rather than two bugs that happen to be adjacent.
+
+### Defect 99 — the stage asserted a 9:19.5 phone, and the tap mapping believed it
+
+The three places, and the third is the one that mattered:
+
+| | Where | What it asserted |
+|---|---|---|
+| 1 | `styles.css` `.pane-mirror .mirror-stage` | `width: 268px; aspect-ratio: 9 / 19.5` |
+| 2 | `shared/floatGeometry.ts` | `RATIO = 19.5 / 9` — **still live, see below** |
+| 3 | `mirror.ts` `pointAt`'s doc comment | *"there is no letterboxing inside the element to account for"* |
+
+Numbers 1 and 2 draw black bars. Number 3 **moves the user's finger**, and it is the reason this was
+not a cosmetic ticket. It was *true when it was written*: the Phase 2 canvas was sized by
+`max-width`/`max-height` alone, so the element really was the picture. The design pass then gave the
+canvas `object-fit: contain` inside a fixed stage, and the sentence stayed — correct about a layout
+that no longer existed. This is `CLAUDE.md`'s *a true sentence about the wrong one of two paths*,
+except the second path replaced the first rather than sitting beside it.
+
+**CORRECTED 2026-09-10 — and the correction makes the "one device hid it" story stronger, not
+weaker.** This slice first said *the reference device was already wrong (~20:9, 1.6px bars a side,
+invisible)*. That was inferred from a **stale canvas backing store** of 480×1070 read off an app
+instance that had been running since 2026-09-08, and it is **wrong**. The phone's own log, from a
+live session the same day, is authoritative:
+
+```
+[mirror] Display 1440x3120 @600dpi -> capture 480x1040 @200dpi (cap 480)
+1440 × 3120  →  2.16667   and   19.5 / 9 = 2.16667
+```
+
+**The SM-S938B is exactly 19.5:9.** The design's hard-coded box matched the reference handset
+*perfectly*, so in portrait there were **no bars at all** on it — which is a cleaner reason for a
+phase of invisibility than bars too small to see. Every other phone, and every rotation on every
+phone, was wrong.
+
+(Where 480×1070 came from is unresolved: 1070 is what a 480-capped capture of a **1080×2408** panel
+gives, which is not this handset's geometry. It was a stale canvas from an unknown earlier session,
+and using it to infer a phone's aspect was the error — a decoded frame is evidence about whatever
+produced it, and nothing said what that was.)
+
+**Measured before the fix**, in the 266 × 569.4 element the pane actually had:
+
+| stream | picture inside the element | bars | worst-case tap error |
+|---|---|---|---|
+| 1080×2340 — SM-S938B, **exactly 19.5:9** | 266 × 569.4 | **none** | **none, in portrait** |
+| 720×1600 — moto g34 **and** g45 | 256.2 × 569.4 | 4.9px a side | ~20 capture px |
+| 1080×2160 — an 18:9 phone | 266 × 532 | 18.7px top and bottom | 71 px |
+| 2340×1080 — **any phone turned** | 266 × 122.8 | **223px top and bottom** | **424 px of 1080** |
+
+The last row is the one to keep: the picture was **21% of the box's height**, and to tap the top of
+the phone you had to click in the black bar *above* the picture.
+
+**Underneath both, a specificity collision inside one file.** `#mirror-canvas { max-height: 60vh }`
+is an id — (1,0,0) — and beat the design pass's `.pane-mirror .mirror-stage canvas` — (0,2,1). So
+the canvas was clamped to 569.4px inside a stage the design sized at 580.7px, and **the element was
+not even the ratio the stage asserted**. Two selectors sizing one canvas, resolved by specificity
+rather than by anyone's intent: the same shape as the three collisions of 2026-08-30 that
+`stylesheets.test.ts` was written for — and invisible to it, because that guard compares selectors
+*across* the three sheets and both of these live in `styles.css`.
+
+### What changed
+
+- **The stage is the shape of the stream.** `--capture-aspect` (width over height) is set on
+  `#mirror-stage` by `mirror.ts` from the geometry the phone **already** announces — `mirror.state`
+  at `running` and `mirror.rotate` on every turn both carry `width`, `height`, `dpi`, `rotation`,
+  `geometryId`. Nothing new is on the wire. What was missing was any code that used it for layout:
+  `this.capture` fed the HUD and the coordinate mapper and nothing else.
+- **Landscape makes the box landscape.** Width comes from a height budget through the aspect
+  (`min(560px, calc(580px * var(--capture-aspect)))`), so portrait still lands on the design's 268pt
+  (580 × 0.4615 = 267.7) and a landscape stream grows wide instead of shrinking to a strip.
+- **`pointAt` maps against the picture**, through `captureFit.ts` — `captureAspect`,
+  `containedPicture`, `pointInCapture`. It no longer depends on the bars being zero, which is the
+  point: the previous version was correct only by a coincidence nobody was checking.
+- **The hairline moved from `border` to `box-shadow: inset`.** `aspect-ratio` sizes the *border*
+  box; a 1px border makes the content box 2px smaller in each axis, which is a different ratio —
+  measured at **1.2px** of residual letterbox in a stage that was otherwise exactly right.
+- **Both legacy rules deleted.** The stage owns its size, the canvas fills it, one rule each.
+
+`captureFit.ts` is a file rather than two methods because `docs/design-departures.md` M13 names the
+shared input seam as what the float window's pointer input waits on, and this is its first half.
+
+### The readings
+
+**Red-first**, as the rule requires: `pointInCapture` was reverted to dividing by the element — the
+defect exactly — and `captureFit.test.ts` went **2 of 6 red**. Restored: 6 of 6 green. Worth
+recording *which* two, because it says where the evidence is: the two that fail are the letterbox
+mapping and `outsideBy`. The corner-mapping test **stayed green under the mutation**, correctly —
+on a box that is already the right ratio the two mappings agree, which is exactly why the old code
+survived on one device.
+
+**The box, measured through the real stylesheet in the packaged app** (`ConnectSuite.app`, relaunched,
+1440×841 @2x, not zoomed):
+
+| geometry | stage box | stage aspect | stream aspect | bars X | bars Y |
+|---|---|---|---|---|---|
+| a 1080×2408 panel, portrait | 260.1 × 580 | 0.4485 | 0.4485 | **0** | **0** |
+| moto g34 / g45 portrait 720×1600 | 261 × 580 | 0.4500 | 0.4500 | **0** | **0** |
+| the same panel, landscape | 560 × 251.2 | 2.2297 | 2.2296 | 0.01 | **0** |
+| moto landscape 1600×720 | 560 × 252 | 2.2222 | 2.2222 | **0** | **0** |
+
+`max-height` on the canvas reads `none` — the specificity collision is gone. Control: 13
+`section[data-screen]` elements on the page in every row; the probe **refused** one run outright when
+the app had not finished loading and the control came back 0, which is that guard doing its job.
+Screenshots: `docs/evidence/mirror-fit-2026-09-10/`.
+
+### What this run does NOT reach, stated rather than left to be assumed
+
+**The probe sets `--capture-aspect` by hand.** That is what `mirror.ts` does from the phone's
+announced geometry, so this proves the **box rule** and the **mapping**, and it proves nothing about
+whether `mirror.ts` writes the property when a real `mirror.state` or `mirror.rotate` arrives. That
+write has three call sites and no test — `MirrorView` is the one class on
+`check-renderer-views.mjs`'s debt list — so **only a phone can prove it.**
+
+Three things are therefore owed and none of them is a Mac-side run:
+
+1. a real session on **each of the three handsets**, with the box measured against the announced
+   geometry — the 1440×3120 Samsung (19.5:9), the 720×1600 Motorolas (2.2222) and the 1080×2408
+   vivo (2.2296) are three different ratios and this
+   is the exact bug one device hid;
+2. a **physical rotation** of the phone, watching the box turn rather than the picture turn inside
+   it — the `mirror.rotate` path, which no Mac-side stimulus can produce;
+3. a **tap near an edge** on a non-19.5:9 phone, which is the half that was moving fingers.
+
+**And the float window's `RATIO = 19.5 / 9` is still live.** It is the same defect in a third place,
+left deliberately: the float window cannot learn the stream's shape until §1 plumbs the geometry
+through to it, and half-plumbing it now would mean writing that path twice. It is named in defect
+99's row rather than left for someone to find.
+
+---
+
+## Phase 7 Slice 38 — the mirror has never run, and the control that said it had (2026-09-10)
+
+**How this slice opened.** §3's Mac-side work landed (Slice 37) and the next step was its hardware
+debt: prove `mirror.ts` writes `--capture-aspect` when a real `mirror.state` or `mirror.rotate`
+arrives, on three handsets. The S25 was connected, `input` was enabled, `Start mirroring` was
+pressed — and mirroring failed, repeatedly, in a way that turned out to predate everything done
+today.
+
+### Defect 100 — the mirror has never survived its own start
+
+**The chain, in the platform's own words**, from a single deliberate attempt at 10:31:06 with the
+buffers read seconds later:
+
+```
+06.372  ActivityManager: Background started FGS: Allowed [com.chetan.connectsuite.debug; uidState: TOP]
+06.387  am_foreground_service_start: [MirrorService, PROC_STATE_TOP, …, count=7, UNKNOWN, type=32]
+06.389  MediaProjectionManagerService: Start the token instance
+06.390  [mirror] Display 1440x3120 @600dpi -> capture 480x1040 @200dpi (cap 480)
+06.465  DisplayManagerService: Virtual Display: successfully set up virtual display 11
+06.465  MediaProjectionMetricsLogger: logInProgress
+06.494  am_foreground_service_stop:  [MirrorService, …, 107ms, count=7, STOP_FOREGROUND, type=32]
+06.496  MediaProjectionManagerService: Stopped MediaProjection due to foreground service change
+06.496  MediaProjectionMetricsLogger: logStopped: wasCaptureInProgress=true stopReason=7
+06.496  VirtualDisplayAdapter: Virtual display device released because media projection stopped
+```
+
+**107 milliseconds.** Consent, token, display and encoder are all fine; the foreground service that
+authorises the projection stops being foreground, and Android revokes it.
+
+**The `type=32` at both ends is what kills the tempting explanation.** 32 is
+`FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION`, so the service had the right type throughout, and the
+`ForegroundServiceTypeLoggerModule: Foreground service start for UID: 11011 does not have any types`
+line seen earlier is **the API-type logger** (camera/microphone/location), not the FGS type. It was
+flagged as unresolved rather than concluded, and it would have sent a fix at a manifest that was
+already correct — verified **in the installed APK**, not in source: `foregroundServiceType=0x20` on
+the `<service>`, `FOREGROUND_SERVICE_MEDIA_PROJECTION` in the permission list.
+
+**What is not established, and why more log reading cannot settle it.** AOSP records
+`STOP_FOREGROUND` for the branch where a service is *taken out of the foreground*, which is what
+`Service.stopForeground()` does — and there is **no `stopForeground` call anywhere in the phone
+codebase**. Every foreground-service call we make is: `ServiceCompat.startForeground` and `stopSelf`
+in `LinkService`, the same two in `ConnectionService`, and `startForeground` / `stopSelf` (no-consent
+branch) / `stopService` in `MirrorService`. The demotion is not logged with a caller at default
+verbosity. The next step is therefore an instrument and not a fix — see the pre-registration below.
+
+### The control was wrong, and it is the fourth of its shape
+
+Asked for the phone's account, this run reported a passing control: **7 `Mirror session started`,
+the most recent that morning.** That was a *registration line standing in for an execution line*.
+`Mirror session started` is written at the end of `onServiceReady` — it means *we got this far*, not
+*frames flowed*.
+
+The execution line is the 2-second stats ticker, which only runs while a session is live:
+
+| | `link.log` (09-09 20:22 → 09-10) | `link.log.1` (09-06 → 09-09 20:22) |
+|---|---|---|
+| `Mirror session started` | 7 | **0** |
+| `Encoded +N frames` | **0** | **0** |
+
+**Not one session in 4,720 lines of surviving log has ever produced a frame tick.** The rotated file
+holds no mirror activity at all, so "it worked yesterday" cannot be supported *or* refuted from what
+the phone still holds — the honest statement is that the failure is present in the oldest attempt
+that survives, and predates the accessibility toggle, the §3 build and the packaged relaunch, all of
+which happened on 09-10.
+
+This is the fourth sighting of the shape `CLAUDE.md` already names, and the first where the wrong
+control was **offered as a pass** rather than merely relied on. It is recorded in the rule's own
+section there.
+
+### Defect 101 — the app's own noise ate the evidence
+
+The `am_foreground_service_*` records for the *first* set of attempts were gone by the time they
+were asked for, because `ConnectionService` re-posts notification `1001` **twice every eight
+seconds**, forever, each enqueue waking `NotificationManagerService` and taking two partial wake
+locks. Five consecutive ticks from the events buffer:
+
+```
+10:26:36.295 / .301    notification_enqueue [11011,8229,…,1001,…]
+10:26:44.301 / .306
+10:26:52.307 / .311
+10:27:00.305 / .307
+10:27:08.315 / .319
+```
+
+Nobody was looking for it. It was found because it destroyed an instrument — the second time in this
+project that the app's own output has eaten the evidence about the app.
+
+### Pre-registered: the instrument, and what each outcome means
+
+Written before the build so neither answer can be rationalised afterwards. `stopForeground` is
+overridable; `MirrorService` gets an override that logs a stack and calls through, and **nothing
+else changes in that build** — no fix, so the reading is clean.
+
+| Outcome | What it means | What is fixed |
+|---|---|---|
+| the line **appears** | our process calls `stopForeground`, and the stack names the caller | a code fix at that call site |
+| the line **never appears** | nothing in our process calls it; the demotion is the platform's | a different repair entirely — how the service is started, or a One UI behaviour — and every hour spent reading our own code would have been wasted |
+
+**Blocked behind this:** §3's three-handset hardware verification. No session survives long enough
+to announce a geometry, so there is nothing for the stage to take its shape from.
+
+### The appop experiment — prediction, and what came back
+
+Pre-registered before the flip: *if the FGS survives past 116 ms and the stats ticker emits
+`Encoded +N frames`, this was never a code defect and the fix is onboarding plus a capability check.
+If it does not, the op is a red herring.*
+
+Original value recorded first (`RUN_ANY_IN_BACKGROUND: ignore`), then set to `allow`, then one tap.
+
+```
+am_foreground_service_start  MirrorService  17:41:40.341   ← and NO matching stop
+                                                              still foreground at 17:45:08
+dumpsys                      MirrorService  isForeground=true  types=0x00000020
+link.log                     94 × "Encoded +N frames"
+                             +203 frames (101.5/s)  +227 (113.5/s)  +193 (96.5/s)
+```
+
+**116 ms before, 3½ minutes and counting after, with real frames.** The prediction is met on both
+clauses. **Defect 100 is not a code defect.** The mirror was never broken; the app was
+background-restricted and could not hold the foreground service the projection requires.
+
+### It fixed one service and not the other, and that is the second finding
+
+```
+MirrorService       isForeground=true    types=0x00000020
+ConnectionService   isForeground=false   types=0x00000000
+LinkService         isForeground=false   types=0x00000000
+```
+
+`MirrorService` calls `startForeground` unconditionally in `onStartCommand` and re-claimed the state
+by itself on the next tap. `LinkService` guards that call behind a field that is set once and never
+reset — **defect 103** — so it stayed demoted after the restriction was lifted and
+`scripts/link-up.sh` check 1 still fails. Lifting the restriction is necessary and not sufficient.
+
+### Defect 99 — verified on hardware, on the S25, through a real rotation
+
+The write that no test could reach, taken from the running app on a live session. The phone rotated
+during the run, which supplied the `mirror.rotate` stimulus without anyone arranging it:
+
+```
+phone announces      Capturing 2340×1080 · cap 1080 on the short edge
+rotation readout     90°
+--capture-aspect     inline=2.1666666666666665     ← INLINE: only applyCaptureAspect() writes it
+matches announcement YES  (expected 2.166667)
+stage box            560 × 258.5   aspect 2.1667   ← the BOX is landscape
+canvas element       560 × 258.5   backing 2340 × 1080
+LETTERBOX            barX 0px   barY 0px
+frames               8425 frames · 119 fps
+```
+
+Read as an **inline** style property rather than the computed value, because the stylesheet's `var()`
+fallback would supply a number whether the app wrote one or not — and because a stale inline value
+left by this morning's own probe had to be cleared first, which would otherwise have certified the
+app for a write the instrument made. Screenshot:
+`docs/evidence/mirror-fit-2026-09-10/s25-live-landscape.png`.
+
+**One handset of three.** The moto g34, moto g45 and the vivo are still owed, and they are the point
+of the exercise — 720×1600 is a third ratio and the vivo's is unread.

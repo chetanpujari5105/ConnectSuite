@@ -1,9 +1,10 @@
 import { app, safeStorage } from 'electron';
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, userInfo } from 'node:os';
 import { join } from 'node:path';
 import forge from 'node-forge';
+import { chooseIdentity } from './identityPair';
 import { log } from './logger';
 
 export interface Identity {
@@ -31,25 +32,66 @@ export function loadIdentity(): Identity {
   const certPath = join(dir, 'cert.pem');
   const keyPath = join(dir, 'key.enc');
 
-  if (existsSync(certPath) && existsSync(keyPath) && safeStorage.isEncryptionAvailable()) {
-    try {
-      const certPem = readFileSync(certPath, 'utf8');
-      const keyPem = safeStorage.decryptString(readFileSync(keyPath));
-      return { certPem, keyPem, fingerprint: fingerprintOf(certPem), deviceName: macName() };
-    } catch (error) {
-      log.warn('identity', `Stored identity unreadable, regenerating: ${String(error)}`);
-    }
+  const choice = chooseIdentity(readStored(certPath, keyPath));
+  if (choice.use === 'stored') {
+    const certPem = readFileSync(certPath, 'utf8');
+    const keyPem = safeStorage.decryptString(readFileSync(keyPath));
+    const fingerprint = fingerprintOf(certPem);
+    // The success case is logged at the same volume as the failure case. A silent happy path is
+    // why a mismatched pair sat on this disk for a day while every connect attempt failed: the
+    // only identity lines ever written were on paths that were not being taken.
+    log.info('identity', `Stored identity ${fingerprint.slice(0, 23)}… loaded`);
+    return { certPem, keyPem, fingerprint, deviceName: macName() };
   }
 
+  log.warn('identity', `Regenerating identity: ${choice.reason}`);
   const created = generate();
-  writeFileSync(certPath, created.certPem);
+
+  // Both halves reach the disk or neither does. Writing the certificate while the key stays in
+  // memory leaves a pair that can never be used: the next launch reads a new certificate beside
+  // an old key, decrypts that key without error, and every tls.connect then throws
+  // KEY_VALUES_MISMATCH *synchronously* — aborting discovery before a socket opens, so no
+  // address and no cable can help. That is exactly what happened here on 2026-09-07.
   if (safeStorage.isEncryptionAvailable()) {
     writeFileSync(keyPath, safeStorage.encryptString(created.keyPem));
+    writeFileSync(certPath, created.certPem);
+    log.info('identity', `New identity ${created.fingerprint.slice(0, 23)}… stored; re-pair this Mac`);
   } else {
-    log.warn('identity', 'safeStorage unavailable — key kept in memory only for this session');
+    // Leave nothing behind rather than a certificate with no key to match it.
+    rmSync(certPath, { force: true });
+    rmSync(keyPath, { force: true });
+    log.warn(
+      'identity',
+      `New identity ${created.fingerprint.slice(0, 23)}… kept in memory only — safeStorage is ` +
+        'unavailable, so nothing was written and this Mac must be re-paired every launch until it returns',
+    );
   }
-  log.info('identity', `New identity ${created.fingerprint.slice(0, 23)}…`);
   return created;
+}
+
+/**
+ * What is actually readable on disk, as two independent questions.
+ *
+ * Each half is read in its own try: a certificate that survives a key that does not is the state
+ * the caller has to be able to see, and a single try/catch around both would collapse it into
+ * "nothing stored" and lose the reason.
+ */
+function readStored(certPath: string, keyPath: string): { certPem: string | null; keyPem: string | null } {
+  let certPem: string | null = null;
+  let keyPem: string | null = null;
+  try {
+    if (existsSync(certPath)) certPem = readFileSync(certPath, 'utf8');
+  } catch (error) {
+    log.warn('identity', `Stored certificate unreadable: ${String(error)}`);
+  }
+  try {
+    if (existsSync(keyPath) && safeStorage.isEncryptionAvailable()) {
+      keyPem = safeStorage.decryptString(readFileSync(keyPath));
+    }
+  } catch (error) {
+    log.warn('identity', `Stored private key undecryptable: ${String(error)}`);
+  }
+  return { certPem, keyPem };
 }
 
 function generate(): Identity {

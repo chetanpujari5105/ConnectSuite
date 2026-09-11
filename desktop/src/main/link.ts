@@ -58,13 +58,50 @@ export class LinkClient extends EventEmitter {
    */
   private session: SessionScoped = clearedSession();
   private rttMs: number | undefined;
-  private lastError: string | undefined;
   /**
-   * The last failure, classified. `lastError` stays raw for the log and the debug HUD; **this** is
-   * what any user-facing surface reads. Before this existed, `lastError` went straight to the
-   * status bar and a user saw a BoringSSL path and line number.
+   * The last failure, classified — **one field, and the only one.**
+   *
+   * `LinkFailure` already carries `raw` beside `message` and `kind`, so this holds everything the
+   * three status fields are built from: the sentence for a person, the original text for the log
+   * and the debug HUD, and the kind for surfaces with no room for a sentence.
+   *
+   * ### Why it is one field now, which is the fix rather than a tidy-up
+   *
+   * It used to be two — `lastError` for the raw text and this for the classified form — and
+   * `status()` returned `lastFailure?.message ?? lastError`. A successful handshake cleared the
+   * raw one and **not this one**, so it cleared nothing any user-facing surface reads: `lastFailure`
+   * was assigned in four places and cleared in none, and after a single failure every subsequent
+   * status carried that sentence forever, `phase: 'connected'` included. The status island narrated
+   * it beside a live latency, which is what sent me looking; `pairingHealth` reads it too, so one
+   * certificate refusal also left `pairing` at `repudiated` **through a successful re-pair**, and
+   * the shell's `mustPair` then pinned the user to the pairing screen while connected.
+   *
+   * Adding the missing `this.lastFailure = null` would have fixed the instance. Two fields that
+   * must be cleared together, in a class with six assignment sites, is the *defect*, and the second
+   * time somebody forgets one there is no symptom to notice — so there is one field, and [failed]
+   * and [succeeded] are the only two things that write it.
+   *
+   * Three of those six sites set only the raw field, so they produced a status whose `lastError`
+   * was an unclassified fragment (`no pong in 15s`) with no `kind` beside it. They go through
+   * [failed] now and are classified like everything else.
    */
   private lastFailure: LinkFailure | null = null;
+
+  /** Record a failure. The one way this state is entered — see [lastFailure]. */
+  private failed(raw: string): void {
+    this.lastFailure = classifyLinkError(raw);
+  }
+
+  /**
+   * Retire the failure. The one way this state is left.
+   *
+   * Called from exactly one place — a completed handshake — because that is the only event that
+   * *proves* the failure is over. Clearing on a retry would be the same bug pointed the other way:
+   * an optimistic clear over a link that is still broken.
+   */
+  private succeeded(): void {
+    this.lastFailure = null;
+  }
 
   /**
    * How far the phone's monotonic clock is behind this Mac's `Date.now()`, in milliseconds.
@@ -135,8 +172,11 @@ export class LinkClient extends EventEmitter {
       rttMs: this.rttMs,
       // The classified sentence, never the raw text. `lastErrorRaw` carries the original for the
       // debug HUD and the log, which are the only places it belongs.
-      lastError: this.lastFailure?.message ?? this.lastError,
-      lastErrorRaw: this.lastError,
+      lastError: this.lastFailure?.message,
+      lastErrorRaw: this.lastFailure?.raw,
+      // The kind, for surfaces with no room for the sentence. The status island reads this and
+      // never the message — see `ConnectionStatus.lastFailureKind` for why prose cannot go there.
+      lastFailureKind: this.lastFailure?.kind,
       pairing: pairingHealth(store.get('paired') !== null, this.lastFailure, Date.now()),
       paired: store.get('paired') !== null,
     };
@@ -206,7 +246,7 @@ export class LinkClient extends EventEmitter {
   private async attempt(): Promise<void> {
     if (!this.running || this.connecting || this.isConnected()) return;
     this.connecting = true;
-    this.setPhase(this.lastError ? 'reconnecting' : 'searching');
+    this.setPhase(this.lastFailure ? 'reconnecting' : 'searching');
 
     try {
       for await (const candidate of discoverCandidates()) {
@@ -218,11 +258,9 @@ export class LinkClient extends EventEmitter {
           return;
         }
       }
-      this.lastError = 'No phone answered on any known address';
-      this.lastFailure = classifyLinkError(this.lastError);
+      this.failed('No phone answered on any known address');
     } catch (error) {
-      this.lastError = String(error);
-      this.lastFailure = classifyLinkError(this.lastError);
+      this.failed(String(error));
       log.error('link', 'Discovery failed', error);
     } finally {
       this.connecting = false;
@@ -243,8 +281,7 @@ export class LinkClient extends EventEmitter {
           // Every failed candidate says why. Without this a refused handshake looks identical to
           // a phone that is simply not there, which is exactly the case that wastes an evening.
           if (reason) {
-            this.lastError = reason;
-            this.lastFailure = classifyLinkError(reason);
+            this.failed(reason);
           }
           log.warn('link', `${candidate.host} failed: ${reason ?? 'unknown reason'}`);
           socket.destroy();
@@ -325,13 +362,12 @@ export class LinkClient extends EventEmitter {
     socket.on('data', (chunk: Buffer) => reader.push(chunk));
     socket.on('close', () => {
       if (this.socket === socket) {
-        this.teardown(this.lastError ?? 'phone closed the connection');
+        this.teardown(this.lastFailure?.raw ?? 'phone closed the connection');
         if (this.running) this.scheduleRetry();
       }
     });
     socket.on('error', (error) => {
-      this.lastError = error.message;
-      this.lastFailure = classifyLinkError(error.message);
+      this.failed(error.message);
       log.warn('link', `Socket error: ${error.message}`);
     });
 
@@ -469,7 +505,7 @@ export class LinkClient extends EventEmitter {
     const payload = envelope.payload;
     if (payload.protocolVersion !== PROTOCOL_MAJOR) {
       const message = `Phone speaks protocol v${payload.protocolVersion}, this Mac speaks v${PROTOCOL_MAJOR}. Update the older app.`;
-      this.lastError = message;
+      this.failed(message);
       log.error('link', message);
       this.teardown(message);
       return;
@@ -481,7 +517,9 @@ export class LinkClient extends EventEmitter {
     this.session.unavailable = payload.unavailable ?? [];
     this.missedPongs = 0;
     this.backoffMs = BACKOFF_START_MS;
-    this.lastError = undefined;
+    // The handshake completed, so whatever failed before it is over. See [lastFailure] for what
+    // this line's absence cost — it is the reason there is one field here instead of two.
+    this.succeeded();
 
     // First successful handshake after a scan is what completes pairing on this side: the phone
     // already proved it trusts us by accepting the TLS connection at all.
@@ -521,7 +559,7 @@ export class LinkClient extends EventEmitter {
       if (this.missedPongs >= MISSED_PONGS_BEFORE_DEAD) {
         const reason = `no pong in ${(PING_INTERVAL_MS * MISSED_PONGS_BEFORE_DEAD) / 1000}s`;
         log.warn('link', `Heartbeat lost: ${reason}`);
-        this.lastError = reason;
+        this.failed(reason);
         this.teardown(reason);
         if (this.running) this.scheduleRetry();
         return;
@@ -600,7 +638,7 @@ export class LinkClient extends EventEmitter {
     }
     if (this.phase === 'connected' || this.phase === 'handshaking') {
       log.info('link', `Disconnected: ${reason}`);
-      this.lastError = reason;
+      this.failed(reason);
       this.setPhase(this.running ? 'reconnecting' : 'idle');
     }
   }

@@ -1,0 +1,73 @@
+--------- beginning of main
+09-08 16:05:47.857 19635 19635 I ClipProbe: --- clip probe: mode=watch window=30s interval=500ms ---
+09-08 16:05:47.857 19635 19635 I ClipProbe: ENV sdk=35 targetSdk=36 package=com.chetan.connectsuite.debug accessibilityServiceOfOurs=true defaultImeIsOurs=false
+09-08 16:05:47.857 19635 19635 I ClipProbe: ENV enabled_accessibility_services=com.chetan.connectsuite.debug/com.chetan.connectsuite.input.ConnectSuiteInputService
+09-08 16:05:47.857 19635 19635 I ClipProbe: ENV default_input_method=com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME
+09-08 16:05:47.857 19635 19635 I ClipProbe: waiting for window focus before any read
+09-08 16:05:47.932 19635 19635 I ClipProbe: window focus = true (importance=100)
+09-08 16:05:47.961 19635 19635 I ClipProbe: CONTROL focused read of the EXISTING clip: focused=true importance=100 returned=true length=523 label='null' mimes=[text/plain] isSensitive=false
+09-08 16:05:47.964 19635 19635 I ClipProbe: LISTENER registered — the foreground control write below must fire it once, or it is not wired up
+09-08 16:05:47.964 19635 19635 I ClipProbe: WATCH: backgrounding now; the clip under test is already in place, nothing to copy
+09-08 16:05:48.059 19635 19635 I ClipProbe: window focus = false (importance=100)
+09-08 16:05:48.500 19635 19635 I ClipProbe: SAMPLE t=501ms importance=100 (foreground) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:49.001 19635 19635 I ClipProbe: SAMPLE t=1011ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:49.508 19635 19635 I ClipProbe: SAMPLE t=1513ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:50.010 19635 19635 I ClipProbe: SAMPLE t=2019ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:50.512 19635 19635 I ClipProbe: SAMPLE t=2522ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:51.015 19635 19635 I ClipProbe: SAMPLE t=3024ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:51.517 19635 19635 I ClipProbe: SAMPLE t=3526ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:52.022 19635 19635 I ClipProbe: SAMPLE t=4030ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:52.524 19635 19635 I ClipProbe: SAMPLE t=4533ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:53.030 19635 19635 I ClipProbe: SAMPLE t=5036ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:53.535 19635 19635 I ClipProbe: SAMPLE t=5543ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:54.038 19635 19635 I ClipProbe: SAMPLE t=6047ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:54.542 19635 19635 I ClipProbe: SAMPLE t=6550ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:55.045 19635 19635 I ClipProbe: SAMPLE t=7054ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:55.551 19635 19635 I ClipProbe: SAMPLE t=7557ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:56.054 19635 19635 I ClipProbe: SAMPLE t=8063ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:56.558 19635 19635 I ClipProbe: SAMPLE t=8566ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:57.062 19635 19635 I ClipProbe: SAMPLE t=9070ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:57.570 19635 19635 I ClipProbe: SAMPLE t=9574ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:58.072 19635 19635 I ClipProbe: SAMPLE t=10081ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:58.575 19635 19635 I ClipProbe: SAMPLE t=10584ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:59.079 19635 19635 I ClipProbe: SAMPLE t=11087ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:05:59.587 19635 19635 I ClipProbe: SAMPLE t=11592ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:00.090 19635 19635 I ClipProbe: SAMPLE t=12098ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:00.593 19635 19635 I ClipProbe: SAMPLE t=12602ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:01.095 19635 19635 I ClipProbe: SAMPLE t=13104ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:01.600 19635 19635 I ClipProbe: SAMPLE t=13606ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:02.104 19635 19635 I ClipProbe: SAMPLE t=14112ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:02.607 19635 19635 I ClipProbe: SAMPLE t=14616ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:03.112 19635 19635 I ClipProbe: SAMPLE t=15120ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:03.616 19635 19635 I ClipProbe: SAMPLE t=15624ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:04.119 19635 19635 I ClipProbe: SAMPLE t=16127ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:04.627 19635 19635 I ClipProbe: SAMPLE t=16632ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:05.130 19635 19635 I ClipProbe: SAMPLE t=17139ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:05.633 19635 19635 I ClipProbe: SAMPLE t=17642ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:06.136 19635 19635 I ClipProbe: SAMPLE t=18145ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:06.639 19635 19635 I ClipProbe: SAMPLE t=18648ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:07.148 19635 19635 I ClipProbe: SAMPLE t=19153ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:07.651 19635 19635 I ClipProbe: SAMPLE t=19661ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:08.153 19635 19635 I ClipProbe: SAMPLE t=20163ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:08.656 19635 19635 I ClipProbe: SAMPLE t=20666ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:09.160 19635 19635 I ClipProbe: SAMPLE t=21169ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:09.663 19635 19635 I ClipProbe: SAMPLE t=21672ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:10.167 19635 19635 I ClipProbe: SAMPLE t=22175ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:10.672 19635 19635 I ClipProbe: SAMPLE t=22678ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:11.178 19635 19635 I ClipProbe: SAMPLE t=23184ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:11.685 19635 19635 I ClipProbe: SAMPLE t=23692ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:12.188 19635 19635 I ClipProbe: SAMPLE t=24197ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:12.689 19635 19635 I ClipProbe: SAMPLE t=24699ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:13.192 19635 19635 I ClipProbe: SAMPLE t=25202ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:13.699 19635 19635 I ClipProbe: SAMPLE t=25705ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:14.204 19635 19635 I ClipProbe: SAMPLE t=26211ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:14.710 19635 19635 I ClipProbe: SAMPLE t=26716ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:15.216 19635 19635 I ClipProbe: SAMPLE t=27223ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:15.722 19635 19635 I ClipProbe: SAMPLE t=27728ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:16.226 19635 19635 I ClipProbe: SAMPLE t=28234ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:16.731 19635 19635 I ClipProbe: SAMPLE t=28739ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:17.237 19635 19635 I ClipProbe: SAMPLE t=29244ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:17.742 19635 19635 I ClipProbe: SAMPLE t=29750ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:18.245 19635 19635 I ClipProbe: SAMPLE t=30254ms importance=125 (foreground-service) focused=false returned=false items=0 stillOurMarker=false length=-1 description=<none>
+09-08 16:06:18.245 19635 19635 I ClipProbe: stopped=window — 60 samples over 30s at 500ms, 59 of them taken while not foreground; 0 readable / 60 refused-or-empty; 0 of the readable ones were NOT our marker; listener fired 0 times, 0 of them while not foreground (one foreground callback is the control — zero means the listener is not wired up, not that the platform withheld it).
+09-08 16:06:18.245 19635 19635 I ClipProbe: NOT A CONCLUSION YET: with 0 foreign reads, 'reads are blocked' and 'nothing was ever copied' look identical from here. Run --es mode verify.

@@ -1,5 +1,6 @@
 package com.chetan.connectsuite.mirror.v2
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -9,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import com.chetan.connectsuite.core.link.LinkLog
 
 /**
@@ -38,13 +40,76 @@ class MirrorService : Service() {
         }
 
         startForeground(NOTIFICATION_ID, buildNotification(), foregroundType())
+        traceForegroundImportance()
 
         // Now — and only now — is it legal to ask for the projection.
         MirrorEngine.onServiceReady(applicationContext, consent)
         return START_NOT_STICKY
     }
 
+    /**
+     * **Instrument for defect 100. Not a fix, and deliberately alone in its build.**
+     *
+     * The instrument this replaces could not be built: `Service.stopForeground` is **final**, so the
+     * call our own event log attributes to us cannot be intercepted from inside the service. That is
+     * itself worth knowing — it means the question *"does our process call stopForeground?"* has no
+     * direct answer available to us, and the reading has to come at it sideways.
+     *
+     * So it comes at it through **process importance**, which is the one thing an app can observe
+     * about its own foreground-service state. `IMPORTANCE_FOREGROUND_SERVICE` (125) is what this
+     * process holds while any of its foreground services is foreground; the moment the last one is
+     * demoted it drops to `IMPORTANCE_FOREGROUND` (100, an activity is visible) or worse. Sampling
+     * it every few milliseconds across the window puts the demotion on the same clock as our own
+     * steps, and **what our code is doing at that instant is the discriminator**:
+     *
+     *  - a demotion that lands *while our code is mid-step* points back at us;
+     *  - a demotion that lands in a gap where this process is provably idle — no log line of ours
+     *    between the previous step and the drop — says nothing of ours asked for it.
+     *
+     * Neither is proof. Both are better than another hour of grep over a codebase that contains no
+     * `stopForeground` call at all, and both are pre-registered in `docs/testing.md` → Slice 38.
+     *
+     * 5 ms for 600 ms is 120 samples over a window measured at 107 ms, so the transition cannot fall
+     * between two samples the way the 263 ms publish did. Only the *changes* are logged, so a
+     * healthy session costs two lines, not a hundred and twenty.
+     */
+    private fun traceForegroundImportance() {
+        val started = SystemClock.elapsedRealtime()
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        LinkLog.w(
+            "mirror",
+            "INSTRUMENT (defect 100): FGS begins. notificationsEnabled=" +
+                "${manager.areNotificationsEnabled()} channel=${manager.getNotificationChannel(CHANNEL_ID)?.importance}",
+        )
+        Thread({
+            val state = ActivityManager.RunningAppProcessInfo()
+            var last = Int.MIN_VALUE
+            while (SystemClock.elapsedRealtime() - started < TRACE_MS) {
+                ActivityManager.getMyMemoryState(state)
+                if (state.importance != last) {
+                    LinkLog.w(
+                        "mirror",
+                        "INSTRUMENT (defect 100): +${SystemClock.elapsedRealtime() - started}ms " +
+                            "process importance ${last.takeIf { it != Int.MIN_VALUE } ?: "?"} -> ${state.importance}" +
+                            (if (state.importance == 125) "  (FOREGROUND_SERVICE)" else ""),
+                    )
+                    last = state.importance
+                }
+                try {
+                    Thread.sleep(5)
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return@Thread
+                }
+            }
+            LinkLog.w("mirror", "INSTRUMENT (defect 100): trace ended at +${TRACE_MS}ms, last importance $last")
+        }, "fgs-importance-trace").apply { isDaemon = true }.start()
+    }
+
     override fun onDestroy() {
+        // Same instrument, second half: a destroy would be recorded by AOSP as STOP_SERVICE rather
+        // than STOP_FOREGROUND, so its absence here is as informative as the line above's presence.
+        LinkLog.w("mirror", "INSTRUMENT (defect 100): MirrorService.onDestroy")
         super.onDestroy()
         MirrorEngine.stop("mirror service destroyed")
     }
@@ -79,6 +144,9 @@ class MirrorService : Service() {
         private const val EXTRA_CONSENT = "consent"
         private const val CHANNEL_ID = "mirror_capture"
         private const val NOTIFICATION_ID = 3001
+
+        /** How long the defect-100 importance trace runs. Six times the observed 107 ms window. */
+        private const val TRACE_MS = 600L
 
         fun startWithConsent(context: Context, consent: Intent) {
             val intent = Intent(context, MirrorService::class.java).putExtra(EXTRA_CONSENT, consent)

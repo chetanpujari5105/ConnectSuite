@@ -6,8 +6,6 @@
  */
 
 declare function chipLabel(capability: string, available: boolean, reason?: string): string;
-/** `shared/islandRota.js`, loaded before this script. S6. */
-declare function islandLineFor(event: { category: string; kind: string; detail: string }): string | null;
 
 /*
  * `shell` (shell.ts), `GLOBAL_ACTIONS` (navModel.ts) and `chipLabel` (chips.ts) need no import and
@@ -586,6 +584,7 @@ const mirror = new MirrorView(
   el<HTMLCanvasElement>('mirror-canvas'),
   el('mirror-overlay'),
   el('mirror-notice'),
+  el('mirror-stage'),
   connect,
 );
 
@@ -732,6 +731,15 @@ const files = createFilesView({
 shell.onRoute((id) => {
   if (id === 'files') void files?.refresh();
 });
+/*
+ * The one live fact the island shows beside the connection, and the only one this app has.
+ *
+ * A transfer is *in flight* — it has a beginning, a duration and an end, so it is happening now in
+ * the sense the island's rule requires. A clipboard sync is not: `clip-send` is a request and its
+ * reply, `clip-arrived` is an instant, and both are history the moment they exist. They are
+ * recorded in Activity and acknowledged by the toast, which is what a moment gets.
+ */
+if (files) files.onWorkChanged = (work) => shell.setWork(work);
 
 
 // Clipboard. Built on all three verbs, and it does not gate itself on the capability for a reason
@@ -1702,23 +1710,28 @@ connect.onPhoneError((payload) => {
     ? `${payload.code}: ${payload.message} — ${payload.fixHint}`
     : `${payload.code}: ${payload.message}`;
   setDiag('error', text);
-  // A phone-side refusal is a session event and belongs in the island's rota: the diagnostics
-  // block is where you go to *look* for it, and the island is what tells you to go and look.
-  shell.note(text);
+  // The toast, not the island. A refusal is a thing that just happened — the island holds current
+  // state and a refusal is over by the time it is drawn. The durable copies are the Activity row
+  // and the diagnostics block; this is the part that says *go and look*, while the user is still
+  // looking at whatever they did to cause it.
+  shell.toast(text);
 });
 
-/**
- * S6 — the island narrates real clipboard and transfer events.
+/*
+ * **Nothing subscribes an island to `activity.record` any more, and that is the fix rather than an
+ * omission.**
  *
- * The departure row said *"Both name features that do not exist (Phase 5)"*. Both exist. The
- * decision about which events reach the rota is `islandLineFor` in `src/shared/`, so it is tested
- * and so `system` and `mirroring` stay silent — the island already narrates those from the live
- * link status, and the same fact in two tenses alternating is worse than not having it.
+ * S6 wired recorded events into a six-slot ring the island cycled every 5.2 s. The ring had no
+ * clock — `ActivityEvent.at` was dropped by `islandLineFor`'s signature and the ring was never
+ * cleared — so a copy or a refusal from the start of the session kept coming round for the rest of
+ * it, painted in whatever tone the link happened to have at that instant. `Sent to phone · 57
+ * bytes` in red during an outage is the island asserting a send that is not happening.
+ *
+ * A recorded event is history by definition: `activity.record` is the act of writing it down. Its
+ * home is the Activity pane, which holds all eleven categories with their timestamps and their
+ * filters. The island holds current state, and the two live facts it can add to the connection —
+ * a transfer in flight — reach it through `shell.setWork`.
  */
-connect.onActivityRecorded((event) => {
-  const line = islandLineFor(event);
-  if (line) shell.note(line);
-});
 
 /* ================================================================================================
  * ⌘K commands

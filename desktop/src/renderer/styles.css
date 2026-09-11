@@ -207,23 +207,20 @@ img#qr {
 
 /* ---- screen mirror ---------------------------------------------------------------- */
 
-.mirror-stage {
-  position: relative;
-  margin-top: 12px;
-  background: #000;
-  border-radius: 8px;
-  overflow: hidden;
-  min-height: 220px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-#mirror-canvas {
-  max-width: 100%;
-  max-height: 60vh;
-  display: block;
-}
+/*
+ * The Phase 2 stage and canvas rules used to live here, and they were **both** still winning
+ * something after the design pass rebuilt the stage further down this file.
+ *
+ * `#mirror-canvas` is an id — specificity (1,0,0) — so its `max-height: 60vh` beat
+ * `.pane-mirror .mirror-stage canvas` (0,2,1) and clamped the canvas to 569.4px inside a stage the
+ * design sized at 580.7px. The element was therefore not even the ratio the stage asserted, and
+ * the 11px difference became a letterbox that `pointAt` mapped taps through. Two selectors sizing
+ * one canvas, in one file, resolved by specificity rather than by anyone's intent — the same shape
+ * as the three collisions on 2026-08-30, which is why `stylesheets.test.ts` exists.
+ *
+ * They are deleted rather than adjusted: the stage owns its own size below, the canvas fills it,
+ * and there is exactly one rule for each. Nothing else in the app uses either selector.
+ */
 
 /* The reason sits over the canvas rather than replacing it, so a transient failure such as a
    secure surface can be explained without tearing down a stream that is about to resume. What
@@ -2180,14 +2177,48 @@ img#qr {
 
 /* ---- The stage -------------------------------------------------------------------------------- */
 
+/*
+ * **The stage is the shape of the stream, not the shape of a drawing.**
+ *
+ * It was `width: 268px; aspect-ratio: 9 / 19.5` — a fixed portrait box. Three consequences, and
+ * only the first one was ever reported:
+ *
+ *  1. a phone that is not 19.5:9 drew black bars — which is **every phone measured so far**,
+ *     including the SM-S938B this was drawn against (1080×2408 is ~20:9, 1.6px a side, invisible);
+ *  2. a phone turned sideways drew its picture 119px tall inside a 569px box, rotating **inside**
+ *     a portrait frame rather than the frame becoming landscape;
+ *  3. `pointAt` divided by the element, so every one of those bars moved the user's finger. In
+ *     landscape a tap on the top of the phone landed 40% of the way down it.
+ *
+ * `--capture-aspect` is width over height, set on this element by `mirror.ts` from the geometry the
+ * phone announces in `mirror.state` and re-announces in `mirror.rotate`. It is deliberately **not**
+ * declared in any stylesheet — only tokens.css may declare a property, and a default here is how
+ * the 19.5:9 assumption would come back silently. The `var()` fallback is the empty-stage case,
+ * where there is no stream to take a shape from and a phone-shaped rectangle is the honest picture.
+ *
+ * Width follows from a height budget rather than being fixed, so the portrait case still lands on
+ * the design's 268pt (580 × 0.4615 = 267.7) while a landscape stream is allowed to become wide
+ * instead of becoming tiny. `aspect-ratio` then derives the height back, so there is one input.
+ */
 .pane-mirror .mirror-stage {
   position: relative;
-  width: 268px;
-  aspect-ratio: 9 / 19.5;
+  /* 580px is the design's portrait height and 560px the widest a landscape stage may grow; both
+     are literals because only tokens.css may declare a custom property, and neither is a colour. */
+  width: min(560px, calc(580px * var(--capture-aspect, 0.4615)));
+  max-width: 100%;
+  aspect-ratio: var(--capture-aspect, 0.4615);
   border-radius: var(--radius-window);
   overflow: hidden;
   background: var(--canvas);
-  border: 1px solid var(--hairline);
+  /*
+   * The hairline is an inset shadow rather than a `border`, and that is a layout decision.
+   *
+   * `aspect-ratio` sizes the border box; a 1px border then makes the *content* box 2px narrower and
+   * 2px shorter, which is a different ratio — measured at 1.2px of residual letterbox inside a
+   * stage that was otherwise exactly right. An inset shadow paints on the same pixels, follows the
+   * radius, and takes no space, so the canvas is the stage and the bars are zero.
+   */
+  box-shadow: inset 0 0 0 1px var(--hairline);
 }
 
 .pane-mirror .mirror-stage canvas {
