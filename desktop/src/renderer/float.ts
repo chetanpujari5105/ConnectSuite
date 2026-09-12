@@ -32,7 +32,9 @@ interface FloatBridge {
   onMirrorState(callback: (state: { state?: string; message?: string }) => void): void;
   onStatus(callback: (status: FloatStatus | null) => void): void;
   onFloatChanged(callback: (state: { focused: boolean; pinned: boolean }) => void): void;
-  mirrorKeyframe(): Promise<unknown>;
+  mirrorKeyframe(reason?: string): Promise<unknown>;
+  /** One line into the Mac's own log file. See preload.ts — the float had no durable voice before. */
+  logLine(where: string, line: string): void;
   mirrorCapture(dataUrl: string): Promise<{ ok?: boolean; path?: string; reason?: string }>;
   inputGlobal(action: string): Promise<{ ok?: boolean; reason?: string }>;
   floatClose(): void;
@@ -88,11 +90,69 @@ let inputAdvertised = false;
 
 let toastTimer: number | null = null;
 
+/** Provided by floatWait.js, loaded ahead of this file. See defect 94 for why it is not imported. */
+declare function floatWaitState(input: {
+  hasDecoder: boolean; decoding: boolean; requested: number; answered: number;
+}): { kind: string; sentence: string; detail: string | null; blocking: boolean };
+
+/*
+ * The float's own two counters. Not `KeyframeTrace` — that is a main-process module and counts the
+ * request/ack side. These count what *this window* asked for and what reached *its* decoder, which
+ * is a different vantage point and the one the overlay needs. Both feed the same rule function, so
+ * the two windows cannot describe the same state differently.
+ */
+let keyframesRequested = 0;
+let keyframesAnswered = 0;
+
+/** One line into the Mac's log file. The float had no durable voice at all before this. */
+function trace(line: string): void {
+  floatBridge.logLine('float', line);
+}
+
 const decoder = new H264Canvas(canvas, {
-  requestKeyframe: () => void floatBridge.mirrorKeyframe().catch(() => undefined),
-  onPainted: () => hideOverlay(),
+  requestKeyframe: () => {
+    keyframesRequested += 1;
+    trace(`asking the phone for a keyframe (${keyframesRequested} asked / ${keyframesAnswered} answered)`);
+    // The failure reaches the log with its text intact. `.catch(() => undefined)` here was the
+    // `getOrNull` shape on the one request whose entire purpose is to produce a frame — and it is
+    // half of why no evidence exists that a single `mirror.keyframe` has ever produced an IDR.
+    void floatBridge
+      .mirrorKeyframe('float decoder armed, no reference frame yet')
+      .catch((error: unknown) => trace(`keyframe request failed: ${String(error)}`));
+    refreshOverlay();
+  },
+  onPainted: () => {
+    hideOverlay();
+  },
   onFailed: (reason) => showOverlay(capitalise(reason) + '.'),
+  onTrace: (line) => {
+    trace(line);
+    if (line.startsWith('keyframe reached the decoder')) keyframesAnswered += 1;
+    refreshOverlay();
+  },
 });
+
+/**
+ * Draw whichever of the states is true, rather than one sentence for all of them.
+ *
+ * The old copy said *"Waiting for the phone's next keyframe…"* whatever was wrong — including the
+ * one case where no keyframe can arrive at all, because the code that would ask for it sits below a
+ * return that fires first. See `renderer/floatWait.ts`.
+ */
+function refreshOverlay(): void {
+  const s = decoder.state();
+  const wait = floatWaitState({
+    hasDecoder: s.hasDecoder,
+    decoding: s.decoding,
+    requested: keyframesRequested,
+    answered: keyframesAnswered,
+  });
+  if (wait.kind === 'running') {
+    hideOverlay();
+    return;
+  }
+  showOverlay(wait.detail ? `${wait.sentence} ${wait.detail}` : wait.sentence);
+}
 
 function showOverlay(reason: string): void {
   reasonLine.textContent = reason;
@@ -124,7 +184,10 @@ function capitalise(text: string): string {
 
 // ---- Frames -------------------------------------------------------------------------------------
 
-floatBridge.onVideoFrame((one) => decoder.push(one));
+floatBridge.onVideoFrame((one) => {
+  decoder.push(one);
+  refreshOverlay();
+});
 
 floatBridge.onMirrorStopped((info) => {
   decoder.teardown();
@@ -281,7 +344,7 @@ document.getElementById('float-shot')!.addEventListener('click', async () => {
 // The window opens into a stream that is already running, so there is nothing to show until the
 // phone answers the keyframe request main.ts makes on open. Saying so beats an empty black frame
 // that is indistinguishable from a dead window.
-showOverlay('Waiting for the phone’s next keyframe…');
+refreshOverlay();
 void floatBridge.floatState().then((state) => {
   frame.classList.toggle('focused', state.focused);
   pin.setAttribute('aria-pressed', String(state.pinned));

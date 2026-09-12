@@ -101,7 +101,12 @@ object MirrorFeature {
         }
 
         MessageType.MIRROR_KEYFRAME -> MessageHandler { session, request ->
-            MirrorEngine.requestKeyframe()
+            // The ack is sent either way and that is deliberate — the Mac asked a well-formed
+            // question and got an answer. What the ack does NOT mean is that a frame is coming, and
+            // the log is where that distinction lives: `KeyframeTrace` on the Mac counts acks and
+            // IDRs separately for exactly this reason.
+            val asked = MirrorEngine.requestKeyframe()
+            LinkLog.i("mirror", "mirror.keyframe from ${session.peerName}: ${if (asked) "passed to the encoder" else "no encoder, nothing asked"}")
             session.ack(request)
         }
 

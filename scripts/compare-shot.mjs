@@ -132,7 +132,18 @@ let target = null;
 for (let i = 0; i < 60 && !target; i += 1) {
   try {
     const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-    target = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl) ?? null;
+    // The page we wrote, by name — not whichever sorted first. See the note in design-shot.mjs:
+    // the loose form is safe while a browser has one tab and silently wrong the moment it has two.
+    const pages = list.filter((t) => t.type === 'page' && t.webSocketDebuggerUrl);
+    target = pages.find((t) => (t.url ?? '').includes(pagePath)) ?? null;
+    if (!target && pages.length > 0) {
+      console.error(
+        `compare-shot REFUSED: ${pages.length} page(s) on :${port} and none is ${pagePath} — ` +
+          pages.map((t) => t.url).join(', '),
+      );
+      chrome.kill();
+      exit(1);
+    }
   } catch {
     /* not up yet */
   }

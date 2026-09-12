@@ -43,6 +43,14 @@ interface H264Frame {
 interface H264CanvasHooks {
   /** Asks the phone for an IDR. The float window has no other way out of a mid-stream start. */
   requestKeyframe(): void;
+  /**
+   * One line about the decode path, for the log this window did not have.
+   *
+   * Optional so the main pane's `MirrorView` need not supply one, and so a test double stays two
+   * lines. Optional does not mean noise: the only things sent here are the states nothing else can
+   * see — a drop with no decoder, and a keyframe arriving to answer a request.
+   */
+  onTrace?(line: string): void;
   /** First painted frame, and every failure. Both are things the window has to say out loud. */
   onPainted?(): void;
   onFailed?(reason: string): void;
@@ -53,6 +61,9 @@ class H264Canvas {
 
   /** The retained SPS/PPS, prepended to the first IDR after every (re)configure. */
   private configBytes: Uint8Array | null = null;
+
+  /** Access units thrown away because no decoder existed. The float's silent failure, counted. */
+  private droppedWithNoDecoder = 0;
 
   /** True from a fresh decoder until an IDR has been fed to it. */
   private awaitingKeyframe = true;
@@ -82,7 +93,30 @@ class H264Canvas {
     }
 
     const decoder = this.decoder;
-    if (!decoder || decoder.state !== 'configured') return;
+    if (!decoder || decoder.state !== 'configured') {
+      /*
+       * **The silence that let the float fail through a whole demo.**
+       *
+       * This return sits ABOVE the `awaitingKeyframe` branch that asks for an IDR, so a float with
+       * no decoder drops every access unit — IDRs included — and never asks for anything. It is
+       * unreachable from its own recovery path, which is why the overlay's old single sentence
+       * ("waiting for the phone's next keyframe") was a lie in this state: that frame gets dropped
+       * too.
+       *
+       * The fix is the start contract and is deliberately NOT here — this slice makes the state
+       * readable so the fix has a before to be measured against. Counted, not logged per frame: at
+       * 60 fps a line per dropped unit is its own denial of service.
+       */
+      this.droppedWithNoDecoder += 1;
+      if (this.droppedWithNoDecoder === 1 || this.droppedWithNoDecoder % 120 === 0) {
+        this.hooks.onTrace?.(
+          `dropped ${this.droppedWithNoDecoder} access unit(s) with no configured decoder ` +
+            `(${frame.keyframe ? 'this one was a KEYFRAME' : 'delta'}) — nothing has been asked for, ` +
+            'because the request path is below this return',
+        );
+      }
+      return;
+    }
 
     let data = frame.data;
     if (this.awaitingKeyframe) {
@@ -93,6 +127,7 @@ class H264Canvas {
         return;
       }
       this.awaitingKeyframe = false;
+      this.hooks.onTrace?.('keyframe reached the decoder; arming it and decoding from here');
       if (this.configBytes) {
         const withParameterSets = new Uint8Array(this.configBytes.length + data.length);
         withParameterSets.set(this.configBytes, 0);
@@ -170,8 +205,19 @@ class H264Canvas {
 
     this.decoder = decoder;
     this.awaitingKeyframe = true;
+    this.droppedWithNoDecoder = 0;
     // The stream is already running, so nothing will arrive marked "config" again on its own.
+    this.hooks.onTrace?.('decoder configured from retained parameter sets; asking for a keyframe');
     this.hooks.requestKeyframe();
+  }
+
+  /** What `floatWaitState` needs. Read by the float's overlay; nothing else may touch the internals. */
+  state(): { hasDecoder: boolean; decoding: boolean; droppedWithNoDecoder: number } {
+    return {
+      hasDecoder: this.decoder !== null && this.decoder.state === 'configured',
+      decoding: this.decoder !== null && !this.awaitingKeyframe,
+      droppedWithNoDecoder: this.droppedWithNoDecoder,
+    };
   }
 
   private fail(reason: string): void {

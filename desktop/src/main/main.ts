@@ -41,6 +41,10 @@ import { CallClient } from './calls';
 import { SmsClient } from './sms';
 import { LinkClient } from './link';
 import { initLogger, log, tailLog } from './logger';
+// The main process imports this normally; `float.html` loads the same file as a classic script and
+// gets the globals it declares. Both are the same source, which is the point — the counting rule
+// has one home and the two windows cannot drift.
+import { KeyframeTrace } from '../shared/keyframeTrace';
 import { debugSwitches } from './debugSwitches';
 import { store } from './store';
 import { VideoClient, type VideoFrame } from './video';
@@ -608,6 +612,32 @@ app.whenReady().then(() => {
    * both, the window shows a black rectangle for however long the encoder takes to keyframe on its
    * own — which on a still screen can be a very long time.
    */
+  /*
+   * **One traced path for `mirror.keyframe`, used by all three callers.**
+   *
+   * There were three, and all three ended in `.catch(() => undefined)`: the IPC handler, the
+   * float's onReady, and the float renderer. Nothing counted a request, nothing saw an ack, and
+   * nothing anywhere connected a request to the IDR that answered it — which is why **no evidence
+   * exists in this repo that a single `mirror.keyframe` has ever produced one**.
+   */
+  const requestKeyframe = async (reason: string): Promise<void> => {
+    if (!link?.isConnected()) {
+      log.warn('mirror', `keyframe requested (${reason}) with no link — not sent; ${keyframeTrace.tally()}`);
+      return;
+    }
+    log.info('mirror', keyframeTrace.onRequest(reason));
+    try {
+      await link.request('mirror.keyframe', {}, 5_000);
+      log.info('mirror', keyframeTrace.onAck());
+    } catch (error) {
+      // The reason reaches the log with its text intact. A swallowed failure here is
+      // indistinguishable from a request that was answered and produced nothing, and those two
+      // need different fixes.
+      log.warn('mirror', keyframeTrace.onRequestFailed(String(error)));
+    }
+  };
+  keyframeRequester = requestKeyframe;
+
   float = new FloatMirrorWindow(
     join(__dirname, '..', 'preload.js'),
     join(__dirname, '..', 'renderer', 'float.html'),
@@ -625,9 +655,7 @@ app.whenReady().then(() => {
       }
       // Asked for even when there was no retained config: a window with a decoder and no reference
       // frame is the same black rectangle either way, and `mirror.keyframe` costs one small message.
-      if (link?.isConnected()) {
-        void link.request('mirror.keyframe', {}, 5_000).catch(() => undefined);
-      }
+      void requestKeyframe(config ? 'float opened; config replayed' : 'float opened; no retained config');
       // The window missed every `status` sent before it existed, so it starts with no device name
       // and no idea whether input is advertised. Replay the last one rather than leaving it blank.
       if (lastStatus) target.webContents.send('status', lastStatus);
@@ -637,6 +665,21 @@ app.whenReady().then(() => {
   // Access units go straight to the renderer, which owns the WebCodecs decoder and the canvas.
   // Buffer -> Uint8Array because a Node Buffer does not survive structured cloning as one.
   video.on('frame', (frame: VideoFrame) => {
+    /*
+     * The half that makes "answered" mean anything. Without this the tally reads
+     * `N requested / N acked / 0 answered by an IDR` forever — a counter that cannot move, which is
+     * worse than no counter because it reads as a finding.
+     *
+     * `onKeyframe` returns null unless a request was outstanding: the periodic IDRs of an idle
+     * stream are not evidence that a request worked. The first run of this instrumentation showed
+     * exactly why that matters — a keyframe reached the float's decoder **8 ms after the request and
+     * one millisecond BEFORE the ack**, so it was already in flight and the request had nothing to
+     * do with it.
+     */
+    if (frame.keyframe && !frame.config) {
+      const line = keyframeTrace.onKeyframe();
+      if (line) log.info('mirror', line);
+    }
     sendAll('video-frame', {
       keyframe: frame.keyframe,
       config: frame.config,
@@ -1032,8 +1075,42 @@ ipcMain.handle('mirror-config', async (_event, options: Record<string, unknown> 
   return { ok: true };
 });
 
-ipcMain.handle('mirror-keyframe', async () => {
-  if (link?.isConnected()) await link.request('mirror.keyframe', {}, 5_000).catch(() => undefined);
+/**
+ * A renderer's log line, written into the Mac's own file beside everything else.
+ *
+ * The float window is the reason this exists: it could fail through an entire demo with nothing
+ * durable to read afterwards.
+ */
+ipcMain.on('renderer-log', (_event, where: unknown, line: unknown) => {
+  if (typeof where !== 'string' || typeof line !== 'string') return;
+  // The tag is bounded rather than passed through, so a renderer cannot invent log namespaces.
+  const tag = where === 'float' || where === 'mirror' ? where : 'renderer';
+  log.info(tag, line.slice(0, 500));
+});
+
+/**
+ * `mirror.keyframe`, counted at all three points.
+ *
+ * It used to be one line ending in `.catch(() => undefined)` — the `getOrNull` shape `CLAUDE.md`
+ * forbids on a platform call, here applied to the *only* request whose whole purpose is to produce
+ * a frame. Nothing counted the request, nothing saw the ack, and **no evidence exists in this repo
+ * that a single `mirror.keyframe` has ever produced an IDR.** That silence is why the float could
+ * fail unnoticed.
+ *
+ * The IDR half is counted where the frames are — `onKeyframe` is called from the video path — so
+ * this records the request and the ack, and the answer arrives from the other side.
+ */
+const keyframeTrace = new KeyframeTrace();
+
+/**
+ * Set once the link and video are wired. Null before that, and a request arriving early is dropped
+ * with a line rather than silently — an unset handler that swallows is the silence this whole change
+ * is about.
+ */
+let keyframeRequester: ((reason: string) => Promise<void>) | null = null;
+
+ipcMain.handle('mirror-keyframe', async (_event, reason?: unknown) => {
+  await keyframeRequester?.(typeof reason === 'string' ? reason : 'renderer, unspecified');
 });
 
 /**

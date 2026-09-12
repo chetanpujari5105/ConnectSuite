@@ -118,6 +118,9 @@ own heading there, and its own row here.
 | **102** | **The app cannot tell it has been background-restricted, so it fails at 116 ms with a sentence about screen capture.** On 2026-09-10 this handset reported `RUN_ANY_IN_BACKGROUND: ignore` for `com.chetan.connectsuite.debug` — the AOSP background restriction — while **6 of 8** comparable third-party apps on the same device read `allow` or unset. `SUPPORT_BG_AD_RESTRICTION_BY_AI=1` is on, which is One UI's automatic *unused apps* restriction, and the **only other** restricted app in the sample is `com.coindcx.btc`: the two apps the owner does not open daily. A user's phone can therefore put this app into a state where it cannot hold a foreground service, **on its own, with no notice**, and everything downstream — the mirror, and `LinkService` — then fails with a message about something else | **open.** Detection exists and is one call: `ActivityManager.isBackgroundRestricted()`, public since API 28. It belongs beside the other capability probes in `Capabilities.kt`, surfaced the way every other unavailable feature is (*"unavailable, here is why"*), with a deep link to the app's battery settings. **The wrong fix is retrying the foreground start** — each retry buys another allowance and another withdrawal, which is exactly what seven taps bought on 2026-09-10. **The second wrong fix is asking for the battery-optimisation exemption again**: it is a different switch, and this app already holds the onboarding prompt for it (`OnboardingScreen.kt:258`) while being restricted anyway | **Detection built 2026-09-11; the reading is unproven on hardware and that is the whole of what is owed.** `ActivityManager.isBackgroundRestricted()` is read in `BackgroundRestrictionReading`, asked by `CapabilityDetector` on every refresh and again by `MirrorEngine` at the instant a projection is revoked; `Contract.needsForegroundService` says it reaches `mirror` and **nothing else** (measured: every other capability answered normally for twelve hours with the op set); the Mac gets `BackgroundRestriction.CAPABILITY_REASON` through the existing `unavailable` map with no protocol change; the phone draws a card **at rest** on the Mac screen with a deep link to App info. 23 tests, 12 mutations all red — including the original defect sentence restored. **What has not happened: the call has never once returned `true` on any device here**, because the op was restored to `allow` on the only handset that ever had it set. That is a registration-line-is-not-an-execution-line gap and it is named rather than papered over — the stimulus is one command and is written down in Slice 39 | `docs/testing.md` → Phase 7 Slices 38 and 39 |
 | **103** | **`LinkService` believes it is foreground forever, so it can never re-claim it.** `private var isForeground` is declared `false` at `LinkService.kt:50`, read at `:108` as the guard `if (!isForeground) { startForegroundWithStatus(...) }`, and set `true` at `:244` — **and never set back to `false` anywhere in the file.** The moment the platform demotes the service for any reason, the service's own bookkeeping still says foreground, every later `onStartCommand` skips the re-claim, and it runs unforegrounded until the process dies. Observed: `isForeground=false types=0x00000000` on a service alive 12 hours with `startForegroundCount=1`, and `scripts/link-up.sh` check 1 failing all morning while checks 2 and 3 passed. **This is defect 97's shape on the phone** — a field assigned in one place and cleared in none — and it is the reason lifting the background restriction fixed the mirror and did **not** fix the link: `MirrorService` calls `startForeground` unconditionally on every `onStartCommand` and so recovered by itself | **open.** The flag has to be reset wherever the foreground state can end, and the honest version does not track it in a field at all — `onStartCommand` can call `startForeground` unconditionally, which is what `MirrorService` does and why it recovered. If a field is kept, it needs the same treatment defect 97 got: one writer for each direction, not one writer and no reader of the platform's actual state. **The wrong fix is polling the platform** for the real foreground state; there is no public API, and a proxy through process importance is masked by any visible Activity | **Static fact, verified by reading; the runtime confirmation is owed.** The intended test — deliver a start command and watch the re-claim be skipped — **did not run**: `am start-foreground-service` was refused with `Requires permission not exported from uid 11011`, so the `isForeground=false` reading after it is not evidence about the guard | `docs/testing.md` → Phase 7 Slice 38 |
 | **104** | **Eight hand-written mirror stop sentences, two of them three words apart, and the platform's revoke collapsed into the pair's friendlier half.** `MirrorEngine.stop` took a free `String` and eight call sites each wrote their own. *"Stopped on the phone."* was the person tapping Stop in the Mirror tab; *"Screen capture was stopped on the phone."* was `MediaProjection.Callback.onStop` — **Android taking the projection away** — and during defect 102 it was the only thing the app said while eight consecutive sessions died at 107-116 ms. A stop the *platform* caused was worded as a stop the *phone's owner* caused, so the owner was told eight times that they had done something they had not, and the one fact that would have ended the hunt on the first attempt — that this app was background-restricted — was never on screen | **Fixed 2026-09-11.** `MirrorStopReason` is a closed set of nine, each carrying an `Actor`, a sentence and an optional fix hint; `stop()` takes one instead of a `String`. `onStop` **derives** its reason — the callback carries none at any SDK level this app compiles against (`android.jar` 36.1 is `onStop()`, and `MediaProjection.stop()` takes no argument), so the derivation reads `isBackgroundRestricted()` at that instant and nothing more is claimed than that reading supports. **There is deliberately no third member for "the user tapped Stop in the shade"**: it is indistinguishable from an unexplained revoke from inside the app, so `AndroidRevoked` names both and asserts neither — the folder-picker rule. **The wrong fix is a string-distance check over the sentences**: one was written, it passed with the original defect sentence restored, and it was replaced by the attribution rule the defect was actually about | Fixed, and the attribution rule is red-first proven — mutation M7 restores the exact defect sentence and goes red | `docs/testing.md` → Phase 7 Slice 39 |
+| **105** | **The float's decoder never starts, and the code that would ask for a keyframe is below the return that drops every frame.** `H264Canvas.push` opens with `if (!decoder || decoder.state !== 'configured') return;` — and the `awaitingKeyframe` branch that calls `hooks.requestKeyframe()` sits **underneath it**. So a float with no decoder drops every access unit, IDRs included, and never asks for anything: it is unreachable from its own recovery path. A decoder only exists after a `config` frame, and a float opening mid-stream gets one only if `main.ts`'s onReady replay wins a race against the window's own listeners being registered. When the replay wins, the float works; when it loses, the window is black forever and silent | **Open. The start contract is the fix**: the float asks for the parameter sets when its listeners are up, rather than main pushing them on a window event; main answers with the retained config or says plainly there is none; one request in flight, rate-limited. **The wrong fix is moving the keyframe request above the return** — that trades a silent black window for a request storm against a decoder that still cannot use the answer. **The second wrong fix is retrying the replay**: the race is the defect, and a retry makes losing it cheaper rather than impossible | **Observability landed 2026-09-12 and the fix has not.** The state is now counted and named at both ends — see the row below and `docs/testing.md` → Phase 7 Slice 44 | `docs/testing.md` → Phase 7 Slice 44 |
+| **106** | **The keyframe path logged nothing at either end, so no evidence exists that a single `mirror.keyframe` has ever produced an IDR.** Three Mac callers all ended in `.catch(() => undefined)` — the IPC handler, the float's onReady, and the float renderer — and on the phone `MirrorFeature` logged nothing, `MirrorEngine.requestKeyframe()` was `encoder.get()?.requestKeyframe()` (a null encoder swallowed the request whole), and `ScreenEncoder.requestKeyframe()` logged **only its failure**. A request, its ack and the frame that answers it were all invisible, which is why the float could fail through an entire demo without leaving a trace | **Fixed 2026-09-12.** One traced path on the Mac (`KeyframeTrace`: requested / acked / answered-by-IDR, with the answer counted only when a request was outstanding, because an idle stream's periodic IDRs are not evidence a request worked); every caller names its reason; the phone logs the request arriving, whether a codec existed, and — from `noteKeyframeEmitted` — whether a keyframe followed and how long it took. **The wrong fix is logging every dropped frame**: at 60 fps that is its own denial of service, so the no-decoder drops are counted and reported on the 1st and every 120th | Fixed. First run already produced a finding — see the Slice | `docs/testing.md` → Phase 7 Slice 44 |
+| **107** | **Two float states rendered one sentence.** *"Waiting for the phone's next keyframe…"* was shown both when the float had **no decoder** — where that frame will be dropped like every other, so the sentence is false — and when a decoder was armed and a request was genuinely outstanding, where it is exactly right. Nothing on screen or in a log could tell them apart. Defect 104's shape in a second place: a closed set of causes collapsed into the friendliest member | **Fixed 2026-09-12.** `renderer/floatWait.ts` is a closed set of four — `no-parameter-sets`, `awaiting-keyframe`, `unanswered`, `running` — each with its own sentence and a `blocking` flag saying whether the state can clear itself. **The flag is the load-bearing part, not the wording**: a sentence can be reworded and the test would still pass, so the assertion is that `no-parameter-sets` is blocking and `awaiting-keyframe` is not. The threshold for `unanswered` is on **outstanding** requests, not the request count, so a float answered twenty times out of twenty stays healthy | Fixed, with the no-decoder state **unobserved on hardware** — it needs the onReady race to lose. The `droppedWithNoDecoder` counter is what will catch it | `docs/testing.md` → Phase 7 Slice 44 |
 
 ---
 
@@ -2568,3 +2571,68 @@ One more thing fell out. `fail()` used to stringify the failure's sentence into 
 to end where one would do, which is `CLAUDE.md`'s two-writers-on-one-surface with the writers a few
 lines apart. `MirrorStopReason.Failed` carries the failure through, and `stop()` publishes the
 `fixHint` it was throwing away.
+
+### 105 — the float's decoder never starts · **open** · found 2026-09-12
+
+```ts
+push(frame: H264Frame): void {
+  if (frame.config) { … this.configure(); return; }
+
+  const decoder = this.decoder;
+  if (!decoder || decoder.state !== 'configured') return;   // ← drops IDRs too
+
+  if (this.awaitingKeyframe) {
+    if (!frame.keyframe) { this.hooks.requestKeyframe(); return; }   // ← never reached
+```
+
+The recovery path is below the return that makes recovery necessary. A float with no decoder is
+unreachable from its own fix.
+
+**Why it is intermittent rather than constant.** `main.ts`'s `onReady` replays the retained config
+to the new window. When that replay arrives after the float's listeners are registered the decoder
+configures and everything works — observed on 2026-09-12, `1 asked / 1 answered`, decoding. When it
+arrives first, nothing ever configures and the window is black and silent for the life of the
+session. **The race is the defect**, which is why the fix is the start contract and not a retry.
+
+**Fix direction — the float asks, main answers.** The float requests the parameter sets once its
+listeners are up; main replies with the retained config, or says plainly that there is none. One
+request in flight, rate-limited — the phone rate-limits its own keyframe requests with a comment
+explaining why, and neither Mac decoder does.
+
+**The wrong fix is hoisting the keyframe request above the return.** It trades a silent black window
+for a request storm against a decoder that still cannot use the answer, and the storm is harder to
+see than the silence.
+
+### 106 — the keyframe path was silent at both ends · **fixed 2026-09-12** · found 2026-09-12
+
+Six discards, three per side. The Mac's three all read `.catch(() => undefined)`; the phone's were a
+handler that logged nothing, a `?.` that swallowed a request with no encoder, and an encoder method
+that logged **only its failure** — which is `CLAUDE.md`'s own success-case rule broken on the one
+call whose entire purpose is to produce a frame.
+
+**What the first run of the instrumentation found, within nine milliseconds:**
+
+```
+15:25:12.278 [float]  asking the phone for a keyframe (1 asked / 0 answered)
+15:25:12.279 [mirror] keyframe requested — 1 requested / 0 acked / 0 answered by an IDR
+15:25:12.287 [float]  keyframe reached the decoder          ← 8 ms after the request
+15:25:12.288 [mirror] keyframe request acked                ← the ack arrives AFTER the frame
+```
+
+**The frame beat the ack.** That IDR was already in flight when the request went out, so the request
+had nothing to do with it — and a cruder instrument would have counted it as an answer and reported
+the keyframe path as working. `KeyframeTrace.onKeyframe()` returns null unless a request is
+outstanding for exactly this reason.
+
+It also caught a counter of mine that could only ever read zero: `answered by an IDR` was tallied on
+the Mac but nothing called `onKeyframe()` from the video path, so the line would have read
+`N requested / N acked / 0 answered` forever. **A counter that cannot move is worse than no counter**,
+because it reads as a finding rather than as an absence.
+
+### 107 — two float states, one sentence · **fixed 2026-09-12** · found 2026-09-12
+
+See the table. The distinction that matters is `blocking`: `awaiting-keyframe` clears itself the
+moment the phone answers, and `no-parameter-sets` never clears, because the code that would ask is
+unreachable from it. A test asserting only the wording would pass on a reworded sentence — the same
+proxy failure as defect 104's word-overlap check — so the assertion is on the flag.
+

@@ -1037,8 +1037,22 @@ object MirrorEngine {
         }
     }
 
-    /** `mirror.keyframe`. */
-    fun requestKeyframe() = encoder.get()?.requestKeyframe()
+    /**
+     * `mirror.keyframe`.
+     *
+     * The `?.` used to be the whole of it, so a request arriving with no encoder was swallowed
+     * without a word — the request path's third silence, after the handler's and the encoder's.
+     * Returns whether anything was actually asked, so the handler can say so too.
+     */
+    fun requestKeyframe(): Boolean {
+        val live = encoder.get()
+        if (live == null) {
+            LinkLog.w("mirror", "mirror.keyframe arrived with no encoder — there is no session to ask")
+            return false
+        }
+        live.requestKeyframe()
+        return true
+    }
 
     /**
      * The banking app is gone and there are pixels again.

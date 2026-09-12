@@ -72,8 +72,20 @@ async function targetOf() {
   for (let i = 0; i < 60; i += 1) {
     try {
       const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-      const hit = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl);
+      // **Match the page we launched, never "the first page".** This browser is ours and has one
+      // tab today, so the loose form was safe — but it is the same expression that attached a probe
+      // to ConnectSuite's float window on 2026-09-12 the moment that app grew a second window, and
+      // a stray `about:blank` or a second Chrome on this port would do it here. Naming the URL costs
+      // one line and makes the wrong-target case impossible rather than unlikely.
+      const pages = list.filter((t) => t.type === 'page' && t.webSocketDebuggerUrl);
+      const hit = pages.find((t) => decodeURI(t.url ?? '').includes(DESIGN));
       if (hit) return hit;
+      if (pages.length > 0) {
+        throw new Error(
+          `design-shot: ${pages.length} page(s) on :${port} and none is the design — ` +
+            pages.map((t) => t.url).join(', '),
+        );
+      }
     } catch {
       /* not up yet */
     }

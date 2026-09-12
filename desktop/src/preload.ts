@@ -41,7 +41,17 @@ contextBridge.exposeInMainWorld('connect', {
 
   mirrorStart: (options?: Record<string, unknown>) => ipcRenderer.invoke('mirror-start', options ?? {}),
   mirrorStop: () => ipcRenderer.invoke('mirror-stop'),
-  mirrorKeyframe: () => ipcRenderer.invoke('mirror-keyframe'),
+  /** `reason` is carried so the log can say which of the three callers asked, and why. */
+  mirrorKeyframe: (reason?: string) => ipcRenderer.invoke('mirror-keyframe', reason),
+  /**
+   * One line from a renderer into the Mac's own log file.
+   *
+   * The float window had no way to say anything durable. Its decode path could fail for an entire
+   * session and leave nothing behind but a devtools console nobody opens — which is the debt-list
+   * failure in a different medium: a record that exists and is never read costs what no record
+   * costs. `send`, not `invoke`: a log line must never make the caller wait, and it has no answer.
+   */
+  logLine: (where: string, line: string) => ipcRenderer.send('renderer-log', where, line),
   mirrorStats: () => ipcRenderer.invoke('mirror-stats'),
   /** `mirror.config` at runtime: raise the resolution cap or change bitrate without a restart. */
   mirrorConfig: (options: Record<string, unknown>) => ipcRenderer.invoke('mirror-config', options),

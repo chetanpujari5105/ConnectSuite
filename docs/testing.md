@@ -17945,3 +17945,106 @@ Mac tab, announced before it ran.
   is what closes it; the main window's label flipping back is the confirmation. **This is a product
   observation, not a bug**: the design says show, and the button does what it says. It is recorded
   because every script that opens the float will otherwise leak one.
+
+---
+
+## Phase 7 Slice 44 — the keyframe path gets a voice, before it gets a fix (2026-09-12)
+
+The float A/B came back **STATE A** (Slice 43), so §1 is its own bug and is built as one. This slice
+is the observability and the state vocabulary. **The start contract is deliberately not in it** —
+the request path had no measurement at all, so a fix would have had no before to be compared against.
+
+### 1 · Defect 105 — the diagnosis, confirmed by reading
+
+`H264Canvas.push` returns at `if (!decoder || decoder.state !== 'configured')`, and the branch that
+calls `hooks.requestKeyframe()` is **below** it. A float with no decoder drops every access unit,
+IDRs included, and asks for nothing: unreachable from its own recovery path.
+
+It is intermittent rather than constant, and the reason matters for the fix. `main.ts`'s `onReady`
+replays the retained config to the new window; when that wins the race against the float's listeners
+being registered, the decoder configures and all is well — **observed today**, `1 asked / 1 answered`,
+decoding. When it loses, nothing ever configures. **The race is the defect**, so the fix is the start
+contract and not a retry.
+
+### 2 · Defect 106 — six discards, three a side
+
+| end | what was silent |
+|---|---|
+| Mac · IPC handler | `link.request('mirror.keyframe', …).catch(() => undefined)` |
+| Mac · float onReady | the same line again |
+| Mac · float renderer | `floatBridge.mirrorKeyframe().catch(() => undefined)` |
+| phone · `MirrorFeature` | handler logged nothing at all |
+| phone · `MirrorEngine` | `encoder.get()?.requestKeyframe()` — a null encoder swallowed the request whole |
+| phone · `ScreenEncoder` | logged **only** its failure |
+
+All three Mac callers now go through one traced path and each names its reason. `KeyframeTrace`
+counts **requested / acked / answered-by-IDR** as three separate numbers, and the phone logs the
+request arriving, whether a codec existed, and whether a keyframe followed and how long it took.
+
+#### What the first run found, in nine milliseconds
+
+```
+15:25:12.278 [float]  decoder configured from retained parameter sets; asking for a keyframe
+15:25:12.278 [float]  asking the phone for a keyframe (1 asked / 0 answered)
+15:25:12.279 [mirror] keyframe requested — 1 requested / 0 acked / 0 answered by an IDR
+15:25:12.287 [float]  keyframe reached the decoder; arming it and decoding from here
+15:25:12.288 [mirror] keyframe request acked — …; an ack is not a frame
+```
+
+**The frame beat the ack by a millisecond.** That IDR was already in flight when the request went
+out, so the request had nothing to do with it. A cruder instrument would have counted it and
+reported the keyframe path as working on its very first run — the confirming-reading failure, and
+it would have arrived as good news about a feature under suspicion.
+
+`KeyframeTrace.onKeyframe()` returns null unless a request is outstanding, for exactly this reason:
+an idle stream emits periodic IDRs, and counting those makes "answered" say yes forever.
+
+#### And a counter of mine that could only ever read zero
+
+`answered by an IDR` was tallied on the Mac and **nothing called `onKeyframe()` from the video
+path**, so the line would have read `N requested / N acked / 0 answered` for the life of the
+project. A counter that cannot move is worse than no counter: it reads as a finding rather than as
+an absence, and the finding it reads as is the exact one under investigation. Caught by looking at
+the first output rather than by any test.
+
+### 3 · Defect 107 — the two states
+
+`renderer/floatWait.ts`, a closed set of four, each with its own sentence and a `blocking` flag:
+
+| kind | blocking | what it means |
+|---|---|---|
+| `no-parameter-sets` | **yes** | no decoder; the code that would ask is unreachable |
+| `awaiting-keyframe` | no | armed, request out, clears when the phone answers |
+| `unanswered` | **yes** | ≥3 **outstanding**, so the phone is answering nothing |
+| `running` | no | decoding; say nothing |
+
+**`blocking` is the load-bearing part, not the wording**, and the tests assert it rather than the
+sentence — the word-overlap lesson from defect 104, applied in advance this time. The `unanswered`
+threshold counts **outstanding** requests, not total, so a float answered twenty times out of twenty
+stays healthy; the control test asserts exactly that.
+
+### 4 · Two guards widened, both latent the moment the app grew a second window
+
+- **`check-renderer-scripts.mjs` read `index.html` only.** `float.html` loads classic scripts too, so
+  a `src/shared/` file added there with an `export` would throw on its first line in the float window
+  — defect 94 exactly, in the window the guard does not open. It now reads **every** `.html` under
+  `src/renderer` and prints which pages it scanned. The discriminator is unchanged: scope still comes
+  from what a page *loads*, never from the directory.
+- **`openProbe` took the first page target** (fixed in Slice 43) — and the audit asked for afterwards
+  found the same expression in `design-shot.mjs` and `compare-shot.mjs`. Neither is at risk today:
+  each spawns its own headless Chrome with one page on its own port. Both now match the URL they
+  launched anyway, because the guard is one line and "safe today" is what the renderer-scripts guard
+  was too.
+
+### 5 · What is observed, and what is not
+
+| | |
+|---|---|
+| **observed** | the request → ack path on both ends; the float configuring from a retained config, arming, and decoding; the frame-before-ack ordering |
+| **not observed** | `droppedWithNoDecoder` above zero — it needs the onReady race to **lose**, and today it won |
+| **not observed** | `answered by an IDR` above zero — it needs a request that actually *causes* an IDR, which the one measurement available says did not happen |
+
+The second row is the honest status of defect 105's own symptom: the code path is read and the
+counter is in place, and the state has **not** been reproduced on this machine. The third is the
+question the whole slice was built to make answerable, and it is still unanswered — which is a much
+better position than the one this started from, where it was unaskable.

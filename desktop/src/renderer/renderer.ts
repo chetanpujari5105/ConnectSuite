@@ -84,7 +84,7 @@ interface ConnectBridge {
     capture?: Record<string, number>;
   }>;
   mirrorStop(): Promise<{ ok: boolean }>;
-  mirrorKeyframe(): Promise<void>;
+  mirrorKeyframe(reason?: string): Promise<void>;
   mirrorConfig(options: Record<string, unknown>): Promise<{ ok: boolean }>;
   mirrorCapture(dataUrl: string): Promise<{ ok: boolean; path?: string; reason?: string }>;
 
@@ -999,7 +999,7 @@ drawAdvancedLimits();
 el('mirror-capture').addEventListener('click', () => void mirror.saveStill());
 
 /** `mirror.keyframe`. What to press when the picture has torn and is not recovering. */
-el('mirror-refresh').addEventListener('click', () => void connect.mirrorKeyframe());
+el('mirror-refresh').addEventListener('click', () => void connect.mirrorKeyframe('Refresh pressed'));
 /*
  * M5 — the rail's Transfer slot. Its blocker was `fs.*` having no payload spec; that was removed
  * when Files shipped on 2026-09-01.

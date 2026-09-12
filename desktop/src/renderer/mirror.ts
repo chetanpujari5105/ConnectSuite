@@ -136,7 +136,7 @@ interface MirrorBridge {
     options?: Record<string, unknown>,
   ) => Promise<{ ok: boolean; requestedAt?: number; state?: MirrorState }>;
   mirrorStop: () => Promise<{ ok: boolean }>;
-  mirrorKeyframe: () => Promise<void>;
+  mirrorKeyframe: (reason?: string) => Promise<void>;
   mirrorConfig: (options: Record<string, unknown>) => Promise<{ ok: boolean }>;
   /** Hands a PNG data URL to the main process, which owns file IO. Returns where it landed. */
   mirrorCapture: (dataUrl: string) => Promise<{ ok: boolean; path?: string; reason?: string }>;
@@ -558,7 +558,7 @@ class MirrorView {
     // the first IDR and ask for one if it is slow to arrive.
     if (this.awaitingKeyframe) {
       if (!frame.keyframe) {
-        void this.bridge.mirrorKeyframe();
+        void this.bridge.mirrorKeyframe('main pane lost sync');
         return;
       }
       this.awaitingKeyframe = false;

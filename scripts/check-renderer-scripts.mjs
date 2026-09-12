@@ -93,16 +93,47 @@ export function exportDeclarations(source) {
   return found;
 }
 
+/**
+ * **Every page in the renderer, not just `index.html`.**
+ *
+ * The guard read `index.html` alone, which was right while the app had one window and silently
+ * partial the moment it grew a second: `float.html` loads `h264Canvas.js` and `float.js` as classic
+ * scripts too, so a `src/shared/` file added there with an `export` would throw on its first line
+ * in the float window — defect 94 exactly — in the window this check does not open.
+ *
+ * It is the same shape as `openProbe` taking whichever page sorted first (2026-09-12): a rule
+ * written against one window, correct then, and quietly covering half the app afterwards. The
+ * discriminator is unchanged — scope still comes from what a page *loads*, never from the directory,
+ * because `src/shared/` also holds modules the main process imports normally and those keep their
+ * exports. Only the set of pages widened.
+ */
+function rendererPages() {
+  return readdirSync(RENDERER).filter((f) => f.endsWith('.html')).sort();
+}
+
 function main() {
-  const html = readFileSync(join(RENDERER, 'index.html'), 'utf8');
-  const loaded = scriptLoadedShared(html);
+  const pages = rendererPages();
+  if (pages.length === 0) {
+    console.error('check-renderer-scripts: no .html pages under src/renderer. Refusing to pass.');
+    return 1;
+  }
+
+  const loadedBy = new Map();
+  for (const page of pages) {
+    for (const name of scriptLoadedShared(readFileSync(join(RENDERER, page), 'utf8'))) {
+      if (!loadedBy.has(name)) loadedBy.set(name, []);
+      loadedBy.get(name).push(page);
+    }
+  }
+  const loaded = [...loadedBy.keys()];
 
   if (loaded.length === 0) {
     // A guard that examined nothing would be vacuously green — the same shape as an empty
     // accessibility query reading as evidence. This is the control, and it fails loudly.
     console.error(
-      'check-renderer-scripts: found NO shared <script> tags in index.html. Either the page ' +
-        'stopped loading them or this check can no longer see them. Refusing to pass.',
+      `check-renderer-scripts: found NO shared <script> tags across ${pages.length} page(s) ` +
+        `(${pages.join(', ')}). Either the pages stopped loading them or this check can no longer ` +
+        'see them. Refusing to pass.',
     );
     return 1;
   }
@@ -114,7 +145,7 @@ function main() {
     try {
       source = readFileSync(path, 'utf8');
     } catch {
-      problems.push(`  ${name}: index.html loads shared/${name}.js but src/shared/${name}.ts does not exist`);
+      problems.push(`  ${name}: ${loadedBy.get(name).join(' + ')} load(s) shared/${name}.js but src/shared/${name}.ts does not exist`);
       continue;
     }
     for (const hit of exportDeclarations(source)) {
@@ -127,7 +158,10 @@ function main() {
     }
   }
 
-  console.log(`check-renderer-scripts: ${loaded.length} shared scripts loaded by index.html`);
+  console.log(
+    `check-renderer-scripts: ${loaded.length} shared scripts loaded by ${pages.length} page(s): ` +
+      pages.join(', '),
+  );
   if (problems.length > 0) {
     console.error('\nA renderer-loaded shared file carries an export:\n');
     console.error(problems.join('\n'));

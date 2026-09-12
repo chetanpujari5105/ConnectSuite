@@ -376,6 +376,7 @@ class ScreenEncoder(
                         lastMonoUs = System.nanoTime() / 1_000
                     }
 
+                    if (isKey && !isConfig) noteKeyframeEmitted()
                     onFrame(VideoFrame(keyframe = isKey, config = isConfig, ptsUs = info.presentationTimeUs, data = data))
                 }
                 codec.releaseOutputBuffer(index, false)
@@ -467,12 +468,59 @@ class ScreenEncoder(
         }.onFailure { LinkLog.w("mirror", "Bitrate change refused: ${it.message}") }
     }
 
-    /** `mirror.keyframe`: the Mac lost sync and needs a fresh IDR to resume decoding. */
+    /**
+     * `mirror.keyframe`: the Mac lost sync and needs a fresh IDR to resume decoding.
+     *
+     * **This used to log only its failure.** `CLAUDE.md`'s rule is that the success path gets a line
+     * at the same volume, because a count with no denominator reads as whichever story the reader
+     * already believes — and here there was no count at all on either side. The consequence was
+     * exact: **no evidence exists in this repo that a single `mirror.keyframe` has ever produced an
+     * IDR**, over a feature that could fail through a whole demo in silence.
+     *
+     * Three things are now readable, which is what the request was missing: that it arrived, that
+     * the codec accepted it, and — from [noteKeyframeEmitted] — whether a keyframe actually followed
+     * and how long it took.
+     */
     fun requestKeyframe() {
+        val asked = keyframesRequested.incrementAndGet()
+        val live = codec
+        if (live == null) {
+            // The silent no-op. `MirrorEngine.requestKeyframe()` is `encoder.get()?.requestKeyframe()`
+            // and a null encoder swallowed the whole request without a word.
+            LinkLog.w("mirror", "Keyframe requested with no codec — nothing asked for ($asked asked / ${keyframesEmitted.get()} emitted)")
+            return
+        }
+        keyframeAskedAtMs.set(System.currentTimeMillis())
         runCatching {
-            codec?.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) })
-        }.onFailure { LinkLog.w("mirror", "Keyframe request refused: ${it.message}") }
+            live.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) })
+        }.onSuccess {
+            LinkLog.i("mirror", "Keyframe requested of the codec ($asked asked / ${keyframesEmitted.get()} emitted)")
+        }.onFailure {
+            LinkLog.w("mirror", "Keyframe request refused: ${it.message} ($asked asked / ${keyframesEmitted.get()} emitted)")
+        }
+
     }
+
+    /**
+     * A keyframe left the encoder. Logged **only when one was asked for**, because the periodic IDRs
+     * of an idle stream are not evidence that a request worked — counting those would make the
+     * answered figure say yes forever.
+     */
+    private fun noteKeyframeEmitted() {
+        val emitted = keyframesEmitted.incrementAndGet()
+        val askedAt = keyframeAskedAtMs.getAndSet(0L)
+        if (askedAt == 0L) return
+        LinkLog.i(
+            "mirror",
+            "Keyframe EMITTED ${System.currentTimeMillis() - askedAt}ms after it was asked for " +
+                "(${keyframesRequested.get()} asked / $emitted emitted)",
+        )
+    }
+
+    /** Asked for, emitted, and when the outstanding request went out. The denominators. */
+    private val keyframesRequested = java.util.concurrent.atomic.AtomicLong(0)
+    private val keyframesEmitted = java.util.concurrent.atomic.AtomicLong(0)
+    private val keyframeAskedAtMs = java.util.concurrent.atomic.AtomicLong(0)
 
     fun currentConfig(): MirrorConfig = config
 
