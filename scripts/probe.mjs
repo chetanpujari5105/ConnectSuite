@@ -435,10 +435,37 @@ export function formatAct(result) {
  * The thin half. Everything with a decision in it is in [createProbe] above, which is why this
  * function has no logic worth testing and the tests do not start a browser.
  */
-export async function openProbe({ port = 9222, endpoint = 'http://localhost', userGesture = false } = {}) {
+export async function openProbe({ port = 9222, endpoint = 'http://localhost', userGesture = false, window: want = 'index' } = {}) {
   const targets = await (await fetch(`${endpoint}:${port}/json`)).json();
-  const page = targets.find((t) => t.type === 'page');
-  if (!page) throw new Error(`probe: no page target on :${port}`);
+  const pages = targets.filter((t) => t.type === 'page');
+  if (pages.length === 0) throw new Error(`probe: no page target on :${port}`);
+  /*
+   * **Name the window, never take the first one.**
+   *
+   * This used to be `pages.find(...)` — the first page target, whichever it happened to be. That is
+   * fine while the app has one window and silently wrong the moment it has two: the float window
+   * opened during a latency run, sorted ahead of the main window in `/json`, and the next probe
+   * attached to it and died on `document.querySelector('[data-nav="mirror"]')` being null. It died
+   * loudly *this* time. A probe whose selectors happen to exist in both windows would not have.
+   *
+   * That is the control table's own entry with the target swapped rather than the query — "you are
+   * looking at a different machine", one scale down — so the fix is the same: the caller says which
+   * window it means, matched on the page's URL, and an ambiguous match refuses instead of guessing.
+   */
+  const matching = pages.filter((t) => (t.url ?? '').includes(`/renderer/${want}.`));
+  if (matching.length === 0) {
+    throw new Error(
+      `probe: no page whose URL names "${want}" on :${port}. Open pages: ` +
+        pages.map((t) => `${t.title} <${t.url}>`).join(', '),
+    );
+  }
+  if (matching.length > 1) {
+    throw new Error(
+      `probe: ${matching.length} pages match "${want}" on :${port} — refusing to guess. ` +
+        matching.map((t) => `${t.title} <${t.url}>`).join(', '),
+    );
+  }
+  const page = matching[0];
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   const pending = new Map();
   let nextId = 0;

@@ -17586,7 +17586,12 @@ same stimulus above.
 
 ---
 
-## Phase 7 Slice 40 — the fit on a second ratio: **pre-registered, not yet run** (2026-09-11)
+## Phase 7 Slice 40 — the fit on a second ratio: **pre-registered, STILL NOT RUN** (2026-09-11)
+
+> **2026-09-12: still owed.** The moto g34, the moto g45 and the vivo are all away. Slice 43 took
+> the readings the Samsung can give — including the landscape half, which is the falsifiable one on
+> that handset — and **none of it discharges this slice.** This is a pre-registration; its six
+> outcomes have had no device pointed at them.
 
 **Written before the phone was on the bus, and that is the point.** Slice 37 proved the box rule
 against `--capture-aspect` values a probe set by hand. What it could not reach is whether `mirror.ts`
@@ -17816,3 +17821,127 @@ is the standing rule and needs no new machinery — it needs the `2>&1` not to b
 
 **Defect 102 is closed.** The detection is built, the reading is taken on hardware with its control,
 and the sentence reaches the Mac.
+
+---
+
+## Phase 7 Slice 43 — the fit on hardware, and the float A/B (2026-09-12)
+
+Live session on the SM-S938B, physical rotations by the owner. Three devices were expected for this
+slice; **only the Samsung was available** — see §3 for what that costs.
+
+### 1 · The box, measured in both orientations
+
+| | portrait | **landscape** |
+|---|---|---|
+| stage box | 267.69 × 579.98 | **560 × 258.46** |
+| stage aspect | 0.46154 | **2.16667** |
+| announced aspect (control channel) | 0.46154 | **2.16667** |
+| decoded aspect (video socket) | 0.46154 — canvas 1080×2340 | **2.16667 — canvas 2340×1080** |
+| letterbox | 0, 0 | **0, 0** |
+| rotation readout | 0° | **270°** |
+| `max-height` on canvas | `none` | `none` |
+
+Control: 13 `section[data-screen]` on the page in every reading.
+
+**Both routes to the stream's shape agree**, which is the half Slice 37 could not reach — that run
+set `--capture-aspect` by hand and said so. Here it is written by `mirror.ts` from a real
+`mirror.state`/`mirror.rotate`, and the canvas's intrinsic size comes off decoded frames. Two
+independent paths, one answer.
+
+### 2 · The tap, with its prediction written first
+
+| | portrait | **landscape** |
+|---|---|---|
+| clicked | viewport (764, 291) | viewport (764, 285) |
+| fraction of picture | (0.5, 0.02) | (0.5, 0.02) |
+| **predicted** | (542, 45) | **(1172, 21)** |
+| **measured** | (542, 45) | **(1172, 21)** |
+| error | **0, 0** | **0, 0** |
+| resolution | 4.03 capture px per viewport px | 4.18 |
+
+Measured from the Mac's own `[input] input.tap delivered (x,y on #id WxH)` line — the log that did
+not exist while defect 99 was live, and whose absence is why the defect could not have been found
+from a log.
+
+**A correction to what this slice originally claimed it would prove.** The plan said the landscape
+tap would separate the fixed mapping from the pre-fix one by ~400 capture px. It does not, and the
+first run proved it: both predictions came out **identical**. The discriminator was the *letterbox*,
+and the box fix removes the letterbox — so once the box is right, a tap can no longer falsify the
+old bug. What the landscape tap does still test is that the mapping uses the **announced**
+2340×1080 rather than the canvas's intrinsic size, which lags a frame behind on a just-rotated
+phone. That is the claim it is recorded against.
+
+### 3 · Coverage, stated honestly
+
+**Fit verified on 1 of 3 ratios — and on this handset portrait cannot falsify the bug at all.**
+
+The SM-S938B is exactly 19.5:9, which is the ratio the pre-fix stylesheet hard-coded. In portrait the
+old code drew no bars and the old `pointAt` agreed with the new one to the pixel, so a clean portrait
+reading is **consistent with the bug being fully present**. Landscape is the falsifiable half on this
+device, and landscape passed.
+
+What is still owed, and it is the point of the exercise:
+
+| device | ratio | state |
+|---|---|---|
+| moto g34 | 720×1600 → 2.22222 | **away** — not measured |
+| moto g45 | 720×1600 → 2.22222 | **away** — not measured |
+| vivo | 1080×2408 → 2.22963 | **away** — not measured |
+
+**Slice 40 stays owed.** It is a pre-registration, not a result, and the two Motorolas and the vivo
+have contributed nothing to it. The g34 and g45 share a build fingerprint and are one reading of that
+image; the vivo is a genuinely third ratio.
+
+### 4 · The float A/B — **STATE A**
+
+Taken before any code, because the state it measures disappears the moment the float's start path
+changes.
+
+```
+                      frames   fps    median total   link   decode   peak
+A (float closed)       3349    115        8 ms       7 ms    2 ms    35.8 ms
+B (float open)         3099    117        9 ms       7 ms    2 ms    34.6 ms
+                    load ratio 0.93x
+```
+
+Against the rule written before the run — degrade at ≥1.5× latency or ≥30% fps loss, unchanged
+within ±15% — this is **STATE A: the float is an independent consumer. Symptoms §1 and §4 are
+separate bugs and want separate fixes.**
+
+#### The run before it said STATE B, and it was wrong
+
+```
+A  102 frames @ 2 fps    median 5 ms
+B  532 frames @ 18 fps   median 8 ms      ratio 1.6  ->  "STATE B — degrades"
+```
+
+Phase B did **five times the work**. A latency that rises with throughput is what more frames in
+flight looks like **with or without contention**, so the comparison could not separate the hypothesis
+from the load. It would have sent the float and the latency drift down a single-fix path on a number
+that meant nothing.
+
+**The A/B was missing a comparability precondition, and nothing in an A/B checks one.** An A/B is a
+claim that only one variable moved; the guard is now `loadRatio` within 1.4× either way, and the run
+above reports **0.93×** beside its verdict. This is the units rule one level up — that rule says two
+numbers must be *of the same thing* before a ratio means anything, this says the two *conditions*
+must be alike in every way but the one under test.
+
+The first attempt before that one was refused outright by the frames-advanced guard: phase A decoded
+**0** frames on a static screen, and its "13 ms" was the median of *retained* samples — a memory, not
+a measurement of that window. Motion for both phases is gentle scrolling inside ConnectSuite's own
+Mac tab, announced before it ran.
+
+### 5 · Two instrument faults, both now fixed in the shared tooling
+
+- **`openProbe` took the first page target, whichever it was.** The float window opened during a
+  latency run, sorted ahead of the main window in `/json`, and the next probe attached to **it** and
+  died on a null nav element. It died loudly this time; a probe whose selectors exist in both windows
+  would not have. That is the control table's "you are looking at a different machine" one scale
+  down, so the fix is the same: the caller names the window, matched on its URL, and an ambiguous
+  match **refuses** rather than guessing.
+- **The float button is not a toggle.** Its two states are *"Floating window"* and *"Show floating
+  window"* — the second focuses the window, it does not close it. Using it as cleanup left the float
+  open across two runs, and the next run then refused its own phase A. Closing the float's CDP target
+  is what closes it; the main window's label flipping back is the confirmation. **This is a product
+  observation, not a bug**: the design says show, and the button does what it says. It is recorded
+  because every script that opens the float will otherwise leak one.

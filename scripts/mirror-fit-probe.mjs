@@ -49,6 +49,24 @@ const probe = await openProbe({ port: 9222 });
  */
 const CONTROL = `__probe.one('section[data-screen="mirror"] .mirror-stage').getBoundingClientRect().height`;
 
+/*
+ * Route to the Mirror pane first. A pane that is not routed reports height 0, which `one()` refuses
+ * — correctly, and it refused this run's first attempt. Routing is a *stimulus* with an `expect`,
+ * never an assumption; and it only changes which pane is visible, so the live session is untouched.
+ */
+const routed = await probe.act({
+  what: 'route the Mac to the Mirror pane',
+  run: `document.querySelector('[data-nav="mirror"]').click()`,
+  expect: `__probe.one('section[data-screen="mirror"] .mirror-stage').getBoundingClientRect().height > 0`,
+  within: 5000,
+});
+if (!routed.landed) {
+  console.error(JSON.stringify(routed, null, 2));
+  console.error('\nNOT A READING: could not reach the Mirror pane.');
+  probe.close();
+  process.exit(3);
+}
+
 const reading = await probe.read({
   question: `Stage box against the stream the phone sent — ${label}`,
   control: CONTROL,
@@ -151,7 +169,10 @@ console.log(JSON.stringify({
   control: { sectionsOnPage: v.sections, stageHeight: reading.control },
 }, null, 2));
 
+// The socket keeps the process alive; every probe in this repo closes it explicitly.
+probe.close();
 if (refusals.length) {
   console.error('\nNOT A READING:\n  - ' + refusals.join('\n  - '));
   process.exit(3);
 }
+process.exit(0);

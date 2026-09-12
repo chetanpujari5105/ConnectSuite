@@ -827,6 +827,42 @@ damage on the user's own device or nearly recorded a false result.
   attribute is in the output at all. `grep -c` was the second entry in this table and it is the
   ninth as well; the failure has not changed since.
 
+  ### A predicate over two independent clocks must settle on **both**
+
+  Three readings in one day (2026-09-12) were taken **mid-transition**, and none of them was a
+  slow-instrument problem. Each settled on one of two clocks that had to move, while the other had
+  not moved yet, and each produced a confident number about a state the system was passing through
+  rather than in.
+
+  | | the two clocks | settled on | what it reported |
+  |---|---|---|---|
+  | the mirror's rotation | `--capture-aspect` (control channel) and the canvas's intrinsic size (video socket) | the announcement alone | `announcementAgreesWithPixels: false` — **read as a product defect**. The rotate had arrived and the next frame had not, at 1-2 fps on a static screen |
+  | the restriction card | the app op and the composable's `remember(capabilities)` key | the op | a card that "had not appeared" a moment before it did |
+  | the capability set | the phone's `refresh()` and the Mac's `capabilities.changed` | whichever was read first | a set with `mirror` in it on one side and out of it on the other |
+
+  **The fix is not "wait longer".** A longer fixed wait is the 263 ms sampling window with a bigger
+  number in it — it makes the miss rarer without making it impossible, and it cannot say whether the
+  run that passed did so because the state arrived or because the sleep was generous. The fix is
+  that **the settle predicate names every clock that has to move**:
+
+  ```js
+  // wrong: one clock, and the other may still be mid-flight
+  until: (v) => v.announcedAspect > 1
+  // right: both, and the reading cannot exist until they agree
+  until: (v) => v.announcedAspect > 1 && Math.abs(v.announcedAspect - v.decodedAspect) < 0.001
+  ```
+
+  The diagnostic is one question asked of any settle condition: **what else has to be true for this
+  to be one consistent state, and is it in the predicate?** If a fact reaches the thing you are
+  measuring by two routes — a control channel and a data channel, a setting and a UI that caches it,
+  a phone and a Mac — then one route being there is a *transition*, not a state.
+
+  **And the failure message must name the clause that failed, not the predicate.** The landscape run
+  above printed *"the announced and decoded geometries never agreed"* after 358 polls in which they
+  agreed perfectly; what never happened was the rotation. A compound predicate reporting its own
+  miss as one sentence attributes it to whichever clause the author had in mind, which is a
+  confident wrong diagnosis from an instrument that holds the right one.
+
   ### **Two readings, one fact** — the family, now with three members
 
   Three of the entries above are not lone bad readings. They are **pairs**: two instruments asked the
