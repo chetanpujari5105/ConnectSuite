@@ -71,15 +71,47 @@ dump() {
   "$ADB" "$LABEL" shell cat /sdcard/cs-dump.xml 2>/dev/null | tr -d '\r'
 }
 
+# Reach the Mac tab, from a dump taken now rather than from a remembered pixel.
+#
+# The three bottom-nav cells carry **no `content-desc` and no `text` of their own** — the labels are
+# separate nodes — so there is no named target to press and this is the "genuinely unnamed surface"
+# the coordinate rule allows, with its two conditions met: the geometry comes from a dump taken
+# seconds earlier, and the tap is announced in the output. Adding a `contentDescription` to those
+# three cells is the right fix and is cheaper than a second accident; it is noted in Slice 42.
+#
+# It is also **gated on what it read**, which is the decoration rule: if the cell is not where the
+# dump says, nothing is tapped.
+goto_mac_tab() {
+  "$ADB" "$LABEL" shell uiautomator dump /sdcard/cs-dump.xml >/dev/null 2>&1
+  local xml; xml=$("$ADB" "$LABEL" shell cat /sdcard/cs-dump.xml 2>/dev/null | tr -d '\r')
+  if printf '%s' "$xml" | grep -qF "$ANCHOR"; then return 0; fi   # already there
+  # The rightmost of the three equal cells along the bottom strip is the Mac tab.
+  local cell; cell=$(printf '%s' "$xml" | tr '<' '\n' \
+    | grep -oE 'bounds="\[[0-9]+,2[89][0-9]{2}\]\[[0-9]+,[0-9]+\]"' | tail -1)
+  if [ -z "$cell" ]; then
+    echo "  cannot locate the bottom nav in the dump — not tapping anything"
+    return 1
+  fi
+  local x1 x2 y1 y2
+  x1=$(printf '%s' "$cell" | sed -E 's/.*\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\].*/\1/')
+  y1=$(printf '%s' "$cell" | sed -E 's/.*\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\].*/\2/')
+  x2=$(printf '%s' "$cell" | sed -E 's/.*\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\].*/\3/')
+  y2=$(printf '%s' "$cell" | sed -E 's/.*\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\].*/\4/')
+  echo "  tapping the Mac nav cell at ($(( (x1+x2)/2 )),$(( (y1+y2)/2 ))) — bounds ($x1,$y1)-($x2,$y2), from a dump taken now"
+  "$ADB" "$LABEL" shell input tap $(( (x1+x2)/2 )) $(( (y1+y2)/2 )) >/dev/null 2>&1
+  sleep 2
+}
+
 # One phase: nudge the app so `refresh()` runs, dump, and report all three facts together.
 phase() {
   local name="$1" expect="$2"
+  echo "=== $name (expect the card ${expect}) ==="
   # Resume the app: refresh() runs on resume, which is the path a user following the card takes.
   "$ADB" "$LABEL" shell am start -n "$PKG/com.chetan.connectsuite.MainActivity" >/dev/null 2>&1
   sleep 3
+  goto_mac_tab
   local xml; xml=$(dump)
 
-  echo "=== $name (expect the card ${expect}) ==="
   if [ -z "$xml" ] || ! printf '%s' "$xml" | grep -qF "$ANCHOR"; then
     echo "  NO READING — the dump is empty or is not the Mac screen (anchor \"$ANCHOR\" absent)."
     echo "               Open ConnectSuite's Mac tab on the phone and re-run. An absent card in a"
@@ -95,7 +127,7 @@ phase() {
 
   # The app's own view. Printed with its own timestamp — `Capabilities now:` is written only on a
   # CHANGE, so a line pulled out without its clock is a memory presented as the present.
-  echo "  caps:     $("$ADB" "$LABEL" shell run-as "$PKG" sh -c 'tail -200 files/logs/link.log' 2>/dev/null \
+  echo "  caps:     $("$ADB" "$LABEL" shell run-as "$PKG" tail -200 files/logs/link.log 2>/dev/null \
     | tr -d '\r' | grep '\[caps\]' | tail -1)"
   echo
 
@@ -121,7 +153,19 @@ phase() {
 # be taken in this state* — and the two must not be confused, which is the whole subject of the
 # register entry this script exists for. So it is checked first and refuses rather than proceeding.
 echo '--- precondition: is a Mac connected, so that mirror is in the advertised set? ---'
-caps_line=$("$ADB" "$LABEL" shell run-as "$PKG" sh -c 'tail -400 files/logs/link.log' 2>/dev/null \
+# `run-as PKG sh -c '…'` returns an empty string on this handset while the direct form works —
+# measured 2026-09-12, and it cost this script its first run: the precondition read `<none logged>`
+# and told the operator to connect a Mac that was already connected. A dead query is a NO READING,
+# never a negative, so the log is proven readable before anything is concluded from its contents.
+log_lines=$("$ADB" "$LABEL" shell run-as "$PKG" wc -l files/logs/link.log 2>/dev/null \
+  | tr -d '\r' | awk '{print $1}')
+if [ -z "${log_lines:-}" ] || [ "${log_lines:-0}" -eq 0 ]; then
+  echo "  NO READING — files/logs/link.log is unreadable or empty, so nothing below it is evidence."
+  echo "               This is not a statement about the Mac or about mirror."
+  exit 2
+fi
+echo "  control: link.log is readable, $log_lines lines"
+caps_line=$("$ADB" "$LABEL" shell run-as "$PKG" tail -400 files/logs/link.log 2>/dev/null \
   | tr -d '\r' | grep -o 'Capabilities now: [a-z,]*' | tail -1)
 echo "  last advertised set: ${caps_line:-<none logged>}"
 if ! printf '%s' "$caps_line" | grep -q 'mirror'; then

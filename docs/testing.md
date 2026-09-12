@@ -17743,3 +17743,76 @@ in the control table. Its relatives there are both **queries** — step 49's sha
 the `/drop|upload|send to phone/` regex that matched the banner apologising for the absent
 affordance. This is the first time the shape got into the suite, where no reading and no control can
 see it and only mutation can.
+
+---
+
+## Phase 7 Slice 42 — defect 102's write, taken (2026-09-12)
+
+Slice 39 built the detection, proved the **decision** with 23 tests and 12 mutations, and said
+plainly that `ActivityManager.isBackgroundRestricted()` had **never once returned `true`** on any
+device in this project. This is that reading, run against the pre-registered table in Slice 39 §7.
+`scripts/defect102-read.sh samsung`, and `scripts/caps-reason-probe.mjs mirror` for the far end.
+
+### The phone
+
+```
+                      card   dump bytes   advertised set
+0 · BEFORE  allow       0      18,248     apps,calls,clipboard,contacts,files,mirror,notifications,photos,remote,sms
+1 · DURING  ignore      1      20,798     apps,calls,clipboard,contacts,files,        notifications,photos,remote,sms
+2 · AFTER   allow       0      18,248     apps,calls,clipboard,contacts,files,mirror,notifications,photos,remote,sms
+```
+
+**The restore is the reading that matters and it is the third row.** A card that appears is one bit;
+a card that appears *and leaves* is that bit plus the proof that something is reading a live value
+rather than drawing unconditionally. The dump byte count is an independent second signal and it is
+the sharper one: **18,248 before and 18,248 after, byte for byte**, with +2,550 in between. That is
+the card's own node tree arriving and going away.
+
+`mirror` leaves the advertised set and comes back, and **nothing else moves** — nine capabilities
+identical across all three rows. The measurement that the gate is not blanket, taken on the device
+rather than argued from the twelve-hour observation it was designed against.
+
+### The far end
+
+`scripts/caps-reason-probe.mjs` reads the Overview chip's **accessible sentence**, not its colour —
+the chip was a name and a background colour until defect 26, so the visually-hidden span is the
+primary channel. Both routes to the fact are read, and they agree:
+
+| | advertised | spoken | title |
+|---|---|---|---|
+| BEFORE | `true` | `: available` | `null` |
+| **DURING** | `false` | `: unavailable, the phone has restricted this app's background activity, so it cannot hold the foreground service screen capture needs — open ConnectSuite on the phone to fix it` | the same sentence |
+| AFTER | `true` | `: available` | `null` |
+
+Control: **12 chips on the page** in every reading, all twelve named in the output. The sentence is
+`BackgroundRestriction.CAPABILITY_REASON` verbatim, over the existing `unavailable` map, with no
+protocol change.
+
+### Three instrument faults, all caught by their controls, none reaching a finding
+
+Recorded because every one of them produced a confident wrong answer first:
+
+| | the instrument | reported | actually |
+|---|---|---|---|
+| 1 | `strings` over 21 dex files, 25 MB | every count **empty** — including `ConnectSuite`, the positive control | `grep` gives no output at all on that blob. The **positive control returning empty is what refused the run**; the APK was fine, and Gradle's `packageDebug UP-TO-DATE` (content-hashed, not mtime) answered the question instead |
+| 2 | `run-as PKG sh -c 'tail … link.log'` | `<none logged>` → *"no Mac connected"* | the `sh -c` form returns **nothing** on this handset; the direct `run-as PKG tail …` returns 3,720 lines. The script then **gave wrong advice** — connect a Mac that was already connected |
+| 3 | a tag histogram over the log | `[samsung]` as a log tag | my own `2>&1` merging `adb-pinned.sh`'s stderr banner into the stream — the **exact failure that script exists to prevent**, committed by its author two days later |
+
+Fault 2 is now a control in the script: `wc -l` on the log must return non-zero before anything is
+concluded from its contents, and a dead query reports `NO READING` rather than a negative. Fault 3
+is the standing rule and needs no new machinery — it needs the `2>&1` not to be typed.
+
+### Two things this run did not set out to find
+
+- **The accessibility service is off on this device.** `enabled_accessibility_services` is `null`
+  and `accessibility_enabled` is `0`, so `input` is absent from every advertised set above.
+  **Unattributable**: no before-reading was taken across the reinstall, and `CLAUDE.md` records that
+  a force-stop removes this grant permanently while `install -r` preserves it. Stated as an observed
+  state, not as a consequence of anything done here.
+- **The three bottom-nav cells carry no `content-desc` and no text of their own**, so there is no
+  named target for the Mac tab and the script reaches it by coordinates derived from a dump taken
+  seconds earlier, announced in its output. That is the coordinate rule's last resort with both its
+  conditions met; the right fix is a `contentDescription` on those three cells and it is owed.
+
+**Defect 102 is closed.** The detection is built, the reading is taken on hardware with its control,
+and the sentence reaches the Mac.

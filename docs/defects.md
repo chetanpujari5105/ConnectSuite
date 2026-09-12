@@ -2411,7 +2411,7 @@ leaves the wake locks and the buffer churn exactly where they are.
 **The second wrong fix is a fixed-interval throttle**, which makes a genuine status change late as
 well as making the churn quieter — the failure is *redundant* posts, not *frequent* ones.
 
-### 102 — the app cannot tell it has been background-restricted · **detection built 2026-09-11, reading unproven on hardware** · found 2026-09-10
+### 102 — the app cannot tell it has been background-restricted · **fixed 2026-09-11, read on hardware 2026-09-12** · found 2026-09-10
 
 `RUN_ANY_IN_BACKGROUND: ignore` on this handset, against `allow` or unset for 6 of 8 comparable
 third-party apps read the same minute. The op is the AOSP background restriction; One UI sets it
@@ -2467,8 +2467,16 @@ the exact window no refresh covers — so the second reading is not redundant. T
 because there is no public `OPSTR_` constant for `android:run_any_in_background`, and hardcoding an
 undocumented string to depend on it firing is worse than re-reading.
 
-**The part that is not done, stated as a gap rather than a caveat: this call has never once returned
-`true` on any device in this project.** The op was restored to `allow` on the S25 at the owner's
+**Taken on hardware 2026-09-12 — `docs/testing.md` → Phase 7 Slice 42.** Card absent → present →
+absent, with the dump at **18,248 → 20,798 → 18,248 bytes**, identical byte-for-byte either side;
+`mirror` left the advertised set and returned while the other nine capabilities did not move; and
+the Mac's chip carried `CAPABILITY_REASON` verbatim on both of its routes. **The restore is the
+reading that mattered** — a card that appears and never leaves is a different defect, and the third
+row is what excludes it.
+
+~~**The part that is not done, stated as a gap rather than a caveat: this call has never once returned
+`true` on any device in this project.**~~ **Struck 2026-09-12** — it has now, and the paragraph below
+is kept because the stimulus it names is the one that was run. The op was restored to `allow` on the S25 at the owner's
 instruction, and it is unset on both Motorolas and the vivo. So what is proven is the rule — 23
 tests, 12 mutations, every one red, including the original defect sentence restored — and what is
 unproven is the *write*, which is precisely the `LinkWaitStatus` split: eleven green tests over a
