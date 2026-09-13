@@ -68,6 +68,20 @@ export interface DebugSwitches {
    * behaviour is what an action does when the thing it names is already gone.
    */
   stallCallEnded: boolean;
+  /**
+   * Delay the float renderer's listener registration, so the `onReady` push **loses** the race.
+   *
+   * Defect 105 is a race, and a race nobody has watched lose is a fix against a description. The
+   * losing side could not be produced on demand: whether main's replay reaches the float before or
+   * after its `onVideoFrame` handler exists is decided by process scheduling, and on every machine
+   * tried here the push won. This makes the loss deterministic, so the old code can be shown failing
+   * before the new code is shown passing.
+   *
+   * It is the only switch here that exists to prove a *fix* rather than to reach an error path, and
+   * it stays after the fix for the same reason the other five stay: the next person to touch the
+   * start path needs to be able to lose the race on purpose.
+   */
+  delayFloatListeners: boolean;
 }
 
 const NAMES: readonly (keyof DebugSwitches)[] = [
@@ -76,6 +90,7 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'bypassRemoteGuard',
   'forceRecipientMismatch',
   'stallCallEnded',
+  'delayFloatListeners',
 ];
 
 function read(): DebugSwitches {
@@ -85,6 +100,7 @@ function read(): DebugSwitches {
     bypassRemoteGuard: false,
     forceRecipientMismatch: false,
     stallCallEnded: false,
+    delayFloatListeners: false,
   };
   // `app.isPackaged` is not consulted here because this module must stay importable by tests with
   // no Electron present; main.ts guards the startup read instead.

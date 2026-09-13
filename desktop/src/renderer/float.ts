@@ -33,6 +33,8 @@ interface FloatBridge {
   onStatus(callback: (status: FloatStatus | null) => void): void;
   onFloatChanged(callback: (state: { focused: boolean; pinned: boolean }) => void): void;
   mirrorKeyframe(reason?: string): Promise<unknown>;
+  streamStart(): Promise<{ config: { ptsUs: number; bytes: number } | null; sessionRunning: boolean }>;
+  debugSwitches(): Promise<{ delayFloatListeners: boolean }>;
   /** One line into the Mac's own log file. See preload.ts — the float had no durable voice before. */
   logLine(where: string, line: string): void;
   mirrorCapture(dataUrl: string): Promise<{ ok?: boolean; path?: string; reason?: string }>;
@@ -89,11 +91,6 @@ const dock = document.getElementById('float-dock') as HTMLElement;
 let inputAdvertised = false;
 
 let toastTimer: number | null = null;
-
-/** Provided by floatWait.js, loaded ahead of this file. See defect 94 for why it is not imported. */
-declare function floatWaitState(input: {
-  hasDecoder: boolean; decoding: boolean; requested: number; answered: number;
-}): { kind: string; sentence: string; detail: string | null; blocking: boolean };
 
 /*
  * The float's own two counters. Not `KeyframeTrace` — that is a main-process module and counts the
@@ -222,6 +219,30 @@ floatBridge.onFloatChanged((state) => {
   pin.setAttribute('aria-pressed', String(state.pinned));
 });
 
+/*
+ * **Every listener above is now registered, so the stream may be asked for.** This ordering is the
+ * whole contract: the ask is emitted by the only participant that knows the handlers exist, and it
+ * happens *after* them in the same synchronous run, so there is nothing to race.
+ *
+ * `delayFloatListeners` delays this ask to widen the window the old push used to lose in. Under the
+ * old code that window was fatal — the config arrived, found no handler, and nothing asked again.
+ * Under the contract the delay is harmless: main is not pushing anything, and the ask arrives
+ * whenever it arrives. That difference is the proof, and it is why the switch stays after the fix.
+ */
+void floatBridge
+  .debugSwitches()
+  .catch(() => ({ delayFloatListeners: false }))
+  .then((switches) => {
+    const delayMs = switches.delayFloatListeners ? 3_000 : 0;
+    if (delayMs > 0) {
+      trace(`delayFloatListeners is ON — holding the stream-start ask for ${delayMs}ms on purpose`);
+    }
+    if (delayMs === 0) return askForTheStream('listeners registered');
+    return new Promise<void>((resolve) => {
+      window.setTimeout(() => void askForTheStream('listeners registered (delayed)').then(resolve), delayMs);
+    });
+  });
+
 document.getElementById('float-close')!.addEventListener('click', () => floatBridge.floatClose());
 document.getElementById('float-minimize')!.addEventListener('click', () => floatBridge.floatMinimize());
 // Green light and a double-click on the bar are the same gesture, per the handoff, so they are the
@@ -345,6 +366,63 @@ document.getElementById('float-shot')!.addEventListener('click', async () => {
 // phone answers the keyframe request main.ts makes on open. Saying so beats an empty black frame
 // that is indistinguishable from a dead window.
 refreshOverlay();
+
+/**
+ * **The start contract, asking half.** Defect 105.
+ *
+ * `main.ts` used to push the retained parameter sets when this window finished loading, which says
+ * nothing about whether `onVideoFrame` had been registered. The push and the registration raced,
+ * both orderings were legal, and the loser got nothing for the life of the session — silently,
+ * because `H264Canvas.push` drops every frame above the branch that would ask for more.
+ *
+ * This call happens **after** the listeners below are installed, which is a fact only this window
+ * can know. There is no event to lose.
+ *
+ * Gated by `StartRequestGate`: one request in flight, a floor between attempts. A window that asked
+ * on every dropped frame would ask sixty times a second, which is the storm the obvious fix for
+ * defect 105 would have produced.
+ */
+/*
+ * `StartRequestGate` and `actionFor` come from `streamStart.js`, loaded ahead of this file, and
+ * `floatWaitState` from `floatWait.js`. No `declare` for any of them: every renderer file is a
+ * classic script sharing one global scope, so TypeScript already sees them — and a `declare class`
+ * beside the real one is a duplicate identifier, which is how this was found.
+ */
+const startGate = new StartRequestGate(() => Date.now());
+
+async function askForTheStream(why: string): Promise<void> {
+  const verdict = startGate.may();
+  if (!verdict.ask) {
+    trace(`stream-start not asked (${why}): ${verdict.reason}` +
+      (verdict.reason === 'in-flight' ? ` for ${verdict.outstandingForMs}ms` : ` — ${verdict.waitMs}ms to wait`));
+    return;
+  }
+  startGate.sent();
+  trace(`stream-start asking (${why}), attempt ${verdict.attempt}`);
+  try {
+    const answer = await floatBridge.streamStart();
+    startGate.settled();
+    const action = actionFor(answer);
+    trace(
+      `stream-start answered: ${answer.config ? `${answer.config.bytes}B of parameter sets` : 'no retained config'}` +
+        `, sessionRunning=${answer.sessionRunning} → ${action}`,
+    );
+    if (action === 'ask-again') {
+      // A session is running and nothing has been retained: the keyframe request is what fills that
+      // gap, because a config frame precedes the IDR that answers one.
+      void floatBridge
+        .mirrorKeyframe('float asked for the stream and there was no retained config')
+        .catch((error: unknown) => trace(`keyframe request failed: ${String(error)}`));
+    }
+    refreshOverlay();
+  } catch (error) {
+    startGate.settled();
+    // The reason reaches the log. A swallowed failure here is indistinguishable from an answer of
+    // "no config", and those need different responses.
+    trace(`stream-start failed: ${String(error)}`);
+  }
+}
+
 void floatBridge.floatState().then((state) => {
   frame.classList.toggle('focused', state.focused);
   pin.setAttribute('aria-pressed', String(state.pinned));

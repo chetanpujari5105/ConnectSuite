@@ -545,6 +545,15 @@ contextBridge.exposeInMainWorld('connect', {
    * window can become an `NSWindow` later without a renderer change; this is the wire that keeps
    * that true.
    */
+  /**
+   * The start contract's asking half: "my listeners are up, what is the stream?"
+   *
+   * Replaces a push from `main.ts` on a window event that said nothing about whether this page was
+   * listening yet. See shared/streamStart.ts — defect 105.
+   */
+  streamStart: () => ipcRenderer.invoke('stream-start'),
+  /** Debug switches the renderer needs — currently only `delayFloatListeners`. Empty in a package. */
+  debugSwitches: () => ipcRenderer.invoke('debug-switches'),
   floatOpen: () => ipcRenderer.invoke('float-open'),
   floatClose: () => ipcRenderer.invoke('float-close'),
   floatMinimize: () => ipcRenderer.invoke('float-minimize'),

@@ -18048,3 +18048,108 @@ The second row is the honest status of defect 105's own symptom: the code path i
 counter is in place, and the state has **not** been reproduced on this machine. The third is the
 question the whole slice was built to make answerable, and it is still unanswered — which is a much
 better position than the one this started from, where it was unaskable.
+
+---
+
+## Phase 7 Slice 45 — the start contract, and the race watched losing (2026-09-13)
+
+Defect 105. The float A/B said STATE A, so §1 is its own bug; Slice 44 gave the path a voice; this
+is the fix, and **both halves of it are proven on hardware rather than reasoned about**.
+
+### 1 · The contract
+
+| | |
+|---|---|
+| who asks | **the float**, immediately after its own `floatBridge.on…` registrations, in the same synchronous run — the only participant that knows the handlers exist |
+| who answers | **main**, to `event.sender` rather than by broadcast: by construction the window that just said it is ready |
+| the answer | the retained config, **or `null` plainly**. `sessionRunning` comes from `video.isOpen()` |
+| the limit | one request in flight; a 1 s floor between attempts; the in-flight gate releases after 5 s |
+| what was removed | the push on `onReady`. Not narrowed — **removed**. There is no window event in the path |
+
+`sessionRunning` is deliberately **not** derived from `config !== null`. That fallback was written
+first and would have made `actionFor`'s `ask-again` branch structurally unreachable — a state drawn
+beside states that can happen, which is the Folders-screen lesson. `video.isOpen()` is the real
+signal.
+
+### 2 · Proof — `answered by an IDR` above zero, ack **before** frame
+
+Slice 44's one measurement had the frame beating the ack by a millisecond, so the request got credit
+for an IDR already in flight. Taken again on a **quiet** stream (0.5–1 fps, phone screen static):
+
+```
+00:52:26.945 I [mirror] keyframe requested (PROOF 2: deliberate request on a quiet stream)
+                        — 11 requested / 10 acked / 3 answered by an IDR
+00:52:26.953 I [mirror] keyframe request acked (+8 ms)          ← the ack precedes the frame
+00:52:29.025 I [mirror] keyframe ARRIVED after 2080 ms — 11 requested / 11 acked / 4 answered
+```
+
+Corroborated from the phone's own end, by a number nothing on the Mac writes: `last keyframe` in the
+encoder's 2-second ticker changed **123968B → 277290B** at 00:52:30.808, against the Mac's ARRIVED
+at 00:52:29.025.
+
+Reproduced a second time inside the Reading A run below — ack at `.269`, frame at `+930 ms`,
+`4 → 5 answered`.
+
+**The quiet stream is the control, not a convenience.** At 115 fps a request is answered by whatever
+IDR was coming anyway and the ordering proves nothing; at 0.5 fps a 2-second gap with an ack inside
+it is attributable.
+
+### 3 · Proof — `droppedWithNoDecoder` above zero, and what recovers from it
+
+`delayFloatListeners` (a debug switch, off by default, announced at warning level when on) holds the
+float's ask for 3 s, making the losing side of the race deterministic. It was never observed losing
+before: on every machine tried here the push won.
+
+**Reading A — the contract, delay ON, live session:**
+
+```
+00:54:26.253 [float]  delayFloatListeners is ON — holding the stream-start ask for 3000ms on purpose
+00:54:27.141 [float]  dropped 1 access unit(s) with no configured decoder (delta)
+                      — nothing has been asked for, because the request path is below this return
+00:54:29.255 [float]  stream-start asking (listeners registered (delayed)), attempt 1
+00:54:29.256 [float]  stream-start asked: replaying 31B of parameter sets, sessionRunning=true
+00:54:29.259 [float]  decoder configured from retained parameter sets; asking for a keyframe
+00:54:29.269 [mirror] keyframe request acked — 12 requested / 12 acked / 4 answered
+00:54:30.189 [mirror] keyframe ARRIVED after 930 ms — 12 requested / 12 acked / 5 answered
+00:54:30.190 [float]  keyframe reached the decoder; arming it and decoding from here
+```
+
+**The drop happened and the contract recovered from it.** That is the whole claim, and the first line
+is the first time `droppedWithNoDecoder` has been above zero in this project.
+
+**Reading B — the ask disabled, same delay, same session:**
+
+```
+droppedWithNoDecoder: 730        hasDecoder: false     decoding: false
+requested: 0   answered: 0       ← nothing was ever asked
+overlay: SHOWING, "The floating window has not been told how to decode this stream yet. …"
+```
+
+**730 against 1.** `requested: 0` is defect 105's mechanism read directly off the running window: the
+recovery path is below the return, so nothing asks, so nothing ever arrives.
+
+**What Reading B is and is not.** It reproduces the **losing branch** of the old race
+deterministically — no config, no ask, dropping forever — which is the state a user was in whenever
+the push lost. It is **not** a byte-for-byte run of the old code, because the old main also pushed on
+`onReady` and therefore sometimes won. The push is what made the defect *intermittent*; Reading B
+removes the luck and shows what remains. The faithful old-code run would additionally restore that
+push, and it costs an Electron restart and a fresh consent tap for no additional information about
+the mechanism.
+
+The experiment patched the working tree and reverted it; `TEMPORARY EXPERIMENT` markers are asserted
+absent in both `src/` and `dist/` afterwards.
+
+### 4 · What is NOT proven, and what it would cost
+
+**The phone-side instrumentation from defect 106 has never run.** `lastUpdateTime=2026-09-12
+13:11:14` — the APK on the device predates it, and a grep for its three new lines
+(`mirror.keyframe from …`, `Keyframe requested of the codec`, `Keyframe EMITTED`) returns **0** over
+600 lines. Everything in §2 and §3 is Mac-side counting; the phone corroborates only through the
+`last keyframe` byte size, which is older instrumentation.
+
+To prove it: `adb install -r` the current debug APK, restart `MainActivity` by name, confirm with
+`scripts/link-up.sh`, and take §2's reading again — one reinstall and **one consent tap**, because
+the reinstall drops the session and MediaProjection consent cannot be cached.
+
+Also unproven: the 1 s floor and the 5 s in-flight release are unit-tested and have not been seen
+firing on hardware, because the contract succeeds on its first attempt every time so far.

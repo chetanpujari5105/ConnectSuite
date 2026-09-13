@@ -26,7 +26,17 @@ test('the known switches are exactly these, and every one defaults to off', () =
 
   assert.deepEqual(
     Object.keys(all).sort(),
-    ['bypassRemoteGuard', 'bypassReplyGuard', 'forceRecipientMismatch', 'stallCallEnded', 'stallRemoved'],
+    [
+      'bypassRemoteGuard',
+      'bypassReplyGuard',
+      // Added 2026-09-13 for defect 105. Confirmed off by default by the assertion below, and it is
+      // the only switch here that exists to prove a fix rather than to reach an unreachable error
+      // path — it forces the float's start race to lose, which no machine tried here would do.
+      'delayFloatListeners',
+      'forceRecipientMismatch',
+      'stallCallEnded',
+      'stallRemoved',
+    ],
     'a switch was added or removed — confirm it defaults to off, then list it here',
   );
   assert.deepEqual(

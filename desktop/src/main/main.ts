@@ -613,6 +613,55 @@ app.whenReady().then(() => {
    * own — which on a still screen can be a very long time.
    */
   /*
+   * **The start contract: the float asks, main answers.** Defect 105.
+   *
+   * This replaces a push on `onReady` — a webContents event that fires when the page is loaded, not
+   * when the page has registered the handler that would catch what is pushed. Both orderings were
+   * legal and the loser got nothing, forever, in silence. There is no window event in this path: the
+   * float emits `stream-start` when its own listeners exist, which is a fact only it can know.
+   *
+   * `null` config is an **answer**. A link that has never carried a config frame has nothing to
+   * replay, and saying so lets the float distinguish "nothing is mirroring" from "something is
+   * mirroring and we have no parameter sets" — see `actionFor` in renderer/streamStart.ts.
+   */
+  /** What a renderer is allowed to know about the debug switches. Never on in a packaged build. */
+  ipcMain.handle('debug-switches', () =>
+    app.isPackaged ? { delayFloatListeners: false } : { delayFloatListeners: debugSwitches().delayFloatListeners },
+  );
+
+  // The shape is declared here and interpreted in renderer/streamStart.ts. Nothing type-checks
+  // across IPC, so a shared type would imply a guarantee it cannot give; both sides name the other.
+  ipcMain.handle('stream-start', (event): { config: { ptsUs: number; bytes: number } | null; sessionRunning: boolean } => {
+    const config = video?.configFrame() ?? null;
+    const answer = {
+      config: config ? { ptsUs: config.ptsUs, bytes: config.data.length } : null,
+      // `isOpen()` — the video socket, which is what a running session actually is. NOT derived
+      // from `config !== null`: that would make `sessionRunning` a restatement of the field beside
+      // it, and `actionFor`'s `ask-again` branch structurally unreachable — a state drawn beside
+      // states that can happen, which is the thing the Folders screen exists as a lesson about.
+      sessionRunning: Boolean(video?.isOpen()),
+    };
+    log.info(
+      'float',
+      `stream-start asked: ${answer.config ? `replaying ${answer.config.bytes}B of parameter sets` : 'no retained config'}` +
+        `, sessionRunning=${answer.sessionRunning}`,
+    );
+    if (config) {
+      // Sent to **the asker**, not broadcast: `event.sender` is by construction the window that just
+      // said its listeners are up, which is the whole content of the contract. Nothing here needs to
+      // know which window that is, and nothing can deliver it to a window that is not ready.
+      event.sender.send('video-frame', {
+        keyframe: config.keyframe,
+        config: config.config,
+        ptsUs: config.ptsUs,
+        data: new Uint8Array(config.data),
+        arrivedAt: config.arrivedAt,
+      });
+    }
+    return answer;
+  });
+
+  /*
    * **One traced path for `mirror.keyframe`, used by all three callers.**
    *
    * There were three, and all three ended in `.catch(() => undefined)`: the IPC handler, the
@@ -643,19 +692,14 @@ app.whenReady().then(() => {
     join(__dirname, '..', 'renderer', 'float.html'),
     (state) => sendAll('float-changed', state),
     (target) => {
-      const config = video?.configFrame();
-      if (config) {
-        target.webContents.send('video-frame', {
-          keyframe: config.keyframe,
-          config: config.config,
-          ptsUs: config.ptsUs,
-          data: new Uint8Array(config.data),
-          arrivedAt: config.arrivedAt,
-        });
-      }
-      // Asked for even when there was no retained config: a window with a decoder and no reference
-      // frame is the same black rectangle either way, and `mirror.keyframe` costs one small message.
-      void requestKeyframe(config ? 'float opened; config replayed' : 'float opened; no retained config');
+      /*
+       * **The config is no longer pushed from here.** It used to be, and that was defect 105: this
+       * callback fires on `did-finish-load`, which says nothing about whether the page's
+       * `onVideoFrame` handler exists yet. The float now asks (`stream-start`) once its listeners
+       * are up, and this callback's only remaining job is the status replay below — a message the
+       * float re-requests nothing for because a missed one costs a device name, not a picture.
+       */
+      void target;
       // The window missed every `status` sent before it existed, so it starts with no device name
       // and no idea whether input is advertised. Replay the last one rather than leaving it blank.
       if (lastStatus) target.webContents.send('status', lastStatus);
