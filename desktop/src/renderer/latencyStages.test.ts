@@ -11,7 +11,7 @@ const { timebaseVerdict, stagesFor, medianOf } = require('./latencyStages') as {
     clockOffsetMs: number | undefined;
     arrivedAtMs: number | null;
     paintedAtMs: number;
-  }) => { encodeMs: number | null; wireMs: number | null; macMs: number | null; totalMs: number | null; origin: string };
+  }) => { encodeMs: number | null; wireMs: number | null; macMs: number | null; totalMs: number | null; origin: string; splitReliable: boolean };
   medianOf: (xs: readonly number[]) => number | null;
 };
 
@@ -139,4 +139,44 @@ test('a median over nothing is null, never zero', () => {
   assert.equal(medianOf([4]), 4);
   assert.equal(medianOf([1, 3]), 2);
   assert.equal(medianOf([5, 1, 3]), 3);
+});
+
+// ---- the split that tells on itself ---------------------------------------------------------------
+
+test('a negative wire stage is impossible, so the split is flagged rather than clamped', () => {
+  // Found by the first mark ever taken: encode 34.6 ms against a wire of -8.0 ms. The encode figure
+  // is sampled once every two seconds and applied to every frame between; when that one frame
+  // encoded slowly, the estimate overshoots. The total is still right.
+  const s = stagesFor({
+    ptsUs: 1_000_000,
+    anchor: { ptsUs: 1_000_000, monoUs: 1_034_000 },   // a 34 ms encode sample
+    clockOffsetMs: 0,
+    arrivedAtMs: 1_026,                                 // this frame arrived 26 ms after capture
+    paintedAtMs: 1_028,
+  });
+  assert.equal(s.splitReliable, false);
+  assert.ok(s.wireMs! < 0, `${s.wireMs}`);
+  // Not clamped: the negative IS the signal, and a clamp would have hidden what revealed this.
+  assert.equal(s.totalMs, 28, 'the total is a real measured interval and stays sound');
+});
+
+test('control — an ordinary frame has a reliable split', () => {
+  const s = stagesFor({
+    ptsUs: 1_000_000,
+    anchor: { ptsUs: 1_000_000, monoUs: 1_014_000 },
+    clockOffsetMs: 0,
+    arrivedAtMs: 1_020,
+    paintedAtMs: 1_025,
+  });
+  assert.equal(s.splitReliable, true);
+  assert.equal(s.encodeMs, 14);
+  assert.equal(s.wireMs, 6);
+});
+
+test('a frame with no arrival has nothing to split, so it is not flagged unreliable', () => {
+  const s = stagesFor({
+    ptsUs: 1_000_000, anchor: { ptsUs: 1_000_000, monoUs: 1_050_000 },
+    clockOffsetMs: 0, arrivedAtMs: null, paintedAtMs: 1_030,
+  });
+  assert.equal(s.splitReliable, true);
 });

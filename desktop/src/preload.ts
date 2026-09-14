@@ -52,6 +52,11 @@ contextBridge.exposeInMainWorld('connect', {
    * costs. `send`, not `invoke`: a log line must never make the caller wait, and it has no answer.
    */
   logLine: (where: string, line: string) => ipcRenderer.send('renderer-log', where, line),
+  /** Main → this window: "summarise the stages around now." See renderer/markWindow.ts. */
+  onMarkRequested: (callback: (label: string) => void) =>
+    ipcRenderer.on('mark-requested', (_event, label: string) => callback(label)),
+  /** This window → main: the summary, for the log file. */
+  markMoment: (summary: unknown) => ipcRenderer.invoke('mark-moment', summary),
   mirrorStats: () => ipcRenderer.invoke('mirror-stats'),
   /** `mirror.config` at runtime: raise the resolution cap or change bitrate without a restart. */
   mirrorConfig: (options: Record<string, unknown>) => ipcRenderer.invoke('mirror-config', options),

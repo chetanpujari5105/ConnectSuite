@@ -56,9 +56,22 @@ declare function stagesFor(input: {
   macMs: number | null;
   totalMs: number | null;
   origin: 'capture' | 'encoder-output';
+  splitReliable: boolean;
 };
 
+declare function summariseMark(
+  samples: readonly {
+    at: number; totalMs: number; encodeMs: number | null; wireMs: number | null; macMs: number | null;
+    splitReliable?: boolean;
+  }[],
+  markedAt: number,
+  windowMs: number,
+  label: string,
+): unknown;
+
 interface LatencySample {
+  /** `Date.now()` when this frame was painted. Without it a mark has no window to summarise. */
+  at: number;
   total: number;
   link: number | null;
   decode: number | null;
@@ -66,6 +79,8 @@ interface LatencySample {
   encode: number | null;
   /** Which instant `total` is measured from. A number without this was the whole of §4's anchor bug. */
   origin: 'capture' | 'encoder-output';
+  /** False when the encode/wire split overshot — the total is still sound. See latencyStages.ts. */
+  splitReliable: boolean;
 }
 
 interface CaptureAck {
@@ -514,6 +529,25 @@ class MirrorView {
     };
   }
 
+  /**
+   * "That was bad" — the stages over the seconds before somebody said so.
+   *
+   * The rolling buffer is `LATENCY_SAMPLES` long, so at 120 fps it covers about two seconds and at
+   * 60 fps about four. The window asked for is clamped to what the buffer can actually answer, and
+   * the summary reports how many samples it found so a short window cannot masquerade as a quiet one.
+   */
+  markMoment(label: string, windowMs = 5_000): unknown {
+    return summariseMark(
+      this.latencies.map((s) => ({
+        at: s.at, totalMs: s.total, encodeMs: s.encode, wireMs: s.link, macMs: s.decode,
+        splitReliable: s.splitReliable,
+      })),
+      Date.now(),
+      windowMs,
+      label,
+    );
+  }
+
   private resetMeasurements(): void {
     this.requestedAt = 0;
     this.firstFrameAt = 0;
@@ -755,11 +789,13 @@ class MirrorView {
     if (stages.totalMs <= -1_000 || stages.totalMs >= 10_000) return;
 
     this.latencies.push({
+      at: paintedAt,
       total: stages.totalMs,
       link: stages.wireMs,
       decode: stages.macMs,
       encode: stages.encodeMs,
       origin: stages.origin,
+      splitReliable: stages.splitReliable,
     });
     if (this.latencies.length > LATENCY_SAMPLES) this.latencies.shift();
   }

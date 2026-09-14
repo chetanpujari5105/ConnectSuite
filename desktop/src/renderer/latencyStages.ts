@@ -87,6 +87,21 @@ function timebaseVerdict(anchor: { ptsUs: number; monoUs: number } | null): {
 
 /** Every stage this pair of machines can actually see, in milliseconds. Null where unknowable. */
 interface Stages {
+  /**
+   * Whether the encode/wire **split** can be trusted for this frame.
+   *
+   * `capture → arrived` is a real measured interval. Splitting it into encode and wire is not: the
+   * encode figure is sampled from **one frame every two seconds** (`mirror.stats`) and applied to
+   * every frame in between. When that sampled frame encoded unusually slowly — a keyframe, or one
+   * that waited — the estimate overshoots and `wireMs` comes out **negative**, which is physically
+   * impossible and is therefore the split telling on itself.
+   *
+   * Found by the first mark ever taken: `encode 34.6 ms, wire -8.0 ms` against a measured encode of
+   * 14-18 ms in the slices before it. The totals were right; the division was not. A clamp here
+   * would have hidden exactly the signal that revealed it, so nothing is clamped — the flag says the
+   * split is unreliable and the caller reports the total instead.
+   */
+  splitReliable: boolean;
   /** Capture → encoder output, sampled from the anchor frame. Null unless the timebase is shared. */
   encodeMs: number | null;
   /** Encoder output → arrival on the Mac. Phone queue + socket write + wire, not yet separable. */
@@ -103,7 +118,7 @@ function stagesFor(input: StageInput): Stages {
   const { verdict, lagUs } = timebaseVerdict(input.anchor);
   const offset = input.clockOffsetMs;
   if (offset === undefined || !input.anchor) {
-    return { encodeMs: null, wireMs: null, macMs: null, totalMs: null, origin: 'encoder-output' };
+    return { encodeMs: null, wireMs: null, macMs: null, totalMs: null, origin: 'encoder-output', splitReliable: true };
   }
 
   const macMs = input.arrivedAtMs === null ? null : input.paintedAtMs - input.arrivedAtMs;
@@ -112,12 +127,16 @@ function stagesFor(input: StageInput): Stages {
     // PTS is the capture instant on the phone's monotonic clock.
     const capturedAtMac = input.ptsUs / 1000 + offset;
     const encodedAtMac = capturedAtMac + lagUs / 1000;
+    const wireMs = input.arrivedAtMs === null ? null : input.arrivedAtMs - encodedAtMac;
     return {
       encodeMs: lagUs / 1000,
-      wireMs: input.arrivedAtMs === null ? null : input.arrivedAtMs - encodedAtMac,
+      wireMs,
       macMs,
       totalMs: input.paintedAtMs - capturedAtMac,
       origin: 'capture',
+      // Negative wire is impossible, so it is the sampled encode estimate exceeding this frame's
+      // real pipeline. Reported, never clamped.
+      splitReliable: wireMs === null ? true : wireMs >= 0,
     };
   }
 
@@ -131,6 +150,8 @@ function stagesFor(input: StageInput): Stages {
     macMs,
     totalMs: input.paintedAtMs - encodedAtMac,
     origin: 'encoder-output',
+    // No encode figure is claimed in this branch, so there is no split to be unreliable.
+    splitReliable: true,
   };
 }
 

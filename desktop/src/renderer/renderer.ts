@@ -85,6 +85,10 @@ interface ConnectBridge {
   }>;
   mirrorStop(): Promise<{ ok: boolean }>;
   mirrorKeyframe(reason?: string): Promise<void>;
+  /** Main asks this window to summarise the stages around now. */
+  onMarkRequested?(callback: (label: string) => void): void;
+  /** The summary, back to main, which writes it to the log file. */
+  markMoment(summary: unknown): Promise<void>;
   mirrorConfig(options: Record<string, unknown>): Promise<{ ok: boolean }>;
   mirrorCapture(dataUrl: string): Promise<{ ok: boolean; path?: string; reason?: string }>;
 
@@ -1000,6 +1004,16 @@ el('mirror-capture').addEventListener('click', () => void mirror.saveStill());
 
 /** `mirror.keyframe`. What to press when the picture has torn and is not recovering. */
 el('mirror-refresh').addEventListener('click', () => void connect.mirrorKeyframe('Refresh pressed'));
+
+/*
+ * **"That was bad."** The main process owns the shortcut (a global one, so the keystroke is taken by
+ * the OS and never reaches the mirror canvas to be forwarded to the phone as text) and asks here,
+ * because the samples live in this window.
+ */
+connect.onMarkRequested?.((label: string) => {
+  const summary = mirror.markMoment(label);
+  void connect.markMoment(summary);
+});
 /*
  * M5 — the rail's Transfer slot. Its blocker was `fs.*` having no payload spec; that was removed
  * when Files shipped on 2026-09-01.

@@ -40,6 +40,7 @@ import { RemoteClient } from './remote';
 import { CallClient } from './calls';
 import { SmsClient } from './sms';
 import { LinkClient } from './link';
+import { globalShortcut } from 'electron';
 import { initLogger, log, tailLog } from './logger';
 // The main process imports this normally; `float.html` loads the same file as a classic script and
 // gets the globals it declares. Both are the same source, which is the point — the counting rule
@@ -624,6 +625,47 @@ app.whenReady().then(() => {
    * replay, and saying so lets the float distinguish "nothing is mirroring" from "something is
    * mirroring and we have no parameter sets" — see `actionFor` in renderer/streamStart.ts.
    */
+  /*
+   * **The mark: a key a person can press when the mirror feels wrong.**
+   *
+   * Slices 46 and 47 measured this pipeline at idle, 60 fps and 120 fps and found it clean at every
+   * rate — nothing dropped, ~25 ms capture-to-paint, three named suspects all failed. So the only
+   * instrument left is the person watching, and a description after the fact carries no timestamp
+   * and cannot be matched against anything.
+   *
+   * **A global shortcut, deliberately.** The mirror canvas forwards keystrokes to the phone as text
+   * input; a shortcut registered with the OS is taken before the page sees it, so marking a bad
+   * moment cannot type into whatever app is open on the phone. That is not a detail — a diagnostic
+   * that types into somebody's messages while they use it would be worse than no diagnostic.
+   */
+  const MARK_ACCELERATOR = 'CommandOrControl+Shift+M';
+  if (globalShortcut.register(MARK_ACCELERATOR, () => {
+    const at = new Date().toISOString();
+    log.warn('mark', `MARK at ${at} — asking the mirror window for the stages around it`);
+    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('mark-requested', at));
+  })) {
+    log.info('mark', `Press ${MARK_ACCELERATOR} when the mirror feels wrong; the stages around it go in this log`);
+  } else {
+    // Another app holds it. Said out loud rather than left as a key that silently does nothing.
+    log.warn('mark', `Could not register ${MARK_ACCELERATOR} — another app holds it. Use scripts/mirror-mark.mjs instead`);
+  }
+
+  ipcMain.handle('mark-moment', (_event, summary: unknown) => {
+    // One line, so a run of marks reads as a table in the log rather than as prose to reassemble.
+    const s = summary as Record<string, unknown> | null;
+    if (!s) return;
+    log.warn(
+      'mark',
+      `MARKED ${s.label} — ${s.clean ? 'CLEAN' : 'NOT CLEAN'}: ${s.why}. ` +
+        `samples=${s.samples} fps=${typeof s.fps === 'number' ? s.fps.toFixed(1) : 'n/a'} ` +
+        `median=${s.medianTotalMs}ms worst=${s.worstTotalMs}ms longestGap=${s.longestGapMs}ms ` +
+        `encode=${s.medianEncodeMs}ms wire=${s.medianWireMs}ms mac=${s.medianMacMs}ms` +
+          (Number(s.unreliableSplits) > 0
+            ? `  [split unreliable on ${s.unreliableSplits}/${s.samples} frames — read the total, not the halves]`
+            : ''),
+    );
+  });
+
   /** What a renderer is allowed to know about the debug switches. Never on in a packaged build. */
   ipcMain.handle('debug-switches', () =>
     app.isPackaged ? { delayFloatListeners: false } : { delayFloatListeners: debugSwitches().delayFloatListeners },

@@ -18359,3 +18359,87 @@ peak at 1 fps. That is a frame waiting for the next composite on a still screen,
 characterise what is actually perceived as unsmooth — a recording of the symptom against a wall
 clock — rather than to keep instrumenting a pipeline that reads clean at every rate it can be driven
 to. Naming a fourth suspect from here would be the thing this slice exists to avoid.
+
+---
+
+## Phase 7 Slice 48 — the mark, and a flaw it found in the stage split (2026-09-14)
+
+The pipeline reads clean at every rate this handset can be driven to (Slice 47), so the remaining
+instrument is the person watching. A description after the fact carries no timestamp and cannot be
+matched against anything; this turns *"that felt wrong"* into a bounded window with numbers in it,
+taken while the session is live.
+
+### 1 · How to mark
+
+**`Cmd+Shift+M`** while the mirror is running, or **`node scripts/mirror-mark.mjs "what it looked
+like"`** from a terminal. Both write the same summary to the Mac's log under the `[mark]` tag, so a
+session's marks are one `grep` rather than scrollback.
+
+**The shortcut is global on purpose.** The mirror canvas forwards keystrokes to the phone as text
+input, so a page-level binding would type into whatever app is open on the phone every time somebody
+marked a bad moment. A global accelerator is taken by the OS before the page sees it. If another app
+already holds it, that is said at startup rather than left as a key that silently does nothing.
+
+### 2 · What a mark reports, and why it is not one number
+
+The window reaches **back** from the keypress, because the event is over by the time a hand arrives.
+Four things, and the last two are the ones a median would bury:
+
+| | |
+|---|---|
+| `samples` / `fps` | the denominator, and whether the stream was even running |
+| `medianTotalMs` | the ordinary case |
+| **`worstTotalMs`** | one bad frame in 300 does not move a median and *is* the event |
+| **`longestGapMs`** | a stall shows as a gap between paints and **nowhere else** — frames can arrive late but evenly with perfect totals while the picture visibly freezes |
+
+`clean` is decided against the window's **own** median (3× for an outlier, 3× for a gap), because
+25 ms is good at 120 fps and terrible at 1 fps and a fixed threshold would be wrong at one of them.
+**An empty window is never clean** — no frames painted is the picture being stopped, which is the
+loudest possible reading, and reporting it as clean would invert the finding.
+
+**A clean mark is a result.** If every mark comes back clean, that is the answer: what is being
+called unsmooth is not latency.
+
+### 3 · The first mark ever taken found a flaw in the stage split
+
+```
+NOT CLEAN — longest gap between paints 1001 ms against a median of 7 ms
+samples 170 over 5s   fps 69.5
+total   median 26.1 ms   worst 53.0 ms
+stages  encode 34.614 ms · wire -7.990 ms · mac 2 ms
+```
+
+**`wire = −7.99 ms`.** A frame cannot arrive before it was encoded, so that is the instrument telling
+on itself.
+
+The cause is a real limitation of Slice 46's fix, and it was not stated there: **`encodeLagUs` is
+sampled from one frame every two seconds** (`mirror.stats`) and applied to every frame in between.
+When that one frame encodes unusually slowly — 34.6 ms here against the 14–18 ms measured in Slices
+46 and 47 — the estimate overshoots and the remainder goes negative.
+
+**`capture → arrived` is a real measured interval and stays sound. Its division into encode and wire
+is an estimate.** Those are different claims and were being published as if they were the same one.
+
+`splitReliable` now says which, per frame, and the mark counts how many frames in the window carried
+an untrustworthy split. **Nothing is clamped**: a clamp would have hidden the negative, and the
+negative is what revealed this. Three tests cover it, including the exact 34.6/−8.0 shape.
+
+### 4 · The quality question at 120 fps — partial, and honestly so
+
+| | bytes/frame | rate |
+|---|---|---|
+| 60 fps, Instagram scrolling | 26.7 KB | 13.1 Mbps |
+| 120 fps, launcher page-flips | 12.1 KB | 11.4 Mbps |
+
+Bytes per frame roughly **halves**, which is the shape the concern predicted. **It is not a clean
+comparison**: the two runs were different content, and a launcher page-flip and an Instagram scroll
+do not compress alike. Attributing the difference to the frame rate would be the units error this
+repo has a rule about.
+
+**A second thing in the same numbers deserves its own look: both runs exceed the configured 8 Mbps**
+— 13.1 and 11.4. The encoder is not holding its bitrate target, which weakens the premise that
+frames are being starved to hold it.
+
+**What would settle it:** the same content at both rates, by forcing the panel to 60 Hz
+(`settings put system peak_refresh_rate`, restored afterwards) and repeating the identical launcher
+motion. One settings write, one restore, inside a session that is running anyway.
