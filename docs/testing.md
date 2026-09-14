@@ -18269,3 +18269,93 @@ One consent tap, with the phone under sustained motion:
 
 Until both exist, the honest statement about smoothness is that the anchor is fixed, the idle
 breakdown is known, and **which of suspects 2 and 3 is responsible is not known.**
+
+---
+
+## Phase 7 Slice 47 — the loaded readings, and all three suspects fail (2026-09-14)
+
+The first readings that could judge either remaining suspect, because both live inside the
+encoded→arrived stage and that stage was corrupted by defect 108 until yesterday.
+
+### 1 · The accounting, one window, one read
+
+Phone counters and the Mac's counter taken from **one** `mirror.stats()` evaluation, so there is no
+cross-source window to get wrong — the form whose control refused last time.
+
+| | **60 fps** (Instagram, scrolling) | **120 fps** (launcher page-flips) |
+|---|---|---|
+| window | 30.0 s | 25.0 s |
+| phone encoded | 1804 | 2885 |
+| **phone dropped** | **0** | **0** |
+| mac decoded | 1803 | 3005 |
+| unaccounted | **1** (0.1%) | **−120** (−4.2%) |
+| encode fps / decode fps | 60 / 60 | 115.4 / 120.2 |
+| phone bytes | 1.64 MB/s | 1.43 MB/s |
+
+**The instrument's own bound, stated because the second residual is negative.** `telemetry.phone`
+carries the phone's counters as of its last `mirror.stats` event, which is emitted every 2 s, while
+`framesDecoded` is read live. So the accounting is precise to **±2 s × fps** — 240 frames at 120 fps —
+and a −120 residual sits inside that. It is staleness, not frames arriving from nowhere.
+
+### 2 · The stage medians under load
+
+| stage | idle (1 fps) | 60 fps | 120 fps |
+|---|---|---|---|
+| capture → encoded | 14 ms | 14 ms | 18 ms |
+| encoded → arrived (wire) | 14 ms | **7 ms** | **6 ms** |
+| arrived → painted | 3 ms | 2 ms | 2 ms |
+| **total** | 32 ms | **25 ms** | **25 ms** |
+| peak | 174.7 ms | 39.6 ms | 38.7 ms |
+
+**The pipeline is faster and far steadier under load than at rest.** The wire stage halves and the
+peak falls by a factor of four. That is the opposite of what a queue or a write-pattern bottleneck
+would do, and it is the first thing the numbers say.
+
+### 3 · The suspects, adjudicated
+
+| # | suspect | verdict |
+|---|---|---|
+| 1 | the keyframe storm | **dead** — Slice 43's A/B returned STATE A |
+| 2 | `QUEUE_DEPTH = 4` at 60 fps | **not supported** |
+| 3 | `writeFrame`: write(header), write(data), flush — two writes per frame on TLS | **not supported** |
+
+**Suspect 2.** `droppedFrames` is counted on the phone in `VideoChannel`, where frames are shed when
+the Mac falls behind. It read **0 across 1804 frames at 60 fps and 0 across 2885 at 120 fps**. The
+queue never shed a frame in either condition, so it is not the bottleneck — it was never under
+pressure at all.
+
+**Suspect 3.** Two writes plus a flush per frame is **240 writes per second** at 120 fps, and the
+wire stage there is **6 ms** — its best figure of the three conditions. If the write pattern cost
+anything measurable, the wire stage would get worse as the rate doubled. It gets better.
+
+### 4 · And the third cause I went looking for is also not it
+
+The panel does 120 Hz and `ScreenEncoder` sets `KEY_FRAME_RATE = 60`. On a **Surface input that is a
+hint for rate control, not a cap** — the VirtualDisplay produces whatever the display composites — so
+the encoder really does emit ~120 fps on a 120 Hz surface, which is what the earlier sighting caught.
+
+It is a real and previously unrecorded fact about this pipeline, and it is **not a loss mechanism**:
+at 120 fps nothing is dropped, the Mac paints 120 fps, and the total is unchanged at 25 ms. It costs
+CPU and halves the bits available per frame at a fixed 8 Mbps, so it is worth knowing; it does not
+explain unsmoothness.
+
+### 5 · So the honest answer is that none of them is supported
+
+Every condition this handset can be driven into measures healthy: **0 dropped, ~25 ms
+capture-to-paint, peak under 40 ms, at both 60 and 120 fps.**
+
+**The 120-vs-23 sighting from Slice 46 §5 is not reproducible and is now contradicted.** Recorded
+there as a sighting rather than a finding precisely because it compared two counters over two
+windows; the single-window form disagrees with it, and the single-window form is the better
+instrument. What that session was doing differently is unknown — it ran the pre-anchor build, and
+its Mac-side counter may have been reset by a session restart mid-window, which is what made the
+control fail the first time it was asked properly.
+
+**The one condition where the numbers do look bad is idle**, not load: 32 ms total and a 174.7 ms
+peak at 1 fps. That is a frame waiting for the next composite on a still screen, and it is not what
+"unsmooth" means.
+
+**What this leaves.** The transport has been measured and is not the problem, so the next step is to
+characterise what is actually perceived as unsmooth — a recording of the symptom against a wall
+clock — rather than to keep instrumenting a pipeline that reads clean at every rate it can be driven
+to. Naming a fourth suspect from here would be the thing this slice exists to avoid.
