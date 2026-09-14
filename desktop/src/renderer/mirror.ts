@@ -39,10 +39,33 @@ interface MirrorRotate {
  * A mirror that feels slow is one or the other, and a single total cannot say which — which is
  * why the HUD shows three numbers rather than one.
  */
+/*
+ * From `latencyStages.js`, loaded ahead of this file. Every renderer file is a classic script in one
+ * global scope, so these are visible without an import — and must not be `declare`d beside the real
+ * ones, which is a duplicate identifier.
+ */
+declare function stagesFor(input: {
+  ptsUs: number;
+  anchor: { ptsUs: number; monoUs: number } | null;
+  clockOffsetMs: number | undefined;
+  arrivedAtMs: number | null;
+  paintedAtMs: number;
+}): {
+  encodeMs: number | null;
+  wireMs: number | null;
+  macMs: number | null;
+  totalMs: number | null;
+  origin: 'capture' | 'encoder-output';
+};
+
 interface LatencySample {
   total: number;
   link: number | null;
   decode: number | null;
+  /** Capture → encoder output, from the anchor pair. Null when PTS is not on the monotonic clock. */
+  encode: number | null;
+  /** Which instant `total` is measured from. A number without this was the whole of §4's anchor bug. */
+  origin: 'capture' | 'encoder-output';
 }
 
 interface CaptureAck {
@@ -195,6 +218,12 @@ interface MirrorReadout {
   latencyLinkMs: number | null;
   /** Median of the arrival-to-painted half, in milliseconds. */
   latencyDecodeMs: number | null;
+  /** Capture → encoder output. Null when the phone's PTS is not on its monotonic clock. */
+  latencyEncodeMs: number | null;
+  /** Which instant the total is measured from. Null before any sample. */
+  latencyOrigin: 'capture' | 'encoder-output' | null;
+  /** The denominator for every median above. */
+  latencySamples: number;
   capture: CaptureAck | null;
   rotation: number | null;
 }
@@ -476,6 +505,10 @@ class MirrorView {
         this.latencies.length > 0 ? Math.max(...this.latencies.map((sample) => sample.total)) : null,
       latencyLinkMs: median(this.latencies.map((sample) => sample.link)),
       latencyDecodeMs: median(this.latencies.map((sample) => sample.decode)),
+      latencyEncodeMs: median(this.latencies.map((sample) => sample.encode)),
+      // The sentence that was missing from every figure this class has ever published.
+      latencyOrigin: this.latencies.length === 0 ? null : this.latencies[this.latencies.length - 1]!.origin,
+      latencySamples: this.latencies.length,
       capture: this.capture,
       rotation: this.rotation,
     };
@@ -696,17 +729,37 @@ class MirrorView {
    * peak for the next four seconds.
    */
   private recordLatency(ptsUs: number, paintedAt: number): void {
-    const capturedAt = this.capturedAtMacMs(ptsUs);
     const arrived = this.arrivedAt.get(ptsUs);
     this.arrivedAt.delete(ptsUs);
-    if (capturedAt === null) return;
 
-    const total = paintedAt - capturedAt;
-    if (total <= -1_000 || total >= 10_000) return;
+    /*
+     * **The anchor, corrected.** `monoUs` is stamped at `dequeueOutputBuffer` — after encoding — and
+     * was being used as the *capture* instant, so every total published by this class was short by
+     * the anchor frame's encode duration. `stagesFor` splits the two timestamps that were already on
+     * the wire into stage boundaries, and carries the origin so a figure can never again be quoted
+     * as capture-to-paint when it is encoder-output-to-paint.
+     */
+    const phone = this.telemetry?.phone;
+    const anchor =
+      phone && typeof phone.ptsUs === 'number' && typeof phone.monoUs === 'number'
+        ? { ptsUs: phone.ptsUs, monoUs: phone.monoUs }
+        : null;
+    const stages = stagesFor({
+      ptsUs,
+      anchor,
+      clockOffsetMs: this.telemetry?.clockOffsetMs,
+      arrivedAtMs: arrived === undefined ? null : arrived,
+      paintedAtMs: paintedAt,
+    });
+    if (stages.totalMs === null) return;
+    if (stages.totalMs <= -1_000 || stages.totalMs >= 10_000) return;
+
     this.latencies.push({
-      total,
-      link: arrived === undefined ? null : arrived - capturedAt,
-      decode: arrived === undefined ? null : paintedAt - arrived,
+      total: stages.totalMs,
+      link: stages.wireMs,
+      decode: stages.macMs,
+      encode: stages.encodeMs,
+      origin: stages.origin,
     });
     if (this.latencies.length > LATENCY_SAMPLES) this.latencies.shift();
   }

@@ -291,10 +291,28 @@ An event from the phone every 2 seconds while a session is live:
 falls behind. The Mac cannot count what was never sent to it, so a HUD without this event shows
 zero drops on a link that is dropping every other frame.
 
-`ptsUs`/`monoUs` are the PTS of a recently encoded frame and the phone's monotonic clock reading
-for that same frame. The pair is what lets the Mac map any frame's PTS onto its own clock and
-measure capture-to-paint latency; re-sending it every 2 seconds also corrects for drift between
-the two clocks over a long session.
+`ptsUs` and `monoUs` are **two different moments of one frame**, and the distinction is the whole
+value of the pair:
+
+| field | the instant it names | stamped by |
+|---|---|---|
+| `ptsUs` | the display pipeline composited the frame — **capture** | the Surface |
+| `monoUs` | `System.nanoTime()` at `dequeueOutputBuffer` — **after encoding** | the encoder loop |
+
+Both are on the phone's monotonic clock, so **`monoUs - ptsUs` is that frame's encode duration** and
+the two are stage boundaries rather than an anchor pair. The Mac uses `ptsUs` as the capture instant
+directly and `clockOffsetMs` (from the pong estimator, not from here) to reach its own clock.
+
+This paragraph used to read *"the phone's monotonic clock reading for that same frame"*, which named
+no moment at all — and the Mac accordingly anchored *capture* to `monoUs` and published totals with
+the encode stage subtracted, 44% of the figure on the one handset measured. Defect 108.
+
+Re-sending every 2 seconds also corrects for drift between the two clocks over a long session.
+
+**A consumer must not assume the timebases match.** They do on the SM-S938B (measured: 17.7 ms and
+15.4 ms of encode lag), and a phone that rebases PTS to zero would make `monoUs - ptsUs` an uptime.
+Capture time is then not knowable on the phone at all — nothing observes a frame before the encoder
+returns it — and the honest report is a pipeline measured from encoder output and **said to be**.
 
 ### `mirror.rotate`
 

@@ -18153,3 +18153,119 @@ the reinstall drops the session and MediaProjection consent cannot be cached.
 
 Also unproven: the 1 s floor and the 5 s in-flight release are unit-tested and have not been seen
 firing on hardware, because the contract succeeds on its first attempt every time so far.
+
+---
+
+## Phase 7 Slice 46 — §4's anchor: the encode stage was being subtracted (2026-09-13/14)
+
+### 1 · The defect, located
+
+```kotlin
+// ScreenEncoder.kt, inside the output loop
+lastPtsUs  = info.presentationTimeUs      // stamped at CAPTURE, by the display pipeline
+lastMonoUs = System.nanoTime() / 1_000    // read at dequeueOutputBuffer — AFTER encoding
+```
+
+The Mac anchored **capture** time to `monoUs`:
+
+```ts
+capturedAtPhoneMs = (ptsUs - anchorPts) / 1000 + anchorMono / 1000
+```
+
+For the anchor frame that returns `anchorMono` — the instant it *left the encoder*. Every total this
+class published was therefore short by the anchor frame's encode duration, constantly, until the next
+anchor replaced it. **The encode stage was not measured; it was subtracted.**
+
+`docs/protocol.md` describes the pair as *"the PTS of a recently encoded frame and the phone's
+monotonic clock reading for that same frame"* — a sentence that never says **which moment** in that
+frame's life, which is the shape `CLAUDE.md` warns about: true-sounding, and silent on the one
+distinction that decides the reading.
+
+### 2 · The fix needs no protocol change, and that is the finding
+
+Both timestamps were **already on the wire**. They were being read as one anchor pair instead of as
+two stage boundaries:
+
+```
+encodeLagUs        = monoUs - ptsUs      ← a stage
+capturedAtPhoneUs  = ptsUs               ← the capture instant, directly
+```
+
+**Priced, as asked.** A genuine two-timestamp change — a new optional field in `mirror.stats`, one
+line on the phone, one read on the Mac, `docs/protocol.md` first, backward compatible because an
+absent field reports the stage as unknown rather than zero — is **not needed** and was not made. The
+minimum-of-(arrival − pts) estimator was considered and rejected: it folds encode and wire into one
+minimum, so it could never have separated the stage that was missing.
+
+### 3 · The one thing measured rather than assumed
+
+The fix holds only if PTS shares a timebase with `System.nanoTime()`. `monoUs - ptsUs` is an encode
+duration if it does and roughly the phone's uptime if it does not — six orders of magnitude apart.
+Measured twice on hardware:
+
+```
+ptsUs=234560642472  monoUs=234560660168  →  17,696 us    SHARED
+ptsUs=234612721190  monoUs=234612736567  →  15,377 us    SHARED
+```
+
+`timebaseVerdict` has a third answer, `unclear`, and returns it when there is no anchor — a verdict
+that cannot say "I don't know" says something wrong instead. Had it come back `rebased`, capture time
+would not be knowable on the phone at all (nothing in the app observes a frame before the encoder
+returns it) and the honest report would have been a pipeline starting at encoder output, labelled.
+Every published figure now carries an `origin` field for exactly that reason.
+
+### 4 · The per-stage numbers — **idle only**
+
+30 s window, phone screen static, session live, `origin: capture`:
+
+| stage | median |
+|---|---|
+| capture → encoded (**encode**) | **14.0 ms** |
+| encoded → arrived (wire) | 14.0 ms |
+| arrived → painted (Mac) | 3.0 ms |
+| **capture → painted (total)** | **32.0 ms** |
+
+Denominators: 171 frames decoded in the window, 240 samples in the app's rolling buffer, 30 probe
+samples, median 1 fps, peak total 174.7 ms.
+
+**The encode stage is 14 ms of a 32 ms total — 44% of the figure, and it is the part that was
+missing.** Every number previously quoted from this HUD — 9, 11, 99, 134 ms — was measured against
+an origin that had the encode duration already removed.
+
+### 5 · What this does NOT settle: the three smoothness suspects
+
+**No suspect is adjudicated, because the loaded reading was never completed.** The three were written
+down in advance and stand as written:
+
+| # | suspect | status |
+|---|---|---|
+| 1 | the keyframe storm | **dead** — Slice 43's A/B returned STATE A, before this slice |
+| 2 | `QUEUE_DEPTH` of 4 at 60 fps | **unadjudicated** |
+| 3 | `writeFrame` doing two writes per frame on the TLS stream | **unadjudicated** |
+
+Suspects 2 and 3 both live *inside* the encoded→arrived stage, which is the stage the old anchor
+corrupted — so they could not have been judged before this fix, and they cannot be judged on an idle
+stream either: at 1 fps neither a four-deep queue nor a per-frame write pattern is under any pressure.
+
+**A sighting, recorded as a sighting and not a finding.** While motion was being driven, the phone's
+encoder ticker read **120.5 frames/s** (`+241 frames` per 2 s tick, three consecutive ticks) while
+the Mac's own `framesDecoded` advanced by **23 in 30 s**. That is suggestive of a very large loss,
+and it is **not a measurement**: the two counters were read from different sources over different
+windows on different clocks, which is precisely the units error this file has a rule about. The
+proper form — the phone's `encodedFrames` and `droppedFrames` against the Mac's `framesDecoded`, one
+window, one read — was attempted and **refused by its own control** (`framesDecoded` returned 0; the
+session had ended), so it holds no reading at all.
+
+### 6 · What would settle it, exactly
+
+One consent tap, with the phone under sustained motion:
+
+1. `node scripts/latency-stages-read.mjs 30` while the screen is moving — the stage medians **under
+   load**, which is the only condition in which suspects 2 and 3 exert any pressure.
+2. The frame accounting over one window from one read: phone `encodedFrames` and `droppedFrames`
+   against Mac `framesDecoded`, with the residual named. `droppedFrames` is counted on the phone in
+   `VideoChannel`, so a large value there points at suspect 2 and a large *unaccounted* residual
+   points elsewhere.
+
+Until both exist, the honest statement about smoothness is that the anchor is fixed, the idle
+breakdown is known, and **which of suspects 2 and 3 is responsible is not known.**
