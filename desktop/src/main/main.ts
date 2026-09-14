@@ -1011,13 +1011,21 @@ app.whenReady().then(() => {
         `Phone rotated to ${rotate.rotation ?? '?'}°: capture ` +
           `${rotate.width ?? '?'}x${rotate.height ?? '?'} (screen #${rotate.geometryId ?? '?'})`,
       );
-      send('mirror-rotate', message.payload);
+      /*
+       * **`sendAll`, not `send`.** This was main-window-only, so the float never learned the phone
+       * had turned — and a float that takes pointer input would then send the **pre-rotation**
+       * `geometryId` with every tap and would not cancel a drag that was in flight across the turn.
+       * Those are defects 20 and 19 exactly, reintroduced in the second window, and they are the
+       * reason this line goes in before any pointer handler does rather than beside it.
+       */
+      sendAll('mirror-rotate', message.payload);
     }
     send('message', envelope);
   });
 
-  // One subscription, not one per window: the client is the source of truth and `send` already
-  // fans out to whatever window exists.
+  // One subscription, not one per window: the client is the source of truth. **`send` does not fan
+  // out** — it is main-window-only, and `sendAll` is the one that reaches the float. This comment
+  // said the opposite, which is how `mirror-rotate` stayed on `send` while reading as correct.
   notifications.on('changed', (list) => send('notif-changed', list));
   remote.on('changed', (state) => send('remote-changed', state));
   // The channel keeps its name because the renderer's contract is unchanged: to the pane, an

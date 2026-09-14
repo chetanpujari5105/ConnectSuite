@@ -23,11 +23,17 @@ test('closed and open are different in all three of the things a user perceives'
   assert.notEqual(closed.dot, open.dot);
 });
 
-test('the handoff strings are the strings', () => {
-  // Quoted from §2 rather than paraphrased. This is the control on the file: every other assertion
-  // here would still pass against two invented labels, and only this one would not.
+test('the strings are the strings — one from the handoff, one from the owner', () => {
+  // Quoted rather than paraphrased. This is the control on the file: every other assertion here
+  // would still pass against two invented labels, and only this one would not.
+  //
+  // The closed label is the handoff's. The open one is NOT: §2 says "Show floating window", which
+  // focuses. The owner overrode that on 2026-09-14 — a control whose second press does not undo its
+  // first is not a toggle, and it leaked an open float across two diagnostic runs in Slice 43.
+  // Recorded as a departure in docs/design-departures.md rather than left as a test nobody can
+  // reconcile with the drawing.
   assert.equal(floatButtonLabelsFor(false).label, 'Floating window');
-  assert.equal(floatButtonLabelsFor(true).label, 'Show floating window');
+  assert.equal(floatButtonLabelsFor(true).label, 'Close floating window');
 });
 
 test('the dot is present exactly when the window is open', () => {
@@ -39,10 +45,12 @@ test('the dot is present exactly when the window is open', () => {
 });
 
 test('the accessible name says what pressing it will do, in each state', () => {
-  // Not "Floating window" twice. When the window is open the button refocuses rather than opens,
-  // and a screen reader that announces "open" for a button that focuses has described the wrong
-  // action — which is defect 26's shape: a control whose face and whose announcement disagree.
+  // Not "Floating window" twice. The button opens in one state and closes in the other, and a
+  // screen reader announcing "open" for a button that closes has described the wrong action —
+  // defect 26's shape: a control whose face and whose announcement disagree.
   assert.match(floatButtonLabelsFor(false).description, /open/i);
-  assert.match(floatButtonLabelsFor(true).description, /front|focus|show/i);
+  assert.match(floatButtonLabelsFor(true).description, /close/i);
   assert.doesNotMatch(floatButtonLabelsFor(true).description, /^Open /);
+  // And the announcement must not still promise the focus behaviour that was removed.
+  assert.doesNotMatch(floatButtonLabelsFor(true).description, /front|focus|show/i);
 });

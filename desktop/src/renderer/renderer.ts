@@ -97,6 +97,7 @@ interface ConnectBridge {
    * and never reads or writes its coordinates. See main/float.ts.
    */
   floatOpen(): Promise<{ open: boolean } | null>;
+  floatClose(): Promise<unknown>;
   onFloatChanged(callback: (state: { open: boolean }) => void): void;
   floatState(): Promise<{ open: boolean } | null>;
   mirrorStats(): Promise<{
@@ -1035,7 +1036,14 @@ el('mirror-transfer').addEventListener('click', () => shell.route('files'));
  * it is pressed twice before the window has finished loading, which a check up here would not
  * survive. See main/float.ts:openFloat.
  */
-el('mirror-float').addEventListener('click', () => void connect.floatOpen());
+el('mirror-float').addEventListener('click', () => {
+  // A toggle, not two names for "open". `floatOpen` was called in both states and the main process
+  // resolved it as `isOpen ? focus() : open()`, so the second press raised a window the user was
+  // trying to dismiss. The button's own label is the state — it is set from `floatButtonLabelsFor`
+  // and from nowhere else — so reading it here keeps the two from disagreeing.
+  const open = el('mirror-float-label').textContent?.trim() === 'Close floating window';
+  void (open ? connect.floatClose() : connect.floatOpen());
+});
 
 /**
  * The button's two states, from the one place that owns all three of its strings.

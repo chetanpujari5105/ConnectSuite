@@ -18527,3 +18527,88 @@ which is not a reason to have trusted it and is a good reason to say so here: it
 
 **Window during which the phone was being driven: 10:20:09–10:20:53.** Any mark inside it is mine,
 not the owner's, and should be discarded.
+
+---
+
+## Phase 7 Slice 50 — §2, float input, and the four are done (2026-09-14)
+
+### 1 · `mirror.rotate` reached one window, and that had to go first
+
+```ts
+send('mirror-rotate', message.payload);      // main window only
+```
+
+`send` is main-window-only; `sendAll` is the one that reaches the float. So the float never learned
+the phone had turned — and a float taking pointer input would have stamped every gesture with the
+**pre-rotation** `geometryId` and would not have cancelled a drag across a turn. **Defects 20 and 19
+reintroduced in the second window, by omission.** One word, and it went in before any pointer
+handler rather than beside one.
+
+The comment three lines below it read *"`send` already fans out to whatever window exists"*, which is
+false. That is how the line stayed on `send` while reading as correct to anybody checking.
+
+### 2 · One recogniser, two windows
+
+`renderer/pointerGestures.ts` now holds the gesture state machine — accumulation, thinning,
+cancel-on-turn, tap-versus-swipe, duration clamps — and **`MirrorView` was refactored onto it in the
+same change**. That is the part that matters: extracting a seam and leaving the original in place
+gives two copies and a false sense of having fixed it.
+
+Proof there is one copy: `grep -c "this.drag\|this.cancelledByTurn\|this.pointerDownAt"` in
+`mirror.ts` returns **0**, and the five constants are defined in exactly one file.
+
+**The extraction nearly changed behaviour, and the compiler caught it.** The first draft invented
+`MIN_TAP_MS = 40` and `MIN_SWIPE_MS = 80`; the shipped values are **60** and **120**. It was caught
+only because the originals were still present to collide with — which is an argument for deleting
+them in the same commit rather than leaving them for later. An extraction that quietly changes
+behaviour is worse than the copy it replaces.
+
+16 tests on the recogniser, each naming the defect it guards.
+
+### 3 · The float takes input
+
+`float.ts` contributes the DOM and nothing else: `pointInCapture` maps against the picture
+(defect 99), `GestureRecogniser` owns the drag, the cancellation and the stamp. Every refusal has a
+sentence — a press producing neither a gesture nor a sentence is the silent no-op defect 19 was.
+
+### 4 · The float button closes on its second press
+
+A departure from handoff §2, recorded as **F7** in `docs/design-departures.md` rather than as a
+silent contradiction of the drawing. The tests that pinned the handoff strings were updated **with
+the reason**, not just to pass.
+
+### 5 · Three duplicate-identifier catches in one session
+
+`declare class` beside a real class in the renderer's single global script scope is a compile error,
+and it caught me three times today — `StartRequestGate`, `summariseMark`'s `median`, and
+`GestureRecogniser`. Each time the fix was to delete the declaration: **every renderer file already
+sees every other one.** Worth knowing before writing the fourth.
+
+---
+
+## Phase 7 Slice 51 — §4 closed as instrumented, healthy, and perceptually open (2026-09-14)
+
+Recorded at the owner's instruction, in their framing, so the state is not re-derived later from
+four days of slices.
+
+**§4 is instrumented and healthy at every rate this handset produces.** Idle (1 fps), 60 fps and
+120 fps: **0 frames dropped**, ~25 ms capture-to-paint under load, peak under 40 ms, every frame the
+phone encoded painted on the Mac.
+
+**No suspect stands.** The keyframe storm died with Slice 43's STATE A; `QUEUE_DEPTH = 4` never shed
+a frame in 4,689 frames across two rates; `writeFrame`'s 240 writes per second at 120 fps coincide
+with the *best* wire figure of the three conditions. A fourth was looked for and found — the encoder
+emits at panel rate because `KEY_FRAME_RATE` is a hint on a Surface input — and it drops nothing
+either.
+
+**The perceptual question is open, and the instrument for it is built.** `Cmd+Shift+M` or
+`scripts/mirror-mark.mjs`. The owner will use it if it bothers them again.
+
+**One measured cost that no latency stage could ever show:** at 120 Hz each frame carries **half the
+bits** — 12.3 KB against 23.8 KB, same content, same bitrate, keyframes halving too. Slice 49. That
+is a quality cost, not a timing one, and it is the standing candidate if the marks come back clean.
+
+**And the bitrate is not being held by anybody:** `KEY_BITRATE_MODE` is unset, the platform chose
+**VBR** (read from `dumpsys media.metrics`, not assumed), and 8 Mbps is a target the encoder
+overshoots by ~50% under motion and undershoots by 4× at rest.
+

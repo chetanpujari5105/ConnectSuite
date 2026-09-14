@@ -5,6 +5,17 @@
  * > 6px `#32E58A` dot before the label, which only refocuses the existing window. **Never create a
  * > second instance.** On close it reverts to "Floating window" and mirroring continues.
  *
+ * **The second state closes rather than focuses, from 2026-09-14, and that is a departure from the
+ * handoff above.** Owner's decision, on the plainest possible grounds: a control whose second press
+ * does not undo its first is not a toggle, and every user of this button pressed it again expecting
+ * the window to go away. It also leaked an open float across two diagnostic runs in Slice 43,
+ * because "close it again" was the obvious cleanup and did nothing.
+ *
+ * What is lost, said rather than glossed: **the refocus affordance**. A float hidden behind other
+ * windows is now raised by clicking it or via the dock, not from here. That is the trade the owner
+ * accepted; if it bites, the third state — focus when open-and-unfocused, close when open-and-focused
+ * — is the repair, and it is a hidden mode, which is why it was not the first move.
+ *
  * Three strings and a boolean, pulled out of `renderer.ts` for the same reason `notifyLabels.ts`
  * was pulled out of `notifications.ts`: it is a rule with a wrong answer, and a rule with a wrong
  * answer wants a test rather than a reading. The wrong answer here is specific and easy to ship —
@@ -42,8 +53,8 @@ interface FloatButtonLabels {
 function floatButtonLabelsFor(open: boolean): FloatButtonLabels {
   return open
     ? {
-        label: 'Show floating window',
-        description: 'Bring the floating mirror window to the front',
+        label: 'Close floating window',
+        description: 'Close the floating mirror window',
         dot: true,
       }
     : {

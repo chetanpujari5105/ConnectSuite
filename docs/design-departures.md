@@ -732,3 +732,29 @@ before it dropped* is exactly the question somebody has when it is down.
 |---|---|---|---|---|---|
 | **X8** | A ⌘K palette over **commands and screens** | The same, plus a third kind — **deep links**, which route to a screen and then reveal a card inside it. Two today: *Now playing* (in Overview) and *Contacts* (in Messages) | **reshaped** | Measured on 2026-09-02: the palette returned **nothing** for *music*, *playing*, *remote* and *contact*, with the control that it returns six rows for *mirror*. Eleven screens were reachable by search and three shipped features were not. Both cards are above the fold and perfectly visible — this is a findability gap, not a layout one, which is why nothing moved | Either a drawn treatment for the media remote and for contacts (a screen, a dock tile, a Quick actions slot), or a drawn palette row for a destination that is a card. Until one exists, the deep link is what ships |
 | **X9** | Quick actions: **8 tiles**, header `8 available`, every tile a route | Unchanged — and the media remote is **not** added to it | **unbuilt, needs one sentence from the designer** | A ninth tile for a card on the same screen is a different kind of thing from the eight, and it makes the count line either wrong or misleading | Knowing whether Quick actions means *the eight screens* or *the things you do most*. Under the first nothing changes; under the second the remote belongs there and the header needs rewording |
+
+---
+
+## M13 — the float takes pointer input · **closed 2026-09-14**
+
+The float window's canvas took no taps or swipes because pointer input has to quote the geometry
+stamp a frame was captured against and cancel an in-flight drag when the phone turns — defects 20
+and 19 — and retyping that would have been a second copy of safety-critical code. The seam named in
+this row now exists: `renderer/pointerGestures.ts` holds the recogniser, `MirrorView` was refactored
+onto it in the same change, and the float calls the same object. One copy, two windows.
+
+## F7 — the float button closes on its second press · **departure from handoff §2, 2026-09-14**
+
+§2 specifies the second state as **"Show floating window"**, which *"only refocuses the existing
+window"*. It now reads **"Close floating window"** and closes.
+
+**Owner's decision, and the reason is not a preference.** A control whose second press does not undo
+its first is not a toggle; every person who pressed it expected the window to go away. It also leaked
+an open float across two diagnostic runs in Slice 43, where "click it again" was the obvious cleanup
+and did nothing.
+
+**What is lost, recorded rather than glossed:** the refocus affordance. A float hidden behind other
+windows is raised by clicking it or via the dock, not from this button. If that bites, the repair is
+a third state — focus when open-and-unfocused, close when open-and-focused — and it is a hidden
+mode, which is why it was not the first move.
+

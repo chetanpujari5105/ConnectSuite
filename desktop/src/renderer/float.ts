@@ -17,19 +17,32 @@
  *
  * ### What this window deliberately does not do
  *
- * **The canvas takes no taps or swipes in this slice.** Pointer input has to quote the geometry
- * stamp the frame was captured against, and cancel an in-flight drag when the phone turns — defect
- * 19 and defect 20, both of which cost real damage on a real phone and both of which live in
- * `mirror.ts`. Retyping that here would be a second copy of safety-critical code, and the copy that
- * does not get the next fix. The hover dock's Back / Home / Recents are `input.global`
- * (`performGlobalAction`) and carry no coordinates at all, so they need none of it and ship now.
- * The gap is row **M13** in `docs/design-departures.md`, with the seam that would close it named.
+ * **The canvas takes taps and swipes as of 2026-09-14, through the shared seam and not a copy.**
+ * It was held back because pointer input has to quote the geometry stamp the frame was captured
+ * against and cancel an in-flight drag when the phone turns — defects 20 and 19, both of which cost
+ * real damage on a real phone — and retyping those here would have been the copy that does not get
+ * the next fix. `renderer/pointerGestures.ts` now holds that state machine and `MirrorView` was
+ * refactored onto it in the same change, so there is one copy and both windows call it.
+ *
+ * **`mirror-rotate` had to be fixed first, and it was one word.** `main.ts` sent it with `send`
+ * rather than `sendAll`, so this window never learned the phone had turned: it would have stamped
+ * every gesture with the pre-rotation `geometryId` and would not have cancelled a drag across a
+ * turn. Defects 19 and 20 reintroduced in the second window, by omission. Row **M13** in
+ * `docs/design-departures.md`.
  */
 
 interface FloatBridge {
   onVideoFrame(callback: (frame: FloatFrame) => void): void;
   onMirrorStopped(callback: (info: { reason?: string }) => void): void;
   onMirrorState(callback: (state: { state?: string; message?: string }) => void): void;
+  /** The phone turned. Reaches this window only because main.ts now uses `sendAll`. */
+  onMirrorRotate(callback: (r: { width?: number; height?: number; rotation?: number; geometryId?: number }) => void): void;
+  inputTap(p: { x: number; y: number; durationMs: number; geom: { id: number; width: number; height: number } }): Promise<unknown>;
+  inputSwipe(s: {
+    points: { x: number; y: number }[];
+    durationMs: number;
+    geom: { id: number; width: number; height: number };
+  }): Promise<unknown>;
   onStatus(callback: (status: FloatStatus | null) => void): void;
   onFloatChanged(callback: (state: { focused: boolean; pinned: boolean }) => void): void;
   mirrorKeyframe(reason?: string): Promise<unknown>;
@@ -213,6 +226,79 @@ floatBridge.onStatus((status) => {
 });
 
 // ---- Window chrome ------------------------------------------------------------------------------
+
+/* ---- pointer input, on the seam MirrorView uses -------------------------------------------------
+ *
+ * Everything safety-critical here is borrowed, not rewritten: `pointInCapture` maps against the
+ * *picture* rather than the element (defect 99), and `GestureRecogniser` owns the drag, the
+ * cancellation on rotation (defect 19) and the geometry stamp the phone checks (defect 20).
+ * This file contributes the DOM and nothing else, which is the whole reason it took until now.
+ */
+
+/** The capture geometry the phone last announced. Null until it says. */
+let capture: { width: number; height: number; geometryId: number } | null = null;
+const gesture = new GestureRecogniser();
+
+floatBridge.onMirrorRotate((r) => {
+  if (typeof r.width === 'number' && typeof r.height === 'number' && typeof r.geometryId === 'number') {
+    capture = { width: r.width, height: r.height, geometryId: r.geometryId };
+  }
+  // A press in flight was aimed at a screen shape that no longer exists. Cancelled, and the release
+  // says so rather than vanishing — which is the half of defect 19 that was the actual defect.
+  gesture.cancelForTurn();
+});
+
+/** Map a pointer event into capture pixels, or null when the shape is not known yet. */
+function pointAt(event: PointerEvent): { x: number; y: number; geom: { id: number; width: number; height: number } } | null {
+  if (!capture) return null;
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const mapped = pointInCapture(
+    { x: event.clientX, y: event.clientY },
+    { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+    { width: capture.width, height: capture.height },
+  );
+  return { x: mapped.x, y: mapped.y, geom: { id: capture.geometryId, width: capture.width, height: capture.height } };
+}
+
+canvas.addEventListener('pointerdown', (event) => {
+  if (!inputAdvertised) {
+    say('The phone is not accepting input — turn Accessibility on for ConnectSuite.');
+    return;
+  }
+  if (gesture.down(pointAt(event)) === 'no-geometry') {
+    say('The phone has not said what shape its screen is yet, so that was not sent.');
+    return;
+  }
+  canvas.setPointerCapture(event.pointerId);
+});
+
+canvas.addEventListener('pointermove', (event) => gesture.move(pointAt(event)));
+canvas.addEventListener('pointercancel', () => void gesture.up(null));
+
+canvas.addEventListener('pointerup', (event) => {
+  if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+  const result = gesture.up(pointAt(event));
+  if (result.kind === 'none') {
+    // `never-started` already had its sentence at pointerdown; the other two get one here. A press
+    // that produces neither a gesture nor a sentence is the silent no-op defect 19 was.
+    if (result.reason === 'cancelled-by-turn') {
+      say('The phone turned while you were pressing, so that was not sent.');
+    } else if (result.reason === 'geometry-gone') {
+      say('The mirror stopped while you were pressing, so that was not sent.');
+    }
+    return;
+  }
+  if (result.kind === 'tap') {
+    void floatBridge
+      .inputTap({ x: result.x, y: result.y, durationMs: result.durationMs, geom: result.geom })
+      .catch((error: unknown) => trace(`input.tap failed: ${String(error)}`));
+    return;
+  }
+  void floatBridge
+    .inputSwipe({ points: result.points, durationMs: result.durationMs, geom: result.geom })
+    .catch((error: unknown) => trace(`input.swipe failed: ${String(error)}`));
+});
 
 floatBridge.onFloatChanged((state) => {
   frame.classList.toggle('focused', state.focused);

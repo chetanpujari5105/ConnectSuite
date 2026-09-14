@@ -69,6 +69,12 @@ declare function summariseMark(
   label: string,
 ): unknown;
 
+/*
+ * `GestureRecogniser` comes from `pointerGestures.js`, loaded ahead of this file. No `declare` — the
+ * renderer is one global script scope, so TypeScript already sees the real class, and a declaration
+ * beside it is a duplicate identifier. That has now caught three files in this session.
+ */
+
 interface LatencySample {
   /** `Date.now()` when this frame was painted. Without it a mark has no window to summarise. */
   at: number;
@@ -298,14 +304,15 @@ class MirrorView {
    */
   private awaitingFreshFrame = false;
 
-  /** Set when a rotation cancelled a drag mid-press, so pointer-up can explain rather than vanish. */
-  private cancelledByTurn = false;
-
-  /** Points of the drag in progress, in capture-frame pixels, or null when not dragging. */
-  private drag: Array<{ x: number; y: number }> | null = null;
-
-  /** Where and when the pointer went down, to tell a tap from a drag. */
-  private pointerDownAt = 0;
+  /**
+   * The gesture state machine, shared with the float window.
+   *
+   * It used to be three fields here — `cancelledByTurn`, `drag`, `pointerDownAt` — and a second
+   * window taking pointer input would have needed its own three. The drag cancellation and the
+   * geometry stamp are defects 19 and 20; a second copy of either is the copy that does not get the
+   * next fix.
+   */
+  private readonly gesture = new GestureRecogniser();
 
   /** Wheel deltas accumulated since the last flush, so a burst becomes one scroll. */
   private wheel: { x: number; y: number; dx: number; dy: number } | null = null;
@@ -430,8 +437,7 @@ class MirrorView {
     // a tap nor a sentence is indistinguishable from a phone that ignored you — the same silent
     // no-op class as defect 18, and the thing step 20 exists to rule out. `cancelledByTurn` makes
     // the pointer-up say what happened instead of returning.
-    if (this.drag) this.cancelledByTurn = true;
-    this.drag = null;
+    this.gesture.cancelForTurn();
   }
 
   private onState(state: MirrorState): void {
@@ -562,8 +568,11 @@ class MirrorView {
     // writers, one setter: two fields that must move together will otherwise move apart.
     this.applyCaptureAspect();
     this.awaitingFreshFrame = false;
-    this.cancelledByTurn = false;
-    this.drag = null;
+    this.gesture.cancelForTurn();
+    // cancelForTurn leaves the "a turn cancelled you" flag set so the release can explain it. A new
+    // session is not a turn, so the flag is cleared by consuming it — the release would otherwise
+    // blame a rotation that did not happen.
+    this.gesture.up(null);
     this.wheel = null;
     this.lastKeyframeBytes = 0;
     this.arrivedAt.clear();
@@ -859,7 +868,7 @@ class MirrorView {
     this.canvas.addEventListener('pointermove', (event) => this.onPointerMove(event));
     this.canvas.addEventListener('pointerup', (event) => void this.onPointerUp(event));
     this.canvas.addEventListener('pointercancel', () => {
-      this.drag = null;
+      this.gesture.up(null);
     });
     this.canvas.addEventListener('wheel', (event) => this.onWheel(event), { passive: false });
     this.canvas.addEventListener('keydown', (event) => void this.onKeyDown(event));
@@ -965,8 +974,7 @@ class MirrorView {
       return;
     }
     this.canvas.setPointerCapture(event.pointerId);
-    this.pointerDownAt = Date.now();
-    this.drag = [{ x: point.x, y: point.y }];
+    this.gesture.down(point);
   }
 
   /**
@@ -978,71 +986,49 @@ class MirrorView {
    * pointer-up, which is also what makes it a drag on the phone rather than a row of taps.
    */
   private onPointerMove(event: PointerEvent): void {
-    const drag = this.drag;
-    if (!drag) return;
-    const point = this.pointAt(event);
-    if (!point) return;
-    const last = drag[drag.length - 1]!;
-    // Sub-pixel jitter adds points that describe nothing. Four capture pixels is well under what
-    // a user can aim at and keeps a long drag inside the protocol's 100-point limit.
-    if (Math.hypot(point.x - last.x, point.y - last.y) < DRAG_POINT_SPACING) return;
-    // Thinned one short of the limit, not at it: the pointer-up point is appended afterwards, and
-    // a path of exactly the maximum plus that one would be refused by the phone as over-long.
-    if (drag.length >= MAX_DRAG_POINTS - 1) {
-      // Keep the shape of the path by thinning it rather than refusing to record any more: a drag
-      // that stops being recorded half way ends in the wrong place.
-      this.drag = drag.filter((_, index) => index % 2 === 0);
-    }
-    this.drag!.push({ x: point.x, y: point.y });
+    this.gesture.move(this.pointAt(event));
   }
 
   private async onPointerUp(event: PointerEvent): Promise<void> {
-    const drag = this.drag;
-    this.drag = null;
     if (this.canvas.hasPointerCapture(event.pointerId)) {
       this.canvas.releasePointerCapture(event.pointerId);
     }
-    if (!drag) {
-      // Either the phone turned mid-press (guard 1 below), or the press never started because
-      // `canSend` refused it — and that path has already put its own sentence on the canvas.
-      if (this.cancelledByTurn) {
-        this.cancelledByTurn = false;
+    const result = this.gesture.up(this.pointAt(event));
+
+    if (result.kind === 'none') {
+      // Defect 19: cancelling a press is right, doing so in silence is not. Each refusal has its own
+      // sentence — `never-started` is the one that does not, because `canSend` has already put one
+      // on the canvas for the reason it refused.
+      if (result.reason === 'cancelled-by-turn') {
         this.showNotice(
           'The phone turned while you were pressing, so that was not sent.',
           'Click again — the Mac is showing the phone\'s new screen shape now.',
         );
+      } else if (result.reason === 'geometry-gone') {
+        this.showNotice('The mirror stopped while you were pressing, so that was not sent.');
       }
       return;
     }
-    this.cancelledByTurn = false;
-    const point = this.pointAt(event);
-    if (!point) {
-      // The capture geometry went away between press and release — a mirror stop, or a restart.
-      this.showNotice('The mirror stopped while you were pressing, so that was not sent.');
-      return;
-    }
-    const heldMs = Date.now() - this.pointerDownAt;
 
-    if (drag.length < 2) {
-      // A press that never moved. Its duration is the user's, so a long press arrives as one:
-      // there is no separate long-press message and there does not need to be.
+    if (result.kind === 'tap') {
       await this.deliver(
         this.bridge.inputTap({
-          x: point.x,
-          y: point.y,
-          durationMs: Math.max(MIN_TAP_MS, Math.min(heldMs, MAX_GESTURE_MS)),
-          geom: point.geom,
+          x: result.x,
+          y: result.y,
+          durationMs: result.durationMs,
+          geom: result.geom,
         }),
       );
-    } else {
-      await this.deliver(
-        this.bridge.inputSwipe({
-          points: [...drag, { x: point.x, y: point.y }],
-          durationMs: Math.max(MIN_SWIPE_MS, Math.min(heldMs, MAX_GESTURE_MS)),
-          geom: point.geom,
-        }),
-      );
+      return;
     }
+
+    await this.deliver(
+      this.bridge.inputSwipe({
+        points: result.points,
+        durationMs: result.durationMs,
+        geom: result.geom,
+      }),
+    );
   }
 
   /**
@@ -1228,25 +1214,10 @@ const BLANK_KEYFRAME_BYTES = 2_000;
 /** Rolling window for fps, matching the main process's bitrate window. */
 const RATE_WINDOW_MS = 3_000;
 
-/**
- * How far the pointer must move, in capture pixels, before a drag records another point.
- *
- * Well below what anyone can aim at, and enough to keep a slow drag across a 2340-pixel screen
- * inside the protocol's 100-point limit.
+/*
+ * The gesture constants and the recogniser that uses them moved to `pointerGestures.ts` on
+ * 2026-09-14, so the float window shares them rather than copying them. See that file's header.
  */
-const DRAG_POINT_SPACING = 4;
-
-/** The protocol's cap. A path at this length is thinned rather than truncated. */
-const MAX_DRAG_POINTS = 100;
-
-/** A tap the user perceives as instant still needs to last long enough for the phone to see it. */
-const MIN_TAP_MS = 60;
-
-/** A drag sent as an instantaneous stroke reads as a fling; this floor keeps it a drag. */
-const MIN_SWIPE_MS = 120;
-
-/** The protocol's ceiling on a single gesture. */
-const MAX_GESTURE_MS = 5_000;
 
 /**
  * Wheel delta to capture pixels.
