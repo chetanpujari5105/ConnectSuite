@@ -18443,3 +18443,87 @@ frames are being starved to hold it.
 **What would settle it:** the same content at both rates, by forcing the panel to 60 Hz
 (`settings put system peak_refresh_rate`, restored afterwards) and repeating the identical launcher
 motion. One settings write, one restore, inside a session that is running anyway.
+
+---
+
+## Phase 7 Slice 49 — what actually decides the bitrate, and what 120 Hz costs (2026-09-14)
+
+Two questions asked together: the same-content quality comparison, and why both earlier runs
+exceeded the configured 8 Mbps. The second turns out to answer the first.
+
+### 1 · Nothing is holding the bitrate, because nothing was asked to
+
+`ScreenEncoder.createCodec` sets `KEY_BIT_RATE`, `KEY_FRAME_RATE`, `KEY_I_FRAME_INTERVAL`,
+`KEY_LATENCY` and `KEY_PRIORITY`. **`KEY_BITRATE_MODE` is not among them**, so the platform default
+applies — and the platform says which, in its own metrics rather than by inference:
+
+```
+$ adb shell dumpsys media.metrics        # entry 525, uid 11011 — our encoder
+android.media.mediacodec.codec         = c2.qti.avc.encoder
+android.media.mediacodec.bitrate       = 8000000
+android.media.mediacodec.bitrate_mode  = VBR          ← never set by us
+android.media.mediacodec.vencode.bytes = 66782169
+android.media.mediacodec.vencode.durationUs = 235652765
+android.media.mediacodec.vencode.frames = 969
+```
+
+**Under VBR, 8 Mbps is a target average, not a cap.** The same counters give **2.27 Mbps across a
+session averaging 4.1 fps**, against **12 Mbps under motion** — a 5× spread around the target, which
+is VBR tracking content and is exactly what it is for.
+
+**So "frames starved to hold the bitrate" is the wrong story**, and the premise in it is wrong twice
+over: the encoder is not holding 8 Mbps, and it is not starving anything to try. What decides the
+bitrate is the encoder's own rate control, following content complexity, with 8 Mbps as guidance it
+overshoots by ~50% under motion and undershoots by 4× at rest.
+
+### 2 · The same-content comparison — 120 Hz halves the bits per frame
+
+Identical launcher page-flip motion, twenty seconds each, the panel forced with
+`settings put system peak_refresh_rate 60` and restored afterwards. **The stimulus is confirmed
+landed** (the encoder's own ticker goes 120.5/s → 60.0/s) and **the restore is verified**
+(`peak_refresh_rate` back to `null`), so neither half is assumed.
+
+| | **A · adaptive (120 Hz)** | **B · forced 60 Hz** | ratio |
+|---|---|---|---|
+| frames per second | 120.2 | 60.1 | **2.00×** |
+| bitrate | 12.10 Mbps | 11.70 Mbps | **1.03×** |
+| **bytes per frame** | **12.3 KB** | **23.8 KB** | **0.52×** |
+| keyframe size | 71–170 KB | 130–238 KB | ~0.5× |
+
+**Same content, same bitrate, half the bits per frame.** The encoder holds a roughly constant
+*time-based* rate, so doubling the frame count halves the per-frame budget — including keyframes,
+which halve too.
+
+This is the concern, confirmed, and it is a **quality** cost rather than a latency one: it would
+never appear in any stage of Slices 46–48, all of which measure time. A person watching 12 KB frames
+instead of 24 KB ones sees more compression artefacts on the same motion, and "worse picture during
+movement" is a thing somebody could reasonably report as unsmooth.
+
+**What this is not.** It is not a loss mechanism — Slice 47 measured 0 dropped frames at 120 fps and
+the Mac painting all of them. Nothing is late and nothing is missing; each frame just carries half
+the information.
+
+### 3 · The earlier bytes-per-frame figures, corrected
+
+Slice 48 reported 26.7 KB/frame at 60 fps against 12.1 KB at 120 and said plainly that the two runs
+were different content and the comparison was therefore illegal. It was — and the controlled version
+lands in the same place: **23.8 KB against 12.3 KB.** The illegal comparison happened to be right,
+which is not a reason to have trusted it and is a good reason to say so here: it was retained as
+"not a clean comparison" rather than published as a finding, and the clean run is what makes it one.
+
+### 4 · Three things that follow, none of them done
+
+- **`KEY_BITRATE_MODE` is unset and the default is doing the deciding.** Setting it to `CBR` would
+  make 8 Mbps mean 8 Mbps; setting it to `VBR` explicitly would make the current behaviour a
+  decision rather than an accident. Either is a one-line change and **neither should be made from
+  this reading alone** — a 12 Mbps stream over a local link is not obviously wrong, and the right
+  target depends on what the link can carry, which has not been measured.
+- **`KEY_FRAME_RATE = 60` is a rate-control hint the encoder is being given while it receives 120.**
+  Its per-frame budget assumption is wrong by exactly 2× in the case that halves the quality.
+- **Capping capture at the configured rate is possible** and is the obvious lever: `VirtualDisplay`
+  hands over whatever the panel composites, and dropping every other frame at 120 Hz would restore
+  the per-frame budget at the cost of half the temporal resolution. Which of those a person prefers
+  is a product question, not a measurement, and it wants the marks to answer it.
+
+**Window during which the phone was being driven: 10:20:09–10:20:53.** Any mark inside it is mine,
+not the owner's, and should be discarded.
