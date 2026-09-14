@@ -47,7 +47,27 @@ class LinkService : LifecycleService() {
      * same tick it was met by before. See [LinkAutoStart].
      */
     private var startReason: LinkStartReason = LinkStartReason.UNKNOWN
-    private var isForeground = false
+    /**
+     * Whether this service has **ever** reached the foreground. Defect 103.
+     *
+     * It is deliberately not "are we foreground now". That field existed, was assigned `true` in one
+     * place and cleared in none, and the guard it fed then skipped the re-claim for the life of the
+     * process — so a service the platform had demoted never asked to be foreground again. Observed
+     * as `isForeground=false types=0x00000000` on a ServiceRecord alive twelve hours with
+     * `startForegroundCount=1`. Defect 97's shape on the phone: one writer, no reader of the
+     * platform's actual state.
+     *
+     * **The platform is the source of truth and it is not readable**, so nothing tries to mirror it.
+     * `startForeground` is now called on every start command, exactly as `MirrorService` does — which
+     * is why `MirrorService` recovered by itself on 2026-09-12 while this one stayed demoted.
+     *
+     * This flag is write-once and decides one thing only: whether a refusal is fatal. Failing to
+     * reach the foreground the **first** time means there is nothing to protect, so stopping is
+     * honest. Failing on a **later** re-claim means live sockets exist, and killing them because one
+     * re-claim was refused would be worse than the demotion — defect 102 is the concrete reason, a
+     * restriction the phone can apply and lift while the app is running.
+     */
+    private var everForeground = false
 
     /**
      * Published together so a lapse count is never read without the denominators beside it.
@@ -105,17 +125,30 @@ class LinkService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        if (!isForeground) {
-            startReason = LinkStartReason.fromExtra(
-                intent?.getStringExtra(LinkStartReason.EXTRA),
-            )
-            if (!startForegroundWithStatus(getString(R.string.link_service_starting))) {
-                // The platform refused the types we asked for. Stopping is the only honest move:
-                // a started-but-not-foreground service is killed by the system within seconds and
-                // would take the sockets down with it in a way nothing logs.
+        // Unconditionally, on every start command. There is no "already foreground" guard, because
+        // the platform can demote this service and tell us nothing, and a guard over our own
+        // bookkeeping then skips the re-claim forever. Re-calling `startForeground` on a service
+        // that is already foreground updates its notification and is otherwise a no-op.
+        startReason = LinkStartReason.fromExtra(
+            intent?.getStringExtra(LinkStartReason.EXTRA),
+        )
+        if (!startForegroundWithStatus(getString(R.string.link_service_starting))) {
+            if (!everForeground) {
+                // Never reached the foreground, so there are no sockets to protect. A
+                // started-but-not-foreground service is killed within seconds and would take them
+                // down in a way nothing logs; stopping is the only honest move.
+                LinkLog.w("service", "Foreground refused on the first start — stopping rather than running demoted")
                 stopSelf()
                 return START_NOT_STICKY
             }
+            // A later re-claim was refused while a link is up. Killing it here would turn a
+            // recoverable demotion into a dropped connection, and defect 102 is a live example of a
+            // restriction that comes and goes under a running app. Logged loudly and kept.
+            LinkLog.w(
+                "service",
+                "Foreground RE-CLAIM refused (reason=$startReason) — the service is demoted and the " +
+                    "link is still up; it will be re-attempted on the next start command",
+            )
         }
         when (intent?.action) {
             ACTION_STOP -> {
@@ -241,8 +274,14 @@ class LinkService : LifecycleService() {
         val types = LinkAutoStart.foregroundTypesFor(startReason)
         return try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(status), types)
-            isForeground = true
-            LinkLog.i("service", "Foreground as $startReason, types=0x${types.toString(16)}")
+            val first = !everForeground
+            everForeground = true
+            // Logged on every claim, not only the first: a re-claim after a demotion is the event
+            // defect 103 exists for, and a line that only appears once cannot show it happening.
+            LinkLog.i(
+                "service",
+                "Foreground ${if (first) "claimed" else "RE-claimed"} as $startReason, types=0x${types.toString(16)}",
+            )
             true
         } catch (e: Exception) {
             // The class is named rather than referenced: ForegroundServiceStartNotAllowedException

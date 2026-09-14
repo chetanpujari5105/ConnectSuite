@@ -18612,3 +18612,109 @@ is a quality cost, not a timing one, and it is the standing candidate if the mar
 **VBR** (read from `dumpsys media.metrics`, not assumed), and 8 Mbps is a target the encoder
 overshoots by ~50% under motion and undershoots by 4× at rest.
 
+
+---
+
+## Phase 7 Slice 52 — the register audit, a guard against its own drift, and defect 103 (2026-09-14)
+
+### 1 · The audit
+
+A defect's status is written **twice** — in its table row and in its `### N — … · **status**`
+heading — and nothing compared them. 92 rows, 58 of which have a long record and can therefore
+disagree. **Eight did.**
+
+| # | heading said | row said | corrected | which I trusted, and why |
+|---|---|---|---|---|
+| 32 | deferred | closed | heading | the row carries a date; the heading was written when the defect was found |
+| 39 | deferred | closed | heading | same |
+| 44 | open | closed | heading | the row cites step 71 hardware evidence |
+| 57 | open | fixed 2026-09-03 | heading | the row cites a corrupt-JPEG hardware proof, and `CLAUDE.md`'s Phase 6 row lists 57 among fifteen closed |
+| 63 | open | closed 2026-09-02 | heading | the row cites `OnboardingCopyTest` |
+| 101 | open | fixed 2026-09-10 | heading | the row cites a before/after measurement |
+| **102** | fixed 2026-09-11 | **open** | **row** | the heading is newer; **I wrote this drift today** |
+| **105** | fixed 2026-09-13 | **open** | **row** | same — **also mine, today** |
+
+**The rule I applied, rather than a judgement per row: trust whichever side carries a date and an
+evidence pointer, and where both do, the more recent writing.** In six cases that is the row, whose
+status is updated when a defect is fixed while the heading was written when it was found. In two it
+is the heading — and those two are the instructive ones, because **I made them, hours earlier, by
+updating the Verified-by column and leaving the Status column alone in the same edit.** Defect 97's
+shape in prose: two fields that must move together, moved apart.
+
+Six headings carried **no status at all** (31, 34, 37, 40, 41, 43) and were given one from the row.
+That is an omission rather than a contradiction, but an absent status cannot be compared, so the
+guard below would be blind to those rows without it.
+
+**Two more findings that were not the question asked:**
+
+- **Seven rows contain unescaped pipes** (68, 77, 78, 79, 80, 99, 105) which split their own table
+  cells. 105's is a `||` inside a code snippet. These render wrong as markdown and are why every
+  automated count of this file has been unreliable.
+- **34 of the 92 rows have no long record at all.** Not a defect — the register calls itself the
+  index and `docs/testing.md` holds the evidence — but it means "reconcile every heading" covers 58
+  rows, not 92, and the guard skips the rest by design rather than by accident.
+
+### 2 · The honest open count
+
+```
+outstanding   3   30 (SMS no-thread half), 89 (trash album), 100 (mirror start, cause is 102)
+deferred      2   17, 38
+withdrawn     1   47
+resolved     86
+              92
+```
+
+103 moved to resolved in this slice. 102 and 105 were already fixed and are now *recorded* as fixed.
+
+### 3 · The guard, shown failing against the real case first
+
+`check-defects.sh` now refuses a commit where a heading and its row disagree. **Built before 101 was
+corrected**, and run against the register as it then stood:
+
+```
+check-defects: defect 101 disagrees with itself — the heading says it is outstanding, the row says resolved
+               heading: **open**
+               row:     **fixed** 2026-09-10, and **the emitter is named rather than debounced** …
+EXIT: 1
+```
+
+Then 101's heading was corrected, and the same command returned clean. Red against the real case,
+green after — not a planted fixture.
+
+**The calibration came from a failure, not from a design.** The first version compared status
+*words* and flagged 60 and 75, where the heading says `fixed` and the row says `closed`. Those are
+synonyms; a guard that fires on them teaches people to normalise wording for the checker rather than
+for a reader. So it asks the narrower question anybody actually acts on — **outstanding versus
+resolved** — which is the shape of all eight real contradictions.
+
+**What it deliberately does not catch, recorded so nobody assumes it is stronger:** a heading saying
+`deferred` over a row saying `open`. Both are outstanding, they differ meaningfully, and separating
+them needs the taxonomy this file's own header argues against. A fixture asserts that gap is
+allowed through **on purpose**, so the limit is a decision on the record rather than something a
+reader discovers.
+
+`scripts/check-defects.test.sh` — five fixtures, each with its opposite, the first being defect 101
+verbatim as it stood.
+
+### 4 · Defect 103
+
+`isForeground` was assigned in one place, cleared in none, and guarded the re-claim — so a service
+the platform demoted never asked to be foreground again. **The field is gone.** `startForeground` is
+called on every start command, exactly as `MirrorService` does, which is why `MirrorService`
+recovered by itself on 2026-09-12 while this one stayed demoted for twelve hours.
+
+What remains is `everForeground`, **write-once**, deciding one thing: whether a refusal is fatal.
+
+| | |
+|---|---|
+| refused on the **first** claim | `stopSelf()` — nothing to protect, and a started-but-not-foreground service is killed within seconds |
+| refused on a **re-claim** | logged loudly, **keep running** — live sockets exist, and defect 102 is a concrete example of a restriction that comes and goes under a running app |
+
+And the claim is logged every time, as `claimed` or `RE-claimed`: a line that only appears once
+cannot show the event this defect exists for.
+
+**Verification is static.** `am start-foreground-service` is refused (`exported=false`), so the
+runtime confirmation was already owed before this change. The stimulus is now cheaper than it was:
+**launch the app twice and grep for `RE-claimed`** — the old code logged nothing on the second start
+because the guard skipped it, so the line's presence is the difference. The phone was off the bus
+when this landed.
