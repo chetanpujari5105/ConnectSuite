@@ -43,8 +43,8 @@
 
 .card.primary {
   background: var(--elev-3);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07) inset, var(--shadow-primary);
+  border-color: rgba(var(--overlay-rgb), 0.1);
+  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
 }
 
 .card-title {
@@ -131,7 +131,7 @@ button.danger:hover { background: var(--destructive-fill); }
   color: var(--accent-on-fill);
   font-weight: 600;
 }
-.primary-action:hover { background: #7d5cf6; border-color: #7d5cf6; }
+.primary-action:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .primary-action:disabled:hover { background: var(--accent); }
 
 button:disabled {
@@ -161,7 +161,7 @@ input:hover { border-color: var(--hairline-hover); }
 img#qr {
   display: block;
   border-radius: var(--radius-tile);
-  background: #fff;
+  background: var(--qr-ground);
   margin: var(--space-5) 0;
 }
 
@@ -172,7 +172,15 @@ img#qr {
  */
 .caps { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
+/*
+ * A chip carries its state three ways, and only one of them is a colour: the fill, the **glyph**
+ * (`check` / `lock`, added 2026-09-16) and the hidden sentence. Defect 26 fixed the third for a
+ * screen reader and left a sighted reader who cannot separate green from grey with the first alone.
+ */
 .cap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: 3px var(--space-4);
   border-radius: var(--radius-pill);
   font-size: 12px;
@@ -180,12 +188,33 @@ img#qr {
   border: 1px solid var(--hairline);
   color: var(--text-meta);
 }
+.cap-glyph { flex: none; }
 
 .cap.on {
-  background: rgba(50, 229, 138, 0.1);
-  border-color: rgba(50, 229, 138, 0.24);
+  background: rgba(var(--tint-green-rgb), 0.1);
+  border-color: rgba(var(--tint-green-rgb), 0.24);
   color: var(--live);
 }
+
+/*
+ * The dimmed capabilities' reasons, as standing copy. Drawn, never revealed — the card's sub used
+ * to send people to a hover for them.
+ */
+.caps-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--hairline);
+}
+.cap-reason {
+  margin: 0;
+  font-size: 12px;
+  line-height: var(--leading-15);
+  color: var(--text-body);
+}
+.cap-reason-name { color: var(--text-primary); font-weight: 600; }
 
 /*
  * Off screen, still in the accessibility tree. Not `display: none` and not `visibility: hidden` —
@@ -239,15 +268,16 @@ img#qr {
   text-align: center;
   font-size: 13px;
   line-height: 1.5;
-  color: #d7d7de;
-  background: rgba(16, 16, 20, 0.82);
+  color: var(--text-on-control);
+  background: var(--surface-tooltip);
 }
 
 .mirror-overlay[hidden] { display: none; }
 
 .mirror-overlay .hint {
   font-size: 12px;
-  color: #9a9aa6;
+  /* On the scrim, so it does not invert either. See .pane-mirror .mirror-overlay above. */
+  color: var(--text-on-media-dim);
 }
 
 /* Input feedback over a live picture. Unlike .mirror-overlay this is not tied to the state of the
@@ -260,9 +290,9 @@ img#qr {
   bottom: 12px;
   padding: 10px 12px;
   border-radius: 6px;
-  background: rgba(20, 20, 26, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #f2f2f5;
+  background: var(--surface-tooltip-strong);
+  border: 1px solid rgba(var(--overlay-rgb), 0.14);
+  color: var(--text-primary);
   font-size: 12px;
   line-height: 1.4;
   pointer-events: none;
@@ -272,7 +302,7 @@ img#qr {
 
 .mirror-notice .hint {
   margin-top: 4px;
-  color: #a9a9b6;
+  color: var(--text-body);
 }
 
 /*
@@ -320,9 +350,9 @@ img#qr {
   overflow-y: auto;
 }
 .contact-row {
-  border: 1px solid #2a2a33;
+  border: 1px solid var(--border-contact);
   border-radius: 8px;
-  background: #17171d;
+  background: var(--surface-contact);
 }
 /* A button, not a div: the row expands, so it has to be reachable and operable by keyboard. The
    capability chips were rebuilt for the same reason (defect 26) — a control that only a mouse can
@@ -342,8 +372,8 @@ img#qr {
   color: inherit;
   font: inherit;
 }
-.contact-head:hover { background: #1d1d25; }
-.contact-name { font-size: 13px; color: #f2f2f5; }
+.contact-head:hover { background: var(--surface-contact-hover); }
+.contact-name { font-size: 13px; color: var(--text-primary); }
 .contact-sub { flex: none; }
 .contact-detail {
   display: flex;
@@ -364,32 +394,484 @@ img#qr {
   margin: 0;
   font-size: 12px;
 }
-.contact-fields dt { color: #8c8c99; }
-.contact-fields dd { margin: 0; color: #d8d8e0; }
+.contact-fields dt { color: var(--text-body); }
+.contact-fields dd { margin: 0; color: var(--text-on-control); }
 #contacts-card { position: relative; }
 #contacts-search { flex: 1; }
 
-/* ---- Media remote --------------------------------------------------------------------------
-   No album art: `remote.state` carries none, by design — docs/protocol.md keeps images off the
-   control channel. The card is text and controls, and says so honestly rather than leaving a grey
-   square where art would be. */
-.remote-body { display: flex; flex-direction: column; gap: 10px; }
-.remote-track { display: flex; flex-direction: column; gap: 2px; }
-.remote-title { font-size: 14px; color: #f2f2f5; }
-.remote-scrub { display: flex; align-items: center; gap: 10px; }
-.remote-seek { flex: 1; }
-.remote-elapsed, .remote-total {
-  /* Tabular figures so the clock does not jitter as the digits change width four times a second. */
-  font-variant-numeric: tabular-nums;
-  min-width: 44px;
+/* ---- Media remote ------------------------------------------------------------------------
+   Rebuilt 2026-09-16 (second pass) against the reference mockup. The first pass matched the
+   reference's *contents* and missed its structure: it drew the widget as a well **inside** the
+   standard card, which put four visible borders on screen — card, well, artwork, device row —
+   where the reference has one surface and no internal edges at all.
+
+   **The fix is subtractive.** `#remote-card` keeps its box in the grid and gives up its skin; the
+   widget is the only thing with a background, a border or a radius. Nothing here nests.
+
+   **It is dark in both themes**, through the `--np-*` tokens. tokens.css carries the argument —
+   same one as `--media-scrim`: a surface whose subject is an arbitrary album cover does not
+   invert. Every colour below reads one of those tokens, so the card cannot pick up the page's
+   theme by accident, and `check-color-tokens.mjs` still holds because the exemption is written
+   down with a reason rather than taken with a literal. */
+
+/*
+ * The pane's own card gives up its skin — one surface on screen, and it is `.remote-now`.
+ *
+ * **It also carries the grid placement**, which every other Overview column rule keeps in
+ * shell.css. One selector belongs to exactly one sheet; this one already had a rule here, so the
+ * column joins it rather than the skin moving there. Same call `.device-status-card` made, and
+ * `stylesheets.test.ts` caught the split version of both on its first run.
+ *
+ * `grid-column: 2` is the slot Quick actions held until it was deleted on 2026-09-16.
+ *
+ * **`align-self: stretch` was removed on 2026-09-16 and its absence is the load-bearing part.**
+ * It was here so this card would meet a shorter hero. The hero was then rebuilt with two more rows
+ * of detail and now sets the row itself — so leaving the stretch in would grow *this* card to the
+ * hero's height, which is exactly the "the media card stays at its current size" the rebuild was
+ * asked to preserve. Both items take their natural height; an uneven row is the honest picture of
+ * two cards with different amounts to say, and neither one manufactures space to hide it.
+ */
+.remote-card {
+  grid-column: 2;
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
 }
-.remote-total { text-align: right; }
-.remote-transport { gap: 8px; }
-.remote-volume { gap: 10px; align-items: center; }
-.remote-volume input[type='range'] { flex: 1; max-width: 180px; }
-/* A disabled transport button is a statement, not a dead control: it keeps its shape and carries
-   its reason in `title` and in a visually hidden span. See defect 26. */
-.remote-transport button:disabled { opacity: 0.45; cursor: not-allowed; }
+.remote-card:hover { border-color: transparent; }
+
+/* The "Paused in Spotify." line: in the accessibility tree, out of the picture. See index.html. */
+.remote-note {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.remote-body { display: block; }
+
+/* ---- The one card ---------------------------------------------------------------------------- */
+.remote-now {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /*
+   * **Fills the row, and distributes into it.** The card moved into the top row beside the hero on
+   * 2026-09-16 and has to match its height; `height: 100%` gets the box there, and
+   * `justify-content: space-between` is what stops the contents huddling at the top of it.
+   *
+   * `gap` stays as the *minimum* — space-between only ever adds to it — so a short window degrades
+   * to the compact spacing rather than overlapping. The two properties are a pair: height without
+   * the distribution is a tall card with a hole in the bottom, and distribution without the height
+   * does nothing at all.
+   *
+   * This is also what makes the empty state fill cleanly. "Nothing playing" draws the same six
+   * rows at the same sizes, so it distributes identically instead of collapsing to a shorter box
+   * beside a full-height hero.
+   */
+  /*
+   * **`space-between` is gone.** It was here to fill a card stretched to the hero's height, and
+   * with the card at its own height it does nothing but push the transport and the bottom row
+   * apart — the dead band in the middle of the old layout. The gaps are stated instead, so the
+   * rhythm is a decision rather than a division of leftover space.
+   */
+  gap: var(--space-7);
+  padding: var(--space-9) var(--space-9) var(--space-8);
+  border-radius: var(--radius-window);
+  /* A vertical sheen rather than a flat fill — the reference's cards are lit from the top. */
+  background: linear-gradient(to bottom, var(--np-surface-top), var(--np-surface));
+  color: var(--np-text);
+  box-shadow: var(--shadow-panel);
+}
+
+/* ---- The card's wash --------------------------------------------------------------------------
+ * **Two layers, and the order is the fix.** A constant cool violet sits under a much fainter
+ * artwork tint, so the base is navy whatever is playing.
+ *
+ * It was the artwork alone at 0.22 and 0.12, which is why a warm album turned the whole card
+ * brown and made it read as a different material from the hero beside it. The tint is 0.09 and
+ * 0.05 now — present on a colourful sleeve, invisible on a muddy one, and never the ground.
+ * `var(--art-rgb, …)` still falls back to the accent, so a track with no cover is the same card.
+ */
+.remote-now::before {
+  content: '';
+  position: absolute;
+  inset: -45%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      40% 44% at 16% 22%,
+      rgba(var(--art-rgb, var(--tint-violet-rgb)), 0.09) 0%,
+      rgba(var(--art-rgb, var(--tint-violet-rgb)), 0) 100%
+    ),
+    radial-gradient(
+      48% 42% at 86% 90%,
+      rgba(var(--art-rgb, var(--tint-violet-rgb)), 0.05) 0%,
+      rgba(var(--art-rgb, var(--tint-violet-rgb)), 0) 100%
+    ),
+    radial-gradient(
+      52% 50% at 12% 0%,
+      rgba(var(--tint-violet-rgb), 0.1) 0%,
+      rgba(var(--tint-violet-rgb), 0) 100%
+    );
+  transition: opacity var(--dur-route) var(--ease);
+}
+
+/* Nothing playing is not a mood. The glow goes with the music. */
+.remote-idle::before { opacity: 0.3; }
+
+/* ---- Cover, badge, title --------------------------------------------------------------------- */
+/* `--space-9` is `.hero-body`'s own gap — the gutter between the phone illustration and its
+   facts. Same relationship, same measurement, so the two cards scan as one row. */
+/* ---- Header ---------------------------------------------------------------------------------- */
+.remote-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  min-height: 24px;
+}
+/*
+ * **The media card's title, at the same size as every other card's — departure O10, 2026-09-16.**
+ *
+ * It was `10.5px / uppercase / 0.12em`, which is the **sidebar group header** role and the only
+ * 10.5px in the handoff's type scale is exactly that. On a card it read as a fourth heading size on
+ * a pane that should have three, and as small caps beside two sentence-case card titles.
+ *
+ * The handoff draws no media card at all — it is one of X5's homeless features — so there is no
+ * drawn treatment to copy. What there *is* is a type scale with one row for card titles, and this
+ * is a card title. `--np-text` rather than `--text-primary` because this card keeps its own palette
+ * for the reason `--np-*` exists: its surface is set against an arbitrary album cover.
+ */
+.remote-label {
+  font: var(--text-section);
+  letter-spacing: var(--tracking-section);
+  color: var(--np-text);
+}
+/* The non-interactive branch: a session whose app cannot be asked about still says whose it is. */
+.remote-source-label {
+  font-size: 12px;
+  color: var(--np-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.remote-open {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  height: 26px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--np-hairline);
+  background: var(--np-control);
+  color: var(--np-text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
+}
+.remote-open:hover { background: var(--np-control-hover); color: var(--np-text); }
+.remote-open svg { flex: none; }
+
+.remote-main { display: flex; align-items: center; gap: var(--space-7); }
+
+/* No border and no background of its own — the cover IS the box. A frame around a photograph is
+   the nested-container failure this rebuild is about, one element down. */
+.remote-art {
+  position: relative;
+  /*
+   * 150px, which is `.hero-phone`'s width **exactly** rather than a number picked from a range.
+   * The two cards are side by side in one row and these are their primary visual anchors; anchors
+   * that differ by a few pixels across a gutter read as a mistake, and matching them is a fact
+   * about the layout rather than a taste. If the hero phone is ever resized, this follows it.
+   */
+  width: 116px;
+  height: 116px;
+  flex: none;
+  border-radius: var(--radius-media);
+  overflow: visible;
+}
+.remote-art img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: var(--radius-media);
+}
+
+/* No cover: a drawn state, never a grey placeholder. A grey square makes "this session has no art"
+   and "we could not load the art" the same picture. This is the missing-data case only — with a
+   cover on the wire the <img> above is what draws. */
+.remote-art-none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--overlay-rgb), 0.05);
+  color: var(--np-text-meta);
+}
+
+/* The source badge, overlapping the cover's top-right corner. The reference image floats it at the
+   card's corner instead; this follows the brief's explicit instruction, which named that difference
+   and asked for the overlap. The negative offset is what makes it read as *on* the artwork rather
+   than beside it. */
+.remote-source {
+  position: absolute;
+  /* Attached to the corner rather than floating off it: the offset is inside the cover now, so the
+     badge overlaps the artwork instead of hanging outside its bounds. 26px on a 116px cover — a
+     badge, not a second piece of art. */
+  top: -6px;
+  right: -6px;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* A ring in the card's own ground, so the badge reads as lifted off the cover rather than
+     punched into it. This is the one place a "border" is correct: it separates two images. */
+  /* Mixed against --np-surface-top rather than --np-surface: the card ground is a vertical
+     gradient and this badge sits at the top of it, so the ring has to match the end of the ramp it
+     actually lands on. A ring in the bottom colour reads as a faint halo at the top. */
+  box-shadow: 0 0 0 2.5px var(--np-surface-top), var(--shadow-nav-pill);
+  background: var(--np-control);
+}
+.remote-source img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.remote-source-none { color: var(--np-text-meta); }
+
+/* `min-width: 0` is what makes the ellipsis below reachable — without it a flex child refuses to
+   shrink below its content and the title pushes the card wide instead of truncating. */
+.remote-track { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; flex: 1; }
+
+.remote-title {
+  font: var(--text-control);
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 21px;
+  color: var(--np-text);
+  letter-spacing: var(--tracking-section);
+}
+.remote-sub {
+  font-size: 13.5px;
+  line-height: var(--leading-15);
+  color: var(--np-text-dim);
+}
+/* One line, always, whatever the title is.
+   `word-break: break-all` is the belt to nowrap's braces: a single unbroken token longer than the
+   box — a URL, or a title that is one long word — can still force an overflow in some engines, and
+   `break-all` guarantees the clip happens at the box edge rather than pushing it. The live phone
+   is currently playing a track called "❤️‍🔥 ¡VAN A BUSCARTE! … 🧲 Mantra", which is the exact
+   case this was reported for, and it is the fixture this rule was checked against. */
+.remote-title,
+.remote-sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-all;
+}
+/* The empty state's helper line is a sentence, not a value, and the reference sets it over two
+   lines. It is the one place wrapping is right — and it is the `.remote-sub`, never the title. */
+.remote-idle .remote-sub {
+  white-space: normal;
+  word-break: normal;
+  overflow: visible;
+}
+
+/* ---- Scrubber and volume ---------------------------------------------------------------------
+   One appearance, two instances. A scrubber and a volume track differing by a pixel is the drift a
+   second class invites, so everything but the end caps is shared. */
+.remote-scrub { display: flex; flex-direction: column; gap: var(--space-3); }
+.remote-times {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: var(--leading-12);
+  /* Tabular figures so the clock does not jitter as digits change width four times a second. */
+  font-variant-numeric: tabular-nums;
+  color: var(--np-text-meta);
+  letter-spacing: var(--tracking-meta);
+}
+
+.remote-seek,
+.remote-vol {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 18px;              /* the hit target; the painted track is 4px inside it */
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.remote-seek::-webkit-slider-runnable-track,
+.remote-vol::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  /* The filled portion is a hard-stopped gradient driven by `--fill`, which the view writes as a
+     percentage — one paint, and no second element that can disagree with the value.
+
+     The ramp is `--accent` into `--accent-text`, a slightly lighter violet, and NOT into
+     `--secondary`. The first version used `--secondary` and drew violet-to-cyan, which is both
+     louder than the reference and a misuse of the token: `--secondary` is this system's *secondary
+     data accent*, a meaning, and borrowing it for a gradient stop puts a second sense on a name
+     that already has one. */
+  background: linear-gradient(
+      to right,
+      var(--accent) 0%,
+      var(--accent-text) var(--fill, 0%),
+      transparent var(--fill, 0%)
+    ),
+    linear-gradient(to right, var(--np-track) 0 100%);
+}
+.remote-seek::-webkit-slider-thumb,
+.remote-vol::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;          /* centres a 16px knob on a 4px track: (4 - 16) / 2 */
+  border-radius: var(--radius-pill);
+  background: var(--np-knob);
+  /* The existing knob shadow. A slider handle and a nav pill want the same lift, and a second
+     hand-mixed black here is how a system grows two answers to one question. */
+  box-shadow: var(--shadow-nav-pill);
+}
+/* The scrubber's handle appears on hover; the volume's is always there. Both are the reference,
+   and the asymmetry is real rather than an oversight: a scrubber's position is restated in two
+   clocks directly beneath it, and a volume level has no second reading anywhere. */
+.remote-seek::-webkit-slider-thumb {
+  opacity: 0;
+  transition: opacity var(--dur-hover) var(--ease);
+}
+.remote-seek:hover::-webkit-slider-thumb,
+.remote-seek:active::-webkit-slider-thumb,
+.remote-seek:focus-visible::-webkit-slider-thumb { opacity: 1; }
+
+.remote-seek:disabled,
+.remote-vol:disabled { cursor: default; opacity: 0.45; }
+.remote-seek:disabled::-webkit-slider-thumb,
+.remote-vol:disabled::-webkit-slider-thumb { display: none; }
+
+/* ---- Transport --------------------------------------------------------------------------------
+   Three rings, evenly spaced, the middle one larger. Size and fill carry the emphasis, **not
+   colour**: a violet play button would make the control you press constantly the loudest thing on
+   the screen, in an app whose accent means "selected". Sized to the reference's proportions —
+   14.5% and 21% of the card's width, where the first pass drew 8.6%. */
+.remote-transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+}
+.remote-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--np-hairline);
+  background: var(--np-control);
+  color: var(--np-text);
+  cursor: pointer;
+  transition: transform var(--dur-press) var(--ease), background var(--dur-hover) var(--ease);
+}
+.remote-button:hover:not(:disabled) { background: var(--np-control-hover); }
+.remote-button:active:not(:disabled) { transform: scale(0.94); }
+.remote-button.primary { width: 60px; height: 60px; }
+
+/* A disabled transport button is a statement, not a dead control: it keeps its shape and, where
+   there is a reason worth giving, carries it in `title` and in a visually hidden span (defect 26).
+   In the idle state it carries none — "nothing is playing" is already on the card. */
+.remote-button:disabled { opacity: 0.3; cursor: default; }
+
+/* The label is present for the accessible name and clipped from view. Deliberately NOT
+   `.visually-hidden`: that class means "a reason this control is unavailable" in this pane, and
+   `remoteView.test.ts` counts it to assert a live button has nothing to explain. Two meanings on
+   one class is the collision that assertion exists to catch. */
+.remote-button-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- The one bottom row -----------------------------------------------------------------------
+   Volume on the left, output device on the right, everything on one baseline. They were two
+   stacked bands with a gap between them; they answer the same question — where the sound goes and
+   how loud — and they belong on one line.
+
+   **The pill carries a chevron and opens nothing.** It was refused once on affordance grounds and
+   asked for since; nothing in this protocol switches the phone's audio route. What is kept is the
+   narrowing: a plain `div`, no `tabindex`, no click handler, no pointer cursor. `docs/protocol.md`
+   → `output` records the route that would make it real. */
+.remote-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-7);
+}
+
+.remote-output {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+  max-width: 48%;
+  height: 32px;
+  padding: 0 var(--space-4) 0 var(--space-5);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--np-hairline);
+  background: var(--np-control);
+  color: var(--np-text);
+  font: var(--text-control);
+  font-size: 12.5px;
+}
+.remote-output-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.remote-output svg { flex: none; color: var(--np-text-dim); }
+.remote-output-chevron { color: var(--np-text-meta); transform: rotate(90deg); }
+.remote-output-idle,
+.remote-output-idle .remote-output-name { color: var(--np-text-dim); }
+
+/* The volume half of that row. It takes the space the pill does not, so a long device name
+   shortens the slider rather than wrapping the row. */
+.remote-volume {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: 1;
+  min-width: 0;
+}
+.remote-volume svg { flex: none; color: var(--np-text-dim); }
+.remote-volume .remote-vol { flex: 1; min-width: 0; }
+/* A percentage carries its own denominator, which is why this one may be drawn where the old
+   "7 of 15" could not. `aria-valuetext` keeps the step form for anyone who wants the granularity. */
+.remote-volume-read {
+  flex: none;
+  min-width: 34px;
+  text-align: right;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--np-text-meta);
+}
+.remote-idle .remote-volume svg { color: var(--np-text-meta); }
+
 #remote-card { position: relative; }
 
 /* ---- Messages ------------------------------------------------------------------------------ */
@@ -494,7 +976,7 @@ img#qr {
   cursor: pointer;
   transition: background var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
 }
-.sms-tab:hover { background: rgba(255, 255, 255, 0.04); color: var(--text-on-control); }
+.sms-tab:hover { background: rgba(var(--overlay-rgb), 0.04); color: var(--text-on-control); }
 .sms-tab.on {
   background: var(--accent-tint-selected);
   border-color: var(--accent-border);
@@ -528,7 +1010,7 @@ img#qr {
   overflow-y: auto;
   padding: var(--space-3);
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
 }
 
 .sms-list-note {
@@ -558,7 +1040,7 @@ img#qr {
   cursor: pointer;
   transition: background var(--dur-hover) var(--ease);
 }
-.sms-thread:hover { background: rgba(255, 255, 255, 0.035); }
+.sms-thread:hover { background: rgba(var(--overlay-rgb), 0.035); }
 .sms-thread.on { background: var(--accent-tint-selected); }
 
 .sms-lines { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -669,7 +1151,7 @@ img#qr {
   align-self: center;
   padding: 3px var(--space-4);
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(var(--overlay-rgb), 0.05);
   font-size: 11px;
   color: var(--text-meta);
 }
@@ -695,8 +1177,8 @@ img#qr {
 .sms-bubble.outbound {
   align-self: flex-end;
   border-radius: 16px 16px 6px 16px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--bubble-out);
+  color: var(--text-on-bubble);
 }
 .sms-bubble-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .sms-bubble-text.is-muted { opacity: 0.65; font-style: italic; }
@@ -706,7 +1188,7 @@ img#qr {
   font-size: 10px;
   color: var(--text-meta);
 }
-.sms-bubble.outbound .sms-bubble-when { color: rgba(255, 255, 255, 0.66); }
+.sms-bubble.outbound .sms-bubble-when { color: var(--text-on-fill-dim); }
 
 /* A marker, not the design's attachment card — this wire carries `hasAttachments: true` and no
    name, size or type to put on one. */
@@ -717,11 +1199,11 @@ img#qr {
   margin-top: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-control);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--overlay-rgb), 0.06);
   font-size: 11.5px;
   line-height: 1.4;
 }
-.sms-bubble.outbound .sms-attachment { background: rgba(0, 0, 0, 0.18); }
+.sms-bubble.outbound .sms-attachment { background: var(--fill-on-bubble); }
 .sms-attachment-glyph { flex: none; }
 
 .sms-composer {
@@ -776,7 +1258,7 @@ img#qr {
   border: 1px solid var(--hairline);
   box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
 }
 
 .sms-person-head { display: flex; flex-direction: column; align-items: center; text-align: center; }
@@ -823,8 +1305,8 @@ img#qr {
   place-items: center;
   flex: none;
   border-radius: 50%;
-  background: hsl(var(--disc-hue, 260) 62% 66%);
-  color: #0b0b12;
+  background: hsl(var(--disc-hue, 260) var(--disc-sat) var(--disc-lig));
+  color: var(--disc-fg);
   font-weight: 600;
 }
 .sms-disc-sm { width: 34px; height: 34px; font-size: 11.5px; }
@@ -930,7 +1412,7 @@ img#qr {
   display: flex;
   gap: var(--space-2);
   padding: var(--space-5);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid rgba(var(--overlay-rgb), 0.07);
 }
 
 .calls-tab {
@@ -995,8 +1477,8 @@ img#qr {
 .call-disc-xs {
   border-radius: 50%;
   border: 0;
-  background: hsl(var(--disc-hue, 260) 62% 66%);
-  color: #0b0b12;
+  background: hsl(var(--disc-hue, 260) var(--disc-sat) var(--disc-lig));
+  color: var(--disc-fg);
   font-weight: 600;
 }
 .call-disc-sm { width: 32px; height: 32px; font-size: 11px; }
@@ -1054,7 +1536,7 @@ img#qr {
   cursor: pointer;
   transition: background 180ms var(--ease);
 }
-.call-row:hover { background: rgba(255, 255, 255, 0.035); }
+.call-row:hover { background: rgba(var(--overlay-rgb), 0.035); }
 .call-row[disabled] { cursor: default; opacity: 0.72; }
 .call-row[disabled]:hover { background: transparent; }
 .call-row-lines { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -1138,7 +1620,7 @@ img#qr {
   box-sizing: border-box;
   border-radius: var(--radius-media);
   background: var(--well);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(var(--overlay-rgb), 0.07);
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-body);
@@ -1192,7 +1674,7 @@ img#qr {
   cursor: pointer;
   transition: background 160ms var(--ease), border-color 160ms var(--ease);
 }
-.dialkey:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--hairline-hover); }
+.dialkey:hover { background: rgba(var(--overlay-rgb), 0.06); border-color: var(--hairline-hover); }
 .dialkey-digit { font-size: 17px; color: var(--text-primary); }
 .dialkey-sub { font-size: 8.5px; letter-spacing: 0.1em; color: var(--text-meta); }
 /* Not in the design — a keypad with no delete. Departure C5. It sits under the `#` key rather than
@@ -1242,7 +1724,7 @@ img#qr {
   cursor: pointer;
   text-align: left;
 }
-.calls-frequent-row:hover { background: rgba(255, 255, 255, 0.04); }
+.calls-frequent-row:hover { background: rgba(var(--overlay-rgb), 0.04); }
 .calls-frequent-label {
   flex: 1;
   min-width: 0;
@@ -1535,8 +2017,8 @@ img#qr {
   width: 34px;
   height: 34px;
   border-radius: var(--radius-control);
-  background: hsl(var(--tile-hue, 260) 60% 62% / 0.16);
-  color: hsl(var(--tile-hue, 260) 70% 78%);
+  background: hsl(var(--tile-hue, 260) var(--tile-fill-sat) var(--tile-fill-lig) / 0.16);
+  color: hsl(var(--tile-hue, 260) var(--tile-text-sat) var(--tile-text-lig));
   font: 600 14px/1 var(--font-ui);
   transition: transform var(--dur-hover) var(--ease);
 }
@@ -1683,8 +2165,8 @@ img#qr {
   flex: none;
   padding: 2px var(--space-3);
   border-radius: var(--radius-pill);
-  border: 1px solid rgba(34, 211, 238, 0.3);
-  background: rgba(34, 211, 238, 0.1);
+  border: 1px solid rgba(var(--tint-cyan-rgb), 0.3);
+  background: rgba(var(--tint-cyan-rgb), 0.1);
   color: var(--secondary);
   font: var(--text-meta-size);
   letter-spacing: var(--tracking-meta);
@@ -1761,7 +2243,7 @@ img#qr {
   border-radius: var(--radius-pill);
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-on-fill);
   font: var(--text-control);
   cursor: pointer;
   transition: transform var(--dur-press) var(--ease);
@@ -1879,7 +2361,7 @@ img#qr {
   place-items: center;
   border-radius: var(--radius-pill);
   background: var(--warning);
-  color: #1a1206;
+  color: var(--text-on-warning);
   font: 600 11px/1 var(--font-ui);
 }
 
@@ -2172,7 +2654,7 @@ img#qr {
 .start-button {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-on-fill);
 }
 
 /* ---- The stage -------------------------------------------------------------------------------- */
@@ -2235,9 +2717,18 @@ img#qr {
   place-items: center;
   padding: var(--space-9);
   text-align: center;
-  background: rgba(7, 7, 10, 0.78);
+  background: var(--media-scrim);
   font: var(--text-body-size);
-  color: var(--text-body);
+  /*
+   * --text-on-media, NOT --text-body, and this is the whole reason that token exists.
+   *
+   * The scrim deliberately does not invert: it sits over the phone's picture, and a light scrim
+   * over a light video is unreadable in exactly the case a scrim is for. So the text on it must not
+   * invert either. With --text-body it measured **1.67:1** in light — dark grey on a near-black
+   * scrim — while every token involved was individually correct. A token-pair audit cannot see
+   * this; it took reading the rendered DOM, which is why that sweep exists beside the token one.
+   */
+  color: var(--text-on-media);
 }
 
 /* ---- Photos ----------------------------------------------------------------------------------
@@ -2472,8 +2963,8 @@ img#qr {
   bottom: var(--space-3);
   padding: 1px 5px;
   border-radius: 6px;
-  background: rgba(7, 7, 10, 0.6);
-  color: #fff;
+  background: var(--media-scrim-soft);
+  color: var(--text-on-media);
   font: var(--text-meta-size);
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -3099,7 +3590,7 @@ img#qr {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-5) var(--space-7);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid rgba(var(--overlay-rgb), 0.07);
 }
 .clip-tabs { display: flex; gap: var(--space-2); flex: 1; min-width: 0; }
 .clip-tab {
@@ -3145,14 +3636,14 @@ img#qr {
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-5) var(--space-7);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid rgba(var(--overlay-rgb), 0.07);
 }
 
 .clip-notice {
   margin: var(--space-4) var(--space-7) 0;
   padding: var(--space-4) var(--space-5);
   border-radius: var(--radius-control);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(var(--overlay-rgb), 0.04);
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-body);
@@ -3202,11 +3693,29 @@ img#qr {
   flex-direction: column;
   gap: var(--space-5);
 }
+
+/*
+ * **Full width, under both columns — departure O6, 2026-09-16.**
+ *
+ * It was a **child** of `#device-status-card` for as long as both have existed, because the
+ * `</div>` closing that card was never written. Unnesting it is the fix; putting it back in column
+ * two is not, and that was measured rather than assumed.
+ *
+ * With the Recent activity rows at the handoff's 52px, column one is `hero 368 + recent 347` and
+ * column two would be `media 359 + rings 209 + caps 285`. That is **301px of column two hanging
+ * below column one** — the reported dead space, the same size, on the other side. Two cards a
+ * column is what the handoff's Overview has, and this pane has five because the media card and
+ * this one are both features the design never drew (X5).
+ *
+ * So it goes across the bottom, where a flowing list of twelve chips and its reason lines are
+ * better served anyway than in a 786px column. Measured after: the columns end 138px apart.
+ */
+.caps-card { grid-column: 1 / -1; }
 .ring-row { display: flex; gap: var(--space-8); flex-wrap: wrap; }
 .ring-cell { display: grid; justify-items: center; gap: 2px; min-width: 104px; }
 .ring-svg { width: 72px; height: 72px; transform: rotate(-90deg); }
 .ring-track {
-  stroke: rgba(255, 255, 255, 0.08);
+  stroke: var(--hairline);
   stroke-width: 4;
 }
 .ring-arc {
@@ -3218,6 +3727,9 @@ img#qr {
 .ring-cell[data-tone='ok'] .ring-arc { stroke: var(--live); }
 .ring-cell[data-tone='low'] .ring-arc { stroke: var(--warning); }
 .ring-value { margin-top: -46px; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+/* A value too wide for the arc it sits in. The arithmetic is in `overview.ts` beside the rule that
+   applies it — 50.4px of clear span, and `10.8 GB` at 13px mono is 54.8. */
+.ring-value.is-long { font-size: 11px; }
 .ring-label { margin-top: 26px; font-size: 12px; color: var(--text-body); }
 /* `--text-meta`, and it was `--text-strong`/`--text-muted` — **two tokens that do not exist**
    (defect 92). An undeclared custom property makes the whole declaration invalid at computed-value
@@ -3274,8 +3786,8 @@ img#qr {
 }
 .clip-phone-state[data-tone='ready'] .clip-phone-icon { color: var(--accent-text); }
 .clip-phone-state[data-tone='done'] {
-  background: rgba(50, 229, 138, 0.09);
-  border-color: rgba(50, 229, 138, 0.28);
+  background: rgba(var(--tint-green-rgb), 0.09);
+  border-color: rgba(var(--tint-green-rgb), 0.28);
 }
 .clip-phone-state[data-tone='done'] .clip-phone-icon { color: var(--live); }
 .clip-phone-state[data-tone='warning'] {
@@ -3295,14 +3807,14 @@ img#qr {
   min-height: 72px;
   padding: var(--space-4) var(--space-7);
   border: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(var(--overlay-rgb), 0.05);
   border-left: 2px solid transparent;
   background: transparent;
   text-align: left;
   cursor: pointer;
   transition: background 160ms var(--ease);
 }
-.clip-row:hover { background: rgba(255, 255, 255, 0.04); }
+.clip-row:hover { background: rgba(var(--overlay-rgb), 0.04); }
 /* Selection is carried two ways — a tint and a left rule — because a tint alone at this contrast is
    one theme tweak away from invisible, and the row is what the whole right column is about. */
 .clip-row.is-selected {
@@ -3326,14 +3838,14 @@ img#qr {
   font-size: 10.5px;
   font-weight: 600;
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--overlay-rgb), 0.06);
 }
 .clip-badge-lg { width: 44px; height: 44px; font-size: 12px; }
 .clip-badge.is-url { background: var(--accent-tint-selected); color: var(--accent-text); }
-.clip-badge.is-text { background: rgba(96, 165, 250, 0.16); color: #9ec5fb; }
+.clip-badge.is-text { background: rgba(var(--tint-blue-rgb), 0.16); color: color-mix(in srgb, rgb(var(--tint-blue-rgb)), #000 var(--tint-darken)); }
 .clip-badge.is-warn { background: var(--warning-fill); color: var(--warning); }
-.clip-badge.is-undo { background: rgba(45, 212, 191, 0.16); color: #6fe0d2; }
-.clip-badge.is-muted { background: rgba(255, 255, 255, 0.05); color: var(--text-meta); }
+.clip-badge.is-undo { background: rgba(var(--tint-teal-rgb), 0.16); color: color-mix(in srgb, rgb(var(--tint-teal-rgb)), #000 var(--tint-darken)); }
+.clip-badge.is-muted { background: rgba(var(--overlay-rgb), 0.05); color: var(--text-meta); }
 
 .clip-lines { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 
@@ -3419,7 +3931,7 @@ img#qr {
 /* The three tones are three different facts and are never drawn alike: something happened,
    something was refused, and *this was not recorded* — which is not the same as "no". */
 .clip-step.is-refused .clip-step-dot { background: var(--warning-fill); }
-.clip-step.is-unknown .clip-step-dot { background: rgba(255, 255, 255, 0.05); }
+.clip-step.is-unknown .clip-step-dot { background: rgba(var(--overlay-rgb), 0.05); }
 .clip-step-label { display: block; font-size: 12.5px; color: var(--text-on-control); }
 .clip-step.is-unknown .clip-step-label { color: var(--text-body); }
 .clip-step-when { display: block; font-size: 11px; color: var(--text-meta); }
@@ -3557,6 +4069,17 @@ img#qr {
   height: 7px;
   border-radius: 999px;
   flex: 0 0 auto;
+  /*
+   * `--tint` is an `r,g,b` triple handed over by activity.ts, which reads it from the tokens rather
+   * than holding its own copy. The darkening happens HERE because it is a theme decision: the same
+   * dot is drawn as-is on dark and 46% darker on light, and neither renderer file needs to know.
+   */
+  background: color-mix(in srgb, rgb(var(--tint, var(--tint-grey-rgb))), #000 var(--tint-darken));
+}
+
+/* The activity donut's arcs. Same rule as the dot, on a stroke instead of a fill. */
+.activity-arc {
+  stroke: color-mix(in srgb, rgb(var(--tint, var(--tint-grey-rgb))), #000 var(--tint-darken));
 }
 
 /* The detail is the one field that carries somebody else's text, so it is clipped rather than
@@ -3655,7 +4178,7 @@ img#qr {
 @keyframes deep-reveal-flash {
   0%   { box-shadow: 0 0 0 0 var(--accent-glow); border-color: var(--accent-border); }
   35%  { box-shadow: 0 0 0 6px var(--accent-glow); border-color: var(--accent); }
-  100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
+  100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3890,8 +4413,8 @@ img#qr {
   margin: 0 0 12px;
   padding: 12px 14px;
   border-radius: var(--radius-tile);
-  background: rgba(245, 178, 61, 0.10);
-  border: 1px solid rgba(245, 178, 61, 0.30);
+  background: rgba(var(--tint-amber-rgb), 0.10);
+  border: 1px solid rgba(var(--tint-amber-rgb), 0.30);
   color: var(--text-body);
   font-size: 13.5px;
   line-height: 1.45;
@@ -3909,8 +4432,8 @@ img#qr {
   margin: 0 0 16px;
   padding: 12px 14px;
   border-radius: var(--radius-tile);
-  background: rgba(245, 178, 61, 0.10);
-  border: 1px solid rgba(245, 178, 61, 0.30);
+  background: rgba(var(--tint-amber-rgb), 0.10);
+  border: 1px solid rgba(var(--tint-amber-rgb), 0.30);
   text-align: left;
 }
 
@@ -3922,8 +4445,8 @@ img#qr {
   margin: var(--space-5) 0 0;
   padding: var(--space-5) var(--space-6);
   border-radius: var(--radius-control);
-  background: rgba(50, 229, 138, 0.08);
-  border: 1px solid rgba(50, 229, 138, 0.22);
+  background: rgba(var(--tint-green-rgb), 0.08);
+  border: 1px solid rgba(var(--tint-green-rgb), 0.22);
   font-size: 12.5px;
   line-height: 1.55;
   color: var(--live);
@@ -3939,4 +4462,24 @@ img#qr {
   font-size: 13.5px;
   line-height: 1.45;
   color: var(--text-body);
+}
+
+/*
+ * P5 — the code's own state, under the QR.
+ *
+ * `--warning`, not `--destructive`, and for the same reason the rejection block above is: a code
+ * that went stale has not failed, and red in a connection product reads as *the link is down* — a
+ * different and more alarming claim than *that code is old*. The `fresh` and `none` states take no
+ * rule at all: they are the standing copy in the standing colour, and a state that looks like every
+ * other line on the screen is the one that should be silent.
+ */
+#qr-note[data-code-state='expiring'],
+#qr-note[data-code-state='stale'] {
+  color: var(--warning);
+}
+#qr-note[data-code-state='stale'] {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-control);
+  background: var(--warning-fill);
+  border: 1px solid var(--warning-border);
 }

@@ -197,7 +197,7 @@ minSdk 29, targetSdk 36, compileSdk 36. Java 17 toolchain — Gradle needs a JDK
 | 4 | Notifications + reply, calls (events, dialing, answer/reject), SMS/MMS threads, media remote | **Done** — closed 2026-08-31 after step 71 |
 | 5 | Files both directions, photo/video browser with drag to Finder, clipboard with history, contacts | **Done** — closed 2026-09-02 against both its conditions (`docs/phase-5-closeout.md`); photos done; **Files is complete** as of 2026-09-01 (both directions with resume, the Folders screen, the Files pane, the grant-free `Download/ConnectSuite` destination, drag to Finder); **contacts shipped in Phase 4** and is not outstanding — see `docs/phase-5-closeout.md`. **Clipboard is built in both directions** — the wall measured (Slice 11, 2026-09-01), the feature landed, and Handoff-style auto-apply added on the Mac with a setting on the phone (Slice 12, 2026-09-02). Both directions are as automatic as their platforms allow — the Mac watches its own clipboard, the phone cannot and no Android app can. ~~Outstanding: the phone has not been reinstalled with the latest copy change~~ — **closed 2026-09-03 by reading the installed APK rather than the install date.** `pm path` → `adb pull` → `strings`: *"Copied on your Mac"*, *"On your clipboard"* and *"Copy to this phone"* are all present in the APK actually on the device (`lastUpdateTime=2026-09-03 01:22:04`), with a negative control at 0 (*"Copied on your Commodore"*) and a positive control at 177 (*"ConnectSuite"*). **Phase 5 has nothing outstanding.** A fourth probe in the same run is the one worth keeping: `adb tcpip` came back **present=1**, which reads as defect 65 resurrected and is not — it is `OnboardingCopy.forbiddenMechanisms`' own `why` string, the sentence explaining why the phrase is banned, compiled into the same dex. The copy describing an absence contains the words for the thing that is absent |
 | 6 | Background reliability on One UI — surviving Samsung's battery manager, doze, reconnect after sleep | **Done — closed 2026-09-03 against an honest accounting rather than a pass list (`docs/phase-6-closeout.md`).** The closing condition is stated in that file and is *not* "everything works": **every question with a route on this handset has been taken, and every remaining one carries its route or the word `None`.** **Seven behaviours are claimable**, each with a control — the link returns after a **real boot** with the competing route removed (defect 64, `LISTENER_REBIND lines since boot: 0`) and after an update; a deep-Doze transition does not drop the link, proven by **a message that actually crossed** at `deep=IDLE`; a crash does not leave the phone serverless (62); the wake lock is re-armed **before** its timeout rather than repaired after (61, measured at **59m49s against 60 minutes** before the second fix); the phone will not overwrite a clipboard it cannot report (79); `media.thumb` tells a corrupt photo from a deleted one (57). **Seven are hypothesis and three have no route on this device at all** — whether any of these fixes is a fix or a One UI workaround (needs a second skin), the unexempt *and neglected* case (H1 removed the exemption and the bucket stayed `ACTIVE`; P6 is withdrawn, so nothing can return to `EXEMPTED`), and defect 17. **Never quote the first list without the second**: a reliability fix tuned to one OEM fails silently everywhere else. Fifteen defects closed (57, 60, 61, 62, 64, 77, 78, 79, 51, 52, 53, 69, 71, 33) plus **80 fixed with its start half explicitly unclaimed**. Three readings outlived the fixes and are rules in this file now: the instrument's own state contaminating the reading (the phone was **already exempt**), a start route with **no call site** (`START_STICKY`, a return value that reported itself `UNKNOWN`), and a control wrong in the **safe** direction (78 — a denominator inflated 8.5× over a correct verdict) |
-| 7 | Mac UX — packaging, distribution, app launching, and the polish pass | **In progress** — **2026-09-08, the status island was rebuilt as current state and the rota deleted** (defects 96 and 97, `docs/testing.md` → Phase 7 Slice 36). It had **no clock**: `ActivityEvent.at` was dropped at the boundary and a six-slot ring was never cleared, so a line's maximum age was the session — and one statement wrote the ring's *text* with the live link's *tone*, so the pill contradicted the connected-device strip two inches away, daily. **The fix a filter would have been**: the ring is gone, the island is a pure function of the same status the strip reads, and a failure reaches it as `LinkFailure.kind` rather than as prose whose `dropped` sentence *names a connection state*. Underneath it, `lastFailure` was **assigned in four places and cleared in none**, so every status after one failure carried a dead sentence forever — collapsed to one field with two writers, which also unpins the user from the pairing screen after a re-pair. **Renderer-view debt 12 covered / 1**, `ShellView` off the list. **The design pass landed 2026-09-04**: the four panes that worked and did not look like `ConnectSuite.dc.html` — **Calls** (three columns, the filter strip, a running clock, the 3×4 keypad), **Clipboard** (two columns, kind badges, a sync timeline), **Settings** (three columns, six panes from three) and **Overview** (Quick actions, Recent activity, the footer strip). Rows C1–C7, K1–K6, G1–G7, T1–T3, O1–O5 and S13 in `docs/design-departures.md`; screenshots against the design in `docs/evidence/phase-7-panes-2026-09-04/`. **All six departures the wire had overtaken are discharged** — S6, S10, M5, Settings → File transfer, `pair.rejected`, and F6/P3 (Mac half built, **sighting unproven, stimulus named**). **Renderer-view debt: 11 covered / 2 outstanding**, from 5 / 7. Three defects fell out that nothing in the build could have noticed: the status island’s rota **had never once been visible**, the clipboard watcher recorded only its failures, and Overview’s *Recent activity* drew the five **oldest** events. (The rota was then made visible, and **that** is when it turned out to be the wrong surface — see the 2026-09-08 entry above. A feature nobody had seen working was fixed twice: once to appear, and once to be deleted.) **What still needs the designer is one hour**: the *unavailable / partial / failed / empty* vocabulary, once — Calls is the **fifth** pane to invent its own. Before that, 2026-09-03: **apps landed** — `apps.list`, `apps.icon`, `apps.open.ask`, a twelfth nav row, and **123 of 123 launcher packages with resolved names and real icons on hardware**. There is no `apps.launch` and a commit hook keeps it that way. 2026-09-02: the **Activity** pane, palette **deep links**, and pairing’s phone half (F1–F5), with F2, F4 and F5 proven on hardware 2026-09-03 |
+| 7 | Mac UX — packaging, distribution, app launching, and the polish pass | **In progress** — **2026-09-16, the light theme shipped and the toggle that said it did not exist is a real control** (`docs/testing.md` → Phase 7 Slice 55). The sweep came before the palette and is the reason the palette is sound: **150 raw colour literals against 856 colour-valued declarations** outside `tokens.css`, plus five colour sources outside CSS entirely — `CATEGORY_TINTS`, the nav tints, an SVG gradient, and both `BrowserWindow` grounds, which paint *before any stylesheet loads*. Now **0**. Three of those literals were not drift: **`--accent`, `--live` and `--destructive` had diverged from the design** (defect 119), and the note in `tokens.css` asserting otherwise had its own counts inverted — `#7c6bff` appears **0** times in the design against `#8B6BFF`'s **42**, because the count that "proved" it used `grep -c`, which counts *lines*. The design specifies **four values** for light and a rule; everything else is **derived and marked `DERIVED` in the file**, each semantic colour its dark counterpart scaled in luminance until it clears AA. **58 token pairs per theme, 0 failing**, with `--text-meta` held to the design's own 2.4–3.6 band in **both** themes rather than exempted. A second sweep over the **rendered DOM** — 3,302 elements per theme — found what a token audit structurally cannot: defect **121**, theme-following text on `--media-scrim`, the one surface that deliberately does not invert (**1.67:1**), and defect **120**, a shipped-dark **3.89:1** caused by an `opacity`, which is not a colour at all. **`System` follows macOS live**, proven by flipping the OS under a running app with an explicit choice as the control. One writer: `tokens.css` carries **no** `prefers-color-scheme` block, because a media query there would be the status island's second writer again. Before that, **2026-09-08, the status island was rebuilt as current state and the rota deleted** (defects 96 and 97, `docs/testing.md` → Phase 7 Slice 36). It had **no clock**: `ActivityEvent.at` was dropped at the boundary and a six-slot ring was never cleared, so a line's maximum age was the session — and one statement wrote the ring's *text* with the live link's *tone*, so the pill contradicted the connected-device strip two inches away, daily. **The fix a filter would have been**: the ring is gone, the island is a pure function of the same status the strip reads, and a failure reaches it as `LinkFailure.kind` rather than as prose whose `dropped` sentence *names a connection state*. Underneath it, `lastFailure` was **assigned in four places and cleared in none**, so every status after one failure carried a dead sentence forever — collapsed to one field with two writers, which also unpins the user from the pairing screen after a re-pair. **Renderer-view debt 12 covered / 1**, `ShellView` off the list. **The design pass landed 2026-09-04**: the four panes that worked and did not look like `ConnectSuite.dc.html` — **Calls** (three columns, the filter strip, a running clock, the 3×4 keypad), **Clipboard** (two columns, kind badges, a sync timeline), **Settings** (three columns, six panes from three) and **Overview** (Quick actions, Recent activity, the footer strip). Rows C1–C7, K1–K6, G1–G7, T1–T3, O1–O5 and S13 in `docs/design-departures.md`; screenshots against the design in `docs/evidence/phase-7-panes-2026-09-04/`. **All six departures the wire had overtaken are discharged** — S6, S10, M5, Settings → File transfer, `pair.rejected`, and F6/P3 (Mac half built, **sighting unproven, stimulus named**). **Renderer-view debt: 11 covered / 2 outstanding**, from 5 / 7. Three defects fell out that nothing in the build could have noticed: the status island’s rota **had never once been visible**, the clipboard watcher recorded only its failures, and Overview’s *Recent activity* drew the five **oldest** events. (The rota was then made visible, and **that** is when it turned out to be the wrong surface — see the 2026-09-08 entry above. A feature nobody had seen working was fixed twice: once to appear, and once to be deleted.) **What still needs the designer is one hour**: the *unavailable / partial / failed / empty* vocabulary, once — Calls is the **fifth** pane to invent its own. Before that, 2026-09-03: **apps landed** — `apps.list`, `apps.icon`, `apps.open.ask`, a twelfth nav row, and **123 of 123 launcher packages with resolved names and real icons on hardware**. There is no `apps.launch` and a commit hook keeps it that way. 2026-09-02: the **Activity** pane, palette **deep links**, and pairing’s phone half (F1–F5), with F2, F4 and F5 proven on hardware 2026-09-03 |
 | 9 | Distribution — packaging, signing, release builds | **Started** — 2026-09-02, only the parts needing no Apple account: `docs/phase-9-distribution-audit.md` (thirteen rows, two corrected by measurement), an unsigned `.dmg`, a 25 MB release APK, and one version scheme (`docs/versioning.md`) with a sixth commit hook. **Neither artifact can be given to anyone, and both were measured rather than assumed**: the `.dmg`'s app is *ad-hoc* signed and Gatekeeper returns an error instead of a verdict (D12 — worse than unsigned, since the right-click bypass does not apply), and the release APK is refused by the platform outright with `INSTALL_PARSE_FAILED_NO_CERTIFICATES` (D13). **Nothing signed, notarized or published**; the config for all three is written with credentials blank |
 
 `android-connect-suite-claude-code-prompt.md` is the **v1 plan and is superseded**. Its phases are
@@ -264,7 +264,64 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
 
 ## Platform walls (do not attempt, do not design around)
 
-- Call audio cannot be streamed. `CAPTURE_AUDIO_OUTPUT` is system-only and AccessibilityService call recording violates Play policy. The documented answer for users is to pair the Mac to the phone over Bluetooth as an audio device.
+- **Call audio cannot be streamed — and "pair the Mac over Bluetooth as an audio device" was the
+  wrong answer to it. That sentence is retracted.** `CAPTURE_AUDIO_OUTPUT` is system-only and
+  AccessibilityService call recording violates Play policy; those halves stand. What this file
+  offered *instead* had never been measured, and it does not work. Read from both ends on
+  2026-09-14 (SM-S938B + MacBook Pro, macOS 26.6.1, BCM_4388).
+
+  **It is not a pairing failure, and that distinction is the whole diagnosis.** The bond exists and
+  is persistent — the phone carries the Mac at `bond_type:BOND_TYPE_PERSISTENT`,
+  `bredr_linkkey_type:AUTH_COMB_P_256`. The two devices pair and then have nothing to offer each
+  other. A pairing that fails and a pairing that succeeds into an empty profile intersection want
+  completely different answers, and only the second one is what happens here.
+
+  **It is a role failure, and the roles are legible from the phone's own SDP record of the Mac:**
+
+  | | advertises | role |
+  |---|---|---|
+  | the Mac | `SPP AudioSource Avrcp `**`Handsfree_AG`** | A2DP **source**, HFP **audio gateway** |
+  | the phone | `A2dpService`, `HeadsetService` — no `HeadsetClientService`, no `A2dpSinkService` | A2DP **source**, HFP **audio gateway** |
+  | every headset bonded here | `HSP AudioSink Avrcp `**`Handsfree`** | A2DP **sink**, HFP **hands-free** |
+
+  Both ends are the gateway. Both want to *be* the phone. HFP connects AG↔HF and there is no HF on
+  either side, so the intersection is empty: the phone never built an HFP state machine for the Mac
+  (`HFSM size: 1`, and the one is a pair of earbuds), and every profile connection policy for the
+  Mac reads `-1`. **A2DP is not a second chance** — it is one-way and carries no microphone, so it
+  is not a call route even where it does connect.
+
+  **The control is what makes this a reading rather than a guess.** The same query, over the same
+  bonded table, returns `AudioSink`+`Handsfree` for five other devices. The attribute separating a
+  headset from the Mac is the `_AG` suffix, and it is present in the output rather than inferred.
+
+  **"macOS can drive a headset but cannot be one" is true of the shipped system and false of the
+  platform. Do not write the stronger sentence.** The system publishes no HF service record and has
+  no UI that would, which is the entire reason the pairing does nothing — that much is proven. But
+  `IOBluetoothHandsFreeDevice` is present in the **running** runtime on 26.6.1, public since 10.7,
+  carries no deprecation attribute in the 26.5 SDK, and is not a stub: `transferAudioToComputer`,
+  `transferAudioToPhone`, `SCOInputBuffer`/`SCOOutputBuffer`, and a Voice-Processing I/O unit
+  (`configureVPAU`, `receiveVoiceProcessedData:…`) — an HFP hands-free client with its SCO audio
+  already bridged into CoreAudio. So the honest status is **not "impossible on this platform"**; it
+  is *the platform ships the role, the system does not turn it on, and nobody here has instantiated
+  it.*
+
+  **What that leaves, and the stimulus that would settle it.** The only route by which a call's
+  audio reaches this Mac and this Mac's microphone reaches the phone is an app that publishes an HF
+  service record and drives `IOBluetoothHandsFreeDevice`. **Stages 0 and 1 of that were run on
+  2026-09-14 and both pass** — an SLC in under a second, the phone building a full HFP state machine
+  and durably moving its policy for this Mac from `HEADSET=-1` to `HEADSET=100`. Publishing a record
+  turned out to be unnecessary for a Mac-initiated session. **Stage 2 ran on two live calls and the audio does not
+  cross**: SCO fails from both public entry points (`status=-536870201`), no CoreAudio device is ever
+  created, and the phone's `mAudioState` never leaves `10`. Call *control* works fully — do not read
+  that as evidence for audio. The last untried route — phone-initiated SCO via the in-call
+  picker — **was then tried and also fails**: the phone lists the Mac by name, accepts the request,
+  and hangs in `PendingAudioRoute` forever (control: Speaker toggled by the same tap, so the stimulus
+  landed). **Two initiators, two failure modes, no SCO. This is a wall**: the link that carries voice
+  does not come up from either end. `docs/mac-audio-routes.md` §7-8. **The role tables, the public API surface, the staged proof and the
+  three-route entitlement comparison are `docs/mac-audio-routes.md`; do not re-derive them.** Nothing else qualifies: there is no supported user-facing path, and an
+  A2DP sink would be half a route even if macOS offered one, which it does not. Anyone returning to
+  this question should start by instantiating that class against this bond, not by re-reading the
+  profile tables — those are settled above.
 - Screen capture returns black frames for FLAG_SECURE surfaces (lock screen, banking apps, DRM video). This is enforced by Android. Detect and show a message, do not retry.
 - MediaProjection consent cannot be cached across sessions. Every capture start needs a fresh user tap on Android 14+.
 - Background clipboard reads are blocked since Android 10 unless the app has an enabled AccessibilityService or is the default IME.
@@ -2122,6 +2179,44 @@ damage on the user's own device or nearly recorded a false result.
   the new wrapper made **all 53** Mac test files read as orphans on the first run. The glob is the
   discovery rule, the guard reads it from that script, and so it stays there and arrives in the
   wrapper as argv. A guard that reads a rule out of one file is a reason not to move the rule.
+
+  **The tenth is `scripts/check-color-tokens.mjs` with `scripts/check-contrast.mjs`, one hook, and
+  it is the first written because a _sweep_ found a pattern rather than because one defect bit.**
+
+  Four sightings had accumulated — styles.css's own `:root`, `.nav-pill`'s literal, the `#111219`
+  well, and `accent-color: auto` drawing the user's own macOS accent — all found by eye, all after
+  they shipped, none of them caught by `tsc`, a test, or a warning. **Light mode is what turned four
+  into a pattern worth a hook**: a raw literal in a one-theme app is merely unthemed, and in a
+  two-theme app it is *wrong in the theme whoever wrote it is not looking at.*
+
+  **Its third check is the one that keeps light mode alive rather than merely delivering it: every
+  dark colour token must have a light value.** Adding a token and forgetting its counterpart is
+  silent, renders perfectly in the theme you are in, and is found by a user on the other one. It
+  fired twice during the sitting that wrote it — `--text-on-warning`, which is near-black on the
+  amber fill and **3.53:1** once the light warning darkens to brown, and `--text-on-media-dim`.
+  Neither had been drawn yet.
+
+  **And it made this file's own mistake on its first run, in the file whose header describes it.**
+  103 confident false positives, every one a correct token read: `[^)]*` stops at the first close
+  paren, so `rgba(var(--overlay-rgb), 0.04)` matched as `rgba(var(--overlay-rgb)`. Paren-balanced
+  now, with a fixture. The discriminators it needed are the four this repo has paid for already —
+  comments stripped in **CSS, TypeScript and HTML** (the guard's own prose quotes the hexes it
+  bans, `index.html` explains a "6px green dot"), declarations rather than lines (`white-space:
+  nowrap` is not a colour), and `#000` inside `color-mix` treated as a **mixing primitive** rather
+  than a palette choice.
+
+  Its allowlist cannot rot: an entry matching no declared token fails, an entry *also* overridden in
+  light fails as a contradiction, and **the fixture tree's tokens are generated from the allowlist**
+  so the two cannot drift. Five of its 18 fixtures are the real sightings reconstructed verbatim and
+  shown red.
+
+  **The pair matters more than either half.** `check-contrast.mjs` proves the *palette*; it cannot
+  prove the *cascade*, and this project already knows the difference at a cost — the Muted pill was
+  **2.23:1 with a perfectly good token**, because a specificity collision made the active tab take
+  the disabled tab's colour. So the palette checker is committed and a **rendered-DOM sweep** is the
+  instrument for anything composed at paint time: an `opacity`, a gradient, or *which* surface a
+  thing actually lands on. Both defects that survived every token check — 120 and 121 — are that
+  shape, and neither is a bad colour anywhere.
 
   This does not mean every rule gets a hook; most do not warrant one. It means the question gets
   asked, and "documented" is not recorded as "handled".

@@ -356,6 +356,14 @@ interface DeepLink {
   screen: string;
   /** The element to bring into view and flash once the route has landed. */
   reveal: string;
+  /**
+   * For a destination inside Settings: which of the six panes holds it.
+   *
+   * Settings is the one screen whose body is swapped rather than scrolled, so routing to it and
+   * stopping lands on whichever pane was open last — a deep link that flashes a pane the card is
+   * not in is the silent no-op this mechanism exists to prevent, wearing a successful route.
+   */
+  settingsPane?: string;
   /** Extra words the palette should match on, for the names a person would actually type. */
   keywords: string[];
 }
@@ -388,6 +396,45 @@ const DEEP_LINKS: DeepLink[] = [
     reveal: 'calls-card',
     keywords: ['contacts', 'people', 'address book', 'phone book', 'number'],
   },
+  {
+    /*
+     * The clipboard's undo. Auto-apply overwrites this Mac's clipboard on arrival and keeps what it
+     * displaced as a `displaced` row that **Restore** puts back — the condition on which §5 of the
+     * clipboard proposal was reversed, and the reason the reversal was allowed at all.
+     *
+     * It has been shipped and unfindable since Slice 12: `restore`, `displaced` and `history` all
+     * returned nothing from this palette, measured 2026-09-15 with a control of 6.
+     * `docs/phase-7-state.md` §3 lists it as the seventh homeless feature, and the observation
+     * there is the one worth keeping — **X5 is a snapshot, and every feature shipped since has been
+     * added to a pane without anyone re-asking whether search can find it.**
+     *
+     * Reveals the list rather than the detail column: the detail is empty until a row is selected,
+     * and flashing an empty column is a deep link that arrives nowhere.
+     */
+    id: 'deep.restore',
+    label: 'Restore a replaced clip',
+    screen: 'clipboard',
+    reveal: 'clip-list',
+    keywords: ['restore', 'undo', 'displaced', 'replaced', 'overwrote', 'history', 'put back'],
+  },
+  {
+    /*
+     * The trust controls — *Forget this phone*, and the sentence saying what forgetting costs.
+     * Defects 73-76 built the repudiated state behind it. Unfindable the same way: `forget`,
+     * `trust` and `unpair` all returned nothing.
+     *
+     * The only deep link that names a settings pane, and the reason the field exists. It reveals
+     * `settings-body` — the pane host — because the rows inside it are built at draw time and have
+     * no static ids; `navModel.test.ts` asserts every reveal against `index.html`, and an id that
+     * only exists after a build is an assertion nobody can make. The pane's own heading names it.
+     */
+    id: 'deep.trust',
+    label: 'Trusted device',
+    screen: 'settings',
+    settingsPane: 'connection',
+    reveal: 'settings-body',
+    keywords: ['forget', 'trust', 'trusted', 'unpair', 'pairing', 'certificate', 'repair'],
+  },
 ];
 
 interface PaletteResult {
@@ -405,6 +452,8 @@ interface PaletteResult {
   /** Deep links only: where to go and what to reveal when this row is chosen. */
   screen?: string;
   reveal?: string;
+  /** Deep links into Settings only: which of the six panes the reveal target is inside. */
+  settingsPane?: string;
 }
 
 /**
@@ -517,6 +566,7 @@ function paletteResults(query: string): PaletteResult[] {
     unbuilt: false,
     screen: d.screen,
     reveal: d.reveal,
+    settingsPane: d.settingsPane,
   }));
 
   return [...commands, ...navigation, ...deep];
@@ -537,11 +587,11 @@ function screenById(id: string): NavScreen | undefined {
  * holes in it that has to be explained.
  */
 const DOCK: { id: string; label: string; icon: string; tint: string }[] = [
-  { id: 'mirror', label: 'Mirror', icon: 'mirror', tint: '139,107,255' },
-  { id: 'files', label: 'Files', icon: 'files', tint: '96,165,250' },
-  { id: 'messages', label: 'Messages', icon: 'messages', tint: '50,229,138' },
-  { id: 'calls', label: 'Calls', icon: 'calls', tint: '34,211,238' },
-  { id: 'camera', label: 'Camera', icon: 'camera', tint: '244,114,182' },
+  { id: 'mirror', label: 'Mirror', icon: 'mirror', tint: 'var(--tint-violet-rgb)' },
+  { id: 'files', label: 'Files', icon: 'files', tint: 'var(--tint-blue-rgb)' },
+  { id: 'messages', label: 'Messages', icon: 'messages', tint: 'var(--tint-green-rgb)' },
+  { id: 'calls', label: 'Calls', icon: 'calls', tint: 'var(--tint-cyan-rgb)' },
+  { id: 'camera', label: 'Camera', icon: 'camera', tint: 'var(--tint-pink-rgb)' },
 ];
 
 /**
@@ -606,6 +656,27 @@ function iconNamesUsedByTheShell(): string[] {
     // through a table, which is exactly the shape that shipped two empty rings — so the name is in
     // here, where `navModel.test.ts` asserts it resolves.
     'shield',
+    // The media remote's transport, badge fallback and output chip. Drawn from `remote.ts`, which
+    // is a pane and not the shell — they are listed here for the same reason 'shield' is, one
+    // paragraph up: this array is the only enforcement point that an icon name resolves, and an
+    // icon reachable from no enumeration is the empty-ring defect with a different glyph missing.
+    'play',
+    'pause',
+    'skip-back',
+    'skip-forward',
+    'music',
+    'volume-low',
+    'volume-high',
+    'airpods',
+    'headphones',
+    // The Overview hero's six detail rows, its overflow button and its two actions. Drawn from
+    // `shell.ts`, which is a table-less surface — exactly the shape that shipped two empty rings —
+    // so the names live in here where `navModel.test.ts` asserts they resolve.
+    'wifi',
+    'battery',
+    'storage',
+    'info',
+    'network',
   ];
 }
 

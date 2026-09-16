@@ -78,7 +78,8 @@ Input: `input.tap`, `input.swipe`, `input.scroll`, `input.key`, `input.text`, `i
 (back/home/recents/notifications/quick-settings/lock-screen — **not** power; see [Input](#input-42501))
 Apps: `apps.list`, `apps.icon`, `apps.open.ask` — see [Apps](#apps-42501). There is deliberately **no**
 `apps.launch`; the measurement that removed it, and the guard that keeps it removed, are in that section
-Media remote: `remote.state`, `remote.command`
+Media remote: `remote.state`, `remote.command`, `remote.artwork`
+Microphone: `mic.start`, `mic.stop`, `mic.state` — see [Microphone](#microphone-42501-with-audio-on-42504)
 Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`, `pair.rejected`
 System: `ping`, `pong`, `capabilities.changed`, `battery.state`, `storage.state`, `net.state`
 
@@ -104,7 +105,7 @@ feature failing every request looks, on the Mac, exactly like a feature that is 
 | `clip` | `clipboard` |
 | `fs` | `files` |
 | `media` | `photos` |
-| `mirror`, `input`, `sms`, `contacts`, `remote`, `apps` | *(same name)* |
+| `mirror`, `input`, `sms`, `contacts`, `remote`, `apps`, `mic` | *(same name)* |
 
 The mapping is `FeatureOf.of(type)` in `core/.../protocol/FeatureOf.kt`, checked exhaustively over
 `MessageType` by `ProtocolNamespaceTest`. It returns **null** for the system messages — `hello`,
@@ -863,9 +864,11 @@ Capability `calls`, gated on `READ_CALL_LOG`, `READ_PHONE_STATE`, `CALL_PHONE` *
 
 **Call audio never leaves the phone.** `CAPTURE_AUDIO_OUTPUT` is system-only, and recording a call
 through an AccessibilityService violates Play policy. Answering from the Mac answers the call *on
-the phone*; the user talks through the phone, or through a headset, or pairs the Mac to the phone
-over Bluetooth as an audio device. This is a platform wall, it is in `CLAUDE.md`, and no message
-here will ever carry audio.
+the phone*; the user talks through the phone, or through a headset paired to the phone. **Pairing
+the Mac itself as that headset does not work, and this document used to say it did** — both ends
+advertise the HFP *audio gateway* role, so they bond and share no audio profile at all (measured
+both ends 2026-09-14; the mechanism and the one unproven route are in `CLAUDE.md`). This is a
+platform wall and no message here will ever carry audio.
 
 `call.incoming` — **event**. `{"callId":"c17","number":"+15551234567","contactName":"Ada Lovelace",
 "startedAtMs":1756300000000,"state":"ringing"}`. `state` is `ringing`, `active` or `dialing`.
@@ -997,6 +1000,69 @@ out.
 | Nothing is holding a media session | `NO_MEDIA_SESSION` |
 | An action the session says it does not support | `FEATURE_UNAVAILABLE` |
 | `seek` with no `positionMs`, `volume_set` out of range, unknown action | `BAD_REQUEST` |
+
+#### `artworkKey` and `output`
+
+Two fields were added to the state on 2026-09-16, both because the Mac's Now Playing card is built
+around them.
+
+`artworkKey` is a stable id for the current track's art — absent when the session has none. It is
+**not** the art. The bytes come from `remote.artwork` below, and the split is the point: the state
+is pushed on every play, pause and position jump, and a 33 KB base64 image on each of those is the
+head-of-line blocking on the `ping` channel that `media.thumb`'s batch cap exists to bound. A key is
+a few dozen bytes and changes only when the art does.
+
+`output` is where the phone is sending its audio, and it is an object rather than a string:
+
+```json
+"output": {"name": "Chetan's AirPods Pro", "kind": "bluetooth"}
+```
+
+`kind` is one of `bluetooth`, `headphones`, `speaker`, `unknown`, and it exists because it picks the
+icon. A Mac choosing that icon by substring-matching the name would be the lookalike failure this
+project keeps recording — *"Living Room speakers"* and *"AirPods Pro"* both match a naive rule and
+only one of them is Bluetooth. **The phone classifies, because the phone is the end that knows.**
+The whole object is absent when no route could be named, which is a different state from a route
+named `unknown`: the first means *we could not ask*, the second means *we asked and it is something
+we have no icon for*.
+
+**`output` is a readout and there is no verb to change it.** Nothing in this contract switches the
+phone's audio route, and nothing should imply one can — a chevron on a chip that cannot open
+anything is an affordance that lies. Android's own output switcher is an activity, and a
+backgrounded `startActivity` on this handset is refused **silently** (Phase 7 Slice 8), so the route
+to it, if it is ever wanted, is `apps.open.ask`'s shape — a notification the user taps — and not a
+verb that returns `ack {}` having done nothing.
+
+### `remote.artwork`
+
+```json
+request  {"key":"a3f19c4e","maxEdge":256}
+ack      {"key":"a3f19c4e","mime":"image/jpeg","width":256,"height":256,"data":"/9j/4AAQ…"}
+```
+
+**Base64 JPEG on the control channel**, for the reason [`media.thumb`](#mediathumb) and
+[`fs.thumb`](#fsthumb) both give and neither repeats here: a bulk socket for one small image is a
+second transfer state machine serving something that is not a transfer.
+
+One image, not a batch, and that is the difference from its two siblings. They serve grids; this
+serves the one track that is playing, at most once per track change. A cap would be bounding a
+request that is already bounded by there being exactly one of it.
+
+- **`maxEdge` defaults to 256 and is capped at 512**, refused outside 32–512, exactly as
+  `media.thumb` is. `width` and `height` are the **produced** bitmap's, not the request's.
+- **The key is echoed in the ack.** A track can change while the request is in flight, and a Mac
+  that painted whatever came back would hang the previous album's cover on the new song. Echoing it
+  lets the Mac drop a reply it no longer wants, which is a decision it cannot make from the bytes.
+- **A session with no art answers `NO_ARTWORK`**, which is not an error and not `NOT_FOUND`. Plenty
+  of media sessions carry no artwork at all — a podcast app, a browser tab, a game — and that is a
+  normal condition rather than a failed lookup. The Mac draws its own fallback and says nothing.
+
+| Cause | `code` |
+|---|---|
+| Notification listener access not granted | `PERMISSION_DENIED` |
+| Nothing is holding a media session | `NO_MEDIA_SESSION` |
+| The session holds no artwork, or the key is stale | `NO_ARTWORK` |
+| `key` missing, or `maxEdge` outside 32–512 | `BAD_REQUEST` |
 
 ## Bulk channel (42503)
 
@@ -1917,6 +1983,175 @@ grants and shows the user a single *Photos and videos* toggle, so telling somebo
 `READ_MEDIA_VIDEO` describes a screen that does not exist on their phone.
 
 There is no `ROOT_NOT_GRANTED` here and there never will be: this namespace has no roots.
+
+## Microphone (42501, with audio on 42504)
+
+Capability `mic`, gated on `RECORD_AUDIO`. **The phone's microphone, heard on the Mac** — the phone
+captures, the Mac plays it into a virtual input device so any Mac app can select it.
+
+This namespace did not exist until 2026-09-14. `Capability.MIC` has been in `Messages.kt` and
+`protocol.ts` since Phase 4 with **no messages behind it**, and `CapabilityContract.kt` said so in
+as many words: *"there is no wire protocol to carry it, so it can never be honestly advertised
+until one is designed."* This section is that design.
+
+### Audio is PCM, and that is a decision rather than a default
+
+Frames carry **signed 16-bit little-endian PCM**, 16 kHz mono by default. Not Opus, though this
+handset has an encoder for it (`c2.android.opus.encoder`, measured 2026-09-14), and not AAC.
+
+Three reasons, in order of weight:
+
+1. **The Mac's consumer is a realtime audio driver.** The far end of this stream is an
+   `AudioServerPlugIn` whose IO callback runs on a realtime thread with a hard deadline. Decoding a
+   compressed frame *inside* that callback is the one thing such a thread must not do. PCM straight
+   through removes the question.
+2. **It is a LAN.** 16 kHz mono S16LE is 32 KB/s — 256 kbit/s. The mirror uses H.264 because video
+   is three orders of magnitude larger; audio has no such problem, and paying codec latency to save
+   bandwidth nobody is short of is a bad trade.
+3. **It deletes a failure class.** There is no encoder, so there is no `ENCODER_FAILED` here, no
+   codec-specific config frame, and no second implementation of a decoder on the Mac that can
+   disagree with the encoder.
+
+`mic.start` may negotiate `sampleRate` and `channels`; a phone that cannot honour the request says
+so in the ack rather than silently resampling, because a silent resample is a difference the Mac
+cannot see.
+
+### Why this is a new channel (42504) and not an existing one
+
+This **extends locked architecture decision #2**, which names three ports. It is an addition, not a
+contradiction, and the reasoning is written here so it is reviewable rather than assumed.
+
+| Channel | Why the mic does not belong on it |
+|---|---|
+| **Control (42501)** | JSON. Audio would have to be base64 — a third more bytes, on the channel every other feature's latency depends on |
+| **Video (42502)** | Mirror's, and single-purpose. A mic stream must work with mirroring **off** |
+| **Bulk (42503)** | Transfer-framed (`transferId`, `offset`, resume). **Its frames must never be dropped**; a live mic's frames must be dropped when late. Putting both on one socket means one of the two policies is wrong for whatever is using it, and a five-minute mic stream would sit in front of a file transfer |
+
+The drop policy is the sharp one. Bulk exists to deliver every byte eventually; audio exists to
+deliver the *current* byte or nothing. Those are opposite obligations and they cannot share a
+queue.
+
+**Port 42504, and the same authorisation as the others**: the client sends the session token as the
+first frame, then reads only.
+
+### The frame
+
+The token frame uses the standard 4-byte length prefix. **Everything after it does not** — audio
+frames carry their own 13-byte header, whose length field is the frame's only length. This is
+deliberately the same shape as the video channel's header, so one reader implementation serves both.
+
+```
+byte  0      flags     bit 0 = discontinuity (first frame of a run, or after a gap)
+bytes 1..8   PTS       microseconds, big endian, unsigned
+bytes 9..12  length    payload bytes, big endian
+bytes 13..   payload   PCM S16LE, interleaved if stereo
+```
+
+**PTS is `System.nanoTime()/1000`** — the same monotonic clock as video PTS and as `pong`'s
+`monoUs`, which is what lets the Mac place audio against video and against its own clock. A
+different clock here would make the number unusable for exactly the thing it exists for.
+
+**A frame is 20 ms of audio** — 320 samples, 640 bytes at 16 kHz mono; 50 frames per second. Short
+enough that a dropped frame is inaudible as anything but a click, long enough that per-frame
+overhead is under 2%.
+
+**The discontinuity bit is not decoration.** The Mac's driver must insert silence for a gap rather
+than butting two runs together, and it cannot infer a gap from PTS alone without assuming the
+phone's frame cadence is exact. The phone sets it whenever the previous frame it *sent* is not the
+previous frame it *captured*.
+
+Frames are dropped rather than queued when the Mac cannot keep up, for the same reason the video
+channel drops them.
+
+### `mic.start`
+
+**Request, Mac → phone.** `{"sampleRate":16000,"channels":1}` — both optional.
+
+The ack carries what the phone will actually send, which may not be what was asked:
+`{"sampleRate":16000,"channels":1,"frameMs":20,"format":"s16le"}`. **The Mac configures its device
+from the ack, never from its own request.**
+
+Capture starts only after the ack. A phone that cannot start capture answers `error`, not an ack
+followed by silence — see the table below.
+
+### `mic.stop`
+
+**Request, Mac → phone.** No payload. Idempotent: stopping a stopped mic is an `ack`, not an error.
+
+The phone also stops on its own when the audio socket closes, because a stream nobody is reading is
+a microphone held open for no one — and holding `RECORD_AUDIO` open shows a permanent microphone
+indicator in the status bar, which is a privacy claim on the user's screen that must be true.
+
+### `mic.state`
+
+**Event, phone → Mac.** `{"state":"running"|"silenced"|"stopped","reason":"<string>"}`.
+
+Sent on every transition, and replayed on connect when a mic session is live. `reason` is a
+user-visible sentence, chosen by the phone, and the Mac shows it verbatim.
+
+`silenced` is the interesting one and it has its own section.
+
+### What happens when another app holds the microphone
+
+**This is the part that would otherwise ship as a silent lie.**
+
+Android 10 and later allow concurrent capture, resolved by priority. When something with a stronger
+claim takes the microphone — a phone call, an assistant, a foreground app with a higher-priority
+audio source — our `AudioRecord` **is not stopped and does not error. It keeps returning buffers of
+zeros.**
+
+So the default behaviour of the obvious implementation is to stream perfect silence, indefinitely,
+while every counter on both sides reports a healthy session. On the Mac that is indistinguishable
+from a quiet room, which is precisely the lookalike this project keeps writing rules about: a
+reading that is confident, specific, and wrong.
+
+**It is detectable, and the detection is the feature.** `AudioManager.registerAudioRecordingCallback`
+delivers `AudioRecordingConfiguration.isClientSilenced()` — `since="29"`, which is exactly our
+`minSdk`, so there is no fallback path to maintain.
+
+On silencing the phone **stops sending frames** and sends
+`mic.state: silenced`. It does not send zeros with a flag, because a frame that arrives is a frame
+the Mac's driver will play, and the honest representation of "we are not being given audio" is the
+absence of audio plus a sentence saying why.
+
+When the silencing ends the phone sends `mic.state: running`, sets the discontinuity bit on the
+next frame, and resumes. Like `SECURE_SURFACE` in mirroring, this is a state that **retracts
+itself** rather than ending the session.
+
+**The counters follow this file's denominator rule:** `mic.state: silenced` carries the frames sent
+in the run so far, so "silenced after 0 frames" (never worked) is distinguishable from "silenced
+after 14,000 frames" (worked, then something took the mic).
+
+### When the microphone cannot be supplied
+
+Every failure is an `error` on the **control** channel with `feature: "mic"`, never silence on
+42504.
+
+| Cause | `code` |
+|---|---|
+| `RECORD_AUDIO` not granted | `PERMISSION_DENIED`, with a `fixHint` naming the phone's *Microphone* toggle |
+| Another app holds the mic at `mic.start` time | `MIC_UNAVAILABLE` |
+| `AudioRecord` would not initialise | `CAPTURE_FAILED` |
+| `AudioRecord` died mid-run | `CAPTURE_FAILED` |
+| Audio socket token invalid | `UNAUTHORIZED` |
+| `sampleRate` not in 8000–48000, `channels` not 1 or 2 | `BAD_REQUEST` |
+
+**`MIC_UNAVAILABLE` and `silenced` are the same platform condition at two different moments**, and
+they are deliberately reported differently: refusing to start is an `error` the Mac shows in place
+of the feature, while losing the mic mid-run is a `mic.state` that retracts. Collapsing them would
+mean either failing a live session that will recover, or acking a session that never starts.
+
+**There is no `DEVICE_LOCKED` here.** The microphone is readable with the screen off — that is the
+whole point of a background capture service — and inventing a lock state we never enter would be an
+unreachable state drawn beside reachable ones.
+
+### The Mac's side is not in this contract, and here is the boundary
+
+The wire ends at 42504. What the Mac does with the PCM — an `AudioServerPlugIn` presenting an
+input-only device, fed from the main process — is a *local* concern and is specified in
+`docs/mac-audio-routes.md`, not here. The rule that matters for this file: **the driver never owns
+the socket.** The main process reads 42504 and hands PCM to the driver; a realtime audio callback
+does not do networking.
 
 ## Session tokens
 

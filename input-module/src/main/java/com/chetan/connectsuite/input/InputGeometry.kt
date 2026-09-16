@@ -119,4 +119,110 @@ object InputGeometry {
         x = (from.x + dx).coerceIn(0f, stamp.width.toFloat()),
         y = (from.y + dy).coerceIn(0f, stamp.height.toFloat()),
     )
+
+    /**
+     * A scroll stroke with room for Android's touch slop, and what it cost.
+     *
+     * Returned as a record rather than a pair of points so the caller can log the *shortfall* when
+     * the display ran out before the headroom was satisfied. A stroke that silently travels less
+     * than it was asked to is the under-scroll half of defect 111, and a number with nothing beside
+     * it to give it scale is the failure `CLAUDE.md` opens with.
+     */
+    data class ScrollStroke(
+        val from: DisplayPoint,
+        val to: DisplayPoint,
+        /** What the Mac asked the content to move, in display pixels. */
+        val requestedPx: Float,
+        /** Extra travel added in front of the request so the slop does not eat it. */
+        val headroomPx: Float,
+        /** The slop the headroom is aimed at, so the log line carries its own denominator. */
+        val slopPx: Int,
+    ) {
+        /** Total travel the platform will see. Under `slopPx` it cannot be a scroll at all. */
+        val travelPx: Float get() = requestedPx + headroomPx
+
+        /** Display pixels of the request the slop will still eat. Zero when the headroom is whole. */
+        val shortfallPx: Float get() = (slopPx - headroomPx).coerceAtLeast(0f)
+    }
+
+    /**
+     * Lengthens a scroll stroke by the platform's touch slop, in the direction it already travels.
+     *
+     * ### Why a scroll has to be longer than it looks — defect 111
+     *
+     * `View` does not begin dragging until a stroke has travelled `ViewConfiguration`'s
+     * `scaledTouchSlop`; the pixels before that are how Android tells a press apart from a drag.
+     * Two consequences, and both were live on hardware:
+     *
+     *  - **A stroke shorter than the slop is a tap.** Press and release in one place is exactly
+     *    what it is, so it clicks whatever is under it. Measured on this handset (slop **30** display
+     *    px at 600dpi): **35 of 138** real `input.scroll` messages in the Mac's own log travelled
+     *    less than 30px — a quarter of every scroll ever sent was a click, which is why a mouse
+     *    wheel opened videos on a YouTube feed.
+     *  - **Every other scroll under-travelled by one slop.** The median real scroll asked for 77px
+     *    and moved the content 47. Nobody noticed, because scrolling a little less than you meant
+     *    to feels like a scroll.
+     *
+     * So the request is the travel the user wants the *content* to make, and the stroke has to be
+     * that plus the slop. The extension goes on the **front** of the gesture — the start point moves
+     * backwards — so the finger passes through the point the Mac aimed at on its way, rather than
+     * overshooting past it.
+     *
+     * The display is finite, so the headroom may not fit. Whatever the start cannot take, the end
+     * takes instead; whatever neither can take is reported as [ScrollStroke.shortfallPx] rather than
+     * quietly dropped. A gesture at the very bottom of a full-height scroll has nowhere to go, and
+     * saying so beats pretending.
+     */
+    fun withSlopHeadroom(
+        from: DisplayPoint,
+        to: DisplayPoint,
+        slopPx: Int,
+        displayWidth: Int,
+        displayHeight: Int,
+    ): ScrollStroke {
+        val maxX = (displayWidth - 1).coerceAtLeast(0).toFloat()
+        val maxY = (displayHeight - 1).coerceAtLeast(0).toFloat()
+        val vx = to.x - from.x
+        val vy = to.y - from.y
+        val requested = kotlin.math.hypot(vx, vy)
+        val slop = slopPx.coerceAtLeast(0).toFloat()
+        // A zero-length request has no direction to extend along. The caller refuses those before
+        // reaching here; returning the stroke unchanged is the honest answer if one ever arrives.
+        if (requested <= 0f || slop <= 0f) {
+            return ScrollStroke(from, to, requested, 0f, slopPx.coerceAtLeast(0))
+        }
+        val ux = vx / requested
+        val uy = vy / requested
+
+        // Backwards from the start, as far as the display allows.
+        val back = travelAvailable(from, -ux, -uy, maxX, maxY).coerceAtMost(slop)
+        val newFrom = DisplayPoint(
+            (from.x - ux * back).coerceIn(0f, maxX),
+            (from.y - uy * back).coerceIn(0f, maxY),
+        )
+        // Whatever the start could not take, the end takes — forwards, by the same rule.
+        val forward = travelAvailable(to, ux, uy, maxX, maxY).coerceAtMost(slop - back)
+        val newTo = DisplayPoint(
+            (to.x + ux * forward).coerceIn(0f, maxX),
+            (to.y + uy * forward).coerceIn(0f, maxY),
+        )
+        return ScrollStroke(newFrom, newTo, requested, back + forward, slopPx.coerceAtLeast(0))
+    }
+
+    /** How far a point may travel along a unit vector before it leaves the display. */
+    private fun travelAvailable(
+        point: DisplayPoint,
+        ux: Float,
+        uy: Float,
+        maxX: Float,
+        maxY: Float,
+    ): Float {
+        var limit = Float.MAX_VALUE
+        if (ux > 0f) limit = minOf(limit, (maxX - point.x) / ux)
+        if (ux < 0f) limit = minOf(limit, (0f - point.x) / ux)
+        if (uy > 0f) limit = minOf(limit, (maxY - point.y) / uy)
+        if (uy < 0f) limit = minOf(limit, (0f - point.y) / uy)
+        return limit.coerceAtLeast(0f)
+    }
+
 }

@@ -314,10 +314,16 @@ class MirrorView {
    */
   private readonly gesture = new GestureRecogniser();
 
-  /** Wheel deltas accumulated since the last flush, so a burst becomes one scroll. */
-  private wheel: { x: number; y: number; dx: number; dy: number } | null = null;
-
-  private wheelTimer: number | null = null;
+  /**
+   * The scroll pump, shared with the float window. Defect 112.
+   *
+   * It replaces a `wheel` accumulator and a 60 ms `setTimeout`. The window was the wrong clock: it
+   * produced up to 16.7 `input.scroll` per second against a phone measured at 8.55, so a continuous
+   * trackpad scroll outran the phone by two to one and `InputClient` threw the overflow away after
+   * 400 ms — 14 times in this Mac's own log. The pump's clock is the phone's reply, so the two rates
+   * cannot disagree. See `wheelPump.ts` for the readings.
+   */
+  private readonly wheel = new WheelPump();
 
   /** Timer that takes the input notice down again. */
   private noticeTimer: number | null = null;
@@ -438,6 +444,9 @@ class MirrorView {
     // no-op class as defect 18, and the thing step 20 exists to rule out. `cancelledByTurn` makes
     // the pointer-up say what happened instead of returning.
     this.gesture.cancelForTurn();
+    // The scroll that was owed was summed against the old screen. It has no press to explain itself
+    // at, so it is dropped rather than aimed at a list that may not be there any more.
+    this.wheel.reset();
   }
 
   private onState(state: MirrorState): void {
@@ -573,7 +582,7 @@ class MirrorView {
     // session is not a turn, so the flag is cleared by consuming it — the release would otherwise
     // blame a rotation that did not happen.
     this.gesture.up(null);
-    this.wheel = null;
+    this.wheel.reset();
     this.lastKeyframeBytes = 0;
     this.arrivedAt.clear();
   }
@@ -1048,36 +1057,47 @@ class MirrorView {
 
     // A wheel notch moves the *content*, and so does the protocol's dx/dy — so the signs carry
     // through unchanged and the phone works out which way the finger goes.
-    const dx = -event.deltaX * WHEEL_SCALE;
-    const dy = -event.deltaY * WHEEL_SCALE;
-    if (this.wheel) {
-      this.wheel.dx += dx;
-      this.wheel.dy += dy;
-    } else {
-      this.wheel = { x: point.x, y: point.y, dx, dy };
-    }
-    if (this.wheelTimer !== null) return;
-    this.wheelTimer = window.setTimeout(() => {
-      this.wheelTimer = null;
-      void this.flushWheel();
-    }, WHEEL_WINDOW_MS);
+    this.wheel.add({
+      x: point.x,
+      y: point.y,
+      dx: -event.deltaX * WHEEL_SCALE,
+      dy: -event.deltaY * WHEEL_SCALE,
+    });
+    void this.pumpWheel();
   }
 
-  private async flushWheel(): Promise<void> {
-    const pending = this.wheel;
-    this.wheel = null;
+  /**
+   * Send the accumulated scroll if the phone is not already holding one, then come straight back.
+   *
+   * There is no timer and no `requestAnimationFrame`. The loop is driven by the two events that can
+   * change the answer — a wheel event arriving, and the previous scroll being answered — which makes
+   * it self-clocking at exactly the phone's rate. A frame callback would have been a second clock
+   * that stalls when the window is occluded, on a window whose whole purpose is to be watched while
+   * something else has focus.
+   */
+  private async pumpWheel(): Promise<void> {
     const capture = this.capture;
-    if (!pending || !capture?.width || !capture.height || capture.geometryId === undefined) return;
-    if (pending.dx === 0 && pending.dy === 0) return;
-    await this.deliver(
-      this.bridge.inputScroll({
-        x: pending.x,
-        y: pending.y,
-        dx: pending.dx,
-        dy: pending.dy,
-        geom: { id: capture.geometryId, width: capture.width, height: capture.height },
-      }),
-    );
+    if (!capture?.width || !capture.height || capture.geometryId === undefined) return;
+    const next = this.wheel.due();
+    if (!next) return;
+    try {
+      await this.deliver(
+        this.bridge.inputScroll({
+          x: next.x,
+          y: next.y,
+          dx: next.dx,
+          dy: next.dy,
+          geom: { id: capture.geometryId, width: capture.width, height: capture.height },
+        }),
+      );
+    } finally {
+      // In the `finally`, because a refused scroll releases the phone exactly as a delivered one
+      // does. Releasing only on success would stall the pump forever on the first refusal — the
+      // silent dead-end this project keeps finding, one layer in from the user.
+      this.wheel.settled();
+    }
+    // Anything that arrived while that one was out is owed now, and this is the moment it can go.
+    if (this.wheel.owing) void this.pumpWheel();
   }
 
   /**
@@ -1227,8 +1247,13 @@ const RATE_WINDOW_MS = 3_000;
  */
 const WHEEL_SCALE = 0.8;
 
-/** How long wheel events are gathered before one scroll is sent. About four trackpad frames. */
-const WHEEL_WINDOW_MS = 60;
+/*
+ * `WHEEL_WINDOW_MS = 60` used to live here and is **deleted rather than kept at a larger value** —
+ * defect 112. A longer window is the 263 ms sampling window with a bigger number in it: it makes the
+ * overflow rarer without making it impossible, and it cannot tell a run that behaved because the
+ * rate was right from one that behaved because the flick was short. `WheelPump` is clocked by the
+ * phone's reply instead, so there is no window to tune.
+ */
 
 /**
  * Mac key names to the phone's `input.key` names.

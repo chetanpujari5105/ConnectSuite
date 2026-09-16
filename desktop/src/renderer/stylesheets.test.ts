@@ -774,3 +774,36 @@ test('control_the property scan saw a real number of declarations and uses', () 
   assert.ok(declared.size > 40, `only ${declared.size} custom properties declared`);
   assert.ok(used.length > 200, `only ${used.length} var() reads found`);
 });
+
+test('every class the renderer toggles for emphasis resolves to a rule', () => {
+  /*
+   * A class name that exists in no stylesheet is the empty-ring icon defect in CSS: `tsc` is clean,
+   * a test asserting `classList.contains(name)` passes, and the element draws exactly as it did
+   * before. It is only visible in a screenshot.
+   *
+   * It shipped once, in the line below's first version — `button-primary`, against a stylesheet
+   * whose class is `primary-action` — and the write test that was supposed to cover it asserted the
+   * class was *applied*, which is a claim about the string and not about the pixel.
+   *
+   * Scoped to the emphasis toggles rather than every class in the renderer: those are the ones
+   * whose whole job is to change an appearance, so one that changes nothing is always a defect. A
+   * general scan would need an allowlist for classes that exist only as query hooks.
+   */
+  const sheets = ['tokens.css', 'shell.css', 'styles.css']
+    .map((f) => readFileSync(join(__dirname, f), 'utf8'))
+    .join('\n');
+  const renderer = readFileSync(join(__dirname, 'renderer.ts'), 'utf8');
+
+  const toggled = [...renderer.matchAll(/classList\.toggle\(\s*'([a-z0-9-]+)'/g)].map((m) => m[1]);
+  assert.ok(toggled.length > 0, 'control — the scan found emphasis toggles to check');
+  for (const name of toggled) {
+    assert.ok(
+      new RegExp(`\\.${name}\\b`).test(sheets),
+      `renderer.ts toggles ".${name}" and no stylesheet defines it`,
+    );
+  }
+
+  // The control, both ways: a name that is certainly there, and one that is certainly not.
+  assert.ok(/\.primary-action\b/.test(sheets));
+  assert.ok(!/\.button-primary\b/.test(sheets));
+});

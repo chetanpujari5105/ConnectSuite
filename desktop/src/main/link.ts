@@ -179,6 +179,20 @@ export class LinkClient extends EventEmitter {
       lastFailureKind: this.lastFailure?.kind,
       pairing: pairingHealth(store.get('paired') !== null, this.lastFailure, Date.now()),
       paired: store.get('paired') !== null,
+      /*
+       * P5. When the token behind the QR currently on screen stops being accepted.
+       *
+       * `armedPairing` has held this since pairing was written and the renderer was simply never
+       * told — `docs/design-departures.md` P5, *"Mac-side only… Expose it on the status payload. No
+       * wire change"*.
+       *
+       * It is the **absolute** instant, not a remaining duration, and that is load-bearing: a
+       * duration computed here is a fact about the moment `status()` ran, and the renderer ticks
+       * once a second against it. Sending `remainingMs` would leave the screen counting down from a
+       * number that stopped being true the moment it crossed the IPC boundary — and the case this
+       * whole feature exists for is a Mac that slept, where exactly that gap is hours wide.
+       */
+      pairingExpiresAt: this.armedPairing?.expiresAt,
     };
   }
 

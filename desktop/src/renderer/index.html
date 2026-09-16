@@ -208,7 +208,13 @@
                 -->
                 <div class="pair-scanned" id="pair-scanned" role="status" hidden></div>
                 <img id="qr" alt="Pairing QR code" width="320" height="320" />
-                <p class="card-meta mono" id="qr-note"></p>
+                <!--
+                  P5. Four states, and `stale` is the one that could not be drawn before
+                  `pairingExpiresAt` reached the renderer: a Mac that slept with this screen open is
+                  showing a picture of a token it will now refuse, under a line saying the code is
+                  valid. `shared/pairingCode.ts` holds the rule; the class is set from its `kind`.
+                -->
+                <p class="card-meta mono" id="qr-note" data-code-state="none"></p>
                 <button type="button" id="new-qr" class="button">Show a fresh code</button>
               </div>
             </section>
@@ -222,13 +228,15 @@
                     <div class="hero-phone" aria-hidden="true"></div>
                     <div class="hero-facts">
                       <div class="hero-head">
-                        <h2 class="hero-name" id="hero-name">No phone paired</h2>
-                        <span class="state-chip" id="hero-chip">
-                          <span class="state-dot" id="hero-dot" aria-hidden="true"></span>
-                          <span id="hero-state">Not paired</span>
-                        </span>
+                        <div class="hero-title">
+                          <h2 class="hero-name" id="hero-name">No phone paired</h2>
+                          <span class="state-chip" id="hero-chip">
+                            <span class="state-dot" id="hero-dot" aria-hidden="true"></span>
+                            <span id="hero-state">Not paired</span>
+                          </span>
+                        </div>
                       </div>
-                      <dl class="fact-grid" id="hero-facts"></dl>
+                      <dl class="hero-details" id="hero-facts"></dl>
                       <!--
                         The handoff's two hero actions. `Start mirroring` is the design's one
                         primary fill on this screen and is the same call the Mirror pane's own
@@ -246,18 +254,29 @@
                 </div>
 
                 <!--
-                  Quick actions. The handoff's second card, eight tiles in two columns. They are
-                  generated from `navModel` rather than written out here, for the reason the sidebar
-                  rows are: eight hand-written tiles are a second list that stops matching the first
-                  one the day a screen is renamed. Departures O1-O3.
+                  Media remote. Shipped and working since step 67, and the design draws no pane,
+                  no sidebar row and no dock tile for it (departures X5). It lands here because it
+                  rides the notification-listener grant and because "what is playing" belongs on a
+                  dashboard. Hidden until the phone advertises `remote`.
                 -->
-                <section class="quick" id="quick-card">
-                  <div class="quick-head">
-                    <h3 class="card-title">Quick actions</h3>
-                    <span class="quick-count" id="quick-count"></span>
-                  </div>
-                  <div class="quick-grid" id="quick-grid"></div>
-                </section>
+                <div class="card hidden remote-card" id="remote-card">
+                  <!--
+                    No `.card-title` and no visible `.card-sub`, and that is the structural half of
+                    the 2026-09-16 rebuild rather than an omission. Every other card in this app is
+                    chrome-plus-content; this one IS its content — the reference draws a single dark
+                    surface with the cover, the transport and the device on it, and a heading above
+                    that surface would be a sixth container in a design whose whole point is one.
+
+                    `remote-note` stays in the DOM, clipped. It carries the sentence that names the
+                    app — "Paused in Spotify." — which is the accessible statement of what this card
+                    is showing, and is where defect 46's fix lives. Deleting it to tidy the markup
+                    would remove the only place a screen reader is told whose player this is.
+                  -->
+                  <p class="card-sub remote-note" id="remote-note"></p>
+                  <div id="remote-body" class="remote-body"></div>
+                  <div id="remote-notice" class="mirror-notice" hidden></div>
+                </div>
+
 
                 <!--
                   Recent activity. The departure row for this said it *"needs a session store
@@ -266,17 +285,17 @@
                 -->
                 <section class="card recent" id="recent-card">
                   <div class="recent-head">
-                    <h3 class="card-title">Recent activity</h3>
-                    <button type="button" class="recent-all" id="recent-all">View all</button>
+                    <div class="recent-heading">
+                      <h3 class="recent-title">Recent activity</h3>
+                      <p class="recent-sub">Latest events from your device and ConnectSuite</p>
+                    </div>
+                    <button type="button" class="recent-all" id="recent-all">
+                      <span>View all</span>
+                    </button>
                   </div>
                   <div class="recent-list" id="recent-list"></div>
                 </section>
 
-                <!--
-                  Capabilities. The design has no home for this list at all (departures X5) and it
-                  is the pane that answers "why can't I do X", so it sits on the dashboard rather
-                  than being buried. Each chip carries the phone's own reason, verbatim.
-                -->
                 <!--
                   O4 — Device status. Two rings, not the design's three: there is no memory ring,
                   because free RAM on Android is not a fact a person can act on. The reasoning is in
@@ -289,28 +308,36 @@
                 <div class="card device-status-card" id="device-status-card">
                   <h3 class="card-title">Device status</h3>
                   <div class="ring-row" id="ring-row"></div>
-                <div class="card">
-                  <h3 class="card-title">What this phone can do</h3>
-                  <p class="card-sub">
-                    Anything missing needs a permission granting on the phone. Hover a dimmed one
-                    for the phone's own reason.
-                  </p>
-                  <div id="caps" class="caps"></div>
                 </div>
 
                 <!--
-                  Media remote. Shipped and working since step 67, and the design draws no pane,
-                  no sidebar row and no dock tile for it (departures X5). It lands here because it
-                  rides the notification-listener grant and because "what is playing" belongs on a
-                  dashboard. Hidden until the phone advertises `remote`.
-                -->
-                <div class="card hidden overview-wide" id="remote-card">
-                  <h3 class="card-title">Media remote</h3>
-                  <p class="card-sub" id="remote-note"></p>
-                  <div id="remote-body" class="remote-body"></div>
-                  <div id="remote-notice" class="mirror-notice" hidden></div>
-                </div>
+                  Capabilities. The design has no home for this list at all (departures X5) and it
+                  is the pane that answers "why can't I do X", so it sits on the dashboard rather
+                  than being buried. Each chip carries the phone's own reason, verbatim.
 
+                  **This card was inside the one above until 2026-09-16 — departure O6.** The
+                  `</div>` closing `#device-status-card` was missing, so a bordered card rendered
+                  inside a bordered card and the whole capability list was a child of Device status.
+                  It looked plausible because that card is `display: flex; flex-direction: column`
+                  with a gap, which is exactly what a sibling in the same column looks like — and
+                  styles.css's own comment says the intent was *"`.caps` follows it in the same
+                  column rather than beside it"*, which is what is now true. Nothing in the build
+                  could see it: the HTML is valid, `tsc` has no opinion, and every test that reaches
+                  `#caps` reaches it either way.
+                -->
+                <div class="card caps-card" id="caps-card">
+                  <h3 class="card-title">What this phone can do</h3>
+                  <p class="card-sub">
+                    Anything missing needs a permission granting on the phone.
+                  </p>
+                  <div id="caps" class="caps"></div>
+                  <!--
+                    The reasons, drawn rather than revealed — departure O15. The sub above used to
+                    end "Hover a dimmed one for the phone's own reason", which is this app's most
+                    useful sentence hidden behind the one gesture a keyboard cannot make. Hidden
+                    when every capability is available, which is the ordinary case.
+                  -->
+                  <div id="caps-reasons" class="caps-reasons" hidden></div>
                 </div>
 
                 <!--
@@ -840,11 +867,13 @@
       </div>
     </div>
 
+    <script src="../shared/appearance.js"></script>
     <script src="icons.js"></script>
     <script src="navModel.js"></script>
     <!-- Before mirror.js: it holds the picture-fitting rule mirror.js calls, and a
          classic script has to be in scope before its caller runs. -->
     <script src="pointerGestures.js"></script>
+    <script src="wheelPump.js"></script>
     <script src="markWindow.js"></script>
     <script src="latencyStages.js"></script>
     <script src="captureFit.js"></script>
@@ -874,6 +903,8 @@
     <script src="../shared/clipLink.js"></script>
     <script src="../shared/clipPhoneState.js"></script>
     <script src="../shared/deviceVitals.js"></script>
+    <!-- P5. Before renderer.js, which ticks the pairing screen against it. -->
+    <script src="../shared/pairingCode.js"></script>
     <script src="clipboard.js"></script>
     <script src="../shared/activity.js"></script>
     <script src="activity.js"></script>

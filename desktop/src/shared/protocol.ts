@@ -298,6 +298,8 @@ export const MessageType = {
 
   REMOTE_STATE: 'remote.state',
   REMOTE_COMMAND: 'remote.command',
+  /** The current track's album art, by the key `remote.state` carries. See Messages.kt. */
+  REMOTE_ARTWORK: 'remote.artwork',
 
   BATTERY_STATE: 'battery.state',
   NET_STATE: 'net.state',
@@ -344,6 +346,8 @@ export const ErrorCode = {
   NO_ACTIVE_CALL: 'NO_ACTIVE_CALL',
   /** `remote.command` with no app holding a media session. */
   NO_MEDIA_SESSION: 'NO_MEDIA_SESSION',
+  /** `remote.artwork` for a session with no art, or a stale key. Not a failed lookup. */
+  NO_ARTWORK: 'NO_ARTWORK',
   /**
    * An `sms.send` whose `addresses` disagree with its `threadId`, refused before anything was
    * sent. The only error here that reports a prevented harm rather than a refused convenience —
@@ -704,6 +708,39 @@ export interface RemoteState {
   canSkipPrevious?: boolean;
   volume?: number;
   volumeMax?: number;
+  /**
+   * A stable id for the current track's artwork, or absent when the session has none.
+   *
+   * The bytes are fetched with `remote.artwork`, once, and cached against this key. It changes when
+   * the art changes and not when the position does, which is the whole reason it exists — see
+   * `MessageType.REMOTE_ARTWORK`.
+   */
+  artworkKey?: string;
+  /** Where the phone is sending its audio. Absent when the phone could not name a route. */
+  output?: RemoteOutput;
+}
+
+/**
+ * The phone's current audio output.
+ *
+ * `kind` is a closed set rather than free text because it picks the icon, and an icon chosen by
+ * substring-matching a device name is the lookalike failure this repo keeps finding: "Chetan's
+ * AirPods Pro" and "Living Room speakers" are both matched by a naive rule and only one is
+ * Bluetooth. The phone classifies, because the phone is the end that knows.
+ */
+export interface RemoteOutput {
+  name: string;
+  kind: 'bluetooth' | 'headphones' | 'speaker' | 'unknown';
+}
+
+/** One `remote.artwork` reply. `data` is absent when the session has no art to give. */
+export interface RemoteArtwork {
+  key: string;
+  mime?: string;
+  width?: number;
+  height?: number;
+  data?: string;
+  error?: string;
 }
 
 export const RemoteAction = {
@@ -770,6 +807,15 @@ export interface ConnectionStatus {
   paired: boolean;
   /** Pairing as three states. The one fact the sidebar and the pairing screen both read. */
   pairing?: PairingHealth;
+  /**
+   * P5 — when the token behind the QR currently on screen stops being accepted, as an **absolute**
+   * epoch millisecond. Absent when no code is armed.
+   *
+   * Absolute rather than remaining, because a duration is a fact about the instant `status()` ran
+   * and the screen ticks against it once a second. The state this exists to draw is a Mac that
+   * slept with the pairing screen up, where the gap between those two instants is hours.
+   */
+  pairingExpiresAt?: number;
 }
 
 /** Colon-separated uppercase hex is what both ends display; comparisons use this normal form. */

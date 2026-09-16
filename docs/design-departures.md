@@ -10,6 +10,39 @@ final design for this app. Where a screenshot disagrees with those two, they win
 only place a *deliberate* deviation from them is recorded; if a difference is not in this table, it
 is a bug, not a decision.
 
+### ⚠ The superseded second reference — do not rebuild against it (recorded 2026-09-16)
+
+**There is exactly one design authority and for one day there were two.** On **2026-09-16**,
+`docs/testing.md` Slices **59**, **60** and **61** rebuilt three Overview surfaces — the **Device
+hero**, **Recent activity** and the **media card** — each *"against a reference mockup"* supplied
+in-session. That reference is **not** `ConnectSuite.dc.html`, it is not in this repository, and it
+is **superseded as of 2026-09-16**. Nothing may be rebuilt against it again.
+
+**Why it is recorded rather than deleted from the slices.** The slices are evidence and evidence is
+not edited; what was wrong is not the work, it is that three slices said *"rebuilt against a
+reference"* without saying **which**, so a later reader has no way to tell a handoff-conformant
+surface from a divergent one. Both were called *the reference*.
+
+**What it actually cost, measured 2026-09-16 at 1920 × 1080 through `scripts/probe.mjs`.** Six
+Overview departures exist only because the two references disagree, and none was recorded as a
+departure at the time:
+
+| | `ConnectSuite.dc.html` + README | Built 2026-09-16 against the second reference |
+|---|---|---|
+| Recent activity row height | **52px** | **104px** — doubles the card to 626px and is the whole of the column imbalance below |
+| Recent activity icon tile | **26px** | **56px** |
+| Recent activity time column | absolute mono `09:42` | relative `5m ago` |
+| Recent activity heading | h3 **15px** (`Section + card title 15–21px`; all three Overview card titles are 15) | **21px** |
+| Media card heading | *(no media card is drawn — X5)* | `MEDIA REMOTE`, **10.5px uppercase**, a size in no row of the type scale |
+| Device hero fact grid | **2×2**: Connected via / Latency / Encryption / Signal — **no battery, no storage** | **six rows**, adding Battery and Storage, which the Device status rings already carry |
+
+**The rule this leaves, and it is the transferable part.** A rebuild is scored against a named
+authority or it is not scored at all. When work is briefed against an image, the brief says whether
+that image *is* the handoff or *supplements* it — and if it supplements it, every difference is a
+departure row in this file on the day it ships, not a discovery three weeks later. The failure is
+the one `CLAUDE.md` already names about phase rows: nothing in the build can compare two designs,
+so a second authority is invisible until somebody reads both.
+
 **Status column.**
 
 - **wall** — Android forbids it. It will not become true; the design's version cannot be built by
@@ -19,7 +52,9 @@ is a bug, not a decision.
 - **reshaped** — built, but not in the shape drawn, because the underlying thing is not what the
   design assumed.
 
-Last updated **2026-09-01** — push landed and **F4 closed**; before that the Files pane landed (§Files, F1–F7). Before that, 2026-08-30: the app shell landed (§"App shell", S1–S12), every routed screen was
+Last updated **2026-09-16** — the superseded second reference recorded above, and the Overview pane
+re-scored against the handoff (rows **O6–O14** at the end of the Overview section). Before that,
+**2026-09-01** — push landed and **F4 closed**; before that the Files pane landed (§Files, F1–F7). Before that, 2026-08-30: the app shell landed (§"App shell", S1–S12), every routed screen was
 measured against the prototype at a matched 1440 × 920 viewport, and there is now a **pairing screen
 proposal** below, which is a request rather than a decision.
 
@@ -150,6 +185,9 @@ control *inside* it.
 | M13 | A hover dock over a screen the user can also **tap and swipe**, with "both views feed one gesture queue" | Dock only: **Back, Home, Recents, Screenshot**. The canvas takes **no pointer input** | **unbuilt** | The three global actions are `performGlobalAction` and carry no coordinates, so they need no geometry stamp and shipped. A tap does: every coordinate-bearing message must quote the `geometryId` the frame was captured against, cancel an in-flight drag when the phone turns (defect 19) and refuse a gesture older than the staleness window (defect 20). That logic lives in `mirror.ts`, and a second copy of it is the copy that does not get the next fix — which for input means a stroke landing on the wrong app on somebody's real phone, which is what defect 20 already cost | A shared input seam — the coordinate mapping and the drag/stale rules lifted out of `mirror.ts` into `src/renderer/` or `src/shared/` with its own tests, the way `notifyLabels.ts` came out of `notifications.ts`. Then both views call one queue, as the README says. **This is the named follow-up; it is not a wall and not a wire gap** |
 | M14 | The phone screen, drawn once | Decoded **twice** — the embedded canvas and the float window each run their own `VideoDecoder` over one broadcast stream | **reshaped** | "Two views of one session" is one *session*, not one decoder. The main process broadcasts access units and each window decodes; opening the float window replays the retained SPS/PPS and asks for an IDR, so it can start mid-stream. Handing decoded frames between renderers would mean a readback and a copy per frame at 60fps, which costs more than a second decode | Nothing on the wire. It is a Mac-side trade and the cheap direction was taken |
 | M15 | — | `src/renderer/h264Canvas.ts` holds the decode-and-paint rule; **`mirror.ts` still holds its own copy** | **reshaped** | The float window's decoder was extracted rather than copied, but the Mirror pane was not moved onto it: its version interleaves latency stamps, keyframe sizing and the overlay decision into the same callbacks, and untangling a pane that passed on hardware in Phase 2 needs its own hardware pass. **Recorded here rather than left to be discovered** — this is the two-copies-of-one-rule shape the code rules warn about, and it is live | `mirror.ts` moved onto `H264Canvas`, with the pane's extras as hooks. Wants a hardware re-run of Phase 2's acceptance steps, so it is a step inside whatever sitting can afford one |
+| M16 | The float's phone controls as a **hover dock** — a pill on window hover, bottom-centre above the nav bar | A **permanent 40pt bar along the bottom**, part of the window's height rather than drawn over the picture. It was a 36pt right-edge rail from 2026-09-15 until later the same day; see M18 | **departure** | Three measurements, not a preference. `opacity: 0` at rest on the one window whose purpose is to be watched while something else has focus; a pill over a canvas that now takes taps, which `float.css` had already warned would be a silent dead zone; and `bottom: 36px`, which on a ratio-locked window is Android's own gesture bar. Defect 115 — and note that the report said *"at the top"*, while the measurement put them at 92% of the way **down** | A float that is never the only surface — the Mac notifying, and the main window reachable (117). Then a hidden control is an accelerator rather than the only route |
+| M17 | The float window is the phone's shape | It was **permanently portrait** — `RATIO` was a module constant, so a landscape phone was letterboxed into a portrait frame at a fifth of the area | **closed 2026-09-15** | Not a departure; the build did not match the drawing. The ratio is the announced capture's now and the **outer bounds** follow it, preserving the picture's area rather than its width — keeping the width is what makes landscape tiny. Defect 114 | — |
+| M18 | — | The control strip moved from the **right edge** to the **bottom**, and gained hover tooltips | **departure, 2026-09-15** | Owner's request: make it Android's own navigation-bar shape — buttons in a row, under the screen — rather than a toolbar bolted to the side. A geometry change, not a CSS one: `RAIL` (a width) became `BOTTOM_BAR` (a height), so the picture gains the whole window width and the height budget loses 40pt. The handoff draws neither, so this is a departure from a drawing that has no control strip at all. Defect 118 | The designer drawing a control surface for a window that is watched while another app has focus. §3 assumes a hover dock, which that window cannot use |
 
 ## App shell (§"App Shell") — built 2026-08-30
 
@@ -558,6 +596,53 @@ working on the run that created its subject.
 
 ---
 
+## Overview, re-scored against the handoff — **2026-09-16**. Rows O6–O18
+
+The pane was audited against `ConnectSuite.dc.html` and its `README.md` after three of its cards
+were found to have been rebuilt against a **second reference**, now recorded as superseded at the
+top of this file. Everything below was measured in the running app at a 1920 × 1080 window through
+`scripts/probe.mjs`; `docs/testing.md` → **Phase 7 Slice 62** holds the readings with their controls.
+
+**Eight of these thirteen are the build coming back to the handoff** — they are marked **corrected**
+rather than given a status, because a departure that is being undone is not a departure. The five
+that are genuine departures carry one.
+
+| # | Design draws | Built instead | Status | Why |
+|---|---|---|---|---|
+| **O6** | Device status and the capability list as separate panels (the list is not drawn at all — X5) | **Corrected.** The capability card was a `.card` **inside** `#device-status-card` — the closing `</div>` had never been written — and is now a sibling at `grid-column: 1 / -1` | **corrected** | A bordered card inside a bordered card, and nothing in the build could see it: the HTML is valid, `tsc` has no opinion, and every test reaching `#caps` reached it either way. It read as plausible because the parent is `display: flex; flex-direction: column` with a gap, which is what a sibling looks like — and styles.css's own comment already claimed the intent was *"`.caps` follows it in the same column"*. **Full width rather than back into column two**, measured: as a column-two card it put **301px** of that column below column one, the reported dead space the same size on the other side |
+| **O7** | Five activity tiles in teal, violet, green, blue and **grey**. No red anywhere | **Corrected.** A past `Disconnected` / `Connection failed` row drew `--tint-red-rgb`; it draws the grey system tint now, keeping its `alert-circle` glyph | **corrected** | The README: *"Red is reserved … never use red as an accent … in a connection product red reads as 'link is down.'"* The tile was not wrong about the **event** — that really was a failure — it was wrong about **when**: a list of past events sitting two inches under a header reading `Connected · 9 ms`. Red belongs to the live surfaces. The state survives as a **shape**, which is defect 26's rule and is what a reader who cannot separate the hues gets |
+| **O8** | *"52px rows — mono time, 26px tinted icon, description, and a right-aligned detail"* | **Corrected.** 52px, 26px tile, 44px time column, card padding back to the shared 20px | **corrected** | Built at 104px / 56px / 62px against the superseded reference. This is the whole of the dead space: it doubled the card to 626px against a 399px neighbour. Measured after — **139px**, from 227px |
+| **O9** | All three Overview card titles at `h3 15px/600/-0.015em` | **Corrected.** `.recent-title` was 21px; it reads `--text-section`, the same token `.card-title` does | **corrected** | Two sizes for one role on one pane — `Device status` and `What this phone can do` at 15, *Recent activity* at 21. The type scale has one row for it: *Section + card title, 15–21px*. Sharing the token is what stops the three drifting again |
+| **O10** | No media card at all (X5) | **Corrected against the type scale.** `MEDIA REMOTE` at 10.5px uppercase, 0.12em, is now 15px sentence case in `--np-text` | **corrected** | 10.5px/uppercase/0.12em is the **sidebar group header** role and the only 10.5px in the scale is exactly that. On a card it was a fourth heading size on a pane that should have three. Nothing is drawn to copy here, but there is a scale, and this is a card title |
+| **O11** | Hero fact grid is **2×2**: Connected via / Latency / Encryption / Signal. **No battery, no storage** | **Corrected.** Four cells — Connection / Security / Latency / Address, Address in Signal's slot per S5. The Battery and Storage rows are gone | **corrected** | Slice 59 made it six. Measured against the handoff that is **three** battery renderings on one viewport (sidebar card, this row, the O4 ring) and **two** storage. The fact is not hidden by removing it: the ring has a caption where a fact cell could only manage a dash, and Settings → Advanced carries the reading's age. This card is the link; the ring card is the device |
+| **O12** | Footer strip: *"Connection is encrypted end-to-end. Only your devices can read this traffic."* | **Corrected.** The handoff's sentence, word for word | **corrected** | Ours read *"Encrypted end to end with Samsung SM-S938B…"*, a **third** rendering of the device name. It adds nothing here — it is the only phone this Mac is paired with, the name is 80px above in 21px type, and *"only your devices"* already says who the two parties are |
+| **O13** | Nothing — the capability list is X5, undrawn | Chips read `Mirror`, `SMS`, `Microphone`; the wire id moves to `title="<label> — capability id: <id>"` | **reshaped** | They read `mirror`, `sms`, `mic` — lowercase wire ids in a sentence-case interface, which is `CLAUDE.md`'s package-id rule in a second namespace. `sms` and `mic` are the two that make it plain. An unknown capability still falls back to its own id, which is the honest answer and must not be "fixed" |
+| **O14** | — | A `check` / `lock` glyph on every chip | **reshaped** | Defect 26 one layer out. 26 fixed the state for a screen reader with a hidden sentence and left a **sighted** reader who cannot separate green from grey with no signal at all — measured: available and unavailable differed in fill, border and text colour, and in nothing else. Both glyph names were already inside `navModel.iconNamesUsedByTheShell()` |
+| **O15** | — | Every dimmed capability's reason is **drawn**, under the chips, in the phone's own words | **reshaped** | The card said *"Hover a dimmed one for the phone's own reason"* — the one fact on this card a person actually needs, behind the one gesture a keyboard cannot make. A `title` is not the fix either: defect 118 measured that `title` **never fires on keyboard focus**. Standing copy is this project's answer everywhere else (the Files rail's `grantHint`, Mirror's Advanced block) |
+| **O16** | One `•••`, in the page toolbar. The Overview device card has none | **Corrected.** `#hero-more` and its menu are gone | **corrected** | Two overflow triggers 100px apart with no rule saying which held what. Both items already had another home and that was **checked before the trigger came out**: Disconnect is the footer strip's own button on this pane *and* a row in Settings → Connection; *Forget this phone* is the `danger` button in Settings → Connection |
+| **O17** | A **mono absolute** time column (`09:42`), in both places the design shows activity | **Corrected.** The column is absolute; the relative age moved to the row's accessible name and `title` | **corrected** | Four rows all reading `3m ago` was the report. A relative time is unreadable exactly when several events arrive together, which on this product is most of the time — ringing, active and ended are three rows inside a minute. The age is not lost, and it is on the **aria-label** rather than only the tooltip, so it is not behind hover either |
+| **O18** | Rows carry **no** affordance — the right-hand detail is metadata | **Corrected.** The `View log →` link is gone; all five rows keep the chevron | **corrected** | One row in five had a second affordance, so the list had two vocabularies and the failure row was the odd one. The chevron stays because Slice 60 earned it — every row routes to Activity. Settings → Advanced, where `View log` went, is reachable from the sidebar, from ⌘K and from the Activity pane the chevron opens; checked before the affordance was removed |
+
+**Three things this pass did not change, and two of them were reported.** They are listed because a
+reported item with no row reads as an oversight:
+
+| | |
+|---|---|
+| The **31px greeting** as the page title | The handoff's own: `### 1. Overview — "Good morning, Chetan"`, and *Page title 31px/600*. The name is already gone (D1); the greeting stands |
+| The **dock**, the **`MENU`** group header, and **per-category tinted activity tiles** | All three are specified: *"Dock — bottom-center, 5 × 36px app tiles (Mirror, Files, Messages, Calls, Camera)"*, *"MENU group"* at *10px/600/0.12em/uppercase*, and *"26px tinted icon"*. Reported as defects; they are the design |
+| The **device name appearing a third time** | In a *Recent activity* row's metadata, on a historical `Connected` event. That is the handoff's right-aligned detail carrying a fact about the past, not a third live indicator |
+
+### What this pass left measured and unresolved
+
+**`#caps-card` and `#overview-strip` are `reachable`, not `visible`, at the design's own 920px
+window** — `scripts/probe.mjs` `onScreen`, fraction 0 at rest for both, an ordinary scroll of 317px
+brings each fully into view. The handoff's Overview also scrolls at 920px, so this is not a
+departure from it; it is recorded because defect 85's rule is that **a card carrying a state must be
+visible at rest**, and the capability list is the pane that answers *why can't I do X*. Whether that
+makes it a state card or a reference list is a judgement, and it is the designer's rather than ours.
+
+---
+
 ## Open question — when does latency stop being green?
 
 The prototype draws the Overview latency figure in `#32E58A`, the success colour. The build draws it
@@ -639,7 +724,7 @@ three columns read as two and a floating list.
 | # | Design draws | Built instead | Status | Why |
 |---|---|---|---|---|
 | **G1** | **Keep in the menu bar**, a switch | A value: *Always on* | **reshaped** | The tray is created unconditionally at launch and closing the window is what keeps notifications arriving and the clipboard syncing. There is no state to flip. A switch permanently on that cannot be turned off is a control in name only |
-| **G2** | **Appearance** — System / Light / Dark, the first two greyed | The same, unchanged | — | **The one greyed control in this app that is honest**, because the greying is the *designer's* statement — *"Dark is the flagship theme. Light arrives next."* — and not a promise this build is making |
+| **G2** | **Appearance** — System / Light / Dark, the first two greyed | **A live segmented control; all three work** | **discharged 2026-09-16** | The greying was honest while it lasted — it was the *designer's* statement, *"Dark is the flagship theme. Light arrives next."*, not a promise this build was making. Light has arrived, so the statement of intent became a control: `<button>`s in a `role=radiogroup` with `aria-checked`, reading their value back from the main process rather than assuming it from the click. **`System` genuinely follows macOS** — proven by flipping the OS under a running app, with an explicit choice as the control that must *not* follow. The row also gained a sentence the design has no slot for: what `System` **resolved to**, because "System" alone names the preference and leaves the user to guess what is on screen. `docs/testing.md` → Phase 7 Slice 55 §7 |
 | **G3** | **Interface sounds** — *"Play a sound on transfers and alerts"* | Cut, tagged **Not yet** | **unbuilt** | Nothing in this app makes a sound except a native notification, and that switch is on the Notifications pane where it belongs. There are no transfer or alert sounds to turn off |
 | **G4** | **Automatic updates** | Cut, tagged **Not yet** | **unbuilt** | There is no update server. Sibling of X2 rather than a new argument |
 | **G5** | **Mirror phone notifications**, a switch | A value: *Follows the grant* | **reshaped** | Mirroring is on whenever the phone's notification-listener grant is, and revoking it is a phone setting. A switch beside a fact is a control that cannot change it |
@@ -758,3 +843,79 @@ windows is raised by clicking it or via the dock, not from this button. If that 
 a third state — focus when open-and-unfocused, close when open-and-focused — and it is a hidden
 mode, which is why it was not the first move.
 
+
+## M16 — the hover dock is a permanent edge strip · **departure from handoff §3, 2026-09-15**
+
+§3 draws the float's phone controls as a **hover dock**: a pill that appears on window hover,
+bottom-centre above the nav bar, `opacity` and `transform` only. It shipped exactly like that. It is
+now a permanent strip — a 36pt **right-edge rail** when this row was written, and a 40pt **bottom
+bar** since the same day (see **M18**) — and the change is a departure rather than a fix to a wrong
+implementation: the implementation matched the drawing.
+
+**Three measurements, not a preference.** Defect 115:
+
+- **`opacity: 0` at rest.** This is the one window in the app whose purpose is to be watched while
+  another application has focus, which is exactly when the pointer is not inside it. A control that
+  only exists under a pointer is a control that does not exist on the window it was drawn for.
+- **It sat over the picture.** `float.css` already carried a warning that an invisible pill over the
+  canvas would be *"a silent dead zone the moment it takes input"*. The canvas took pointer input on
+  2026-09-14 (row M13), and the warning came true without anyone noticing.
+- **`bottom: 36px` is Android's gesture bar.** On a ratio-locked window that lands on the phone's own
+  Home, so the Mac's Home button sat on top of it.
+
+**The strip is chrome, not an overlay**, and that is the part the design could not have anticipated:
+it comes out of the window in `shared/floatGeometry.ts` exactly as `TITLE = 34` does, so the picture
+keeps the phone's exact aspect and nothing covers a part of the screen the canvas would otherwise
+accept a tap on. Drawing it on top would have been the smaller change and would have reintroduced
+the dead zone.
+
+**It was a 36pt right-edge rail for part of one day and is a 40pt bottom bar now** — see **M18**. The
+argument above is unchanged by that; only the axis moved.
+
+**What is lost, recorded rather than glossed:** the design's uncluttered float. There is a permanent
+40pt bar where there was clean edge, and it costs height rather than width — the picture at the 300pt
+default is the full 300pt wide, and the window is 40pt taller than the ratio alone would make it.
+
+**What would make the design's version correct:** a float window that is never the only surface —
+i.e. the Mac notifying and the main window being reachable — so that a hidden control is an
+accelerator rather than the only route. Row 117 fixed the second half of that; the first is
+`docs/phase-7-state.md` §5's finding that the Mac never notifies anyone of anything.
+
+## M17 — the float window turns with the phone · **closed 2026-09-15**
+
+Not a departure: the design assumes the float is the phone's shape, and it was not. `RATIO` was a
+module constant, so a landscape phone was letterboxed into a portrait frame at a fifth of the area.
+The ratio is now the announced capture's, and the window's **outer bounds** follow it — preserving
+the picture's area rather than its width, because keeping the width is what makes landscape tiny.
+Defect 114, proven on hardware in both directions.
+
+## M18 — the control strip is a bottom bar · **departure from handoff §3, 2026-09-15**
+
+§3 draws a hover dock. **M16** replaced it with a permanent strip and gave the three measurements
+that forced it. This row records the second move, made the same day at the owner's request: that
+strip was a **vertical rail on the right edge**, and it is a **horizontal bar along the bottom** now.
+
+**The reason is recognisability rather than a measurement.** A phone has a navigation bar under its
+screen; a window that mirrors a phone and puts Back, Home and Recents down its right-hand side reads
+as a remote control rather than as a phone. Nothing was wrong with the rail — M16's three faults were
+all fixed by it and none of them has come back.
+
+**It is a geometry change and was treated as one.** `RAIL = 36`, a width taken from the side, became
+`BOTTOM_BAR = 40`, a height taken from the bottom beside `TITLE = 34`. The two axes are not
+symmetric: width loses its only consumer, so the picture spans the whole window; height gains a
+second one, so every function that turns available height into a width caps lower — the README's
+≈401 at 920pt tall becomes **383**. The transcription test asserts both figures so the document stays
+checkable beside a build that made it smaller. `docs/defects.md` → 118.
+
+**What is lost:** 40pt of height where the rail cost 36pt of width. On a 300pt window that is a
+slightly shorter picture rather than a slightly narrower one, which is the better trade for a
+19.5:9 phone and the worse one for a landscape phone — and the landscape case was measured rather
+than reasoned: picture 1494 × 688 at an announced 0.462, agreeing to within 0.001.
+
+**What would make the design's version correct:** unchanged from M16. A float that is never the only
+surface, so a hidden control is an accelerator rather than the only route.
+
+**Tooltips came with it**, and they are the one place this window does *not* follow the rest of the
+app: `title` is used in eleven places elsewhere and is right there, but it never fires on keyboard
+focus. The bar draws its own — 450 ms on hover, immediate on focus — with the text from the same
+table as the label, so there is no second copy of any string.

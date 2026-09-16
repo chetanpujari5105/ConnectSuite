@@ -153,6 +153,97 @@ function storageRing(state: StorageState | null): RingView {
   };
 }
 
+/**
+ * What the **chrome** says about the battery — the sidebar device card and the connected-device
+ * strip, which is the O4 ring's fact in two much smaller boxes.
+ *
+ * **It was three boxes until 2026-09-16.** The Overview hero carried a Battery row too, which made
+ * three copies of one percentage on one viewport; the row is gone (departure O11) and `detail`, the
+ * labelled form that existed only for it, went with it. The remaining two surfaces are 40px mono
+ * slots and both read `text`.
+ *
+ * ### Why this is here and not three expressions of the same idea in `shell.ts`
+ *
+ * The ring above already decides what each battery state means. A second decision in the shell
+ * would be the same rule with a second home, which this project has a section about: the two
+ * disagree eventually and the copy is the one that is wrong.
+ *
+ * ### Why `show` is false for a phone that cannot report
+ *
+ * The slot is removed rather than filled with a dash, and the original argument for that still
+ * holds: a lone `—` between "Connected" and a divider is a glyph with no label, which a reader has
+ * to decode instead of read. The ring has a caption and can say *"This phone does not report its
+ * level"*; a 40px mono slot cannot. **The fact is not hidden** — it is on the O4 ring with its
+ * caption, and in Settings → Advanced, where facts live.
+ *
+ * ### Why the link state is an argument
+ *
+ * **A percentage drawn while the link is down is a claim about now, made from a reading that may be
+ * hours old.** That is defect 96 exactly — a stale value wearing the live surface's authority — and
+ * the fix there was the same one as here: the chrome is the present tense, so it shows nothing
+ * rather than something it cannot vouch for. History belongs to Activity.
+ */
+function batterySlot(state: BatteryState | null, live: boolean): {
+  show: boolean;
+  /** The 40px mono form, for the device card and the strip. The only form there is. */
+  text: string;
+  tone: 'ok' | 'low' | 'unknown';
+} {
+  const ring = batteryRing(state);
+  if (!live || ring.fraction === null) {
+    return { show: false, text: '', tone: ring.tone };
+  }
+  return { show: true, text: ring.value, tone: ring.tone };
+}
+
+/**
+ * The Settings → Advanced line for `battery.state` — the surface with room to explain.
+ *
+ * ### Why this is not the slot's sentence
+ *
+ * The chrome removes itself when it has nothing to say, which is right for a 40px mono box and
+ * useless here: *Advanced* is where somebody goes **because** the chrome is blank, so the one thing
+ * this line may never do is go blank too. It has four answers where the slot has two, and the two
+ * extra are the pair defect 85 exists for — *nothing has arrived* and *the phone says it cannot
+ * tell you* are different facts and only one of them will ever resolve.
+ *
+ * ### Why the age is on the line
+ *
+ * A stationary battery reports about once an hour. A bare `46%` in a diagnostics pane is a number
+ * with no denominator: it cannot be told from a reading taken at the start of the session, which is
+ * the whole question a person reads this line to answer. `docs/protocol.md` gives `battery.state`
+ * no timestamp, so this is the **arrival** time on this Mac and the wording says `received`, never
+ * `measured` — the phone's own clock is not on the wire and must not be implied.
+ *
+ * It said `not subscribed on this build (battery.state is unhandled)` for a phase, which was a
+ * true sentence about the build it was written for and a false one about every build since.
+ */
+function batteryDiagnostic(
+  state: BatteryState | null,
+  receivedAtMs: number | null,
+  nowMs: number,
+): string {
+  if (state === null || receivedAtMs === null) return 'no battery.state received this session';
+  const age = ageWords(nowMs - receivedAtMs);
+  if (state.capacityUnknown || state.level === null) {
+    // Not the same as silence, and the distinction is the reason this line is four-valued.
+    return `the phone reports it cannot read its level · received ${age}`;
+  }
+  return `${state.level}% · ${state.charging ? 'charging' : 'on battery'} · received ${age}`;
+}
+
+/** Coarse on purpose: this line answers "is it current", not "when exactly". */
+function ageWords(elapsedMs: number): string {
+  // A clock that has gone backwards — a sleep, an NTP step — is not a negative age, it is an
+  // unknown one. Saying "-4s ago" is the instrument reporting its own fault as a measurement.
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return 'at an unknown time';
+  const seconds = Math.round(elapsedMs / 1000);
+  if (seconds < 90) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 90) return `${minutes}m ago`;
+  return `${Math.round(minutes / 60)}h ago`;
+}
+
 /** Both rings, in the order the design draws them. */
 function deviceStatusRings(
   battery: BatteryState | null,
@@ -164,6 +255,8 @@ function deviceStatusRings(
 {
   const g = globalThis as Record<string, unknown>;
   g.deviceStatusRings = deviceStatusRings;
+  g.batterySlot = batterySlot;
+  g.batteryDiagnostic = batteryDiagnostic;
   g.batteryRing = batteryRing;
   g.storageRing = storageRing;
   g.humanBytes = humanBytes;
@@ -171,6 +264,8 @@ function deviceStatusRings(
 if (typeof module !== 'undefined') {
   module.exports = {
     deviceStatusRings,
+    batterySlot,
+    batteryDiagnostic,
     batteryRing,
     storageRing,
     humanBytes,

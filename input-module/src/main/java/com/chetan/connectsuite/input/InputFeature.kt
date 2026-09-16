@@ -1,6 +1,7 @@
 package com.chetan.connectsuite.input
 
 import android.content.Context
+import android.view.ViewConfiguration
 import com.chetan.connectsuite.core.link.CapabilityContract
 import com.chetan.connectsuite.core.link.ControlSession
 import com.chetan.connectsuite.core.link.LinkLog
@@ -59,6 +60,18 @@ object InputFeature {
 
     @Volatile
     private var installed = false
+
+    /**
+     * Scrolls that got their whole slop headroom, and scrolls that could not.
+     *
+     * Two counters rather than one, published on both log lines. Defect 111's own reading is the
+     * argument: "35 sub-slop scrolls" meant nothing until "of 138" was beside it.
+     */
+    @Volatile
+    private var scrollsWhole = 0
+
+    @Volatile
+    private var scrollsShort = 0
 
     /**
      * Whether the mirror is currently being handed blank frames.
@@ -170,12 +183,63 @@ object InputFeature {
             return refuse(session, request, InputFailure.BadRequest("a scroll of zero distance"))
         }
         val to = InputGeometry.scrollEnd(stamp, from, dx, dy)
-        val path = InputGeometry.toDisplay(stamp, listOf(from, to))
+        val mapped = InputGeometry.toDisplay(stamp, listOf(from, to))
             ?: return refuse(session, request, outOfFrame(from, stamp))
+
+        /*
+         * Defect 111. The stroke is lengthened by this phone's touch slop before it is dispatched.
+         *
+         * `View` eats `scaledTouchSlop` pixels of every stroke deciding whether it is a press or a
+         * drag, so a scroll dispatched at exactly the distance the Mac asked for moves the content
+         * one slop *less* than that — and a scroll shorter than the slop moves it not at all and
+         * arrives as a **tap** on whatever is underneath. On this handset that is 30 display pixels,
+         * and a quarter of every scroll the Mac has ever sent was under it.
+         *
+         * The slop is asked of the platform rather than derived from the density: they agree on this
+         * device (8dp at 600dpi is 30) and `ViewConfiguration` is the thing `View` itself reads, so
+         * a vendor that has changed it is followed rather than contradicted.
+         */
+        val slop = ViewConfiguration.get(context).scaledTouchSlop
+        val stroke = InputGeometry.withSlopHeadroom(
+            from = mapped[0],
+            to = mapped[1],
+            slopPx = slop,
+            displayWidth = stamp.displayWidth,
+            displayHeight = stamp.displayHeight,
+        )
+        /*
+         * Logged at the same volume in both directions, and the success line carries the number that
+         * gives the failure line its scale. A count of shortfalls with no count of whole strokes
+         * cannot tell "the display is crowded" from "this never works".
+         */
+        if (stroke.shortfallPx > 0.5f) {
+            scrollsShort += 1
+            LinkLog.w(
+                "input",
+                "Scroll headroom short by ${stroke.shortfallPx.toInt()}px of a ${slop}px slop — " +
+                    "the stroke starts ${stroke.from.y.toInt()} and ends ${stroke.to.y.toInt()} on a " +
+                    "${stamp.displayWidth}x${stamp.displayHeight} display, so the content will move " +
+                    "${(stroke.requestedPx - stroke.shortfallPx).toInt()}px of the " +
+                    "${stroke.requestedPx.toInt()}px asked for; " +
+                    "$scrollsWhole whole / $scrollsShort short since start",
+            )
+        } else {
+            scrollsWhole += 1
+            LinkLog.i(
+                "input",
+                "Scroll ${stroke.requestedPx.toInt()}px + ${stroke.headroomPx.toInt()}px slop " +
+                    "headroom = ${stroke.travelPx.toInt()}px of travel (slop ${slop}px); " +
+                    "$scrollsWhole whole / $scrollsShort short since start",
+            )
+        }
         answer(
             session,
             request,
-            service.stroke(path, request.duration(DEFAULT_SCROLL_MS), service.foregroundPackage()),
+            service.stroke(
+                listOf(stroke.from, stroke.to),
+                request.duration(DEFAULT_SCROLL_MS),
+                service.foregroundPackage(),
+            ),
         )
     }
 

@@ -8,8 +8,9 @@
  * by both and this file adds only what §3 draws.
  *
  * Every value below is the handoff's. Where one is repeated from `shared/floatGeometry.ts` it is
- * marked, because the two have to agree: the window's height is `width * 19.5/9 + 34`, and a title
- * bar that is not 34 tall makes the phone screen the wrong shape.
+ * marked, because the two have to agree: the window's height is `width * ratio + TITLE +
+ * BOTTOM_BAR`, and a title bar that is not 34 tall — or a control bar that is not 40 — makes the
+ * phone screen the wrong shape.
  */
 
 * {
@@ -39,7 +40,7 @@
   height: 100vh;
   border-radius: 14px;
   overflow: hidden;
-  background: #0b0c12;
+  background: var(--float-canvas);
   border: 1px solid var(--hairline);
   box-shadow: var(--shadow-float);
   transition: border-color var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease);
@@ -50,8 +51,8 @@
  * lights up whenever you click it competes with the picture it exists to show.
  */
 .float-frame.focused {
-  border-color: rgba(124, 107, 255, 0.34);
-  box-shadow: 0 0 0 1px rgba(124, 107, 255, 0.14), 0 26px 60px rgba(0, 0, 0, 0.56);
+  border-color: rgba(var(--tint-violet-rgb), 0.34);
+  box-shadow: var(--shadow-float-hover);
 }
 
 /* ---- Title bar ---------------------------------------------------------------------------- */
@@ -68,7 +69,7 @@
   align-items: center;
   height: 34px;
   padding: 0 var(--space-4);
-  background: rgba(18, 20, 28, 0.94);
+  background: var(--surface-titlebar);
   border-bottom: 1px solid var(--hairline);
 }
 
@@ -88,9 +89,9 @@
   transition: opacity var(--dur-hover) var(--ease);
 }
 .light:hover { opacity: 1; }
-.close { background: #ff5f57; }
-.min { background: #febc2e; }
-.zoom { background: #28c840; }
+.close { background: var(--traffic-close); }
+.min { background: var(--traffic-min); }
+.zoom { background: var(--traffic-zoom); }
 
 /*
  * Centred on the *window*, not between the lights and the pin. Absolute rather than a flex spacer
@@ -151,6 +152,11 @@
 
 /* ---- The phone screen --------------------------------------------------------------------- */
 
+/*
+ * The picture. A direct child of the column again as of defect 118 — it was inside a
+ * `.float-stage-row` flex row while the controls were a right-edge rail, and that row is gone
+ * because there is nothing beside the picture any more.
+ */
 .float-screen {
   position: relative;
   flex: 1 1 auto;
@@ -178,7 +184,7 @@
   display: grid;
   place-items: center;
   padding: var(--space-7);
-  background: rgba(7, 7, 10, 0.78);
+  background: var(--media-scrim);
   text-align: center;
   transition: opacity var(--dur-hover) var(--ease);
 }
@@ -188,72 +194,108 @@
   margin: 0;
   max-width: 300px;
   font: var(--text-body-size);
-  color: var(--text-body);
+  /* On --media-scrim, which does not invert — so neither does this. Same as the main window's
+     mirror overlay, and found the same way: by measuring the rendered pair rather than the token. */
+  color: var(--text-on-media);
 }
 
-/* ---- Hover dock --------------------------------------------------------------------------- */
+/* ---- The control bar ------------------------------------------------------------------------ */
 
 /*
- * Appears on window hover, bottom-centre. Only `transform` and `opacity` animate, per the handoff.
+ * The bottom bar. **40px, and that 40 is BOTTOM_BAR in shared/floatGeometry.ts** — the same kind of
+ * agreement the 34px title bar has with TITLE, and now on the same axis: the picture's height is
+ * `window - TITLE - BOTTOM_BAR`, so a bar that is not BOTTOM_BAR tall makes the picture the wrong
+ * shape and no amount of CSS here fixes it.
  *
- * Hidden with `opacity` plus `pointer-events: none`, not with `display` or `visibility`. Each of the
- * three does something different here and only this combination is right:
- *
- *  - `display: none` and `visibility: hidden` both take the buttons out of the tab order, and a
- *    control that exists only under a pointer is a control a keyboard user does not have. The dock
- *    carries `:focus-within` for exactly that reason — tabbing into it reveals it.
- *  - `opacity: 0` alone leaves an invisible pill sitting over the middle-bottom of the phone screen
- *    that still swallows clicks. Harmless while the canvas takes no input and a silent dead zone
- *    the moment it does, which is the kind of thing that gets found by someone tapping a phone and
- *    wondering why one strip of it is dead.
+ * Always visible. What was here before defect 115 was a pill at `bottom: 36px` with `opacity: 0`
+ * until the window was hovered, sitting over the picture and on Android's own gesture bar. Defect
+ * 118 then turned the fix through ninety degrees: a right-edge vertical rail became this, which is
+ * the shape the phone's own navigation bar has — buttons in a row, under the screen.
  */
-.float-dock {
-  position: absolute;
-  left: 50%;
-  /*
-   * The handoff says "bottom-centre **above the nav bar**", and the nav bar in question is the
-   * *phone's* — this window is ratio-locked to the phone's screen, so Android's gesture bar lands
-   * in a fixed proportion of the height no matter how the window is sized. At 14px the dock sat
-   * directly on it, and pressing Home meant reaching across the phone's own Home. Measured on a
-   * 300x650 screen area, where the gesture bar occupies roughly the bottom 24px.
-   */
-  bottom: 36px;
+.float-bar {
+  flex: none;
+  height: 40px;
   display: flex;
+  align-items: center;
+  justify-content: center;
   gap: var(--space-2);
-  padding: var(--space-2);
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--hairline);
-  background: var(--elev-1);
-  backdrop-filter: blur(30px) saturate(140%);
-  box-shadow: var(--shadow-panel);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(-50%) translateY(8px);
-  transition: opacity var(--dur-pill) var(--ease-float), transform var(--dur-pill) var(--ease-float);
+  padding: 0 var(--space-3);
+  background: var(--surface-titlebar);
+  border-top: 1px solid var(--hairline);
 }
 
-.float-frame:hover .float-dock,
-.float-dock:focus-within {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateX(-50%) translateY(0);
-}
-
-.dock-button {
+.bar-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
   height: 26px;
-  padding: 0 var(--space-4);
-  border-radius: var(--radius-pill);
+  flex: none;
+  padding: 0;
   border: 1px solid transparent;
+  border-radius: var(--radius-control);
   background: none;
   color: var(--text-on-control);
-  font: var(--text-meta-size);
-  letter-spacing: var(--tracking-meta);
   cursor: pointer;
   transition: background var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
 }
-.dock-button:hover { background: var(--control); color: var(--text-primary); }
-.dock-button:disabled { opacity: 0.45; cursor: default; }
-.dock-button:disabled:hover { background: none; color: var(--text-on-control); }
+.bar-button:hover { background: var(--control); color: var(--text-primary); }
+.bar-button:disabled { opacity: 0.4; cursor: default; }
+.bar-button:disabled:hover { background: none; color: var(--text-on-control); }
+
+/*
+ * The two controls that act on this Mac rather than on the phone, pushed right of a hairline.
+ * Grouping by what a control acts on is the cheapest way to stop someone pressing "show the other
+ * window" while reaching for Recents — the same separation the vertical rail had, rotated.
+ */
+.bar-button.bar-mac {
+  position: relative;
+}
+/*
+ * `.bar-group-start`, set from the table in floatRail.ts. It was
+ * `.bar-button.bar-mac:first-of-type::before`, which matched **nothing** — `:first-of-type` is about
+ * the element type, so it meant the first `button`, which is Back, and Back carries no `bar-mac`.
+ * The rule parsed, the sheet tests passed, and no hairline was ever drawn. Measured, not noticed.
+ */
+.bar-button.bar-group-start {
+  margin-left: var(--space-3);
+}
+.bar-button.bar-group-start::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--space-3) / -2 - 1px);
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--hairline);
+}
+
+/* ---- The tooltip ---------------------------------------------------------------------------- */
+
+/*
+ * A bar 40px tall cannot contain a tooltip, and below the bar is outside the window, so the only
+ * direction left is up — over the bottom edge of the picture. That is stated rather than glossed:
+ * the measurement is in docs/testing.md, and `pointer-events: none` is what makes it harmless. It
+ * cannot block the control it describes and it cannot swallow a tap meant for the phone, which is
+ * precisely the silent dead zone the old hover pill created.
+ *
+ * Positioned from JS against the button's own rect rather than from a CSS anchor, because the
+ * buttons are generated and their number is not fixed.
+ */
+.float-tip {
+  position: fixed;
+  z-index: 10;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: var(--elev-1);
+  backdrop-filter: blur(30px) saturate(140%);
+  color: var(--text-primary);
+  font: var(--text-meta-size);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--shadow-panel);
+}
+.float-tip[hidden] { display: none; }
 
 /* ---- Resize handle ------------------------------------------------------------------------ */
 
@@ -263,7 +305,7 @@
  * height that did not come from the width is the one way out of the 9:19.5 lock.
  */
 .float-resize {
-  position: absolute;
+  position: fixed;
   right: 0;
   bottom: 0;
   width: 20px;
@@ -272,7 +314,7 @@
   opacity: 0;
   transition: opacity var(--dur-hover) var(--ease);
 }
-.float-frame:hover .float-resize { opacity: 1; }
+.float-body:hover .float-resize { opacity: 1; }
 
 .float-resize::after {
   content: "";
@@ -294,9 +336,10 @@
 .float-toast {
   position: fixed;
   left: 50%;
-  /* Clear of the hover dock above it — the two can be on screen at once, because a refused global
-     action is announced here while the dock that refused it is still under the pointer. */
-  bottom: 82px;
+  /* Clear of the control bar, which is 40px of real estate at the foot of the window as of defect
+     118 — so a toast sitting at 44px would half-cover it. 56px clears the bar and the phone's own
+     gesture area above it. */
+  bottom: 56px;
   transform: translateX(-50%) translateY(6px);
   max-width: 86%;
   padding: var(--space-3) var(--space-5);
@@ -326,7 +369,7 @@
 .float-frame.dragging {
   transition: none;
   transform: scale(1.008);
-  box-shadow: 0 30px 68px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow-float-window);
 }
 
 /* ---- Accessibility ------------------------------------------------------------------------- */

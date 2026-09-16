@@ -53,13 +53,26 @@ const CATEGORY_LABELS: Record<ActivityCategory, string> = {
 };
 
 /** The dock/summary tints, reused so the donut and the chips cannot disagree about a colour. */
+/*
+ * The category tints, as **references to the stylesheet's tokens** rather than as a second copy of
+ * the numbers.
+ *
+ * Each value is a CSS custom-property reference, so `rgb(var(--tint-blue-rgb))` resolves in the
+ * page against `tokens.css` and follows the theme. It used to hold literal `r,g,b` triples, which
+ * made this file a second home for seven colours — and that is not a hypothetical cost: the
+ * mirroring tint here read `139,107,255` while `tokens.css` read `124,107,255` for the same
+ * violet, for a phase, because a token was changed and this file was not. One home, one answer.
+ *
+ * `--tint-darken` is applied by the stylesheet, not here: a dot drawn straight from these on a
+ * white ground would be the light-mode failure this whole indirection exists to prevent.
+ */
 const CATEGORY_TINTS: Record<ActivityCategory, string> = {
-  mirroring: '139,107,255',
-  files: '96,165,250',
-  messages: '50,229,138',
-  calls: '34,211,238',
-  clipboard: '244,114,182',
-  system: '156,159,176',
+  mirroring: 'var(--tint-violet-rgb)',
+  files: 'var(--tint-blue-rgb)',
+  messages: 'var(--tint-green-rgb)',
+  calls: 'var(--tint-cyan-rgb)',
+  clipboard: 'var(--tint-pink-rgb)',
+  system: 'var(--tint-grey-rgb)',
 };
 
 interface ActivityEvent {
@@ -304,10 +317,144 @@ function activityCsv(events: ActivityEvent[]): string {
 }
 
 /** Relative time for the TIME column: the design shows "2m ago", "Yesterday 18:04". */
-function activityWhen(at: number, now: number): string {
-  const seconds = Math.max(0, Math.round((now - at) / 1000));
-  if (seconds < 60) return 'Just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+/**
+ * One Recent-activity row, as the card needs to draw it.
+ *
+ * ### Why this is a rule and not four `if`s in the renderer
+ *
+ * `ActivityEvent` carries **one** `detail` field, and the card needs two different things out of
+ * it: a *subtitle* (a sentence about what happened) and *metadata* (the device it happened to, the
+ * version it happened in). Which one a given `detail` is depends entirely on the event —
+ * `Connected`'s detail is a device name, `Disconnected`'s is a sentence, `ConnectSuite started`'s
+ * is a version string.
+ *
+ * **The discriminator is `kind`, never the shape of the text.** Sniffing `detail` for something
+ * that looks like a device name or a version number is the lookalike failure this repo has a table
+ * about: `Samsung SM-S938B` and `2735 bytes, automatically` are both "a short string with digits
+ * in it", and the rule would be wrong on the first transfer event. `kind` is written by
+ * `main/activity.ts` at eleven named recording sites and is the only field that says what happened.
+ *
+ * ### What it will not do
+ *
+ * It does not invent a device name for an event that has none. The reference for this card shows
+ * one on the Disconnected row; the event does not carry it, and the *current* device name is a fact
+ * about now rather than about a disconnection five minutes ago. A historical row asserting today's
+ * device is the stale-reading failure, drawn. So that row gets its sentence and no device.
+ *
+ * It also does not draw a **failure colour on a past event** — departure O7, 2026-09-16. See the
+ * `Disconnected` branch below for the argument.
+ */
+interface ActivityRowView {
+  /** An `icons.ts` name. */
+  icon: string;
+  /** An `--tint-*-rgb` triplet, for the tonal tile behind the icon. */
+  tint: string;
+  /** Line one. Always `event.kind` — the store's own verb phrase. */
+  title: string;
+  /** Line two. A sentence; empty when the event is entirely described by its kind. */
+  subtitle: string;
+  /** Right-hand metadata: the device this happened to, when the event names one. */
+  device: string;
+  /** Right-hand metadata: a small badge, e.g. `v2.0.0`. */
+  badge: string;
+}
+
+/** The kinds `main/activity.ts` writes for link transitions, matched exactly rather than by prefix. */
+const ACTIVITY_CONNECTED_KINDS = new Set(['Connected', 'Reconnected']);
+
+function activityRowView(event: ActivityEvent): ActivityRowView {
+  const base: ActivityRowView = {
+    icon: ACTIVITY_ICONS[event.category] ?? 'activity',
+    tint: CATEGORY_TINTS[event.category] ?? 'var(--tint-grey-rgb)',
+    title: event.kind,
+    subtitle: event.detail,
+    device: '',
+    badge: '',
+  };
+
+  if (ACTIVITY_CONNECTED_KINDS.has(event.kind)) {
+    // The detail IS the device name here, so it moves right and the subtitle says what happened.
+    return {
+      ...base,
+      icon: 'link',
+      tint: 'var(--tint-green-rgb)',
+      subtitle: 'Successfully connected to your phone',
+      device: event.detail,
+    };
+  }
+
+  if (event.kind === 'ConnectSuite started') {
+    // "version 2.0.0" → "v2.0.0". A badge is a label, and the word is the column header's job.
+    const version = event.detail.replace(/^version\s+/i, '');
+    return {
+      ...base,
+      // `overview`, not `apps`: the 2×2 tile grid, which is what the reference draws and what
+      // reads as an application at 26px. `apps` is a 3×3 of dots and turns to noise at this size.
+      icon: 'overview',
+      tint: 'var(--tint-violet-rgb)',
+      subtitle: 'Application launched',
+      badge: version ? `v${version}` : '',
+    };
+  }
+
+  if (event.kind === 'Disconnected' || event.kind === 'Connection failed') {
+    /*
+     * **Grey, not red — departure O7, 2026-09-16.**
+     *
+     * The handoff's Recent activity draws five tinted tiles in teal, violet, green, blue and
+     * **grey**, and its grey one is the system row (*"Session reconnected automatically"*). There
+     * is no red anywhere in that list, and the README says why in one sentence: *"Red is reserved.
+     * `#FF5D5D` means destructive or failed. Never use red as an accent … in a connection product
+     * red reads as 'link is down.'"*
+     *
+     * That sentence is the whole defect. A red tile here was **not wrong about the event** — the
+     * disconnection really was a failure — it was wrong about *when*. It sat in a list of past
+     * events two inches under a header reading `Connected · 9 ms`, so the one colour in the app
+     * that means *the link is down right now* was being used for something that stopped being true
+     * minutes ago. Red belongs to the live surfaces: the island, the strip, the hero chip.
+     *
+     * **The state is still drawn, and not by colour.** `alert-circle` is the shape half, which is
+     * the rule defect 26 established for the capability chips and which survives for a reader who
+     * cannot separate red from grey. What changes is only which hue the tile carries.
+     *
+     * The `View log` link went in the same pass (departure O18): it was the one row in five with a
+     * second affordance beside the chevron every row already has.
+     */
+    return {
+      ...base,
+      icon: 'alert-circle',
+      tint: 'var(--tint-grey-rgb)',
+      // The sentence stays where it is: it is the explanation, not metadata.
+      subtitle: event.detail,
+    };
+  }
+
+  return base;
+}
+
+/** One icon per category, for every event the four rules above do not name explicitly. */
+const ACTIVITY_ICONS: Record<ActivityCategory, string> = {
+  mirroring: 'mirror',
+  files: 'files',
+  messages: 'messages',
+  calls: 'calls',
+  clipboard: 'clipboard',
+  system: 'activity',
+};
+
+/**
+ * The wall-clock form: `09:42` today, `Yesterday 09:42`, `28/8 09:42` before that.
+ *
+ * **Extracted 2026-09-16 so that two surfaces can share it rather than restate it.** The handoff
+ * puts an absolute mono time in Overview's Recent activity column *and* in the Activity pane's
+ * TIME column; `activityWhen` below is the relative form, and it already contained this one as its
+ * tail. Pulling it out is the no-second-expression rule: a copy in `overview.ts` would be a second
+ * answer to "what day was that", and the day boundary is exactly the arithmetic that goes wrong.
+ *
+ * `now` is a parameter rather than `Date.now()` for the same reason it is everywhere else here —
+ * a function that reads the clock cannot be tested across a midnight.
+ */
+function activityClock(at: number, now: number): string {
   const then = new Date(at);
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
@@ -317,6 +464,13 @@ function activityWhen(at: number, now: number): string {
   yesterday.setDate(yesterday.getDate() - 1);
   if (at >= yesterday.getTime()) return `Yesterday ${hhmm}`;
   return `${then.getDate()}/${then.getMonth() + 1} ${hhmm}`;
+}
+
+function activityWhen(at: number, now: number): string {
+  const seconds = Math.max(0, Math.round((now - at) / 1000));
+  if (seconds < 60) return 'Just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  return activityClock(at, now);
 }
 
 /**
@@ -353,6 +507,9 @@ function activityWhen(at: number, now: number): string {
   g.activityPaneView = activityPaneView;
   g.activitySummary = activitySummary;
   g.activityWhen = activityWhen;
+  g.activityClock = activityClock;
+  g.activityRowView = activityRowView;
+  g.ACTIVITY_ICONS = ACTIVITY_ICONS;
 }
 
 if (typeof module !== 'undefined') {
@@ -366,5 +523,8 @@ if (typeof module !== 'undefined') {
     activityPaneView,
     activitySummary,
     activityWhen,
+    activityClock,
+    activityRowView,
+    ACTIVITY_ICONS,
   };
 }

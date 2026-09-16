@@ -196,4 +196,108 @@ class InputGeometryTest {
         assertEquals(0f, end.y, 0.01f)
     }
 
+
+    // ---- defect 111: a scroll shorter than the touch slop is a tap ---------------------------
+
+    /**
+     * The slop on the reference handset: 8dp at 600dpi. Written as the arithmetic rather than as
+     * `30` so the number's provenance is in the test — this is what `wm density` reported, and the
+     * product asks `ViewConfiguration` for the same thing rather than computing it.
+     */
+    private val slop = 8 * 600 / 160
+
+    @Test
+    fun `the reference handset's slop is the 30 pixels the defect was measured against`() {
+        assertEquals(30, slop)
+    }
+
+    @Test
+    fun `a sub-slop scroll is lengthened past the slop instead of arriving as a tap`() {
+        // -17 capture px is a real value from the Mac's own log — one mouse wheel notch. It maps to
+        // 22.7 display px, which is under the 30px slop, so as dispatched it was a press and a
+        // release in one place: a tap on whatever was under the pointer.
+        val from = InputGeometry.toDisplay(portrait, FramePoint(540f, 1170f))!!
+        val to = InputGeometry.toDisplay(portrait, InputGeometry.scrollEnd(portrait, FramePoint(540f, 1170f), 0f, -17f))!!
+        val bare = kotlin.math.hypot(to.x - from.x, to.y - from.y)
+        assertTrue("the premise: the bare stroke is under the slop, got $bare", bare < slop)
+
+        val stroke = InputGeometry.withSlopHeadroom(from, to, slop, 1440, 3120)
+        assertTrue(
+            "a scroll must travel further than the slop or the platform cannot see it as one, got ${stroke.travelPx}",
+            stroke.travelPx > slop,
+        )
+        assertEquals(0f, stroke.shortfallPx, 0.01f)
+    }
+
+    @Test
+    fun `the content still moves exactly what was asked, because the headroom goes in front`() {
+        // The whole point of extending the START rather than the end: the finger passes through the
+        // point the Mac aimed at. Overshooting past it would scroll further than the wheel asked.
+        val from = DisplayPoint(720f, 1560f)
+        val to = DisplayPoint(720f, 1460f)          // 100px of requested content travel, upward
+
+        val stroke = InputGeometry.withSlopHeadroom(from, to, slop, 1440, 3120)
+
+        assertEquals("the end is untouched", 1460f, stroke.to.y, 0.01f)
+        assertEquals("the start moved back by exactly one slop", 1560f + slop, stroke.from.y, 0.01f)
+        assertEquals(100f, stroke.requestedPx, 0.01f)
+        assertEquals(slop.toFloat(), stroke.headroomPx, 0.01f)
+        assertEquals(130f, stroke.travelPx, 0.01f)
+    }
+
+    @Test
+    fun `a horizontal scroll is extended along its own axis, not vertically`() {
+        val stroke = InputGeometry.withSlopHeadroom(
+            DisplayPoint(720f, 1560f), DisplayPoint(920f, 1560f), slop, 1440, 3120,
+        )
+        assertEquals(1560f, stroke.from.y, 0.01f)
+        assertEquals(1560f, stroke.to.y, 0.01f)
+        assertEquals(720f - slop, stroke.from.x, 0.01f)
+    }
+
+    @Test
+    fun `when the start cannot move back, the end takes the headroom instead`() {
+        // A downward-content scroll started 4px from the bottom edge: there is nowhere behind it.
+        val stroke = InputGeometry.withSlopHeadroom(
+            DisplayPoint(720f, 3115f), DisplayPoint(720f, 3015f), slop, 1440, 3120,
+        )
+        assertEquals("the start is pinned at the edge", 3119f, stroke.from.y, 0.01f)
+        // 4px came off the start, the remaining 26 came off the end.
+        assertEquals(slop.toFloat(), stroke.headroomPx, 0.5f)
+        assertEquals(0f, stroke.shortfallPx, 0.5f)
+        assertTrue("the end moved forward to make up the headroom", stroke.to.y < 3015f)
+    }
+
+    @Test
+    fun `a display with no room for the headroom reports the shortfall rather than hiding it`() {
+        // A stroke spanning nearly the whole of a short display. Neither end can move, so the slop
+        // will eat part of the request and the caller has to be able to say so.
+        val stroke = InputGeometry.withSlopHeadroom(
+            DisplayPoint(0f, 0f), DisplayPoint(0f, 39f), slopPx = slop, displayWidth = 40, displayHeight = 40,
+        )
+        assertEquals("nothing could be added", 0f, stroke.headroomPx, 0.5f)
+        assertEquals("and the shortfall is the whole slop", slop.toFloat(), stroke.shortfallPx, 0.5f)
+    }
+
+    @Test
+    fun `a zero-length request is returned untouched rather than given a direction`() {
+        // The handler refuses these before reaching here. If one ever arrives, inventing a direction
+        // for it would dispatch a stroke nobody asked for.
+        val p = DisplayPoint(720f, 1560f)
+        val stroke = InputGeometry.withSlopHeadroom(p, p, slop, 1440, 3120)
+        assertEquals(p, stroke.from)
+        assertEquals(p, stroke.to)
+        assertEquals(0f, stroke.headroomPx, 0.01f)
+    }
+
+    @Test
+    fun `a slop of zero is a platform with no slop, and adds nothing`() {
+        val stroke = InputGeometry.withSlopHeadroom(
+            DisplayPoint(720f, 1560f), DisplayPoint(720f, 1460f), 0, 1440, 3120,
+        )
+        assertEquals(1560f, stroke.from.y, 0.01f)
+        assertEquals(0f, stroke.headroomPx, 0.01f)
+        assertEquals(0f, stroke.shortfallPx, 0.01f)
+    }
+
 }

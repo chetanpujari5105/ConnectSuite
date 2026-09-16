@@ -156,6 +156,75 @@ const ICON_GEOMETRY: Record<string, string> = {
   /** The one state mark that is not a colour: a filled dot is drawn by CSS, this is its outline. */
   link: '<path d="M10.2 13.8a4 4 0 0 0 5.66 0l3-3a4 4 0 1 0-5.66-5.66l-1.2 1.2"/>' +
     '<path d="M13.8 10.2a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66l1.2-1.2"/>',
+
+  // ---- Media transport and audio output. -----------------------------------------------------
+  // No counterpart in the mockups — `ConnectSuite.dc.html` draws no media pane at all — so these
+  // are authored on the same 24px grid as the six global actions, which are the other marks with
+  // no design of their own.
+  //
+  // **The transport four are FILLED and everything else here is stroked**, which is a deliberate
+  // split rather than an inconsistency. A transport glyph is a *shape* — a triangle, two bars —
+  // and every system that draws one draws it solid, SF Symbols included; a stroked triangle reads
+  // as an outline of a button rather than as the button. The device and volume marks are *icons*
+  // in the ordinary sense and take the set's 1.5 stroke like everything else.
+  play: '<path d="M8.2 5.1v13.8L19.2 12z"/>',
+  pause:
+    '<rect x="8.4" y="5.3" width="2.9" height="13.4" rx="1.45"/>' +
+    '<rect x="12.7" y="5.3" width="2.9" height="13.4" rx="1.45"/>',
+  'skip-back':
+    '<path d="M18.6 6.1v11.8L10.2 12z"/>' +
+    '<rect x="5.4" y="5.8" width="2.5" height="12.4" rx="1.25"/>',
+  'skip-forward':
+    '<path d="M5.4 6.1v11.8L13.8 12z"/>' +
+    '<rect x="16.1" y="5.8" width="2.5" height="12.4" rx="1.25"/>',
+  /** The art slot's fallback, for a session with neither artwork nor a launcher icon. */
+  music: '<path d="M9 17.4V6.2l9.5-1.9v11.2"/><circle cx="6.5" cy="17.6" r="2.6"/>' +
+    '<circle cx="15.9" cy="15.5" r="2.6"/>',
+
+  // The volume slider's two end caps, and `volume-high` doubles as the speaker output's icon —
+  // one mark, one meaning, drawn wherever that meaning appears.
+  'volume-low': '<path d="M11.2 5.6L7 9.3H3.7v5.4H7l4.2 3.7z"/>',
+  'volume-high':
+    '<path d="M11.2 5.6L7 9.3H3.7v5.4H7l4.2 3.7z"/>' +
+    '<path d="M14.9 9.6a3.4 3.4 0 0 1 0 4.8"/><path d="M17.6 7.1a7 7 0 0 1 0 9.8"/>',
+  /** `output.kind === 'bluetooth'` — two buds, the shape the reference draws. */
+  airpods:
+    '<path d="M8.6 3.8a3.1 3.1 0 0 1 3.1 3.1v5.4a2 2 0 0 1-2 2H9a3.1 3.1 0 0 1-3.1-3.1V6.9A3.1 3.1 0 0 1 8.6 3.8z"/>' +
+    '<path d="M9.7 14.3v4.1a1.8 1.8 0 0 1-3.6 0"/>' +
+    '<path d="M16.4 3.8a3.1 3.1 0 0 1 3.1 3.1v4.3a3.1 3.1 0 0 1-3.1 3.1h-.7a2 2 0 0 1-2-2V6.9a3.1 3.1 0 0 1 3.1-3.1z"/>' +
+    '<path d="M15.3 14.3v4.1a1.8 1.8 0 0 0 3.6 0"/>',
+  /** A failed event in Recent activity. An exclamation in a ring — the platform's own shape. */
+  'alert-circle': '<circle cx="12" cy="12" r="8.6"/><path d="M12 7.7v5"/><path d="M12 15.9h.01"/>',
+
+  // ---- The Overview hero's detail metrics. Stroked on the same grid as everything else here;
+  // the hero's six rows are one visual family and a borrowed filled mark in the middle of them
+  // reads as a different icon set. -------------------------------------------------------------
+  wifi:
+    '<path d="M2.7 9.1a14.4 14.4 0 0 1 18.6 0"/>' +
+    '<path d="M6 12.6a9.5 9.5 0 0 1 12 0"/>' +
+    '<path d="M9.3 16.1a4.6 4.6 0 0 1 5.4 0"/>' +
+    '<path d="M12 19.5h.01"/>',
+  battery:
+    '<rect x="2.6" y="7.6" width="16" height="8.8" rx="2.4"/>' +
+    '<path d="M21.2 10.7v2.6"/>' +
+    '<rect x="5.1" y="10.1" width="5.6" height="3.8" rx="1.1"/>',
+  /** Stacked platters — the shape a storage figure gets everywhere, and not a folder. */
+  storage:
+    '<rect x="3" y="4.6" width="18" height="6" rx="2"/>' +
+    '<rect x="3" y="13.4" width="18" height="6" rx="2"/>' +
+    '<path d="M6.9 7.6h.01"/><path d="M6.9 16.4h.01"/>',
+  info: '<circle cx="12" cy="12" r="8.6"/><path d="M12 11.1v5.1"/><path d="M12 8h.01"/>',
+  /** The address row: three nodes on a bus, which is what an IP on a LAN is a name for. */
+  network:
+    '<rect x="9.4" y="2.9" width="5.2" height="5.2" rx="1.6"/>' +
+    '<rect x="2.6" y="15.9" width="5.2" height="5.2" rx="1.6"/>' +
+    '<rect x="16.2" y="15.9" width="5.2" height="5.2" rx="1.6"/>' +
+    '<path d="M12 8.1v3.6"/><path d="M5.2 15.9v-2.4h13.6v2.4"/>',
+  /** `output.kind === 'headphones'` — a band and two cups. */
+  headphones:
+    '<path d="M4.2 15.4v-3.2a7.8 7.8 0 0 1 15.6 0v3.2"/>' +
+    '<rect x="2.6" y="14.2" width="4.2" height="6.2" rx="2.1"/>' +
+    '<rect x="17.2" y="14.2" width="4.2" height="6.2" rx="2.1"/>',
 };
 
 /**
@@ -164,7 +233,7 @@ const ICON_GEOMETRY: Record<string, string> = {
  * A set rather than a flag on each entry so [ICON_GEOMETRY] stays pure geometry — the moment an
  * entry carries presentation, two of them will disagree about what a 1.5 stroke means.
  */
-const FILLED_ICONS = new Set(['dots']);
+const FILLED_ICONS = new Set(['dots', 'play', 'pause', 'skip-back', 'skip-forward']);
 
 /** Every icon that exists, as an array, so a test can assert over all of them. */
 const ICON_NAMES: string[] = Object.keys(ICON_GEOMETRY);
@@ -237,7 +306,7 @@ function brandGlyph(size = 24): SVGSVGElement {
   svg.setAttribute('focusable', 'false');
   svg.innerHTML =
     `<defs><linearGradient id="${id}" x1="0" y1="0" x2="24" y2="24">` +
-    '<stop stop-color="#8B6BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs>' +
+    '<stop stop-color="var(--accent)"/><stop offset="1" stop-color="var(--secondary)"/></linearGradient></defs>' +
     `<rect x="2.2" y="6.2" width="12.4" height="9.2" rx="1.6" stroke="url(#${id})" stroke-width="1.7"/>` +
     `<path d="M4.4 18.6h10" stroke="url(#${id})" stroke-width="1.7" stroke-linecap="round"/>` +
     `<rect x="15.4" y="2.6" width="6.2" height="12.2" rx="2" stroke="url(#${id})" stroke-width="1.7"/>` +

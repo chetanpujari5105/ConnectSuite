@@ -17,7 +17,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { check, typesFrom, UNSPECIFIED, SPECIFIED_UNDER } from './check-protocol-spec.mjs';
+import {
+  check,
+  typesFrom,
+  wireNamesIn,
+  readDoc,
+  UNSPECIFIED,
+  SPECIFIED_UNDER,
+  SPECIFIED_NOT_ON_THE_WIRE,
+} from './check-protocol-spec.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -50,6 +58,7 @@ const only = (types, body) => ({
   specifiedUnder: {},
   unspecified: {},
   notInInventory: {},
+  specifiedNotOnTheWire: {},
 });
 
 // --- fixture 1: a paragraph subject is a specification ----------------------------------------
@@ -99,11 +108,15 @@ test('fixture — a type present only in the inventory list is unaccounted for',
 test('fixture — a type specified but missing from the inventory is a finding of its own', () => {
   const r = check({
     kotlin: kotlinWith('call.dial'),
-    markdown: '# contract\n\n### Message types\n\nAll: `sms.send`\n\n## Body\n\n`call.dial` — **request**.\n',
+    // `ping` rather than another dotted name: the reverse walk would report an unrelated
+    // `sms.send` in the inventory with no constant behind it, which is a second, true finding and
+    // would make this fixture about two things.
+    markdown: '# contract\n\n### Message types\n\nAll: `ping`\n\n## Body\n\n`call.dial` — **request**.\n',
     minTypes: 1,
     specifiedUnder: {},
     unspecified: {},
     notInInventory: {},
+    specifiedNotOnTheWire: {},
   });
   assert.equal(r.findings.length, 1);
   assert.match(r.findings[0], /missing from the "### Message types" inventory/);
@@ -207,6 +220,7 @@ test('fixture — a type on the phone and missing from the Mac is a finding', ()
     unspecified: {},
     notInInventory: {},
     twinExempt: {},
+    specifiedNotOnTheWire: {},
   });
   assert.equal(r.findings.length, 1);
   assert.match(r.findings[0], /missing from desktop\/src\/shared\/protocol\.ts/);
@@ -222,6 +236,7 @@ test('fixture — the same type present in the twin is no finding', () => {
     unspecified: {},
     notInInventory: {},
     twinExempt: {},
+    specifiedNotOnTheWire: {},
   });
   assert.deepEqual(r.findings, []);
 });
@@ -236,6 +251,7 @@ test('fixture — a twin-exempt type is a counted gap, not a finding', () => {
     unspecified: {},
     notInInventory: {},
     twinExempt: { 'apps.list': 'Phase 7.' },
+    specifiedNotOnTheWire: {},
   });
   assert.deepEqual(r.findings, []);
   assert.deepEqual(r.twinDebt, ['apps.list']);
@@ -248,4 +264,175 @@ test('the tree as it stands has no phone type the Mac has never heard of', () =>
     typescript: readFileSync(join(ROOT, 'desktop/src/shared/protocol.ts'), 'utf8'),
   });
   assert.deepEqual(r.findings, []);
+});
+
+// --- fixture 7: the reverse walk — document → MessageType ---------------------------------------
+//
+// The gap these close: every loop above is over the *constants*, so a namespace the contract
+// specifies with nothing behind it is not merely unreported, it is unvisited. `mic.*` sat that way
+// for a phase with three `###` sections and an inventory line, while the checker printed
+// `0 unaccounted for` on every run.
+
+/** A contract that specifies `mic.*` fully and a Messages.kt that has never heard of it. */
+const MIC_MD = [
+  '# contract',
+  '',
+  '### Message types',
+  '',
+  'Microphone: `mic.start`, `mic.stop`, `mic.state`',
+  'System: `ping`',
+  '',
+  '## Microphone',
+  '',
+  '### `mic.start`',
+  '',
+  '**Request, Mac → phone.** `{"sampleRate":16000}` — optional.',
+  '',
+  '### `mic.stop`',
+  '',
+  '**Request, Mac → phone.** No payload.',
+  '',
+  '### `mic.state`',
+  '',
+  '**Event, phone → Mac.** Sent on every transition.',
+  '',
+].join('\n');
+
+const micCheck = (specifiedNotOnTheWire) =>
+  check({
+    kotlin: kotlinWith('ping'),
+    markdown: MIC_MD,
+    minTypes: 1,
+    specifiedUnder: { ping: '## Microphone' },
+    unspecified: {},
+    notInInventory: {},
+    specifiedNotOnTheWire,
+  });
+
+test('fixture — a namespace specified with no MessageType behind it is three findings', () => {
+  const r = micCheck({});
+  assert.equal(r.findings.length, 3);
+  for (const name of ['mic.start', 'mic.stop', 'mic.state']) {
+    assert.ok(
+      r.findings.some((f) => f.startsWith(`${name} is specified at`)),
+      `expected a finding for ${name}, got:\n${r.findings.join('\n')}`,
+    );
+  }
+  // It names the line, so the finding is actionable without a second search.
+  assert.match(r.findings[0], /docs\/protocol\.md:\d+/);
+  assert.match(r.findings[0], /no MessageType constant on either side/);
+});
+
+test('control — the same contract with the constants present is no finding at all', () => {
+  const r = check({
+    kotlin: kotlinWith('ping', 'mic.start', 'mic.stop', 'mic.state'),
+    markdown: MIC_MD,
+    minTypes: 1,
+    specifiedUnder: { ping: '## Microphone' },
+    unspecified: {},
+    notInInventory: {},
+    specifiedNotOnTheWire: {},
+  });
+  assert.deepEqual(r.findings, []);
+});
+
+test('fixture — recorded on SPECIFIED_NOT_ON_THE_WIRE it is counted debt, not a finding', () => {
+  const r = micCheck({
+    'mic.start': 'Gated on Phase 8 signing.',
+    'mic.stop': 'Same feature, same gate.',
+    'mic.state': 'Same feature, same gate.',
+  });
+  assert.deepEqual(r.findings, []);
+  assert.deepEqual(r.specNotWire, ['mic.start', 'mic.state', 'mic.stop']);
+});
+
+test('fixture — an inventory entry with no spec and no constant is still caught', () => {
+  // The other half: the contract never specifies it, so `subjects` cannot see it and only the
+  // inventory can. Distinguished in the message, because they are different mistakes.
+  const r = check({
+    kotlin: kotlinWith('ping'),
+    markdown: '# contract\n\n### Message types\n\nAll: `ping`, `mic.start`\n\n## Body\n\n`ping` — **heartbeat**.\n',
+    minTypes: 1,
+    specifiedUnder: {},
+    unspecified: {},
+    notInInventory: {},
+    specifiedNotOnTheWire: {},
+  });
+  assert.equal(r.findings.length, 1);
+  assert.match(r.findings[0], /mic\.start is listed in the "### Message types" inventory/);
+});
+
+// --- fixture 8: the allowlist gets pruned, in both of its failure directions --------------------
+
+test('fixture — an allowlisted name that acquires a constant FAILS', () => {
+  const r = check({
+    kotlin: kotlinWith('ping', 'mic.start', 'mic.stop', 'mic.state'),
+    markdown: MIC_MD,
+    minTypes: 1,
+    specifiedUnder: { ping: '## Microphone' },
+    unspecified: {},
+    notInInventory: {},
+    specifiedNotOnTheWire: { 'mic.start': 'Gated on Phase 8 signing.' },
+  });
+  assert.equal(r.findings.length, 1);
+  assert.match(r.findings[0], /is in fact in MessageType — remove it from the list/);
+});
+
+test('fixture — an allowlisted name the contract no longer mentions FAILS as stale', () => {
+  const r = check({
+    kotlin: kotlinWith('ping'),
+    markdown: '# contract\n\n### Message types\n\nAll: `ping`\n\n## Body\n\n`ping` — **heartbeat**.\n',
+    minTypes: 1,
+    specifiedUnder: {},
+    unspecified: {},
+    notInInventory: {},
+    specifiedNotOnTheWire: { 'mic.start': 'Gated on Phase 8 signing.' },
+  });
+  assert.equal(r.findings.length, 1);
+  assert.match(r.findings[0], /neither specifies nor lists it — the entry is stale/);
+});
+
+// --- fixture 9: the discriminator. A dot, and why a weaker one is worse than none ---------------
+
+test('the dot is the discriminator — field names opening paragraphs are not message types', () => {
+  // `docs/protocol.md` opens paragraphs with field names constantly. A reverse walk over every
+  // backticked subject would report `limit`, `path`, `kind` and two dozen others as missing types,
+  // which is a guard nobody can leave switched on.
+  const doc = readDoc(
+    '# contract\n\n### Message types\n\nAll: `ping`\n\n## Body\n\n' +
+      '`limit` — how many rows a page may carry.\n\n' +
+      '`path` — the entry, as the provider names it.\n\n' +
+      '`mic.start` — **request**, Mac → phone.\n',
+  );
+  const { subjects } = wireNamesIn(doc);
+  assert.deepEqual([...subjects.keys()], ['mic.start']);
+});
+
+test('the tree as it stands: every spec-only name is allowlisted, and mic.* is why', () => {
+  const r = check({
+    kotlin: readFileSync(join(ROOT, 'core/src/main/java/com/chetan/connectsuite/core/protocol/Messages.kt'), 'utf8'),
+    markdown: readFileSync(join(ROOT, 'docs/protocol.md'), 'utf8'),
+    typescript: readFileSync(join(ROOT, 'desktop/src/shared/protocol.ts'), 'utf8'),
+  });
+  assert.deepEqual(r.findings, []);
+  assert.deepEqual(r.specNotWire, ['apps.launch', 'mic.start', 'mic.state', 'mic.stop']);
+});
+
+test('red-first — the real tree with the allowlist emptied reports mic.* and nothing else new', () => {
+  // The verbatim case this guard is named for, against the real contract rather than a fixture.
+  const r = check({
+    kotlin: readFileSync(join(ROOT, 'core/src/main/java/com/chetan/connectsuite/core/protocol/Messages.kt'), 'utf8'),
+    markdown: readFileSync(join(ROOT, 'docs/protocol.md'), 'utf8'),
+    typescript: readFileSync(join(ROOT, 'desktop/src/shared/protocol.ts'), 'utf8'),
+    specifiedNotOnTheWire: {},
+  });
+  assert.equal(r.findings.length, 4);
+  const named = r.findings.map((f) => f.split(' ')[0]).sort();
+  assert.deepEqual(named, ['apps.launch', 'mic.start', 'mic.state', 'mic.stop']);
+});
+
+test('the allowlist carries a reason per entry, not a bare name', () => {
+  for (const [name, why] of Object.entries(SPECIFIED_NOT_ON_THE_WIRE)) {
+    assert.ok(typeof why === 'string' && why.length > 30, `${name} needs a reason and a gate, got: ${why}`);
+  }
 });

@@ -3,6 +3,12 @@ package com.chetan.connectsuite.sync.v2
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.media.MediaMetadata
+import android.media.MediaRouter
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
@@ -20,6 +26,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -41,6 +48,7 @@ object RemoteFeature {
     val handledTypes: Set<String> = setOf(
         MessageType.REMOTE_STATE,
         MessageType.REMOTE_COMMAND,
+        MessageType.REMOTE_ARTWORK,
     )
 
     @Volatile
@@ -76,6 +84,10 @@ object RemoteFeature {
     private val delivered = AtomicLong(0)
     private val refused = AtomicLong(0)
     private val pushes = AtomicLong(0)
+
+    /** Artwork images produced. Beside the push count, so a card with no art can be told from
+     *  a card whose art was never asked for. */
+    private val artworkMade = AtomicLong(0)
 
     private fun tally(): String = "${delivered.get()} delivered / ${refused.get()} refused since start"
 
@@ -128,6 +140,7 @@ object RemoteFeature {
             }
         }
         MessageType.REMOTE_COMMAND -> MessageHandler { session, request -> onCommand(session, request, context) }
+        MessageType.REMOTE_ARTWORK -> MessageHandler { session, request -> onArtwork(session, request, context) }
         else -> error("RemoteFeature.handledTypes lists $type with no handler")
     }
 
@@ -183,6 +196,193 @@ object RemoteFeature {
                 put("volume", it.currentVolume)
                 put("volumeMax", it.maxVolume)
             }
+            // The key, never the bytes. See MessageType.REMOTE_ARTWORK for why the two are split.
+            artworkKeyOf(controller)?.let { put("artworkKey", it) }
+            outputOf(context)?.let { put("output", it) }
+        }
+    }
+
+    // ---- artwork ------------------------------------------------------------------------------
+
+    /**
+     * A stable id for this session's artwork, or null when it has none.
+     *
+     * Derived from what identifies the *track*, not from the bitmap: hashing the pixels would mean
+     * decoding a bitmap on every `remote.state`, and a state is pushed on every pause and position
+     * jump. The cost of the cheap key is that two tracks sharing one album cover fetch it twice;
+     * the cost of the other direction is showing the previous album's cover on the new song, and
+     * only one of those is a bug.
+     *
+     * Null when there is no bitmap at all, which is what makes the Mac's fallback a decision rather
+     * than a timeout — an absent key says *do not ask*, where a present key that fails says *we
+     * tried*. Those are different states and the card draws them the same way, deliberately, but
+     * the log tells them apart.
+     */
+    private fun artworkKeyOf(controller: MediaController): String? {
+        val metadata = controller.metadata ?: return null
+        if (bitmapOf(metadata) == null) return null
+        val identity = listOf(
+            controller.packageName,
+            metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI).orEmpty(),
+            metadata.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty(),
+            metadata.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty(),
+            metadata.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty(),
+        ).joinToString("\u0000")
+        return Integer.toHexString(identity.hashCode())
+    }
+
+    /**
+     * The session's cover bitmap, in the order the platform offers it.
+     *
+     * Three keys, because apps disagree about which one they set: `ALBUM_ART` is the documented
+     * one, `ART` is what several large apps actually use, and `DISPLAY_ICON` is the generic
+     * fallback a browser tab or a podcast app tends to carry. Taking only the first would report
+     * "no artwork" for sessions that plainly have some.
+     */
+    private fun bitmapOf(metadata: MediaMetadata): Bitmap? =
+        metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+            ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ART)
+            ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+
+    private fun onArtwork(session: ControlSession, request: Envelope, context: Context) {
+        if (!available(context)) return refuse(session, request, RemoteFailure.NotGranted)
+        val key = request.str("key")
+            ?: return refuse(session, request, RemoteFailure.BadRequest("key is required"))
+        val maxEdge = request.int("maxEdge") ?: 256
+        if (maxEdge < 32 || maxEdge > 512) {
+            return refuse(session, request, RemoteFailure.BadRequest("maxEdge must be 32..512"))
+        }
+        val controller = activeController(context)
+            ?: return refuse(session, request, RemoteFailure.NoSession)
+
+        // The key is re-derived rather than trusted. A track can change while the request is in
+        // flight, and answering a stale key with the *current* art is how the Mac ends up hanging
+        // one album's cover on another album's song — the failure the echoed key exists to prevent,
+        // defeated by a phone that does not check.
+        if (artworkKeyOf(controller) != key) {
+            return refuse(session, request, RemoteFailure.NoArtwork)
+        }
+        val bitmap = controller.metadata?.let { bitmapOf(it) }
+            ?: return refuse(session, request, RemoteFailure.NoArtwork)
+
+        val scaled = fit(bitmap, maxEdge)
+        val bytes = ByteArrayOutputStream().use { out ->
+            scaled.compress(Bitmap.CompressFormat.JPEG, 85, out)
+            out.toByteArray()
+        }
+        if (scaled !== bitmap) scaled.recycle()
+
+        artworkMade.incrementAndGet()
+        LinkLog.i(
+            "remote",
+            "remote.artwork $key → ${scaled.width}x${scaled.height}, ${bytes.size} bytes — ${tally()}",
+        )
+        session.ack(request) {
+            put("key", key)
+            put("mime", "image/jpeg")
+            put("width", scaled.width)
+            put("height", scaled.height)
+            put("data", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
+        }
+    }
+
+    /** Scaled to fit inside [maxEdge] on its longest side, aspect preserved. Never scaled up. */
+    private fun fit(bitmap: Bitmap, maxEdge: Int): Bitmap {
+        val longest = maxOf(bitmap.width, bitmap.height)
+        if (longest <= maxEdge || longest == 0) return bitmap
+        val scale = maxEdge.toFloat() / longest
+        return Bitmap.createScaledBitmap(
+            bitmap,
+            (bitmap.width * scale).toInt().coerceAtLeast(1),
+            (bitmap.height * scale).toInt().coerceAtLeast(1),
+            true,
+        )
+    }
+
+    // ---- output route -------------------------------------------------------------------------
+
+    /**
+     * Where the phone is sending its audio, as `{name, kind}` — or null when it could not be named.
+     *
+     * **Null and `kind: "unknown"` are different answers and the difference is kept.** Null means
+     * *we could not ask*; `unknown` means *we asked and it is a device type we have no icon for*.
+     * A Mac that folded them together would draw a phone-speaker icon over a route it never read.
+     *
+     * Two routes to the reading, and the fallback is not decoration: `getAudioDevicesForAttributes`
+     * is API 31 and reports the device the media stream is **actually** routed to, which is the
+     * question. `MediaRouter`'s selected LIVE_AUDIO route is the API 16 answer and is what this
+     * falls back to below 31 — it is coarser, and it is a reading rather than a guess.
+     */
+    private fun outputOf(context: Context): JsonObject? {
+        val fromAttributes = runCatching { deviceFromAttributes(context) }
+            .onFailure { LinkLog.w("remote", "Could not read the audio route: ${it.message}") }
+            .getOrNull()
+        if (fromAttributes != null) return fromAttributes
+        return runCatching { deviceFromRouter(context) }
+            .onFailure { LinkLog.w("remote", "Could not read the media router: ${it.message}") }
+            .getOrNull()
+    }
+
+    private fun deviceFromAttributes(context: Context): JsonObject? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return null
+        val media = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+        val device = audio.getAudioDevicesForAttributes(media).firstOrNull() ?: return null
+        return buildJsonObject {
+            put("name", nameOf(device))
+            put("kind", kindOf(device.type))
+        }
+    }
+
+    /**
+     * The device's own name, except for the phone's own speaker.
+     *
+     * `productName` for a built-in speaker is the handset model — "SM-S938B" — which is true and
+     * useless in a sentence about where sound is coming from. Every other device names itself
+     * usefully, because the name was chosen by whoever owns the headphones.
+     */
+    private fun nameOf(device: AudioDeviceInfo): String {
+        if (device.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER ||
+            device.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE
+        ) {
+            return "Phone speaker"
+        }
+        return device.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Unknown output"
+    }
+
+    private fun kindOf(type: Int): String = when (type) {
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        AudioDeviceInfo.TYPE_BLE_HEADSET,
+        AudioDeviceInfo.TYPE_BLE_SPEAKER,
+        AudioDeviceInfo.TYPE_BLE_BROADCAST,
+        -> "bluetooth"
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        -> "headphones"
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE,
+        -> "speaker"
+        else -> "unknown"
+    }
+
+    private fun deviceFromRouter(context: Context): JsonObject? {
+        val router = context.getSystemService(Context.MEDIA_ROUTER_SERVICE) as? MediaRouter
+            ?: return null
+        val route = router.getSelectedRoute(MediaRouter.ROUTE_TYPE_LIVE_AUDIO) ?: return null
+        val name = route.name?.toString()?.takeIf { it.isNotBlank() } ?: return null
+        val kind = when (route.deviceType) {
+            MediaRouter.RouteInfo.DEVICE_TYPE_BLUETOOTH -> "bluetooth"
+            MediaRouter.RouteInfo.DEVICE_TYPE_SPEAKER -> "speaker"
+            else -> "unknown"
+        }
+        return buildJsonObject {
+            put("name", name)
+            put("kind", kind)
         }
     }
 
@@ -405,6 +605,19 @@ sealed class RemoteFailure(
         label = "no-session",
         code = ErrorCode.NO_MEDIA_SESSION,
         reason = "Nothing is playing on the phone, so there is nothing to control.",
+    )
+
+    /**
+     * No cover art, or a key that has gone stale — and the sentence is deliberately undramatic.
+     *
+     * This is the normal condition of a podcast, a browser tab and a game. The Mac draws its own
+     * fallback without showing any of this, which is why the reason reads as a fact rather than as
+     * an apology: it is for the log, and the log should not suggest something broke.
+     */
+    object NoArtwork : RemoteFailure(
+        label = "no-artwork",
+        code = ErrorCode.NO_ARTWORK,
+        reason = "This session carries no cover art, or the track changed before the art was read.",
     )
 
     class Unsupported(what: String, packageName: String) : RemoteFailure(

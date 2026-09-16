@@ -42,22 +42,18 @@ installFakeDocument();
 
 interface Pane {
   bridge: FakeBridge;
-  grid: FakeElement;
-  count: FakeElement;
   recent: FakeElement;
   strip: FakeElement;
   stripLine: FakeElement;
   disconnect: FakeElement;
   routed: string[];
-  view: { setStatus(c: boolean, n: string | null, u: number): void; refresh(): Promise<void> };
+  view: { setStatus(c: boolean): void; refresh(): Promise<void> };
 }
 
 function mount(events: Event[] = []): Pane {
   const bridge = new FakeBridge();
   bridge.events = events;
   const parts = {
-    grid: el('div'),
-    count: el('span'),
     recent: el('div'),
     strip: el('div'),
     stripLine: el('span'),
@@ -70,8 +66,6 @@ function mount(events: Event[] = []): Pane {
   ) => Pane['view'];
   const view = new View(
     bridge,
-    parts.grid,
-    parts.count,
     parts.recent,
     parts.strip,
     parts.stripLine,
@@ -136,82 +130,24 @@ test('a late refresh does not draw over a newer one', async () => {
   );
 });
 
-// ---- Quick actions ------------------------------------------------------------------------------
-
-test('the grid is the design’s eight, read from navModel rather than written out', () => {
-  const pane = mount();
-  const tiles = pane.grid.queryAll('.quick-tile');
-  assert.equal(tiles.length, 8);
-  assert.deepEqual(
-    pane.grid.queryAll('.quick-name').map((n) => n.textContent),
-    ['Mirror', 'Files', 'Photos', 'Notifications', 'Messages', 'Clipboard', 'Calls', 'Camera'],
-  );
-});
-
-test('an unbuilt tile is marked rather than removed, and says so in its accessible name', () => {
-  const pane = mount();
-  const unbuilt = pane.grid.queryAll('.quick-tile').filter((t) => t.className.includes('is-unbuilt'));
-  assert.equal(unbuilt.length, 1, 'Camera is the only unbuilt screen in the eight');
-  // Removing it leaves a seven-tile grid that reflows the day it ships. A marked tile carries the
-  // same information and the composition stops moving — state A's rule.
-  assert.match(unbuilt[0].getAttribute('aria-label') ?? '', /Camera — not built yet/);
-  // The state must not live only in the opacity: that is defect 26, one pane over.
-  assert.match(unbuilt[0].textContent, /Not built yet/);
-});
-
-test('the count says how many WORK, with the total beside it', () => {
-  const pane = mount();
-  // The design's "8 available" counts tiles. Ours counts the ones that work, because the two
-  // numbers differ here — a bare 8 over a grid with a dead tile is the denominator rule with the
-  // denominator taken out.
-  assert.equal(pane.count.textContent, '7 of 8 available');
-});
-
-test('the Notifications tile shows a live count above zero and its subtitle at zero', () => {
-  const pane = mount();
-  const subOf = (label: string) => {
-    const at = pane.grid.queryAll('.quick-name').findIndex((n) => n.textContent === label);
-    return pane.grid.queryAll('.quick-sub')[at]?.textContent;
-  };
-  // The screen's **own** caption, read from `navModel` rather than matched against words this test
-  // chose. A regex here was asserting a second expression of the rule: it read /notification/i and
-  // went red the moment the caption became `Mirror & reply`, over a pane behaving exactly as
-  // specified. What the rule actually says is *the tile shows the screen's caption when there is no
-  // count*, and that is what this asserts.
-  const notifications = (globalThis as Record<string, unknown>).SCREENS as Array<{
-    id: string;
-    tileCaption: string;
-  }>;
-  const caption = notifications.find((one) => one.id === 'notifications')!.tileCaption;
-  assert.ok(caption.length > 0, 'control: the screen table actually carries a caption');
-  assert.equal(subOf('Notifications'), caption);
-
-  pane.view.setStatus(true, 'Phone', 17);
-  assert.equal(subOf('Notifications'), '17 new');
-
-  // A tile reading "0 new" is a count nobody needs — the rule the sidebar badge already follows.
-  pane.view.setStatus(true, 'Phone', 0);
-  assert.ok(!(subOf('Notifications') ?? '').includes('0 new'));
-});
-
-test('a tile routes to its own screen', () => {
-  const pane = mount();
-  pane.grid.queryAll('.quick-tile')[1].click();
-  assert.deepEqual(pane.routed, ['files']);
-});
-
 // ---- The footer strip ---------------------------------------------------------------------------
 
-test('the strip claims encryption only while something is connected', () => {
+test('the strip claims encryption only while something is connected, and names no device', () => {
   const pane = mount();
-  pane.view.setStatus(true, 'Galaxy S26 Ultra', 0);
-  assert.match(pane.stripLine.textContent, /Encrypted end to end with Galaxy S26 Ultra/);
+  pane.view.setStatus(true);
+  // The handoff's sentence, word for word. Asserted whole rather than by a keyword, because the
+  // thing departure O12 changed is *which words are in it* — a /[Ee]ncrypted/ match would pass
+  // over the device-naming version this replaced.
+  assert.equal(
+    pane.stripLine.textContent,
+    'Connection is encrypted end-to-end. Only your devices can read this traffic.',
+  );
   assert.equal(pane.disconnect.disabled, false);
   assert.ok(!pane.strip.classList.contains('is-idle'));
 
   // A strip claiming an encrypted connection over a link that is down would be this screen's one
   // security sentence being wrong in the state where somebody is most likely to be reading it.
-  pane.view.setStatus(false, null, 0);
+  pane.view.setStatus(false);
   assert.ok(!/[Ee]ncrypted/.test(pane.stripLine.textContent));
   assert.match(pane.stripLine.textContent, /Not connected/);
   assert.equal(pane.disconnect.disabled, true);
@@ -220,7 +156,7 @@ test('the strip claims encryption only while something is connected', () => {
 
 test('Disconnect calls the bridge, and only that', async () => {
   const pane = mount();
-  pane.view.setStatus(true, 'Phone', 0);
+  pane.view.setStatus(true);
   pane.disconnect.click();
   await settle();
   assert.deepEqual(pane.bridge.calls.filter((c) => c === 'disconnect'), ['disconnect']);

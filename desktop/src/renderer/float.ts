@@ -34,7 +34,7 @@
 interface FloatBridge {
   onVideoFrame(callback: (frame: FloatFrame) => void): void;
   onMirrorStopped(callback: (info: { reason?: string }) => void): void;
-  onMirrorState(callback: (state: { state?: string; message?: string }) => void): void;
+  onMirrorState(callback: (state: FloatMirrorState) => void): void;
   /** The phone turned. Reaches this window only because main.ts now uses `sendAll`. */
   onMirrorRotate(callback: (r: { width?: number; height?: number; rotation?: number; geometryId?: number }) => void): void;
   inputTap(p: { x: number; y: number; durationMs: number; geom: { id: number; width: number; height: number } }): Promise<unknown>;
@@ -46,12 +46,24 @@ interface FloatBridge {
   onStatus(callback: (status: FloatStatus | null) => void): void;
   onFloatChanged(callback: (state: { focused: boolean; pinned: boolean }) => void): void;
   mirrorKeyframe(reason?: string): Promise<unknown>;
-  streamStart(): Promise<{ config: { ptsUs: number; bytes: number } | null; sessionRunning: boolean }>;
+  streamStart(): Promise<{
+    config: { ptsUs: number; bytes: number } | null;
+    sessionRunning: boolean;
+    /** The shape the phone is capturing, retained by main. Defect 116 — see `askForTheStream`. */
+    capture: { width: number; height: number; geometryId: number } | null;
+  }>;
   debugSwitches(): Promise<{ delayFloatListeners: boolean }>;
   /** One line into the Mac's own log file. See preload.ts — the float had no durable voice before. */
   logLine(where: string, line: string): void;
   mirrorCapture(dataUrl: string): Promise<{ ok?: boolean; path?: string; reason?: string }>;
   inputGlobal(action: string): Promise<{ ok?: boolean; reason?: string }>;
+  /** Scroll, same message and same coalescing rule the Mirror pane uses. Defects 111 and 112. */
+  inputScroll(s: {
+    x: number; y: number; dx: number; dy: number;
+    geom: { id: number; width: number; height: number };
+  }): Promise<{ ok?: boolean; reason?: string }>;
+  /** Bring the main window forward without closing this one. Defect 117. */
+  showMainWindow(): Promise<{ floatStillOpen?: boolean }>;
   floatClose(): void;
   floatMinimize(): void;
   floatSmartFit(): void;
@@ -66,6 +78,14 @@ interface FloatFrame {
   config?: boolean;
   ptsUs: number;
   data: Uint8Array;
+}
+
+interface FloatMirrorState {
+  state?: string;
+  message?: string;
+  width?: number;
+  height?: number;
+  geometryId?: number;
 }
 
 interface FloatStatus {
@@ -83,6 +103,19 @@ interface FloatStatus {
  * error even though the two pages never load together. Naming it locally also keeps this window's
  * surface honest — the type below is exactly what the float window is allowed to reach for.
  */
+/*
+ * The float window stamps the same attribute from the same push. It is a second `BrowserWindow`
+ * loading the same `tokens.css`, so without this it would sit in the default (dark) theme beside a
+ * light main window — the two-views-of-one-session pair disagreeing about the theme.
+ */
+connect.onAppearance?.((state) => {
+  document.documentElement.setAttribute('data-theme', state.theme);
+});
+void (async () => {
+  const result = await connect.appearanceGet?.();
+  if (result?.ok) document.documentElement.setAttribute('data-theme', result.data.theme);
+})();
+
 const floatBridge = (globalThis as unknown as { connect: FloatBridge }).connect;
 
 const frame = document.getElementById('float-frame') as HTMLElement;
@@ -92,7 +125,8 @@ const canvas = document.getElementById('float-canvas') as HTMLCanvasElement;
 const deviceName = document.getElementById('float-device-name') as HTMLElement;
 const pin = document.getElementById('float-pin') as HTMLButtonElement;
 const toast = document.getElementById('float-toast') as HTMLElement;
-const dock = document.getElementById('float-dock') as HTMLElement;
+const bar = document.getElementById('float-bar') as HTMLElement;
+const tip = document.getElementById('float-tip') as HTMLElement;
 
 /**
  * Whether the phone has advertised `input`.
@@ -102,6 +136,15 @@ const dock = document.getElementById('float-dock') as HTMLElement;
  * breaking; disabled with a sentence on press is the "unavailable, here is why" rule.
  */
 let inputAdvertised = false;
+
+/**
+ * The scroll pump, the same class the Mirror pane uses. Defects 111 and 112.
+ *
+ * The float had **no scroll at all** before this — a mirror you cannot scroll is most of a mirror you
+ * cannot use — and it gets the backpressure version rather than the fixed 60 ms window that shipped
+ * in the main window, because there was never a reason to build the bug twice.
+ */
+const wheel = new WheelPump();
 
 let toastTimer: number | null = null;
 
@@ -205,6 +248,12 @@ floatBridge.onMirrorStopped((info) => {
 });
 
 floatBridge.onMirrorState((state) => {
+  // Defect 116. `mirror.state` carries the capture geometry and this window was throwing it away,
+  // reading only the message — so the shape was learned from `mirror.rotate` alone, which arrives when
+  // the phone turns and at no other time. A float opened into a running session therefore held no
+  // geometry until the user physically rotated their phone, and every press answered "the phone has
+  // not said what shape its screen is yet" about a shape the main window had known all along.
+  noteCapture(state);
   // Only the states that mean "there is no picture" reach the overlay. `running` says nothing about
   // whether a frame has been painted yet, so it is left alone — the decoder's first paint is what
   // takes the overlay down, and it is the only thing that actually knows.
@@ -216,8 +265,12 @@ floatBridge.onStatus((status) => {
   frame.classList.toggle('offline', !connected);
   deviceName.textContent = status?.deviceName ?? 'Phone';
   inputAdvertised = status?.capabilities?.includes('input') ?? false;
-  for (const button of Array.from(dock.querySelectorAll<HTMLButtonElement>('[data-global]'))) {
-    button.disabled = !inputAdvertised;
+  // Only the controls that need the phone. A screenshot is a canvas readback on this Mac and
+  // revealing a window is this Mac's own business; greying those out with the accessibility service
+  // off would be refusing two things that work.
+  for (const item of FLOAT_RAIL.filter((i) => i.needsInput)) {
+    const button = document.getElementById(`float-bar-${item.id}`) as HTMLButtonElement | null;
+    if (button) button.disabled = !inputAdvertised;
   }
   if (!connected) {
     decoder.teardown();
@@ -240,13 +293,32 @@ let capture: { width: number; height: number; geometryId: number } | null = null
 const gesture = new GestureRecogniser();
 
 floatBridge.onMirrorRotate((r) => {
-  if (typeof r.width === 'number' && typeof r.height === 'number' && typeof r.geometryId === 'number') {
-    capture = { width: r.width, height: r.height, geometryId: r.geometryId };
-  }
+  noteCapture(r);
   // A press in flight was aimed at a screen shape that no longer exists. Cancelled, and the release
   // says so rather than vanishing — which is the half of defect 19 that was the actual defect.
   gesture.cancelForTurn();
+  // And the scroll that was owed was summed against the old screen. It has no press to explain itself
+  // at, so it goes rather than being aimed at a list that may not be there.
+  wheel.reset();
 });
+
+/**
+ * Record the shape of the phone's screen, from whichever of the three sources said it. Defect 116.
+ *
+ * Three now, where there was one: `mirror.rotate` (the phone turned), `mirror.state` (the phone is
+ * capturing, and this was being ignored), and the answer to `stream-start` (the retained value, for a
+ * window that opened into a session already running and will be told nothing again).
+ *
+ * One function so the field has one writer. Two of those three arrive on channels this file already
+ * listened to, which is the part worth noticing: the data was here and nothing read it.
+ */
+function noteCapture(g: { width?: number; height?: number; geometryId?: number } | null): boolean {
+  if (!g || typeof g.width !== 'number' || typeof g.height !== 'number' || typeof g.geometryId !== 'number') {
+    return false;
+  }
+  capture = { width: g.width, height: g.height, geometryId: g.geometryId };
+  return true;
+}
 
 /** Map a pointer event into capture pixels, or null when the shape is not known yet. */
 function pointAt(event: PointerEvent): { x: number; y: number; geom: { id: number; width: number; height: number } } | null {
@@ -274,6 +346,53 @@ canvas.addEventListener('pointerdown', (event) => {
 });
 
 canvas.addEventListener('pointermove', (event) => gesture.move(pointAt(event)));
+
+/**
+ * Scroll. Defects 111 and 112, and the float had none of this at all until now.
+ *
+ * `{ passive: false }` because `preventDefault` has to work: without it the page itself scrolls, and
+ * a 100vh frameless window scrolling by a pixel is a picture that jumps.
+ */
+canvas.addEventListener(
+  'wheel',
+  (event) => {
+    event.preventDefault();
+    if (!inputAdvertised) {
+      say('The phone is not accepting input — turn Accessibility on for ConnectSuite.');
+      return;
+    }
+    const point = pointAt(event as unknown as PointerEvent);
+    if (!point) {
+      say('The phone has not said what shape its screen is yet, so that was not sent.');
+      return;
+    }
+    // Signs carry through unchanged: dx/dy are how far the *content* should move and so is a wheel
+    // notch. WHEEL_SCALE is the Mirror pane's 0.8 — kept in step by being the same number here rather
+    // than a second constant, and there is a test asserting the two agree.
+    wheel.add({ x: point.x, y: point.y, dx: -event.deltaX * 0.8, dy: -event.deltaY * 0.8 });
+    void pumpWheel();
+  },
+  { passive: false },
+);
+
+/** One scroll in flight at a time; see `wheelPump.ts` for the two rates that made this necessary. */
+async function pumpWheel(): Promise<void> {
+  if (!capture) return;
+  const next = wheel.due();
+  if (!next) return;
+  const geom = { id: capture.geometryId, width: capture.width, height: capture.height };
+  try {
+    const result = await floatBridge
+      .inputScroll({ x: next.x, y: next.y, dx: next.dx, dy: next.dy, geom })
+      .catch((error: unknown) => ({ ok: false, reason: String(error) }));
+    if (!result.ok) say(capitalise(result.reason ?? 'that scroll was refused') + '.');
+  } finally {
+    // In the `finally`: a refused scroll releases the phone exactly as a delivered one does, and
+    // releasing only on success would stall the pump on the first refusal.
+    wheel.settled();
+  }
+  if (wheel.owing) void pumpWheel();
+}
 canvas.addEventListener('pointercancel', () => void gesture.up(null));
 
 canvas.addEventListener('pointerup', (event) => {
@@ -413,19 +532,154 @@ for (const end of ['pointerup', 'pointercancel'] as const) {
 
 // ---- Hover dock ---------------------------------------------------------------------------------
 
-for (const button of Array.from(dock.querySelectorAll<HTMLButtonElement>('[data-global]'))) {
-  button.addEventListener('click', async () => {
-    const action = button.dataset.global!;
-    if (!inputAdvertised) {
-      // The disabled state already stops this, so reaching here means something else did — and a
-      // press that produces neither an action nor a sentence is the silent no-op class defect 18
-      // is about. Say it rather than return.
-      say('Controlling the phone needs ConnectSuite Input turned on under Accessibility.');
-      return;
-    }
-    const result = await floatBridge.inputGlobal(action).catch(() => ({ ok: false, reason: 'the Mac could not reach the phone' }));
-    if (!result.ok) say(capitalise(result.reason ?? `${action} was refused by the phone`) + '.');
+/**
+ * The control strip, built from `FLOAT_RAIL`. Defect 115.
+ *
+ * Built rather than written into the HTML so the icon names are inside the enumeration
+ * `floatRail.test.ts` asserts over — an icon name that is not in an enumeration is an icon nobody can
+ * check, and this project has already shipped two buttons that drew as empty rings.
+ *
+ * `aria-label` and `title` are the same string from the same field, because a control whose accessible
+ * name differs from its tooltip is defect 26 and the cheapest fix is for neither to be typed twice.
+ */
+const groupStart = floatRailGroupStart();
+for (const [index, item] of FLOAT_RAIL.entries()) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  // The controls that act on this Mac rather than on the phone are grouped behind a hairline, and
+  // the boundary is named by the table — not by `:first-of-type`, which matched nothing at all.
+  const classes = ['bar-button'];
+  if (item.kind !== 'global') classes.push('bar-mac');
+  if (index === groupStart) classes.push('bar-group-start');
+  button.className = classes.join(' ');
+  button.id = `float-bar-${item.id}`;
+  button.dataset.bar = item.id;
+  /*
+   * The accessible name stays the **full** sentence — the reveal control's whole promise, which
+   * `floatRail.test.ts` asserts contains "without closing this one" (defect 117). The visible
+   * tooltip is the short form. Both come from the same row of the same table.
+   *
+   * There is deliberately **no `title` attribute**. It is the app's pattern everywhere else (11
+   * uses) and it is the right one there, but it never fires on keyboard focus and its delay is the
+   * OS's, not ours. Setting it *as well* would draw two tooltips on hover, which is the one thing
+   * worse than either. See `showTip`.
+   */
+  button.setAttribute('aria-label', item.label);
+  button.appendChild(iconSvg(item.icon, 16));
+  button.addEventListener('click', () => {
+    hideTip();
+    void onRailPress(item);
   });
+  attachTip(button, floatRailTooltip(item));
+  bar.appendChild(button);
+}
+
+/* ---- The tooltip -------------------------------------------------------------------------------
+ *
+ * ### Why this is not the `title` attribute
+ *
+ * `title` is what the rest of this app uses and it was what these buttons used. It fails one thing
+ * the owner asked for outright: **it does not appear on keyboard focus**, ever, on any platform. A
+ * control reachable by Tab whose only affordance is a mouse-only tooltip is a control a keyboard
+ * user meets unlabelled, and the `:focus-within` reveal this window already has for exactly that
+ * reason (defect 115) would be half a fix.
+ *
+ * So this draws its own, and takes on the two things `title` was doing for free:
+ *
+ *  - **Delay.** 450 ms on hover, which is inside the 400-600 ms the owner named, and **zero on
+ *    keyboard focus** — a person who has tabbed to a control has already committed to it, and a
+ *    delay there is just a label that arrives late.
+ *  - **Dismissal.** Pointer-leave, blur, click, and Escape. Click matters most: without it the
+ *    tooltip survives the press that made the window change underneath it.
+ *
+ * ### Where it is allowed to be
+ *
+ * Above the button, which is over the bottom edge of the picture. A 40 px bar cannot contain it and
+ * below the bar is outside the window, so there is no third direction; saying so beats claiming a
+ * clearance that does not exist. `pointer-events: none` is what makes that harmless — it cannot
+ * block the control it describes, and it cannot swallow a tap meant for the phone, which is exactly
+ * the silent dead zone the old hover pill created.
+ */
+
+/** How long the pointer must rest before a tooltip appears. Standard OS range; 0 for the keyboard. */
+const TIP_DELAY_MS = 450;
+
+let tipTimer: number | null = null;
+
+function attachTip(button: HTMLElement, text: string): void {
+  button.addEventListener('pointerenter', () => scheduleTip(button, text, TIP_DELAY_MS));
+  button.addEventListener('pointerleave', hideTip);
+  // `focusin`/`focusout` rather than focus/blur: they bubble, and a button focused by Tab should be
+  // named immediately rather than after a delay it did not earn.
+  button.addEventListener('focusin', () => scheduleTip(button, text, 0));
+  button.addEventListener('focusout', hideTip);
+}
+
+function scheduleTip(button: HTMLElement, text: string, delayMs: number): void {
+  if (tipTimer !== null) clearTimeout(tipTimer);
+  const show = () => {
+    tipTimer = null;
+    // Re-read the rect at show time, not at schedule time: the window can be dragged or resized
+    // during the delay, and a tooltip placed against where the button was is worse than none.
+    tip.textContent = text;
+    tip.hidden = false;
+    const r = button.getBoundingClientRect();
+    const t = tip.getBoundingClientRect();
+    // Centred on the button, then held inside the window — a tooltip clipped by the window edge is
+    // a label the user cannot read, and the end buttons are the ones most likely to hit it.
+    const left = Math.min(
+      Math.max(4, r.left + r.width / 2 - t.width / 2),
+      Math.max(4, window.innerWidth - t.width - 4),
+    );
+    tip.style.left = `${Math.round(left)}px`;
+    tip.style.top = `${Math.round(r.top - t.height - 6)}px`;
+  };
+  if (delayMs === 0) show();
+  else tipTimer = window.setTimeout(show, delayMs);
+}
+
+function hideTip(): void {
+  if (tipTimer !== null) clearTimeout(tipTimer);
+  tipTimer = null;
+  tip.hidden = true;
+}
+
+// Escape closes it too, and a window that loses focus should not leave one painted on screen.
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') hideTip();
+});
+window.addEventListener('blur', hideTip);
+
+
+async function onRailPress(item: (typeof FLOAT_RAIL)[number]): Promise<void> {
+  if (item.kind === 'reveal') {
+    // Reported as it happened, not as intended. The one fear this control has to answer is that it
+    // costs the floating window, so the answer comes from the main process's own reading of whether
+    // the float is still open rather than from this window assuming it survived.
+    const result = await floatBridge
+      .showMainWindow()
+      .catch(() => ({ floatStillOpen: undefined }));
+    say(
+      result.floatStillOpen === false
+        ? 'The ConnectSuite window is in front — and this window closed, which it should not have.'
+        : 'The ConnectSuite window is in front. This window stayed open.',
+    );
+    return;
+  }
+  if (item.kind === 'shot') {
+    await saveScreenshot();
+    return;
+  }
+  if (!inputAdvertised) {
+    // The disabled state already stops this, so reaching here means something else did — and a press
+    // that produces neither an action nor a sentence is the silent no-op class defect 18 is about.
+    say('Controlling the phone needs ConnectSuite Input turned on under Accessibility.');
+    return;
+  }
+  const result = await floatBridge
+    .inputGlobal(item.action!)
+    .catch(() => ({ ok: false, reason: 'the Mac could not reach the phone' }));
+  if (!result.ok) say(capitalise(result.reason ?? `${item.action} was refused by the phone`) + '.');
 }
 
 /**
@@ -435,16 +689,16 @@ for (const button of Array.from(dock.querySelectorAll<HTMLButtonElement>('[data-
  * asserting "saved to Desktop" without knowing. That is the same shape as the Mirror pane's Capture,
  * and it is why the toast quotes a path instead of a place.
  */
-document.getElementById('float-shot')!.addEventListener('click', async () => {
+async function saveScreenshot(): Promise<void> {
   if (decoder.framesPainted() === 0) {
     say('There is no picture to save yet.');
     return;
   }
-  const result = await connect
+  const result = await floatBridge
     .mirrorCapture(canvas.toDataURL('image/png'))
     .catch(() => ({ ok: false, path: undefined, reason: 'the Mac could not write the file' }));
   say(result.ok && result.path ? `Screenshot saved to ${result.path}` : capitalise(result.reason ?? 'the screenshot could not be saved') + '.');
-});
+}
 
 // ---- First paint --------------------------------------------------------------------------------
 
@@ -489,9 +743,14 @@ async function askForTheStream(why: string): Promise<void> {
     const answer = await floatBridge.streamStart();
     startGate.settled();
     const action = actionFor(answer);
+    // Defect 116. The shape comes back with the parameter sets, for the same reason and through the
+    // same door: the session started before this window existed and neither will be announced again.
+    const learned = noteCapture(answer.capture);
     trace(
       `stream-start answered: ${answer.config ? `${answer.config.bytes}B of parameter sets` : 'no retained config'}` +
-        `, sessionRunning=${answer.sessionRunning} → ${action}`,
+        `, sessionRunning=${answer.sessionRunning}` +
+        `, capture=${answer.capture ? `${answer.capture.width}x${answer.capture.height} #${answer.capture.geometryId}${learned ? ' (adopted)' : ''}` : 'not announced yet'}` +
+        ` → ${action}`,
     );
     if (action === 'ask-again') {
       // A session is running and nothing has been retained: the keyframe request is what fills that

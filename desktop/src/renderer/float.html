@@ -16,13 +16,21 @@
   <body class="float-body">
     <!--
       Handoff §3: "Contains only the title bar and the phone screen — no sidebar, dashboard,
-      inspector cards, dock, or tool rail." The hover dock below is the one thing that appears over
-      the screen, and it appears only on hover.
+      inspector cards, dock, or tool rail."
+
+      **The control strip is a departure from that sentence, taken deliberately.** The handoff's
+      hover dock was built and shipped and then measured: invisible at rest, over the picture, and on
+      top of Android's own nav bar. A window whose purpose is to be watched while another app has
+      focus cannot put its controls behind a hover. Defect 115, row M16 in docs/design-departures.md.
+      Defect 118 then moved it from the right edge to the bottom, so the window reads like a phone
+      with a nav bar under the screen rather than a phone with a toolbar bolted to its side.
     -->
     <div class="float-frame" id="float-frame">
       <!-- 34px, and that 34 is TITLE in shared/floatGeometry.ts. The two must agree: the window's
-           height is `width * 19.5/9 + TITLE`, so a title bar that is not 34 tall makes the phone
-           screen the wrong aspect and no amount of CSS below fixes it. -->
+           height is `width * ratio + TITLE + BOTTOM_BAR`, so a title bar that is not 34 tall makes the
+           phone screen the wrong aspect and no amount of CSS below fixes it. The ratio is the
+           phone's, read from the capture it announces — not 19.5:9, which is only the default before
+           it has said anything. Defect 114. -->
       <header class="float-title" id="float-title">
         <div class="lights">
           <button type="button" class="light close" id="float-close" aria-label="Close the floating window" title="Close the floating window"></button>
@@ -56,33 +64,38 @@
           <p class="float-reason" id="float-reason">Waiting for the phone's next keyframe…</p>
         </div>
 
-        <!--
-          Hover dock. Back / Home / Recents are `input.global` — `performGlobalAction`, which carries
-          no coordinates and therefore needs no geometry stamp. Screenshot is a canvas readback on
-          this Mac and needs nothing from the phone at all.
-
-          There is deliberately no tap or swipe on this canvas in this slice. Pointer input has to
-          quote the geometry stamp the frame was captured against, and that logic — with defect 19's
-          drag cancellation and defect 20's staleness window — lives in mirror.ts. A second copy of
-          it is exactly the drift this project keeps paying for, so it waits for a shared seam
-          rather than being retyped here. See docs/design-departures.md, row M13.
-        -->
-        <div class="float-dock" id="float-dock">
-          <button type="button" class="dock-button" data-global="back">Back</button>
-          <button type="button" class="dock-button" data-global="home">Home</button>
-          <button type="button" class="dock-button" data-global="recents">Recents</button>
-          <button type="button" class="dock-button" id="float-shot">Screenshot</button>
-        </div>
       </div>
 
-      <!-- Width is the only input this handle produces; height and Y follow inside resolveBounds. -->
-      <div class="float-resize" id="float-resize" role="separator" aria-label="Resize the floating window" title="Drag to resize"></div>
+      <!--
+        The control bar. **Not an overlay** — it is `BOTTOM_BAR` points of the window's HEIGHT, taken
+        below the picture in shared/floatGeometry.ts exactly as the 34px title bar is taken above it,
+        so nothing here covers a part of the phone's screen the canvas would otherwise accept a tap
+        on. Defect 115 made it permanent; **defect 118 moved it from the right edge to the bottom**,
+        which is the shape Android's own navigation bar has.
+
+        Filled from FLOAT_RAIL in floatRail.ts rather than written out, so the icon names are inside
+        the enumeration floatRail.test.ts asserts over — the empty-ring defect — and so the tooltip
+        text has exactly one home.
+
+        The tooltip lives here rather than inside the bar because a bar 40px tall cannot contain one.
+        It is `pointer-events: none`, so it can never block the control it describes.
+      -->
+      <nav class="float-bar" id="float-bar" aria-label="Phone controls"></nav>
+      <div class="float-tip" id="float-tip" role="tooltip" hidden></div>
     </div>
+
+    <!-- Width is the only input this handle produces; height and Y follow inside resolveBounds.
+         Outside .float-frame's flex row so it can sit on the window's own corner, over the rail. -->
+    <div class="float-resize" id="float-resize" role="separator" aria-label="Resize the floating window" title="Drag to resize"></div>
 
     <div class="float-toast" id="float-toast" role="status" aria-live="polite"></div>
 
+    <script src="../shared/appearance.js"></script>
+    <script src="icons.js"></script>
+    <script src="floatRail.js"></script>
     <script src="captureFit.js"></script>
     <script src="pointerGestures.js"></script>
+    <script src="wheelPump.js"></script>
     <script src="streamStart.js"></script>
     <script src="floatWait.js"></script>
     <script src="h264Canvas.js"></script>

@@ -32,6 +32,14 @@ interface Schema {
    * people uninstall a mirror. The banner still appears; only the sound is opt-in.
    */
   notificationSound: boolean;
+  /**
+   * Appearance: `system`, `light` or `dark`.
+   *
+   * Defaults to `system`, which is what macOS itself does and the only default that is right on a
+   * Mac whose owner switches at sunset. It is a `string` in the schema rather than the union so a
+   * hand-edited or future value cannot make the app unstartable; `asAppearance` narrows it on read.
+   */
+  appearance: string;
 }
 
 /**
@@ -49,6 +57,7 @@ export const store = new Store<Schema>({
     autoConnect: true,
     watchClipboard: true,
     notificationSound: false,
+    appearance: 'system',
   },
 });
 

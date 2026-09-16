@@ -178,7 +178,7 @@ class ActivityView {
       kind.className = 'activity-kind';
       const dot = document.createElement('span');
       dot.className = 'activity-dot';
-      dot.style.background = `rgb(${CATEGORY_TINTS[event.category] ?? '156,159,176'})`;
+      dot.style.setProperty('--tint', CATEGORY_TINTS[event.category] ?? 'var(--tint-grey-rgb)');
       const kindText = document.createElement('span');
       kindText.textContent = event.kind;
       kind.append(dot, kindText);
@@ -266,7 +266,7 @@ class ActivityView {
         const row = document.createElement('div');
         const swatch = document.createElement('span');
         swatch.className = 'activity-dot';
-        swatch.style.background = `rgb(${slice.tint})`;
+        swatch.style.setProperty('--tint', slice.tint);
         const name = document.createElement('span');
         name.textContent = slice.label;
         const value = document.createElement('span');
@@ -328,7 +328,7 @@ class ActivityView {
     track.setAttribute('cy', '60');
     track.setAttribute('r', String(radius));
     track.setAttribute('fill', 'none');
-    track.setAttribute('stroke', 'rgba(255,255,255,.07)');
+    track.setAttribute('stroke', 'var(--hairline)');
     track.setAttribute('stroke-width', '12');
     svg.appendChild(track);
 
@@ -340,7 +340,8 @@ class ActivityView {
       arc.setAttribute('cy', '60');
       arc.setAttribute('r', String(radius));
       arc.setAttribute('fill', 'none');
-      arc.setAttribute('stroke', `rgb(${slice.tint})`);
+      arc.style.setProperty('--tint', slice.tint);
+      arc.setAttribute('class', 'activity-arc');
       arc.setAttribute('stroke-width', '12');
       arc.setAttribute('stroke-linecap', 'butt');
       arc.setAttribute('stroke-dasharray', `${fraction * circumference} ${circumference}`);

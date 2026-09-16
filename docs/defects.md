@@ -122,6 +122,21 @@ own heading there, and its own row here.
 | **106** | **The keyframe path logged nothing at either end, so no evidence exists that a single `mirror.keyframe` has ever produced an IDR.** Three Mac callers all ended in `.catch(() => undefined)` — the IPC handler, the float's onReady, and the float renderer — and on the phone `MirrorFeature` logged nothing, `MirrorEngine.requestKeyframe()` was `encoder.get()?.requestKeyframe()` (a null encoder swallowed the request whole), and `ScreenEncoder.requestKeyframe()` logged **only its failure**. A request, its ack and the frame that answers it were all invisible, which is why the float could fail through an entire demo without leaving a trace | **Fixed 2026-09-12.** One traced path on the Mac (`KeyframeTrace`: requested / acked / answered-by-IDR, with the answer counted only when a request was outstanding, because an idle stream's periodic IDRs are not evidence a request worked); every caller names its reason; the phone logs the request arriving, whether a codec existed, and — from `noteKeyframeEmitted` — whether a keyframe followed and how long it took. **The wrong fix is logging every dropped frame**: at 60 fps that is its own denial of service, so the no-decoder drops are counted and reported on the 1st and every 120th | **Fixed on the Mac and proven there; the phone half has never run.** 2026-09-13, on a quiet stream: request → **ack at +8 ms** → `keyframe ARRIVED after 2080 ms`, `answered by an IDR` 3 → 4, corroborated by the phone's own `last keyframe` size changing 123968B → 277290B. **The phone's three new lines are unverified**: the installed APK predates them (`lastUpdateTime=2026-09-12 13:11:14`) and a grep returns 0 over 600 lines. Proving it costs a reinstall and one consent tap | `docs/testing.md` → Phase 7 Slices 44 and 45 |
 | **107** | **Two float states rendered one sentence.** *"Waiting for the phone's next keyframe…"* was shown both when the float had **no decoder** — where that frame will be dropped like every other, so the sentence is false — and when a decoder was armed and a request was genuinely outstanding, where it is exactly right. Nothing on screen or in a log could tell them apart. Defect 104's shape in a second place: a closed set of causes collapsed into the friendliest member | **Fixed 2026-09-12.** `renderer/floatWait.ts` is a closed set of four — `no-parameter-sets`, `awaiting-keyframe`, `unanswered`, `running` — each with its own sentence and a `blocking` flag saying whether the state can clear itself. **The flag is the load-bearing part, not the wording**: a sentence can be reworded and the test would still pass, so the assertion is that `no-parameter-sets` is blocking and `awaiting-keyframe` is not. The threshold for `unanswered` is on **outstanding** requests, not the request count, so a float answered twenty times out of twenty stays healthy | **Fixed, and the no-decoder state has now been seen on hardware** — 2026-09-13, with the ask disabled and the delay forced: overlay showing, the no-parameter-sets sentence drawn, `droppedWithNoDecoder: 730`, `requested: 0`. The old single sentence would have said a keyframe was on its way | `docs/testing.md` → Phase 7 Slices 44 and 45 |
 | **108** | **The latency anchor pairs a capture-time stamp with an encode-time reading, so every published figure silently omits the encode stage.** `ScreenEncoder` sets `lastPtsUs = info.presentationTimeUs` (stamped at capture by the display pipeline) and `lastMonoUs = System.nanoTime()` at `dequeueOutputBuffer` — **after** encoding. The Mac's `capturedAtMacMs` then anchors *capture* to `monoUs`, so for the anchor frame it returns the instant the frame left the encoder, and every total is short by that frame's encode duration until the next anchor. Measured on hardware 2026-09-13: the encode stage is **14 ms of a 32 ms total, 44%**. Figures of 9, 11, 99 and 134 ms were all quoted against that origin. `docs/protocol.md` calls the pair *"the phone's monotonic clock reading for that same frame"* without saying **which moment** in the frame's life, which is why nothing caught it | **Fixed 2026-09-13, with no protocol change.** Both timestamps were already on the wire and were being read as one anchor pair instead of as two stage boundaries: `encodeLagUs = monoUs - ptsUs`, `capturedAtPhoneUs = ptsUs`. `renderer/latencyStages.ts` carries the rule, and every figure now publishes an `origin` of `capture` or `encoder-output` so a number can never again be quoted as the wrong one. **The wrong fix is the minimum-of-(arrival − pts) estimator** — it folds encode and wire into one minimum and could never separate the stage that was missing. **The second wrong fix is assuming the timebase**: if PTS were rebased, capture time is not knowable on the phone at all, so `timebaseVerdict` measures it and has `unclear` as a third answer | **Fixed and measured at three rates. Timebase SHARED on hardware** (`monoUs − ptsUs` = 17,696 µs and 15,377 µs). Stage medians at idle / 60 fps / 120 fps: total 32 / 25 / 25 ms, wire 14 / 7 / 6 ms, peak 174.7 / 39.6 / 38.7 ms. **The loaded reading is taken and all three smoothness suspects failed it** — 0 frames dropped on the phone across 1804 frames at 60 fps and 2885 at 120 fps | `docs/testing.md` → Phase 7 Slices 46 and 47 |
+| **109** | **The chrome's three battery slots were `hidden` on a comment that had been false for a phase.** `shell.ts` set `device-battery`, `strip-battery` and `strip-divider-battery` to `hidden = true` unconditionally, under *"`battery.state` is declared in docs/protocol.md and **nothing subscribes to it**, so there is no number to show."* That was true when written and false from the day `VitalsFeature` landed: the type is specified in the contract, pushed by the phone, held and forwarded by `main.ts:979`, and drawn on Overview's O4 ring — **so the same fact was on screen forty pixels away while three slots stayed blank**. Settings → Advanced said `not subscribed on this build (battery.state is unhandled)` beside it. **Nothing in the build can compare a comment to a handler**, which is why it survived; `docs/phase-7-state.md` §2 then recorded it as *"Still correct… do not 'fix' this"*, so the register agreed with the comment | **Fixed 2026-09-15.** The decision lives in `shared/deviceVitals.ts` beside the ring that makes the same one — `batterySlot` for the chrome, `batteryDiagnostic` for Advanced — so three slots cannot invent three answers. Two decisions are load-bearing and neither is the obvious one: **a slot is removed, never dashed**, because a lone `—` between "Connected" and a divider is a glyph with no label (the original comment's argument was right and only its input was wrong); and **a percentage is withdrawn when the link is not live**, because a battery drawn while disconnected is a claim about *now* made from a reading that may be hours old — defect 96's shape on a new surface. **The wrong fix is a number in `shell.ts`**: three surfaces deciding for themselves is how they come to disagree with the ring | **On hardware 2026-09-15**: `46%` in the device card, the strip and the hero (`46% · Charging`) with the O4 ring agreeing, read through `scripts/probe.mjs`, control 12 nav rows. Advanced reads `battery: 47% · charging · received 6s ago`. 17 rule tests + 6 write tests through the **real** `ShellView` on the DOM double; the decisive one asserts the slots equal `batterySlot`'s output across 21 state × link combinations rather than asserting they are non-empty. **Red-first against three mutations**: the verbatim `hidden = true` (4 red), drawing regardless of link state (3 red), and a hard-coded `'79%'` (2 red) — the repair a *not-empty* assertion would have passed | `docs/testing.md` → Phase 7 Slice 48 |
+| **110** | **`check-protocol-spec.mjs` walks `MessageType` → document and cannot see a namespace specified with nothing behind it.** Every loop in the checker is `for (const type of types)`, so a type the contract fully specifies with **no constant on either side** is not merely unreported — it is never visited. `mic.*` is the first case to exercise it: `mic.start`, `mic.stop` and `mic.state` have three `###` sections in `docs/protocol.md`, a negotiated ack, a `silenced` state with its own section, an error table and a line in the inventory, and **no `MessageType` constant anywhere** — and the checker printed `0 unaccounted for` against it. **The gap is longstanding and this instance is not**: the `mic.*` spec is uncommitted working-tree work, so it was caught the day it was written rather than a phase later, which is the direction these are meant to travel. The `media.*` gap, which is this one with the arrow reversed, took a whole phase. It is the `media.*` gap with the arrow reversed and it is worse in one respect: a type on the wire and not in the document is invisible to a reader, while a type in the document and not on the wire **reads as shipped**, so somebody building the Mac half from the contract finds nothing to call | **Fixed 2026-09-15.** `wireNamesIn` walks the other way, from two sources that must agree — the subjects map (*the document specified it*) and the inventory (*the document claims it is on the wire*) — reported as separate findings because they are separate mistakes. **The discriminator is a dot**: `subjectsIn` matches every backticked token that opens a paragraph and this contract opens paragraphs with field names constantly (94 subjects against 64 constants; `limit`, `path`, `kind`, `count`…), while every real type here carries a dot except the five that are already constants. **The wrong fix is to count every backticked subject** — it reports two dozen field names and gets switched off. `SPECIFIED_NOT_ON_THE_WIRE` carries a reason and a gate per entry and is pruned in **both** directions: an entry that acquires a constant fails, and so does one the contract no longer mentions | **Red-first against the verbatim case**: the real tree with the allowlist emptied reports exactly `mic.start`, `mic.state`, `mic.stop` and `apps.launch` — each naming the `docs/protocol.md` line — and nothing else. 28 fixtures, each with its opposite, including a control contract carrying the constants (no findings) and a fixture proving the dot discriminator returns `mic.start` alone out of `limit`/`path`/`mic.start`. **`mic.*` is recorded as debt, not implemented** — it is gated on Phase 8 signing, since the Mac half needs a hardened-runtime microphone entitlement and whether it is buildable at all is unknown until the signing test is taken | `docs/testing.md` → Phase 7 Slice 49 |
+| **111** | **A quarter of every scroll was a tap, and the rest under-travelled by one touch slop.** `input.scroll` is dispatched as a two-point stroke over 100 ms, at exactly the distance the Mac asked for. Android's `View` layer eats `ViewConfiguration.getScaledTouchSlop()` of every stroke deciding whether it is a press or a drag — 30 display px on this handset — so a stroke shorter than that is a press and a release in one place, which is a **tap on whatever is underneath**. On a YouTube feed that is the thumbnail under the pointer, which is the reported symptom. **35 of 138** `input.scroll` messages in the Mac's own historical log travelled under 30 px; an isolated mouse-wheel notch (`dy = -17` capture px = 22.7 display px) is one of them, and it appears six times unprompted | **Fixed 2026-09-15, phone side, installed and measured.** `InputGeometry.withSlopHeadroom` lengthens the stroke by one slop **in front of** the requested travel, so the finger passes through the point the Mac aimed at rather than overshooting past it. Extending the end instead would scroll further than the wheel asked. Where the display has no room behind the start the end takes the balance, and what neither can take is reported as `shortfallPx` on a warning line rather than silently costing travel. The slop is asked of `ViewConfiguration`, not derived from the density: they agree here (8 dp at 600 dpi is 30) and `ViewConfiguration` is what `View` itself reads | **Proven on hardware, both arms, 2026-09-15.** One handset, one stimulus, one probe: the four sub-slop magnitudes (including `deltaY = 17`, one real mouse notch) **navigated 4 of 4** on the shipped build and **navigated 0 of 4** on the fixed one, scrolling 4 of 4 instead. The discriminator is `topResumedActivity`, and the run **refuses to sweep** until a deliberate tap has been shown to move it — an absence from a query that cannot fire is not a finding. The phone's own execution line was read **6 of 6** after and **0 of 6** before, so both counters have been seen to move. The under-travel half is a reading now too: the before arm logs *"the content will move -26px of the 3px asked for"*. 7 JVM tests, red-first against 3 mutations | `docs/testing.md` → Phase 7 Slice 53, 53a |
+| **118** | **The float's phone controls were a right-edge vertical rail; the owner asked for Android's own shape — a row of buttons under the picture — and for hover tooltips on all five.** Not a fault in what 115 built, but a change to an invariant three closed defects depend on: `RAIL = 36` was a **width** taken from the side, and the picture's aspect, the height budget and defect 114's rotation arithmetic are all expressed against it | **Built 2026-09-15.** `BOTTOM_BAR = 40`, a **height** beside `TITLE`, and `RAIL` **deleted rather than zeroed** so the compiler named every call site. The axes are not symmetric: width loses its only consumer and the picture spans the whole window; height gains a second one, so every function turning available height into a width caps lower — the README's ≈401 at 920pt becomes **383**, and the transcription test asserts **both** numbers rather than redefining the document's. Tooltips draw their own rather than using `title`, because `title` never fires on keyboard focus: 450 ms on hover, **0 ms on focus**, text from the same table as the label, and the reveal control keeps defect 117's full sentence as its accessible name while showing a short form | **Red-first on 6 tests written before the formula changed, then 4 mutations** — the bar over the picture (5 red), taken off the wrong axis (6), the height budget not following (7), and **defect 114's landscape cap removed, which must still go red after the swap** (2). On hardware in **both orientations**: bar height 40, spans the window, `overlapsPicture: false` gap 0, five controls counted as elements, order read from their own rects, picture aspect agreeing with the phone's announced one (2.174/2.167 portrait, **0.461/0.462 landscape** — 114 re-proved on the new axis, unprompted). Tooltip: `pointer-events: none`, does not cover its button, 24 px over the picture **reported rather than claimed away**, immediate on focus and on dismissal. A **dead CSS rule** fell out and never shipped — `:first-of-type` matched the first *button*, so the group separator drew nothing; found by measuring `::before` on all five, not by looking | `docs/testing.md` → Phase 7 Slice 54 |
+| **119** | **Three colour tokens did not match the design, and the note in `tokens.css` asserting they did had its own evidence inverted.** `--accent` `#7c6bff`, `--live` `#34d399` and `--destructive` `#ff6b81` appear **nowhere** in either design source; the design's `#8B6BFF`, `#32E58A` and `#FF5D5D` appear 42, 47 and 22 times. The block claimed it had counted the prototype's literals — *"`#7c6bff` 34 times, `rgba(124,107,255,…)` 59 times, `rgb(139,…)` zero"* — and all three figures are the reverse of the truth. It was written as the **correction** of an earlier mistake and is the most carefully argued paragraph in the file | **Fixed 2026-09-16**, on the owner's decision after the divergence was put to them with both options costed. All three restored with their alpha derivatives; the false note replaced rather than trimmed, because the note is the reason the divergence survived a phase. The ~13 "stray literals" across `shell.css`, `styles.css`, `navModel.ts` and `activity.ts` turned out to be **the design's values, orphaned** — they read as the mess and were the record | Counted with `grep -o \| wc -l` over both design files after `grep -c` undercounted by an order of magnitude — **it counts lines**, and a design file puts many literals on one line. Controls: `#22d3ee`, known present, returns **25**; `#ec3013`, the foreign design system's red, returns **0** | `docs/testing.md` → Phase 7 Slice 55 §2 |
+| **120** | **The `⌘⇧M` hint on the primary action was 3.89:1 in the shipped dark build**, and had been since the shell landed on 2026-08-30. Both its tokens are correct and their pair is 5.27:1 — the failure is `opacity: 0.75` dimming the text toward the fill | **Fixed 2026-09-16.** `opacity: 0.9`. 0.85 is the first step that clears AA in both themes (4.51 dark / 4.81 light); 0.9 for margin, and it still reads as secondary beside the label | **No token audit can see an opacity**, which is why `check-contrast.mjs` reports it clean and the rendered-DOM sweep does not. Found by measuring painted pairs across 3,302 elements, not by looking at a screen. The selected filter pill was the same shape — 4.43:1 in light because its ground is `--well` rather than a card, where the same two tokens read 5.04:1 | `docs/testing.md` → Phase 7 Slice 55 §6 |
+| **121** | **Theme-following text was drawn on a scrim that deliberately does not follow the theme.** `--media-scrim` stays dark in both themes because it sits over the phone's picture, and a light scrim over a light video is unreadable in the exact case a scrim exists for. `.pane-mirror .mirror-overlay` and `.float-reason` drew `--text-body` on it, which *does* invert — **1.67:1** in light, dark grey on near-black | **Fixed 2026-09-16** with `--text-on-media` and a new `--text-on-media-dim`, both now measured as explicit pairs (19.76:1 and 10.24:1 on the scrim) | **Both tokens are individually correct and their own pair is never drawn**, so a token-pair audit is structurally incapable of seeing it — the Muted pill's 2.23:1 one layer over. Caught by the rendered-DOM sweep in both windows; the float half would otherwise have shipped | `docs/testing.md` → Phase 7 Slice 55 §5 |
+| **112** | **The Mac produced scroll gestures at twice the rate the phone could run them, and threw the overflow away mid-flick.** `WHEEL_WINDOW_MS = 60` summed wheel deltas for a fixed 60 ms and sent, whatever the phone was doing — up to **16.7 gestures/s**. The phone serialises `dispatchGesture` behind a `Mutex` at a measured median of **117 ms**, or **8.55/s** (181 back-to-back gestures in its own log). Production was ~2× consumption for as long as a finger kept moving, so `InputClient`'s 8-deep queue filled and its 400 ms staleness rule discarded the rest: **14 scrolls dropped after waiting 403–486 ms** in this Mac's log, each putting a sentence on the canvas. A mouse emits a few discrete notches and never fills the queue; a trackpad emits a continuous stream *plus* macOS's momentum tail and fills it every time — which is the whole of "trackpad janky, mouse smooth" | **Fixed 2026-09-15, Mac side.** `renderer/wheelPump.ts`: one `input.scroll` in flight, everything arriving meanwhile summed into the next. The clock is the phone's reply, so the two rates cannot disagree on any hardware for any device. **A longer window was rejected** — it is the 263 ms sampling window with a bigger number in it, rarer without being impossible, and unable to say whether a run behaved because the rate was right or because the flick was short. It also removes the need to recognise macOS's momentum phase, which is just as well: a DOM `WheelEvent` in Chromium exposes no `phase` or `momentumPhase`, so the report's "drop momentum events" cannot be implemented as written — under backpressure a momentum tail folds into the sum instead | **Measured on hardware with an identical stimulus.** 40 wheel events over 600 ms → **7 gestures, 0 stale drops**, median send gap **118 ms** (against the phone's measured 117). 8 pure tests, red-first against 3 mutations. **The like-for-like before arm was not taken**: restarting the Mac to build the pre-fix variant ended the mirror session, and Android will not show the capture prompt to a backgrounded app, so the run reported `stopped=deadline, reportable=false` rather than a zero. The before is the historical log — 152 delivered, 14 dropped | `docs/testing.md` → Phase 7 Slice 53 |
+| **113** | **The floating window could not be dragged onto a second monitor, and snapped back under the cursor.** `WorkArea` was `{ width, height }` with no origin, while every coordinate in `floatGeometry.ts` is a **global** screen point. A second display's work area starts at x = 1512, or at x = -1920 to the left, so `clampX` measured a global x against a width as though every display began at (0,0) and pulled anything past the primary display's right edge back inside it. `moveTo` re-clamps on every pointer move, so the window did not merely refuse the second display — it snapped back once per event, which reads as being glued down. **The display was always chosen correctly** by `getDisplayMatching`; its origin was discarded one line later by a `{ width, height }` literal built from a rectangle with four fields | **Fixed 2026-09-15.** `WorkArea` carries `x` and `y`, both **required** — making them optional would have let the bug survive at every existing call site in silence, where the compiler instead named the one line that dropped them. A drag is now clamped against the display the **pointer** is over rather than the one the window is on: during a crossing the cursor has moved and the window has not, so clamping against the window's display pins it at that edge and the handover can never complete. One `areaOf()` converter, so there is one place an origin can be dropped | **4 tests, red-first.** M1 restores the origin-less clamps (3 red). Tests run on a right-hand monitor, a **left-hand** one with a negative origin (a sign error passes the first and fails the second), and the whole input space across all three areas. Verified live: `float-open` reported `bounds.x = 2144`, outside the primary display | `docs/testing.md` → Phase 7 Slice 53 |
+| **114** | **The floating window never turned when the phone did.** `RATIO = 19.5 / 9` was a module constant read by four functions, so the window was permanently portrait. The main window's stage follows the phone through `--capture-aspect` on both writes of `this.capture`; the float's outer bounds followed nothing, leaving landscape content letterboxed into a portrait frame at a fifth of the area. **Keeping the width and re-deriving the height is the wrong fix and is what produces "renders tiny"**: a 300 pt portrait window is 684 tall, and holding 300 through a turn gives 300 × 157 | **Fixed 2026-09-15.** The ratio is a parameter with `PORTRAIT_RATIO` as the value to use *before the phone has said* — `ratioOfCapture` returns `null` rather than guessing, because "has not said" and "is portrait" are different facts. `FloatMirrorWindow.setCaptureGeometry` is fed from the one function that also retains the geometry (defect 116), so the stored value and the window's shape cannot be updated by one caller and not the other. `boundsForRatioChange` preserves the **picture's area** and solves for the width, which is the reading of "roughly its footprint", holds the top-left, and re-clamps through `resolveBounds` | **Proven on hardware, both directions, 2026-09-15.** A real rotation: `capture turned to 2340x1080 (screen #10) — float aspect 2.167 → 0.462, window 970x465`, then back: `1080x2340 (screen #11) — 0.462 → 2.167, window 467x968`. Picture area 431×934 = 402,554 in portrait and 934×431 = 402,554 in landscape — identical — and the return lands on the same window it left. 6 tests, red-first against 2 mutations. **It also found a live gap**: width was capped by the available *height* only, which no portrait window can ever hit and a landscape one hits at once — a 500 pt-wide area produced a 985 pt window | `docs/testing.md` → Phase 7 Slice 53 |
+| **115** | **The float's Back / Home / Recents were invisible until hovered, sat on top of the picture, and landed on Android's own nav bar.** Reported as *"at the top, where other app windows can cover them"*. **Measured on the running window before anything was changed, they were at 92% of the way down** — so that half of the report does not describe this build and is recorded here rather than quietly fixed. What does describe it is the rest: `opacity: 0` at rest on the one window in this app whose purpose is to be watched while something else has focus, which is exactly when the pointer is not in it; a pill over the canvas, which `float.css` already warned would be *"a silent dead zone"* once the canvas took input — and it took input on 2026-09-14; and `bottom: 36px` on a ratio-locked window, which is where the phone's gesture bar is | **Fixed 2026-09-15. The layout is superseded by 118 — the strip is a bottom bar now; everything below is what 115 itself did and is still true of it.** A permanent strip on the right edge, and **it is real estate rather than an overlay**: `RAIL = 36` comes out of the window's width in `floatGeometry.ts` exactly as `TITLE` comes out of the height, so nothing covers a part of the phone's screen the canvas would otherwise accept a tap on. Built from `FLOAT_RAIL` in `floatRail.ts` rather than written into the HTML, so the icon names are inside an enumeration a test asserts over — an icon name that is not enumerated is an icon nobody can check, and this project has shipped two buttons as empty rings | **Measured on the running window**, no pointer in it: `opacity 1` (was `0`), 5 controls counted as elements rather than matched as text, `railWidth 36`, `overlapsPicture false`, every button fully on screen. Picture ratio **2.172** against the phone's announced **2.167** — the rail does not distort the picture. 6 tests, plus M4 (the rail back as an overlay) red on 7 | `docs/testing.md` → Phase 7 Slice 53 |
+| **116** | **A float opened into a running session did not know the shape of the phone's screen, and said so on every press.** `capture` in `float.ts` was written from `mirror.rotate` alone — which the phone sends when it turns and at no other time. So a window opened mid-session held `null` until the user **physically rotated their phone**, and every press answered *"The phone has not said what shape its screen is yet, so that was not sent"* about a shape the main window had known since `mirror.state`. The sentence was true of that window and false of the system | **Fixed 2026-09-15.** Three sources, one writer: `mirror.rotate`, `mirror.state` — **which this window already received and was throwing the geometry away from**, reading only the message — and the answer to `stream-start`, where the main process now retains the last announced geometry and hands it back beside the retained parameter sets. Same door and same argument: the session began before this window existed and neither fact will be announced again. Cleared on `stopped`, so a gesture cannot be stamped with a screen the phone has left — that refusal would read as staleness for a mirror that is simply off | **Measured on hardware.** The float's own log line on open: `stream-start answered: 33B of parameter sets, sessionRunning=true, capture=1080x2340 #9 (adopted)`. The field read `{"width":1080,"height":2340,"geometryId":11}` on a window that had not seen a rotation, with the overlay hidden and a picture live | `docs/testing.md` → Phase 7 Slice 53 |
+| **117** | **With the floating window open there was no way back to the main window, including clicking the Dock icon.** `app.on('activate')` was the Electron sample — `if (getAllWindows().length === 0) createWindow()` — which is correct for a one-window app and wrong the moment there are two: with the float open the count is 1, the branch never ran, and **a Dock click did nothing at all**. The main window was neither hidden nor destroyed; it was behind whatever the user had been doing, with no route forward anywhere in the product except closing floating mode, which is exactly what was reported. The tray's *Open ConnectSuite* was a third half-answer: it did not `restore()` a minimised window and did not `focus()` the one it showed. There is no application menu at all | **Fixed 2026-09-15.** `revealMainWindow(why)`: create if destroyed, `restore` if minimised, `show`, `focus` — one function, four callers (Dock, tray, the float's rail, and any future menu), each naming itself in the log, because "the main window came forward" with no reason attached is defect 80's single `UNKNOWN` one product surface over. **It does not touch the float and must not**: the session lives on the link rather than in either window, and closing the float to satisfy the request would be the workaround the user already had. The rail's control reports what actually happened — the main process's own reading of whether the float survived — rather than asserting it did | **Fired from a real press on hardware:** `main window revealed (float rail): existed, visible — float stays open`, twice. The control's accessible name is asserted by test to say *"without closing this one"*, because the one fear that stops someone pressing it is that it costs them the floating window | `docs/testing.md` → Phase 7 Slice 53 |
+| **122** | **Every keyboard shortcut the shell advertises except ⌘K is decorative.** Thirteen hints are drawn — `⌘1`–`⌘9`, `⌘0`, `⌘,` on the palette's eleven screen rows, and `⌘⇧.` / `⌘⇧T` / `⌘⇧4` on its three commands — and **nothing is bound to any of them**. `shell.ts`'s only `keydown` handler matches ⌘K plus the palette's own Escape/arrows/Enter; there is no application menu at all; `globalShortcut` is used once in the whole app, for the mark diagnostic. A printed accelerator is a claim, and this is the greyed-control rule applied to a key: a promise it might one day light up, made where a person goes to learn the app. The handoff draws all of them (README §"Main region"), so the design's intent is that they work | **open** — not fixed in the 2026-09-16 Overview pass, deliberately: it is shell-wide, across twelve panes, the palette and a menu that does not exist, and that pass was scoped to one pane | — | see below |
+| **123** | **The app's most advertised keyboard shortcut was bound to a log line.** `⌘⇧M` is printed in two places — the Overview hero's primary action (`Start mirroring ⌘⇧M`) and the ⌘K palette's first command row (*Mirror phone*) — and the handoff specifies it for exactly that. `main.ts:832` registered `CommandOrControl+Shift+M` as a **`globalShortcut`** for the **mark diagnostic**, a debugging aid that writes one line to the log. A global shortcut is taken before the page sees the keystroke, so pressing the key the UI advertises had never once started a mirror. **Nothing reported it**: `globalShortcut.register` returns `true` on success and the `false` branch already warns, so the only signal available said *the shortcut is working* — which it was. `CLAUDE.md`'s registration-line-read-as-an-execution-line, in the input layer | **Fixed 2026-09-16.** The mark moved to `Control+Alt+Command+M`, unadvertised; its **global** registration is kept and that half of the original argument is untouched — the mirror canvas forwards keystrokes to the phone, so a mark taken by the page would type into somebody's messages. Mirroring is bound in `shell.ts`'s existing `keydown` handler, **in the page**, for the opposite reason: taking ⌘⇧M from every other application on the machine to start a mirror is a cost this app has no right to impose. It calls `runCommand('mirror.start')` — the palette's own registration — so the hero button, the palette row and the key are three triggers for one wiring rather than defect 122's second accelerator table | The diagnostic that finds this class: *what would this line say if the feature had never once worked?* For a successful `register()` the answer is **exactly what it says now**. Found by reading `shell.ts` while checking the hero's own hint, which is also how 122 surfaced | `docs/testing.md` → Phase 7 Slice 62 |
 
 ---
 
@@ -499,6 +514,51 @@ retry with the same `after N lookup(s)` line, is acceptable but strictly weaker.
 
 **Does not affect step 70:** different pane, different feature, different provider. Step 70 sends no
 SMS and reads no SMS surface.
+
+### 122 — every keyboard shortcut the shell advertises except ⌘K is decorative · **open** · found 2026-09-16
+
+**Thirteen shortcut hints are drawn and one of them works.** `shell.ts`'s only `keydown` handler
+matches `(metaKey || ctrlKey) && key === 'k'` and, once the palette is open, Escape / ArrowDown /
+ArrowUp / Enter. There is **no application menu at all** (defect 117 recorded the same absence from
+the other side), and `globalShortcut` is used exactly once in `main.ts` — for the mark diagnostic.
+So every one of these is a string with nothing behind it:
+
+| Drawn | Where | Bound to |
+|---|---|---|
+| `⌘1`–`⌘9`, `⌘0`, `⌘,` | `navModel.SCREENS[].shortcut`, rendered in the ⌘K palette's result rows | **nothing** |
+| `⌘⇧.` *Stop mirroring*, `⌘⇧T` *Toggle always on top*, `⌘⇧4` *Take screenshot* | `navModel.COMMANDS`, the handoff's own list | **nothing** |
+| `⌘K` | toolbar button and palette | `shell.ts` — **the one that works** |
+
+`⌘⇧M` was the fourteenth and is **not** in this defect: it is fixed under defect 123, because it was
+worse than unbound — it was bound to something else.
+
+**Why this is a defect and not a cosmetic gap.** A shortcut hint is a claim, and this project's own
+rule for a greyed control applies unchanged to a printed accelerator: it is a promise it might one
+day light up, made in the one place a person looks to learn the app. The handoff draws these hints
+deliberately — README §"Main region" lists the palette's four commands with their keys and the
+eleven screens at ⌘1–⌘9 / ⌘, — so the design's intent is that they *work*, and drawing them while
+they do not is the gap. It is also the shape `CLAUDE.md` calls a registration line read as an
+execution line, moved into the UI: the hint is real, the binding is not, and nothing distinguishes
+them from the outside.
+
+**Fix direction:** one owner for accelerators, not two. Build the application menu Electron is
+missing (`Menu.setApplicationMenu`) and hang every advertised accelerator off it, with the label and
+the key read from `navModel` so the menu, the palette and the sidebar cannot disagree about what
+⌘4 does — the same single-enumeration argument that put the tool rail and the global actions into
+`navModel`. `globalShortcut` is the wrong instrument for all of these: it takes the key from every
+other application on the machine, which is defensible for the mark (argued at `main.ts:820`) and
+indefensible for ⌘4.
+
+**Wrong fix to avoid: a `keydown` handler in `shell.ts` that switches on `event.key`.** It is the
+obvious two dozen lines and it produces a second accelerator table in a second file, which is the
+two-expressions-of-one-rule trap with a macOS menu bar as the other expression — and the menu bar is
+the one a user discovers by looking. It also cannot reach `⌘⇧4` or anything while the mirror canvas
+has focus and is forwarding keystrokes to the phone.
+
+**Not fixed in the 2026-09-16 Overview pass, deliberately.** It is shell-wide — twelve panes, the
+palette and a menu that does not exist — and the pass it was found in was scoped to one pane. Found
+by reading `shell.ts` while checking the Overview hero's own `⌘⇧M` hint, which is how the bound-to-
+the-wrong-thing half (123) surfaced.
 
 ---
 
@@ -2699,4 +2759,321 @@ write-pattern bottleneck. `QUEUE_DEPTH` was never under pressure and `writeFrame
 `KEY_FRAME_RATE = 60` is a rate-control **hint** on a Surface input, not a cap, so on this 120 Hz
 panel the encoder really emits ~120 fps. It costs CPU and halves the bits per frame at a fixed
 8 Mbps. Nothing is dropped because of it.
+
+
+### 111 — a scroll shorter than the touch slop is a tap · **fixed 2026-09-15** · found 2026-09-15
+
+`input.scroll` is dispatched as a two-point stroke over 100 ms at exactly the distance the Mac asked
+for. Android's `View` layer eats `ViewConfiguration.getScaledTouchSlop()` of every stroke deciding
+whether it is a press or a drag — **30 display pixels** on this handset, 8 dp at 600 dpi, read from
+`wm density` rather than assumed. Two consequences, and only the first was reported:
+
+| | |
+|---|---|
+| a stroke **under** the slop | press and release in one place, which is a **tap** on whatever is underneath |
+| every **other** stroke | scrolls one slop less than it was asked to, silently |
+
+Measured from the Mac's own historical log, 138 real `input.scroll` messages: **35 of them (25.4%)**
+travelled under 30 display px, and the median of the rest asked for 77 px of content movement and
+moved it 47. An isolated `dy = -17` capture px — one mouse wheel notch — is 22.7 display px and
+appears six times unprompted, seconds apart. That is the YouTube report exactly.
+
+**The fix extends the front of the stroke, not the end.** Extending the end would scroll further than
+the wheel asked; moving the start backwards makes the finger pass *through* the point the Mac aimed
+at. Where the display has no room behind the start the end takes the balance, and what neither can
+take is published as `shortfallPx` on a warning line with the whole-stroke count beside it.
+
+**Proven on hardware, both arms** — `docs/testing.md` → Phase 7 Slice 53a. The APK went on with
+`adb install -r` through the pin (28 of 28 grants preserved, both bindings intact, started by name and
+confirmed with `scripts/link-up.sh`), and the same sweep was run against the shipped build and the
+fixed one:
+
+| | before | after |
+|---|---|---|
+| sub-slop requests in the sweep | 4 of 6 | 4 of 6 |
+| of those, Android **navigated** | **4 of 4** | **0 of 4** |
+| of those, Android scrolled | 0 of 4 | **4 of 4** |
+| the phone's own execution line | 0 of 6 | 6 of 6 |
+
+`deltaY = 17` is the row that matters: one isolated mouse-wheel notch, the value that appears six
+times unprompted in the user's own log, opening a settings screen on the build that shipped.
+
+**The probe refuses to sweep until its discriminator has fired.** The finding is an absence, and
+`topResumedActivity` failing to move would make every row read `scroll` on any build — so a real tap
+is dispatched through the product's own path first and the activity must change
+(`SettingsHomepageActivity → SubSettings`), or the run exits without measuring.
+
+**The under-travel half stopped being arithmetic.** The before arm's own warning lines say it per
+scroll: *"the content will move -26px of the 3px asked for"*, *"98px of the 128px asked for"* — a
+negative movement for the small ones and a flat one-slop shortfall on the large ones.
+
+### 112 — the Mac produced scrolls at twice the rate the phone could run them · **fixed 2026-09-15** · found 2026-09-15
+
+| | |
+|---|---|
+| produced, at `WHEEL_WINDOW_MS = 60` | up to **16.7** `input.scroll` per second |
+| consumed, median of 181 back-to-back gestures in the phone's own log | **8.55** per second (117 ms each) |
+
+The phone serialises `dispatchGesture` behind a `Mutex`, so the difference queued in `InputClient`,
+and its 400 ms staleness rule discarded the overflow: **14 scrolls dropped after waiting 403–486 ms**,
+each putting a sentence on the canvas mid-flick. A mouse never fills an 8-deep queue; a trackpad,
+plus macOS's momentum tail, fills it every time.
+
+**The clock is the phone's reply now** — one gesture in flight, everything arriving meanwhile summed
+into the next — so the two rates cannot disagree on any hardware for any input device. A longer
+window was rejected: it is the 263 ms sampling window with a bigger number in it.
+
+**The report's "drop momentum-phase events" cannot be written.** Chromium's DOM `WheelEvent` exposes
+no `phase` or `momentumPhase`. Under backpressure it does not need to be: the tail folds into the sum.
+
+After: 40 wheel events over 600 ms → **7 gestures, 0 dropped**, median send gap **118 ms**.
+
+### 113 — the floating window could not be dragged onto a second monitor · **fixed 2026-09-15** · found 2026-09-15
+
+`WorkArea` was `{ width, height }`. Every coordinate in `floatGeometry.ts` is a **global** screen
+point, and a second display's work area starts at x = 1512 — or at x = -1920 when it sits to the
+left — so `clampX` measured a global x against a width as though every display began at (0,0).
+
+`moveTo` re-clamps on every pointer move, so the window did not merely refuse the second display: it
+**snapped back under the cursor once per event**, which reads as being glued down.
+
+All three causes the report proposed were wrong, and the third is the instructive one: the display
+*was* always chosen correctly by `getDisplayMatching`. Its origin was discarded one line later, by a
+`{ width, height }` literal built from a rectangle that had four fields. The fix makes `x` and `y`
+**required** — optional fields would have let the bug survive at every call site in silence, where
+the compiler instead named the single line that dropped them — and routes every construction through
+one `areaOf()`.
+
+A drag is clamped against the display the **pointer** is over rather than the one the window is on:
+during a crossing the cursor has moved and the window has not, so clamping against the window's
+display pins it at that edge and the handover can never complete.
+
+### 114 — the floating window never turned when the phone did · **fixed 2026-09-15** · found 2026-09-15
+
+`RATIO = 19.5 / 9` at module scope, read by four functions. The main window's stage follows the phone
+through `--capture-aspect` on both writes of `this.capture`; the float's outer bounds followed
+nothing, so landscape content sat letterboxed in a portrait frame at a fifth of the area.
+
+**Keeping the width and re-deriving the height is what produces "renders tiny"** — a 300 × 684
+portrait window becomes 300 × 157 — so the fix preserves the **picture's area** and solves for the
+width, holds the top-left, and re-clamps through `resolveBounds`. `ratioOfCapture` returns `null`
+rather than a portrait guess, because *"the phone has not said"* and *"the phone is portrait"* are
+different facts.
+
+Proven on hardware, both directions: `2.167 → 0.462, window 970x465` and back to `467x968`, with the
+picture area identical at 402,554 either way.
+
+**It also exposed a live gap nobody was looking for**: `clampWidth` bounded width by the available
+*height* only, which no 19.5:9 window can ever hit and a landscape one hits at once — a 500 pt-wide
+work area produced a 985 pt window.
+
+### 115 — the float's phone controls were invisible, over the picture, and on the nav bar · **fixed 2026-09-15** · found 2026-09-15
+
+Reported as *"at the top, where other app windows can cover them"*. **Measured on the running window
+first, they were at 92% of the way down** — the bottom. That half of the report does not describe
+this build and is recorded rather than quietly fixed.
+
+What does describe it is three faults in one control:
+
+- `opacity: 0` until hovered, on the one window in this app whose purpose is to be watched while
+  something else has focus — which is exactly when the pointer is not in it.
+- A pill **over the canvas**. `float.css` had already written down that this would be *"a silent dead
+  zone"* once the canvas took input. The canvas took input on 2026-09-14 and the warning came true.
+- `bottom: 36px` on a ratio-locked window, which is where Android draws its own gesture bar, so the
+  Mac's Home button sat on the phone's Home.
+
+The strip is permanent and **real estate rather than an overlay**: it comes out of the window
+exactly as `TITLE` comes out of the height, so nothing covers a part of the phone's screen the canvas
+would otherwise accept a tap on. Measured after: `opacity 1`, 5 controls counted as elements,
+`overlapsPicture false`, picture ratio 2.172 against the announced 2.167.
+
+**The placement is superseded.** 115 put it on the **right edge** as `RAIL = 36`, a width; **defect
+118** moved it to the bottom as `BOTTOM_BAR = 40`, a height, later the same day. The three faults
+above are what 115 fixed and none has come back — what changed is the axis, not the argument.
+
+### 116 — a float opened mid-session did not know the phone's screen shape · **fixed 2026-09-15** · found 2026-09-15
+
+`capture` in `float.ts` was written from `mirror.rotate` alone — sent when the phone turns and at no
+other time. A window opened into a running session therefore held `null` until the user **physically
+rotated their phone**, and every press answered *"The phone has not said what shape its screen is
+yet, so that was not sent"* about a shape the main window had known since `mirror.state`. A sentence
+true of that window and false of the system.
+
+Three sources now, one writer: `mirror.rotate`; `mirror.state`, **which this window already received
+and was throwing the geometry away from**, reading only the message; and the answer to
+`stream-start`, where the main process retains the last announced geometry and hands it back beside
+the retained parameter sets — same door, same argument, since the session began before this window
+existed and neither fact will be announced again.
+
+Cleared on `stopped`, so a gesture cannot be stamped with a screen the phone has left: that refusal
+would read to the user as staleness for a mirror that is simply off, which are two different
+sentences.
+
+### 117 — no way back to the main window while floating · **fixed 2026-09-15** · found 2026-09-15
+
+`app.on('activate')` was the Electron sample: `if (getAllWindows().length === 0) createWindow()`.
+Correct for a one-window app and a **no-op the moment there are two** — with the float open the count
+is 1, so clicking the Dock icon did nothing at all.
+
+Nothing was hidden or destroyed. The main window was behind whatever the user had been doing, with no
+route forward anywhere in the product except closing floating mode — which is exactly the workaround
+that was reported. The tray's *Open ConnectSuite* was a third half-answer: no `restore()` for a
+minimised window, no `focus()` for the one it showed. There is no application menu at all.
+
+`revealMainWindow(why)` is one function with four callers — Dock, tray, the float's control strip,
+and any future menu — each naming itself in the log, because *"the main window came forward"* with no
+reason attached is defect 80's single `UNKNOWN` one product surface over.
+
+**It does not touch the float and must not.** The session lives on the link rather than in either
+window, so revealing one costs the other nothing; closing the float to satisfy the request would be
+the workaround the user already had. The control reports what actually happened — the main process's
+own reading of whether the float survived — rather than asserting it did.
+
+### 118 — the float's controls move to a bottom bar, and get tooltips · **built 2026-09-15** · asked 2026-09-15
+
+An **enhancement**, recorded with the defects because it changes an invariant that three closed
+defects depend on and because one real fault fell out of building it.
+
+Defect 115 made the float's phone controls permanent and put them in a **right-edge vertical rail**,
+`RAIL = 36` taken out of the window's width. The owner asked for Android's own shape instead:
+buttons in a row, under the picture, in their own strip.
+
+**The axis swap is the change, and the two axes are not symmetric.**
+
+| | |
+|---|---|
+| **width** | had one consumer of side chrome, arithmetic only. `RAIL` gone → the picture is the whole window width, and nothing else moves |
+| **height** | already had `TITLE = 34`. `BOTTOM_BAR = 40` joins it, so the **height budget shrinks** and every function turning available height into a width caps lower. The README's ≈401 at 920pt becomes **383** |
+
+`RAIL` is **deleted rather than zeroed** — a constant at 0 is one autocomplete from being subtracted
+again, the same argument that keeps `APPS_LAUNCH` out of `MessageType` — and deleting it made the
+compiler name every call site.
+
+The README figure is not quietly redefined: the transcription test asserts **both** numbers, the
+document's own formula (401, `TITLE` as the only chrome) beside ours (383, with the bar).
+
+**Defect 114's landscape width cap was re-checked, not assumed.** It reads `area.width`, which this
+change does not touch, and mutation M8 confirms its test still goes red after the swap.
+
+**Tooltips.** `title` is the app's pattern (11 uses, no CSS tooltip anywhere) and it was on these
+buttons. It never fires on **keyboard focus**, so the bar draws its own: 450 ms on hover, **0 ms on
+focus**, dismissed on leave, blur, click and Escape, with `title` removed rather than left alongside.
+The text comes from `floatRailTooltip` in the same table as the label and the icon; Back, Home and
+Recents carry **no** second literal and fall back to their accessible name. The reveal control's
+accessible name stays defect 117's full sentence while its tooltip is the short form — asserted in
+both directions, because shortening the tooltip by shortening the label is the way this goes wrong.
+
+It overlaps the picture's bottom edge by **24 px**, which is reported rather than claimed away: a
+40 px bar cannot contain a tooltip and below it is outside the window. `pointer-events: none` is what
+makes that harmless.
+
+**A dead CSS rule fell out, and it never shipped.** The group separator was
+`.bar-button.bar-mac:first-of-type::before`. `:first-of-type` is about the **element type** — it means
+*the first `button`*, which is Back, and Back has no `bar-mac` — so the selector matched nothing.
+`tsc` clean, 22 stylesheet tests green, no hairline drawn. It is the empty-ring icon defect in CSS,
+and a screenshot could not have found it: a missing 1 px hairline looks like a design choice. It was
+found by reading `getComputedStyle(b, '::before').content` on all five buttons and getting `none` from
+every one. The boundary is named by the table now, and exactly one button reports `content: ""`.
+
+**Verified on hardware, portrait and landscape** — `docs/testing.md` → Phase 7 Slice 54. Bar height
+**40**, spans the window, `overlapsPicture: false` with a gap of 0, all five buttons fully on screen,
+order read from the buttons' own rects as `back, home, recents, shot, reveal`, and the picture's
+aspect agreeing with the phone's announced one in **both** orientations (2.174 vs 2.167; 0.461 vs
+0.462). The landscape column arrived unprompted — the phone turned mid-run — which makes it defect
+114's fix re-proved on the new axis rather than a case anyone set up.
+
+**The reference for this change could not be read.** No screenshot arrived with the request, and its
+text describes the buttons as *"Recents, Home, Back"* while asking for them ordered *"Back, Home,
+Recents"* — the two conventions, Samsung's and AOSP's. The handset cannot settle it either:
+`navigation_mode = 2` is gesture navigation, so it draws no three-button bar, and the Samsung order
+keys read `null` **including the control key**, so that query held no information rather than
+reporting "unset". The order shipped is the owner's explicitly stated one, asserted by test because
+it is a one-line flip nothing else would notice.
+
+---
+
+### 119 — three colour tokens against the design, and a note whose evidence was inverted · **fixed 2026-09-16** · found 2026-09-16
+
+Found by the sweep that had to precede the light theme, not by looking at a screen — a violet is a
+violet, and nothing renders *wrong* when the wrong one is drawn.
+
+| token | `tokens.css` held | in the design | the design's value | in the design |
+|---|---|---|---|---|
+| `--accent` | `#7c6bff` | **0** | `#8B6BFF` | **42** |
+| `--live` | `#34d399` | **0** | `#32E58A` | **47** |
+| `--destructive` | `#ff6b81` | **0** | `#FF5D5D` | **22** |
+
+**The record is worth more than the divergence.** The block above `--accent` claimed the opposite,
+in detail, with counts. Every count is inverted. It was written as a *correction*, dated, and
+argued from "reading the source rather than the summary of it" — which is the right method,
+executed with `grep -c`. `grep -c` counts **lines**; `ConnectSuite.dc.html` puts dozens of literals
+on one. The method was sound and the instrument silently divided by the wrong thing.
+
+So this is the **confirming-reading** entry in `CLAUDE.md` with the roles reversed: not an
+instrument fault that flattered a hypothesis, but one that produced a *surprising* result nobody
+re-checked because it arrived already labelled as a correction of somebody else's error. A
+paragraph that says "this was wrong for the whole build and nothing could have caught it" reads as
+the output of exactly the scepticism that would catch it.
+
+**Why the literals mattered.** Eleven `rgba(50,229,138,…)` in the stylesheets, `139,107,255` in
+`navModel.ts` and `activity.ts`, `#8B6BFF` in the `icons.ts` brand gradient — all of them looked
+like drift and all of them were **the design, still correct**, left behind when the tokens moved.
+The 2026-09-05 change reached `tokens.css` and nothing else, so the app drew the design's colours
+everywhere a token was not consulted and the substituted ones everywhere it was.
+
+**The wrong fix**, and it was one keystroke away: retarget the literals onto the tokens. That is
+what "150 raw literals" invites, it makes every checker green, and it would have finished the job
+of erasing the design's palette from the repository.
+
+---
+
+### 120 — the shortcut hint was 3.89:1 in the shipped dark build · **fixed 2026-09-16** · found 2026-09-16
+
+`.hero-key`, the `⌘⇧M` beside **Start mirroring**. `--accent-on-fill` on `--accent` is **5.27:1**
+and clears AA; `opacity: 0.75` takes it to **3.89** at 11px/600, which needs 4.5.
+
+**Neither a token nor a pair is wrong, so no palette audit can reach it.** `check-contrast.mjs`
+reports the pair clean and is right to. The failure is composed at paint time out of two correct
+things and a third that is not a colour at all.
+
+Fixed at `opacity: 0.9` — 0.85 is the first passing step (4.51 / 4.81) and 0.9 leaves margin
+without the hint reading as loud as the label it sits beside.
+
+**Its sibling, same shape, light only:** the selected filter pill at **4.43:1**. Its ground is
+`--well`, not a card — the same two tokens read **5.04:1** on a card, and the first attempt at a fix
+solved against the card and would have shipped a value that still failed. Solved against the real
+ground by lowering the light `--accent-tint-selected` to 0.10; dark untouched, 4.73:1 on its own well.
+
+**The rule this leaves:** a palette checker proves the palette. Opacity, gradients, and *which*
+surface a thing actually lands on are outside it by construction, and the only instrument that sees
+them is one that reads what the browser painted.
+
+---
+
+### 121 — theme-following text on a scrim that does not follow the theme · **fixed 2026-09-16** · found 2026-09-16
+
+`--media-scrim` is the one colour in `tokens.css` that is deliberately identical in both themes,
+and the reason is written beside it: it sits over an arbitrary user photograph, not over a themed
+surface, so inverting it would make it unreadable in exactly the case it exists for.
+
+`.pane-mirror .mirror-overlay` and `float.css`'s `.float-reason` drew `--text-body` on it. In dark
+that is a light grey on a dark scrim and reads at 12:1. In light `--text-body` is near-black:
+
+```
+  1.67:1   .mirror-overlay   "Not mirroring."   rgb(90,93,107) on rgb(60,60,63)
+```
+
+**Every token here is correct, and the pair that fails is never declared anywhere.** It exists only
+because one rule sets a background and another sets a colour, and the cascade brings them together.
+That is the Muted pill's 2.23:1 one layer up — there a specificity collision, here a semantic
+mismatch — and it is the argument for the rendered-DOM sweep existing beside the token one.
+
+Fixed with `--text-on-media` and a new `--text-on-media-dim` for the hint weight; both are now
+explicit pairs in `check-contrast.mjs` (19.76:1 and 10.24:1), which they were not before, because
+nothing pairs a token with a surface until someone says they belong together.
+
+**Diagnosing it took one measurement and no reasoning.** The overlay's computed background is
+`rgba(7,7,10,0.78)` — `--media-scrim` — arriving from `.pane-mirror .mirror-overlay`, which outranks
+the `.mirror-overlay` rule 2,000 lines earlier that sets `--surface-tooltip`. Reasoning from the
+first rule gives 0.9-alpha white over black ≈ 225, and a confident wrong diagnosis.
 

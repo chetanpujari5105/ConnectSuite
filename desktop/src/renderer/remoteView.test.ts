@@ -2,6 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeElement, installFakeDocument, installFakeWindow, el } from './domDouble.testkit';
 import '../shared/appLabel';
+// The transport is glyphs now, so mounting the pane calls `iconSvg`. Same side-effecting
+// import the calls, sms and overview view tests already carry, and for the same reason: the
+// renderer is plain scripts sharing one global scope, and `node --test` has to be given it.
+import './icons';
 import './remote';
 
 /**
@@ -122,12 +126,41 @@ const byLabel = (pane: Pane, label: string) =>
 
 // ---- rule one: nothing playing is a normal state ------------------------------------------------
 
-test('an idle remote says so in a sentence and draws no transport', async () => {
+/**
+ * **This assertion changed shape on 2026-09-16 and the change is the interesting part.**
+ *
+ * It used to read `buttons(pane).length === 0` — "no transport over nothing to transport". The
+ * redesign draws the transport in the idle state, *disabled*, because the reference does and
+ * because it is what this repo already does everywhere else: a control the session cannot serve
+ * keeps its shape and is visibly dead, rather than vanishing and changing the card's height when
+ * somebody presses play on the phone.
+ *
+ * The rule that mattered was never "there are no buttons". It was **nothing can be dispatched into
+ * silence** — a remote that silently does nothing is the failure this project keeps ruling out — and
+ * a count of zero was one cheap way of guaranteeing it. So the guard moves to the rule itself, which
+ * is strictly stronger: the buttons may exist, and clicking every one of them must reach the bridge
+ * exactly zero times.
+ *
+ * Shown to fail: dropping the `idle ||` from `transport()` leaves three live buttons and this goes
+ * red on the first assertion; dropping the `if (button.disabled) return;` from the click handler
+ * leaves them drawn-disabled and dispatching, and it goes red on the last one. The old length check
+ * caught the first of those and could not see the second.
+ */
+test('an idle remote says so, and its transport cannot dispatch anything', async () => {
   const pane = mount();
   try {
     await pane.view.refresh();
     assert.equal(pane.note.textContent, 'Nothing is playing on the phone.');
-    assert.equal(buttons(pane).length, 0, 'no transport over nothing to transport');
+
+    const idle = buttons(pane);
+    assert.equal(idle.length, 3, 'the transport is drawn, so the card does not resize on play');
+    for (const button of idle) {
+      assert.equal(button.disabled, true, `${button.textContent} is live over nothing to control`);
+    }
+
+    for (const button of idle) button.click();
+    assert.deepEqual(pane.bridge.commands, [], 'an idle button reached the bridge');
+
     assert.equal(pane.notice.hidden, false || pane.notice.hidden, 'no notice is raised');
     assert.equal(pane.notice.textContent, '', 'and certainly no error text');
   } finally {
@@ -253,12 +286,38 @@ test('a package with no launcher label still gets a sentence a person can read',
 
 // ---- the volume reading carries its denominator --------------------------------------------------
 
+/**
+ * **The denominator rule, at its new home.** The reading moved from drawn text to the slider's
+ * accessible value on 2026-09-16, because the reference draws no number between the two speaker
+ * marks and drawing one would be a departure nobody asked for.
+ *
+ * That is a move rather than a weakening, and the distinction is worth stating because the same
+ * file refused an easier-looking move a day earlier — shortening "7 of 15" to "7/15" was cosmetic,
+ * and cosmetics do not get to move a guard. This is different in two ways. A **slider carries its
+ * own denominator**: the handle's position against the track is the fraction, which is the most
+ * direct expression of the rule this pane has ever had. And the value and the maximum are still
+ * both retrievable, in `aria-valuetext`, for the reader who cannot see the handle — which is the
+ * only reader the drawn number was ever serving.
+ *
+ * Both halves are asserted, because only the pair is the rule: the number is present *with* its
+ * maximum, and a bare number is not drawn anywhere in the card.
+ */
 test('the volume reads as a number out of its maximum, never on its own', () => {
   const pane = mount();
   try {
     pane.bridge.push(PLAYING);
-    const text = pane.body.textContent;
-    assert.ok(text.includes('7 of 15'), `"7" says nothing without the 15: ${JSON.stringify(text)}`);
+    const slider = pane.body
+      .queryAll('input')
+      .find((i) => i.className.includes('remote-vol'))!;
+    assert.equal(
+      slider.getAttribute('aria-valuetext'),
+      '7 of 15',
+      '"7" says nothing without the 15',
+    );
+    assert.ok(
+      !pane.body.textContent.includes('7 of 15'),
+      'the reading is the slider, not a drawn number — the reference has none',
+    );
   } finally {
     pane.restore();
   }

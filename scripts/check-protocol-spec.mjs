@@ -28,6 +28,37 @@
  * migration, this reports exactly the four `media.*` types — including the two that are mentioned
  * five times — and against the tree after it, none of them.
  *
+ * ### The walk runs both ways, and for a whole phase it ran one
+ *
+ * Everything above walks **`MessageType` → document**: for each constant on the wire, is it
+ * specified? That direction cannot see the opposite failure — **a namespace fully specified in the
+ * contract with no `MessageType` behind it at all**. The loop never visits it, because the loop is
+ * over the constants.
+ *
+ * `mic.*` is the worked example and it is the reason this half exists. `mic.start`, `mic.stop` and
+ * `mic.state` have three `###` sections in `docs/protocol.md`, a negotiated ack, a `silenced` state
+ * with its own section, an error table and a line in the inventory — and **no constant on either
+ * side**. The contract describes a feature neither end can send a single byte of, and the checker
+ * built to stop exactly this reported `0 unaccounted for` on every run.
+ *
+ * It is the same class as the `media.*` gap above with the arrow reversed, and it is worse in one
+ * respect: a type on the wire and not in the document is invisible to a *reader*, while a type in
+ * the document and not on the wire is invisible to a reader **and** reads as shipped. Somebody
+ * building the Mac half from the contract would find nothing to call.
+ *
+ * ### The discriminator for the reverse direction: a dot
+ *
+ * `subjectsIn` matches any backticked lowercase token that opens a heading or a paragraph, and this
+ * document opens paragraphs with **field** names constantly — `limit`, `path`, `kind`, `count`,
+ * `offset`. 94 subjects against 64 constants, and 31 of the 30-odd difference are fields.
+ *
+ * Every message type in this contract carries a dot except `hello`, `ack`, `error`, `ping` and
+ * `pong`, all five of which are constants already. A field name does not. So the reverse walk
+ * considers **dotted names only**, from two sources that must agree: the subjects map (the document
+ * specified it) and the inventory (the document claims it is on the wire). Measured against the
+ * tree as it stands, both return the same four names and three of them are `mic.*` — which is the
+ * control: a discriminator that returns the noise as well as the signal is not one.
+ *
  * ### Two allowlists, and they are not the same thing
  *
  * `SPECIFIED_UNDER` is for types whose home is a section named for the concept rather than for the
@@ -68,6 +99,28 @@ export const SPECIFIED_UNDER = {
 /** Debt: named on the wire, specified nowhere. Every entry carries why. */
 export const UNSPECIFIED = {
   'net.state': 'Unscheduled. No handler on either side; belongs to no capability.',
+};
+
+/**
+ * Specified in the contract, deliberately **not** on the wire yet, with the reason and the gate.
+ *
+ * Same rule as UNSPECIFIED and TWIN_EXEMPT, pointed the other way: an entry here that acquires a
+ * `MessageType` constant is a failure, so the list gets pruned rather than accumulating. Printed on
+ * every run — a contract section describing something no end can send is debt whether or not
+ * anybody meant it, and this is where it stays visible.
+ */
+export const SPECIFIED_NOT_ON_THE_WIRE = {
+  'apps.launch':
+    'Deliberately absent and guarded. The measurement landed on the row that forbids this name — a ' +
+    'backgrounded startActivity returns normally and brings nothing to the front — so the verb is ' +
+    '`apps.open.ask`. scripts/check-apps-verb.mjs keeps MessageType from acquiring APPS_LAUNCH; the ' +
+    'contract documents the absence and why.',
+  'mic.start':
+    'Microphone is specified and unbuilt on both sides. Gated on Phase 8 signing: the Mac half needs ' +
+    'a hardened-runtime microphone entitlement, and whether it is buildable at all is unknown until ' +
+    'the signing test is taken. Do not start it to clear this entry.',
+  'mic.stop': 'See `mic.start` — same feature, same gate.',
+  'mic.state': 'See `mic.start` — same feature, same gate.',
 };
 
 /**
@@ -138,6 +191,30 @@ export function subjectsIn(doc) {
 }
 
 /**
+ * Dotted names the document treats as message types, from both places it can say so.
+ *
+ * `subjects` is *specified here* — it opened a heading or a paragraph. `inventory` is *claimed to be
+ * on the wire* — it is backticked inside the `### Message types` list. They are separate findings
+ * because they are separate mistakes: a spec with no inventory entry is a section nobody will find,
+ * an inventory entry with no spec is the `media.*` gap, and **either one with no constant is a type
+ * no end can send**.
+ *
+ * Dotted only. See the header: this document opens paragraphs with field names, and every real type
+ * here carries a dot except the five that are constants already.
+ */
+export function wireNamesIn(doc) {
+  const dotted = /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)+$/;
+  const subjects = new Map();
+  for (const [name, line] of subjectsIn(doc)) {
+    if (dotted.test(name)) subjects.set(name, line);
+  }
+  const inventory = new Set(
+    [...doc.inventory.join('\n').matchAll(/`([a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)+)`/g)].map((m) => m[1]),
+  );
+  return { subjects, inventory };
+}
+
+/**
  * The two maps and the minimum parse are arguments so the fixtures can drive this without
  * depending on the state of the real wire. `minTypes` is the instrument's own bound and it is
  * reported: a parse that silently yields nothing would otherwise pass as "no findings", which is
@@ -152,6 +229,7 @@ export function check({
   specifiedUnder = SPECIFIED_UNDER,
   unspecified = UNSPECIFIED,
   notInInventory = NOT_IN_INVENTORY,
+  specifiedNotOnTheWire = SPECIFIED_NOT_ON_THE_WIRE,
 }) {
   const findings = [];
   const types = typesFrom(kotlin);
@@ -202,6 +280,47 @@ export function check({
     }
   }
 
+  /*
+   * The reverse walk: document → MessageType.
+   *
+   * The loop above is over `types`, so it structurally cannot see a namespace the contract
+   * specifies with nothing behind it. `mic.*` sat that way for a phase — three `###` sections, an
+   * inventory line, a negotiated ack, an error table, and no constant on either side — while this
+   * checker reported `0 unaccounted for` every run.
+   */
+  const onTheWire = new Set(types);
+  const { subjects: docSubjects, inventory: docInventory } = wireNamesIn(doc);
+  const orphans = new Set([...docSubjects.keys(), ...docInventory].filter((n) => !onTheWire.has(n)));
+  const specNotWire = [];
+
+  for (const name of [...orphans].sort()) {
+    if (specifiedNotOnTheWire[name]) {
+      specNotWire.push(name);
+      continue;
+    }
+    const where = docSubjects.has(name)
+      ? `specified at ${PROTOCOL_MD}:${docSubjects.get(name)}`
+      : `listed in the "### Message types" inventory of ${PROTOCOL_MD}`;
+    findings.push(
+      `${name} is ${where} and has no MessageType constant on either side — the contract describes a ` +
+        'message no end can send. Implement it, or record it in SPECIFIED_NOT_ON_THE_WIRE with the reason and the gate',
+    );
+  }
+
+  // An allowlist nobody prunes is how a guard stops guarding — the same rule the other two carry.
+  for (const name of Object.keys(specifiedNotOnTheWire)) {
+    if (onTheWire.has(name)) {
+      findings.push(
+        `${name} is on SPECIFIED_NOT_ON_THE_WIRE and is in fact in MessageType — remove it from the list`,
+      );
+    } else if (!orphans.has(name)) {
+      findings.push(
+        `${name} is on SPECIFIED_NOT_ON_THE_WIRE and ${PROTOCOL_MD} neither specifies nor lists it — ` +
+          'the entry is stale; remove it',
+      );
+    }
+  }
+
   // The desktop twin. `CLAUDE.md`: shared message types are defined once per side and must stay in
   // sync with docs/protocol.md — which had never been checked, and was wrong. All three `clip.*`
   // names were specified in the contract, implemented on the phone, and absent from protocol.ts,
@@ -229,7 +348,7 @@ export function check({
 
   const twinDebt = typescript === null ? [] : types.filter((t) => twinExempt[t]);
 
-  return { findings, specified, debt, types, twinDebt };
+  return { findings, specified, debt, types, twinDebt, specNotWire };
 }
 
 function main() {
@@ -253,10 +372,14 @@ function main() {
   console.log(
     `check-protocol-spec: ${specified.length} of ${types.length} message types specified in ${PROTOCOL_MD}, ` +
       `${debt.length} on the debt list, ${result.twinDebt.length} defined on the phone and not the Mac, ` +
+      `${result.specNotWire.length} specified and not on the wire, ` +
       `${findings.length} unaccounted for`,
   );
   for (const type of debt) console.log(`  debt: ${type} — ${UNSPECIFIED[type]}`);
   for (const type of result.twinDebt) console.log(`  mac-side gap: ${type} — ${TWIN_EXEMPT[type]}`);
+  for (const type of result.specNotWire) {
+    console.log(`  spec-only: ${type} — ${SPECIFIED_NOT_ON_THE_WIRE[type]}`);
+  }
   for (const finding of findings) console.log(`  FAIL: ${finding}`);
   process.exit(findings.length === 0 ? 0 : 1);
 }

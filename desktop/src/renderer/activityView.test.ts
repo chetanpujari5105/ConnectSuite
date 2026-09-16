@@ -188,8 +188,12 @@ test('the table draws a row per event, newest first, with a tinted dot each', as
       .queryAll('.activity-row')
       .flatMap((row) => row.queryAll('.activity-dot'));
     assert.equal(rowDots.length, 3, 'one dot per row');
+    // Reads `--tint`, not `background`. The dot stopped computing its own colour when light mode
+    // landed: the renderer hands over the category's token reference and the stylesheet applies
+    // `--tint-darken`, so a dot drawn on a white ground is readable. The assertion is unchanged —
+    // three categories still have to produce three distinct tints — only where it reads moved.
     assert.equal(
-      new Set(rowDots.map((d) => d.style.background)).size,
+      new Set(rowDots.map((d) => d.style.getPropertyValue('--tint'))).size,
       3,
       'three categories, three tints',
     );

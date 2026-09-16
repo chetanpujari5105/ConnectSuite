@@ -118,10 +118,36 @@ test('a smaller icon gets a heavier stroke, never a lighter one', () => {
   }
 });
 
-test('only the overflow mark is filled; everything else is a stroke', () => {
+/**
+ * The filled set, as **two named questions rather than one list**.
+ *
+ * This assertion used to be `deepEqual([...FILLED_ICONS], ['dots'])` — "only the overflow mark is
+ * filled". It went red on 2026-09-16 when the media transport arrived, and the tempting repair was
+ * to paste four names into the array, which is the counting guard CLAUDE.md warns about: a list
+ * that gets one longer every time tells you the total changed and never *which* member appeared.
+ *
+ * The two questions the one list was conflating:
+ *
+ *  - **`dots` is filled because it is a mark** — a row of three discs, which has no outline form.
+ *  - **The transport four are filled because they are shapes.** A triangle and two bars are drawn
+ *    solid by every system that draws them, SF Symbols included, and a stroked triangle reads as
+ *    the outline of a button rather than as the glyph on it.
+ *
+ * Anything that is neither is stroked, and that third assertion is the one doing the real work:
+ * it is what goes red when a fifth name is added for no stated reason.
+ */
+test('the filled set is the overflow mark and the transport, and nothing else', () => {
   // A filled icon rendered with a stroke is a ring, and a stroked icon rendered filled is a blob.
-  // The set is small enough to assert exactly rather than by rule.
-  assert.deepEqual([...FILLED_ICONS], ['dots']);
+  const transport = ['play', 'pause', 'skip-back', 'skip-forward'];
+
+  assert.ok(FILLED_ICONS.has('dots'), 'the overflow mark is a mark, and marks are filled');
+  for (const name of transport) {
+    assert.ok(FILLED_ICONS.has(name), `${name} is a transport shape and must be filled`);
+  }
+
+  const unexplained = [...FILLED_ICONS].filter((n) => n !== 'dots' && !transport.includes(n));
+  assert.deepEqual(unexplained, [], 'a filled icon that is neither a mark nor a transport shape');
+
   for (const name of FILLED_ICONS) {
     assert.ok(ICON_NAMES.includes(name), `${name} is marked filled but is not an icon`);
   }

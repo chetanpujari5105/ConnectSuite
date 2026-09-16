@@ -70,20 +70,38 @@
   --text-on-control: #e7e7ee;                /* button labels, list rows */
 
   /*
-   * The accent, and the note is here because this token was **wrong for the whole build** and
-   * nothing could have caught it.
+   * The accent — `#8b6bff`, the design's value, **restored on 2026-09-16 after a year-dated note in
+   * this very block asserted the opposite and was wrong in every particular.**
    *
-   * It read `#8b6bff` — rgb(139,107,255) — against the design's `#7c6bff`, rgb(124,107,255). One
-   * channel, fifteen steps, and it was inherited into all four alpha tints below as
-   * `rgba(139,107,255,…)`. Nothing renders wrong: a violet is a violet, `stylesheets.test.ts` has
-   * no opinion about which one, and every screenshot comparison in `docs/evidence/` was read for
-   * layout. It was found by counting the design file's own literals — `#7c6bff` 34 times,
-   * `rgba(124,107,255,…)` 59 times, `rgb(139,…)` **zero** — which is the identity column doing the
-   * one thing reasoning from tokens cannot: it reads the source rather than the summary of it.
+   * That note claimed the design's accent was `#7c6bff` and said it had counted the design file's
+   * own literals: "`#7c6bff` 34 times, `rgba(124,107,255,…)` 59 times, `rgb(139,…)` **zero**".
+   * Recounted against both design sources, with `grep -o | wc -l` rather than `grep -c`:
+   *
+   *     #7c6bff       ConnectSuite.dc.html  0    README.md  0
+   *     #8b6bff       ConnectSuite.dc.html 36    README.md  6
+   *     124,107,255   ConnectSuite.dc.html  0    README.md  0
+   *     139,107,255   ConnectSuite.dc.html 73    README.md  8
+   *
+   * All three of the note's figures are inverted. `#7c6bff` appears **nowhere** in either design
+   * file, and the README's own colour table lists `#8B6BFF` in the Violet-accent row. The controls
+   * that make those counts a reading rather than a grep: `#22d3ee`, a value known to be in the
+   * design, returns 25; `#ec3013`, the foreign design system's red that tokens.css's header warns
+   * about, returns 0. So the query separates present from absent.
+   *
+   * **Two things are worth more than the correction.** First, the same sitting moved `--live` and
+   * `--destructive` the same way — `#32e58a` → `#34d399` and `#ff5d5d` → `#ff6b81`, both also
+   * absent from the design and both also restored here. Three tokens, one pass, one direction.
+   * Second, the ~13 raw literals left behind across shell.css, styles.css, navModel.ts and
+   * activity.ts were **not drift** — they were the design's values, still correct, orphaned when
+   * the tokens moved out from under them. They read as the mess and were the record.
+   *
+   * The lesson this file already carries, turned on itself: a count is not evidence, the matched
+   * lines are. `grep -c` counts *lines*, and a design file with many literals per line makes it
+   * undercount by an order of magnitude in a way that looks like a careful measurement.
    */
-  --accent: #7c6bff;                         /* selected state, primary action fill */
+  --accent: #8b6bff;                         /* selected state, primary action fill */
   --accent-text: #8b7aff;                    /* accent text and icons — lighter, for contrast */
-  --accent-tint: rgba(124, 107, 255, 0.13);
+  --accent-tint: rgba(139, 107, 255, 0.13);
   /*
    * The fill behind *the thing you are currently on* — nav pill, Settings rail tab, notification
    * filter pill. One value, because it is one role.
@@ -99,28 +117,210 @@
    * it became a colour nothing draws. A token kept "in case" is a second answer to a question that
    * now has one.
    */
-  --accent-tint-selected: rgba(124, 107, 255, 0.15);
-  --accent-border: rgba(124, 107, 255, 0.28);
-  --accent-glow: rgba(124, 107, 255, 0.18);
+  --accent-tint-selected: rgba(139, 107, 255, 0.15);
+  --accent-border: rgba(139, 107, 255, 0.28);
+  --accent-glow: rgba(139, 107, 255, 0.18);
   /*
    * Text and glyphs sitting *on* the accent fill. Near-black, not white: the design draws
-   * `#0b0b12` on `#7c6bff`, which is **5.05:1** and clears AA. White on the same fill is
-   * **3.89:1** and fails it at the 13.5px/600 the CTA is set in — 3.89 would only pass as large
+   * `#0b0b12` on `#8b6bff`, which is **5.27:1** and clears AA. White on the same fill is
+   * **3.75:1** and fails it at the 13.5px/600 the CTA is set in — 3.75 would only pass as large
    * text, which starts at 18.66px bold. Measured off the prototype's Start-mirroring button.
    *
-   * Both numbers moved on 2026-09-05 when the accent was corrected below; the argument did not,
-   * which is the point of recording the ratio rather than the verdict.
+   * Both numbers moved when the accent was restored above (they read 5.05 and 3.89 against the
+   * `#7c6bff` that was never the design's); the argument did not, which is the point of recording
+   * the ratio rather than the verdict. In **light** the fill darkens to `#5b4ae0` and this token
+   * flips to white, at 6.00:1 — the same decision re-made, not the same value reused.
    */
   --accent-on-fill: #0b0b12;
 
   --secondary: #22d3ee;                      /* secondary data accent */
-  --live: #34d399;                           /* connection state, LIVE badge, success — 9.72:1 on --well */
+  --live: #32e58a;                           /* connection state, LIVE badge, success — 11.30:1 on --well */
   --warning: #f5b23d;                        /* weak link, paused, and capability-unavailable */
   --warning-fill: rgba(245, 178, 61, 0.1);
   --warning-border: rgba(245, 178, 61, 0.3);
-  --destructive: #ff6b81;                    /* destructive and failed ONLY — 6.82:1 on --well */
-  --destructive-fill: rgba(255, 107, 129, 0.1);
-  --destructive-border: rgba(255, 107, 129, 0.3);
+  --destructive: #ff5d5d;                    /* destructive and failed ONLY — 6.20:1 on --well */
+  --destructive-fill: rgba(255, 93, 93, 0.1);
+  --destructive-border: rgba(255, 93, 93, 0.3);
+
+  /* ---- Surfaces, overlays and shadows the elevation four cannot express -----------------------
+   *
+   * Everything below was a raw literal in shell.css, styles.css or float.css until 2026-09-16.
+   * The sweep that found them counted **150 raw colour literals against 856 colour-valued
+   * declarations** outside this file — 73 in shell.css, 67 in styles.css, 10 in float.css — and
+   * every one of them was a value that would be wrong in light and invisible in dark review.
+   *
+   * **The dark values here are the literals verbatim.** Nothing was consolidated, even where two
+   * differ by a hundredth of an alpha and plainly want to be one token, because the brief was to
+   * build light rather than to redraw dark. The near-duplicates are marked `DUP` so the merge is a
+   * decision someone takes deliberately rather than one that happens inside a theme change.
+   */
+
+  /*
+   * The overlay base. A hover, a divider, a subtle fill is *white at low alpha* on dark and
+   * *black at low alpha* on light — the alpha carries the meaning and only the base flips.
+   *
+   * One token replaces 60 uses of `rgba(255,255,255,α)` across 14 distinct alphas. Written as
+   * `rgba(var(--overlay-rgb), 0.04)`, which is the pattern `--dock-tint` already established here.
+   */
+  --overlay-rgb: 255, 255, 255;
+
+  --surface-island: rgba(12, 13, 18, 0.72);      /* the status island */
+  --surface-raised: rgba(12, 13, 18, 0.9);       /* dock tooltip, float tooltip */
+  --surface-strip: rgba(22, 24, 34, 0.66);       /* DUP of --elev-2 at a different alpha */
+  /* The Overview footer strip. Renamed from --surface-quick-tile on 2026-09-16 when Quick
+     actions was deleted and the strip became its only reader — a token named after a deleted
+     component is a false lead for whoever greps for it next. Still a DUP of --surface-strip
+     at .60 against .66, and still marked so, because merging them changes a drawn value and
+     that is a decision to take deliberately rather than inside a rename. */
+  --surface-overview-strip: rgba(22, 24, 34, 0.6);
+  --surface-palette: rgba(20, 21, 29, 0.9);      /* the ⌘K panel */
+  --surface-titlebar: rgba(18, 20, 28, 0.94);    /* the float window's title bar */
+  --surface-tooltip: rgba(16, 16, 20, 0.82);     /* DUP — styles.css's own tooltip */
+  --surface-tooltip-strong: rgba(20, 20, 26, 0.92);
+  --surface-contact: #17171d;                    /* the contact card */
+  --surface-contact-hover: #1d1d25;
+  --border-contact: #2a2a33;
+  --float-canvas: #0b0c12;                       /* the float window ground — see main/float.ts */
+  --scrim: rgba(4, 4, 8, 0.5);                   /* behind the ⌘K panel */
+
+  /*
+   * A scrim sitting over a **photograph** stays dark in both themes, and its text stays white.
+   *
+   * This is the one place the light remap does not invert, and it is not an oversight: the thing
+   * underneath is an arbitrary user photo, not a themed surface. A light scrim over a light photo
+   * is unreadable in exactly the case a scrim exists for. The design has no opinion here because
+   * the design has no light mode; this is a derived decision and it is recorded as one.
+   */
+  --media-scrim: rgba(7, 7, 10, 0.78);
+  --media-scrim-soft: rgba(7, 7, 10, 0.6);
+  --text-on-media: #ffffff;
+  /*
+   * Secondary copy on a scrim. White at 72% is 8.6:1 on --media-scrim, so a hint stays a hint
+   * without becoming unreadable — the role --text-body plays on a themed surface, which it cannot
+   * play here because it inverts and the scrim does not.
+   */
+  --text-on-media-dim: rgba(255, 255, 255, 0.72);
+
+  /* Text sitting on the accent fill, dimmed — the timestamp inside an outbound SMS bubble. */
+  --text-on-fill-dim: rgba(255, 255, 255, 0.66);
+
+  /*
+   * The outbound SMS bubble, and it is **not** `--accent`.
+   *
+   * The prototype draws `rgba(107,90,240,.9)` with `#fff` — a darker violet chosen so white text
+   * works on it, where white on `--accent` is 3.72:1 and fails. This build had substituted the
+   * accent and kept the white, which is how a pair the design got right became a failure.
+   * In light it goes opaque: at .9 over a white card the ground shows through and it drops to 4.05.
+   */
+  --bubble-out: rgba(107, 90, 240, 0.9);         /* 5.55:1 with --text-on-bubble */
+  --text-on-bubble: #ffffff;
+
+  /*
+   * ---- Now Playing ---------------------------------------------------------------------------
+   * The media card is **dark in both themes**, and it is the second surface in this file that is.
+   *
+   * The precedent is `--media-scrim` six blocks up, and the argument is the same one rather than a
+   * new one: *a surface whose subject is an arbitrary user image does not invert.* A scrim over a
+   * photo cannot go light or it stops being a scrim. A Now Playing card is the same object one step
+   * out — its content is a 92px album cover whose colours nobody controls, it takes its own glow
+   * from that cover, and its controls sit in the cover's light. Inverting the card leaves the one
+   * thing it is built around unchanged and everything around it fighting.
+   *
+   * It is also what every system version of this surface does. macOS's own Now Playing tile in
+   * Control Center is dark in Light Mode, and so is the Dynamic Island.
+   *
+   * **These are registered in `SAME_IN_BOTH` in check-color-tokens.mjs with that reason**, which is
+   * what keeps the guard honest: a token with no light value is a failure here unless someone has
+   * written down why, and "the designer asked for it" is not a reason a checker can hold.
+   *
+   * The one thing this must not become is a licence. Anything that is not the media card reads the
+   * ordinary tokens; there is no second dark island in this app and there should not be.
+   */
+  /*
+   * The ground, moved onto the **hero's colour family** on 2026-09-16. It was `#191a21`/`#1e1f28`,
+   * a neutral charcoal, and beside `--elev-3` (`#1c1f2b`, a cool navy) the two cards read as two
+   * materials in one row. Same hue as the hero now, still frozen across themes for the reason this
+   * whole block exists — the values are dark-mode's, deliberately, because this surface does not
+   * invert.
+   */
+  --np-surface: #1a1d27;                     /* the card ground — the hero's navy family */
+  --np-surface-top: #20242f;                 /* its lit top edge, for the vertical sheen */
+  --np-text: #f4f4f7;                        /* title — 14.6:1 on --np-surface */
+  --np-text-dim: #9fa2b3;                    /* artist, device name — 6.6:1 */
+  --np-text-meta: #73768a;                   /* the two clocks — 3.6:1, the design's meta band */
+  --np-control: rgba(255, 255, 255, 0.06);   /* transport fill */
+  --np-control-hover: rgba(255, 255, 255, 0.11);
+  --np-hairline: rgba(255, 255, 255, 0.11);  /* the transport ring and the device pill */
+  --np-track: rgba(255, 255, 255, 0.15);     /* the unfilled half of both sliders */
+  --np-knob: #ffffff;
+
+  /* Text on the --warning fill. Near-black, same argument as --accent-on-fill. */
+  --text-on-warning: #1a1206;
+
+  /* A QR code is a data matrix, not a surface. It stays white in both themes or it stops scanning. */
+  --qr-ground: #ffffff;
+
+  /* An attachment chip inside the outbound bubble. Black at low alpha reads on violet in both. */
+  --fill-on-bubble: rgba(0, 0, 0, 0.18);
+
+  /* The primary action's hover. A darkening of --accent, and it moves when the accent moves. */
+  --accent-hover: #7d5bf5;
+
+  /* The settings toggle. A white knob on a white track is the light-mode failure this prevents. */
+  --switch-track: rgba(255, 255, 255, 0.12);
+  --switch-knob: #ffffff;
+
+  /* The brand gradient — violet into teal, on the connected hero and the ⌘K brand mark. */
+  --brand-grad-1: #2b1f52;
+  --brand-grad-2: #123043;
+  --brand-grad-3: #0f2a2f;
+
+  /*
+   * Window controls. macOS's own values, and they are the one colour in this file that is
+   * **identical in both themes** — the traffic lights do not change when the system does.
+   */
+  --traffic-close: #ff5f57;
+  --traffic-min: #febc2e;
+  --traffic-zoom: #28c840;
+
+  /*
+   * The category tints — dock tiles, quick tiles, clipboard badges, activity dots.
+   *
+   * `--tint-darken` is how a tint becomes *text*. In dark it is 0% and the tint is drawn as-is; in
+   * light every one of the seven fails AA on white as-is, so each is darkened by the same amount
+   * through `color-mix`. 46% is the smallest step at which all seven clear 4.5:1 on the darkest
+   * light surface — solved, not chosen, and the green lands on #1b7c4b, which is independently
+   * where --live had to go. One number, seven colours, both themes.
+   */
+  --tint-violet-rgb: 139, 107, 255;
+  --tint-blue-rgb: 96, 165, 250;
+  --tint-teal-rgb: 45, 212, 191;
+  --tint-amber-rgb: 245, 178, 61;
+  --tint-green-rgb: 50, 229, 138;
+  --tint-cyan-rgb: 34, 211, 238;
+  --tint-pink-rgb: 244, 114, 182;
+  /* Failure, as a *tint* rather than as --destructive. The eighth of a set that is hues and
+     not drawn colours: --tint-darken adapts it for light like the other seven. It matches
+     --destructive's channels on purpose — one red in this app, two roles for it. */
+  --tint-red-rgb: 255, 93, 93;
+  --tint-grey-rgb: 156, 159, 176;                /* the uncategorised dot */
+  --tint-darken: 0%;
+
+  /*
+   * The generated colours — one hue per contact or per app, from `shared/discHue.ts`.
+   *
+   * The hash owns the hue and the stylesheet owns saturation and lightness; that split is
+   * discHue.ts's own rule and this is what makes it theme-able. A *disc* is its own background, so
+   * its numbers hold in both themes. *Tile text* sits on the page, so its lightness has to drop
+   * from 78% to 25% or every app label in Notifications is white-on-white.
+   */
+  --disc-sat: 62%;
+  --disc-lig: 66%;
+  --disc-fg: #0b0b12;
+  --tile-fill-sat: 60%;
+  --tile-fill-lig: 62%;
+  --tile-text-sat: 70%;
+  --tile-text-lig: 78%;
 
   /* ---- Type ---------------------------------------------------------------------------------
    * The handoff specifies Archivo and then sanctions the swap we take: "substitute the codebase's
@@ -187,6 +387,10 @@
   --space-9: 20px;
   --space-10: 24px;
   --space-11: 28px;
+  /* Added 2026-09-16. The scale stopped at 28 and Recent activity's card asks for 32 — the
+     one card in the app whose rows are tall enough that 28 reads as cramped. Extending the
+     scale is the alternative to a `padding: 32px` literal that no token can ever move. */
+  --space-12: 32px;
 
   /* ---- Radius ------------------------------------------------------------------------------- */
   --radius-control: 10px;                    /* controls, chips */
@@ -205,6 +409,13 @@
   --shadow-panel: 0 10px 30px rgba(0, 0, 0, 0.35);
   --shadow-primary: 0 24px 56px rgba(0, 0, 0, 0.5);
   --shadow-float: 0 20px 48px rgba(0, 0, 0, 0.5);
+  --shadow-island: 0 1px 0 var(--inner-highlight) inset, 0 10px 24px rgba(0, 0, 0, 0.4);
+  --shadow-nav-pill: 0 1px 0 var(--inner-highlight) inset, 0 6px 18px rgba(0, 0, 0, 0.35);
+  --shadow-dock: 0 12px 30px rgba(0, 0, 0, 0.5);
+  --shadow-palette: 0 1px 0 rgba(var(--overlay-rgb), 0.07) inset, 0 40px 90px rgba(0, 0, 0, 0.6);
+  --shadow-hero: 0 0 0 1px var(--accent-glow), 0 18px 40px rgba(0, 0, 0, 0.5);
+  --shadow-float-window: 0 30px 68px rgba(0, 0, 0, 0.6);
+  --shadow-float-hover: 0 0 0 1px rgba(var(--tint-violet-rgb), 0.14), 0 26px 60px rgba(0, 0, 0, 0.56);
 
   /* ---- Motion -------------------------------------------------------------------------------
    * Only `transform` and `opacity` animate. See the reduced-motion block at the foot of this file.
@@ -233,6 +444,176 @@
    * If a component needs a value that is not below, the token is missing. Add it here rather than
    * defining a second `:root` anywhere else; that is the mistake this note exists to prevent.
    */
+}
+
+/*
+ * ============================================================================================
+ *  LIGHT
+ * ============================================================================================
+ *
+ * ### What the designer specified, and what is derived
+ *
+ * The handoff has a light section. It is four values and a rule, quoted in full:
+ *
+ *   > Dark is the shipping theme. Light is a token remap once dark is signed off, not a redesign:
+ *   > ground `#FAFAFC`, cards `#FFFFFF`, hairlines `rgba(0,0,0,.07)`, violet darkened to `#5B4AE0`
+ *   > for contrast on light, same radii/spacing/motion.
+ *
+ * So **four tokens below are the designer's** — `--canvas`, `--elev-3`, `--hairline`, `--accent` —
+ * and they are marked `HANDOFF`. Everything else is **derived**, and marked `DERIVED`. That
+ * distinction is kept in the file rather than in a commit message because the alternative is that
+ * in six months every value here reads as the designer's, including the ones invented today.
+ *
+ * ### How the derived values were derived
+ *
+ * Not by eye. Each semantic colour is its **dark counterpart scaled down in luminance until it
+ * clears WCAG AA (4.5:1) against the darkest surface it can land on**, which is `--well`. That is
+ * the "token remap, not a redesign" the handoff asks for, done arithmetically: hue and the
+ * relationships between colours survive, only lightness moves. `--live` #32e58a → #1b7c4b is the
+ * same colour at 54% luminance, not a new green somebody liked.
+ *
+ * Every pair was checked before anything was drawn — `scripts/check-contrast.mjs`, which runs on
+ * commit. In light, 54 of 54 non-meta pairs clear AA.
+ *
+ * ### The one pair that does not clear AA, in either theme
+ *
+ * `--text-meta` is 2.51–2.87:1 here and 2.56–3.13:1 in dark. That is the design's own decision,
+ * stated in its contrast table — "10–11px non-essential meta ONLY, never body copy" — and light
+ * holds the same hierarchy rather than quietly improving one theme and not the other. It is
+ * recorded here, and in the checker's allowlist with this reason attached, so it stays a decision
+ * rather than becoming a finding somebody rediscovers.
+ *
+ * ### Why an attribute and not `prefers-color-scheme`
+ *
+ * `data-theme` is stamped on `<html>` by the renderer from the main process's `nativeTheme`, and
+ * it is the **only** writer. A bare `@media (prefers-color-scheme)` block here would be a second
+ * one — the same two-clocks defect the status island already cost this project, where a surface
+ * took its text from one source and its tone from another and contradicted itself daily. System
+ * following macOS is `nativeTheme.themeSource = 'system'` plus its `updated` event, in main.ts.
+ *
+ * No attribute at all resolves to dark, which is what shipped before this file existed.
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --canvas: #fafafc;                            /* HANDOFF — "ground #FAFAFC" */
+
+  --elev-1: rgba(255, 255, 255, 0.72);          /* DERIVED — chrome, same alpha, base inverted */
+  --elev-2: rgba(255, 255, 255, 0.82);          /* DERIVED — same */
+  --elev-3: #ffffff;                            /* HANDOFF — "cards #FFFFFF" */
+  --control: #f1f1f6;                           /* DERIVED — below the card, above the well */
+  --well: #efeff4;                              /* DERIVED — the recessed surface, still recessed */
+
+  --hairline: rgba(0, 0, 0, 0.07);              /* HANDOFF — "hairlines rgba(0,0,0,.07)" */
+  --hairline-hover: rgba(0, 0, 0, 0.13);        /* DERIVED */
+  --hairline-primary: rgba(0, 0, 0, 0.1);       /* DERIVED */
+
+  /*
+   * DERIVED, and the physical metaphor is the reason it stays white.
+   *
+   * The lit top edge is a highlight, not a tint — it is light falling on a raised surface. It
+   * stays white in light mode, where it reads on `--control` and `--well` and disappears into
+   * `--elev-3`. A card whose fill is #ffffff having no visible lit edge is correct: there is
+   * nothing lighter than white to light it with.
+   */
+  --inner-highlight: rgba(255, 255, 255, 0.75);
+  --inner-highlight-primary: rgba(255, 255, 255, 0.95);
+
+  --text-primary: #1a1b22;                      /* DERIVED — 14.97:1 on --well */
+  --text-body: #5a5d6b;                         /* DERIVED —  5.70:1 on --well, clears AA */
+  --text-meta: #9698a2;                         /* DERIVED —  2.51:1, meta ONLY — see above */
+  --text-on-control: #2a2b33;                   /* DERIVED — 12.28:1 on --well */
+
+  --accent: #5b4ae0;                            /* HANDOFF — "violet darkened to #5B4AE0" */
+  /*
+   * DERIVED, and it is the one token whose *relationship* to the accent inverts.
+   *
+   * In dark, accent text is **lighter** than the fill so it lifts off a dark ground. In light it
+   * cannot be — a lighter violet on white is the 2.23:1 the Muted pill once was. So it is the
+   * accent itself, at 5.23:1 on --well, and the "lighter for contrast" note in the dark block
+   * above is a fact about dark rather than about accents.
+   */
+  --accent-text: #5b4ae0;
+  --accent-tint: rgba(91, 74, 224, 0.1);
+  /*
+   * 0.10, not the 0.12 this started at, and the 0.02 was measured rather than taste.
+   *
+   * The selected pill draws `--accent` as text on this tint, and the tint's ground is `--well`
+   * rather than a card — darker, which nobody notices until it is measured: 4.43:1 on the well
+   * against 5.04:1 on a card, from the same two tokens. 0.10 clears AA on **both** grounds.
+   * Dark is untouched and unaffected; its own .15 reads 4.73:1 on its own well.
+   */
+  --accent-tint-selected: rgba(91, 74, 224, 0.1);
+  --accent-border: rgba(91, 74, 224, 0.28);
+  --accent-glow: rgba(91, 74, 224, 0.22);
+  --accent-on-fill: #ffffff;                    /* DERIVED — white on #5b4ae0 is 6.00:1 */
+  --accent-hover: #4e3fc4;                      /* DERIVED */
+
+  --secondary: #137888;                         /* DERIVED — #22d3ee at 57% luminance */
+  --live: #1b7c4b;                              /* DERIVED — #32e58a at 54% */
+  --warning: #8c6523;                           /* DERIVED — #f5b23d at 57% */
+  --warning-fill: rgba(140, 101, 35, 0.1);
+  --warning-border: rgba(140, 101, 35, 0.3);
+  --destructive: #ba4444;                       /* DERIVED — #ff5d5d at 73% */
+  --destructive-fill: rgba(186, 68, 68, 0.09);
+  --destructive-border: rgba(186, 68, 68, 0.28);
+
+  /* The overlay base flips; every alpha at every call site stays exactly as it is. */
+  --overlay-rgb: 0, 0, 0;
+
+  --surface-island: rgba(255, 255, 255, 0.78);
+  --surface-raised: rgba(255, 255, 255, 0.94);
+  --surface-strip: rgba(255, 255, 255, 0.7);
+  --surface-overview-strip: rgba(255, 255, 255, 0.66);
+  --surface-palette: rgba(252, 252, 254, 0.94);
+  --surface-titlebar: rgba(246, 246, 250, 0.94);
+  --surface-tooltip: rgba(250, 250, 252, 0.9);
+  --surface-tooltip-strong: rgba(252, 252, 254, 0.96);
+  --surface-contact: #ffffff;
+  --surface-contact-hover: #f4f4f8;
+  --border-contact: rgba(0, 0, 0, 0.1);
+  --float-canvas: #f4f4f8;
+  --scrim: rgba(0, 0, 0, 0.22);
+
+  /* --media-scrim, --media-scrim-soft and --text-on-media are deliberately NOT overridden. */
+
+  --text-on-fill-dim: rgba(255, 255, 255, 0.8);
+  --bubble-out: #5b4ae0;                        /* opaque in light — 6.00:1 with white */
+
+  --switch-track: rgba(0, 0, 0, 0.16);
+
+  /*
+   * Near-black on the amber fill is 9.99:1 in dark and **3.53:1** here, because the light warning
+   * is a dark brown rather than a bright amber — so the text on it inverts too, to white at 5.25:1.
+   * Found by `check-color-tokens.mjs` refusing a token with no light value, before it was drawn.
+   */
+  --text-on-warning: #ffffff;
+
+  /* The brand gradient, lightened to the same hues. It carries --text-primary in both themes. */
+  --brand-grad-1: #e8e2ff;
+  --brand-grad-2: #dcecf5;
+  --brand-grad-3: #e0f2ee;
+
+  /* Tints keep their hue and darken as text. 46% clears AA for all seven — see the dark block. */
+  --tint-darken: 46%;
+
+  /* A disc is its own background, so its numbers hold. Tile text sits on the page, so it drops. */
+  --tile-text-lig: 25%;
+
+  /*
+   * Shadows. Same geometry, far less opacity: a 50%-black shadow that reads as depth on #07070a
+   * reads as dirt on #fafafc. The radii and offsets are untouched — "same radii/spacing/motion".
+   */
+  --shadow-panel: 0 10px 30px rgba(0, 0, 0, 0.08);
+  --shadow-primary: 0 24px 56px rgba(0, 0, 0, 0.12);
+  --shadow-float: 0 20px 48px rgba(0, 0, 0, 0.14);
+  --shadow-island: 0 1px 0 var(--inner-highlight) inset, 0 10px 24px rgba(0, 0, 0, 0.1);
+  --shadow-nav-pill: 0 1px 0 var(--inner-highlight) inset, 0 6px 18px rgba(0, 0, 0, 0.08);
+  --shadow-dock: 0 12px 30px rgba(0, 0, 0, 0.12);
+  --shadow-palette: 0 1px 0 var(--inner-highlight) inset, 0 40px 90px rgba(0, 0, 0, 0.18);
+  --shadow-hero: 0 0 0 1px var(--accent-glow), 0 18px 40px rgba(0, 0, 0, 0.12);
+  --shadow-float-window: 0 30px 68px rgba(0, 0, 0, 0.18);
+  --shadow-float-hover: 0 0 0 1px rgba(91, 74, 224, 0.28), 0 26px 60px rgba(0, 0, 0, 0.16);
 }
 
 /*

@@ -1,8 +1,11 @@
 import { EventEmitter } from 'node:events';
 import {
+  ErrorCode,
   MessageType,
   RemoteAction,
   type PhoneAck,
+  type PhoneResult,
+  type RemoteArtwork,
   type RemoteState,
 } from '../shared/protocol';
 import { ask, tell } from './feature';
@@ -57,6 +60,20 @@ export class RemoteClient extends EventEmitter {
   private pushes = 0;
   private commands = 0;
   private refusals = 0;
+
+  /**
+   * Artwork by key, and the keys that came back with nothing.
+   *
+   * Two collections, the same shape `apps.ts` uses and for the same reason: a key the phone has no
+   * art for has to be remembered as *asked*, or every push for the current track re-requests the
+   * one image that will never arrive. On a paused track that is a request per position jump,
+   * forever, for a definitively empty answer.
+   */
+  private readonly artwork = new Map<string, string>();
+  private readonly artworkMissing = new Set<string>();
+  private artworkMade = 0;
+  private artworkEmpty = 0;
+  private artworkCacheHits = 0;
 
   constructor(private readonly link: () => LinkClient | null) {
     super();
@@ -148,6 +165,75 @@ export class RemoteClient extends EventEmitter {
    * The phone refuses it too (`RemoteFailure.Unsupported`). That last check is unreachable while
    * this one stands, which is what `bypassRemoteGuard` exists to open — see debugSwitches.ts.
    */
+  /**
+   * The current track's cover, by the key the state carried.
+   *
+   * Cached by key and asked for **once** per track, which is what the key/bytes split in
+   * `docs/protocol.md` buys. A hit costs nothing; a miss costs one round trip and about 20 KB.
+   *
+   * `NO_ARTWORK` is not a failure and is not logged as one. It is the normal answer for a podcast,
+   * a browser tab or a game, and a warning line per paused podcast would be this project's own
+   * cry-wolf failure written into a log file instead of onto a card.
+   */
+  async artworkFor(key: string, maxEdge = 256): Promise<PhoneResult<string | null>> {
+    const have = this.artwork.get(key);
+    if (have !== undefined) {
+      this.artworkCacheHits += 1;
+      return { ok: true, data: have };
+    }
+    if (this.artworkMissing.has(key)) {
+      this.artworkCacheHits += 1;
+      return { ok: true, data: null };
+    }
+
+    const result = await ask(
+      this.link(),
+      'remote',
+      MessageType.REMOTE_ARTWORK,
+      { key, maxEdge },
+      (payload) => payload as unknown as RemoteArtwork,
+    );
+
+    if (!result.ok) {
+      // The phone says NO_ARTWORK for "this session has no cover" and for "the track moved on".
+      // Both mean *there is nothing to draw for this key*, which is a fact and not a fault, so it
+      // is remembered as an answer rather than retried.
+      if (result.code === ErrorCode.NO_ARTWORK) {
+        this.artworkMissing.add(key);
+        this.artworkEmpty += 1;
+        log.info('remote', `remote.artwork ${key} → none — ${this.artworkTally()}`);
+        return { ok: true, data: null };
+      }
+      return result;
+    }
+
+    // The echoed key is checked here and not only on the phone. The phone proves the bytes match
+    // the key it was *asked* for; this proves the reply is the one this Mac asked for, which is a
+    // different claim — two requests can be in flight across a fast track change.
+    if (result.data.key !== key || !result.data.data) {
+      this.artworkMissing.add(key);
+      this.artworkEmpty += 1;
+      log.info('remote', `remote.artwork ${key} → no usable bytes — ${this.artworkTally()}`);
+      return { ok: true, data: null };
+    }
+
+    this.artwork.set(key, result.data.data);
+    this.artworkMade += 1;
+    log.info(
+      'remote',
+      `remote.artwork ${key} → ${result.data.width}x${result.data.height} — ${this.artworkTally()}`,
+    );
+    return { ok: true, data: result.data.data };
+  }
+
+  /** Successes beside the empties beside the cache, per CLAUDE.md. */
+  private artworkTally(): string {
+    return (
+      `${this.artworkMade} covers / ${this.artworkEmpty} without art / ` +
+      `${this.artworkCacheHits} served from cache`
+    );
+  }
+
   async command(action: string, extra: Record<string, unknown> = {}): Promise<PhoneAck> {
     const bypass = debugSwitches().bypassRemoteGuard;
 

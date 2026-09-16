@@ -29,9 +29,28 @@ interface RendererStatus {
   lastError?: string;
   nextRetryInMs?: number;
   paired: boolean;
+  /** P5. When the armed pairing token stops being accepted — absolute epoch ms, absent if none. */
+  pairingExpiresAt?: number;
 }
 
 interface ConnectBridge {
+  /**
+   * Appearance. `appearance` is the preference; `theme` is what it resolves to at this instant.
+   * Optional on the bridge because `float.ts` shares this declaration and both windows get it —
+   * but an older preload in a stale `dist/` would not, and a renderer that throws on startup is a
+   * blank window. The call sites use `?.` for the same reason.
+   */
+  appearanceGet?: () => Promise<{
+    ok: boolean;
+    data: { appearance: 'system' | 'light' | 'dark'; theme: 'light' | 'dark' };
+  }>;
+  appearanceSet?: (value: 'system' | 'light' | 'dark') => Promise<{
+    ok: boolean;
+    data: { appearance: 'system' | 'light' | 'dark'; theme: 'light' | 'dark' };
+  }>;
+  onAppearance?: (
+    callback: (state: { appearance: 'system' | 'light' | 'dark'; theme: 'light' | 'dark' }) => void,
+  ) => void;
   /** Told to the main process on every route change — see shell.ts and the native notifier. */
   routeChanged(screen: string): void;
   onPairRejected(
@@ -413,42 +432,90 @@ function render(status: RendererStatus | null): void {
     : 'Controlling the phone needs ConnectSuite Input turned on under Accessibility on the ' +
       'phone. Mirroring works without it; clicking does not.';
 
+  /*
+   * The capability chips, and the three things that changed about them on 2026-09-16.
+   *
+   * **A glyph, not only a hue (O14).** A chip's visible state was a green fill against a grey one
+   * and nothing else — which is defect 26 again, one layer out: 26 fixed it for a screen reader by
+   * adding the hidden sentence, and left a *sighted* reader who cannot separate green from grey
+   * with no signal at all. `check` and `lock` are the shape half. Both names are already inside
+   * `navModel.iconNamesUsedByTheShell()`, which is the enumeration that keeps an icon from shipping
+   * as an empty ring.
+   *
+   * **A readable name (O13).** `capabilityLabel` turns the wire id into a word; the id moves into
+   * the tooltip rather than disappearing.
+   *
+   * **The reason is standing copy, not a hover (O15).** See `capsReasons` below.
+   */
   const caps = el('caps');
   caps.replaceChildren();
+  const unavailable: { label: string; reason: string }[] = [];
   for (const capability of ALL_CAPABILITIES) {
     const chip = document.createElement('span');
     const on = status?.capabilities?.includes(capability) ?? false;
     chip.className = `cap${on ? ' on' : ''}`;
+    const reason = reasons.get(capability);
+    const label = capabilityLabel(capability);
 
-    // The name is the visible text. The *state* used to be the background colour and nothing
-    // else, which made this pane unreadable to anyone not seeing green-on-grey — a screen reader
-    // announced twelve capability names and no indication which were on (defect 26). The state,
-    // and the phone's reason for it (defect 24), go in a visually hidden span so they are part of
-    // the accessible name rather than a parallel channel that can drift from it.
-    chip.append(document.createTextNode(capability));
+    const glyph = iconSvg(on ? 'check' : 'lock', 11);
+    glyph.setAttribute('class', 'cap-glyph');
+    glyph.setAttribute('aria-hidden', 'true');
+    chip.append(glyph, document.createTextNode(label));
+
+    // The *state* used to be the background colour and nothing else, which made this pane
+    // unreadable to anyone not seeing green-on-grey — a screen reader announced twelve capability
+    // names and no indication which were on (defect 26). The state, and the phone's reason for it
+    // (defect 24), go in a visually hidden span so they are part of the accessible name rather
+    // than a parallel channel that can drift from it.
     const spoken = document.createElement('span');
     spoken.className = 'visually-hidden';
-    const reason = reasons.get(capability);
-    // chipLabel is the whole sentence; the visible text is already the name, so only the tail
-    // goes in the hidden span. One function so the test and the page cannot disagree.
-    spoken.textContent = chipLabel(capability, on, reason).slice(capability.length);
+    // `chipTail`, never `chipLabel(...).slice(label.length)`. The slice was arithmetic on another
+    // function's output and it was correct only while the visible text *was* the wire id.
+    spoken.textContent = chipTail(on, reason);
     chip.append(spoken);
 
-    // Sighted users get the same sentence on hover. Not a replacement for the above: a title is
-    // not reliably reachable by keyboard or touch, which is why the hidden text is the primary.
-    if (!on && reason) chip.title = `${capability}: ${reason}`;
+    // The handle, kept reachable rather than kept on screen — the package-id rule. Present on every
+    // chip, not only the dimmed ones, because the id is a fact about the chip and not about its
+    // state.
+    chip.title = `${label} — capability id: ${capability}`;
 
+    if (!on && reason) unavailable.push({ label, reason });
     caps.append(chip);
+  }
+
+  /*
+   * **The reasons, as visible standing copy under the chips.**
+   *
+   * The card used to say *"Hover a dimmed one for the phone's own reason"*, which put the one piece
+   * of information on this card that a person actually needs — *why can't I do X* — behind a
+   * gesture a keyboard cannot make and a touch device does not have. A `title` is not a fix for
+   * that either: defect 118 measured it and `title` **never fires on keyboard focus**.
+   *
+   * So there is no reveal at all. Every dimmed capability's reason is drawn, in the phone's own
+   * words, in the order the chips are in. It is the same shape as the Mirror pane's Advanced block
+   * and the Files rail's `grantHint` — this project's standing answer to *"explain a state"* is
+   * copy that arrived before the question, not a tooltip.
+   *
+   * It is empty and `hidden` when nothing is dimmed, which is the common case: a list of reasons
+   * for an all-green phone would be a heading over nothing.
+   */
+  const capsReasons = el('caps-reasons');
+  capsReasons.replaceChildren();
+  capsReasons.hidden = unavailable.length === 0;
+  for (const { label, reason } of unavailable) {
+    const line = document.createElement('p');
+    line.className = 'cap-reason';
+    const name = document.createElement('span');
+    name.className = 'cap-reason-name';
+    name.textContent = label;
+    line.append(name, document.createTextNode(` — ${reason}`));
+    capsReasons.append(line);
   }
 
   // Quick actions and the footer strip both follow the link, so they are redrawn from the same
   // status the rest of this function reads rather than from a second subscription that could be a
   // frame behind it.
-  overview.setStatus(
-    status?.phase === 'connected',
-    status?.deviceName ?? null,
-    shell.unread,
-  );
+  overview.setStatus(status?.phase === 'connected');
 }
 
 function describe(status: RendererStatus): string {
@@ -469,13 +536,53 @@ function describe(status: RendererStatus): string {
   }
 }
 
+/** The code on screen, for the P5 tick. Held because the tick has no other source for it. */
+let shownCode: { name: string; host: string } | null = null;
+
 async function showQr(rotate = false): Promise<void> {
   const { payload, dataUrl } = await connect.pairingQr(rotate);
   el<HTMLImageElement>('qr').src = dataUrl;
-  el('qr-note').textContent = `${payload.name} at ${payload.host} — valid while this code is on screen.`;
+  shownCode = { name: payload.name, host: payload.host };
+  await drawCodeState();
   // A new code invalidates a sighting of the old one. The main process replaces its watch for the
   // same reason; this is the screen's half of it.
   el('pair-scanned').hidden = true;
+}
+
+/**
+ * P5 — the line under the QR, recomputed against the clock.
+ *
+ * ### Why it ticks rather than being written once
+ *
+ * The state that matters is **stale**, and nothing sends an event when a token expires — expiry is
+ * an instant passing, not something happening. Written once at `showQr` the line would be correct
+ * for five minutes and then wrong forever, which is the failure it exists to fix rather than a
+ * smaller version of it.
+ *
+ * ### Why it re-reads `status()` rather than trusting the last one
+ *
+ * `pairingExpiresAt` moves when the renderer re-arms, and `status` events fire on link *transitions*
+ * — an armed code sitting untouched produces none. A tick against a remembered expiry would count a
+ * live code down to zero and draw *"expired"* over one this Mac would accept.
+ */
+async function drawCodeState(): Promise<void> {
+  const status = await connect.status();
+  const state = pairingCodeState(status?.pairingExpiresAt, Date.now(), shownCode?.name, shownCode?.host);
+  const note = el('qr-note');
+  note.textContent = state.text;
+  note.dataset.codeState = state.kind;
+  /*
+   * Emphasis, not existence: the button is always there, because a screen whose only way forward
+   * appears conditionally is one a user can get stuck on.
+   *
+   * **`primary-action`, and the first version of this line said `button-primary`** — a class that
+   * exists in no stylesheet. `tsc` was clean, the write test asserted `classList.contains(...)` and
+   * passed, and the button drew exactly as it had before. It was caught in a screenshot, which is
+   * where the empty-ring icons were caught too: a name that resolves to nothing is invisible to
+   * every layer that checks names against each other rather than against the thing they name.
+   * `stylesheets.test.ts` now asserts this one resolves.
+   */
+  el('new-qr').classList.toggle('primary-action', state.urgent);
 }
 
 /**
@@ -492,6 +599,35 @@ async function showQr(rotate = false): Promise<void> {
  * "nobody has scanned this code" over a phone that scanned it forty seconds ago would be a
  * confident wrong answer in the one place a stranger has no way to check it.
  */
+/*
+ * ---- Appearance: the ONE writer of `data-theme` ------------------------------------------------
+ *
+ * The main process resolves the preference (see `shared/appearance.ts` for why the rule lives
+ * there) and pushes `{ appearance, theme }`. This stamps the resolved theme on `<html>` and does
+ * nothing else — no media query, no second decision, no local cache of what the theme "should" be.
+ *
+ * That is deliberate and it is the status-island lesson (defect 96): a surface with one job gets
+ * one writer. A `@media (prefers-color-scheme)` block in tokens.css would be a second writer on the
+ * same element, deciding from a different source on a different clock, and the two would disagree
+ * exactly when the user has chosen Light on a dark Mac — the case the feature exists for.
+ *
+ * The listener is registered **before** the first `appearanceGet()` so an OS flip during startup
+ * cannot land between the read and the subscribe and be lost.
+ */
+function stampTheme(theme: 'light' | 'dark'): void {
+  document.documentElement.setAttribute('data-theme', theme);
+}
+
+connect.onAppearance?.((state) => {
+  stampTheme(state.theme);
+  shell.refreshSettings();
+});
+
+void (async () => {
+  const result = await connect.appearanceGet?.();
+  if (result?.ok) stampTheme(result.data.theme);
+})();
+
 connect.onPairScanned((payload) => {
   const line = el('pair-scanned');
   line.hidden = false;
@@ -1160,8 +1296,6 @@ const overview = new OverviewView(
     activityEvents: () => connect.activityEvents(),
     disconnect: () => connect.disconnect(),
   },
-  el('quick-grid'),
-  el('quick-count'),
   el('recent-list'),
   el('overview-strip'),
   el('overview-strip-line'),
@@ -1170,12 +1304,42 @@ const overview = new OverviewView(
   el('ring-row'),
 );
 
-// O4. Both a fetch and a subscription: the fetch covers a window that opened after the phone
-// reported, which for storage is a minute of "waiting" and for a stationary battery can be an hour.
-void connect.deviceVitals().then((v) => overview.setVitals(v.battery, v.storage));
-connect.onDeviceVitals((v) => overview.setVitals(v.battery, v.storage));
+/*
+ * O4, and the chrome's three battery slots. Both a fetch and a subscription: the fetch covers a
+ * window that opened after the phone reported, which for storage is a minute of "waiting" and for a
+ * stationary battery can be an hour.
+ *
+ * **One arrival, two surfaces, one call site.** The device card, the connected-device strip and the
+ * hero were `hidden` for a phase on a comment reading *"nothing subscribes to it"* — written when
+ * that was true and left behind when `VitalsFeature` landed. They are fed from the same statement as
+ * the ring rather than from a second subscription, so the two cannot drift apart the way the comment
+ * drifted from the code.
+ */
+let lastBattery: { level: number | null; charging: boolean; capacityUnknown: boolean } | null = null;
+/** When it arrived on this Mac. `battery.state` carries no timestamp — see `batteryDiagnostic`. */
+let lastBatteryAtMs: number | null = null;
+const onVitals = (v: { battery: Record<string, unknown> | null; storage: Record<string, unknown> | null }): void => {
+  overview.setVitals(v.battery, v.storage);
+  // The battery still reaches the shell: the sidebar device card and the connected-device strip
+  // draw it. The hero no longer does — departure O11, 2026-09-16 — so `shell.setStorage` is gone
+  // with the row it fed, and storage now has exactly one surface, the O4 ring.
+  shell.setBattery(v.battery as Parameters<typeof shell.setBattery>[0]);
+  if (v.battery) {
+    lastBattery = v.battery as typeof lastBattery;
+    lastBatteryAtMs = Date.now();
+  }
+};
+void connect.deviceVitals().then(onVitals);
+connect.onDeviceVitals(onVitals);
 el('recent-all').addEventListener('click', () => shell.route('activity'));
+el('recent-all').append(iconSvg('chevron', 14));
 el('overview-shield').replaceChildren(iconSvg('shield', 16));
+// The hero's two actions take their glyphs here rather than in the markup, for the reason every
+// other icon in this app does: `index.html` cannot call `iconSvg`, and a hand-inlined <svg> in the
+// page is a copy of geometry that `icons.test.ts` cannot see. `prepend` so the label stays the
+// element's first text and the accessible name is unchanged.
+el('hero-mirror').prepend(iconSvg('mirror', 15));
+el('hero-info').prepend(iconSvg('info', 15));
 // The card is redrawn when the screen is opened rather than on a timer: it is five rows off a
 // store the main process already holds, and a dashboard that silently refetches every second is a
 // cost with nothing behind it.
@@ -1243,20 +1407,75 @@ shell.addSettingsPane(
       ),
     );
 
+    /*
+     * Appearance, and it is a real control now.
+     *
+     * It used to be three `<span>`s with Dark hardcoded on — drawn that way because the handoff
+     * says *"Dark is the flagship theme. Light arrives next."* Light has arrived, so the statement
+     * of intent becomes a segmented button group: `<button>`s, because they are pressed, and
+     * `role=radiogroup` with `aria-checked`, because three mutually exclusive options are a radio
+     * group and a screen reader that hears three buttons learns nothing about which is active.
+     *
+     * The value is read back from the main process's reply rather than assumed from the click —
+     * the same reason the Start-on-login toggle flips back when macOS disagrees. `System` is the
+     * case that makes this matter: clicking it sets no theme at all, it hands the decision to the
+     * OS, and what comes back is whatever the Mac says right now.
+     */
     const appearance = document.createElement('span');
     appearance.className = 'segmented';
-    for (const [name, on] of [['System', false], ['Light', false], ['Dark', true]] as [string, boolean][]) {
-      const seg = document.createElement('span');
-      seg.className = on ? 'segment is-on' : 'segment';
-      seg.textContent = name;
+    appearance.setAttribute('role', 'radiogroup');
+    appearance.setAttribute('aria-label', 'Appearance');
+    const segments = new Map<string, HTMLButtonElement>();
+    for (const [value, label] of [
+      ['system', 'System'],
+      ['light', 'Light'],
+      ['dark', 'Dark'],
+    ] as ['system' | 'light' | 'dark', string][]) {
+      const seg = document.createElement('button');
+      seg.type = 'button';
+      seg.className = 'segment';
+      seg.textContent = label;
+      seg.setAttribute('role', 'radio');
+      seg.setAttribute('aria-checked', 'false');
+      seg.addEventListener('click', () => {
+        void (async () => {
+          const result = await connect.appearanceSet?.(value);
+          if (result?.ok) markAppearance(result.data.appearance, result.data.theme);
+        })();
+      });
+      segments.set(value, seg);
       appearance.appendChild(seg);
     }
-    // Drawn exactly as the handoff draws it — System and Light greyed, Dark selected — and this is
-    // the one place in the app where a greyed control is right, because the design itself says
-    // *"Dark is the flagship theme. Light arrives next."* It is a statement of intent by the
-    // designer, not a promise made by this build.
+    const appearanceNote = document.createElement('span');
+
+    /*
+     * The note under the control, and it says what `System` *resolved to* rather than only what was
+     * chosen. "System" alone is the half-answer this project keeps writing down: it names the
+     * preference and leaves the user to guess what is on screen, which is the one thing they can
+     * already see. Naming both is what makes the row readable on a Mac that flipped at sunset.
+     */
+    function markAppearance(chosen: string, theme: 'light' | 'dark'): void {
+      for (const [value, seg] of segments) {
+        const on = value === chosen;
+        seg.classList.toggle('is-on', on);
+        seg.setAttribute('aria-checked', on ? 'true' : 'false');
+      }
+      appearanceNote.textContent =
+        chosen === 'system'
+          ? `Following macOS, which is ${theme} right now.`
+          : `Always ${theme}, whatever macOS is set to.`;
+    }
+
+    void (async () => {
+      const result = await connect.appearanceGet?.();
+      if (result?.ok) markAppearance(result.data.appearance, result.data.theme);
+    })();
+
+    const appearanceControl = document.createElement('span');
+    appearanceControl.className = 'appearance-control';
+    appearanceControl.append(appearance, appearanceNote);
     body.appendChild(
-      settingRow('Appearance', 'Dark is the only theme this build has. Light is the design’s next one.', appearance),
+      settingRow('Appearance', 'Light and dark, or follow the Mac.', appearanceControl),
     );
 
     body.appendChild(
@@ -1719,10 +1938,18 @@ setInterval(() => {
         : `${decoded.framesDecoded} frames · ${decoded.fps ?? '—'} fps · first frame ${DIAGNOSTICS.ttff ?? '—'}`,
     );
     setDiag('reconnects', 'not counted on this build');
-    // The reading the device card and the strip have no room to explain. `battery.state` is in
-    // docs/protocol.md and nothing on this Mac subscribes to it, so the honest value is the
-    // sentence rather than a number.
-    setDiag('battery', 'not subscribed on this build (battery.state is unhandled)');
+    /*
+     * The reading the device card and the strip have no room to explain, and the one line in the
+     * app that must never be blank about the battery — Advanced is where somebody looks *because*
+     * the chrome is showing nothing.
+     *
+     * It read `not subscribed on this build (battery.state is unhandled)` for a phase. That was
+     * true of the build it was written for and false of every build after `VitalsFeature` landed,
+     * which is the shape `CLAUDE.md` calls a true sentence about the wrong one of two things: the
+     * claim describes a real state of the world, just not this one, so nobody reading it against
+     * the code ever finds it wrong.
+     */
+    setDiag('battery', batteryDiagnostic(lastBattery, lastBatteryAtMs, Date.now()));
   })();
 }, 1_000);
 
@@ -1776,6 +2003,24 @@ el('hero-mirror').addEventListener('click', () => {
 });
 el('hero-info').addEventListener('click', () => shell.route('settings', 'connection'));
 
+/*
+ * **The hero has no overflow menu — removed 2026-09-16, departure O16.**
+ *
+ * The handoff draws exactly one `•••` on this window, in the page toolbar
+ * (`[ Search ⌘K ] [ Device settings ] [ Floating window ] [ ••• ]`), and the Overview device card
+ * has none — its only controls are *Start mirroring* and *Device info*. A second overflow 100px
+ * below the first put two menu triggers in one viewport with no rule telling a person which one
+ * holds what.
+ *
+ * **Both of its items already had another home, and that was checked before the button came out
+ * rather than asserted after.** Disconnect is the footer strip's own button on this very pane and
+ * a row in Settings → Connection; *Forget this phone* is the `danger` button in Settings →
+ * Connection, under the Trusted device row. Nothing lost a route.
+ *
+ * What went with it: `#hero-more`, `#hero-menu`, `.hero-more`, `.hero-menu`, `.hero-menu-item` and
+ * the outside-click and Escape dismissal this file had to carry for it.
+ */
+
 shell.onCommand('mirror.start', () => {
   shell.route('mirror');
   void mirror.start(selectedQuality());
@@ -1806,4 +2051,15 @@ void (async () => {
   await refreshLogs();
   setInterval(() => void refreshLogs(), 15_000);
   setInterval(() => void keepPairingArmed(), 60_000);
+  /*
+   * P5's tick. One second, and only while the pairing screen is the one on show — a timer that
+   * redraws a hidden pane is work nobody can see, and `status()` is an IPC round trip.
+   *
+   * It runs *beside* the 60 s re-arm rather than instead of it. The re-arm is what keeps a code
+   * alive for a user walking to their phone; this is what tells them when the re-arm has stopped,
+   * which is the case the re-arm cannot cover and the only one where the number means anything.
+   */
+  setInterval(() => {
+    if (shell.screen === 'pairing') void drawCodeState();
+  }, 1_000);
 })();

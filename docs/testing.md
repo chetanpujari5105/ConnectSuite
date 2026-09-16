@@ -18718,3 +18718,1796 @@ runtime confirmation was already owed before this change. The stimulus is now ch
 **launch the app twice and grep for `RE-claimed`** — the old code logged nothing on the second start
 because the guard skipped it, so the line's presence is the difference. The phone was off the bus
 when this landed.
+
+---
+
+### Defect 109 — the chrome's three battery slots, hidden on a comment that had gone false
+
+**Phase 7 Slice 48 · 2026-09-15 · SM-S938B on the bus, link up.**
+
+**What was wrong.** `shell.ts` carried three unconditional lines:
+
+```ts
+$('device-battery').hidden = true;        // "…and **nothing subscribes to it**, so there is
+$('strip-battery').hidden = true;         //  no number to show."
+$('strip-divider-battery').hidden = true;
+```
+
+The comment was accurate on the day it was written and false from the day `VitalsFeature` landed.
+At the moment of the fix, `battery.state` was: specified in `docs/protocol.md`; **off**
+`check-protocol-spec.mjs`'s debt list (which carried `net.state` alone); pushed by
+`VitalsFeature.kt:150`; held and forwarded at `main/main.ts:979`; and **drawn on Overview's O4 ring
+with a three-state vocabulary**. So the same fact was on screen forty pixels from three blank slots.
+
+Settings → Advanced compounded it: `not subscribed on this build (battery.state is unhandled)`.
+
+**Why nothing caught it.** Nothing in the build can compare a comment to a handler. Worse, the
+audit that should have caught it agreed with the comment — `docs/phase-7-state.md` §2's S4/S5 row
+read *"Still correct… Unchanged — do not 'fix' this"*, which is the first of the five optimistic
+claims corrected in that file's banner. **A stale comment and a stale document citing each other is
+a closed loop with no reading in it.**
+
+**The fix, and the two decisions that are not obvious.**
+
+- **A slot is removed, never dashed.** The original comment's *argument* was right and only its
+  input was wrong: a lone `—` between "Connected" and a divider is a glyph with no label. So
+  `batterySlot` returns `show: false` for both absences, and the fact lives where there is room for
+  a sentence — the O4 ring's caption, and Advanced.
+- **A percentage is withdrawn when the link is not live.** A battery drawn while disconnected is a
+  claim about *now* from a reading that may be hours old. That is defect 96 on a new surface, and it
+  is why `batterySlot` takes `live` as an argument rather than reading only the state.
+
+One home for the rule: `shared/deviceVitals.ts`, beside the ring that makes the same decision.
+
+**The readings.** Through `scripts/probe.mjs`, control **12** nav rows / **20** diagnostics rows:
+
+| Surface | Reading |
+|---|---|
+| device card, strip, divider | `hidden=false`, `46%` on all three |
+| hero fact grid | five facts, the fifth `Battery 46% · Charging` |
+| O4 ring, same instant | `46%`, `Charging` — agreeing |
+| Settings → Advanced | `battery: 47% · charging · received 6s ago` |
+| control on the same row set | `reconnects: not counted on this build` |
+
+Screenshots: `docs/evidence/phase-7-ui-batch-2026-09-15/01-battery-overview.png`,
+`02-advanced-battery.png`.
+
+**The tests, and what the last one is for.** 17 rule tests in `shared/deviceVitals.test.ts`, 6 write
+tests in `renderer/shellBattery.test.ts` driven through the **real** `ShellView` on the DOM double.
+The decisive assertion is `slots === batterySlot(state, live)` across **21** state × link
+combinations, rather than *"the slot is not empty"* — the latter is satisfied by a hard-coded
+string, which is exactly mutation M3.
+
+**Red-first, three mutations, and one instrument fault worth recording.**
+
+| | Mutation | Result |
+|---|---|---|
+| M1 | the verbatim defect — `hidden = true` on all three | **4 red** |
+| M2 | `batterySlot(this.battery, true)` — draw regardless of link state | **3 red** |
+| M3 | `textContent = '79%'` — a hard-coded percentage | **2 red** |
+
+**M3's first run reported `pass 6` and had mutated nothing** — a mis-escaped replacement string
+meant the file was never edited, and the run measured an unmutated tree. It was caught by adding
+`assert old in s` to the mutation script, which is the general rule one level down: *a mutation run
+that does not verify its own mutation applied is the stale-artifact fault wearing a green*.
+
+---
+
+### Defect 110 — the spec checker could not see a namespace with no `MessageType` behind it
+
+**Phase 7 Slice 49 · 2026-09-15 · static, no device needed.**
+
+**What was wrong.** Every loop in `check-protocol-spec.mjs` is `for (const type of types)`, walking
+**`MessageType` → document**. The opposite failure — a namespace the contract fully specifies with
+no constant on either side — is not merely unreported by that walk, it is **never visited**.
+
+`mic.*` is the worked example, and **it had not been sitting there for a phase** — the spec is uncommitted working-tree work, so the gap was exercised the day it was written. That is the direction this is meant to travel; the `media.*` gap, which is this one with the arrow reversed, took a phase to notice. What is longstanding is the **checker**, which has only ever walked one way:
+
+| | |
+|---|---|
+| in `docs/protocol.md` | `### mic.start`, `### mic.stop`, `### mic.state`, a negotiated ack, a `silenced` state with its own section, an error table, and a line in the inventory |
+| in `MessageType` (phone) | **nothing** |
+| in `protocol.ts` (Mac) | **nothing** |
+| what the checker printed | `63 of 64 … 0 unaccounted for` |
+
+It is the `media.*` gap with the arrow reversed, and worse in one respect: a type on the wire and
+absent from the document is invisible to a *reader*, while a type in the document and absent from
+the wire **reads as shipped**. Somebody building the Mac half from the contract finds nothing to call.
+
+**The reading, taken before the fix — the guard failing against `mic.*` as it stands:**
+
+```
+$ node -e "... check({ specifiedNotOnTheWire: {} })"     # the guard as it stood
+findings: 4
+  FAIL: apps.launch is listed in the "### Message types" inventory of docs/protocol.md and has no
+        MessageType constant on either side — …
+  FAIL: mic.start is specified at docs/protocol.md:1952 and has no MessageType constant on either side — …
+  FAIL: mic.state is specified at docs/protocol.md:2022 and has no MessageType constant on either side — …
+  FAIL: mic.stop  is specified at docs/protocol.md:2014 and has no MessageType constant on either side — …
+```
+
+**The discriminator is a dot, and a weaker one is worse than none.** `subjectsIn` matches every
+backticked token opening a paragraph, and this contract opens paragraphs with field names
+constantly — **94 subjects against 64 constants**, the difference being `limit`, `path`, `kind`,
+`count`, `offset` and two dozen more. Every real message type here carries a dot except `hello`,
+`ack`, `error`, `ping` and `pong`, all five of which are constants already. So the reverse walk
+considers dotted names only, from **two sources that must agree**: the subjects map (*specified
+here*) and the inventory (*claimed to be on the wire*), reported separately because they are
+separate mistakes. Both return the same four names; three are `mic.*`. That agreement is the control.
+
+**`mic.*` is recorded as debt, not implemented.** `SPECIFIED_NOT_ON_THE_WIRE` carries a reason and a
+gate per entry, printed on every run: microphone is gated on Phase 8 signing, because the Mac half
+needs a hardened-runtime microphone entitlement and whether it is buildable at all is unknown until
+the signing test is taken. `apps.launch` is the other entry and points at `check-apps-verb.mjs`.
+
+**The guard and the `mic.*` spec have to land in the same commit, and the guard says so itself.**
+Run against the *committed* `docs/protocol.md` — which has no `mic.*` — the checker returns three
+findings, one per entry: *"is on SPECIFIED_NOT_ON_THE_WIRE and docs/protocol.md neither specifies nor
+lists it — the entry is stale; remove it"*. That is the second pruning direction working, and it was
+observed rather than reasoned about: the two halves of this change are coupled and the coupling is
+enforced rather than remembered.
+
+The allowlist is pruned in **both** directions, which the other two lists are not: an entry that
+acquires a constant fails, **and** so does one the contract no longer mentions. An allowlist nobody
+prunes is how a guard stops guarding, and a stale entry is the half people forget.
+
+**28 fixtures, each with its opposite**, including:
+
+- the verbatim case against the **real tree** with the allowlist emptied — exactly the four names;
+- a control contract carrying the constants — **no findings**, so the rule is not simply always red;
+- the dot discriminator returning `mic.start` alone from `limit` / `path` / `mic.start`;
+- both pruning directions, red;
+- an inventory-only entry (no spec, no constant), caught by the other source.
+
+
+---
+
+### Phase 7 Slice 50 — P5, the pairing code's own state
+
+**2026-09-15 · SM-S938B on the bus, link up, Mac paired.**
+
+**What the design asks for and why it was not built.** `ConnectSuite.dc.html` draws a ticking
+countdown. It would have been decoration, measurably: the renderer re-arms the token every **60 s**
+while the pairing screen is up and `armPairing` pushes `expiresAt` out by the full five minutes, so
+a clock wired to that number counts 5:00 → ~4:00, jumps back, and **can never reach zero while
+anyone is looking at it.**
+
+Simulated rather than argued — `pairingCode.test.ts` walks ten minutes of one-second ticks with the
+re-arm firing and every state is `fresh`; **the control is the same walk with the re-arm stopped**,
+which reaches `fresh`, `expiring` and `stale`. So the assertion is about the re-arm and not about a
+rule that can only return one answer.
+
+**What was built instead, and it is a state the app could not previously draw.** The re-arm is a
+timer in a renderer. It stops when the Mac sleeps and does not catch up. So the case that actually
+happens is a pairing screen left open through a lid closing, showing **a picture of a token this Mac
+will refuse**, under a line reading *"valid while this code is on screen"* — false by then.
+
+Four states, `shared/pairingCode.ts`: `none`, `fresh`, `expiring` (≤ 60 s), `stale`.
+
+**The readings, through `scripts/probe.mjs`:**
+
+| | State | Reading |
+|---|---|---|
+| before any arm | `none` | line empty, no claim made — control 3 elements present |
+| after a real arm via the screen's own button | `fresh` | `Chetans-MacBook-Pro at 10.187.150.88 — valid while this code is on screen.` — control 5830 (QR src length) |
+| **after 180 s of real clock** | **`stale`** | `This code has expired. Show a fresh code to pair.`, `urgent: true` — **37 polls, `stopped=settled`** |
+
+The expiry is genuine: `armPairing` minted it in the main process, it crossed the status IPC, and
+the Mac being **paired** means `keepPairingArmed` returns early, so nothing re-armed it.
+
+**What is unproven, and the stimulus.** The **write** is proven above — the app's own
+`drawCodeState` was called and the DOM changed. The **tick's schedule** is not: it fires only while
+`shell.screen === 'pairing'`, which a paired Mac never routes to. Proving it needs an unpaired Mac
+left on the pairing screen for five minutes, which costs the S25's pairing (defect 17). Recorded as
+unproven rather than claimed.
+
+**A dead CSS class, caught in a screenshot and by nothing else.** The emphasis toggle's first
+version was `classList.toggle('button-primary', …)` and **no stylesheet defines `.button-primary`**
+— the app's class is `.primary-action`. `tsc` was clean; the write test asserted
+`classList.contains('button-primary')` and **passed**, because that is a claim about the string and
+not about the pixel. It was visible only in `04-p5-stale.png`.
+
+This is the empty-ring icon defect in CSS, and it now has the same kind of guard: a test in
+`stylesheets.test.ts` scans `renderer.ts` for `classList.toggle('…')` and asserts each name resolves
+to a rule in one of the three sheets, with a control in both directions. **Red-first against the
+verbatim case**: restoring `button-primary` turns it red and names the class and the file.
+
+
+---
+
+## Phase 7 Slice 53 — seven bugs from real use, in the mirror, input and floating-window surfaces (2026-09-15)
+
+Reported together from real usage. They were diagnosed against the code and against readings taken
+from hardware **before** anything was changed, because five of the seven have a plausible-sounding
+cause that is not the real one, and one of them turned out not to describe this build at all.
+
+### What the readings came off, and what else is in there
+
+Three sources, named because a measurement has two halves and only the first ever gets checked:
+
+| | |
+|---|---|
+| the **phone's** `files/logs/link.log` (+`.1`) | 5,971 lines, 488 `Gesture landed` lines. Control: `[input]` appears 1,153 times, so the query can see the tag |
+| the **Mac's** `connectsuite.log` (+`.1`) | 138 `input.scroll delivered` lines carrying the `dy` that actually went, and every refusal with its reason |
+| the running app's DOM | through `scripts/probe.mjs` only — every reading below carries its control |
+
+The phone's and the Mac's logs are the user's **own historical sessions**. Nothing in this slice
+provoked them, which is what makes them a measurement of the defect rather than of a stimulus.
+
+---
+
+### Defects 111 and 112 — scroll: a quarter were taps, and the rest outran the phone
+
+#### The two rates, measured
+
+The phone's log records every gesture with its stroke duration. `input.scroll` is the 100 ms stroke
+(`InputFeature.DEFAULT_SCROLL_MS`), which is 215 of the 488 gestures logged.
+
+```
+29 back-to-back scroll bursts (>=3 gestures, gaps < 400ms)
+  longest: 22 gestures over 2.62s →  8.38/s consumed; median gap 124ms
+  across all bursts: n=181, median gap 117ms → 8.55 scroll gestures/s
+```
+
+Against `WHEEL_WINDOW_MS = 60` on the Mac, which is **16.7/s**. Production was roughly twice
+consumption for as long as a finger kept moving, and the phone serialises `dispatchGesture` behind a
+`Mutex`, so the difference queued. It did not queue quietly — 14 lines in the Mac's own log read
+*"That scroll waited NNNms behind other input"*, with waits of 403–486 ms against `STALE_MS = 400`.
+
+**14 of 152 scroll intents — 8.4% — never reached the phone**, and each put a sentence on the mirror
+canvas in the middle of a flick. That is the whole of *"trackpad janky, mouse smooth"*: a mouse emits
+a few discrete notches and never fills an 8-deep queue; a trackpad emits a continuous stream, plus
+macOS's momentum tail after the fingers lift, and fills it every time.
+
+**The report's proposed fix — "drop momentum-phase events entirely" — cannot be implemented as
+written, and does not need to be.** A DOM `WheelEvent` in Chromium carries no `phase` or
+`momentumPhase`; there is nothing to filter on. Under backpressure a momentum tail folds into the sum
+that is already waiting instead of each delta becoming a gesture, which is the same outcome by a
+mechanism that also survives a device nobody has thought of.
+
+#### The one that was not about rate at all
+
+The Mac's log carries the `dy` of every scroll it sent. Converting to display pixels
+(1080→1440, ×1.3333) and comparing against this handset's touch slop (8 dp at 600 dpi = **30 px**,
+read from `wm density`, not assumed):
+
+```
+stroke travel in display px:  min 2.7   p10 14.7   median 77.3   p90 408.0   max 1230.7
+below the 30px touch slop:    35 of 138  (25.4%)
+long enough to be a scroll:  103 of 138          ← the denominator, on the same line
+```
+
+Android's `View` layer does not begin dragging until a stroke has travelled one touch slop. **A
+stroke under it is a press and a release in one place, which is a tap** — on a YouTube feed, the
+thumbnail under the pointer. Two things follow and the second was invisible:
+
+- **One in four scrolls was a click.** `dy = -17` capture pixels — one isolated mouse-wheel notch —
+  is 22.7 display px, and it appears six times in the log seconds apart with nothing around it.
+- **Every other scroll under-travelled by one slop.** The median asked for 77 px of content movement
+  and got 47. Nobody noticed, because scrolling slightly less than you meant to feels like scrolling.
+
+The clusters are the giveaway for the trackpad: `-11, -5, -2, -19` at 120 ms spacing is the momentum
+decay of one flick, and its tail is sub-slop every time.
+
+#### The fixes, and where each had to go
+
+| | |
+|---|---|
+| **phone**, defect 111 | `InputGeometry.withSlopHeadroom` extends the stroke by one slop **in front of** the request, so the finger passes through the point the Mac aimed at instead of overshooting past it. Authoritative: no Mac can bypass it, and an isolated wheel notch cannot be made larger by any amount of coalescing |
+| **Mac**, defect 112 | `renderer/wheelPump.ts` — one `input.scroll` in flight, everything arriving meanwhile summed into the next. The clock is the phone's reply, so the two rates cannot disagree |
+
+**A longer window was rejected rather than tuned.** It is the 263 ms sampling window with a bigger
+number in it: rarer without being impossible, and unable to say whether a run that behaved did so
+because the rate was right or because the flick was short.
+
+#### After, on hardware, with an identical stimulus
+
+`scripts/scroll-rate-probe.mjs`. 40 wheel events, one every 15 ms — the rate the real bursts show —
+at `deltaY = 120`. **The magnitude is a safety choice**: the phone had a home screen full of app
+icons in front of it (checked first, through the app's own Capture path, and looked at), and a small
+delta is a stroke under the slop, which the *unfixed* phone turns into a tap on an icon.
+
+```
+stimulus      40 wheel events over 600ms
+gestures sent 7
+stale-dropped 0        ← was 14 of 152 in real use
+send gaps     median 118ms  min 113  max 121   ← the phone's own 117ms
+wall clock    2405ms to quiescence, stopped=settled, reportable=true
+```
+
+Seven gestures for forty events, none discarded, sent at exactly the rate the phone runs them.
+
+**What was not measured, and why it is not a zero.** The like-for-like *before* arm was attempted:
+the pre-fix `onWheel` was rebuilt and launched, and restarting the Mac ended the mirror session —
+Android will not show the capture prompt to a backgrounded app, so `mirror.start` came back with
+*"Open ConnectSuite on the phone"*. The probe reported `gestures sent 0 … stopped=deadline,
+reportable=false` rather than a number. **That is a missing reading, not a negative one**, and it is
+recorded as such; the before is the 14-of-152 from real use. To take it: start mirroring from the
+phone, revert the `WheelPump` wiring in `mirror.ts`, `npm run build`, relaunch, then
+`node scripts/scroll-rate-probe.mjs 40`.
+
+**The phone half of 111 was unproven on hardware when this section was written, and is not any
+more — see Slice 53a below, which is the reading it names as owed.** The SM-S938B had left the USB
+bus mid-session (`adb devices` empty, the pin refusing rather than guessing — the guard working), so
+the APK carrying `withSlopHeadroom` was built, unit-tested and **not installed**. It came back the
+same day. `scripts/scroll-slop-probe.mjs` sweeps the six magnitudes the real log contains, reads the
+`dy` that actually went from the Mac's log, and uses the phone's **resumed activity** as the
+discriminator, because a tap on a Settings row opens `SubSettings` and a scroll cannot — and it now
+refuses to sweep at all until a deliberate tap has been shown to move that activity.
+
+**Result, both arms: 4 of 4 sub-slop magnitudes navigated on the shipped build, 0 of 4 on the fixed
+one.**
+
+---
+
+### Defects 113, 114, 115, 116, 117 — the floating window
+
+#### Before, on the running window
+
+`scripts/probe.mjs` against the float's own page, with the float open on a live session:
+
+| question | reading |
+|---|---|
+| where are Back / Home / Recents? | `dockTop 840, frameH 909` — **92% of the way down**, the bottom, **not the top** |
+| are they visible? | `visibleAtRest: "0"` — `opacity: 0` until the window is hovered |
+| does the window know the screen shape? | `{"width":1080,"height":2340,"geometryId":5}` — **it did**, because the phone had rotated while it was open |
+
+**The first row does not match the report**, which said *"at the top"*. It is recorded rather than
+quietly fixed: the rest of the sentence — *"where other app windows can cover them"*, *"never behind
+unrelated content"* — is about a control nobody can see, and that is real and is three separate
+faults (below).
+
+**The third row is why a reading taken at the wrong moment proves nothing.** `capture` was populated
+*at that instant* because the phone had turned during the session. The defect is about a float
+opened into a session with no rotation since, which is the ordinary case and the one the field's
+single writer could not serve.
+
+#### What each one turned out to be
+
+- **113 — the second monitor.** `WorkArea` was `{ width, height }` while every coordinate in
+  `floatGeometry.ts` is a *global* screen point. A second display starts at x = 1512, or at -1920 to
+  the left; `clampX` compared a global x against a width as though every display began at (0,0).
+  `moveTo` re-clamps on every pointer move, so the window snapped back **once per event**. The
+  report's three candidate causes were all wrong in an instructive way: `movable` was never false,
+  no listener reasserted bounds, and the display was **always chosen correctly** by
+  `getDisplayMatching` — its origin was thrown away one line later.
+- **114 — rotation.** `RATIO = 19.5 / 9` at module scope, read by four functions. The report's
+  diagnosis was right; the repair it proposed was not — keeping the width and re-deriving the height
+  turns a 300 × 684 window into 300 × 157, which *is* "renders tiny".
+- **115 — the controls.** Not at the top. Invisible at rest, over the picture (`float.css` had
+  already warned this would be *"a silent dead zone"* once the canvas took input, which it did on
+  2026-09-14), and at `bottom: 36px`, which on a ratio-locked window is Android's own gesture bar.
+- **116 — the "has not said what shape" message.** `capture` was written from `mirror.rotate`
+  **alone**. `mirror.state` carries the same three fields and this window already received it and
+  read only the message. The data was there and nothing read it.
+- **117 — no way back.** `app.on('activate')` was `if (getAllWindows().length === 0) createWindow()`,
+  correct for a one-window app and a no-op the moment there are two. Nothing was hidden; the main
+  window was simply behind, with the tray's half-answer (no `restore`, no `focus`) as the only route.
+
+#### After, on hardware
+
+**Rotation, both directions, from a real turn of the phone** — the log line carries both ratios and
+the resulting window, so it is a measurement rather than a claim:
+
+```
+14:16:34 [video] Phone rotated to 270°: capture 2340x1080 (screen #10)
+14:16:34 [float] capture turned to 2340x1080 (screen #10) — float aspect 2.167 → 0.462, window 970x465
+14:16:48 [video] Phone rotated to 0°:   capture 1080x2340 (screen #11)
+14:16:48 [float] capture turned to 1080x2340 (screen #11) — float aspect 0.462 → 2.167, window 467x968
+```
+
+Picture area 431 × 934 = 402,554 in portrait and 934 × 431 = 402,554 in landscape — **identical** —
+and the turn back lands on exactly the window it left.
+
+**The rest, read through `scripts/float-open-probe.mjs` with no pointer in the window:**
+
+| question | reading | was |
+|---|---|---|
+| `capture` on a float that has seen no rotation | `{"width":1080,"height":2340,"geometryId":11}` | `null` |
+| the float's own open line | `capture=1080x2340 #9 (adopted)` | the field did not exist in the answer |
+| overlay | `(hidden — a picture is live)` | — |
+| controls on the strip, **counted as elements** | `5` | 4, invisible |
+| `opacity` at rest | `1` | `0` |
+| rail width / overlaps the picture | `36` / `false` | n/a / `true` |
+| every button fully on screen | `true` | — |
+| picture ratio vs the phone's announced ratio | `2.172` vs `2.167`, agree | — |
+| the way back to the main window | `"Show the ConnectSuite window without closing this one"`, enabled, real glyph | did not exist |
+
+**Defect 113 verified live**: `float-open` answered `bounds.x = 2144` — a window sitting outside the
+primary display, which is the report's own check.
+
+**Defect 117 fired from a real press**, twice:
+
+```
+[window] main window revealed (float rail): existed, visible — float stays open
+```
+
+#### The guards
+
+| | |
+|---|---|
+| `floatGeometry.test.ts` | 27 tests (was 14). Red-first against **4** mutations: the origin-less clamps (3 red), the ratio as a constant (3), keeping the width through a turn (1), the rail as an overlay (7) |
+| `wheelPump.test.ts` | 8 tests. Red-first against 3: replace-instead-of-sum (4 red), no backpressure (2), a tally with no denominator (1) |
+| `floatRail.test.ts` | 6 tests. Every icon name resolves through the real `iconSvg` — the empty-ring defect, which this window would otherwise have reintroduced |
+| `InputGeometryTest` | 26 tests (was 19). Red-first against 3: no headroom (4 red), headroom on the end (3), shortfall always zero (1) |
+
+Mac suite **740** (was 713). Phone suite **442**, unchanged in count; `InputGeometryTest` went 19 → 26.
+
+#### Three things this slice found that nothing was looking for
+
+- **A width cap that no portrait window could ever hit.** `clampWidth` bounded width by the available
+  *height* only. That is sufficient for a 19.5:9 window, which is always narrower than the display
+  long before it is shorter than it, and wrong at once in landscape: a 500 pt-wide work area produced
+  a **985 pt** window. Found by a test written for defect 114, not by review.
+- **A test of mine that could not fail.** The first version of `wheelPump.test.ts`'s burst assertion
+  compared an expression with itself. It passed, which is what a tautology does. It is replaced with
+  *pixels delivered plus pixels still owed equals pixels asked for*, and recorded here rather than
+  silently corrected, because this file carries four varieties of the same fault and the newest one
+  was written by the person adding the section about them.
+- **`Phase 7 Slice 50` is used twice in this file**, by two different runs both dated 2026-09-14 —
+  one a `##` heading at line 18533 and one a `###` heading at line 18865. Nothing checks slice
+  numbers, so it went unnoticed; this slice is numbered 53 to avoid a third. Recorded rather than
+  renumbered, because both are already cited by number from `docs/defects.md`.
+
+---
+
+## Phase 7 Slice 53a — defect 111 on hardware, both arms (2026-09-15, later the same day)
+
+The slice above recorded defect 111's phone half as **built, unit-tested and not installed**, because
+the SM-S938B left the USB bus mid-sitting. It came back. This is the reading that was owed, and it is
+an **A/B on one handset with one stimulus**, not an after on its own.
+
+### Getting there, and three things worth keeping
+
+- **`adb devices` was empty and the phone was plugged in.** The first read was taken three seconds
+  after a cold `adb start-server`, which the guard's own banner warns produces an empty list. It was
+  a **missing reading, not a negative one**, and polling turned it into `RZCY12330DT device` inside
+  two seconds. Nearly written up as "the phone is not connected".
+- **The USB query I reached for first held no reading at all.** `system_profiler SPUSBDataType`
+  returned **zero lines** on this Mac — not "no Samsung", *nothing* — so the control (does this query
+  return a known positive?) failed and the reading did not exist. `ioreg -p IOUSB` returns 157 lines
+  and named the device by serial.
+- **And a reading that contradicted itself.** A first pass over `ioreg -r -c IOUSBHostInterface`
+  reported no ADB interface — it was listing interfaces from *every* USB device, and my attempt to
+  scope it to the phone found **zero interface nodes**, which is a parse that held nothing. The
+  phone's own subtree in the IOService plane shows `+-o adb <class AppleUSBHostDeviceUserClient>`
+  plainly. Two readings, one fact; the answer came from a third query.
+
+### The install
+
+`adb install -r` through `scripts/adb-pinned.sh`, which is what `CLAUDE.md` records and what this run
+re-confirms: **28 of 28 `granted=true` preserved**, both secure-settings bindings intact, and the
+phone left **serverless** — `am start -n …/MainActivity` by name, then `scripts/link-up.sh`, three
+OKs. Never a grep for `Listening on`.
+
+The APK was checked before and after the install by the string only the new code introduces, reported
+as the **matched line** rather than a count, with both controls:
+
+```
+px slop headroom =                     ← the literal from InputFeature.onScroll
+negative control: 0   positive control: 181
+```
+
+### Two new tools this needed, and why they are shaped as they are
+
+- **`scripts/tap-named.sh`** — tap a node by resource-id *and* exact text, resolved from a fresh
+  `uiautomator dump`, **dumped twice** and refusing if the bounds moved between the two reads. Never
+  a remembered pixel. It refuses out loud with what it saw, because the next person debugging a
+  silent no-op deletes a gate that will not explain itself.
+- **`scripts/accept-capture.sh`** — the same, minus the second confirming dump, and the reason is a
+  measurement: three gated taps cost six `uiautomator` round trips and **overran the phone's own
+  30-second consent timeout twice**. An instrument whose cost changes the thing it is measuring is
+  the page-cap fault in a different costume. The blast radius it trades against is one system dialog
+  with three controls, every one matched by id *and* exact text.
+
+Samsung's flow also has a trap worth recording: the mode spinner defaults to **"Share one app"**, so
+a straight Next lands on an app chooser and captures the wrong surface. The script selects
+**"Share entire screen"** by its exact text before confirming.
+
+### The control, and why the run refuses without it
+
+The sweep's finding is an **absence** — *none of these navigated*. This query has a specific way of
+being silently broken: if `topResumedActivity` does not move when Android really does navigate, every
+row reads `scroll` on any build, fixed or not, and the probe returns a clean confident nothing.
+
+So the probe now dispatches **one real tap through the product's own path** first and requires the
+activity to change, or it exits without sweeping:
+
+```
+control: .homepage.SettingsHomepageActivity → .SubSettings
+         — a navigation is VISIBLE to this query
+```
+
+Settings is the surface for the same reason it is the surface for the sweep: a tap on a row opens
+`SubSettings` and BACK undoes it, where the same tap on a home screen launches somebody's app.
+
+### The two arms
+
+Identical stimulus, identical surface, identical probe, identical control. The six magnitudes are the
+ones the Mac's real log contains; none is invented. The **before** arm is the shipped build with
+`withSlopHeadroom`'s two `travelAvailable` calls replaced by `0f` — mutation M1, the defect verbatim,
+with the instrumentation left in place so only the mechanism differs.
+
+| deltaY | dy (capture px) | requested (display px) | under 30 px slop? | **before** | **after** |
+|---|---|---|---|---|---|
+| 3 | −2 | 2.7 | yes | **TAP** → `SubSettings` | scroll |
+| 10 | −8 | 10.7 | yes | **TAP** → `SubSettings` | scroll |
+| 17 | −14 | 18.7 | yes | **TAP** → `SubSettings` | scroll |
+| 22 | −18 | 24.0 | yes | **TAP** → `SubSettings` | scroll |
+| 40 | −32 | 42.7 | no | scroll | scroll |
+| 120 | −96 | 128.0 | no | scroll | scroll |
+
+```
+                                     before      after
+sub-slop requests in the sweep        4 of 6      4 of 6
+  of those, Android NAVIGATED         4 of 4      0 of 4
+  of those, Android scrolled          0 of 4      4 of 4     ← the denominator
+whole sweep                    2 scrolled /  6 scrolled /
+                               4 navigated   0 navigated
+phone execution line read           0 of 6      6 of 6
+dispatched travel exceeded request    n/a       6 of 6
+```
+
+**`deltaY = 17` is the row that matters**: it is one isolated mouse-wheel notch, the value that
+appears six times unprompted in the user's own log, and it opened a settings screen on the build that
+shipped.
+
+### The second half of the defect, measured rather than reasoned
+
+The slice above claimed that *every other scroll under-travelled by one slop*, from arithmetic. The
+before arm's own warning lines say it outright, per scroll:
+
+```
+the content will move -26px of the 3px asked for
+the content will move -19px of the 10px asked for
+the content will move  12px of the 42px asked for
+the content will move  98px of the 128px asked for
+```
+
+A **negative** content movement for the small ones — the stroke is consumed entirely by the slop and
+then some — and a flat 30 px shortfall on the large ones, which is exactly one slop. The claim was
+right and is now a reading.
+
+### What the after arm proves that the unit tests could not
+
+The phone's own **execution** line, read on **6 of 6** scrolls — written inside the branch that
+computes the headroom, so it cannot exist on a build where that code does not run:
+
+```
+Scroll 3px + 30px slop headroom = 33px of travel (slop 30px); 83 whole / 0 short since start
+Scroll 128px + 30px slop headroom = 158px of travel (slop 30px); 88 whole / 0 short since start
+```
+
+The count carries its denominator, and the before arm reads the other side of the same pair —
+`0 whole / 6 short` — so the two counters are not merely present, they have been seen to move in
+both directions.
+
+The build was restored, rebuilt, reinstalled and swept a third time to confirm the after arm
+reproduces: **0 of 4 navigated, 6 of 6 execution lines, 6 of 6 dispatched above requested.**
+
+---
+
+## Phase 7 Slice 54 — the float's controls move to a bottom bar, and get tooltips (2026-09-15)
+
+Owner's request, after 111–117 landed: make the float's control strip look and behave like Android's
+own on-screen navigation bar — buttons in a row, under the picture, always visible — instead of the
+right-edge vertical rail defect 115 built.
+
+### The reference could not be read, and that is stated rather than worked around
+
+**No screenshot arrived with the request.** The description is precise enough to build from, but it
+carries one internal contradiction: the buttons are described as *"Recents, Home, Back"* and then
+asked for in the order *"Back, Home, Recents … matching the phone's own left-to-right"*. Those are
+opposite, and they are the two conventions — Samsung's default and AOSP's.
+
+**The phone cannot settle it either.** `navigation_mode = 2` on this handset: gesture navigation, so
+it draws no three-button bar at all. The Samsung order keys are `null`, and **so is the control key**
+in the same query — a key that should have existed — so that read held no information in either
+direction rather than reporting "unset".
+
+So the order is the owner's explicitly stated one, which is also AOSP's, asserted by test because it
+is a one-line flip that nothing else would notice. (A file named `samsung-nav-buttons.avif` is
+visible in the owner's Downloads and is almost certainly the intended attachment; it was not opened.)
+
+### Root cause note — the axis swap, and what it touched
+
+`RAIL = 36` was a **width** taken from the right of the window. `BOTTOM_BAR = 40` is a **height**
+taken from the bottom, beside the existing `TITLE = 34`. The formula moves from
+
+```
+picture = width - RAIL          height = picture * ratio + TITLE
+```
+
+to
+
+```
+picture = width                 height = width * ratio + TITLE + BOTTOM_BAR
+```
+
+**`RAIL` is deleted, not set to zero.** A constant left at 0 is one autocomplete from being
+subtracted again by someone who finds the name and assumes it is live — the same argument that keeps
+`APPS_LAUNCH` out of `MessageType`. Deleting it made the compiler name every call site, which is how
+the change was made rather than remembered.
+
+**The two axes are not symmetric, and that is the whole of what made this more than a rename:**
+
+| | |
+|---|---|
+| **width** | had one consumer of side chrome, arithmetic only. Removing it gives the picture the whole window width and changes nothing else |
+| **height** | already had `TITLE`. The bar joins it, so the **height budget shrinks**, and every function that turns available height into a width caps lower — `maxPictureWidthFor`, and `maxWidthFor` and `clampWidth` through it. The README's ≈401 at 920pt becomes **383** |
+| **defect 114's second cap** | reads `area.width`, which this change does not touch. **Re-checked rather than assumed**: mutation M8 removes it and the test still goes red after the swap |
+
+The README figure is **not** quietly redefined. The transcription test now asserts both numbers — the
+document's own formula written out (still 401, `TITLE` as the only chrome) beside ours (383, with the
+bar) — so the document stays checkable against a build that made it smaller.
+
+`boundsForRatioChange` loses its `+ RAIL` term and preserves `width × (height − TITLE − BOTTOM_BAR)`,
+so defect 114's area-preserving rotation survives on the new axis.
+
+### Red-first, as asked
+
+The six tests were written against the reported shape **before** the formula changed, and ran red:
+
+```
+✖ the window has no side chrome — the picture is the full window width
+✖ the bottom bar is height, taken below the picture, the way TITLE is taken above it
+✖ the picture keeps the phone's exact aspect with the bar below it
+✖ the height budget shrinks by the bar, so the widest window is narrower than the README's
+✖ the window cap is the picture cap — there is no side chrome to add back
+✖ turning the phone still preserves the picture area, with the bar in the budget
+```
+
+Four mutations after, each red on a different set:
+
+| | | red |
+|---|---|---|
+| **M5** | the bar drawn *over* the picture (window height unchanged) | 5 |
+| **M6** | the bar taken off the **width** instead of the height (letterboxing) | 6 |
+| **M7** | the height budget does not follow the bar | 7 |
+| **M8** | defect 114's landscape width cap removed — **must still fail after the swap** | 2 |
+
+### Hardware, portrait and landscape
+
+`scripts/float-open-probe.mjs`, no pointer in the window:
+
+| | portrait | landscape (a real turn, mid-run) |
+|---|---|---|
+| controls on the bar, **counted as elements** | 5 | 5 |
+| `opacity` at rest | **1** | 1 |
+| bar height | **40** = `BOTTOM_BAR` | 40 |
+| bar width / spans the window | 386 / **true** | 1494 / **true** |
+| overlaps the picture | **false**, gap 0 | **false**, gap 0 |
+| edge | **bottom** | bottom |
+| every button fully on screen | true | true |
+| order, read from the buttons' own rects | `back, home, recents, shot, reveal` | same |
+| picture vs announced aspect | 2.174 vs 2.167 — agree | **0.461 vs 0.462 — agree** |
+
+The landscape column is the one that matters most: it is defect 114's fix re-proved on the new axis,
+unprompted, because the phone turned while the probe was running.
+
+### The tooltip
+
+`title` is this app's pattern — **11 uses across seven panes, and no CSS tooltip anywhere** — and it
+was what these buttons used. It fails one thing outright: **it never appears on keyboard focus**, on
+any platform. A control reachable by Tab whose only affordance is a mouse-only tooltip is a control a
+keyboard user meets unlabelled.
+
+So the bar draws its own, and takes on what `title` was doing for free: **450 ms** on hover (inside
+the 400–600 ms asked for), **0 ms on keyboard focus** — someone who has tabbed to a control has
+committed to it — and dismissal on leave, blur, click and Escape. The `title` attribute is **removed**
+from these five buttons rather than left alongside, because two tooltips on one hover is worse than
+either.
+
+The text comes from `floatRailTooltip(item)` in the same table as `label` and the icon. Back, Home and
+Recents set **no** `tooltip` field at all and fall back to their accessible name, so the common case
+has one literal and nothing to keep in step. Only the two long ones carry a short form.
+
+Measured on the running window, with `document.hasFocus() === true` carried on the readings rather
+than assumed behind them:
+
+| | |
+|---|---|
+| hover | landed in **513 ms** from a single `pointerenter` — the timer fired, it was not slept through |
+| | `shown: true`, text `"Screenshot"` |
+| `pointer-events` | **`none`** |
+| covers the button it describes | **false** |
+| inside the window | true |
+| **overlaps the picture by** | **24 px** |
+| pointer-leave | hidden, immediately |
+| **keyboard focus** | `shownImmediately: true`, text `"Show ConnectSuite"`, `stimulusWasATransition: true` |
+| accessible name at that moment | `"Show the ConnectSuite window without closing this one"` — defect 117's promise intact |
+| blur | hidden |
+| click | `visibleBeforeClick: true`, `hiddenAfterClick: true` |
+
+**The 24 px overlap is reported rather than claimed away.** A 40 px bar cannot contain a tooltip and
+below the bar is outside the window, so up is the only direction there is. `pointer-events: none` is
+what makes it harmless: it cannot block the control it describes and it cannot swallow a tap meant
+for the phone, which is exactly the dead zone the old hover pill created.
+
+**Defect 115 is not regressed.** The `:focus-within` reveal it added has nothing left to reveal —
+the bar is unconditionally visible — and that is asserted rather than assumed: `opacity: 1`,
+`display: flex`, `visibility: visible`, `pointer-events: auto`, every button tabbable, with nothing
+focused and no pointer in the window.
+
+### Five instrument faults in this slice, all caught before anything was written down
+
+None of them is about the feature, and all five are the same family. **Two of them are in the probe
+written for this slice, and both first appeared as the feature being broken:**
+
+- **A polled read that re-applied its own stimulus.** The hover arm dispatched `pointerenter` inside
+  the expression the settle re-evaluates, and `scheduleTip` clears the pending timer before starting
+  a new one — so **every poll cancelled the 450 ms delay a few milliseconds before it would have
+  fired**. It passed twice on poll timing and then reported `shown: false` over a tooltip that works.
+  A probe whose read re-applies its stimulus is not measuring the thing, it is fighting it. The
+  stimulus is a `probe.act` now and the settle only reads.
+- **A stimulus that was not a transition, and a sanity check that agreed with it.** The focus arm
+  called `.focus()` on the button the *previous run* had left focused. `.focus()` on the active
+  element fires no `focusin`, so nothing happened — while `document.activeElement === b` made the
+  obvious check report everything fine. It blurs first now, and reports
+  `stimulusWasATransition`.
+
+Behind both sat one real fact about the platform, which is now the arms' shared control:
+**Chromium defers focus events in an unfocused document, and the product hides the tooltip on
+`window` blur — which correctly cancels the pending hover timer.** With the terminal holding focus,
+the focus arm could never fire and the hover arm's timer was cancelled inside its own delay. Both
+arms bring the float forward first and carry `document.hasFocus()` on the reading.
+
+The other three are about the screenshot:
+
+- **A CSS rule that parsed and matched nothing** (this one is the product's, not the probe's). The group separator was
+  `.bar-button.bar-mac:first-of-type::before`. `:first-of-type` is about the **element type**, so it
+  means *the first `button`* — which is Back, and Back carries no `bar-mac`. The compound selector
+  never matched. `tsc` clean, 22 stylesheet tests green, no hairline ever drawn. It is the empty-ring
+  icon defect in CSS, and it was found by **measuring `getComputedStyle(b, '::before').content` on
+  all five buttons** — `none` on every one — rather than by looking at a screenshot, where a missing
+  1 px hairline is invisible. The boundary is named by the table now (`floatRailGroupStart`), and
+  after the fix exactly one button reports `content: ""` with `width: 1px`.
+- **A screenshot of the wrong region, reported as a success.** `screencapture -R` took its rectangle
+  from System Events; the phone rotated between the read and the shot, so the file was a correct
+  capture of a stale rectangle — and it contained the owner's desktop rather than the window.
+- **A gate that compared two failures and called it agreement.** The fix for the above compared two
+  `osascript` reads for equality — and matched **two identical error strings** once the float had
+  closed, then captured anyway. Equality is not validity: a gate has to check the reading *is* a
+  reading before checking it is stable. Then System Events began returning an **empty window list**
+  for the Electron process, including the main window, while CDP could see both pages — a query
+  holding no reading at all.
+
+All three are replaced by `scripts/shoot-page.mjs`, which captures the **page viewport** over CDP:
+atomic, no coordinate to go stale, and an evidence file of a window that contains the window and not
+somebody's desktop.
+
+### Guards
+
+| | |
+|---|---|
+| `floatGeometry.test.ts` | **34** (was 27). Red-first on 6, then 4 mutations |
+| `floatRail.test.ts` | **13** (was 6). Red-first on 3: the reveal's full name replaced by the short form, the order flipped to Samsung's, an empty tooltip |
+
+Mac suite **753** (was 740). Phone suite **450**, untouched.
+
+**A correction to the request, for the record:** it says `floatRail.test.ts` *"currently asserts
+railWidth/overlapsPicture"*. It does not — those live in `scripts/float-open-probe.mjs`, and that is
+where the bar equivalents (`barHeight`, `spansTheWindow`, `gapToPicture`, `orderLeftToRight`) went.
+`floatRail.test.ts` is a table test and gained the facts a table can hold: order, grouping, tooltip
+presence, tooltip length, and that the short form did not replace the accessible name.
+
+---
+
+## Phase 7 Slice 55 — the light theme, and the sweep that had to come first (2026-09-16)
+
+The toggle in Settings → General said, truthfully, that dark was the only theme this build had. This
+slice makes that sentence false. It is three pieces of work, and the order matters: **the sweep, then
+the palette, then the build** — because a theme built on top of 150 hardcoded colours is a theme that
+is wrong in half the places nobody looked at.
+
+### 1 · The sweep — 150 raw literals against 856 colour-valued declarations
+
+Counted by **declaration**, not by line, with comments stripped first. That discriminator is not
+fussiness: the first cut of this sweep reported **20 false positives** where `white-space: nowrap`
+matched the word `white` in a *property name*, and `tokens.css`'s own prose quotes `#f3f2f2`,
+`#ec3013` and `#8b6bff` in sentences explaining what not to do.
+
+| file | colour-valued declarations | pure `var()` | **raw literal** |
+|---|---|---|---|
+| `shell.css` | 226 | 148 | **73** |
+| `styles.css` | 592 | 518 | **67** |
+| `float.css` | 38 | 28 | **10** |
+| **total** | **856** | **694** | **150** |
+
+The four sightings `CLAUDE.md` already records were all closed before this started — `styles.css` has
+no `:root`, `.nav-pill` reads `--accent-tint-selected`, `#111219` is `--well`, and the sliders carry
+`accent-color: var(--accent)`. These 150 are *additional*, and five more colour sources sit **outside
+CSS entirely**, where no stylesheet checker could ever have reached them: `shared/activity.ts`'s
+`CATEGORY_TINTS`, `navModel.ts`'s dock tints, an SVG gradient in `icons.ts`, and `backgroundColor` on
+both `BrowserWindow`s.
+
+### 2 · What the sweep found that was not drift — three tokens against the design
+
+**Defect 119.** Three of those "stray" literals were not drift at all. They were the design's own
+values, orphaned when the tokens moved out from under them.
+
+Counted with `grep -o | wc -l` over both design sources, after the first attempt with `grep -c`
+undercounted by an order of magnitude — `grep -c` counts **lines**, and a design file puts many
+literals on one line:
+
+| token | `tokens.css` held | occurrences in the design | the design's value | occurrences |
+|---|---|---|---|---|
+| `--accent` | `#7c6bff` | **0** | `#8B6BFF` | **42** |
+| `--live` | `#34d399` | **0** | `#32E58A` | **47** |
+| `--destructive` | `#ff6b81` | **0** | `#FF5D5D` | **22** |
+
+**Controls, because a count is not evidence and an absence needs a lookalike ruled out:** `#22d3ee`,
+a value known to be in the design, returns **25**; `#ec3013`, the foreign design system's red that
+`tokens.css`'s header warns against, returns **0**. The query separates present from absent.
+
+The uncomfortable part is not the divergence, it is the **record**. `tokens.css` carried a signed,
+dated note claiming the opposite — *"the design's `#7c6bff`… `#7c6bff` 34 times,
+`rgba(124,107,255,…)` 59 times, `rgb(139,…)` **zero**"*. All three figures are inverted. The note was
+written as the *correction* of an earlier mistake, is the most carefully-argued paragraph in the
+file, and was wrong. Restored on the owner's decision, with the note replaced rather than trimmed.
+
+### 3 · What the design specifies for light, and what is derived
+
+It specifies **four values and a rule**, quoted in full in `tokens.css`: ground `#FAFAFC`, cards
+`#FFFFFF`, hairlines `rgba(0,0,0,.07)`, violet `#5B4AE0`, *"same radii/spacing/motion"*.
+
+Everything else is derived and is **marked `DERIVED` in the file**, against `HANDOFF` for the four.
+That mark is the deliverable, not a courtesy: without it, in six months every value in that block
+reads as the designer's.
+
+The derivation is arithmetic rather than taste — each semantic colour is its **dark counterpart
+scaled down in luminance until it clears AA against `--well`**, the darkest light surface. Hue and
+the relationships survive; only lightness moves. `--live` `#32e58a → #1b7c4b` is the same green at
+54% luminance, and it lands on exactly the value `--tint-darken` produces for the green tint
+independently — two derivations, one answer.
+
+### 4 · Contrast, measured before anything was drawn
+
+`scripts/check-contrast.mjs`, wired to `git commit`. **58 pairs per theme.**
+
+**The instrument's control runs first, on every invocation**, against five published WCAG reference
+pairs — 21.00, 4.54, 4.48, 7.00, 8.59 — and the script **refuses to report** if they do not
+reproduce, because a luminance formula with a wrong exponent yields plausible numbers that are all
+slightly wrong. They reproduce exactly. (The handoff's own table reads ~10% pessimistic against
+them: it lists `#F4F4F7 on #1C1F2B → 13.1:1` where the correct figure is 14.94. No verdict changes.)
+
+| | dark | light |
+|---|---|---|
+| pairs held to AA 4.5 | **52 → 54** | **52 → 54** |
+| `--text-meta` pairs, held to the design's 2.4–3.6 band | 6 (2.56–3.13) | 6 (2.51–2.87) |
+| failing | **0** | **0** |
+
+`--text-meta` is below AA in **both** themes, by the design's own instruction — *"10–11px
+non-essential meta ONLY, never body copy"*. It is held to a **band** rather than exempted, so it
+cannot drift further down, and light is held to the *same* band as dark rather than being quietly
+improved on one side only.
+
+**The checker found one failure before it was ever drawn.** `--text-on-warning` is near-black on the
+amber fill, 9.99:1 in dark — and the light warning is a dark brown, so the same near-black reads
+**3.53:1**. It inverts to white, at 5.25:1. Nothing looked at a screen to find that.
+
+**And the instrument had a fault of its own, caught by its own output.** The first version read the
+light block *in isolation* and reported **56 pairs against dark's 58** — silently skipping every
+token deliberately identical in both themes, which are exactly the ones sitting on a fill that is
+*not*. Light is `dark` merged with its overrides now, because that is what the cascade does. The
+per-theme pair count is printed for that reason; a count that differs between themes means readings
+are being dropped.
+
+### 5 · The rendered sweep — what a token audit structurally cannot see
+
+**Defect 121.** A token-pair audit proves the *palette* is sound. It cannot prove the **cascade** is,
+and this project already knows that at a cost: the Muted pill was **2.23:1** with a perfectly good
+token, because a specificity collision made the active tab take the disabled tab's colour.
+
+So a second instrument reads the **rendered DOM** of all 13 panes in both themes — 3,302 elements —
+resolving each element's real painted ground by climbing ancestors and compositing alpha.
+
+It found the one defect light mode actually introduced, and it is the mirror image of the
+`--text-on-warning` fix. `--media-scrim` deliberately does **not** invert: it sits over the phone's
+picture, and a light scrim over a light video is unreadable in exactly the case a scrim exists for.
+But `.pane-mirror .mirror-overlay` and `.float-reason` drew `--text-body` on it — a token that *does*
+invert. In light that is dark grey on a near-black scrim:
+
+```
+  1.67:1   mirror/.mirror-overlay   "Not mirroring."   rgb(90,93,107) on rgb(60,60,63)
+```
+
+**Both tokens are individually correct and their own pair is never drawn.** No token audit can see
+this. Fixed with `--text-on-media` and a new `--text-on-media-dim`, both now measured as explicit
+pairs (19.76:1 and 10.24:1 on the scrim).
+
+**The sweep's own three faults are recorded because each produced a confident wrong number:**
+
+| the fault | reported | actually |
+|---|---|---|
+| read `backgroundColor` through a **gradient** | `.dial-call` at **1.05:1** | the Call button's fill is a `linear-gradient`; the climb sailed past it to the ground behind. Reports `unmeasurable` now, never a failure |
+| measured `color: transparent` | five contact discs at **1:1** | the initials are hidden behind a real photo. Not text |
+| counted `aria-hidden` decoration as text | folded into the failure count | WCAG 1.4.3 exempts pure decoration — but it is **reported as its own bucket** rather than filtered, because "exempt" is a judgement and a silent filter hides it |
+
+**Its own control runs last**, injecting `#ccc`-on-white and `#000`-on-white into a live pane: the
+failing one is caught, the passing one is not reported.
+
+### 6 · Two failures that were in the shipped dark build
+
+**Defect 120.** `.hero-key` — the `⌘⇧M` hint on the primary action — was **3.89:1 in dark**, and had
+been since the shell landed. Its two tokens are correct and their pair is 5.27:1; the failure is
+`opacity: 0.75` dimming the text toward the fill. **No token audit can see an opacity.** 0.85 is the
+first step clearing AA in both themes (4.51 / 4.81); 0.9 shipped, for margin.
+
+The selected filter pill was **4.43:1 in light**, and the reason is worth keeping: its ground is
+`--well`, not a card. The same two tokens read **5.04:1 on a card**. Solved against the real ground
+by lowering the light `--accent-tint-selected` to 0.10; dark is untouched and reads 4.73:1 on its own
+well. My first attempt at this number assumed the card and would have shipped a value that still
+failed — measured, not reasoned.
+
+**Final rendered state, both themes: 0 below AA.** 161 `--text-meta` in each (an identical count, so
+the hierarchy is preserved exactly), 1–2 `aria-hidden` decorative glyphs named individually, 1
+unmeasurable gradient.
+
+### 7 · `System` follows macOS, proven by a live flip
+
+`system → dark at launch` is **not** evidence. It is the registration-line failure this repo has
+recorded four times: a build that simply defaulted to dark would print exactly the same line. The
+stimulus that separates them is an actual OS change, with the app running and untouched:
+
+| preference | macOS | stamped | `--canvas` |
+|---|---|---|---|
+| `system` | dark | `dark` | `#07070a` |
+| `system` | **light** | **`light`** | **`#fafafc`** |
+| `dark` *(control)* | light | `dark` | `#07070a` |
+| `dark` | dark | `dark` | `#07070a` |
+
+The third row is the control, and it is the one that matters: an explicit choice must **not** follow
+the OS, or `Light` means "light unless the Mac disagrees", which is `System` with extra steps.
+
+**One writer.** `nativeTheme` owns the preference, main resolves it, the renderer stamps
+`data-theme`, and `tokens.css` carries **no** `prefers-color-scheme` block. A media query there
+would be a second writer deciding the same fact from a different source on a different clock — the
+status island's defect (96) exactly, where a pill took its text from one place and its tone from
+another and contradicted the strip beside it daily.
+
+### 7a · The preference survives a restart, and one more instrument trap on the way
+
+Set to **light**, killed, relaunched, with **macOS itself in Dark** throughout (`defaults read -g
+AppleInterfaceStyle` → `Dark`, and System Events agreeing). The app came back **light**, and its
+first log line is `[appearance] light -> light at launch`. One run proves two things: the preference
+persists, and an explicit choice still beats the OS across a launch rather than only within a session.
+
+**The trap:** `window.matchMedia('(prefers-color-scheme: dark)')` in the renderer returned
+**light** — and that is not a reading about macOS. Electron drives the page's media query from
+`nativeTheme.themeSource`, so with an explicit preference set the page reports *our own setting back
+to us*. It was one sentence away from being written down as "macOS is light", which was false.
+
+Another member of the **two readings, one fact** family, and the usual question settles it — *what
+is each one actually reading?* The page reads the theme it has been told to render; `defaults read
+-g AppleInterfaceStyle` reads the OS. They are not the same store, and they agree only while the
+preference is `system`. Read the OS from the OS.
+
+### 7b · The second window follows too, and the stimulus is the strong one
+
+The float is a separate `BrowserWindow` loading the same `tokens.css`. Without the stamp it would sit
+in the default theme beside a light main window — the *two views of one session* pair disagreeing
+about which theme the app is in.
+
+It was opened and then the theme was changed **from the main window while it was open**, rather than
+being opened after a change. That is the difference between proving the window *reads* the
+preference at construction and proving it *receives the broadcast*:
+
+| | dark | light |
+|---|---|---|
+| `data-theme` | `dark` | `light` |
+| `--float-canvas` | `#0b0c12` | `#f4f4f8` |
+| title bar | `rgba(18, 20, 28, 0.94)` | `rgba(246, 246, 250, 0.94)` |
+| `.float-reason` | `rgb(255,255,255)` | `rgb(255,255,255)` — defect 121's fix, in the second window |
+
+Its `backgroundColor` is resolved at construction from `nativeTheme` and repainted by
+`setBackgroundColor` when the theme moves under a live window, for the same reason as the main one:
+AppKit paints it before any stylesheet loads, so it cannot read a token.
+
+`float-dark.png`, `float-light.png`, `sbs-float.png`.
+
+### 8 · The instrument fault that cost the most time, and it was not in any of the above
+
+Every CDP read in this sitting hung — `Runtime.evaluate` of **`1 + 1`** never returned, while the app
+window was plainly on screen and rendering. Nothing errored; the socket opened cleanly.
+
+`:9222` was held by **an Electron started the previous afternoon**, which `pkill` had not matched.
+The new app could not bind the port, so every query went to an 18-hour-old renderer while the window
+being screenshotted was the new one. Two instruments, two different objects, no disagreement visible
+because only one of them was ever asked a question.
+
+That is the control table's *"you are looking at a different machine"* with the target swapped rather
+than the query, and the fix is the same as the one that rule already prescribes for `adb`: **confirm
+which process owns the port before reading through it.** `lsof -nP -iTCP:9222 -sTCP:LISTEN` plus the
+process's start time is one command, and it is now the first thing every run here does.
+
+It also disproves the tempting diagnosis on the way past: a painted window is **not** evidence that
+the renderer's JS thread is alive. The compositor will hold the last committed frame indefinitely.
+
+### 9 · The enforcement point
+
+Two checkers, one hook (`scripts/hooks/color-tokens-in-sync.sh`, the twelfth), both failing **open**.
+
+`check-color-tokens.mjs` — 18 fixtures. Five are the real sightings reconstructed verbatim, each
+shown **red** before the guard was trusted; the rest are the corrected forms, plus the mentions that
+must **not** fire: a CSS comment naming a hex, an HTML comment naming a colour, `white-space`, a
+`color-mix` black operand, and `rgba(var(--overlay-rgb), .04)`.
+
+Its own first run produced **103 confident false positives**, every one a correct token read:
+`[^)]*` stops at the first close paren, so `rgba(var(--overlay-rgb), 0.04)` matched as
+`rgba(var(--overlay-rgb)`. Paren-balanced now — the guard committing the exact mistake it exists to
+catch, on its first run, in the file whose header describes that mistake.
+
+**It checks four things**, and the third is the one that keeps light mode alive rather than merely
+delivering it:
+
+1. no raw colour in a colour-valued declaration outside `tokens.css`;
+2. no colour literal in renderer/shared TypeScript or in either HTML page;
+3. **every dark colour token has a light value**, or an allowlist entry *with a reason* — adding a
+   dark token and forgetting the light one is silent, renders perfectly in the theme you are in, and
+   is found by a user on the other one. It fired twice while this slice was being written, on
+   `--text-on-warning` and `--text-on-media-dim`;
+4. both `BrowserWindow` grounds in `shared/appearance.ts` equal `--canvas` and `--float-canvas` in
+   both themes. Those are painted *before any stylesheet loads*, so they cannot read a token — the
+   one exempt file, and check 4 is what makes the exemption safe rather than a hole.
+
+The allowlist **cannot rot**: an entry matching no declared token fails, and an entry that is *also*
+overridden in light fails as a contradiction. The fixture tree's tokens are **generated from the
+allowlist** so the two cannot drift.
+
+`check-contrast.mjs` — 9 fixtures, including one asserting `--text-meta` can fail by being too
+**good**, since a band has two edges.
+
+**The hook was shown red**: a literal appended to `shell.css` produces `deny`; removed, it is silent.
+
+### 10 · Evidence
+
+`docs/evidence/light-theme-2026-09-16/` — all 13 routed panes in both themes, 26 captures plus 13
+side-by-side composites. Every capture is gated on `shell.screen` matching the requested pane, so a
+blocked route cannot write the previous pane's picture under the new pane's name.
+
+| | |
+|---|---|
+| Mac suite | **761** (was 753) |
+| commit hooks | **13** (was 11) |
+| raw colour literals outside `tokens.css` | **0** (was 150) |
+| rendered pairs below AA, either theme | **0** |
+
+---
+
+## Phase 7 Slice 56 — the Now Playing card, and one field it cannot yet draw
+
+**2026-09-16.** The Media remote was the last pane drawing Chromium's own controls — default
+`<input type=range>` and bordered `.secondary` buttons. Rebuilt against a reference mockup as a
+Now Playing widget: 92px cover, source badge, scrubber with the times beneath it, three circular
+transport buttons, an output row, and a speaker-to-speaker volume.
+
+### 1 · The two fields the design needed and the wire did not have
+
+The reference is built around album art and an output device. Neither was on the wire. Measured
+rather than assumed, and **with a control in both directions**:
+
+| query | result |
+|---|---|
+| fields in `RemoteState` | 15, none of them art or route |
+| `grep -riE 'artwork\|albumArt\|METADATA_KEY_ART\|outputDevice\|audioOutput'` over both sides | **1 hit** |
+| that hit, read rather than counted | `METADATA_KEY_ARTIST` — a substring lookalike, not artwork |
+| the same grep for `mediaThumbs\|appsIcons` (positive control) | **18 hits** |
+
+So the absence is real. `grep -c` was not trusted; the matched line was read, which is the rule that
+has now caught this family eleven times.
+
+**A comment in `styles.css` was why it had never been built**, and it was false: *"No album art:
+docs/protocol.md keeps images off the control channel."* The contract does the opposite **twice** —
+`media.thumb` and `fs.thumb` both put base64 JPEG there and argue for it in writing. The true
+sentence is narrower: `remote.state` carried no artwork field. A policy was inferred from a gap, and
+the inference outlived anyone checking it.
+
+### 2 · What shipped on the wire
+
+`remote.state` gains `artworkKey` and `output`; `remote.artwork` is a new type, specified in
+`docs/protocol.md` before either half was written.
+
+**The key/bytes split is the decision worth recording.** Artwork inline on the state was the obvious
+shape and is wrong: the state is pushed on every play, pause and position jump, and 33 KB of base64
+on each of those is the head-of-line blocking on the `ping` channel that `media.thumb`'s batch cap
+exists to bound. A key is a few dozen bytes and changes only when the art does, so the bytes are
+fetched **once per track**.
+
+`output` is `{name, kind}` and not a string, because `kind` picks the icon. A Mac choosing that icon
+by substring-matching the name is this repo's own lookalike failure — *"Living Room speakers"* and
+*"AirPods Pro"* both match a naive rule and only one is Bluetooth. **The phone classifies, because
+the phone is the end that knows.**
+
+**`output` has no verb and the row has no chevron.** The reference draws one and the brief asked for
+it. Nothing in this protocol switches the phone's audio route; Android's own switcher is an
+activity, and a backgrounded `startActivity` on this handset is refused **silently** (Phase 7
+Slice 8). A chevron over a row that cannot open anything is the affordance that lies, so the route
+to a real one is `apps.open.ask`'s shape — a notification the user taps — and that is a feature
+rather than a glyph.
+
+### 3 · What is proven, and on what
+
+Both suites green: **phone 450 / 450**, **Mac 761 / 761**. All 13 commit hooks pass, including
+`check-protocol-spec` (65 types, 0 unaccounted), `check-color-tokens` (0 literals outside
+`tokens.css`) and `check-contrast` (both themes clear AA).
+
+Observed on hardware, dark theme, against the live phone:
+
+| | reading |
+|---|---|
+| playing | 3 buttons, **0 disabled**, real title from the phone, real Spotify badge via `apps.icon` |
+| idle | 3 buttons, **3 disabled**, `No active device`, `--:--` both ends, glow at 35% |
+| idle dispatch | every idle button clicked → **0 commands reached the bridge** |
+
+### 4 · What is NOT proven, and the stimulus that would prove it
+
+**`artworkKey`, `remote.artwork` and `output` have never run.** They compile — `:app:assembleDebug`
+exits 0, 450 phone tests pass — and **no device was on the adb bus this sitting**, so the APK on the
+phone is the previous build. The link is over Wi-Fi and kept working, which is exactly why this is
+easy to miss: the card drew perfectly, from a phone that has never sent either field.
+
+What was actually observed is therefore the **fallback path**, and it is the honest half of the
+reading: `artRgb: ""` (no key → the accent glow), the music-mark cover, and
+`Output device unknown`. Those are the right answers to *the phone did not say*, and they say
+nothing whatever about the code that would make it say.
+
+**The stimulus:** `adb install -r app/build/outputs/apk/debug/app-debug.apk` through
+`scripts/adb-pinned.sh`, then play something with a cover and read three things — a non-empty
+`artworkKey` on the state, one `remote.artwork … → 256x256, N bytes` line in the phone log, and a
+non-empty `--art-rgb` on `.remote-now`. The third is the one that proves the whole chain, because
+it can only be non-empty if bytes arrived and decoded.
+
+Until that run, the correct status of the cover and the output row is **unproven**, not *done*.
+
+### 5 · Three guards moved, each into a named question
+
+None was raised to fit the new code.
+
+- **`FILLED_ICONS`** was `deepEqual([...], ['dots'])`. The transport four are filled now, because a
+  triangle is a *shape* and every system draws it solid. Split into three assertions — the mark is
+  filled, the transport is filled, **and nothing else is** — so a fifth name still goes red.
+- **`an idle remote … draws no transport`** asserted zero buttons. The reference draws them
+  disabled, and the rule that mattered was never the count: it was that **nothing can be dispatched
+  into silence**. The guard now clicks all three and asserts the bridge saw nothing. Shown red two
+  ways: removing the `idle ||` guard leaves live buttons; removing the handler's own
+  `if (button.disabled) return;` leaves them drawn-dead and dispatching — **and the old count could
+  only have caught the first**.
+- **the volume denominator** moved from drawn text to `aria-valuetext`, because the reference draws
+  no number. Stated as a move and not a weakening: a slider *is* its own denominator, and the
+  value and maximum stay retrievable for the only reader the drawn number served. The contrast is
+  the day before, when shortening `7 of 15` to `7/15` was refused — cosmetics do not move a guard.
+
+`domDouble.testkit.ts` gained `removeProperty`, which it had never had; every test in
+`remoteView.test.ts` died on it at once. Worth one line: **a double missing a method fails loudly,
+and a double missing a *behaviour* does not.** This was the loud kind, which is why it cost a minute.
+
+---
+
+## Phase 7 Slice 57 — the media card rebuilt as one surface, and the APK that was the whole of §4
+
+**2026-09-16, same day as Slice 56.** The first pass matched the reference's *contents* and missed
+its *structure*: the widget was drawn as a well **inside** the standard card, which put four visible
+borders on screen — card, well, artwork, device row — where the reference has one surface with no
+internal edges. Rebuilt subtractively: `#remote-card` keeps its place in the grid and gives up its
+skin, the heading comes out, and `.remote-now` is the only thing with a background or a radius.
+
+### 1 · Slice 56 §4 is discharged — the three readings it asked for
+
+The phone came back on the bus. `adb install -r` through `scripts/adb-pinned.sh`, `am start`,
+`scripts/link-up.sh` → 3 OKs. All three pass criteria, over the live link:
+
+| asked for | got |
+|---|---|
+| a non-empty `artworkKey` | `445e763b` |
+| `remote.artwork` bytes | `ok: true, 21796 bytes` — inside the 10–25 KB the contract predicted |
+| a non-empty `--art-rgb` | `165, 116, 107`, extracted from the cover on screen |
+
+`output` came with them: `{"name":"Phone speaker","kind":"speaker"}`. **The cover, the glow and the
+output row are proven on hardware.** What Slice 56 recorded as *unproven, with a stimulus* is now
+*proven, by that stimulus* — and it is worth noting that the stimulus was written down while the
+device was absent, which is the only reason it took one command rather than a re-derivation.
+
+### 2 · The gray box was never a placeholder, and the report was right anyway
+
+It was reported as *"a static gray placeholder box with a generic music icon"* — i.e. as a
+hard-coded default. It was not: the fetch chain existed and had been proven end-to-end against a
+known-colour control. What was wrong is that **the phone was running an older APK**, because it was
+not on the USB bus when Slice 56 landed.
+
+Both things are true at once and the pair is the lesson: **the build was right and the screen was
+wrong, and from the screen those are the same picture.** This is the fallback path doing exactly its
+job — a real drawn state rather than a blank — which is precisely what makes it indistinguishable
+from a bug. A fallback that looks deliberate hides the absence it is covering. That is not an
+argument for a worse fallback; it is an argument for the pass criterion Slice 56 §4 already carried,
+and for reading it before reading the card.
+
+### 3 · Forced dark, through the token system rather than around it
+
+The card is dark in both themes. The mechanism is ten `--np-*` tokens in `tokens.css` registered in
+`check-color-tokens.mjs`'s `SAME_IN_BOTH` **with a reason**, which is the same allowlist
+`--media-scrim` and the traffic lights use.
+
+The argument is not new and is deliberately not new: *a surface whose subject is an arbitrary user
+image does not invert.* A scrim over a photo cannot go light or it stops being a scrim; a Now
+Playing card is that object one step out — its content is an album cover whose colours nobody
+controls, and it takes its own glow from that cover. macOS's own Now Playing tile is dark in Light
+Mode for the same reason.
+
+**Measured rather than asserted**, by flipping the theme under the running app:
+
+```
+light: linear-gradient(rgb(30,31,40), rgb(25,26,33))   title rgb(244,244,247)
+dark:  linear-gradient(rgb(30,31,40), rgb(25,26,33))   title rgb(244,244,247)
+identical: true
+```
+
+The line that keeps this from becoming a licence is in `tokens.css`: there is no second dark island
+in this app and there should not be. Everything that is not the media card reads the ordinary
+tokens.
+
+### 4 · What the guards caught during the rebuild, and both were right
+
+- **`stylesheets.test.ts`** refused `.remote-output-name` declared twice, 158 lines apart — the
+  truncation group and the device pill. A re-declaration that far from the original is a dead block
+  waiting to happen, and the *distance* is the tell. Merged into one home.
+- **`check-color-tokens.mjs`** refused `rgba(0, 0, 0, 0.4)` in the slider knob's shadow. It reads
+  `--shadow-nav-pill` now: a slider handle and a nav pill want the same lift, and a second
+  hand-mixed black is how a system grows two answers to one question.
+
+A third fix came from reading the render rather than from a guard: the fill ramp was written
+`--accent` → `--secondary`, which drew violet-to-cyan. `--secondary` is this system's *secondary
+data accent* — a meaning — and borrowing it for a gradient stop puts a second sense on a name that
+already has one. It is `--accent` → `--accent-text` now, a lighter violet, which is also what the
+reference draws.
+
+### 5 · Three places the instruction and the reference image disagree
+
+Recorded because the next person will read the image and wonder. In each case the written
+instruction was followed, because it is the more specific of the two and it named the difference:
+
+| | the image | the instruction, and what shipped |
+|---|---|---|
+| source badge | a circle at the **card's** top-right, detached from the artwork | overlapping the **cover's** corner |
+| device pill | stretched nearly the full card width | sized to its content, `align-self: flex-start` |
+| chevron | present | present — see below |
+
+**The chevron is drawn and opens nothing, and that is a reversal.** It was refused in Slice 56 on
+the grounds that an affordance which opens nothing is a lie; it was then asked for twice, which
+makes it the caller's decision rather than the implementer's. What is kept is the *narrowing*: the
+pill is a plain `div` with no `tabindex`, no click handler and no pointer cursor, so it does not
+answer a click, a keyboard or a hover. The claim is as small as a drawn chevron can be made, and
+`docs/protocol.md` → `output` still records the route that would make it real.
+
+### 6 · Both states on hardware
+
+| | reading |
+|---|---|
+| playing | real cover **15,487 bytes**, badge inside `.remote-art`, `--art-rgb: 165, 116, 107`, device `Phone speaker`, title **1 line**, chevron present |
+| empty | 3 buttons / **3 disabled**, `No active device`, `--:--` both ends, fallback glyph, badge is the neutral disc |
+| borders on wide elements | **the transport buttons and the device pill only** — no card, well, artwork or row containers |
+
+Suites: phone **450 / 450**, Mac **761 / 761**. Nine guards green.
+
+---
+
+## Phase 7 Slice 58 — Quick actions deleted, the media card into its slot
+
+**2026-09-16.** Overview's top row was hero + Quick actions. Quick actions is **removed from the
+codebase** — not hidden, not flagged — and the media card takes column two at the hero's height.
+
+### 1 · The reachability audit, taken before the deletion rather than after
+
+Every one of the eight tiles, checked against `navModel.ts` rather than against a screenshot:
+
+| action | `SCREENS` (sidebar + ⌘K) | `DOCK` |
+|---|---|---|
+| Mirror, Files, Messages, Calls, Camera | yes | yes |
+| Photos, Notifications, Clipboard | yes | — |
+
+All eight are in `SCREENS`, which the sidebar and the palette both read; five are also in the dock.
+**No action lost its only route**, so this is a duplicate removed rather than a feature cut.
+
+### 2 · What came out
+
+`index.html` the section, `overview.ts` the id list, the caption function, `drawQuickActions` and
+two constructor parameters, `renderer.ts` two `el()` arguments and the `shell.unread` argument,
+`shell.css` the 3,481-character block, and `overviewView.test.ts` five tests.
+
+Two things went that nobody asked for and both are the deletion finishing itself:
+
+- **The eight `.tint-<screen>` rules.** `drawQuickActions` was their only writer — the dock's tints
+  come from `DOCK`'s own `tint` field as inline values, a different mechanism on the same tokens. A
+  rule nothing constructs a class name for is the dead block `stylesheets.test.ts` exists to notice.
+- **`--surface-quick-tile` → `--surface-overview-strip`.** The footer strip was left as its only
+  reader, so the token was named after a component that no longer exists. Renamed rather than merged
+  into `--surface-strip`: they differ at .60 against .66, and merging changes a drawn value, which is
+  a decision to take deliberately rather than inside a rename. **The guard caught the half-rename** —
+  the light-theme override still had the old name and `check-color-tokens.mjs` refused it.
+
+### 3 · The sizing, and why each number is a measurement rather than a taste
+
+| | value | where it comes from |
+|---|---|---|
+| artwork | **150px** | `.hero-phone`'s width, **exactly**. The two cards sit in one row and these are their primary visual anchors; anchors differing by a few pixels across a gutter read as a mistake |
+| badge | 30 → **36px** | the same optical weight on a cover half again as large |
+| row gutter | `--space-9` | `.hero-body`'s own gap, so the two cards scan as one row |
+| card height | **453px, both** | the media card sets it; the hero stretches to meet it |
+
+**The height direction is the decision.** The media card needs 453px for a 150px cover plus the
+requested spacing; the hero's natural height is 367. Compressing the card to 367 means a smaller
+cover and tighter gaps — undoing the resize rather than completing it. So the hero takes
+`align-self: stretch` too, and row one is two cards of one height while every later row keeps its
+natural sizing. `align-items: stretch` on the grid was rejected: it would also stretch Recent
+activity and Device status into each other's rows.
+
+`height: 100%` plus `justify-content: space-between` on `.remote-now` is a **pair** — height without
+the distribution is a tall card with a hole in the bottom, distribution without the height does
+nothing. `gap` stays as the minimum, so a short window degrades to the compact spacing.
+
+### 4 · Two defects found by measuring rather than by looking
+
+- **The card landed in row three.** `grid-column: 2` is not placement: it was still after Recent
+  activity in source order, so auto-placement pushed it to the next row with column two free —
+  `sameRow: false`, y=915 against the hero's y=142. Fixed by moving the markup into the slot Quick
+  actions vacated, which also puts source order and tab order back in agreement.
+- **`flex: none` does not protect the cross axis.** Giving `.hero-body` `height: 100%` let the flex
+  default `align-items: stretch` override `.hero-phone`'s `aspect-ratio` outright: **411px tall
+  against the 325 the ratio asks for, a 2.74 where 2.167 was intended.** Nothing errors; the phone
+  just becomes a slightly wrong phone. `align-self: flex-start` restores it. Worth recording because
+  `flex: none` reads like *do not resize me* and means half of that.
+
+### 5 · Both states, measured on hardware
+
+| | reading |
+|---|---|
+| playing | hero and card both **453px** at y=142, `sameRow` and `sameHeight` true, art **150** = heroPhone **150**, real cover, badge on the art, chevron, title **1 line**, `realme Buds Air6 Pro` with the earbuds glyph from the phone's own `kind: bluetooth` |
+| empty | **453px**, art 150, 3 buttons / **3 disabled**, `No active device`, `--:--` both ends — fills the enlarged card rather than collapsing |
+| Quick actions | **0** tiles, 0 grid, 0 head elements in the DOM |
+| inner borders | the transport buttons and the device pill only — no container borders |
+
+Everything from Slice 57 carried: single surface, `--np-*` forced dark, real art with the badge,
+one-line title, chevron pill, thin sliders. Mac suite **756** (was 761; five Quick-actions tests
+went with the feature), nine guards green.
+
+**The screenshot lied once and the measurement did not.** A capture of the empty state came back
+showing the playing state: a second `RemoteView` was seeded for the probe while the live one was
+still subscribed, and the phone pushed in the 500 ms before the shutter. The numbers were read
+synchronously and were correct throughout. Same two-writers mistake as Slice 56's first glow probe,
+in the same session, which is why the instrument's own rule is worth more than the instrument.
+
+---
+
+## Phase 7 Slice 59 — the Device hero rebuilt as a device summary
+
+**2026-09-16.** The hero was a compact card stretched vertically. Rebuilt against a reference
+mockup: overflow menu, a six-row detail grid with icons, a neutral handset, and natural height.
+
+### 1 · Where the blank space came from — measured, not recalled
+
+`align-self: stretch` on `.hero`, added **the sitting before** so row one would be two cards of one
+height. It worked, and it bought that evenness with:
+
+| | |
+|---|---|
+| card height | **453px** (the media card's) |
+| content bottom | **272px** |
+| blank below the buttons | **181px — 40% of the card** |
+
+Stretching a box does not give its contents anywhere to go. The stretch is gone; the card is 428px
+now with **21px** below the buttons, and the height is earned by two more rows of detail rather than
+manufactured. `.remote-card`'s own `align-self: stretch` went too — with the hero no longer the
+shorter card, leaving it in would have grown the *media* card to match, which is the opposite of
+"it stays at its current size".
+
+### 2 · What data actually exists
+
+| field | source | note |
+|---|---|---|
+| Connection | `status.via` | **a discovery route, not a transport** — see below |
+| Security | *hardcoded* `'TLS 1.3, pinned'` | not a reading, and correctly so: locked decision #3 admits no other value |
+| Battery | `battery.state` | live |
+| Latency | `status.rttMs` | live |
+| Address | `status.address` | live |
+| Storage | `storage.state` | live, and **was not on this card** — it fed only the O4 ring |
+
+**A real device screenshot or wallpaper does not exist.** `docs/protocol.md` and `protocol.ts`
+carry no such type; the one grep hit is unrelated prose about file transfer. The only device pixels
+in this product are the mirror's H.264 frames, which need a fresh MediaProjection consent tap per
+session and cannot be cached — a platform wall in `CLAUDE.md`. A dashboard card cannot ask for that,
+so the fallback the brief names is what shipped: a charcoal handset built from tokens.
+
+### 3 · `last-known` was an internal handle on a user's screen
+
+The Connection row printed `status.via` raw, which is how **`last-known` appeared under the word
+"Connected"**. `via` is not a transport and never was: it is which rung of locked decision #4's
+discovery order *found* the phone, a fact about a lookup that finished minutes ago. This is
+`CLAUDE.md`'s package-id rule one namespace over — an internal handle may appear as a handle, never
+as the only thing a person reads.
+
+**It says "Local network", not "Local Wi-Fi", and that gap is the honesty.** Four of the five routes
+are one transport — a TLS socket on the LAN — and nothing on this wire separates Wi-Fi from Ethernet
+on the Mac or USB tethering on the phone. `net.state` is the type that would and it is on the debt
+list with no handler on either side. "Wi-Fi" would be a guess rendered as a fact. Tailscale is
+genuinely different and keeps its name.
+
+### 4 · There is no Rename, and it is absent rather than disabled
+
+The brief asked for Disconnect, Rename and Forget in the overflow. Two of those exist:
+`connect.disconnect()` and `connect.forgetDevice()`. **Rename has no bridge method, no IPC handler
+and no wire verb**, and the name on the card is the phone's own model string, which this Mac cannot
+change. A menu row that opens nothing is the affordance this project keeps ruling out — and it is
+*absent* rather than greyed, because a disabled row invites the next person to delete the `disabled`
+where an absent one makes them add the verb first.
+
+Forget carries `is-destructive` and Disconnect does not. That is the distinction the standing red
+button could not draw: one ends a session a tap restarts, the other throws away a pinned key.
+
+### 5 · The breakpoint is arithmetic, and the first version clipped
+
+Two columns at the default window **clipped Storage** to `10.9 GB free of …`. The numbers:
+
+```
+longest value   10.9 GB free of 490 GB   147px
+right column    30 icon + 12 gap + 147 + 20 divider pad = 209px
+left column     30 + 12 + 98 + 20                       = 160px
+two columns need                                          369px of detail width
+    + 150 phone + 24 gutter + 40 card padding           = 583px of hero
+hero at the default window                              = 573px
+```
+
+Ten pixels short. **Shaving padding would have made it fit with zero slack** and the next slightly
+longer value — a 2 TB phone — would clip again, silently. So the container query is set at 620px,
+above the requirement with room. Verified across three widths:
+
+| window | hero | columns | divider | clipped |
+|---|---|---|---|---|
+| 1440 | 573 | **1** | none | none |
+| 1800 | 757 | **2** | 1px | none |
+| 2100 | 909 | **2** | 1px | none |
+
+A **container** query, not a media query: this card is one column of a grid inside a resizable
+window, so its own width decides and the viewport is only loosely related to it.
+
+### 6 · A guard that inverted, and why that is not the same as being raised
+
+`shellBattery.test.ts` asserted *the hero draws four facts and gains a fifth when a battery
+arrives* — sound, and it worked because the grid was a 2×2 that could grow. The grid is a fixed 2×3
+filled column-first now, where omitting a cell reflows the other five into the wrong columns: drop
+Battery and Latency moves up into the left column. So the cell stays and the **value** carries the
+absence, as `Not reported` — the same word `heroStorageLine` returns for the same silence, because
+two rows in one grid should not invent two vocabularies for it.
+
+**The count assertions became value assertions**, in all three places. That is strictly stronger: a
+count cannot tell a removed cell from one still showing a stale 79%, and the decisive test still
+compares the cell against `batterySlot`'s own output rather than a restatement of it.
+
+### 7 · On hardware
+
+Six rows live, with the real phone connected: `Local network`, `TLS 1.3, pinned`,
+`73% · Charging`, `6 ms`, `10.187.150.87`, `10.9 GB free of 490 GB`. One icon per cell, overflow
+opens with two items and dismisses on an outside click, both actions carry glyphs, phone 150×325 at
+ratio 2.167. Mac suite **756/756**, phone **450/450**, nine guards green.
+
+Untouched, as asked: the media card, Recent activity, Device status, the sidebar and the dock.
+
+---
+
+## Phase 7 Slice 60 — Recent activity rebuilt as a five-row activity card
+
+**2026-09-16.** The card was `[64px time][26px dot][kind][detail]` at 52px a row — one line of text,
+a flat tinted square at 40% opacity, no icon, no subtitle, no metadata and no way in. Rebuilt
+against a reference mockup.
+
+### 1 · The data model had one field where the design needs two
+
+`ActivityEvent` is `{seq, at, category, kind, detail}`. **`detail` is not one thing**: for
+`Connected` it is a device name, for `ConnectSuite started` it is `version 2.0.0`, for
+`Disconnected` it is a sentence. The reference puts the first two on the *right* and the third in
+the *subtitle*.
+
+`activityRowView(event)` in `shared/activity.ts` is that split, as one rule with one home — the same
+rule the Activity pane would need, so a copy in the renderer is the second expression that
+eventually disagrees.
+
+**The discriminator is `kind`, never the shape of the text.** Sniffing `detail` for something that
+looks like a version or a device name is the lookalike failure this repo has a table about:
+`Samsung SM-S938B` and `2735 bytes, automatically` are both *a short string with digits in it*, and
+the rule would be wrong on the first transfer event.
+
+**What it will not do is invent a device name.** The reference shows one on the Disconnected row;
+the event does not carry it, and the *current* device name is a fact about now, not about a
+disconnection five minutes ago. A historical row asserting today's device is the stale-reading
+failure with a picture around it. That row gets its sentence and its log link, and no device.
+
+### 2 · Two affordances that had to be real before they could be drawn
+
+Both were checked against the code before being built, because a chevron that opens nothing is the
+failure this project keeps ruling out:
+
+| | destination |
+|---|---|
+| row chevron (×5) | `route('activity')` — the full history this card shows five of |
+| `View log →` | `route('settings', 'advanced')` — where `logTail` is drawn |
+
+So the rows are `<button>`s: the hover is earned, the chevron is a promise kept, and the keyboard
+gets it for free. `View log` stops propagation so the row's route does not swallow the more specific
+one that was actually clicked.
+
+### 3 · Three defects found by measuring, not by looking
+
+- **Two subtitles clipped.** Side-by-side needs `176 (furniture) + 380 (longest subtitle) + 150
+  (device name)` = **706px**, and the card is **573px** at the default window. The threshold is
+  700px, so in practice this card is always stacked and the side-by-side layout is what a much wider
+  window gets. Stacked, the subtitle is allowed two lines.
+- **The stacked layout put the chevron in the bottom-right corner.** Only the metadata was placed by
+  hand (`grid-column: 3/4`); everything else auto-placed, and the chevron followed it into row two
+  while the time and tile centred against a 144px row. **Auto-placement is fine until one item is
+  placed by hand, after which source order decides and nothing says so.** Every item is placed
+  explicitly now; chevron offset from row centre measured at **0 on all five rows**.
+- **Every separator curved at its ends.** The row carries a radius for its hover, and a
+  `border-bottom` on a rounded box follows the corner. It read as a deliberate flourish and was a
+  side effect of a property that exists for something else. The line is a `::after` now — two jobs,
+  two elements.
+
+### 4 · A cascade trap the one-selector-one-sheet rule cannot see
+
+`.card { padding: var(--space-9) }` lives in **styles.css**, which loads after shell.css. A bare
+`.recent { padding: … }` in shell.css is the same specificity and **loses in silence** — nothing
+errors, nothing warns, and the card keeps its old 20px. `stylesheets.test.ts` cannot catch it
+because the selectors differ; only the cascade knows. `.card.recent` is (0,2,0) and wins wherever
+it is declared.
+
+`--space-12: 32px` was added because the scale stopped at 28 and this card asks for 32 — extending
+the scale rather than writing a literal no token can ever move.
+
+### 5 · The verification list, read from the DOM
+
+| | |
+|---|---|
+| outer card surfaces | **1** (`.card` inside the card: **0**) |
+| heading / subtitle / View all + chevron | 1 / 1 / 1 + 1 |
+| rows | **5**, at 104–106px |
+| time column | fixed **62px** |
+| icon tiles | **56px**, five of five, one glyph each |
+| two lines of content | all five |
+| metadata areas / chevrons | 5 / 5 |
+| separators | 4 hairlines |
+| nested bordered boxes | **none** |
+| rows are buttons / focusable | yes / yes |
+| clipped text at 1280, 1440, 1700, 1920 | **0** |
+
+Mac suite **756/756**, phone **450/450**, nine guards green. The card is 629px tall — five spacious
+rows is what that costs, and it is the height the brief asked for rather than one manufactured.
+
+Untouched: the media card, the Device hero, Device status, the sidebar and the dock.
+
+---
+
+## Phase 7 Slice 61 — the media card brought onto the hero's material
+
+**2026-09-16.** Beside the rebuilt Device hero the media card read as a different app: a warm brown
+surface, oversized controls, and a dead band in the middle. Rebuilt against a reference of the whole
+top row. **The hero was not touched** — measured after, identical at 573×428 with its phone at
+150×325, six cells, two actions and two menu items.
+
+### 1 · Differences, current against target
+
+| | current | target |
+|---|---|---|
+| surface | **warm brown** — the artwork wash at 0.22/0.12 dominating a neutral charcoal | cool navy with a faint violet wash |
+| header | none | `MEDIA REMOTE` label + a top-right app action |
+| artwork | 150px | 112–124px |
+| badge | 36px, floating clear of the cover | small, attached to the corner |
+| transport | 60 / 84 px | 48 / 60 px |
+| bottom | device pill and volume **stacked on two rows** | one row: volume left, pill right |
+| volume reading | none drawn | a live percentage |
+| rhythm | `justify-content: space-between` over a stretched card → a dead band | stated gaps |
+
+### 2 · The surface was warm because the artwork *was* the ground
+
+The wash was the cover alone, at 0.22 and 0.12. A warm album therefore turned the whole card brown —
+not a bug in the extraction, which was working exactly as built, but the wrong **order**: the only
+colour source was the one thing that changes every three minutes.
+
+There are three layers now: a constant violet at 0.10 under an artwork tint at 0.09 and 0.05. The
+base is navy whatever is playing, and the cover is a hint rather than the ground. `--np-surface`
+also moved from `#191a21` to `#1a1d27` — the hero's `--elev-3` hue, so the two cards are one
+material family. Still frozen across themes, for the reason that whole token block exists.
+
+### 3 · "Open in Music" would have been a faked label
+
+`apps.open.ask` is real, shipped, and proven on 123 packages — and it **asks**. It posts a
+notification the phone's owner taps; `main/apps.ts` says so on its own log line: *"whether it opens
+is a tap on the phone, and this Mac will never know."* That is why the verb is named
+`apps.open.ask` and why `check-apps-verb.mjs` keeps `apps.launch` from existing.
+
+So the button reads **"Open on phone"**, with the app named in its tooltip and accessible name. The
+brief offered a non-interactive source label as the fallback, and that is what a session with no
+package gets — the slot degrades to the app's name rather than to a dead button.
+
+### 4 · The percentage may be drawn where "7 of 15" could not
+
+A raw step count needs its maximum beside it or it says nothing — that is the denominator rule, and
+it is why this pane refused to shorten `7 of 15` to `7/15` two days ago. **A percentage carries its
+own denominator**, so `40%` is not the same claim and is not governed by the same rule.
+`aria-valuetext` keeps the step form for anyone who wants the granularity, and the percentage is
+drawn **only when the phone reported a maximum** — one computed against a guessed 15 would be a
+number about nothing.
+
+### 5 · Measured, playing and empty
+
+| | playing | empty |
+|---|---|---|
+| artwork | **116×116**, real cover | 116×116, quiet music fallback |
+| badge | **26×26**, on the corner | **absent** — no source logo |
+| transport | **48 / 60 / 48** | same, all three disabled |
+| bottom row | one row, volume + `40%` + `Phone speaker` | one row, `No active device` |
+| scrubber | live | `--:--` both ends, fill **0.00%**, disabled |
+| title | **1 line** | 1 line |
+| ground | `rgb(32,36,47) → rgb(26,29,39)` — cool navy | same |
+| card height | 367 | 359 — geometry held, no collapse |
+
+Mac suite **756/756**, nine guards green.
+
+### 6 · The two-writers probe mistake, third time in one session
+
+The first empty-state capture showed `1:01 / −3:28` on a fully-filled scrubber under the words
+*Nothing playing*. Nothing was wrong with the card: the live `RemoteView` is still mounted on
+`#remote-card` and **still ticking**, and its tick does
+`this.body.querySelector('.remote-seek')` — which found the probe's bar and wrote the live position
+into it. A probe view sharing the product view's nodes is a second writer, and the product's own
+250ms tick is the thing that makes it visible.
+
+Re-run on isolated nodes it reads `--:--`, `0.00%`, disabled. **The synchronous measurements were
+right the whole time and the screenshot was not**, which is the same split as Slice 58's: numbers
+read in the same evaluate survive, pictures taken 500ms later do not. Recorded a third time because
+knowing the rule has now failed to prevent it three times; what prevents it is mounting the probe on
+its own elements, every time, without deciding whether this case needs it.
+
+---
+
+## Phase 7 Slice 62 — Overview re-scored against the handoff, and the second reference retired
+
+**2026-09-16.** A reported audit of the Overview pane — 26 items — resolved against
+`design_handoff_connectsuite/ConnectSuite.dc.html` and its `README.md`, which is the binding design.
+Departure rows **O6–O18** in `docs/design-departures.md`; defects **122** and **123** in
+`docs/defects.md`.
+
+### 1 · What the audit actually found, which was not on the list
+
+**Three Overview cards had been rebuilt against a reference that is not the handoff.** Slices 59,
+60 and 61 each say *"rebuilt against a reference mockup"* and none of them says **which** — the
+Device hero, Recent activity and the media card. Six of the reported 26 items are exactly where the
+two references disagree, and not one of those six had a departure row.
+
+That is the finding rather than any single row: **a rebuild is scored against a named authority or
+it is not scored at all.** Nothing in the build can compare two designs, so a second authority is
+invisible until somebody reads both — which is the same failure mode `CLAUDE.md` records for phase
+rows. It is recorded as **superseded** at the top of `docs/design-departures.md` with the six
+differences measured, and `docs/phase-7-state.md` §1 now says what "Built to the handoff" is scored
+against.
+
+### 2 · Nine items were withdrawn by measurement, and that is the direction this should travel
+
+Before any code changed, every reported item was measured in the running app through
+`scripts/probe.mjs`. Nine did not survive:
+
+| Reported | Measured |
+|---|---|
+| *"the status pill is sticky, the header is not, so the pill floats over content on scroll"* | `#status-island` is `position: absolute`, bottom **46px**; `#page` top **142px**; `.page-head` is `static` and **outside the scroller**. Overlap is not expressible. This is the handoff's *"60px of reserved space so the floating status island never overlaps the page title"*, working |
+| *"the media remote prints the track title twice"* | **One** `.remote-title`. `#remote-note` is 1×1 with `clip-path: inset(50%)` and carries *"Paused in YouTube."*, not the title — defect 46's fix, in the accessibility tree by design |
+| *"the storage ring renders near-full while the label says 11.0 GB free of 490 GB"* | The arc **is** bound to used, which is the handoff's binding too (`ring2` at 0.50 under a `128 GB` value and a `68 GB free` caption) |
+| *"the phone preview is an empty black rectangle"* | `linear-gradient(170deg, #1c1f2b, #111219)`, 150×325 — the handoff's *"150px phone render"*, decoration rather than a preview. No device screenshot exists on this wire (Slice 59 §2) |
+| *"five heading sizes"* | **Four** distinct: 31 / 21 / 15 / 10.5 |
+| *"connection status renders 5 times"* | **Four** visible — island, sidebar chip, hero chip, footer strip — and all four are the handoff's. A fifth appears only when a failure event is among the recent five |
+| *"~400px of dead space"* | **227px** (left column ended 1151, right 924) |
+| *"the bottom dock duplicates sidebar destinations exactly"* · *"MENU is meaningless"* · *"replace the coloured icon tiles with monochrome"* | All three are specified in the README verbatim. A 5-of-12 subset is not "exactly" |
+
+**The two that matter are the ones reported as near-misses of the truth.** The storage ring's
+binding and the phone preview were filed as bugs and were not; had they been fixed as filed, the
+ring would have been rebound to *free* — the number under it — and drawn nearly **empty** on a phone
+with 2% left, which is the alarming direction.
+
+### 3 · Two defects nothing in the build could have seen
+
+**Defect 122** — every shortcut hint except ⌘K is decorative. Registered separately, not fixed.
+
+### Defect 123 — the app's most advertised accelerator was bound to a log line
+
+`⌘⇧M` is printed in **two** places: the Overview hero's primary action (`Start mirroring ⌘⇧M`) and
+the ⌘K palette's first command row (*Mirror phone*), and the handoff specifies it for exactly that.
+`main.ts:832` registered `CommandOrControl+Shift+M` as a **`globalShortcut`** for the mark
+diagnostic — a debugging aid that writes one line to the log. A global shortcut is taken before the
+page can see the keystroke, so pressing the key the UI advertises has never once started a mirror.
+
+**Why nothing reported it.** `globalShortcut.register` returns `true` on success and the code
+already handles `false` with a warning — so the one signal available said *the shortcut is
+working*, which it was. It is `CLAUDE.md`'s registration-line-read-as-an-execution-line, in the
+input layer: *what would this line say if the feature had never once worked?* — and the answer is
+exactly what it says now.
+
+**Fixed 2026-09-16.** The mark moved to `Control+Alt+Command+M`, unadvertised and deliberately
+awkward; its global registration is kept, and that half of the original argument is untouched and
+still right — the mirror canvas forwards keystrokes to the phone, so a mark taken by the page would
+type into whatever app is open over there. Mirroring is bound in `shell.ts`'s existing `keydown`
+handler, **in the page**, for the opposite reason: taking ⌘⇧M from every other application on the
+machine to start a mirror is a cost this app has no right to impose.
+
+It calls `runCommand('mirror.start')` — the palette's own registration — rather than `mirror.start`
+directly, so the hero button, the palette row and the key are three triggers for one wiring. An
+unwired id reports itself in a toast instead of swallowing the keystroke, on the same rule
+`runSelected` already followed.
+
+### 4 · Readings, each with its control
+
+All through `scripts/probe.mjs` against the running app. Window 1920×1080 unless stated;
+`innerWidth === outerWidth` throughout, so no zoom (the trap `docs/RESUME.md` §3 records).
+
+| | Before | After | Control |
+|---|---|---|---|
+| grid children / cards nested inside Device status | 5 / **1** | **6 / 0** | `.card` count on the pane = 5 |
+| battery renderings on one viewport | **3** | **2** (sidebar, ring) | same query returned the storage and latency sets |
+| storage renderings | **2** | **1** (ring) | as above |
+| device-name renderings, live | **3** | **2** + one historical activity row | ancestry printed per node, not a count |
+| distinct heading sizes | 31 / 21 / 21 / 15 / 10.5 → **4** | **3** — `{31:1, 21:1, 15:4}` | six heading elements enumerated, all visible |
+| recent row height / tile / time column | 104 / 56 / 62 | **52 / 26x26 / 44** | 5 rows read, all five identical |
+| ring value face | `-apple-system` | **`SF Mono`, `tabular-nums`** | caption deliberately **not** mono — the handoff's is Archivo too |
+| visible overflow triggers | `open-overflow`, `hero-more` | **`open-overflow`** | 280 buttons in the window |
+| two-column imbalance | **227px** | **139px** | column membership read from the **computed rect against the grid midline**, never from the id |
+| `#caps-card` at 920px | — | `reachable`, fraction 0 at rest, 317px scroll | `onScreen`, 6 cards, two report `visible` |
+
+**The instrument was wrong once and it was caught by its own output.** The first column-imbalance
+read matched `/remote|device-status|caps/` as "column two" and reported **205px** — but `.caps-card`
+is `grid-column: 1 / -1` and spans both, so that number was a full-width card's bottom edge and not
+a column's. It is the classify-by-name fault: a card's column is a fact the browser holds, and the
+rewritten probe reads it from the rect. The 205 was never written down anywhere but this paragraph.
+
+### 5 · Two regressions this pass introduced and measured before they shipped
+
+Both were found by measuring after the change rather than by looking, and both are the shape where
+a correct-looking fix moves the problem:
+
+- **The mono face overflowed the storage ring.** `10.8 GB` at 13px mono is **54.8px** inside a
+  **50.4px** clear span — it overflows by 4.4. `storageRing`'s own comment already records this
+  happening once — *"13.7 GB free" overflowed it, seen in a screenshot, not in any test, because a
+  DOM double has no layout* — and it came straight back, because mono is wider at the same px. The
+  handoff steps its own longer ring value down (17px for `79%`, 15px for `128 GB`); ours does the
+  same at a measured threshold of six characters. After: **46.4px** against 50.4.
+- **The metadata column collapsed to 62px for text needing 116**, so `Samsung SM-S938B` drew as
+  `Sam…` with 300px of empty row beside it. **The obvious cause was wrong and the measurement said
+  so**: removing `.recent-meta`'s `min-width: 0` changed nothing — still 62 — because the real floor
+  is one level in, at `.recent-device span`, whose `overflow: hidden` for its ellipsis makes *its*
+  min-content zero and propagates up. Fixed with an explicit `min-width: max-content` and the cap
+  moved onto the span, where the ellipsis already is; a `max-width` on the parent would have been
+  overridden, since CSS resolves `min-width` over `max-width`. After: **138px, not truncated**.
+
+### 6 · Suites and guards, as run
+
+```
+npm test (desktop)               757 tests, 757 pass, 0 fail
+scripts/check-renderer-views.mjs 13 view classes, 32 test files — 12 covered, 1 debt, 0 unaccounted
+scripts/check-defects.sh         106 numbered rows, all with records
+check-color-tokens · check-contrast · check-apps-verb · check-protocol-spec ·
+check-debt-claims  · check-orphan-tests                                      all exit 0
+```
+
+**757 is what this tree measures; `docs/RESUME.md` claims 761 and that number was not verified
+here.** This pass is net **+1** test (chips gained one; three were rewritten in place), so the two
+figures do not reconcile and the difference is not accounted for. Recorded rather than rounded — a
+count with an unexplained gap is the denominator rule's own failure.
+
+Three tests failed first and were fixed as part of the work, which is worth naming because two of
+them were guarding a rule whose **carrier** moved rather than a rule that stopped being true:
+
+- `shellBattery` asserted six hero cells; it asserts four, plus that a battery reading adds no fifth.
+- `deviceVitals` asserted `batterySlot(...).detail === '12% · Charging'`. `detail` was the labelled
+  form and the hero row was its only consumer, so the field went with O11 — but *"charging is said,
+  not inferred from a glyph nobody has a legend for"* is still a live rule. It moved to
+  `batteryRing(...).caption`, which is where the words are actually drawn. **Deleting it with the
+  field would have retired a rule because its carrier moved.**
+
+And one of my own assertions was wrong in a way worth recording: it extracted a cell's label with
+`textContent.replace(/[^A-Za-z].*$/, '')` and got `ConnectionLocal` — there is no separator between
+a label and its value in `textContent`, so the extraction invented one. The label is its own
+element; the test reads `.detail-label` now.

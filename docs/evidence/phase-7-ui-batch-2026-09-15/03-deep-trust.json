@@ -1,0 +1,18 @@
+{
+  "file": "docs/evidence/phase-7-ui-batch-2026-09-15/03-deep-trust.png",
+  "screen": "settings",
+  "takenAt": "2026-09-15T05:41:47.501Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": true,
+  "settleMs": 400,
+  "ready": null,
+  "prep": null,
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth"
+}

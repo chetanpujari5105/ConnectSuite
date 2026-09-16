@@ -21,10 +21,12 @@
  *
  * ### Two things it deliberately does not do
  *
- * It never invents a value. The device battery is `—` rather than the handoff's "79%": the phone
- * declares `battery.state` in `docs/protocol.md` and nothing subscribes to it yet, so there is no
- * number to show and a plausible one is worse than a dash. The island cycles only events that
- * actually happened.
+ * It never invents a value — and for the battery that used to mean *never shows one*. `battery.state`
+ * had no subscriber when this was written; it has had one since `VitalsFeature` landed, and the
+ * comment outlived the fact by a phase while three slots stayed `hidden` because of it. The rule is
+ * unchanged and the input is not: the slots carry a real percentage when there is one, and are
+ * removed — not dashed — when there is not. [batterySlot] holds that decision, beside the ring that
+ * makes the same one for Overview.
  *
  * It never draws an unbuilt screen as though it were empty. Five of the eleven sidebar rows have
  * nothing behind them; each draws its `unbuiltReason`, which names the phase and the missing piece.
@@ -92,6 +94,61 @@ const toneRules = (
   linkToneLabel: (p: string | undefined, h: { kind: string } | undefined, l: boolean) => string;
 };
 
+/**
+ * `shared/deviceVitals.js`, loaded before this script. Reached the same way as [toneRules] and for
+ * the same reason: under `node --test` there is no script tag, so it is `require`d.
+ *
+ * **Called rather than re-implemented.** Three slots each deciding for themselves what an unknown
+ * battery looks like is three chances to disagree with the ring on Overview, which is the same fact
+ * two inches away.
+ */
+const vitalsRules = (
+  typeof module !== 'undefined'
+    ? require('../shared/deviceVitals')
+    : (globalThis as unknown as Record<string, unknown>)
+) as {
+  batterySlot: (
+    state: { level: number | null; charging: boolean; capacityUnknown: boolean } | null,
+    live: boolean,
+  ) => { show: boolean; text: string; detail: string; tone: 'ok' | 'low' | 'unknown' };
+};
+
+/** One row of the hero's detail grid. */
+interface HeroFact {
+  icon: string;
+  label: string;
+  value: string;
+  /** Mono + tabular figures. The handoff's closed list: latency, sizes, percentages, IPs, geometry. */
+  numeric: boolean;
+  /** Drops to --text-body. For a value that must be *available* without competing to be read. */
+  advanced: boolean;
+}
+
+/**
+ * What the Connection row says — **the transport, not the discovery route**.
+ *
+ * This row used to print `status.via` raw, which is how `last-known` reached a user's screen under
+ * the word "Connected". That string is not a transport and never was: `via` is which rung of the
+ * discovery order in locked decision #4 *found* the phone — last known IP, then the gateway, then
+ * mDNS, then a typed address — and it is a fact about a lookup that finished, often minutes ago.
+ * It is `CLAUDE.md`'s package-id rule one namespace over: an internal handle may appear as a
+ * handle, never as the only thing a person reads.
+ *
+ * **"Local network", not "Local Wi-Fi", and the difference is the whole of the honesty here.**
+ * Four of the five routes are the same transport — a TLS socket on the LAN, ports 42501-3 — and
+ * nothing in this protocol distinguishes Wi-Fi from Ethernet on the Mac's side or from USB
+ * tethering on the phone's. `net.state` is the type that would, and it is on the debt list with no
+ * handler on either side. So "Wi-Fi" would be a guess rendered as a fact, which is the failure this
+ * repo has a table about; "Local network" is the strongest claim the wire actually supports.
+ *
+ * Tailscale is genuinely a different transport and keeps its own name.
+ */
+function heroTransportOf(status: ShellStatus | null): string {
+  if (status?.phase !== 'connected') return 'Not connected';
+  if (status.via === 'tailscale') return 'Tailscale';
+  return 'Local network';
+}
+
 function toneOf(status: ShellStatus | null): LinkTone {
   if (!status) return 'idle';
   // Delegates. The precedence — repudiation outranks the transport phase, a live session outranks
@@ -110,6 +167,17 @@ const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) 
 
 class ShellView {
   private current = 'overview';
+
+  /**
+   * The phone's last `battery.state`, or null before one arrives.
+   *
+   * Held rather than passed into [setStatus], because the two facts arrive on different messages at
+   * different rates — a status heartbeat is seconds, a stationary battery can be an hour — so a
+   * parameter would make every status update erase the battery until the next tick. Same reason
+   * `main.ts` holds `lastBatteryState` rather than forwarding it blind.
+   */
+  private battery: { level: number | null; charging: boolean; capacityUnknown: boolean } | null = null;
+
 
   /**
    * Called after a screen becomes visible, with its id.
@@ -214,12 +282,29 @@ class ShellView {
         row.appendChild(badge);
       }
 
-      // The dimming is a colour and the dot is a shape; neither is reachable by a screen reader,
-      // so the state goes in the accessible name too. Same rule as the capability chips (defect 26).
+      /*
+       * The dimming is a colour and the dot is a shape; neither is reachable by a screen reader, so
+       * the state goes in the accessible name too. Same rule as the capability chips (defect 26).
+       *
+       * **And since 2026-09-16 the *reason* comes with it.** The row said `Camera — not built yet`
+       * and stopped there; the sentence that names the phase and the missing piece —
+       * `unbuiltReason`, which for Camera is *"needs a macOS Camera Extension, which is a signed
+       * system extension and a distribution problem before it is a code problem"* — existed only on
+       * the screen you reach by pressing the row. So the one question a dimmed row provokes could
+       * only be answered by acting on it.
+       *
+       * It is on the `title` for a pointer and in the accessible name for everything else, which is
+       * the ordering defect 118 established: `title` never fires on keyboard focus, so it is never
+       * the only carrier.
+       */
+      const unbuiltReason = screen.state === 'unbuilt' ? screen.unbuiltReason : undefined;
       row.setAttribute(
         'aria-label',
-        screen.state === 'unbuilt' ? `${screen.label} — not built yet` : screen.label,
+        screen.state === 'unbuilt'
+          ? `${screen.label} — not built yet${unbuiltReason ? `. ${unbuiltReason}` : ''}`
+          : screen.label,
       );
+      if (unbuiltReason) row.title = `${screen.label} — not built yet. ${unbuiltReason}`;
       row.addEventListener('click', () => this.route(screen.id));
       nav.appendChild(row);
       this.navRows.set(screen.id, row);
@@ -538,6 +623,25 @@ class ShellView {
     this.commands.set(id, run);
   }
 
+  /**
+   * Run a wired command by id, from anywhere that is not the palette.
+   *
+   * One registration, several triggers. An accelerator that called the feature directly would be a
+   * second path to the same action, and the two drift the first time one of them grows a guard —
+   * which is the whole of defect 122's *"do not write a second accelerator table"*.
+   *
+   * An unwired id says so rather than doing nothing, on the same rule `runSelected` follows: a
+   * keystroke that is swallowed is indistinguishable from a keystroke that was not received.
+   */
+  private runCommand(id: string): void {
+    const run = this.commands.get(id);
+    if (!run) {
+      this.toast(`That shortcut is not wired up on this build (${id}).`);
+      return;
+    }
+    run();
+  }
+
   private bindPalette(): void {
     const input = $<HTMLInputElement>('palette-input');
     input.addEventListener('input', () => this.drawPalette(input.value));
@@ -551,6 +655,30 @@ class ShellView {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         this.openPalette();
+        return;
+      }
+      /*
+       * **⌘⇧M — defect 123, bound 2026-09-16.**
+       *
+       * It was drawn in two places (the Overview hero's primary action and the ⌘K palette's first
+       * command) and bound to **the mark diagnostic**, a `globalShortcut` in `main.ts` that writes
+       * a log line. So the app's most prominent accelerator did something else entirely, silently,
+       * and had since the mark landed. The mark moved to an unadvertised combination; this is the
+       * key the handoff names for *"Mirror phone"*.
+       *
+       * **It runs the palette's own command rather than calling `mirror.start`**, which is what
+       * keeps this from becoming defect 122's second accelerator table: `renderer.ts` wires
+       * `mirror.start` once, and the hero button, the palette row and this key are three triggers
+       * for one registration. A command with nothing behind it reports itself here exactly as it
+       * does in the palette instead of swallowing the keystroke.
+       *
+       * It is **not** a `globalShortcut`. The mark is one deliberately — it must be takeable while
+       * the phone has focus — and this must not be: taking ⌘⇧M from every other application on the
+       * machine to start a mirror is a cost this app has no right to impose.
+       */
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'm') {
+        event.preventDefault();
+        this.runCommand('mirror.start');
         return;
       }
       if ($('palette').hidden) return;
@@ -647,9 +775,16 @@ class ShellView {
    * test over the model cannot see an element deleted from `index.html`, so the runtime says it
    * too.
    */
-  private revealInScreen(screen: string | undefined, reveal: string | undefined): void {
+  private revealInScreen(
+    screen: string | undefined,
+    reveal: string | undefined,
+    settingsPane?: string,
+  ): void {
     if (!screen || !reveal) return;
-    this.route(screen);
+    // `settingsPane` is passed through rather than set afterwards: Settings swaps its body instead
+    // of scrolling it, so routing and then selecting would draw the previous pane first and the
+    // reveal would fire against whichever card happened to be under the flash.
+    this.route(screen, settingsPane);
     // After the route, so the section is no longer `hidden` — a hidden element cannot be scrolled
     // into view and reports no geometry, which is the measurement fault CLAUDE.md records against
     // the photo grid, here as a behaviour rather than as a reading.
@@ -690,7 +825,7 @@ class ShellView {
       return;
     }
     if (result.kind === 'deep') {
-      this.revealInScreen(result.screen, result.reveal);
+      this.revealInScreen(result.screen, result.reveal, result.settingsPane);
       return;
     }
     const run = this.commands.get(result.id);
@@ -733,19 +868,26 @@ class ShellView {
     $('device-state').textContent = label;
     $('device-dot').setAttribute('data-state', tone);
     /*
-     * The handoff's device card, connected-device strip and hero all carry a battery percentage.
-     * `battery.state` is declared in docs/protocol.md and **nothing subscribes to it**, so there is
-     * no number to show.
+     * The handoff's device card, connected-device strip and hero all carry a battery percentage,
+     * and `battery.state` now arrives: `VitalsFeature` pushes it, `main.ts` holds and forwards it,
+     * and this is the chrome's third of it.
      *
-     * The slot is removed rather than filled with a dash. A lone "—" tucked between "Connected" and
-     * a divider is a glyph with no label, which a reader has to decode instead of read — and the
-     * one thing worse than an absent battery reading is one people cannot tell from a flat one. The
-     * fact itself is not hidden: it is a line in Settings → Advanced, where facts live, and that
-     * line says `not subscribed` rather than `0%`.
+     * **`tone` is not read here and that is deliberate.** The slot's *presence* is the whole signal
+     * and it sits inside a status line that already carries a coloured dot for the link. A second
+     * colour in the same 200px, answering to a different fact, is the two-writers-one-surface shape
+     * defect 96 was: a reader cannot tell which of the two the red belongs to. Low battery is drawn
+     * where it has room to say so — the O4 ring, which has a caption.
+     *
+     * The slot is removed rather than filled with a dash whenever there is nothing to say, which
+     * now includes a link that is not live: see [batterySlot] for why a stale percentage is worse
+     * than none.
      */
-    $('device-battery').hidden = true;
-    $('strip-battery').hidden = true;
-    $('strip-divider-battery').hidden = true;
+    const battery = vitalsRules.batterySlot(this.battery, tone === 'live');
+    $('device-battery').hidden = !battery.show;
+    $('device-battery').textContent = battery.text;
+    $('strip-battery').hidden = !battery.show;
+    $('strip-battery').textContent = battery.text;
+    $('strip-divider-battery').hidden = !battery.show;
 
     $('strip-name').textContent = name;
     $('strip-state-label').textContent = label;
@@ -785,6 +927,18 @@ class ShellView {
     if (status?.paired && wasPaired === false) this.route('overview');
   }
 
+  /**
+   * The phone's battery, from `battery.state`.
+   *
+   * Separate from [setStatus] because the two arrive on different messages at different rates, and
+   * it re-renders through `setStatus` rather than touching the slots itself — one writer for the
+   * chrome, which is the rule defect 96 cost this project a month to learn.
+   */
+  setBattery(state: { level: number | null; charging: boolean; capacityUnknown: boolean } | null): void {
+    this.battery = state;
+    this.setStatus(this.status);
+  }
+
   private drawHeroFacts(status: ShellStatus | null, latency: string): void {
     /*
      * The handoff's four: Connected via / Latency / Encryption / Signal.
@@ -806,26 +960,83 @@ class ShellView {
      * are prose and belong in the UI face. All four carried `.fact-value` and therefore the mono
      * face until docs/testing.md, "Measurement pass, third run", section 1.3.
      */
-    const facts: [label: string, value: string, numeric: boolean][] = [
-      ['Connected via', status?.via ?? '—', false],
-      ['Latency', latency, true],
-      ['Encryption', 'TLS 1.3, pinned', false],
-      ['Address', status?.address ?? '—', true],
+    /*
+     * ### Why this is four cells and not six — reverted 2026-09-16, departure O11
+     *
+     * Slice 59 added **Battery** and **Storage** rows here, against a reference mockup that is not
+     * the handoff and is now recorded as superseded (`docs/design-departures.md`, top of file).
+     * Against `ConnectSuite.dc.html` they are duplicates: the Overview draws battery in exactly two
+     * places — the sidebar device card and the O4 ring — and storage in exactly one, the ring. With
+     * the two rows here it was **three** and **two**, measured on hardware, with the ring and the
+     * row four hundred pixels apart saying the same number in two different faces.
+     *
+     * The fact is not hidden by removing it. The ring has room for a caption and says
+     * *"This phone does not report its level"* where a fact cell could only manage a dash; Settings
+     * → Advanced carries `batteryDiagnostic` with the reading's age. This card is the link, and the
+     * ring card is the device — which is the split the handoff draws and the split that makes the
+     * two cards stop restating each other.
+     */
+    const facts: HeroFact[] = [
+      // LEFT COLUMN — what the link is.
+      {
+        icon: 'wifi',
+        label: 'Connection',
+        value: heroTransportOf(status),
+        numeric: false,
+        advanced: false,
+      },
+      {
+        icon: 'lock',
+        label: 'Security',
+        // Not a reading and deliberately not dressed as one. Locked decision #3 is that this link
+        // is TLS 1.3 with both ends pinned by SHA-256 fingerprint and **no plaintext fallback,
+        // ever** — so there is no state in which a connected link is anything else, and a field
+        // that can only hold one value is a fact about the architecture rather than a measurement.
+        value: 'TLS 1.3, pinned',
+        numeric: false,
+        advanced: false,
+      },
+      // RIGHT COLUMN — what the link is doing.
+      { icon: 'activity', label: 'Latency', value: latency, numeric: true, advanced: false },
+      {
+        icon: 'network',
+        label: 'Address',
+        value: status?.address ?? '—',
+        numeric: true,
+        // Signal's slot, per the recorded departure S5: nothing on the wire reports link quality,
+        // and a made-up "Excellent" beside three measured values is the one lie that would make the
+        // other three unreadable. An IP is how you'd debug this rather than how you'd use it, so
+        // `advanced` drops it to --text-body and lets the three rows a person reads hold the weight.
+        advanced: true,
+      },
     ];
+
     const host = $('hero-facts');
     host.replaceChildren();
-    for (const [label, value, numeric] of facts) {
+    for (const fact of facts) {
       // The pair is one grid cell. A bare dt/dd pair in a two-column grid separates the label from
       // its value by the width of the card, which is a table, not a fact.
       const cell = document.createElement('div');
-      cell.className = 'fact';
+      cell.className = 'detail';
+
+      const glyph = document.createElement('span');
+      glyph.className = 'detail-icon';
+      glyph.setAttribute('aria-hidden', 'true');
+      glyph.appendChild(iconSvg(fact.icon, 15));
+
+      const lines = document.createElement('div');
+      lines.className = 'detail-lines';
       const dt = document.createElement('dt');
-      dt.className = 'fact-label';
-      dt.textContent = label;
+      dt.className = 'detail-label';
+      dt.textContent = fact.label;
       const dd = document.createElement('dd');
-      dd.className = numeric ? 'fact-value mono' : 'fact-value';
-      dd.textContent = value;
-      cell.append(dt, dd);
+      dd.className = 'detail-value';
+      if (fact.numeric) dd.classList.add('mono');
+      if (fact.advanced) dd.classList.add('is-advanced');
+      dd.textContent = fact.value;
+      lines.append(dt, dd);
+
+      cell.append(glyph, lines);
       host.appendChild(cell);
     }
   }
@@ -923,3 +1134,5 @@ const shell = new ShellView();
  * being written. The island contradicted the strip for a month underneath a green suite.
  */
 (globalThis as Record<string, unknown>).ShellView = ShellView;
+// The hero's one pure decision, for `shellHero.test.ts`. Same seam rule as the island's.
+(globalThis as Record<string, unknown>).heroTransportOf = heroTransportOf;

@@ -34,13 +34,16 @@
  * out of `link.ts`.
  */
 
-import { BrowserWindow, screen } from 'electron';
+import { nativeTheme, BrowserWindow, screen } from 'electron';
 import { join } from 'node:path';
 
 import {
   DEFAULT_WIDTH,
+  PORTRAIT_RATIO,
   boundsForCornerDrag,
   boundsForDrag,
+  boundsForRatioChange,
+  ratioOfCapture,
   resolveBounds,
   type Bounds,
   type WorkArea,
@@ -80,6 +83,16 @@ export class FloatMirrorWindow {
   /** Where the window was, for the same reason. Null until it has been opened once. */
   private lastPosition: { x: number; y: number } | null = null;
 
+  /**
+   * The aspect the phone is capturing at, height over width. Defect 114.
+   *
+   * Held here rather than derived per call, for the same reason `pinned` is: it has to survive a
+   * close and be restored on the next open, or reopening the window after a rotation would reopen it
+   * in the shape the phone left ten minutes ago. [PORTRAIT_RATIO] until the phone has said — which is
+   * a default and is not a claim, which is why `ratioOfCapture` returns null rather than guessing.
+   */
+  private ratio = PORTRAIT_RATIO;
+
   constructor(
     private readonly preload: string,
     private readonly page: string,
@@ -115,11 +128,14 @@ export class FloatMirrorWindow {
     const area = this.workArea();
     const bounds = resolveBounds(
       {
-        x: this.lastPosition?.x ?? Math.round(area.width - this.lastWidth - 40),
-        y: this.lastPosition?.y ?? 60,
+        // `area.x +` — the default position is on the display the cursor is on, which on a second
+        // monitor is not a small number. Defect 113 reached the opening position too.
+        x: this.lastPosition?.x ?? Math.round(area.x + area.width - this.lastWidth - 40),
+        y: this.lastPosition?.y ?? area.y + 60,
         width: this.lastWidth,
       },
       area,
+      this.ratio,
     );
 
     const float = new BrowserWindow({
@@ -136,7 +152,11 @@ export class FloatMirrorWindow {
       fullscreenable: false,
       minimizable: true,
       title: 'Phone screen',
-      backgroundColor: '#0b0c12',
+      // `--float-canvas`, resolved now because this is painted before any stylesheet loads.
+      // main.ts repaints it through setBackgroundColor when the theme changes under a live window.
+      backgroundColor: (require('../shared/appearance') as {
+        FLOAT_GROUND: Record<'light' | 'dark', string>;
+      }).FLOAT_GROUND[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'],
       show: false,
       webPreferences: {
         preload: this.preload,
@@ -204,7 +224,10 @@ export class FloatMirrorWindow {
     const float = this.living();
     if (!float) return;
     const bounds = float.getBounds();
-    float.setBounds(boundsForDrag(pointer, grab, bounds.width, this.workArea()));
+    // `areaUnder(pointer)`, not `workArea()`. See that method: clamping a cross-display drag against
+    // the display the window is still mostly on is defect 113, and it is what made the window snap
+    // back under the cursor once per pointer move.
+    float.setBounds(boundsForDrag(pointer, grab, bounds.width, this.areaUnder(pointer), this.ratio));
     this.remember(float.getBounds());
     this.publish();
   }
@@ -214,7 +237,9 @@ export class FloatMirrorWindow {
     const float = this.living();
     if (!float) return;
     const bounds = float.getBounds();
-    float.setBounds(boundsForCornerDrag(pointer, { x: bounds.x, y: bounds.y }, this.workArea()));
+    float.setBounds(
+      boundsForCornerDrag(pointer, { x: bounds.x, y: bounds.y }, this.workArea(), this.ratio),
+    );
     this.remember(float.getBounds());
     this.publish();
   }
@@ -229,6 +254,38 @@ export class FloatMirrorWindow {
 
   minimize(): void {
     this.living()?.minimize();
+  }
+
+  /**
+   * The phone turned, or first announced what it is capturing. Defect 114.
+   *
+   * Takes the capture geometry rather than a number, so the one place that turns *a shape the phone
+   * announced* into *a ratio* is `ratioOfCapture` and not four callers. A geometry with nothing
+   * readable in it is ignored — the previous ratio is a better answer than a default, because the
+   * phone has not retracted anything.
+   *
+   * It applies to a **closed** window too, and that is deliberate: the ratio is remembered like the
+   * width and the pin, so a window reopened after a rotation opens in the shape the phone is in
+   * rather than the shape it was in when the window was last closed.
+   */
+  setCaptureGeometry(capture: { width?: number; height?: number } | null): void {
+    const next = ratioOfCapture(capture);
+    if (next === null || Math.abs(next - this.ratio) < 0.001) return;
+    const previous = this.ratio;
+    this.ratio = next;
+    const float = this.living();
+    if (!float) return;
+    // The outer window, not only the canvas. A canvas refitted inside a portrait frame is exactly
+    // the reported bug: landscape content, correct aspect, a fifth of the area.
+    const bounds = boundsForRatioChange(float.getBounds(), previous, next, this.workArea());
+    float.setBounds(bounds);
+    this.remember(bounds);
+    this.publish();
+  }
+
+  /** The aspect the window is currently locked to, for the log line that says what changed. */
+  captureRatio(): number {
+    return this.ratio;
   }
 
   // ---- Reading -----------------------------------------------------------------------------------
@@ -267,14 +324,28 @@ export class FloatMirrorWindow {
     const display = float
       ? screen.getDisplayMatching(float.getBounds())
       : screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    return { width: display.workArea.width, height: display.workArea.height };
+    return areaOf(display.workArea);
+  }
+
+  /**
+   * The work area of the display a **pointer** is over, which is not always the one the window is on.
+   *
+   * Defect 113's second half. A drag toward the second monitor is a sequence in which the cursor has
+   * crossed and the window has not yet: `getDisplayMatching(window.getBounds())` still answers with
+   * the display the window is mostly on, so clamping against it holds the window at that display's
+   * edge and the crossing can never complete. Clamping against the display under the cursor is what
+   * makes the handover possible, and it is still a clamp — the window is held on *a* connected
+   * display, never off the desktop.
+   */
+  private areaUnder(pointer: { x: number; y: number }): WorkArea {
+    return areaOf(screen.getDisplayNearestPoint(pointer).workArea);
   }
 
   /** The one interior door: read the current bounds, ask for new ones, resolve, set, remember. */
   private place(request: (current: Bounds) => { x: number; y: number; width: number }): void {
     const float = this.living();
     if (!float) return;
-    const bounds = resolveBounds(request(float.getBounds()), this.workArea());
+    const bounds = resolveBounds(request(float.getBounds()), this.workArea(), this.ratio);
     float.setBounds(bounds);
     this.remember(bounds);
     this.publish();
@@ -288,4 +359,15 @@ export class FloatMirrorWindow {
   private publish(): void {
     this.onChanged(this.state());
   }
+}
+
+/**
+ * An Electron work area as this file's [WorkArea] — **origin included**.
+ *
+ * One function so there is one place the origin can be dropped, and it is not dropped here. Defect
+ * 113 was two lines that each built a `{ width, height }` literal from a rectangle that had four
+ * fields; a named converter is the smallest change that makes that impossible rather than unlikely.
+ */
+function areaOf(rect: { x: number; y: number; width: number; height: number }): WorkArea {
+  return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 }

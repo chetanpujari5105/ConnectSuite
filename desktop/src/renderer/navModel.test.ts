@@ -187,11 +187,36 @@ test('no two screens share an id or a shortcut', () => {
 });
 
 test('pairing is a route with no sidebar row', () => {
-  // The design has no unpaired state at all (departures row X5). Pairing must be reachable and
-  // must not add a twelfth row the designer never drew.
+  /*
+   * The design has no unpaired state at all (departures row X5). Pairing must be reachable and
+   * must not add a twelfth row the designer never drew.
+   *
+   * **The last assertion used to read `paletteResults('pair').length === 0`** and it went red when
+   * the trust deep link landed, carrying `pairing` among its keywords — a row that goes to
+   * Settings → Connection and has nothing to do with the pairing screen.
+   *
+   * That is `CLAUDE.md`'s fourth test variety: an assertion whose subject is a **set** standing in
+   * for a fact about **one** thing. The fact is *the pairing screen is not navigable from the
+   * palette*; the proxy was *the word "pair" returns nothing*, which any unrelated feature can
+   * break by being legitimately named. The count is not raised here — the question is split, and
+   * both halves are asserted by name. A row targeting `pairing` still fails, whatever it is called.
+   */
   assert.equal(screenById('pairing'), PAIRING_SCREEN);
   assert.equal(SCREENS.some((s: { id: string }) => s.id === 'pairing'), false);
-  assert.equal(paletteResults('pair').length, 0, 'pairing is forced by state, never navigated to');
+  for (const query of ['pair', 'pairing', 'scan', 'qr', 'code']) {
+    for (const row of paletteResults(query) as { id: string; screen?: string }[]) {
+      assert.notEqual(row.id, 'pairing', `"${query}" offered the pairing screen`);
+      assert.notEqual(row.screen, 'pairing', `"${query}" offered a deep link into pairing`);
+    }
+  }
+});
+
+test('the trust controls answer "pair", because that is what a stuck user types', () => {
+  // The other half of the split above, asserted rather than left as a side effect. Somebody whose
+  // phone will not pair reaches for the word "pair"; before this row they got nothing at all.
+  const rows = paletteResults('pair') as { id: string; screen?: string }[];
+  assert.ok(rows.some((r) => r.id === 'deep.trust'), 'nothing answers the commonest distress word');
+  assert.ok(rows.every((r) => r.screen !== 'pairing'));
 });
 
 test('the pill never leaves the top of the nav, however the list is scrolled', () => {
@@ -271,6 +296,44 @@ test("the searches that returned nothing on hardware now return the feature", ()
   }
   for (const query of ['contact', 'people', 'phone book']) {
     assert.ok(found(query).includes('Contacts'), `"${query}" must reach contacts`);
+  }
+  /*
+   * The two that `docs/phase-7-state.md` §3 lists as the seventh and eighth homeless features, and
+   * the queries below are the ones measured empty on **2026-09-15**, control `mirror` → 6.
+   *
+   * The observation that made these worth adding is not that two rows were missing. It is that
+   * **X5 is a snapshot**: both features shipped after the homeless list was written, both went into
+   * a pane, and nobody re-asked whether search could find them. This test is the re-asking, made
+   * automatic — a new deep-linkable feature that nobody adds a row for now fails here rather than
+   * being discovered by a probe a phase later.
+   */
+  for (const query of ['restore', 'undo', 'displaced', 'replaced', 'put back']) {
+    assert.ok(found(query).includes('Restore a replaced clip'), `"${query}" must reach the clipboard undo`);
+  }
+  for (const query of ['forget', 'trust', 'unpair', 'certificate']) {
+    assert.ok(found(query).includes('Trusted device'), `"${query}" must reach the trust controls`);
+  }
+});
+
+test('a deep link into Settings names its pane, because Settings swaps its body', () => {
+  /*
+   * Settings is the one screen that replaces its contents rather than scrolling them, so a deep
+   * link that routes and stops lands on whichever pane was open last and flashes a card the target
+   * is not in — a successful route that arrives nowhere, which is the silent no-op this whole
+   * mechanism exists to refuse.
+   *
+   * Asserted as an invariant over every link rather than about `deep.trust`, so the next one into
+   * Settings cannot be added without it.
+   */
+  const rows = paletteResults('') as { kind: string; screen?: string; settingsPane?: string }[];
+  const intoSettings = rows.filter((r) => r.kind === 'deep' && r.screen === 'settings');
+  assert.ok(intoSettings.length > 0, 'control — there is at least one to check');
+  for (const row of intoSettings) {
+    assert.ok(row.settingsPane, `a deep link into Settings with no pane named: ${JSON.stringify(row)}`);
+  }
+  // And nowhere else: a pane name on a link to another screen is a fact nothing reads.
+  for (const row of rows.filter((r) => r.kind === 'deep' && r.screen !== 'settings')) {
+    assert.equal(row.settingsPane, undefined, `${JSON.stringify(row)} names a Settings pane`);
   }
 });
 

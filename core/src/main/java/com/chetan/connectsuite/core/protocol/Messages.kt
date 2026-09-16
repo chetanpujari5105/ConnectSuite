@@ -190,6 +190,17 @@ object MessageType {
     const val REMOTE_STATE = "remote.state"
     const val REMOTE_COMMAND = "remote.command"
 
+    /**
+     * The current track's album art, fetched by the key `remote.state` carries.
+     *
+     * A separate type rather than a field on the state, for the reason `media.thumb` is separate
+     * from `media.list`: `remote.state` is pushed on every play, pause and position jump, and an
+     * inline 33 KB base64 image on each of those is exactly the head-of-line blocking on the
+     * channel that also carries `ping` that `media.thumb`'s batch cap exists to bound. The key is
+     * cheap and travels with every push; the bytes are asked for once per track.
+     */
+    const val REMOTE_ARTWORK = "remote.artwork"
+
     const val BATTERY_STATE = "battery.state"
     const val NET_STATE = "net.state"
 
@@ -286,6 +297,16 @@ object ErrorCode {
 
     /** `remote.command` with no app currently holding a media session. */
     const val NO_MEDIA_SESSION = "NO_MEDIA_SESSION"
+
+    /**
+     * `remote.artwork` for a session that carries no album art, or for a key that has gone stale.
+     *
+     * Its own code rather than [NOT_FOUND], because it is **not a failed lookup**. A podcast app, a
+     * browser tab and a game all hold perfectly good media sessions with no artwork in them, and
+     * that is the normal condition of those sessions rather than something that went wrong. The
+     * Mac draws its own fallback and says nothing; a NOT_FOUND would invite it to apologise.
+     */
+    const val NO_ARTWORK = "NO_ARTWORK"
 
     /**
      * An `sms.send` whose `addresses` do not match the thread its `threadId` names.

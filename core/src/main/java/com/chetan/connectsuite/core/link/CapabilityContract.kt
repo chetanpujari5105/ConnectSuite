@@ -290,7 +290,14 @@ object CapabilityContract {
             // does not exist.
         ),
         Capability.REMOTE to Contract(
-            requests = setOf(MessageType.REMOTE_STATE, MessageType.REMOTE_COMMAND),
+            requests = setOf(
+                MessageType.REMOTE_STATE,
+                MessageType.REMOTE_COMMAND,
+                // Added 2026-09-16 with the Now Playing card. It needs no grant of its own — the
+                // art comes out of the same `MediaMetadata` the state is already read from, so
+                // anything that can answer `remote.state` can answer this.
+                MessageType.REMOTE_ARTWORK,
+            ),
             // The same grant as notifications, because `MediaSessionManager.getActiveSessions`
             // requires a notification-listener component to name itself with. This is the whole
             // reason the media remote sits in Phase 4 next to notifications.

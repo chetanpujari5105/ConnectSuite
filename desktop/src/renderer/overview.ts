@@ -1,5 +1,11 @@
 /**
- * Overview's three additions: **Quick actions**, **Recent activity**, and the footer strip.
+ * Overview's two additions: **Recent activity** and the footer strip, plus O4's status rings.
+ *
+ * **Quick actions was deleted on 2026-09-16, not hidden.** Its eight tiles were a third route to
+ * screens the sidebar and the ⌘K palette already reach, and five of the eight are in the dock as
+ * well — so it cost a column of the top row to duplicate navigation that was never missing. The
+ * freed slot is the media card's. Nothing was lost: every one of the eight is in `SCREENS`, which
+ * is what the sidebar and the palette both read.
  *
  * Module-free like the other panes: the page is CSP-locked and loads plain scripts, so a top-level
  * `export` here would emit a CommonJS module the renderer cannot require.
@@ -33,50 +39,6 @@ interface OverviewBridge {
   disconnect(): Promise<unknown>;
 }
 
-/**
- * The handoff's eight Quick actions, in the handoff's order.
- *
- * **Ids only.** Everything else — label, icon, subtitle, whether it is built — is read from
- * `navModel.SCREENS`, the same table the sidebar, the dock and the palette read. Eight hand-written
- * tiles would be a second list, and the day a screen is renamed the second list is the wrong one.
- */
-const QUICK_ACTION_IDS = [
-  'mirror',
-  'files',
-  'photos',
-  'notifications',
-  'messages',
-  'clipboard',
-  'calls',
-  'camera',
-] as const;
-
-/**
- * The tile's second line.
- *
- * A **live number** where there is one — the design's own *"3 new"* on the Notifications tile — and
- * the screen's own `tileCaption` otherwise.
- *
- * It reads a field from `navModel` rather than holding captions here, for the same reason the ids
- * are read from the table: a caption written in this file is a claim about a screen, made somewhere
- * the screen cannot correct it.
- *
- * It was `screen.subtitle` until 2026-09-05, which is the right *source* and the wrong *length*: a
- * tile is half a 1fr column, and a page subtitle put into it truncated **five of the eight tiles**.
- * An ellipsis is not a caption. `tileCaption` is the same owner at the length this space can pay
- * for, and `navModel.ts` carries the reasoning beside the field.
- *
- * The unread count is drawn **only above zero**. A tile reading "0 new" is a count nobody needs,
- * and it is the rule the sidebar badge already follows.
- */
-function quickTileSub(
-  screen: { id: string; tileCaption: string; state: string },
-  unread: number,
-): string {
-  if (screen.state !== 'built') return 'Not built yet';
-  if (screen.id === 'notifications' && unread > 0) return `${unread} new`;
-  return screen.tileCaption;
-}
 
 /**
  * The strip's sentence.
@@ -88,11 +50,17 @@ function quickTileSub(
  * Disconnected says so instead. A strip claiming an encrypted connection over a link that is down
  * would be this screen's one security sentence being wrong in the state where somebody is most
  * likely to be reading it.
+ *
+ * **The connected sentence is the handoff's, word for word, and it names no device — departure
+ * O12.** Ours read *"Encrypted end to end with Samsung SM-S938B…"*, which put the device name on
+ * this screen a **third** time beside the sidebar card and the hero. The name adds nothing here: it
+ * is the only phone this Mac is paired with, it is 80px above in 21px type, and *"only your
+ * devices"* already says who the two parties are. `deviceName` is gone as a parameter rather than
+ * left unused, so nothing can quietly put it back.
  */
-function overviewStripLine(connected: boolean, deviceName: string | null): string {
+function overviewStripLine(connected: boolean): string {
   return connected
-    ? `Encrypted end to end with ${deviceName ?? 'your phone'}. The traffic never leaves your ` +
-        'network, and only these two devices can read it.'
+    ? 'Connection is encrypted end-to-end. Only your devices can read this traffic.'
     : 'Not connected. Nothing is being sent anywhere.';
 }
 
@@ -110,24 +78,37 @@ class OverviewView {
 
   constructor(
     private readonly bridge: OverviewBridge,
-    private readonly grid: HTMLElement,
-    private readonly count: HTMLElement,
     private readonly recent: HTMLElement,
     private readonly strip: HTMLElement,
     private readonly stripLine: HTMLElement,
     private readonly disconnect: HTMLButtonElement,
+    /**
+     * `shell.route`. One destination now: every row opens the Activity pane, which is the full
+     * history this card shows five of.
+     *
+     * It took a `settingsPane` second argument while the failure row carried a `View log →` link
+     * into Settings → Advanced. That affordance is gone (departure O18) and the parameter went with
+     * it rather than being left for a caller that no longer exists — an unused parameter with a
+     * plausible name is one autocomplete from a second route nobody decided on.
+     */
     private readonly route: (id: string) => void,
     /** O4's Device status rings. Optional so the view test can mount without them. */
     private readonly ringRow: HTMLElement | null = null,
   ) {
     this.disconnect.addEventListener('click', () => void this.bridge.disconnect());
-    this.setStatus(false, null, 0);
+    this.setStatus(false);
   }
 
-  /** Called from `render()` with the same status everything else on the screen reads. */
-  setStatus(connected: boolean, deviceName: string | null, unread: number): void {
-    this.drawQuickActions(unread);
-    this.stripLine.textContent = overviewStripLine(connected, deviceName);
+  /**
+   * Called from `render()` with the same status everything else on the screen reads.
+   *
+   * `unread` went with Quick actions on 2026-09-16 — it existed only to put "27 new" on the
+   * Notifications tile, and the sidebar badge that shows the same number reads it from its own
+   * source. `deviceName` went the same way with departure O12. A parameter kept "in case" is a
+   * second path to a fact that already has one.
+   */
+  setStatus(connected: boolean): void {
+    this.stripLine.textContent = overviewStripLine(connected);
     this.strip.classList.toggle('is-idle', !connected);
     this.disconnect.disabled = !connected;
   }
@@ -177,7 +158,31 @@ class OverviewView {
       }
 
       const value = document.createElement('div');
-      value.className = 'ring-value';
+      // **Mono, 2026-09-16.** The handoff's README is explicit and
+      // closed about this: *"All numerics use a tabular mono face … latency, byte sizes,
+      // percentages, timestamps, IPs"*, and the prototype sets `font-family="SF Mono"` on all three
+      // ring values. `79%` and `11.0 GB` are a percentage and a byte size, they update in place,
+      // and proportional figures jitter as they do — which is the one reason the second face exists.
+      //
+      // The **caption** below is deliberately NOT mono, and that is the handoff's too: its
+      // `68 GB free` carries no font-family override and renders in the UI face. A caption is a
+      // sentence that happens to contain a number; the value is the number.
+      /*
+       * **And a long value steps down a size**, which is the handoff's own behaviour: its three
+       * rings are `17px` for `79%` and `15px` for `128 GB`. Ours is a 72px ring rather than its
+       * 104px one, so the step is smaller and the threshold is measured rather than taken from the
+       * drawing:
+       *
+       *   clear span inside the arc   (2 x 16 - 4) x (72 / 40)  = 50.4px
+       *   `10.8 GB` at 13px mono                                = 54.8px   → overflows by 4.4
+       *   per character at 13px mono                            ~  7.8px   → 6 characters fit
+       *
+       * This is the same overflow `storageRing`'s own comment records — *"13.7 GB free" overflowed
+       * it, seen in a screenshot, not in any test, because a DOM double has no layout* — and it
+       * came back the moment the value took the mono face, which is wider at the same px. A DOM
+       * double still cannot see it; `scripts/` measures the rendered text against the arc.
+       */
+      value.className = ring.value.length > 6 ? 'ring-value mono is-long' : 'ring-value mono';
       value.textContent = ring.value;
       const label = document.createElement('div');
       label.className = 'ring-label';
@@ -189,54 +194,6 @@ class OverviewView {
       cell.append(svg, value, label, caption);
       this.ringRow.appendChild(cell);
     }
-  }
-
-  private drawQuickActions(unread: number): void {
-    this.grid.replaceChildren();
-    let built = 0;
-    for (const id of QUICK_ACTION_IDS) {
-      const screen = SCREENS.find((s) => s.id === id);
-      if (!screen) continue;
-      if (screen.state === 'built') built += 1;
-
-      const tile = document.createElement('button');
-      tile.type = 'button';
-      tile.className = screen.state === 'built' ? 'quick-tile' : 'quick-tile is-unbuilt';
-      // The accessible name says which it is, exactly as the sidebar row does. A tile that reads
-      // "Camera" to a screen reader and is greyed to everyone else carries the state in one
-      // channel — which is defect 26, one pane over.
-      tile.setAttribute(
-        'aria-label',
-        screen.state === 'built' ? screen.label : `${screen.label} — not built yet`,
-      );
-      if (screen.state !== 'built' && screen.unbuiltReason) tile.title = screen.unbuiltReason;
-
-      const glyph = document.createElement('span');
-      glyph.className = `quick-glyph tint-${screen.id}`;
-      glyph.setAttribute('aria-hidden', 'true');
-      glyph.replaceChildren(iconSvg(screen.icon, 18));
-
-      const lines = document.createElement('span');
-      lines.className = 'quick-lines';
-      const name = document.createElement('span');
-      name.className = 'quick-name';
-      name.textContent = screen.label;
-      const sub = document.createElement('span');
-      sub.className = 'quick-sub';
-      sub.textContent = quickTileSub(screen, unread);
-      lines.append(name, sub);
-
-      tile.append(glyph, lines);
-      // **Marked, not removed** — state A's rule. Removing Camera leaves a seven-tile grid that
-      // reflows the day it ships; a marked tile carries the same information and the composition
-      // stops moving. It still routes, because the unbuilt screen draws its own reason.
-      tile.addEventListener('click', () => this.route(screen.id));
-      this.grid.appendChild(tile);
-    }
-    // The design's "8 available" is a count of *tiles*. Ours is a count of the ones that **work**,
-    // with the total beside it, because the two numbers differ here and a bare 8 over a grid with a
-    // dead tile in it is the denominator rule with the denominator taken out.
-    this.count.textContent = `${built} of ${QUICK_ACTION_IDS.length} available`;
   }
 
   /**
@@ -282,36 +239,124 @@ class OverviewView {
     }
 
     for (const event of events) {
-      const row = document.createElement('div');
-      row.className = 'recent-row';
-
-      const when = document.createElement('span');
-      when.className = 'recent-when mono';
-      when.textContent = activityWhen(event.at, Date.now());
-
-      const dot = document.createElement('span');
-      dot.className = 'recent-dot';
-      dot.setAttribute('aria-hidden', 'true');
-      // The category tints live in `shared/activity.ts` and are read from there, so this card and
-      // the Activity pane's donut cannot disagree about what colour "files" is.
-      dot.style.background = `rgba(${CATEGORY_TINTS[event.category] ?? '156,159,176'}, 0.4)`;
-
-      const text = document.createElement('span');
-      text.className = 'recent-text';
-      text.textContent = event.kind;
-
-      const detail = document.createElement('span');
-      detail.className = 'recent-detail';
-      detail.textContent = event.detail;
-
-      row.append(when, dot, text, detail);
-      this.recent.appendChild(row);
+      this.recent.appendChild(this.recentRow(event));
     }
+  }
+
+  /**
+   * One activity row: time, tonal icon, two lines, right-hand metadata, chevron.
+   *
+   * **A `button`, not a `div`, because it genuinely opens something.** Every row routes to the
+   * Activity pane, which is the full history this card shows five of — so the chevron is a promise
+   * the row keeps, the hover is earned, and the keyboard gets it for free. A row that led nowhere
+   * would get neither, whatever the reference drew.
+   *
+   * The shape of the row is decided in `shared/activity.ts` and read here. That split is the point:
+   * which part of an event is a subtitle and which part is metadata is a *rule*, it is the same
+   * rule the Activity pane would need, and a copy of it in this file is the second expression that
+   * eventually disagrees with the first.
+   */
+  private recentRow(event: ActivityEvent): HTMLElement {
+    const view = activityRowView(event);
+
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'recent-row';
+
+    /*
+     * **Both clocks, and which one goes where — departure O17, 2026-09-16.**
+     *
+     * The column is the **absolute** time, which is what the handoff draws in both places it shows
+     * activity (`09:42` here, a mono TIME column in the Activity pane). The reported defect was
+     * four rows all reading `3m ago`: a relative time is unreadable exactly when several events
+     * arrive together, which on this product is most of the time — a call ringing, a call active
+     * and a call ended are three rows inside a minute.
+     *
+     * The **relative** age is not discarded, because it is the more useful of the two at a glance
+     * and it is what the previous build showed. It is on the row's accessible name and on its
+     * `title`. That ordering is deliberate: the aria-label is the half a keyboard and a screen
+     * reader reach, so the age is never behind hover alone — which is the same objection this pass
+     * answers for the capability chips.
+     */
+    const now = Date.now();
+    const clock = activityClock(event.at, now);
+    const ago = activityWhen(event.at, now);
+    // The accessible name is the whole row, in reading order, because a screen reader meets this as
+    // one control rather than as five columns. Both clocks, because "09:42" alone makes a reader
+    // do the subtraction and "3m ago" alone is the defect.
+    const spoken = [`${clock}, ${ago}`, view.title, view.subtitle, view.device]
+      .filter(Boolean)
+      .join(', ');
+    row.setAttribute('aria-label', `${spoken}. Open Activity`);
+
+    const when = document.createElement('span');
+    when.className = 'recent-when mono';
+    when.textContent = clock;
+    when.title = ago;
+
+    const tile = document.createElement('span');
+    tile.className = 'recent-tile';
+    tile.setAttribute('aria-hidden', 'true');
+    // The tint comes from the same table the Activity pane's donut reads, so the two cannot
+    // disagree about what colour "files" is.
+    tile.style.setProperty('--tint', view.tint);
+    // 14px in a 26px tile — the handoff's own `width="14"` inside its 26px square.
+    tile.appendChild(iconSvg(view.icon, 14));
+
+    const main = document.createElement('span');
+    main.className = 'recent-main';
+    const title = document.createElement('span');
+    title.className = 'recent-text';
+    title.textContent = view.title;
+    main.appendChild(title);
+    if (view.subtitle) {
+      const sub = document.createElement('span');
+      sub.className = 'recent-detail';
+      sub.textContent = view.subtitle;
+      main.appendChild(sub);
+    }
+
+    const meta = document.createElement('span');
+    meta.className = 'recent-meta';
+    if (view.device) {
+      const device = document.createElement('span');
+      device.className = 'recent-device';
+      device.appendChild(iconSvg('phone', 14));
+      const name = document.createElement('span');
+      name.textContent = view.device;
+      device.appendChild(name);
+      meta.appendChild(device);
+    }
+    if (view.badge) {
+      const badge = document.createElement('span');
+      badge.className = 'recent-badge mono';
+      badge.textContent = view.badge;
+      meta.appendChild(badge);
+    }
+    /*
+     * **There is no `View log →` here any more — departure O18, 2026-09-16.**
+     *
+     * One row in five carried a text link *beside* the chevron every row already has, so the list
+     * had two affordance vocabularies and the failure row was the odd one. The handoff's rows carry
+     * neither: a mono time, a tinted icon, a description and a right-aligned detail, and nothing to
+     * click at the row's end at all.
+     *
+     * **Nothing became unreachable.** The link went to Settings → Advanced, which is where
+     * `logTail` is drawn, and it is reachable from the sidebar, from ⌘K, and from the Activity pane
+     * this row's chevron opens. That was checked before the affordance was removed, on the same
+     * rule that had it drawn in the first place — an affordance is added when it has a destination
+     * and removed when the destination has another route, never removed on tidiness.
+     */
+
+    const chevron = iconSvg('chevron', 16);
+    chevron.setAttribute('class', 'recent-chevron');
+
+    row.append(when, tile, main, meta, chevron);
+    row.addEventListener('click', () => this.route('activity'));
+    return row;
   }
 }
 
-// The seam: the class and its two pure decisions, for `overviewView.test.ts`.
+// The seam: the class and its one remaining pure decision, for `overviewView.test.ts`.
 (globalThis as Record<string, unknown>).OverviewView = OverviewView;
-(globalThis as Record<string, unknown>).quickTileSub = quickTileSub;
 (globalThis as Record<string, unknown>).overviewStripLine = overviewStripLine;
-(globalThis as Record<string, unknown>).QUICK_ACTION_IDS = QUICK_ACTION_IDS;

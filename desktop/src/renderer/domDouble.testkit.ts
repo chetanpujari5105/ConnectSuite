@@ -89,12 +89,28 @@ export class FakeElement {
   readonly style: Record<string, string> & {
     setProperty(name: string, value: string): void;
     getPropertyValue(name: string): string;
+    removeProperty(name: string): string;
   } = Object.assign(Object.create(null) as Record<string, string>, {
     setProperty(this: Record<string, string>, name: string, value: string) {
       this[name] = value;
     },
     getPropertyValue(this: Record<string, string>, name: string) {
       return this[name] ?? '';
+    },
+    /**
+     * Added 2026-09-16, when the media remote cleared its `--art-rgb` on a track with no cover and
+     * every test in that file died on `removeProperty is not a function`.
+     *
+     * It returns the old value, as the real one does, so a view that reads the return is testable.
+     * The gap is worth a line: **a double that is missing a method fails loudly and a double that
+     * is missing a *behaviour* does not** — this one was the loud kind, which is why it cost a
+     * minute rather than a session. `setProperty` recording into a plain map is the quiet kind, and
+     * it is already labelled above as proving a write and never a paint.
+     */
+    removeProperty(this: Record<string, string>, name: string) {
+      const had = this[name] ?? '';
+      delete this[name];
+      return had;
     },
   });
   readonly dataset: Record<string, string> = {};

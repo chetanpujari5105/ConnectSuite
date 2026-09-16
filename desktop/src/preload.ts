@@ -209,6 +209,27 @@ contextBridge.exposeInMainWorld('connect', {
     actionable: boolean;
     message: string | null;
   }> => ipcRenderer.invoke('notif-permission'),
+  /**
+   * Appearance. `appearance` is what the user chose; `theme` is what that resolves to right now.
+   *
+   * Both are returned together, always, because they answer different questions and a renderer
+   * that has one has to guess the other — `system` says nothing about what is on screen. The
+   * listener fires on a user change *and* when macOS flips under a running app.
+   */
+  appearanceGet: (): Promise<{
+    ok: boolean;
+    data: { appearance: 'system' | 'light' | 'dark'; theme: 'light' | 'dark' };
+  }> => ipcRenderer.invoke('appearance-get'),
+  appearanceSet: (
+    value: 'system' | 'light' | 'dark',
+  ): Promise<{
+    ok: boolean;
+    data: { appearance: 'system' | 'light' | 'dark'; theme: 'light' | 'dark' };
+  }> => ipcRenderer.invoke('appearance-set', value),
+  onAppearance: (
+    callback: (state: { appearance: 'system' | 'light' | 'dark'; theme: 'light' | 'dark' }) => void,
+  ) => ipcRenderer.on('appearance', (_event, state) => callback(state)),
+
   notifSoundGet: (): Promise<boolean> => ipcRenderer.invoke('notif-sound-get'),
   notifSoundSet: (on: boolean): Promise<boolean> => ipcRenderer.invoke('notif-sound-set', on),
 
@@ -470,6 +491,15 @@ contextBridge.exposeInMainWorld('connect', {
     ipcRenderer.invoke('remote-state'),
   remoteCommand: (action: string, extra: Record<string, unknown> = {}): Promise<PhoneAck> =>
     ipcRenderer.invoke('remote-command', { action, extra }),
+  /**
+   * The current track's cover.
+   *
+   * `data: null` with `ok: true` is a real answer and the common one — a podcast, a browser tab or
+   * a game holds a perfectly good session with no art in it. Only a link or protocol problem comes
+   * back `ok: false`, which is what lets the card tell "there is no cover" from "we could not ask".
+   */
+  remoteArtwork: (key: string, maxEdge?: number): Promise<PhoneResult<string | null>> =>
+    ipcRenderer.invoke('remote-artwork', { key, maxEdge }),
   onRemoteChanged: (callback: (state: RemoteState & { receivedAtMs: number }) => void) =>
     ipcRenderer.on('remote-changed', (_event, state) => callback(state)),
 
@@ -571,6 +601,15 @@ contextBridge.exposeInMainWorld('connect', {
   /** Corner drag. X only — see `boundsForCornerDrag` for why Y is not offered. */
   floatResize: (pointer: { x: number }) => ipcRenderer.invoke('float-resize', pointer),
   floatState: (): Promise<FloatState> => ipcRenderer.invoke('float-state'),
+
+  /**
+   * Bring the main window forward. Defect 117.
+   *
+   * Reached from the float window's control strip, and it is the *only* thing in this app that a
+   * renderer can do to the main window's visibility. It returns whether the float is still open,
+   * because that is the one fact a user pressing it needs — see `onRailPress` in float.ts.
+   */
+  showMainWindow: (): Promise<{ floatStillOpen: boolean }> => ipcRenderer.invoke('main-window-show'),
   onFloatChanged: (callback: (state: FloatState) => void) =>
     ipcRenderer.on('float-changed', (_event, state) => callback(state)),
 

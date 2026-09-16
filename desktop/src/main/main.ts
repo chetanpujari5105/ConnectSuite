@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor, Tray, Menu,
+import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, powerMonitor, Tray, Menu,
   dialog, shell, screen,
 } from 'electron';
 import { networkInterfaces, tmpdir } from 'node:os';
@@ -11,6 +11,17 @@ import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
 import { ClipboardWatcher } from './clipboardWatcher';
 import { downloadsFolder } from './downloads';
+/*
+ * `shared/appearance.ts` is a plain script for the same reason `shared/activity.ts` is — the
+ * CSP-locked renderer loads it with a `<script>` tag, so it carries no top-level `export` and has
+ * to be `require`d rather than imported. The rule it holds is called from both processes.
+ */
+const appearanceRules = require('../shared/appearance') as {
+  resolveTheme: (a: 'system' | 'light' | 'dark', systemDark: boolean) => 'light' | 'dark';
+  asAppearance: (v: unknown) => 'system' | 'light' | 'dark';
+  WINDOW_GROUND: Record<'light' | 'dark', string>;
+  FLOAT_GROUND: Record<'light' | 'dark', string>;
+};
 // F6 / P3: the mDNS watch that tells "nobody has scanned" from "scanned, and now searching".
 import { watchForPairIntent } from './discovery';
 // The one home for "is this clipboard entry something we may hand to the operating system".
@@ -29,6 +40,17 @@ import { activity } from './activity';
 // TypeScript project; only the runtime value needs fetching.
 const sharedActivity = require('../shared/activity') as {
   activityCsv: (events: ActivityEvent[]) => string;
+};
+/**
+ * `humanBytes`, from the file that already owns it for the O4 ring.
+ *
+ * **Required rather than reimplemented**, and the reason is the one this repo keeps paying for: a
+ * second byte formatter is a second answer to "what is a gigabyte", and the two disagree the first
+ * time somebody fixes one of them. It is the same function the Device status ring renders with, so
+ * a size in the Activity log and a size under a ring cannot come out in different units.
+ */
+const sharedVitals = require('../shared/deviceVitals') as {
+  humanBytes: (bytes: number) => string;
 };
 import { FilesClient } from './files';
 import { AppsClient } from './apps';
@@ -149,7 +171,13 @@ const clipWatcher = new ClipboardWatcher(
       // successes beside them — a failure count with its denominator removed, in the one pane whose
       // job is to say what happened. It is once per *real copy*, not once per poll: `send` only
       // reaches here past the echo interlock and the unchanged rule.
-      activity.record('clipboard', 'Sent to phone', `${result.data.bytes} bytes, automatically`);
+      // `3.9 kB`, not `3852 bytes` — the handoff's activity rows read `4.2 MB` and `67 MB`, and a
+      // raw byte count is a number a person has to convert before it means anything.
+      activity.record(
+        'clipboard',
+        'Sent to phone',
+        `${sharedVitals.humanBytes(result.data.bytes)}, automatically`,
+      );
     }
     return result;
   },
@@ -300,6 +328,67 @@ type MirrorStatePayload = {
   /** The stamp every coordinate-bearing input message must echo. See docs/protocol.md. */
   geometryId?: number;
 };
+/**
+ * The capture geometry the phone last announced, retained here. Defect 116.
+ *
+ * Every coordinate-bearing input message has to quote it, and the **float window had no way to get
+ * it**: it was written only from `mirror-rotate`, which the phone sends when it turns and at no other
+ * time. So a float opened into a running session held `null` until the user physically rotated the
+ * phone, and every press answered *"The phone has not said what shape its screen is yet"* — about a
+ * shape the main window had known since `mirror.state`.
+ *
+ * It is retained in the main process rather than asked for again because the phone has already said
+ * it and nothing has retracted it. That is the same argument `video.configFrame()` makes for the
+ * parameter sets, and the same door: `stream-start` answers with both.
+ */
+let lastCaptureGeometry: {
+  width: number;
+  height: number;
+  dpi?: number;
+  rotation?: number;
+  geometryId: number;
+} | null = null;
+
+/**
+ * Remember what the phone is capturing, and tell the float window's frame about it.
+ *
+ * One function, called from the two places a geometry arrives — `mirror.state` and `mirror.rotate` —
+ * so the retained value and the window's aspect cannot be updated by one caller and not the other.
+ * Two fields that must move together will otherwise move apart; that is defect 97's lesson and this
+ * is the shape that avoids it.
+ */
+function rememberCaptureGeometry(g: {
+  width?: number;
+  height?: number;
+  dpi?: number;
+  rotation?: number;
+  geometryId?: number;
+}): void {
+  if (!g.width || !g.height || g.geometryId === undefined) return;
+  const changed =
+    lastCaptureGeometry?.width !== g.width || lastCaptureGeometry?.height !== g.height;
+  lastCaptureGeometry = {
+    width: g.width,
+    height: g.height,
+    dpi: g.dpi ?? lastCaptureGeometry?.dpi,
+    rotation: g.rotation ?? lastCaptureGeometry?.rotation,
+    geometryId: g.geometryId,
+  };
+  // Defect 114. The float's OUTER bounds, not just its canvas: a landscape picture refitted inside a
+  // portrait frame is the reported bug rather than the fix for it.
+  const before = float?.captureRatio();
+  float?.setCaptureGeometry(lastCaptureGeometry);
+  const after = float?.captureRatio();
+  if (changed && before !== undefined && after !== undefined && Math.abs(after - before) > 0.001) {
+    log.info(
+      'float',
+      `capture turned to ${g.width}x${g.height} (screen #${g.geometryId}) — float aspect ` +
+        `${before.toFixed(3)} → ${after.toFixed(3)}, window ${float?.state().bounds?.width ?? '?'}` +
+        `x${float?.state().bounds?.height ?? '?'}`,
+    );
+  }
+}
+
 let lastStatus: ConnectionStatus | null = null;
 
 /**
@@ -356,7 +445,7 @@ function createWindow(): void {
     minWidth: minimum.width,
     minHeight: minimum.height,
     title: 'ConnectSuite',
-    backgroundColor: '#07070a',
+    backgroundColor: appearanceRules.WINDOW_GROUND[currentTheme()],
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 20, y: 20 },
     webPreferences: {
@@ -437,6 +526,45 @@ function statusLabel(status: ConnectionStatus | null): string {
   }
 }
 
+/**
+ * Bring the main window to the front, whatever state it is in. Defect 117.
+ *
+ * Three states and one answer. Destroyed or never created → create it. Hidden → `show`. Minimised →
+ * `restore`, which `show` alone does not do on macOS. Then `focus`, because a window raised without
+ * focus leaves the keyboard pointed at whatever the user was in before.
+ *
+ * **It does not touch the float window and must not.** The float is a second view of one session and
+ * the session lives on the link, not in either window: the reported requirement is *"reveal the main
+ * window while floating stays active"*, and closing the float to satisfy it would be the workaround
+ * the user already has. Nothing here reaches the video socket, so there is nothing to restart.
+ *
+ * `why` is logged because this has four callers now — the Dock, the tray, the float's rail, and the
+ * window menu — and "the main window came forward" with no reason attached is the single-`UNKNOWN`
+ * failure defect 80 is about, one product surface over.
+ */
+function revealMainWindow(why: string): void {
+  const existed = Boolean(window && !window.isDestroyed());
+  if (!existed) createWindow();
+  const target = window;
+  if (!target || target.isDestroyed()) {
+    log.warn('window', `reveal (${why}) could not produce a main window`);
+    return;
+  }
+  const wasMinimised = target.isMinimized();
+  const wasVisible = target.isVisible();
+  if (wasMinimised) target.restore();
+  target.show();
+  target.focus();
+  // The success path gets a line at the same volume as the failure above, and it carries what the
+  // window was — otherwise "revealed" cannot be told from "was already in front and nothing happened".
+  log.info(
+    'window',
+    `main window revealed (${why}): ${existed ? 'existed' : 'created'}, ` +
+      `${wasVisible ? 'visible' : 'hidden'}${wasMinimised ? ', minimised' : ''}` +
+      `${float?.state().open ? ' — float stays open' : ''}`,
+  );
+}
+
 function refreshTray(): void {
   if (!tray) return;
   // A text-only tray item: the connection state is the whole point of the icon, and a glyph
@@ -449,11 +577,11 @@ function refreshTray(): void {
       { label: statusLabel(lastStatus), enabled: false },
       { type: 'separator' },
       {
+        // Through `revealMainWindow` rather than its own `show()`: this item did not restore a
+        // minimised window and did not focus the one it showed, so it was a third half-answer to the
+        // question defect 117 is about. One function, four callers.
         label: 'Open ConnectSuite',
-        click: () => {
-          if (!window) createWindow();
-          window?.show();
-        },
+        click: () => revealMainWindow('tray'),
       },
       {
         label: 'Reconnect now',
@@ -492,6 +620,72 @@ function interfaceSignature(): string {
     .join(',');
 }
 
+/*
+ * ---- Appearance ------------------------------------------------------------------------------
+ *
+ * One owner, one writer. `nativeTheme.themeSource` is the single place the preference lives at
+ * runtime; everything else — the stamped `data-theme`, both window grounds, the segmented control
+ * in Settings — is a *reader* of `currentTheme()`.
+ *
+ * **`System` genuinely follows macOS**, which is the part that is easy to get wrong by wiring the
+ * preference straight to a class and calling it done. Two things make it real:
+ *
+ *  - `themeSource = 'system'` hands the decision back to the OS, and
+ *  - `nativeTheme.on('updated')` fires when the Mac flips at sunset, or when the user changes
+ *    System Settings with this app in the background, and re-stamps every open window.
+ *
+ * Without the second one, System resolves correctly once at launch and is then wrong until
+ * restart — which looks exactly like a working feature to anybody testing it in one sitting.
+ */
+function currentTheme(): 'light' | 'dark' {
+  return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+}
+
+function storedAppearance(): 'system' | 'light' | 'dark' {
+  return appearanceRules.asAppearance(store.get('appearance'));
+}
+
+/** Push the resolved theme at every window, and repaint the grounds CSS cannot reach. */
+function broadcastTheme(): void {
+  const theme = currentTheme();
+  const appearance = storedAppearance();
+  if (window && !window.isDestroyed()) {
+    window.setBackgroundColor(appearanceRules.WINDOW_GROUND[theme]);
+  }
+  const floatWindow = float?.webContents();
+  if (floatWindow && !floatWindow.isDestroyed()) {
+    floatWindow.setBackgroundColor(appearanceRules.FLOAT_GROUND[theme]);
+  }
+  sendAll('appearance', { appearance, theme });
+}
+
+function applyAppearance(appearance: 'system' | 'light' | 'dark'): void {
+  store.set('appearance', appearance);
+  nativeTheme.themeSource = appearance;
+  // Logged with the resolved theme beside the preference, not the preference alone: "system" on
+  // its own says nothing about what is on screen, and this is the line somebody will read when
+  // asking why the app is dark on a light Mac.
+  log.info('appearance', `${appearance} -> ${currentTheme()} (macOS reports ${nativeTheme.shouldUseDarkColors ? 'dark' : 'light'})`);
+  broadcastTheme();
+}
+
+nativeTheme.on('updated', () => {
+  // Fires for a real OS change AND for our own themeSource writes. Re-stamping on both is correct
+  // and idempotent; the alternative is a guard that has to know which caused it.
+  log.info('appearance', `macOS changed — ${storedAppearance()} now resolves to ${currentTheme()}`);
+  broadcastTheme();
+});
+
+ipcMain.handle('appearance-get', () => ({
+  ok: true,
+  data: { appearance: storedAppearance(), theme: currentTheme() },
+}));
+
+ipcMain.handle('appearance-set', (_event, value: unknown) => {
+  applyAppearance(appearanceRules.asAppearance(value));
+  return { ok: true, data: { appearance: storedAppearance(), theme: currentTheme() } };
+});
+
 function send(channel: string, payload: unknown): void {
   if (window && !window.isDestroyed()) window.webContents.send(channel, payload);
 }
@@ -527,6 +721,7 @@ function sendAll(channel: string, payload: unknown = null): void {
  */
 async function onMirrorState(state: MirrorStatePayload): Promise<void> {
   log.info('video', `Phone mirror state: ${state.state ?? 'unknown'} — ${state.message ?? ''}`);
+  rememberCaptureGeometry(state);
   sendAll('mirror-state', state);
 
   if (state.state === 'running') {
@@ -564,6 +759,10 @@ async function onMirrorState(state: MirrorStatePayload): Promise<void> {
   }
 
   if (state.state === 'stopped') {
+    // Cleared, not kept. A geometry from a session that has ended would let the float stamp a gesture
+    // with a screen the phone is no longer capturing — and the phone refuses that by design, so the
+    // user would read a staleness refusal for a mirror that is simply off. Two different sentences.
+    lastCaptureGeometry = null;
     video?.close('the phone stopped mirroring');
     sendAll('mirror-stopped', { reason: state.message, fixHint: state.fixHint });
   }
@@ -578,6 +777,15 @@ app.whenReady().then(() => {
   // rather than when it first bites — by which time a confusing result has already happened and
   // would be blamed on the feature. Packaged builds never reach this.
   if (!app.isPackaged) debugSwitches();
+
+  /*
+   * Before `createWindow`, deliberately. `backgroundColor` is read once at construction and is the
+   * ground painted for the frame or two before the renderer's first paint — set it after the window
+   * exists and a light-mode launch opens with a black flash. This is also what makes `System`
+   * correct on the *first* frame rather than after the renderer's first round trip.
+   */
+  nativeTheme.themeSource = storedAppearance();
+  log.info('appearance', `${storedAppearance()} -> ${currentTheme()} at launch`);
 
   /*
    * The window comes first, and the order is load-bearing rather than tidy — D15.
@@ -638,7 +846,24 @@ app.whenReady().then(() => {
    * moment cannot type into whatever app is open on the phone. That is not a detail — a diagnostic
    * that types into somebody's messages while they use it would be worse than no diagnostic.
    */
-  const MARK_ACCELERATOR = 'CommandOrControl+Shift+M';
+  /*
+   * **Moved off `CommandOrControl+Shift+M` on 2026-09-16 — defect 123.**
+   *
+   * That combination is what the handoff prints for *"Mirror phone"*, what the ⌘K palette's first
+   * row prints, and what the Overview hero's primary action prints. It was registered here, as a
+   * **global** shortcut, so it was taken before either of those could see it — the app's most
+   * advertised accelerator wrote a log line and never started a mirror, on every build since the
+   * mark landed. Nothing reported it, because a `globalShortcut` that registers successfully is
+   * indistinguishable from one that does the right thing.
+   *
+   * `Control+Option+Command+M` is deliberately **unadvertised** and deliberately awkward: the mark
+   * is a diagnostic pressed by somebody who has been told about it, and the one thing it must not
+   * be is a key a person could hit while meaning something else. The global registration stays —
+   * that part of the original argument is untouched and still right: the mirror canvas forwards
+   * keystrokes to the phone, so a mark taken by the page would type into whatever app is open over
+   * there. Mirroring itself is bound in `shell.ts`, in the page, for the opposite reason.
+   */
+  const MARK_ACCELERATOR = 'Control+Alt+Command+M';
   if (globalShortcut.register(MARK_ACCELERATOR, () => {
     const at = new Date().toISOString();
     log.warn('mark', `MARK at ${at} — asking the mirror window for the stages around it`);
@@ -673,10 +898,24 @@ app.whenReady().then(() => {
 
   // The shape is declared here and interpreted in renderer/streamStart.ts. Nothing type-checks
   // across IPC, so a shared type would imply a guarantee it cannot give; both sides name the other.
-  ipcMain.handle('stream-start', (event): { config: { ptsUs: number; bytes: number } | null; sessionRunning: boolean } => {
+  ipcMain.handle('stream-start', (event): {
+    config: { ptsUs: number; bytes: number } | null;
+    sessionRunning: boolean;
+    capture: typeof lastCaptureGeometry;
+  } => {
     const config = video?.configFrame() ?? null;
     const answer = {
       config: config ? { ptsUs: config.ptsUs, bytes: config.data.length } : null,
+      /*
+       * Defect 116. The shape of the phone's screen, answered at the same door the parameter sets
+       * come through, because a second view needs both for the same reason: the session started
+       * before the window existed and neither will be announced again.
+       *
+       * `null` is an answer here too — nothing is mirroring, so there is no shape — and it is
+       * distinguishable from `sessionRunning: true` with a null capture, which would be a phone
+       * mirroring without having said what it is mirroring.
+       */
+      capture: lastCaptureGeometry,
       // `isOpen()` — the video socket, which is what a running session actually is. NOT derived
       // from `config !== null`: that would make `sessionRunning` a restatement of the field beside
       // it, and `actionFor`'s `ask-again` branch structurally unreachable — a state drawn beside
@@ -686,7 +925,8 @@ app.whenReady().then(() => {
     log.info(
       'float',
       `stream-start asked: ${answer.config ? `replaying ${answer.config.bytes}B of parameter sets` : 'no retained config'}` +
-        `, sessionRunning=${answer.sessionRunning}`,
+        `, sessionRunning=${answer.sessionRunning}` +
+        `, capture=${answer.capture ? `${answer.capture.width}x${answer.capture.height} #${answer.capture.geometryId}` : 'not announced yet'}`,
     );
     if (config) {
       // Sent to **the asker**, not broadcast: `event.sender` is by construction the window that just
@@ -1018,6 +1258,7 @@ app.whenReady().then(() => {
        * Those are defects 20 and 19 exactly, reintroduced in the second window, and they are the
        * reason this line goes in before any pointer handler does rather than beside it.
        */
+      rememberCaptureGeometry(rotate);
       sendAll('mirror-rotate', message.payload);
     }
     send('message', envelope);
@@ -1074,9 +1315,19 @@ app.whenReady().then(() => {
     }
   }, 3_000);
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+  /**
+   * Clicking the Dock icon. Defect 117.
+   *
+   * This was `if (getAllWindows().length === 0) createWindow()`, which is the Electron sample and is
+   * wrong the moment the app has a second window: with the float open the count is 1, so the branch
+   * never ran and **a Dock click did nothing at all**. The main window was not hidden or destroyed —
+   * it was simply behind whatever the user had been doing, with no route forward from anywhere in the
+   * product except closing floating mode, which is exactly what was reported.
+   *
+   * The count is the wrong question. What a Dock click means is *bring this app's main window to me*,
+   * and that is one call whether the window exists, is hidden, or is minimised.
+   */
+  app.on('activate', () => revealMainWindow('dock icon'));
 });
 
 // Closing the window keeps the tray alive: notifications and clipboard sync are the reason the
@@ -1274,6 +1525,19 @@ ipcMain.handle(
 );
 ipcMain.handle('float-resize', (_event, pointer: { x: number }) => float?.resizeCorner(pointer));
 ipcMain.handle('float-state', () => float?.state() ?? null);
+
+/**
+ * The float window asking for the main window. Defect 117.
+ *
+ * It returns whether the float is still open, and the float shows that in a toast, because the one
+ * thing a user pressing this needs to know is that it did **not** cost them the floating window. The
+ * value is read after the reveal rather than assumed, so a future change that did close the float
+ * would be reported rather than denied.
+ */
+ipcMain.handle('main-window-show', () => {
+  revealMainWindow('float rail');
+  return { floatStillOpen: float?.state().open ?? false };
+});
 
 ipcMain.handle('mirror-stats', () => ({
   ...(video?.stats() ?? { frames: 0, bytes: 0, kbps: 0, framesPerSecond: 0 }),
@@ -1515,7 +1779,9 @@ ipcMain.handle(
   'fs-pull',
   async (_event, options: { rootId: string; id: string; name: string; size: number }) => {
     const result = await files.pull(options);
-    if (result?.ok) activity.record('files', 'Saved to Mac', `${options.name} (${options.size} bytes)`);
+    if (result?.ok) {
+      activity.record('files', 'Saved to Mac', `${options.name} (${sharedVitals.humanBytes(options.size)})`);
+    }
     else activity.record('files', 'Save failed', `${options.name}: ${describeFailure(result)}`);
     return result;
   },
@@ -2224,6 +2490,13 @@ ipcMain.handle(
   'remote-command',
   (_event, payload: { action: string; extra?: Record<string, unknown> }) =>
     remote.command(payload.action, payload.extra ?? {}),
+);
+// The cover, by the key the state carried. Cached in the main process rather than the renderer so
+// it survives a route change and a window reload — the renderer redraws far more often than the
+// track changes, and re-fetching an image on every repaint of the Overview pane is the shape this
+// key/bytes split exists to avoid in the first place.
+ipcMain.handle('remote-artwork', (_event, payload: { key: string; maxEdge?: number }) =>
+  remote.artworkFor(payload.key, payload.maxEdge),
 );
 
 ipcMain.handle('status', () => link?.status() ?? null);

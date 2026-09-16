@@ -1,7 +1,8 @@
 /**
  * "That was bad" — from a terminal, for when the global shortcut is taken by another app.
  *
- * The same summary the Cmd+Shift+M shortcut produces: the stages over the seconds before the mark,
+ * The same summary the mark shortcut produces — ⌃⌥⌘M since 2026-09-16, when it moved off ⌘⇧M,
+ * which the handoff prints for "Mirror phone" (defect 123). The stages over the seconds before it,
  * with the worst frame and the longest gap between paints called out separately from the median.
  * A median over a window containing one 300 ms stall hides the stall, which is the entire event.
  *
