@@ -127,41 +127,27 @@ const byLabel = (pane: Pane, label: string) =>
 // ---- rule one: nothing playing is a normal state ------------------------------------------------
 
 /**
- * **This assertion changed shape on 2026-09-16 and the change is the interesting part.**
+ * **This assertion changed shape twice, and the second change is a design decision, not a relaxing.**
  *
- * It used to read `buttons(pane).length === 0` — "no transport over nothing to transport". The
- * redesign draws the transport in the idle state, *disabled*, because the reference does and
- * because it is what this repo already does everywhere else: a control the session cannot serve
- * keeps its shape and is visibly dead, rather than vanishing and changing the card's height when
- * somebody presses play on the phone.
+ * It was `buttons.length === 0` until 2026-09-16, then three disabled buttons that dispatch nothing
+ * (the superseded reference drew the idle transport). The Sidekick handoff (component 15) removes
+ * it again: with no session every `remote.command` is refused `NO_MEDIA_SESSION`, so a disabled row
+ * is a control that can never work. The rule that always mattered — **nothing can be dispatched
+ * into silence** — is asserted directly as well, so the count is not the only guard.
  *
- * The rule that mattered was never "there are no buttons". It was **nothing can be dispatched into
- * silence** — a remote that silently does nothing is the failure this project keeps ruling out — and
- * a count of zero was one cheap way of guaranteeing it. So the guard moves to the rule itself, which
- * is strictly stronger: the buttons may exist, and clicking every one of them must reach the bridge
- * exactly zero times.
- *
- * Shown to fail: dropping the `idle ||` from `transport()` leaves three live buttons and this goes
- * red on the first assertion; dropping the `if (button.disabled) return;` from the click handler
- * leaves them drawn-disabled and dispatching, and it goes red on the last one. The old length check
- * caught the first of those and could not see the second.
+ * Shown to fail: drawing `transport()` in the idle branch turns the count red.
  */
-test('an idle remote says so, and its transport cannot dispatch anything', async () => {
+test('an idle remote says so, and draws no transport to dispatch into silence', async () => {
   const pane = mount();
   try {
     await pane.view.refresh();
     assert.equal(pane.note.textContent, 'Nothing is playing on the phone.');
+    assert.match(pane.body.textContent, /Nothing playing/);
 
     const idle = buttons(pane);
-    assert.equal(idle.length, 3, 'the transport is drawn, so the card does not resize on play');
-    for (const button of idle) {
-      assert.equal(button.disabled, true, `${button.textContent} is live over nothing to control`);
-    }
-
+    assert.equal(idle.length, 0, 'no transport over nothing to transport');
     for (const button of idle) button.click();
     assert.deepEqual(pane.bridge.commands, [], 'an idle button reached the bridge');
-
-    assert.equal(pane.notice.hidden, false || pane.notice.hidden, 'no notice is raised');
     assert.equal(pane.notice.textContent, '', 'and certainly no error text');
   } finally {
     pane.restore();
@@ -240,23 +226,19 @@ test('the play/pause button never claims the opposite of what it does', () => {
   }
 });
 
-test('a track with no length disables the scrubber and says which reason it is', () => {
-  // Two different reasons produce the same disabled slider, and they must not share a sentence:
-  // "the phone reports no length" and "this player refuses to seek" are different facts.
+test('a track with no length has no scrubber; a player that refuses seeking says so on its own', () => {
+  // Two causes, and the handoff (§5c) draws them differently: no `durationMs` means there is no
+  // timeline to draw at all, while `canSeek: false` keeps the bar, disabled, with the reason.
   const noLength = mount();
   const noSeek = mount();
   try {
     noLength.bridge.push({ ...PLAYING, durationMs: 0 });
     noSeek.bridge.push({ ...PLAYING, canSeek: false });
-    const bar = (pane: Pane) => pane.body.queryAll('input').find((i) => i.className.includes('remote-seek'))!;
-    assert.equal(bar(noLength).disabled, true);
-    assert.equal(bar(noSeek).disabled, true);
-    assert.notEqual(
-      bar(noLength).title,
-      bar(noSeek).title,
-      'two causes, two sentences — one shared string would be a confident wrong answer',
-    );
-    assert.ok(bar(noLength).title.includes('no length'));
+    const bar = (pane: Pane) => pane.body.queryAll('input').find((i) => i.className.includes('remote-seek'));
+    assert.equal(bar(noLength), undefined, 'no length, no scrubber');
+    assert.ok(buttons(noLength).length > 0, 'control: the transport is still drawn for that session');
+    assert.equal(bar(noSeek)!.disabled, true);
+    assert.ok(bar(noSeek)!.title.length > 0, 'a refused seek carries its reason');
   } finally {
     noLength.restore();
     noSeek.restore();
@@ -358,19 +340,28 @@ test('a bridge that throws is reported rather than swallowed', async () => {
 
 // ---- the card hides itself when the phone stops advertising the capability -----------------------
 
-test('an unadvertised remote is hidden and forgets what was playing', () => {
+test('an unadvertised remote says why, draws no transport, and forgets what was playing', () => {
   const pane = mount();
   try {
     pane.bridge.push(PLAYING);
     assert.ok(pane.body.textContent.includes('Cissy Strut'));
+    assert.ok(buttons(pane).length > 0, 'control: a live session draws its transport');
 
-    pane.view.setAdvertised(false);
-    assert.ok(pane.card.className.includes('hidden'), 'the card goes away with the capability');
+    // Connected, capability off: the amber permission state, in the phone's own words.
+    pane.view.setAdvertised(false, true, 'Notification access is off for Sidekick.');
+    assert.ok(!pane.card.className.includes('hidden'), 'the card stays on Overview');
+    assert.ok(pane.body.textContent.includes('Notification access is off for Sidekick.'));
+    assert.equal(buttons(pane).length, 0, 'no transport over a session that cannot exist');
     assert.equal(
       pane.body.textContent.includes('Cissy Strut'),
       false,
       'and it must not keep drawing a track the phone is no longer reporting',
     );
+
+    // No phone at all: a different sentence, still nothing to press.
+    pane.view.setAdvertised(false, false);
+    assert.match(pane.body.textContent, /not connected/);
+    assert.equal(buttons(pane).length, 0);
   } finally {
     pane.restore();
   }

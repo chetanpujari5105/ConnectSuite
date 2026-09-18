@@ -345,10 +345,15 @@
    * — "the lime never appears twice in one card doing two different jobs" ruled out drawing both
    * the badge dot AND the whole surface at full saturation.
    */
-  --hero-grad-1: #0d2a0c;
-  --hero-grad-2: #133f16;
-  --hero-grad-3: #0a1f0a;
-  --hero-grad-glow: rgba(198, 255, 51, 0.55);
+  --hero-grad-1: #0a0e0b;                    /* FIGMA — the hero's near-black ground */
+  --hero-grad-2: #0c130d;                    /* DERIVED — the same ground, one step greener */
+  --hero-grad-3: #0a0e0b;
+  --hero-grad-glow: rgba(198, 255, 51, 0.16); /* FIGMA — one radial lime bloom */
+  --hero-hairline: rgba(255, 255, 255, 0.06); /* FIGMA — the hero's 6% hairline */
+  --phone-frame: #141614;                    /* DERIVED — the phone visual's body */
+  --phone-screen-live-1: #0e2412;            /* FIGMA — connected: the forest wash */
+  --phone-screen-live-2: #1a4420;
+  --phone-screen-bloom: rgba(198, 255, 51, 0.34); /* FIGMA — the low lime bloom on the screen */
 
   /* The settings toggle. A white knob on a white track is the light-mode failure this prevents. */
   --switch-track: rgba(255, 255, 255, 0.12);
@@ -705,10 +710,15 @@
   --accent-hover: #86ba00;                      /* DERIVED */
 
   /* The hero gradient, lightened. Still dark enough for --text-primary; the glow is the same lime. */
-  --hero-grad-1: #e3f6d8;
-  --hero-grad-2: #cdeeb3;
-  --hero-grad-3: #eef8e6;
-  --hero-grad-glow: rgba(158, 214, 0, 0.4);
+  --hero-grad-1: #f7faf0;                       /* DERIVED — the dark hero's structure, pale */
+  --hero-grad-2: #eef6de;
+  --hero-grad-3: #f7faf0;
+  --hero-grad-glow: rgba(158, 214, 0, 0.26);
+  --hero-hairline: rgba(0, 0, 0, 0.07);
+  --phone-frame: #e4e6df;
+  --phone-screen-live-1: #d6edc0;
+  --phone-screen-live-2: #b9e08f;
+  --phone-screen-bloom: rgba(142, 190, 20, 0.34);
 
   --secondary: #5f6172;                         /* DERIVED — neutral, clears AA on --control and --well */
   --live: #4f6a00;                              /* DERIVED — lime as text: the olive of --accent-text */

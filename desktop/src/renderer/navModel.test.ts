@@ -26,6 +26,7 @@ const {
   TOOL_RAIL,
   GLOBAL_ACTIONS,
   iconNamesUsedByTheShell,
+  overviewSubtitle,
   initialsFor,
   overviewTitle,
   paletteResults,
@@ -471,4 +472,14 @@ test('a tile caption is not the page subtitle wearing a different name', () => {
       `${screen.id}'s caption is its subtitle — which is the thing that truncated`,
     );
   }
+});
+
+test('Overview\'s subtitle claims sync only while the link is live', () => {
+  // It was a static sentence and said "in sync" beside a red Disconnected chip. Red-first: returning
+  // the live sentence for every tone turns this red on the second assertion.
+  assert.match(overviewSubtitle('live'), /in sync/);
+  for (const tone of ['working', 'down', 'idle']) {
+    assert.ok(!/in sync/.test(overviewSubtitle(tone)), `${tone} claims sync`);
+  }
+  assert.notEqual(overviewSubtitle('working'), overviewSubtitle('down'));
 });

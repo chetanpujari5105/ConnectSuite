@@ -371,6 +371,12 @@ function paintMirrorButtons(): void {
   start.hidden = !b.startShown;
   start.disabled = !b.startEnabled;
   stop.hidden = !b.stopShown;
+  // The Overview hero's primary action follows the same rule: while a session exists it does not
+  // offer to start a second one — it opens the picture that is already running.
+  const running = b.stopShown;
+  el('hero-mirror').dataset.session = mirrorSession;
+  el('hero-mirror-label').textContent = running ? 'Open mirror' : 'Start mirroring';
+  el('hero-mirror-key').hidden = running;
 }
 
 /**
@@ -435,7 +441,11 @@ function render(status: RendererStatus | null): void {
     status?.capabilities?.includes('clipboard') ?? false,
     reasons.get('clipboard') ?? null,
   );
-  remote.setAdvertised(status?.capabilities?.includes('remote') ?? false);
+  remote.setAdvertised(
+    status?.capabilities?.includes('remote') ?? false,
+    status?.phase === 'connected',
+    reasons.get('remote') ?? null,
+  );
   sms.setAdvertised(status?.capabilities?.includes('sms') ?? false);
   calls.setAdvertised(status?.capabilities?.includes('calls') ?? false);
 
@@ -533,10 +543,13 @@ function render(status: RendererStatus | null): void {
     capsReasons.append(line);
   }
 
-  // Quick actions and the footer strip both follow the link, so they are redrawn from the same
+  // Connection & security and the Recent caption follow the link, so they are redrawn from the same
   // status the rest of this function reads rather than from a second subscription that could be a
   // frame behind it.
-  overview.setStatus(status?.phase === 'connected');
+  overview.setStatus({
+    phase: status?.phase,
+    paired: status?.paired ?? false,
+  });
 }
 
 function describe(status: RendererStatus): string {
@@ -1335,12 +1348,23 @@ const overview = new OverviewView(
   {
     activityEvents: () => connect.activityEvents(),
     disconnect: () => connect.disconnect(),
+    // `connect` starts a link the user stopped; `retryNow` skips the backoff of one that is already
+    // retrying. Each is a no-op in the other's case, so Reconnect is both, in that order.
+    reconnect: async () => {
+      await connect.connect();
+      await connect.retryNow();
+    },
   },
   el('recent-list'),
-  el('overview-strip'),
-  el('overview-strip-line'),
-  el<HTMLButtonElement>('overview-disconnect'),
-  (id) => shell.route(id),
+  el('recent-sub'),
+  {
+    card: el('security-card'),
+    badge: el('security-badge'),
+    title: el('security-title'),
+    body: el('security-body'),
+    actions: el('security-actions'),
+  },
+  (id, pane) => shell.route(id, pane),
   el('ring-row'),
 );
 
@@ -1373,7 +1397,6 @@ void connect.deviceVitals().then(onVitals);
 connect.onDeviceVitals(onVitals);
 el('recent-all').addEventListener('click', () => shell.route('activity'));
 el('recent-all').append(iconSvg('chevron', 14));
-el('overview-shield').replaceChildren(iconSvg('shield', 16));
 // The hero's two actions take their glyphs here rather than in the markup, for the reason every
 // other icon in this app does: `index.html` cannot call `iconSvg`, and a hand-inlined <svg> in the
 // page is a copy of geometry that `icons.test.ts` cannot see. `prepend` so the label stays the
@@ -2065,6 +2088,8 @@ connect.onPhoneError((payload) => {
  */
 el('hero-mirror').addEventListener('click', () => {
   shell.route('mirror');
+  // A running session is opened, never started twice — the label says which, from the same fact.
+  if (el('hero-mirror').dataset.session && el('hero-mirror').dataset.session !== 'idle') return;
   void mirror.start(selectedQuality());
 });
 el('hero-info').addEventListener('click', () => shell.route('settings', 'connection'));

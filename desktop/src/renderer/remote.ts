@@ -102,6 +102,16 @@ class RemoteView {
 
   private noticeTimer: number | null = null;
 
+  /**
+   * Whether a session can exist at all. `live` until told otherwise, so a pushed state draws; the
+   * other two are the handoff's unavailable states, each with no transport: `permission` is the
+   * phone connected but not offering `remote` (the notification-listener grant, same as
+   * Notifications), `offline` is no phone to ask.
+   */
+  private availability: 'live' | 'permission' | 'offline' = 'live';
+  /** The phone's own sentence for `permission`, verbatim — never a Mac-side paraphrase. */
+  private unavailableReason: string | null = null;
+
   constructor(
     private readonly card: HTMLElement,
     private readonly note: HTMLElement,
@@ -119,10 +129,18 @@ class RemoteView {
     window.setInterval(() => this.tick(), TICK_MS);
   }
 
-  /** Hidden until the phone advertises `remote`, like the notifications and contacts cards. */
-  setAdvertised(advertised: boolean): void {
-    this.card.classList.toggle('hidden', !advertised);
+  /**
+   * The card is always on Overview now (handoff component 15): a phone that is not offering the
+   * remote gets the amber permission state, and no phone gets the disconnected one. Neither draws
+   * a transport, and **last-known media is never redrawn as if it were playing** — the state is
+   * forgotten the moment the capability goes.
+   */
+  setAdvertised(advertised: boolean, connected = advertised, reason: string | null = null): void {
+    this.card.classList.remove('hidden');
+    this.availability = advertised ? 'live' : connected ? 'permission' : 'offline';
+    this.unavailableReason = reason;
     if (!advertised) this.state = { active: false, receivedAtMs: 0 };
+    this.card.dataset.availability = this.availability;
     this.render();
   }
 
@@ -254,6 +272,17 @@ class RemoteView {
 
     now.appendChild(this.header());
 
+    if (this.availability !== 'live') {
+      this.note.textContent =
+        this.availability === 'permission'
+          ? 'The media remote needs notification access on the phone.'
+          : 'The phone is not connected.';
+      now.classList.add('remote-idle');
+      now.appendChild(this.unavailable());
+      this.body.appendChild(now);
+      return;
+    }
+
     this.note.textContent = this.state.active
       // Composed in shared/appLabel.ts, never here. Defect 46: this line interpolated
       // `appName ?? package ?? 'an app'`, so a package with no launcher icon produced
@@ -263,12 +292,27 @@ class RemoteView {
       : 'Nothing is playing on the phone.';
 
     now.appendChild(this.mainRow());
-    now.appendChild(this.scrubber());
+
+    /*
+     * **Idle draws no transport — the Sidekick handoff (component 15), 2026-09-19.** With no session
+     * the phone refuses every `remote.command` with `NO_MEDIA_SESSION`, so a disabled Previous /
+     * Play / Next row over "Nothing playing" is a set of controls that can never work. The card
+     * names what will appear instead. It replaces the 2026-09-16 rule (transport drawn, disabled),
+     * which followed the superseded reference.
+     */
+    if (!this.state.active) {
+      now.appendChild(this.idlePanel());
+      this.body.appendChild(now);
+      this.paintGlow(now);
+      return;
+    }
+
+    // A scrubber is not drawn at all when the track has no length (handoff §5c).
+    if ((this.state.durationMs ?? 0) > 0) now.appendChild(this.scrubber());
     now.appendChild(this.transport());
 
-    // **One row, not two stacked controls.** The volume and the output device answer the same
-    // question — where the sound goes and how loud — and they were drawn as two isolated bands with
-    // a gap between them. `remote-foot` is that row; the pill sits at its far right.
+    // **One row, not two stacked controls.** Volume and output answer the same question — where
+    // the sound goes and how loud — so they share `remote-foot`, the readout at its far right.
     const foot = document.createElement('div');
     foot.className = 'remote-foot';
     foot.append(this.volume(), this.outputRow());
@@ -276,6 +320,49 @@ class RemoteView {
 
     this.body.appendChild(now);
     this.paintGlow(now);
+  }
+
+  /** The permission and offline states: a sentence and nothing to press that could not work. */
+  private unavailable(): HTMLElement {
+    const block = document.createElement('div');
+    block.className = `remote-unavailable is-${this.availability}`;
+    const badge = document.createElement('span');
+    badge.className = 'remote-unavailable-badge';
+    badge.setAttribute('aria-hidden', 'true');
+    badge.appendChild(iconSvg(this.availability === 'permission' ? 'alert' : 'link-minus', 18));
+    const text = document.createElement('div');
+    text.className = 'remote-track';
+    const title = document.createElement('div');
+    title.className = 'remote-title';
+    title.textContent =
+      this.availability === 'permission' ? 'Needs notification access' : 'Phone not connected';
+    const sub = document.createElement('div');
+    sub.className = 'remote-sub small';
+    sub.textContent =
+      this.availability === 'permission'
+        ? (this.unavailableReason ??
+          'Turn on notification access for Sidekick on the phone. The remote uses the same grant as Notifications.')
+        : 'Media controls come back when your phone reconnects. Nothing is being controlled now.';
+    text.append(title, sub);
+    block.append(badge, text);
+    return block;
+  }
+
+  /** What an idle card says will appear here — a panel, not a row of dead controls. */
+  private idlePanel(): HTMLElement {
+    const panel = document.createElement('div');
+    panel.className = 'remote-idle-panel';
+    for (const [icon, text] of [
+      ['music', 'Title, artist and artwork'],
+      ['play', 'Play, pause and skip, where the app allows it'],
+      ['volume-high', 'Volume, and where the phone is sending the sound'],
+    ] as [string, string][]) {
+      const line = document.createElement('div');
+      line.className = 'remote-idle-line';
+      line.append(iconSvg(icon, 14), document.createTextNode(text));
+      panel.appendChild(line);
+    }
+    return panel;
   }
 
   /**
@@ -652,16 +739,8 @@ class RemoteView {
       : (output?.name ?? 'Output device unknown');
     row.appendChild(name);
 
-    // The dropdown affordance, drawn because it was asked for twice — and it opens nothing. Nothing
-    // in this protocol switches the phone's audio route; Android's own switcher is an activity, and
-    // a backgrounded startActivity on this handset is refused *silently* (Phase 7 Slice 8), so the
-    // honest route is `apps.open.ask`'s shape — a notification the user taps — which is a feature
-    // rather than a glyph. Because the chevron now claims more than the pill does, the pill is a
-    // plain div: no tabindex, no click handler, no pointer cursor. The claim is kept as narrow as a
-    // drawn chevron can be. docs/protocol.md → `output` records this.
-    const chevron = iconSvg('chevron', 15);
-    chevron.setAttribute('class', 'remote-output-chevron');
-    row.appendChild(chevron);
+    // **No chevron — the Sidekick handoff (§5c).** Nothing in this protocol switches the phone's
+    // audio route, so the output is a readout: no tabindex, no click handler, no dropdown mark.
 
     if (!this.state.active) row.classList.add('remote-output-idle');
     return row;

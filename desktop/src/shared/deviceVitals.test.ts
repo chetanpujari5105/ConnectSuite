@@ -50,14 +50,28 @@ test('the low threshold is applied at its boundary in both directions', () => {
   assert.equal(below.tone, 'low');
 });
 
-test('storage fills with what is used, names the capacity, and says what is free', () => {
-  // The handoff's assignment: `128 GB` in the ring, `68 GB free` under it, arc at used.
+test('storage is stated as free space: the value, the caption and the bar all read free', () => {
+  // Sidekick handoff, component 14: value `11.0 GB`, caption `free of 490 GB · 2%`, and the bar
+  // fills with FREE space. Red-first: restoring the old binding (fraction = used) makes this 0.8.
   const view = storageRing({ freeBytes: 20_000_000_000, totalBytes: 100_000_000_000 });
-  assert.equal(view.fraction, 0.8);
-  // The word "free" lives in the caption because the value sits inside a 72px ring and
-  // "13.7 GB free" overflows it.
-  assert.equal(view.value, '100 GB');
-  assert.equal(view.caption, '20.0 GB free');
+  assert.equal(view.fraction, 0.2);
+  assert.equal(view.value, '20.0 GB');
+  assert.equal(view.caption, 'free of 100 GB · 20%');
+  assert.equal(view.tone, 'ok');
+});
+
+test('a nearly full phone is a nearly EMPTY bar, and that one is amber', () => {
+  const view = storageRing({ freeBytes: 11_000_000_000, totalBytes: 490_000_000_000 });
+  assert.ok(view.fraction! < 0.03);
+  assert.equal(view.value, '11.0 GB');
+  assert.equal(view.caption, 'free of 490 GB · 2%');
+  assert.equal(view.tone, 'low');
+});
+
+test('low battery says so in words, and charging overrides it like the tone does', () => {
+  assert.equal(batteryRing({ level: 12, charging: false, capacityUnknown: false }).caption, 'Low battery');
+  assert.equal(batteryRing({ level: 12, charging: true, capacityUnknown: false }).caption, 'Charging');
+  assert.equal(batteryRing({ level: 60, charging: false, capacityUnknown: false }).caption, 'On battery');
 });
 
 test('a null half of storage makes the whole ring unknown, not zero', () => {

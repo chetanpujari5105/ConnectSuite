@@ -8,10 +8,11 @@ import './navModel';
 import './icons';
 import '../shared/activity';
 import '../shared/deviceVitals';
+import '../shared/securityCard';
 import './overview';
 
 /**
- * Overview's Quick actions, Recent activity and footer strip, driven for real.
+ * Overview's Recent activity, metric cards and Connection & security card, driven for real.
  *
  * This file exists because of a bug it would have caught. The card took `events.slice(0, 5)` from a
  * store that returns events **oldest first**, and drew the five oldest things that had ever happened
@@ -36,6 +37,10 @@ class FakeBridge {
     this.calls.push('disconnect');
     return null;
   }
+  async reconnect() {
+    this.calls.push('reconnect');
+    return null;
+  }
 }
 
 installFakeDocument();
@@ -43,11 +48,11 @@ installFakeDocument();
 interface Pane {
   bridge: FakeBridge;
   recent: FakeElement;
-  strip: FakeElement;
-  stripLine: FakeElement;
-  disconnect: FakeElement;
+  recentSub: FakeElement;
+  security: { card: FakeElement; badge: FakeElement; title: FakeElement; body: FakeElement; actions: FakeElement };
+  ringRow: FakeElement;
   routed: string[];
-  view: { setStatus(c: boolean): void; refresh(): Promise<void> };
+  view: { setStatus(s: { phase?: string; paired: boolean }, now?: number): void; refresh(): Promise<void> };
 }
 
 function mount(events: Event[] = []): Pane {
@@ -55,9 +60,8 @@ function mount(events: Event[] = []): Pane {
   bridge.events = events;
   const parts = {
     recent: el('div'),
-    strip: el('div'),
-    stripLine: el('span'),
-    disconnect: el('button'),
+    recentSub: el('p'),
+    security: { card: el('section'), badge: el('span'), title: el('h3'), body: el('p'), actions: el('div') },
     ringRow: el('div'),
   };
   const routed: string[] = [];
@@ -67,10 +71,9 @@ function mount(events: Event[] = []): Pane {
   const view = new View(
     bridge,
     parts.recent,
-    parts.strip,
-    parts.stripLine,
-    parts.disconnect,
-    (id: string) => routed.push(id),
+    parts.recentSub,
+    parts.security,
+    (id: string, pane?: string) => routed.push(pane ? `${id}/${pane}` : id),
     parts.ringRow,
   );
   return { bridge, ...parts, routed, view };
@@ -84,7 +87,7 @@ function event(seq: number, over: Partial<Event> = {}): Event {
 
 // ---- Recent activity ----------------------------------------------------------------------------
 
-test('Recent activity shows the NEWEST five, whatever order the store hands them over in', async () => {
+test('Recent activity shows the NEWEST four, whatever order the store hands them over in', async () => {
   // The store returns events in insertion order — oldest first — and the Activity pane sorts by
   // `seq` descending before paging. `.slice(0, 5)` over the raw array is therefore the five oldest
   // things that ever happened, under a heading reading "Recent activity". That shipped.
@@ -92,10 +95,10 @@ test('Recent activity shows the NEWEST five, whatever order the store hands them
   await pane.view.refresh();
 
   const rows = pane.recent.queryAll('.recent-row');
-  assert.equal(rows.length, 5, 'control: five rows were drawn');
+  assert.equal(rows.length, 4, 'control: the handoff\'s four rows were drawn');
   assert.deepEqual(
     pane.recent.queryAll('.recent-text').map((t) => t.textContent),
-    ['kind 7', 'kind 6', 'kind 5', 'kind 4', 'kind 3'],
+    ['kind 7', 'kind 6', 'kind 5', 'kind 4'],
   );
 });
 
@@ -130,36 +133,67 @@ test('a late refresh does not draw over a newer one', async () => {
   );
 });
 
-// ---- The footer strip ---------------------------------------------------------------------------
+// ---- Connection & security (component 19) -------------------------------------------------------
 
-test('the strip claims encryption only while something is connected, and names no device', () => {
+const actionsOf = (pane: Pane) => pane.security.actions.children.map((b) => b.dataset.action);
+
+test('connected: the encryption claim, and Disconnect beside it', () => {
   const pane = mount();
-  pane.view.setStatus(true);
-  // The handoff's sentence, word for word. Asserted whole rather than by a keyword, because the
-  // thing departure O12 changed is *which words are in it* — a /[Ee]ncrypted/ match would pass
-  // over the device-naming version this replaced.
-  assert.equal(
-    pane.stripLine.textContent,
-    'Connection is encrypted end-to-end. Only your devices can read this traffic.',
-  );
-  assert.equal(pane.disconnect.disabled, false);
-  assert.ok(!pane.strip.classList.contains('is-idle'));
-
-  // A strip claiming an encrypted connection over a link that is down would be this screen's one
-  // security sentence being wrong in the state where somebody is most likely to be reading it.
-  pane.view.setStatus(false);
-  assert.ok(!/[Ee]ncrypted/.test(pane.stripLine.textContent));
-  assert.match(pane.stripLine.textContent, /Not connected/);
-  assert.equal(pane.disconnect.disabled, true);
-  assert.ok(pane.strip.classList.contains('is-idle'));
+  pane.view.setStatus({ phase: 'connected', paired: true });
+  assert.equal(pane.security.card.dataset.state, 'connected');
+  assert.match(pane.security.title.textContent, /Encrypted/);
+  assert.deepEqual(actionsOf(pane), ['disconnect']);
+  assert.equal(pane.security.card.dataset.layout, 'inline');
 });
 
-test('Disconnect calls the bridge, and only that', async () => {
+test('the moment a session ends is recorded by the view and stated in the past tense', () => {
+  // The write lives in the view, in reach of this test — defect 67: an edge is a write.
   const pane = mount();
-  pane.view.setStatus(true);
-  pane.disconnect.click();
+  const at = new Date(2026, 8, 19, 9, 42).getTime();
+  pane.view.setStatus({ phase: 'connected', paired: true }, at - 60_000);
+  pane.view.setStatus({ phase: 'idle', paired: true }, at);
+  pane.view.setStatus({ phase: 'idle', paired: true }, at + 5_000);
+  assert.equal(pane.security.card.dataset.state, 'disconnected');
+  assert.match(pane.security.body.textContent, /ended at 09:42/, 'the time of the END, not of the latest redraw');
+  assert.ok(!/^Encrypted/.test(pane.security.title.textContent));
+  assert.deepEqual(actionsOf(pane), ['reconnect', 'troubleshoot']);
+  assert.equal(pane.security.card.dataset.layout, 'stacked');
+});
+
+test('a Mac that never saw a session end names no time', () => {
+  const pane = mount();
+  pane.view.setStatus({ phase: 'idle', paired: true });
+  assert.ok(!/ended at/.test(pane.security.body.textContent));
+});
+
+test('each action does exactly its one thing', async () => {
+  const pane = mount();
+  pane.view.setStatus({ phase: 'connected', paired: true });
+  pane.security.actions.children[0]!.click();
+  pane.view.setStatus({ phase: 'idle', paired: true });
+  const [reconnect, troubleshoot] = pane.security.actions.children;
+  reconnect!.click();
+  troubleshoot!.click();
   await settle();
-  assert.deepEqual(pane.bridge.calls.filter((c) => c === 'disconnect'), ['disconnect']);
+  assert.deepEqual(pane.bridge.calls, ['disconnect', 'reconnect']);
+  assert.deepEqual(pane.routed, ['settings/connection']);
+});
+
+test('connecting offers nothing to press', () => {
+  const pane = mount();
+  pane.view.setStatus({ phase: 'handshaking', paired: true });
+  assert.equal(pane.security.card.dataset.state, 'connecting');
+  assert.equal(pane.security.actions.children.length, 0);
+  assert.equal(pane.security.actions.hidden, true);
+});
+
+test('Recent keeps its rows while the phone is away, and the caption says why nothing new arrives', () => {
+  const pane = mount();
+  pane.view.setStatus({ phase: 'connected', paired: true });
+  const live = pane.recentSub.textContent;
+  pane.view.setStatus({ phase: 'idle', paired: true });
+  assert.notEqual(pane.recentSub.textContent, live);
+  assert.match(pane.recentSub.textContent, /away/);
 });
 
 // ---- O4, Device status rings --------------------------------------------------------------------
@@ -209,8 +243,9 @@ test('O4 — a real reading draws an arc and says the number', () => {
   assert.notEqual(battery.querySelector('.vital-fill'), null);
   assert.equal(battery.querySelector('.vital-value').textContent, '72%');
   assert.equal(battery.querySelector('.vital-caption').textContent, 'Charging');
-  assert.equal(storage.querySelector('.vital-value').textContent, '511 GB');
-  assert.equal(storage.querySelector('.vital-caption').textContent, '41.2 GB free');
+  // Free space everywhere (component 14): the value is what is free, the caption the capacity.
+  assert.equal(storage.querySelector('.vital-value').textContent, '41.2 GB');
+  assert.equal(storage.querySelector('.vital-caption').textContent, 'free of 511 GB · 8%');
 });
 
 test('O4 — a low battery is toned differently from a healthy one', () => {

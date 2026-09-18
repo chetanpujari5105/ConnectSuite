@@ -1099,3 +1099,27 @@ is lime (the `#32E58A` green is gone), the category tints resolve to one neutral
 (`--material-card-filter: none`), card radius is 14 and the hero keeps 20. Panes not yet rebuilt
 (Batches 2–5) inherit the new palette through their existing token names; their layouts are
 unchanged until their batch.
+
+---
+
+## Sidekick Batch 2 — Overview, built against the handoff — 2026-09-19. Rows D21–D25
+
+Frame `6:2` and its state frames `22:6`, `22:184`, `22:362`, `40:20881`; components 14, 15, 18, 19.
+**No Figma render was taken** (Figma MCP rate-limited); built against handoff §5c and §6 geometry.
+
+| Row | Figma | Built | Why |
+|---|---|---|---|
+| **D21** | Frames are 1440 × 980 | Demo and evidence at **1440 × 920** | `windowGeometry.DESIGN` is 1440 × 920 and the demo Mac's screen is 1512 × 982 — a 980-tall window does not fit under the menu bar. The grid is Figma's; only the space below the last card differs |
+| **D22** | The capability list lives on a **Settings → Device info** subpage (`44:23491`) | The same card (`#caps`, `#caps-reasons`) moved into **Settings' side column**, visible on every Settings pane | Overview must stop summarising features now; the subpage and its component-20 rows are Batch 5. Same ids, so the phone's reasons are still drawn verbatim and nothing is lost in between |
+| **D23** | Activity badge tone is the **event's**: lime only for a connection coming up, amber a limitation, red a failure | Tone still comes from the event's **category** (connection rows lime, everything else neutral) | `activityRowView` has no per-event tone yet; the new `shared/activityRow.ts` is Batch 5. In practice the two agree on every row the demo shows |
+| **D24** | The hero's primary action is *Start mirroring* | While a session exists it reads **Open mirror** and only routes — it never starts a second session | The one-of Start/Stop rule (`shared/mirrorSession.ts`) applied to the hero, so the Overview cannot offer the thing the Mirror pane forbids |
+| **D25** | Narrow layout is drawn only for component 19 | Below a 1240px window the grid restacks: hero and Recent full width; remote beside metrics + security | The 1100px minimum window would otherwise squeeze the hero to 360px. Measured at 1100 × 700: no overlap, no horizontal scroll, no truncated fact |
+
+**Corrected to the handoff, not departures:** storage is **free space** in value, caption and bar
+(it was capacity over a *used* bar — O19's superseded binding); the idle media card draws **no
+transport** (the 2026-09-16 disabled row is gone) and a track with no length **no scrubber**; the
+output readout has **no chevron**; the media card is an ordinary opaque card that inverts with the
+theme (the frozen dark `--np-*` island is no longer read); the footer strip is replaced by
+Connection & security; Recent shows **four** 48px rows; the hero is 700 × 300 with the 148 × 260
+phone and a row-major 2 × 2; lime appears nowhere on a non-connected Overview (hero bloom, disabled
+primary button).

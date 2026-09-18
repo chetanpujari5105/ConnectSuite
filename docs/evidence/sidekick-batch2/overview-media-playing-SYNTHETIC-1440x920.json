@@ -1,0 +1,18 @@
+{
+  "file": "docs/evidence/sidekick-batch2/overview-media-playing-SYNTHETIC-1440x920.png",
+  "screen": "overview",
+  "takenAt": "2026-09-18T22:21:57.379Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 600,
+  "ready": null,
+  "prep": null,
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth"
+}

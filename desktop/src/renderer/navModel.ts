@@ -490,6 +490,25 @@ function overviewTitle(now: Date = new Date()): string {
 }
 
 /**
+ * Overview's subtitle, from the link's tone — the same `live / working / down / idle` the chip and
+ * the island read. It was the static `SCREENS` sentence *"Your phone and Mac are in sync."*, which
+ * the header kept saying beside a red `Disconnected` chip: a claim about the link from a surface
+ * that never asked the link.
+ */
+function overviewSubtitle(tone: string): string {
+  switch (tone) {
+    case 'live':
+      return 'Your phone and Mac are in sync.';
+    case 'working':
+      return 'Connecting to your phone. Nothing has been sent yet.';
+    case 'down':
+      return 'Your phone is not connected. What you see is from the last session.';
+    default:
+      return 'Pair a phone to get started.';
+  }
+}
+
+/**
  * Up to two initials for an avatar, from whatever the machine calls itself.
  *
  * Deliberately conservative about what counts as a word. `Chetans-MacBook-Pro` and
@@ -634,7 +653,7 @@ function iconNamesUsedByTheShell(): string[] {
     'close',
     'check',
     'chevron',
-    // Settings' third column and Overview's connection strip. Both draw it directly rather than
+    // Settings' third column. It draws it directly rather than
     // through a table, which is exactly the shape that shipped two empty rings — so the name is in
     // here, where `navModel.test.ts` asserts it resolves.
     'shield',
@@ -659,6 +678,14 @@ function iconNamesUsedByTheShell(): string[] {
     'storage',
     'info',
     'network',
+    // Overview's Connection & security card and the hero phone's state marks, drawn from
+    // `overview.ts` and `shell.ts` with no table in between.
+    'lock',
+    'link',
+    'link-minus',
+    'spinner',
+    'refresh',
+    'wrench',
   ];
 }
 
@@ -697,6 +724,7 @@ if (typeof module !== 'undefined') {
     iconNamesUsedByTheShell,
     initialsFor,
     overviewTitle,
+    overviewSubtitle,
     paletteResults,
     screenById,
     pillOffsetFor,

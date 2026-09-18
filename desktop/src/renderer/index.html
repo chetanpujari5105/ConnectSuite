@@ -217,78 +217,63 @@
 
             <!-- ============================== Overview ==================================== -->
             <section class="screen" data-screen="overview" hidden>
+              <!--
+                Sidekick Overview, frame `6:2` (handoff §6). Two columns — 700 and 428 at the demo
+                size — and four regions: the hero with its action row, the media remote beside it,
+                then Recent activity against the two metric cards and Connection & security. The
+                capability chips moved to Settings (handoff: "the capability list lives in Settings");
+                Overview carries the link, the media session, the recent events and two diagnostics.
+              -->
               <div class="overview-grid stagger">
-                <!-- The ONE primary card on this screen. Nothing else here is elev-3. -->
-                <div class="card primary hero">
-                  <div class="hero-body">
-                    <div class="hero-phone" aria-hidden="true"></div>
-                    <div class="hero-facts">
-                      <div class="hero-head">
-                        <div class="hero-title">
-                          <h2 class="hero-name" id="hero-name">No phone paired</h2>
-                          <span class="state-chip" id="hero-chip">
-                            <span class="state-dot" id="hero-dot" aria-hidden="true"></span>
-                            <span id="hero-state">Not paired</span>
-                          </span>
-                        </div>
-                      </div>
-                      <dl class="hero-details" id="hero-facts"></dl>
+                <div class="card primary hero" id="hero-card" data-state="idle">
+                  <!--
+                    The phone visual: device identity, never content. No live frame, notification
+                    or album art is ever drawn in it — the wash is the app's own palette and follows
+                    the link state through `data-state` on the card.
+                  -->
+                  <div class="hero-phone" aria-hidden="true">
+                    <div class="hero-phone-screen">
+                      <span class="hero-phone-speaker"></span>
+                      <span class="hero-phone-camera"></span>
+                      <span class="hero-phone-spinner" id="hero-phone-spinner"></span>
+                      <span class="hero-phone-nav"></span>
                     </div>
+                    <span class="hero-phone-badge" id="hero-phone-badge"></span>
+                  </div>
+                  <div class="hero-facts">
+                    <h2 class="hero-name" id="hero-name">No phone paired</h2>
+                    <span class="state-chip" id="hero-chip">
+                      <span class="state-dot" id="hero-dot" aria-hidden="true"></span>
+                      <span id="hero-state">Not paired</span>
+                    </span>
+                    <dl class="hero-details" id="hero-facts"></dl>
                   </div>
                 </div>
 
-                <!--
-                  The pill button row — the Sidekick visual-language brief: "Pill buttons in a row
-                  of three, equal width, dark fill, placed under the gradient hero card." Moved out
-                  of the hero card itself (the handoff drew these as `.hero-actions`, inside it) so
-                  the hero stays the one surface holding only the connection state and device name.
-                  `Start mirroring` / `Device info` are the handoff's own two; the third is new —
-                  `View activity`, the same destination `#recent-all` already links to, chosen
-                  because it is the one Overview action with nowhere to click through from up here.
-                -->
                 <div class="hero-pill-row" id="overview-pill-row">
                   <button type="button" id="hero-mirror" class="button primary-action hero-pill-action">
-                    Start mirroring<span class="mono hero-key">⌘⇧M</span>
+                    <span id="hero-mirror-label">Start mirroring</span><span class="mono hero-key" id="hero-mirror-key">⌘⇧M</span>
                   </button>
                   <button type="button" id="hero-info" class="button hero-pill-action">Device info</button>
                   <button type="button" id="hero-activity" class="button hero-pill-action">View activity</button>
                 </div>
 
                 <!--
-                  Media remote. Shipped and working since step 67, and the design draws no pane,
-                  no sidebar row and no dock tile for it (departures X5). It lands here because it
-                  rides the notification-listener grant and because "what is playing" belongs on a
-                  dashboard. Hidden until the phone advertises `remote`.
+                  Media remote, component 15. Hidden until the phone advertises `remote`.
+                  `remote-note` stays in the DOM, clipped: it is the sentence that names the app
+                  ("Paused in Spotify."), the accessible statement of what the card shows.
                 -->
                 <div class="card hidden remote-card" id="remote-card">
-                  <!--
-                    No `.card-title` and no visible `.card-sub`, and that is the structural half of
-                    the 2026-09-16 rebuild rather than an omission. Every other card in this app is
-                    chrome-plus-content; this one IS its content — the reference draws a single dark
-                    surface with the cover, the transport and the device on it, and a heading above
-                    that surface would be a sixth container in a design whose whole point is one.
-
-                    `remote-note` stays in the DOM, clipped. It carries the sentence that names the
-                    app — "Paused in Spotify." — which is the accessible statement of what this card
-                    is showing, and is where defect 46's fix lives. Deleting it to tidy the markup
-                    would remove the only place a screen reader is told whose player this is.
-                  -->
                   <p class="card-sub remote-note" id="remote-note"></p>
                   <div id="remote-body" class="remote-body"></div>
                   <div id="remote-notice" class="mirror-notice" hidden></div>
                 </div>
 
-
-                <!--
-                  Recent activity. The departure row for this said it *"needs a session store
-                  nothing writes yet"*; `main/activity.ts` became that store on 2026-09-02 with
-                  eleven named recording sites, and this is the row being discharged.
-                -->
                 <section class="card recent" id="recent-card">
                   <div class="recent-head">
                     <div class="recent-heading">
                       <h3 class="recent-title">Recent activity</h3>
-                      <p class="recent-sub">Latest events from your device and Sidekick</p>
+                      <p class="recent-sub" id="recent-sub">Latest events from your phone and Sidekick</p>
                     </div>
                     <button type="button" class="recent-all" id="recent-all">
                       <span>View all</span>
@@ -298,64 +283,27 @@
                 </section>
 
                 <!--
-                  O4 — Device status. Two readings, not the design's three: there is no memory
-                  reading, because free RAM on Android is not a fact a person can act on. The
-                  reasoning is in `src/shared/deviceVitals.ts` and the departure is recorded at O4.
-
-                  Drawn as a readout and a bar since 2026-09-17 (N-P2), not as rings. An UNKNOWN
-                  reading has no fill element at all — an empty bar would read as zero, and "paints
-                  nothing" is exactly the state this card has to be able to express.
+                  Device metric cards, component 14: Battery and Storage, each its own card. An
+                  unknown reading has no fill element at all — an empty bar would read as zero.
                 -->
-                <div class="card device-status-card" id="device-status-card">
-                  <h3 class="card-title">Device status</h3>
-                  <div class="ring-row" id="ring-row"></div>
-                </div>
+                <div class="overview-metrics" id="ring-row" aria-label="Device status" role="group"></div>
 
                 <!--
-                  Capabilities. The design has no home for this list at all (departures X5) and it
-                  is the pane that answers "why can't I do X", so it sits on the dashboard rather
-                  than being buried. Each chip carries the phone's own reason, verbatim.
-
-                  **This card was inside the one above until 2026-09-16 — departure O6.** The
-                  `</div>` closing `#device-status-card` was missing, so a bordered card rendered
-                  inside a bordered card and the whole capability list was a child of Device status.
-                  It looked plausible because that card is `display: flex; flex-direction: column`
-                  with a gap, which is exactly what a sibling in the same column looks like — and
-                  styles.css's own comment says the intent was *"`.caps` follows it in the same
-                  column rather than beside it"*, which is what is now true. Nothing in the build
-                  could see it: the HTML is valid, `tsc` has no opinion, and every test that reaches
-                  `#caps` reaches it either way.
+                  Connection & security, component 19. What it says and which actions it offers
+                  are one pure decision, `shared/securityCard.ts`; `OverviewView` draws it.
                 -->
-                <div class="card caps-card" id="caps-card">
-                  <h3 class="card-title">What this phone can do</h3>
-                  <p class="card-sub">
-                    Anything missing needs a permission granting on the phone.
-                  </p>
-                  <div id="caps" class="caps"></div>
-                  <!--
-                    The reasons, drawn rather than revealed — departure O15. The sub above used to
-                    end "Hover a dimmed one for the phone's own reason", which is this app's most
-                    useful sentence hidden behind the one gesture a keyboard cannot make. Hidden
-                    when every capability is available, which is the ordinary case.
-                  -->
-                  <div id="caps-reasons" class="caps-reasons" hidden></div>
-                </div>
-
-                <!--
-                  The handoff's full-width footer strip. Both halves are real: the link is TLS 1.3
-                  with a pinned fingerprint, and Disconnect is the same call Settings → Connection
-                  makes. It is the one place on this screen that states what the connection is.
-                -->
-                <div class="overview-strip" id="overview-strip">
-                  <div class="overview-strip-text">
-                    <span class="overview-strip-glyph" id="overview-shield" aria-hidden="true"></span>
-                    <span id="overview-strip-line"></span>
+                <section class="card security-card" id="security-card" aria-labelledby="security-title">
+                  <div class="security-row">
+                    <span class="security-badge" id="security-badge" aria-hidden="true"></span>
+                    <div class="security-text">
+                      <h3 class="security-title" id="security-title">Not connected</h3>
+                      <p class="security-body" id="security-body"></p>
+                    </div>
+                    <div class="security-actions" id="security-actions"></div>
                   </div>
-                  <button type="button" class="overview-disconnect" id="overview-disconnect">Disconnect</button>
-                </div>
+                </section>
               </div>
             </section>
-
             <!-- ============================== Mirror ====================================== -->
             <!--
               Slice 2a, unchanged below the header. The pane's own <header> is gone: the shell's
@@ -819,6 +767,26 @@
                     <p class="settings-brand-line">Your phone essentials, on your Mac.</p>
                   </section>
                   <!--
+                    What this phone can do — moved from Overview (Sidekick handoff §6: Overview does
+                    not summarise the features). Same ids, so the chip and reason writers in
+                    renderer.ts are unchanged. Each chip carries the phone's own reason, verbatim.
+                  -->
+                  <section class="settings-caps" id="caps-card">
+                    <h3 class="card-title">What this phone can do</h3>
+                    <p class="card-sub">
+                      Anything missing needs a permission granting on the phone.
+                    </p>
+                    <div id="caps" class="caps"></div>
+                    <!--
+                      The reasons, drawn rather than revealed — departure O15. The sub above used to
+                      end "Hover a dimmed one for the phone's own reason", which is this app's most
+                      useful sentence hidden behind the one gesture a keyboard cannot make. Hidden
+                      when every capability is available, which is the ordinary case.
+                    -->
+                    <div id="caps-reasons" class="caps-reasons" hidden></div>
+                  </section>
+
+                  <!--
                     The design's green "You are up to date" card, with the half of it that is true.
                     There is no update server to be up to date with; the encryption sentence is the
                     part this product can actually sign, and it is the more important half.
@@ -910,6 +878,7 @@
     <script src="activity.js"></script>
     <!-- Overview's Quick actions, Recent activity and footer strip. Loaded after shared/activity.js
          because it calls `activityPage` and `activityWhen`, and after navModel.js for `SCREENS`. -->
+    <script src="../shared/securityCard.js"></script>
     <script src="overview.js"></script>
     <!-- The four controls a Settings pane is built out of. Before shell.js, which draws the rail. -->
     <script src="settingsControls.js"></script>

@@ -109,7 +109,13 @@ function batteryRing(state: BatteryState | null): RingView {
     label: 'Battery',
     fraction: state.level / 100,
     value: `${state.level}%`,
-    caption: state.charging ? 'Charging' : 'On battery',
+    // The handoff's three words. "Low battery" only when it is low *and* not charging — the same
+    // condition the tone uses, so the word and the amber cannot disagree.
+    caption: state.charging
+      ? 'Charging'
+      : state.level < BATTERY_LOW_PERCENT
+        ? 'Low battery'
+        : 'On battery',
     // Charging at 5% is not a warning — it is the situation resolving itself.
     tone: state.level < BATTERY_LOW_PERCENT && !state.charging ? 'low' : 'ok',
   };
@@ -140,20 +146,17 @@ function storageRing(state: StorageState | null): RingView {
   return {
     id: 'storage',
     label: 'Storage',
-    fraction: (totalBytes - freeBytes) / totalBytes,
-    // **The handoff's assignment, 2026-09-17: capacity in the ring, what is free under it.** Its
-    // storage ring reads `128 GB` over a `68 GB free` caption with the arc at 0.50 — so the arc is
-    // used, the value is the phone's size, and the caption is the number a person acts on. Until
-    // this date the value was the free figure and the caption `free of <total>`; the arc binding
-    // was right throughout and is unchanged.
-    //
-    // The word "free" stays in the CAPTION, not the value: the value sits inside a 72px ring, and
-    // "13.7 GB free" overflowed it — seen in a screenshot, not in any test, because a DOM double
-    // has no layout. A capacity is `humanBytes` of a number >= 100 GB on any current phone, so it
-    // renders as `490 GB` — six characters, exactly on `overview.ts`'s is-long boundary, which is
-    // measured in the running app rather than trusted from the arithmetic.
-    value: humanBytes(totalBytes),
-    caption: `${humanBytes(freeBytes)} free`,
+    /*
+     * **Free space, everywhere — the Sidekick handoff (component 14), 2026-09-19.** The value is
+     * what is free, the caption names the capacity and the share, and the bar fills with *free*
+     * space, so a nearly empty bar genuinely means nearly out of room and is the one that earns
+     * amber. It replaces the 2026-09-17 assignment (capacity in the value, arc at *used*), which
+     * followed the superseded ConnectSuite handoff: under it a nearly full phone drew a nearly full
+     * bar in amber, and "full" and "fine" looked alike at a glance.
+     */
+    fraction: freeBytes / totalBytes,
+    value: humanBytes(freeBytes),
+    caption: `free of ${humanBytes(totalBytes)} · ${Math.round((freeBytes / totalBytes) * 100)}%`,
     tone: freeBytes / totalBytes < STORAGE_LOW_FRACTION ? 'low' : 'ok',
   };
 }

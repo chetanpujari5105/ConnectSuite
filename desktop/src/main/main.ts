@@ -103,6 +103,8 @@ let tray: Tray | null = null;
  */
 let notifierWasConnected = false;
 let link: LinkClient | null = null;
+/** Set by the Disconnect command, read once by the next Activity "Disconnected" row. */
+let userStoppedLink = false;
 /**
  * The rename re-pair is still owed: ConnectSuite left an identity and Sidekick has not yet connected
  * on its own. Decided once and persisted (`legacyData.ts` `decideRePair`); cleared by the first
@@ -606,7 +608,11 @@ function refreshTray(): void {
       },
       {
         label: connected ? 'Disconnect' : 'Connect',
-        click: () => (connected ? link?.stop('tray') : link?.start()),
+        click: () => {
+          if (!connected) return link?.start();
+          userStoppedLink = true;
+          return link?.stop('tray');
+        },
       },
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() },
@@ -1119,7 +1125,14 @@ app.whenReady().then(() => {
           sendAll('rename-notice', { notice: null });
         }
       } else if (before === 'connected') {
-        activity.record('system', 'Disconnected', status.lastError ?? `now ${status.phase}`);
+        activity.record(
+          'system',
+          'Disconnected',
+          userStoppedLink
+            ? 'You disconnected the phone from this Mac'
+            : (status.lastError ?? `now ${status.phase}`),
+        );
+        userStoppedLink = false;
       }
     }
     // The replay cutoff is armed on the transition INTO connected, never on every status tick —
@@ -2653,7 +2666,13 @@ ipcMain.handle('pairing-qr', async (_event, rotate?: boolean) => {
 });
 
 ipcMain.handle('connect', () => link?.start());
-ipcMain.handle('disconnect', () => link?.stop('user disconnected'));
+ipcMain.handle('disconnect', () => {
+  // Noted so the Activity row can say who ended the session. Without it a Disconnect the user
+  // pressed is recorded with the link classifier's generic "The connection to your phone failed",
+  // which is a failure sentence about something nobody failed at.
+  userStoppedLink = true;
+  link?.stop('user disconnected');
+});
 ipcMain.handle('retry-now', () => link?.retryNow('user'));
 
 ipcMain.handle('set-manual-address', (_event, address: string) => {

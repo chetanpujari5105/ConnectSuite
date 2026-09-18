@@ -20902,3 +20902,49 @@ Instrument (none became a finding):
 Screenshots, 1440 × 980 @2x, `docs/evidence/sidekick-batch1/`: `overview-dark-1440x980`,
 `overview-light-1440x980`, `mirror-dark-1440x980`, `palette-dark-1440x980`,
 `packaged-overview-dark`.
+
+## Sidekick Batch 2 — Overview, 2026-09-19
+
+Handoff §6 geometry and components 14, 15, 18, 19. Departures D21–D25. **No Figma render** —
+the Figma MCP returned its Starter-plan limit on every call this sitting.
+
+### Measured, 1440 × 920 (`windowGeometry.DESIGN`), real phone connected
+
+| | built | handoff |
+|---|---|---|
+| hero | 700 × 301 at content x 28 | 700 × 300 |
+| media remote | 428 × 356 | 428 × 356 |
+| metric cards | 206 × 148, two, 16 apart | 206 × 148 |
+| Connection & security | 428 wide, hugs (~90 connected, ~150 disconnected) | 93 / 167 minimum |
+| Recent activity | 700 × ~264, four 48px rows | 700 × 252, four 48px rows |
+| columns end | left ~750, right ~740 | — |
+
+### States, each driven through the product and read back
+
+- **Connected** (real) — lime chip and bloom, facts row-major, Disconnect beside one line.
+- **Disconnected** (real — the card's own **Disconnect** button, then **Reconnect**, 248–268 ms
+  back to connected): hero `down`, phone desaturated with the link-minus disc, chip and island red,
+  subtitle *"Your phone is not connected. What you see is from the last session."*, latency `—`
+  (it held `7 ms` before this sitting's fix), media card *Phone not connected* with nothing to
+  press, Recent keeps its rows with *"Your phone is away…"*, security card past tense with the
+  real end time and Reconnect / Troubleshoot in their own row. Activity now records
+  *"You disconnected the phone from this Mac"* — it said *"The connection to your phone failed"*.
+- **Connecting** — **SYNTHETIC**: `shell.setStatus` / `overview.setStatus` handed `handshaking`
+  and held for the capture (the real link's next push overwrote the first attempt before the
+  screenshot — a two-writer reading, discarded), then restored.
+- **Media playing** — **SYNTHETIC** `RemoteView` state; the Spotify badge is the phone's real
+  launcher icon via `apps.icon`. Restored with `remote.refresh()`.
+- **Minimum window** — `Emulation.setDeviceMetricsOverride` 1100 × 700: 0 overlaps, no horizontal
+  scroll, 0 truncated hero facts; security 16px under the metrics (it was 67 before the row fix).
+- **Light theme** — checked by eye; `check-contrast.mjs` green in both themes.
+
+### Tests
+
+`shared/securityCard.test.ts` (6) — red-first: *reconnecting* treated as connected → 3 red; an
+action on Connecting → 2 red; no end time in the body → 1 red. `overviewView.test.ts` rewritten
+for the security card, four rows and free-space storage (15). `remoteView.test.ts`: idle draws **0**
+transport buttons, no-length draws no scrubber, unadvertised draws the permission/offline state
+(16). `deviceVitals.test.ts`: free-space binding, the 2%-free amber case, *Low battery* (26).
+`navModel.test.ts`: the subtitle claims sync only while live.
+
+Screenshots: `docs/evidence/sidekick-batch2/`.

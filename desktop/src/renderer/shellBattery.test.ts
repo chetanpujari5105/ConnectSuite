@@ -133,8 +133,8 @@ test('the hero draws the handoff four, and a battery reading adds no fifth cell'
     );
     assert.deepEqual(
       labels,
-      ['Connection', 'Security', 'Latency', 'Address'],
-      'column-first: Connection/Security left, Latency/Address right',
+      ['Connection', 'Address', 'Security', 'Latency'],
+      'row-major, the Sidekick handoff 2 × 2: Connection, Address / Security, Latency',
     );
     assert.ok(
       !labels.some((t) => t === 'Battery' || t === 'Storage'),

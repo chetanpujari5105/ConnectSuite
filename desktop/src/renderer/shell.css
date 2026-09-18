@@ -799,84 +799,93 @@ body {
 }
 
 /* ---- Overview --------------------------------------------------------------------------------- */
+/*
+ * **The Sidekick Overview grid — frame `6:2`, handoff §6.** Two columns: the hero's 700 and the
+ * media remote's 428 at the demo size, with the Figma 24px between them. Four named regions, so no
+ * card places itself by column number and a region can be rearranged at the minimum width in one
+ * rule rather than in six:
+ *
+ *   hero    | remote        hero 300, remote 356 = hero + 16 + the 40px action row
+ *   pills   | remote
+ *   recent  | metrics       Recent activity against the two metric cards
+ *   recent  | security      …and Connection & security under them
+ *
+ * The left column is `minmax(0, 1fr)` so it is what gives when the window narrows; the right keeps
+ * the handoff's 428 until 1180px of content, where it steps to 380 (below).
+ */
 .overview-grid {
   display: grid;
-  grid-template-columns: 1.04fr 1fr;
-  gap: var(--space-7);
+  grid-template-columns: minmax(0, 1fr) 428px;
+  grid-template-areas:
+    'hero remote'
+    'pills remote'
+    'recent metrics'
+    'recent security';
+  grid-template-rows: auto auto auto 1fr;
+  column-gap: var(--space-10);
+  row-gap: var(--space-7);
   align-items: start;
+}
+/* Toward the 1100px minimum window the right column would squeeze the hero to 360px. Below 1240 the
+   hero and Recent activity take the full width and the three right-hand cards pair up beneath the
+   hero instead — nothing is hidden, the pane scrolls. */
+@media (max-width: 1240px) {
+  .overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      'hero hero'
+      'pills pills'
+      'remote metrics'
+      'remote security'
+      'recent recent';
+    /* The remote spans two rows; the security row takes the slack so it sits 16px under the
+       metrics instead of the two rows splitting the remote's extra height. */
+    grid-template-rows: auto auto auto 1fr auto;
+  }
 }
 
 /*
- * The hero is **column one**, not the full width.
- *
- * The design lays Overview out as `1.04fr 1fr` with the hero on the left; this build spanned it
- * across both, which measured 1152 against the design's 579 and left the four facts floating in
- * half a card of empty space. The right column holds what the design puts nearest it — the
- * capability list, which is the pane that answers "why can't I do X".
- */
-/*
- * **The hero takes its natural height again**, and the `align-self: stretch` that was here for one
- * sitting is gone.
- *
- * It was added so row one would be two cards of equal height, and it worked — and it bought that
- * evenness with **181px of blank below the buttons**, 40% of a 453px card, because the content is
- * ~272px and stretching a box does not give its contents anywhere to go. The rebuild below adds
- * two rows of detail and an overflow, so the card earns most of that height honestly; what it must
- * not do is manufacture the rest.
- *
- * The media card keeps its own size and sets the row. An uneven row is the honest picture of two
- * cards with different amounts to say.
- */
-/*
- * **The gradient hero card — the Sidekick visual-language brief, 2026-09-17.** Departure from the
- * handoff's opaque `--elev-3` primary card, logged in `docs/design-departures.md`. The brief names
- * this card specifically ("the Overview pane's connection status... not Device status") and says
- * "exactly one hero card in the entire app" — every other `.card.primary` on the app keeps its
- * plain opaque fill; this is the one place a card's own surface carries the gradient.
- *
- * The lime shows as a corner bloom (`--hero-grad-glow`, a radial layered under everything else)
- * over a dark-green linear base, not as the card's ground colour: `--text-primary` sits on the
- * card everywhere `.hero-facts` draws, and a card that was lime end-to-end would put white text on
- * a bright fill and fail contrast exactly where the connection state and device name are read.
+ * The hero: **the only hero treatment in the app** (handoff §6). A near-black ground, one radial
+ * lime bloom, grain at 4%, a 6% hairline, 20px corners. The bloom sits low on the right, away from
+ * the text, so `--text-primary` is always read on the near-black. `.card.primary.hero` because
+ * `.card.primary` in styles.css (0,2,0) loads later.
  */
 .hero {
-  grid-column: 1;
-  /* Named containment, for the detail grid's container queries above. `inline-size` because only
-     the width decides anything here; `size` would need a fixed height and this card has none. */
-  container: hero / inline-size;
+  grid-area: hero;
   position: relative;
   overflow: hidden;
+  display: flex;
+  gap: var(--space-10);
+  min-height: 300px;
+  container: hero / inline-size;
 }
-/*
- * `.card.primary.hero`, not `.hero` — `.card.primary` in styles.css sets `background: var(--elev-3)`
- * at (0,2,0); this needs (0,3,0) to win regardless of load order, the same compound-selector
- * discipline `.card.recent` already documents above.
- */
 .card.primary.hero {
+  padding: var(--space-9);
+  border-radius: var(--radius-hero);
+  border: 1px solid var(--hero-hairline);
+  box-shadow: none;
   background:
-    radial-gradient(60% 75% at 96% 100%, var(--hero-grad-glow), transparent 65%),
-    linear-gradient(135deg, var(--hero-grad-1) 0%, var(--hero-grad-2) 55%, var(--hero-grad-3) 100%);
+    radial-gradient(70% 90% at 92% 105%, var(--hero-grad-glow), transparent 70%),
+    linear-gradient(160deg, var(--hero-grad-1) 0%, var(--hero-grad-2) 60%, var(--hero-grad-3) 100%);
 }
-/*
- * The grain overlay — brief: "a subtle grain/noise overlay on the connection-status hero card
- * only... this is what keeps the neon-on-black look from reading as flat/plasticky. Don't apply
- * grain anywhere else." An inline SVG `feTurbulence` filter, tiled, blended with `overlay` at low
- * opacity so it textures the gradient rather than adding visible dots. `pointer-events: none` and
- * `aria-hidden`-equivalent (a pseudo-element carries no semantics to begin with) — decoration only.
- */
+/* Grain, tiled, 4% — the one texture in the app, on this card only. */
 .hero::after {
   content: '';
   position: absolute;
   inset: 0;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  mix-blend-mode: overlay;
-  opacity: 0.06;
+  mix-blend-mode: screen;
+  opacity: 0.04;
   pointer-events: none;
 }
 @media (prefers-reduced-transparency: reduce) {
   .hero::after { display: none; }
 }
-.overview-wide { grid-column: 1 / -1; }
+/* The bloom is lime, and lime is the connected state's alone: connecting, disconnected and unpaired
+   keep the near-black ground and nothing else (handoff §2 and §6). */
+.card.primary.hero:not([data-state='live']) {
+  background: linear-gradient(160deg, var(--hero-grad-1) 0%, var(--hero-grad-1) 100%);
+}
 
 
 /* ---- Quick actions: deleted 2026-09-16 ---------------------------------------------------------
@@ -918,7 +927,7 @@ body {
  * cascade knows. `.card.recent` is (0,2,0) and wins wherever it is declared.
  */
 .card.recent {
-  grid-column: 1;
+  grid-area: recent;
   /*
    * **20px, the shared card's own padding — reverted 2026-09-16 with the row height.**
    *
@@ -927,7 +936,7 @@ body {
    * superseded reference. The handoff's Recent activity section is `padding:20px` like every other
    * panel on the pane, and at 52px rows that is what it reads as.
    */
-  padding: var(--space-9) var(--space-9) var(--space-3);
+  padding: var(--space-7) var(--space-9) var(--space-1);
 }
 
 /* ---- Header --------------------------------------------------------------------------------- */
@@ -936,7 +945,7 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-7);
-  padding-bottom: var(--space-8);
+  padding-bottom: var(--space-4);
   /* The divider under the heading, across the card. */
   border-bottom: 1px solid var(--hairline);
 }
@@ -958,7 +967,7 @@ body {
   color: var(--text-primary);
 }
 .recent-sub {
-  margin: var(--space-2) 0 0;
+  margin: var(--space-1) 0 0;
   font-size: 13px;
   line-height: var(--leading-15);
   color: var(--text-body);
@@ -1005,12 +1014,13 @@ body {
  */
 .recent-row {
   display: grid;
-  grid-template-columns: 44px 26px minmax(0, 1fr) auto 16px;
+  grid-template-columns: 44px 30px minmax(0, 1fr) auto 16px;
   gap: var(--space-5);
   align-items: center;
   position: relative;
   width: 100%;
-  min-height: 52px;
+  /* Component 18's one 48px row shape, shared with the Activity pane. */
+  min-height: 48px;
   padding: 0 var(--space-1);
   border: 0;
   border-radius: var(--radius-tile);
@@ -1064,10 +1074,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 26px and an 8px radius, both the handoff's. The glyph inside is sized in `overview.ts`. */
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
+  /* Component 18's 30px badge at the control radius. The glyph inside is sized in `overview.ts`. */
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-control);
   background: rgba(var(--tint, var(--tint-grey-rgb)), 0.16);
   color: color-mix(in srgb, rgb(var(--tint, var(--tint-grey-rgb))), #000 var(--tint-darken));
 }
@@ -1171,188 +1181,142 @@ body {
  */
 
 /* ---- The footer strip -------------------------------------------------------------------------- */
-.overview-strip {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-7);
-  padding: var(--space-6) var(--space-8);
-  border-radius: var(--radius-tile);
-  background: var(--surface-overview-strip);
-  border: 1px solid rgba(var(--overlay-rgb), 0.07);
-}
-.overview-strip-text { display: flex; align-items: center; gap: var(--space-4); font-size: 13px; color: var(--text-body); }
-.overview-strip-glyph { display: flex; color: var(--live); }
-/* The one security sentence on this screen must not be drawn over a link that is down. */
-.overview-strip.is-idle .overview-strip-glyph { color: var(--text-meta); }
-.overview-disconnect {
-  flex: none;
-  height: 28px;
-  min-height: 0;
-  padding: 0 var(--space-5);
-  border: 1px solid var(--destructive-border);
-  border-radius: var(--radius-pill);
-  background: var(--destructive-fill);
-  color: var(--destructive);
-  font: var(--text-control);
-  cursor: pointer;
-}
-.overview-disconnect:disabled { opacity: 0.4; cursor: default; }
 /* No `height: 100%`. It existed only to fill the stretched card, and with it went the reason
    `.hero-phone` needed `align-self: flex-start` to defend its aspect ratio — that line stays
    anyway, as the note beside it explains: `flex: none` still does not protect the cross axis, and
    the next person to add a height here should not have to rediscover that. */
-.hero-body { display: flex; gap: var(--space-10); }
-
+/*
+ * The phone visual, 148 × 262 at the card's padding (handoff §6): a rounded device frame, a 17px
+ * screen, a speaker slit, a quiet camera cutout, a nav pill, and a wash from the app's own palette.
+ * **Device identity, not content** — it never shows a frame, a notification or album art.
+ *
+ * The wash follows `data-state` on the card: forest plus a low lime bloom when live, neutral grey
+ * with a quiet spinner while working, desaturated to 55% with a muted-red link-minus disc when
+ * down. Idle (no phone paired) is the neutral wash with nothing on it.
+ */
 .hero-phone {
   position: relative;
-  width: 150px;
+  z-index: 1;
   flex: none;
-  /*
-   * `align-self: flex-start` because **`flex: none` does not protect the cross axis.** It pins the
-   * main-axis (width) and says nothing about height, so a flex row's default `align-items: stretch`
-   * overrides `aspect-ratio` outright — measured at 411px against the 325 this ratio asks for, a
-   * 2.74 where 2.167 was intended, the moment `.hero-body` gained `height: 100%` so the hero could
-   * match the media card's row height.
-   *
-   * The tell is that nothing errors and the phone simply becomes a slightly wrong phone. Worth a
-   * line because `flex: none` reads like "do not resize me" and means half of that.
-   */
-  align-self: flex-start;
-  aspect-ratio: 9 / 19.5;
-  /*
-   * **The handoff's render, 2026-09-17: a wallpaper and a notch pill, and nothing pretending to be
-   * a screen.** `ConnectSuite.dc.html`'s Overview draws exactly this — violet into teal at 150deg,
-   * two radial highlights, a 34x4 pill 8px from the top — and README calls it a *"150px phone
-   * render"*. It is decoration, not a preview, and it is drawn as one.
-   *
-   * Slices 59–62 had a neutral charcoal handset here, built against a second reference that
-   * `docs/design-departures.md` now records as superseded. Its argument — *"a coloured rectangle
-   * reads as decoration in a card whose subject is a specific phone"* — was an argument with the
-   * handoff, not a departure from it, and it was never recorded as one.
-   *
-   * **No empty state, and none is owed.** An empty state belongs to something that can be empty.
-   * Nothing on this wire carries a wallpaper or a screenshot (the mirror's frames need a fresh
-   * MediaProjection consent per session — a platform wall), so this surface has no data to be
-   * missing; drawing "no preview" over it would announce the absence of a feature nobody offered.
-   */
-  border-radius: 18px;
-  background: linear-gradient(150deg, var(--brand-grad-1), var(--brand-grad-2) 55%, var(--brand-grad-3));
-  border: 1px solid rgba(var(--overlay-rgb), 0.12);
-  box-shadow: var(--shadow-hero);
-  overflow: hidden;
+  width: 148px;
+  height: 260px;
+  padding: 5px;
+  border-radius: 24px;
+  background: var(--phone-frame);
+  border: 1px solid var(--hairline-hover);
 }
-/* The two radial highlights over the gradient, at the handoff's positions and strengths. */
-.hero-phone::before {
-  content: '';
+.hero-phone-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 19px;
+  overflow: hidden;
+  background: linear-gradient(170deg, var(--brand-grad-1), var(--brand-grad-2) 60%, var(--brand-grad-3));
+  transition: opacity var(--dur-state) var(--ease), filter var(--dur-state) var(--ease);
+}
+.hero[data-state='live'] .hero-phone-screen {
+  background:
+    radial-gradient(90% 55% at 50% 100%, var(--phone-screen-bloom), transparent 75%),
+    linear-gradient(170deg, var(--phone-screen-live-1), var(--phone-screen-live-2));
+}
+.hero[data-state='down'] .hero-phone-screen { opacity: 0.55; filter: saturate(0); }
+.hero-phone-speaker,
+.hero-phone-camera,
+.hero-phone-nav {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--hero-phone-notch);
+  border-radius: var(--radius-pill);
+}
+.hero-phone-speaker { top: 9px; width: 30px; height: 4px; }
+.hero-phone-camera { top: 8px; width: 6px; height: 6px; margin-left: 24px; }
+.hero-phone-nav { bottom: 8px; width: 40px; height: 4px; }
+.hero-phone-spinner {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(120px 200px at 20% 15%, rgba(var(--tint-violet-rgb), 0.55), transparent 70%),
-    radial-gradient(140px 180px at 85% 80%, rgba(var(--tint-cyan-rgb), 0.35), transparent 70%);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-meta);
 }
-/* The notch pill — the one mark that makes a gradient read as a phone at this size. */
-.hero-phone::after {
-  content: '';
+.hero[data-state='working'] .hero-phone-spinner { display: flex; }
+.hero-phone-spinner svg { animation: hero-spin 1.2s linear infinite; }
+@keyframes hero-spin { to { transform: rotate(360deg); } }
+.hero-phone-badge {
   position: absolute;
-  top: 8px;
-  left: 50%;
-  width: 34px;
-  height: 4px;
-  transform: translateX(-50%);
-  border-radius: var(--radius-pill);
-  background: var(--hero-phone-notch);
+  right: -6px;
+  bottom: 22px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--destructive-fill);
+  border: 1px solid var(--destructive-border);
+  color: var(--destructive);
 }
+.hero[data-state='down'] .hero-phone-badge { display: flex; }
 
-.hero-facts { min-width: 0; flex: 1; }
-.hero-head {
+/* The facts column: device name 21/600, the status pill, then the 2 × 2 detail grid. */
+.hero-facts {
   position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-5);
+  padding-top: var(--space-2);
 }
-/* Name over chip, which is the reference's stack and also what lets the name truncate without the
-   chip being pushed off the card — they are no longer competing for one line. */
-.hero-title { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4); min-width: 0; }
-
-/*
- * **`.hero-more`, `.hero-menu` and `.hero-menu-item` were here and are gone, 2026-09-16.**
- *
- * The handoff draws one `•••` on this window and it is in the page toolbar; the Overview device
- * card has none. Disconnect and *Forget this phone* both live in Settings → Connection, and
- * Disconnect is also the footer strip's button on this same pane — checked before the trigger was
- * removed, not after. See `renderer.ts` for the full argument.
- */
 
 .hero-name {
   margin: 0;
   font: var(--text-card-title);
-  letter-spacing: var(--tracking-title);
+  letter-spacing: var(--tracking-card-title);
   color: var(--text-primary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+/* The Status pill, component `28:932`: lime for connected, grey for connecting and idle, red down. */
 .state-chip {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  height: 22px;
-  padding: 0 9px;
+  height: 24px;
+  margin-top: var(--space-4);
+  padding: 0 var(--space-4);
   border-radius: var(--radius-pill);
-  background: rgba(var(--tint-green-rgb), 0.12);
-  border: 1px solid rgba(var(--tint-green-rgb), 0.24);
-  font-size: 11px;
-  font-weight: 500;
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-border);
+  font: var(--text-caption);
+  letter-spacing: var(--tracking-caption);
   color: var(--live);
 }
-
-/* The chip is not green when the link is not up. Colour and word move together or neither is
- * trustworthy. */
-.state-chip[data-state='working'] {
-  background: var(--warning-fill);
-  border-color: var(--warning-border);
-  color: var(--warning);
-}
-.state-chip[data-state='down'],
+.state-chip[data-state='working'],
 .state-chip[data-state='idle'] {
-  background: rgba(var(--overlay-rgb), 0.04);
-  border-color: var(--hairline);
-  color: var(--text-body);
+  background: var(--unknown-fill);
+  border-color: var(--unknown-border);
+  color: var(--unknown);
+}
+.state-chip[data-state='down'] {
+  background: var(--destructive-fill);
+  border-color: var(--destructive-border);
+  color: var(--destructive);
 }
 
-/*
- * ---- The hero's Device details -----------------------------------------------------------------
- *
- * Two columns, three rows, one subtle vertical divider between them. The divider is a
- * `column-gap` border on the cells rather than a drawn element, so it cannot fall out of step with
- * the grid it divides — and so the single-column fallback removes it by removing the rule rather
- * than by hiding a node.
- *
- * `grid-auto-flow: column` with an explicit 3-row track is what puts Connection/Security/Battery in
- * the left column and Latency/Address/Storage in the right, in that order, from one flat list in
- * `shell.ts`. Source order is the reading order in both layouts, which is what keeps the
- * single-column fallback sensible.
- *
- * **No frame per metric.** The cells sit on the card, with only the icon carrying a tonal
- * background — six bordered panels inside a bordered card is the nesting the media card was just
- * rebuilt to remove, and it would arrive here next.
- */
 .hero-details {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: repeat(3, auto);
-  grid-auto-flow: column;
-  gap: var(--space-7) 0;
-  margin: var(--space-9) 0 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-9) var(--space-10);
+  width: 100%;
+  margin: auto 0 0;
+  padding-top: var(--space-10);
 }
-/* The divider, and the row rhythm. Only the right-hand column gets the left border, and only when
-   there are two columns — see the container query below. */
-.hero-details > .detail:nth-child(n + 4) {
-  border-left: 1px solid var(--hairline);
-  padding-left: var(--space-9);
-}
-.hero-details > .detail:nth-child(-n + 3) { padding-right: var(--space-9); }
 
 .detail {
   display: flex;
@@ -1360,8 +1324,7 @@ body {
   gap: var(--space-5);
   min-width: 0;
 }
-/* The quiet tonal square. One background for all six — a per-metric colour would make six
-   categories out of six facts about one link. */
+/* The 30px icon badge, component 8, Neutral tone: tone is state, never category. */
 .detail-icon {
   display: flex;
   align-items: center;
@@ -1370,25 +1333,21 @@ body {
   width: 30px;
   height: 30px;
   border-radius: var(--radius-control);
-  background: rgba(var(--overlay-rgb), 0.05);
+  background: rgba(var(--overlay-rgb), 0.06);
+  border: 1px solid var(--hairline);
   color: var(--text-body);
 }
-.detail-lines { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.detail-lines { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 
 .detail-label {
-  font-size: 11px;
-  line-height: var(--leading-11);
-  font-weight: 500;
-  letter-spacing: var(--tracking-meta);
+  font: var(--text-caption);
+  letter-spacing: var(--tracking-caption);
   color: var(--text-meta);
 }
 .detail-value {
   margin: 0;
-  font-size: 13.5px;
-  line-height: var(--leading-13-5);
+  font: 500 13.5px/20px var(--font-ui);
   color: var(--text-primary);
-  /* A long value truncates rather than wrapping into its neighbour's row — the collision the brief
-     asks to avoid, and the reason each cell is `min-width: 0` above. */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1397,48 +1356,14 @@ body {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
-/* The Address row. Present, legible, and not competing with the three rows people actually read. */
 .detail-value.is-advanced { color: var(--text-body); }
 
-/*
- * One column at narrow widths, and the divider goes with it.
- *
- * A **container** query, not a media query: this card is one column of a two-column grid inside a
- * resizable window, so its own width is the thing that decides, and the viewport is only loosely
- * related to it. `.hero` declares the containment; without that this query never matches and the
- * grid silently stays at two columns in a narrow card.
- *
- * ### 620px is measured, not chosen
- *
- * The longest realistic value is Storage — `10.9 GB free of 490 GB`, which renders at **147px**.
- * Laying that out beside its icon and divider in the right-hand column costs
- * `30 (icon) + 12 (gap) + 147 (value) + 20 (divider padding)` = 209px, and the left column's widest
- * value (`TLS 1.3, pinned`, 98px) costs 160px the same way. So two columns need **369px of detail
- * width**, which with the 150px phone, its 24px gutter and 40px of card padding is a hero of
- * **583px** — and the hero is **573px** at the default window size.
- *
- * It was two columns anyway, and Storage clipped to `10.9 GB free of …`. Ten pixels of padding
- * could have been shaved to make it fit with **zero** slack, and the next slightly longer value —
- * a 2 TB phone, a longer unit — would clip again silently. So the breakpoint is set above the
- * requirement with room: below 620px this is one column, and a wider window gets the two the
- * design draws.
- */
-@container hero (max-width: 620px) {
-  .hero-details {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: repeat(6, auto);
-    grid-auto-flow: row;
-  }
-  .hero-details > .detail:nth-child(n + 4) { border-left: none; padding-left: 0; }
-  .hero-details > .detail:nth-child(-n + 3) { padding-right: 0; }
-  /* Six stacked rows want less air between them than three did, or the card grows past the point
-     where anyone reads the bottom two. */
-  .hero-details { gap: var(--space-5) 0; margin-top: var(--space-8); }
+/* The minimum window: the phone steps down before the facts are squeezed. */
+@container hero (max-width: 560px) {
+  .hero-phone { width: 118px; height: 210px; }
+  .hero-details { gap: var(--space-7) var(--space-7); }
 }
-/* Below this the phone and the facts stop fitting side by side at all. */
-@container hero (max-width: 360px) {
-  .hero-body { flex-direction: column; align-items: flex-start; }
-}
+
 
 /*
  * `.hero-actions` — removed 2026-09-17. The pill row took its buttons out of the hero card (see

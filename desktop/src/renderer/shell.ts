@@ -343,6 +343,9 @@ class ShellView {
   // ---- Toolbar and mirror controls --------------------------------------------------------------
 
   private buildToolbarIcons(): void {
+    // The hero phone's two state marks, drawn once; CSS shows the one the card's state asks for.
+    $('hero-phone-badge').replaceChildren(iconSvg('link-minus', 12));
+    $('hero-phone-spinner').replaceChildren(iconSvg('spinner', 18));
     $('tb-search-icon').replaceChildren(iconSvg('search', 14));
     $('tb-device-icon').replaceChildren(iconSvg('device-settings', 14));
     $('tb-detach-icon').replaceChildren(iconSvg('detach', 14));
@@ -438,7 +441,7 @@ class ShellView {
     // Overview's title is the only one that depends on when it is drawn, so it is computed at
     // route time rather than read out of SCREENS. See `overviewTitle` for why it carries no name.
     $('page-title').textContent = id === 'overview' ? overviewTitle() : screen.title;
-    $('page-sub').textContent = screen.subtitle;
+    $('page-sub').textContent = id === 'overview' ? overviewSubtitle(toneOf(this.status)) : screen.subtitle;
     document.querySelector('.app-window')!.setAttribute('data-screen', id);
 
     if (screen.state === 'unbuilt') this.drawUnbuilt(screen);
@@ -876,7 +879,10 @@ class ShellView {
       health?.kind === 'repudiated'
         ? (status?.deviceName ?? 'Phone')
         : (status?.deviceName ?? (status?.paired ? 'Phone' : 'No phone paired'));
-    const latency = status?.rttMs === undefined ? '—' : `${status.rttMs} ms`;
+    // A round trip is a reading about a live link. Kept after a disconnect it is a stale number in
+    // the present tense beside a red chip, so anything but `live` draws the dash.
+    const latency = tone !== 'live' || status?.rttMs === undefined ? '—' : `${status.rttMs} ms`;
+    if (this.current === 'overview') $('page-sub').textContent = overviewSubtitle(tone);
 
     $('device-name').textContent = name;
     $('device-state').textContent = label;
@@ -912,6 +918,11 @@ class ShellView {
     $('hero-state').textContent = label;
     $('hero-dot').setAttribute('data-state', tone);
     $('hero-chip').setAttribute('data-state', tone);
+    // The hero card and its phone visual follow the same tone: forest wash and lime bloom when
+    // live, neutral grey with a quiet spinner while working, desaturated with a muted-red
+    // link-minus disc when down. One attribute, written here with the chip's, so the picture and
+    // the words cannot disagree.
+    $('hero-card').setAttribute('data-state', tone);
     this.drawHeroFacts(status, latency);
     // The hero's primary action is only offered while the phone advertises mirroring, on the same
     // rule as the Mirror pane's own button: no button for a promise the phone has not made.
@@ -990,39 +1001,16 @@ class ShellView {
      * ring card is the device — which is the split the handoff draws and the split that makes the
      * two cards stop restating each other.
      */
+    // The handoff's 2 × 2, read row by row: Connection, Address / Security, Latency.
     const facts: HeroFact[] = [
-      // LEFT COLUMN — what the link is.
-      {
-        icon: 'wifi',
-        label: 'Connection',
-        value: heroTransportOf(status),
-        numeric: false,
-        advanced: false,
-      },
-      {
-        icon: 'lock',
-        label: 'Security',
-        // Not a reading and deliberately not dressed as one. Locked decision #3 is that this link
-        // is TLS 1.3 with both ends pinned by SHA-256 fingerprint and **no plaintext fallback,
-        // ever** — so there is no state in which a connected link is anything else, and a field
-        // that can only hold one value is a fact about the architecture rather than a measurement.
-        value: 'TLS 1.3, pinned',
-        numeric: false,
-        advanced: false,
-      },
-      // RIGHT COLUMN — what the link is doing.
+      { icon: 'wifi', label: 'Connection', value: heroTransportOf(status), numeric: false, advanced: false },
+      // Signal's old slot (departure S5): nothing on the wire reports link quality, so the address
+      // — how you would debug this — sits here instead of a made-up "Excellent".
+      { icon: 'network', label: 'Address', value: status?.address ?? '—', numeric: true, advanced: false },
+      // Not a reading and not dressed as one: locked decision #3 is TLS 1.3, both ends pinned, no
+      // plaintext fallback ever — a fact about the architecture, true before the phone answers.
+      { icon: 'lock', label: 'Security', value: 'TLS 1.3, pinned', numeric: false, advanced: false },
       { icon: 'activity', label: 'Latency', value: latency, numeric: true, advanced: false },
-      {
-        icon: 'network',
-        label: 'Address',
-        value: status?.address ?? '—',
-        numeric: true,
-        // Signal's slot, per the recorded departure S5: nothing on the wire reports link quality,
-        // and a made-up "Excellent" beside three measured values is the one lie that would make the
-        // other three unreadable. An IP is how you'd debug this rather than how you'd use it, so
-        // `advanced` drops it to --text-body and lets the three rows a person reads hold the weight.
-        advanced: true,
-      },
     ];
 
     const host = $('hero-facts');
