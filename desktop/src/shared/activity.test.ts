@@ -5,6 +5,7 @@ const {
   activityCsv,
   activityDaily,
   activityPage,
+  activityPager,
   activityPaneView,
   activitySummary,
   activityWhen,
@@ -179,4 +180,79 @@ test('every category has a label and a tint, and the design chips come first', (
   assert.deepEqual(ACTIVITY_CATEGORIES.slice(0, 4), ['mirroring', 'files', 'messages', 'calls']);
   assert.ok(ACTIVITY_CATEGORIES.includes('clipboard'));
   assert.ok(ACTIVITY_CATEGORIES.includes('system'));
+});
+
+// ---- The compact pager ----------------------------------------------------------------------
+
+type PagerItem = { kind: 'page'; index: number; current: boolean } | { kind: 'gap' };
+const pagesOf = (items: PagerItem[]) =>
+  items.flatMap((i) => (i.kind === 'page' ? [i.index] : []));
+const shape = (items: PagerItem[]) =>
+  items.map((i) => (i.kind === 'gap' ? '…' : i.current ? `[${i.index + 1}]` : String(i.index + 1))).join(' ');
+
+test('pager: one page is one control, with nowhere to step', () => {
+  const p = activityPager(1, 0);
+  assert.equal(shape(p.items), '[1]');
+  assert.equal(p.prev, null);
+  assert.equal(p.next, null);
+});
+
+test('pager: a small count draws every page and no gap', () => {
+  assert.equal(shape(activityPager(5, 2).items), '1 2 [3] 4 5');
+  assert.equal(shape(activityPager(4, 0).items), '[1] 2 3 4', 'a one-page run is drawn, not skipped');
+  assert.equal(shape(activityPager(2, 1).items), '1 [2]');
+});
+
+test('pager: 223 pages — first, middle and last — stays compact and keeps the ends reachable', () => {
+  assert.equal(shape(activityPager(223, 0).items), '[1] 2 … 223');
+  assert.equal(shape(activityPager(223, 111).items), '1 … 111 [112] 113 … 223');
+  assert.equal(shape(activityPager(223, 222).items), '1 … 222 [223]');
+});
+
+test('pager: never more than 2·neighbours + 5 slots, whatever the count', () => {
+  for (const count of [1, 2, 3, 7, 9, 50, 223, 5000]) {
+    for (const at of [0, 1, Math.floor(count / 2), count - 2, count - 1]) {
+      if (at < 0 || at >= count) continue;
+      assert.ok(activityPager(count, at).items.length <= 7, `${count} pages at ${at}`);
+    }
+  }
+});
+
+test('pager: no page appears twice, pages ascend, and first/current/last are always there', () => {
+  for (const count of [1, 2, 3, 4, 5, 6, 12, 223]) {
+    for (let at = 0; at < count; at += 1) {
+      const p = activityPager(count, at);
+      const pages = pagesOf(p.items);
+      assert.equal(new Set(pages).size, pages.length, `duplicate at ${count}/${at}: ${shape(p.items)}`);
+      assert.deepEqual(pages, [...pages].sort((a, b) => a - b));
+      assert.ok(pages.includes(0) && pages.includes(count - 1) && pages.includes(at));
+      assert.equal(p.items.filter((i) => i.kind === 'page' && i.current).length, 1);
+      // Every omitted page is marked: two page controls side by side are consecutive pages, so a
+      // page can never silently vanish between them.
+      p.items.forEach((item, k) => {
+        const next = p.items[k + 1];
+        if (item.kind === 'page' && next?.kind === 'page') {
+          assert.equal(next.index, item.index + 1, `a page vanished unmarked: ${shape(p.items)}`);
+        }
+      });
+      // No two gaps side by side, and a gap never stands for a single page.
+      p.items.forEach((item, k) => {
+        if (item.kind !== 'gap') return;
+        const before = p.items[k - 1] as { index: number };
+        const after = p.items[k + 1] as { index: number };
+        assert.ok(after.index - before.index > 2, `a gap hides one page: ${shape(p.items)}`);
+      });
+    }
+  }
+});
+
+test('pager: Previous and Next step by one and stop at the ends', () => {
+  assert.deepEqual([activityPager(223, 0).prev, activityPager(223, 0).next], [null, 1]);
+  assert.deepEqual([activityPager(223, 111).prev, activityPager(223, 111).next], [110, 112]);
+  assert.deepEqual([activityPager(223, 222).prev, activityPager(223, 222).next], [221, null]);
+});
+
+test('pager: an out-of-range page is clamped rather than drawn as a phantom', () => {
+  assert.equal(shape(activityPager(10, 99).items), '1 … 9 [10]');
+  assert.equal(shape(activityPager(10, -3).items), '[1] 2 … 10');
 });

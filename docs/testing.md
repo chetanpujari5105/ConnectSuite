@@ -20641,3 +20641,166 @@ check-defects.sh               107 numbered rows, all with records
 
 **Not run, and it is the owner's to run:** `/review-animations`. It is user-invocable only; a pass
 written by hand in its place would be the instrument supplying its own verdict.
+
+## Phase 7 Slice 64 — the ConnectSuite → Sidekick rename, made survivable: copy-only compatibility
+
+**Why this exists.** The rename changed `package.json`'s `name`, and Electron derives `userData`
+from it. So every Mac that ran ConnectSuite has its settings, TLS identity, logs and Activity
+history in `Application Support/connectsuite-desktop/` (packaged: `ConnectSuite/`), and Sidekick
+started from an empty `sidekick-desktop/`. This slice reads the old side and never writes to it.
+Decisions were the owner's, row by row, before any code: `docs/design-departures.md` is untouched
+because nothing here is visual.
+
+| | Behaviour | Where |
+|---|---|---|
+| TLS identity | **Not migrated** — the old `key.enc` is sealed by a Keychain item named for the old app (`connectsuite-desktop Safe Storage`, measured). Re-pairing is required. A refusal on a Mac holding an old identity now says so, word for word as approved, instead of claiming the owner removed the Mac | `shared/linkHealth.ts` (`RENAME_REFUSAL` / `ORDINARY_REFUSAL`), `main/link.ts`, `main/legacyData.ts` `hasLegacyIdentity` |
+| Settings | Fill **missing** keys only, once, before `electron-store` opens the file (it writes every default on construction, after which nothing is ever missing). Copies appearance, autoConnect, watchClipboard, notificationSound, manualAddress, tailscaleAddress. **Never** `paired`, `lastAddress`, `lastDiscoveryVia` | `main/legacyData.ts` `migrateLegacySettings`, `main/store.ts` |
+| Logs | Not migrated. One `[migration]` line names the old folder | `main/main.ts` |
+| Downloads | New saves stay in `~/Downloads/Sidekick`. Settings → File transfer gets **Earlier downloads** only when `~/Downloads/ConnectSuite` exists; its one button reveals it and never creates it (unlike `downloads-reveal`, which `mkdir`s) | `main/main.ts` `downloads-reveal-legacy`, `preload.ts`, `renderer/renderer.ts` |
+| Activity | Merged once: exact duplicates dropped, time order, ConnectSuite first on a tie, renumbered from 1 — the two files both count from `seq` 1 and the pane keys rows on `seq`. The Sidekick file as it stood kept as `activity.jsonl.pre-migration` | `main/legacyData.ts` `mergeLegacyActivity`; the line parser moved to `main/activityLine.ts` so the store and the merge share one rule |
+
+One marker, `legacy-migration.json` in the Sidekick folder, written **only after** a step succeeds.
+
+### Tests, and each shown red against its own defect
+
+24 new (21 in `main/legacyData.test.ts`, file-level against real temporary trees; 3 in
+`shared/linkHealth.test.ts`). Eleven mutations, each restoring the defect a test is named for, each
+red, both files restored byte-identical (`cmp`) afterwards:
+
+```
+M1  overwrite an existing Sidekick setting        fail 2
+M2  copy the old pairing record                   fail 1
+M3  no renumbering after merge                    fail 2
+M4  no dedupe                                     fail 1
+M5  no time sort                                  fail 1
+M6  activity marker ignored                       fail 1
+M7  settings marker ignored                       fail 1
+M8  legacy downloads reported when absent         fail 1
+M9  rename refusal never used                     fail 1
+M10 rename refusal always used                    fail 2
+M11 Sidekick store rewritten when nothing copied  fail 1
+```
+
+### On this Mac, 2026-09-18
+
+Before the first launch, SHA-256 of all six old files plus a listing hash of
+`~/Downloads/ConnectSuite`. After the migration, the Finder reveal, and two relaunches: **all seven
+identical**; `sidekick.json` byte-identical (`ac3f4019…`).
+
+```
+[migration] Settings: {"outcome":"migrated","copied":[],"kept":[six keys],"rejected":[]}
+[migration] Activity: {"outcome":"merged","legacyRead":1928,"legacyUnreadable":0,
+                       "currentRead":157,"currentUnreadable":0,"duplicates":2,"written":2083}
+relaunch → Settings: already-done · Activity: already-done · next seq 2089
+```
+
+- **Settings copied nothing, correctly**: this Mac's Sidekick store already held every key.
+- **The 2 duplicates were both inside the old file** (the same event twice in one millisecond); 0
+  events appeared in both files, whose ranges do not overlap (old ends 11:39:40Z 17 Sep, new begins
+  11:57:59Z).
+- **Visual** (`docs/evidence/rename-compat-2026-09-18/activity-boundary.png`, read through
+  `probe.mjs`, control = loaded events): the boundary page draws `1929S 1928S 1927S 1926C … 1921C`
+  — `Sidekick started 17:27` directly above `Connected 17:09` and `ConnectSuite started 17:09`.
+- **Legacy row** (`settings-file-transfer.png`): *Earlier downloads* present with one button, *Show
+  in Finder*; pressing it toasted `Opened /Users/chetan/Downloads/ConnectSuite` and the folder's
+  listing hash was unchanged.
+
+### An instrument fault that became a real one, and was repaired
+
+A **second, stale Electron instance** (PID 67673, started 17 Sep, pre-migration code, no debug
+flags) was running beside the one under test; the relaunch `pkill` pattern did not match it. It
+shares `userData`, and its in-memory Activity counter was ~157. When it was stopped it recorded its
+own `Disconnected` as **`seq 158`** — already the number of a merged ConnectSuite call event. With
+the app stopped, that one line was renumbered and the file renumbered in time order (backup:
+`activity.jsonl.pre-seq-repair`); 2088 events, `seq` 1..N in time order, verified.
+
+**The general hazard is pre-existing and unfixed here:** the app takes no single-instance lock, so
+two instances append to one `activity.jsonl` with independent counters. The merge made it visible,
+because it moved every `seq` the stale instance believed was free.
+
+### Revision — two user-facing defects fixed before commit
+
+**Fix 1: the rename explanation is a persisted state, not the old folder's existence.** The first
+version showed the rename sentence whenever ConnectSuite's identity folder existed. That was wrong
+twice: an upgraded Mac lands on the pairing screen (the pairing record is deliberately not copied),
+where the refusal path never runs; and the old folder stays on disk for ever, so after a successful
+re-pair every later, unrelated refusal would still blame the rename.
+
+`decideRePair` now decides **once**: pending only when a ConnectSuite identity exists **and** Sidekick
+holds no pairing, persisted as `rePair` in `legacy-migration.json`. While pending, the pairing
+screen shows the approved sentence proactively (`#pair-rename`, neutral, not amber) and a
+certificate refusal uses it too. The first `phase === 'connected'` clears it (`clearRePairPending`)
+and pushes `rename-notice: null` to the window. The stored answer wins on every later launch.
+On this Mac: `not pending (ConnectSuite identity present, Sidekick pairing present)` — correct,
+because the Sidekick pairing predates this build.
+
+**Fix 2: a bounded pager.** `activityPager(pageCount, current)` in `shared/activity.ts`: Previous
+and Next, first and last page, the current page ±1, and an ellipsis per omitted run; a run of
+exactly one page is drawn rather than hidden behind an ellipsis. At most 7 slots plus the two
+steps, for any count. The screen still loads only the newest 2000 events (`MAX_EVENTS`); the oldest
+stored events beyond that remain a **Batch 5 Activity-redesign** issue, and nothing was deleted.
+
+**Tests**: 17 more (9 re-pair in `legacyData.test.ts`, 7 pager in `activity.test.ts`, 1 view test
+driving the real pane at 2000 events). Red-first, through a harness that keeps each original in
+memory and asserts byte-identical restore:
+
+```
+M0 control (no mutation)                          fail 0 / pass 84
+R1 old identity folder alone triggers the rename  fail 1
+R2 stored decision ignored on later launches      fail 2
+R3 a successful connection never clears the state fail 3
+R4 pairing screen never shows the notice          fail 1
+R5 refusal ignores the pending state              fail 2
+P1 unbounded: every page drawn                    fail 4
+P2 a one-page run silently dropped                fail 2   (was GREEN — see below)
+P3 last page unreachable                          fail 5
+P4 view ignores the compact rule                  fail 1
+every file restored byte-identical
+```
+
+**P2 was green on the first run**, which is the test gap it exposed: the suite asserted that a gap
+never stands for one page, and nothing asserted that an omitted page is marked at all — with the
+mutation, four pages drew `[1] 2 4` and page 3 vanished. The contiguity assertion was added and P2
+went red.
+
+**Two harness faults before that, both mine, both caught before any reading was recorded.** The
+first backed up `shared/activity.ts` and `renderer/activity.ts` under one basename, so the restore
+copied the renderer file over the shared one — and the byte-identical check compared against the
+same wrong backup, so it certified the corruption. The second used an unsplit `$FILES` under zsh,
+so no backup was taken and the mutations accumulated in the working tree. Both were reversed by
+hand and verified against `git diff` (`shared/activity.ts` = HEAD + 48 lines, no deletions); the
+harness was then rewritten in Node, keeping originals in memory. **Every reading from the two
+broken runs is void and none appears above.**
+
+### Visual verification, 2026-09-18
+
+| Check | Result | Evidence |
+|---|---|---|
+| Pending re-pair shows the notice | A throwaway `--user-data-dir` tree holding **copies** of the ConnectSuite files beside an empty Sidekick folder: `Rename re-pair: pending (decided now; ConnectSuite identity present, Sidekick pairing absent)`; `#pair-rename` visible, text exactly the approved sentence, rejection box hidden | `pairing-rename-pending.png` |
+| Pending clears on connection | The same run logged `Paired with Samsung SM-S938B` → `Rename re-pair: cleared — the phone accepted the Sidekick identity` → `Connected`; marker `pending:false` with `clearedAt` | simulation log |
+| Pager fits (1440 × 920) | First page `‹(off) 1* 2 … 223 ›`, middle `‹ 1 … 111 112* 113 … 223 ›`, last `‹ 1 … 222 223* ›(off)`; **0** controls outside the card, **0** overlapping *Export log as CSV*, `innerWidth 1440 = outerWidth` | `activity-pager-p0/p111/p222.png` |
+| Pager fits (1100, the minimum width) | **Not measured.** System Events saw the process and no window; Electron does not implement CDP `Browser.getWindowForTarget`. Two readings labelled 1100 were in fact taken at 1440 and were deleted | — |
+| Boundary order | page 18 ends `1927S` (`Sidekick started 17:27`); page 19 begins `1926C` (17:09) — the boundary now falls on a page break, and each side is in order | `activity-boundary.png` |
+| Earlier downloads | still present with one button; reveal toasted `Opened /Users/chetan/Downloads/ConnectSuite` | `settings-file-transfer.png` |
+| ConnectSuite folder | all seven hashes identical to the pre-migration record | — |
+
+### An incident: the simulation paired with the real phone
+
+The unpaired simulated Mac dialled the default gateway — the phone's own hotspot — as every
+unpaired Mac does, and the phone refused it. Then **a pairing completed at 23:45:54**: someone scanned
+the QR the simulation was showing. It was not the agent, which cannot operate the phone. The phone
+therefore now trusts the simulation's throwaway identity, and **refuses this Mac's real Sidekick
+identity** (`CERTIFICATE_UNKNOWN`, confirmed on relaunch). The real app shows the **ordinary**
+refusal, which is correct — that refusal is not a rename. Recovery needs the owner: scan the real
+app's pairing code.
+
+The lesson is the instrument one this file already carries, one step further: **a simulation that
+can reach a real device is not a simulation.** Any future `--user-data-dir` run should be taken
+with the phone off the network, or with discovery disabled.
+
+### Not run
+
+**The owner's real-device fresh re-pair of the real profile.** The pending → refusal → pair →
+cleared → connected sequence did run end to end, but against the throwaway simulation identity and
+with a scan the agent did not make — so it is evidence that the mechanism works on hardware, not the
+approved test. Stimulus for the real one: scan this Mac's own pairing code → `Connected`.

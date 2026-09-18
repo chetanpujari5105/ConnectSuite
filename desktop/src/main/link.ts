@@ -89,7 +89,7 @@ export class LinkClient extends EventEmitter {
 
   /** Record a failure. The one way this state is entered — see [lastFailure]. */
   private failed(raw: string): void {
-    this.lastFailure = classifyLinkError(raw);
+    this.lastFailure = classifyLinkError(raw, { rePairPending: this.rePairPending() });
   }
 
   /**
@@ -123,7 +123,14 @@ export class LinkClient extends EventEmitter {
   /** Non-null while a pairing QR is on screen; consumed by the next successful handshake. */
   private armedPairing: { token: string; expiresAt: number } | null = null;
 
-  constructor(private readonly identity: Identity) {
+  constructor(
+    private readonly identity: Identity,
+    /**
+     * Read at the moment of each failure, not once: the rename re-pair clears while the app runs,
+     * and a refusal after that must get the ordinary sentence.
+     */
+    private readonly rePairPending: () => boolean = () => false,
+  ) {
     super();
   }
 

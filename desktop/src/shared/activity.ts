@@ -227,6 +227,52 @@ function activityPage(
   };
 }
 
+/** One slot in the compact pager: a page to jump to, or a gap standing for pages not drawn. */
+type ActivityPagerItem = { kind: 'page'; index: number; current: boolean } | { kind: 'gap' };
+
+interface ActivityPager {
+  /** The page Previous goes to, or `null` on the first page. */
+  prev: number | null;
+  /** The page Next goes to, or `null` on the last page. */
+  next: number | null;
+  items: ActivityPagerItem[];
+}
+
+/**
+ * Which page controls to draw, so the pager has a fixed ceiling however long the history is.
+ *
+ * It drew one button per page, and that was fine at 18 pages. The ConnectSuite history merge took
+ * this Mac to ~223, and the row ran out of the card and under *Export log as CSV*. So: the first
+ * and last page always, the current page with `neighbours` either side, and a gap for each run
+ * that is left out. A gap that would hide exactly one page shows that page instead — an ellipsis
+ * standing for one number costs the same room and hides it. That caps the slots at
+ * `2 * neighbours + 5` for any page count. Pages are 0-based here, as everywhere in this file.
+ */
+function activityPager(pageCount: number, current: number, neighbours = 1): ActivityPager {
+  const count = Math.max(1, Math.floor(pageCount));
+  const at = Math.min(Math.max(0, Math.floor(current)), count - 1);
+  const shown = new Set<number>([0, count - 1]);
+  for (let i = at - neighbours; i <= at + neighbours; i += 1) {
+    if (i >= 0 && i < count) shown.add(i);
+  }
+  const sorted = [...shown].sort((a, b) => a - b);
+  const items: ActivityPagerItem[] = [];
+  for (let k = 0; k < sorted.length; k += 1) {
+    const index = sorted[k]!;
+    if (k > 0) {
+      const previous = sorted[k - 1]!;
+      if (index - previous === 2) items.push({ kind: 'page', index: previous + 1, current: previous + 1 === at });
+      else if (index - previous > 2) items.push({ kind: 'gap' });
+    }
+    items.push({ kind: 'page', index, current: index === at });
+  }
+  return {
+    prev: at > 0 ? at - 1 : null,
+    next: at < count - 1 ? at + 1 : null,
+    items,
+  };
+}
+
 interface ActivitySummarySlice {
   category: ActivityCategory;
   label: string;
@@ -504,6 +550,7 @@ function activityWhen(at: number, now: number): string {
   g.activityCsv = activityCsv;
   g.activityDaily = activityDaily;
   g.activityPage = activityPage;
+  g.activityPager = activityPager;
   g.activityPaneView = activityPaneView;
   g.activitySummary = activitySummary;
   g.activityWhen = activityWhen;
@@ -520,6 +567,7 @@ if (typeof module !== 'undefined') {
     activityCsv,
     activityDaily,
     activityPage,
+    activityPager,
     activityPaneView,
     activitySummary,
     activityWhen,

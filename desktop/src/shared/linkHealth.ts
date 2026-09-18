@@ -75,6 +75,20 @@ function peerAlert(raw: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/** The phone refused this Mac's certificate, and nothing suggests why. */
+export const ORDINARY_REFUSAL =
+  'Your phone no longer recognises this Mac. Open ConnectSuite on the phone and scan a new ' +
+  'pairing code — this usually means the Mac was removed from the phone’s paired list.';
+
+/**
+ * The phone refused this Mac's certificate while a rename re-pair is still owed: the rename minted a
+ * new key, and the phone only knows the old one. Also drawn proactively on the pairing screen. "ConnectSuite on your phone" is
+ * correct — the Android app kept its name.
+ */
+export const RENAME_REFUSAL =
+  'Sidekick replaced ConnectSuite on this Mac and now uses a new security key. Your phone does not ' +
+  'recognise it yet. Open ConnectSuite on your phone and scan the new pairing code.';
+
 /**
  * Classify a raw error string into something showable.
  *
@@ -85,7 +99,10 @@ function peerAlert(raw: string): number | null {
  *
  * The message never interpolates `raw`. That is the whole point of the function.
  */
-export function classifyLinkError(raw: string | undefined): LinkFailure | null {
+export function classifyLinkError(
+  raw: string | undefined,
+  context: { rePairPending?: boolean } = {},
+): LinkFailure | null {
   if (!raw) return null;
   const text = String(raw);
   const alert = peerAlert(text);
@@ -98,9 +115,11 @@ export function classifyLinkError(raw: string | undefined): LinkFailure | null {
   ) {
     return {
       kind: 'certificate-refused',
-      message:
-        'Your phone no longer recognises this Mac. Open ConnectSuite on the phone and scan a new ' +
-        'pairing code — this usually means the Mac was removed from the phone’s paired list.',
+      // While a rename re-pair is still owed, the cause is the rename, not the owner removing the
+      // Mac — saying the latter would tell them they did something they did not. Once Sidekick has
+      // connected once, that is no longer true and the ordinary sentence returns. Same kind, same
+      // next step; only the reason differs.
+      message: context.rePairPending ? RENAME_REFUSAL : ORDINARY_REFUSAL,
       raw: text,
     };
   }

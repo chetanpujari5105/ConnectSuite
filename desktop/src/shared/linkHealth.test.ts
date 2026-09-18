@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   classifyLinkError,
+  ORDINARY_REFUSAL,
+  RENAME_REFUSAL,
   linkTone,
   linkToneLabel,
   needsPairing,
@@ -174,4 +176,25 @@ test('an ordinary reconnect is still Reconnecting', () => {
   const h = { kind: 'paired' } as const;
   assert.equal(linkToneLabel('reconnecting', h, true), 'Reconnecting');
   assert.equal(linkTone('reconnecting', h, true, 'x'), 'working');
+});
+
+test('a certificate refusal while a rename re-pair is pending names the rename, word for word', () => {
+  const f = classifyLinkError(REAL_REFUSAL, { rePairPending: true });
+  assert.equal(f?.kind, 'certificate-refused');
+  assert.equal(f!.message, RENAME_REFUSAL);
+  // The one claim it exists to withdraw: that the owner removed the Mac.
+  assert.doesNotMatch(f!.message, /removed/);
+});
+
+test('a refusal with no re-pair pending keeps the ordinary sentence (control)', () => {
+  assert.equal(classifyLinkError(REAL_REFUSAL, { rePairPending: false })!.message, ORDINARY_REFUSAL);
+  assert.equal(classifyLinkError(REAL_REFUSAL)!.message, ORDINARY_REFUSAL);
+});
+
+test('the pending flag changes only the refusal, never another kind', () => {
+  const unreachable = 'connect ECONNREFUSED 10.0.0.2:42501';
+  assert.deepEqual(
+    classifyLinkError(unreachable, { rePairPending: true }),
+    classifyLinkError(unreachable),
+  );
 });

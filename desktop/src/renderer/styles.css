@@ -4185,15 +4185,31 @@ img#qr {
 
 .activity-foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
   padding-top: 10px;
   font-size: 12px;
   color: var(--text-meta);
 }
 
-.activity-pages { display: flex; gap: 4px; }
+.activity-pages { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+
+.activity-step {
+  min-width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text-body);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.activity-gap { min-width: 16px; text-align: center; color: var(--text-meta); }
 
 .activity-page {
   min-width: 24px;
@@ -4523,6 +4539,18 @@ img#qr {
 
 
 /* F7 — the phone refused a pairing. Warning, not destructive: see index.html for why. */
+.pair-rename {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius-tile);
+  background: rgba(var(--overlay-rgb), 0.04);
+  border: 1px solid var(--hairline);
+  text-align: left;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-body);
+}
+
 .pair-rejection {
   margin: 0 0 16px;
   padding: 12px 14px;

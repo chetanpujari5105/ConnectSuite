@@ -326,10 +326,18 @@ contextBridge.exposeInMainWorld('connect', {
     ipcRenderer.invoke('login-item-get'),
   loginItemSet: (on: boolean): Promise<PhoneResult<{ openAtLogin: boolean; honoured: boolean }>> =>
     ipcRenderer.invoke('login-item-set', on),
-  downloadsFolder: (): Promise<PhoneResult<{ path: string }>> =>
+  /** `legacyPath` is `~/Downloads/ConnectSuite` when it exists, else `null`. */
+  downloadsFolder: (): Promise<PhoneResult<{ path: string; legacyPath: string | null }>> =>
     ipcRenderer.invoke('downloads-folder'),
   downloadsReveal: (): Promise<PhoneResult<{ path: string }>> =>
     ipcRenderer.invoke('downloads-reveal'),
+  /** The pairing screen's rename notice, or `null` once the rename re-pair is no longer owed. */
+  renameNotice: (): Promise<PhoneResult<{ notice: string | null }>> => ipcRenderer.invoke('rename-notice'),
+  onRenameNotice: (callback: (notice: string | null) => void) =>
+    ipcRenderer.on('rename-notice', (_event, payload) => callback(payload?.notice ?? null)),
+  /** Reveal the ConnectSuite downloads folder. Never creates or modifies anything. */
+  downloadsRevealLegacy: (): Promise<PhoneResult<{ path: string }>> =>
+    ipcRenderer.invoke('downloads-reveal-legacy'),
   onClipArrived: (callback: (entry: LocalClipEntry & { applied: boolean }) => void) =>
     ipcRenderer.on('clip-arrived', (_event, entry) => callback(entry)),
   /** The history moved for a reason the renderer did not initiate — a watcher send, or a clear. */

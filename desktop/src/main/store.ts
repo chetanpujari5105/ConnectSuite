@@ -1,5 +1,7 @@
+import { app } from 'electron';
 import Store from 'electron-store';
 import type { ConnectionStatus } from '../shared/protocol';
+import { legacyUserDataDir, migrateLegacySettings, type SettingsMigration } from './legacyData';
 
 interface PairedPhone {
   deviceId: string;
@@ -46,6 +48,21 @@ interface Schema {
  * Small persistent settings blob. Only non-secret material lives here — the TLS private key goes
  * through safeStorage in identity.ts instead.
  */
+/**
+ * The one-time ConnectSuite settings fill, run **here** because it must precede the store's
+ * construction: `electron-store` writes every default into `sidekick.json` when it opens it, after
+ * which no key is ever missing and a fill-missing migration would copy nothing. The logger is not
+ * up yet at import time, so the outcome is kept and `main.ts` logs it once it is.
+ */
+export const settingsMigration: SettingsMigration = (() => {
+  try {
+    const userData = app.getPath('userData');
+    return migrateLegacySettings(legacyUserDataDir(userData), userData);
+  } catch (error) {
+    return { outcome: 'failed', reason: String(error) };
+  }
+})();
+
 export const store = new Store<Schema>({
   name: 'sidekick',
   defaults: {

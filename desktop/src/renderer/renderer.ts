@@ -216,7 +216,9 @@ interface ConnectBridge {
   ): Promise<
     { ok: true; data: { openAtLogin: boolean; honoured: boolean } } | { ok: false; reason?: string }
   >;
-  downloadsFolder(): Promise<{ ok: true; data: { path: string } } | { ok: false; reason?: string }>;
+  downloadsFolder(): Promise<
+    { ok: true; data: { path: string; legacyPath: string | null } } | { ok: false; reason?: string }
+  >;
   /** A phone published this Mac's fingerprint over mDNS — it scanned the code. F6. */
   onPairScanned(callback: (payload: { deviceName: string | null }) => void): void;
   /** One activity event as it is recorded — the status island's rota, S6. */
@@ -224,6 +226,9 @@ interface ConnectBridge {
     callback: (event: { category: string; kind: string; detail: string }) => void,
   ): void;
   downloadsReveal(): Promise<{ ok: true; data: { path: string } } | { ok: false; reason?: string }>;
+  downloadsRevealLegacy(): Promise<{ ok: true; data: { path: string } } | { ok: false; reason?: string }>;
+  renameNotice(): Promise<{ ok: true; data: { notice: string | null } } | { ok: false; reason?: string }>;
+  onRenameNotice(callback: (notice: string | null) => void): void;
   /** Opens an entry that is a web link. The scheme is re-decided in the main process. */
   clipOpen(
     text: string,
@@ -690,6 +695,21 @@ el('new-qr').addEventListener('click', () => {
  * explanation and the new QR **together**. Drawing the sentence over the old code would say "here
  * is a fresh one" beside the one that was just refused.
  */
+/**
+ * The rename notice on the pairing card. The main process decides whether a rename re-pair is still
+ * owed and hands over the sentence or `null`; this only draws it. Asked once at startup and told
+ * again when it clears, so a notice never outlives the connection that paid for it.
+ */
+function drawRenameNotice(notice: string | null): void {
+  const box = el('pair-rename');
+  box.textContent = notice ?? '';
+  box.hidden = notice === null;
+}
+void connect.renameNotice().then((result) => {
+  if (result.ok) drawRenameNotice(result.data.notice);
+});
+connect.onRenameNotice(drawRenameNotice);
+
 function hidePairRejection(): void {
   el('pair-rejection').hidden = true;
 }
@@ -1704,11 +1724,36 @@ shell.addSettingsPane(
     const path = document.createElement('span');
     path.className = 'setting-path mono';
     path.textContent = 'reading…';
-    void connect.downloadsFolder().then((result) => {
-      if (result.ok) path.textContent = result.data.path;
-    });
     macRow.querySelector('.setting-row-text')?.appendChild(path);
     body.appendChild(macRow);
+
+    // Earlier downloads: ConnectSuite saved into `~/Downloads/ConnectSuite` before the rename, and
+    // those files stay exactly where they are. Drawn only when the main process reports that the
+    // folder exists; its one action reveals it and can never create, move or change anything.
+    const legacyRow = document.createElement('div');
+    legacyRow.hidden = true;
+    body.appendChild(legacyRow);
+
+    void connect.downloadsFolder().then((result) => {
+      if (!result.ok) return;
+      path.textContent = result.data.path;
+      const legacyPath = result.data.legacyPath;
+      if (!legacyPath) return;
+      const show = document.createElement('button');
+      show.type = 'button';
+      show.textContent = 'Show in Finder';
+      show.addEventListener('click', () => {
+        void connect.downloadsRevealLegacy().then((revealed) => {
+          shell.toast(revealed.ok ? `Opened ${revealed.data.path}` : (revealed.reason ?? 'Could not open the folder.'));
+        });
+      });
+      const row = settingRow(
+        'Earlier downloads',
+        'Files saved by ConnectSuite remain in ~/Downloads/ConnectSuite.',
+        show,
+      );
+      legacyRow.replaceWith(row);
+    });
 
     body.appendChild(
       settingValue(

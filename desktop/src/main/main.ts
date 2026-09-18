@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, powerMonitor, Tray, Menu,
   dialog, shell, screen,
 } from 'electron';
-import { networkInterfaces, tmpdir } from 'node:os';
+import { homedir, networkInterfaces, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import QRCode from 'qrcode';
@@ -69,7 +69,17 @@ import { initLogger, log, tailLog } from './logger';
 // has one home and the two windows cannot drift.
 import { KeyframeTrace } from '../shared/keyframeTrace';
 import { debugSwitches } from './debugSwitches';
-import { store } from './store';
+import { settingsMigration, store } from './store';
+import {
+  clearRePairPending,
+  decideRePair,
+  hasLegacyIdentity,
+  legacyDownloadsFolder,
+  legacyLogsDir,
+  legacyUserDataDir,
+  mergeLegacyActivity,
+  pairingRenameNotice,
+} from './legacyData';
 import { VideoClient, type VideoFrame } from './video';
 import { FloatMirrorWindow } from './float';
 import { fitWindow, DESIGN } from '../shared/windowGeometry';
@@ -93,6 +103,12 @@ let tray: Tray | null = null;
  */
 let notifierWasConnected = false;
 let link: LinkClient | null = null;
+/**
+ * The rename re-pair is still owed: ConnectSuite left an identity and Sidekick has not yet connected
+ * on its own. Decided once and persisted (`legacyData.ts` `decideRePair`); cleared by the first
+ * `connected`. It chooses the refusal sentence and the pairing screen's rename notice.
+ */
+let rePairPending = false;
 let video: VideoClient | null = null;
 /** Serialises input so two gestures never overlap on the phone. See input.ts. */
 const input = new InputClient(() => link);
@@ -770,6 +786,33 @@ async function onMirrorState(state: MirrorStatePayload): Promise<void> {
 
 app.whenReady().then(() => {
   initLogger();
+  /*
+   * The ConnectSuite → Sidekick compatibility, before anything reads the files it touches.
+   * Copy-only: nothing in the ConnectSuite folder is moved, renamed or deleted (`legacyData.ts`).
+   * Every outcome is logged, including "nothing to do", so a migration that never ran is
+   * distinguishable from one that ran and copied nothing.
+   */
+  const legacyDir = legacyUserDataDir(app.getPath('userData'));
+  log.info('migration', `ConnectSuite folder: ${legacyDir ?? 'none'}`);
+  const settingsLine = `Settings: ${JSON.stringify(settingsMigration)}`;
+  if (settingsMigration.outcome === 'failed') log.warn('migration', settingsLine);
+  else log.info('migration', settingsLine);
+  const activityMigration = mergeLegacyActivity(legacyDir, app.getPath('userData'));
+  if (activityMigration.outcome === 'failed') {
+    log.warn('migration', `Activity: ${JSON.stringify(activityMigration)}`);
+  } else {
+    log.info('migration', `Activity: ${JSON.stringify(activityMigration)}`);
+  }
+  const oldLogs = legacyLogsDir(legacyDir);
+  if (oldLogs) log.info('migration', `Earlier ConnectSuite logs are in ${oldLogs} (left untouched)`);
+  const rePair = decideRePair(legacyDir, app.getPath('userData'), store.get('paired') !== null);
+  rePairPending = rePair.pending;
+  log.info(
+    'migration',
+    `Rename re-pair: ${rePair.pending ? 'pending' : 'not pending'} (${rePair.decided === 'stored' ? 'as recorded' : 'decided now'}; ` +
+      `ConnectSuite identity ${hasLegacyIdentity(legacyDir) ? 'present' : 'absent'}, ` +
+      `Sidekick pairing ${store.get('paired') !== null ? 'present' : 'absent'})`,
+  );
   activity.init();
   activity.record('system', 'Sidekick started', `version ${app.getVersion()}`);
   log.info('app', `Sidekick ${app.getVersion()} starting`);
@@ -808,7 +851,7 @@ app.whenReady().then(() => {
   const identity = loadIdentity();
   selfName = identity.deviceName;
   selfFingerprint = identity.fingerprint;
-  link = new LinkClient(identity);
+  link = new LinkClient(identity, () => rePairPending);
   video = new VideoClient(identity);
   bulk = new BulkClient(identity);
 
@@ -1063,6 +1106,18 @@ app.whenReady().then(() => {
       lastRecordedPhase = status.phase;
       if (status.phase === 'connected') {
         activity.record('system', 'Connected', status.deviceName ?? status.address ?? 'phone');
+        // The phone completed a handshake on the Sidekick identity, so the rename is paid for.
+        if (rePairPending) {
+          rePairPending = false;
+          try {
+            if (clearRePairPending(app.getPath('userData'))) {
+              log.info('migration', 'Rename re-pair: cleared — the phone accepted the Sidekick identity');
+            }
+          } catch (error) {
+            log.warn('migration', `Rename re-pair cleared in memory but not on disk :: ${String(error)}`);
+          }
+          sendAll('rename-notice', { notice: null });
+        }
       } else if (before === 'connected') {
         activity.record('system', 'Disconnected', status.lastError ?? `now ${status.phase}`);
       }
@@ -1639,7 +1694,10 @@ ipcMain.handle('login-item-set', (_event, on: boolean) => {
 });
 
 /** Settings → File transfer: the real destination, from the one place that owns it. */
-ipcMain.handle('downloads-folder', () => ({ ok: true, data: { path: downloadsFolder() } }));
+ipcMain.handle('downloads-folder', () => ({
+  ok: true,
+  data: { path: downloadsFolder(), legacyPath: legacyDownloadsFolder(homedir()) },
+}));
 /**
  * Reveal that folder in Finder, creating it first.
  *
@@ -1651,6 +1709,23 @@ ipcMain.handle('downloads-folder', () => ({ ok: true, data: { path: downloadsFol
 ipcMain.handle('downloads-reveal', async () => {
   const folder = downloadsFolder();
   await fsp.mkdir(folder, { recursive: true });
+  shell.showItemInFolder(folder);
+  return { ok: true, data: { path: folder } };
+});
+
+/**
+ * Reveal `~/Downloads/ConnectSuite` — the folder ConnectSuite saved into before the rename.
+ *
+ * Read-only by construction, and deliberately **not** `downloads-reveal`: that one creates its
+ * folder first, and this one must never create, move or touch anything. A folder that has gone
+ * since the pane was drawn is refused with a sentence rather than recreated.
+ */
+/** The pairing screen's rename notice: the approved sentence while the re-pair is owed, else null. */
+ipcMain.handle('rename-notice', () => ({ ok: true, data: { notice: pairingRenameNotice(rePairPending) } }));
+
+ipcMain.handle('downloads-reveal-legacy', () => {
+  const folder = legacyDownloadsFolder(homedir());
+  if (!folder) return { ok: false, reason: 'The ConnectSuite downloads folder is no longer there.' };
   shell.showItemInFolder(folder);
   return { ok: true, data: { path: folder } };
 });

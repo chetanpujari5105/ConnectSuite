@@ -216,20 +216,45 @@ class ActivityView {
     foot.appendChild(count);
 
     if (paged.pageCount > 1) {
+      // A fixed number of controls whatever the history's length — `activityPager` decides which.
+      const pager = activityPager(paged.pageCount, paged.page);
       const pages = document.createElement('div');
       pages.className = 'activity-pages';
-      for (let index = 0; index < paged.pageCount; index += 1) {
+      pages.setAttribute('role', 'navigation');
+      pages.setAttribute('aria-label', 'Activity pages');
+      const go = (index: number) => () => {
+        this.page = index;
+        this.draw();
+      };
+      const step = (label: string, glyph: string, target: number | null): HTMLButtonElement => {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = `activity-page${index === paged.page ? ' is-active' : ''}`;
-        button.textContent = String(index + 1);
-        button.setAttribute('aria-current', index === paged.page ? 'page' : 'false');
-        button.addEventListener('click', () => {
-          this.page = index;
-          this.draw();
-        });
+        button.className = 'activity-step';
+        button.textContent = glyph;
+        button.setAttribute('aria-label', label);
+        button.disabled = target === null;
+        if (target !== null) button.addEventListener('click', go(target));
+        return button;
+      };
+      pages.appendChild(step('Previous page', '‹', pager.prev));
+      for (const item of pager.items) {
+        if (item.kind === 'gap') {
+          const gap = document.createElement('span');
+          gap.className = 'activity-gap';
+          gap.textContent = '…';
+          gap.setAttribute('aria-hidden', 'true');
+          pages.appendChild(gap);
+          continue;
+        }
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `activity-page${item.current ? ' is-active' : ''}`;
+        button.textContent = String(item.index + 1);
+        button.setAttribute('aria-current', item.current ? 'page' : 'false');
+        button.addEventListener('click', go(item.index));
         pages.appendChild(button);
       }
+      pages.appendChild(step('Next page', '›', pager.next));
       foot.appendChild(pages);
     }
     return foot;

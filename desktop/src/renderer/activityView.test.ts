@@ -244,6 +244,33 @@ test('the pager appears past one page, and clicking page 2 shows different rows'
   }
 });
 
+test('2000 events draw a bounded pager whose ends and neighbours all work', async () => {
+  const pane = mount();
+  try {
+    const base = Date.now();
+    pane.bridge.events = Array.from({ length: 2000 }, (_, i) =>
+      ev('system', `Event ${i}`, `d${i}`, base - i * 1000),
+    );
+    await pane.view.refresh();
+    const labels = () => pane.host.queryAll('.activity-page').map((b) => b.textContent);
+    assert.deepEqual(labels(), ['1', '2', '223'], '223 pages, three numbered controls');
+    assert.equal(pane.host.queryAll('.activity-step').length, 2, 'Previous and Next');
+
+    // The last page is one click away, and it holds the oldest events.
+    pane.host.queryAll('.activity-page').find((b) => b.textContent === '223')!.click();
+    assert.deepEqual(labels(), ['1', '222', '223']);
+    assert.equal(texts(pane.host, 'activity-kind').length, 2000 - 222 * 9);
+
+    // Next is off at the end; Previous steps back one page.
+    const [prev, next] = pane.host.queryAll('.activity-step');
+    assert.equal(next!.disabled, true);
+    prev!.click();
+    assert.deepEqual(labels(), ['1', '221', '222', '223']);
+  } finally {
+    pane.restore();
+  }
+});
+
 test('one page draws no pager, and the count line still says how many', async () => {
   const pane = mount();
   try {

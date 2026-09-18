@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parseActivityLine } from './activityLine';
 import { log } from './logger';
 
 /**
@@ -82,7 +83,7 @@ class ActivityStore {
     }
     const lines = text.split('\n').filter((line) => line.trim().length > 0);
     for (const line of lines) {
-      const event = parseEvent(line);
+      const event = parseActivityLine(line);
       if (event) this.events.push(event);
       else this.skipped += 1;
     }
@@ -168,39 +169,6 @@ class ActivityStore {
   }
 }
 
-/**
- * Parses one stored line, returning `null` for anything that is not a complete event.
- *
- * Field-by-field rather than a cast. A JSONL file is appended to on every event and truncated by
- * whatever kills the process, so a half-written last line is the *expected* corruption, not an
- * exotic one — and `JSON.parse` succeeding says nothing about whether the object has the fields the
- * pane will read.
- */
-function parseEvent(line: string): ActivityEvent | null {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(line);
-  } catch {
-    return null;
-  }
-  if (!raw || typeof raw !== 'object') return null;
-  const record = raw as Record<string, unknown>;
-  const seq = record.seq;
-  const at = record.at;
-  const category = record.category;
-  const kind = record.kind;
-  if (typeof seq !== 'number' || !Number.isFinite(seq)) return null;
-  if (typeof at !== 'number' || !Number.isFinite(at)) return null;
-  if (typeof category !== 'string' || typeof kind !== 'string') return null;
-  return {
-    seq,
-    at,
-    category: category as ActivityCategory,
-    kind,
-    detail: typeof record.detail === 'string' ? record.detail : '',
-  };
-}
-
 const activity = new ActivityStore();
 
-export { activity, parseEvent, ActivityStore, MAX_DETAIL };
+export { activity, ActivityStore, MAX_DETAIL };
