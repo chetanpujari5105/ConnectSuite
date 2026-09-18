@@ -156,7 +156,7 @@
               copies of a battery percentage on one screen is how they start disagreeing.
             -->
             <div class="device-strip" id="device-strip">
-              <span class="strip-thumb" aria-hidden="true"></span>
+              <span class="strip-thumb" id="strip-thumb" aria-hidden="true"></span>
               <span class="strip-name" id="strip-name">No phone paired</span>
               <span class="strip-state">
                 <span class="state-dot" id="strip-dot" aria-hidden="true"></span>
@@ -356,8 +356,20 @@
                   </div>
 
                   <aside class="mirror-side">
+                    <!--
+                      Session, first in the right column (handoff: Session, Quality, Tools, Link).
+                      **Exactly one of Start / Stop is ever shown** — `shared/mirrorSession.ts`
+                      decides and `paintMirrorButtons` writes both, with the sentence under them.
+                    -->
+                    <div class="side-card mirror-session" id="mirror-session" data-session="idle">
+                      <h3 class="side-title">Session</h3>
+                      <p class="side-note" id="mirror-session-note">Every start asks the phone for permission.</p>
+                      <button type="button" id="mirror-stop" class="stop-button">Stop mirroring</button>
+                      <button type="button" id="mirror-start" class="start-button">Start mirroring</button>
+                    </div>
+
                     <div class="side-card">
-                      <h3 class="side-title">Mirroring quality</h3>
+                      <h3 class="side-title">Quality</h3>
                       <div id="mirror-quality" class="quality-rows" role="radiogroup" aria-label="Mirroring quality"></div>
                       <!--
                         What the phone actually captured, beside what was asked for.
@@ -367,19 +379,6 @@
                       -->
                       <p class="side-meta mono" id="mirror-actual">Not capturing.</p>
                     </div>
-
-                    <!--
-                      The two actions sit **above** Advanced, where the design puts Stop mirroring.
-
-                      The design's Advanced is four toggles and ours is four reasons, and a reason
-                      is four lines where a toggle is one — so with the original order the primary
-                      action of the whole pane fell below the fold at the design's own 920px window
-                      height. Measured, not guessed: it was off-screen in the side-by-side capture.
-                      The departure that pushed it there is documented; the button following it
-                      down was not a decision.
-                    -->
-                    <button type="button" id="mirror-stop" class="stop-button">Stop mirroring</button>
-                    <button type="button" id="mirror-start" class="start-button">Start mirroring</button>
 
                     <div class="side-card">
                       <h3 class="side-title">Advanced</h3>
@@ -761,7 +760,7 @@
                 <div class="settings-body" id="settings-body"></div>
                 <aside class="settings-aside">
                   <section class="settings-brand">
-                    <span class="settings-brand-glyph" id="settings-brand-glyph" aria-hidden="true"></span>
+                    <img class="settings-brand-tile" src="assets/brand/tile-44@2x.png" srcset="assets/brand/tile-44@2x.png 2x, assets/brand/tile-44@3x.png 3x" width="44" height="44" alt="" />
                     <div class="settings-brand-name">Sidekick</div>
                     <div class="settings-brand-version mono" id="settings-version">—</div>
                     <p class="settings-brand-line">Your phone essentials, on your Mac.</p>

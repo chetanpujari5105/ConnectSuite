@@ -576,15 +576,21 @@ body {
 
 /* Overview's hero says all of this at four times the size. */
 .app-window[data-screen='overview'] .device-strip,
+.app-window[data-screen='mirror'] .device-strip,
 .app-window[data-screen='pairing'] .device-strip { display: none; }
 
 .strip-thumb {
-  width: 26px;
-  height: 40px;
+  /* The 30px neutral icon badge (component 8) with the phone glyph — it was an empty rounded box. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
   flex: none;
-  border-radius: 7px;
-  background: var(--card-raised);
-  border: 1px solid var(--hairline-hover);
+  border-radius: var(--radius-control);
+  background: rgba(var(--overlay-rgb), 0.06);
+  border: 1px solid var(--hairline);
+  color: var(--text-body);
 }
 
 .strip-name { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
@@ -1467,7 +1473,7 @@ body {
   box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
   text-align: center;
 }
-.settings-brand-glyph { display: block; margin: 0 auto; }
+.settings-brand-tile { display: block; margin: 0 auto; border-radius: 10px; }
 .settings-brand-name {
   margin-top: var(--space-5);
   font-size: 17px;

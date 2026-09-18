@@ -20948,3 +20948,31 @@ transport buttons, no-length draws no scrubber, unadvertised draws the permissio
 `navModel.test.ts`: the subtitle claims sync only while live.
 
 Screenshots: `docs/evidence/sidekick-batch2/`.
+
+## Sidekick Batch 3 — demo-critical: Mirror, Settings → File transfer, pairing — 2026-09-19
+
+1440 × 920, real phone connected. Evidence: `docs/evidence/sidekick-batch3/`.
+
+- **Mirror** — the pane is flat (the outer card around the canvas card and the side cards was a
+  third layer); grid `minmax(0,1fr) 320px`, 24 apart (handoff `812 + 320`). The right column opens
+  with a **Session** card holding the one of Start / Stop `shared/mirrorSession.ts` allows, with a
+  sentence under it written from the same fact (*"Every start asks the phone for permission…"* /
+  *"Waiting for you to allow capture on the phone."* / *"Mirroring. Stop ends capture…"*). Start is
+  **visible at rest** now; it sat 740px down between two cards. Buttons are the handoff's pills
+  (40 primary/destructive, 36 secondary); a disabled Start is the control grey, not a faded lime.
+  The device strip is hidden here (the canvas needs the height; the link is in the island and the
+  sidebar card) and its empty 26 × 40 box is a phone badge on the panes that keep it.
+  **Not run: a live session** — a start raises MediaProjection consent on the phone, and nobody was
+  there to answer it. The one-of rule is unit-tested (`mirrorSession.test.ts`) and unchanged.
+- **Settings → File transfer** — **Show in Finder** (Earlier downloads) pressed through the page:
+  the main process answered `Opened /Users/chetan/Downloads/ConnectSuite` and Finder holds a
+  `Downloads` window, which is where `showItemInFolder` reveals it. Whether that window was already
+  open is not established. Read-only as before: the handler reveals and never creates. The brand
+  card draws the `main_logo.png` app tile at 44 (handoff §13) — loaded `44 × 44` — instead of the
+  old two-rectangle glyph.
+- **Pairing** — **defect found**: the code was drawn at launch only when unpaired and otherwise by
+  the 60 s re-arm, so a pairing screen reached by a repudiation mid-session (or by ⌘K) showed a
+  broken `<img>` with its alt text for up to a minute. It draws on arrival now (not rotated). The
+  card is the handoff's centred 560. The rename notice was drawn **SYNTHETICALLY** with the real
+  `RENAME_REFUSAL` sentence (the re-pair on this Mac has already been paid), then restored from the
+  main process. The pairing fix lives in `renderer.ts`, which no test reaches — recorded as such.

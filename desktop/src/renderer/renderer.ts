@@ -371,6 +371,16 @@ function paintMirrorButtons(): void {
   start.hidden = !b.startShown;
   start.disabled = !b.startEnabled;
   stop.hidden = !b.stopShown;
+  // The sentence under the one button: what pressing it will do, in the phone's terms. MediaProjection
+  // consent cannot be cached, so every start is a tap on the phone — said before, not after.
+  el('mirror-session').dataset.session = mirrorSession;
+  el('mirror-session-note').textContent = !b.startShown
+    ? mirrorSession === 'starting'
+      ? 'Waiting for you to allow capture on the phone.'
+      : 'Mirroring. Stop ends capture on the phone.'
+    : canMirror
+      ? 'Every start asks the phone for permission. Allow it on the phone when it asks.'
+      : 'Mirroring needs the phone connected and offering screen capture.';
   // The Overview hero's primary action follows the same rule: while a session exists it does not
   // offer to start a second one — it opens the picture that is already running.
   const running = b.stopShown;
@@ -699,6 +709,16 @@ async function refreshLogs(): Promise<void> {
 el('new-qr').addEventListener('click', () => {
   hidePairRejection();
   void showQr(true);
+});
+
+/*
+ * The pairing screen never opens without a code. The code was drawn at launch only when unpaired
+ * and then by the 60 s re-arm, so a pairing screen reached any other way — a repudiation mid-session
+ * routes here, and so does ⌘K — drew a broken <img> with its alt text for up to a minute. Not
+ * rotated: this arms the same code `showQr()` would, it does not invalidate one on screen.
+ */
+shell.onRoute((id) => {
+  if (id === 'pairing' && !el<HTMLImageElement>('qr').getAttribute('src')) void showQr();
 });
 
 /**

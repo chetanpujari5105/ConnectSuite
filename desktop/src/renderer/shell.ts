@@ -240,10 +240,9 @@ class ShellView {
   // ---- Sidebar -------------------------------------------------------------------------------
 
   private buildBrand(): void {
-    // The sidebar lockup is markup — the Sidekick mask from LOGOS/ plus the word — not a glyph.
-    // Settings' third column. Drawn once here rather than in `drawSettings`, because the aside is
-    // static markup outside the pane that gets rebuilt on every tab click.
-    $('settings-brand-glyph').replaceChildren(brandGlyph(56));
+    // Both brand marks are markup now: the sidebar lockup (the mask from LOGOS/ plus the word) and
+    // Settings' `main_logo.png` app tile (handoff §13). What is left here is the Settings aside's
+    // shield and the device card's glyph — drawn once, because both sit in static markup.
     $('settings-shield').replaceChildren(iconSvg('shield', 16));
     $('device-icon').replaceChildren(iconSvg('phone', 16));
   }
@@ -345,6 +344,7 @@ class ShellView {
   private buildToolbarIcons(): void {
     // The hero phone's two state marks, drawn once; CSS shows the one the card's state asks for.
     $('hero-phone-badge').replaceChildren(iconSvg('link-minus', 12));
+    $('strip-thumb').replaceChildren(iconSvg('phone', 15));
     $('hero-phone-spinner').replaceChildren(iconSvg('spinner', 18));
     $('tb-search-icon').replaceChildren(iconSvg('search', 14));
     $('tb-device-icon').replaceChildren(iconSvg('device-settings', 14));
