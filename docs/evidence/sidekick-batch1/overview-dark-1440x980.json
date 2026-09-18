@@ -1,0 +1,18 @@
+{
+  "file": "docs/evidence/sidekick-batch1/overview-dark-1440x980.png",
+  "screen": "overview",
+  "takenAt": "2026-09-18T19:06:22.031Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 980,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": true,
+  "settleMs": 400,
+  "ready": null,
+  "prep": null,
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth"
+}

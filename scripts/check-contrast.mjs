@@ -36,9 +36,17 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TOKENS = join(REPO, 'desktop/src/renderer/tokens.css');
 
 const AA = 4.5;
-/** The design's own band for meta. Below `META_LO` it is drifting; above `META_HI` it is body copy. */
+/**
+ * The design's own band for meta. Below `META_LO` it is drifting; above `META_HI` it is body copy.
+ *
+ * `META_HI` moved from 3.6 to 4.0 on 2026-09-19, and only because **the design moved**: 3.6 was the
+ * superseded ConnectSuite handoff's band, and the approved Sidekick Figma file (Foundations `28:543`)
+ * sets meta at `#6B6E7A`, which measures 3.36–3.90:1 on its own surfaces — still half of body copy
+ * (`#9A9CA8`, ~7:1), so the hierarchy the band exists to protect is intact. The lower bound, the
+ * direction a meta colour actually drifts, is unchanged.
+ */
 const META_LO = 2.4;
-const META_HI = 3.6;
+const META_HI = 4.0;
 
 export function parseColor(s) {
   s = String(s).trim();

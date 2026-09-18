@@ -1,23 +1,20 @@
 /*
- * The app shell: window ground, sidebar, nav pill, status island, page header, dock, palette,
- * toast, connected-device strip.
+ * The app shell: window ground, sidebar, nav pill, status island, page header, palette, toast,
+ * connected-device strip.
  *
- * Loaded after tokens.css and before styles.css. The split is by *scope*, not by age: everything
- * here repeats on every screen, everything in styles.css lives inside one. If you add a fourth
- * sheet, add it to scripts/copy-assets.mjs — that script copies a hard-coded array, and a missing
- * entry builds clean, typechecks clean, and ships an unstyled app.
+ * Loaded after tokens.css and before styles.css. The split is by *scope*: everything here repeats on
+ * every screen, everything in styles.css lives inside one. If you add a fourth sheet, add it to
+ * scripts/copy-assets.mjs.
  *
- * Every value is from `Mac app UI mockups (1)/design_handoff_connectsuite/README.md` §"App Shell"
- * and the prototype beside it. Departures are in docs/design-departures.md rather than in comments
- * here, with two exceptions marked inline where the reason is local to the rule.
+ * **Rebuilt 2026-09-19 against the approved Sidekick Figma file** — the shell of every frame on
+ * Page 1 (Overview / Connected `6:2` is the reference) and the component library on the Design
+ * System page: Nav row `28:915`, Status pill `28:932`, Buttons `28:956` / `28:970`, Brand `61:24256`.
+ * Where a frame and a component disagree, the component wins (owner's decision 1). Departures are
+ * in docs/design-departures.md, rows D13–D19.
  */
 
 /* ---- The window ------------------------------------------------------------------------------
- * The 24px radius and the drop shadow the handoff specifies belong to the *window*, and on macOS
- * the window is the system's: it draws its own corner radius and its own shadow behind whatever
- * we paint. Painting a second 24px radius inside it produces a rounded rectangle floating in a
- * square, which is worse than either. So the app-window fills the frame and the corners are
- * macOS's. Recorded as departures row S2.
+ * The window's corner radius and shadow are macOS's own; the app-window fills the frame.
  */
 html,
 body {
@@ -27,10 +24,7 @@ body {
 }
 
 body {
-  /* The ground. `--canvas` (#07070a), not the legacy `--bg` (#101014) — every translucent surface
-   * in this app composites over this colour, so nine steps of lightness here moves every elevation
-   * in the design at once. This one declaration is why the panes look right rather than merely
-   * dark. */
+  /* FIGMA Material: the ground is flat and opaque. There is no ambient field and no gradient. */
   background: var(--canvas);
   color: var(--text-primary);
   font: var(--text-body-size);
@@ -40,51 +34,16 @@ body {
 * { box-sizing: border-box; }
 
 /*
- * `hidden` must win. This is not defensive tidying — it is a bug that shipped in this file's first
- * draft and was visible in the first screenshot: `.palette-backdrop { display: flex }` is a class
- * selector and the UA stylesheet's `[hidden] { display: none }` is an attribute selector, so at
- * (0,1,0) versus (0,1,0) the *later* sheet won and the ⌘K palette rendered over every screen,
- * permanently, with `el.hidden === true`. The toast was doing the same thing one layer down.
- *
- * Every "is it on screen" decision in the shell is `el.hidden`, so the property has to be the last
- * word on it. `!important` is the right tool exactly once, and this is the once: the alternative is
- * remembering to write `display: none` into every future component that also sets a display value.
+ * `hidden` must win. `.palette-backdrop { display: flex }` once beat the UA's `[hidden]` at equal
+ * specificity and drew the palette over every screen with `el.hidden === true`. Every "is it on
+ * screen" decision in the shell is `el.hidden`, so the property has the last word.
  */
 [hidden] { display: none !important; }
 
 /*
- * Flat `--canvas`, with **no gradient**. Measured off the prototype, where the window reads
- * `rgb(7,7,10)` and `background-image: none`.
- *
- * The README says "**Outer** page ground is a radial violet-to-black gradient", and outer is the
- * load-bearing word: in the mockup that gradient is the surface the artboard *sits on* — the page
- * behind the window — not the window's own fill. Reading it as the window's fill put a
- * `radial-gradient(1200px 700px at 30% 0%, #191134 …)` inside the app and washed every screen
- * violet across the top-right, which is the single most visible difference in the first
- * side-by-side and the one thing no amount of token-checking would have found: every token in it
- * was correct.
- *
- * A real Mac window has nothing behind it, so the gradient simply does not exist here. The three
- * drifting blobs below are the part that *is* inside the window in the prototype, and they stay.
- */
-/*
- * `overflow: clip`, not `hidden`, and the difference is the whole point.
- *
- * `hidden` removes the scrollbars and **still makes the element a scroll port**. It can be scrolled
- * programmatically — by `scrollIntoView`, by the browser revealing a focused descendant, by any
- * script that sets `scrollTop` — and once it is, there is no scrollbar to show it and no wheel
- * target to undo it. The app's own header and sidebar go above the viewport and stay there, with
- * every scroll offset a person would think to read still saying zero.
- *
- * That is not hypothetical: it happened twice in one sitting, measured at
- * `.app-window { scrollTop: 199.5 }`, and it took two refused screenshots to notice. The immediate
- * cause was a tool (`probe.mjs`'s `onScreen`, which restored one scroller after `scrollIntoView`
- * had moved several) and that is fixed there — but a frame that *can* end up in an unreachable
- * scroll position is a hazard whoever moves it, and there is exactly one scroller on this window by
- * design: `#page`.
- *
- * `clip` clips identically — the rounded corners and the ambient blobs at `inset: -10%` are cut the
- * same way — and creates no scroll container, so nothing can scroll this element ever again.
+ * `overflow: clip`, not `hidden`: `hidden` still makes a scroll port that a `scrollIntoView` can move
+ * with no scrollbar to undo it — measured once at `.app-window { scrollTop: 199.5 }`. There is exactly
+ * one scroller on this window by design, `#page`.
  */
 .app-window {
   position: relative;
@@ -94,106 +53,69 @@ body {
   background: var(--canvas);
 }
 
-/* ---- Ambient blobs ---------------------------------------------------------------------------
- * Three blurred discs drifting behind the chrome at 6–10% opacity, on 46–60s loops. `transform`
- * and `opacity` only, so the reduced-motion block in tokens.css switches them off wholesale.
- */
-.ambient {
-  position: absolute;
-  inset: -10%;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.blob {
-  position: absolute;
-  border-radius: 50%;
-  display: block;
-}
-
-@keyframes drift {
-  0% { transform: translate3d(0, 0, 0) scale(1); }
-  33% { transform: translate3d(6%, -4%, 0) scale(1.12); }
-  66% { transform: translate3d(-5%, 5%, 0) scale(0.95); }
-  100% { transform: translate3d(0, 0, 0) scale(1); }
-}
-
-.blob-violet {
-  left: 2%;
-  top: -6%;
-  width: 46%;
-  height: 52%;
-  background: radial-gradient(closest-side, var(--accent), transparent);
-  opacity: 0.1;
-  filter: blur(70px);
-  animation: drift 52s ease-in-out infinite;
-}
-
-.blob-cyan {
-  right: 4%;
-  top: 12%;
-  width: 42%;
-  height: 46%;
-  background: radial-gradient(closest-side, var(--secondary), transparent);
-  opacity: 0.07;
-  filter: blur(80px);
-  animation: drift 46s ease-in-out infinite reverse;
-}
-
-.blob-teal {
-  left: 26%;
-  bottom: -14%;
-  width: 52%;
-  height: 48%;
-  background: radial-gradient(closest-side, rgb(var(--tint-teal-rgb)), transparent);
-  opacity: 0.06;
-  filter: blur(90px);
-  animation: drift 60s ease-in-out infinite;
-}
-
 /* ---- Status island ---------------------------------------------------------------------------
- * Top-centre, over the chrome. The 60px band at the top of .page-head is what keeps it off the
- * 31px page title; the two numbers are a pair and neither means anything alone.
+ * The Status pill component (`28:932`), set in the title-bar band and centred on the window, level
+ * with the real traffic lights (their centre is y=20). The Figma frames draw no island; it is kept
+ * because it is the window's live region, and restyled as the pill so it speaks the same visual
+ * language as every other state in the app. Departure D14.
+ *
+ * Its tone is the dot's `data-state`, read through `:has()` so the pill, the dot and the words are
+ * painted from one attribute — the one-writer rule defect 96 established.
  */
 .status-island {
   position: absolute;
-  top: 16px;
+  top: 7px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 40;
   display: flex;
   align-items: center;
-  gap: 9px;
-  /* 30px drawn: 28px of content plus the 1px border top and bottom. See the note on .nav-pill. */
-  height: 30px;
-  padding: 0 var(--space-6);
+  gap: 6px;
+  height: 26px;
+  padding: 0 11px 0 9px;
   border-radius: var(--radius-pill);
-  background: var(--surface-island);
-  backdrop-filter: blur(30px) saturate(140%);
-  border: 1px solid rgba(var(--overlay-rgb), 0.09);
-  box-shadow: var(--shadow-island);
-  /* The island is also a drag handle: it sits in the title-bar band, where a Mac user expects to
-   * be able to pick the window up. */
+  background: var(--unknown-fill);
+  border: 1px solid var(--unknown-border);
+  color: var(--unknown);
+  /* Chrome, so translucent: the island floats over the title-bar band, not over content. */
+  -webkit-backdrop-filter: blur(30px) saturate(1.4);
+  backdrop-filter: blur(30px) saturate(1.4);
+  transition: background-color var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
+    color var(--dur-state) var(--ease);
+  /* A drag handle, like the rest of the title-bar band. */
   -webkit-app-region: drag;
+}
+
+.status-island:has(.island-dot[data-state='live']) {
+  background: var(--accent-tint);
+  border-color: var(--accent-border);
+  /* FIGMA Status pill / Connected: the text is the lime itself. `--live` is lime in dark and the
+     olive text value in light, which is the pair this needs. */
+  color: var(--live);
+}
+.status-island:has(.island-dot[data-state='down']) {
+  background: var(--destructive-fill);
+  border-color: var(--destructive-border);
+  color: var(--destructive);
 }
 
 .island-text {
   font: var(--text-caption);
   letter-spacing: var(--tracking-caption);
-  color: var(--text-on-control);
+  color: inherit;
   white-space: nowrap;
-  /* The tone-change fade-in. `shell.ts` sets `.is-arriving` for one frame only when the link's *tone*
-     changes — never on a latency tick, which rewrites this text every few seconds. The new words are
-     already written when it fades; nothing stale is ever on screen. `.motion-fade` in the markup
-     keeps this under reduced motion, where it is the only bridge left. */
+  /* The tone-change fade-in: `.is-arriving` for one frame only when the tone changes, never on a
+     latency tick. `.motion-fade` in the markup keeps it under reduced motion. */
   transition: opacity var(--dur-state) var(--ease);
 }
 .island-text.is-arriving { opacity: 0; transition: none; }
 
 /* ---- State dots ------------------------------------------------------------------------------
- * One rule for every live/weak/down dot in the app — sidebar card, device strip, hero chip,
- * island. The colour is set by a `data-state` on the dot, never by a class per site, so the four
- * places cannot drift into disagreeing about what "connected" looks like.
+ * One rule for every live/working/down dot — island, sidebar card, device strip, hero. The colour
+ * is the dot's `data-state`, never a class per site.
+ *
+ * FIGMA: connected is lime, connecting is grey (`--unknown`), disconnected is red. `working` maps
+ * to the grey — the link is dialling, which is unknown rather than a warning.
  */
 .state-dot,
 .island-dot {
@@ -202,31 +124,21 @@ body {
   height: 6px;
   flex: none;
   border-radius: 50%;
-  background: var(--text-meta);
-  /* The dot changes colour with the link. It used to snap; the change is the fact being reported,
-     so it gets a bridge — colour only, at the same beat as the island's text. */
+  background: var(--unknown);
   transition: background-color var(--dur-state) var(--ease);
 }
-
-.island-dot { width: 7px; height: 7px; }
 
 .state-dot[data-state='live'],
 .island-dot[data-state='live'] { background: var(--live); }
 .state-dot[data-state='working'],
-.island-dot[data-state='working'] { background: var(--warning); }
+.island-dot[data-state='working'] { background: var(--unknown); }
 .state-dot[data-state='down'],
 .island-dot[data-state='down'] { background: var(--destructive); }
 
 /*
- * The halo marks **the moment the link comes up, once**, and is then quiet.
- *
- * It used to pulse forever — 2.8s, infinite, on four dots at once (island, sidebar card, strip, hero
- * chip) — in the peripheral vision of an app whose fourth principle is *pair once, then be quiet*.
- * A ~0.36Hz oscillation is also the band Apple's motion guidance singles out to avoid. Departure N-M4.
- *
- * Once is structural, not a timer: the `::after` only exists while `data-state='live'`, so the
- * animation starts when the selector begins to match. `setAttribute` with an unchanged value does
- * not restart it, so latency ticks cannot replay it; a drop and a return do, which is the point.
+ * One 600ms halo as a dot **enters** live, then still (departure N-M4, and Figma's motion board:
+ * "One 600ms halo on the dot as it enters connected, then still. Never a loop."). The `::after`
+ * exists only while `data-state='live'`, so re-setting the same value cannot replay it.
  */
 @keyframes halo {
   from { opacity: 0.6; transform: scale(1); }
@@ -252,89 +164,97 @@ body {
   height: 100%;
 }
 
-/* ---- Sidebar (232px, fixed) ------------------------------------------------------------------ */
-/*
- * 233px, so the *content* is the handoff's 232.
- *
- * The design's aside is 232px wide on `content-box` with a 1px right border, so it occupies 233
- * and leaves the content column 1207. This build is `border-box`, so a declared 232 put the border
- * inside it — one pixel narrower everywhere in the sidebar and one pixel wider in every screen. It
- * is a single pixel and it moved eight measured values, which is the argument for measuring.
+/* ---- Sidebar (232px) ---------------------------------------------------------------------------
+ * FIGMA: 232 wide, `--chrome` #0F0F0F, translucent with blur(30) saturate(1.4) — the one layer the
+ * Material board allows to be glass. A single hairline on the right edge, no inset highlights.
  */
 .sidebar {
   position: relative;
-  width: 233px;
+  /* Figma's 232, with the hairline drawn as an inset shadow rather than a border. A border sits
+     inside a border-box width, which made every nav row 203 against the component's 204; widening
+     the sidebar to 233 to compensate then moved the whole content column to x=261 against 260. A
+     shadow takes no layout, so both numbers are the file's. */
+  width: 232px;
   flex: none;
   display: flex;
   flex-direction: column;
   background: var(--elev-1);
-  backdrop-filter: blur(30px) saturate(140%);
-  border-right: 1px solid rgba(var(--overlay-rgb), 0.07);
-  box-shadow: 1px 0 0 rgba(var(--overlay-rgb), 0.03) inset, 0 1px 0 rgba(var(--overlay-rgb), 0.06) inset;
+  -webkit-backdrop-filter: blur(30px) saturate(1.4);
+  backdrop-filter: blur(30px) saturate(1.4);
+  box-shadow: inset -1px 0 0 var(--hairline);
 }
 
-/* 52px of reserved space for the real macOS traffic lights, which main.ts positions into it. */
+/* Reserved for the real macOS traffic lights (main.ts positions them at y=20). A drag handle. */
 .traffic-row {
-  height: 52px;
+  height: 40px;
   flex: none;
   -webkit-app-region: drag;
 }
 
+/*
+ * The lockup, `61:24256`: the mask in a 65 × 30 box and the word 10px after it, 18/600. Lowered
+ * below the traffic lights (Figma draws it at y=18, where the real buttons sit) — departure D15.
+ */
 .brand {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 2px var(--space-9) var(--space-8);
+  gap: 10px;
+  height: 30px;
+  margin: 6px 0 12px;                  /* handoff §13: 12px below the lockup */
+  padding: 0 20px;
   -webkit-app-region: drag;
 }
 
-.brand-glyph { display: flex; flex: none; }
+.brand-mark {
+  flex: none;
+  width: 65px;
+  height: 30px;
+  object-fit: contain;
+  object-position: left center;
+}
 
 .brand-name {
-  /* The design leaves this `normal`, which under Archivo is 16px on a 15px face. This was 1.05 —
-   * a ratio picked to land near 16 after the body's 1.5 made it 22.5 and pushed the brand row 6px
-   * taller than the artboard. The token carries the design's number now; see docs/testing.md,
-   * "Measurement pass, third run", section 1.2 for why the whole build moved off ratios. */
-  line-height: var(--leading-15);
-  font-size: 15px;
+  font-size: 18px;
+  line-height: 22px;
   font-weight: 600;
-  letter-spacing: var(--tracking-section);
+  letter-spacing: var(--tracking-card-title);
   color: var(--text-primary);
 }
 
-.sidebar-group { padding: 0 var(--space-6) var(--space-6); }
+.sidebar-group { padding: 0 14px 18px; }
 
+/* FIGMA Micro: 10/500 uppercase, +0.06em, `--text-meta`. The frame sets it at 600; the component
+   library's Micro role is 500, and the component wins. */
 .group-header {
-  font-size: 10px;
-  line-height: var(--leading-10);
-  font-weight: 600;
+  font: var(--text-micro);
   letter-spacing: var(--tracking-group);
   text-transform: uppercase;
   color: var(--text-meta);
-  padding: 0 var(--space-2) var(--space-3);
+  padding: 0 6px 6px;
 }
 
+/*
+ * The device card, from frame `6:2`: 204 wide, r12, a card-coloured fill, a 30 × 30 r8 tile, the
+ * name 12/600 and a status line. The Figma file has no component for it, so the frame is the spec.
+ */
 .device-card {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border-radius: var(--radius-tile);
-  background: var(--control);
+  gap: 10px;
+  min-height: 51px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: var(--card);
   border: 1px solid var(--hairline);
-  box-shadow: var(--shadow-nav-pill);
-  transition: transform var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease);
 }
-
-.device-card:hover { transform: translateY(-1px); border-color: var(--hairline-hover); }
 
 .device-icon {
   width: 30px;
   height: 30px;
   flex: none;
-  border-radius: 9px;
-  background: var(--accent-tint);
-  color: var(--accent-text);
+  border-radius: 8px;
+  background: rgba(var(--overlay-rgb), 0.06);
+  color: var(--text-body);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -342,14 +262,9 @@ body {
 
 .device-lines { min-width: 0; }
 
-/*
- * The card measures 52px in the prototype and came out 56.5 here: its two text lines are `normal`
- * line-height in the design and were inheriting the body's 1.5 here, which is 4.5px of extra stack
- * on a card whose height is set by that stack rather than by the 30px icon beside it.
- */
 .device-name {
   font-size: 12px;
-  line-height: var(--leading-12);
+  line-height: 15px;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -361,7 +276,8 @@ body {
   display: flex;
   align-items: center;
   gap: 5px;
-  line-height: var(--leading-11);
+  margin-top: 3px;
+  line-height: 13px;
   font-size: 11px;
   color: var(--text-body);
 }
@@ -374,180 +290,156 @@ body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 0 var(--space-6);
+  padding: 0 14px;
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
 }
 
-/*
- * 30px, measured. The prototype's MENU header is `height:22px` with `padding-bottom:8px` on a
- * content-box div, so it draws 30 — and this build's border-box 22 swallowed the 8px of padding
- * and pulled every nav row up with it. The pill is measured from `offsetTop`, so it followed the
- * rows and stayed correct; the *rhythm* was the thing that was wrong.
- */
-.nav .group-header { height: 30px; }
-.nav .group-header + .nav-row { margin-top: 0; }
-/* 36px total, measured: it is what makes the Camera→Activity pitch 74px, as the design draws it.
- * The pill is measured from `offsetTop` so it tracked this either way — the rhythm was what moved. */
-.nav .group-header.system { padding-top: var(--space-6); height: 36px; }
+/* MENU sits on a 22px line; SYSTEM gets 12px more above it, as the frame spaces the two groups. */
+.nav .group-header { height: 22px; padding-top: 6px; padding-bottom: 4px; }
+.nav .group-header.system { height: 34px; padding-top: 18px; }
 
 /*
- * The pill. One absolutely-positioned element that slides; not a background on the selected row.
- *
- * Its Y comes from `transform: translateY()` set by shell.ts from the target row's live
- * `offsetTop`. The handoff is emphatic that it must be measured rather than computed from a row
- * pitch, and this stylesheet is the reason why: `.group-header.system` above adds 14px of padding
- * between Camera and Activity, and the Notifications row carries a badge. A hard-coded pitch is
- * correct for the first nine rows and wrong for the last two.
- */
-/*
- * Height **40**, not 38, and that is measured rather than reasoned.
- *
- * The prototype loads a reset that puts `<button>` on `border-box` and leaves plain `<div>`s on
- * `content-box`. So its pill, its status island and its dock tiles — all divs with a 1px border —
- * draw 2px larger than the number in their inline style, while its buttons draw exactly their
- * stated height. This build is `border-box` throughout, so every one of those three came out 2px
- * short while every button matched.
- *
- * The README's prose ("Rows are 38px", "28px pill", "5 × 36px app tiles") gives the *content*
- * halves of those pairs. The instruction is "recreate pixel-for-pixel", so the drawn value wins
- * and the border is added on top of it here.
+ * The selection, as one absolutely positioned element that slides between rows — the handoff's
+ * "nav pill slides 200ms". FIGMA Nav row / Active: lime at 14%, radius 10, **no border and no
+ * glow**. Its Y comes from the target row's live `offsetTop` (shell.ts), never from a pitch.
  */
 .nav-pill {
   position: absolute;
-  left: var(--space-6);
-  right: var(--space-6);
-  top: -1px;
-  height: 40px;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 36px;
   border-radius: var(--radius-control);
   background: var(--accent-tint-selected);
-  border: 1px solid var(--accent-border);
-  /* No glow. A zero-offset coloured halo around the selection was decoration — the tint and the
-     border already carry it. What is left is the lit top edge a raised material has. Departure N-P3. */
-  box-shadow: 0 1px 0 rgba(var(--overlay-rgb), 0.06) inset;
-  transition: transform var(--dur-pill) var(--ease);
+  transition: transform var(--dur-pill) var(--ease-in-out);
   pointer-events: none;
 }
 
-/* Before the first measurement there is nothing to point at, so the pill is not drawn. A pill
- * parked at y=0 during the first frame reads as "Overview is selected" a moment before it is. */
+/* Nothing to point at before the first measurement, so no pill — one parked at y=0 would claim
+   Overview is selected a frame before it is. */
 .nav-pill[hidden] { display: none; }
 
+/*
+ * FIGMA Nav row: 204 × 36, radius 10, padding 0 10, gap 10, a 16px glyph and a 13.5 label.
+ * Default: `--text-body`, Regular. Hover: white at 5% and `--text-primary`. Active: the pill behind,
+ * Medium, `--text-primary`, and a **lime glyph** — the one place lime touches an icon.
+ */
 .nav-row {
   position: relative;
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: 10px;
   width: 100%;
-  height: 38px;
-  padding: 0 var(--space-4);
+  height: 36px;
+  padding: 0 10px;
   border: 0;
   background: transparent;
   border-radius: var(--radius-control);
   color: var(--text-body);
-  font: 500 13.5px/var(--leading-13-5) var(--font-ui);
+  font: 400 13.5px/20px var(--font-ui);
   text-align: left;
   cursor: pointer;
-  transition: color var(--dur-state) var(--ease);
+  transition: color var(--dur-state) var(--ease), background-color var(--dur-state) var(--ease);
 }
 
-/* `background: transparent` because nav rows are `<button>`s and the base `button:hover` fill in
-   styles.css reaches them at higher specificity — a grey slab under the pointer, which no macOS
-   sidebar draws. Hover here is colour only; the pill is the only fill. */
-.nav-row:hover { color: var(--text-on-control); background: transparent; border-color: transparent; }
-/* The icon no longer grows on hover. A sidebar row is hovered dozens of times an hour on the way to
-   somewhere else; the colour change is the whole of the feedback it needs. */
-.nav-row svg { flex: none; }
-.nav-row:active { color: var(--text-primary); }
-.nav-row[aria-current='page'] { color: var(--text-primary); }
-.nav-row:focus-visible { outline-offset: 1px; }
+.nav-row svg { flex: none; color: var(--text-body); transition: color var(--dur-state) var(--ease); }
+
+@media (hover: hover) and (pointer: fine) {
+  .nav-row:hover { color: var(--text-primary); background: var(--nav-hover); border-color: transparent; }
+  .nav-row:hover svg { color: var(--text-primary); }
+}
+.nav-row[aria-current='page'] { color: var(--text-primary); font-weight: 500; }
+.nav-row[aria-current='page'] svg { color: var(--nav-active-glyph); }
+/* The pill is the active row's fill; a hover fill on top of it would double it. */
+.nav-row[aria-current='page']:hover { background: transparent; }
+.nav-row:focus-visible { outline-offset: -2px; }
 
 .nav-label { flex: 1; min-width: 0; }
 
-/* The notification badge. Mono, because it is a count that changes. */
+/* The notification badge — a neutral count, mono because it changes (frame `6:2`). */
 .nav-badge {
   flex: none;
+  min-width: 22px;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
-  font-weight: 600;
-  color: var(--canvas);
-  background: var(--accent);
+  line-height: 16px;
+  font-weight: 500;
+  text-align: center;
+  color: var(--text-body);
+  background: rgba(var(--overlay-rgb), 0.08);
   border-radius: var(--radius-pill);
-  padding: 1px 6px;
+  padding: 0 6px;
 }
 
 /*
- * An unbuilt screen's row is dimmed *and* carries a dot, never dimmed alone: colour on its own is
- * the defect-26 shape — a state a screen reader cannot hear. The accessible half is a
- * "not built yet" suffix in the row's aria-label, set in shell.ts.
+ * FIGMA Nav row / Unavailable: `--text-disabled` and the words "not built" at the right — never a
+ * greyed row alone. The accessible half is the "not built yet" suffix shell.ts puts in aria-label.
+ * An unbuilt pane's row never takes the accent, even while it is the current page (departure 11).
  */
-.nav-row.unbuilt { color: var(--text-meta); }
+.nav-row.unbuilt { color: var(--text-disabled); }
+.nav-row.unbuilt svg { color: var(--text-disabled); }
 .nav-row.unbuilt::after {
-  content: '';
+  content: 'not built';
   flex: none;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--text-meta);
+  font: var(--text-micro);
+  color: var(--text-disabled);
 }
-.nav-row.unbuilt:hover { color: var(--text-body); }
+.nav-row.unbuilt[aria-current='page'] svg { color: var(--text-body); }
+@media (hover: hover) and (pointer: fine) {
+  .nav-row.unbuilt:hover { color: var(--text-body); }
+}
 
-.nav-spacer { height: var(--space-6); }
+.nav-spacer { height: 14px; }
 
-/* ---- Sidebar footer --------------------------------------------------------------------------- */
+/* ---- Sidebar footer — this Mac ------------------------------------------------------------------ */
 .sidebar-footer {
   flex: none;
-  padding: var(--space-5) var(--space-6) var(--space-6);
-  border-top: 1px solid rgba(var(--overlay-rgb), 0.06);
+  padding: 10px 14px 16px;
 }
 
 .account-row {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3);
+  gap: 10px;
+  padding: 8px;
   border-radius: 12px;
-  transition: background var(--dur-state) var(--ease);
 }
-
-.account-row:hover { background: rgba(var(--overlay-rgb), 0.035); }
 
 .avatar {
   width: 30px;
   height: 30px;
   flex: none;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), var(--secondary));
+  background: var(--avatar);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--accent-on-fill);
+  color: var(--text-body);
 }
 
 .account-lines { min-width: 0; flex: 1; }
-.account-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-.account-sub {
-  font-size: 11px;
-  color: var(--text-meta);
+.account-name {
+  font-size: 12.5px;
+  line-height: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.pro-pill {
-  flex: none;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--accent-text);
-  background: var(--accent-tint);
-  border: 1px solid rgba(var(--tint-violet-rgb), 0.24);
-  border-radius: var(--radius-pill);
-  padding: 2px 7px;
+.account-sub {
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--text-meta);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---- Main region ------------------------------------------------------------------------------ */
@@ -559,16 +451,16 @@ body {
 }
 
 /*
- * 60px of reserved space at the top. This is the "title bar band": the status island is absolutely
- * positioned over the whole window, and without this padding it lands on the page title.
+ * FIGMA header: x=28, y=32, the Display title over one body line, and two controls at the right.
+ * The top 32px is the title-bar band the island sits in, and a drag handle.
  */
 .page-head {
   flex: none;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-10);
-  padding: 60px var(--space-11) var(--space-9);
+  gap: 24px;
+  padding: 32px var(--space-gutter) 18px;
   -webkit-app-region: drag;
 }
 
@@ -576,58 +468,65 @@ body {
 
 .page-title {
   margin: 0;
-  font-size: 31px;
-  font-weight: 600;
+  font: var(--text-page-title);
   letter-spacing: var(--tracking-title);
-  line-height: 1.15;
   color: var(--text-primary);
 }
 
 .page-sub {
-  margin: var(--space-2) 0 0;
-  font-size: 13.5px;
-  font-weight: 450;
-  line-height: 1.5;
+  margin: 6px 0 0;
+  font: var(--text-body-size);
   color: var(--text-body);
 }
 
 .toolbar {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 10px;
   flex: none;
-  padding-top: var(--space-2);
+  padding-top: 6px;
   /* Buttons inside a drag region are not clickable unless they opt back out. */
   -webkit-app-region: no-drag;
 }
 
+/*
+ * FIGMA header controls (`Button / Search ⌘K`, `Button / Device settings`): 32 tall, radius 10, the
+ * control fill with an 8% hairline, 12.5/500 `--text-body`, a 14px glyph in `--text-meta` 13px in.
+ * The frame fills them with #161821; the palette's `--control` is used instead (decision 1).
+ */
 .toolbar-button {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 8px;
   height: 32px;
-  padding: 0 var(--space-5);
+  padding: 0 14px 0 13px;
   border-radius: var(--radius-control);
   background: var(--control);
   border: 1px solid var(--hairline);
-  color: var(--text-on-control);
-  font: 500 12.5px/var(--leading-12-5) var(--font-ui);
+  color: var(--text-body);
+  font: 500 12.5px/15px var(--font-ui);
   cursor: pointer;
-  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
-    transform var(--dur-press) var(--ease);
+  transition: background-color var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
+    color var(--dur-state) var(--ease), transform var(--dur-release) var(--ease);
 }
 
-.toolbar-button:hover { background: var(--elev-3); border-color: var(--hairline-hover); }
-.toolbar-button.icon-only { width: 32px; padding: 0; justify-content: center; color: var(--text-body); }
-.toolbar-button .tb-key { font-size: 11px; line-height: var(--leading-11); color: var(--text-meta); }
-.tb-icon { display: flex; flex: none; }
+@media (hover: hover) and (pointer: fine) {
+  .toolbar-button:hover {
+    background: var(--button-secondary-hover);
+    border-color: var(--hairline-hover);
+    color: var(--text-primary);
+  }
+}
+.toolbar-button:active {
+  background: var(--button-secondary-pressed);
+  transform: scale(var(--press-scale));
+  transition-duration: var(--dur-press);
+}
+.toolbar-button .tb-key { margin-left: 10px; font-size: 11px; line-height: 13px; color: var(--text-meta); }
+.tb-icon { display: flex; flex: none; color: var(--text-meta); }
 .tb-icon.accent { color: var(--accent-text); }
 
-#open-palette { color: var(--text-body); }
-#mirror-float:hover { border-color: rgba(var(--tint-violet-rgb), 0.34); }
-
-/* The Floating window button is a Mirror-screen control. The design draws it only there, and the
- * shell now has screens to enforce that with. */
+/* The Floating window button is a Mirror-screen control. */
 .mirror-only { display: none; }
 .app-window[data-screen='mirror'] .mirror-only { display: flex; }
 
@@ -640,33 +539,25 @@ body {
 }
 
 /* ---- The scrolling page ----------------------------------------------------------------------- */
-/* Opacity only, 140ms. See --dur-route-fade in tokens.css for the ~410ms this replaced. */
+/* FIGMA motion: route change 140ms, opacity only. No translate, no stagger. */
 @keyframes page-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-/* A column, so a screen that wants to own its own scrolling can fill what is left after the page
-   head rather than guess at it. `height: 100%` cannot express that: the head is a sibling inside
-   `.page`, so 100% overshoots by exactly its height — measured at 68 px, which is what left the
-   Files pane still overflowing its page by 84 px after its own scroll containment was correct.
-
-   Every other screen is `flex: 0 0 auto` by default, which is the block behaviour they already had,
-   so this changes the frame's capability and not any existing pane's layout. Only a screen that
-   opts in with `flex: 1` becomes viewport-bounded. */
+/* A column, so a screen that owns its own scrolling can fill what is left after the page head.
+   Every other screen is `flex: 0 0 auto`, which is the block behaviour it already had. */
 .page {
   flex: 1;
   min-height: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;
-  padding: 0 var(--space-11) var(--space-11);
+  padding: 0 var(--space-gutter) var(--space-gutter);
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
 }
 
-/* Keyed to the route by shell.ts re-adding the class, so the entrance replays on every navigation
- * rather than only on first paint. */
 .page.route-in { animation: page-in var(--dur-route-fade) var(--ease) both; }
 
 .screen[hidden] { display: none; }
@@ -675,162 +566,71 @@ body {
 .device-strip {
   display: flex;
   align-items: center;
-  gap: var(--space-6);
-  padding: var(--space-5) var(--space-7);
-  margin-bottom: var(--space-7);
-  border-radius: var(--radius-tile);
+  gap: 14px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-card);
   background: var(--surface-strip);
-  border: 1px solid rgba(var(--overlay-rgb), 0.07);
-  box-shadow: 0 1px 0 rgba(var(--overlay-rgb), 0.04) inset;
+  border: 1px solid var(--hairline);
 }
 
-/* Overview's hero card says all of this at four times the size. Two battery readings on one screen
- * is how they start disagreeing. */
+/* Overview's hero says all of this at four times the size. */
 .app-window[data-screen='overview'] .device-strip,
 .app-window[data-screen='pairing'] .device-strip { display: none; }
 
-/* 28 × 42 drawn: the design's 26 × 40 plus its 1px border. Same content-box cause as .nav-pill. */
 .strip-thumb {
-  width: 28px;
-  height: 42px;
+  width: 26px;
+  height: 40px;
   flex: none;
   border-radius: 7px;
-  background: linear-gradient(150deg, var(--brand-grad-1), var(--brand-grad-2));
-  border: 1px solid rgba(var(--overlay-rgb), 0.12);
+  background: var(--card-raised);
+  border: 1px solid var(--hairline-hover);
 }
 
 .strip-name { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
-.strip-state { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--text-body); }
+.strip-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-body); }
 .strip-spacer { flex: 1; }
 .strip-value { font-size: 12px; color: var(--text-body); font-variant-numeric: tabular-nums; }
-.strip-divider { width: 1px; height: 16px; background: rgba(var(--overlay-rgb), 0.09); }
-
-/* ---- Dock -------------------------------------------------------------------------------------- */
-.dock {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-11) var(--space-8);
-}
-
-.dock-slot { position: relative; display: flex; justify-content: center; }
-
-.dock-tile {
-  /* 38px drawn: 36px of content plus the 1px border. See the note on .nav-pill. */
-  width: 38px;
-  height: 38px;
-  border: 1px solid rgba(var(--overlay-rgb), 0.09);
-  border-radius: 11px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 0;
-  /* --dock-tint is a "r,g,b" triple set per tile from navModel.DOCK. */
-  background: rgba(var(--dock-tint), 0.16);
-  color: color-mix(in srgb, rgb(var(--dock-tint)), #000 var(--tint-darken));
-  /* Critically damped. The overshoot curve this replaced (`0.34, 1.56, …`) was the one bouncy thing in
-     the app, on a hover — and bounce is earned by momentum, which a hover does not carry. The scale
-     is smaller for the same reason. Departure N-M9. */
-  transition: transform var(--dur-hover) var(--ease);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .dock-slot:hover .dock-tile { transform: scale(1.18) translateY(-4px); }
-  .dock-slot:hover + .dock-slot .dock-tile,
-  .dock-slot:has(+ .dock-slot:hover) .dock-tile { transform: scale(1.06) translateY(-1px); }
-}
-.dock-slot .dock-tile:active { transform: scale(var(--press-scale)); transition-duration: var(--dur-press); }
-
-.dock-tip {
-  position: absolute;
-  bottom: 44px;
-  left: 50%;
-  transform: translateX(-50%) translateY(4px);
-  white-space: nowrap;
-  font-size: 11px;
-  line-height: var(--leading-11);
-  color: var(--text-on-control);
-  background: var(--surface-raised);
-  border: 1px solid rgba(var(--overlay-rgb), 0.09);
-  border-radius: var(--space-3);
-  padding: 3px var(--space-3);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-hover) var(--ease), transform var(--dur-hover) var(--ease);
-}
-
-.dock-slot:hover .dock-tip { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-/*
- * The raised circular ⌘K button — brief: "Raised, colored circular action button breaking out of a
- * bar." Bigger than a `.dock-tile`, filled lime, and lifted by a negative margin so it visually
- * breaks the top edge of the dock row rather than sitting flush inside it like the screen tiles.
- */
-.dock-slot-raised { margin: 0 var(--space-2); }
-.dock-tile-raised {
-  width: 46px;
-  height: 46px;
-  margin-top: -14px;
-  border: none;
-  border-radius: var(--radius-pill);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 0;
-  background: var(--accent);
-  color: var(--accent-on-fill);
-  box-shadow: 0 8px 20px var(--hero-grad-glow), var(--shadow-dock);
-  transition: transform var(--dur-hover) var(--ease);
-}
-@media (hover: hover) and (pointer: fine) {
-  .dock-slot-raised:hover .dock-tile-raised { transform: scale(1.08) translateY(-2px); }
-}
-.dock-slot-raised .dock-tile-raised:active {
-  transform: scale(var(--press-scale));
-  transition-duration: var(--dur-press);
-}
+.strip-divider { width: 1px; height: 16px; background: var(--hairline); }
 
 /* ---- Toast -------------------------------------------------------------------------------------- */
 @keyframes toast-in {
-  from { opacity: 0; transform: translate(-50%, 10px); }
+  from { opacity: 0; transform: translate(-50%, 6px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
+/* Bottom-centre. With the dock gone it sits 24px off the window's foot. Chrome, so translucent. */
 .toast {
   position: absolute;
   left: 50%;
-  bottom: 74px;
+  bottom: 24px;
   z-index: 55;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   height: 32px;
-  padding: 0 15px;
+  padding: 0 14px;
   border-radius: var(--radius-pill);
   background: var(--surface-raised);
-  backdrop-filter: blur(24px);
-  border: 1px solid rgba(var(--overlay-rgb), 0.1);
-  box-shadow: var(--shadow-dock);
-  animation: toast-in var(--dur-float) var(--ease-float) both;
+  -webkit-backdrop-filter: blur(30px) saturate(1.4);
+  backdrop-filter: blur(30px) saturate(1.4);
+  border: 1px solid var(--hairline-hover);
+  box-shadow: var(--shadow-panel);
+  animation: toast-in var(--dur-float) var(--ease) both;
 }
 
 .toast-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--live); }
-.toast-text { font-size: 13px; color: var(--text-on-control); }
+.toast-text { font-size: 12.5px; color: var(--text-primary); }
 
-/* ---- ⌘K palette ----------------------------------------------------------------------------------- */
-/* No `cmdk-in`. ⌘K is the most frequent keyboard action in the app; an entrance on it is a delay on
-   every use. Raycast and Spotlight open in one frame. Departure N-M8. */
-
+/* ---- ⌘K palette ----------------------------------------------------------------------------------
+ * Opens in one frame (FIGMA motion: "Command palette — no animation"; departure N-M8). Chrome, so
+ * the panel is the one translucent overlay; rows are the list-row vocabulary.
+ */
 .palette-backdrop {
   position: absolute;
   inset: 0;
   z-index: 60;
   background: var(--scrim);
-  backdrop-filter: blur(6px);
   display: flex;
   justify-content: center;
   padding-top: 120px;
@@ -842,39 +642,44 @@ body {
   max-height: calc(100% - 160px);
   display: flex;
   flex-direction: column;
-  border-radius: var(--radius-panel);
+  border-radius: var(--radius-card);
   overflow: hidden;
   background: var(--surface-palette);
-  backdrop-filter: blur(30px) saturate(140%);
-  border: 1px solid rgba(var(--overlay-rgb), 0.11);
+  -webkit-backdrop-filter: blur(30px) saturate(1.4);
+  backdrop-filter: blur(30px) saturate(1.4);
+  border: 1px solid var(--hairline-hover);
   box-shadow: var(--shadow-palette);
 }
 
 .palette-field {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-6) var(--space-7);
-  border-bottom: 1px solid rgba(var(--overlay-rgb), 0.07);
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--hairline);
   flex: none;
 }
 
 .palette-icon { display: flex; flex: none; color: var(--text-meta); }
 
-.palette-field input {
+/* `.palette` in front for specificity: styles.css's `input[type='text']` (0,1,1) loads later and
+   drew a boxed control inside the field at equal weight. The field is the box; the input is bare. */
+.palette .palette-field input {
   flex: 1;
+  height: 24px;
+  padding: 0;
   background: transparent;
   border: none;
+  border-radius: 0;
   outline: none;
   color: var(--text-primary);
-  font-family: inherit;
-  font-size: 15px;
+  font: 400 15px/24px var(--font-ui);
 }
 
 .palette-esc { font-size: 11px; color: var(--text-meta); }
 
 .palette-results {
-  padding: var(--space-3);
+  padding: 8px;
   max-height: 300px;
   overflow: auto;
   scrollbar-width: thin;
@@ -884,66 +689,58 @@ body {
 .palette-row {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: 10px;
   width: 100%;
-  height: 44px;
-  padding: 0 var(--space-4);
+  height: 40px;
+  padding: 0 10px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--text-primary);
-  font: 500 13.5px/1 var(--font-ui);
+  font: 400 13.5px/20px var(--font-ui);
   text-align: left;
   cursor: pointer;
 }
 
-.palette-row[aria-selected='true'] { background: var(--accent-tint); }
-.palette-row:hover { background: rgba(var(--overlay-rgb), 0.04); }
+/* The keyboard selection takes the same lime tint as the active nav row: one selection vocabulary. */
+.palette-row[aria-selected='true'] { background: var(--accent-tint-selected); }
+@media (hover: hover) and (pointer: fine) {
+  .palette-row:hover { background: var(--nav-hover); }
+  .palette-row[aria-selected='true']:hover { background: var(--accent-tint-selected); }
+}
 
+/* A neutral glyph tile — features are told apart by glyph and label, never by colour (D2). */
 .palette-tile {
   width: 26px;
   height: 26px;
   flex: none;
-  border-radius: var(--space-3);
-  background: var(--accent-tint);
-  color: var(--accent-text);
+  border-radius: 8px;
+  background: var(--control);
+  border: 1px solid var(--hairline);
+  color: var(--text-body);
   display: flex;
   align-items: center;
   justify-content: center;
 }
+.palette-row[aria-selected='true'] .palette-tile { color: var(--accent); }
 
 .palette-label { flex: 1; min-width: 0; }
-.palette-group { font-size: 12px; color: var(--text-meta); }
+.palette-group { font-size: 11.5px; color: var(--text-meta); }
 .palette-key { font-size: 11px; color: var(--text-meta); width: 40px; text-align: right; }
 
-/* An unbuilt destination is dimmed and says so in its group column — never dimmed alone. */
+/* An unbuilt destination says so in its group column — never dimmed alone. */
 .palette-row.unbuilt .palette-label { color: var(--text-body); }
 
 .palette-empty {
-  padding: var(--space-7);
+  padding: 16px;
   font-size: 13px;
   color: var(--text-body);
   text-align: center;
 }
 
 /* ---- State A: the unbuilt screen ---------------------------------------------------------------
- * `docs/mac-ui-design-proposals.md` §3. Five of the eleven sidebar rows land here. Every value in
- * this block is chosen to keep it distinguishable from the other three nothing-here states:
- * elevation 2 rather than 3, neutral rather than warning, and a mono handle at the foot.
- */
-/*
- * The card is centred in the pane, and the pane is given the height to centre it in.
- *
- * It used to sit hard against the top-left: 340px wide and ~300 tall, at x=0 y=0, filling 30% of a
- * 1151px content row with nothing beside or below it. At 1440x920 that does not read as a note —
- * it reads as a pane that failed to load, which is the exact thing the "~300px" in the state-A
- * note was written to prevent. The note fixed a width without fixing a window, and at this size
- * the width alone does not carry the intent.
- *
- * 420px rather than 340 because the headline is the one line a reader is guaranteed to take in and
- * it was wrapping on two of the five ("The phone has no way to send a thumbnail", "Nothing carries
- * a clipboard between the two"), and because Activity's mono handle was breaking across two lines
- * mid-phrase — a handle has to read as one unit.
+ * A centred, opaque card: an unwritten feature is a note, not a failure. Batch 5 rebuilds Camera's
+ * frame (`34:11064`) on the State block component; until then this carries it in the new palette.
  */
 .unbuilt-host {
   display: flex;
@@ -957,32 +754,21 @@ body {
   flex-direction: column;
   align-items: flex-start;
   max-width: 420px;
-  padding: var(--space-10);
-  border-radius: var(--radius-panel);
-  /* Elevation **2**, as material. A screen with nothing on it must not hold the heaviest surface. */
-  background: var(--material-card);
-  -webkit-backdrop-filter: var(--material-card-filter);
-  backdrop-filter: var(--material-card-filter);
+  padding: 24px;
+  border-radius: var(--radius-card);
+  background: var(--card);
   border: 1px solid var(--hairline);
-  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
 }
 
-/* A 40px line icon at --text-meta. No tile behind it: a filled tile is the treatment the *built*
- * panes use for a live thing, and this is not one. */
 .unbuilt-mark {
   display: flex;
   color: var(--text-meta);
-  margin-bottom: var(--space-7);
+  margin-bottom: 16px;
 }
 
-/*
- * Neutral, **not** `--warning`. An unwritten feature has not failed and is not a permission
- * problem; `--warning` is state B's colour and using it here would make five screens read as
- * "something is wrong" instead of "this was never written". This rule is the one most likely to be
- * "fixed" by someone who thinks the tag looks flat — it is meant to.
- */
+/* Neutral, **not** `--warning`: an unwritten feature has not failed. */
 .unbuilt-tag {
-  font-size: 10px;
+  font: var(--text-micro);
   font-weight: 600;
   letter-spacing: var(--tracking-group);
   text-transform: uppercase;
@@ -990,37 +776,25 @@ body {
 }
 
 .unbuilt-headline {
-  margin: var(--space-3) 0 0;
+  margin: 8px 0 0;
   font: var(--text-section);
   letter-spacing: var(--tracking-section);
   color: var(--text-primary);
 }
 
 .unbuilt-why {
-  margin: var(--space-3) 0 0;
+  margin: 8px 0 0;
   font: var(--text-body-size);
   color: var(--text-body);
 }
 
-/*
- * The wire namespace that does not exist, as a machine handle. Mono because it is a handle; the
- * sentence above it is what a person reads. Never the only thing on the card — that is the
- * package-id rule, applied in the direction it points.
- */
+/* The wire namespace that does not exist, as a machine handle. */
 .unbuilt-handle {
-  margin: var(--space-7) 0 0;
-  padding-top: var(--space-5);
+  margin: 16px 0 0;
+  padding-top: 12px;
   border-top: 1px solid var(--hairline);
   align-self: stretch;
   font-size: 11px;
-  color: var(--text-meta);
-}
-
-/* A dock tile for a screen with nothing behind it: desaturated, and named in its tooltip. It keeps
- * the design's five-tile dock without implying that all five work. */
-.dock-tile.unbuilt {
-  background: rgba(var(--overlay-rgb), 0.04);
-  border-color: var(--hairline);
   color: var(--text-meta);
 }
 

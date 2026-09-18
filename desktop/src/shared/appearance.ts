@@ -64,10 +64,10 @@ function asAppearance(value: unknown): Appearance {
  * and they have to be kept in step with `tokens.css` by hand; `check-color-tokens.mjs` asserts
  * that they are, because "keep these in step" is otherwise a rule enforced by someone remembering.
  */
-const WINDOW_GROUND: Record<Theme, string> = { dark: '#07070a', light: '#fafafc' };
+const WINDOW_GROUND: Record<Theme, string> = { dark: '#0a0a0a', light: '#f4f4f7' };
 
 /** The float window's ground — `--float-canvas`, same argument as above. */
-const FLOAT_GROUND: Record<Theme, string> = { dark: '#0b0c12', light: '#f4f4f8' };
+const FLOAT_GROUND: Record<Theme, string> = { dark: '#0a0a0a', light: '#f4f4f8' };
 
 if (typeof globalThis !== 'undefined') {
   const g = globalThis as Record<string, unknown>;

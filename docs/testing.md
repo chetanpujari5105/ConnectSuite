@@ -20804,3 +20804,101 @@ with the phone off the network, or with discovery disabled.
 cleared → connected sequence did run end to end, but against the throwaway simulation identity and
 with a scan the agent did not make — so it is evidence that the mechanism works on hardware, not the
 approved test. Stimulus for the real one: scan this Mac's own pairing code → `Connected`.
+
+## Sidekick Batch 1 — the shell, 2026-09-19
+
+Built against the approved Figma file: Foundations `28:543`, Nav row `28:915`, Status pill `28:932`,
+Buttons `28:956`/`28:970`, Iconography `36:18762`, Brand `61:24256`, shell of frame `6:2`.
+Departures D13–D20 in `docs/design-departures.md`.
+
+**No Figma render was taken in the closing sitting.** The Figma MCP returned its Starter-plan
+call limit on the first `get_screenshot` of `6:2`, so the comparison below is against the file's
+**numbers** — the Foundations values and the geometry in `docs/sidekick-figma-handoff.md` §2–§4,
+§13, and the component values recorded in D13–D18 — not a pixel overlay. A side-by-side against
+`6:2` is owed and needs one call.
+
+### Measured, 1440 × 980 (Figma's frame size), through `probe.mjs` (control: 12 nav rows)
+
+| | built | Figma / handoff |
+|---|---|---|
+| sidebar | **232** × 980 | 232 |
+| content column | title at **x = 260** | 232 + 28 gutter = 260 |
+| lockup | mark (20, 46) in a 65 × 30 box, 57 × 30 drawn, 12px to the device card | 148 × 30, **12px below** (§13); y lowered for the traffic lights (D15) |
+| nav rows | 204 × 36, pitch **36, 36, 36, 36**, x = 14 | 204 × 36 |
+| active row | lime 14%, weight 500, glyph `rgb(198, 255, 51)` | lime 10–14%, lime glyph |
+| group labels | `MENU` / `SYSTEM` **10 / 500**, +0.06em | Micro 10 / 500 |
+| page title | `600 31px/36px` at (260, 32) | Display 31 / 600 / 36 |
+| Search | 124 × 32, `#1A1A1A`, right edge 1412 on Overview | toolbar button 32, `--control`, content width 1152 |
+| island | 26 tall at y = 7, centred on the window (x 650–789), lime 12% | Status pill `28:932`, D14 |
+| dock / ambient blobs | **0 / 0** | none (§4) |
+
+### ⌘K — one palette, two entry points
+
+Real window, ⌘K sent as a **CDP `Input.dispatchKeyEvent`**, not a synthetic JS event. Control:
+closed at start, `aria-expanded="false"`.
+
+| | open | focus | `aria-expanded` | options | active descendant |
+|---|---|---|---|---|---|
+| click Search | yes | `palette-input` | true | 20 | `palette-option-0` |
+| Escape | no | **`open-palette`** (returned) | false | — | removed |
+| ⌘K | yes | `palette-input` | true | 20 | `palette-option-0` |
+| Tab inside | yes | `palette-input` (held) | true | 20 | `palette-option-0` |
+
+Search carries `aria-haspopup="dialog"`, `aria-controls`, `aria-keyshortcuts="Meta+K"`; the input
+is a `combobox` over the `listbox`. `src/renderer/shellPalette.test.ts` (5 tests) drives the real
+`ShellView` and asserts the click and ⌘K open states are **equal field by field**. Red-first:
+a Search click that only unhides the panel → 3 red; no focus return → 1 red; no Tab trap → 1 red.
+
+### Brand art through the Electron pipeline
+
+`LOGOS/` → `desktop/scripts/derive-brand.mjs` (macOS `sips`, run by hand) →
+`src/renderer/assets/brand/` → `copy-assets.mjs` → `dist/renderer/assets/` → `dist/**/*` in
+`electron-builder.yml`. **Packaged, measured:** `npm run dist:dir`, the asar lists all six files,
+`mark@2x.png` extracted from it is byte-identical to source, and the packaged app's own renderer
+loads it (`naturalWidth 57 × 30`, from `app.asar/dist/renderer/assets/brand/mark@2x.png`) —
+`docs/evidence/sidekick-batch1/packaged-overview-dark.png`. `brandAssets.test.ts` (5 tests):
+wrong path → 2 red; an alpha > 0 crop → 1 red; no assets copy → 1 red.
+
+### Reduced transparency — measured with `Emulation.setEmulatedMedia`, off as the control
+
+Dark: sidebar `rgba(15,15,15,0.82)` + blur → **`rgb(15,15,15)`**, no filter; palette and toast →
+`#161616`; standard cards stay `#161616`. Light: sidebar → `#f7f7f9` (`--chrome`), palette and
+toast → `#ffffff`.
+
+### Guards that moved, and why
+
+`check-contrast.mjs` META_HI 3.6 → 4.0 (D19); `appearance.ts` WINDOW_GROUND / FLOAT_GROUND follow
+the new `--canvas` (the colour guard caught both); `icons.test.ts`'s stroke test asserts Figma's
+1.4 / 1.6 instead of the old 1.5–1.7 range.
+
+### Found while measuring — four product faults, four instrument faults
+
+Product:
+- The ⌘K input drew a boxed control inside the field: styles.css's `input[type='text']` (0,1,1)
+  loads later and won at equal specificity. The shell rule is `.palette .palette-field input`.
+- The active nav glyph used the lime *fill* in light, faint on the pale pill; it takes
+  `--nav-active-glyph` now.
+- **The sidebar was 233px to make its content 232**, which moved the whole content column to
+  x = 261. The hairline is an inset shadow now; both numbers are Figma's.
+- **Reduced transparency drew every card as a selected one**: all translucent surfaces went to
+  `--elev-3`, the raised grey, and the palette, toast and tooltips were never listed at all.
+
+Instrument (none became a finding):
+- **`head_logo.png`'s alpha > 0 bounds include an invisible haze.** At alpha > 0 the mask is
+  1719 × 799 (2.15 : 1, the handoff §13 figure); above alpha 4 it is **1515 × 797 (1.90 : 1)**,
+  unchanged to alpha 128. Read at > 0, the correct 114 × 60 mark looked horizontally squashed and
+  was nearly "fixed" into a stretched one. The derive script and the test use the visible bounds.
+- The island read olive (`rgba(158,214,0,0.12)`, the light value) in dark: read inside the 180ms
+  cross-fade straight after a theme switch. Settled on **both** the theme and the colour, it is
+  lime. The two-clock rule, again.
+- `querySelector('.card')` returned the **hidden** pairing card (`#1C1C1C`, primary). The visible
+  panes' cards are `#161616`.
+- The packaged app read as an **empty document** (39 bytes of HTML, 0 nav rows) 6–10 s after a
+  first launch of the freshly ad-hoc-signed bundle, and complete at 20 s. A missing reading, not a
+  broken package.
+- `shellPalette.test.ts`'s first harness required `shell.ts` cached and then constructed a second
+  `ShellView`: the first mount had two shells on one document and "focused the input twice".
+
+Screenshots, 1440 × 980 @2x, `docs/evidence/sidekick-batch1/`: `overview-dark-1440x980`,
+`overview-light-1440x980`, `mirror-dark-1440x980`, `palette-dark-1440x980`,
+`packaged-overview-dark`.

@@ -13,3 +13,6 @@ await mkdir(resolve(root, 'dist/renderer'), { recursive: true });
 for (const asset of ['index.html', 'tokens.css', 'shell.css', 'styles.css', 'float.html', 'float.css']) {
   await cp(resolve(root, 'src/renderer', asset), resolve(root, 'dist/renderer', asset));
 }
+// The Sidekick brand art, derived from `LOGOS/` at 2x and 3x (the originals are never loaded at
+// runtime and never edited). A directory rather than a list entry, so a new size cannot be forgotten.
+await cp(resolve(root, 'src/renderer/assets'), resolve(root, 'dist/renderer/assets'), { recursive: true });

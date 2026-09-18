@@ -244,6 +244,18 @@ export class FakeElement {
     this.focusCount += 1;
   }
 
+  /** How many times [scrollIntoView] was called. Storage only — the double has no layout. */
+  scrollCount = 0;
+
+  /**
+   * Records that a scroll was asked for; it moves nothing. Added for the ⌘K palette's arrow keys,
+   * which keep the active option in view. Whether anything actually scrolled is layout, which this
+   * file does not have.
+   */
+  scrollIntoView(_options?: unknown): void {
+    this.scrollCount += 1;
+  }
+
   /** Storage, like the layout numbers. The double has no selection model. */
   setSelectionRange(start: number, _end: number): void {
     this.selectionStart = start;

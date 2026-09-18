@@ -1,7 +1,7 @@
 /**
  * The shell's route table and its ⌘K palette, as data. Nothing here touches the DOM.
  *
- * The shell itself — sidebar, pill, island, dock, palette — is `shell.ts`, and it draws whatever
+ * The shell itself — sidebar, pill, island, palette — is `shell.ts`, and it draws whatever
  * this file says. The split is the testable-seam rule: what the palette *ranks*, which screens
  * exist, and which of them are honest are all decisions with a right answer, and they are asserted
  * in `navModel.test.ts` against this file rather than against a screenshot of the sidebar.
@@ -577,22 +577,6 @@ function screenById(id: string): NavScreen | undefined {
   return id === PAIRING_SCREEN.id ? PAIRING_SCREEN : SCREENS.find((s) => s.id === id);
 }
 
-/**
- * The five dock tiles, in the handoff's order, with its tints.
- *
- * Colour is carried here rather than in CSS because the dock is the one place the design assigns a
- * *per-feature* hue that appears nowhere else, and five hex values scattered across a stylesheet
- * are five values that drift. Files and Camera are dock tiles for screens that are unbuilt: the
- * dock is the design's, and a tile that opens an honest empty screen is better than a dock with
- * holes in it that has to be explained.
- */
-const DOCK: { id: string; label: string; icon: string; tint: string }[] = [
-  { id: 'mirror', label: 'Mirror', icon: 'mirror', tint: 'var(--tint-violet-rgb)' },
-  { id: 'files', label: 'Files', icon: 'files', tint: 'var(--tint-blue-rgb)' },
-  { id: 'messages', label: 'Messages', icon: 'messages', tint: 'var(--tint-green-rgb)' },
-  { id: 'calls', label: 'Calls', icon: 'calls', tint: 'var(--tint-cyan-rgb)' },
-  { id: 'camera', label: 'Camera', icon: 'camera', tint: 'var(--tint-pink-rgb)' },
-];
 
 /**
  * The Mirror tool rail, and the six global actions under the stage.
@@ -641,13 +625,11 @@ function iconNamesUsedByTheShell(): string[] {
   return [
     ...SCREENS.map((s) => s.icon),
     PAIRING_SCREEN.icon,
-    ...DOCK.map((d) => d.icon),
     ...TOOL_RAIL.map((t) => t.icon),
     ...GLOBAL_ACTIONS.map((g) => g.icon),
     'search',
     'device-settings',
     'detach',
-    'dots',
     'phone',
     'close',
     'check',
@@ -710,7 +692,6 @@ if (typeof module !== 'undefined') {
     PAIRING_SCREEN,
     COMMANDS,
     DEEP_LINKS,
-    DOCK,
     TOOL_RAIL,
     GLOBAL_ACTIONS,
     iconNamesUsedByTheShell,

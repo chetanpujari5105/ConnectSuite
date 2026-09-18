@@ -1067,3 +1067,35 @@ preview, the Media remote, Recent activity, the Battery and Storage cards, and C
 Five Overview frames exist and **four of them are connection states** — Connected, Connecting,
 Degraded, Disconnected. The fifth, *Connected · Media playing*, is a **content variant of Connected**
 and must never be documented or implemented as a connection state of its own.
+
+---
+
+## Sidekick Batch 1 — the shell, built against the Figma file — 2026-09-19. Rows D13–D20
+
+**Built, not drawn.** These record where the running shell differs from the approved Figma file
+(`sidekick-mac-app-ui`, shell of frame `6:2`, components on page `28:866`) on purpose. Authority:
+the owner's Batch 1 decisions 1–7; where a screen frame and the component library disagree, the
+component library wins.
+
+| Row | Figma | Built | Why |
+|---|---|---|---|
+| **D13** | 45 glyphs in Iconography `36:18762`; the handoff says to use the named SF Symbol, not a trace of the Figma glyph | The 45 glyphs are the **Figma file's own vectors**, read from each 20px master through the Plugin API and written into `icons.ts`; the 22 marks Figma does not draw (media transport, Android global actions, device metrics, capture) keep their hand-drawn geometry on a 24-unit grid. One 1.4px screen stroke for both grids (1.6 at 12–14px) | SF Symbols may not be traced, embedded or redistributed (decision 6). The Figma glyphs are original drawings made in this project's file in the SF style, so using them verbatim is both licence-safe and pixel-exact to the approved design |
+| **D14** | No status island in any frame | Kept, restyled as the **Status pill** (`28:932`), centred in the title-bar band level with the traffic lights | Decision 2: it is the window's live region (`role="status"`), and a pill is the component the file already uses for exactly this fact |
+| **D15** | Lockup at x20, y18 — where the real macOS traffic lights sit | Lockup lowered to y46, below the traffic lights; traffic lights untouched at y20 | Decision 3. The Figma frames draw no traffic lights, so they place the lockup where the real ones are |
+| **D16** | Header: *Search ⌘K* and *Device settings* only | The `…` overflow button that routed to Settings → Advanced is removed; Advanced remains in the Settings rail | The frame draws two controls, and the destination is one click away where it belongs |
+| **D17** | No dock; flat opaque ground | The bottom dock (five tiles and the raised ⌘K circle, V7) and the ambient violet/cyan/teal blobs are deleted | Handoff §2 and §4: "There is no dock and no bottom bar", and Material: "Flat, opaque charcoal". ⌘K stays in the header and on the keyboard |
+| **D18** | Frame `6:2` sidebar: rows 34 / r8 / lime 15%, labels `#8C8F9E`; header controls `#161821` | Rows 36 / r10 / lime 14%, labels `#9A9CA8`; header controls `--control` `#1A1A1A` | Decision 1: the Nav row component and the Foundations palette win over an inconsistent frame, and no near-duplicate greys or blue-cast charcoal enter the token set |
+| **D19** | Meta text `#6B6E7A` | Drawn as specified; `check-contrast.mjs`'s meta band upper bound raised 3.6 → 4.0 | The old 3.6 was the superseded ConnectSuite handoff's band. `#6B6E7A` measures 3.36–3.90:1 on the new surfaces, still half of body copy. The lower bound — the direction meta actually drifts — is unchanged |
+| **D20** | No reduced-transparency or reduced-motion variant is drawn | Reduced transparency makes each translucent surface its own opaque colour — chrome `--chrome`, floating panels `--elev-2` — never the raised grey; reduced motion keeps opacity fades | The handoff §8 asks for both behaviours and the file draws neither, so the values are the Foundations' own opaque tokens rather than new ones |
+
+
+**Corrected to the file, not departures:** the sidebar is 232 (it was 233, which put the content at
+x = 261); the lockup sits 12px above the device card (§13; it was 20); group labels are Micro 10/500
+(they were 600); the media card's frozen ground and the contact card are Foundations charcoal (they
+were a blue-cast navy, `#1a1d27` and `#17171d`, which the Foundations exclude).
+
+**Also changed app-wide by the token re-valuation, as the handoff's rows 1–3 require:** connected
+is lime (the `#32E58A` green is gone), the category tints resolve to one neutral, cards are opaque
+(`--material-card-filter: none`), card radius is 14 and the hero keeps 20. Panes not yet rebuilt
+(Batches 2–5) inherit the new palette through their existing token names; their layouts are
+unchanged until their batch.

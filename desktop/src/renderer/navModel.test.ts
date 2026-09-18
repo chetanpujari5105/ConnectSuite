@@ -23,7 +23,6 @@ const {
   PAIRING_SCREEN,
   COMMANDS,
   DEEP_LINKS,
-  DOCK,
   TOOL_RAIL,
   GLOBAL_ACTIONS,
   iconNamesUsedByTheShell,

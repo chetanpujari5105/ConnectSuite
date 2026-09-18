@@ -28,18 +28,6 @@
     -->
     <div class="app-window">
       <!--
-        The ambient ground: a radial violet-to-black field with three blurred blobs drifting behind
-        the chrome. The handoff calls this "the only place gradient appears as a field" — there are
-        no gradient buttons anywhere in this app, and the one screenshot that drew one is the
-        superseded iteration. pointer-events:none so it never eats a click.
-      -->
-      <div class="ambient" aria-hidden="true">
-        <span class="blob blob-violet"></span>
-        <span class="blob blob-cyan"></span>
-        <span class="blob blob-teal"></span>
-      </div>
-
-      <!--
         The status island. Top-centre, over the chrome, which is why the content column reserves a
         60px title-bar band beneath it — without that reservation the island lands on the 31px page
         title. Its text comes from real session events only; see ShellView.setIsland.
@@ -63,13 +51,18 @@
           -->
           <div class="traffic-row" aria-hidden="true"></div>
 
+          <!--
+            The Sidekick lockup: the mask from LOGOS/head_logo.png (derived at 2x and 3x into
+            assets/brand/, never loaded from LOGOS/ at runtime) plus the word in the product type.
+            Neither supplied file contains the word, so this is the lockup the Figma component
+            `61:24256` draws. It sits below the real traffic lights rather than beside them.
+          -->
           <div class="brand">
-            <span class="brand-glyph" id="brand-glyph"></span>
+            <img class="brand-mark" src="assets/brand/mark@2x.png" srcset="assets/brand/mark@2x.png 2x, assets/brand/mark@3x.png 3x" width="65" height="30" alt="" />
             <span class="brand-name">Sidekick</span>
           </div>
 
           <div class="sidebar-group">
-            <div class="group-header">Device</div>
             <!--
               The device card. Every field is live: the name is the phone's own, the dot and the
               word beside it are the link phase, and the battery is mono because it changes. When
@@ -119,7 +112,6 @@
                 -->
                 <div class="account-sub mono" id="account-sub">This Mac</div>
               </div>
-              <span class="pro-pill">LOCAL</span>
             </div>
           </div>
         </aside>
@@ -131,10 +123,10 @@
               <p class="page-sub" id="page-sub"></p>
             </div>
             <div class="toolbar" id="toolbar">
-              <button type="button" class="toolbar-button" id="open-palette">
+              <button type="button" class="toolbar-button" id="open-palette" aria-haspopup="dialog" aria-controls="palette" aria-expanded="false" aria-keyshortcuts="Meta+K">
                 <span class="tb-icon" id="tb-search-icon" aria-hidden="true"></span>
                 <span>Search</span>
-                <span class="mono tb-key">⌘K</span>
+                <span class="mono tb-key" aria-hidden="true">⌘K</span>
               </button>
               <button type="button" class="toolbar-button" id="open-device-settings">
                 <span class="tb-icon" id="tb-device-icon" aria-hidden="true"></span>
@@ -153,9 +145,6 @@
                 <span class="float-dot hidden" id="mirror-float-dot" aria-hidden="true"></span>
                 <span class="tb-icon accent" id="tb-detach-icon" aria-hidden="true"></span>
                 <span id="mirror-float-label">Floating window</span>
-              </button>
-              <button type="button" class="toolbar-button icon-only" id="open-overflow" aria-label="More">
-                <span class="tb-icon" id="tb-dots-icon" aria-hidden="true"></span>
               </button>
             </div>
           </header>
@@ -850,12 +839,10 @@
             </section>
           </div>
 
-          <!-- The dock. Five 36px tiles, generated from navModel.DOCK. -->
-          <div class="dock" id="dock" role="toolbar" aria-label="Quick access"></div>
         </main>
       </div>
 
-      <!-- Bottom-centre, above the dock. One line, auto-dismissed at 2.4s. -->
+      <!-- Bottom-centre. One line, auto-dismissed at 2.4s. -->
       <div class="toast" id="toast" role="status" aria-live="polite" hidden>
         <span class="toast-dot" aria-hidden="true"></span>
         <span class="toast-text" id="toast-text"></span>
@@ -871,10 +858,10 @@
         <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
           <div class="palette-field">
             <span class="palette-icon" id="palette-icon" aria-hidden="true"></span>
-            <input id="palette-input" type="text" placeholder="Jump to a screen or run a command" autocomplete="off" spellcheck="false" />
+            <input id="palette-input" type="text" role="combobox" aria-label="Search screens and commands" aria-expanded="true" aria-controls="palette-results" aria-autocomplete="list" placeholder="Jump to a screen or run a command" autocomplete="off" spellcheck="false" />
             <span class="mono palette-esc">esc</span>
           </div>
-          <div class="palette-results" id="palette-results" role="listbox"></div>
+          <div class="palette-results" id="palette-results" role="listbox" aria-label="Results"></div>
         </div>
       </div>
     </div>

@@ -97,12 +97,11 @@ test('control_the grid check can see an icon drawn on the wrong grid', () => {
   );
 });
 
-test('stroke weight stays inside the handoff range of 1.5 to 1.7', () => {
-  // Every size the shell actually renders at, plus the ends.
-  for (const size of [12, 14, 15, 16, 17, 20, 24, 64]) {
-    const stroke = strokeForSize(size);
-    assert.ok(stroke >= 1.5 && stroke <= 1.7, `${size}px got a ${stroke} stroke`);
-  }
+test('stroke weight is Figma\'s 1.4 Regular, and 1.6 only at 12–14px', () => {
+  // Every glyph in Figma `36:18762` is stroked at 1.4px whatever its frame size; the handoff allows
+  // a heavier weight only "where clarity is at risk at 12–14 px".
+  for (const size of [15, 16, 17, 18, 20, 24, 32, 64]) assert.equal(strokeForSize(size), 1.4, `${size}px`);
+  for (const size of [12, 13, 14]) assert.equal(strokeForSize(size), 1.6, `${size}px`);
 });
 
 test('a smaller icon gets a heavier stroke, never a lighter one', () => {

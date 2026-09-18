@@ -31,13 +31,20 @@
    * down", which is why the handoff says so and why it is repeated here where someone reaching for
    * a colour will actually see it.
    */
-  --canvas: #07070a;
+  /*
+   * **Sidekick Foundations, Figma `28:543` — 2026-09-19.** Every value below that the Figma file
+   * specifies is marked `FIGMA`; where the file's screen frames disagree with its component library,
+   * the component library wins (owner's decision 1). Token *names* are the build's existing ones,
+   * re-valued, so every pane re-skins without a selector changing; the Figma role names are added
+   * as aliases further down for the components rebuilt against them.
+   */
+  --canvas: #0a0a0a;                         /* FIGMA ground */
 
   /* Elevation is hairline + shadow + inner highlight, never a heavier fill. */
-  --elev-1: rgba(14, 15, 21, 0.72);          /* chrome: sidebar, status island, ⌘K panel */
-  --elev-2: rgba(22, 24, 34, 0.82);          /* the default panel surface */
-  --elev-3: #1c1f2b;                         /* the ONE primary card per screen, at most */
-  --control: #161822;                        /* buttons, inputs, tiles */
+  --elev-1: rgba(15, 15, 15, 0.82);          /* FIGMA chrome #0F0F0F, translucent: blur(30) sat(1.4) */
+  --elev-2: #161616;                         /* FIGMA card — opaque; content never blurs */
+  --elev-3: #1c1c1c;                         /* FIGMA card raised — nested / selected */
+  --control: #1a1a1a;                        /* FIGMA control — buttons, inputs, tiles */
 
   /*
    * The recessed surface — a *well*, below elevation 2 rather than above it.
@@ -51,7 +58,7 @@
    * This build already used the value, hardcoded, in `.diagnostics` and `.log-tail`. Naming it is
    * what stops the fifth use inventing `#111218`.
    */
-  --well: #111219;
+  --well: #111111;                           /* DERIVED — recessed, between ground and card */
 
   /*
    * The panel *material* — elevation 2 made genuinely translucent, with blur, so a card over the
@@ -62,24 +69,26 @@
    * The primary card stays opaque `--elev-3` so it reads as *nearer*. Nothing translucent is ever
    * stacked on this: controls inside a card are opaque `--control`.
    */
-  --material-card: rgba(22, 24, 34, 0.62);
-  --material-card-filter: blur(24px) saturate(1.3);
+  /* FIGMA Material: "Flat, opaque charcoal. Chrome is the only translucent layer. No glass on glass."
+     The card material is therefore the opaque card, and its filter is none. */
+  --material-card: #161616;
+  --material-card-filter: none;
   --hairline: rgba(255, 255, 255, 0.08);
-  --hairline-hover: rgba(255, 255, 255, 0.14);
-  --inner-highlight: rgba(255, 255, 255, 0.05);
+  --hairline-hover: rgba(255, 255, 255, 0.12); /* FIGMA — 12% on a raised surface */
+  --inner-highlight: rgba(255, 255, 255, 0.04);
 
   /* Elevation 3 carries a *stronger* hairline and lit edge than elevation 2. Measured off the
    * prototype rather than inferred: its primary cards read `rgba(255,255,255,.10)` on the border
    * and `.07` on the inset, against `.08` and `.05` on a panel. It is two hundredths of an alpha
    * and it is a third of what makes the primary card read as primary — the other two thirds are
    * the opaque #1c1f2b fill and the deeper shadow. */
-  --hairline-primary: rgba(255, 255, 255, 0.1);
+  --hairline-primary: rgba(255, 255, 255, 0.12);
   --inner-highlight-primary: rgba(255, 255, 255, 0.07);
 
-  --text-primary: #f4f4f7;                   /* headings, values          — 15.4:1 on --elev-2 */
-  --text-body: #9c9fb0;                      /* body copy, secondary      —  6.6:1, clears AA  */
-  --text-meta: #5b5e6e;                      /* 10–11px meta ONLY         —  2.6:1, never body */
-  --text-on-control: #e7e7ee;                /* button labels, list rows */
+  --text-primary: #f2f3f5;                   /* FIGMA — titles, values */
+  --text-body: #9a9ca8;                      /* FIGMA text-secondary — body */
+  --text-meta: #6b6e7a;                      /* FIGMA — labels, timestamps, captions */
+  --text-on-control: #e6e7ea;                /* DERIVED — button labels, list rows */
 
   /*
    * The accent — `#8b6bff`, the design's value, **restored on 2026-09-16 after a year-dated note in
@@ -123,7 +132,7 @@
    */
   --accent: #c6ff33;                         /* selected state, primary action fill */
   --accent-text: #d8ff70;                    /* accent text and icons — lighter, for contrast */
-  --accent-tint: rgba(198, 255, 51, 0.13);
+  --accent-tint: rgba(198, 255, 51, 0.12);   /* FIGMA — status pill fill */
   /*
    * The fill behind *the thing you are currently on* — nav pill, Settings rail tab, notification
    * filter pill. One value, because it is one role.
@@ -139,7 +148,7 @@
    * it became a colour nothing draws. A token kept "in case" is a second answer to a question that
    * now has one.
    */
-  --accent-tint-selected: rgba(198, 255, 51, 0.15);
+  --accent-tint-selected: rgba(198, 255, 51, 0.14); /* FIGMA — nav Active */
   --accent-border: rgba(198, 255, 51, 0.3);
   --accent-glow: rgba(198, 255, 51, 0.2);
   /*
@@ -153,16 +162,16 @@
    * the ratio rather than the verdict. In **light** the fill darkens to `#5b4ae0` and this token
    * flips to white, at 6.00:1 — the same decision re-made, not the same value reused.
    */
-  --accent-on-fill: #0b0b12;
+  --accent-on-fill: #0b1002;                 /* FIGMA — text on lime */
 
-  --secondary: #22d3ee;                      /* secondary data accent */
-  --live: #32e58a;                           /* connection state, LIVE badge, success — 11.30:1 on --well */
-  --warning: #f5b23d;                        /* weak link, paused, and capability-unavailable */
-  --warning-fill: rgba(245, 178, 61, 0.1);
-  --warning-border: rgba(245, 178, 61, 0.3);
-  --destructive: #ff5d5d;                    /* destructive and failed ONLY — 6.20:1 on --well */
-  --destructive-fill: rgba(255, 93, 93, 0.1);
-  --destructive-border: rgba(255, 93, 93, 0.3);
+  --secondary: #9c9eb0;                      /* was cyan; FIGMA has no second hue — now --unknown */
+  --live: #c6ff33;                           /* FIGMA — connected is lime; the green is gone (D1) */
+  --warning: #ffb547;                        /* FIGMA — degraded, limited, low */
+  --warning-fill: rgba(255, 181, 71, 0.12);
+  --warning-border: rgba(255, 181, 71, 0.3);
+  --destructive: #ff5c5c;                    /* FIGMA — disconnected, failed, destructive */
+  --destructive-fill: rgba(255, 92, 92, 0.14);
+  --destructive-border: rgba(255, 92, 92, 0.34);
 
   /*
    * ---- What a hue is allowed to mean (the native-macOS pass, 2026-09-17; amended the same day) --
@@ -227,24 +236,24 @@
    */
   --overlay-rgb: 255, 255, 255;
 
-  --surface-island: rgba(12, 13, 18, 0.72);      /* the status island */
-  --surface-raised: rgba(12, 13, 18, 0.9);       /* dock tooltip, float tooltip */
-  --surface-strip: rgba(22, 24, 34, 0.66);       /* DUP of --elev-2 at a different alpha */
+  --surface-island: rgba(15, 15, 15, 0.82);      /* the status island — chrome */
+  --surface-raised: rgba(22, 22, 22, 0.94);      /* toast, float tooltip */
+  --surface-strip: #161616;                      /* the device strip — an opaque card */
   /* The Overview footer strip. Renamed from --surface-quick-tile on 2026-09-16 when Quick
      actions was deleted and the strip became its only reader — a token named after a deleted
      component is a false lead for whoever greps for it next. Still a DUP of --surface-strip
      at .60 against .66, and still marked so, because merging them changes a drawn value and
      that is a decision to take deliberately rather than inside a rename. */
-  --surface-overview-strip: rgba(22, 24, 34, 0.6);
-  --surface-palette: rgba(20, 21, 29, 0.9);      /* the ⌘K panel */
-  --surface-titlebar: rgba(18, 20, 28, 0.94);    /* the float window's title bar */
-  --surface-tooltip: rgba(16, 16, 20, 0.82);     /* DUP — styles.css's own tooltip */
-  --surface-tooltip-strong: rgba(20, 20, 26, 0.92);
-  --surface-contact: #17171d;                    /* the contact card */
-  --surface-contact-hover: #1d1d25;
-  --border-contact: #2a2a33;
-  --float-canvas: #0b0c12;                       /* the float window ground — see main/float.ts */
-  --scrim: rgba(4, 4, 8, 0.5);                   /* behind the ⌘K panel */
+  --surface-overview-strip: #161616;
+  --surface-palette: rgba(18, 18, 18, 0.9);      /* the ⌘K panel — chrome */
+  --surface-titlebar: rgba(16, 16, 16, 0.94);    /* the float window's title bar */
+  --surface-tooltip: rgba(16, 16, 16, 0.86);     /* styles.css's own tooltip */
+  --surface-tooltip-strong: rgba(20, 20, 20, 0.94);
+  --surface-contact: #1c1c1c;                    /* the contact card — FIGMA card raised */
+  --surface-contact-hover: #222222;              /* DERIVED — one step up, no blue cast */
+  --border-contact: #2a2a2a;
+  --float-canvas: #0a0a0a;                       /* the float window ground — see main/float.ts */
+  --scrim: rgba(0, 0, 0, 0.5);                   /* behind the ⌘K panel */
 
   /*
    * A scrim sitting over a **photograph** stays dark in both themes, and its text stays white.
@@ -275,7 +284,7 @@
    * accent and kept the white, which is how a pair the design got right became a failure.
    * In light it goes opaque: at .9 over a white card the ground shows through and it drops to 4.05.
    */
-  --bubble-out: rgba(107, 90, 240, 0.9);         /* 5.55:1 with --text-on-bubble */
+  --bubble-out: #2a2d33;                         /* no violet in the system; a raised charcoal block */
   --text-on-bubble: #ffffff;
 
   /*
@@ -300,17 +309,16 @@
    * ordinary tokens; there is no second dark island in this app and there should not be.
    */
   /*
-   * The ground, moved onto the **hero's colour family** on 2026-09-16. It was `#191a21`/`#1e1f28`,
-   * a neutral charcoal, and beside `--elev-3` (`#1c1f2b`, a cool navy) the two cards read as two
-   * materials in one row. Same hue as the hero now, still frozen across themes for the reason this
-   * whole block exists — the values are dark-mode's, deliberately, because this surface does not
-   * invert.
+   * The ground. On 2026-09-16 it moved onto the old hero's navy family so it matched a navy
+   * `--elev-3`; on 2026-09-19 the Sidekick Foundations removed every blue-cast charcoal, so it is
+   * the card and card-raised greys now — the same material as every other card, still frozen across
+   * themes for the reason this whole block exists: this surface does not invert.
    */
-  --np-surface: #1a1d27;                     /* the card ground — the hero's navy family */
-  --np-surface-top: #20242f;                 /* its lit top edge, for the vertical sheen */
-  --np-text: #f4f4f7;                        /* title — 14.6:1 on --np-surface */
-  --np-text-dim: #9fa2b3;                    /* artist, device name — 6.6:1 */
-  --np-text-meta: #73768a;                   /* the two clocks — 3.6:1, the design's meta band */
+  --np-surface: #161616;                     /* FIGMA card — the navy family is gone (Batch 1) */
+  --np-surface-top: #1c1c1c;                 /* FIGMA card raised — the top of the vertical sheen */
+  --np-text: #f2f3f5;                        /* FIGMA text-primary */
+  --np-text-dim: #9a9ca8;                    /* FIGMA text-secondary */
+  --np-text-meta: #6b6e7a;                   /* FIGMA text-meta — the two clocks */
   --np-control: rgba(255, 255, 255, 0.06);   /* transport fill */
   --np-control-hover: rgba(255, 255, 255, 0.11);
   --np-hairline: rgba(255, 255, 255, 0.11);  /* the transport ring and the device pill */
@@ -327,7 +335,7 @@
   --fill-on-bubble: rgba(0, 0, 0, 0.18);
 
   /* The primary action's hover. A darkening of --accent, and it moves when the accent moves. */
-  --accent-hover: #b0eb2b;
+  --accent-hover: #d4ff4a;                   /* FIGMA — hover lightens */
 
   /*
    * The hero gradient — lime into a deep green, diagonal, for the Overview connection-status card
@@ -347,9 +355,9 @@
   --switch-knob: #ffffff;
 
   /* The brand gradient — violet into teal, on the connected hero and the ⌘K brand mark. */
-  --brand-grad-1: #2b1f52;
-  --brand-grad-2: #123043;
-  --brand-grad-3: #0f2a2f;
+  --brand-grad-1: #1c1c1c;                   /* D2 — the violet/teal brand field is gone */
+  --brand-grad-2: #161616;
+  --brand-grad-3: #121212;
   /* The notch pill on the Overview's phone render — the handoff's rgba(0,0,0,.5) over the gradient. */
   --hero-phone-notch: rgba(0, 0, 0, 0.5);
 
@@ -370,17 +378,20 @@
    * light surface — solved, not chosen, and the green lands on #1b7c4b, which is independently
    * where --live had to go. One number, seven colours, both themes.
    */
-  --tint-violet-rgb: 139, 107, 255;
-  --tint-blue-rgb: 96, 165, 250;
-  --tint-teal-rgb: 45, 212, 191;
-  --tint-amber-rgb: 245, 178, 61;
-  --tint-green-rgb: 50, 229, 138;
-  --tint-cyan-rgb: 34, 211, 238;
-  --tint-pink-rgb: 244, 114, 182;
+  /* D2: **no category colour anywhere**. The violet, blue, teal, cyan and pink category hues all
+     resolve to one neutral; amber and red keep their state meanings and green becomes lime. The
+     names survive so no call site changes — Batch 5 deletes the category readers themselves. */
+  --tint-violet-rgb: 156, 158, 176;
+  --tint-blue-rgb: 156, 158, 176;
+  --tint-teal-rgb: 156, 158, 176;
+  --tint-amber-rgb: 255, 181, 71;
+  --tint-green-rgb: 198, 255, 51;
+  --tint-cyan-rgb: 156, 158, 176;
+  --tint-pink-rgb: 156, 158, 176;
   /* Failure, as a *tint* rather than as --destructive. The eighth of a set that is hues and
      not drawn colours: --tint-darken adapts it for light like the other seven. It matches
      --destructive's channels on purpose — one red in this app, two roles for it. */
-  --tint-red-rgb: 255, 93, 93;
+  --tint-red-rgb: 255, 92, 92;
   --tint-grey-rgb: 156, 159, 176;                /* the uncategorised dot */
   --tint-darken: 0%;
 
@@ -430,10 +441,11 @@
    * Before this, four ratios here plus the body's inherited 1.5 put fourteen anchors out by up to
    * 8.5px, in both directions.
    */
-  --text-page-title: 600 31px/35.65px var(--font-ui);
-  --text-section: 600 15px/16px var(--font-ui);
-  --text-card-title: 600 21px/23px var(--font-ui);
-  --text-body-size: 500 13.5px/1.5 var(--font-ui);
+  /* FIGMA Foundations — Type (`28:674`). Display 31/36, Title 21/26, Section 15/20, Body 13.5/20. */
+  --text-page-title: 600 31px/36px var(--font-ui);
+  --text-section: 600 15px/20px var(--font-ui);
+  --text-card-title: 600 21px/26px var(--font-ui);
+  --text-body-size: 400 13.5px/20px var(--font-ui);
   --text-control: 500 13px/14px var(--font-ui);
   --text-meta-size: 500 11px/12px var(--font-ui);
   /*
@@ -443,7 +455,7 @@
    * is where 11.5–12 lands — secondary lines under a row title, chip labels, ring captions. Tracking
    * is a hundredth positive because small text wants it (Apple, *Details of UI Typography*).
    */
-  --text-caption: 500 12px/15px var(--font-ui);
+  --text-caption: 500 11.5px/14px var(--font-ui);  /* FIGMA Caption */
   --tracking-caption: 0.01em;
 
   /*
@@ -457,10 +469,11 @@
   --leading-12-5: 13.5px;
   --leading-13-5: 15px;
   --leading-15: 16px;
-  --tracking-title: -0.02em;
-  --tracking-section: -0.015em;
+  --tracking-title: -0.02em;                 /* FIGMA Display */
+  --tracking-card-title: -0.015em;           /* FIGMA Title */
+  --tracking-section: -0.005em;              /* FIGMA Section */
   --tracking-meta: 0.02em;
-  --tracking-group: 0.12em;
+  --tracking-group: 0.06em;                  /* FIGMA Micro — MENU, SYSTEM */
 
   /* ---- Spacing ------------------------------------------------------------------------------ */
   --space-1: 4px;
@@ -488,8 +501,9 @@
    */
   --radius-media: 12px;                      /* photos, thumbnails, media stills */
   --radius-tile: 14px;                       /* tiles, inner cards */
-  --radius-panel: 20px;                      /* panels */
-  --radius-window: 24px;                     /* app window, phone body */
+  --radius-panel: 14px;                      /* FIGMA card — every standard panel */
+  --radius-hero: 20px;                       /* FIGMA — the one hero card */
+  --radius-window: 20px;                     /* FIGMA — window, phone body */
   --radius-pill: 999px;
 
   /* ---- Elevation ---------------------------------------------------------------------------- */
@@ -502,7 +516,7 @@
   --shadow-palette: 0 1px 0 rgba(var(--overlay-rgb), 0.07) inset, 0 40px 90px rgba(0, 0, 0, 0.6);
   --shadow-hero: 0 0 0 1px var(--accent-glow), 0 18px 40px rgba(0, 0, 0, 0.5);
   --shadow-float-window: 0 30px 68px rgba(0, 0, 0, 0.6);
-  --shadow-float-hover: 0 0 0 1px rgba(var(--tint-violet-rgb), 0.14), 0 26px 60px rgba(0, 0, 0, 0.56);
+  --shadow-float-hover: 0 0 0 1px rgba(var(--overlay-rgb), 0.12), 0 26px 60px rgba(0, 0, 0, 0.56);
 
   /* ---- Motion -------------------------------------------------------------------------------
    * Only `transform` and `opacity` animate. See the reduced-motion block at the foot of this file.
@@ -538,6 +552,44 @@
    * Departure N-M2.
    */
   --dur-route-fade: 140ms;
+
+  /* ---- Sidekick roles (Figma `28:543` / `28:866`) — the names the rebuilt components read -----
+   * Aliases where the value already exists above, so one decision has one home.
+   */
+  --ground: var(--canvas);
+  --chrome: #0f0f0f;                         /* FIGMA — sidebar and window chrome, opaque form */
+  --card: var(--elev-2);                     /* FIGMA #161616 */
+  --card-raised: var(--elev-3);              /* FIGMA #1C1C1C */
+  --accent-pressed: #a8df1f;                 /* FIGMA */
+  --unknown: #9c9eb0;                        /* FIGMA — connecting, unavailable, unknown */
+  --unknown-fill: rgba(156, 158, 176, 0.12);
+  --unknown-border: rgba(156, 158, 176, 0.3);
+  --text-disabled: #4a4c55;                  /* FIGMA — an unavailable control, never a promise */
+  --nav-hover: rgba(255, 255, 255, 0.05);    /* FIGMA Nav row Hover */
+  --nav-active-glyph: var(--accent);         /* FIGMA — the active row's lime glyph */
+  --button-secondary-hover: #222222;         /* FIGMA Button / Secondary */
+  --button-secondary-pressed: #151515;
+  --button-secondary-disabled: #141414;
+  --button-disabled-fill: rgba(255, 255, 255, 0.06); /* FIGMA Button / Primary Disabled */
+  --destructive-text: #ff7b7b;               /* FIGMA Button / Destructive label */
+  --destructive-text-hover: #ff9a9a;
+  --badge-neutral: #1f1f1f;                  /* FIGMA Icon badge Neutral */
+  --avatar: #2a2c36;                         /* FIGMA footer avatar */
+  --radius-card: var(--radius-panel);        /* 14 */
+  /* FIGMA Micro — group labels. And the numeral face: 21/500 mono, tabular. */
+  --text-micro: 500 10px/12px var(--font-ui);
+  --text-numeral: 500 21px/26px var(--font-mono);
+  /* Overview components (Batch 2 draws them; decision 5 puts only their tokens here). */
+  --bar-height: 4px;                         /* FIGMA metric bar */
+  --slider-track: 4px;                       /* FIGMA Slider Rest */
+  --slider-track-hover: 5px;
+  --slider-knob: 9px;
+  --slider-knob-hover: 11px;
+  --slider-knob-drag: 13px;
+  --icon-badge: 36px;                        /* FIGMA Icon badge */
+  --row-badge: 30px;                         /* FIGMA Activity row / hero detail badge */
+  --dur-bar: 600ms;                          /* FIGMA — a metric bar travelling to a new reading */
+  --space-gutter: 28px;                      /* FIGMA content gutter */
 
   /* ---- The legacy block is gone, and this note is what replaced it ---------------------------
    * `--bg` `--card` `--text` `--muted` `--danger` `--ok` lived here until the shell landed on
@@ -606,14 +658,14 @@
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --canvas: #fafafc;                            /* HANDOFF — "ground #FAFAFC" */
+  --canvas: #f4f4f7;                            /* FIGMA brand — the mask reads on #F4F4F7 */
 
-  --elev-1: rgba(255, 255, 255, 0.72);          /* DERIVED — chrome, same alpha, base inverted */
-  --elev-2: rgba(255, 255, 255, 0.82);          /* DERIVED — same */
-  --elev-3: #ffffff;                            /* HANDOFF — "cards #FFFFFF" */
-  --control: #f1f1f6;                           /* DERIVED — below the card, above the well */
-  --well: #efeff4;                              /* DERIVED — the recessed surface, still recessed */
-  --material-card: rgba(255, 255, 255, 0.66);   /* DERIVED — same role, base inverted */
+  --elev-1: rgba(250, 250, 252, 0.82);          /* DERIVED — chrome, translucent */
+  --elev-2: #ffffff;                            /* DERIVED — card, opaque */
+  --elev-3: #f7f7f9;                            /* DERIVED — card raised: one step off white */
+  --control: #efeff3;                           /* DERIVED — below the card, above the well */
+  --well: #efeff3;                              /* DERIVED — the recessed surface */
+  --material-card: #ffffff;                     /* DERIVED — opaque, as in dark */
 
   --hairline: rgba(0, 0, 0, 0.07);              /* HANDOFF — "hairlines rgba(0,0,0,.07)" */
   --hairline-hover: rgba(0, 0, 0, 0.13);        /* DERIVED */
@@ -630,7 +682,7 @@
   --inner-highlight: rgba(255, 255, 255, 0.75);
   --inner-highlight-primary: rgba(255, 255, 255, 0.95);
 
-  --text-primary: #1a1b22;                      /* DERIVED — 14.97:1 on --well */
+  --text-primary: #121316;                      /* DERIVED — near the FIGMA light wordmark #101010 */
   --text-body: #5a5d6b;                         /* DERIVED —  5.70:1 on --well, clears AA */
   --text-meta: #9698a2;                         /* DERIVED —  2.51:1, meta ONLY — see above */
   --text-on-control: #2a2b33;                   /* DERIVED — 12.28:1 on --well */
@@ -658,8 +710,8 @@
   --hero-grad-3: #eef8e6;
   --hero-grad-glow: rgba(158, 214, 0, 0.4);
 
-  --secondary: #137888;                         /* DERIVED — #22d3ee at 57% luminance */
-  --live: #1b7c4b;                              /* DERIVED — #32e58a at 54% */
+  --secondary: #5f6172;                         /* DERIVED — neutral, clears AA on --control and --well */
+  --live: #4f6a00;                              /* DERIVED — lime as text: the olive of --accent-text */
   --warning: #8c6523;                           /* DERIVED — #f5b23d at 57% */
   --warning-fill: rgba(140, 101, 35, 0.1);
   --warning-border: rgba(140, 101, 35, 0.3);
@@ -670,10 +722,10 @@
   /* The overlay base flips; every alpha at every call site stays exactly as it is. */
   --overlay-rgb: 0, 0, 0;
 
-  --surface-island: rgba(255, 255, 255, 0.78);
+  --surface-island: rgba(250, 250, 252, 0.84);
   --surface-raised: rgba(255, 255, 255, 0.94);
-  --surface-strip: rgba(255, 255, 255, 0.7);
-  --surface-overview-strip: rgba(255, 255, 255, 0.66);
+  --surface-strip: #ffffff;
+  --surface-overview-strip: #ffffff;
   --surface-palette: rgba(252, 252, 254, 0.94);
   --surface-titlebar: rgba(246, 246, 250, 0.94);
   --surface-tooltip: rgba(250, 250, 252, 0.9);
@@ -687,7 +739,7 @@
   /* --media-scrim, --media-scrim-soft and --text-on-media are deliberately NOT overridden. */
 
   --text-on-fill-dim: rgba(255, 255, 255, 0.8);
-  --bubble-out: #5b4ae0;                        /* opaque in light — 6.00:1 with white */
+  --bubble-out: #2a2d33;                        /* the same charcoal block — white text holds */
 
   --switch-track: rgba(0, 0, 0, 0.16);
 
@@ -699,9 +751,9 @@
   --text-on-warning: #ffffff;
 
   /* The brand gradient, lightened to the same hues. It carries --text-primary in both themes. */
-  --brand-grad-1: #e8e2ff;
-  --brand-grad-2: #dcecf5;
-  --brand-grad-3: #e0f2ee;
+  --brand-grad-1: #ececf0;
+  --brand-grad-2: #f2f2f5;
+  --brand-grad-3: #f7f7f9;
   /* Black at half strength is a hole in a pale gradient; a third keeps it a mark rather than a cut. */
   --hero-phone-notch: rgba(0, 0, 0, 0.3);
 
@@ -724,7 +776,26 @@
   --shadow-palette: 0 1px 0 var(--inner-highlight) inset, 0 40px 90px rgba(0, 0, 0, 0.18);
   --shadow-hero: 0 0 0 1px var(--accent-glow), 0 18px 40px rgba(0, 0, 0, 0.12);
   --shadow-float-window: 0 30px 68px rgba(0, 0, 0, 0.18);
-  --shadow-float-hover: 0 0 0 1px rgba(91, 74, 224, 0.28), 0 26px 60px rgba(0, 0, 0, 0.16);
+  --shadow-float-hover: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 26px 60px rgba(0, 0, 0, 0.16);
+
+  /* Sidekick roles — light counterparts. All DERIVED: the Figma file draws dark only. */
+  --chrome: #f7f7f9;
+  --accent-pressed: #86ba00;
+  --unknown: #6e7080;
+  --unknown-fill: rgba(110, 112, 128, 0.12);
+  --unknown-border: rgba(110, 112, 128, 0.3);
+  --text-disabled: #b1b3bc;
+  --nav-hover: rgba(0, 0, 0, 0.04);
+  /* The lime *fill* is faint on a pale tint; the glyph takes the olive text value, as the island does. */
+  --nav-active-glyph: var(--accent-text);
+  --button-secondary-hover: #e7e7ec;
+  --button-secondary-pressed: #dedee4;
+  --button-secondary-disabled: #f2f2f5;
+  --button-disabled-fill: rgba(0, 0, 0, 0.05);
+  --destructive-text: #b33a3a;
+  --destructive-text-hover: #962f2f;
+  --badge-neutral: #ececf0;
+  --avatar: #dcdde3;
 }
 
 /*
@@ -795,12 +866,23 @@ progress {
  */
 @media (prefers-reduced-transparency: reduce) {
   /* Both selectors: the light block is more specific than `:root` and would otherwise keep its
-     translucent values. `var(--elev-3)` resolves per theme, so one list serves both. */
+     translucent values. Every value is a per-theme token, so one list serves both.
+
+     Each translucent surface becomes **its own opaque colour**, not a common substitute. Until
+     2026-09-19 all three went to `--elev-3`, the *raised* card grey: so under this setting every
+     standard card drew as a selected one and the sidebar lost its chrome tone, while the ⌘K panel,
+     the toast and both tooltips — never listed — stayed translucent. Chrome is `--chrome`; a
+     floating panel is a card, `--elev-2`. */
   :root,
   :root[data-theme='light'] {
-    --material-card: var(--elev-3);
-    --surface-island: var(--elev-3);
-    --elev-1: var(--elev-3);
+    --elev-1: var(--chrome);
+    --surface-island: var(--chrome);
+    --surface-titlebar: var(--chrome);
+    --material-card: var(--elev-2);
+    --surface-palette: var(--elev-2);
+    --surface-raised: var(--elev-2);
+    --surface-tooltip: var(--elev-2);
+    --surface-tooltip-strong: var(--elev-2);
   }
   *,
   *::before,

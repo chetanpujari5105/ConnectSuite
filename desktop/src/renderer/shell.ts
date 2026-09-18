@@ -1,5 +1,5 @@
 /**
- * The app shell: sidebar, nav pill, status island, page header, dock, ⌘K palette, toast, and the
+ * The app shell: sidebar, nav pill, status island, page header, ⌘K palette, toast, and the
  * connected-device strip.
  *
  * ### What this file is and is not
@@ -50,7 +50,7 @@ declare function islandState(
 /*
  * No imports and no `declare` re-statements. Every one of these files is a plain script, so tsc
  * puts them in one global scope: `iconSvg` and `brandGlyph` from icons.ts, and `SCREENS`,
- * `PAIRING_SCREEN`, `DOCK`, `TOOL_RAIL`, `GLOBAL_ACTIONS`, `paletteResults`, `screenById` and
+ * `PAIRING_SCREEN`, `TOOL_RAIL`, `GLOBAL_ACTIONS`, `paletteResults`, `screenById` and
  * `pillOffsetFor` from navModel.ts are simply in scope here.
  *
  * Re-declaring them would compile — for exactly as long as the two copies agreed. The point of the
@@ -191,6 +191,8 @@ class ShellView {
   private routeListeners: Array<(id: string) => void> = [];
   private status: ShellStatus | null = null;
   private paletteIndex = 0;
+  /** What had focus when the palette opened — the Search button, or whatever ⌘K was pressed over. */
+  private paletteReturnFocus: HTMLElement | null = null;
   private paletteRows: PaletteResult[] = [];
   private toastTimer: number | undefined;
   private readonly navRows = new Map<string, HTMLButtonElement>();
@@ -227,7 +229,6 @@ class ShellView {
   constructor() {
     this.buildBrand();
     this.buildNav();
-    this.buildDock();
     this.buildToolbarIcons();
     this.buildMirrorControls();
     this.bindPalette();
@@ -239,7 +240,7 @@ class ShellView {
   // ---- Sidebar -------------------------------------------------------------------------------
 
   private buildBrand(): void {
-    $('brand-glyph').replaceChildren(brandGlyph(24));
+    // The sidebar lockup is markup — the Sidekick mask from LOGOS/ plus the word — not a glyph.
     // Settings' third column. Drawn once here rather than in `drawSettings`, because the aside is
     // static markup outside the pane that gets rebuilt on every tab click.
     $('settings-brand-glyph').replaceChildren(brandGlyph(56));
@@ -268,7 +269,7 @@ class ShellView {
       row.type = 'button';
       row.className = `nav-row${screen.state === 'unbuilt' ? ' unbuilt' : ''}`;
       row.dataset.nav = screen.id;
-      row.appendChild(iconSvg(screen.icon, 20));
+      row.appendChild(iconSvg(screen.icon, 16));
 
       const label = document.createElement('span');
       label.className = 'nav-label';
@@ -339,80 +340,19 @@ class ShellView {
     pill.style.transform = `translateY(${pillOffsetFor(row.offsetTop)}px)`;
   }
 
-  // ---- Dock, toolbar, mirror controls ---------------------------------------------------------
-
-  private buildDock(): void {
-    const dock = $('dock');
-    dock.replaceChildren();
-    for (const tile of DOCK) {
-      const slot = document.createElement('div');
-      slot.className = 'dock-slot';
-
-      /*
-       * Two of the design's five dock tiles — Files and Camera — lead to screens with nothing
-       * behind them. State A says "nothing routes to it that implies it works", and a full-colour
-       * dock tile is the strongest such implication in the app.
-       *
-       * The tile is kept and **marked** rather than removed. Removing two would leave a three-tile
-       * dock, which is a change to the design's own composition for a reason that expires as each
-       * phase lands; a desaturated tile whose tooltip reads "Files — not built yet" carries the
-       * same information without reflowing the dock every time a feature ships. Recorded as a
-       * deliberate deviation from my own state-A note in docs/design-departures.md.
-       */
-      const target = screenById(tile.id);
-      const unbuilt = target?.state === 'unbuilt';
-
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = `dock-tile${unbuilt ? ' unbuilt' : ''}`;
-      button.style.setProperty('--dock-tint', tile.tint);
-      button.setAttribute('aria-label', unbuilt ? `${tile.label} — not built yet` : tile.label);
-      button.appendChild(iconSvg(tile.icon, 17));
-      button.addEventListener('click', () => this.route(tile.id));
-
-      const tip = document.createElement('span');
-      tip.className = 'dock-tip';
-      tip.textContent = unbuilt ? `${tile.label} — not built yet` : tile.label;
-
-      slot.append(button, tip);
-      dock.appendChild(slot);
-    }
-
-    /*
-     * The raised circular ⌘K button — the Sidekick visual-language brief: "Raised, colored
-     * circular action button breaking out of a bar... give the single most-used global action
-     * (⌘K) this raised-circle treatment in the dock, not the sidebar nav rows." Appended after the
-     * five screen tiles rather than replacing one of them — it opens the palette, not a screen, so
-     * it is not a sixth member of `DOCK` and does not go through `this.route`.
-     */
-    const paletteSlot = document.createElement('div');
-    paletteSlot.className = 'dock-slot dock-slot-raised';
-    const paletteButton = document.createElement('button');
-    paletteButton.type = 'button';
-    paletteButton.className = 'dock-tile-raised';
-    paletteButton.setAttribute('aria-label', 'Search — ⌘K');
-    paletteButton.appendChild(iconSvg('search', 17));
-    paletteButton.addEventListener('click', () => this.openPalette());
-    const paletteTip = document.createElement('span');
-    paletteTip.className = 'dock-tip';
-    paletteTip.textContent = 'Search — ⌘K';
-    paletteSlot.append(paletteButton, paletteTip);
-    dock.appendChild(paletteSlot);
-  }
+  // ---- Toolbar and mirror controls --------------------------------------------------------------
 
   private buildToolbarIcons(): void {
     $('tb-search-icon').replaceChildren(iconSvg('search', 14));
-    $('tb-device-icon').replaceChildren(iconSvg('device-settings', 15));
-    $('tb-detach-icon').replaceChildren(iconSvg('detach', 15));
-    $('tb-dots-icon').replaceChildren(iconSvg('dots', 16));
+    $('tb-device-icon').replaceChildren(iconSvg('device-settings', 14));
+    $('tb-detach-icon').replaceChildren(iconSvg('detach', 14));
     $('palette-icon').replaceChildren(iconSvg('search', 16));
 
     $('open-palette').addEventListener('click', () => this.openPalette());
-    // Both of these go to the same place, which is what the design's two buttons mean here: one
-    // is the phone's connection settings and the other is the overflow, and we have one Settings
-    // screen with a Connection pane on it.
+    // Device settings opens Settings on its Connection pane. The Figma header carries exactly two
+    // controls, Search and Device settings; the overflow button that routed to Advanced is gone,
+    // and Advanced stays one click away in the Settings rail.
     $('open-device-settings').addEventListener('click', () => this.route('settings', 'connection'));
-    $('open-overflow').addEventListener('click', () => this.route('settings', 'advanced'));
   }
 
   /**
@@ -719,7 +659,12 @@ class ShellView {
         return;
       }
       if ($('palette').hidden) return;
-      if (event.key === 'Escape') {
+      // aria-modal promises the rest of the window is inert. The palette's one focusable control is
+      // its input — rows are options reached by the arrow keys — so Tab has nowhere to go.
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        $('palette-input').focus();
+      } else if (event.key === 'Escape') {
         event.preventDefault();
         this.closePalette();
       } else if (event.key === 'ArrowDown') {
@@ -738,8 +683,17 @@ class ShellView {
     window.addEventListener('resize', () => this.movePill());
   }
 
+  /**
+   * The one way the palette opens. The header's Search control and ⌘K both call this, so they open
+   * the same dialog with the same focus, the same results and the same way back out.
+   */
   private openPalette(): void {
+    if ($('palette').hidden) {
+      const active = document.activeElement as HTMLElement | null;
+      this.paletteReturnFocus = active && active !== document.body ? active : null;
+    }
     $('palette').hidden = false;
+    $('open-palette').setAttribute('aria-expanded', 'true');
     const input = $<HTMLInputElement>('palette-input');
     input.value = '';
     this.drawPalette('');
@@ -747,7 +701,16 @@ class ShellView {
   }
 
   private closePalette(): void {
+    if ($('palette').hidden) return;
     $('palette').hidden = true;
+    $('open-palette').setAttribute('aria-expanded', 'false');
+    $('palette-input').removeAttribute('aria-activedescendant');
+    // Back to whatever opened it. A routed result then moves focus on by its own route; an Escape
+    // leaves the user where they were rather than on <body>.
+    const back = this.paletteReturnFocus;
+    this.paletteReturnFocus = null;
+    // An opener removed meanwhile is fine to call: focus() on a detached node is a no-op.
+    back?.focus();
   }
 
   private drawPalette(query: string): void {
@@ -761,6 +724,7 @@ class ShellView {
       empty.className = 'palette-empty';
       empty.textContent = `Nothing matches “${query}”.`;
       host.appendChild(empty);
+      this.markActiveOption();
       return;
     }
 
@@ -768,6 +732,8 @@ class ShellView {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = `palette-row${result.unbuilt ? ' unbuilt' : ''}`;
+      row.id = `palette-option-${index}`;
+      row.tabIndex = -1;
       row.setAttribute('role', 'option');
       row.setAttribute('aria-selected', String(index === this.paletteIndex));
 
@@ -796,6 +762,14 @@ class ShellView {
       });
       host.appendChild(row);
     });
+    this.markActiveOption();
+  }
+
+  /** The combobox's active option, for a screen reader: focus stays in the input throughout. */
+  private markActiveOption(): void {
+    const input = $('palette-input');
+    if (this.paletteRows.length === 0) input.removeAttribute('aria-activedescendant');
+    else input.setAttribute('aria-activedescendant', `palette-option-${this.paletteIndex}`);
   }
 
   /**
@@ -841,9 +815,12 @@ class ShellView {
     if (this.paletteRows.length === 0) return;
     const count = this.paletteRows.length;
     this.paletteIndex = (this.paletteIndex + delta + count) % count;
-    const rows = $('palette-results').querySelectorAll('.palette-row');
+    // The listbox's children are exactly its options (the empty-state line only exists when there
+    // are no rows, and this returned above), so no selector is needed to find them.
+    const rows = Array.from($('palette-results').children) as HTMLElement[];
     rows.forEach((row, index) => row.setAttribute('aria-selected', String(index === this.paletteIndex)));
     rows[this.paletteIndex]?.scrollIntoView({ block: 'nearest' });
+    this.markActiveOption();
   }
 
   /**

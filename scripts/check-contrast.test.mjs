@@ -59,7 +59,12 @@ test('both themes check the SAME number of pairs', () => {
 });
 
 test('a foreground darkened past AA goes red', () => {
-  const src = readFileSync(REAL, 'utf8').replace('--text-body: #9c9fb0;', '--text-body: #6a6a72;');
+  // Replace the token's value whatever it is today, and prove the replacement happened: a literal
+  // match on the old value stopped matching when the palette moved, and the fixture then tested
+  // the real palette instead of the mutation.
+  const real = readFileSync(REAL, 'utf8');
+  const src = real.replace(/--text-body: #[0-9a-f]{6};/, '--text-body: #6a6a72;');
+  assert.notEqual(src, real, 'the mutation must actually change the palette');
   const [dark] = withTokens(src);
   const bad = dark.rows.filter((r) => r.fg === '--text-body' && r.r < 4.5);
   assert.ok(bad.length > 0, 'a body colour below AA must be reported');
@@ -75,10 +80,13 @@ test('control_the light palette is what makes the bright greens fail, and it cat
 });
 
 test('--text-meta is held to a band, not a floor — it can fail by being too GOOD', () => {
-  const src = readFileSync(REAL, 'utf8').replace('--text-meta: #5b5e6e;', '--text-meta: #d0d0d8;');
+  const real = readFileSync(REAL, 'utf8');
+  const src = real.replace(/--text-meta: #[0-9a-f]{6};/, '--text-meta: #d0d0d8;');
+  assert.notEqual(src, real, 'the mutation must actually change the palette');
   const [dark] = withTokens(src);
   const meta = dark.rows.filter((r) => r.fg === '--text-meta');
-  assert.ok(meta.some((r) => r.r > 3.6),
+  // 4.0 is the checker's META_HI (see check-contrast.mjs, D19). The shipped meta sits below it.
+  assert.ok(meta.some((r) => r.r > 4.0),
     'meta brightened into body-copy contrast must be reported: the design reserves that level');
 });
 
