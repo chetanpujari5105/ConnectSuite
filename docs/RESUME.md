@@ -1,3 +1,41 @@
+# Resume here — written 2026-09-19: Sidekick Batches 1–3, for the demo
+
+> A state report, not a note to myself. Written to be handed to someone who was not here.
+
+## 0 · State
+
+| Commit | What |
+|---|---|
+| `832b332` | **Batch 1** — Figma tokens, Figma-vector icons, `LOGOS/` brand art through dev and packaged builds, the shell (232 sidebar, lockup under the traffic lights, Search = ⌘K palette, no dock) |
+| `c06506b` | **Batch 2** — the Overview rebuilt to handoff §6: hero + phone visual, media remote, four-row Recent, two metric cards, Connection & security; connected / connecting / disconnected / permission states |
+| `e315c72` | **Batch 3** — Mirror (Session card, one of Start/Stop), Settings → File transfer (brand tile, Show in Finder verified), pairing (code draws on arrival — a real defect) |
+
+Every commit: typecheck clean, `npm test` 818 → 831 green, all commit guards exit 0. Nothing pushed.
+Evidence: `docs/testing.md` → *Sidekick Batch 1/2/3*; departures D13–D25 in
+`docs/design-departures.md`; screenshots in `docs/evidence/sidekick-batch{1,2,3}/`.
+
+## 1 · The Figma MCP was rate-limited for the whole sitting
+
+Every `get_screenshot` returned the Starter-plan limit. **No pixel overlay against any Figma frame
+exists.** Everything was built against `docs/sidekick-figma-handoff.md`'s numbers and the component
+values already extracted (icons, D13–D18). One Figma call per frame is owed: `6:2`, `22:184`,
+`31:1566`, `34:10843`, `34:11219`.
+
+## 2 · Not proven on hardware
+
+- **Media remote with a real session.** Idle, permission and offline are real; *playing* was only
+  rendered from a synthetic state. Play something on the phone before any demo.
+- **A live mirror session** after the Session-card change (consent needs a tap on the phone).
+- **Connecting** was rendered synthetically (a real reconnect takes ~250 ms).
+
+## 3 · Next
+
+Batches 4–5 in `docs/sidekick-implementation-plan.md`: Messages, Notifications, Clipboard, Calls;
+Apps, Activity (per-event badge tone — D23), Settings → Device info (D22's real home), Camera, the
+four-step pairing column.
+
+---
+
 # Resume here — written 2026-09-17: the native-macOS pass
 
 > A state report, not a note to myself. Written to be handed to someone who was not here.
