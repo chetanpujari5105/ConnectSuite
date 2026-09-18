@@ -141,14 +141,19 @@ function storageRing(state: StorageState | null): RingView {
     id: 'storage',
     label: 'Storage',
     fraction: (totalBytes - freeBytes) / totalBytes,
-    // The ring fills with what is USED and the number says what is FREE, which is the pair a person
-    // actually wants. "88% used" over a ring 88% full is one fact twice.
+    // **The handoff's assignment, 2026-09-17: capacity in the ring, what is free under it.** Its
+    // storage ring reads `128 GB` over a `68 GB free` caption with the arc at 0.50 — so the arc is
+    // used, the value is the phone's size, and the caption is the number a person acts on. Until
+    // this date the value was the free figure and the caption `free of <total>`; the arc binding
+    // was right throughout and is unchanged.
     //
-    // The word "free" is in the CAPTION, not here: the value sits inside a 72px ring, and
+    // The word "free" stays in the CAPTION, not the value: the value sits inside a 72px ring, and
     // "13.7 GB free" overflowed it — seen in a screenshot, not in any test, because a DOM double
-    // has no layout and every assertion about this string passed while it spilled over its arc.
-    value: humanBytes(freeBytes),
-    caption: `free of ${humanBytes(totalBytes)}`,
+    // has no layout. A capacity is `humanBytes` of a number >= 100 GB on any current phone, so it
+    // renders as `490 GB` — six characters, exactly on `overview.ts`'s is-long boundary, which is
+    // measured in the running app rather than trusted from the arithmetic.
+    value: humanBytes(totalBytes),
+    caption: `${humanBytes(freeBytes)} free`,
     tone: freeBytes / totalBytes < STORAGE_LOW_FRACTION ? 'low' : 'ok',
   };
 }

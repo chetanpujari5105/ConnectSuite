@@ -11,7 +11,7 @@ Constraints → Scope boundary*.
 web
 
 > The bare value above is the schema's, and it is the closest of the four permitted values. It does
-> **not** mean this is a web product. ConnectSuite for macOS is an **Electron desktop application**
+> **not** mean this is a web product. Sidekick for macOS is an **Electron desktop application**
 > distributed as a `.dmg`; the renderer happens to be HTML/CSS/TypeScript. It is not a website, a
 > SaaS dashboard, a marketing surface, or a browser tab, and no work on it should assume a visitor,
 > a session, a landing page, a signup, or a page load. Read *Operating Context* before designing.
@@ -65,7 +65,7 @@ decision 6 and it is a product commitment, not a code style.
 ## Operating Context
 
 **The shipping artifact.** Electron 43 + TypeScript, packaged by electron-builder as a macOS `.dmg`
-and `.zip`, arm64 and x64. `appId: com.chetan.connectsuite.desktop`. Category:
+and `.zip`, arm64 and x64. `appId: com.chetan.sidekick.desktop`. Category:
 `public.app-category.utilities`. `LSMinimumSystemVersion: 11.0`. Dark mode supported.
 
 **The window.** One resizable main window with a sidebar of **twelve** nav rows in two groups (MENU
@@ -160,9 +160,14 @@ a card carrying a *state* must be `visible` at rest, not merely reachable.
 
 ## Brand Commitments
 
-- **Name:** ConnectSuite. **Bundle id `com.chetan.connectsuite.desktop` is pinned and must not be
-  edited casually** — `safeStorage` keys this Mac's TLS private key to it, so changing it is an
-  identity change and the phone then refuses the new fingerprint.
+- **Name: Sidekick**, renamed from ConnectSuite 2026-09-17 (the Sidekick visual-language pass,
+  Mac-side branding only — the Android app, the wire protocol namespace and `_connectsuite._tcp`
+  are unchanged; see `docs/design-departures.md` for the boundary). **Bundle id
+  `com.chetan.sidekick.desktop`, changed the same day.** It was pinned and warned against editing
+  casually for exactly the reason that follows — `safeStorage` keys this Mac's TLS private key to
+  it, so changing it is an identity change and the phone then refuses the new fingerprint — and it
+  was changed anyway, by explicit instruction naming the new value. Every Mac running this build
+  mints a fresh identity; every already-paired phone needs to scan a new QR code.
 - **Binding visual authority — confirmed still binding in this interview:**
   `Mac app UI mockups (1)/design_handoff_connectsuite/ConnectSuite.dc.html` plus its `README.md`.
   Authoritative for pixels; the README is authoritative for tokens. Where a screenshot disagrees with

@@ -64,17 +64,34 @@ function overviewStripLine(connected: boolean): string {
     : 'Not connected. Nothing is being sent anywhere.';
 }
 
-/** The two circles share their geometry; one place for it rather than two literal lists. */
-function setCircle(circle: SVGElement): void {
-  circle.setAttribute('cx', '20');
-  circle.setAttribute('cy', '20');
-  circle.setAttribute('r', '16');
-  circle.setAttribute('fill', 'none');
+/**
+ * Run `fn` two frames from now: one frame to commit a start value, one to change it, which is what a
+ * CSS transition needs to have something to travel from. Where there is no frame clock (a DOM double)
+ * it runs now — the end state is the truth, and a test should see it rather than a start value.
+ */
+function afterNextPaint(fn: () => void): void {
+  if (typeof requestAnimationFrame !== 'function') {
+    fn();
+    return;
+  }
+  requestAnimationFrame(() => requestAnimationFrame(fn));
 }
 
 class OverviewView {
   /** Generation counter for [refresh]: a route open, a launch and a reconnect can all begin one. */
   private refreshes = 0;
+
+  /**
+   * The fraction each vital last drew, by ring id. What makes a reading *travel*: the row is rebuilt
+   * on every vitals update, and until 2026-09-17 every arc was born at its final offset, so its
+   * `stroke-dashoffset` transition had nothing to transition from — the rings never once animated.
+   * The new bar now starts where the old one was and moves. An id with no entry starts from empty,
+   * which is the one fill a session shows; route changes do not replay it.
+   */
+  private readonly ringFractions = new Map<string, number>();
+
+  /** Event `seq`s on screen after the last draw. `null` before the first, so first paint is still. */
+  private recentSeqs: Set<number> | null = null;
 
   constructor(
     private readonly bridge: OverviewBridge,
@@ -132,66 +149,61 @@ class OverviewView {
     );
     this.ringRow.replaceChildren();
     for (const ring of rings) {
+      /*
+       * **A readout and a bar, not a ring — departure N-P2, 2026-09-17.**
+       *
+       * Two 72px rings sat in a card nearly 800px wide, with the rest of the card empty, and — until
+       * this date — never moved, because the arc was rebuilt at its final value on every update (see
+       * `ringFractions`). A ring is a lot of chrome for one number. What is left is the number, set
+       * large in the mono face, a label, a 4px bar, and the caption. The row's name (`ring-row`) and
+       * the `RingView` rule it reads are kept: the data decision is `deviceVitals.ts`'s and unchanged.
+       */
       const cell = document.createElement('div');
-      cell.className = 'ring-cell';
+      cell.className = 'vital';
       cell.dataset.ring = ring.id;
       // The tone is on the element rather than only in a colour, so a check can read the state
       // without sampling a pixel — and so the CSS has one thing to switch on.
       cell.dataset.tone = ring.tone;
 
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('viewBox', '0 0 40 40');
-      svg.setAttribute('class', 'ring-svg');
-      svg.setAttribute('aria-hidden', 'true');
-      const track = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      track.setAttribute('class', 'ring-track');
-      setCircle(track);
-      svg.appendChild(track);
+      const head = document.createElement('div');
+      head.className = 'vital-head';
+      const label = document.createElement('div');
+      label.className = 'vital-label';
+      label.textContent = ring.label;
+      const value = document.createElement('div');
+      // Mono: a percentage and a byte size that update in place. The handoff's reason for the face.
+      value.className = 'vital-value mono';
+      value.textContent = ring.value;
+      head.append(label, value);
+
+      const track = document.createElement('div');
+      track.className = 'vital-track';
+      track.setAttribute('aria-hidden', 'true');
       if (ring.fraction !== null) {
-        const arc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        arc.setAttribute('class', 'ring-arc');
-        setCircle(arc);
-        const circumference = 2 * Math.PI * 16;
-        arc.setAttribute('stroke-dasharray', String(circumference));
-        arc.setAttribute('stroke-dashoffset', String(circumference * (1 - ring.fraction)));
-        svg.appendChild(arc);
+        // No fill element at all for an unknown value: an empty bar reads as zero, and "never
+        // reported" is not "flat". The absence of the element IS the state, as it was for the arc.
+        const fill = document.createElement('div');
+        fill.className = 'vital-fill';
+        const to = ring.fraction;
+        const from = this.ringFractions.get(ring.id) ?? 0;
+        // The inline transform is the animation's start; it is released to the reading two frames
+        // later — one to commit the start, one to change it — which is what lets the transition run.
+        fill.style.transform = `scaleX(${from})`;
+        if (from !== to) {
+          afterNextPaint(() => {
+            fill.style.transform = `scaleX(${to})`;
+          });
+        }
+        fill.dataset.fraction = String(to);
+        this.ringFractions.set(ring.id, to);
+        track.appendChild(fill);
       }
 
-      const value = document.createElement('div');
-      // **Mono, 2026-09-16.** The handoff's README is explicit and
-      // closed about this: *"All numerics use a tabular mono face … latency, byte sizes,
-      // percentages, timestamps, IPs"*, and the prototype sets `font-family="SF Mono"` on all three
-      // ring values. `79%` and `11.0 GB` are a percentage and a byte size, they update in place,
-      // and proportional figures jitter as they do — which is the one reason the second face exists.
-      //
-      // The **caption** below is deliberately NOT mono, and that is the handoff's too: its
-      // `68 GB free` carries no font-family override and renders in the UI face. A caption is a
-      // sentence that happens to contain a number; the value is the number.
-      /*
-       * **And a long value steps down a size**, which is the handoff's own behaviour: its three
-       * rings are `17px` for `79%` and `15px` for `128 GB`. Ours is a 72px ring rather than its
-       * 104px one, so the step is smaller and the threshold is measured rather than taken from the
-       * drawing:
-       *
-       *   clear span inside the arc   (2 x 16 - 4) x (72 / 40)  = 50.4px
-       *   `10.8 GB` at 13px mono                                = 54.8px   → overflows by 4.4
-       *   per character at 13px mono                            ~  7.8px   → 6 characters fit
-       *
-       * This is the same overflow `storageRing`'s own comment records — *"13.7 GB free" overflowed
-       * it, seen in a screenshot, not in any test, because a DOM double has no layout* — and it
-       * came back the moment the value took the mono face, which is wider at the same px. A DOM
-       * double still cannot see it; `scripts/` measures the rendered text against the arc.
-       */
-      value.className = ring.value.length > 6 ? 'ring-value mono is-long' : 'ring-value mono';
-      value.textContent = ring.value;
-      const label = document.createElement('div');
-      label.className = 'ring-label';
-      label.textContent = ring.label;
       const caption = document.createElement('div');
-      caption.className = 'ring-caption';
+      caption.className = 'vital-caption';
       caption.textContent = ring.caption;
 
-      cell.append(svg, value, label, caption);
+      cell.append(head, track, caption);
       this.ringRow.appendChild(cell);
     }
   }
@@ -212,6 +224,17 @@ class OverviewView {
     const mine = ++this.refreshes;
     const result = await this.bridge.activityEvents();
     if (mine !== this.refreshes) return;
+
+    // Where each row was, before the redraw — so rows that stay can slide to where they now are
+    // instead of teleporting (FLIP). Keyed by `seq`, never by index: an index would call every row
+    // moved and every row new, and the card would animate all five on every event.
+    const before = new Map<number, number>();
+    for (const node of Array.from(this.recent.children) as HTMLElement[]) {
+      const seq = Number(node.dataset?.seq);
+      if (Number.isFinite(seq) && typeof node.getBoundingClientRect === 'function') {
+        before.set(seq, node.getBoundingClientRect().top);
+      }
+    }
 
     this.recent.replaceChildren();
     if (!result.ok || !result.data) {
@@ -238,9 +261,41 @@ class OverviewView {
       return;
     }
 
+    const previous = this.recentSeqs;
+    this.recentSeqs = new Set(events.map((e) => e.seq));
     for (const event of events) {
-      this.recent.appendChild(this.recentRow(event));
+      const row = this.recentRow(event);
+      row.dataset.seq = String(event.seq);
+      // New only if there *was* a previous draw and this row was not in it. First paint stays still.
+      if (previous && !previous.has(event.seq)) row.classList.add('is-arriving');
+      this.recent.appendChild(row);
     }
+    this.settleRecent(before);
+  }
+
+  /**
+   * Releases the arrival state, and slides surviving rows from their old position to their new one.
+   * Everything is `transform` and `opacity`; nothing here changes layout. A no-op without layout
+   * (a DOM double), which is why `recentSeqs` and the class — not this — are what a test reads.
+   */
+  private settleRecent(before: Map<number, number>): void {
+    const rows = Array.from(this.recent.children) as HTMLElement[];
+    for (const row of rows) {
+      const old = before.get(Number(row.dataset?.seq));
+      if (old === undefined || typeof row.getBoundingClientRect !== 'function') continue;
+      const dy = old - row.getBoundingClientRect().top;
+      if (dy !== 0) {
+        row.style.transition = 'none';
+        row.style.transform = `translateY(${dy}px)`;
+      }
+    }
+    afterNextPaint(() => {
+      for (const row of rows) {
+        row.classList.remove('is-arriving');
+        row.style.transition = '';
+        row.style.transform = '';
+      }
+    });
   }
 
   /**

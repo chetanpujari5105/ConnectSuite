@@ -1,4 +1,4 @@
-# Packaging for ConnectSuite on macOS.
+# Packaging for Sidekick on macOS.
 #
 # ## What this file does today, and what it refuses to do
 #
@@ -22,12 +22,19 @@
 #  - A locally built app that never crossed a browser is *not* quarantined and opens normally.
 #  - `safeStorage` — which holds this Mac's TLS private key — is keyed to the bundle identifier, so
 #    an `appId` that changes between builds is an identity that changes with it and a phone that
-#    then refuses the new fingerprint. That is why `appId` is pinned below and must not be edited
+#    then refuses the new fingerprint. That is why `appId` is pinned and must not be edited
 #    casually. See `docs/phase-9-distribution-audit.md` D5.
+#
+#    **It was edited on 2026-09-17 anyway, for the ConnectSuite → Sidekick rebrand, by explicit
+#    instruction naming the new value.** The consequence this comment warns about is not avoided,
+#    it is accepted: every Mac this build lands on mints a new identity, and every phone already
+#    paired to the old one has to be paired again from a fresh QR code. Recorded as a departure in
+#    docs/design-departures.md rather than left for the next reader to rediscover by watching a
+#    real device refuse to reconnect.
 
-appId: com.chetan.connectsuite.desktop
-productName: ConnectSuite
-copyright: © 2026 ConnectSuite
+appId: com.chetan.sidekick.desktop
+productName: Sidekick
+copyright: © 2026 Sidekick
 
 directories:
   output: release
@@ -61,7 +68,7 @@ mac:
   # sort of thing people deny.
   extendInfo:
     NSLocalNetworkUsageDescription: >-
-      ConnectSuite connects to your phone on this network. Nothing leaves your local network and
+      Sidekick connects to your phone on this network. Nothing leaves your local network and
       there is no server involved.
     LSMinimumSystemVersion: '11.0'
 

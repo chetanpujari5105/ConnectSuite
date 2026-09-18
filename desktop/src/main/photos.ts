@@ -174,7 +174,7 @@ export class PhotosClient {
    * step is specific to photos, which is the point — `fs.transfer.begin` will hand this same client
    * the same shape.
    *
-   * The file lands in `~/Downloads/ConnectSuite`, created on demand. A name collision is resolved by
+   * The file lands in `~/Downloads/Sidekick`, created on demand. A name collision is resolved by
    * suffixing rather than overwriting: two photos really can share a display name across buckets,
    * and silently replacing someone's file to avoid a dialog is the wrong trade.
    */

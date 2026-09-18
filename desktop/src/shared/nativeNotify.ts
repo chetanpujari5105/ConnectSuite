@@ -89,7 +89,7 @@ export interface NotifyContext {
    * is the same event redrawn.
    */
   previous: { whenMs: number } | null;
-  /** The ConnectSuite window is focused. */
+  /** The Sidekick window is focused. */
   windowFocused: boolean;
   /** The renderer's current route. */
   currentScreen: string;
@@ -182,7 +182,7 @@ export function notifyCopy(n: PhoneNotification): { title: string; body: string 
  * The request is refused *before* any registration happens: no prompt, no record, no row.
  *
  * The packaged build is **also ad-hoc**, and it works — `Info.plist entries=33`,
- * `Sealed Resources version=2`, `Identifier=com.chetan.connectsuite.desktop`. So the discriminator
+ * `Sealed Resources version=2`, `Identifier=com.chetan.sidekick.desktop`. So the discriminator
  * is the **seal**, not ad-hoc-versus-Developer-ID. `docs/testing.md` → Phase 7 Slice 13.
  */
 export function refusalCopy(refused: { packaged: boolean }): {
@@ -194,7 +194,7 @@ export function refusalCopy(refused: { packaged: boolean }): {
   if (refused.packaged) {
     return {
       headline: 'macOS is not showing these notifications',
-      body: 'Open System Settings \u2192 Notifications, find ConnectSuite, and turn on Allow Notifications.',
+      body: 'Open System Settings \u2192 Notifications, find Sidekick, and turn on Allow Notifications.',
       actionable: true,
     };
   }
@@ -204,7 +204,7 @@ export function refusalCopy(refused: { packaged: boolean }): {
     // someone looking for a row that macOS never created.
     body:
       'macOS only registers an app for notifications once its bundle is sealed, and a development ' +
-      'run is not \u2014 so there is no ConnectSuite entry in System Settings to switch on. ' +
+      'run is not \u2014 so there is no Sidekick entry in System Settings to switch on. ' +
       'Everything else on this screen works normally. Run a packaged build to see banners.',
     actionable: false,
   };

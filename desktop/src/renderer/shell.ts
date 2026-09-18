@@ -165,6 +165,7 @@ function toneLabel(status: ShellStatus | null): string {
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
+
 class ShellView {
   private current = 'overview';
 
@@ -376,6 +377,27 @@ class ShellView {
       slot.append(button, tip);
       dock.appendChild(slot);
     }
+
+    /*
+     * The raised circular ⌘K button — the Sidekick visual-language brief: "Raised, colored
+     * circular action button breaking out of a bar... give the single most-used global action
+     * (⌘K) this raised-circle treatment in the dock, not the sidebar nav rows." Appended after the
+     * five screen tiles rather than replacing one of them — it opens the palette, not a screen, so
+     * it is not a sixth member of `DOCK` and does not go through `this.route`.
+     */
+    const paletteSlot = document.createElement('div');
+    paletteSlot.className = 'dock-slot dock-slot-raised';
+    const paletteButton = document.createElement('button');
+    paletteButton.type = 'button';
+    paletteButton.className = 'dock-tile-raised';
+    paletteButton.setAttribute('aria-label', 'Search — ⌘K');
+    paletteButton.appendChild(iconSvg('search', 17));
+    paletteButton.addEventListener('click', () => this.openPalette());
+    const paletteTip = document.createElement('span');
+    paletteTip.className = 'dock-tip';
+    paletteTip.textContent = 'Search — ⌘K';
+    paletteSlot.append(paletteButton, paletteTip);
+    dock.appendChild(paletteSlot);
   }
 
   private buildToolbarIcons(): void {
@@ -600,9 +622,24 @@ class ShellView {
    */
   private renderIsland(): void {
     const island = islandState(this.status, this.work);
-    $('island-text').textContent = island.text;
+    const text = $('island-text');
+    // Words and dot are written together, synchronously, every time — the island is never allowed
+    // to show one moment's words beside another moment's tone (defect 96). The first version of
+    // this cross-fade deferred the words by half a beat and `shellIsland.test.ts` caught exactly that.
+    text.textContent = island.text;
     $('island-dot').setAttribute('data-state', island.tone);
+    const toneChanged = this.islandTone !== undefined && this.islandTone !== island.tone;
+    this.islandTone = island.tone;
+    // Only a tone change fades — a latency tick rewrites these words every few seconds, and a fade
+    // there would be constant motion. The new words are already in place; they arrive from 0.
+    if (!toneChanged) return;
+    text.classList.add('is-arriving');
+    void text.offsetWidth; // commit opacity 0 before releasing it, or the transition has no start
+    text.classList.remove('is-arriving');
   }
+
+  /** Tone last painted, so a tone change can be told from a latency tick. */
+  private islandTone: string | undefined;
 
   // ---- Toast -------------------------------------------------------------------------------------
 

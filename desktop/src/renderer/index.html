@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'" />
-    <title>ConnectSuite</title>
+    <title>Sidekick</title>
     <!-- tokens.css first: it defines the custom properties the other two sheets read. shell.css is
          the app frame — window, sidebar, nav pill, island, dock, palette, toast. styles.css is the
          component layer for what lives inside a screen. All three are copied by
@@ -46,7 +46,7 @@
       -->
       <div class="status-island" id="status-island" role="status" aria-live="polite">
         <span class="island-dot" id="island-dot" aria-hidden="true"></span>
-        <span class="island-text" id="island-text">Starting…</span>
+        <span class="island-text motion-fade" id="island-text">Starting…</span>
       </div>
 
       <div class="app-body">
@@ -65,7 +65,7 @@
 
           <div class="brand">
             <span class="brand-glyph" id="brand-glyph"></span>
-            <span class="brand-name">ConnectSuite</span>
+            <span class="brand-name">Sidekick</span>
           </div>
 
           <div class="sidebar-group">
@@ -127,7 +127,7 @@
         <main class="main">
           <header class="page-head">
             <div class="page-head-text">
-              <h1 class="page-title" id="page-title">ConnectSuite</h1>
+              <h1 class="page-title" id="page-title">Sidekick</h1>
               <p class="page-sub" id="page-sub"></p>
             </div>
             <div class="toolbar" id="toolbar">
@@ -237,20 +237,25 @@
                         </div>
                       </div>
                       <dl class="hero-details" id="hero-facts"></dl>
-                      <!--
-                        The handoff's two hero actions. `Start mirroring` is the design's one
-                        primary fill on this screen and is the same call the Mirror pane's own
-                        button makes; `Device info` opens Settings → Connection, which is where
-                        the facts it would have shown actually live.
-                      -->
-                      <div class="hero-actions">
-                        <button type="button" id="hero-mirror" class="button primary-action">
-                          Start mirroring<span class="mono hero-key">⌘⇧M</span>
-                        </button>
-                        <button type="button" id="hero-info" class="button">Device info</button>
-                      </div>
                     </div>
                   </div>
+                </div>
+
+                <!--
+                  The pill button row — the Sidekick visual-language brief: "Pill buttons in a row
+                  of three, equal width, dark fill, placed under the gradient hero card." Moved out
+                  of the hero card itself (the handoff drew these as `.hero-actions`, inside it) so
+                  the hero stays the one surface holding only the connection state and device name.
+                  `Start mirroring` / `Device info` are the handoff's own two; the third is new —
+                  `View activity`, the same destination `#recent-all` already links to, chosen
+                  because it is the one Overview action with nowhere to click through from up here.
+                -->
+                <div class="hero-pill-row" id="overview-pill-row">
+                  <button type="button" id="hero-mirror" class="button primary-action hero-pill-action">
+                    Start mirroring<span class="mono hero-key">⌘⇧M</span>
+                  </button>
+                  <button type="button" id="hero-info" class="button hero-pill-action">Device info</button>
+                  <button type="button" id="hero-activity" class="button hero-pill-action">View activity</button>
                 </div>
 
                 <!--
@@ -287,7 +292,7 @@
                   <div class="recent-head">
                     <div class="recent-heading">
                       <h3 class="recent-title">Recent activity</h3>
-                      <p class="recent-sub">Latest events from your device and ConnectSuite</p>
+                      <p class="recent-sub">Latest events from your device and Sidekick</p>
                     </div>
                     <button type="button" class="recent-all" id="recent-all">
                       <span>View all</span>
@@ -297,12 +302,12 @@
                 </section>
 
                 <!--
-                  O4 — Device status. Two rings, not the design's three: there is no memory ring,
-                  because free RAM on Android is not a fact a person can act on. The reasoning is in
-                  `src/shared/deviceVitals.ts` and the departure is recorded at O4.
+                  O4 — Device status. Two readings, not the design's three: there is no memory
+                  reading, because free RAM on Android is not a fact a person can act on. The
+                  reasoning is in `src/shared/deviceVitals.ts` and the departure is recorded at O4.
 
-                  The rings are drawn as SVG rather than a CSS conic-gradient so that an UNKNOWN
-                  state can omit the arc entirely. A gradient always paints something, and "paints
+                  Drawn as a readout and a bar since 2026-09-17 (N-P2), not as rings. An UNKNOWN
+                  reading has no fill element at all — an empty bar would read as zero, and "paints
                   nothing" is exactly the state this card has to be able to express.
                 -->
                 <div class="card device-status-card" id="device-status-card">
@@ -813,7 +818,7 @@
                 <aside class="settings-aside">
                   <section class="settings-brand">
                     <span class="settings-brand-glyph" id="settings-brand-glyph" aria-hidden="true"></span>
-                    <div class="settings-brand-name">ConnectSuite</div>
+                    <div class="settings-brand-name">Sidekick</div>
                     <div class="settings-brand-version mono" id="settings-version">—</div>
                     <p class="settings-brand-line">Your phone essentials, on your Mac.</p>
                   </section>
@@ -877,6 +882,7 @@
     <script src="markWindow.js"></script>
     <script src="latencyStages.js"></script>
     <script src="captureFit.js"></script>
+    <script src="../shared/mirrorSession.js"></script>
     <script src="mirror.js"></script>
     <!-- The float button's two states, tested in floatButton.test.ts. -->
     <script src="floatButton.js"></script>

@@ -661,8 +661,8 @@ async function onRailPress(item: (typeof FLOAT_RAIL)[number]): Promise<void> {
       .catch(() => ({ floatStillOpen: undefined }));
     say(
       result.floatStillOpen === false
-        ? 'The ConnectSuite window is in front — and this window closed, which it should not have.'
-        : 'The ConnectSuite window is in front. This window stayed open.',
+        ? 'The Sidekick window is in front — and this window closed, which it should not have.'
+        : 'The Sidekick window is in front. This window stayed open.',
     );
     return;
   }

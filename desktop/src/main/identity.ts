@@ -105,7 +105,7 @@ function generate(): Identity {
 
   const attrs = [
     { name: 'commonName', value: macName() },
-    { name: 'organizationName', value: 'ConnectSuite' },
+    { name: 'organizationName', value: 'Sidekick' },
   ];
   cert.setSubject(attrs);
   cert.setIssuer(attrs);

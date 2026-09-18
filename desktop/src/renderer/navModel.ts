@@ -261,7 +261,7 @@ const SCREENS: NavScreen[] = [
     id: 'settings',
     label: 'Settings',
     title: 'Settings',
-    subtitle: 'Tune ConnectSuite to your workflow.',
+    subtitle: 'Tune Sidekick to your workflow.',
     tileCaption: 'Tune this Mac',
     icon: 'settings',
     group: 'SYSTEM',

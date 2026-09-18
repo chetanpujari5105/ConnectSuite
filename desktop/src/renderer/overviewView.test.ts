@@ -181,7 +181,7 @@ test('O4 — a phone that has never reported draws no arc at all', () => {
     // A gradient would paint something here. The absence of the arc element IS the state.
     // `querySelector` rather than `querySelectorAll`: the DOM double implements the first and not
     // the second, and a test that reaches past what the double models is testing the double.
-    assert.equal(cell.querySelector('.ring-arc'), null);
+    assert.equal(cell.querySelector('.vital-fill'), null);
   }
 });
 
@@ -193,8 +193,8 @@ test('O4 — reported-as-unknown and never-reported are different sentences', ()
     { level: null, charging: false, capacityUnknown: true },
     null,
   );
-  const a = never.ringRow.children[0].querySelector('.ring-caption').textContent;
-  const b = cannot.ringRow.children[0].querySelector('.ring-caption').textContent;
+  const a = never.ringRow.children[0].querySelector('.vital-caption').textContent;
+  const b = cannot.ringRow.children[0].querySelector('.vital-caption').textContent;
   assert.notEqual(a, b, 'a phone that cannot report reads the same as one that has not yet');
 });
 
@@ -206,14 +206,77 @@ test('O4 — a real reading draws an arc and says the number', () => {
   );
   const [battery, storage] = Array.from(pane.ringRow.children);
   assert.equal(battery.dataset.tone, 'ok');
-  assert.notEqual(battery.querySelector('.ring-arc'), null);
-  assert.equal(battery.querySelector('.ring-value').textContent, '72%');
-  assert.equal(battery.querySelector('.ring-caption').textContent, 'Charging');
-  assert.match(storage.querySelector('.ring-caption').textContent, /^free of /);
+  assert.notEqual(battery.querySelector('.vital-fill'), null);
+  assert.equal(battery.querySelector('.vital-value').textContent, '72%');
+  assert.equal(battery.querySelector('.vital-caption').textContent, 'Charging');
+  assert.equal(storage.querySelector('.vital-value').textContent, '511 GB');
+  assert.equal(storage.querySelector('.vital-caption').textContent, '41.2 GB free');
 });
 
 test('O4 — a low battery is toned differently from a healthy one', () => {
   const low = mount();
   (low.view as unknown as Vitals).setVitals({ level: 5, charging: false, capacityUnknown: false }, null);
   assert.equal(low.ringRow.children[0].dataset.tone, 'low');
+});
+
+// ---- N-M5 / N-M6, the native-macOS pass: motion that has something to travel from ---------------
+
+/**
+ * A frame clock the test owns. The view waits two frames before releasing a start value; holding
+ * them lets a test read the start value, which is the only place these two defects are visible —
+ * the end state was always correct.
+ */
+function holdFrames(): { flush(): void; release(): void } {
+  const g = globalThis as Record<string, unknown>;
+  const queue: Array<() => void> = [];
+  g.requestAnimationFrame = (fn: () => void) => queue.push(fn);
+  return {
+    flush() {
+      while (queue.length) queue.shift()!();
+    },
+    release() {
+      delete g.requestAnimationFrame;
+    },
+  };
+}
+
+test('N-M5 — a new reading starts where the last one was, so the bar travels', () => {
+  // The defect: the row is rebuilt on every update, and the old ring arc was born at its final value
+  // each time, so its transition had nothing to move from. It never animated, for as long as it existed.
+  const frames = holdFrames();
+  try {
+    const pane = mount();
+    const vitals = pane.view as unknown as Vitals;
+    vitals.setVitals({ level: 72, charging: true, capacityUnknown: false }, null);
+    frames.flush();
+    vitals.setVitals({ level: 50, charging: true, capacityUnknown: false }, null);
+    const fill = pane.ringRow.children[0].querySelector('.vital-fill');
+    assert.equal(fill.style.transform, 'scaleX(0.72)', 'starts from the previous reading');
+    frames.flush();
+    assert.equal(fill.style.transform, 'scaleX(0.5)', 'and arrives at the new one');
+  } finally {
+    frames.release();
+  }
+});
+
+test('N-M6 — only a row that was not on screen before arrives; first paint is still', async () => {
+  // Keyed on `seq`. Keyed on index, every row reads as new and the card animates all five on every event.
+  const frames = holdFrames();
+  try {
+    const pane = mount([1, 2, 3].map((n) => event(n)));
+    await pane.view.refresh();
+    assert.equal(pane.recent.queryAll('.recent-row').length, 3, 'control: three rows drawn');
+    assert.equal(pane.recent.queryAll('.is-arriving').length, 0, 'first paint does not animate');
+    frames.flush();
+
+    pane.bridge.events = [1, 2, 3, 4].map((n) => event(n));
+    await pane.view.refresh();
+    const arriving = pane.recent.queryAll('.is-arriving');
+    assert.equal(arriving.length, 1, 'one new event, one arriving row');
+    assert.equal(arriving[0].dataset.seq, '4');
+    frames.flush();
+    assert.equal(pane.recent.queryAll('.is-arriving').length, 0, 'released after two frames');
+  } finally {
+    frames.release();
+  }
 });

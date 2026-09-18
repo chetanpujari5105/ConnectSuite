@@ -50,15 +50,14 @@ test('the low threshold is applied at its boundary in both directions', () => {
   assert.equal(below.tone, 'low');
 });
 
-test('storage fills with what is used and says what is free', () => {
-  // One fact twice — "88% used" over a ring 88% full — is not two facts. The number says the thing
-  // the ring cannot.
+test('storage fills with what is used, names the capacity, and says what is free', () => {
+  // The handoff's assignment: `128 GB` in the ring, `68 GB free` under it, arc at used.
   const view = storageRing({ freeBytes: 20_000_000_000, totalBytes: 100_000_000_000 });
   assert.equal(view.fraction, 0.8);
   // The word "free" lives in the caption because the value sits inside a 72px ring and
-  // "13.7 GB free" overflows it. The pair still says used-arc plus free-number.
-  assert.equal(view.value, '20.0 GB');
-  assert.match(view.caption, /^free of /);
+  // "13.7 GB free" overflows it.
+  assert.equal(view.value, '100 GB');
+  assert.equal(view.caption, '20.0 GB free');
 });
 
 test('a null half of storage makes the whole ring unknown, not zero', () => {

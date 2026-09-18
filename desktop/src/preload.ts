@@ -374,7 +374,7 @@ contextBridge.exposeInMainWorld('connect', {
     overwrite?: boolean;
   }): Promise<PushOutcome> => ipcRenderer.invoke('fs-push', options),
   /**
-   * Copies one file from the phone to `~/Downloads/ConnectSuite` and answers with its local path.
+   * Copies one file from the phone to `~/Downloads/Sidekick` and answers with its local path.
    *
    * The path is what [fsDrag] needs: Finder will not accept a promise of a file, only a file, so
    * a row has to be copied before it can be dragged. That ordering is the platform's and it is

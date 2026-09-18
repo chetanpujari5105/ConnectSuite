@@ -33,15 +33,22 @@
 .card {
   padding: var(--space-9);
   border-radius: var(--radius-panel);
-  background: var(--elev-2);
+  /* A material, not a grey — docs/native-mac-pass-audit.md §5 and --material-card in tokens.css.
+     Top-level panels only; a panel nested inside one keeps its own fill and no blur, because a
+     blurred material on a blurred material loses legibility and costs a second backdrop pass. */
+  background: var(--material-card);
+  -webkit-backdrop-filter: var(--material-card-filter);
+  backdrop-filter: var(--material-card-filter);
   border: 1px solid var(--hairline);
   box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
-  transition: transform var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease);
 }
 
-.card:hover { border-color: var(--hairline-hover); }
+/* No hover on `.card`. A card is not a control: a border that brightens under the pointer promises a
+   click the card does not answer. Rows, tiles and buttons inside it carry their own hover. N-M10. */
 
 .card.primary {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   background: var(--elev-3);
   border-color: rgba(var(--overlay-rgb), 0.1);
   box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
@@ -91,14 +98,25 @@ button,
   color: var(--text-on-control);
   font: var(--text-control);
   cursor: pointer;
-  transition: background 180ms var(--ease), border-color 180ms var(--ease),
-    transform var(--dur-press) var(--ease);
+  /* Release at --dur-release; the press itself is faster, below. Feedback lands on pointer-down. */
+  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
+    transform var(--dur-release) var(--ease);
 }
 
-button:hover,
-.button:hover { background: var(--elev-3); border-color: var(--hairline-hover); }
-button:active,
-.button:active { transform: scale(0.98); }
+@media (hover: hover) and (pointer: fine) {
+  button:hover,
+  .button:hover { background: var(--elev-3); border-color: var(--hairline-hover); }
+}
+/*
+ * One press, app-wide — N-M7. There were eleven: .94, .96, .98 and .985 on different buttons, each
+ * chosen alone. `--press-scale` for every labelled control; `--press-scale-icon` for a round icon
+ * button, which is small enough that .97 does not read.
+ */
+button:active:not(:disabled),
+.button:active:not(:disabled) {
+  transform: scale(var(--press-scale));
+  transition-duration: var(--dur-press);
+}
 
 /* Red is reserved: it means destructive or failed, and nothing else. */
 button.danger { color: var(--destructive); border-color: var(--destructive-border); }
@@ -133,6 +151,36 @@ button.danger:hover { background: var(--destructive-fill); }
 }
 .primary-action:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .primary-action:disabled:hover { background: var(--accent); }
+
+/*
+ * The hero's pill row — brief: "Pill buttons in a row of three, equal width, dark fill, placed
+ * under the gradient hero card." Named `.hero-pill-row` / `.hero-pill-action` rather than
+ * `.pill-row` / `.pill-action`, which already name the Calls/Notifications filter-chip wrapper
+ * below (`stylesheets.test.ts` caught the collision on the first run — same name, two components,
+ * 1752 lines apart, which is exactly the dead-block shape that check exists for).
+ *
+ * `grid-column: 1` puts it directly under `.hero` in the Overview grid's first column, the same
+ * convention `.card.recent` and `.device-status-card` use for their own placement. Only
+ * `.primary-action` (Start mirroring) carries the lime fill; the other two stay `.button`'s plain
+ * dark fill — "the lime never appears twice in one card doing two different jobs" extends to not
+ * making every pill in the row lime.
+ */
+.hero-pill-row {
+  grid-column: 1;
+  display: flex;
+  gap: var(--space-4);
+}
+.hero-pill-action {
+  flex: 1;
+  /* Icon + label, inline — folded in here rather than kept as a second rule for the same three
+     buttons, which is what `.hero-actions .button` was before the row moved out of the hero card. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  height: 40px;
+  border-radius: var(--radius-pill);
+}
 
 button:disabled {
   opacity: 0.45;
@@ -183,17 +231,25 @@ img#qr {
   gap: var(--space-2);
   padding: 3px var(--space-4);
   border-radius: var(--radius-pill);
-  font-size: 12px;
-  background: var(--control);
+  font: var(--text-caption);
+  letter-spacing: var(--tracking-caption);
+  background: transparent;
   border: 1px solid var(--hairline);
-  color: var(--text-meta);
+  /* Was `--text-meta` at 12px — 2.6:1, below the design's own rule that meta is 10–11px only. A
+     capability the phone is not offering is still a fact someone needs to read. */
+  color: var(--unselected-text);
 }
 .cap-glyph { flex: none; }
 
+/*
+ * On is not *selected* and it is not a *success*, so it is neither the accent nor green — departure
+ * N-P1. Twelve green chips beside a green status dot made the capability list read as twelve
+ * connection states. On is brighter text, a firmer edge and the `check` glyph; off is the `lock`.
+ */
 .cap.on {
-  background: rgba(var(--tint-green-rgb), 0.1);
-  border-color: rgba(var(--tint-green-rgb), 0.24);
-  color: var(--live);
+  background: rgba(var(--overlay-rgb), 0.04);
+  border-color: var(--hairline-hover);
+  color: var(--text-primary);
 }
 
 /*
@@ -691,7 +747,7 @@ img#qr {
   display: flex;
   justify-content: space-between;
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: var(--leading-12);
   /* Tabular figures so the clock does not jitter as digits change width four times a second. */
   font-variant-numeric: tabular-nums;
@@ -786,7 +842,7 @@ img#qr {
   transition: transform var(--dur-press) var(--ease), background var(--dur-hover) var(--ease);
 }
 .remote-button:hover:not(:disabled) { background: var(--np-control-hover); }
-.remote-button:active:not(:disabled) { transform: scale(0.94); }
+.remote-button:active:not(:disabled) { transform: scale(var(--press-scale-icon)); }
 .remote-button.primary { width: 60px; height: 60px; }
 
 /* A disabled transport button is a statement, not a dead control: it keeps its shape and, where
@@ -836,7 +892,7 @@ img#qr {
   background: var(--np-control);
   color: var(--np-text);
   font: var(--text-control);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .remote-output-name {
   min-width: 0;
@@ -866,7 +922,7 @@ img#qr {
   flex: none;
   min-width: 34px;
   text-align: right;
-  font-size: 11.5px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--np-text-meta);
 }
@@ -972,7 +1028,7 @@ img#qr {
   border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-body);
-  font-size: 11.5px;
+  font-size: 12px;
   cursor: pointer;
   transition: background var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
 }
@@ -982,7 +1038,7 @@ img#qr {
   border-color: var(--accent-border);
   color: var(--text-primary);
 }
-.sms-tab-count { font-size: 10.5px; color: var(--text-meta); }
+.sms-tab-count { font-size: 11px; color: var(--text-meta); }
 .sms-tab.on .sms-tab-count { color: var(--accent-text); }
 
 /* New conversation. An icon button rather than the design's absent control — the canvas has no way
@@ -1046,7 +1102,7 @@ img#qr {
 .sms-lines { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 
 .sms-who {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   overflow: hidden;
@@ -1057,7 +1113,7 @@ img#qr {
 /* The preview. It has been on the wire since Phase 4 and this is the first stylesheet in which it
    has a height. */
 .sms-preview {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-body);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1072,7 +1128,7 @@ img#qr {
   gap: var(--space-2);
   flex: none;
 }
-.sms-when { font-size: 10.5px; color: var(--text-meta); }
+.sms-when { font-size: 11px; color: var(--text-meta); }
 
 .sms-unread {
   min-width: 18px;
@@ -1080,7 +1136,7 @@ img#qr {
   border-radius: var(--radius-pill);
   background: var(--accent);
   color: var(--accent-on-fill);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 16px;
   text-align: center;
@@ -1095,7 +1151,7 @@ img#qr {
   border: 1px solid var(--hairline);
   background: transparent;
   color: var(--text-body);
-  font-size: 11.5px;
+  font-size: 12px;
   cursor: pointer;
 }
 .sms-older:hover { background: var(--control); color: var(--text-on-control); }
@@ -1200,7 +1256,7 @@ img#qr {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-control);
   background: rgba(var(--overlay-rgb), 0.06);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.4;
 }
 .sms-bubble.outbound .sms-attachment { background: var(--fill-on-bubble); }
@@ -1244,7 +1300,7 @@ img#qr {
   transition: filter var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
 }
 .sms-send:hover { filter: brightness(1.06); }
-.sms-send:active { transform: scale(0.96); }
+.sms-send:active:not(:disabled) { transform: scale(var(--press-scale-icon)); }
 .sms-send:disabled { opacity: 0.5; cursor: default; }
 
 /* ---- Column three: the person -------------------------------------------------------------------- */
@@ -1277,7 +1333,7 @@ img#qr {
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--space-1) var(--space-5);
   margin-top: var(--space-8);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .sms-person-fact-label { color: var(--text-meta); }
 .sms-person-fact-value { color: var(--text-on-control); text-align: right; overflow-wrap: anywhere; }
@@ -1309,8 +1365,8 @@ img#qr {
   color: var(--disc-fg);
   font-weight: 600;
 }
-.sms-disc-sm { width: 34px; height: 34px; font-size: 11.5px; }
-.sms-disc-md { width: 34px; height: 34px; font-size: 11.5px; }
+.sms-disc-sm { width: 34px; height: 34px; font-size: 12px; }
+.sms-disc-md { width: 34px; height: 34px; font-size: 12px; }
 .sms-disc-lg { width: 72px; height: 72px; font-size: 22px; }
 
 /* ---- New conversation, and the contacts directory with it ------------------------------------------ */
@@ -1380,7 +1436,7 @@ img#qr {
   background: var(--well);
   border: 1px solid var(--hairline);
   color: var(--text-primary);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 #sms-card { position: relative; }
@@ -1541,7 +1597,7 @@ img#qr {
 .call-row[disabled]:hover { background: transparent; }
 .call-row-lines { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .call-log-who {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   line-height: var(--leading-13);
   color: var(--text-primary);
@@ -1549,7 +1605,7 @@ img#qr {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.call-log-kind { font-size: 11.5px; color: var(--text-body); }
+.call-log-kind { font-size: 12px; color: var(--text-body); }
 /* Missed is the one type worth colouring, because it is the one people scan for. It keeps its
    text label too — the colour is not the only carrier of the state. */
 .call-row.missed .call-log-kind { color: var(--destructive); }
@@ -1579,7 +1635,7 @@ img#qr {
 }
 .call-live { display: flex; flex-direction: column; align-items: center; gap: var(--space-4); flex: 1; }
 .call-who { font-size: 22px; font-weight: 600; letter-spacing: var(--tracking-title); color: var(--text-primary); }
-.call-state { font-size: 12.5px; color: var(--text-body); }
+.call-state { font-size: 13px; color: var(--text-body); }
 /* Green because a call in progress is the one live thing on this screen — the same role `--live`
    carries on the connection chip. It is a *state* colour, not a decoration. */
 .call-clock { font-size: 14px; font-variant-numeric: tabular-nums; color: var(--live); }
@@ -1639,7 +1695,7 @@ img#qr {
   justify-content: center;
 }
 .call-idle-headline { font: var(--text-card-title); letter-spacing: var(--tracking-title); color: var(--text-primary); }
-.call-idle-body { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--text-body); }
+.call-idle-body { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-body); }
 
 /* ---- The dialler ---------------------------------------------------------------------------- */
 .calls-dialer {
@@ -1676,7 +1732,7 @@ img#qr {
 }
 .dialkey:hover { background: rgba(var(--overlay-rgb), 0.06); border-color: var(--hairline-hover); }
 .dialkey-digit { font-size: 17px; color: var(--text-primary); }
-.dialkey-sub { font-size: 8.5px; letter-spacing: 0.1em; color: var(--text-meta); }
+.dialkey-sub { font-size: 10px; letter-spacing: 0.1em; color: var(--text-meta); }
 /* Not in the design — a keypad with no delete. Departure C5. It sits under the `#` key rather than
    in the grid so the 3×4 the handoff draws keeps its shape. */
 .dialkey-back {
@@ -1706,11 +1762,10 @@ img#qr {
   transition: filter var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
 }
 .dial-call:hover { filter: brightness(1.06); }
-.dial-call:active { transform: scale(0.985); }
 .dial-call.is-confirming { background: var(--destructive); }
 
 .calls-frequent { display: flex; flex-direction: column; gap: 1px; }
-.calls-frequent-note { font-size: 11.5px; color: var(--text-meta); }
+.calls-frequent-note { font-size: 12px; color: var(--text-meta); }
 .calls-frequent-row {
   display: flex;
   align-items: center;
@@ -1728,7 +1783,7 @@ img#qr {
 .calls-frequent-label {
   flex: 1;
   min-width: 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-on-control);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1764,17 +1819,11 @@ img#qr {
    The reduced-motion block in tokens.css already switches every animation off globally, so there is
    nothing to repeat here. */
 
-@keyframes float-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: none; }
-}
-
-.page.route-in .stagger > * {
-  animation: float-in var(--dur-route) var(--ease) both;
-}
-.page.route-in .stagger > *:nth-child(2) { animation-delay: 50ms; }
-.page.route-in .stagger > *:nth-child(3) { animation-delay: 100ms; }
-.page.route-in .stagger > *:nth-child(n + 4) { animation-delay: 150ms; }
+/* **Removed 2026-09-17 — departure N-M2.** The card stagger replayed on every route: 260ms of
+   translate per card with up to 150ms of delay, on top of the page's own entrance. On an action taken
+   tens of times a day that is ~410ms before the screen stops moving. The route is now a 140ms
+   opacity fade on `.page` alone (shell.css), and cards arrive with it. The `.stagger` class is left
+   in the markup as a harmless hook rather than edited out of twelve panes. */
 
 /* ================================================================================================
  * The design language, scoped to `.pane`.
@@ -1822,7 +1871,9 @@ img#qr {
 }
 
 .pane {
-  background: var(--elev-2);
+  background: var(--material-card);
+  -webkit-backdrop-filter: var(--material-card-filter);
+  backdrop-filter: var(--material-card-filter);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-panel);
   box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
@@ -1882,30 +1933,42 @@ img#qr {
   /* The handoff is explicit — "Radius: 10 (controls, chips) … **Pills use 999px**" — and the
    * design draws these fully rounded. This was --radius-control on a class called `.pill-tab`. */
   border-radius: var(--radius-pill);
+  /* Unselected, by the two-state rule in tokens.css: transparent, hairline, --unselected-text. It was
+     an opaque --control fill with --text-on-control, so an unselected pill read nearly as loud as the
+     selected one beside it. */
   border: 1px solid var(--hairline);
-  background: var(--control);
-  color: var(--text-on-control);
+  background: transparent;
+  color: var(--unselected-text);
   font: var(--text-control);
   cursor: pointer;
-  transition: transform var(--dur-press) var(--ease), opacity var(--dur-hover) var(--ease);
+  transition: transform var(--dur-press) var(--ease), opacity var(--dur-hover) var(--ease),
+    background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
+    color var(--dur-state) var(--ease);
 }
 
 .pill-tab:hover { border-color: var(--hairline-hover); }
-.pill-tab:active { transform: scale(0.98); }
 
-/* Selection is a tint plus a border plus the count's colour — never colour alone. */
+/*
+ * **Filled lime, not a soft tint — the Sidekick visual-language brief, 2026-09-17.** "Segmented
+ * pill tabs: two options side by side, one filled lime-on-black, one plain ghost/outline... replace
+ * the current chip row styling with this filled-vs-ghost pair pattern." The unselected pill above
+ * was already the ghost half (transparent, hairline, dim text); this is the other half becoming a
+ * solid fill rather than the two-state rule's translucent `--selection-fill`. `--accent-on-fill` is
+ * the same near-black used on `.primary-action`, for the same reason: it is a fill, not text on a
+ * page, and dark-on-lime is what clears contrast in both themes.
+ */
 .pill-tab.selected {
-  background: var(--accent-tint-selected);
-  border-color: var(--accent-border);
-  color: var(--text-primary);
-  box-shadow: 0 0 22px var(--accent-glow);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-on-fill);
 }
 
+/* A count is data, not meta: `--unselected-text`, not `--text-meta`, which read as disabled (2.6:1). */
 .pill-count {
   font-size: 11px;
-  color: var(--text-meta);
+  color: var(--unselected-text);
 }
-.pill-tab.selected .pill-count { color: var(--accent-text); }
+.pill-tab.selected .pill-count { color: var(--accent-on-fill); opacity: 0.75; }
 
 /*
  * A pill with nothing behind it. Dimmed, and carrying a dot rather than a count — a `0` would read
@@ -2011,12 +2074,18 @@ img#qr {
 /* An app-pinned notification. A left edge, not a colour swap — see the hue note in the pane. */
 .notif-row.ongoing { border-left: 2px solid var(--secondary); }
 
+/*
+ * Circular, not the rounded-square `--radius-control` — brief: "Circular icon badges: a soft-edged
+ * colored circle (not square) holding a small icon, used as a leading element in list rows... for
+ * service icons in Notifications." A generated-hue tile like this one has no fixed art to clip, so
+ * the shape change costs nothing; see `.apps-tile-art` below for the tradeoff where it does.
+ */
 .app-tile {
   display: grid;
   place-items: center;
   width: 34px;
   height: 34px;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-pill);
   background: hsl(var(--tile-hue, 260) var(--tile-fill-sat) var(--tile-fill-lig) / 0.16);
   color: hsl(var(--tile-hue, 260) var(--tile-text-sat) var(--tile-text-lig));
   font: 600 14px/1 var(--font-ui);
@@ -2215,7 +2284,6 @@ img#qr {
   transition: transform var(--dur-press) var(--ease), border-color var(--dur-hover) var(--ease);
 }
 .chip:hover { border-color: var(--accent-border); color: var(--text-primary); }
-.chip:active { transform: scale(0.98); }
 
 .notif-reply {
   display: flex;
@@ -2248,7 +2316,6 @@ img#qr {
   cursor: pointer;
   transition: transform var(--dur-press) var(--ease);
 }
-.notif-reply .send:active { transform: scale(0.98); }
 .notif-reply .send:disabled { opacity: 0.45; cursor: default; }
 
 .action-grid {
@@ -2273,7 +2340,6 @@ img#qr {
   transition: transform var(--dur-press) var(--ease), border-color var(--dur-hover) var(--ease);
 }
 .action:hover { border-color: var(--hairline-hover); }
-.action:active { transform: scale(0.98); }
 
 /*
  * The only red on this pane, and the only destructive verb on it. `--destructive` means destructive
@@ -2470,7 +2536,6 @@ img#qr {
   transition: background var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
 }
 .tool:hover { background: var(--control); color: var(--text-primary); }
-.tool:active { transform: scale(0.98); }
 
 /* The rotation slot is a readout, not a control — no hover, no pointer, nothing to press. */
 .tool.readout { cursor: default; }
@@ -2521,7 +2586,6 @@ img#qr {
   transition: border-color var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
 }
 .global:hover { border-color: var(--hairline-hover); }
-.global:active { transform: scale(0.98); }
 .global:disabled { opacity: 0.45; cursor: default; }
 
 .pane-meta {
@@ -2568,12 +2632,11 @@ img#qr {
   transition: border-color var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
 }
 .quality-row:hover { border-color: var(--hairline-hover); }
-.quality-row:active { transform: scale(0.98); }
-.quality-row.selected { background: var(--accent-tint); border-color: var(--accent-border); }
+.quality-row.selected { background: var(--selection-fill); border-color: var(--selection-border); }
 
 .quality-row > span:first-child { display: grid; gap: 2px; }
 .quality-title { font: 600 13px/var(--leading-13) var(--font-ui); color: var(--text-primary); }
-.quality-sub { font: var(--text-meta-size); color: var(--text-meta); }
+.quality-sub { font: var(--text-caption); letter-spacing: var(--tracking-caption); color: var(--text-body); }
 
 /* Selection is the dot *and* the tint *and* aria-checked — never colour on its own. */
 .quality-dot {
@@ -2640,8 +2703,6 @@ img#qr {
   cursor: pointer;
   transition: transform var(--dur-press) var(--ease);
 }
-.stop-button:active,
-.start-button:active { transform: scale(0.98); }
 .stop-button:disabled,
 .start-button:disabled { opacity: 0.45; cursor: default; }
 
@@ -2815,7 +2876,7 @@ img#qr {
 
 .photos-album-name {
   font: var(--text-control);
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2967,7 +3028,7 @@ img#qr {
   color: var(--text-on-media);
   font: var(--text-meta-size);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .photos-empty {
@@ -3066,7 +3127,7 @@ img#qr {
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--space-1) var(--space-5);
   margin-top: var(--space-4);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .photos-detail-fact-label { color: var(--text-meta); }
@@ -3192,7 +3253,9 @@ img#qr {
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr);
   gap: 0;
-  background: var(--elev-2);
+  background: var(--material-card);
+  -webkit-backdrop-filter: var(--material-card-filter);
+  backdrop-filter: var(--material-card-filter);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-panel);
   overflow: hidden;
@@ -3711,32 +3774,59 @@ img#qr {
  * better served anyway than in a 786px column. Measured after: the columns end 138px apart.
  */
 .caps-card { grid-column: 1 / -1; }
-.ring-row { display: flex; gap: var(--space-8); flex-wrap: wrap; }
-.ring-cell { display: grid; justify-items: center; gap: 2px; min-width: 104px; }
-.ring-svg { width: 72px; height: 72px; transform: rotate(-90deg); }
-.ring-track {
-  stroke: var(--hairline);
-  stroke-width: 4;
+.ring-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-12);
 }
-.ring-arc {
-  stroke: var(--accent-text);
-  stroke-width: 4;
-  stroke-linecap: round;
-  transition: stroke-dashoffset 240ms ease;
+/*
+ * A reading: label and value on one line, a 4px bar, a caption. N-P2, 2026-09-17.
+ *
+ * The fill is full width and **scaled**, never sized: `transform: scaleX()` stays on the compositor
+ * where `width` would lay the card out again on every frame. It carried a neutral colour when the
+ * reading was fine and took `--warning` only when low (departure N-P1, why the design's green ring
+ * is gone) — the fine-reading colour changed again the same day, to the lime gradient the Sidekick
+ * visual-language brief asks for by name; see `.vital-fill` below and tokens.css.
+ */
+.vital { display: grid; gap: var(--space-3); min-width: 0; }
+.vital-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-5); }
+.vital-label { font: var(--text-control); color: var(--text-body); }
+.vital-value {
+  font: 600 21px/23px var(--font-mono);
+  letter-spacing: var(--tracking-section);
+  color: var(--text-primary);
+  white-space: nowrap;
 }
-.ring-cell[data-tone='ok'] .ring-arc { stroke: var(--live); }
-.ring-cell[data-tone='low'] .ring-arc { stroke: var(--warning); }
-.ring-value { margin-top: -46px; font-size: 13px; font-weight: 600; color: var(--text-primary); }
-/* A value too wide for the arc it sits in. The arithmetic is in `overview.ts` beside the rule that
-   applies it — 50.4px of clear span, and `10.8 GB` at 13px mono is 54.8. */
-.ring-value.is-long { font-size: 11px; }
-.ring-label { margin-top: 26px; font-size: 12px; color: var(--text-body); }
-/* `--text-meta`, and it was `--text-strong`/`--text-muted` — **two tokens that do not exist**
-   (defect 92). An undeclared custom property makes the whole declaration invalid at computed-value
-   time, so `color` fell back to inherit: this caption drew `#f4f4f7` under the 13px/600 value
-   directly above it, at the same weight of colour, and the pair had no hierarchy at all. */
-.ring-caption { font-size: 11px; color: var(--text-meta); text-align: center; }
-.ring-cell[data-tone='unknown'] .ring-value { color: var(--text-meta); }
+.vital-track {
+  position: relative;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: rgba(var(--overlay-rgb), 0.08);
+  overflow: hidden;
+}
+.vital-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  /*
+   * Gradient fill, not the neutral `--value-arc` — brief: "Linear progress bars with gradient fill,
+   * not circular rings. Apply this fill style to the existing Device status bars." Departure from
+   * N-P2's neutral-reading rule, logged the same day: the brief's own colour system reserves lime
+   * for "progress fills" by name, so a normal reading takes the gradient and only `--warning`
+   * (below) still means "low" — the tone distinction survives, only the "fine" colour changed.
+   */
+  background: linear-gradient(90deg, var(--accent-hover), var(--accent));
+  transform-origin: left center;
+  /* On-screen movement between two readings, so symmetric. Rare — a battery moves a percent every
+     few minutes — which is what earns it the longest beat in the app. */
+  transition: transform var(--dur-ring) var(--ease-in-out);
+}
+/* The bar and the *caption* carry the warning, never the value: for storage the value is the
+   capacity (`490 GB`) and the caption is the free space (`8.9 GB free`), and only one of those is low. */
+.vital[data-tone='low'] .vital-fill { background: var(--warning); }
+.vital[data-tone='low'] .vital-caption { color: var(--warning); }
+.vital-caption { font: var(--text-caption); letter-spacing: var(--tracking-caption); color: var(--text-body); }
+.vital[data-tone='unknown'] .vital-value { color: var(--text-body); }
 
 .clip-phone-state {
   display: grid;
@@ -3835,7 +3925,7 @@ img#qr {
   height: 36px;
   border-radius: var(--radius-control);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-primary);
   background: rgba(var(--overlay-rgb), 0.06);
@@ -3859,11 +3949,11 @@ img#qr {
   overflow: hidden;
 }
 .clip-body.is-muted { color: var(--text-body); font-style: italic; }
-.clip-meta { font-size: 11.5px; color: var(--text-meta); }
+.clip-meta { font-size: 12px; color: var(--text-meta); }
 
 .clip-empty {
   padding: var(--space-9) var(--space-7);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.55;
   color: var(--text-body);
 }
@@ -3874,7 +3964,7 @@ img#qr {
   min-height: 44px;
   padding: var(--space-4) var(--space-7);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.5;
   text-align: center;
   color: var(--text-meta);
@@ -3932,7 +4022,7 @@ img#qr {
    something was refused, and *this was not recorded* — which is not the same as "no". */
 .clip-step.is-refused .clip-step-dot { background: var(--warning-fill); }
 .clip-step.is-unknown .clip-step-dot { background: rgba(var(--overlay-rgb), 0.05); }
-.clip-step-label { display: block; font-size: 12.5px; color: var(--text-on-control); }
+.clip-step-label { display: block; font-size: 13px; color: var(--text-on-control); }
 .clip-step.is-unknown .clip-step-label { color: var(--text-body); }
 .clip-step-when { display: block; font-size: 11px; color: var(--text-meta); }
 
@@ -4004,28 +4094,28 @@ img#qr {
 .activity-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-pill);
   border: 1px solid var(--hairline);
   background: transparent;
-  color: var(--text-body);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 500;
+  color: var(--unselected-text);
+  font: var(--text-control);
   cursor: pointer;
+  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
+    color var(--dur-state) var(--ease);
 }
 
 .activity-chip:hover { border-color: var(--hairline-hover); color: var(--text-primary); }
 
 .activity-chip.is-active {
-  border-color: var(--accent);
+  border-color: var(--selection-border);
   color: var(--text-primary);
-  background: var(--accent-tint);
+  background: var(--selection-fill);
 }
 
-.activity-chip-count { font-size: 11px; color: var(--text-meta); }
-.activity-chip.is-active .activity-chip-count { color: var(--text-body); }
+.activity-chip-count { font-size: 11px; color: var(--unselected-text); }
+.activity-chip.is-active .activity-chip-count { color: var(--accent-text); }
 
 /* Wide content scrolls inside its own container; the page body never scrolls sideways. */
 .activity-table { overflow-x: auto; }
@@ -4040,7 +4130,7 @@ img#qr {
 }
 
 .activity-head {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.12em;
   color: var(--text-meta);
@@ -4132,18 +4222,18 @@ img#qr {
 
 .activity-donut { display: block; width: 132px; height: 132px; margin: 0 auto 10px; }
 .activity-donut-total { fill: var(--text-primary); font-size: 22px; font-weight: 600; font-family: var(--font-mono); }
-.activity-donut-label { fill: var(--text-meta); font-size: 8.5px; }
+.activity-donut-label { fill: var(--text-meta); font-size: 10px; }
 
-.activity-legend { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.activity-legend { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .activity-legend > div { display: grid; grid-template-columns: 8px 1fr auto; gap: 8px; align-items: center; color: var(--text-body); }
 
 .activity-spark { display: block; width: 100%; height: auto; }
-.activity-axis { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-meta); padding: 0 4px; }
+.activity-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-meta); padding: 0 4px; }
 
 .activity-export { width: 100%; }
 
-.activity-stats { font-size: 10.5px; color: var(--text-meta); margin: 6px 0 0; line-height: 1.5; }
-.activity-empty-note { font-size: 12.5px; color: var(--text-body); margin: 0; line-height: 1.5; }
+.activity-stats { font-size: 11px; color: var(--text-meta); margin: 6px 0 0; line-height: 1.5; }
+.activity-empty-note { font-size: 13px; color: var(--text-body); margin: 0; line-height: 1.5; }
 
 /* The four nothing-here states. Neutral by default; only A2 takes --warning, because an empty log
    has not failed and must not read as though it has. */
@@ -4245,7 +4335,7 @@ img#qr {
 
 .apps-banner-detail,
 .apps-banner-fix {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-body);
 }
 
@@ -4314,10 +4404,15 @@ img#qr {
   border-color: var(--hairline);
 }
 
+/*
+ * Circular badge — brief: "for app icons in the Apps pane." A real launcher icon is drawn square to
+ * its own edges, so a circular mask crops its corners; the reference apps this brief names do the
+ * same trade for the badge look, and it is accepted here rather than an oversight.
+ */
 .apps-tile-art {
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   overflow: hidden;
   display: grid;
   place-items: center;
@@ -4335,12 +4430,12 @@ img#qr {
 .apps-tile-pending {
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   background: var(--well);
 }
 
 .apps-tile-name {
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.25;
   text-align: center;
   max-width: 100%;
@@ -4356,7 +4451,7 @@ img#qr {
    chose. Departure N5, applied to a second pane. */
 .apps-tile-name.mono {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--text-body);
 }
 
@@ -4367,7 +4462,7 @@ img#qr {
   padding: 10px var(--space-4);
   display: grid;
   gap: 3px;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .apps-toast.sent {
@@ -4401,7 +4496,7 @@ img#qr {
 }
 
 .apps-empty-detail {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-body);
   max-width: 46ch;
 }
@@ -4447,7 +4542,7 @@ img#qr {
   border-radius: var(--radius-control);
   background: rgba(var(--tint-green-rgb), 0.08);
   border: 1px solid rgba(var(--tint-green-rgb), 0.22);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.55;
   color: var(--live);
 }

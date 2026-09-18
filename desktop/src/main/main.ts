@@ -444,7 +444,7 @@ function createWindow(): void {
     ...bounds,
     minWidth: minimum.width,
     minHeight: minimum.height,
-    title: 'ConnectSuite',
+    title: 'Sidekick',
     backgroundColor: appearanceRules.WINDOW_GROUND[currentTheme()],
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 20, y: 20 },
@@ -580,7 +580,7 @@ function refreshTray(): void {
         // Through `revealMainWindow` rather than its own `show()`: this item did not restore a
         // minimised window and did not focus the one it showed, so it was a third half-answer to the
         // question defect 117 is about. One function, four callers.
-        label: 'Open ConnectSuite',
+        label: 'Open Sidekick',
         click: () => revealMainWindow('tray'),
       },
       {
@@ -771,8 +771,8 @@ async function onMirrorState(state: MirrorStatePayload): Promise<void> {
 app.whenReady().then(() => {
   initLogger();
   activity.init();
-  activity.record('system', 'ConnectSuite started', `version ${app.getVersion()}`);
-  log.info('app', `ConnectSuite ${app.getVersion()} starting`);
+  activity.record('system', 'Sidekick started', `version ${app.getVersion()}`);
+  log.info('app', `Sidekick ${app.getVersion()} starting`);
   // Read here, and only here, so a weakened guard announces itself in the first lines of the log
   // rather than when it first bites — by which time a confusing result has already happened and
   // would be blamed on the feature. Packaged builds never reach this.
@@ -1478,7 +1478,7 @@ ipcMain.handle('mirror-capture', async (_event, dataUrl: string) => {
     return { ok: false, reason: 'That capture was not a PNG and was not saved.' };
   }
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const path = join(app.getPath('desktop'), `ConnectSuite ${stamp}.png`);
+  const path = join(app.getPath('desktop'), `Sidekick ${stamp}.png`);
   try {
     await writeFile(path, Buffer.from(dataUrl.slice(prefix.length), 'base64'));
     // Logged at the same volume as the failure below, with the same tally, because a count of
@@ -1747,7 +1747,7 @@ ipcMain.handle('activity-events', () => ({
 ipcMain.handle('activity-csv', async () => {
   const target = await dialog.showSaveDialog({
     title: 'Export activity log',
-    defaultPath: join(app.getPath('downloads'), `ConnectSuite activity ${new Date().toISOString().slice(0, 10)}.csv`),
+    defaultPath: join(app.getPath('downloads'), `Sidekick activity ${new Date().toISOString().slice(0, 10)}.csv`),
     filters: [{ name: 'CSV', extensions: ['csv'] }],
   });
   if (target.canceled || !target.filePath) return { ok: false, reason: 'cancelled' };
@@ -2055,7 +2055,7 @@ if (!app.isPackaged) {
     const transferId = String(payload.transferId ?? '');
     const size = Number(payload.size ?? 0);
     const name = String(payload.name ?? 'probe.bin');
-    const destination = join(tmpdir(), `connectsuite-resume-${Date.now()}-${name}`);
+    const destination = join(tmpdir(), `sidekick-resume-${Date.now()}-${name}`);
 
     // Half of it, then the socket dies. The receiver takes its ordinary interruption path.
     const first = await bulk.pull({
@@ -2286,7 +2286,7 @@ if (!app.isPackaged) {
       return { ok: false, stage: 'begin', reason: error instanceof Error ? error.message : String(error) };
     }
     const agreed = (ticket.payload ?? {}) as Record<string, unknown>;
-    const destination = join(tmpdir(), `connectsuite-fs-${Date.now()}-${options.name}`);
+    const destination = join(tmpdir(), `sidekick-fs-${Date.now()}-${options.name}`);
 
     const result = await bulk.pull({
       host,
@@ -2373,7 +2373,7 @@ if (!app.isPackaged) {
     );
 
     // The assertion. The id was agreed and then withdrawn; a socket claiming it must get nothing.
-    const destination = join(tmpdir(), `connectsuite-cancelled-${Date.now()}.bin`);
+    const destination = join(tmpdir(), `sidekick-cancelled-${Date.now()}.bin`);
     const afterwards = await bulk.pull({
       host, token, transferId, destination,
       expectedBytes: Number(agreed.size ?? 0),

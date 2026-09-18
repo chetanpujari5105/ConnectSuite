@@ -5,7 +5,7 @@ import { join } from 'node:path';
  * Where a file from the phone lands on this Mac, in one place.
  *
  * It was written out twice — `files.ts` for `fs.*` pulls and pushes, `photos.ts` for
- * `media.original` — as `join(homedir(), 'Downloads', 'ConnectSuite')` in both. That was harmless
+ * `media.original` — as `join(homedir(), 'Downloads', 'Sidekick')` in both. That was harmless
  * while nothing else read it, and stopped being harmless the moment Settings → File transfer had to
  * *display* the path: a third copy is the one that goes stale, and a settings screen showing a
  * folder the app does not actually use is a worse failure than no settings screen, because it is
@@ -18,5 +18,5 @@ import { join } from 'node:path';
  * needed.
  */
 export function downloadsFolder(): string {
-  return join(homedir(), 'Downloads', 'ConnectSuite');
+  return join(homedir(), 'Downloads', 'Sidekick');
 }

@@ -15,7 +15,7 @@ let logPath: string | null = null;
 export function initLogger(): string {
   const dir = join(app.getPath('userData'), 'logs');
   mkdirSync(dir, { recursive: true });
-  logPath = join(dir, 'connectsuite.log');
+  logPath = join(dir, 'sidekick.log');
   return logPath;
 }
 

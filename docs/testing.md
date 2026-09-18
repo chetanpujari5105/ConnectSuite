@@ -20397,8 +20397,8 @@ Before any code changed, every reported item was measured in the running app thr
 |---|---|
 | *"the status pill is sticky, the header is not, so the pill floats over content on scroll"* | `#status-island` is `position: absolute`, bottom **46px**; `#page` top **142px**; `.page-head` is `static` and **outside the scroller**. Overlap is not expressible. This is the handoff's *"60px of reserved space so the floating status island never overlaps the page title"*, working |
 | *"the media remote prints the track title twice"* | **One** `.remote-title`. `#remote-note` is 1×1 with `clip-path: inset(50%)` and carries *"Paused in YouTube."*, not the title — defect 46's fix, in the accessibility tree by design |
-| *"the storage ring renders near-full while the label says 11.0 GB free of 490 GB"* | The arc **is** bound to used, which is the handoff's binding too (`ring2` at 0.50 under a `128 GB` value and a `68 GB free` caption) |
-| *"the phone preview is an empty black rectangle"* | `linear-gradient(170deg, #1c1f2b, #111219)`, 150×325 — the handoff's *"150px phone render"*, decoration rather than a preview. No device screenshot exists on this wire (Slice 59 §2) |
+| *"the storage ring renders near-full while the label says 11.0 GB free of 490 GB"* | The arc **is** bound to used, which is the handoff's binding too (`ring2` at 0.50 under a `128 GB` value and a `68 GB free` caption). **The defect is withdrawn; the conformance was not** — the value/caption assignment still differed, and is O19, corrected 2026-09-17 |
+| *"the phone preview is an empty black rectangle"* | `linear-gradient(170deg, #1c1f2b, #111219)`, 150×325 — the handoff's *"150px phone render"*, decoration rather than a preview. No device screenshot exists on this wire (Slice 59 §2). **The defect is withdrawn; the render was not the handoff's** — O20 draws its wallpaper and notch, 2026-09-17 |
 | *"five heading sizes"* | **Four** distinct: 31 / 21 / 15 / 10.5 |
 | *"connection status renders 5 times"* | **Four** visible — island, sidebar chip, hero chip, footer strip — and all four are the handoff's. A fifth appears only when a failure event is among the recent five |
 | *"~400px of dead space"* | **227px** (left column ended 1151, right 924) |
@@ -20456,6 +20456,7 @@ All through `scripts/probe.mjs` against the running app. Window 1920×1080 unles
 | visible overflow triggers | `open-overflow`, `hero-more` | **`open-overflow`** | 280 buttons in the window |
 | two-column imbalance | **227px** | **139px** | column membership read from the **computed rect against the grid midline**, never from the id |
 | `#caps-card` at 920px | — | `reachable`, fraction 0 at rest, 317px scroll | `onScreen`, 6 cards, two report `visible` |
+| `#overview-strip` at 920px | — | `reachable`, top **1094** at rest vs band end **874**; handoff's own footer **872–930** vs **865** | resolved as departure **O21** — see §7 |
 
 **The instrument was wrong once and it was caught by its own output.** The first column-imbalance
 read matched `/remote|device-status|caps/` as "column two" and reported **205px** — but `.caps-card`
@@ -20492,10 +20493,29 @@ check-color-tokens · check-contrast · check-apps-verb · check-protocol-spec �
 check-debt-claims  · check-orphan-tests                                      all exit 0
 ```
 
-**757 is what this tree measures; `docs/RESUME.md` claims 761 and that number was not verified
-here.** This pass is net **+1** test (chips gained one; three were rewritten in place), so the two
-figures do not reconcile and the difference is not accounted for. Recorded rather than rounded — a
-count with an unexplained gap is the denominator rule's own failure.
+**757 is what this tree measures; `docs/RESUME.md` claimed 761.** This paragraph originally said the
+two did not reconcile. **They do, and the error was this paragraph's:** it compared against
+`RESUME.md` rather than against the previous slice. Settled 2026-09-17 by measurement:
+
+```
+commit                                  tree     npm test (desktop)
+59c9475  (parent, Slice 52 ledger)      clean    681 tests, 681 pass     temp worktree, node_modules linked
+f6384a3  (HEAD, the four sittings)      clean    757 tests, 757 pass     .test-run.json: exitCode 0, green
+```
+
+`git diff 59c9475 f6384a3` over `desktop/**/*.test.ts`: **86** `test(` lines added, **10** removed —
+**+76, and 681 + 76 = 757 exactly.** Five of the ten removed are the Quick-actions tests Slice 58
+says went with the feature (*the grid is the design's eight*, *an unbuilt tile is marked*, *the
+count says how many WORK*, *the Notifications tile shows a live count*, *a tile routes to its own
+screen*); the other five are rewrites in place. So the ledger chain is
+**681 → 713 → 740 → 753 → 761 → 756 → 757**, and the RESUME figure was Slice 57's 761, stale since
+Slice 58's −5.
+
+**What this does and does not prove.** The endpoints are measured and the diff accounts for the whole
+difference. **761 itself cannot be re-measured**: the four sittings went into one commit, so no tree
+at that state exists. It is *consistent with* 756 + 5 removed tests; it is not a reading. "The
+tree was stashed" was a no-op — the tree was already clean at HEAD, because the commit had landed
+before this session opened.
 
 Three tests failed first and were fixed as part of the work, which is worth naming because two of
 them were guarding a rule whose **carrier** moved rather than a rule that stopped being true:
@@ -20511,3 +20531,113 @@ And one of my own assertions was wrong in a way worth recording: it extracted a 
 `textContent.replace(/[^A-Za-z].*$/, '')` and got `ConnectionLocal` — there is no separator between
 a label and its value in `textContent`, so the extraction invented one. The label is its own
 element; the test reads `.detail-label` now.
+
+### 7 · 2026-09-17 — the two conformance fixes, and the strip
+
+**O19 — storage ring.** `storageRing` returns `value: humanBytes(total)`, `caption: "<free> free"`;
+the arc is unchanged. Two tests rewritten in place (`deviceVitals.test.ts`,
+`overviewView.test.ts`), each now asserting the exact value and caption rather than a `/^free of /`
+match. **The is-long threshold, re-checked in the running app** because `490 GB` is six characters
+and the rule is `length > 6`:
+
+| ring | value | class | font | text width | clear span |
+|---|---|---|---|---|---|
+| battery | `80%` | `ring-value mono` | 13px SF Mono | 23.5 | 50.4 |
+| storage | `490 GB` | `ring-value mono` | 13px SF Mono | **47.0** | 50.4 |
+
+Mono is fixed-pitch, so every six-character capacity (`256 GB`, `1.0 TB`) is this same 47.0 — 3.4px
+of slack, and seven characters (`64.0 GB`) steps down. Text width is a `Range` over the value's text
+node, not the element's box, which is the ring's width.
+
+**O20 — phone render.** `.hero-phone` draws the handoff's gradient, highlights and notch. Read back
+computed: 150×325, radius 18px, `linear-gradient(150deg, rgb(43,31,82), rgb(18,48,67) 55%,
+rgb(15,42,47))`, `::after` 34×4 at top 8px in `rgba(0,0,0,0.5)`. Colour guard and contrast guard both
+exit 0; the new `--hero-phone-notch` token has a light value.
+
+**O21 — the strip.** At the app's 1440×920 window (`innerWidth === outerWidth`, control: 5 cards):
+grid rows **368 / 347 / 189 / 58**, `#page` band **152–874**, strip at rest **1094–1152**. The same
+question was put to the handoff, rendered in a throwaway Electron on :9223: footer **872–930**, scroll
+band **143–865**, scroll height 815 over 722. The design itself draws the footer below the fold at
+920px, so no layout that keeps to the handoff can put it on screen at rest; it is recorded as a
+departure from defect 85's rule rather than left open. The capability card stays `reachable` without
+a row — it is reference, not state.
+
+**Suites after:** Mac **757 / 757** (two tests rewritten, none added).
+
+
+## Phase 7 Slice 63 — the native-macOS pass: materials, one selection rule, and motion that has something to travel from
+
+**2026-09-17.** Briefed by the owner as a visual and motion pass. **Authority:** the brief wins where
+it disagrees with the handoff, by the owner's explicit choice, and every disagreement is a row in
+`docs/design-departures.md` (N-P1–N-P3, N-M2, N-M4, N-M7–N-M10). The audit came first and is
+`docs/native-mac-pass-audit.md`; nothing was edited until it was written.
+
+### 1 · What the brief claimed, against what the build did
+
+Of seven reported red flags, **one was already fixed** (the gradient CTA: computed
+`background-image: none`, `box-shadow: none`) and **one was false** (*"zero motion anywhere"*: 44
+transitions and 7 keyframes, with `prefers-reduced-motion` read as `false` in the page, so none of it
+was suppressed). One was true for a reason nobody had seen: **the rings had never animated**, because
+`overview.ts` rebuilt the SVG at its final `stroke-dashoffset` on every update, so the 240ms transition
+had no start value. Controls for the negative: the same read returned the nav pill's live
+`transform 0.2s` transition and `#page`'s `page-in` animation, so the instrument could see motion.
+
+### 2 · A defect found while measuring — Start and Stop mirroring both on screen
+
+`renderer.ts` enabled both from one input (*does the phone advertise `mirror`*); nothing in the
+renderer held whether a session existed. Rule and transitions moved to `src/shared/mirrorSession.ts`,
+fed by `MirrorView` (start requested / failed, `mirror.state` running / stopped, `mirror-stopped`
+transient or not, stop requested). 8 tests, including a reachability walk over every event asserting
+**exactly one** button is shown in every reachable state.
+
+- **Red-first:** restoring the original rule (`startShown: true, stopShown: true`) turns the suite red
+  on the reachability test; restored, 8/8.
+- **On the running app** (Electron started 15:02:01, after the build): `mirror-start hidden=false`,
+  `mirror-stop hidden=true`, while not mirroring. **Not yet observed during a live session** — the
+  `starting`/`active` half is proven by test only. Stimulus: press Start with the phone connected.
+
+### 3 · Motion, as measured in the running page after the change
+
+| Row | Read over CDP | 
+|---|---|
+| Route (N-M2) | `#page` `page-in` **0.14s**; hero and recent cards `animationName=none` (stagger gone) |
+| Halo (N-M4) | `#island-dot::after` `halo 0.6s`, iteration count **1** |
+| Island | `#island-text` `transition: opacity 0.18s` — fades only on a **tone** change |
+| ⌘K (N-M8) | `.palette` `animationName=none` |
+| Dock (N-M9) | `transform 0.2s cubic-bezier(0.22,1,0.36,1)` — the overshoot curve is gone |
+| Vitals (N-P2) | fills `scaleX(0.73)` and `scaleX(0.981827)`, `transform 0.6s cubic-bezier(0.77,0,0.175,1)` |
+| Material | `.card.recent` `blur(24px) saturate(1.3)` over `rgba(22,24,34,.62)`; `.card.primary.hero` `backdrop-filter: none`, opaque `#1c1f2b` |
+| Nav pill (N-P3) | `box-shadow` is the inset top edge only |
+| Chip off (R5) | `.cap` `rgb(156,159,176)` = `--text-body`, 12px — was `--text-meta` |
+
+**The island fade broke the island's own invariant on its first version, and the suite caught it.**
+It deferred the new words by half a beat so they could fade in — which put the *new* tone's dot beside
+the *old* tone's words for 90ms, defect 96 exactly. Four `shellIsland.test.ts` tests went red. The
+shipped version writes words and dot synchronously and fades only the already-written words in.
+
+**Two further tests, each shown red against the defect it names** (`overviewView.test.ts`, with a
+frame clock the test holds):
+- *N-M5* — a second reading's fill starts at the first reading's `scaleX`. Mutation `from = to` (the
+  old behaviour): red. Restored: green.
+- *N-M6* — only the row whose `seq` was not previously drawn gets `.is-arriving`; first paint gets
+  none. Mutation keyed on nothing (`if (previous)`): red. Restored: green.
+
+### 4 · Type
+
+Half-pixel literal sizes collapsed onto the scale: **18 distinct literal `font-size`s → 12**; 59
+declarations moved by 0.5px (`8.5, 9.5 → 10`, `10.5 → 11`, `11.5 → 12`, `12.5 → 13`, `14.5 → 15`).
+`--text-caption` added. Checked by eye on Overview, Mirror, Notifications, Settings and Activity
+at 1440×920; **no overflow measurement was taken**, which is the gap `storageRing`'s comment warns
+about — a DOM double has no layout.
+
+### 5 · As run
+
+```
+npm test (desktop)             767 tests, 767 pass, 0 fail   (757 before + 8 mirrorSession + 2 overview)
+check-renderer-scripts · check-renderer-views · check-color-tokens · check-contrast ·
+check-apps-verb · check-protocol-spec · check-debt-claims · check-orphan-tests    all exit 0
+check-defects.sh               107 numbered rows, all with records
+```
+
+**Not run, and it is the owner's to run:** `/review-animations`. It is user-invocable only; a pass
+written by hand in its place would be the instrument supplying its own verdict.

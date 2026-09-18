@@ -336,6 +336,9 @@ class MirrorView {
    */
   private overlayEnds: OverlayEnds = 'session';
 
+  private session: MirrorSession = 'idle';
+  private sessionListener: ((session: MirrorSession) => void) | null = null;
+
   /**
    * Encoded size of the most recent keyframe, in bytes.
    *
@@ -366,7 +369,7 @@ class MirrorView {
     });
     bridge.onMirrorState((state) => this.onState(state));
     bridge.onMirrorRotate((rotate) => this.onRotate(rotate));
-    bridge.onMirrorStopped((info) =>
+    bridge.onMirrorStopped((info) => {
       // `transient` is the main process passing on what only it knows: a SECURE_SURFACE error
       // leaves the session running and every other one ends it. Without that bit the canvas has
       // to guess, and the guess it used to make — "frames are still arriving, so it must be
@@ -375,8 +378,9 @@ class MirrorView {
         info.reason ?? 'Mirroring stopped.',
         info.fixHint,
         info.transient ? 'content' : 'session',
-      ),
-    );
+      );
+      this.advanceSession(info.transient ? 'stopped-transient' : 'stopped');
+    });
     this.attachInput();
   }
 
@@ -385,6 +389,7 @@ class MirrorView {
   async start(options: Record<string, unknown> = {}): Promise<void> {
     this.showReason('Asking the phone…');
     this.resetMeasurements();
+    this.advanceSession('start-requested');
     try {
       const started = await this.bridge.mirrorStart(options);
       // The phone was asked at `requestedAt`; anything measured from the click would be measuring
@@ -399,7 +404,24 @@ class MirrorView {
       // phone.", "The phone is locked…", and so on. Showing it verbatim is the whole point.
       // Every one of these ended the attempt, so no frame can disprove it.
       this.showReason(messageOf(error), undefined, 'session');
+      this.advanceSession('start-failed');
     }
+  }
+
+  /**
+   * Whether a session exists, for the two buttons that must never both be on screen. The rule and
+   * its transitions are `shared/mirrorSession.ts`; this only feeds it events.
+   */
+  onSessionChange(listener: (session: MirrorSession) => void): void {
+    this.sessionListener = listener;
+    listener(this.session);
+  }
+
+  private advanceSession(event: MirrorSessionEvent): void {
+    const next = mirrorSessionAfter(this.session, event);
+    if (next === this.session) return;
+    this.session = next;
+    this.sessionListener?.(next);
   }
 
   /**
@@ -458,6 +480,7 @@ class MirrorView {
       this.applyCaptureAspect();
     }
     if (state.state === 'running') {
+      this.advanceSession('phone-running');
       if (this.framesDecoded === 0) {
         this.showReason('Phone is capturing; waiting for the first frame…');
         return;
@@ -471,6 +494,7 @@ class MirrorView {
     }
     // `stopped` is over; the pending phases — awaiting-foreground, requesting-consent — are
     // waiting for a picture and are ended by one.
+    if (state.state === 'stopped') this.advanceSession('stopped');
     if (state.message) {
       this.showReason(state.message, state.fixHint, state.state === 'stopped' ? 'session' : 'pixels');
     }
@@ -478,6 +502,7 @@ class MirrorView {
 
   async stop(): Promise<void> {
     await this.bridge.mirrorStop();
+    this.advanceSession('stop-requested');
     this.teardownDecoder();
     this.resetMeasurements();
     this.showReason('Mirroring stopped.', undefined, 'session');

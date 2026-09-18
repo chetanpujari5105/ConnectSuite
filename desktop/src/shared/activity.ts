@@ -325,7 +325,7 @@ function activityCsv(events: ActivityEvent[]): string {
  * `ActivityEvent` carries **one** `detail` field, and the card needs two different things out of
  * it: a *subtitle* (a sentence about what happened) and *metadata* (the device it happened to, the
  * version it happened in). Which one a given `detail` is depends entirely on the event —
- * `Connected`'s detail is a device name, `Disconnected`'s is a sentence, `ConnectSuite started`'s
+ * `Connected`'s detail is a device name, `Disconnected`'s is a sentence, `Sidekick started`'s
  * is a version string.
  *
  * **The discriminator is `kind`, never the shape of the text.** Sniffing `detail` for something
@@ -383,7 +383,7 @@ function activityRowView(event: ActivityEvent): ActivityRowView {
     };
   }
 
-  if (event.kind === 'ConnectSuite started') {
+  if (event.kind === 'Sidekick started') {
     // "version 2.0.0" → "v2.0.0". A badge is a label, and the word is the column header's job.
     const version = event.detail.replace(/^version\s+/i, '');
     return {

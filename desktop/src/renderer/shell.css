@@ -178,12 +178,17 @@ body {
 }
 
 .island-text {
-  font-size: 11.5px;
-  font-weight: 500;
-  letter-spacing: var(--tracking-meta);
+  font: var(--text-caption);
+  letter-spacing: var(--tracking-caption);
   color: var(--text-on-control);
   white-space: nowrap;
+  /* The tone-change fade-in. `shell.ts` sets `.is-arriving` for one frame only when the link's *tone*
+     changes — never on a latency tick, which rewrites this text every few seconds. The new words are
+     already written when it fades; nothing stale is ever on screen. `.motion-fade` in the markup
+     keeps this under reduced motion, where it is the only bridge left. */
+  transition: opacity var(--dur-state) var(--ease);
 }
+.island-text.is-arriving { opacity: 0; transition: none; }
 
 /* ---- State dots ------------------------------------------------------------------------------
  * One rule for every live/weak/down dot in the app — sidebar card, device strip, hero chip,
@@ -198,6 +203,9 @@ body {
   flex: none;
   border-radius: 50%;
   background: var(--text-meta);
+  /* The dot changes colour with the link. It used to snap; the change is the fact being reported,
+     so it gets a bridge — colour only, at the same beat as the island's text. */
+  transition: background-color var(--dur-state) var(--ease);
 }
 
 .island-dot { width: 7px; height: 7px; }
@@ -209,11 +217,20 @@ body {
 .state-dot[data-state='down'],
 .island-dot[data-state='down'] { background: var(--destructive); }
 
-/* The halo pulses only while the link is up. A pulsing dot on a dead link is the animation saying
- * one thing while the colour says another. */
+/*
+ * The halo marks **the moment the link comes up, once**, and is then quiet.
+ *
+ * It used to pulse forever — 2.8s, infinite, on four dots at once (island, sidebar card, strip, hero
+ * chip) — in the peripheral vision of an app whose fourth principle is *pair once, then be quiet*.
+ * A ~0.36Hz oscillation is also the band Apple's motion guidance singles out to avoid. Departure N-M4.
+ *
+ * Once is structural, not a timer: the `::after` only exists while `data-state='live'`, so the
+ * animation starts when the selector begins to match. `setAttribute` with an unchanged value does
+ * not restart it, so latency ticks cannot replay it; a drop and a return do, which is the point.
+ */
 @keyframes halo {
-  0%, 100% { opacity: 0.35; transform: scale(1); }
-  50% { opacity: 0.9; transform: scale(1.5); }
+  from { opacity: 0.6; transform: scale(1); }
+  to { opacity: 0; transform: scale(2.4); }
 }
 
 .state-dot[data-state='live']::after,
@@ -223,7 +240,8 @@ body {
   inset: 0;
   border-radius: 50%;
   background: var(--live);
-  animation: halo 2.8s ease-in-out infinite;
+  opacity: 0;
+  animation: halo var(--dur-ring) var(--ease) 1 both;
 }
 
 /* ---- Layout ----------------------------------------------------------------------------------- */
@@ -404,7 +422,9 @@ body {
   border-radius: var(--radius-control);
   background: var(--accent-tint-selected);
   border: 1px solid var(--accent-border);
-  box-shadow: 0 0 22px var(--accent-glow), 0 1px 0 rgba(var(--overlay-rgb), 0.06) inset;
+  /* No glow. A zero-offset coloured halo around the selection was decoration — the tint and the
+     border already carry it. What is left is the lit top edge a raised material has. Departure N-P3. */
+  box-shadow: 0 1px 0 rgba(var(--overlay-rgb), 0.06) inset;
   transition: transform var(--dur-pill) var(--ease);
   pointer-events: none;
 }
@@ -429,12 +449,17 @@ body {
   font: 500 13.5px/var(--leading-13-5) var(--font-ui);
   text-align: left;
   cursor: pointer;
-  transition: color var(--dur-hover) var(--ease);
+  transition: color var(--dur-state) var(--ease);
 }
 
-.nav-row:hover { color: var(--text-on-control); }
-.nav-row svg { flex: none; transition: transform 160ms var(--ease); }
-.nav-row:hover svg { transform: scale(1.06); }
+/* `background: transparent` because nav rows are `<button>`s and the base `button:hover` fill in
+   styles.css reaches them at higher specificity — a grey slab under the pointer, which no macOS
+   sidebar draws. Hover here is colour only; the pill is the only fill. */
+.nav-row:hover { color: var(--text-on-control); background: transparent; border-color: transparent; }
+/* The icon no longer grows on hover. A sidebar row is hovered dozens of times an hour on the way to
+   somewhere else; the colour change is the whole of the feedback it needs. */
+.nav-row svg { flex: none; }
+.nav-row:active { color: var(--text-primary); }
 .nav-row[aria-current='page'] { color: var(--text-primary); }
 .nav-row:focus-visible { outline-offset: 1px; }
 
@@ -445,7 +470,7 @@ body {
   flex: none;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--canvas);
   background: var(--accent);
@@ -484,7 +509,7 @@ body {
   gap: var(--space-4);
   padding: var(--space-3);
   border-radius: 12px;
-  transition: background 180ms var(--ease);
+  transition: background var(--dur-state) var(--ease);
 }
 
 .account-row:hover { background: rgba(var(--overlay-rgb), 0.035); }
@@ -498,13 +523,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--accent-on-fill);
 }
 
 .account-lines { min-width: 0; flex: 1; }
-.account-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.account-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .account-sub {
   font-size: 11px;
   color: var(--text-meta);
@@ -515,7 +540,7 @@ body {
 
 .pro-pill {
   flex: none;
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
   color: var(--accent-text);
@@ -588,12 +613,11 @@ body {
   color: var(--text-on-control);
   font: 500 12.5px/var(--leading-12-5) var(--font-ui);
   cursor: pointer;
-  transition: background 180ms var(--ease), border-color 180ms var(--ease),
+  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
     transform var(--dur-press) var(--ease);
 }
 
 .toolbar-button:hover { background: var(--elev-3); border-color: var(--hairline-hover); }
-.toolbar-button:active { transform: scale(0.98); }
 .toolbar-button.icon-only { width: 32px; padding: 0; justify-content: center; color: var(--text-body); }
 .toolbar-button .tb-key { font-size: 11px; line-height: var(--leading-11); color: var(--text-meta); }
 .tb-icon { display: flex; flex: none; }
@@ -616,9 +640,10 @@ body {
 }
 
 /* ---- The scrolling page ----------------------------------------------------------------------- */
+/* Opacity only, 140ms. See --dur-route-fade in tokens.css for the ~410ms this replaced. */
 @keyframes page-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* A column, so a screen that wants to own its own scrolling can fill what is left after the page
@@ -642,7 +667,7 @@ body {
 
 /* Keyed to the route by shell.ts re-adding the class, so the entrance replays on every navigation
  * rather than only on first paint. */
-.page.route-in { animation: page-in var(--dur-route) var(--ease) both; }
+.page.route-in { animation: page-in var(--dur-route-fade) var(--ease) both; }
 
 .screen[hidden] { display: none; }
 
@@ -706,12 +731,18 @@ body {
   /* --dock-tint is a "r,g,b" triple set per tile from navModel.DOCK. */
   background: rgba(var(--dock-tint), 0.16);
   color: color-mix(in srgb, rgb(var(--dock-tint)), #000 var(--tint-darken));
-  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Critically damped. The overshoot curve this replaced (`0.34, 1.56, …`) was the one bouncy thing in
+     the app, on a hover — and bounce is earned by momentum, which a hover does not carry. The scale
+     is smaller for the same reason. Departure N-M9. */
+  transition: transform var(--dur-hover) var(--ease);
 }
 
-.dock-slot:hover .dock-tile { transform: scale(1.35) translateY(-8px); }
-.dock-slot:hover + .dock-slot .dock-tile,
-.dock-slot:has(+ .dock-slot:hover) .dock-tile { transform: scale(1.16) translateY(-3px); }
+@media (hover: hover) and (pointer: fine) {
+  .dock-slot:hover .dock-tile { transform: scale(1.18) translateY(-4px); }
+  .dock-slot:hover + .dock-slot .dock-tile,
+  .dock-slot:has(+ .dock-slot:hover) .dock-tile { transform: scale(1.06) translateY(-1px); }
+}
+.dock-slot .dock-tile:active { transform: scale(var(--press-scale)); transition-duration: var(--dur-press); }
 
 .dock-tip {
   position: absolute;
@@ -732,6 +763,36 @@ body {
 }
 
 .dock-slot:hover .dock-tip { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/*
+ * The raised circular ⌘K button — brief: "Raised, colored circular action button breaking out of a
+ * bar." Bigger than a `.dock-tile`, filled lime, and lifted by a negative margin so it visually
+ * breaks the top edge of the dock row rather than sitting flush inside it like the screen tiles.
+ */
+.dock-slot-raised { margin: 0 var(--space-2); }
+.dock-tile-raised {
+  width: 46px;
+  height: 46px;
+  margin-top: -14px;
+  border: none;
+  border-radius: var(--radius-pill);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  background: var(--accent);
+  color: var(--accent-on-fill);
+  box-shadow: 0 8px 20px var(--hero-grad-glow), var(--shadow-dock);
+  transition: transform var(--dur-hover) var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .dock-slot-raised:hover .dock-tile-raised { transform: scale(1.08) translateY(-2px); }
+}
+.dock-slot-raised .dock-tile-raised:active {
+  transform: scale(var(--press-scale));
+  transition-duration: var(--dur-press);
+}
 
 /* ---- Toast -------------------------------------------------------------------------------------- */
 @keyframes toast-in {
@@ -758,13 +819,11 @@ body {
 }
 
 .toast-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--live); }
-.toast-text { font-size: 12.5px; color: var(--text-on-control); }
+.toast-text { font-size: 13px; color: var(--text-on-control); }
 
 /* ---- ⌘K palette ----------------------------------------------------------------------------------- */
-@keyframes cmdk-in {
-  from { opacity: 0; transform: scale(0.94); }
-  to { opacity: 1; transform: none; }
-}
+/* No `cmdk-in`. ⌘K is the most frequent keyboard action in the app; an entrance on it is a delay on
+   every use. Raycast and Spotlight open in one frame. Departure N-M8. */
 
 .palette-backdrop {
   position: absolute;
@@ -789,7 +848,6 @@ body {
   backdrop-filter: blur(30px) saturate(140%);
   border: 1px solid rgba(var(--overlay-rgb), 0.11);
   box-shadow: var(--shadow-palette);
-  animation: cmdk-in var(--dur-float) var(--ease) both;
 }
 
 .palette-field {
@@ -810,7 +868,7 @@ body {
   outline: none;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 14.5px;
+  font-size: 15px;
 }
 
 .palette-esc { font-size: 11px; color: var(--text-meta); }
@@ -855,7 +913,7 @@ body {
 }
 
 .palette-label { flex: 1; min-width: 0; }
-.palette-group { font-size: 11.5px; color: var(--text-meta); }
+.palette-group { font-size: 12px; color: var(--text-meta); }
 .palette-key { font-size: 11px; color: var(--text-meta); width: 40px; text-align: right; }
 
 /* An unbuilt destination is dimmed and says so in its group column — never dimmed alone. */
@@ -901,8 +959,10 @@ body {
   max-width: 420px;
   padding: var(--space-10);
   border-radius: var(--radius-panel);
-  /* Elevation **2**. A screen with nothing on it must not hold the heaviest surface in the app. */
-  background: var(--elev-2);
+  /* Elevation **2**, as material. A screen with nothing on it must not hold the heaviest surface. */
+  background: var(--material-card);
+  -webkit-backdrop-filter: var(--material-card-filter);
+  backdrop-filter: var(--material-card-filter);
   border: 1px solid var(--hairline);
   box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
 }
@@ -993,11 +1053,54 @@ body {
  * The media card keeps its own size and sets the row. An uneven row is the honest picture of two
  * cards with different amounts to say.
  */
+/*
+ * **The gradient hero card — the Sidekick visual-language brief, 2026-09-17.** Departure from the
+ * handoff's opaque `--elev-3` primary card, logged in `docs/design-departures.md`. The brief names
+ * this card specifically ("the Overview pane's connection status... not Device status") and says
+ * "exactly one hero card in the entire app" — every other `.card.primary` on the app keeps its
+ * plain opaque fill; this is the one place a card's own surface carries the gradient.
+ *
+ * The lime shows as a corner bloom (`--hero-grad-glow`, a radial layered under everything else)
+ * over a dark-green linear base, not as the card's ground colour: `--text-primary` sits on the
+ * card everywhere `.hero-facts` draws, and a card that was lime end-to-end would put white text on
+ * a bright fill and fail contrast exactly where the connection state and device name are read.
+ */
 .hero {
   grid-column: 1;
   /* Named containment, for the detail grid's container queries above. `inline-size` because only
      the width decides anything here; `size` would need a fixed height and this card has none. */
   container: hero / inline-size;
+  position: relative;
+  overflow: hidden;
+}
+/*
+ * `.card.primary.hero`, not `.hero` — `.card.primary` in styles.css sets `background: var(--elev-3)`
+ * at (0,2,0); this needs (0,3,0) to win regardless of load order, the same compound-selector
+ * discipline `.card.recent` already documents above.
+ */
+.card.primary.hero {
+  background:
+    radial-gradient(60% 75% at 96% 100%, var(--hero-grad-glow), transparent 65%),
+    linear-gradient(135deg, var(--hero-grad-1) 0%, var(--hero-grad-2) 55%, var(--hero-grad-3) 100%);
+}
+/*
+ * The grain overlay — brief: "a subtle grain/noise overlay on the connection-status hero card
+ * only... this is what keeps the neon-on-black look from reading as flat/plasticky. Don't apply
+ * grain anywhere else." An inline SVG `feTurbulence` filter, tiled, blended with `overlay` at low
+ * opacity so it textures the gradient rather than adding visible dots. `pointer-events: none` and
+ * `aria-hidden`-equivalent (a pseudo-element carries no semantics to begin with) — decoration only.
+ */
+.hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+  opacity: 0.06;
+  pointer-events: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .hero::after { display: none; }
 }
 .overview-wide { grid-column: 1 / -1; }
 
@@ -1140,8 +1243,14 @@ body {
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background var(--dur-hover) var(--ease);
+  /* `transform` and `opacity` for the arrival and the FLIP slide in overview.ts (N-M6); background for
+     the hover. A new event enters from 4px above, fading in, while the rows below slide down to make
+     room — rather than all of them teleporting a row lower. */
+  transition: background var(--dur-hover) var(--ease),
+    transform var(--dur-arrive) var(--ease),
+    opacity var(--dur-arrive) var(--ease);
 }
+.recent-row.is-arriving { opacity: 0; transform: translateY(-4px); transition: none; }
 /*
  * The separator is a pseudo-element, not `border-bottom`, because the row carries a radius for its
  * hover — and a `border-bottom` on a rounded box **follows the corner**, so every hairline curved
@@ -1203,7 +1312,7 @@ body {
   color: var(--text-on-control);
 }
 .recent-detail {
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: var(--leading-11);
   color: var(--text-body);
 }
@@ -1243,7 +1352,7 @@ body {
    */
   min-width: max-content;
   /* Quieter than the title, deliberately: this is where the event happened, not what happened. */
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-body);
 }
 .recent-device { display: inline-flex; align-items: center; gap: var(--space-3); min-width: 0; }
@@ -1266,7 +1375,7 @@ body {
 }
 .recent-chevron { color: var(--text-meta); flex: none; }
 
-.recent-empty { padding: var(--space-8) 0; font-size: 12.5px; line-height: 1.55; color: var(--text-body); }
+.recent-empty { padding: var(--space-8) 0; font-size: 13px; line-height: 1.55; color: var(--text-body); }
 .recent-empty.is-problem { color: var(--warning); }
 
 /*
@@ -1299,7 +1408,7 @@ body {
   background: var(--surface-overview-strip);
   border: 1px solid rgba(var(--overlay-rgb), 0.07);
 }
-.overview-strip-text { display: flex; align-items: center; gap: var(--space-4); font-size: 12.5px; color: var(--text-body); }
+.overview-strip-text { display: flex; align-items: center; gap: var(--space-4); font-size: 13px; color: var(--text-body); }
 .overview-strip-glyph { display: flex; color: var(--live); }
 /* The one security sentence on this screen must not be drawn over a link that is down. */
 .overview-strip.is-idle .overview-strip-glyph { color: var(--text-meta); }
@@ -1339,47 +1448,47 @@ body {
   align-self: flex-start;
   aspect-ratio: 9 / 19.5;
   /*
-   * **A neutral handset, not the brand gradient.** What was here was violet→teal at 150deg with
-   * `--shadow-hero`'s accent glow around it — a coloured rectangle that read as decoration in a
-   * card whose subject is a specific physical phone.
+   * **The handoff's render, 2026-09-17: a wallpaper and a notch pill, and nothing pretending to be
+   * a screen.** `ConnectSuite.dc.html`'s Overview draws exactly this — violet into teal at 150deg,
+   * two radial highlights, a 34x4 pill 8px from the top — and README calls it a *"150px phone
+   * render"*. It is decoration, not a preview, and it is drawn as one.
    *
-   * There is no real device image to use instead: nothing in `docs/protocol.md` carries a
-   * wallpaper or a screenshot, and the only device pixels that exist are the mirror's H.264 frames,
-   * which need a fresh MediaProjection consent tap per session and cannot be cached (a platform
-   * wall in CLAUDE.md). A dashboard card cannot ask for that. So this is the fallback the brief
-   * names, built rather than borrowed: a charcoal screen, a body hairline, a side button and a
-   * camera dot, all from tokens.
+   * Slices 59–62 had a neutral charcoal handset here, built against a second reference that
+   * `docs/design-departures.md` now records as superseded. Its argument — *"a coloured rectangle
+   * reads as decoration in a card whose subject is a specific phone"* — was an argument with the
+   * handoff, not a departure from it, and it was never recorded as one.
+   *
+   * **No empty state, and none is owed.** An empty state belongs to something that can be empty.
+   * Nothing on this wire carries a wallpaper or a screenshot (the mirror's frames need a fresh
+   * MediaProjection consent per session — a platform wall), so this surface has no data to be
+   * missing; drawing "no preview" over it would announce the absence of a feature nobody offered.
    */
-  border-radius: 22px;
-  background: linear-gradient(170deg, var(--elev-3), var(--well));
-  border: 1px solid rgba(var(--overlay-rgb), 0.14);
-  box-shadow:
-    0 0 0 1px rgba(var(--overlay-rgb), 0.04),
-    var(--shadow-panel);
+  border-radius: 18px;
+  background: linear-gradient(150deg, var(--brand-grad-1), var(--brand-grad-2) 55%, var(--brand-grad-3));
+  border: 1px solid rgba(var(--overlay-rgb), 0.12);
+  box-shadow: var(--shadow-hero);
   overflow: hidden;
 }
-/* The screen: inset, darker than the body, so the handset reads as an object with a display in it
-   rather than as a rounded rectangle. */
+/* The two radial highlights over the gradient, at the handoff's positions and strengths. */
 .hero-phone::before {
   content: '';
   position: absolute;
-  inset: 5px;
-  border-radius: 18px;
-  background: linear-gradient(175deg, var(--canvas), var(--well) 70%, var(--canvas));
-  border: 1px solid rgba(var(--overlay-rgb), 0.05);
+  inset: 0;
+  background:
+    radial-gradient(120px 200px at 20% 15%, rgba(var(--tint-violet-rgb), 0.55), transparent 70%),
+    radial-gradient(140px 180px at 85% 80%, rgba(var(--tint-cyan-rgb), 0.35), transparent 70%);
 }
-/* The camera dot. One mark, centred near the top, which is the whole of what makes a blank screen
-   read as a phone at this size. */
+/* The notch pill — the one mark that makes a gradient read as a phone at this size. */
 .hero-phone::after {
   content: '';
   position: absolute;
-  top: 13px;
+  top: 8px;
   left: 50%;
-  width: 6px;
-  height: 6px;
-  margin-left: -3px;
+  width: 34px;
+  height: 4px;
+  transform: translateX(-50%);
   border-radius: var(--radius-pill);
-  background: rgba(var(--overlay-rgb), 0.16);
+  background: var(--hero-phone-notch);
 }
 
 .hero-facts { min-width: 0; flex: 1; }
@@ -1558,25 +1667,10 @@ body {
 }
 
 /*
- * The one full-width divider, and it spans the *detail column* rather than the whole card — which
- * is what the reference draws, and what is correct: a rule running under the phone would cut the
- * handset in half for no reason. `.hero-facts` is the column, so a border-top here is its width.
+ * `.hero-actions` — removed 2026-09-17. The pill row took its buttons out of the hero card (see
+ * `.pill-row` / `.pill-action` in styles.css, which is also where the icon+label inline-flex moved
+ * to, folded into `.pill-action` rather than kept as a second rule for the same three buttons).
  */
-.hero-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  margin-top: var(--space-9);
-  padding-top: var(--space-9);
-  border-top: 1px solid var(--hairline);
-}
-/* Both actions carry a glyph, so both need the same inline box. `.primary-action` already sets
-   this; `.hero-actions .button` gives the secondary the same treatment without a second rule. */
-.hero-actions .button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-3);
-}
 
 /*
  * 0.9, not 0.75, and this one predates light mode — it was **3.89:1 in the shipped dark build**.
@@ -1683,7 +1777,7 @@ body {
   color: var(--text-primary);
 }
 .settings-brand-version { font-size: 12px; color: var(--text-body); }
-.settings-brand-line { margin: var(--space-3) 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-body); }
+.settings-brand-line { margin: var(--space-3) 0 0; font-size: 13px; line-height: 1.5; color: var(--text-body); }
 
 /*
  * The design's third card is green and says "You are up to date". There is no update server to be
@@ -1736,17 +1830,16 @@ body {
   background: transparent;
   color: var(--text-body);
   font: var(--text-control);
-  font-size: 12.5px;
   text-align: left;
   box-sizing: border-box;
   cursor: pointer;
-  transition: background 180ms var(--ease), color 180ms var(--ease), border-color 180ms var(--ease);
+  transition: background var(--dur-state) var(--ease), color var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease);
 }
 
 .settings-tab:hover { background: rgba(var(--overlay-rgb), 0.04); color: var(--text-on-control); }
 .settings-tab[aria-current='true'] {
-  background: var(--accent-tint-selected);
-  border-color: var(--accent-border);
+  background: var(--selection-fill);
+  border-color: var(--selection-border);
   color: var(--text-primary);
 }
 
@@ -1774,7 +1867,7 @@ body {
   color: var(--text-primary);
 }
 
-.settings-sub { margin: 0 0 var(--space-8); font-size: 12.5px; color: var(--text-body); }
+.settings-sub { margin: 0 0 var(--space-8); font-size: 13px; color: var(--text-body); }
 
 .setting-row {
   display: flex;
@@ -1784,7 +1877,7 @@ body {
   /* 14px 4px, the design's own. */
   padding: var(--space-6) var(--space-1);
   border-top: 1px solid rgba(var(--overlay-rgb), 0.06);
-  transition: background 180ms var(--ease);
+  transition: background var(--dur-state) var(--ease);
 }
 /* The design's `.cs-row` hover, which every other list in the app has and this one did not. */
 .setting-row:hover { background: rgba(var(--overlay-rgb), 0.02); }
@@ -1793,14 +1886,14 @@ body {
 .setting-label { display: block; font-size: 13.5px; font-weight: 500; color: var(--text-primary); }
 .setting-sub { display: block; margin-top: 2px; font-size: 12px; color: var(--text-body); line-height: 1.5; }
 .setting-control { flex: none; display: flex; align-items: center; gap: var(--space-3); }
-.setting-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--text-body); }
+.setting-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--text-body); }
 
 /* A path is read, not scanned, so it wraps rather than truncating — the whole point of showing it
    is that somebody can go and find the folder. */
 .setting-path {
   display: block;
   margin-top: var(--space-2);
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-meta);
   overflow-wrap: anywhere;
 }
@@ -1821,9 +1914,10 @@ body {
   border-radius: var(--radius-pill);
   background: var(--switch-track);
   cursor: pointer;
-  transition: background 160ms var(--ease), box-shadow 160ms var(--ease);
+  transition: background var(--dur-toggle) var(--ease);
 }
-.switch.is-on { background: var(--accent); box-shadow: 0 0 18px var(--accent-glow); }
+/* No glow on the on state — native switches do not have one, and the fill already says on. N-P3. */
+.switch.is-on { background: var(--accent); }
 .switch-knob {
   display: block;
   width: 18px;
@@ -1831,7 +1925,7 @@ body {
   margin: 3px;
   border-radius: 50%;
   background: var(--switch-knob);
-  transition: transform 160ms var(--ease);
+  transition: transform var(--dur-toggle) var(--ease);
 }
 .switch.is-on .switch-knob { transform: translateX(18px); }
 
@@ -1841,7 +1935,7 @@ body {
   padding: var(--space-5) var(--space-6);
   border-radius: var(--radius-control);
   background: rgba(var(--overlay-rgb), 0.04);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.55;
   color: var(--text-body);
 }
@@ -1870,7 +1964,9 @@ body {
   background: var(--control);
   color: var(--text-meta);
 }
-.segment.is-on { background: var(--accent-tint-selected); color: var(--text-primary); }
+/* Filled lime, matching `.pill-tab.selected` — brief: "Settings tabs" is one of the three named
+   targets for the filled-vs-ghost segmented pattern. */
+.segment.is-on { background: var(--accent); color: var(--accent-on-fill); }
 
 /*
  * The segments became `<button>`s when Appearance became a real control, so they need the button
@@ -1913,7 +2009,7 @@ body {
   border: 1px solid rgba(var(--overlay-rgb), 0.07);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.7;
   color: var(--text-body);
 }

@@ -596,7 +596,7 @@ working on the run that created its subject.
 
 ---
 
-## Overview, re-scored against the handoff — **2026-09-16**. Rows O6–O18
+## Overview, re-scored against the handoff — **2026-09-16**. Rows O6–O21 (O19–O21 2026-09-17)
 
 The pane was audited against `ConnectSuite.dc.html` and its `README.md` after three of its cards
 were found to have been rebuilt against a **second reference**, now recorded as superseded at the
@@ -622,6 +622,9 @@ that are genuine departures carry one.
 | **O16** | One `•••`, in the page toolbar. The Overview device card has none | **Corrected.** `#hero-more` and its menu are gone | **corrected** | Two overflow triggers 100px apart with no rule saying which held what. Both items already had another home and that was **checked before the trigger came out**: Disconnect is the footer strip's own button on this pane *and* a row in Settings → Connection; *Forget this phone* is the `danger` button in Settings → Connection |
 | **O17** | A **mono absolute** time column (`09:42`), in both places the design shows activity | **Corrected.** The column is absolute; the relative age moved to the row's accessible name and `title` | **corrected** | Four rows all reading `3m ago` was the report. A relative time is unreadable exactly when several events arrive together, which on this product is most of the time — ringing, active and ended are three rows inside a minute. The age is not lost, and it is on the **aria-label** rather than only the tooltip, so it is not behind hover either |
 | **O18** | Rows carry **no** affordance — the right-hand detail is metadata | **Corrected.** The `View log →` link is gone; all five rows keep the chevron | **corrected** | One row in five had a second affordance, so the list had two vocabularies and the failure row was the odd one. The chevron stays because Slice 60 earned it — every row routes to Activity. Settings → Advanced, where `View log` went, is reachable from the sidebar, from ⌘K and from the Activity pane the chevron opens; checked before the affordance was removed |
+| **O19** | Storage ring value `128 GB` (capacity), caption `68 GB free`, arc at used | **Corrected 2026-09-17.** Value `490 GB`, caption `9.0 GB free`; the arc binding is unchanged | **corrected** | Built as the free figure in the ring over `free of 490 GB`. The **defect** report against this ring was withdrawn in Slice 62 — the arc was bound correctly — but the **assignment** still differed from the handoff, and withdrawing the first is not a reason to keep the second. `490 GB` is six characters, exactly on the is-long threshold: measured **47.0px** at 13px mono inside the **50.4px** clear span, so it keeps the full size |
+| **O20** | A *"150px phone render"*: violet→teal at 150deg, two radial highlights, a 34×4 notch pill 8px from the top | **Corrected 2026-09-17.** Exactly that, from `--brand-grad-*`, `--tint-violet-rgb`, `--tint-cyan-rgb` and a new `--hero-phone-notch` | **corrected** | Slice 59 drew a neutral charcoal handset against the superseded reference, arguing a coloured rectangle *"reads as decoration"*. It **is** decoration, and the handoff says so. **No empty state**: nothing on the wire can fill this surface (no wallpaper or screenshot exists to send), so there is nothing for it to be empty of |
+| **O21** | Security footer, full width, **last** on the pane | Same, and **below the fold at the design's 1440×920 window** — at rest top **1094**, visible band ends **874**, fraction 0; a 317px scroll brings it in | **departure from defect 85's rule, kept** | The strip carries a state — the encryption sentence and Disconnect — which is what defect 85's *visible at rest* rule exists for. **It cannot be met without departing from the handoff, and the handoff wins.** Measured, not argued: the handoff's own render at 920 puts its footer at **872–930** against a scroll band ending at **865** (one artboard, one footer match, one scroller as the control) — the design itself draws it off screen. Removing our capability card would only lift it to **889**, still 15px below. The routes that would work are all departures: a sticky strip (at rest it covers the last ~57px of Recent activity's fifth row, trading one hidden thing for another), or moving it above the activity row (it stops being a footer). Revisit if the designer's hour changes the pane's height budget |
 
 **Three things this pass did not change, and two of them were reported.** They are listed because a
 reported item with no row reads as an oversight:
@@ -632,14 +635,13 @@ reported item with no row reads as an oversight:
 | The **dock**, the **`MENU`** group header, and **per-category tinted activity tiles** | All three are specified: *"Dock — bottom-center, 5 × 36px app tiles (Mirror, Files, Messages, Calls, Camera)"*, *"MENU group"* at *10px/600/0.12em/uppercase*, and *"26px tinted icon"*. Reported as defects; they are the design |
 | The **device name appearing a third time** | In a *Recent activity* row's metadata, on a historical `Connected` event. That is the handoff's right-aligned detail carrying a fact about the past, not a third live indicator |
 
-### What this pass left measured and unresolved
+### What this pass left measured and unresolved — resolved 2026-09-17
 
 **`#caps-card` and `#overview-strip` are `reachable`, not `visible`, at the design's own 920px
-window** — `scripts/probe.mjs` `onScreen`, fraction 0 at rest for both, an ordinary scroll of 317px
-brings each fully into view. The handoff's Overview also scrolls at 920px, so this is not a
-departure from it; it is recorded because defect 85's rule is that **a card carrying a state must be
-visible at rest**, and the capability list is the pane that answers *why can't I do X*. Whether that
-makes it a state card or a reference list is a judgement, and it is the designer's rather than ours.
+window**, and the two were resolved differently. **The capability list is reference, and may
+scroll.** **The strip is not** — it carries a state — and it is row **O21**: a recorded departure
+from defect 85's rule, because the handoff's own geometry puts its footer off screen at 920px and
+every route to visibility departs from the handoff.
 
 ---
 
@@ -919,3 +921,149 @@ surface, so a hidden control is an accelerator rather than the only route.
 app: `title` is used in eleven places elsewhere and is right there, but it never fires on keyboard
 focus. The bar draws its own — 450 ms on hover, immediate on focus — with the text from the same
 table as the label, so there is no second copy of any string.
+
+## The native-macOS pass — **2026-09-17**. Rows N-P1–N-P3, N-M2, N-M4, N-M7–N-M10
+
+**Authority, stated so this is not the 2026-09-16 failure again.** The owner briefed a visual and
+motion pass *"so it looks and feels like a native macOS app"* and chose, when asked, that **the brief
+wins over the handoff where they disagree, and every disagreement is a row here, in the same
+change.** The handoff remains the design authority for everything below not named. The brief, its
+measured audit and the motion plan are `docs/native-mac-pass-audit.md`; the evidence is
+`docs/testing.md` → Phase 7 Slice 63.
+
+| Row | Handoff | Built | Why | What would make the handoff's version right |
+|---|---|---|---|---|
+| **N-P1** | Battery ring `#32E58A`; capability chips on in green | Battery bar neutral (`--value-arc`), `--warning` only when low; an *on* capability is brighter text, a firmer hairline and the `check` glyph | A hue carries one meaning (tokens.css, *What a hue is allowed to mean*). Green is *the link is up / it worked*; a battery at 80% is neither, and twelve green chips beside a green status dot read as twelve connection states | A second green that is visibly not the connection green — which is two greens, which is the problem |
+| **N-P2** | Device status as three SVG progress rings (two built, O4) | A readout (label, 21px mono value), a 4px bar, a caption; fill animates `transform: scaleX` | Two 72px rings in a ~790px card left most of it empty (audit B3), and the rings had **never animated** — the arc was rebuilt at its final value on every update. The brief allows a ring only for a live, animated value; a bar says the same number in less chrome | A Device status card sized to rings, i.e. the handoff's narrower column |
+| **N-P3** | Nav pill with a violet glow; toggle track with `0 0 16px` violet glow | No glow on either; the pill keeps its tint, border and lit top edge | A zero-offset coloured halo is decoration, and neither native control draws one | — (taste; reversible in one declaration each) |
+| **N-M2** | Route change re-runs the content entrance, 260ms, with a 50ms card stagger | `.page` fades in over 140ms, opacity only; no stagger | Measured ~410ms before a click stopped moving, on the most frequent pointer action in the app; the pill already carries the spatial story | Routes being rare, which they are not |
+| **N-M4** | *(island not specified; the build pulsed every live dot forever)* | One 600ms halo when a dot **enters** `live`, then still | *Pair once, then be quiet*; a permanent ~0.36Hz loop in peripheral vision is the reverse | — |
+| **N-M7** | Button press `scale(.98)` 80–120ms | `scale(.97)` at 100ms press / 160ms release; `.94` for round icon buttons | Eleven hand-picked press scales (.94–.985) became two tokens | — |
+| **N-M8** | ⌘K panel scales in (220ms) | Opens in one frame | Keyboard-initiated and the most frequent action; Spotlight and Raycast do not animate it | — |
+| **N-M9** | Dock magnification (listed *droppable*) | Kept, critically damped, `1.18` / `1.06`, fine-pointer hover only | The overshoot curve was the only bounce in the app, on a hover, which carries no momentum to earn it | — |
+| **N-M10** | Card hover: `translateY(-2px)` + border | No hover on `.card` | A card is not a control; a hover promises a click it does not answer. Rows, tiles and buttons inside keep theirs | Cards that open something |
+
+**Not departures** (the build returning to the handoff, or new where it drew nothing): the Start /
+Stop mirroring pair — only one is on screen now (audit B1, a defect); the card material (the handoff
+specifies vibrancy for chrome and draws cards translucent); the four-step type scale and the caption
+role (the handoff's scale, with 59 half-pixel literals brought back onto it); the two-state selection
+rule; the status island's tone-change fade; the Recent activity arrival; reduced transparency.
+
+---
+
+## The Sidekick visual-language pass — 2026-09-17. Rows V1–V9
+
+**Authority, stated the same way the native-macOS pass above states it.** The owner briefed a
+second visual pass the same day, this one supplying a written brief
+(`sidekick-visual-brief.md`, read from disk) rather than a screenshot: a lime-on-black palette,
+named components (gradient hero card, pill button rows, circular icon badges, filled/ghost
+segmented tabs, oversized stat numbers, gradient linear progress bars), each mapped to specific
+panes. **The brief wins over both the handoff and the native-macOS pass where they disagree, and
+every disagreement is a row here** — the same discipline, the second time it has been invoked in
+one day.
+
+**Figma was checked first, per the brief's own instruction, and found empty.** `sidekick-mac-app-ui`
+(`8Y36t8bfF4EsVN2RYwuEKB`, page `0:1`) returned `width=0 height=0`, no children, and a 1×1 screenshot
+— confirmed by the owner directly in a browser rather than assumed from the MCP read. So the
+priority collapses to **brief > `.dc.html` (structure only)**, and the frame-to-pane mapping the
+brief asked for does not exist to produce.
+
+| # | Handoff / native-macOS pass | Built | Status | Why |
+|---|---|---|---|---|
+| **V1** | `--accent` violet `#8b6bff`, restored and re-argued twice already today | `--accent` lime `#c6ff33` (dark), `#9ed600` (light, a fill only — never text-on-white) | **departure** | The brief names lime as the hero colour by hand, for the accent's exact job list — "primary buttons, active tab fill, and progress fills" — the same three roles `--accent` already owned. `--accent-text` in light is `#4f5e00`, measured 7.16:1 on white (linear-luminance both channels), so the hue survives contrast the way the violet-to-`#5b4ae0` derivation did |
+| **V2** | N-P1: battery/storage bars neutral (`--value-arc`) when the reading is fine, colour only in `--warning` | `.vital-fill` (Device status) takes a lime gradient (`linear-gradient(90deg, var(--accent-hover), var(--accent))`) when fine; `--warning` unchanged for low | **departure from N-P1** | The brief names "progress fills" as one of lime's jobs, hours after N-P1 made the same fill neutral for the opposite reason (a hue must mean one thing). Both readings are defensible; the brief is later and explicit, so it wins, and `--value-arc` — now drawn by nothing — was deleted rather than kept "in case" |
+| **V3** | No gradient hero card anywhere; `.card.primary` is opaque `--elev-3`, the one exception in the app's material system | Overview's connection-status card only: `linear-gradient(135deg, var(--hero-grad-1) 0%, var(--hero-grad-2) 55%, var(--hero-grad-3) 100%)` plus a radial lime bloom and a `feTurbulence` grain overlay (`.hero::after`, `mix-blend-mode: overlay`, opacity .06) | **new** | The brief names this exact card ("the Overview pane's connection status... not Device status") and is explicit that it is the only one: "exactly one hero card in the entire app." `--text-primary` sits on the dark end of the gradient throughout; the bloom is positioned away from the text column so it never has to compete with it |
+| **V4** | Hero card's own two actions (`Start mirroring`, `Device info`) live inside it, under a divider (`.hero-actions`) | A three-pill row (`.hero-pill-row` / `.hero-pill-action`) moved outside the hero card, underneath it: `Start mirroring` (still `.primary-action`, now lime), `Device info`, and a new third — `View activity`, routing where `#recent-all` already does | **reshaped** | The brief asks for "pill buttons in a row of three... placed under the gradient hero card," which the handoff's two-button internal row is not shaped for. The third pill is a choice the brief left open; `View activity` was picked because it is the one Overview destination with no other entry point up here, not because the brief named it — flagged rather than silently invented |
+| **V5** | `.pill-tab.selected` — a soft accent tint (`--selection-fill`, ~15% alpha) plus border, on Calls/Notifications filters; `.segment.is-on` — the same tint, on Settings → General → Appearance | Both take a **solid** `--accent` fill with `--accent-on-fill` (near-black) text | **departure** | "Segmented pill tabs: one filled lime-on-black, one plain ghost/outline... replace the current chip row styling with this filled-vs-ghost pair pattern." The unselected half was already the ghost half (transparent, hairline, dim text) under the two-state selection rule; only the selected half's fill strength changes, from a tint to a solid |
+| **V6** | Notification app-tile (`.app-tile`, generated-hue, no fixed art) and the Apps pane's launcher-icon tile (`.apps-tile-art`, real PNG) both `border-radius: var(--radius-control)` / `12px` | Both `border-radius: var(--radius-pill)` (a true circle) | **departure** | "Circular icon badges: a soft-edged colored circle (not square)... for app icons in the Apps pane and service icons in Notifications." Named for exactly these two spots. The Apps tile is the one with a cost: a real launcher icon is drawn to its own square corners, so the circular mask crops them — accepted, since it is the same trade the brief's own reference apps make |
+| **V7** | The dock: five 36px app tiles (Mirror, Files, Messages, Calls, Camera), no sixth slot; ⌘K opens from the header's Search button only | A sixth slot, `.dock-slot-raised` / `.dock-tile-raised` — 46px, solid lime, `margin-top: -14px` so it visibly breaks the top edge of the dock bar — opens the palette, same as the header button | **new** | "Raised, colored circular action button breaking out of a bar... give the single most-used global action (⌘K) this raised-circle treatment in the dock." Additive: the header's Search button is untouched, so ⌘K is reachable exactly as before plus this. No entrance animation on the new slot — matched against `find-animation-opportunities`, below |
+| **V8** | Battery/storage numerals: `.vital-value`, `600 21px` mono, unchanged since N-P2 | Unchanged | — | "This is already the Battery/Storage treatment; just restyle it into the new palette, don't redesign it." Nothing to do beyond V2's fill colour — recorded so the row is not read as skipped |
+| **V9** | Light theme: not addressed by the brief, which is written dark-first ("true near-black base... not dark grey") | Given AA-safe derivations anyway — lime accent darkened for text (V1), hero gradient lightened to pale green with the same lime bloom, `--hero-grad-glow` at lower alpha | **new, conservative** | Dark is the flagship theme (G2) and the brief does not mention light at all. Rather than leave light mode with an unreadable neon-on-white hero, it was given the same derivation discipline the violet accent already has for light — not a design opinion, a contrast floor |
+
+### The rename — ConnectSuite → Sidekick, Mac-side only
+
+Scoped exactly as briefed: `package.json` (`name`, `description`), `electron-builder.yml`
+(`appId` → `com.chetan.sidekick.desktop`, `productName`, `copyright`, `NSLocalNetworkUsageDescription`),
+the window title, the sidebar brand, the About card, every in-app string that refers to **this Mac
+app** by name. Left alone, deliberately, because it names something else: `SERVICE_TYPE = 'connectsuite'`
+(`shared/protocol.ts`, the literal mDNS `_connectsuite._tcp`), `docs/protocol.md`, the Android app's
+own name (every "open ConnectSuite on the phone" sentence — the phone app is still called that), and
+the Android-side `Download/ConnectSuite` SAF folder. Both boundaries hold at every grep hit; see the
+rename's own commit for the full file list.
+
+**This reopens the appId warning `electron-builder.yml` and `PRODUCT.md` both carry, and the
+consequence is not hypothetical — it was observed on this machine.** `safeStorage` keys this Mac's
+TLS private key to the bundle identifier; changing `appId` mints a new identity, and a phone pinned
+to the old fingerprint refuses it. Rebuilding and relaunching after the rename produced exactly
+that: `SSLV3_ALERT_CERTIFICATE_UNKNOWN` from the previously-paired Samsung SM-S938B, and the app
+forced onto its `pairing` route ("the phone no longer recognises this Mac"). The instruction named
+the new `appId` explicitly, so the change stands — but every Mac running this build needs its phone
+re-paired from a fresh QR code, and that cost is real rather than theoretical. `electron-store`'s
+`name` (`connectsuite` → `sidekick`) and the TLS cert's `organizationName` were renamed the same way
+for the same reason: both were already going to reset with the identity change, so leaving them
+branded with the old name would have been stale rather than safe.
+
+### Follow-ups flagged, not decided here
+
+- **App icon and `.dmg` asset naming.** `build/` icon assets and the DMG's window layout were not
+  touched — renaming the binary assets is a design asset task, not a string edit.
+- **The Android app's own name**, the wire protocol's `_connectsuite._tcp` namespace, and the
+  Android-side `Download/ConnectSuite` folder. Explicitly out of scope for this pass; a full rebrand
+  would need a decision on whether the phone side changes too, and if so, whether the SAF folder name
+  changes with it (a folder rename on the phone is a user-visible move, not a relabel).
+- **Whether the light theme's derived hero gradient (V9) is good enough to keep**, or whether light
+  mode should get its own pass once dark is signed off — the brief gave no opinion to check it
+  against.
+
+---
+
+## The Sidekick Figma design system — 2026-09-17/18. Rows D1–D9
+
+**Status: drawn, not built.** These rows record what the Figma file at
+`sidekick-mac-app-ui` now specifies and the shipped build does not yet do. They are written before
+implementation deliberately, so the first person to touch `desktop/` has the list rather than
+rediscovering it. The full handoff — node ids, tokens, per-screen notes — is
+`docs/sidekick-figma-handoff.md`, and nothing below may be implemented without the row it names
+being kept in sync.
+
+**Authority.** The owner briefed the pass and approved each batch in turn. Where the Figma file and
+`ConnectSuite.dc.html` disagree, the Figma file wins for anything listed here and the handoff wins
+for anything not; `docs/protocol.md` still wins over both.
+
+| Row | Handoff / build | Figma now specifies | Status | Why |
+|---|---|---|---|---|
+| **D1** | `--live` green `#32E58A` for connected, beside lime `--accent` | **One positive colour: lime.** Connected is a small lime dot or pill; the green is deleted, not kept as a fifth semantic | **departure** | Two greens beside each other is the problem N-P1 named, arriving from the other direction. The owner chose lime explicitly, and a single positive hue is what makes the "lime is earned" rule checkable |
+| **D2** | Category hue on dock tiles and activity tiles (`--tint-*`) | **No category colour anywhere.** Neutral charcoal tiles with line glyphs; features are told apart by glyph and label | **departure** | The brief bans rainbow feature colour outright. It also removes the second job hue was doing, which R4 flagged as the real fault rather than the palette |
+| **D3** | Rings for battery and storage (V2 made the bars lime) | **Two metric cards** — badge, label, mono value, caption, 4px bar — with **storage stated as free space everywhere** and the bar filling with free space | **new** | N-P2 already replaced the rings; this settles the wording the build has never fixed. A bar that fills with *free* space makes "nearly empty is bad" true rather than misleading |
+| **D4** | Overview hero: gradient card, no device illustration | **A phone visual inside the hero** — device identity only: frame, screen wash from the app palette, quiet cutout and speaker, per-state treatment | **new** | The owner asked for it against a reference. The constraint recorded with it: it is an illustration, never a frame buffer, a notification list or album art — the moment it shows content it becomes a fake live feed |
+| **D5** | Media remote: an empty card reading *Nothing playing* | **Four states from `remote.state`**, and **no transport controls while idle** — an explanation panel instead | **reshaped** | `remote.command` with no session is refused `NO_MEDIA_SESSION`. A disabled transport row is the greyed-control shape decision 6 and principle 3 both rule out |
+| **D6** | — | `output` drawn as a **readout with no chevron** | **conform** | `docs/protocol.md` says it outright: nothing switches the phone's audio route, and a chevron that opens nothing is an affordance that lies. The reference screenshot has one; it was not copied |
+| **D7** | Mixed line icons plus placeholder squares in the sidebar | **One SF-Symbols-based family**, three weights, seven sizes, a mapping table per action, seven approximations named | **departure** | An icon set nobody can enumerate is the `icons.ts` failure again. The mapping table is the enumeration, and seven entries say plainly that the drawn shape is an approximation of the named symbol |
+| **D8** | Four state kinds invented per pane (N4, P5, F7, A2, C6) | **Six kinds — empty, unavailable, loading, permission, error, wall — plus one Disconnected component** | **new** | This is the one-hour vocabulary decision `docs/empty-and-failure-states.md` has asked for five times. A wall never gets a retry button; a disconnect never empties a pane |
+| **D9** | Activity's donut and seven-day sparkline (A3, A4) | **Neither.** A compact Today list of counts and the busiest hour printed as a sentence | **departure** | The brief rules out analytics-dashboard styling. The counts and the denominator survive; only the chart chrome goes |
+
+**Two things deliberately left alone**: the lime Sidekick brand mark, which stays the one custom
+icon in the system, and light mode, which this pass does not draw at all — V9's derivation still
+stands and will need its own pass.
+
+**Not yet true of the build.** Every row above is a drawing. `npm test`, `npm run typecheck` and the
+nine commit guards have not been run against any of it, because no code has been changed.
+
+---
+
+## Overview slimmed, and a Device info surface for capabilities — 2026-09-18. Rows D10–D12
+
+Same pass as D1–D9, recorded separately because these three change what a pane *contains* rather
+than how it looks. Still drawn, not built.
+
+| Row | Handoff / build | Figma now specifies | Status | Why |
+|---|---|---|---|---|
+| **D10** | Overview carries **What this phone can do** — a full-width card holding eight capability chips with availability dots | **The card is gone from every Overview state**, and nothing replaces it: no chip row, no feature tiles, no KPI cards. The freed height stays as space | **departure** | The chips duplicated the sidebar, which is the navigation; a dot cannot carry a permission, a limit or a failure; and each feature's own pane already has to explain its state properly. Eight pills reading *available* is the generic-dashboard shape the brief rules out |
+| **D11** | — | **Settings → Device info**, a seventh pane *inside Settings* (`44:23491`): the device facts, then a **Capabilities** diagnostic list built from one row per feature — Available / Limited / Needs permission / Unavailable / Unbuilt, a short reason only where one is needed, and an action only where the Mac can really take the user to the fix | **new** | Capability state is diagnostics, and diagnostics belong with the device, not on the first screen. Camera stays **Unbuilt** with no action and no "coming soon". **The main sidebar is unchanged — still twelve rows** (S8's shape); this is a subpage of the existing Device settings surface, which is where the header button and the hero's *Device info* action already point |
+| **D12** | Overview's footer strip ran the full width with the encryption sentence and Disconnect | **Connection & security**, a compact card under Battery and Storage, with `Disconnect` in it. The Overview footer strip is removed; other panes keep theirs | **reshaped** | The sentence is a fact about the device, so it belongs with the device diagnostics rather than in a strip that spanned the window. Per state: no encryption claim before the handshake completes, no Disconnect where there is nothing to disconnect, and Reconnect/Troubleshoot when the link is down |
+
+**Overview's final inventory, so nothing creeps back in:** the connection hero with the phone
+preview, the Media remote, Recent activity, the Battery and Storage cards, and Connection & security.
+Five Overview frames exist and **four of them are connection states** — Connected, Connecting,
+Degraded, Disconnected. The fifth, *Connected · Media playing*, is a **content variant of Connected**
+and must never be documented or implemented as a connection state of its own.

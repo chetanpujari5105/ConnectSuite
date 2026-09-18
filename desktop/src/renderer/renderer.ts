@@ -351,6 +351,23 @@ const ALL_CAPABILITIES = [
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
+/*
+ * Start and Stop mirroring: exactly one is on screen. Two inputs from two clocks — the phone's
+ * advertised capabilities (via `render`) and the session (via `MirrorView`) — and one painter that
+ * both call, so neither can paint the pair from half the facts. `shared/mirrorSession.ts` holds the
+ * rule. Declared above `render` because `render` can run before `MirrorView` exists.
+ */
+let canMirror = false;
+let mirrorSession: MirrorSession = 'idle';
+function paintMirrorButtons(): void {
+  const b = mirrorButtons(canMirror, mirrorSession);
+  const start = el<HTMLButtonElement>('mirror-start');
+  const stop = el<HTMLButtonElement>('mirror-stop');
+  start.hidden = !b.startShown;
+  start.disabled = !b.startEnabled;
+  stop.hidden = !b.stopShown;
+}
+
 /**
  * One pass over everything the link's state changes.
  *
@@ -371,9 +388,8 @@ function render(status: RendererStatus | null): void {
 
   // The button is enabled only while the phone advertises `mirror`. Anything else would offer
   // the user an action the phone has already said it cannot perform.
-  const canMirror = status?.capabilities?.includes('mirror') ?? false;
-  el<HTMLButtonElement>('mirror-start').disabled = !canMirror;
-  el<HTMLButtonElement>('mirror-stop').disabled = !canMirror;
+  canMirror = status?.capabilities?.includes('mirror') ?? false;
+  paintMirrorButtons();
 
   // The phone's own sentence for anything it is not offering. Hoisted above its two consumers —
   // the panes below and the capability chips further down — rather than built twice: defect 27 was
@@ -728,6 +744,10 @@ const mirror = new MirrorView(
   el('mirror-stage'),
   connect,
 );
+mirror.onSessionChange((session) => {
+  mirrorSession = session;
+  paintMirrorButtons();
+});
 
 // Notifications. The pane exists where the phone has promised the feature, and where it has not,
 // it now stays and says why in the phone's own words rather than disappearing — the first pane
@@ -1340,6 +1360,7 @@ el('overview-shield').replaceChildren(iconSvg('shield', 16));
 // element's first text and the accessible name is unchanged.
 el('hero-mirror').prepend(iconSvg('mirror', 15));
 el('hero-info').prepend(iconSvg('info', 15));
+el('hero-activity').prepend(iconSvg('activity', 15));
 // The card is redrawn when the screen is opened rather than on a timer: it is five rows off a
 // store the main process already holds, and a dashboard that silently refetches every second is a
 // cost with nothing behind it.
@@ -1367,14 +1388,14 @@ el('settings-version').textContent = `Version ${APP_VERSION}`;
 shell.addSettingsPane(
   'general',
   'General',
-  'How ConnectSuite behaves on this Mac.',
+  'How Sidekick behaves on this Mac.',
   () => {
     const body = document.createElement('div');
 
     body.appendChild(
       settingToggle(
         'Start on login',
-        'Open ConnectSuite when you sign in to this Mac. It starts in the menu bar with no window.',
+        'Open Sidekick when you sign in to this Mac. It starts in the menu bar with no window.',
         async () => {
           const result = await connect.loginItemGet();
           return result.ok ? result.data.openAtLogin : false;
@@ -1401,7 +1422,7 @@ shell.addSettingsPane(
     body.appendChild(
       settingValue(
         'Keep in the menu bar',
-        'Always. Closing the window leaves ConnectSuite running there, which is what keeps ' +
+        'Always. Closing the window leaves Sidekick running there, which is what keeps ' +
           'notifications arriving and the clipboard syncing. Quit from the menu bar icon.',
         'Always on',
       ),
@@ -1490,7 +1511,7 @@ shell.addSettingsPane(
       settingLimit(
         'Automatic updates',
         'unbuilt',
-        'There is no update server. ConnectSuite has no account and talks to nothing but your ' +
+        'There is no update server. Sidekick has no account and talks to nothing but your ' +
           'phone, so there is nowhere for it to check. Updating means installing a new build.',
       ),
     );
@@ -1810,7 +1831,7 @@ shell.addSettingsPane(
 shell.addSettingsPane(
   'about',
   'About',
-  'ConnectSuite for macOS. No cloud, no account, no relay server.',
+  'Sidekick for macOS. No cloud, no account, no relay server.',
   () => {
     const body = document.createElement('div');
     const version = document.createElement('span');
@@ -2002,6 +2023,9 @@ el('hero-mirror').addEventListener('click', () => {
   void mirror.start(selectedQuality());
 });
 el('hero-info').addEventListener('click', () => shell.route('settings', 'connection'));
+// The pill row's third action — brief-chosen, since the handoff only draws two. Same destination
+// `#recent-all` already routes to; not a second copy of that decision, just a second door to it.
+el('hero-activity').addEventListener('click', () => shell.route('activity'));
 
 /*
  * **The hero has no overflow menu — removed 2026-09-16, departure O16.**

@@ -273,7 +273,7 @@ export class FilesClient {
    *
    * ### It lands in a real folder, not a temporary one
    *
-   * `~/Downloads/ConnectSuite`, the same folder `media.original` uses, with a suffixed name rather
+   * `~/Downloads/Sidekick`, the same folder `media.original` uses, with a suffixed name rather
    * than an overwrite. A drag that handed Finder a file in `/tmp` would work and then evaporate:
    * the user drops it into a folder, macOS moves or copies it, and the copy they keep points at
    * something the next reboot deletes. A file the user can find again without this app running is

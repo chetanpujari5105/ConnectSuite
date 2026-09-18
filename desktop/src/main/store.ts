@@ -47,7 +47,7 @@ interface Schema {
  * through safeStorage in identity.ts instead.
  */
 export const store = new Store<Schema>({
-  name: 'connectsuite',
+  name: 'sidekick',
   defaults: {
     paired: null,
     lastAddress: null,

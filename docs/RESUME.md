@@ -1,10 +1,76 @@
+# Resume here — written 2026-09-17: the native-macOS pass
+
+> A state report, not a note to myself. Written to be handed to someone who was not here.
+>
+> **Nothing is committed.** The tree holds this pass **and** the 2026-09-17 O19–O21 follow-up below
+> it, uncommitted together.
+
+## 0 · Read first: which design authority this pass answers to
+
+The owner briefed a visual + motion pass ("native macOS, not a vibe-coded dashboard") and, **when
+asked, chose: the brief wins where it disagrees with the handoff, and every disagreement is a
+departure row.** Those rows are **N-P1–N-P3, N-M2, N-M4, N-M7–N-M10** at the end of
+`docs/design-departures.md`. The handoff is still the authority for everything not named there. This
+is recorded so it does not repeat 2026-09-16's unnamed second reference (§ below, and that file's top).
+
+| | |
+|---|---|
+| The audit and plan, written before code | `docs/native-mac-pass-audit.md` |
+| The evidence | `docs/testing.md` → **Phase 7 Slice 63** |
+| The departures | `docs/design-departures.md` → *The native-macOS pass* |
+
+## 1 · What changed
+
+- **Defect: Start and Stop mirroring were both on screen.** Nothing held whether a session existed.
+  `src/shared/mirrorSession.ts` (8 tests, red-first) now decides; exactly one is shown.
+- **Rings → readout + bar** (N-P2). The rings had *never* animated — rebuilt at their final value on
+  every update. Bars now travel from the previous reading (`transform: scaleX`, 600ms ease-in-out).
+- **Colour roles** (tokens.css): hue means one thing. Battery is neutral until low; capability chips
+  are not green (N-P1). One two-state selection rule (`--selection-*`, `--unselected-text`) across
+  capability chips, Activity chips, Notifications filter pills, Settings tabs and quality rows.
+- **Material:** top-level panels (`.card`, `.pane`, `.files-panel`, `.unbuilt-screen`) are
+  `--material-card` + blur; the one primary card stays opaque; nested panels never blur.
+- **Motion:** route 410ms → 140ms opacity (N-M2); halo once on connect, not forever (N-M4); island
+  words fade on a *tone* change only; ⌘K opens in one frame (N-M8); dock without overshoot (N-M9);
+  one press scale (N-M7); no hover on non-interactive cards (N-M10); new Recent activity rows arrive,
+  keyed on `seq`, survivors slide (FLIP).
+- **Type:** 18 literal sizes → 12; `--text-caption` added.
+- **Accessibility:** reduced motion keeps opacity fades on `.motion-fade`; reduced transparency now
+  handled (it was ignored while chrome drew blur).
+
+## 2 · What is NOT done or NOT proven
+
+- **`/review-animations` has not been run.** It is user-invocable only. The brief's last step.
+- **Start/Stop during a live session is proven by test, not on hardware.** Stimulus: press Start with
+  the phone connected; Stop should replace it at once, before consent.
+- **No overflow measurement after the 0.5px type moves** — checked by eye on five panes at
+  1440×920. A DOM double has no layout; the one tool that can see it is a CDP probe.
+- **Card blur cost is unmeasured.** `backdrop-filter` over the animated blobs; the plan said measure
+  frame time with the scroll-rate probe and fall back to opaque if it regresses. Not done.
+- **The sidebar footer wraps "Chetans-MacBook-Pro" onto three lines at 1440px.** Seen, not caused by
+  this pass, not fixed.
+- The literal durations in **styles.css** (180ms ×4, 160ms ×2) were not tokenised; shell.css's were.
+- The brief named `redesign-existing-projects` and `high-end-visual-design`; **neither is installed**.
+  `impeccable` stood in for the audit.
+
+## 3 · Verified, as run
+
+```
+npm test (desktop)   767 / 767          all eight .mjs guards + check-defects.sh   exit 0
+```
+Live CDP reads of every motion value are in Slice 63 §3, from an Electron started after the build.
+
+---
+
+# The previous sitting's brief, kept until its work is committed
+
 # Resume here — written 2026-09-16: Overview re-scored against the handoff, and a second design authority retired
 
 > A state report, not a note to myself. Written to be handed to someone who was not here.
 >
-> **Nothing has been committed.** Four sittings of work are stacked in one working tree — defects
-> 111–118 and the float's bottom bar, then the light theme, then the Overview card rebuilds, then
-> this. `git status` is large.
+> **Committed as `f6384a3`** (the four stacked sittings, one commit). **2026-09-17 follow-up, not yet
+> committed:** O19 (storage ring to the handoff's assignment), O20 (the handoff's phone render), O21
+> (the strip below the fold at 920px, recorded as a departure), and the 761 count settled — §3.
 
 ## 0 · The one thing to read before touching the Overview pane
 
@@ -73,13 +139,18 @@ handoff never drew.
 ## 3 · What is NOT done
 
 - **Nothing is committed.**
-- **`#caps-card` and `#overview-strip` are `reachable`, not `visible`, at the design's own 920px
-  window** — fraction 0 at rest, a 317px scroll brings each fully in. The handoff's Overview scrolls
-  at 920px too, so it is not a departure from it. It is recorded because defect 85's rule is that a
-  card carrying a *state* must be visible at rest, and whether the capability list is a state card
-  or a reference list is a judgement that belongs to the designer.
-- **The suite measures 757 and this file previously claimed 761.** This pass is net **+1** test, so
-  the two do not reconcile and the gap is not accounted for. Recorded rather than rounded.
+- **~~`#caps-card` and `#overview-strip` below the fold at 920px~~ — resolved 2026-09-17.** The
+  capability list is reference and may scroll. The strip carries state, and cannot be made visible at
+  rest without departing from the handoff: the handoff's **own** footer sits at 872–930 against a
+  scroll band ending at 865. Recorded as departure **O21** rather than left open.
+- **~~The suite measures 757 and this file claimed 761~~ — settled 2026-09-17 by measurement.**
+  Parent `59c9475` runs **681**, HEAD `f6384a3` runs **757**, and the test diff is +86/−10 = +76
+  exactly, including Slice 58's five deleted Quick-actions tests. 761 was Slice 57's figure, stale
+  since Slice 58; it is consistent with the chain but cannot be re-measured (no tree at that state
+  exists). Slice 62 §6 carries the table.
+- **The storage ring and the phone render were not withdrawn as conformance** — only as defects.
+  Both now match the handoff: `490 GB` in the ring over `9.0 GB free` (47.0px of text in a 50.4px
+  span, so it stays 13px), and the violet→teal wallpaper with its notch pill (O19, O20).
 - **The designer's hour is unchanged and now six panes deep** — the *unavailable / partial / failed
   / empty* vocabulary, a drawn pairing screen, and now a drawn treatment for the capability list and
   the media card, both of which this pass had to invent type sizes for because the handoff draws
@@ -127,6 +198,6 @@ a painted window is not evidence the renderer's JS thread is alive.
 | | |
 |---|---|
 | the slice | `docs/testing.md` → **Phase 7 Slice 62** |
-| the departures | `docs/design-departures.md` → **O6–O18**, and the superseded-reference block at the top |
+| the departures | `docs/design-departures.md` → **O6–O21**, and the superseded-reference block at the top |
 | the defects | `docs/defects.md` → **122** (open), **123** (fixed) |
 | what Phase 7 has left | `docs/phase-7-next.md`, and `docs/phase-7-state.md` §1 for the re-scoring note |

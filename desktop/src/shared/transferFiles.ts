@@ -102,7 +102,7 @@ export function sidecarText(options: {
   actual: string;
 }): string {
   return [
-    'ConnectSuite transfer failed — checksum mismatch',
+    'Sidekick transfer failed — checksum mismatch',
     `file      ${options.name}`,
     `when      ${options.whenIso}`,
     `size      ${options.bytes} bytes received`,

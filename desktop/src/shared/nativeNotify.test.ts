@@ -200,7 +200,7 @@ test('a notification with neither title nor app name falls back to the package',
 test('a packaged build is told exactly where the switch is', () => {
   const copy = refusalCopy({ packaged: true });
   assert.match(copy.body, /System Settings/);
-  assert.match(copy.body, /ConnectSuite/);
+  assert.match(copy.body, /Sidekick/);
   assert.equal(copy.actionable, true);
 });
 

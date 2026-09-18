@@ -86,8 +86,8 @@ const FLOAT_RAIL: FloatRailItem[] = [
     id: 'reveal',
     // Says what it does to *both* windows, because the fear this control has to answer is that it
     // closes the floating one. Defect 117.
-    label: 'Show the ConnectSuite window without closing this one',
-    tooltip: 'Show ConnectSuite',
+    label: 'Show the Sidekick window without closing this one',
+    tooltip: 'Show Sidekick',
     icon: 'overview',
     kind: 'reveal',
     needsInput: false,
