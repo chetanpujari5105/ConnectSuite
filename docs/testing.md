@@ -21084,3 +21084,34 @@ status pill still reads *Connected* — only the pane was driven into those stat
 
 **Not proven:** a real send failure from the phone (the block was driven with a synthetic reason);
 the permission state with a real revoked grant; *Call this number* end to end (unit-tested only).
+
+## Sidekick Batch 4b — Calls, and defect 124 — 2026-09-19
+
+### Defect 124 — the Calls pane offered the retracted Bluetooth remedy
+
+Both audio sentences (`renderNoCall`, `renderLive`) told users to *pair the Mac to the phone over
+Bluetooth to listen* — five days after `CLAUDE.md` retracted that remedy on measurement (both ends
+are the HFP audio gateway; SCO never comes up from either side). Found in the baseline screenshot of
+the live pane, not by any check. Now `CALL_AUDIO_WALL` / `CALL_AUDIO_LIVE`; `calls.test.ts` asserts
+each by itself (no Bluetooth, no *pair the Mac*, names the phone) and scans `calls.ts` with comments
+stripped, because a third sentence is the likeliest route back. **Red-first:** the exact defect
+sentence restored in the constant → **1 red**; restored → green.
+
+### The Calls pane, rebuilt to the handoff
+
+Frames not rendered; departures D37–D41. Captures in `docs/evidence/sidekick-batch4/`, all on
+**synthetic** data (the live log carries real contact names): idle, incoming, in call (1440 × 920
+dark), idle light, idle 1100 × 700. The live pane was put back on the phone's data afterwards.
+
+- Viewport-bounded three columns like Messages: at 1440 × 920 `#page` **808 / 808**.
+- **Two layout faults found by measuring**: (1) the dialler's number field drew **107px** tall —
+  the base `input[type='tel']` rule carries `flex: 1`, which decides the height in a column flex
+  container and outranks a class rule; `flex: none` on the field's id → **40**. (2) At 1100 × 700
+  the call card was **270px** and broke its sentence word by word; a breakpoint after the rules it
+  overrides → **300**, `scrollWidth` 1100.
+- `callsView.test.ts`: the idle card still draws **no buttons** (the shared empty block carries no
+  action) and keeps `is-idle`; a disc carries no hue property (D29).
+- `npm test` **844 / 844**.
+
+**Not proven:** a real incoming call against the rebuilt card (the ringing and in-call captures are
+synthetic); the Contacts tab after the restyle was not captured.

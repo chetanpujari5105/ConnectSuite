@@ -1163,3 +1163,21 @@ lime segment for the selected tab; 300 / 520 / 300 columns, 62px rows, 36 / 56px
 component 12's banner; a `wall` is refused an action in code, not by convention. Notifications'
 private `stateBlock` (one of the five vocabularies `docs/empty-and-failure-states.md` counted) is
 deleted and its two call sites use the shared one.
+
+## Sidekick Batch 4b — Calls — 2026-09-19. Rows D37–D41
+
+Frames `34:7045`–`34:7907` were **not rendered** (Figma MCP limit); built to handoff §6 Calls and the
+component library. Not Figma-exact.
+
+| Row | Figma / handoff | Built | Why |
+|---|---|---|---|
+| **D37** | Log 300 + call card 520 + keypad 300 | As drawn at 1440; **240 / 1fr / 248** below a 1240px window | At the 1100 minimum the fixed flanks left the call card 270px and it broke its sentence word by word |
+| **D38** | A missed call is visually distinguished | Missed carries its word at primary weight, **not red** | Red is reserved for a real failure (handoff §2). A missed call is not one |
+| **D39** | The clock is a measurement | 21 / 500 mono (the Numeral role), primary text, not the deleted `--live` green | D1 removed the second green; lime is not allowed on a running figure |
+| **D40** | — | The idle card is the shared **empty** state block with the audio sentence at its foot | The frame was not available; component 11 is the single source for *nothing here* |
+| **D41** | — | A pane footer: *"Calls are placed, answered and heard on the phone. Sidekick carries the controls — never the audio."* | Handoff §6: panes keep a pane-specific footer strip. New copy, and a third place the audio wall is said |
+
+**Corrected, not departures:** Answer is the lime primary pill and Reject / Hang up the destructive
+button, both keeping their words (§5b); Call is a flat lime pill whose confirm state turns red (no
+gradient); every disc is neutral charcoal; the segment's selected tab is the lime fill; times are
+24-hour; the audio copy offers no Bluetooth remedy (**defect 124**).

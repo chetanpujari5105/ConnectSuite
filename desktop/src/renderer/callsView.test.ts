@@ -6,6 +6,7 @@ import { FakeElement, installFakeDocument, installFakeWindow, el } from './domDo
 // happened, and is the export/CommonJS trap this repo already records: a green suite exercising a
 // loader the renderer never uses. Imported in the page's own order, for the same reason.
 import './icons';
+import './stateBlock';
 import '../shared/contactPhotos';
 import '../shared/appCall';
 // Side-effecting import, safe because `calls.ts` touches no DOM at module scope — it only hangs

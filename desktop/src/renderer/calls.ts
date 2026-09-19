@@ -209,10 +209,25 @@ function callInitials(entry: { contactName?: string; number?: string }): string 
  * capability lives on the phone* — and a sentence about a platform wall that is styled differently
  * in three places reads as three unrelated problems.
  */
+/**
+ * The call-audio wall, in the two places it is said. **Neither offers Bluetooth**, and that is the
+ * point of naming them: both sentences told people to *"pair the Mac to the phone over Bluetooth to
+ * listen"* — a remedy measured on 2026-09-14 and retracted in `CLAUDE.md` (both ends are the HFP
+ * audio gateway; SCO never comes up from either side). The copy outlived the retraction by five
+ * days because nothing checked a sentence against a finding. `calls.test.ts` checks it now.
+ */
+const CALL_AUDIO_WALL =
+  'There is no audio between the phone and this Mac in either direction — Android does not let ' +
+  'any app capture call audio. Talk and listen on the phone.';
+const CALL_AUDIO_LIVE = 'Audio stays on the phone. Talk and listen there — nothing carries it to this Mac.';
+
 function audioStrip(text: string): HTMLElement {
   const strip = document.createElement('div');
   strip.className = 'call-audio-note';
-  strip.appendChild(iconSvg('phone', 15));
+  // `calls` is the handset; the icon set's `phone` key is the device.
+  const glyph = iconSvg('calls', 15);
+  glyph.setAttribute('aria-hidden', 'true');
+  strip.appendChild(glyph);
   const line = document.createElement('span');
   line.textContent = text;
   strip.appendChild(line);
@@ -683,7 +698,8 @@ class CallsView {
       const answer = document.createElement('button');
       answer.id = 'call-answer';
       answer.type = 'button';
-      answer.className = 'call-answer';
+      // The primary action (lime is allowed on exactly this): answering is the one thing to do.
+      answer.className = 'button primary-action call-answer';
       answer.textContent = 'Answer on phone';
       // The label says where it answers. There is no audio path and there never will be — see the
       // file comment and docs/permissions.md — so a bare "Answer" would be a promise this cannot keep.
@@ -695,14 +711,13 @@ class CallsView {
     const reject = document.createElement('button');
     reject.id = 'call-reject';
     reject.type = 'button';
-    reject.className = 'call-hangup';
+    // The destructive button component — Reject and Hang up keep their labels (handoff §5b).
+    reject.className = 'button danger call-hangup';
     reject.textContent = this.call.state === 'active' ? 'Hang up' : 'Reject';
     reject.addEventListener('click', () => void this.run(this.bridge.callReject()));
     bar.appendChild(reject);
 
-    const audio = audioStrip(
-      'Audio stays on the phone — pair the Mac to it over Bluetooth to listen through the Mac.',
-    );
+    const audio = audioStrip(CALL_AUDIO_LIVE);
 
     // Where the design's Mute / Keypad / Speaker row sits. Saying the three controls are on the
     // phone is a smaller lie than drawing three buttons that do nothing, and a much smaller one
@@ -739,15 +754,15 @@ class CallsView {
    * were unlucky.
    */
   private renderNoCall(): void {
-    const headline = document.createElement('div');
-    headline.className = 'call-idle-headline';
-    headline.textContent = 'No call in progress';
-
-    const body = document.createElement('p');
-    body.className = 'call-idle-body';
-    body.textContent =
-      'A call ringing on the phone appears here, and you can answer or reject it from this Mac. ' +
-      'Dial from the keypad on the right.';
+    // The shared empty state (component 11): no action, because there is nothing to act on.
+    const empty = stateBlock({
+      kind: 'empty',
+      icon: 'calls',
+      headline: 'No call in progress',
+      body:
+        'A call ringing on the phone appears here, and you can answer or reject it from this Mac. ' +
+        'Dial from the keypad on the right.',
+    });
 
     // The design's own strip at the foot of the call card — a `--well` panel with a phone glyph,
     // reading *"Audio is routed through Galaxy S26 Ultra"*. The **shape** is taken and the sentence
@@ -755,13 +770,9 @@ class CallsView {
     // all and never will be. This is that shape carrying the true sentence, in every state rather
     // than only during a call, because someone who has not yet made a call is exactly the person
     // who needs to know before they try.
-    const audio = audioStrip(
-      'There is no audio between the phone and this Mac in either direction — Android does not ' +
-        'let any app capture call audio. Pair the Mac to the phone over Bluetooth to listen ' +
-        'through it.',
-    );
+    const audio = audioStrip(CALL_AUDIO_WALL);
 
-    this.live.append(headline, body, audio);
+    this.live.append(empty, audio);
   }
 
   // ---- The log -----------------------------------------------------------------------------
@@ -1157,7 +1168,8 @@ function timeOfCall(whenMs: number): string {
     at.getMonth() === now.getMonth() &&
     at.getDate() === now.getDate();
   return sameDay
-    ? at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    // 24-hour, the system's one clock format (Messages, Overview's Recent rows) — `09:40`.
+    ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
     : at.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
@@ -1182,6 +1194,8 @@ function duration(ms: number): string {
   frequentlyCalled,
   callClock,
   DIAL_KEYS,
+  CALL_AUDIO_WALL,
+  CALL_AUDIO_LIVE,
 };
 // The view class itself, for `callsView.test.ts` — the debt-list entry this removes was
 // "the drawing half is not [tested]", and three renderer-only breaks have shipped green.

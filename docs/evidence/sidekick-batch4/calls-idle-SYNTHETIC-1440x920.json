@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch4/calls-idle-SYNTHETIC-1440x920.png",
+  "screen": "calls",
+  "takenAt": "2026-09-19T16:47:16.280Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 900,
+  "ready": null,
+  "prep": "(() => {\n  const t = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime(); };\n  const y = Date.now() - 86400000;\n  const rows = [\n    ['R. Sharma', '+91 98200 44119', 'incoming', t(9, 40), 185000],\n    ['Mum', '+91 98200 11002', 'missed', t(8, 55), 0],\n    [null, '+91 98200 11477', 'incoming', t(8, 20), 42000],\n    ['Priya Nair', '+91 98200 55410', 'outgoing', y, 610000],\n    ['R. Sharma', '+91 98200 44119', 'outgoing', y - 3600000, 94000],\n    ['Anil', '+91 98200 70012', 'missed', y - 7200000, 0],\n    ['Mum', '+91 98200 11002', 'incoming', y - 90000000, 1320000],\n    ['R. Sharma', '+91 98200 44119', 'incoming', y - 95000000, 61000],\n  ];\n  calls.log = rows.map(([n, num, type, dateMs, durationMs], i) => ({ id: 'c' + i, number: num, contactName: n ?? undefined, type, dateMs, durationMs }));\n  calls.logHasMore = false; calls.loaded = true; calls.call = null; calls.appCall = null;\n  calls.card.classList.remove('hidden');\n  calls.renderTabs(); calls.renderLog(); calls.renderFrequent(); calls.renderLive();\n  return true;\n})()",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

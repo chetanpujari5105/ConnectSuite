@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -65,3 +67,23 @@ test('firstNonEmpty is the rule the rest of the pane can reuse', () => {
   assert.equal(labels.firstNonEmpty('', undefined), undefined);
 });
 
+
+/**
+ * Defect 124. Both audio sentences offered *pair the Mac over Bluetooth to listen* — the remedy
+ * `CLAUDE.md` retracted after measuring it on 2026-09-14. Asserted on each sentence by itself
+ * (never as a likeness between the two, which either could satisfy by moving), and on the whole
+ * source file, because a third sentence is the likeliest way it comes back.
+ */
+test('no call copy offers Bluetooth as a remedy for the audio wall', () => {
+  const labels = (globalThis as Record<string, unknown>).__callLabels as Record<string, string>;
+  for (const name of ['CALL_AUDIO_WALL', 'CALL_AUDIO_LIVE']) {
+    const line = labels[name];
+    assert.ok(line && line.length > 20, `control: ${name} is a real sentence`);
+    assert.doesNotMatch(line, /bluetooth|pair the mac/i, `${name} offers the retracted remedy`);
+    assert.match(line, /phone/i, `${name} does not say where the audio is`);
+  }
+  const source = readFileSync(join(__dirname, 'calls.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+  assert.doesNotMatch(source, /bluetooth/i, 'a string in calls.ts mentions Bluetooth');
+});
