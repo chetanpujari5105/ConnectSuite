@@ -150,23 +150,6 @@
           </header>
 
           <div class="page cs-scroll" id="page">
-            <!--
-              The connected-device strip. On every screen except Overview, per the handoff — the
-              Overview's own hero card already says all of this at four times the size, and two
-              copies of a battery percentage on one screen is how they start disagreeing.
-            -->
-            <div class="device-strip" id="device-strip">
-              <span class="strip-thumb" id="strip-thumb" aria-hidden="true"></span>
-              <span class="strip-name" id="strip-name">No phone paired</span>
-              <span class="strip-state">
-                <span class="state-dot" id="strip-dot" aria-hidden="true"></span>
-                <span id="strip-state-label">Not paired</span>
-              </span>
-              <span class="strip-spacer"></span>
-              <span class="mono strip-value" id="strip-latency">—</span>
-              <span class="strip-divider" id="strip-divider-battery" aria-hidden="true"></span>
-              <span class="mono strip-value" id="strip-battery"></span>
-            </div>
 
             <!-- ======================= Pairing — a route with no sidebar row ==================
               The design has no unpaired state at all: its first screen assumes a paired phone
@@ -422,6 +405,8 @@
               is replaced by it, and the person card follows the chat.
             -->
             <section class="screen" data-screen="messages" hidden>
+              <!-- The permission block or the Disconnected banner (stateBlock.ts). Empty while live. -->
+              <div class="pane-state" id="sms-state" hidden></div>
               <div class="sms-grid stagger" id="sms-card">
                 <section class="sms-threads">
                   <div class="sms-threads-head">
@@ -434,6 +419,7 @@
                     <p class="sms-list-note" id="sms-note"></p>
                     <div id="sms-list" role="listbox" aria-label="Conversations"></div>
                   </div>
+                  <p class="sms-threads-foot" id="sms-threads-foot"></p>
                 </section>
 
                 <section class="sms-chat" id="sms-chat">
@@ -450,6 +436,8 @@
                 -->
                 <aside class="sms-person" id="sms-person" aria-live="polite"></aside>
               </div>
+              <!-- Frame 32:4382's footer strip, verbatim. One pane-specific sentence (handoff §6). -->
+              <p class="pane-foot" id="sms-foot">Sidekick carries the text of a message. The message itself is sent by the phone, from the phone’s number.</p>
               <div id="sms-notice" class="mirror-notice" hidden></div>
 
               <!--
@@ -844,6 +832,7 @@
 
     <script src="../shared/appearance.js"></script>
     <script src="icons.js"></script>
+    <script src="stateBlock.js"></script>
     <script src="navModel.js"></script>
     <!-- Before mirror.js: it holds the picture-fitting rule mirror.js calls, and a
          classic script has to be in scope before its caller runs. -->
@@ -863,7 +852,6 @@
     <!-- The status island's whole rule: current state, computed from the link the strip reads. -->
     <script src="../shared/islandState.js"></script>
     <script src="../shared/appLabel.js"></script>
-    <script src="../shared/discHue.js"></script>
     <script src="../shared/contactPhotos.js"></script>
     <script src="../shared/appCall.js"></script>
     <script src="notifyLabels.js"></script>

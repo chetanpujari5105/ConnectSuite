@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { installFakeDocument, installFakeWindow, FakeElement } from './domDouble.testkit';
 
 /**
- * The chrome's three battery slots, driven through the **real** `ShellView`.
+ * The chrome's battery slot (the sidebar device card; the connected-device strip that made it three was removed with the retired handoff, 2026-09-19), driven through the **real** `ShellView`.
  *
  * ### The failure this exists for
  *
@@ -45,8 +45,6 @@ interface Shell {
 function mount(): {
   shell: Shell;
   card: FakeElement;
-  strip: FakeElement;
-  divider: FakeElement;
   facts: FakeElement;
   restore: () => void;
 } {
@@ -69,8 +67,6 @@ function mount(): {
   return {
     shell: new View(),
     card: byId('device-battery'),
-    strip: byId('strip-battery'),
-    divider: byId('strip-divider-battery'),
     facts: byId('hero-facts'),
     restore: () => {
       win.restore();
@@ -82,7 +78,7 @@ function mount(): {
 const CONNECTED = { phase: 'connected', paired: true, deviceName: 'SM-S938B', rttMs: 9 };
 const RECONNECTING = { phase: 'reconnecting', paired: true, deviceName: 'SM-S938B' };
 
-test('a real reading reaches all three slots, and they were hidden before it', () => {
+test('a real reading reaches the sidebar slot, and it was hidden before it', () => {
   const m = mount();
   try {
     m.shell.setStatus(CONNECTED);
@@ -92,9 +88,6 @@ test('a real reading reaches all three slots, and they were hidden before it', (
     m.shell.setBattery({ level: 79, charging: false, capacityUnknown: false });
     assert.equal(m.card.hidden, false);
     assert.equal(m.card.textContent, '79%');
-    assert.equal(m.strip.hidden, false);
-    assert.equal(m.strip.textContent, '79%');
-    assert.equal(m.divider.hidden, false, 'a divider with nothing on the far side of it');
   } finally {
     m.restore();
   }
@@ -113,8 +106,8 @@ test('a real reading reaches all three slots, and they were hidden before it', (
  * sidebar device card already carry those two facts. Three copies of a battery percentage on one
  * viewport is what the six-cell grid actually shipped.
  *
- * The battery has not left this file's subject: it still reaches the sidebar device card and the
- * connected-device strip, which is what every other test here asserts. What it no longer reaches is
+ * The battery has not left this file's subject: it still reaches the sidebar device card,
+ * which is what every other test here asserts. What it no longer reaches is
  * the hero, and the assertion below is the guard on that — a fifth cell appearing is Slice 59's
  * grid coming back.
  */
@@ -145,7 +138,7 @@ test('the hero draws the handoff four, and a battery reading adds no fifth cell'
     assert.equal(m.facts.children.length, 4, 'a reading must not add a cell back');
     assert.ok(
       !m.facts.textContent.includes('42%'),
-      'the hero drew a battery reading; it belongs to the sidebar card, the strip and the O4 ring',
+      'the hero drew a battery reading; it belongs to the sidebar card and the metric card',
     );
     // The control for that negative: the same reading did reach the surface that should have it.
     assert.equal(m.card.textContent, '42%');
@@ -182,8 +175,6 @@ test('a link that is not live takes the slots away, and the reading is untouched
 
     m.shell.setStatus(RECONNECTING);
     assert.equal(m.card.hidden, true);
-    assert.equal(m.strip.hidden, true);
-    assert.equal(m.divider.hidden, true);
     // The hero has no battery cell to blank — departure O11 — so the guard is that the *whole*
     // card is free of the reading in both directions. A count could not see the difference
     // between a removed cell and one still showing a stale 79%; this can.
@@ -248,10 +239,7 @@ test('the slots equal what batterySlot produces — not a value of their own', (
         const want = batterySlot(state, live);
         const where = `${JSON.stringify(state)} @ ${status?.phase ?? 'null'}`;
         assert.equal(m.card.hidden, !want.show, where);
-        assert.equal(m.strip.hidden, !want.show, where);
-        assert.equal(m.divider.hidden, !want.show, where);
         assert.equal(m.card.textContent, want.text, where);
-        assert.equal(m.strip.textContent, want.text, where);
         // The hero, against the same production rule — and since O11 the rule for this card is
         // that the reading never reaches it. Asserting the absence of the *rule's own output*
         // rather than a cell count: a count is a proxy for "is the reading shown", and a proxy

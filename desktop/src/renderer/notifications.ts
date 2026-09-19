@@ -428,9 +428,6 @@ class NotificationsView {
     // as nothing — defect 26's shape, where a chip's whole meaning was its background colour.
     tile.setAttribute('role', 'img');
     tile.setAttribute('aria-label', appTileNameOf(one));
-    // A stable hue per app, derived from the label so the same app keeps its colour across
-    // restarts. Decorative only: nothing is distinguished by hue alone.
-    tile.style.setProperty('--tile-hue', String(discHue(appLabelOf(one).label)));
     return tile;
   }
 
@@ -715,7 +712,7 @@ class NotificationsView {
 
   /** State C — granted, connected, genuinely nothing here. Neutral, and it says so out loud. */
   private emptyState(headline: string, explain: string): HTMLElement {
-    return stateBlock('empty', headline, explain);
+    return stateBlock({ kind: 'empty', icon: 'notifications', headline, body: explain });
   }
 
   /**
@@ -726,12 +723,7 @@ class NotificationsView {
    * that does not exist — a handle, with the sentence above it being what a person actually reads.
    */
   private unbuiltState(headline: string, explain: string, namespace: string): HTMLElement {
-    const block = stateBlock('unbuilt', headline, explain);
-    const handle = document.createElement('p');
-    handle.className = 'state-handle mono';
-    handle.textContent = namespace;
-    block.appendChild(handle);
-    return block;
+    return stateBlock({ kind: 'unavailable', headline, body: explain, code: namespace });
   }
 
   /**
@@ -800,22 +792,6 @@ class NotificationsView {
   }
 }
 
-/** The shared skeleton of every designed nothing-here state: icon, one bold line, one explanation. */
-function stateBlock(kind: string, headline: string, explain: string): HTMLElement {
-  const block = document.createElement('div');
-  block.className = `state-block state-${kind}`;
-  const glyph = document.createElement('div');
-  glyph.className = 'state-glyph';
-  glyph.setAttribute('aria-hidden', 'true');
-  const title = document.createElement('p');
-  title.className = 'state-title';
-  title.textContent = headline;
-  const body = document.createElement('p');
-  body.className = 'state-explain';
-  body.textContent = explain;
-  block.append(glyph, title, body);
-  return block;
-}
 
 /**
  * A stable hue for an app tile, from its label.
@@ -824,11 +800,6 @@ function stateBlock(kind: string, headline: string, explain: string): HTMLElemen
  * accessible name and the row always carries the app's text — because a colour that is the sole
  * carrier of meaning is defect 26 exactly.
  */
-// Moved to `src/shared/discHue.ts` on 2026-09-05, when Calls needed the same rule. It is declared
-// there and loaded before this file; a second copy here would be a redeclaration the compiler
-// catches and the browser would not, and — worse — two hash functions would put one person in two
-// different colours on two panes with nothing ever reporting it.
-declare function discHue(label: string): number;
 
 /**
  * Escapes a notification key for use inside an attribute selector.

@@ -141,11 +141,14 @@ test('the person card draws only facts the wire holds', () => {
   assert.match(smsRules.personFacts(row({ messageCount: 318 })).find(([l]) => l === 'Messages')![1], /318/);
 });
 
-test('the person refusal names what is gone and claims nothing has failed', () => {
+test('the person refusal names what is gone, not what is offered, and claims nothing has failed', () => {
+  // Frame 32:4382's sentence. Calling left this list on 2026-09-19 when the column gained *Call this
+  // number* — a refusal naming a control drawn two inches above it would contradict the column.
   const line = smsRules.SMS_PERSON_REFUSAL;
-  for (const word of ['Calling', 'Video', 'blocking', 'shared media']) {
+  for (const word of ['Muting', 'blocking']) {
     assert.ok(line.toLowerCase().includes(word.toLowerCase()), `the refusal does not name ${word}`);
   }
+  assert.doesNotMatch(line, /call/i, 'the refusal names calling, which the column now offers');
   assert.doesNotMatch(line, /fail|error|unavailable|try again/i);
 });
 

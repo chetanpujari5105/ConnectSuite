@@ -21035,3 +21035,52 @@ not the geometry. An un-plated icon needs an Icon Composer `.icon` compiled by `
 `Assets.car`, and this Mac has Command Line Tools only — no Xcode, no `actool`. On macOS 11–15 the
 `.icns` is the whole mechanism. The dev build (`npm start`) still shows Electron's icon: nothing
 calls `app.dock.setIcon`, and the bundle there is Electron's.
+
+## Sidekick Batch 4a — Messages, the device strip, one state vocabulary — 2026-09-19
+
+Scored against **`32:4382`, rendered through the Figma MCP** — the first real frame this project has
+compared against (`docs/evidence/figma-reference/messages-thread-32-4382.png`). The next four
+`get_screenshot` calls hit the Starter-plan limit; every other pane stays *built to the handoff*.
+Inventory: `docs/sidekick-full-app-inventory.md`. Departures D27–D36.
+
+**Instrument.** `scripts/shot.mjs --viewport=WxH` now emulates the layout viewport (the real window
+on this display is 1512 × 949 or 1440 × 841 depending on the moment); zoom is still checked on the
+real window *before* emulating, emulation is cleared on every exit path, and each sidecar records
+`emulated`. After the baseline sweep, `innerWidth === outerWidth` on the live window (control that
+it was cleared).
+
+**Evidence is synthetic, deliberately.** The live pane shows real SMS including one-time codes; the
+committed captures in `docs/evidence/sidekick-batch4/` drive `SmsView` with six invented threads
+(the frame's own names and texts) and are named `-SYNTHETIC-`. The pane was put back on the phone's
+data by reloading the renderer afterwards. In the *disconnected* and *permission* captures the
+status pill still reads *Connected* — only the pane was driven into those states.
+
+- **Device strip deleted** (D27). `shellIsland.test.ts` re-pointed at the sidebar card; mutation —
+  `device-dot` always `live` — **1 red**, restored green.
+- **Page top inset** (D28): `.page-head` 0–112, first content at **140** on Messages and Overview.
+- **Hue removal** (D29): `discHue.ts` deleted; `--disc-*`/`--tile-*` tokens and the contrast
+  checker's disc branch removed (the colour guard refused the commit while its allowlist still named
+  `--disc-fg` — correctly). `callsView.test.ts` now asserts **no** hue property on a disc.
+- **`stateBlock.test.ts`** (5): a wall refuses its action and records the refusal; an error keeps
+  its retry with a mono code (the control); tone is the state's; every default glyph is in
+  `iconNamesUsedByTheShell`. Mutation — `wall` allowed an action — **1 red**.
+- **`smsView.test.ts`** +4: a dropped link keeps the list and says *as of HH:MM*; a refused grant
+  draws the phone's sentence in a permission block; a failed send stays beside its draft with a
+  retry; *Call this number* fills and never dials. Mutations — disconnect routed back through
+  `setAdvertised(false)` → **1 red** (its test); failure back to a toast → **1 red** (its test).
+- **A defect found by measuring, not by looking**: `#page` scrolled to **3,351px in an 808 window**
+  while every Messages column clipped. The unread badges' `.visually-hidden` sentence is
+  `position: absolute`, and an absolute box is clipped only by an overflow container that is also its
+  containing block — no row between it and the page was positioned. `.sms-thread` is
+  `position: relative` now: **808 / 808**, with 50 threads loaded as the control.
+- **A cascade-order regression, caught at 1100 × 700**: the breakpoint hiding the person column sat
+  above the new `.sms-person` rule and lost to it, so the column wrapped onto a second row. Moved
+  below; at 1100 × 700 `display: none`, page 568 / 568, `scrollWidth` 1100.
+- **Page-overflow sweep, every pane at 1440 × 920**: 10 of 12 at `scrollHeight === clientHeight`.
+  **Mirror 1072 / 808** — its *Advanced* reference card below the fold in the right column (D26's
+  layout; reachable, carries no state). **Notifications 821 / 808** — open, rebuilt next.
+- Captures: thread, send failed, permission, disconnected (1440 × 920 dark), thread light, thread
+  1100 × 700. `npm test` **843 / 843**; typecheck clean; all 13 guards exit 0.
+
+**Not proven:** a real send failure from the phone (the block was driven with a synthetic reason);
+the permission state with a real revoked grant; *Call this number* end to end (unit-tested only).

@@ -186,7 +186,6 @@ function callStatus(call: { state: string; number?: string }): string {
  * row uses for an unknown caller. It never returns an empty string, because an empty disc reads as
  * a rendering failure rather than as an unknown caller.
  */
-declare function discHue(label: string): number;
 
 function callInitials(entry: { contactName?: string; number?: string }): string {
   const name = firstNonEmpty(entry.contactName);
@@ -221,27 +220,20 @@ function audioStrip(text: string): HTMLElement {
 }
 
 /**
- * The disc for a contact: initials on the one colour that person always has.
+ * The disc for a contact: initials on neutral charcoal, or their photograph.
  *
- * One function for all three sites — the log row, the Contacts row, and Frequently called — because
- * they draw the same person and a per-site copy is how the same contact ends up two colours on one
- * screen. The hue comes from `src/shared/discHue.ts`, which is also what the Notifications tiles
- * use, so an app and a contact are coloured by the same rule.
- *
- * **The identity keyed on is the name if there is one, and the number otherwise** — not the initials.
- * Keying on initials would give every `VS` on this phone's log the same disc, which is precisely the
- * confusion the colour exists to break: this handset's log has six consecutive `VENKY SIT` rows and
- * an `SB` that is a different person from the `SB` two rows down.
+ * One function for all three sites — the log row, the Contacts row, and Frequently called. It used
+ * to give each person a hue from `shared/discHue.ts`; the Sidekick system has **no per-person or
+ * per-app colour anywhere** (handoff §2, departure D2), so people are told apart by name, initials
+ * and photograph, which is what the Figma frames draw. `discHue.ts` was deleted with its last caller
+ * on 2026-09-19 rather than left loaded with nothing to colour.
  */
 function callDisc(entry: DiscEntry, size: 'lg' | 'sm' | 'xs', photos: ContactPhotos): HTMLElement {
   const disc = document.createElement('span');
-  // `lg` is the live card's one big disc and carries no hue, which is what it has always drawn:
-  // an accent tint reads correctly for a single disc, and the per-contact fill exists to break up
-  // a *column* of them. The size is the only thing that varies here; the stylesheet owns the rest.
+  // The size is the only thing that varies here; the stylesheet owns the rest.
   disc.className = size === 'lg' ? 'call-disc' : `call-disc call-disc-${size}`;
   disc.setAttribute('aria-hidden', 'true');
   disc.textContent = callInitials(entry);
-  if (size !== 'lg') disc.style.setProperty('--disc-hue', String(discHue(discKeyOf(entry))));
   attachPhoto(disc, entry, photos);
   return disc;
 }
@@ -313,11 +305,6 @@ function attachPhoto(disc: HTMLElement, entry: DiscEntry, photos: ContactPhotos)
 function paintPhoto(disc: HTMLElement, source: string): void {
   disc.style.backgroundImage = `url("${source}")`;
   disc.classList.add('has-photo');
-}
-
-/** What a disc's colour is keyed on. Pure, and exported for the test that pins the rule. */
-function discKeyOf(entry: { contactName?: string; number?: string }): string {
-  return firstNonEmpty(entry.contactName) ?? firstNonEmpty(entry.number) ?? '';
 }
 
 /**
@@ -1046,7 +1033,8 @@ class CallsView {
     }
   }
 
-  private fillDialler(number: string): void {
+  /** Public for Messages' *Call this number*: fills, never dials — the confirm step is the dialler's. */
+  fillDialler(number: string): void {
     this.dialInput.value = number;
     this.pendingDial = null;
     this.renderDialButton();
@@ -1190,7 +1178,6 @@ function duration(ms: number): string {
   callWho,
   callStatus,
   callInitials,
-  discKeyOf,
   filterCallLog,
   frequentlyCalled,
   callClock,

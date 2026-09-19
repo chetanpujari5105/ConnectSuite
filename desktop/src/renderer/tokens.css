@@ -400,21 +400,6 @@
   --tint-grey-rgb: 156, 159, 176;                /* the uncategorised dot */
   --tint-darken: 0%;
 
-  /*
-   * The generated colours — one hue per contact or per app, from `shared/discHue.ts`.
-   *
-   * The hash owns the hue and the stylesheet owns saturation and lightness; that split is
-   * discHue.ts's own rule and this is what makes it theme-able. A *disc* is its own background, so
-   * its numbers hold in both themes. *Tile text* sits on the page, so its lightness has to drop
-   * from 78% to 25% or every app label in Notifications is white-on-white.
-   */
-  --disc-sat: 62%;
-  --disc-lig: 66%;
-  --disc-fg: #0b0b12;
-  --tile-fill-sat: 60%;
-  --tile-fill-lig: 62%;
-  --tile-text-sat: 70%;
-  --tile-text-lig: 78%;
 
   /* ---- Type ---------------------------------------------------------------------------------
    * The handoff specifies Archivo and then sanctions the swap we take: "substitute the codebase's
@@ -769,9 +754,6 @@
 
   /* Tints keep their hue and darken as text. 46% clears AA for all seven — see the dark block. */
   --tint-darken: 46%;
-
-  /* A disc is its own background, so its numbers hold. Tile text sits on the page, so it drops. */
-  --tile-text-lig: 25%;
 
   /*
    * Shadows. Same geometry, far less opacity: a 50%-black shadow that reads as depth on #07070a

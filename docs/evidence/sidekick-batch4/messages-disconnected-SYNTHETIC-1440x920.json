@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch4/messages-disconnected-SYNTHETIC-1440x920.png",
+  "screen": "messages",
+  "takenAt": "2026-09-19T12:07:05.823Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 900,
+  "ready": null,
+  "prep": "(() => {\n  const now = Date.now(), t = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime(); };\n  const y = now - 86400000;\n  sms.threads = [\n    { threadId: 's1', addresses: ['+91 98200 44119'], contactName: 'R. Sharma', snippet: 'Sounds good — see you at 6.', dateMs: t(9,31), unread: 0, messageCount: 128 },\n    { threadId: 's2', addresses: ['+91 98200 11002'], contactName: 'Mum', snippet: 'Did the parcel arrive?', dateMs: t(8,57), unread: 1, messageCount: 412 },\n    { threadId: 's3', addresses: ['HDFCBK'], contactName: 'HDFC Bank', snippet: 'OTP ••••••. Do not share.', dateMs: t(8,12), unread: 0, messageCount: 38 },\n    { threadId: 's4', addresses: ['+91 98200 55410'], contactName: 'Priya Nair', snippet: 'I’ll send the file tonight', dateMs: y, unread: 0, messageCount: 64 },\n    { threadId: 's5', addresses: ['+91 98200 11477'], snippet: 'Your cab is arriving', dateMs: y - 3600000, unread: 0, messageCount: 3 },\n    { threadId: 's6', addresses: ['+91 98200 70012'], contactName: 'Anil', snippet: 'Thanks!', dateMs: y - 2*86400000, unread: 0, messageCount: 21 },\n  ];\n  sms.threadsHasMore = false; sms.loaded = true; sms.link = 'live';\n  sms.openThreadId = 's1';\n  sms.messages = [\n    { id: 'm1', threadId: 's1', address: '+91 98200 44119', body: 'Are we still on for the 6 o’clock?', dateMs: t(9,18), inbound: true, read: true, kind: 'sms', hasAttachments: false },\n    { id: 'm2', threadId: 's1', address: '+91 98200 44119', body: 'Yes — I’ll be at the office till 5:30, then straight over.', dateMs: t(9,22), inbound: false, read: true, kind: 'sms', hasAttachments: false },\n    { id: 'm3', threadId: 's1', address: '+91 98200 44119', body: 'Sounds good — see you at 6.', dateMs: t(9,31), inbound: true, read: true, kind: 'sms', hasAttachments: false },\n  ];\n  sms.messagesHasMore = false;\n  sms.card.classList.remove('hidden');\n  sms.render();\n  return true;\n})(); sms.freshAtMs=Date.now()-420000; sms.setLinkState(false,false,null);",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

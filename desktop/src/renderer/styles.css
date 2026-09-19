@@ -971,211 +971,195 @@ img#qr {
 
 /* ---- Messages ------------------------------------------------------------------------------ */
 /* ================================================================================================
-   Messages — the design's three columns, `280px 1fr 300px`
-   ================================================================================================
+   Messages — frame `32:4382`, the one pane with a real Figma render to score against
+   (docs/evidence/figma-reference/messages-thread-32-4382.png). Three columns 300 / 520 / 300 in the
+   1152 content width, 16px apart, each a 14px charcoal card.
 
-   Rebuilt 2026-09-05. What was here before was a single column that swapped a thread list for a
-   thread, on hand-written hex colours predating the token file, with the contacts *directory* in
-   the third column where the canvas puts the open conversation's own person.
-
-   The one rule worth stating before the numbers: **`.sms-thread` carries an explicit height.** It
-   was a `<button>` with `display: flex; flex-direction: column` and no height, and a button does
-   not grow to its flex content — so the preview line, which is the only shrinkable child, was
-   squeezed to `height: 0` on every row while carrying real text. Defect 93. The design says 60px;
-   the row says 60px; nothing has to grow.
+   The one rule worth keeping from the build before: **`.sms-thread` carries an explicit height.**
+   A `<button>` does not grow to its flex content, so the preview line was squeezed to `height: 0`
+   on every row while carrying real text (defect 93). The frame's row is 62; the row says 62.
 ------------------------------------------------------------------------------------------------ */
 
-/*
- * Messages opts into the viewport-bounded screen, the same way Files does and for the same reason:
- * three columns that scroll inside themselves need something definite to be a fraction of.
- *
- * Every link in the chain carries `min-height: 0` so a flex item may shrink below its content —
- * without it a flex child's automatic minimum is its content, the grid never shrinks, and each
- * column's `overflow: auto` never has anything to do.
- */
+/* Viewport-bounded, like Files: three columns that scroll inside themselves need a definite
+   height to be a fraction of, and every link in the chain carries `min-height: 0`. */
 .screen[data-screen="messages"] {
   flex: 1;
   display: flex;
   flex-direction: column;
+  gap: var(--space-7);
   min-height: 0;
 }
 
 .sms-grid {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr) 300px;
+  grid-template-columns: 300px minmax(0, 1fr) 300px;
+  /* One row pinned to the grid's own height. An implicit `auto` row sized itself from the thread
+     list's full content (3,323px measured), so the page scrolled though every column clipped. */
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--space-7);
   align-items: stretch;
-  /*
-   * The design says `height: 600px`. This takes the **available** height instead, and the reason is
-   * arithmetic rather than taste: the canvas is a 920px window with about 200px of chrome above
-   * this grid, so 600 fits it with room. This app's window is **841px** after defect 87's fit, and
-   * the page head plus the device strip take about 300 — so a literal 600 put the composer, the one
-   * control on the screen, below the fold.
-   *
-   * A definite height is still what makes the three columns scroll inside themselves rather than
-   * the page growing to the longest one, which on a 50-thread list is the difference between three
-   * panels and one very tall page. `100%` of a viewport-bounded screen is that, at whatever height
-   * the display actually has.
-   */
-  height: 100%;
   flex: 1;
   min-height: 0;
 }
 .sms-grid > * { min-width: 0; min-height: 0; }
 .sms-grid.hidden { display: none; }
 
-@media (max-width: 1180px) {
-  /* The person card is the first thing to go: it is the only column that repeats what the chat
-     header already says. */
-  .sms-grid { grid-template-columns: 260px minmax(0, 1fr); }
-  .sms-person { display: none; }
+
+/* The three columns share one surface: Figma's card, hairline, radius 14, no shadow. */
+.sms-threads,
+.sms-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: var(--radius-card);
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  overflow: hidden;
 }
 
 /* ---- Column one: the conversations ------------------------------------------------------------ */
 
-.sms-threads {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-radius: var(--radius-panel);
-  overflow: hidden;
-  background: var(--well);
-  border: 1px solid var(--hairline);
-  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
-}
-
 .sms-threads-head {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   flex: none;
-  padding: var(--space-5) var(--space-7);
-  border-bottom: 1px solid var(--hairline);
+  padding: var(--space-7) var(--space-7) var(--space-5);
 }
 
-.sms-tabs { display: flex; gap: var(--space-2); flex: 1; min-width: 0; }
+.sms-tabs { display: flex; gap: var(--space-3); flex: 1; min-width: 0; }
 
-/* The design's 26px filter pill. */
+/* Segment (component 6): selected is the lime fill — one of the places lime is allowed. */
 .sms-tab {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  height: 26px;
+  height: 28px;
   min-height: 0;
   padding: 0 var(--space-5);
-  border: 1px solid transparent;
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-body);
-  font-size: 12px;
+  font: 500 12.5px/1 var(--font-ui);
   cursor: pointer;
-  transition: background var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
+  transition: background var(--dur-state) var(--ease), color var(--dur-state) var(--ease);
 }
-.sms-tab:hover { background: rgba(var(--overlay-rgb), 0.04); color: var(--text-on-control); }
-.sms-tab.on {
-  background: var(--accent-tint-selected);
-  border-color: var(--accent-border);
-  color: var(--text-primary);
+@media (hover: hover) and (pointer: fine) {
+  .sms-tab:hover { background: rgba(var(--overlay-rgb), 0.04); color: var(--text-on-control); }
+}
+.sms-tab.on,
+.sms-tab.on:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-on-fill);
 }
 .sms-tab-count { font-size: 11px; color: var(--text-meta); }
-.sms-tab.on .sms-tab-count { color: var(--accent-text); }
+.sms-tab.on .sms-tab-count { color: var(--accent-on-fill); opacity: 0.7; }
 
-/* New conversation. An icon button rather than the design's absent control — the canvas has no way
-   to start one, which is defect 30's whole subject. */
+/* New conversation — not in the frame (it assumes every thread exists; defect 30 is why it does
+   not). A quiet 28px icon button so it never competes with the segment. */
 .sms-new {
   display: grid;
   place-items: center;
   flex: none;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   min-height: 0;
   padding: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-pill);
   border: 1px solid var(--hairline);
-  background: var(--control);
+  background: transparent;
   color: var(--text-body);
   cursor: pointer;
 }
-.sms-new:hover { color: var(--text-primary); border-color: var(--hairline-hover); }
 .sms-new-glyph::before { content: '+'; font-size: 15px; line-height: 1; }
 
 .sms-thread-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-3);
+  padding: 0 var(--space-7) var(--space-3);
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
 }
 
 .sms-list-note {
-  margin: var(--space-2) var(--space-3) var(--space-4);
+  margin: var(--space-3) var(--space-1);
   font: var(--text-meta-size);
   color: var(--text-meta);
 }
 .sms-list-note:empty { display: none; }
 
-/*
- * The row. **60px explicit, and that is the fix for defect 93** — see the note at the top of this
- * block. Grid rather than flex, three tracks, so the middle one can be the only thing that shrinks.
- */
+/* List row (component 10): 62px explicit — defect 93 — and a 36px disc. */
 .sms-thread {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-5);
   width: 100%;
-  height: 60px;
+  height: 62px;
   min-height: 0;
-  padding: 0 var(--space-4);
-  border: 0;
-  border-radius: var(--radius-media);
+  /* The containing block for the unread badge's `.visually-hidden` sentence. That span is
+     `position: absolute`, and an absolute box is clipped only by an overflow container that is also
+     its containing block — with no positioned row in between, 45 invisible spans hung below the
+     list and made the whole page scroll (measured: #page 3,351 tall in an 808 window). */
+  position: relative;
+  margin-bottom: var(--space-1);
+  padding: 0 var(--space-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background var(--dur-hover) var(--ease);
+  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease);
 }
-.sms-thread:hover { background: rgba(var(--overlay-rgb), 0.035); }
-.sms-thread.on { background: var(--accent-tint-selected); }
+@media (hover: hover) and (pointer: fine) {
+  .sms-thread:hover { background: rgba(var(--overlay-rgb), 0.035); }
+}
+/* Selected: the lime tint and a lime hairline, as the frame draws R. Sharma's row. */
+.sms-thread.on,
+.sms-thread.on:hover { background: var(--selection-fill); border-color: var(--selection-border); }
 
-.sms-lines { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sms-lines { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 
 .sms-who {
-  font-size: 13px;
-  font-weight: 600;
+  font: 500 13.5px/1.3 var(--font-ui);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.sms-thread.unread .sms-who { font-weight: 600; }
 
-/* The preview. It has been on the wire since Phase 4 and this is the first stylesheet in which it
-   has a height. */
 .sms-preview {
-  font-size: 12px;
+  font: 400 12px/1.35 var(--font-ui);
   color: var(--text-body);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sms-thread.unread .sms-preview { color: var(--text-on-control); }
 
 .sms-thread-meta {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: var(--space-2);
+  align-self: stretch;
+  justify-content: space-between;
+  padding: 13px 0;
   flex: none;
 }
 .sms-when { font-size: 11px; color: var(--text-meta); }
 
+/* Unread count: a neutral badge. Lime is never on a list row (handoff §2); the frame draws none. */
 .sms-unread {
   min-width: 18px;
   padding: 0 5px;
   border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--accent-on-fill);
-  font-size: 11px;
+  background: var(--control);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--text-primary);
+  font-size: 10.5px;
   font-weight: 600;
   line-height: 16px;
   text-align: center;
@@ -1186,41 +1170,36 @@ img#qr {
   width: 100%;
   margin-top: var(--space-3);
   height: 32px;
-  border-radius: var(--radius-control);
-  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-body);
   font-size: 12px;
-  cursor: pointer;
 }
-.sms-older:hover { background: var(--control); color: var(--text-on-control); }
 
-/* ---- Column two: the conversation -------------------------------------------------------------- */
-
-/* The screen's one elevation-3 surface: the conversation you are actually reading. */
-.sms-chat {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-radius: var(--radius-panel);
-  overflow: hidden;
-  background: var(--elev-3);
-  border: 1px solid var(--hairline-primary);
-  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+.sms-threads-foot {
+  flex: none;
+  margin: 0;
+  padding: var(--space-5) var(--space-7) var(--space-7);
+  font: var(--text-meta-size);
+  color: var(--text-meta);
 }
+.sms-threads-foot:empty { display: none; }
+
+/* ---- Column two: the transcript ------------------------------------------------------------------ */
 
 .sms-chat-head {
   display: flex;
   align-items: center;
   gap: var(--space-5);
   flex: none;
-  padding: var(--space-6) var(--space-7);
+  margin: 0 var(--space-8);
+  padding: var(--space-7) 0 var(--space-6);
   border-bottom: 1px solid var(--hairline);
 }
 .sms-chat-head:empty { display: none; }
-.sms-chat-who { min-width: 0; }
-.sms-chat-name { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
-.sms-chat-number { font-size: 11px; color: var(--text-meta); }
+.sms-chat-who { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sms-chat-name { font: var(--text-section); letter-spacing: var(--tracking-section); color: var(--text-primary); }
+.sms-chat-number { font: var(--text-meta-size); color: var(--text-body); }
 
 .sms-chat-body {
   flex: 1;
@@ -1228,65 +1207,46 @@ img#qr {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-8) var(--space-9);
+  gap: var(--space-5);
+  padding: var(--space-7) var(--space-8);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
 }
 
-.sms-chat-empty { margin: auto; text-align: center; padding: var(--space-9); }
-.sms-chat-empty-head { font: var(--text-section); color: var(--text-primary); }
-.sms-chat-empty-body {
-  margin-top: var(--space-2);
-  font: var(--text-body-size);
-  color: var(--text-body);
-  max-width: 320px;
-}
-
-/* The design's date separator: a centred pill, not a rule across the pane. */
+/* A day marker: micro caption, centred, no pill. */
 .sms-day {
   align-self: center;
-  padding: 3px var(--space-4);
-  border-radius: var(--radius-pill);
-  background: rgba(var(--overlay-rgb), 0.05);
-  font-size: 11px;
+  margin: var(--space-2) 0;
+  font: var(--text-micro);
+  letter-spacing: var(--tracking-group);
+  text-transform: uppercase;
   color: var(--text-meta);
 }
 
 /*
- * The bubbles. The design's asymmetric radius is the whole tell for direction — 6px on the corner
- * nearest its own side — and it does more work than the colour does, because it survives being
- * looked at by someone who cannot tell the two fills apart.
+ * The transcript block. **Not a bubble**: the same charcoal block for both directions, the sender
+ * named on each, a mono time beside it. Direction is carried by the side it sits on and by the
+ * name — never by a fill colour (handoff §6 Messages).
  */
 .sms-bubble {
-  max-width: 65%;
-  padding: 9px var(--space-5);
-  font-size: 13px;
-  line-height: 1.45;
-}
-.sms-bubble.inbound {
-  align-self: flex-start;
-  border-radius: 16px 16px 16px 6px;
-  background: var(--control);
+  /* A fixed measure, as the frame draws both directions — a transcript, not chat bubbles. */
+  width: 72%;
+  padding: var(--space-4) var(--space-6) var(--space-5);
+  border-radius: var(--radius-control);
+  background: var(--card-raised);
   border: 1px solid var(--hairline);
-  color: var(--text-on-control);
+  color: var(--text-primary);
+  font: 400 13.5px/1.45 var(--font-ui);
 }
-.sms-bubble.outbound {
-  align-self: flex-end;
-  border-radius: 16px 16px 6px 16px;
-  background: var(--bubble-out);
-  color: var(--text-on-bubble);
-}
+.sms-bubble.inbound { align-self: flex-start; }
+.sms-bubble.outbound { align-self: flex-end; }
+.sms-bubble-head { display: flex; align-items: baseline; gap: var(--space-3); margin-bottom: var(--space-2); }
+.sms-bubble-from { font: 500 11.5px/1.2 var(--font-ui); color: var(--text-primary); }
+.sms-bubble-when { font-size: 10.5px; color: var(--text-meta); }
 .sms-bubble-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-.sms-bubble-text.is-muted { opacity: 0.65; font-style: italic; }
+.sms-bubble-text.is-muted { color: var(--text-meta); font-style: italic; }
 
-.sms-bubble-when {
-  margin-top: var(--space-1);
-  font-size: 10px;
-  color: var(--text-meta);
-}
-.sms-bubble.outbound .sms-bubble-when { color: var(--text-on-fill-dim); }
-
-/* A marker, not the design's attachment card — this wire carries `hasAttachments: true` and no
-   name, size or type to put on one. */
+/* A marker, not an attachment card — the wire carries `hasAttachments: true` and no name or size. */
 .sms-attachment {
   display: flex;
   align-items: flex-start;
@@ -1294,119 +1254,137 @@ img#qr {
   margin-top: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-control);
-  background: rgba(var(--overlay-rgb), 0.06);
+  background: var(--control);
+  color: var(--text-body);
   font-size: 12px;
   line-height: 1.4;
 }
-.sms-bubble.outbound .sms-attachment { background: var(--fill-on-bubble); }
-.sms-attachment-glyph { flex: none; }
+.sms-attachment-glyph { flex: none; display: inline-flex; color: var(--text-body); }
 
-.sms-composer {
-  flex: none;
-  padding: var(--space-5) var(--space-7);
-  border-top: 1px solid var(--hairline);
-}
+.sms-composer { flex: none; padding: 0 var(--space-8) var(--space-7); }
 .sms-composer[hidden] { display: none; }
-.sms-composer-row { display: flex; align-items: center; gap: var(--space-4); }
+.sms-composer-wrap { display: flex; flex-direction: column; gap: var(--space-4); }
 
+/* The field and its lime Send pill are one control, as the frame draws them. */
+.sms-composer-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 46px;
+  padding: 0 var(--space-2) 0 var(--space-6);
+  border-radius: var(--radius-media);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  transition: border-color var(--dur-state) var(--ease);
+}
+.sms-composer-row:focus-within { border-color: var(--hairline-hover); }
 .sms-composer-row input {
   flex: 1;
   min-width: 0;
-  height: 38px;
-  padding: 0 var(--space-6);
-  border-radius: var(--radius-pill);
-  background: var(--well);
-  border: 1px solid var(--hairline);
-  color: var(--text-primary);
-  font: var(--text-body-size);
-}
-.sms-composer-row input:focus { border-color: var(--accent-border); outline: none; }
-
-/* The design's gradient send button, 38px round. */
-.sms-send {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 38px;
-  height: 38px;
-  min-height: 0;
+  height: 100%;
   padding: 0;
   border: 0;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), var(--secondary));
-  color: var(--accent-on-fill);
-  cursor: pointer;
-  transition: filter var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
+  background: transparent;
+  color: var(--text-primary);
+  font: var(--text-body-size);
+  outline: none;
 }
-.sms-send:hover { filter: brightness(1.06); }
-.sms-send:active:not(:disabled) { transform: scale(var(--press-scale-icon)); }
-.sms-send:disabled { opacity: 0.5; cursor: default; }
+.sms-composer-row input::placeholder { color: var(--text-meta); }
+.sms-send.primary-action {
+  flex: none;
+  height: 32px;
+  min-height: 0;
+  padding: 0 var(--space-7);
+  border-radius: var(--radius-pill);
+}
+.sms-composer-caption { font: var(--text-meta-size); color: var(--text-meta); }
 
 /* ---- Column three: the person -------------------------------------------------------------------- */
 
 .sms-person {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
-  overflow-y: auto;
-  padding: var(--space-8) var(--space-7);
-  border-radius: var(--radius-panel);
-  background: var(--well);
+  border-radius: var(--radius-card);
+  background: var(--card);
   border: 1px solid var(--hairline);
-  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+  overflow-y: auto;
+  padding: var(--space-10) var(--space-8) var(--space-8);
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
 }
 
-.sms-person-head { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.sms-person-head { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; }
 .sms-person-name {
   margin-top: var(--space-5);
-  font-size: 16px;
-  font-weight: 600;
+  font: var(--text-section);
   letter-spacing: var(--tracking-section);
   color: var(--text-primary);
   overflow-wrap: anywhere;
 }
-.sms-person-number { font-size: 12px; color: var(--text-body); }
+.sms-person-number { font-size: 11.5px; color: var(--text-meta); }
+
+.sms-person-actions { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-9); }
+.sms-person-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  height: 36px;
+  border-radius: var(--radius-pill);
+}
 
 .sms-person-facts {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--space-1) var(--space-5);
+  gap: var(--space-6) var(--space-5);
   margin-top: var(--space-8);
-  font-size: 12px;
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--hairline);
+  font-size: 11.5px;
 }
 .sms-person-fact-label { color: var(--text-meta); }
-.sms-person-fact-value { color: var(--text-on-control); text-align: right; overflow-wrap: anywhere; }
+.sms-person-fact-value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.sms-person-spacer { flex: 1; min-height: var(--space-8); }
 
-/* `--text-body`, never `--warning`: nothing here has failed. Four of these controls were never
-   built and one of them lives on another screen. */
-.sms-person-refusal {
-  margin-top: var(--space-8);
-  padding-top: var(--space-6);
-  border-top: 1px solid var(--hairline);
-  font: var(--text-meta-size);
-  line-height: 1.5;
-  color: var(--text-body);
+/* `--text-meta`, never `--warning`: nothing here has failed. */
+.sms-person-refusal { font: var(--text-meta-size); line-height: 1.5; color: var(--text-meta); }
+
+/*
+ * Narrow windows. **After** `.sms-person`'s own rule, not before it: at equal specificity the later
+ * rule wins, and this block sat above it for one build — so at 1100 × 700 the person column was never
+ * hidden, wrapped onto a second grid row and crushed the transcript to its header.
+ */
+@media (max-width: 1240px) {
+  /* The person column goes first: it is the only one that repeats what the transcript head says. */
+  .sms-grid { grid-template-columns: 280px minmax(0, 1fr); }
+  .sms-person { display: none; }
 }
 
 /* ---- The avatar discs ---------------------------------------------------------------------------- */
 
 /*
- * Same rule as the Calls rows: a solid per-person fill from `discHue`, near-black initials. Keyed
- * on the conversation's resolved name rather than on the initials, because this phone's list is
- * full of `AD-…` senders whose two letters collide and are different senders.
+ * Frame `32:4382`: a charcoal disc with a hairline and grey initials. Same rule as the Calls rows
+ * and the Notifications tiles — no per-person hue anywhere (handoff §2, D2).
  */
 .sms-disc {
   display: grid;
   place-items: center;
   flex: none;
   border-radius: 50%;
-  background: hsl(var(--disc-hue, 260) var(--disc-sat) var(--disc-lig));
-  color: var(--disc-fg);
-  font-weight: 600;
+  background: var(--control);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--text-body);
+  font-weight: 500;
 }
-.sms-disc-sm { width: 34px; height: 34px; font-size: 12px; }
-.sms-disc-md { width: 34px; height: 34px; font-size: 12px; }
-.sms-disc-lg { width: 72px; height: 72px; font-size: 22px; }
+.sms-disc-sm { width: 36px; height: 36px; font-size: 11.5px; }
+.sms-disc-md { width: 36px; height: 36px; font-size: 11.5px; }
+.sms-disc-lg { width: 56px; height: 56px; font-size: 15px; }
 
 /* ---- New conversation, and the contacts directory with it ------------------------------------------ */
 
@@ -1562,18 +1540,17 @@ img#qr {
  * of identical marks, and the initials inside it were `--accent-text` on `--accent-tint`, which is
  * 2.4:1 — a decoration rather than a label.
  *
- * The design gives each contact a solid fill and sets the initials in `#0b0b12`. The hue is derived
- * from the name in `calls.ts` and handed over as `--disc-hue`, so the same person is the same
- * colour every time the list is drawn and two people are rarely the same. Saturation and lightness
- * are fixed here, which keeps every disc at the same contrast against its initials whatever hue it
- * lands on — a per-contact *colour* is the design intent; a per-contact *contrast ratio* is not.
+ * The Sidekick frames draw every one of them as the same charcoal disc with grey initials: people
+ * are told apart by name and photograph, never by a hue (handoff §2, D2 — the per-contact fill this
+ * replaced came from the retired ConnectSuite design).
  */
 .call-disc-sm,
 .call-disc-xs {
   border-radius: 50%;
   border: 0;
-  background: hsl(var(--disc-hue, 260) var(--disc-sat) var(--disc-lig));
-  color: var(--disc-fg);
+  background: var(--control);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--text-body);
   font-weight: 600;
 }
 .call-disc-sm { width: 32px; height: 32px; font-size: 11px; }
@@ -2128,8 +2105,9 @@ img#qr {
   width: 34px;
   height: 34px;
   border-radius: var(--radius-pill);
-  background: hsl(var(--tile-hue, 260) var(--tile-fill-sat) var(--tile-fill-lig) / 0.16);
-  color: hsl(var(--tile-hue, 260) var(--tile-text-sat) var(--tile-text-lig));
+  background: var(--control);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--text-body);
   font: 600 14px/1 var(--font-ui);
   transition: transform var(--dur-hover) var(--ease);
 }
@@ -2400,53 +2378,6 @@ img#qr {
   font: var(--text-body-size);
   color: var(--text-meta);
   text-align: center;
-}
-
-/* ---- The designed nothing-here states --------------------------------------------------------
- * Three of them, and they must not look alike — that similarity is defect 24/26's shape. They
- * differ in glyph, in colour, and in whether they carry a machine handle.
- */
-
-.state-block {
-  display: grid;
-  justify-items: center;
-  gap: var(--space-3);
-  max-width: 300px;
-  margin: var(--space-11) auto;
-  text-align: center;
-}
-
-.state-glyph {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-tile);
-  border: 1px solid var(--hairline);
-  background: var(--control);
-}
-
-.state-title {
-  margin: 0;
-  font: var(--text-section);
-  letter-spacing: var(--tracking-section);
-  color: var(--text-primary);
-}
-
-.state-explain {
-  margin: 0;
-  font: var(--text-body-size);
-  color: var(--text-body);
-}
-
-/*
- * State A's handle. Mono, meta-sized, and it names the thing that does not exist. The sentence
- * above it is what a person reads; this is the machine half, which is the whole of the package-id
- * rule applied in the direction it points.
- */
-.state-handle {
-  margin: var(--space-1) 0 0;
-  font-size: 11px;
-  letter-spacing: var(--tracking-meta);
-  color: var(--text-meta);
 }
 
 /* State B. `--warning`, never `--destructive`: an ungranted permission is not a failure. */
@@ -4765,4 +4696,119 @@ img#qr {
   border-radius: var(--radius-control);
   background: var(--warning-fill);
   border: 1px solid var(--warning-border);
+}
+
+
+/* ================================================================================================
+   Shared state vocabulary — handoff component 11 (state block) and 12 (Disconnected), built once in
+   `stateBlock.ts` and styled once here. Tone is the state's: amber for a limitation, red for a
+   failure, neutral otherwise. Never lime.
+   ================================================================================================ */
+
+.state-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-3);
+  max-width: 420px;
+  margin: auto;
+  padding: var(--space-10);
+}
+/* Compact: a notice inside a column — glyph at the left, text beside it, the action under the text. */
+.state-block.compact {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
+  align-items: start;
+  text-align: left;
+  max-width: none;
+  margin: 0;
+  padding: var(--space-5) var(--space-6);
+}
+.state-block.compact > :not(.state-badge) { grid-column: 2; }
+.state-block.compact .state-action { justify-self: start; margin-top: var(--space-3); min-height: 28px; height: 28px; }
+
+.state-badge {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: var(--space-2);
+  border-radius: 50%;
+  background: var(--control);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--text-body);
+}
+.state-block.compact .state-badge {
+  grid-row: 1 / span 4;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  background: none;
+  box-shadow: none;
+}
+.state-block.compact[data-tone] .state-badge { background: none; box-shadow: none; }
+.state-block.compact .state-headline { font: 600 13.5px/20px var(--font-ui); letter-spacing: 0; }
+.state-block.compact .state-body { font: var(--text-meta-size); line-height: 1.45; }
+.state-block[data-tone='warning'] .state-badge { color: var(--warning); background: var(--warning-fill); box-shadow: inset 0 0 0 1px var(--warning-border); }
+.state-block[data-tone='danger'] .state-badge { color: var(--destructive); background: var(--destructive-fill); box-shadow: inset 0 0 0 1px var(--destructive-border); }
+.state-block[data-kind='loading'] .state-badge svg { animation: state-spin 900ms linear infinite; }
+@keyframes state-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .state-block[data-kind='loading'] .state-badge svg { animation: none; }
+}
+
+.state-headline { font: var(--text-section); letter-spacing: var(--tracking-section); color: var(--text-primary); }
+.state-body { margin: 0; font: var(--text-body-size); line-height: 1.5; color: var(--text-body); }
+.state-code { font-size: 11px; color: var(--text-meta); }
+.state-action { display: inline-flex; align-items: center; gap: var(--space-3); margin-top: var(--space-3); border-radius: var(--radius-pill); }
+
+/* A compact error inside a column is a bordered notice rather than a centred block. */
+.state-block.compact[data-tone='danger'] {
+  border-radius: var(--radius-control);
+  background: var(--destructive-fill);
+  border: 1px solid var(--destructive-border);
+}
+.state-block.compact[data-tone='warning'] {
+  border-radius: var(--radius-control);
+  background: var(--warning-fill);
+  border: 1px solid var(--warning-border);
+}
+
+/* The region above a pane's columns that holds a permission block or the Disconnected banner. */
+.pane-state { flex: none; }
+.pane-state[hidden] { display: none; }
+.pane-state > .state-block {
+  max-width: none;
+  margin: 0;
+  border-radius: var(--radius-card);
+  background: var(--card);
+  border: 1px solid var(--hairline);
+}
+
+.disconnected-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-8);
+  border-radius: var(--radius-card);
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  font: var(--text-body-size);
+  color: var(--text-body);
+}
+.disconnected-glyph { display: inline-flex; color: var(--destructive); }
+
+/* A pane's one-sentence footer strip (frame 32:4382): full width, quiet, below the columns. */
+.pane-foot {
+  flex: none;
+  margin: 0;
+  padding: var(--space-5) var(--space-8);
+  border-radius: var(--radius-media);
+  background: var(--card);
+  font: var(--text-meta-size);
+  line-height: 1.4;
+  color: var(--text-body);
 }

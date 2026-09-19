@@ -482,7 +482,13 @@ function render(status: RendererStatus | null): void {
     status?.phase === 'connected',
     reasons.get('remote') ?? null,
   );
-  sms.setAdvertised(status?.capabilities?.includes('sms') ?? false);
+  // Three facts, not one boolean — a dropped link keeps the conversations on screen under a
+  // Disconnected banner; a refused grant shows the phone's own reason. See SmsView.setLinkState.
+  sms.setLinkState(
+    status?.phase === 'connected',
+    status?.capabilities?.includes('sms') ?? false,
+    reasons.get('sms') ?? null,
+  );
   calls.setAdvertised(status?.capabilities?.includes('calls') ?? false);
 
   // The same rule for input: no button for a promise the phone has not made. Unlike the mirror
@@ -1066,6 +1072,13 @@ const sms = new SmsView(
     newTo: el<HTMLInputElement>('sms-new-to'),
     newBody: el<HTMLInputElement>('sms-new-body'),
     newSend: el<HTMLButtonElement>('sms-new-send'),
+    state: el('sms-state'),
+    threadsFoot: el('sms-threads-foot'),
+    // Fills the Calls dialler and goes there; the dialler's own confirm step still stands.
+    callNumber: (number: string) => {
+      shell.route('calls');
+      calls.fillDialler(number);
+    },
   },
   el('sms-notice'),
   connect,

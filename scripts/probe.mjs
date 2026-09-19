@@ -558,6 +558,28 @@ export async function openProbe({ port = 9222, endpoint = 'http://localhost', us
       return result.data;
     },
 
+    /**
+     * Emulate a viewport, for `shot.mjs --viewport=WxH`. `null` clears it.
+     *
+     * The third use of the transport, and the reason: the design's demo size is 1440 × 920 and the
+     * owner's display offers 841px of window height, so a shot at the size the design is scored at
+     * cannot be taken from the real window at all. Emulation changes the layout viewport only —
+     * the sidecar says so — and `shot.mjs` clears it after every capture, because a window left
+     * emulated is a live app drawn at a size nobody chose.
+     */
+    rawEmulate: async (viewport) => {
+      if (!viewport) {
+        await send('Emulation.clearDeviceMetricsOverride', {});
+        return;
+      }
+      await send('Emulation.setDeviceMetricsOverride', {
+        width: viewport.width,
+        height: viewport.height,
+        deviceScaleFactor: viewport.dpr ?? 0,
+        mobile: false,
+      });
+    },
+
     close: () => ws.close(),
   };
 }

@@ -107,7 +107,6 @@ const ON_FILL = [
   // surface that is too — which is exactly why they need checking here: nothing else would.
   ['--text-on-media', '--media-scrim'],
   ['--text-on-media-dim', '--media-scrim'],
-  ['--disc-fg', null],
 ];
 
 function themeOf(tokens, name) {
@@ -121,30 +120,10 @@ function themeOf(tokens, name) {
   }
   for (const [fg, fill] of ON_FILL) {
     if (!tokens.has(fg)) continue;
-    if (fill === null) {
-      // The avatar disc is its own background: hue varies, S and L do not, so the worst case over
-      // every hue is what has to clear AA. Sampled every 15°, which is 24 readings, not one.
-      let worst = Infinity, worstHue = 0;
-      const sat = parseFloat(tokens.get('--disc-sat')), lig = parseFloat(tokens.get('--disc-lig'));
-      for (let h = 0; h < 360; h += 15) {
-        const r = contrast(tokens.get(fg), [hslHex(h, sat, lig)], canvas);
-        if (r < worst) { worst = r; worstHue = h; }
-      }
-      rows.push({ fg, bg: `--disc (worst of 24 hues, ${worstHue}°)`, r: worst });
-      continue;
-    }
     const stack = [tokens.get('--elev-2'), tokens.get(fill)].filter(Boolean);
     rows.push({ fg, bg: fill, r: contrast(tokens.get(fg), stack, canvas) });
   }
   return { name, rows };
-}
-
-function hslHex(h, s, l) {
-  s /= 100; l /= 100;
-  const c = (1 - Math.abs(2 * l - 1)) * s, hp = h / 60, x = c * (1 - Math.abs((hp % 2) - 1));
-  const t = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][Math.floor(hp) % 6];
-  const m = l - c / 2;
-  return '#' + t.map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('');
 }
 
 export function controlsPass() {
@@ -165,8 +144,8 @@ export function run(tokensPath = TOKENS) {
    *
    * Reading the light block alone is what the first version did, and it did not error — it silently
    * checked **56 pairs against dark's 58**, skipping every pair whose foreground is deliberately
-   * the same in both themes. `--text-on-bubble` and `--disc-fg` were the two, and both sit on a
-   * fill that DOES change, so they are exactly the pairs most worth checking. An instrument that
+   * the same in both themes. `--text-on-bubble` and the avatar disc's text were the two, and both sat
+   * on a fill that DOES change, so they are exactly the pairs most worth checking. An instrument that
    * drops a reading and still prints a verdict is this repo's most-repeated failure; the pair count
    * is printed per theme so the next version of this mistake is visible in the output.
    */

@@ -344,7 +344,6 @@ class ShellView {
   private buildToolbarIcons(): void {
     // The hero phone's two state marks, drawn once; CSS shows the one the card's state asks for.
     $('hero-phone-badge').replaceChildren(iconSvg('link-minus', 12));
-    $('strip-thumb').replaceChildren(iconSvg('phone', 15));
     $('hero-phone-spinner').replaceChildren(iconSvg('spinner', 18));
     $('tb-search-icon').replaceChildren(iconSvg('search', 14));
     $('tb-device-icon').replaceChildren(iconSvg('device-settings', 14));
@@ -905,14 +904,6 @@ class ShellView {
     const battery = vitalsRules.batterySlot(this.battery, tone === 'live');
     $('device-battery').hidden = !battery.show;
     $('device-battery').textContent = battery.text;
-    $('strip-battery').hidden = !battery.show;
-    $('strip-battery').textContent = battery.text;
-    $('strip-divider-battery').hidden = !battery.show;
-
-    $('strip-name').textContent = name;
-    $('strip-state-label').textContent = label;
-    $('strip-dot').setAttribute('data-state', tone);
-    $('strip-latency').textContent = latency;
 
     $('hero-name').textContent = name;
     $('hero-state').textContent = label;

@@ -154,7 +154,8 @@ const SCREENS: NavScreen[] = [
     id: 'messages',
     label: 'Messages',
     title: 'Messages',
-    subtitle: 'Send and receive SMS and chat messages.',
+    // Frame 32:4382, verbatim. The old line promised "chat messages" — RCS, which nothing here reads.
+    subtitle: 'SMS and MMS threads from the phone. Replies go out over the phone’s own network.',
     tileCaption: 'Send & receive',
     icon: 'messages',
     group: 'MENU',
@@ -686,6 +687,13 @@ function iconNamesUsedByTheShell(): string[] {
     'spinner',
     'refresh',
     'wrench',
+    // The state block's default glyphs (`stateBlock.ts` STATE_ICONS) that were not already above,
+    // and the Messages person column's two actions. Drawn with no table in between — the shape
+    // this list exists for.
+    'alert',
+    'x-circle',
+    'external',
+    'send',
   ];
 }
 

@@ -6,7 +6,6 @@ import { FakeElement, installFakeDocument, installFakeWindow, el } from './domDo
 // happened, and is the export/CommonJS trap this repo already records: a green suite exercising a
 // loader the renderer never uses. Imported in the page's own order, for the same reason.
 import './icons';
-import '../shared/discHue';
 import '../shared/contactPhotos';
 import '../shared/appCall';
 // Side-effecting import, safe because `calls.ts` touches no DOM at module scope — it only hangs
@@ -452,7 +451,7 @@ test('a log row with a contact draws that contact photograph over its initials',
   assert.equal(disc.style.backgroundImage, 'url("data:image/png;base64,QUFB")');
   assert.ok(disc.classList.contains('has-photo'), 'the stylesheet is told to reveal it');
   assert.equal(disc.textContent, 'AL', 'the initials are still underneath, not thrown away');
-  assert.ok(disc.style['--disc-hue'], 'and so is the hue');
+  assert.equal(disc.style['--disc-hue'], undefined, 'no per-person hue — the Sidekick system has none (D2)');
 });
 
 /**

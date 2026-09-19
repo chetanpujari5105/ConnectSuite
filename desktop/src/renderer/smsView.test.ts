@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeElement, installFakeDocument, installFakeWindow, el } from './domDouble.testkit';
 import './icons';
-import '../shared/discHue';
+import './stateBlock';
 import './sms';
 
 /**
@@ -39,6 +39,7 @@ class FakeBridge {
   messages = new Map<string, Message[]>();
   readonly calls: string[] = [];
   sendNewResult: { ok: boolean; threadId?: string; reason?: string } = { ok: true, threadId: 't-real' };
+  sendResult: { ok: boolean; reason?: string } = { ok: true };
   /** Set to hold the next `smsMessages`, so a reply can be made to land after the reader moved on. */
   holdMessages: (() => void) | null = null;
   private received: ((e: { threadId: string; message: Message }) => void) | null = null;
@@ -57,7 +58,7 @@ class FakeBridge {
   }
   async smsSend(threadId: string, body: string) {
     this.calls.push(`smsSend:${threadId}:${body}`);
-    return { ok: true };
+    return this.sendResult;
   }
   async smsSendNew(addresses: string[], body: string) {
     this.calls.push(`smsSendNew:${addresses.join(',')}:${body}`);
@@ -91,7 +92,14 @@ interface Pane {
   newTo: FakeElement;
   newBody: FakeElement;
   newSend: FakeElement;
-  view: { setAdvertised(on: boolean): void; refresh(): Promise<void> };
+  view: {
+    setAdvertised(on: boolean): void;
+    setLinkState(connected: boolean, advertised: boolean, reason: string | null): void;
+    refresh(): Promise<void>;
+  };
+  state: FakeElement;
+  threadsFoot: FakeElement;
+  called: string[];
 }
 
 /**
@@ -121,7 +129,10 @@ function mount(threads: Thread[] = []): Pane {
     newTo: el('input'),
     newBody: el('input'),
     newSend: el('button'),
+    state: el('div'),
+    threadsFoot: el('p'),
   };
+  const called: string[] = [];
   const View = (globalThis as Record<string, unknown>).SmsView as new (
     ...args: unknown[]
   ) => Pane['view'];
@@ -141,11 +152,14 @@ function mount(threads: Thread[] = []): Pane {
       newTo: parts.newTo,
       newBody: parts.newBody,
       newSend: parts.newSend,
+      state: parts.state,
+      threadsFoot: parts.threadsFoot,
+      callNumber: (number: string) => called.push(number),
     },
     parts.notice,
     bridge,
   );
-  return { bridge, ...parts, view };
+  return { bridge, ...parts, view, called };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -424,4 +438,62 @@ test('un-advertised forgets the open thread as well as the list', () => {
   // Back to "reading", not to "there are no conversations" — a pane that has stopped knowing must
   // not claim the phone has nothing.
   assert.match(pane.note.textContent, /Reading the phone’s conversations…/);
+});
+
+// ---- Link state: the handoff's Disconnected and Permission rows (2026-09-19) ---------------------
+
+test('a dropped link keeps the conversations on screen and says how old they are', async () => {
+  const pane = mount([thread('1', { contactName: 'R. Sharma' }), thread('2')]);
+  pane.view.setLinkState(true, true, null);
+  await settle();
+  assert.equal(pane.list.queryAll('.sms-thread').length, 2, 'control: the list was drawn while live');
+
+  pane.view.setLinkState(false, false, null);
+  assert.equal(pane.list.queryAll('.sms-thread').length, 2, 'a disconnect emptied the pane');
+  assert.equal(pane.state.hidden, false);
+  assert.match(pane.state.textContent, /not connected/);
+  assert.match(pane.state.textContent, /as of \d\d:\d\d/);
+});
+
+test('a refused grant draws the phone’s own reason, and a permission block rather than a blank', () => {
+  const pane = mount([thread('1')]);
+  pane.view.setLinkState(true, false, 'SMS permission is off for ConnectSuite.');
+  const block = pane.state.queryAll('.state-block')[0];
+  assert.ok(block, 'no state block was drawn for a missing permission');
+  assert.equal(block!.dataset.kind, 'permission');
+  assert.match(block!.textContent, /SMS permission is off for ConnectSuite\./);
+});
+
+test('a failed send stays on screen beside the draft it failed to send, with a retry', async () => {
+  const pane = mount([thread('1')]);
+  pane.bridge.sendResult = { ok: false, reason: 'The phone refused the send.' };
+  pane.view.setLinkState(true, true, null);
+  await settle();
+  pane.list.queryAll('.sms-thread')[0]!.click();
+  await settle();
+  const input = pane.composer.queryAll('input')[0]!;
+  input.value = 'hello';
+  input.dispatch('input');
+  pane.composer.queryAll('.sms-send')[0]!.click();
+  await settle();
+
+  const error = pane.composer.queryAll('.state-block')[0];
+  assert.ok(error, 'the failure vanished — it was a toast');
+  assert.equal(error!.dataset.kind, 'error');
+  assert.match(error!.textContent, /The phone refused the send\./);
+  assert.equal(pane.composer.queryAll('input')[0]!.value, 'hello', 'the draft was thrown away');
+  assert.equal(error!.queryAll('button').length, 1, 'no retry on a failure that can be retried');
+});
+
+test('Call this number fills the dialler and never dials', async () => {
+  const pane = mount([thread('1', { contactName: 'R. Sharma' })]);
+  pane.view.setLinkState(true, true, null);
+  await settle();
+  pane.list.queryAll('.sms-thread')[0]!.click();
+  await settle();
+  const call = pane.person.queryAll('.sms-person-action')[0];
+  assert.ok(call, 'control: the action is drawn for a thread with a number');
+  call!.click();
+  assert.deepEqual(pane.called, ['+91980000001']);
+  assert.ok(!pane.bridge.calls.some((c) => /dial/i.test(c)), 'something dialled');
 });

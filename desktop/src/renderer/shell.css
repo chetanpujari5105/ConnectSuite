@@ -553,7 +553,9 @@ body {
   overflow: auto;
   display: flex;
   flex-direction: column;
-  padding: 0 var(--space-gutter) var(--space-gutter);
+  /* Content starts at y = 140 in every Figma frame (the handoff's Overview hero sits at 28,140); the
+     head is 112, so the page carries the 28px between them. It was 0 before 2026-09-19. */
+  padding: var(--space-11) var(--space-gutter) var(--space-gutter);
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
 }
@@ -563,41 +565,6 @@ body {
 .screen[hidden] { display: none; }
 
 /* ---- Connected-device strip ------------------------------------------------------------------- */
-.device-strip {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  border-radius: var(--radius-card);
-  background: var(--surface-strip);
-  border: 1px solid var(--hairline);
-}
-
-/* Overview's hero says all of this at four times the size. */
-.app-window[data-screen='overview'] .device-strip,
-.app-window[data-screen='mirror'] .device-strip,
-.app-window[data-screen='pairing'] .device-strip { display: none; }
-
-.strip-thumb {
-  /* The 30px neutral icon badge (component 8) with the phone glyph — it was an empty rounded box. */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  flex: none;
-  border-radius: var(--radius-control);
-  background: rgba(var(--overlay-rgb), 0.06);
-  border: 1px solid var(--hairline);
-  color: var(--text-body);
-}
-
-.strip-name { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
-.strip-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-body); }
-.strip-spacer { flex: 1; }
-.strip-value { font-size: 12px; color: var(--text-body); font-variant-numeric: tabular-nums; }
-.strip-divider { width: 1px; height: 16px; background: var(--hairline); }
 
 /* ---- Toast -------------------------------------------------------------------------------------- */
 @keyframes toast-in {

@@ -94,7 +94,23 @@ interface SmsRegions {
   newTo: HTMLInputElement;
   newBody: HTMLInputElement;
   newSend: HTMLButtonElement;
+  /**
+   * Where the pane draws a state that replaces or heads the columns — the permission block, and the
+   * Disconnected banner. Optional so a test that is not about link state need not build one.
+   */
+  state?: HTMLElement;
+  /** The caption under the thread list: *"48 threads · newest first"* in frame `32:4382`. */
+  threadsFoot?: HTMLElement;
+  /**
+   * *Call this number*, from the person column. It **fills the Calls dialler and goes there**; it
+   * never dials. Dialling confirms first (calls.ts), and a button on another screen that placed a
+   * call without that step would be a second, weaker path to the same irreversible act.
+   */
+  callNumber?: (number: string) => void;
 }
+
+/** The pane's link state. Three facts, not one boolean — see [SmsView.setLinkState]. */
+type SmsLink = 'live' | 'permission' | 'disconnected';
 
 type SmsTabId = 'all' | 'unread';
 
@@ -172,7 +188,8 @@ function personFacts(thread: SmsThreadRow): Array<[string, string]> {
   const rows: Array<[string, string]> = [];
   rows.push([
     'Messages',
-    `${thread.messageCount.toLocaleString()} on the phone`,
+    // The phone's own total (the frame prints `128`), never the rows this Mac has paged in.
+    thread.messageCount.toLocaleString(),
   ]);
   if (thread.unread > 0) rows.push(['Unread', String(thread.unread)]);
   if (thread.addresses.length > 1) {
@@ -182,13 +199,8 @@ function personFacts(thread: SmsThreadRow): Array<[string, string]> {
   if (thread.dateMs) {
     rows.push([
       'Latest',
-      new Date(thread.dateMs).toLocaleString([], {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
+      // The frame's `4 Mar 2024`: a date, not a timestamp — the transcript carries the times.
+      new Date(thread.dateMs).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
     ]);
   }
   return rows;
@@ -205,8 +217,14 @@ function personFacts(thread: SmsThreadRow): Array<[string, string]> {
  * listed with the others for the vocabulary decision.
  */
 const SMS_PERSON_REFUSAL =
-  'Calling is on the Calls screen. Video, blocking and shared media are on the phone — nothing on ' +
-  'the wire carries them.';
+  'Muting and blocking are decided on the phone — Android does not offer them over the link.';
+
+/** The composer's standing caption — frame `32:4382`, verbatim. Says who actually sends it. */
+const SMS_COMPOSER_CAPTION = 'Sent as an SMS from the phone’s number, over the phone’s own network.';
+
+/** The pane's footer strip — frame `32:4382`, verbatim. */
+const SMS_PANE_FOOT =
+  'Sidekick carries the text of a message. The message itself is sent by the phone, from the phone’s number.';
 
 /**
  * The messages with a date separator inserted wherever the day changes.
@@ -261,24 +279,19 @@ function smsLine(className: string, text: string): HTMLElement {
 }
 
 /**
- * The avatar disc, coloured by who the conversation is with.
- *
- * `discHue` is the app's one hue rule — the same function the Calls rows and the Notifications
- * tiles use — so a person is the same colour wherever they appear. It is keyed on [threadWho], not
- * on the initials: this phone's list has several `AD-…` senders whose two letters collide and are
- * different senders, which is the confusion the colour exists to break.
+ * The avatar disc: initials on neutral charcoal, as frame `32:4382` draws it. No per-person hue —
+ * the Sidekick system has none (handoff §2, D2); people are told apart by name and initials.
  */
 function smsDisc(thread: SmsThreadRow, size: 'sm' | 'md' | 'lg'): HTMLElement {
   const disc = document.createElement('span');
   disc.className = `sms-disc sms-disc-${size}`;
   disc.setAttribute('aria-hidden', 'true');
   disc.textContent = threadInitials(thread);
-  disc.style.setProperty('--disc-hue', String(discHue(threadWho(thread))));
   return disc;
 }
 
-declare function discHue(label: string): number;
 declare function iconSvg(name: string, size?: number): SVGSVGElement;
+declare function disconnectedBanner(what: string, asOfMs: number | null): HTMLElement;
 
 const PAGE = 50;
 
@@ -303,6 +316,18 @@ class SmsView {
   /** Which filter tab is showing. See [SMS_TABS] for why there are two and not the design's three. */
   private tab: SmsTabId = 'all';
 
+  private link: SmsLink = 'live';
+  /** The phone's own sentence for a missing grant, verbatim. Never a Mac-side paraphrase. */
+  private permissionReason: string | null = null;
+  /** When the content on screen was last true — the Disconnected banner's *as of*. */
+  private freshAtMs: number | null = null;
+  /**
+   * The last send that failed, per thread. The handoff: *"nothing is marked sent on optimism, and
+   * nothing is queued after a failure"* — so the failure stays on screen beside the draft it failed
+   * to send, rather than a toast that is gone in six seconds with the reason.
+   */
+  private sendFailures = new Map<string, { reason: string; hint?: string }>();
+
   constructor(
     private readonly card: HTMLElement,
     private readonly note: HTMLElement,
@@ -323,7 +348,34 @@ class SmsView {
     });
   }
 
+  /**
+   * The link, as three facts rather than one boolean.
+   *
+   * `setAdvertised(false)` used to be the only signal, and it arrived for two different reasons: the
+   * phone refusing the SMS grant, and the link dropping. The pane emptied itself for both — so a
+   * Wi-Fi blip threw away every conversation on screen, which the handoff forbids outright (*"a pane
+   * never empties itself on a disconnect"*), and a missing permission drew the same blank as a
+   * dropped link.
+   *
+   *  - **connected, not advertised** → the permission state, with the phone's own reason.
+   *  - **not connected** → last-known content stays, under a banner saying how old it is; the
+   *    composer is blocked and says why; nothing is queued.
+   */
+  setLinkState(connected: boolean, advertised: boolean, reason: string | null): void {
+    if (!connected) {
+      this.link = 'disconnected';
+      this.card.classList.remove('hidden');
+      this.render();
+      return;
+    }
+    this.permissionReason = advertised ? null : reason;
+    this.link = advertised ? 'live' : 'permission';
+    this.setAdvertised(advertised);
+  }
+
   setAdvertised(advertised: boolean): void {
+    if (advertised) this.link = 'live';
+    else if (this.link === 'live') this.link = 'permission';
     this.card.classList.toggle('hidden', !advertised);
     if (!advertised) {
       this.threads = [];
@@ -386,6 +438,7 @@ class SmsView {
         ? result.data.threads
         : dedupeByThread([...this.threads, ...result.data.threads]);
     this.threadsHasMore = result.data.hasMore;
+    this.freshAtMs = Date.now();
     this.render();
   }
 
@@ -443,11 +496,36 @@ class SmsView {
   }
 
   private render(): void {
+    this.renderState();
     this.renderTabs();
     this.renderList();
     this.renderChat();
     this.renderPerson();
     this.regions.newPanel.hidden = !this.composingNew;
+  }
+
+  /**
+   * The region above the columns: the permission block, or the Disconnected banner, or nothing.
+   * Built from `stateBlock.ts`, the one vocabulary — this pane used to draw neither.
+   */
+  private renderState(): void {
+    const region = this.regions.state;
+    if (!region) return;
+    region.textContent = '';
+    region.hidden = this.link === 'live';
+    if (this.link === 'permission') {
+      region.appendChild(
+        stateBlock({
+          kind: 'permission',
+          headline: 'Sidekick can’t read messages on this phone',
+          body:
+            this.permissionReason ??
+            'The phone has not allowed Sidekick to read or send SMS. Allow SMS for Sidekick in the phone’s app settings.',
+        }),
+      );
+    } else if (this.link === 'disconnected') {
+      region.appendChild(disconnectedBanner('Conversations are shown', this.freshAtMs));
+    }
   }
 
   // ---- Column one: the conversations -------------------------------------------------------------
@@ -503,8 +581,12 @@ class SmsView {
     const list = this.regions.list;
     list.textContent = '';
 
+    if (this.regions.threadsFoot) this.regions.threadsFoot.textContent = '';
     if (!this.loaded) {
-      this.note.textContent = 'Reading the phone’s conversations…';
+      this.note.textContent =
+        this.link === 'disconnected'
+          ? 'Connect your phone to read its conversations.'
+          : 'Reading the phone’s conversations…';
       return;
     }
     if (this.threads.length === 0) {
@@ -539,6 +621,12 @@ class SmsView {
     this.note.textContent = '';
 
     for (const thread of rows) list.appendChild(this.threadRow(thread));
+    if (this.regions.threadsFoot) {
+      const count = this.threads.length;
+      this.regions.threadsFoot.textContent = this.threadsHasMore
+        ? `${count} loaded · newest first · more on the phone`
+        : `${count} ${count === 1 ? 'thread' : 'threads'} · newest first`;
+    }
 
     if (this.threadsHasMore && this.tab === 'all') {
       const older = document.createElement('button');
@@ -624,13 +712,14 @@ class SmsView {
     if (!thread) {
       // The canvas draws no empty chat, because its artboard always has one open. This is the
       // pane's resting state on first open and it is real, so it is drawn rather than left blank.
-      const empty = document.createElement('div');
-      empty.className = 'sms-chat-empty';
-      empty.appendChild(smsLine('sms-chat-empty-head', 'No conversation open'));
-      empty.appendChild(
-        smsLine('sms-chat-empty-body', 'Pick a conversation on the left to read and reply to it.'),
+      chatBody.appendChild(
+        stateBlock({
+          kind: 'empty',
+          icon: 'messages',
+          headline: 'Pick a conversation',
+          body: 'Choose one on the left to read it and reply from this Mac.',
+        }),
       );
-      chatBody.appendChild(empty);
       composer.hidden = true;
       return;
     }
@@ -642,10 +731,13 @@ class SmsView {
     who.appendChild(smsLine('sms-chat-name', threadWho(thread)));
     const number = thread.addresses[0];
     // Only when it is not already the name. A thread whose contact never resolved would otherwise
-    // print the same number twice, one line above the other.
-    if (number && number !== threadWho(thread)) {
-      who.appendChild(smsLine('sms-chat-number mono', number));
-    }
+    // print the same number twice, one line above the other. The kind is the latest loaded
+    // message's — `sms.threads` carries none per thread (see [renderTabs]).
+    const latest = this.messages[this.messages.length - 1];
+    const sub = [number && number !== threadWho(thread) ? number : null, latest?.kind ? latest.kind.toUpperCase() : null]
+      .filter((part): part is string => !!part)
+      .join(' · ');
+    if (sub) who.appendChild(smsLine('sms-chat-number', sub));
     chatHead.appendChild(who);
 
     if (this.messagesHasMore) {
@@ -658,18 +750,37 @@ class SmsView {
     }
     for (const item of withDaySeparators(this.messages)) {
       chatBody.appendChild(
-        item.kind === 'day' ? smsLine('sms-day', item.label) : this.bubble(item.message),
+        item.kind === 'day' ? smsLine('sms-day', item.label) : this.bubble(item.message, thread),
       );
     }
-    // Newest at the bottom, and that is where a conversation is read from.
+    // Newest at the bottom, and that is where a conversation is read from. Set again after layout:
+    // on first open the column has not been measured yet, and the transcript opened mid-thread.
     chatBody.scrollTop = chatBody.scrollHeight;
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => (chatBody.scrollTop = chatBody.scrollHeight));
+    }
 
-    composer.appendChild(this.composerFor(thread.threadId));
+    composer.appendChild(this.composerFor(thread));
   }
 
-  private bubble(message: SmsMessageRow): HTMLElement {
+  /**
+   * One message, as frame `32:4382` draws it: a **labelled transcript block**, not a bubble. The
+   * handoff is explicit — *"deliberately not iMessage: no tails, no blue, sender named on every
+   * block, mono timestamps"*. The class stays `sms-bubble` because that is what the tests and the
+   * accessibility probes find it by.
+   *
+   * No *Sent* suffix on an outbound block: the frame draws one, and the wire carries no per-message
+   * send state, so it would be a claim made on optimism — the one thing the handoff says never to do.
+   */
+  private bubble(message: SmsMessageRow, thread: SmsThreadRow): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = `sms-bubble ${message.inbound ? 'inbound' : 'outbound'}`;
+
+    const head = document.createElement('div');
+    head.className = 'sms-bubble-head';
+    head.appendChild(smsLine('sms-bubble-from', message.inbound ? threadWho(thread) : 'You'));
+    head.appendChild(smsLine('sms-bubble-when mono', timeOfSms(message.dateMs)));
+    wrap.appendChild(head);
 
     if (message.body) wrap.appendChild(smsLine('sms-bubble-text', message.body));
 
@@ -686,7 +797,11 @@ class SmsView {
        */
       const marker = document.createElement('div');
       marker.className = 'sms-attachment';
-      marker.appendChild(smsLine('sms-attachment-glyph', '\u{1F4CE}'));
+      const glyph = document.createElement('span');
+      glyph.className = 'sms-attachment-glyph';
+      glyph.setAttribute('aria-hidden', 'true');
+      glyph.appendChild(iconSvg('doc', 14));
+      marker.appendChild(glyph);
       marker.appendChild(
         smsLine('sms-attachment-text', 'Attachment — on the phone; this Mac cannot fetch it yet.'),
       );
@@ -696,28 +811,35 @@ class SmsView {
     if (!message.body && !message.hasAttachments) {
       wrap.appendChild(smsLine('sms-bubble-text is-muted', 'Empty message'));
     }
-
-    wrap.appendChild(smsLine('sms-bubble-when mono', timeOfSms(message.dateMs)));
     return wrap;
   }
 
-  private composerFor(threadId: string): HTMLElement {
+  private composerFor(thread: SmsThreadRow): HTMLElement {
+    const threadId = thread.threadId;
+    const outer = document.createElement('div');
+    outer.className = 'sms-composer-wrap';
     const wrap = document.createElement('div');
     wrap.className = 'sms-composer-row';
 
     const input = document.createElement('input');
     input.type = 'text';
     input.id = 'sms-composer-input';
-    input.placeholder = 'Type a message';
+    input.placeholder = `Message ${threadWho(thread)}`;
+    input.setAttribute('aria-label', `Message ${threadWho(thread)}`);
     input.value = this.drafts.get(threadId) ?? '';
     input.addEventListener('input', () => this.drafts.set(threadId, input.value));
 
     const send = document.createElement('button');
     send.type = 'button';
     send.id = 'sms-send';
-    send.className = 'sms-send';
-    send.setAttribute('aria-label', 'Send');
-    send.appendChild(iconSvg('chevron', 17));
+    send.className = 'button primary-action sms-send';
+    send.textContent = 'Send';
+
+    // The Disconnected component's *blocked action*: the control stays where it is, says why it
+    // will not work, and nothing typed into it is queued for later.
+    const offline = this.link !== 'live';
+    input.disabled = offline;
+    send.disabled = offline;
 
     const submit = async (): Promise<void> => {
       const body = input.value.trim();
@@ -738,6 +860,7 @@ class SmsView {
       input.disabled = false;
       if (result.ok) {
         this.drafts.delete(threadId);
+        this.sendFailures.delete(threadId);
         input.value = '';
         this.showNotice('Sent.');
         // Defect 39. This used to re-read the thread here — about 30 ms after the phone reported
@@ -747,7 +870,12 @@ class SmsView {
         // longer before re-reading was the tempting fix and is rejected: a timer substitutes a
         // plausible value for a known one, and the phone knows when its own write landed.
       } else {
-        this.showNotice(result.reason ?? 'The message was not sent.', result.fixHint);
+        this.sendFailures.set(threadId, {
+          reason: result.reason ?? 'The phone did not send the message.',
+          hint: result.fixHint,
+        });
+        this.drafts.set(threadId, input.value);
+        this.render();
       }
     };
 
@@ -757,7 +885,26 @@ class SmsView {
     });
 
     wrap.append(input, send);
-    return wrap;
+    const failure = this.sendFailures.get(threadId);
+    if (failure && !offline) {
+      outer.appendChild(
+        stateBlock({
+          kind: 'error',
+          compact: true,
+          headline: 'Not sent',
+          body: `${failure.reason}${failure.hint ? ` ${failure.hint}` : ''} Nothing was queued — the message is still in the box.`,
+          action: { label: 'Try again', icon: 'refresh', run: () => void submit() },
+        }),
+      );
+    }
+    outer.appendChild(wrap);
+    outer.appendChild(
+      smsLine(
+        'sms-composer-caption',
+        offline ? 'Your phone is not connected, so nothing can be sent. Nothing typed here is queued.' : SMS_COMPOSER_CAPTION,
+      ),
+    );
+    return outer;
   }
 
   // ---- Column three: the person ------------------------------------------------------------------
@@ -788,7 +935,15 @@ class SmsView {
     person.textContent = '';
     const thread = this.openThreadRow();
     if (!thread) {
-      person.appendChild(smsLine('pane-detail-empty', 'Open a conversation to see who it is with.'));
+      person.appendChild(
+        stateBlock({
+          kind: 'empty',
+          compact: true,
+          icon: 'messages',
+          headline: 'No conversation open',
+          body: 'Open a conversation to see who it is with.',
+        }),
+      );
       return;
     }
 
@@ -802,6 +957,26 @@ class SmsView {
     }
     person.appendChild(head);
 
+    // One action, where the frame draws two. *Open thread on phone* has no verb on this wire — it
+    // is not drawn rather than drawn dead (departure row in docs/design-departures.md).
+    const callNumber = this.regions.callNumber;
+    if (number && callNumber && /\d/.test(number)) {
+      const actions = document.createElement('div');
+      actions.className = 'sms-person-actions';
+      const call = document.createElement('button');
+      call.type = 'button';
+      call.className = 'button sms-person-action';
+      call.id = 'sms-call-number';
+      call.title = 'Puts this number in the dialler on the Calls screen. Nothing is dialled until you confirm there.';
+      // `calls` is the handset (SF `phone`); the icon set's `phone` key is the *device*.
+      const glyph = iconSvg('calls', 14);
+      glyph.setAttribute('aria-hidden', 'true');
+      call.append(glyph, document.createTextNode('Call this number'));
+      call.addEventListener('click', () => callNumber(number));
+      actions.appendChild(call);
+      person.appendChild(actions);
+    }
+
     const facts = document.createElement('div');
     facts.className = 'sms-person-facts';
     for (const [label, value] of personFacts(thread)) {
@@ -809,6 +984,9 @@ class SmsView {
       facts.appendChild(smsLine('sms-person-fact-value', value));
     }
     person.appendChild(facts);
+    const spacer = document.createElement('div');
+    spacer.className = 'sms-person-spacer';
+    person.appendChild(spacer);
     person.appendChild(smsLine('sms-person-refusal', SMS_PERSON_REFUSAL));
   }
 
@@ -913,8 +1091,9 @@ function timeOfSms(whenMs: number): string {
     at.getFullYear() === now.getFullYear() &&
     at.getMonth() === now.getMonth() &&
     at.getDate() === now.getDate();
+  // 24-hour, as frame 32:4382 and the Overview's Recent rows print it — `09:31`, never `9:31 AM`.
   return sameDay
-    ? at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
     : at.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
@@ -933,6 +1112,8 @@ function timeOfSms(whenMs: number): string {
   dayLabelOf,
   SMS_TABS,
   SMS_PERSON_REFUSAL,
+  SMS_COMPOSER_CAPTION,
+  SMS_PANE_FOOT,
 };
 
 // The view class itself, for `smsView.test.ts`. `sms.ts` touches no DOM at module scope, so a test

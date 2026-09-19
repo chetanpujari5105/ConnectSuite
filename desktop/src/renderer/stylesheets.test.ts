@@ -667,7 +667,7 @@ test('the floor is still 32px, and this test knows it from the sheet rather than
  *
  * The second half is not an allowance, it is the other half of the codebase. `--dock-tint` is set
  * per tile by `shell.ts` from `navModel.DOCK` and is deliberately absent from every sheet; so is
- * `--disc-hue`, set per contact by `calls.ts`. A check that read only the CSS would report both as
+ * any property a pane sets per element. A check that read only the CSS would report such a one as
  * orphans, and the fix would be an exception list — which is how a guard stops guarding.
  *
  * Reading `setProperty('--x', …)` out of the TypeScript keeps one question with one answer: a

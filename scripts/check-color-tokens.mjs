@@ -96,7 +96,6 @@ export const SAME_IN_BOTH = new Map([
   ['--np-track', 'as --np-surface'],
   ['--np-knob', 'white on a dark card that does not invert'],
   ['--fill-on-bubble', 'black at low alpha, on --bubble-out, which is violet in both themes'],
-  ['--disc-fg', 'near-black on a disc whose own lightness is fixed at --disc-lig in both themes'],
   ['--tint-violet-rgb', 'a hue, not a drawn colour — --tint-darken adapts it'],
   ['--tint-blue-rgb', 'as --tint-violet-rgb'],
   ['--tint-teal-rgb', 'as --tint-violet-rgb'],

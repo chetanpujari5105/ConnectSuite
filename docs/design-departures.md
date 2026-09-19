@@ -1132,3 +1132,34 @@ was taken.**
 | Row | Figma | Built | Why |
 |---|---|---|---|
 | **D26** | Tools are the third card in the right column | Tools stay the **rail beside the canvas** (Capture, Refresh, Transfer, Rotation readout); the right column is Session, Quality, **Link**, then Advanced | The rail is M11/S11, generated from `navModel.TOOL_RAIL` and inside the icon guard. Moving it is a layout change to the one pane that must not regress before a demo. **Link was missing entirely and is now built** — route (`heroTransportOf`, the Overview's own wording), address, measured round trip, and *TLS 1.3, pinned* (`minVersion: 'TLSv1.3'` and the fingerprint compare in `link.ts`); every value is a dash when not connected |
+
+## Sidekick Batch 4a — Messages against a real Figma render, and the cross-cutting pass — 2026-09-19. Rows D27–D36
+
+**The first rows in this file scored against a rendered frame.** The Figma MCP returned exactly one
+frame this sitting — `32:4382` Messages · Thread, saved as
+`docs/evidence/figma-reference/messages-thread-32-4382.png` — before the Starter-plan limit came
+back. Everything else in this batch is scored against the handoff's written spec and says so.
+Inventory and order: `docs/sidekick-full-app-inventory.md`.
+
+| Row | Figma | Built | Why |
+|---|---|---|---|
+| **D27** | No connected-device strip on any frame (the `32:4382` render has none) | **Deleted** from markup, CSS and `shell.ts` on all ten panes that drew it | Its comment cited *"per the handoff"* — the **retired** ConnectSuite handoff. The link state is already in the status pill (D14) and the sidebar device card; a third copy is the two-writers shape. The island's agreement test now reads the sidebar card instead, and still goes red when that write is broken |
+| **D28** | Content begins at y = 140 on every frame | `#page` carries a 28px top inset (it was 0, so content began at 112) | **Corrected, not a departure** — measured on Messages and Overview; the Overview hero now sits at the handoff's `28,140` |
+| **D29** | Avatars are charcoal discs with grey initials | **Every** per-person and per-app hue deleted — Messages, Calls, Notifications tiles — and `shared/discHue.ts` with its last caller | **Corrected.** Handoff §2: no per-category hue anywhere. The discs told `AD-…` senders apart by colour; they are told apart by name and initials now, as the frame does |
+| **D30** | Segment `All 48` carries a count | *All* carries none; *Unread* does | The count on the wire is the **loaded** page (50), not the phone's total — `All 50` over a paged list is a number that is not true. Frame's second segment is *MMS*, which `sms.threads` cannot answer (no per-thread kind); *Unread* is kept, as before |
+| **D31** | Outbound block reads `You 09:22 · Sent` | `You 09:22` — no *Sent* | The wire carries no per-message send state. The handoff: *"nothing is marked sent on optimism"* |
+| **D32** | Person column: *Call this number* and *Open thread on phone* | *Call this number* only, and it **fills the Calls dialler and routes there** rather than dialling | No verb opens a thread on the phone. Dialling confirms first (`calls.ts`), and a second path that skipped the confirm would be a weaker route to an irreversible act |
+| **D33** | Facts: Messages / First message / Kind | Messages / (Unread) / (Recipients) / Latest | `First message` is not on the wire. Kind is shown in the transcript head from the latest loaded message instead |
+| **D34** | No New-conversation control | The `+` beside the segments is kept, quiet | Defect 30's whole subject: the frame assumes every thread exists already |
+| **D35** | *Send failed*, *Permission needed*, *Disconnected* frames not rendered | Built from components 11 and 12 (`stateBlock.ts`): a compact **Not sent** block above the composer that keeps the draft and offers *Try again*; a permission block with the phone's own sentence; the Disconnected banner with *as of HH:MM* while the last-known list stays | The frames were not available; the components are the handoff's single source for these states. The pane used to empty itself on any drop (the handoff forbids it) and show a failure as a six-second toast |
+| **D36** | Times `09:31` (24-hour) | 24-hour today; `Sep 18` for older rows where the frame prints `Yest` / `Mon` | Relative day names were not introduced for one pane; the date is exact and mono |
+
+**Also corrected to the frame:** subtitle verbatim; labelled transcript blocks at a fixed 72%
+measure, no tails, no fill colour by direction; lime Send pill inside the field; the composer
+caption and the pane footer strip verbatim; neutral unread badges (lime is never on a list row);
+lime segment for the selected tab; 300 / 520 / 300 columns, 62px rows, 36 / 56px discs.
+
+**One vocabulary for states.** `renderer/stateBlock.ts` implements component 11's six kinds and
+component 12's banner; a `wall` is refused an action in code, not by convention. Notifications'
+private `stateBlock` (one of the five vocabularies `docs/empty-and-failure-states.md` counted) is
+deleted and its two call sites use the shared one.

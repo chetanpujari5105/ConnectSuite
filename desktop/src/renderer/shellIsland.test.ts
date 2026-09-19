@@ -32,7 +32,7 @@ import { installFakeDocument, installFakeWindow, FakeElement } from './domDouble
  * exactly — `islandRota.ts` had nine tests and they were all correct. The contradiction lived in
  * `setStatus` and in a `setInterval`, and nothing could see either.
  *
- * So the assertions below read `#island-text` and `#strip-state-label` **as the shell wrote them**,
+ * So the assertions below read `#island-text` and the sidebar device card's `#device-state` **as the shell wrote them**,
  * after every status in a sequence, and again after firing every timer the shell has scheduled.
  * The DOM is `domDouble.testkit.ts`, which says which half that leaves unmeasured.
  */
@@ -117,8 +117,8 @@ function mount(): {
     shell,
     island: byId('island-text'),
     islandDot: byId('island-dot'),
-    strip: byId('strip-state-label'),
-    stripDot: byId('strip-dot'),
+    strip: byId('device-state'),
+    stripDot: byId('device-dot'),
     timers: win.timers,
     restore: () => {
       win.restore();
@@ -173,12 +173,12 @@ function assertAgrees(
   assert.deepEqual(
     wrong,
     [],
-    `${where}: the island says “${text}” while the strip says “${label}” — it names ${wrong.join(', ')}`,
+    `${where}: the island says “${text}” while the sidebar card says “${label}” — it names ${wrong.join(', ')}`,
   );
   assert.equal(
     islandDot.getAttribute('data-state'),
     stripDot.getAttribute('data-state'),
-    `${where}: the island's dot is ${islandDot.getAttribute('data-state')} and the strip's is ${stripDot.getAttribute('data-state')}`,
+    `${where}: the island's dot is ${islandDot.getAttribute('data-state')} and the sidebar card's is ${stripDot.getAttribute('data-state')}`,
   );
   const expected = islandState(live.status, live.work);
   assert.equal(

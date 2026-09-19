@@ -53,6 +53,23 @@ if (!out) {
 
 const probe = await openProbe({ port: Number(arg('port', '9222')) });
 
+/*
+ * `--viewport=1440x920` emulates the layout viewport, because the design's demo size is taller than
+ * the owner's display allows a window to be. Cleared on every exit path below — an emulated live
+ * window is an app drawn at a size nobody chose — and recorded in the sidecar as `emulated`.
+ */
+const viewportArg = arg('viewport');
+const viewport = viewportArg
+  ? (([w, h]) => ({ width: Number(w), height: Number(h) }))(viewportArg.split('x'))
+  : null;
+/** Every exit after this point goes through here, so emulation never outlives the run. */
+const done = async (code) => {
+  if (viewport) {
+    try { await probe.rawEmulate(null); } catch {}
+  }
+  exit(code);
+};
+
 /** The zoom precondition. `innerWidth !== outerWidth` is the tell, and it is silent otherwise. */
 const geom = await probe.rawEvaluate(`(() => ({
   inner: innerWidth, outer: outerWidth, innerH: innerHeight,
@@ -68,6 +85,11 @@ if (geom.inner !== geom.outer) {
       'Reset with ⌘0 in the app window.',
   );
   exit(1);
+}
+
+if (viewport) {
+  await probe.rawEmulate(viewport);
+  await new Promise((r) => setTimeout(r, 250));
 }
 
 if (screen) {
@@ -86,7 +108,7 @@ if (screen) {
       `shot.mjs REFUSED: did not land on "${screen}" after ${acted.waitedMs}ms. ` +
         'Nothing was captured — an image of the wrong pane under the right name is unrecoverable.',
     );
-    exit(1);
+    await done(1);
   }
 }
 
@@ -113,14 +135,14 @@ if (ready) {
     if (await probe.rawEvaluate(ready)) break;
     if (Date.now() >= deadline) {
       console.error(`shot.mjs REFUSED: --ready never became true within 20000ms — the pane had not loaded, so any set-up below it would have acted on nothing.`);
-      exit(1);
+      await done(1);
     }
     await new Promise((r) => setTimeout(r, 250));
   }
 }
 if (prep && !prepExpect) {
   console.error('shot.mjs: --prep requires --prep-expect. A stimulus with no effect to check is a request, not a set-up.');
-  exit(2);
+  await done(2);
 }
 // Not a bare sleep dressed up: this is settling *paint*, after the route has already been confirmed
 // landed by its own predicate above. There is nothing to poll for — a transition's final frame is
@@ -137,10 +159,10 @@ await new Promise((r) => setTimeout(r, settleMs));
  * A set-up is only a set-up if nothing overwrites it before the shutter.
  */
 if (prep) {
-  const done = await probe.act({ what: 'prep', run: prep, expect: prepExpect, within: 6000 });
-  if (!done.landed) {
-    console.error(`shot.mjs REFUSED: --prep did not land after ${done.waitedMs}ms. Nothing was captured.`);
-    exit(1);
+  const prepped = await probe.act({ what: 'prep', run: prep, expect: prepExpect, within: 6000 });
+  if (!prepped.landed) {
+    console.error(`shot.mjs REFUSED: --prep did not land after ${prepped.waitedMs}ms. Nothing was captured.`);
+    await done(1);
   }
 }
 
@@ -191,7 +213,7 @@ if (!anchored.ok) {
       'captured. Relaunch the app and re-run — this has been seen after a long probing session ' +
       'with every scroll offset still reading zero.',
   );
-  exit(1);
+  await done(1);
 }
 
 // A short second settle for the set-up's own paint.
@@ -203,6 +225,7 @@ const clip = flag('full')
   : undefined;
 
 const png = await probe.rawCapture({ clip });
+const shotGeom = await probe.rawEvaluate(`(() => ({ inner: innerWidth, innerH: innerHeight }))()`);
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, Buffer.from(png, 'base64'));
 
@@ -210,7 +233,7 @@ const sidecar = {
   file: out,
   screen: screen ?? '(not routed)',
   takenAt: new Date().toISOString(),
-  window: { inner: geom.inner, innerH: geom.innerH, dpr: geom.dpr },
+  window: { inner: shotGeom.inner, innerH: shotGeom.innerH, dpr: geom.dpr },
   scrollbarPx: geom.scrollbarPx,
   pageScrolls: geom.pageScrolls,
   settleMs,
@@ -218,12 +241,13 @@ const sidecar = {
   prep: prep ?? null,
   scrolledToTop: true,
   full: flag('full'),
-  zoomChecked: 'innerWidth === outerWidth',
+  zoomChecked: 'innerWidth === outerWidth (on the real window, before any emulation)',
+  emulated: viewport ? `${viewport.width}x${viewport.height} layout viewport via CDP Emulation` : null,
 };
 writeFileSync(out.replace(/\.png$/, '.json'), JSON.stringify(sidecar, null, 2));
 
 console.log(
-  `wrote ${out}  [${geom.inner}x${geom.innerH} @${geom.dpr}x, scrollbar ${geom.scrollbarPx}px, ` +
+  `wrote ${out}  [${shotGeom.inner}x${shotGeom.innerH} @${geom.dpr}x, scrollbar ${geom.scrollbarPx}px, ` +
     `pageScrolls=${geom.pageScrolls}, settled ${settleMs}ms, screen=${sidecar.screen}]`,
 );
-exit(0);
+await done(0);
