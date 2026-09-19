@@ -397,6 +397,31 @@ function paintMirrorButtons(): void {
  * fact, and the last time two views of one fact were fed separately in this codebase it was
  * defect 27, a reason going stale in one place and not the other.
  */
+/**
+ * Mirror's Link card. Every value is the live status or a dash — a round trip is shown only when one
+ * was measured, and the route uses the shell's own wording (`heroTransportOf`), so the card and the
+ * Overview hero cannot name the same link two ways.
+ */
+function paintMirrorLink(status: RendererStatus | null): void {
+  const connected = status?.phase === 'connected';
+  const rows: Array<[string, string]> = [
+    ['Route', heroTransportOf(status)],
+    ['Address', connected ? (status?.address ?? '—') : '—'],
+    ['Round trip', connected && status?.rttMs !== undefined ? `${status.rttMs} ms` : '—'],
+    ['Encryption', connected ? 'TLS 1.3, pinned' : '—'],
+  ];
+  el('mirror-link').replaceChildren(
+    ...rows.flatMap(([k, v]) => {
+      const dt = document.createElement('dt');
+      dt.textContent = k;
+      const dd = document.createElement('dd');
+      dd.className = 'mono';
+      dd.textContent = v;
+      return [dt, dd];
+    }),
+  );
+}
+
 function render(status: RendererStatus | null): void {
   shell.setStatus(status);
 
@@ -411,6 +436,7 @@ function render(status: RendererStatus | null): void {
   // the user an action the phone has already said it cannot perform.
   canMirror = status?.capabilities?.includes('mirror') ?? false;
   paintMirrorButtons();
+  paintMirrorLink(status);
 
   // The phone's own sentence for anything it is not offering. Hoisted above its two consumers —
   // the panes below and the capability chips further down — rather than built twice: defect 27 was

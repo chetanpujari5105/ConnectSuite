@@ -20976,3 +20976,42 @@ Screenshots: `docs/evidence/sidekick-batch2/`.
   card is the handoff's centred 560. The rename notice was drawn **SYNTHETICALLY** with the real
   `RENAME_REFUSAL` sentence (the re-pair on this Mac has already been paid), then restored from the
   main process. The pairing fix lives in `renderer.ts`, which no test reaches — recorded as such.
+
+### Batch 3 follow-up — the demo pass, 2026-09-19
+
+**The display offered 865px of height this sitting**, so the real window opened at **1440 × 841**
+(`fitWindow` caps to the work area). Every image below was therefore captured with the viewport
+**emulated** at 1440 × 920 @2x (`Emulation.setDeviceMetricsOverride`), each capture refusing unless
+`innerHeight === 920` and the named `section[data-screen]` was visible. Each sidecar `.json` says so.
+Batch 2's D21 records the demo Mac at 1512 × 982; whichever display scaling gave that is not the one
+active now.
+
+- **Pairing, while a phone is connected — now tested, and read live.** The `pairing-qr` handler's
+  arm/start/retry sequence moved into `src/main/pairingArm.ts` so the handler and a test run the same
+  lines; `pairingArm.test.ts` (6 tests) drives the **real `LinkClient`** with only Electron and
+  `electron-store` stubbed. It asserts: no teardown, stop, socket destroy or dial while connected; no
+  settings-store write; a re-open keeps the token; the payload carries the unchanged identity. The
+  connected state is **set by hand** (a real one needs a phone's TLS handshake) and says so.
+  Red-first: `retryNow` without its `isConnected()` guard → 1 red; `armPairing` always rotating →
+  1 red; a `stop()` in the sequence → 2 red. Controls: an explicit rotate *does* change the token,
+  and a stopped client *is* dialled. **Live, on the SM-S938B:** before `phase=connected paired=true`,
+  QR `src` absent; on opening Pairing a 320 × 320 code drew; re-opening left the `src` and
+  `pairingExpiresAt` byte-identical; 4 s later still `connected`, `paired`, Mac fingerprint
+  `7DE7895FC0DF7C1A` unchanged. The renderer's route hook is still reached by no test.
+- **Mirror — the Link card** (D26): route, address, round trip, encryption, from live status. Start
+  measured at rest: `Start mirroring` drawn, bottom **249px**; `Stop mirroring` `hidden`, 0 × 0.
+  Cards: Session 131, Quality 301, Link, Advanced. **Still no live session run.**
+- **Settings → Show in Finder, read-only by measurement.** A stat of every entry (name, size, mtime,
+  inode) under `~/Downloads/ConnectSuite` and `~/Downloads/Sidekick`, hashed, before and after one
+  press through the page: identical, 29 entries. Toast: *Opened /Users/chetan/Downloads/ConnectSuite*.
+  The row's condition is `legacyPath !== null`, tested both ways in `legacyData.test.ts`; its absent
+  case was **not** shown live (it would mean moving the user's folder).
+- **Packaged assets:** `npm run dist:dir` → `release/mac-arm64/Sidekick.app` (built 07:09). All 6
+  files under `renderer/assets/` extracted from its asar are byte-identical to source. The first
+  comparison read `release/mac/ConnectSuite.app` — the 2026-09-17 bundle, which holds none of them —
+  and reported 6 DIFFs; the path, not the build, was wrong. electron-builder reports **the default
+  Electron icon** (no `icon` configured) — the packaged app's Dock icon is not Sidekick's.
+- Evidence: `docs/evidence/sidekick-batch3/` — `overview-connected`, `overview-disconnected`
+  (Disconnect pressed on the Mac, reconnected after), `mirror-ready`, `settings-file-transfer`,
+  `pairing`, all `-1440x920.png`. `npm test` **837 / 837**; typecheck clean; 13 guards exit 0, 155
+  guard fixtures green.

@@ -82,6 +82,7 @@ import {
 } from './legacyData';
 import { VideoClient, type VideoFrame } from './video';
 import { FloatMirrorWindow } from './float';
+import { armPairingCode } from './pairingArm';
 import { fitWindow, DESIGN } from '../shared/windowGeometry';
 
 let window: BrowserWindow | null = null;
@@ -2645,7 +2646,7 @@ function stopPairIntentWatch(): void {
 
 ipcMain.handle('pairing-qr', async (_event, rotate?: boolean) => {
   if (!link) throw new Error('Link not ready');
-  const payload = link.armPairing(localAddress(), rotate === true);
+  const payload = armPairingCode(link, localAddress(), rotate === true);
   const dataUrl = await QRCode.toDataURL(JSON.stringify(payload), QR_OPTIONS);
   log.info('pairing', `QR armed for ${payload.host}`);
   // A new code invalidates any sighting of the old one, so the watch is replaced rather than added
@@ -2656,12 +2657,6 @@ ipcMain.handle('pairing-qr', async (_event, rotate?: boolean) => {
       sendAll('pair-scanned', { deviceName: deviceName as string | null });
     });
   }
-  // Arming a code is the user saying "pair now", and the Mac is the only side that dials out.
-  // forget-device leaves the client stopped, so without this the phone scans a code that nothing
-  // is dialling for: it trusts us, we never call, and pairing can never complete. start() is a
-  // no-op when already running; retryNow cuts a backoff that could be 30s long.
-  link.start();
-  link.retryNow('pairing QR armed');
   return { payload, dataUrl };
 });
 

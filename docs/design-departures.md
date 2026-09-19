@@ -1123,3 +1123,12 @@ theme (the frozen dark `--np-*` island is no longer read); the footer strip is r
 Connection & security; Recent shows **four** 48px rows; the hero is 700 × 300 with the 148 × 260
 phone and a row-major 2 × 2; lime appears nowhere on a non-connected Overview (hero bloom, disabled
 primary button).
+
+## Sidekick Batch 3 follow-up — Mirror's right column — 2026-09-19. Row D26
+
+Frame `31:1566`; handoff §Mirror: *"Right column: Session, Quality, Tools, Link."* **No Figma render
+was taken.**
+
+| Row | Figma | Built | Why |
+|---|---|---|---|
+| **D26** | Tools are the third card in the right column | Tools stay the **rail beside the canvas** (Capture, Refresh, Transfer, Rotation readout); the right column is Session, Quality, **Link**, then Advanced | The rail is M11/S11, generated from `navModel.TOOL_RAIL` and inside the icon guard. Moving it is a layout change to the one pane that must not regress before a demo. **Link was missing entirely and is now built** — route (`heroTransportOf`, the Overview's own wording), address, measured round trip, and *TLS 1.3, pinned* (`minVersion: 'TLSv1.3'` and the fingerprint compare in `link.ts`); every value is a dash when not connected |

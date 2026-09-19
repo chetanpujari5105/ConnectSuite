@@ -1,0 +1,12 @@
+{
+  "file": "docs/evidence/sidekick-batch3/overview-connected-1440x920.png",
+  "screen": "overview",
+  "takenAt": "2026-09-19T01:38:04.006Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "viewport": "EMULATED 1440x920 via Emulation.setDeviceMetricsOverride — the display offered 865px of height, so the real window opened at 1440x841",
+  "prep": null
+}

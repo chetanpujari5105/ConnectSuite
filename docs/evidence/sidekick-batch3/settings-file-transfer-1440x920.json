@@ -1,0 +1,12 @@
+{
+  "file": "docs/evidence/sidekick-batch3/settings-file-transfer-1440x920.png",
+  "screen": "settings",
+  "takenAt": "2026-09-19T01:38:08.220Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "viewport": "EMULATED 1440x920 via Emulation.setDeviceMetricsOverride — the display offered 865px of height, so the real window opened at 1440x841",
+  "prep": "[...document.querySelectorAll(\"section[data-screen=settings] .settings-tab\")].find(b=>b.textContent===\"File transfer\").click()"
+}
