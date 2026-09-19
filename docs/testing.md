@@ -21015,3 +21015,23 @@ active now.
   (Disconnect pressed on the Mac, reconnected after), `mirror-ready`, `settings-file-transfer`,
   `pairing`, all `-1440x920.png`. `npm test` **837 / 837**; typecheck clean; 13 guards exit 0, 155
   guard fixtures green.
+
+### The packaged app's icon — 2026-09-19
+
+`desktop/build/icon.icns`, derived by `scripts/derive-brand.mjs` from `LOGOS/main_logo.png`: cropped
+to its visible tile (alpha > 4, 1100 × 1076), scaled **uniformly** to 824 on the long side — not
+stretched square — and centred on a transparent 1024 canvas (Apple's 824-in-1024 grid; used as-is
+the tile fills ~88% and sits larger than every other Dock icon). Unpacked with `iconutil -c iconset`:
+all ten sizes 16–1024, every corner alpha 0, body at 80%. Re-running the script left the committed
+renderer PNGs byte-identical. `mac.icon: build/icon.icns` in `electron-builder.yml`; `dist:dir` no
+longer logs *default Electron icon is used*. In `release/mac-arm64/Sidekick.app`: `CFBundleIconFile`
+= `icon.icns`, `Resources/icon.icns` sha1 `d4c293d3…` = `build/icon.icns`, `codesign --verify
+--deep --strict` OK. `NSWorkspace.icon(forFile:)` on the bundle returns the Sidekick tile.
+
+**What macOS 26 does with it, measured rather than assumed:** it draws the tile **inside a grey
+plate** — Tahoe's treatment of a legacy `.icns`. Three geometries were tried in throwaway bundles
+(the 824 uniform one shipped, an 824 square, and full-bleed); **all three were plated**, so it is
+not the geometry. An un-plated icon needs an Icon Composer `.icon` compiled by `actool` into
+`Assets.car`, and this Mac has Command Line Tools only — no Xcode, no `actool`. On macOS 11–15 the
+`.icns` is the whole mechanism. The dev build (`npm start`) still shows Electron's icon: nothing
+calls `app.dock.setIcon`, and the bundle there is Electron's.

@@ -16,7 +16,7 @@
 // bounds, then scale to the lockup's height, which keeps one pixel density on both axes. The
 // 65 × 30 box in the lockup draws it with `object-fit: contain`, left-aligned.
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,10 @@ const out = resolve(desktop, 'src/renderer/assets/brand');
 
 /** The visible mask inside head_logo.png: PIL getbbox on the A channel thresholded at > 4. */
 const HEAD_CONTENT = { x: 130, y: 43, w: 1515, h: 797 };
+/** The visible tile inside main_logo.png: alpha > 4, measured as HEAD_CONTENT was. 1100 × 1076. */
+const TILE_CONTENT = { x: 77, y: 86, w: 1100, h: 1076 };
+/** The body of a macOS app icon on its 1024 canvas (Apple's icon grid). */
+const ICON_BODY = 824;
 /** The lockup's mark box, Figma `61:24256`. */
 const MARK_BOX = { h: 30 };
 
@@ -51,7 +55,33 @@ try {
         '--out', join(out, `tile-${size}@${scale}x.png`));
     }
   }
+
+  // The packaged app's icon — build/icon.icns, named by `mac.icon` in electron-builder.yml.
+  //
+  // main_logo.png is already a macOS tile on a transparent canvas, but its body fills ~88% of that
+  // canvas and Apple's grid puts an 824 body on a 1024 canvas (80.5%), so used as-is it would sit
+  // visibly larger than every other icon in the Dock. So: crop to the visible bounds (alpha > 4, as
+  // for the mark — which also drops the invisible haze), scale **uniformly** so the longer side is
+  // 824 (the tile is 1100 × 1076 there, and is not stretched square), and centre it on a transparent
+  // 1024 canvas. `iconutil` then packs the ten sizes macOS asks for.
+  const tile = join(tmp, 'tile-cropped.png');
+  sips('--cropToHeightWidth', `${TILE_CONTENT.h}`, `${TILE_CONTENT.w}`,
+    '--cropOffset', `${TILE_CONTENT.y}`, `${TILE_CONTENT.x}`,
+    join(logos, 'main_logo.png'), '--out', tile);
+  const k = ICON_BODY / Math.max(TILE_CONTENT.w, TILE_CONTENT.h);
+  const scaled = join(tmp, 'tile-scaled.png');
+  sips('--resampleHeightWidth', `${Math.round(TILE_CONTENT.h * k)}`, `${Math.round(TILE_CONTENT.w * k)}`,
+    tile, '--out', scaled);
+  const master = join(tmp, 'icon-1024.png');
+  sips('--padToHeightWidth', '1024', '1024', scaled, '--out', master);
+  const iconset = join(tmp, 'Sidekick.iconset');
+  mkdirSync(iconset);
+  for (const size of [16, 32, 128, 256, 512]) {
+    sips('--resampleHeightWidth', `${size}`, `${size}`, master, '--out', join(iconset, `icon_${size}x${size}.png`));
+    sips('--resampleHeightWidth', `${size * 2}`, `${size * 2}`, master, '--out', join(iconset, `icon_${size}x${size}@2x.png`));
+  }
+  execFileSync('iconutil', ['-c', 'icns', iconset, '-o', resolve(desktop, 'build/icon.icns')], { stdio: 'inherit' });
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
-console.log('derived brand art into', out);
+console.log('derived brand art into', out, 'and build/icon.icns');

@@ -9,9 +9,11 @@
 | `832b332` | **Batch 1** — Figma tokens, Figma-vector icons, `LOGOS/` brand art through dev and packaged builds, the shell (232 sidebar, lockup under the traffic lights, Search = ⌘K palette, no dock) |
 | `c06506b` | **Batch 2** — the Overview rebuilt to handoff §6: hero + phone visual, media remote, four-row Recent, two metric cards, Connection & security; connected / connecting / disconnected / permission states |
 | `e315c72` | **Batch 3** — Mirror (Session card, one of Start/Stop), Settings → File transfer (brand tile, Show in Finder verified), pairing (code draws on arrival — a real defect) |
+| `4bc3693` | **Batch 3 demo polish** — Mirror's Link card (D26), `pairingArm.test.ts` (pairing while connected: no teardown, no forget, no rotation, identity unchanged — also read live), Show in Finder measured read-only, packaged assets byte-identical, five final 1440 × 920 shots. **837 / 837.** No further UI batch is to start before the demo |
+| *(the commit after `4bc3693`)* | **Packaged icon** — `build/icon.icns` derived from `LOGOS/main_logo.png` by `derive-brand.mjs`, `mac.icon` in `electron-builder.yml`. Nothing else changed |
 
-Every commit: typecheck clean, `npm test` 818 → 831 green, all commit guards exit 0. Nothing pushed.
-Evidence: `docs/testing.md` → *Sidekick Batch 1/2/3*; departures D13–D25 in
+Every commit: typecheck clean, `npm test` 818 → 837 green, all commit guards exit 0. Nothing pushed.
+Evidence: `docs/testing.md` → *Sidekick Batch 1/2/3*; departures D13–D26 in
 `docs/design-departures.md`; screenshots in `docs/evidence/sidekick-batch{1,2,3}/`.
 
 ## 1 · The Figma MCP was rate-limited for the whole sitting
@@ -23,6 +25,11 @@ values already extracted (icons, D13–D18). One Figma call per frame is owed: `
 
 ## 2 · Not proven on hardware
 
+- **This display offers 865px of height**, so the window opens at 1440 × 841, not 920; the final
+  shots emulate the viewport. Set the demo Mac's display scaling so 920 fits before presenting.
+- **The packaged app carries the Sidekick icon** (`build/icon.icns`, `mac.icon`). On macOS 26 it is
+  drawn inside Tahoe's grey plate for legacy icons; removing the plate needs Xcode's `actool` and an
+  Icon Composer `.icon`. The dev build (`npm start`) still shows Electron's icon in the Dock.
 - **Media remote with a real session.** Idle, permission and offline are real; *playing* was only
   rendered from a synthetic state. Play something on the phone before any demo.
 - **A live mirror session** after the Session-card change (consent needs a tap on the phone).

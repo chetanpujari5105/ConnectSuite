@@ -55,6 +55,9 @@ asar: true
 
 mac:
   category: public.app-category.utilities
+  # The Dock and Finder icon, derived from LOGOS/main_logo.png by scripts/derive-brand.mjs. Without
+  # it electron-builder ships Electron's own icon ("default Electron icon is used").
+  icon: build/icon.icns
   # Both architectures. This project has only ever run on Apple silicon, so the x64 half is
   # untested — recorded rather than quietly shipped.
   target:
