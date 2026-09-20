@@ -8,34 +8,65 @@ artifact rather than left to be inferred.
 |---|---|
 | `motion-sweep.txt` | `node scripts/motion-sweep.mjs` — dark theme. 9 pass, 0 fail, 0 NO READING, 12 of 12 routes |
 | `motion-sweep-light.txt` | the same sweep with the app in **light** theme. 9 pass, 0 fail |
-| `check-motion-tokens.txt` | the commit guard: 73 motion declarations, 19 tokens, no raw literals |
+| `check-motion-tokens.txt` | the commit guard: 74 motion declarations, 20 tokens, no raw literals |
 | `overview-dark.png` | Overview, dark, 1440×841 @2x |
 | `overview-light.png` | Overview, light, same geometry |
+| `brand-before.png` | the lockup before the stage — the mask at **1.08:1**, only its eyes reading |
+| `brand-after.png` | the lockup with the charcoal stage, hairline and clipped halo, dark |
+| `brand-light.png` | the same in light, where the mask never needed help |
 
 ## What the numbers mean
 
-**Press.** 8316 of 8316 enabled buttons ease their press, over 12 routes, at `--dur-release`
+**Press.** **8400 of 8400** enabled buttons ease their press, over 12 routes, at `--dur-release`
 (0.16s) releasing and `--dur-press` (0.1s) pressing. Before this pass it was **131 of 265** in a
-single-route read; the sweep's larger denominator is cumulative across routes.
+single-route read; the sweep's larger denominator is cumulative across routes, so the two numbers
+are not the same measurement and the ratio between them means nothing. What they share is the
+**zero**: no enabled button snaps.
 
-**The excluded 48.** `recent-row (48)` is reported as *excluded, inline transition mid-FLIP*. Those
-nodes carry an inline `transition` written by `overview.ts`'s FLIP and cleared inside
-`afterNextPaint`. **`requestAnimationFrame` does not run in an occluded window**, and this sweep is
-driven from a terminal, so the cleanup has not run and the nodes report no transition at all —
-which reads exactly like a missing press rule. Measured: `rafFired: 0` after 1.88s,
-`visibilityState: "hidden"`, four `.recent-row` nodes with `style.transition === "none"`.
+**Both captured runs had a visible window** — the first line of each file says so. That matters
+because of the next paragraph.
+
+**The mid-FLIP exclusion, which did not fire here.** `overview.ts` writes an inline
+`transition: none` on the recent-activity rows to do its FLIP and clears it inside `afterNextPaint`,
+which is two nested `requestAnimationFrame`s. **rAF does not run in an occluded window.** Run from a
+terminal with the app behind it, this sweep reported `snapping: recent-row (48)` — reproducibly —
+because those rows report no transition at all, which reads exactly like a missing press rule.
+Measured at the time: `rafFired: 0` after 1.88s, `visibilityState: "hidden"`, four `.recent-row`
+nodes carrying `style.transition === "none"`.
 
 **That is an instrument finding, not a product defect**, and the distinction is load-bearing: rAF
 runs before the first paint anyone sees, so the state is cleared before a user can observe it. The
-sweep names the condition on the line rather than scoring it, and prints the window's visibility at
-the top of every run.
+sweep therefore prints the window's visibility on its first line, excludes elements carrying an
+inline `transition`, and names them and the reason when it does. In these two captures it had
+nothing to exclude.
+
+## The brand lockup
+
+| | wings | their ground | ratio |
+|---|---|---|---|
+| before | `L=0.0085` | bare sidebar `L=0.0044` | **1.08:1** |
+| after | `L=0.0056` | stage + halo `L=0.0193` | **1.25:1** |
+
+**1.08 → 1.25 is a modest ratio and it is the honest one.** A naive crop of `brand-after.png`
+reports `13.66:1` between its 5th and 95th percentiles — the 95th percentile is the **eyes**, which
+were bright all along and were never the problem. Quoting that would be the denominator mistake in a
+different unit. What makes the lockup legible is the stage's *edge* and the halo's *gradient*, not
+the ratio; the ratio is published so nobody later reads the screenshot as a contrast win it did not
+earn.
+
+`brand-before.png` is a crop of the shipped build before this change, at the same scale, so the two
+are comparable.
 
 ## Reduced motion
 
 | | with the setting off | with `prefers-reduced-motion: reduce` |
 |---|---|---|
-| elements transitioning a transform | **163** | **0** |
-| running animations | **3** | **0** |
+| elements transitioning a transform | **169** | **0** |
+| running animations | **4** | **0** |
+
+The fourth animation is the brand halo's breath, which is declared **inside**
+`@media (prefers-reduced-motion: no-preference)` rather than overridden under `reduce` — so under
+`reduce` there is no animation to stop, and nothing can freeze mid-cycle the way `hero-spin` did.
 
 The control is the before column. An emulation that silently failed and a stylesheet that correctly
 removed every transform produce the same reading — zero — so only the disagreement separates them,

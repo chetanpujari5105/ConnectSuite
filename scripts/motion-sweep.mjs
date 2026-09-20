@@ -90,24 +90,51 @@ const check = (label, ok, detail) => {
   if (ok === null) failures += 1;
 };
 
-/** The approved motion durations, in seconds as getComputedStyle reports them. */
-const APPROVED = new Map([
+/**
+ * The approved durations are **read from the page's own tokens**, never listed here.
+ *
+ * The first version of this file hardcoded the map, and it went red the moment a token was added
+ * — `--dur-brand-breath: 6s` — for no reason except that the list had not been updated. That is a
+ * second expression of the rule this repo has a whole section about: two copies of one fact, and
+ * the test is the one that ends up wrong. `tokens.css` has one home for a duration, so the sweep
+ * asks the document for it.
+ *
+ * The two reduced-motion kill values are the exception and are named, because they are not
+ * durations anyone chose — they are "off", written as the smallest number that still lets a
+ * `transitionend` fire.
+ */
+const KILL_VALUES = new Map([
   ['0s', 'none'],
-  ['0.1s', '--dur-press'],
-  ['0.14s', '--dur-route-fade'],
-  ['0.16s', '--dur-release / --dur-toggle'],
-  ['0.18s', '--dur-state'],
-  ['0.2s', '--dur-hover / --dur-pill'],
-  ['0.22s', '--dur-float / --dur-arrive'],
-  ['0.26s', '--dur-route'],
-  ['0.6s', '--dur-ring'],
-  ['0.9s', '--dur-spin-fast'],
-  ['1.2s', '--dur-spin'],
-  ['1.4s', '--dur-flash'],
-  // The two reduced-motion kill values, which are "off" rather than a duration anyone chose.
   ['0.00001s', 'reduced-motion kill'],
   ['1e-06s', 'reduced-motion kill (float)'],
 ]);
+
+const tokenDurations = JSON.parse(
+  await probe.rawEvaluate(`(function(){
+    var cs = getComputedStyle(document.documentElement);
+    var out = {};
+    for (var i = 0; i < cs.length; i++) {
+      var name = cs[i];
+      if (name.indexOf('--dur-') !== 0) continue;
+      var raw = cs.getPropertyValue(name).trim();
+      if (!raw) continue;
+      var n = parseFloat(raw);
+      if (isNaN(n)) continue;
+      var secs = raw.slice(-2) === 'ms' ? n / 1000 : n;
+      // Normalise to the form getComputedStyle reports a transition-duration in.
+      var key = String(secs) + 's';
+      out[key] = (out[key] ? out[key] + ' / ' : '') + name;
+    }
+    return JSON.stringify(out);
+  })()`),
+);
+const APPROVED = new Map([...KILL_VALUES, ...Object.entries(tokenDurations)]);
+if (Object.keys(tokenDurations).length === 0) {
+  console.log('motion-sweep: REFUSED — no --dur-* tokens readable from :root, so "every duration is');
+  console.log('  approved" would be a claim against an empty list and would pass on anything.');
+  process.exit(1);
+}
+console.log(`tokens: ${Object.keys(tokenDurations).length} duration values read from :root`);
 
 /* ---- Routing, with the settle predicate the shell sweep already proved it needs --------------- */
 

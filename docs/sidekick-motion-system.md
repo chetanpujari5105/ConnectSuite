@@ -138,7 +138,7 @@ never tweened** (Apple §2).
 
 | Surface | Trigger | Purpose | Dur | Ease | Properties | Reduced | Kind | Ref |
 |---|---|---|---|---|---|---|---|---|
-| `.brand-halo` | none — ambient | brand presence behind the mask only | `--dur-brand-breath` `6s` | `ease-in-out` | opacity `.55 → .75` | **no animation at all** | decor | departure (§5) |
+| `.brand-halo` | none — ambient | silhouettes the mask against its own sidebar | `--dur-brand-breath` `6s` | `--ease-in-out` | opacity `.5 → .72` | **not declared at all** — gated on `no-preference`, so nothing can freeze | decor | departure (§5) |
 
 ---
 
@@ -200,24 +200,66 @@ This list is as load-bearing as the inventory. Each entry names the gate that ki
 `assets/brand/mark@2x.png` is 114×60, 56% opaque, and its dominant opaque colour is `rgb(22,23,24)`
 — median luminance **31 of 255**. The sidebar is `--elev-1` = `rgba(15,15,15,.82)` composited over
 `--canvas` `#0a0a0a`, which resolves to `rgb(14,14,14)`. Contrast: **1.08:1**. Only the lime/blue
-eyes read; the mask silhouette that carries the brand is invisible.
+eyes read; the winged silhouette that carries the brand is invisible.
 
-The treatment, and every constraint on it is the brief's:
+### Why a charcoal stage alone cannot fix it
 
-- a **compact charcoal stage** behind the lockup — not a lit sidebar — so the black mask has
-  something to be black *against*;
-- a **subtle neutral edge** on the stage, one hairline, no glow;
-- a **clipped halo** behind the mask only: blue left, lime right, low opacity, `overflow: hidden` on
-  the stage so nothing bleeds into the nav;
-- the **wordmark stays static** and keeps its `--text-primary`;
-- the halo **breathes at 6s, opacity only**, `.55 → .75`, and **only** under
-  `prefers-reduced-motion: no-preference`. No scale, no rotation, no hue change, no eye-colour
-  switching. Under `reduce` there is no animation at all — the halo simply sits at its mid value.
+This is the part worth keeping, because the obvious move is wrong and the arithmetic says so.
+Lifting the ground *towards* a near-black mask makes the two closer, not further apart: a stage at
+`#1a1a1c` scores **1.03:1**, worse than the bare sidebar. To reach even 3:1 the ground would have
+to be `rgb(99,99,99)` — a mid-grey slab in the sidebar, which is not this design.
+
+**A logo is not text and does not owe a text contrast ratio.** What it owes is an *edge*. So the
+treatment is three things, and only the third is about contrast at all:
+
+- a **compact charcoal stage**, `--brand-stage` `#17171a`, one step above `--chrome` — a block, not
+  a lit panel;
+- a **subtle neutral edge**, one inset hairline, which is what actually makes the lockup read as a
+  deliberate object rather than a smudge;
+- a **clipped halo behind the mask only** — blue left, lime right, `overflow: hidden` on the stage
+  so nothing reaches the nav — which silhouettes the wings against varying light instead of against
+  an identical flat ground.
+
+The two hues are **sampled from the artwork**, not invented: `rgb(0,196,255)` is the bluest pixel in
+the mark and `rgb(233,255,19)` its limest, which is `--accent`'s hue.
+
+### What it actually moved, stated as the number rather than the impression
+
+| | wings | their ground | ratio |
+|---|---|---|---|
+| before | `L=0.0085` | bare sidebar `L=0.0044` | **1.08:1** |
+| after | `L=0.0056` | stage + halo `L=0.0193` | **1.25:1** |
+
+**1.08 → 1.25 is a modest ratio and it is the honest one.** A crop of the rendered lockup reports
+`13.66:1` between its 5th and 95th percentiles, and quoting that would be the denominator mistake
+in a different unit — the 95th percentile is the *eyes*, which were bright all along and were never
+the problem. The eyes flatter every measurement of this mark and must be excluded from any claim
+about the wings.
+
+So the defensible statement is: **the wings gained about 16% of relative luminance contrast, and the
+lockup gained an edge and a gradient, which is what makes it legible.** The improvement you can see
+in `docs/evidence/motion-2026-09-21/brand-after.png` is mostly the second thing, and the ratio is
+reported so nobody later reads the screenshot as a contrast win it did not earn.
+
+In **light** the mask is near-black on a near-white sidebar and needs none of this. The stage stays
+so the lockup is one object in both themes; the halo drops to a third of its alpha because there it
+is decoration rather than the mechanism.
+
+### The breath
+
+`--dur-brand-breath` `6s`, opacity `0.5 → 0.72`, `--ease-in-out`, infinite. Nothing moves: no scale,
+no rotation, no hue change, no eye-colour switching. 6s is 0.17 Hz, deliberately at the slow end of
+the 5.5–6.5s band, because Apple §14 warns off slow looping oscillation near 0.2 Hz.
+
+It is declared **inside `@media (prefers-reduced-motion: no-preference)`** rather than overridden
+under `reduce`, and that is not a style choice. An override animates and then undoes it, and the
+global kill in `tokens.css` would leave this one **frozen mid-cycle** at whatever opacity the clock
+stopped on — which is exactly the `hero-spin` fault this same pass found and fixed (§3, MA-3).
+Gating the declaration means there is no animation to freeze: the halo sits at its rest value, which
+is a designed state rather than an accident.
 
 **This is a departure.** The handoff (`61:24256`) draws the lockup on the bare sidebar with no stage
-and no halo, and specifies no motion for it. It is recorded in `docs/design-departures.md`.
-
----
+and no halo, and specifies no motion for it. Recorded in `docs/design-departures.md`.
 
 ## 6 · Two instrument faults, and the second is a new shape
 
@@ -309,8 +351,15 @@ visibility on every run.
 | disabled controls do not animate | `motion-sweep.mjs` | same |
 | nothing blocks a keypress | `motion-sweep.mjs` | Escape closes with motion in flight |
 
-**Measured 2026-09-21, dark and light, 12 of 12 routes:** 9 pass, 0 fail, 0 NO READING, ten
-consecutive runs. Press: **8316 of 8316** enabled buttons. Reduced motion: 163 transforms → 0,
-3 animations → 0. Reduced transparency: 4 blurred surfaces → 0. Every one with its control.
+**Measured 2026-09-21, dark and light, 12 of 12 routes:** 9 pass, 0 fail, 0 NO READING, both
+themes, ten consecutive runs. Press: **8400 of 8400** enabled buttons. Reduced motion: 169
+transforms → 0, 4 animations → 0. Reduced transparency: 4 blurred surfaces → 0. Every one with its
+control.
+
+**The approved-duration list is read from the page's own `--dur-*` tokens, not listed in the
+sweep.** The first version hardcoded it and went red the moment `--dur-brand-breath` was added — a
+second expression of a rule that has one home, which is the failure this repo has a section about.
+The sweep now refuses outright if it can read no tokens, because "every duration is approved" against
+an empty list passes on anything.
 
 Evidence, including what it does **not** cover: `docs/evidence/motion-2026-09-21/`.

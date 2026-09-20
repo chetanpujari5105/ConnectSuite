@@ -1398,3 +1398,27 @@ pane, which is how six accumulated across the app.
   clipped, that nothing overflows, and a **coverage** check naming the states each migrated pane
   must have drawn — which caught two panes that had silently drawn nothing.
 
+
+---
+
+## The motion pass — 2026-09-21
+
+`docs/sidekick-motion-system.md` is the inventory, the rules and what must **not** animate.
+`scripts/check-motion-tokens.mjs` guards the vocabulary on every commit;
+`scripts/motion-sweep.mjs` measures the resolved cascade against the running app.
+
+| Row | Figma / handoff | Built | Why |
+|---|---|---|---|
+| **M11** | The handoff specifies no press channel; the build used `transform` | Press rides the independent **`scale`** property | `.photos-tile` animates `transform` for a 2px hover lift and `.recent-row` for its FLIP, so on those two the press inherited a hover's 200ms and an arrival's 220ms. One property, two purposes, and only one can have the right duration. `scale` and `transform` compose |
+| **M12** | The lockup `61:24256` sits on the bare sidebar, no stage, no halo, no motion | A **compact charcoal stage**, one inset hairline, and a **clipped blue-left / lime-right halo behind the mask** | Measured: the mask is `rgb(22,23,24)` on a sidebar that composites to `rgb(14,14,14)` — **1.08:1**, so only the eyes read. A stage alone makes it *worse* (1.03:1) and 3:1 would need an `rgb(99,99,99)` slab. A logo owes an edge, not a text ratio. Wings against their ground: **1.08 → 1.25**, and the legibility comes from the edge and the gradient rather than the number |
+| **M13** | No motion specified for the lockup | A **6s opacity breath** on the halo only, `0.5 → 0.72` | Declared **inside** `@media (prefers-reduced-motion: no-preference)`, not overridden under `reduce` — an override would leave it frozen mid-cycle by the global kill, which is exactly the `hero-spin` fault this pass fixed. Nothing moves: no scale, no rotation, no hue change, no eye-colour switching. 0.17 Hz, at the slow end of the allowed band |
+
+### What enforces it
+
+- `scripts/check-motion-tokens.mjs` + 22 fixtures — no duration or curve outside `tokens.css`, and
+  no motion token nothing reads. Its five sightings are the five real ones reconstructed verbatim
+  and shown red; comments are stripped first, because the guard's own header quotes the durations it
+  forbids.
+- `scripts/motion-sweep.mjs` — the resolved cascade over twelve routes and both themes. Its approved
+  duration list is **read from the page's own `--dur-*` tokens**, never restated, and it refuses to
+  run if it can read none. Nine readings, each with a control that must disagree with its opposite.

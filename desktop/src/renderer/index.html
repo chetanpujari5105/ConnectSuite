@@ -58,7 +58,17 @@
             `61:24256` draws. It sits below the real traffic lights rather than beside them.
           -->
           <div class="brand">
-            <img class="brand-mark" src="assets/brand/mark@2x.png" srcset="assets/brand/mark@2x.png 2x, assets/brand/mark@3x.png 3x" width="65" height="30" alt="" />
+            <!--
+              The stage and the halo exist because the mask is near-black on a near-black sidebar
+              (measured: 1.08:1) and only its eyes read. The halo sits BEHIND the mask and is
+              clipped by the stage, so it silhouettes the wings without tinting the sidebar. It is
+              decoration and carries no state, so it is aria-hidden and the lockup keeps one label.
+              docs/sidekick-motion-system.md §5.
+            -->
+            <span class="brand-stage">
+              <span class="brand-halo" aria-hidden="true"></span>
+              <img class="brand-mark" src="assets/brand/mark@2x.png" srcset="assets/brand/mark@2x.png 2x, assets/brand/mark@3x.png 3x" width="65" height="30" alt="" />
+            </span>
             <span class="brand-name">Sidekick</span>
           </div>
 

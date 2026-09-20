@@ -199,10 +199,101 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 30px;
-  margin: 6px 0 12px;                  /* handoff §13: 12px below the lockup */
+  /* The stage is 6px taller than the 30px mask it holds, so the lockup's row grows with it. */
+  height: 36px;
+  margin: 3px 0 12px;                  /* handoff §13: 12px below the lockup, re-centred on 36 */
   padding: 0 20px;
   -webkit-app-region: drag;
+}
+
+/*
+ * ---- The brand stage, 2026-09-21 — docs/sidekick-motion-system.md §5 --------------------------
+ *
+ * The problem, measured rather than described: the mask's dominant opaque colour is rgb(22,23,24)
+ * and the sidebar composites to rgb(14,14,14). **1.08:1.** Only the eyes read; the winged
+ * silhouette that is the brand is invisible.
+ *
+ * Why the stage alone does not fix it, since it is the obvious move and it is wrong: lifting the
+ * ground *towards* a near-black mask reduces the difference. To reach even 3:1 the ground would
+ * have to be rgb(99,99,99) — a grey slab in the sidebar, which is not this design and is not what
+ * a logo owes. A logo is not text. What it owes is an **edge**.
+ *
+ * So the stage is a quiet charcoal block with a hairline, and the thing that actually silhouettes
+ * the wings is the halo *behind* them: a soft blue-left / lime-right glow, clipped by the stage so
+ * nothing bleeds into the nav. The mask then reads as a dark shape against light, which is how a
+ * black mark is meant to work.
+ */
+.brand-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  /*
+   * 69 = the mask's *rendered* 57px + 6 either side, not its 65px box.
+   *
+   * `.brand-mark` is a 65x30 element holding a 57x30 image at `object-fit: contain` with
+   * `object-position: left center`, so eight of those pixels are empty and on the right. Sizing
+   * the stage to the box left a lime-only gap beside the artwork — the halo showing through where
+   * the mark was not. Measured rather than eyeballed: naturalWidth 57, box 65.
+   */
+  width: 69px;
+  height: 36px;
+  border-radius: var(--radius-control);
+  background: var(--brand-stage);
+  box-shadow: inset 0 0 0 1px var(--brand-stage-edge);
+  /* Both load-bearing: `overflow` is what makes the halo "clipped ... behind the mask only", and
+     `isolation` keeps the halo's blur from compositing against the sidebar behind the stage. */
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.brand-halo {
+  position: absolute;
+  /* Oversized so the blur's soft edge is cropped by the stage rather than fading inside it. */
+  inset: -45%;
+  background:
+    radial-gradient(42% 58% at 28% 50%, var(--brand-halo-blue), transparent 72%),
+    radial-gradient(42% 58% at 72% 50%, var(--brand-halo-lime), transparent 72%);
+  filter: blur(7px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/*
+ * The breath: opacity only, 6s, and **only when the user has not asked for less motion**.
+ *
+ * Stated as `no-preference` rather than as a `reduce` override, because those are not the same
+ * rule. An override says "animate, then undo it", and the global kill in tokens.css would leave
+ * this one frozen mid-cycle at whatever opacity it had reached — the exact fault this pass found
+ * in `hero-spin`. Gating the declaration means there is no animation to freeze: the halo simply
+ * sits at its rest value, which is a designed state rather than an accident of when the clock
+ * stopped.
+ *
+ * Amplitude is 0.23 of opacity and nothing moves — no scale, no rotation, no hue change, no eye
+ * colour switching. 6s is 0.17 Hz, deliberately at the slow end of the brief's 5.5-6.5s band.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .brand-halo {
+    animation: brand-breathe var(--dur-brand-breath) var(--ease-in-out) infinite;
+  }
+}
+@keyframes brand-breathe {
+  0%,
+  100% { opacity: 0.5; }
+  50% { opacity: 0.72; }
+}
+
+/*
+ * Above the halo, and centred in the stage.
+ *
+ * The width drops to the artwork's own 57px so the stage wraps the mark rather than the mark's
+ * box; `object-position` goes to centre for the same reason. Outside the stage this element is
+ * still the handoff's 65x30 lockup slot — it is the stage that changed, not the mark.
+ */
+.brand-mark {
+  position: relative;
+  width: 57px;
+  object-position: center;
 }
 
 .brand-mark {

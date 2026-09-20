@@ -1,39 +1,40 @@
-window: hidden — requestAnimationFrame is STALLED. Elements with an inline `transition` are mid-FLIP and are excluded below rather than scored
+tokens: 12 duration values read from :root
+window: visible — rAF-settled values are readable
 
 routes
   12 of 12 routes read
 
 press
-  PASS       every enabled button eases its press — 8316 of 8316 enabled buttons  [control=8376 buttons seen across 12 routes]
-             excluded, inline transition mid-FLIP: recent-row (48) (expected: the window is occluded, so rAF cleanup has not run)
+  PASS       every enabled button eases its press — 8400 of 8400 enabled buttons  [control=8412 buttons seen across 12 routes]
   PASS       the press releases at --dur-release (0.16s), not at --dur-press — all 0.16s
 
 press-down
-  PASS       pressing shortens the transition to --dur-press (0.1s) — 693 of 693 at 0.1s  [forced=697]
-  PASS       pressing actually applies a scale transform — 19 of 19 VISIBLE buttons actually scale below 1 (674 in non-routed panes report no scale whatever their state, and are excluded) — this is the control for the row above, since a duration on a property that never changes is unobservable
+  PASS       pressing shortens the transition to --dur-press (0.1s) — 700 of 700 at 0.1s  [forced=700]
+  PASS       pressing actually applies a scale transform — 23 of 23 VISIBLE buttons actually scale below 1 (677 in non-routed panes report no scale whatever their state, and are excluded) — this is the control for the row above, since a duration on a property that never changes is unobservable
 
 disabled
   PASS       a disabled control does not animate — 1 disabled buttons, 0 carrying a press
 
 reduced-motion
-  PASS       reduced motion removes every transform — 163 -> 0  [control: the same read with the emulation off returns 163]
-  PASS       reduced motion stops every running animation — 3 -> 0
+  PASS       reduced motion removes every transform — 169 -> 0  [control: the same read with the emulation off returns 169]
+  PASS       reduced motion stops every running animation — 4 -> 0
 
 reduced-transparency
   PASS       reduced transparency removes every backdrop blur — 4 -> 0  [control: 4 blurred surfaces with the setting off]
 
 tokens
-  PASS       every duration on screen is an approved token value — 8 distinct values, all approved  [control=8 values seen]
-             0s          2861x  none
-             0.18s        892x  --dur-state
-             0.16s        695x  --dur-release / --dur-toggle
-             0.2s         612x  --dur-hover / --dur-pill
+  PASS       every duration on screen is an approved token value — 9 distinct values, all approved  [control=9 values seen]
+             0s          2882x  none
+             0.18s        902x  --dur-state
+             0.16s        702x  --dur-release / --dur-toggle
+             0.2s         620x  --dur-pill / --dur-hover
+             0.22s          9x  --dur-float / --dur-arrive
              0.6s           2x  --dur-ring
+             6s             1x  --dur-brand-breath
              0.14s          1x  --dur-route-fade
              1.2s           1x  --dur-spin
-             0.22s          1x  --dur-float / --dur-arrive
 
 ------------------------------------------------------------------------------
 motion-sweep: 9 pass, 0 fail, 0 NO READING, over 12 of 12 routes.
-  buttons seen: 8376 (12 disabled). A run on a disconnected app
+  buttons seen: 8412 (12 disabled). A run on a disconnected app
   sees fewer — notification rows, activity chips and photo albums need a linked phone.
