@@ -1295,3 +1295,24 @@ or which controls exist. Nothing new is on the wire — it is the correlation `s
 already performs for calls. The detail column repeats the facts and **not** a second transport, and
 it no longer quotes the notification's `text`: a media notification puts the artist there, which the
 row's own subtitle already carries.
+
+## Sidekick Batch 6a — pairing's *No network*, and a seventh state kind — 2026-09-20. Rows D61–D63
+
+Frames `34:11219` and `34:12152`. **Neither rendered** — the Figma MCP is not connected on this
+account. Built to handoff §6 *Pair a phone*, which specifies this state in one sentence: *"No
+network replaces the code with an explanation, because a code carries an address and there is none
+to put in one."*
+
+| Row | Figma / handoff | Built | Why |
+|---|---|---|---|
+| **D61** | Component 11 draws **six** state kinds (`28:1226`) | **Seven.** `blocked` added to `stateBlock.ts` | *A precondition this end owes is missing, and the user can supply it* is not one of the six wearing another name. `permission` is the **phone's** refusal, `wall` is the **platform's**, `error` is an operation that ran and failed; this is one that cannot start. It takes `permission`'s amber (a real limitation) and keeps an action (unlike a `wall`, there is one). The alternative was the pair card inventing its own surface — the seventh vocabulary component 11 exists to prevent |
+| **D62** | The explanation replaces the code | Built, and **the card's title changes with it** | *"Scan this with your phone"* over an explanation of why there is nothing to scan is the status island's two-writers failure inside one card: each half current, the pair contradicting. The page subtitle moved for the same reason — `navModel.pairingSubtitle`, one writer on `#page-sub` |
+| **D63** | Three inline notices, each drawn its own way | **One `.pair-notice` with a `data-tone`** | Rename, refusal and sighting are three facts of the same weight and carried three paddings, two radii and two type sizes on one card. Ids and `role="status"` unchanged |
+
+**The steps column is part of this departure and is the part worth reading.** The handoff draws four
+steps and says nothing about a Mac with no network. *Waiting for a scan* beside a card explaining
+that nothing can be scanned is two surfaces two inches apart disagreeing, so the first step reads
+*Waiting for a network* — **and it stays `active`, never a fifth failed state**: nothing has failed,
+and the module's standing rule is unchanged and still tested, so a later fact (a sighting, a
+handshake, a pairing) outranks a stale reachability reading in both directions.
+

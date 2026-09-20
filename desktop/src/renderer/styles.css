@@ -76,6 +76,19 @@
 /* Handoff §6, Pair a phone: a centred 560 card. The four-step column beside the code is Batch 5. */
 .pair-card { max-width: 560px; margin: 0 auto; }
 .pair-card #qr { display: block; margin-inline: auto; }
+/*
+ * No `[hidden]` companion, and that is a reading rather than an oversight. `display: block` on an
+ * id would beat the user agent's `[hidden] { display: none }` — that much is true, and it is why
+ * this file carries eight such companions — but `shell.css` line 41 already declares
+ * `[hidden] { display: none !important }` globally, for the palette backdrop that did exactly
+ * this. An `!important` author declaration wins, so `qr.hidden = true` genuinely hides the code.
+ *
+ * The companion was written here first, on the assumption it was load-bearing.
+ * `scripts/pair-nonetwork-probe.mjs` was run with it removed and read `qrDisplay: "none"`
+ * regardless: the control refuted the hypothesis, and the line came out. The eight companions in
+ * this file predate that global rule and are now redundant too; they are left alone rather than
+ * swept, because that is a change to eight panes made on one pane's reading.
+ */
 
 /* ---- Controls ---------------------------------------------------------------------------------
  * The design's control surface: 32px tall, 10px radius, --control fill, hairline border. Nothing
@@ -4790,18 +4803,51 @@ img#qr {
 }
 
 
-/* F7 — the phone refused a pairing. Warning, not destructive: see index.html for why. */
-.pair-rename {
-  margin: 0 0 16px;
-  padding: 12px 14px;
-  border-radius: var(--radius-tile);
-  background: rgba(var(--overlay-rgb), 0.04);
+/*
+ * ---- The pair card's inline notices ------------------------------------------------------------
+ *
+ * Three things speak inline on this card — a rename that owes a re-pair, a refusal from the phone,
+ * and a sighting — and until now each carried its own geometry: `12px 14px` on a `--radius-tile`
+ * at 13.5px, against `--space-5 --space-6` on a `--radius-control` at 13px. One card, three
+ * paddings, three radii, two type sizes, for three facts of exactly the same weight. That is the
+ * five-vocabularies problem `stateBlock.ts` settled for the panes, surviving on the one screen a
+ * stranger sees first.
+ *
+ * One shape, and the only thing that varies is tone, because the only thing that differs is what
+ * kind of fact it is:
+ *   neutral — nothing has gone wrong (a rename)
+ *   warning — a refusal. Never `--destructive`: a phone that has not paired yet has not failed
+ *   live    — the thing going right (a scan)
+ */
+.pair-notice {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-control);
   border: 1px solid var(--hairline);
+  background: rgba(var(--overlay-rgb), 0.04);
   text-align: left;
   font-size: 13.5px;
   line-height: 1.45;
   color: var(--text-body);
 }
+.pair-notice[data-tone='warning'] {
+  background: rgba(var(--tint-amber-rgb), 0.10);
+  border-color: rgba(var(--tint-amber-rgb), 0.30);
+}
+.pair-notice[data-tone='live'] {
+  background: rgba(var(--tint-green-rgb), 0.08);
+  border-color: rgba(var(--tint-green-rgb), 0.22);
+  color: var(--live);
+}
+/* The sighting sits under the plate rather than above it, so it keeps its top margin. */
+.pair-notice.after-plate { margin: var(--space-5) 0 0; }
+.pair-notice-headline {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.pair-notice-body { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--text-body); }
 
 /* ---- Pairing: the code, the four steps, and the last resort ------------------------------------
    Handoff §6: a centred 560 card with the code, the four steps beside it, and *Not finding it?*
@@ -4869,40 +4915,23 @@ img#qr {
 .pair-help-row { display: flex; gap: var(--space-3); margin-top: var(--space-5); }
 .pair-help-row input { flex: 1; min-width: 0; font-family: var(--font-mono); }
 
-.pair-rejection {
-  margin: 0 0 16px;
-  padding: 12px 14px;
-  border-radius: var(--radius-tile);
-  background: rgba(var(--tint-amber-rgb), 0.10);
-  border: 1px solid rgba(var(--tint-amber-rgb), 0.30);
-  text-align: left;
-}
-
 /*
- * F6 / P3 — a phone has scanned this code. `--live`, not `--warning`: a scan is the thing going
- * right, and the pairing screen's only other inline block is a refusal.
+ * `34:12152` — the explanation that takes the code's place. It occupies the plate rather than
+ * sitting above it, so the card has one subject at a time: `#qr` is 320 square and this holds that
+ * ground, which also stops the card resizing as the network comes and goes.
  */
-.pair-scanned {
-  margin: var(--space-5) 0 0;
-  padding: var(--space-5) var(--space-6);
-  border-radius: var(--radius-control);
-  background: rgba(var(--tint-green-rgb), 0.08);
-  border: 1px solid rgba(var(--tint-green-rgb), 0.22);
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--live);
-}
-.pair-rejection .pair-rejection-headline {
-  margin: 0 0 4px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.pair-rejection .pair-rejection-body {
-  margin: 0;
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: var(--text-body);
+.pair-offline {
+  display: grid;
+  place-items: center;
+  /*
+   * No ground and no border of its own. The first version gave this the QR plate's 320px square
+   * with a surface on it, so the card drew a box, inside a box, inside a card — three borders
+   * around four lines of text, and most of the square empty. The state block already carries its
+   * own surface; this is only the slot it sits in, and it keeps enough height that the card does
+   * not jump as the network comes and goes.
+   */
+  min-height: 220px;
+  margin-inline: auto;
 }
 
 /*

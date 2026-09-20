@@ -14,6 +14,15 @@
  * | `permission` | the phone's own reason, and where to fix it | one, only if the user can act |
  * | `error` | what happened, what was *not* changed, the machine code in mono | retry |
  * | `wall` | the platform forbids it | **never** — there is nothing to retry |
+ * | `blocked` | a precondition **this end** owes is missing, and the user can supply it | one |
+ *
+ * `blocked` is the seventh and was added for pairing's *No network* (`34:12152`). It is not one of
+ * the six wearing a different name: `permission` is the *phone's* refusal, `wall` is the
+ * *platform's*, `error` is an operation that ran and failed — and this is an operation that cannot
+ * start because something on this Mac is absent. Drawing it as `permission` would tell a person
+ * their phone had refused something; as `error`, that something broke; as `empty`, that nothing had
+ * arrived yet. It takes `permission`'s amber, because it is a real limitation, and it keeps an
+ * action, because unlike a `wall` there is one.
  *
  * The wall rule is enforced here rather than trusted to callers: an action handed to a `wall` is
  * dropped and the block records that it was (`data-refused-action`), so the test can see the refusal
@@ -25,7 +34,7 @@
  * Plain script, like `icons.ts`: no `export`, the builders hung on `globalThis` at the foot.
  */
 
-type StateKind = 'empty' | 'unavailable' | 'loading' | 'permission' | 'error' | 'wall';
+type StateKind = 'empty' | 'unavailable' | 'loading' | 'permission' | 'error' | 'wall' | 'blocked';
 
 interface StateAction {
   label: string;
@@ -56,6 +65,7 @@ const STATE_ICONS: Record<StateKind, string> = {
   permission: 'lock',
   error: 'x-circle',
   wall: 'alert',
+  blocked: 'link-minus',
 };
 
 /** Which kinds may carry an action at all. `wall` is the one that may not, ever. */
@@ -66,7 +76,7 @@ function stateAllowsAction(kind: StateKind): boolean {
 /** The tone a kind draws in. Pure, so the test asserts the rule rather than a class name. */
 function stateTone(kind: StateKind): 'neutral' | 'warning' | 'danger' {
   if (kind === 'error') return 'danger';
-  if (kind === 'permission' || kind === 'wall') return 'warning';
+  if (kind === 'permission' || kind === 'wall' || kind === 'blocked') return 'warning';
   return 'neutral';
 }
 

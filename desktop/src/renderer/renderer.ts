@@ -88,7 +88,9 @@ interface ConnectBridge {
     reason?: string;
   }>;
   activityExportCsv(): Promise<{ ok: boolean; data?: { path: string }; reason?: string }>;
-  pairingQr(rotate?: boolean): Promise<{ payload: { host: string; name: string }; dataUrl: string }>;
+  pairingQr(
+    rotate?: boolean,
+  ): Promise<{ payload: { host: string; name: string }; dataUrl: string; reachable: boolean }>;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   retryNow(): Promise<void>;
@@ -594,14 +596,54 @@ function describe(status: RendererStatus): string {
 /** The code on screen, for the P5 tick. Held because the tick has no other source for it. */
 let shownCode: { name: string; host: string } | null = null;
 
+/** Whether the last `pairing-qr` said a code could be scanned. Read by the steps column too. */
+let codeIsScannable = true;
+
 async function showQr(rotate = false): Promise<void> {
-  const { payload, dataUrl } = await connect.pairingQr(rotate);
+  const { payload, dataUrl, reachable } = await connect.pairingQr(rotate);
   el<HTMLImageElement>('qr').src = dataUrl;
   shownCode = { name: payload.name, host: payload.host };
-  await drawCodeState();
+  applyPairShape(reachable);
+  if (reachable) await drawCodeState();
   // A new code invalidates a sighting of the old one. The main process replaces its watch for the
   // same reason; this is the screen's half of it.
   el('pair-scanned').hidden = true;
+}
+
+/**
+ * `34:12152` — the card and the steps column, off **one** fact, in one call.
+ *
+ * They are two surfaces two inches apart on one screen, and they were briefly two writers reading
+ * the same variable from two call sites. That is the status island's failure in miniature, and the
+ * thing that makes it a rule rather than a near miss is that a probe caught it: driving the card
+ * alone left the column reading *Waiting for a scan* beside a card explaining there was nothing to
+ * scan, and the screen looked entirely plausible.
+ *
+ * It is also what a probe can call. `pairCard.ts` covers the card and `pairSteps.ts` covers the
+ * column; only this says the two move together, and only in a browser is that observable.
+ */
+function applyPairShape(reachable: boolean): void {
+  codeIsScannable = reachable;
+  // The header is the third surface on this screen and it was the last to be told. Its sentence is
+  // the shell's to write; this only hands over the fact.
+  shell.setPairReachable(reachable);
+  /*
+   * The action re-runs `showQr` without rotating — re-reading the interfaces is the whole of
+   * "check again", and rotating would invalidate a code somebody may already be looking at.
+   */
+  applyPairCard(
+    {
+      title: el('pair-title'),
+      sub: el('pair-sub'),
+      qr: el('qr'),
+      note: el('qr-note'),
+      offline: el('pair-offline'),
+      button: el('new-qr'),
+    },
+    pairCardView(reachable),
+    () => void showQr(),
+  );
+  drawPairSteps();
 }
 
 /**
@@ -729,6 +771,7 @@ function drawPairSteps(): void {
     paired: status?.paired ?? false,
     fingerprint: macFingerprint,
     address: status?.address ?? null,
+    scannable: codeIsScannable,
   });
   host.replaceChildren();
   const list = document.createElement('ol');
@@ -843,10 +886,10 @@ connect.onPairRejected((info) => {
   const box = el('pair-rejection');
   box.replaceChildren();
   const headline = document.createElement('p');
-  headline.className = 'pair-rejection-headline';
+  headline.className = 'pair-notice-headline';
   headline.textContent = info.headline;
   const body = document.createElement('p');
-  body.className = 'pair-rejection-body';
+  body.className = 'pair-notice-body';
   body.textContent = info.body;
   box.append(headline, body);
   box.hidden = false;

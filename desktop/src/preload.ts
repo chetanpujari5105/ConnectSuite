@@ -28,7 +28,9 @@ import type { FloatState } from './main/float';
  */
 contextBridge.exposeInMainWorld('connect', {
   status: (): Promise<ConnectionStatus | null> => ipcRenderer.invoke('status'),
-  pairingQr: (rotate?: boolean): Promise<{ payload: PairingQrPayload; dataUrl: string }> =>
+  pairingQr: (
+    rotate?: boolean,
+  ): Promise<{ payload: PairingQrPayload; dataUrl: string; reachable: boolean }> =>
     ipcRenderer.invoke('pairing-qr', rotate === true),
   connect: () => ipcRenderer.invoke('connect'),
   disconnect: () => ipcRenderer.invoke('disconnect'),

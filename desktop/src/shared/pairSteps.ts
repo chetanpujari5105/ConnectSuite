@@ -47,6 +47,11 @@ interface PairStepsInput {
   fingerprint?: string | null;
   /** Where the phone is, once there is a connection to name. */
   address?: string | null;
+  /**
+   * Whether a code can be scanned at all — false when this Mac has no address to put in one
+   * (`34:12152`). Defaults to true, so every existing caller reads exactly as it did.
+   */
+  scannable?: boolean;
 }
 
 const HANDSHAKING = new Set(['connecting', 'handshaking', 'pairing']);
@@ -58,11 +63,26 @@ function pairSteps(input: PairStepsInput): PairStep[] {
   const found = input.sighted || verifying || connected || input.paired;
   const verified = input.paired || connected;
 
+  /*
+   * With no network there is no code, so *Waiting for a scan* would be this column claiming a
+   * thing is in progress beside a card explaining that it cannot start — the status island's two
+   * writers, in two surfaces two inches apart, each current and the pair contradicting.
+   *
+   * It stays `active` rather than becoming a fifth, failed state: nothing has failed (handoff §6),
+   * and the step is still the one that is happening. Only what it is waiting *for* changes. A
+   * later fact still wins, in both directions — a Mac that regained its network between the read
+   * and the draw is `found`, and this never retracts that.
+   */
+  const blocked = input.scannable === false && !found;
   const scan: PairStep = {
     id: 'scan',
-    label: 'Waiting for a scan',
+    label: blocked ? 'Waiting for a network' : 'Waiting for a scan',
     state: found ? 'done' : 'active',
-    note: found ? null : 'Open Sidekick’s code on the phone and point the camera at it.',
+    note: found
+      ? null
+      : blocked
+        ? 'A code carries this Mac’s address, and there is none yet.'
+        : 'Open Sidekick’s code on the phone and point the camera at it.',
   };
 
   const foundStep: PairStep = {

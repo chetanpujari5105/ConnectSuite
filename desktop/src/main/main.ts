@@ -58,6 +58,7 @@ import { PhotosClient } from './photos';
 import { NotificationClient } from './notifications';
 import { NativeNotifier } from './nativeNotifier';
 import { pairRejectionCopy } from '../shared/pairRejection';
+import { localPairAddress } from '../shared/pairReach';
 import { RemoteClient } from './remote';
 import { CallClient } from './calls';
 import { SmsClient } from './sms';
@@ -623,12 +624,16 @@ function refreshTray(): void {
 
 /** The address the phone would see us on, for the QR payload. */
 function localAddress(): string {
-  for (const [, addresses] of Object.entries(networkInterfaces())) {
-    for (const address of addresses ?? []) {
-      if (address.family === 'IPv4' && !address.internal) return address.address;
-    }
-  }
-  return '0.0.0.0';
+  return localPairAddress(networkInterfaces()).address;
+}
+
+/**
+ * Whether a code built now could be scanned and acted on — i.e. whether this Mac has an address at
+ * all. Read here, beside the interfaces, rather than inferred in the renderer from the shape of a
+ * string: the process that enumerated them is the one that knows.
+ */
+function pairingReachable(): boolean {
+  return localPairAddress(networkInterfaces()).reachable;
 }
 
 /** Signature of every non-internal interface, so a Wi-Fi change can trigger an immediate retry. */
@@ -2646,9 +2651,12 @@ function stopPairIntentWatch(): void {
 
 ipcMain.handle('pairing-qr', async (_event, rotate?: boolean) => {
   if (!link) throw new Error('Link not ready');
+  const reachable = pairingReachable();
   const payload = armPairingCode(link, localAddress(), rotate === true);
   const dataUrl = await QRCode.toDataURL(JSON.stringify(payload), QR_OPTIONS);
-  log.info('pairing', `QR armed for ${payload.host}`);
+  // Both halves on one line, because a count of armed codes with no reachability beside it reads
+  // as whichever story the reader already believes — and for a whole phase it read as the good one.
+  log.info('pairing', `QR armed for ${payload.host} — scannable=${reachable}`);
   // A new code invalidates any sighting of the old one, so the watch is replaced rather than added
   // to: a phone that scanned the previous code is not a phone that has scanned this one.
   stopPairIntentWatch();
@@ -2657,7 +2665,7 @@ ipcMain.handle('pairing-qr', async (_event, rotate?: boolean) => {
       sendAll('pair-scanned', { deviceName: deviceName as string | null });
     });
   }
-  return { payload, dataUrl };
+  return { payload, dataUrl, reachable };
 });
 
 ipcMain.handle('connect', () => link?.start());

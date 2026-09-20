@@ -1,0 +1,113 @@
+/**
+ * The pairing card's two shapes — the code (`34:11219`) and *No network* (`34:12152`).
+ *
+ * ### Why this file exists rather than four lines in `renderer.ts`
+ *
+ * `renderer.ts` is reachable by no test, and this is defect 67's exact shape: a rule about **when**
+ * a screen changes, written where only a person looking at the screen can see it. The decision
+ * (`pairCardView`) and the write (`applyPairCard`) are both here so a test can drive the
+ * transition in both directions, which is the half that goes wrong — a screen that enters a state
+ * correctly and never leaves it looks perfect in every screenshot anybody takes of it.
+ *
+ * ### The card is not merely hidden in the second shape
+ *
+ * The handoff: *"No network replaces the code with an explanation, because a code carries an
+ * address and there is none to put in one."* So the title changes too. *"Scan this with your
+ * phone"* over an explanation of why there is nothing to scan is the status island's two-writers
+ * failure in one card: each half current, the pair contradicting.
+ *
+ * Plain script, like `stateBlock.ts`: no `export`, the bindings at the foot.
+ */
+
+interface PairCardView {
+  kind: 'code' | 'no-network';
+  /** The card's `h2`. One writer for both shapes, so the two cannot drift apart. */
+  title: string;
+  /** Whether the QR plate, its note and the standing instructions are on the card at all. */
+  showCode: boolean;
+  /**
+   * The label on the card's **one** control. In the code shape that is `#new-qr`; in the other it
+   * is the state block's own action, and `#new-qr` is not drawn at all — *Show a fresh code* over
+   * a card explaining there is no code is a button that would have to lie to be pressed.
+   */
+  action: string;
+  headline: string;
+  body: string;
+}
+
+const PAIR_CARD_CODE: PairCardView = {
+  kind: 'code',
+  title: 'Scan this with your phone',
+  showCode: true,
+  action: 'Show a fresh code',
+  headline: '',
+  body: '',
+};
+
+/**
+ * The words, and they are chosen to say what is true of **this Mac** rather than of the phone.
+ *
+ * A person on this screen with no network has done nothing wrong and their phone is not at fault;
+ * the sentence that would be easiest to write — *"couldn't reach your phone"* — is a claim this end
+ * cannot support, because it never looked for one.
+ */
+const PAIR_CARD_NO_NETWORK: PairCardView = {
+  kind: 'no-network',
+  title: 'This Mac is not on a network',
+  showCode: false,
+  action: 'Check again',
+  headline: 'There is no address to put in a code',
+  body:
+    'A pairing code carries the address your phone connects back to, and this Mac does not have ' +
+    'one yet. Join the Wi-Fi your phone is on — or turn on the phone’s hotspot and join that — ' +
+    'and the code appears here.',
+};
+
+function pairCardView(reachable: boolean): PairCardView {
+  return reachable ? PAIR_CARD_CODE : PAIR_CARD_NO_NETWORK;
+}
+
+interface PairCardNodes {
+  title: HTMLElement;
+  /** The standing *open ConnectSuite on the phone…* paragraph. Rich markup, so it is hidden, never rewritten. */
+  sub: HTMLElement;
+  qr: HTMLElement;
+  note: HTMLElement;
+  /** Where the explanation is drawn. Empty and hidden in the code shape. */
+  offline: HTMLElement;
+  button: HTMLElement;
+}
+
+/**
+ * Applies a view to the card. Every node is written on every call — including the ones the shape
+ * does not use — because a write that only ever turns things *off* is a state a screen can enter
+ * and not leave.
+ */
+function applyPairCard(nodes: PairCardNodes, view: PairCardView, recheck: () => void): void {
+  nodes.title.textContent = view.title;
+  nodes.sub.hidden = !view.showCode;
+  nodes.qr.hidden = !view.showCode;
+  nodes.note.hidden = !view.showCode;
+  nodes.button.hidden = !view.showCode;
+  if (view.showCode) nodes.button.textContent = view.action;
+
+  nodes.offline.replaceChildren();
+  nodes.offline.hidden = view.showCode;
+  if (!view.showCode) {
+    nodes.offline.appendChild(
+      stateBlock({
+        kind: 'blocked',
+        headline: view.headline,
+        body: view.body,
+        action: { label: view.action, run: recheck },
+        compact: true,
+      }),
+    );
+  }
+}
+
+{
+  const g = globalThis as Record<string, unknown>;
+  g.pairCardView = pairCardView;
+  g.applyPairCard = applyPairCard;
+}

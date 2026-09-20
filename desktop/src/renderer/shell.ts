@@ -190,6 +190,12 @@ class ShellView {
    */
   private routeListeners: Array<(id: string) => void> = [];
   private status: ShellStatus | null = null;
+  /**
+   * Whether a pairing code can exist — `renderer.ts` tells the shell each time it draws the card,
+   * so the header and the card move off one fact. Defaults true: before the first read there is no
+   * reason to tell a person their Mac has no network.
+   */
+  private pairReachable = true;
   private paletteIndex = 0;
   /** What had focus when the palette opened — the Search button, or whatever ⌘K was pressed over. */
   private paletteReturnFocus: HTMLElement | null = null;
@@ -415,6 +421,27 @@ class ShellView {
    * phone this Mac has never met — Overview most of all, whose whole content is that phone. It
    * says so in the island rather than no-opping silently.
    */
+  /**
+   * Every page subtitle, in one place.
+   *
+   * Two of the twelve are facts rather than labels — Overview's is the link's tone and pairing's is
+   * whether a code can exist — and both were static `SCREENS` sentences that contradicted the pane
+   * beneath them. Routed through here so there is one writer of `#page-sub`: the alternative is a
+   * second caller assigning it from another source on another clock, which is the status island's
+   * defect and the reason that surface was rebuilt.
+   */
+  private subtitleFor(id: string, fallback: string): string {
+    if (id === 'overview') return overviewSubtitle(toneOf(this.status));
+    if (id === 'pairing') return pairingSubtitle(this.pairReachable);
+    return fallback;
+  }
+
+  /** Told by `renderer.ts` whenever the pairing card changes shape. Redraws only if it is on screen. */
+  setPairReachable(reachable: boolean): void {
+    this.pairReachable = reachable;
+    if (this.current === 'pairing') $('page-sub').textContent = this.subtitleFor('pairing', '');
+  }
+
   route(id: string, settingsPane?: string): void {
     const blocked = this.status
       ? (this.status.pairing ? this.status.pairing.kind !== 'paired' : !this.status.paired)
@@ -446,7 +473,7 @@ class ShellView {
     // Overview's title is the only one that depends on when it is drawn, so it is computed at
     // route time rather than read out of SCREENS. See `overviewTitle` for why it carries no name.
     $('page-title').textContent = id === 'overview' ? overviewTitle() : screen.title;
-    $('page-sub').textContent = id === 'overview' ? overviewSubtitle(toneOf(this.status)) : screen.subtitle;
+    $('page-sub').textContent = this.subtitleFor(id, screen.subtitle);
     document.querySelector('.app-window')!.setAttribute('data-screen', id);
 
     if (screen.state === 'unbuilt') this.drawUnbuilt(screen);
@@ -903,7 +930,7 @@ class ShellView {
     // A round trip is a reading about a live link. Kept after a disconnect it is a stale number in
     // the present tense beside a red chip, so anything but `live` draws the dash.
     const latency = tone !== 'live' || status?.rttMs === undefined ? '—' : `${status.rttMs} ms`;
-    if (this.current === 'overview') $('page-sub').textContent = overviewSubtitle(tone);
+    if (this.current === 'overview') $('page-sub').textContent = this.subtitleFor('overview', '');
 
     $('device-name').textContent = name;
     $('device-state').textContent = label;

@@ -67,3 +67,39 @@ test('the found step names what it knows, and says something when it knows nothi
     'a sighting with no name printed nothing at all',
   );
 });
+
+/**
+ * `34:12152`. With no network the card replaces the code with an explanation, and this column sits
+ * two inches from it — *Waiting for a scan* there would be the two-writers failure across two
+ * surfaces: each sentence current, the pair contradicting.
+ */
+test('with nothing to scan, the first step says what it is actually waiting for', () => {
+  const blocked = pairSteps({ sighted: false, paired: false, scannable: false });
+  assert.equal(blocked[0]!.label, 'Waiting for a network');
+  assert.doesNotMatch(blocked[0]!.label, /scan/i);
+  assert.match(blocked[0]!.note ?? '', /address/);
+  // Still the step that is happening. Nothing has failed, and there is no failed state to reach.
+  assert.equal(blocked[0]!.state, 'active');
+  assert.deepEqual(
+    blocked.map((s) => s.state),
+    ['active', 'waiting', 'waiting', 'waiting'],
+  );
+});
+
+test('control: the same input with a network reads the way it always did', () => {
+  const normal = pairSteps({ sighted: false, paired: false, scannable: true });
+  assert.equal(normal[0]!.label, 'Waiting for a scan');
+  assert.deepEqual(normal, pairSteps({ sighted: false, paired: false }), 'the default changed');
+});
+
+/**
+ * The module's standing rule, which this fact must not break: a later fact advances the earlier
+ * steps and an earlier absence never retracts a later one. A Mac that regained its network between
+ * the reachability read and the draw is `found`, and a stale `scannable: false` may not undo that.
+ */
+test('a later fact still wins over a stale reachability reading', () => {
+  const sighted = pairSteps({ sighted: true, paired: false, scannable: false });
+  assert.equal(sighted[0]!.state, 'done');
+  assert.equal(sighted[0]!.label, 'Waiting for a scan', 'a done step was relabelled by a stale fact');
+  assert.equal(pairSteps({ sighted: false, paired: true, scannable: false })[3]!.state, 'done');
+});

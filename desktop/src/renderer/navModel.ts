@@ -517,6 +517,21 @@ function overviewSubtitle(tone: string): string {
 }
 
 /**
+ * Pairing's subtitle, from whether a code can exist at all (`34:12152`).
+ *
+ * The same defect `overviewSubtitle` above was written for, on the screen where it is worse: the
+ * static `SCREENS` sentence is *"Scan this code once. After that the Mac reconnects on its own."*,
+ * and with no network it sat two lines above a card explaining that there is nothing to scan. A
+ * header that never asks the thing it describes will contradict it eventually, and this is the
+ * first screen a stranger sees.
+ */
+function pairingSubtitle(reachable: boolean): string {
+  return reachable
+    ? 'Scan this code once. After that the Mac reconnects on its own.'
+    : 'Join a network and the code appears here.';
+}
+
+/**
  * Up to two initials for an avatar, from whatever the machine calls itself.
  *
  * Deliberately conservative about what counts as a word. `Chetans-MacBook-Pro` and
@@ -740,6 +755,7 @@ if (typeof module !== 'undefined') {
     initialsFor,
     overviewTitle,
     overviewSubtitle,
+    pairingSubtitle,
     paletteResults,
     screenById,
     pillOffsetFor,

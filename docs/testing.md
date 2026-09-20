@@ -21269,3 +21269,113 @@ nothing was playing on the phone and a session cannot be made to exist from this
 constructed state — so what is proven is the correlation and the drawing, not that `remote.state`
 arrives in this shape on hardware. That is the same gap the implementation plan's §6 lists as
 needing a phone with something playing.
+
+## Sidekick Batch 6a — pairing's *No network*, and the code it used to draw instead — 2026-09-20
+
+Frames `34:11219` (Ready) and `34:12152` (No network). **Neither rendered** — the Figma MCP is not
+connected on this account, so both are *built to the handoff*, which is the weaker claim and is what
+every row below says.
+
+### Defect 125 — with no network the pairing screen drew a QR code of `0.0.0.0`
+
+`localAddress()` walked `os.networkInterfaces()` for a non-internal IPv4 address and, finding none,
+returned the string `'0.0.0.0'`. That value went into the pairing payload, was encoded into a real
+QR image, and was drawn under *"Scan this with your phone"* beside `<name> at 0.0.0.0 — valid while
+this code is on screen.` `0.0.0.0` is the unspecified address; nothing can connect to it.
+
+**Every layer was truthful about a different thing.** The QR encoded the payload it was given, the
+payload carried the address the function returned, and the function returned the platform's value
+for *no address at all*. `grep` for the literal found it in **one** place in the whole desktop tree —
+the fallback — and **no** reader anywhere. It is the silent-no-op shape decision 6 rules out: a
+person photographs a code and nothing ever happens, with nothing on screen able to say why.
+
+The handoff already had the answer drawn: *"No network replaces the code with an explanation,
+because a code carries an address and there is none to put in one."*
+
+- `shared/pairReach.ts` — `localPairAddress(interfaces)` returns `{ address, reachable }`; `main.ts`
+  is a one-line caller and passes `reachable` back with the payload. **The renderer is never asked
+  to infer it from the string**: a `host === '0.0.0.0'` test in the renderer would be two homes for
+  one rule in two files, and the process that enumerated the interfaces is the one that knows.
+- **Deliberately not claimed:** a link-local `169.254.x.x` reads **reachable**. A phone on the same
+  link self-assigns from the same range, so refusing it would be a guess dressed as a reading, and
+  wrong in the worse direction — refusing to draw a code that would have worked.
+- `pairReach.test.ts`, 7 tests. **Red-first:** the old behaviour (no address treated as usable) →
+  **3 red**; `family` compared only as the string `'IPv4'` (Node has reported it as `4`) → **1 red**.
+  Its last test runs the rule against this machine's **real** `networkInterfaces()`, because every
+  other case is a hand-built list and none of them asks whether the shape being read is the shape
+  that arrives.
+- `pairing` log line now carries both halves: `QR armed for <host> — scannable=<bool>`. A count of
+  armed codes with no reachability beside it read as the good story for a phase.
+
+### The card's two shapes, and the three surfaces that had to agree
+
+`renderer/pairCard.ts` holds the decision and the write; `applyPairShape(reachable)` in
+`renderer.ts` is the one call that moves **all three** surfaces — the card, the steps column and the
+page subtitle.
+
+- `pairCard.test.ts`, 5 tests through the DOM double. **Red-first, four mutations:** the QR drawn
+  anyway (the defect) → **2 red**; the explanation never cleared, so the state is one-way → **2
+  red**; the title still reads *scan* → **1 red**; both controls drawn at once → **1 red**.
+- **The transition is asserted in both directions over the same nodes.** A screen that enters a
+  state correctly and never leaves it looks perfect in every screenshot anybody takes of it.
+- `pairSteps.ts` gains `scannable`. *Waiting for a scan* beside a card saying there is nothing to
+  scan is the status island's two-writers failure across two surfaces two inches apart. **The
+  module's standing rule is preserved and tested**: a later fact still outranks a stale reachability
+  reading, so a sighted or paired Mac keeps its `done` step. Red-first: the column ignoring the
+  network → **1 red**; a stale reading retracting a later fact → **1 red**.
+- `navModel.pairingSubtitle` + `ShellView.subtitleFor` — the header read *"Scan this code once"*
+  two lines above the card. This is verbatim the defect `overviewSubtitle` was written for, on the
+  screen a stranger sees first. `#page-sub` now has **one writer**.
+
+### Measured in the browser, because the DOM double cannot see a cascade
+
+`scripts/pair-nonetwork-probe.mjs` drives `applyPairShape` — the production function, the real
+nodes, the real stylesheet — and reads **`getComputedStyle(...).display`**, not attributes. 9 of 9
+readings OK: the QR, its note and the standing copy are all `display: none`; the explanation is one
+`state-block` at `tone=warning`; one control, not two; the title no longer says *scan*; and the code
+comes back with its own title and button.
+
+**Two things this run is recorded for, and neither is the pass:**
+
+1. **A hypothesis of mine, refuted by its own control.** `.pair-card #qr { display: block }` is an
+   author `display` on an id and would beat the user agent's `[hidden]`, so a `[hidden]` companion
+   was added to `styles.css` and the comment beside it said the code would otherwise stay on screen.
+   The probe was then re-run **with the companion removed** and read `qrDisplay: "none"` anyway:
+   `shell.css` line 41 already declares `[hidden] { display: none !important }` globally, added for
+   the palette backdrop that did exactly this. The line came back out and the comment now records
+   the reading rather than the guess. *The control was only run because the answer had already come
+   back the way I wanted it.*
+2. **The probe's first run reported a failure that was its own.** It drove `applyPairCard` alone,
+   the steps column did not move, and *"the steps column agrees with the card"* read FAIL over
+   working code. `applyPairShape` exists because of that reading — one call, three surfaces.
+3. **One row reports `NO READING` rather than a verdict.** This Mac is paired, so step 1 is `done`
+   before reachability is consulted and the label is *correct* to stay put. Asserting the blocked
+   label here would assert that `pairSteps`' own rule is broken. The unpaired combination is
+   unreachable on any machine that can run the probe, and `pairSteps.test.ts` covers it.
+
+### Pairing's three inline notices were three geometries
+
+A rename, a refusal and a sighting — three facts of the same weight on one card, carrying
+`12px 14px` on `--radius-tile` at 13.5px, against `--space-5 --space-6` on `--radius-control` at
+13px. One `.pair-notice` with a `data-tone` of `neutral` / `warning` / `live`; the ids and the
+`role="status"` are unchanged, so nothing that reads them moved. This is the five-vocabularies
+problem `stateBlock.ts` settled for the panes, surviving on the one screen a stranger sees first.
+
+### Captures — `docs/evidence/sidekick-batch6/`
+
+| File | What |
+|---|---|
+| `pairing-code-1440x920.png` | the code shape, dark, at the demo size |
+| `pairing-code-light-1440x920.png` | the same in light |
+| `pairing-code-1100x700.png` | the same at the minimum supported size |
+| `pairing-no-network-SYNTHETIC-1440x920.png` | `34:12152`, dark |
+| `pairing-no-network-light-SYNTHETIC-1440x920.png` | `34:12152`, light |
+| `pairing-no-network-SYNTHETIC-1100x700.png` | `34:12152` at 1100 × 700 |
+
+**The no-network captures are SYNTHETIC and the label is load-bearing.** This Mac is on the network
+that carries the session being measured; the state is produced by calling `applyPairShape(false)`,
+and the card is put back from the live reachability afterwards. **In all six the status island and
+the sidebar read `Connected`, and the steps column reads all four `done`** — only the card was
+driven. The steps column at 1440 × 920 therefore shows a *paired* Mac beside a *no network* card, a
+combination that cannot occur; it is what the instrument could produce, not a state of the product.
+

@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch6/pairing-code-1440x920.png",
+  "screen": "pairing",
+  "takenAt": "2026-09-20T11:37:57.512Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 900,
+  "ready": null,
+  "prep": "applyPairShape(true);",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

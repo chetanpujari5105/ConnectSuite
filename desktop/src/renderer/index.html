@@ -159,8 +159,13 @@
             -->
             <section class="screen" data-screen="pairing" hidden>
               <div class="card primary pair-card">
-                <h2 class="card-title">Scan this with your phone</h2>
-                <p class="card-sub">
+                <!--
+                  Both shapes write this, from `pairCard.ts`. The text here is the code shape's and
+                  is overwritten on the first draw; it is not a second home for the string, it is
+                  what the card reads before the first `showQr()` resolves.
+                -->
+                <h2 class="card-title" id="pair-title">Scan this with your phone</h2>
+                <p class="card-sub" id="pair-sub">
                   Open ConnectSuite on the phone, go to the <strong>Mac</strong> tab, tap
                   <strong>Scan pairing code</strong>, and point it at this code. You only do this
                   once — after it, the Mac finds the phone on its own.
@@ -177,15 +182,22 @@
                   never on the strength of the old folder alone, which stays on disk for ever.
                   Neutral, not amber: nothing has failed, the phone simply has not met this key.
                 -->
-                <div class="pair-rename" id="pair-rename" role="status" hidden></div>
-                <div class="pair-rejection" id="pair-rejection" role="status" hidden></div>
+                <div class="pair-notice" data-tone="neutral" id="pair-rename" role="status" hidden></div>
+                <div class="pair-notice" data-tone="warning" id="pair-rejection" role="status" hidden></div>
                 <!--
                   F6 / P3. Hidden until a phone actually publishes this Mac's fingerprint over
                   mDNS — a sighting is trustworthy, an absence is not, so there is no counterpart
                   saying "nobody has scanned this". `--live` rather than `--warning`: a scan is the
                   thing going right.
                 -->
-                <div class="pair-scanned" id="pair-scanned" role="status" hidden></div>
+                <div class="pair-notice after-plate" data-tone="live" id="pair-scanned" role="status" hidden></div>
+                <!--
+                  `34:12152`. A code carries the address the phone connects back to; with no
+                  network there is none, and this Mac used to encode `0.0.0.0` into a real QR and
+                  draw it under "scan this". The explanation takes the plate's place — see
+                  `shared/pairReach.ts` for what was actually wrong.
+                -->
+                <div class="pair-offline" id="pair-offline" hidden></div>
                 <img id="qr" alt="Pairing QR code" width="320" height="320" />
                 <!--
                   P5. Four states, and `stale` is the one that could not be drawn before
@@ -892,6 +904,7 @@
     <!-- P5. Before renderer.js, which ticks the pairing screen against it. -->
     <script src="../shared/pairingCode.js"></script>
     <script src="../shared/pairSteps.js"></script>
+    <script src="pairCard.js"></script>
     <script src="clipboard.js"></script>
     <script src="../shared/activity.js"></script>
     <script src="activity.js"></script>
