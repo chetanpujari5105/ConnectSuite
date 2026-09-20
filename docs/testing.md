@@ -21609,3 +21609,72 @@ New-conversation both labelled `role=dialog`; toast `role=status` / `aria-live=p
 **Nothing in this batch is within reach of pairing, identity, TLS, certificates or the trust
 store** — the changed files are two renderer rules, one pane, two tests and two instruments.
 
+## Sidekick Batch 6d — Files' and Photos' five uncaptured states, and what capturing them found
+
+Inventory §5 row 4: *Sending*, *no folders* and *couldn't open* on Files, *partial* and *permission*
+on Photos, none re-captured after the surface change. All five now exist in
+`docs/evidence/sidekick-batch6/`.
+
+### The states are driven through the production path, not painted
+
+`scripts/files-photos-states.mjs` replaces each view's **bridge** — the async functions it calls —
+and then calls the view's own public `refresh()`. The code that runs is the real failure path, the
+same one the pane takes when the phone actually refuses. *Sending* is driven through `sendFiles()`
+with a bridge that stays **in flight**, so the pane sits in the state a transfer occupies rather
+than in a rendering of what that state would look like.
+
+**TypeScript's `private` is erased at runtime**, so setting `view.failure` and calling `render()`
+was available and is deliberately ruled out: it photographs a field, not a state. The one place the
+script does write a private field is the *cleanup* — `lastPush` is not cleared by `refresh()`, so
+without it the pane would be left showing a sentence about a transfer that never happened.
+
+### Three faults in the script, and the second one poisoned the next run
+
+| | What happened |
+|---|---|
+| 1 | `--prep` with a top-level `await` is a syntax error outside an async function. The prep without one worked, so only the awaiting captures failed |
+| 2 | **A failed shot exited the process before the restore, leaving the app holding an invented permission refusal.** The *next* run's partial-notice capture then could not draw — a failure outranks a partial notice — and refused with `--prep did not land`, for a reason with nothing to do with the prep |
+| 3 | *Sending* ran **after** a capture that faked `fs.roots` to empty, so `selectedRoot` was null, `sendFiles` returned immediately, and the prep did nothing while reporting nothing |
+
+The second is the one worth the entry. A probe that edits the thing it measures is a known fault;
+one that edits it *for the next run* is worse, because by then nothing connects the symptom to the
+cause. `restoreLive()` is called **before** the run as well as after it, and the shots are wrapped
+so the restore happens on a failure too. The control is at both ends: **152 albums before, 152
+after**.
+
+### Defect-shaped finding: seven state vocabularies, not one
+
+`docs/design-departures.md`'s Batch 4a section is headed **"One vocabulary for states"**. One
+private vocabulary was deleted — Notifications' — and that sentence is true. **Six survive**,
+counted in `styles.css`: `files-state*` (16 rules), `apps-banner*` (6), `photos-banner*` (5),
+`activity-state*` (4), `files-banner*` (2), `call-state` (1).
+
+They are not near-duplicates. Measured as computed style on the same fact, component 11's `error`
+is transparent, centred, `0px` radius, `24px` padding, 600/15px in `#F2F3F5`; Files' M4 card is
+`rgba(255,92,92,.14)`, left-aligned, `14px` radius, `14px` padding, 500/13px in `#FF5C5C`.
+
+**Two of the five captures show both at once**, which is what turns this from a code observation
+into a visible defect: `files-couldnt-open` has the red left-aligned card in one column and a
+centred `state-block` in the other; `photos-permission` has the amber bar above the same centred
+block. One pane, one screenshot, two languages for *there is nothing here*.
+
+**Not converted in this batch, and the reason is a boundary rather than a budget.** Component 11's
+default is specified *centred in a pane-sized region*; all six of these live in a narrow column or
+a full-width bar. `stateBlock` has a `compact` variant for that case and **`compact` has no Figma
+frame**, so choosing it — and choosing which treatment wins in a column — is inventing design
+rather than matching it. D67 records the scope: six vocabularies, 34 CSS rules, four panes.
+
+### Captures
+
+| File | State | Frame |
+|---|---|---|
+| `photos-partial-SYNTHETIC-1440x920.png` | thumbnails only | `31:3704` |
+| `photos-permission-SYNTHETIC-1440x920.png` | permission refused | `31:3956` |
+| `files-sending-SYNTHETIC-1440x920.png` | a transfer in flight | `31:3175` |
+| `files-no-folders-SYNTHETIC-1440x920.png` | nothing shared | `31:2819` |
+| `files-couldnt-open-SYNTHETIC-1440x920.png` | `TARGET_STALE`, with Try again | `31:2985` |
+
+All five are **SYNTHETIC** and say so in the filename. The status island and the sidebar read
+`Connected` in every one, because only the pane was driven. No frame was rendered from Figma — the
+MCP is still not connected on this account — so all five are *built to the handoff*.
+

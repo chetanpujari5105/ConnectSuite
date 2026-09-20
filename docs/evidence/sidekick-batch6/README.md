@@ -54,3 +54,31 @@ blurred under reduced transparency and **0** still transitioning under reduced m
 translucent at rest. It is not a file here because the link went down before one could be written,
 and re-pairing is a scan on the owner's phone and their trust store.
 
+---
+
+# Batch 6d — Files' and Photos' five uncaptured states
+
+| File | State | Frame |
+|---|---|---|
+| `photos-partial-SYNTHETIC-1440x920.png` | thumbnails only | `31:3704` |
+| `photos-permission-SYNTHETIC-1440x920.png` | permission refused | `31:3956` |
+| `files-sending-SYNTHETIC-1440x920.png` | a transfer in flight | `31:3175` |
+| `files-no-folders-SYNTHETIC-1440x920.png` | nothing shared | `31:2819` |
+| `files-couldnt-open-SYNTHETIC-1440x920.png` | `TARGET_STALE`, with Try again | `31:2985` |
+
+Produced by `scripts/files-photos-states.mjs`, which replaces each view's **bridge** and calls the
+view's own `refresh()` — so the code that ran is the production failure path, not a painting of it.
+*Sending* is a bridge held **in flight**, so the pane sits in the state a transfer occupies.
+
+**All five are SYNTHETIC and only the pane was driven**: the status island and the sidebar read
+`Connected` in every one. No frame was rendered from Figma, so all five are *built to the handoff*.
+The control is at both ends of the run — **152 albums before, 152 after**.
+
+## Two of these images are the evidence for D67
+
+`files-couldnt-open` draws the red, left-aligned, 14px-radius `files-state-card` in one column and
+a centred, transparent, 24px-padded `state-block` in the other. `photos-permission` draws the amber
+`photos-banner` above the same centred block. **One pane, one screenshot, two vocabularies for
+"there is nothing here"** — seven live in the app, and `docs/design-departures.md`'s D67 counts
+them.
+

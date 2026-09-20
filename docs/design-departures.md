@@ -1164,6 +1164,14 @@ component 12's banner; a `wall` is refused an action in code, not by convention.
 private `stateBlock` (one of the five vocabularies `docs/empty-and-failure-states.md` counted) is
 deleted and its two call sites use the shared one.
 
+> **This heading claims more than the paragraph under it delivers, and the correction is 2026-09-20.**
+> One private vocabulary was deleted. **Six survive** — counted in `styles.css`, not recalled:
+> `files-state*` (16 rules), `apps-banner*` (6), `photos-banner*` (5), `activity-state*` (4),
+> `files-banner*` (2), `call-state` (1). The sentence about Notifications is true; the heading over
+> it reads as the general claim and is not one. See D67 below for the measurement and what it costs.
+> This is the *true sentence about the wrong scope* shape `CLAUDE.md` records — nobody checking it
+> would find it false, because the mechanism it describes is real.
+
 ## Sidekick Batch 4b — Calls — 2026-09-19. Rows D37–D41
 
 Frames `34:7045`–`34:7907` were **not rendered** (Figma MCP limit); built to handoff §6 Calls and the
@@ -1334,4 +1342,47 @@ handoff states it as a hard requirement — *"never leave a browser/system defau
 the browser: **816 of 816** visible, enabled controls across twelve routes, against a control of
 **0 of 816** outlined at rest. A rule in a stylesheet is not a ring on a control, and until this
 sweep nothing in the repo had ever checked the second thing.
+
+## Sidekick Batch 6d — the state vocabulary, counted — 2026-09-20. Row D67
+
+| Row | Figma / handoff | Built | Why |
+|---|---|---|---|
+| **D67** | Component 11 (`28:1226`) is **the** state component | **Seven vocabularies are live**: the shared `state-block`, and six pane-private ones | Recorded rather than converted, because the choice between them is a design decision this pass may not make — see below |
+
+**The measurement, from `styles.css` rather than from memory:**
+
+| Vocabulary | Rules | Where |
+|---|---|---|
+| `state-block` (component 11) | shared | Messages, Notifications, Calls, Files, Photos, pairing |
+| `files-state*` | **16** | Files' pane-level M1–M5 card |
+| `apps-banner*` | 6 | Apps |
+| `photos-banner*` | 5 | Photos' top banner |
+| `activity-state*` | 4 | Activity |
+| `files-banner*` | 2 | Files |
+| `call-state` | 1 | Calls |
+
+**They do not merely differ, they are unrelated**, measured as computed style on the same fact —
+an error:
+
+| | component 11 `error` | Files' own M4 card |
+|---|---|---|
+| ground | transparent | `rgba(255, 92, 92, 0.14)` |
+| border | `#F2F3F5` | `rgba(255, 92, 92, 0.34)` |
+| radius | `0px` | `14px` |
+| padding | `24px` | `14px` |
+| alignment | centre | start |
+| headline | 600 15px, `#F2F3F5` | 500 13px, `#FF5C5C` |
+
+**And two panes draw both at once, which is what makes this visible rather than theoretical.** In
+`files-couldnt-open-SYNTHETIC-1440x920.png` the left column carries the red left-aligned M4 card
+and the right column carries a centred `state-block` — one pane, one screenshot, two languages for
+*"there is nothing here"*. `photos-permission-SYNTHETIC-1440x920.png` is the same picture with an
+amber bar.
+
+**Why it is recorded and not converted in this batch.** Component 11's default sits *centred in a
+pane-sized region*; these six all live in a narrow column or a full-width bar. `stateBlock` has a
+`compact` variant for exactly that, and **`compact` has no Figma frame** — so picking it, and
+picking which of the two treatments wins in a column, is inventing design rather than matching it.
+That is the designer's hour, and it is now the single largest coherence item left: **six
+vocabularies, 34 CSS rules, four panes.**
 
