@@ -489,10 +489,37 @@ export async function openProbe({ port = 9222, endpoint = 'http://localhost', us
    * transport**, and widening this into a general escape hatch would defeat it. The two things
    * built on it are named, and a third needs a reason written down here first.
    */
+  /**
+   * How long one CDP command may take before the run gives up and says which one.
+   *
+   * There is no such thing as a command that legitimately never answers, and a promise that never
+   * settles is the worst possible failure for an instrument: the process hangs, node prints
+   * `Detected unsettled top-level await` with a line number in the *caller*, and the reading that
+   * was in flight is neither taken nor reported. It happened twice — a `DOM.querySelectorAll` over
+   * a large tree after an earlier run had left the `DOM` and `CSS` domains in a state a new
+   * connection could not address. Restarting the app cleared it, which is not a fix: it is an
+   * unreported precondition on every probe in this directory.
+   *
+   * So a stuck command fails, by name, with what it was asked. Thirty seconds is far longer than
+   * any real CDP call and short enough that a person watching does not assume the app died.
+   */
+  const CDP_TIMEOUT_MS = 30_000;
+
   const send = (method, params) =>
     new Promise((resolve, reject) => {
       const id = ++nextId;
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(
+          new Error(
+            `probe: ${method} did not answer within ${CDP_TIMEOUT_MS}ms. The target's CDP domains ` +
+              'are per-target and outlive a websocket, so an interrupted run can leave one that a ' +
+              'new connection cannot address. Restart the app and re-run.',
+          ),
+        );
+      }, CDP_TIMEOUT_MS);
       pending.set(id, (msg) => {
+        clearTimeout(timer);
         if (msg.error) {
           reject(new Error(`probe: ${method} failed — ${msg.error.message ?? JSON.stringify(msg.error)}`));
           return;
@@ -598,22 +625,24 @@ export async function openProbe({ port = 9222, endpoint = 'http://localhost', us
      * Returns whatever `read` evaluates to, with the pseudo-class applied.
      */
     rawForcePseudo: async ({ selector, pseudo = 'focus-visible', read, maxNodes = 2000 }) => {
-      /*
-       * Disabled first, and this is not defensive noise.
-       *
-       * `DOM` and `CSS` are **per-target** domains: their enabled state and their node map outlive
-       * the websocket that turned them on. A run that was interrupted leaves them enabled with a
-       * node map a new connection cannot address, and then every `DOM.querySelectorAll` in the
-       * next run hangs — including on selectors matching seven elements. Measured: after an
-       * interrupted 152-node run, `.card` timed out; after restarting the app, the same call
-       * returned instantly. Disabling resets the map, so the reading does not depend on how the
-       * previous one ended.
-       */
-      await send('DOM.disable', {}).catch(() => {});
-      await send('CSS.disable', {}).catch(() => {});
       await send('DOM.enable', {});
       await send('CSS.enable', {});
-      const { root } = await send('DOM.getDocument', { depth: -1, pierce: false });
+      /*
+       * `depth: 0`, and the `-1` it replaces is the reason this hung twice.
+       *
+       * `DOM.getDocument` with `depth: -1` serialises the **whole tree** and sends it back over the
+       * websocket. On the Photos route that is thousands of nodes, and the command simply never
+       * answered — the run stalled with node printing `Detected unsettled top-level await` at a
+       * line number in the *caller*, which says nothing about what was stuck.
+       *
+       * It was first diagnosed as stale per-target domain state, on the strength of "restarting the
+       * app fixed it". That was a **correlation, not a mechanism**: a freshly restarted app has a
+       * small tree until its content arrives, so the restart was shrinking the dump rather than
+       * resetting anything. The 30s timeout on `send` is what named it — `DOM.getDocument did not
+       * answer` — and the depth is the fix. Nothing here needs a serialised tree; the root nodeId
+       * is all `DOM.querySelectorAll` takes, and it resolves the selector on the browser side.
+       */
+      const { root } = await send('DOM.getDocument', { depth: 0, pierce: false });
       const { nodeIds } = await send('DOM.querySelectorAll', { nodeId: root.nodeId, selector });
       /*
        * In parallel, and with a cap that is **reported**.
@@ -625,14 +654,52 @@ export async function openProbe({ port = 9222, endpoint = 'http://localhost', us
        * number.
        */
       const capped = nodeIds.slice(0, maxNodes);
-      const force = (classes) =>
-        Promise.all(capped.map((nodeId) => send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: classes })));
-      await force([pseudo]);
+      /*
+       * A node that has gone between the query and the force is a live app redrawing, not an
+       * instrument failure — the Photos and Apps panes fill in asynchronously while this runs, and
+       * `CSS.forcePseudoState` answers `Could not find node with given id` for a node that was
+       * there a moment ago. Tolerated **and counted**: `forced` is how many actually took the
+       * state, and a caller comparing it against `matched` can see when the tree moved underneath
+       * a reading rather than reading a number shaped by it. Any other error still throws.
+       */
+      let forcedCount = 0;
+      const force = async (classes) => {
+        const results = await Promise.allSettled(
+          capped.map((nodeId) => send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: classes })),
+        );
+        for (const result of results) {
+          if (result.status === 'fulfilled') continue;
+          if (!/Could not find node/i.test(String(result.reason))) throw result.reason;
+        }
+        return results.filter((r) => r.status === 'fulfilled').length;
+      };
+      forcedCount = await force([pseudo]);
+      /*
+       * The forced state is applied on the renderer's own schedule, so a `read` that calls
+       * `getComputedStyle` immediately can resolve against the pre-recalc style. Measured: three
+       * consecutive sweeps of the same unchanged app returned **825 of 825**, **824 of 825** and
+       * **553 of 825**, the last reading 272 photo tiles as unringed — the exact shape of a real
+       * defect, and not one.
+       *
+       * **The wait belongs in the caller's `read`, not here, and the reason is worth recording:**
+       * the obvious fix was two `requestAnimationFrame`s, and rAF **does not fire in an occluded
+       * window**. Electron behind another window simply never ran the callback, and the sweep hung
+       * — an instrument that works only while somebody is looking at the app. So this stays
+       * synchronous, and a caller whose reading is style-dependent settles on the quantity it is
+       * actually measuring. `shell-parity-sweep.mjs` is the worked example.
+       */
       try {
         return {
           count: capped.length,
           matched: nodeIds.length,
-          stopped: nodeIds.length > capped.length ? 'node cap' : 'all',
+          forced: forcedCount,
+          /** Named so a caller cannot read a partial force as a complete one. */
+          stopped:
+            nodeIds.length > capped.length
+              ? 'node cap'
+              : forcedCount < capped.length
+                ? 'tree moved'
+                : 'all',
           value: await evaluate(read),
         };
       } finally {

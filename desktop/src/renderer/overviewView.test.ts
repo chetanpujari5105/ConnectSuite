@@ -9,6 +9,7 @@ import './icons';
 import '../shared/activity';
 import '../shared/deviceVitals';
 import '../shared/securityCard';
+import './overflowTitle';
 import './overview';
 
 /**

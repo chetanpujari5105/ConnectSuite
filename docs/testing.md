@@ -21531,3 +21531,81 @@ true, all worth fixing, and all a decision for the designer's hour rather than f
 
 ### 900 tests, from 869 at the start of the sitting. All twelve commit guards exit 0.
 
+## Sidekick Batch 6c — the sweep re-run on a live link, and what it found about itself — 2026-09-20
+
+The phone was re-paired by the owner. Confirmed before anything was read: `phase=connected`,
+`paired=true`, `Samsung SM-S938B`, **10 ms**, 11 capabilities, and **13 of 13 routes open** — the
+twelve sidebar rows plus pairing, each asserted by routing to it and reading back the `data-screen`
+of the section that is actually visible.
+
+### Defect 127, second instance — found by a column, not by looking
+
+The sweep's tooltip reading was changed from a total to a **breakdown by kind with a
+`duplicatesVisibleText` column**, and it immediately named a second instance of a defect fixed
+earlier the same day: Overview's `recent-when`, **2 of 4** rows with a tooltip repeating the text
+under the pointer. The row draws `activityClock` and its tooltip was `activityWhen` — and **past an
+hour `activityWhen` returns `activityClock`**, so a row older than an hour repeated itself and a
+newer one did not.
+
+**194 would never have shown it.** Nine duplicates inside two hundred tooltips is invisible in a
+total, and the two on Overview are invisible even in the nine. The column is the denominator rule
+applied to a count that already had one: a total needs to be *of the right thing*.
+
+`titleIfItAdds` in `renderer/overflowTitle.ts`, beside `titleWhenClipped` — and they are genuinely
+different rules rather than one with a flag. For a clipped element a title equal to its text is
+exactly right, because the text is *visually* cut and `textContent` still holds all of it; here
+nothing is clipped and the two strings are simply the same. 5 tests. **Red-first:** set
+unconditionally → 4 red; an untrimmed comparison → 1 red.
+
+### Three answers to one question, and the second one was the dangerous shape
+
+The focus-ring sweep gave **three** different readings of an app that did not change:
+
+| Reading | Stable across runs? | What it actually was |
+|---|---|---|
+| `825 / 824 / 553` of 825 | **no** | the forced pseudo-state's style recalc lands on the renderer's own schedule; `getComputedStyle` could resolve against the pre-recalc style |
+| `557 of 829`, twice | **yes** | Photos streams thumbnails in and **replaces** its elements. The node count is unchanged — so a settle predicate on the count is satisfied — while every forced state now sits on a node no longer in the document |
+| **`835 of 835`**, three consecutive runs | **yes** | force and read as one **atomic pair**, repeated until two consecutive pairs agree |
+
+**The middle row is the one to carry forward: a stable wrong answer.** Everything this repo has
+written about flaky instruments is about readings that *vary*; the fix for those is a settle
+predicate. This one settled perfectly, repeated exactly, and reported 272 photo tiles as having no
+focus ring — which is precisely the shape a pane that styles its own controls would produce, and
+would have been written up as a real defect in a pane that does not have one.
+
+What separated them was **not** deciding which run to trust. It was asking what each was measuring:
+one read a settled pane, the other read dead nodes. The stimulus is now re-applied immediately
+before every sample, so the nodes carrying the state are the nodes being read.
+
+**And a fourth attempt is recorded because it fails in a way nobody would predict.** The obvious
+fix for a late style recalc is two `requestAnimationFrame`s before reading. **rAF does not fire in
+an occluded window** — Electron behind another window never ran the callback and the sweep hung
+with no output at all. An instrument that works only while somebody is looking at the app is not an
+instrument, and the settle lives in a `setTimeout` loop for that reason.
+
+### Two more instrument faults fixed in `probe.mjs` on the way
+
+- **`DOM.getDocument` with `depth: -1` never answered** on a populated page: it serialises the
+  whole tree. It was first diagnosed as stale per-target domain state on the strength of
+  *"restarting the app fixed it"* — **a correlation, not a mechanism**: a freshly restarted app has
+  a small tree until its content arrives, so the restart was shrinking the dump rather than
+  resetting anything. `depth: 0` is the fix; nothing here needs a serialised tree.
+- **A 30-second timeout on every CDP command**, because a promise that never settles is the worst
+  failure an instrument can have: the process hangs and node prints `Detected unsettled top-level
+  await` at a line number in the *caller*. It is what named `DOM.getDocument` as the culprit.
+- `CSS.forcePseudoState` on a node that has gone is tolerated and **counted** — `forced` against
+  `matched`, with `stopped: 'tree moved'` — rather than throwing, because a live app redrawing is
+  not an instrument failure and a partial force must not read as a complete one.
+
+### The green artifact
+
+`docs/evidence/sidekick-batch6/shell-parity-sweep-GREEN.txt`, with the three-readings table at its
+head so the number cannot be quoted without it. **835 of 835** controls ringed across twelve routes,
+control **0 of 835** outlined at rest; **0** surfaces still blurred under reduced transparency and
+**0** still transitioning under reduced motion, against **5** translucent at rest; palette and
+New-conversation both labelled `role=dialog`; toast `role=status` / `aria-live=polite`.
+
+905 tests, from 900. Typecheck clean, `probe.test.mjs` 24/24, all twelve commit guards exit 0.
+**Nothing in this batch is within reach of pairing, identity, TLS, certificates or the trust
+store** — the changed files are two renderer rules, one pane, two tests and two instruments.
+

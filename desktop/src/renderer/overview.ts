@@ -364,7 +364,10 @@ class OverviewView {
     const when = document.createElement('span');
     when.className = 'recent-when mono';
     when.textContent = clock;
-    when.title = ago;
+    // Past an hour `activityWhen` falls back to `activityClock`, so this is the same string the
+    // row already shows. `titleIfItAdds` is what stops a tooltip repeating the line under the
+    // pointer — see defect 127, of which this was the second instance.
+    titleIfItAdds(when, ago);
 
     const tile = document.createElement('span');
     tile.className = 'recent-tile';

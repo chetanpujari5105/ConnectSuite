@@ -84,7 +84,8 @@ const FOCUSABLE =
  * Without it, a stylesheet that outlined every control all the time would score a perfect 100%.
  */
 async function ringSweep(label) {
-  const read = `(() => {
+  /** One sample: every visible, enabled control, and whether its computed outline is a real ring. */
+  const SAMPLE = `(() => {
     const els = [...document.querySelectorAll(${JSON.stringify(FOCUSABLE)})]
       .filter((n) => n.offsetParent !== null && !n.disabled);
     let outlined = 0; const bare = [];
@@ -96,14 +97,59 @@ async function ringSweep(label) {
     }
     return { total: els.length, outlined, bare: [...new Set(bare)].slice(0, 10) };
   })()`;
-  const forced = await probe.rawForcePseudo({ selector: FOCUSABLE, pseudo: 'focus-visible', read });
-  const atRest = await probe.rawEvaluate(read);
+
+  /*
+   * **Force and read are one atomic pair, repeated — and that is the whole instrument.**
+   *
+   * `CSS.forcePseudoState` is applied to *node ids*. Photos and Apps stream their content in, and
+   * a pane that re-renders **replaces** its elements: the node count is unchanged, so a settle
+   * predicate on the count is satisfied, while every forced state now sits on a node that is no
+   * longer in the document. That produced a stable, repeatable and completely wrong `557 of 829`
+   * with 272 photo tiles reported as having no focus ring — and a run before it, against a pane
+   * that happened to have finished loading, read `825 of 825`.
+   *
+   * Two readings of one fact, and neither tool was less trustworthy than the other: one measured
+   * a settled pane and one measured dead nodes. What separates them is **re-applying the stimulus
+   * immediately before each sample**, so the nodes carrying the state are the nodes being read.
+   * Agreement across two consecutive pairs is the settle, and `settled: false` is reported rather
+   * than averaged away.
+   */
+  let previous = null;
+  let last = null;
+  const deadline = Date.now() + 20000;
+  for (;;) {
+    last = await probe.rawForcePseudo({ selector: FOCUSABLE, pseudo: 'focus-visible', read: SAMPLE });
+    if (
+      previous &&
+      previous.value.outlined === last.value.outlined &&
+      previous.value.total === last.value.total
+    ) {
+      break;
+    }
+    previous = last;
+    if (Date.now() >= deadline) {
+      console.log(`  ${label}: NO READING — the ring count never agreed twice in 20s`);
+      return {
+        forced: { total: 0, outlined: 0, bare: [] },
+        atRest: { total: 0, outlined: 0 },
+        settled: false,
+      };
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  const atRest = await probe.rawEvaluate(SAMPLE);
   console.log(
-    `  ${label}: ${forced.value.outlined} of ${forced.value.total} ringed under forced :focus-visible` +
+    `  ${label}: ${last.value.outlined} of ${last.value.total} ringed under forced :focus-visible` +
       `   [control: ${atRest.outlined} of ${atRest.total} outlined at rest — must be ~0]`,
   );
-  if (forced.value.bare.length) console.log(`     bare: ${forced.value.bare.join(', ')}`);
-  return { forced: forced.value, atRest };
+  if (last.value.bare.length) console.log(`     bare: ${last.value.bare.join(', ')}`);
+  if (last.stopped !== 'all') {
+    console.log(
+      `     stopped=${last.stopped} — ${last.forced} of ${last.matched} nodes actually took the state`,
+    );
+  }
+  return { forced: last.value, atRest, settled: true };
 }
 
 /*
@@ -114,9 +160,44 @@ async function ringSweep(label) {
 const routes = await probe.rawEvaluate(`SCREENS.map((s) => s.id)`);
 const perRoute = [];
 const refused = [];
+/**
+ * Waits until a route stops changing shape, and says so when it does not.
+ *
+ * Photos and Apps fill in asynchronously — thumbnails and icons arrive over the wire — and a DOM
+ * that is still mutating **drops the forced pseudo-state** off the nodes it re-renders. That is
+ * how the same sweep read `photos: 286 of 286` on one run and `14 of 286` on the next, with no
+ * `stopped=` line either time because every node genuinely took the state at the moment it was
+ * applied. A fixed 250 ms sleep is the 263 ms sampling window in `CLAUDE.md`'s table with a
+ * smaller number in it: it makes the miss rarer without making it impossible, and it cannot say
+ * whether the run that passed did so because the pane settled or because the sleep was generous.
+ *
+ * So the predicate is the thing that has to be true — **the control count is the same twice in a
+ * row** — and a route that never settles is reported rather than measured.
+ */
+async function settleRoute(id) {
+  const count = () =>
+    probe.rawEvaluate(
+      `document.querySelectorAll(${JSON.stringify(FOCUSABLE)}).length`,
+    );
+  const deadline = Date.now() + 8000;
+  let previous = -1;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 250));
+    const now = await count();
+    if (now === previous) return { settled: true, controls: now };
+    previous = now;
+    if (Date.now() >= deadline) return { settled: false, controls: now };
+  }
+}
+
 for (const id of routes) {
   await probe.rawEvaluate(`shell.route(${JSON.stringify(id)})`);
-  await new Promise((r) => setTimeout(r, 250));
+  const settle = await settleRoute(id);
+  if (!settle.settled) {
+    console.log(`  ${id}: NO READING — still redrawing after 8s (${settle.controls} controls and moving)`);
+    refused.push(`${id} (never settled)`);
+    continue;
+  }
   const drawn = await probe.rawEvaluate(
     `(() => { const s=[...document.querySelectorAll('section.screen')].find(x => !x.hidden); return s ? s.dataset.screen : null; })()`,
   );
@@ -303,8 +384,18 @@ if (toast.value.present) {
 } else {
   note(`the toast: NO READING — no .toast in the DOM at rest. aria-live hosts present: ${JSON.stringify(toast.value.hosts)}`);
 }
-console.log(`  --   tooltips: ${tips.value.count} title attributes` +
-  (tips.value.count ? ` — ${JSON.stringify(tips.value.samples)}` : ' (none: nothing depends on a hover-only, OS-drawn, untouchable surface)'));
+/*
+ * Counted by kind, never totalled. 194 is not a finding; the useful column is
+ * `duplicatesVisibleText`, which is how defect 127 was found — nine rows whose tooltip repeated
+ * the line under the pointer. A total would have hidden nine inside two hundred.
+ */
+console.log(`  --   tooltips: ${tips.value.count} title attributes, by kind:`);
+for (const [kind, info] of Object.entries(tips.value.byKind ?? {})) {
+  const dupes = info.duplicatesVisibleText
+    ? `  ** ${info.duplicatesVisibleText} repeat the element's own text **`
+    : '';
+  console.log(`         ${String(info.n).padStart(4)} x ${kind.padEnd(18)} e.g. ${JSON.stringify(String(info.sample).slice(0, 60))}${dupes}`);
+}
 
 console.log(`\n${failures === 0 ? 'ALL READINGS OK' : `${failures} FAILED`}\n`);
 await probe.close();

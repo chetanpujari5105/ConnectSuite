@@ -57,3 +57,57 @@ test('exactly fitting is fitting', () => {
   titleWhenClipped(el, 'exactly this wide');
   assert.equal(el.getAttribute('title'), null);
 });
+
+// ---- titleIfItAdds — the sibling rule ------------------------------------------------------------
+
+const titleIfItAdds = (globalThis as Record<string, any>).titleIfItAdds as (
+  el: any,
+  text: string,
+) => void;
+
+function labelled(text: string) {
+  const el = new FakeElement('span');
+  el.textContent = text;
+  return el;
+}
+
+/**
+ * The second instance of defect 127, and the first one the sweep found rather than a person.
+ * Overview's `recent-when` draws `activityClock` and its tooltip was `activityWhen` — and past an
+ * hour `activityWhen` *returns* `activityClock`, so an older row's tooltip repeated itself while a
+ * newer one did not.
+ */
+test('a tooltip identical to the element’s own text is not set', () => {
+  const el = labelled('Yesterday 14:03');
+  titleIfItAdds(el, 'Yesterday 14:03');
+  assert.equal(el.getAttribute('title'), null);
+});
+
+test('a tooltip that says something else is set', () => {
+  const el = labelled('14:03');
+  titleIfItAdds(el, '42m ago');
+  assert.equal(el.title, '42m ago');
+});
+
+/** Whitespace is not information. Trimmed on both sides, so a stray space is not "something else". */
+test('whitespace does not make two strings different', () => {
+  const el = labelled('  14:03 ');
+  titleIfItAdds(el, '14:03');
+  assert.equal(el.getAttribute('title'), null);
+});
+
+test('an empty tooltip is no tooltip', () => {
+  const el = labelled('14:03');
+  titleIfItAdds(el, '   ');
+  assert.equal(el.getAttribute('title'), null);
+});
+
+/** The same transition trap as its sibling: a row that ages past the hour must lose its tooltip. */
+test('a tooltip does not outlive the difference that earned it', () => {
+  const el = labelled('14:03');
+  titleIfItAdds(el, '42m ago');
+  assert.equal(el.title, '42m ago', 'control: it was set');
+  el.textContent = 'Yesterday 14:03';
+  titleIfItAdds(el, 'Yesterday 14:03');
+  assert.equal(el.getAttribute('title'), null, 'the tooltip survived becoming a duplicate');
+});

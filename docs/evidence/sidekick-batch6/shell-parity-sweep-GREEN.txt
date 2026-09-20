@@ -1,0 +1,85 @@
+# The shell-wide parity sweep, green — 2026-09-20, phone re-paired
+
+Link confirmed first: `phase=connected`, `paired=true`, `Samsung SM-S938B`, 10 ms, 11 capabilities,
+and **13 of 13 routes open** (the twelve sidebar rows plus pairing).
+
+## Read this before quoting the focus-ring number
+
+`835 of 835` is the **third** answer this sweep gave for the same fact, and the first two were both
+the instrument:
+
+| Reading | Stable? | What it was |
+|---|---|---|
+| `825 of 825`, then `824 of 825`, then `553 of 825` | no | the forced pseudo-state's style recalc lands on the renderer's own schedule, so `getComputedStyle` could resolve against the pre-recalc style |
+| `557 of 829`, twice | **yes** | worse. Photos streams its thumbnails in and **replaces** its elements: the node count is unchanged, so a settle predicate on the count is satisfied, while every forced state now sits on a node no longer in the document. A stable, repeatable, completely wrong reading of 272 photo tiles as unringed |
+| `835 of 835`, three consecutive runs | **yes** | force and read as one atomic pair, repeated until two consecutive pairs agree |
+
+**A stable wrong answer is the dangerous one**, and it arrived looking exactly like a real defect —
+272 controls in one pane with no focus ring is precisely the shape a pane that styles its own
+controls would produce. What separated them was not picking the more trustworthy run: it was
+re-applying the stimulus immediately before each sample, so the nodes carrying the state are the
+nodes being read.
+
+A fourth attempt is recorded in `probe.mjs` because it fails in a way nobody would predict: two
+`requestAnimationFrame`s before reading. **rAF does not fire in an occluded window**, so the sweep
+hung whenever Electron was behind another window — an instrument that works only while somebody is
+looking at the app.
+
+
+=== Shell-wide parity sweep ===
+
+  the chrome is drawn and its controls are countable → {"navRows":12,"toolbar":2,"account":1,"island":1}  [control=1 polls=1 waited=2ms stopped=immediate]
+
+-- focus rings, by forced :focus-visible on every visible control --
+
+  overview: 23 of 23 ringed under forced :focus-visible   [control: 0 of 23 outlined at rest — must be ~0]
+  mirror: 29 of 29 ringed under forced :focus-visible   [control: 0 of 29 outlined at rest — must be ~0]
+  files: 20 of 20 ringed under forced :focus-visible   [control: 0 of 20 outlined at rest — must be ~0]
+  photos: 286 of 286 ringed under forced :focus-visible   [control: 0 of 286 outlined at rest — must be ~0]
+  messages: 68 of 68 ringed under forced :focus-visible   [control: 0 of 68 outlined at rest — must be ~0]
+  notifications: 88 of 88 ringed under forced :focus-visible   [control: 0 of 88 outlined at rest — must be ~0]
+  clipboard: 23 of 23 ringed under forced :focus-visible   [control: 0 of 23 outlined at rest — must be ~0]
+  calls: 85 of 85 ringed under forced :focus-visible   [control: 0 of 85 outlined at rest — must be ~0]
+  camera: 15 of 15 ringed under forced :focus-visible   [control: 0 of 15 outlined at rest — must be ~0]
+  apps: 143 of 143 ringed under forced :focus-visible   [control: 0 of 143 outlined at rest — must be ~0]
+  activity: 26 of 26 ringed under forced :focus-visible   [control: 0 of 26 outlined at rest — must be ~0]
+  settings: 29 of 29 ringed under forced :focus-visible   [control: 0 of 29 outlined at rest — must be ~0]
+
+-- tooltips --
+
+  native title tooltips in the app, and what they say → {"count":194,"byKind":{"nav-row":{"n":1,"sample":"Camera — not built yet. The virtual webcam is not in any phase yet. It needs a macOS Camera Extension, which is a signed system extension and a distribution problem before it is a code problem.","duplicatesVisibleText":0},"toolbar-button":{"n":1,"sample":"Open mirror in floating window","duplicatesVisibleText":0},"recent-when":{"n":4,"sample":"18m ago","duplicatesVisibleText":0},"tool":{"n":1,"sample":"Opens Files, where transfers in both directions live","duplicatesVisibleText":0},"call-row":{"n":50,"sample":"Put Sapna Pujari in the dialler","duplicatesVisibleText":0},"apps-tile":{"n":128,"sample":"com.betafish.adblocksbrowser","duplicatesVisibleText":0},"activity-time":{"n":9,"sample":"20 Sep 2026, 21:45:30","duplicatesVisibleText":0}}}  [control=3631 polls=1 waited=4ms stopped=immediate]
+
+-- modal surfaces --
+
+  the palette and the New-conversation panel: role, modality, labelling, Escape → {"palette":{"role":"dialog","modal":"true","label":"Command palette","hidden":false},"newConversation":{"role":"dialog","modal":"true","label":"sms-newpanel-title","hidden":true}}  [control=1 polls=1 waited=1ms stopped=immediate]
+
+-- toast --
+
+  the toast host: does it exist, is it announced, is it themed → {"present":true,"live":"polite","role":"status","background":"rgba(22, 22, 22, 0.94)","color":"rgb(242, 243, 245)"}  [control=1 polls=1 waited=0ms stopped=immediate]
+
+-- reduced transparency and reduced motion, emulated --
+
+  translucent or blurred at rest : island, sidebar, palette, toast, pairNotice
+  still blurred under reduce     : none
+  still transitioning under reduce: none
+
+  OK   the chrome draws its controls
+  OK   control: something IS translucent at rest, so the reduce reading means something — 5 surfaces
+  OK   reduced transparency removes every blur
+  OK   reduced motion stops every transition
+  OK   every visible control takes a focus ring — 835 of 835 across 12 routes
+  OK   control: the ring is the focus state, not a permanent outline — 0 outlined at rest
+  OK   the palette is a labelled modal dialog
+  OK   the New-conversation panel is a labelled modal dialog too
+  OK   the toast is announced
+  --   tooltips: 194 title attributes, by kind:
+            1 x nav-row            e.g. "Camera — not built yet. The virtual webcam is not in any pha"
+            1 x toolbar-button     e.g. "Open mirror in floating window"
+            4 x recent-when        e.g. "18m ago"
+            1 x tool               e.g. "Opens Files, where transfers in both directions live"
+           50 x call-row           e.g. "Put Sapna Pujari in the dialler"
+          128 x apps-tile          e.g. "com.betafish.adblocksbrowser"
+            9 x activity-time      e.g. "20 Sep 2026, 21:45:30"
+
+ALL READINGS OK
+

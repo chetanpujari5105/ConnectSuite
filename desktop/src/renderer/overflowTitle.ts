@@ -33,7 +33,28 @@ function titleWhenClipped(el: HTMLElement, text: string): void {
   else el.removeAttribute('title');
 }
 
+/**
+ * A tooltip that says something the element does not already say — and nothing otherwise.
+ *
+ * The sibling rule, and a genuinely different one: above, a title equal to the element's text is
+ * exactly right, because the text is *visually* clipped and `textContent` still holds all of it.
+ * Here nothing is clipped and the two strings are simply the same, which is a tooltip that teaches
+ * a person tooltips here say nothing.
+ *
+ * Found by the shell sweep's by-kind breakdown rather than by looking: Overview's `recent-when`
+ * shows `activityClock` and its tooltip shows `activityWhen`, and **past an hour `activityWhen`
+ * returns `activityClock`** — so a row older than an hour has a tooltip repeating itself, and a
+ * newer one does not. 2 of 4 on screen. A count of 194 tooltips would never have shown it; a
+ * column counting the ones that duplicate their own text showed it immediately.
+ */
+function titleIfItAdds(el: HTMLElement, text: string): void {
+  const own = (el.textContent ?? '').trim();
+  if (text.trim() && text.trim() !== own) el.title = text;
+  else el.removeAttribute('title');
+}
+
 {
   const g = globalThis as Record<string, unknown>;
   g.titleWhenClipped = titleWhenClipped;
+  g.titleIfItAdds = titleIfItAdds;
 }
