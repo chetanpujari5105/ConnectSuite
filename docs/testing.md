@@ -21138,3 +21138,22 @@ inbox, read-only detail, permission (1440 × 920 dark), inbox light, inbox 1100 
 **Not proven:** a real reply sent through the rebuilt pill (unit-tested only); the *media session in
 the feed* variant (`40:21209`) is not built at all — it needs `shared/mediaSessionRow.ts`, and is
 still owed.
+
+## Sidekick Batch 4d — Clipboard — 2026-09-20
+
+Frames not rendered; built to handoff §6. Departures D46–D48. Captures **synthetic** (the live pane
+holds whatever the owner last copied): history at 1440 × 920 dark, light, and 1100 × 700.
+
+- `clipboardView.test.ts` +1: every row that crossed the link says which way and the `displaced` row
+  says nothing, with all three rows as the control. **Red-first:** the `displaced` guard removed →
+  **1 red**.
+- The direction icons were **wrong on the first build and caught against the handoff's own table**:
+  §5b maps `iphone` to *from the phone* and `laptopcomputer` to *to this Mac* — by origin. They had
+  been assigned by destination, so every chip carried the other machine's glyph.
+- `clipboardView.test.ts` needed `./icons` imported: the pane now draws an SVG, and the test that
+  did not load it failed with `iconSvg is not defined` — the page's load order, in the test.
+- `npm test` **846 / 846**.
+
+**Not proven:** the *sensitive* and *too_large* rows were rendered from synthetic entries, not from a
+phone that actually withheld a clip; the arrival path (`clip.push` → row) is covered by the existing
+defect 58/59 tests, not re-run on hardware here.

@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch4/clipboard-history-SYNTHETIC-1440x920.png",
+  "screen": "clipboard",
+  "takenAt": "2026-09-20T04:06:12.003Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 900,
+  "ready": null,
+  "prep": "(() => {\n  const t = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime(); };\n  clipboard.entries = [\n    { kind: 'text', text: 'https://developer.android.com/reference/android/content/ClipboardManager', atMs: t(9, 41), source: 'phone', appName: 'Chrome' },\n    { kind: 'text', text: 'The lease expires on 14 March and the renewal notice has to go out four weeks before.', atMs: t(9, 22), source: 'mac' },\n    { kind: 'sensitive', atMs: t(9, 10), source: 'phone', appName: '1Password' },\n    { kind: 'text', text: 'SM-S938B', atMs: t(8, 58), source: 'mac' },\n    { kind: 'displaced', text: 'older thing', atMs: t(8, 57), source: 'mac' },\n    { kind: 'too_large', atMs: t(8, 30), source: 'phone', appName: 'Notes' },\n  ];\n  clipboard.selected = null;\n  clipboard.draw();\n  clipboard.draw = () => {};\n  return true;\n})()",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

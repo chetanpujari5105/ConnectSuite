@@ -141,6 +141,22 @@ function clipRowSource(entry: ClipEntryRow): string {
 }
 
 /**
+ * The direction chip the handoff puts on **every** row: *From phone* or *To phone*.
+ *
+ * `iphone` and `laptopcomputer`, never arrows — handoff §5b says why: an arrow inside a row reads as
+ * a control you can press. A `displaced` row has no direction at all: it never crossed the link, it
+ * is what this Mac's own clipboard held before an arriving entry replaced it.
+ */
+function clipDirection(entry: ClipEntryRow): { label: string; icon: string } | null {
+  if (entry.kind === 'displaced') return null;
+  // The handoff's mapping, which is by **origin**: `iphone` is "from the phone", `laptopcomputer`
+  // is "to this Mac". A clip this Mac copied is on its way to the phone and carries the laptop.
+  return entry.source === 'mac'
+    ? { label: 'To phone', icon: 'laptop' }
+    : { label: 'From phone', icon: 'iphone' };
+}
+
+/**
  * The handoff's kind badge, over the kinds this wire actually carries.
  *
  * The design draws five: `URL`, `Aa`, `IMG`, `{}`, `FILE`. **Three of them cannot occur.**
@@ -629,7 +645,19 @@ class ClipboardView {
 
       const meta = document.createElement('span');
       meta.className = 'clip-meta';
-      meta.textContent = `${clipRowSource(entry)} · ${new Date(entry.atMs).toLocaleTimeString()}`;
+      const direction = clipDirection(entry);
+      if (direction) {
+        const chip = document.createElement('span');
+        chip.className = 'clip-direction';
+        const glyph = iconSvg(direction.icon, 12);
+        glyph.setAttribute('aria-hidden', 'true');
+        chip.append(glyph, document.createTextNode(direction.label));
+        meta.appendChild(chip);
+      }
+      const when = document.createElement('span');
+      when.className = 'clip-when mono';
+      when.textContent = `${clipRowSource(entry)} · ${new Date(entry.atMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`;
+      meta.appendChild(when);
 
       lines.append(body, meta);
       row.append(badge, lines);

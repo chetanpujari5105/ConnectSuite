@@ -1198,3 +1198,17 @@ a card inside a pane — three surfaces for one list); the list scrolls inside i
 rows lose their per-row fill, border and hover lift; the permission banner and the *nothing selected*
 placeholder are the shared state block (the dashed box is gone); the *Read only* box gets a title;
 the reply kicker is meta rather than lime.
+
+## Sidekick Batch 4d — Clipboard — 2026-09-20. Rows D46–D48
+
+Frames `34:6160`–`34:6867` **not rendered**; built to handoff §6 Clipboard.
+
+| Row | Figma / handoff | Built | Why |
+|---|---|---|---|
+| **D46** | A direction chip on every row | On every row **except `displaced`** | A displaced entry never crossed the link — it is what this Mac's clipboard held before an arriving entry replaced it. A direction on it would be an invented fact |
+| **D47** | Kind badges `URL` `Aa` `LOCK` `64KB` `—` `?` | As drawn, and **all neutral except `LOCK` and `64KB`** | The badges were a lime tint, a blue and a teal — three hues doing what the letters already do, in a palette that has none of them (D2). Amber stays where there is a real limitation |
+| **D48** | The phone-direction state is not drawn at all | Kept, as a **neutral panel with a lime mark** rather than a lime-tinted card | Defect 85 put it in the left column deliberately. Lime is for the primary action, the active row, a selected segment and a small ready dot — not a tinted card the width of a column, seen on every visit |
+
+**Corrected, not departures:** two cards at `796 + 340`, each scrolling inside itself; the selected
+row takes the system's one selection treatment (lime tint + lime hairline) instead of a left rule;
+row times are 24-hour mono; the `--live` green is gone from the *done* state with D1.

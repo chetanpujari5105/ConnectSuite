@@ -9,6 +9,7 @@ import '../shared/clipPhoneState';
 // A plain side-effecting import, and it is safe because `clipboard.ts` touches no DOM at module
 // scope — it only hangs its class and its two pure functions on `globalThis`. The document double
 // goes in around each mount instead, where the drawing actually happens.
+import './icons';
 import './clipboard';
 
 /**
@@ -443,4 +444,23 @@ test('defect 85 — a connected phone not offering clipboard speaks in its own w
   (pane.view as LinkSetter).setLinkState(true, false, 'Notification access is off.');
   assert.equal(pane.phoneState.dataset.state, 'unavailable');
   assert.equal(pane.phoneDetail.textContent, 'Notification access is off.');
+});
+
+/**
+ * The handoff puts a direction chip on **every** row: *From phone* or *To phone*. A `displaced`
+ * row is the exception and it is the interesting one — it never crossed the link, so a direction
+ * on it would be an invented fact about this Mac's own clipboard.
+ */
+test('every row that crossed the link says which way, and the one that did not says nothing', async () => {
+  const pane = mount([
+    { kind: 'text', text: 'from the phone', atMs: 3, source: 'phone' },
+    { kind: 'text', text: 'from the Mac', atMs: 2, source: 'mac' },
+    { kind: 'displaced', text: 'what was here before', atMs: 1, source: 'mac' },
+  ]);
+  await settle();
+  const rows = pane.list.queryAll('.clip-row');
+  assert.equal(rows.length, 3, 'control: all three rows drawn');
+  assert.equal(rows[0]!.queryAll('.clip-direction')[0]?.textContent, 'From phone');
+  assert.equal(rows[1]!.queryAll('.clip-direction')[0]?.textContent, 'To phone');
+  assert.equal(rows[2]!.queryAll('.clip-direction').length, 0, 'a displaced row claimed a direction');
 });

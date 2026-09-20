@@ -3667,28 +3667,44 @@ img#qr {
  * Both cut tabs mean *this survives*, and the history is memory-only by decision — 20 entries,
  * cleared on disconnect, gone on restart, never on disk. See departures K1.
  */
+/* Handoff §4: `796 + 340`, each column its own card, each scrolling inside itself. */
+.screen[data-screen="clipboard"] {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  min-height: 0;
+}
 .clip-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--space-7);
-  align-items: start;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
 }
-.clip-grid > * { min-width: 0; }
+.clip-grid > * { min-width: 0; min-height: 0; }
+@media (max-width: 1240px) {
+  .clip-grid { grid-template-columns: minmax(0, 1fr) 300px; gap: var(--space-5); }
+}
 
 .clip-panel {
-  border-radius: var(--radius-panel);
-  background: var(--elev-3);
-  border: 1px solid var(--hairline-primary);
-  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: var(--radius-card);
+  background: var(--card);
+  border: 1px solid var(--hairline);
   overflow: hidden;
 }
 
 .clip-head {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-5) var(--space-7);
-  border-bottom: 1px solid rgba(var(--overlay-rgb), 0.07);
+  gap: var(--space-3);
+  flex: none;
+  padding: var(--space-7) var(--space-7) var(--space-5);
 }
 .clip-tabs { display: flex; gap: var(--space-2); flex: 1; min-width: 0; }
 .clip-tab {
@@ -3995,23 +4011,35 @@ img#qr {
   cursor: pointer;
   white-space: nowrap;
 }
-.clip-phone-state[data-tone='ready'] {
-  background: var(--accent-tint);
-  border-color: var(--accent-border);
-}
-.clip-phone-state[data-tone='ready'] .clip-phone-icon { color: var(--accent-text); }
+/*
+ * Ready and done are **neutral panels with a lime mark**, not lime panels. Lime is earned by the
+ * primary action, the active nav row, a selected segment and a small ready dot (handoff §2) — a
+ * tinted card the width of the column is none of those, and this one sat above the list on every
+ * visit. `--live` is gone with D1: there is one positive colour now.
+ */
+.clip-phone-state[data-tone='ready'],
 .clip-phone-state[data-tone='done'] {
-  background: rgba(var(--tint-green-rgb), 0.09);
-  border-color: rgba(var(--tint-green-rgb), 0.28);
+  background: var(--control);
+  border-color: var(--hairline);
 }
-.clip-phone-state[data-tone='done'] .clip-phone-icon { color: var(--live); }
+.clip-phone-state[data-tone='ready'] .clip-phone-icon,
+.clip-phone-state[data-tone='done'] .clip-phone-icon { color: var(--accent); }
 .clip-phone-state[data-tone='warning'] {
   background: var(--warning-fill);
   border-color: var(--warning-border);
 }
 .clip-phone-state[data-tone='warning'] .clip-phone-icon { color: var(--warning); }
 
-.clip-list { display: flex; flex-direction: column; max-height: 430px; overflow-y: auto; }
+.clip-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--space-5);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
+}
 
 .clip-row {
   display: grid;
@@ -4020,21 +4048,23 @@ img#qr {
   align-items: center;
   width: 100%;
   min-height: 72px;
-  padding: var(--space-4) var(--space-7);
-  border: 0;
-  border-bottom: 1px solid rgba(var(--overlay-rgb), 0.05);
-  border-left: 2px solid transparent;
+  margin-bottom: var(--space-1);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background 160ms var(--ease);
+  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease);
 }
-.clip-row:hover { background: rgba(var(--overlay-rgb), 0.04); }
-/* Selection is carried two ways — a tint and a left rule — because a tint alone at this contrast is
-   one theme tweak away from invisible, and the row is what the whole right column is about. */
-.clip-row.is-selected {
-  background: var(--accent-tint);
-  border-left-color: var(--accent);
+@media (hover: hover) and (pointer: fine) {
+  .clip-row:hover { background: rgba(var(--overlay-rgb), 0.035); }
+}
+/* Selection is the system's one selected-row treatment: the lime tint and a lime hairline. */
+.clip-row.is-selected,
+.clip-row.is-selected:hover {
+  background: var(--selection-fill);
+  border-color: var(--selection-border);
 }
 
 /*
@@ -4052,15 +4082,19 @@ img#qr {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-primary);
-  background: rgba(var(--overlay-rgb), 0.06);
+  color: var(--text-body);
+  background: var(--control);
+  box-shadow: inset 0 0 0 1px var(--hairline);
 }
 .clip-badge-lg { width: 44px; height: 44px; font-size: 12px; }
-.clip-badge.is-url { background: var(--accent-tint-selected); color: var(--accent-text); }
-.clip-badge.is-text { background: rgba(var(--tint-blue-rgb), 0.16); color: color-mix(in srgb, rgb(var(--tint-blue-rgb)), #000 var(--tint-darken)); }
-.clip-badge.is-warn { background: var(--warning-fill); color: var(--warning); }
-.clip-badge.is-undo { background: rgba(var(--tint-teal-rgb), 0.16); color: color-mix(in srgb, rgb(var(--tint-teal-rgb)), #000 var(--tint-darken)); }
-.clip-badge.is-muted { background: rgba(var(--overlay-rgb), 0.05); color: var(--text-meta); }
+/*
+ * **The kind is not a category colour.** URL, text and the undo badge were a lime tint, a blue and a
+ * teal — three hues doing what the letters already do, and the palette has none of them (D2). The
+ * one badge that keeps a colour is `LOCK`: a withheld clip is a real limitation, which is what amber
+ * means here and everywhere else.
+ */
+.clip-badge.is-warn { background: var(--warning-fill); color: var(--warning); box-shadow: inset 0 0 0 1px var(--warning-border); }
+.clip-badge.is-muted { color: var(--text-meta); }
 
 .clip-lines { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 
@@ -4074,7 +4108,31 @@ img#qr {
   overflow: hidden;
 }
 .clip-body.is-muted { color: var(--text-body); font-style: italic; }
-.clip-meta { font-size: 12px; color: var(--text-meta); }
+.clip-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 11.5px;
+  color: var(--text-meta);
+}
+.clip-when { font-size: 11px; }
+
+/* The direction chip the handoff puts on every row. `iphone` / `laptopcomputer`, never arrows —
+   an arrow in a row reads as a control you can press (§5b). */
+.clip-direction {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  height: 20px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  color: var(--text-body);
+  font-size: 11px;
+}
+.clip-direction svg { flex: none; }
 
 .clip-empty {
   padding: var(--space-9) var(--space-7);
@@ -4086,6 +4144,7 @@ img#qr {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   min-height: 44px;
   padding: var(--space-4) var(--space-7);
   font-family: var(--font-mono);
@@ -4100,11 +4159,14 @@ img#qr {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  min-height: 0;
+  overflow-y: auto;
   padding: var(--space-8);
-  border-radius: var(--radius-panel);
-  background: var(--well);
+  border-radius: var(--radius-card);
+  background: var(--card);
   border: 1px solid var(--hairline);
-  box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
 }
 .clip-detail-block { display: flex; flex-direction: column; gap: var(--space-3); }
 .clip-headline {
