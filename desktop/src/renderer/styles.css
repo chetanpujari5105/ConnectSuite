@@ -823,7 +823,7 @@ img#qr {
   background: var(--control);
   color: var(--text-primary);
   cursor: pointer;
-  transition: transform var(--dur-press) var(--ease), background var(--dur-hover) var(--ease);
+  transition: transform var(--dur-release) var(--ease), background var(--dur-hover) var(--ease);
 }
 .remote-button:hover:not(:disabled) { background: rgba(var(--overlay-rgb), 0.1); }
 .remote-button:active:not(:disabled) { transform: scale(var(--press-scale-icon)); }
@@ -1056,7 +1056,8 @@ img#qr {
   color: var(--text-body);
   font: 500 12.5px/1 var(--font-ui);
   cursor: pointer;
-  transition: background var(--dur-state) var(--ease), color var(--dur-state) var(--ease);
+  transition: background var(--dur-state) var(--ease), color var(--dur-state) var(--ease),
+    transform var(--dur-release) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .sms-tab:hover { background: rgba(var(--overlay-rgb), 0.04); color: var(--text-on-control); }
@@ -1125,7 +1126,8 @@ img#qr {
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease);
+  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
+    transform var(--dur-release) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .sms-thread:hover { background: rgba(var(--overlay-rgb), 0.035); }
@@ -1527,7 +1529,8 @@ img#qr {
   font: 500 12.5px/1 var(--font-ui);
   cursor: pointer;
   white-space: nowrap;
-  transition: background var(--dur-state) var(--ease), color var(--dur-state) var(--ease);
+  transition: background var(--dur-state) var(--ease), color var(--dur-state) var(--ease),
+    transform var(--dur-release) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .calls-tab:hover { background: rgba(var(--overlay-rgb), 0.04); color: var(--text-on-control); }
@@ -1611,7 +1614,8 @@ img#qr {
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background var(--dur-state) var(--ease);
+  transition: background var(--dur-state) var(--ease),
+    transform var(--dur-release) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .call-row:hover { background: rgba(var(--overlay-rgb), 0.035); }
@@ -1725,7 +1729,8 @@ img#qr {
   border-radius: var(--radius-control);
   background: var(--control);
   cursor: pointer;
-  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease);
+  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
+    transform var(--dur-release) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .dialkey:hover { background: var(--elev-3); border-color: var(--hairline-hover); }
@@ -2006,7 +2011,7 @@ img#qr {
   color: var(--unselected-text);
   font: var(--text-control);
   cursor: pointer;
-  transition: transform var(--dur-press) var(--ease), opacity var(--dur-hover) var(--ease),
+  transition: transform var(--dur-release) var(--ease), opacity var(--dur-hover) var(--ease),
     background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
     color var(--dur-state) var(--ease);
 }
@@ -2381,7 +2386,7 @@ img#qr {
   color: var(--text-on-control);
   font: var(--text-control);
   cursor: pointer;
-  transition: transform var(--dur-press) var(--ease), border-color var(--dur-hover) var(--ease);
+  transition: transform var(--dur-release) var(--ease), border-color var(--dur-hover) var(--ease);
 }
 .chip:hover { border-color: var(--hairline-hover); color: var(--text-primary); }
 
@@ -2425,7 +2430,7 @@ img#qr {
   color: var(--accent-on-fill);
   font: var(--text-control);
   cursor: pointer;
-  transition: transform var(--dur-press) var(--ease);
+  transition: transform var(--dur-release) var(--ease);
 }
 .notif-reply .send:disabled { opacity: 0.45; cursor: default; }
 
@@ -2448,7 +2453,7 @@ img#qr {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: transform var(--dur-press) var(--ease), border-color var(--dur-hover) var(--ease);
+  transition: transform var(--dur-release) var(--ease), border-color var(--dur-hover) var(--ease);
 }
 .action:hover { border-color: var(--hairline-hover); }
 
@@ -2553,7 +2558,7 @@ img#qr {
   border-radius: var(--radius-control);
   color: var(--text-body);
   cursor: pointer;
-  transition: background var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
+  transition: background var(--dur-hover) var(--ease), transform var(--dur-release) var(--ease);
 }
 .tool:hover { background: var(--control); color: var(--text-primary); }
 
@@ -2604,7 +2609,7 @@ img#qr {
   color: var(--text-on-control);
   font: var(--text-control);
   cursor: pointer;
-  transition: border-color var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
+  transition: border-color var(--dur-hover) var(--ease), transform var(--dur-release) var(--ease);
 }
 .global:hover { border-color: var(--hairline-hover); }
 .global:disabled { opacity: 0.45; cursor: default; }
@@ -2669,7 +2674,7 @@ img#qr {
   background: var(--control);
   cursor: pointer;
   text-align: left;
-  transition: border-color var(--dur-hover) var(--ease), transform var(--dur-press) var(--ease);
+  transition: border-color var(--dur-hover) var(--ease), transform var(--dur-release) var(--ease);
 }
 .quality-row:hover { border-color: var(--hairline-hover); }
 .quality-row.selected { background: var(--selection-fill); border-color: var(--selection-border); }
@@ -2743,7 +2748,7 @@ img#qr {
   font: var(--text-control);
   font-weight: 600;
   cursor: pointer;
-  transition: transform var(--dur-press) var(--ease);
+  transition: transform var(--dur-release) var(--ease);
 }
 .stop-button:disabled,
 .start-button:disabled {
@@ -3675,7 +3680,8 @@ img#qr {
   font: var(--text-control);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 180ms var(--ease), color 180ms var(--ease);
+  transition: background var(--dur-state) var(--ease), color var(--dur-state) var(--ease),
+    transform var(--dur-release) var(--ease);
 }
 .clip-tab:hover { color: var(--text-on-control); }
 .clip-tab[aria-selected='true'] {
@@ -3868,7 +3874,15 @@ img#qr {
   border-color: var(--destructive-border);
   color: var(--destructive);
 }
-.security-card[data-state='connecting'] .security-badge svg { animation: hero-spin 1.2s linear infinite; }
+.security-card[data-state='connecting'] .security-badge svg { animation: hero-spin var(--dur-spin) linear infinite; }
+
+/* Reduced motion: the same freeze as the hero spinner — shell.css has the reasoning, and
+   docs/sidekick-motion-system.md §3 MA-3 has the finding. The card's own words carry the state. */
+@media (prefers-reduced-motion: reduce) {
+  .security-card[data-state='connecting'] .security-badge svg { animation: none; }
+}
+}
+
 .security-text { flex: 1; min-width: 180px; }
 .security-title {
   margin: 0;
@@ -4012,7 +4026,8 @@ img#qr {
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease);
+  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
+    transform var(--dur-release) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .clip-row:hover { background: rgba(var(--overlay-rgb), 0.035); }
@@ -4417,7 +4432,7 @@ img#qr {
 /* The ⌘K deep-link flash. A palette row that routes to a screen and stops is indistinguishable,
    from the user's side, from one that failed — so the card it meant says which one it was. */
 .deep-reveal {
-  animation: deep-reveal-flash 1.4s ease-out 1;
+  animation: deep-reveal-flash var(--dur-flash) var(--ease) 1;
 }
 
 @keyframes deep-reveal-flash {
@@ -4877,7 +4892,7 @@ img#qr {
 .state-block.compact .state-body { font: var(--text-meta-size); line-height: 1.45; }
 .state-block[data-tone='warning'] .state-badge { color: var(--warning); background: var(--warning-fill); box-shadow: inset 0 0 0 1px var(--warning-border); }
 .state-block[data-tone='danger'] .state-badge { color: var(--destructive); background: var(--destructive-fill); box-shadow: inset 0 0 0 1px var(--destructive-border); }
-.state-block[data-kind='loading'] .state-badge svg { animation: state-spin 900ms linear infinite; }
+.state-block[data-kind='loading'] .state-badge svg { animation: state-spin var(--dur-spin-fast) linear infinite; }
 @keyframes state-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .state-block[data-kind='loading'] .state-badge svg { animation: none; }

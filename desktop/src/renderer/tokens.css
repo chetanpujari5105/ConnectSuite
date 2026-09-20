@@ -543,6 +543,23 @@
    */
   --dur-route-fade: 140ms;
 
+  /*
+   * Added 2026-09-21 by the motion pass — docs/sidekick-motion-system.md §1.
+   *
+   * The three durations below were raw literals in `styles.css` and `shell.css`: `1.2s` twice,
+   * `900ms`, `1.4s`, plus `.clip-tab`'s `180ms`, which was *exactly* `--dur-state` written out by
+   * hand. They are here because `check-motion-tokens.mjs` refuses a raw duration in a
+   * `transition` or `animation` declaration, and it refuses one for the reason the colour pass
+   * already learned: a literal is not drift while there is one theme and one author, and it is
+   * wrong in the mode nobody is looking at the moment there are two.
+   *
+   * A spinner's cycle is a duration like any other. It is *not* `--dur-ring`: that is a value arc
+   * travelling once to a new reading, and this turns forever until the thing it describes is done.
+   */
+  --dur-spin: 1.2s;       /* one turn of an indeterminate spinner */
+  --dur-spin-fast: 900ms; /* the smaller state-block spinner — less radius, so less arc per ms */
+  --dur-flash: 1.4s;      /* the deep-link reveal, once, then quiet */
+
   /* ---- Sidekick roles (Figma `28:543` / `28:866`) — the names the rebuilt components read -----
    * Aliases where the value already exists above, so one decision has one home.
    */
@@ -578,7 +595,13 @@
   --slider-knob-drag: 13px;
   --icon-badge: 36px;                        /* FIGMA Icon badge */
   --row-badge: 30px;                         /* FIGMA Activity row / hero detail badge */
-  --dur-bar: 600ms;                          /* FIGMA — a metric bar travelling to a new reading */
+  /*
+   * `--dur-bar: 600ms` stood here and was read by nothing — the metric bar it was named for is
+   * `.vital-fill`, which animates at `--dur-ring`, the same 600ms under a different name. Deleted
+   * 2026-09-21 rather than wired up, because two tokens with one value are two places for the next
+   * person to disagree about a duration, and `check-motion-tokens.mjs` now fails on a motion token
+   * nothing reads. Same reasoning as the legacy block's note at the foot of this file.
+   */
   --space-gutter: 28px;                      /* FIGMA content gutter */
 
   /* ---- The legacy block is gone, and this note is what replaced it ---------------------------

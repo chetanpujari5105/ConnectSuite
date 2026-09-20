@@ -343,7 +343,8 @@ body {
   font: 400 13.5px/20px var(--font-ui);
   text-align: left;
   cursor: pointer;
-  transition: color var(--dur-state) var(--ease), background-color var(--dur-state) var(--ease);
+  transition: color var(--dur-state) var(--ease), background-color var(--dur-state) var(--ease),
+    transform var(--dur-release) var(--ease);
 }
 
 .nav-row svg { flex: none; color: var(--text-body); transition: color var(--dur-state) var(--ease); }
@@ -1234,8 +1235,27 @@ body {
   color: var(--text-meta);
 }
 .hero[data-state='working'] .hero-phone-spinner { display: flex; }
-.hero-phone-spinner svg { animation: hero-spin 1.2s linear infinite; }
+.hero-phone-spinner svg { animation: hero-spin var(--dur-spin) linear infinite; }
 @keyframes hero-spin { to { transform: rotate(360deg); } }
+
+/*
+ * Reduced motion, 2026-09-21 — docs/sidekick-motion-system.md §3 MA-3.
+ *
+ * The global kill in tokens.css sets `animation-duration: 0.01ms` with `iteration-count: 1`, which
+ * does not stop this spinner so much as **freeze it**: it lands on the `to` frame and sits there,
+ * still drawn as a spinner, still saying "working", and no longer saying it. A reduced-motion user
+ * gets the one thing the rule exists to protect them from — a progress indicator that indicates
+ * nothing — while every other surface degrades correctly.
+ *
+ * `state-spin` has carried an explicit `animation: none` since D67 and this did not, which is the
+ * whole finding: two spinners, one vocabulary, one of them handled. The surrounding copy is what
+ * carries the state here (`.hero` and `.security-card` both render their own words), so the ring
+ * going static costs nothing that is not said in text a few pixels away.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .hero-phone-spinner svg { animation: none; }
+}
+
 .hero-phone-badge {
   position: absolute;
   right: -6px;
