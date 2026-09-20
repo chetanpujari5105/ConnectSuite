@@ -40,6 +40,7 @@
  *   disabled         a disabled button is not given the press transform
  *   reduced-motion   under `prefers-reduced-motion: reduce`, no transform and no animation survives
  *   reduced-transp   under `prefers-reduced-transparency: reduce`, no backdrop-filter survives
+ *   keyboard         the palette has NO motion, focus lands with it, Escape closes in the same turn
  *   tokens           every motion duration on screen is one of the approved values
  *
  * Each carries a control that must come back **non-trivially true**, because every one of these
@@ -521,6 +522,101 @@ if (wanted('reduced-transparency')) {
     check('reduced transparency removes every backdrop blur', after.count === 0,
       `${before.count} -> ${after.count}` + (after.sample.length ? `; surviving: ${after.sample.join(', ')}` : '') +
       `  [control: ${before.count} blurred surfaces with the setting off]`);
+  }
+}
+
+/* ---- 5b · Keyboard: nothing animates in the way of an action ---------------------------------- */
+
+if (wanted('keyboard')) {
+  console.log('\nkeyboard');
+  /*
+   * The palette is the sharpest case in the whole app and the rule is *no animation at all*:
+   * AUDIT.md §1 puts anything reached 100+ times a day in the "never animate" row, and Raycast —
+   * the thing this is modelled on — has none. The build agrees deliberately (departure N-M8). So
+   * this does not check that the motion is *fast*; it checks that there is **none**, because a
+   * 120ms fade here would be the one regression nobody would file and everybody would feel.
+   *
+   * Then the part motion can actually break: focus must arrive with the surface, and Escape must
+   * close it in the same turn. Both are measured through a real key event rather than by calling
+   * the handler, because "the handler runs" and "the keystroke reaches it" are different claims —
+   * the registration-is-not-execution rule.
+   */
+  const open = await probe.rawEvaluate(`(function(){
+    shell.openPalette();
+    var el = document.getElementById('palette');
+    var cs = getComputedStyle(el);
+    var input = document.getElementById('palette-input');
+    return JSON.stringify({
+      hidden: el.hidden,
+      transition: cs.transitionProperty + ' / ' + cs.transitionDuration,
+      animation: cs.animationName + ' / ' + cs.animationDuration,
+      focusIsInput: document.activeElement === input,
+      activeId: document.activeElement ? document.activeElement.id : null
+    });
+  })()`);
+  const o = JSON.parse(open);
+  const noMotion =
+    (o.animation.split('/')[0].trim() === 'none' || parseFloat(o.animation.split('/')[1]) <= 0.001) &&
+    parseFloat(o.transition.split('/')[1]) <= 0.001;
+  check('the command palette opens with NO animation', noMotion,
+    `transition ${o.transition}, animation ${o.animation} — AUDIT.md §1: 100+/day is the never-animate row`);
+  check('focus is on the palette input the moment it opens', o.focusIsInput,
+    `activeElement = ${o.activeId ?? '(none)'}`);
+
+  // A real Escape keydown, not a call to closePalette(): the keystroke has to reach the handler.
+  const closed = await probe.rawEvaluate(`(function(){
+    var before = document.getElementById('palette').hidden;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    var after = document.getElementById('palette').hidden;
+    return JSON.stringify({ before: before, after: after });
+  })()`);
+  const c = JSON.parse(closed);
+  if (c.before !== false) {
+    check('Escape closes the palette in the same turn', null,
+      'the palette was not open when Escape was sent, so this measured nothing');
+  } else {
+    check('Escape closes the palette in the same turn', c.after === true,
+      'measured synchronously after dispatching a real keydown — no frame in between');
+  }
+
+  /*
+   * And the general form of "no animation blocks an action": a surface that is on its way out must
+   * not still be swallowing clicks. Anything transitioning `opacity` while `pointer-events` is not
+   * `none` is a candidate; the palette backdrop is the one that would bite.
+   */
+  const blockers = JSON.parse(await probe.rawEvaluate(`(function(){
+    var out = [], scanned = 0, big = 0, invisible = 0;
+    var all = document.querySelectorAll('*');
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i], cs = getComputedStyle(el);
+      scanned++;
+      var r = el.getBoundingClientRect();
+      var isBig = r.width * r.height >= 10000;
+      if (isBig) big++;
+      var isInvisible = parseFloat(cs.opacity) <= 0.01;
+      if (isInvisible) invisible++;
+      if (cs.pointerEvents === 'none') continue;
+      if (!isInvisible) continue;
+      if (!isBig) continue;
+      out.push((el.id || el.className || el.tagName) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
+    }
+    /*
+     * scanned, big and invisible are the control. A zero here is only a finding if the query could
+     * have found something: each half of the predicate has to match SOMETHING on its own, or the
+     * run has proven nothing and merely returned an empty intersection.
+     */
+    return JSON.stringify({ count: out.length, sample: out.slice(0, 6), scanned: scanned, big: big, invisible: invisible });
+  })()`));
+  if (blockers.scanned === 0 || blockers.big === 0 || blockers.invisible === 0) {
+    check('no invisible surface is still taking clicks', null,
+      `the query proved nothing: scanned=${blockers.scanned}, big-enough-to-block=${blockers.big}, ` +
+      `at-opacity-0=${blockers.invisible}. Each half of the predicate must match something on its ` +
+      'own or a zero intersection is not a reading');
+  } else {
+    check('no invisible surface is still taking clicks', blockers.count === 0,
+      (blockers.count ? blockers.sample.join(', ') : 'none') +
+        `  [control: ${blockers.scanned} elements scanned, ${blockers.big} big enough to swallow a ` +
+        `click, ${blockers.invisible} at opacity 0 — the intersection is what is empty, not the query]`);
   }
 }
 

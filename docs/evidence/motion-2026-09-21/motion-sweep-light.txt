@@ -5,12 +5,12 @@ routes
   12 of 12 routes read
 
 press
-  PASS       every enabled button eases its press — 8400 of 8400 enabled buttons  [control=8412 buttons seen across 12 routes]
+  PASS       every enabled button eases its press — 8640 of 8640 enabled buttons  [control=8652 buttons seen across 12 routes]
   PASS       the press releases at --dur-release (0.16s), not at --dur-press — all 0.16s
 
 press-down
-  PASS       pressing shortens the transition to --dur-press (0.1s) — 700 of 700 at 0.1s  [forced=700]
-  PASS       pressing actually applies a scale transform — 23 of 23 VISIBLE buttons actually scale below 1 (677 in non-routed panes report no scale whatever their state, and are excluded) — this is the control for the row above, since a duration on a property that never changes is unobservable
+  PASS       pressing shortens the transition to --dur-press (0.1s) — 720 of 720 at 0.1s  [forced=720]
+  PASS       pressing actually applies a scale transform — 23 of 23 VISIBLE buttons actually scale below 1 (697 in non-routed panes report no scale whatever their state, and are excluded) — this is the control for the row above, since a duration on a property that never changes is unobservable
 
 disabled
   PASS       a disabled control does not animate — 1 disabled buttons, 0 carrying a press
@@ -22,11 +22,17 @@ reduced-motion
 reduced-transparency
   PASS       reduced transparency removes every backdrop blur — 4 -> 0  [control: 4 blurred surfaces with the setting off]
 
+keyboard
+  PASS       the command palette opens with NO animation — transition all / 0s, animation none / 0s — AUDIT.md §1: 100+/day is the never-animate row
+  PASS       focus is on the palette input the moment it opens — activeElement = palette-input
+  PASS       Escape closes the palette in the same turn — measured synchronously after dispatching a real keydown — no frame in between
+  PASS       no invisible surface is still taking clicks — none  [control: 3854 elements scanned, 45 big enough to swallow a click, 42 at opacity 0 — the intersection is what is empty, not the query]
+
 tokens
   PASS       every duration on screen is an approved token value — 9 distinct values, all approved  [control=9 values seen]
-             0s          2882x  none
-             0.18s        902x  --dur-state
-             0.16s        702x  --dur-release / --dur-toggle
+             0s          3020x  none
+             0.18s        942x  --dur-state
+             0.16s        722x  --dur-release / --dur-toggle
              0.2s         620x  --dur-pill / --dur-hover
              0.22s          9x  --dur-float / --dur-arrive
              0.6s           2x  --dur-ring
@@ -35,6 +41,6 @@ tokens
              1.2s           1x  --dur-spin
 
 ------------------------------------------------------------------------------
-motion-sweep: 9 pass, 0 fail, 0 NO READING, over 12 of 12 routes.
-  buttons seen: 8412 (12 disabled). A run on a disconnected app
+motion-sweep: 13 pass, 0 fail, 0 NO READING, over 12 of 12 routes.
+  buttons seen: 8652 (12 disabled). A run on a disconnected app
   sees fewer — notification rows, activity chips and photo albums need a linked phone.

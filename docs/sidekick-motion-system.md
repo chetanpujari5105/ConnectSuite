@@ -122,7 +122,7 @@ unless the Reduced column says otherwise.
 | `.deep-reveal` | a palette deep link lands | explains *where the thing you asked for is* | `--dur-flash` | `--ease` | border-color, box-shadow | `animation: none`, static border | state | departure |
 | `.notif-row`, `.clip-row`, `.activity-chip`, `.sms-composer-row` | hover / selection | state indication | `--dur-state` | `--ease` | background, border, color | instant | decor | FIGMA |
 | `.row-actions` | row hover | reveals actions without a layout jump | `--dur-hover` | `--ease` | opacity, transform | instant | decor | FIGMA |
-| `.photos-tile` | hover | feedback | `--dur-hover` (lift) / `--dur-release` (press) | `--ease` | transform lift, **scale** press, border, shadow | instant | decor | FIGMA |
+| `.photos-tile` | hover | feedback | `--dur-hover` (lift) / `--dur-release` (press) | `--ease` | transform lift **behind `@media (hover: hover)`**, `scale` press, border, shadow | instant | decor | FIGMA |
 | `.photos-album`, `.quality-dot`, `.remote-open`, `.remote-seek` thumb | hover | state indication | `--dur-hover` | `--ease` | background / opacity | instant | decor | FIGMA |
 | `.remote-now::before` | track change | prevents an artwork jump-cut | `--dur-route` | `--ease` | opacity | instant | decor | FIGMA |
 
@@ -340,6 +340,29 @@ visibility on every run.
 
 ---
 
+## 6b · The `review-animations` pass, row by row
+
+Run against the finished build on 2026-09-21, against `review-animations` → `STANDARDS.md`. Every
+row is a standard from that file, not an opinion.
+
+| Standard | Result |
+|---|---|
+| **100+/day → no animation, ever** | **Pass.** The ⌘K palette has none, deliberately (departure N-M8), and the sweep asserts `animation: none` and `transition-duration: 0s` on it rather than trusting the comment |
+| **Never `ease-in` on UI** | **Pass, 0 occurrences.** Measured with `var()` stripped first — the naive scan reported 99, all of them the substring inside `var(--ease)` |
+| **Strong custom curves, not the built-ins** | **Pass.** `--ease-in-out` is `cubic-bezier(.77,0,.175,1)`, which is the standard's own recommended value; `--ease` is `cubic-bezier(.22,1,.36,1)`, a strong ease-out |
+| **Button press 100–160ms** | **Pass.** 100 down, 160 up, and the asymmetry is the point (Apple §1: respond on pointer-down) |
+| **UI under 300ms** | **Pass**, with four deliberate exceptions, each of which is *not* a UI entrance: `--dur-ring` 600ms (a value arc between two readings), `--dur-spin` / `--dur-spin-fast` (constant motion, `linear`), `--dur-flash` 1.4s (a one-shot locator), `--dur-brand-breath` 6s (ambient, gated on `no-preference`) |
+| **Never `scale(0)`** | **Pass, 0 occurrences.** Press is `0.97`, inside the standard's 0.95–0.98 band |
+| **Only `transform` and `opacity`** | **Pass.** 0 layout properties in any transition. The press now rides `scale`, which is the same compositor path |
+| **No `transition: all`** | **Pass, 0 declarations.** The palette's computed `transition-property: all` is the CSS *initial value* on an element with no transition, not a declaration — a lookalike worth naming, since a scan of computed styles reports it identically |
+| **Interruptible for rapidly-triggered UI** | **One accepted exception.** `.toast` enters via `@keyframes`, which restarts rather than retargeting. A toast here is replaced by a user action at most every few seconds, not stacked, so the restart is not reachable at a rate anyone can see. Recorded in §4 rather than fixed; if toasts ever stack this becomes real |
+| **Hover motion behind `@media (hover: hover)`** | **Fixed in this pass.** Two ungated hover transforms against fifteen gated blocks elsewhere — drift, not a live defect, since a Mac always matches. `.notif-row`'s reveal was **split** rather than gated whole: the `:focus-within` half is the keyboard path and gating it would have hidden the row's actions from keyboard users entirely |
+| **Reduced motion: gentler, not zero** | **Pass.** `.motion-fade` keeps the status island's cross-fade so a state change stays legible; every transform goes |
+| **Stagger 30–80ms** | **N/A.** There is none: the route stagger was deleted (N-M2) because it put ~410ms in front of the most frequent action in the app |
+| **No `prefers-contrast: more`** | **Open, and out of scope.** Apple §14 names three signals; this app answers two. It is a colour-and-border question, not a motion one, and belongs to the next colour pass |
+
+---
+
 ## 7 · Verification
 
 | What | How | Where |
@@ -349,10 +372,12 @@ visibility on every run.
 | reduced motion removes movement | `motion-sweep.mjs --reduced` | CDP `Emulation.setEmulatedMedia` |
 | reduced transparency keeps surfaces opaque | `motion-sweep.mjs --reduced-transparency` | same |
 | disabled controls do not animate | `motion-sweep.mjs` | same |
-| nothing blocks a keypress | `motion-sweep.mjs` | Escape closes with motion in flight |
+| the palette has no motion at all | `motion-sweep.mjs --only=keyboard` | asserted, not assumed |
+| focus lands with the surface | `motion-sweep.mjs --only=keyboard` | `activeElement` after open |
+| Escape closes in the same turn | `motion-sweep.mjs --only=keyboard` | a real `keydown`, read synchronously |
+| nothing invisible still takes clicks | `motion-sweep.mjs --only=keyboard` | with the three-part control |
 
-**Measured 2026-09-21, dark and light, 12 of 12 routes:** 9 pass, 0 fail, 0 NO READING, both
-themes, ten consecutive runs. Press: **8400 of 8400** enabled buttons. Reduced motion: 169
+**Measured 2026-09-21, dark and light, 12 of 12 routes: 13 pass, 0 fail, 0 NO READING.** Press: **8400 of 8400** enabled buttons. Reduced motion: 169
 transforms → 0, 4 animations → 0. Reduced transparency: 4 blurred surfaces → 0. Every one with its
 control.
 

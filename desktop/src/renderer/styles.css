@@ -2277,11 +2277,22 @@ img#qr {
   transition: opacity var(--dur-hover) var(--ease), transform var(--dur-hover) var(--ease);
 }
 
-.notif-row:hover .row-actions,
+/*
+ * Split deliberately: the `:focus-within` half is the KEYBOARD path and must never sit behind a
+ * hover gate — a keyboard user has no pointer, so gating it would hide the row's actions from them
+ * entirely. Only the pointer half is gated.
+ */
 .notif-row:focus-within .row-actions {
   opacity: 1;
   visibility: visible;
   transform: translateX(0);
+}
+@media (hover: hover) and (pointer: fine) {
+  .notif-row:hover .row-actions {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+  }
 }
 
 .icon-button {
@@ -3057,9 +3068,14 @@ img#qr {
     scale var(--dur-release) var(--ease);
 }
 
-.photos-tile:hover {
-  transform: translateY(-2px);
-  border-color: var(--hairline-hover);
+/* Gated like the other fifteen hover blocks in this build. On a Mac `hover: hover` is always true,
+   so this changes nothing drawn — it is consistency, so the next person copying a hover rule copies
+   the gated shape. A touch device would otherwise keep the lift stuck after a tap. */
+@media (hover: hover) and (pointer: fine) {
+  .photos-tile:hover {
+    transform: translateY(-2px);
+    border-color: var(--hairline-hover);
+  }
 }
 
 /* The design's selected tile is a 1.5px accent border rather than a ring, and the border is drawn
