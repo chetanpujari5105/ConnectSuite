@@ -1,3 +1,103 @@
+# Resume here — written 2026-09-20 (second sitting): pairing's last state, and the shell
+
+> A state report, not a note to myself. Written to be handed to someone who was not here.
+
+## 0 · Two things are blocking, and neither is code
+
+1. **The phone stopped trusting this Mac, mid-sitting.** Every reconnect returns
+   `SSLV3_ALERT_CERTIFICATE_UNKNOWN` — SSL alert 46, the phone refusing this Mac's certificate —
+   so the app correctly forces the pairing screen and **every other route is a no-op**. Nothing in
+   this sitting touched identity, TLS or the trust store; the control is that `shell.route('files')`
+   called directly is equally a no-op. **Re-pairing is a scan on the owner's phone and a write to
+   their trust store, so it was not done.** Until it is, no pane can be screenshotted and the shell
+   sweep holds no reading.
+2. **The Figma MCP is not connected on this account.** `get_screenshot` returns
+   *"MCP server not connected"* rather than the Starter-plan limit it returned in the last two
+   sittings. So **every frame in these two batches is built to the handoff**, which is the weaker
+   claim, and it is stated in every row, every departure and both commit messages. Exactly one
+   Figma frame has ever been rendered against this build: `32:4382`.
+
+## 1 · What landed
+
+| Commit | What |
+|---|---|
+| `2a3d367` | **6a** — pairing's *No network* (`34:12152`) and **defect 125**: the screen drew a real QR of `0.0.0.0` |
+| `68bd6ba` | **6b** — the shell's cross-cutting surfaces, measured. **Defects 126, 127, 128** |
+
+**869 → 900 tests.** Typecheck clean, all twelve commit guards exit 0 on both. Nothing pushed.
+Departures **D61–D66**; evidence `docs/evidence/sidekick-batch6/`.
+
+## 2 · The three defects a person would have hit
+
+- **125.** With no network, `localAddress()` returned `'0.0.0.0'`, that went into the pairing
+  payload, was encoded into a real QR, and was drawn under *"Scan this with your phone"*. Nothing
+  can connect to `0.0.0.0`. The literal had **one writer and no reader** in the whole desktop tree.
+- **126.** The macOS menu bar said **Electron**, its About/Hide/Quit said **`sidekick-desktop`**,
+  and View offered **Force Reload and Toggle Developer Tools** to users.
+- **128.** The New-conversation panel was a modal surface with no role, no label, no Escape and no
+  focus restore — read beside the palette, which has all four.
+
+## 3 · Three instrument faults, and the third is the one to read
+
+| | First answer | What it was |
+|---|---|---|
+| focus rings | `0 of 17` | `el.focus()` does not fire `:focus-visible`. Zero rings on a fully ringed app |
+| Photos' rings | `14 of 166` | `DOM`/`CSS` are per-target domains whose node map outlives the websocket |
+| **the whole sweep** | **`OK — 0 of 0`** | every route refused, and `0 === 0` is true |
+
+**A sweep that measured nothing certified everything**, in a file written the same hour as a probe
+carrying the same guard. The denominator is the verdict's own control and is checked before the
+ratio now. The committed artifact is the **blocked** run, because that is what the guard looks like
+when it fires.
+
+A fourth, from 6a: a `[hidden]` companion was added to `styles.css` on the reasoning that an author
+`display` on an id beats the UA's `[hidden]` — then the probe was re-run **with it removed** and
+read `display: none` anyway, because `shell.css:41` already declares it `!important` globally. The
+hypothesis was refuted by its own control and the line came back out. *The control was only run
+because the answer had already come back the way I wanted it.*
+
+## 4 · The reading with the link up, at 17:15
+
+Focus rings **816 of 816** across twelve routes, control **0 of 816** outlined at rest. **0**
+surfaces still blurred under reduced transparency, **0** still transitioning under reduced motion,
+against **5** translucent at rest. Palette and New-conversation both labelled `role=dialog`; toast
+`role=status`. It is not a committed file because the link went down before one could be written.
+
+## 5 · What is still open
+
+1. **Re-pair the phone** (owner's action) — then re-run `node scripts/shell-parity-sweep.mjs` and
+   commit a green artifact beside the blocked one.
+2. **One Figma render per screen.** Owed for every frame but `32:4382`.
+3. **Files' and Photos' remaining frames** — *sending*, *no folders*, *couldn't open*, *partial*,
+   *permission* were not re-captured after the surface change. All five have tests.
+4. **States needing the phone in a condition this Mac cannot produce**: a real revoked grant, a
+   real send failure, an incoming call, a live mirror session, a real scan advancing the pairing
+   column, a real `pair.rejected`.
+5. **The packaged menu bar is unread.** The app menu's title comes from `CFBundleName`, which is
+   `Electron` in development and `Sidekick` in a packaged bundle — verified from the plist, not
+   from a build. The packaged View menu (no reload, no devtools) is covered by a test and read from
+   no packaged build.
+6. **The designer's hour**, now nine panes deep. New this sitting: pairing's *No network* copy, and
+   the decision to keep **194 native `title` tooltips** because the handoff specifies eighteen
+   components and none is a tooltip.
+
+## 6 · How to pick it up
+
+```
+cd desktop && npm run build && npm test
+pkill -f "node_modules/.bin/electron"
+nohup ./node_modules/.bin/electron . --force-renderer-accessibility --remote-debugging-port=9222 &
+node scripts/shell-parity-sweep.mjs          # refuses rather than passing on an empty denominator
+node scripts/pair-nonetwork-probe.mjs        # computed style, both card shapes
+node scripts/shot.mjs --out=/tmp/x.png --screen=<pane> --viewport=1440x920 --settle=1200
+```
+
+**If a probe hangs on a `DOM.querySelectorAll`, restart the app.** `DOM` and `CSS` are per-target
+domains: an interrupted run leaves a node map a new connection cannot address. `rawForcePseudo`
+disables them before enabling for that reason, but a run interrupted elsewhere can still leave it.
+
+---
+
 # Resume here — written 2026-09-20: the full-app Sidekick parity pass, batches 4 and 5
 
 > A state report, not a note to myself. Written to be handed to someone who was not here.
