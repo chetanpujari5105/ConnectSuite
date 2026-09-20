@@ -8,6 +8,7 @@ import './notifyLabels';
 // The state vocabulary, and the icons it draws — loaded before the pane, as the page does.
 import './icons';
 import './stateBlock';
+import '../shared/mediaSessionRow';
 import './notifications';
 
 /**
@@ -91,7 +92,11 @@ interface Pane {
   notice: FakeElement;
   filters: FakeElement;
   detail: FakeElement;
-  view: { setAdvertised(on: boolean, reason?: string): void; refresh(): Promise<void> };
+  view: {
+    setAdvertised(on: boolean, reason?: string): void;
+    setMediaSession(state: Record<string, unknown> | null): void;
+    refresh(): Promise<void>;
+  };
 }
 
 function mount(): Pane {
@@ -302,4 +307,50 @@ test('a package id never reaches a sentence on its own', () => {
     pane.list.queryAll('.app-name').every((n) => n.textContent.trim().length > 0),
     'an app name was drawn blank',
   );
+});
+
+
+// ---- The media-session row (handoff §5c, component 16) -------------------------------------------
+
+/**
+ * The row is drawn **only** where the notification's package is the one holding an active session.
+ * Asserted with a second, ordinary notification in the same list as the control — a test that drew
+ * one row would pass with the correlation deleted and every row turned into a media row.
+ */
+test('the playing app\u2019s row becomes the media row, and no other row does', () => {
+  const pane = mount();
+  pane.view.setAdvertised(true);
+  pane.view.setMediaSession({
+    active: true,
+    package: 'com.spotify.music',
+    appName: 'Spotify',
+    title: 'Teardrop',
+    artist: 'Massive Attack',
+    playing: true,
+    canSkipNext: true,
+    canSkipPrevious: false,
+  });
+  pane.bridge.fire([
+    notif('a', { package: 'com.spotify.music', appName: 'Spotify', title: 'Teardrop' }),
+    notif('b', { package: 'com.google.android.gm', appName: 'Mail', title: 'Priya Nair' }),
+  ]);
+
+  const rows = pane.list.queryAll('.notif-row');
+  assert.equal(rows.length, 2, 'control: both rows drawn');
+  assert.equal(rows[0]!.queryAll('.notif-media-transport').length, 1);
+  assert.equal(rows[1]!.queryAll('.notif-media-transport').length, 0, 'an ordinary row grew a transport');
+  // Only the controls the session offers: next yes, previous no — so two buttons, not three.
+  assert.equal(rows[0]!.queryAll('.notif-media-button').length, 2);
+});
+
+test('the session ending puts the row back to an ordinary notification', () => {
+  const pane = mount();
+  pane.view.setAdvertised(true);
+  pane.view.setMediaSession({ active: true, package: 'com.spotify.music', title: 'Teardrop', playing: true });
+  pane.bridge.fire([notif('a', { package: 'com.spotify.music', title: 'Teardrop' })]);
+  assert.equal(pane.list.queryAll('.notif-media-transport').length, 1, 'control: the row was a media row');
+
+  pane.view.setMediaSession({ active: false });
+  assert.equal(pane.list.queryAll('.notif-media-transport').length, 0);
+  assert.equal(pane.list.queryAll('.notif-row').length, 1, 'the row itself vanished with the session');
 });

@@ -21245,3 +21245,27 @@ Frames not rendered; built to handoff §6. Departures D57–D58. Capture:
 
 **Not proven:** the *Rejected* and *No network* frames, and a real scan advancing the column on
 hardware. Seeing those means unpairing the owner's phone, which this pass will not do.
+
+## Sidekick Batch 5e — the media-session row — 2026-09-20
+
+Frame `40:21209` not rendered; built to handoff §5c. Departures D59–D60. Capture:
+`docs/evidence/sidekick-batch5/notifications-media-SYNTHETIC-1440x920.png` — **synthetic**, because
+nothing was playing on the phone and a session cannot be made to exist from this Mac.
+
+- **`shared/mediaSessionRow.test.ts` (6)**: the playing app's notification becomes the row; another
+  app's does not, nor does one with no session or an inactive one, **with the matching case as the
+  control**; a control the session does not offer is not reported as available (absent fields are
+  refusals, not unknowns); a **paused** session still draws the row; a session with no title falls
+  back to the notification and then to nothing rather than a blank row; the subtitle carries no
+  separator for a part that does not exist.
+- **`notificationsView.test.ts` +2**: the playing app's row gets the transport and the ordinary row
+  beside it does not — asserted with both rows in one list, because a test over a single row would
+  pass with the correlation deleted and *every* row turned into a media row. Two buttons, not three,
+  where the session refuses `canSkipPrevious`. The session ending puts the row back.
+- **Red-first:** the package correlation deleted → **2 red**, one in each file.
+- `npm test` **869 / 869**.
+
+**Not proven:** a real session. Everything here was driven by hand — `setMediaSession` with a
+constructed state — so what is proven is the correlation and the drawing, not that `remote.state`
+arrives in this shape on hardware. That is the same gap the implementation plan's §6 lists as
+needing a phone with something playing.

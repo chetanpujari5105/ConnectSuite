@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch5/notifications-media-SYNTHETIC-1440x920.png",
+  "screen": "notifications",
+  "takenAt": "2026-09-20T04:58:08.032Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 1000,
+  "ready": null,
+  "prep": "(() => {\n  const t = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime(); };\n  const n = (key, app, pkg, title, text, over = {}) => ({\n    key, package: pkg, appName: app, title, text, subText: '', whenMs: t(9, 40), canReply: false,\n    clearable: true, ongoing: false, isGroupSummary: false, category: '', actions: [], ...over,\n  });\n  notifications.list = [\n    n('k1', 'Messages', 'com.google.android.apps.messaging', 'R. Sharma', 'Sounds good — see you at 6.', { canReply: true, category: 'msg', whenMs: t(9, 31), actions: [{ index: 0, title: 'Reply', isReply: true }, { index: 1, title: 'Mark as read', isReply: false }] }),\n    n('k2', 'Calendar', 'com.google.android.calendar', 'Design review', 'In 15 minutes · Meeting room 2', { whenMs: t(9, 12) }),\n    n('k3', 'Maps', 'com.google.android.apps.maps', 'Navigating home', '18 min · light traffic', { ongoing: true, clearable: false, whenMs: t(8, 58) }),\n    n('k4', 'Mail', 'com.google.android.gm', 'Priya Nair', 'The file is attached — let me know.', { canReply: true, category: 'msg', whenMs: t(8, 44) }),\n    n('k5', 'com.techmash.playo', 'com.techmash.playo', 'Booking confirmed', 'Court 3, 7:00 PM', { whenMs: t(8, 20) }),\n  ];\n  notifications.advertised = true;\n  notifications.selected = 'k1';\n  notifications.card.classList.remove('hidden');\n  notifications.render();\n  return true;\n})(); notifications.setMediaSession({active:true,package:'com.spotify.music',appName:'Spotify',title:'Teardrop',artist:'Massive Attack',album:'Mezzanine',playing:true,canSkipNext:true,canSkipPrevious:true}); notifications.list=[{key:'m0',package:'com.spotify.music',appName:'Spotify',title:'Teardrop',text:'Massive Attack',subText:'',whenMs:Date.now()-60000,canReply:false,clearable:true,ongoing:true,isGroupSummary:false,category:'',actions:[]},...notifications.list]; notifications.selected='m0'; notifications.render(); notifications.render=()=>{};",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

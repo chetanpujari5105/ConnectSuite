@@ -5105,3 +5105,34 @@ img#qr {
   white-space: nowrap;
 }
 .device-cap[data-tone='warning'] .device-cap-state { color: var(--warning); }
+
+/* ---- The media-session row in the feed (component 16, frame 40:21209) --------------------------
+   Drawn only where the notification's package holds an active session. The controls are the ones
+   the session says exist — there is no scrubber here: the Overview widget runs one from
+   `positionMs` + `positionAtMs`, and a second bar ticking in a list is two clocks for one fact.
+------------------------------------------------------------------------------------------------ */
+
+.notif-media-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: center;
+  flex: none;
+}
+
+.notif-media-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .notif-media-button:hover { background: var(--elev-3); border-color: var(--hairline-hover); }
+}

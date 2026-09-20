@@ -904,6 +904,16 @@ const notifications = new NotificationsView(
   connect,
 );
 
+/*
+ * The feed's media row reads **the same `remote.state` the Overview widget reads** — handoff §5c's
+ * first line, and the reason this is a second listener on one channel rather than a second source:
+ * the two surfaces must never disagree about the track, the app or which controls exist. A cleared
+ * session (`active: false`) reaches the pane like any other, so the row goes back to being an
+ * ordinary notification the moment the music stops.
+ */
+connect.onRemoteChanged((state) => notifications.setMediaSession(state));
+void connect.remoteState().then((state) => notifications.setMediaSession(state)).catch(() => {});
+
 /**
  * A native notification was clicked.
  *

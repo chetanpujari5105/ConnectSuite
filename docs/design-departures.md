@@ -1277,3 +1277,21 @@ steps, and an earlier absence never retracts a later one. An mDNS sighting is a 
 mDNS was dropped by client isolation or by the router. And **no step is ever drawn as failed**: a
 phone that has not paired yet has not failed, so a rejection is the amber banner's job and the steps
 stay where they are.
+
+## Sidekick Batch 5e — the media-session row in the feed — 2026-09-20. Rows D59–D60
+
+Frame `40:21209`, component 16. **Not rendered**; built to handoff §5c, which specifies this row in
+prose more tightly than any other surface in the file.
+
+| Row | Figma / handoff | Built | Why |
+|---|---|---|---|
+| **D59** | The row carries the transport | Built, and **only the controls the session says exist** — `canSkipPrevious` / `canSkipNext` gate the skips, and a refused control is **absent** rather than dimmed | The widget draws a refused control off *with its reason beside it*; a list row has no room for a reason, and a dimmed button with no explanation is the greyed-control shape decision 6 rules out |
+| **D60** | — | **No scrubber in the row** | The Overview widget runs one from `positionMs` + `positionAtMs`. A second bar ticking in a list is two clocks for one fact — the shape defect 96 is about |
+
+**One source of truth, and it is the point of the row.** `renderer.ts` subscribes a second listener
+to the **same `onRemoteChanged`** the widget reads, rather than giving the pane its own source: §5c's
+first line is that the two surfaces must never disagree about the track, the app, the playing state
+or which controls exist. Nothing new is on the wire — it is the correlation `shared/appCall.ts`
+already performs for calls. The detail column repeats the facts and **not** a second transport, and
+it no longer quotes the notification's `text`: a media notification puts the artist there, which the
+row's own subtitle already carries.

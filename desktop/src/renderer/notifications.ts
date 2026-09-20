@@ -60,6 +60,19 @@ interface Notif {
   actions: NotifAction[];
 }
 
+/** The live media session, for the feed's media row (handoff §5c). `null` while nothing plays. */
+interface NotifMediaState {
+  active: boolean;
+  package?: string;
+  appName?: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  playing?: boolean;
+  canSkipNext?: boolean;
+  canSkipPrevious?: boolean;
+}
+
 interface NotifAck {
   ok: boolean;
   reason?: string;
@@ -71,6 +84,8 @@ interface NotifBridge {
   notifReply(key: string, text: string): Promise<NotifAck>;
   notifAction(key: string, index: number): Promise<NotifAck>;
   notifDismiss(key: string): Promise<NotifAck>;
+  /** The media transport, where a row is the playing app's. Optional: the view tests do not need it. */
+  remoteCommand?(action: string): Promise<unknown>;
   onNotifChanged(callback: (list: Notif[]) => void): void;
 }
 
@@ -144,6 +159,19 @@ class NotificationsView {
   private unavailableReason: string | null = null;
 
   private advertised = false;
+
+  /**
+   * The live session, pushed from `renderer.ts` — **the same `remote.state` the Overview widget
+   * reads**, not a second subscription with its own idea of what is playing. Handoff §5c: the two
+   * surfaces must never disagree about the track, the app, or which controls exist.
+   */
+  private media: NotifMediaState | null = null;
+
+  /** Fed by the same `onRemoteChanged` the media widget uses. */
+  setMediaSession(state: NotifMediaState | null): void {
+    this.media = state;
+    this.render();
+  }
 
   private noticeTimer: number | null = null;
 
@@ -479,19 +507,41 @@ class NotificationsView {
     head.appendChild(when);
     body.appendChild(head);
 
-    if (one.title) {
+    /*
+     * The media-session row (component 16, frame `40:21209`). Drawn **only** where this
+     * notification's package is the one holding an active session — `shared/mediaSessionRow.ts`
+     * decides, and returns `null` for every other notification, which is most of them.
+     */
+    const media = mediaSessionRow(one, this.media);
+    if (media) {
+      row.classList.add('is-media');
       const title = document.createElement('div');
       title.className = 'notif-title';
-      title.textContent = one.title;
+      title.textContent = media.title;
       body.appendChild(title);
-    }
-    if (one.text) {
-      const text = document.createElement('div');
-      text.className = 'notif-text';
-      text.textContent = one.text;
-      body.appendChild(text);
+      if (media.subtitle) {
+        const sub = document.createElement('div');
+        sub.className = 'notif-text';
+        sub.textContent = media.subtitle;
+        body.appendChild(sub);
+      }
+    } else {
+      if (one.title) {
+        const title = document.createElement('div');
+        title.className = 'notif-title';
+        title.textContent = one.title;
+        body.appendChild(title);
+      }
+      if (one.text) {
+        const text = document.createElement('div');
+        text.className = 'notif-text';
+        text.textContent = one.text;
+        body.appendChild(text);
+      }
     }
     row.appendChild(body);
+
+    if (media) row.appendChild(this.mediaTransport(media));
 
     // The handoff's row: a lime **Reply** pill only where `canReply` is true, and nothing on a
     // read-only row. It opens the row in the detail column with the reply field focused; it never
@@ -531,6 +581,37 @@ class NotificationsView {
     return row;
   }
 
+  /**
+   * The row's transport: previous, play/pause, next — and **only the controls the session says
+   * exist** (§5c). There is no scrubber: the Overview widget runs one from `positionMs` +
+   * `positionAtMs`, and a second bar ticking in a list row would be two clocks for one fact.
+   */
+  private mediaTransport(media: { playing: boolean; canSkipPrevious: boolean; canSkipNext: boolean }): HTMLElement {
+    const bar = document.createElement('div');
+    bar.className = 'notif-media-transport';
+    const button = (icon: string, label: string, action: string, enabled = true): HTMLElement => {
+      const el_ = document.createElement('button');
+      el_.type = 'button';
+      el_.className = 'notif-media-button';
+      el_.setAttribute('aria-label', label);
+      el_.title = label;
+      el_.appendChild(iconSvg(icon, 14));
+      el_.addEventListener('click', (event) => {
+        event.stopPropagation();
+        void this.bridge.remoteCommand?.(action);
+      });
+      return el_;
+    };
+    if (media.canSkipPrevious) bar.appendChild(button('skip-back', 'Previous track', 'previous'));
+    bar.appendChild(
+      media.playing
+        ? button('pause', 'Pause', 'play_pause')
+        : button('play', 'Play', 'play_pause'),
+    );
+    if (media.canSkipNext) bar.appendChild(button('skip-forward', 'Next track', 'next'));
+    return bar;
+  }
+
   /** The pane's ONE primary card, at elevation 3. Nothing else on this pane may claim that weight. */
   private detailCard(one: Notif): HTMLElement {
     const card = document.createElement('div');
@@ -559,14 +640,36 @@ class NotificationsView {
     }
     card.appendChild(head);
 
-    if (one.title) {
+    const media = mediaSessionRow(one, this.media);
+    if (media) {
+      // §5c: the detail repeats the facts and **not** a second transport row — one set of controls,
+      // not two. The row above carries them.
+      const title = document.createElement('div');
+      title.className = 'detail-title';
+      title.textContent = media.title;
+      card.appendChild(title);
+      if (media.subtitle) {
+        const sub = document.createElement('p');
+        sub.className = 'detail-sub';
+        sub.textContent = media.subtitle;
+        card.appendChild(sub);
+      }
+      const state = document.createElement('p');
+      state.className = 'detail-note';
+      state.textContent = media.playing
+        ? `Playing on the phone${one.appName ? ` in ${one.appName}` : ''}. The controls are on the row.`
+        : `Paused on the phone${one.appName ? ` in ${one.appName}` : ''}. The controls are on the row.`;
+      card.appendChild(state);
+    } else if (one.title) {
       const title = document.createElement('div');
       title.className = 'detail-title';
       title.textContent = one.title;
       card.appendChild(title);
     }
 
-    if (one.text) {
+    // A media row's own subtitle already carries the artist and album, which is what a media
+    // notification puts in `text` — quoting it again is the same fact twice in one card.
+    if (one.text && !media) {
       const quote = document.createElement('div');
       quote.className = 'detail-quote';
       quote.textContent = one.text;
