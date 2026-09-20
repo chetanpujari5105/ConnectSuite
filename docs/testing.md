@@ -21379,3 +21379,155 @@ the sidebar read `Connected`, and the steps column reads all four `done`** — o
 driven. The steps column at 1440 × 920 therefore shows a *paired* Mac beside a *no network* card, a
 combination that cannot occur; it is what the instrument could produce, not a state of the product.
 
+## Sidekick Batch 6b — the shell's cross-cutting surfaces, measured — 2026-09-20
+
+The last group in the full-app pass: palette, island, header, sidebar, toasts, menus, dialogs,
+tooltips, focus rings, keyboard shortcuts, both themes, reduced transparency and reduced motion.
+
+**Every one of these is invisible in a pane screenshot.** A focus ring exists only while a control
+is focused by keyboard; a tooltip only while a pointer rests; a reduced-transparency rule only on a
+machine with the setting on. Twelve routes photographed at rest, mouse elsewhere, cannot show any
+of them — so this group is a sweep, `scripts/shell-parity-sweep.mjs`, not a look.
+
+### What the sweep found, and three of the four findings were my own instrument
+
+| Reading | First answer | What it was |
+|---|---|---|
+| focus rings | **0 of 17** | `el.focus()` from a script does not fire the user agent's `:focus-visible` heuristic. Zero rings on a fully ringed app |
+| Photos' rings | **14 of 166** | `rawForcePseudo` stalled at 152 nodes and returned partial. `DOM`/`CSS` are **per-target** domains whose node map outlives the websocket, so an interrupted run poisons the next one — measured: after one, a selector matching **7** elements timed out; after restarting the app, instant |
+| the whole sweep | **`OK — 0 of 0`** | every route refused to draw, and `0 === 0` is true. A sweep that measured nothing certified everything |
+| the New-conversation panel | **not a dialog** | **real** — see defect 128 |
+
+The first two were fixed in `scripts/probe.mjs`: `rawForcePseudo` forces the pseudo-class through
+CDP, in parallel, with a **reported** node cap, and disables the `DOM`/`CSS` domains before
+enabling them so a reading does not depend on how the previous one ended. `rawEmulateMedia` was
+added for the same reason — an accessibility setting cannot be produced from page script.
+
+**The third is the one worth carrying forward.** `0 of 0` passing is this repo's page-cap row
+arriving *inside a sweep written in the same sitting as a probe that has the same guard*. The
+denominator is the verdict's own control, and it is now checked before the ratio: an empty one is
+**NO READING** and counts as a failure, and the routes that refused are named rather than summed
+away. The committed artifact is that run —
+`docs/evidence/sidekick-batch6/shell-parity-sweep-BLOCKED.txt` — because it is what the guard
+looks like when it fires.
+
+### The reading with the link up, taken at 17:15 the same sitting
+
+| | |
+|---|---|
+| focus rings | **816 of 816** across all twelve routes, with the control at **0 of 816 outlined at rest** |
+| translucent at rest | island, sidebar, palette, toast, pair notice — the control that makes the next row mean something |
+| reduced transparency | **0** surfaces still blurred |
+| reduced motion | **0** surfaces still transitioning |
+| palette | `role=dialog`, `aria-modal=true`, labelled |
+| toast | `role=status`, `aria-live=polite` |
+
+**That run is not the committed artifact and the reason is a device condition, not a choice.** The
+phone began refusing this Mac's certificate mid-sitting — `SSLV3_ALERT_CERTIFICATE_UNKNOWN`, SSL
+alert 46, on every retry — so the app correctly forces the pairing screen and every other route is
+a no-op. Re-pairing is a scan on the owner's phone and their trust store, so it was not done. The
+numbers above were read live and displayed; the file beside them is the blocked run.
+
+### Defect 126 — the menu bar named the app by its npm package and offered devtools to users
+
+With no `Menu.setApplicationMenu`, Electron installs its own. Read live through `System Events`:
+
+```
+menu bar       : Apple, Electron, File, Edit, View, Window
+the app menu   : About sidekick-desktop … Hide sidekick-desktop … Quit sidekick-desktop
+View           : Reload, Force Reload, Toggle Developer Tools, …
+```
+
+Three separate things, none cosmetic. The app is called **Electron** in the one place macOS always
+shows a name. About / Hide / Quit read **`sidekick-desktop`** — the npm package name, never meant
+to be read by anyone. And **Force Reload and Toggle Developer Tools were offered to users**: a
+person exploring the menu bar can throw away the renderer's state, or open a devtools pane over a
+window specified to the half-pixel.
+
+`main/appMenu.ts` builds a real one. **The routes come from the renderer**, which already owns
+`navModel.SCREENS` for the sidebar and the palette — one list, three surfaces, so a route added
+appears in all three or in none. `navModel` is a renderer module, so main importing it would be the
+coupling pointed the wrong way.
+
+- The accelerators become the menu's, which means ⌘1…⌘0 no longer reach the page. They route
+  through the same `shell.route` the sidebar calls, over one IPC message — **not a second
+  navigation path**. What it buys is the thing a palette cannot: the shortcuts become
+  **discoverable**, printed beside their destinations where a Mac user looks.
+- **Edit is not furniture.** Without it macOS has nowhere to send ⌘C / ⌘V / ⌘X / ⌘A and copy and
+  paste are dead in every text field in the app. A minimal menu carrying Edit is installed at
+  `whenReady`, before the renderer's list arrives.
+- Reload is dropped and zoom is kept, and they are not alike: zoom is a preference (`shot.mjs`
+  already refuses to photograph a zoomed window), a reload throws away the open thread, the loaded
+  album and an unsent message with no warning and no undo.
+- `appMenu.test.ts`, 9 tests. **Red-first:** devtools shipped → 1 red; no Edit menu → 2 red; an
+  empty accelerator instead of none → 2 red; the package name in the menu bar → 1 red.
+
+**Proven end to end, and stopping exactly where the evidence stops.** Clicking *Go → Photos* and
+*Go → Search…* through `System Events` asked `shell.route('photos')` and `openPalette()` — recorded
+by wrapping the two methods and reading what they were **asked** for. The routes did not *take*,
+because the repudiated link forces the pairing screen, and that is stated rather than papered over:
+the control is that `shell.route('files')` called **directly** is equally a no-op right now.
+
+**Two things the menu reading does not show**, in the evidence file rather than left to be inferred:
+the app menu still reads `Electron` because on macOS that title comes from the bundle's
+`CFBundleName` — read from the plist, `Electron`, against `productName: Sidekick` in
+`electron-builder.yml` — and **no packaged build was made, so the packaged title is unread**; and
+View still lists the developer items because this is a development run, with the packaged branch
+covered by a test and read from no packaged build.
+
+### Defect 127 — nine Activity rows put their own visible text under the pointer
+
+The sweep counted **203** `title` attributes. The useful number was not the total: nine
+`activity-detail` tooltips carried a string **identical to the element's own text**, 9 of 9. The
+intent was right — the class is `text-overflow: ellipsis`, so a clipped detail needs somewhere to
+reveal the rest — but it was set on every row, including the ones that fit. A tooltip that repeats
+what is on screen teaches a person that tooltips here say nothing, which costs the ones that do.
+
+`renderer/overflowTitle.ts` sets it only where the layout clipped, measured after the rows are in
+the document, one pass over the drawn rows so the layout flushes once. `overflowTitle.test.ts`, 4
+tests. **Red-first:** set unconditionally → 3 red; a tie counted as clipped → 1 red; never cleared,
+so a tooltip outlives the clipping that earned it → 1 red.
+
+Beside it, `activity-time` carried `new Date(at).toString()` —
+`Sun Sep 20 2026 17:10:22 GMT+0530 (India Standard Time)`, a runtime's debug representation with
+the timezone spelled twice, under the pointer on nine rows. `activityExactWhen` writes it for a
+person. Same rule as a package id: a machine string may be a handle and may not be the thing
+somebody reads.
+
+**The double had to be fixed first, and that is the finding under the finding.** `FakeElement.title`
+was a plain property while `getAttribute`/`removeAttribute` used the attribute map — two stores for
+one thing, which the DOM keeps in sync. So a test asserting `getAttribute('title') === null` passed
+for **every** implementation, including one that set a tooltip on every row: the third test variety
+in `CLAUDE.md`, the test calling the right function at a layer where the defect cannot show. The
+first mutation run proved it — *set unconditionally* left the suite green. `title` is reflected
+through the attribute map now, and the same mutation goes red on three tests.
+
+### Defect 128 — the New-conversation panel was a modal surface that said nothing
+
+The sweep read it as `{ role: null, modal: null, label: null }` beside the palette's
+`{ role: 'dialog', modal: 'true', label: 'Command palette' }`. One app, two modal surfaces, one
+done properly and one done by un-hiding a div — and nothing in the build could tell them apart.
+
+Three things it owed: it says what it is (without `role="dialog"` a screen reader announces fields
+appearing from nowhere, with the pane behind them still in the reading order); **Escape closes it**
+(every other dismissable surface in this app does, so a person who has learned that will press it
+here and have nothing happen); and **focus goes back where it came from** (cancelling left focus on
+a button inside a `hidden` subtree, which drops it to the document, so the next Tab restarts at the
+top of the window).
+
+`smsView.test.ts` +3. **Red-first:** any key dismisses → 1 red; focus not restored → 2 red; a closed
+panel still acting on Escape → 1 red. The `role`, `aria-modal` and `aria-labelledby` are attributes
+on static markup and are asserted by the **sweep against the real page** — a unit test asserting
+them would be asserting its own fixture.
+
+### Tooltips: what was NOT changed, and why
+
+194 `title` attributes remain — 128 Apps tiles carrying a package id, 50 call rows naming what the
+row does, the Camera nav row's explanation, 9 absolute times. They stay native, and that is a
+recorded departure rather than an oversight: **the handoff specifies 18 components and none of them
+is a tooltip**, so building one would be inventing design rather than matching it. A native tooltip
+is OS-drawn, ignores the theme, waits about a second and is invisible to keyboard and touch — all
+true, all worth fixing, and all a decision for the designer's hour rather than for this pass.
+
+### 900 tests, from 869 at the start of the sitting. All twelve commit guards exit 0.
+

@@ -1316,3 +1316,22 @@ that nothing can be scanned is two surfaces two inches apart disagreeing, so the
 and the module's standing rule is unchanged and still tested, so a later fact (a sighting, a
 handshake, a pairing) outranks a stale reachability reading in both directions.
 
+## Sidekick Batch 6b — the shell's cross-cutting surfaces — 2026-09-20. Rows D64–D66
+
+The handoff draws twelve screens and eighteen components. Three of the surfaces in this group are
+**not in it at all**, which is the departure: a Figma file describes what is inside a window, and a
+Mac app is also a menu bar, a set of keys and two accessibility settings.
+
+| Row | Figma / handoff | Built | Why |
+|---|---|---|---|
+| **D64** | **No menu bar is drawn** — a Figma frame has no menu bar to draw | A real application menu, built from `navModel.SCREENS` | Not drawing one does not mean not having one: it means shipping **Electron's**, which named the app `Electron`, named its own items `sidekick-desktop`, and offered Force Reload and Toggle Developer Tools to users (defect 126). The Go menu is also the only place the twelve shortcuts are **discoverable** — the palette shows them once you know to press ⌘K |
+| **D65** | **No tooltip component** — 18 components, none is one | **Native `title` kept**, 194 of them | Building one would be inventing design rather than matching it. A native tooltip is OS-drawn, ignores the theme, waits about a second and is invisible to keyboard and touch; all true, all worth fixing, and all the designer's call. What *was* fixed is the two that were wrong whatever surface draws them — a tooltip repeating its own element's text, and a raw `Date.toString()` (defect 127) |
+| **D66** | The handoff names `prefers-reduced-motion` and `prefers-reduced-transparency` (§8, D20) and draws neither | Both present, and now **measured** rather than asserted | A `@media` block that exists is not a block that covers the surfaces added since it was written, and that is the only way one of these goes wrong — silently, on a machine nobody developing has the setting on. Emulated through CDP: 5 surfaces translucent at rest (the control), **0** still blurred under reduce, **0** still transitioning |
+
+**The focus ring is not a departure and is recorded here because the number is the point.** The
+handoff states it as a hard requirement — *"never leave a browser/system default ring"* — and one
+`:focus-visible` rule in `tokens.css` serves the whole app. Swept with the pseudo-class forced by
+the browser: **816 of 816** visible, enabled controls across twelve routes, against a control of
+**0 of 816** outlined at rest. A rule in a stylesheet is not a ring on a control, and until this
+sweep nothing in the repo had ever checked the second thing.
+

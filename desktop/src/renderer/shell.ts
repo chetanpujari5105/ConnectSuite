@@ -738,7 +738,12 @@ class ShellView {
    * The one way the palette opens. The header's Search control and ⌘K both call this, so they open
    * the same dialog with the same focus, the same results and the same way back out.
    */
-  private openPalette(): void {
+  /**
+   * The one way the palette opens — and it is public because the macOS menu bar now owns ⌘K.
+   * A menu accelerator is consumed by the menu, so the keydown handler below never sees it; the
+   * item calls this instead, which is the same entry the header's Search control uses.
+   */
+  openPalette(): void {
     if ($('palette').hidden) {
       const active = document.activeElement as HTMLElement | null;
       this.paletteReturnFocus = active && active !== document.body ? active : null;

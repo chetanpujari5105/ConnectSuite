@@ -56,12 +56,43 @@ export class FakeElement {
    */
   scrollTop = 0;
   scrollHeight = 0;
+  /**
+   * Layout the double does not compute and a caller may set.
+   *
+   * These are **not** a model of layout — nothing here lays anything out, and a test that sets
+   * them is stating a hypothesis about what the browser would do. They exist so a rule that reads
+   * *"is this text clipped?"* can be driven in both directions, which is the transition such a
+   * rule gets wrong. Whether a given string actually clips at a given width is a browser question
+   * and stays one: `scripts/shell-parity-sweep.mjs` counts the real ones.
+   */
+  scrollWidth = 0;
+  clientWidth = 0;
   clientHeight = 0;
   offsetTop = 0;
   offsetHeight = 0;
   selectionStart: number | null = null;
   disabled = false;
-  title = '';
+  /**
+   * `title` is the attribute, not a second field beside it.
+   *
+   * It was a plain property, and the DOM keeps the two in sync — so a rule that sets `el.title`
+   * and clears it with `removeAttribute('title')` behaved in this double in a way it never could
+   * in a browser: the field held the old string and the attribute was always absent. A test
+   * asserting `getAttribute('title') === null` then passed **for every implementation**, including
+   * one that set a tooltip on every row. That is the third test variety in `CLAUDE.md` — the test
+   * called the right function, at a layer where the defect could not show.
+   *
+   * Reflected through the attribute map, which is what the DOM does, so both assertions are the
+   * same assertion.
+   */
+  get title(): string {
+    return this.attributes.get('title') ?? '';
+  }
+
+  set title(value: string) {
+    this.attributes.set('title', value);
+  }
+
   /** Form-control fields. Storage only: the double has no validation and no range clamping. */
   id = '';
   htmlFor = '';
@@ -224,8 +255,33 @@ export class FakeElement {
   }
 
   /** Fires a listener the way a person would. Used by tests as `click()` / `change()`. */
-  dispatch(type: string): void {
-    for (const fn of this.listeners.get(type) ?? []) fn({ type, target: this });
+  /**
+   * Fires the listeners for `type`, with `init` merged into the event object.
+   *
+   * `init` exists for keyboard handlers, which are decisions about *which* key — the first
+   * listener in this app that reads one is the New-conversation panel's Escape. Without it a test
+   * could only assert that a keydown handler was attached, which is the registration-line mistake
+   * one layer down: a handler that is wired and a handler that acts on the right key are different
+   * claims.
+   *
+   * `stopPropagation` and `preventDefault` are recorders, not behaviour — nothing here bubbles, so
+   * a handler that calls them works, and a test may assert that it did.
+   */
+  dispatch(type: string, init: Record<string, unknown> = {}): void {
+    const event = {
+      type,
+      target: this,
+      stopPropagationCount: 0,
+      defaultPreventedCount: 0,
+      stopPropagation(): void {
+        event.stopPropagationCount += 1;
+      },
+      preventDefault(): void {
+        event.defaultPreventedCount += 1;
+      },
+      ...init,
+    };
+    for (const fn of this.listeners.get(type) ?? []) fn(event);
   }
 
   click(): void {
@@ -296,6 +352,18 @@ export class FakeElement {
   /** First match, or null. Same tiny grammar as [queryAll], and the same refusal on anything else. */
   querySelector(selector: string): FakeElement | null {
     return this.queryAll(selector)[0] ?? null;
+  }
+
+  /**
+   * The DOM's own name for [queryAll], because production code calls the DOM's name.
+   *
+   * It returns an array rather than a `NodeList`, which is a real difference and a deliberate one:
+   * a caller that iterates or `Array.from`s it behaves identically, and a caller that reaches for
+   * `NodeList`-only behaviour will fail here loudly rather than be quietly modelled. The double
+   * models what the view classes use, not the DOM.
+   */
+  querySelectorAll(selector: string): FakeElement[] {
+    return this.queryAll(selector);
   }
 
   /** Every descendant, self excluded — the walk `queryAll` is built on. */

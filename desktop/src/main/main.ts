@@ -58,6 +58,7 @@ import { PhotosClient } from './photos';
 import { NotificationClient } from './notifications';
 import { NativeNotifier } from './nativeNotifier';
 import { pairRejectionCopy } from '../shared/pairRejection';
+import { buildAppMenu, type MenuRoute } from './appMenu';
 import { localPairAddress } from '../shared/pairReach';
 import { RemoteClient } from './remote';
 import { CallClient } from './calls';
@@ -796,8 +797,50 @@ async function onMirrorState(state: MirrorStatePayload): Promise<void> {
   }
 }
 
+/**
+ * The product's name, in the one place macOS always shows one.
+ *
+ * Set before `whenReady`, because the app menu's title and its About / Hide / Quit items are built
+ * from it at that moment. Without this the menu bar read **Electron** and those three items read
+ * **sidekick-desktop**, the npm package name — measured, not assumed; see `appMenu.ts`.
+ */
+app.setName('Sidekick');
+
+/**
+ * The menu is built when the renderer hands over its nav list, and a minimal one stands until then.
+ *
+ * The minimal menu is not a placeholder to be tidied away: it carries **Edit**, and without an Edit
+ * menu macOS has nowhere to send ⌘C / ⌘V / ⌘X / ⌘A, so copy and paste are dead in every text field
+ * in the app. A window that is up for 200 ms before its routes arrive is 200 ms in which somebody
+ * can press ⌘V in the manual-address field.
+ */
+function installAppMenu(routes: MenuRoute[]): void {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(
+      buildAppMenu(routes, {
+        appName: app.getName(),
+        showDeveloperItems: !app.isPackaged,
+        route: (id) => {
+          revealMainWindow('menu');
+          sendAll('menu-route', { id });
+        },
+        palette: () => {
+          revealMainWindow('menu');
+          sendAll('menu-route', { id: '__palette__' });
+        },
+      }),
+    ),
+  );
+}
+
+ipcMain.handle('menu-routes', (_event, routes: unknown) => {
+  if (!Array.isArray(routes)) return;
+  installAppMenu(routes as MenuRoute[]);
+});
+
 app.whenReady().then(() => {
   initLogger();
+  installAppMenu([]);
   /*
    * The ConnectSuite → Sidekick compatibility, before anything reads the files it touches.
    * Copy-only: nothing in the ConnectSuite folder is moved, renamed or deleted (`legacyData.ts`).

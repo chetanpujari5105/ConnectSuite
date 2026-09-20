@@ -56,14 +56,16 @@ without a row (pairing). The Settings panes are sub-routes inside one screen.
 | **Status pill beside the title** | every frame | Drawn as the centred **status island** (D14) | 1 |
 | **Connected-device strip under the header** | **not in any Sidekick frame** — the real `32:4382` render has none | **Removed 2026-09-19** (`66ca178`) from markup, CSS and `shell.ts` | done |
 | Pane footer strip (one pane-specific sentence) | `32:4382` draws one; handoff §6 "other panes keep theirs" | Built on Messages, Calls, Apps and Notifications | 2 — others as they are touched |
-| Command palette | frames' chrome; no animation | Batch 1 re-skin | 2 |
-| Toasts | not drawn | shell.css | 3 |
-| Dialogs (New conversation, confirmations) | not drawn | styles.css | 3 |
+| Command palette | frames' chrome; no animation | Batch 1 re-skin; **measured** `role=dialog` / `aria-modal` / labelled (Batch 6b) | done |
+| **macOS menu bar** | **not in any frame** | **Built Batch 6b** from `navModel.SCREENS` (D64, defect 126). Electron's default named the app `Electron` and offered devtools to users | done |
+| **Tooltips** | **no component in the handoff** | Native `title`, 194; the two that were wrong whatever draws them are fixed (D65, defect 127) | designer's hour |
+| Toasts | not drawn | shell.css; **measured 2026-09-20** — `role=status`, `aria-live=polite`, opaque under reduced transparency | done |
+| Dialogs (New conversation, confirmations) | not drawn | **Batch 6b** — the New-conversation panel is a labelled `role=dialog` with Escape and focus restore (defect 128). The palette already was one | done |
 | State block (component 11: empty · unavailable · loading · permission · error · wall) | `28:1226` | **Built 2026-09-19** as `renderer/stateBlock.ts`; used by Messages, Notifications, Calls, Files, Photos | done |
 | Disconnected component (`32:4380`: banner · overlay · inline · blocked action) | `32:4380` | `disconnectedBanner()` in the same file; used by Messages | 2 — other panes as they are touched |
-| Focus rings | `:focus-visible` in tokens.css | Present | 2 |
+| Focus rings | `:focus-visible` in tokens.css | **816 of 816 controls across 12 routes**, control 0 at rest (Batch 6b) | done |
 | Light theme | **not drawn** (dark only) | Checked on Messages, Clipboard, Calls, Activity, Apps, Settings | 2 — remaining panes owed |
-| Reduced motion / transparency | §8, D20 | Present | 2 |
+| Reduced motion / transparency | §8, D20 | **Measured 2026-09-20**: 0 surfaces still blurred, 0 still transitioning, against 5 translucent at rest | done |
 | Window sizes | 1440 × 980 frames | Demo 1440 × 920 (D21), minimum 1100 × 700 | 1 |
 
 ## 3 · Implementation order

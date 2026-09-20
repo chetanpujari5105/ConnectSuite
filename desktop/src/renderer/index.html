@@ -479,9 +479,14 @@
                 New conversation, and the contacts directory with it. Hidden until asked for; kept
                 in the DOM so the palette's `deep.contacts` row has something real to reveal.
               -->
-              <div class="sms-newpanel" id="contacts-card" hidden>
+              <!--
+                A dialog, declared as one. The parity sweep read this as `role: null, modal: null,
+                label: null` beside the palette's full set: two modal surfaces in one app, one of
+                them announced and one of them a div that stops being hidden.
+              -->
+              <div class="sms-newpanel" id="contacts-card" role="dialog" aria-modal="true" aria-labelledby="sms-newpanel-title" hidden>
                 <div class="sms-newpanel-head">
-                  <h3 class="sms-newpanel-title">New conversation</h3>
+                  <h3 class="sms-newpanel-title" id="sms-newpanel-title">New conversation</h3>
                   <button type="button" class="sms-newpanel-close" id="sms-new-cancel">Cancel</button>
                 </div>
                 <div class="sms-newpanel-body">
@@ -865,6 +870,7 @@
     <script src="../shared/appearance.js"></script>
     <script src="icons.js"></script>
     <script src="stateBlock.js"></script>
+    <script src="overflowTitle.js"></script>
     <script src="navModel.js"></script>
     <!-- Before mirror.js: it holds the picture-fitting rule mirror.js calls, and a
          classic script has to be in scope before its caller runs. -->

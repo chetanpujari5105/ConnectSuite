@@ -497,3 +497,58 @@ test('Call this number fills the dialler and never dials', async () => {
   assert.deepEqual(pane.called, ['+91980000001']);
   assert.ok(!pane.bridge.calls.some((c) => /dial/i.test(c)), 'something dialled');
 });
+
+/**
+ * The New-conversation panel is a modal surface, and until the shell parity sweep read it beside
+ * the palette it was a div that stopped being hidden: `{ role: null, modal: null, label: null }`
+ * against `{ role: 'dialog', modal: 'true', label: 'Command palette' }`.
+ *
+ * The markup carries the role, the label and `aria-modal` — asserted by the sweep against the real
+ * page, because they are attributes on static HTML and a unit test asserting them here would be
+ * asserting its own fixture. What this file covers is the **behaviour**, which is in the view.
+ */
+test('Escape closes the New-conversation panel and gives focus back', async () => {
+  const pane = mount([thread('1')]);
+  pane.view.setAdvertised(true);
+  await settle();
+
+  pane.newButton.click();
+  assert.equal(pane.newPanel.hidden, false, 'control: the panel opened');
+  const focusesBefore = pane.newButton.focusCount;
+
+  pane.newPanel.dispatch('keydown', { key: 'Escape' });
+  assert.equal(pane.newPanel.hidden, true, 'Escape did not close it');
+  assert.equal(
+    pane.newButton.focusCount,
+    focusesBefore + 1,
+    'focus was left inside a hidden subtree, which drops it to the document',
+  );
+});
+
+test('Cancel returns focus too, and a stray Escape on a closed panel does nothing', async () => {
+  const pane = mount([thread('1')]);
+  pane.view.setAdvertised(true);
+  await settle();
+
+  pane.newButton.click();
+  const before = pane.newButton.focusCount;
+  pane.newCancel.click();
+  assert.equal(pane.newPanel.hidden, true);
+  assert.equal(pane.newButton.focusCount, before + 1);
+
+  // Already closed: the guard exists so a second press does not re-focus the opener under someone
+  // who has moved on, and does not swallow an Escape meant for the pane behind it.
+  const after = pane.newButton.focusCount;
+  pane.newPanel.dispatch('keydown', { key: 'Escape' });
+  assert.equal(pane.newButton.focusCount, after, 'a closed panel acted on Escape');
+});
+
+/** A different key is not a dismissal. Without this, any keydown in the panel would close it. */
+test('a key that is not Escape leaves the panel open', async () => {
+  const pane = mount([thread('1')]);
+  pane.view.setAdvertised(true);
+  await settle();
+  pane.newButton.click();
+  pane.newPanel.dispatch('keydown', { key: 'a' });
+  assert.equal(pane.newPanel.hidden, false);
+});

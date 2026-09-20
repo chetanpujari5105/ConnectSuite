@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeElement, installFakeDocument, el } from './domDouble.testkit';
+// The page loads this before activity.js, and the pane calls it after every draw. Without it the
+// suite would be exercising a loader the renderer never uses — defect 94's shape.
+import './overflowTitle';
 import './activity';
 
 /**

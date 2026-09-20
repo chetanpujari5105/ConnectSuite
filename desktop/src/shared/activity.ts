@@ -519,6 +519,24 @@ function activityClock(at: number, now: number): string {
   return `${then.getDate()}/${then.getMonth() + 1} ${hhmm}`;
 }
 
+/**
+ * The absolute time, for the row's tooltip — what somebody comparing this pane against the phone's
+ * own log needs, which the relative label deliberately does not give them.
+ *
+ * It replaces `new Date(at).toString()`, which put
+ * `Sun Sep 20 2026 17:10:22 GMT+0530 (India Standard Time)` under the pointer: a runtime's debug
+ * representation, with a timezone spelled out twice, shown to a person. Nine of them were on
+ * screen. Same rule as a package id — a machine string may be a handle and may not be the thing
+ * somebody reads.
+ */
+function activityExactWhen(at: number): string {
+  const d = new Date(at);
+  const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
+  return `${d.getDate()} ${month} ${d.getFullYear()}, ${hhmm}:${ss}`;
+}
+
 function activityWhen(at: number, now: number): string {
   const seconds = Math.max(0, Math.round((now - at) / 1000));
   if (seconds < 60) return 'Just now';
@@ -561,6 +579,7 @@ function activityWhen(at: number, now: number): string {
   g.activityPaneView = activityPaneView;
   g.activitySummary = activitySummary;
   g.activityWhen = activityWhen;
+  g.activityExactWhen = activityExactWhen;
   g.activityClock = activityClock;
   g.activityRowView = activityRowView;
   g.ACTIVITY_ICONS = ACTIVITY_ICONS;
@@ -576,6 +595,7 @@ if (typeof module !== 'undefined') {
     activityPaneView,
     activitySummary,
     activityWhen,
+    activityExactWhen,
     activityTone,
     activityBusiestHour,
     activityClock,

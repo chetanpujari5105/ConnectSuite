@@ -115,6 +115,16 @@ class ActivityView {
     layout.appendChild(main);
     if (view.showsTable) layout.appendChild(this.rail(events));
     this.host.replaceChildren(layout);
+
+    /*
+     * The clipped-text tooltips, set **after** the rows are in the document, because until then
+     * `scrollWidth` and `clientWidth` are both zero and every row reads as fitting. One pass over
+     * the drawn rows rather than a call per row: the widths are read together, so the layout is
+     * flushed once instead of once per detail cell.
+     */
+    for (const cell of Array.from(this.host.querySelectorAll<HTMLElement>('.activity-detail'))) {
+      titleWhenClipped(cell, cell.dataset.fullText ?? cell.textContent ?? '');
+    }
   }
 
   /**
@@ -189,14 +199,19 @@ class ActivityView {
       detail.className = 'activity-detail';
       // textContent, never innerHTML: a detail can carry a file name somebody else chose.
       detail.textContent = event.detail;
-      detail.title = event.detail;
+      // The tooltip is set after this row is in the document — see the `titleWhenClipped` pass at
+      // the foot of this render. Setting it here put the element's own visible text under the
+      // pointer on every row that fitted, 9 of 9 in the sweep that found it.
+      detail.dataset.fullText = event.detail;
 
       const when = document.createElement('span');
       when.className = 'activity-time mono';
       when.textContent = activityWhen(event.at, now);
       // The relative label is what the design draws; the absolute one is what somebody comparing
-      // this against the phone's log needs, and it costs a tooltip rather than a column.
-      when.title = new Date(event.at).toString();
+      // this against the phone's log needs, and it costs a tooltip rather than a column. It is
+      // written for a person: `new Date(at).toString()` put a runtime's debug representation,
+      // timezone spelled out twice, under the pointer on nine rows.
+      when.title = activityExactWhen(event.at);
 
       line.append(kind, detail, when);
       table.appendChild(line);

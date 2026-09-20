@@ -64,6 +64,8 @@ interface ConnectBridge {
   ): void;
   /** Renders an already-armed QR payload. Does not arm a new one — that would rotate the token. */
   pairingQrRender(payload: string): Promise<string | null>;
+  menuSetRoutes(routes: { id: string; label: string; shortcut: string }[]): Promise<void>;
+  onMenuRoute(callback: (id: string) => void): void;
   onRevealNotification(callback: (key: string) => void): void;
   notifPermission(): Promise<{
     refused: boolean;
@@ -845,6 +847,24 @@ el('new-qr').addEventListener('click', () => {
  * routes here, and so does ⌘K — drew a broken <img> with its alt text for up to a minute. Not
  * rotated: this arms the same code `showQr()` would, it does not invalidate one on screen.
  */
+/*
+ * The macOS menu bar, built from the list the sidebar and the palette already read.
+ *
+ * Handing the list over rather than writing one in the main process is the same rule the nav rows
+ * and the ⌘K palette follow: one list, three surfaces, so a route added to `SCREENS` appears in
+ * all three or in none. Pairing is left out deliberately — it is not a place to go, it is a place
+ * the app puts you.
+ *
+ * The accelerators become the menu's, which means ⌘1…⌘0 no longer reach this page's keydown
+ * handler. They arrive here instead, and call the same `shell.route` the sidebar calls: one
+ * navigation path, not two.
+ */
+void connect.menuSetRoutes(SCREENS.map((s) => ({ id: s.id, label: s.label, shortcut: s.shortcut })));
+connect.onMenuRoute((id) => {
+  if (id === '__palette__') shell.openPalette();
+  else shell.route(id);
+});
+
 shell.onRoute((id) => {
   if (id === 'pairing' && !el<HTMLImageElement>('qr').getAttribute('src')) void showQr();
 });

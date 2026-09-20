@@ -1,0 +1,30 @@
+# The macOS menu bar, read live through System Events
+
+Line 1 : Go menu, after the change — the twelve routes, from `navModel.SCREENS`
+Line 2 : the menu bar items
+Line 3 : the app menu's items
+
+## What it read BEFORE, on 2026-09-20 at 17:20, same command
+
+    menu bar          : Apple, Electron, File, Edit, View, Window
+    app menu          : About sidekick-desktop … Hide sidekick-desktop … Quit sidekick-desktop
+    View              : Reload, Force Reload, Toggle Developer Tools, …, Actual Size, Zoom In, …
+    Go                : (did not exist)
+
+## Two things this reading does NOT show, said because the output cannot
+
+1. **The app menu still reads `Electron`, and that is the development binary, not the build.**
+   On macOS the first menu's title comes from the bundle's `CFBundleName`, not from
+   `app.getName()`. Read from the plist this run used:
+   `node_modules/electron/dist/Electron.app/Contents/Info.plist` → `CFBundleName = Electron`.
+   `electron-builder.yml` sets `productName: Sidekick`, which is what a packaged bundle carries.
+   **No packaged build was made, so the packaged title is unread.** The About / Hide / Quit items
+   below it are built from `app.getName()` and did change, which is what line 3 shows.
+2. **View still lists Reload, Force Reload and Toggle Developer Tools here, and that is correct.**
+   This is a development run, `app.isPackaged === false`, and those items are gated on it. The
+   packaged branch — which drops all three — is covered by `appMenu.test.ts` and has **not** been
+   read from a packaged build.
+
+Search…, missing value, Overview, Mirror, Files, Photos, Messages, Notifications, Clipboard, Calls, Camera, Apps, Activity, Settings
+Apple, Electron, Edit, Go, View, Window
+About Sidekick, missing value, Services, missing value, Hide Sidekick, Hide Others, Show All, missing value, Quit Sidekick, Quit and Keep Windows

@@ -580,6 +580,88 @@ export async function openProbe({ port = 9222, endpoint = 'http://localhost', us
       });
     },
 
+    /**
+     * Force a pseudo-class on every element matching a selector, and read something with it on.
+     *
+     * The fourth use of the transport, and the reason, since this file asks for one: **a focus ring
+     * cannot be observed from page script.** `:focus-visible` is the user agent's own heuristic
+     * about *how* focus arrived, and an element focused by `el.focus()` from a script is usually
+     * not given it — so a sweep built that way reads **zero rings on every control in the app** and
+     * looks exactly like a missing ring rule. That reading was taken, believed for a minute, and is
+     * why this exists rather than a note in a probe telling the next person not to.
+     *
+     * `CSS.forcePseudoState` is the browser answering the question directly: apply the state,
+     * recompute, read. It is cleared for every node before returning, because a page left with a
+     * forced state is a live app drawn in a condition nobody chose — the same rule `rawEmulate`
+     * follows.
+     *
+     * Returns whatever `read` evaluates to, with the pseudo-class applied.
+     */
+    rawForcePseudo: async ({ selector, pseudo = 'focus-visible', read, maxNodes = 2000 }) => {
+      /*
+       * Disabled first, and this is not defensive noise.
+       *
+       * `DOM` and `CSS` are **per-target** domains: their enabled state and their node map outlive
+       * the websocket that turned them on. A run that was interrupted leaves them enabled with a
+       * node map a new connection cannot address, and then every `DOM.querySelectorAll` in the
+       * next run hangs — including on selectors matching seven elements. Measured: after an
+       * interrupted 152-node run, `.card` timed out; after restarting the app, the same call
+       * returned instantly. Disabling resets the map, so the reading does not depend on how the
+       * previous one ended.
+       */
+      await send('DOM.disable', {}).catch(() => {});
+      await send('CSS.disable', {}).catch(() => {});
+      await send('DOM.enable', {});
+      await send('CSS.enable', {});
+      const { root } = await send('DOM.getDocument', { depth: -1, pierce: false });
+      const { nodeIds } = await send('DOM.querySelectorAll', { nodeId: root.nodeId, selector });
+      /*
+       * In parallel, and with a cap that is **reported**.
+       *
+       * Sequentially this stalled on a 152-node list and the sweep that used it returned a partial
+       * count — `14 of 166` — which reads exactly like a pane missing its focus ring. That is the
+       * instrument reporting its own limit as a finding, the page-cap row in `CLAUDE.md`'s table,
+       * so the cap is in the return value and a caller that hits it says so rather than quoting a
+       * number.
+       */
+      const capped = nodeIds.slice(0, maxNodes);
+      const force = (classes) =>
+        Promise.all(capped.map((nodeId) => send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: classes })));
+      await force([pseudo]);
+      try {
+        return {
+          count: capped.length,
+          matched: nodeIds.length,
+          stopped: nodeIds.length > capped.length ? 'node cap' : 'all',
+          value: await evaluate(read),
+        };
+      } finally {
+        await force([]);
+      }
+    },
+
+    /**
+     * Emulate media features — `prefers-reduced-motion`, `prefers-reduced-transparency`,
+     * `prefers-color-scheme` — and read something with them on.
+     *
+     * The fifth use of the transport, and the same reason as `rawForcePseudo`: **an accessibility
+     * setting cannot be produced from page script.** A `@media (prefers-reduced-transparency)`
+     * block that exists in a stylesheet is not a block that covers the surfaces added since it was
+     * written, and that is the only way one of these goes wrong — silently, on a machine nobody
+     * developing has the setting on.
+     *
+     * Cleared before returning, for the reason `rawEmulate` gives: a live app left drawn in a
+     * condition nobody chose.
+     */
+    rawEmulateMedia: async ({ features, read }) => {
+      await send('Emulation.setEmulatedMedia', { features });
+      try {
+        return await evaluate(read);
+      } finally {
+        await send('Emulation.setEmulatedMedia', { features: [] });
+      }
+    },
+
     close: () => ws.close(),
   };
 }

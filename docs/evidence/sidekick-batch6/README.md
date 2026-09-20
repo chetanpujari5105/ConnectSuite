@@ -30,3 +30,27 @@ these are *built to `docs/sidekick-figma-handoff.md`* — the weaker claim, and 
 - **What is not synthetic**: `scripts/pair-nonetwork-probe.mjs` reads the same states through
   `getComputedStyle`, in the browser, where a cascade exists and the DOM double's assertions do not
   reach. 9 of 9 readings OK, one row reported as `NO READING` rather than folded into a pass.
+
+---
+
+# Batch 6b — the shell's cross-cutting surfaces
+
+| File | What |
+|---|---|
+| `shell-parity-sweep-BLOCKED.txt` | `scripts/shell-parity-sweep.mjs`, run while every route was refused |
+| `menu-bar-after.txt` | the macOS menu bar read through `System Events`, with what it read before |
+
+**The sweep file is a blocked run on purpose.** An earlier version of this sweep printed
+`OK — every visible control takes a focus ring — 0 of 0` on exactly this state: the phone had begun
+refusing this Mac's certificate, the app correctly forced the pairing screen, twelve `shell.route`
+calls were no-ops, and `0 === 0` is true. A sweep that measured nothing certified everything. The
+denominator is checked before the ratio now, an empty one is **NO READING** and counts as a
+failure, and the refused routes are named — so this file is what the guard looks like when it
+fires, which is worth more than a green one.
+
+**The reading with the link up**, taken at 17:15 the same sitting and displayed live: focus rings
+**816 of 816** across twelve routes, control **0 of 816** outlined at rest; **0** surfaces still
+blurred under reduced transparency and **0** still transitioning under reduced motion, against 5
+translucent at rest. It is not a file here because the link went down before one could be written,
+and re-pairing is a scan on the owner's phone and their trust store.
+

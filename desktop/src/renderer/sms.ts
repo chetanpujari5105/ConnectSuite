@@ -1020,14 +1020,41 @@ class SmsView {
     const body = this.regions.newBody;
     const send = this.regions.newSend;
 
+    /*
+     * Opening and closing the panel, and the three things a surface that takes over the window
+     * owes that this one did not have. `scripts/shell-parity-sweep.mjs` read it as
+     * `{ role: null, modal: null, label: null }` beside the palette's
+     * `{ role: 'dialog', modal: 'true', label: 'Command palette' }` — the app had one modal done
+     * properly and one done by hiding a div, and nothing in the build could tell them apart.
+     *
+     *  - **It says what it is.** Without `role="dialog"` a screen reader announces a group of
+     *    fields appearing from nowhere, with the pane it covers still in the reading order.
+     *  - **Escape closes it.** Every other dismissable surface in this app closes on Escape, so a
+     *    person who has learned that will press it here and have nothing happen.
+     *  - **Focus goes back where it came from.** Cancelling used to leave focus on a button inside
+     *    a `hidden` subtree, which drops it to the document — the next Tab starts from the top of
+     *    the window rather than from the control that opened the panel.
+     */
+    const closeNew = (): void => {
+      if (!this.composingNew) return;
+      this.composingNew = false;
+      this.render();
+      open.focus();
+    };
+
     open.addEventListener('click', () => {
       this.composingNew = true;
       this.render();
       to.focus();
     });
-    cancel.addEventListener('click', () => {
-      this.composingNew = false;
-      this.render();
+    cancel.addEventListener('click', closeNew);
+    this.regions.newPanel.addEventListener('keydown', (event) => {
+      const key = (event as KeyboardEvent).key;
+      if (key !== 'Escape') return;
+      // Stopped here so a palette or a pane listening further up does not also act on the same
+      // press — one Escape, one dismissal, which is the behaviour a person is expecting.
+      event.stopPropagation();
+      closeNew();
     });
 
     const submit = async (): Promise<void> => {

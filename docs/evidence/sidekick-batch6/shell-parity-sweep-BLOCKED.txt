@@ -1,0 +1,51 @@
+
+=== Shell-wide parity sweep ===
+
+  the chrome is drawn and its controls are countable → {"navRows":12,"toolbar":2,"account":1,"island":1}  [control=1 polls=1 waited=1ms stopped=immediate]
+
+-- focus rings, by forced :focus-visible on every visible control --
+
+  overview: NO READING — the route did not take (drawn: pairing). A blocked route is a no-op
+  mirror: NO READING — the route did not take (drawn: pairing). A blocked route is a no-op
+  files: NO READING — the route did not take (drawn: pairing). A blocked route is a no-op
+  photos: NO READING — the route did not take (drawn: pairing). A blocked route is a no-op
+  messages: NO READING — the route did not take (drawn: pairing). A blocked route is a no-op
+  notifications: NO READING — the route did not take (drawn: pairing). A blocked route is a no-op
+  clipboard: NO READING — the route did not take (drawn: pairing). A blocked route is a no-op
+  calls: NO READING — the route did not take (drawn: pairing). A blocked route is a no-op
+  camera: NO READING — the route did not take (drawn: pairing). A blocked route is a no-op
+  apps: NO READING — the route did not take (drawn: pairing). A blocked route is a no-op
+  activity: NO READING — the route did not take (drawn: pairing). A blocked route is a no-op
+  settings: NO READING — the route did not take (drawn: pairing). A blocked route is a no-op
+
+-- tooltips --
+
+  native title tooltips in the app, and what they say → {"count":7,"byKind":{"nav-row":{"n":1,"sample":"Camera — not built yet. The virtual webcam is not in any phase yet. It needs a macOS Camera Extension, which is a signed system extension and a distribution problem before it is a code problem.","duplicatesVisibleText":0},"toolbar-button":{"n":1,"sample":"Open mirror in floating window","duplicatesVisibleText":0},"recent-when":{"n":4,"sample":"Just now","duplicatesVisibleText":0},"tool":{"n":1,"sample":"Opens Files, where transfers in both directions live","duplicatesVisibleText":0}}}  [control=959 polls=1 waited=1ms stopped=immediate]
+
+-- modal surfaces --
+
+  the palette and the New-conversation panel: role, modality, labelling, Escape → {"palette":{"role":"dialog","modal":"true","label":"Command palette","hidden":false},"newConversation":{"role":"dialog","modal":"true","label":"sms-newpanel-title","hidden":true}}  [control=1 polls=1 waited=1ms stopped=immediate]
+
+-- toast --
+
+  the toast host: does it exist, is it announced, is it themed → {"present":true,"live":"polite","role":"status","background":"rgba(22, 22, 22, 0.94)","color":"rgb(242, 243, 245)"}  [control=1 polls=1 waited=1ms stopped=immediate]
+
+-- reduced transparency and reduced motion, emulated --
+
+  translucent or blurred at rest : island, sidebar, palette, toast, pairNotice
+  still blurred under reduce     : none
+  still transitioning under reduce: none
+
+  OK   the chrome draws its controls
+  OK   control: something IS translucent at rest, so the reduce reading means something — 5 surfaces
+  OK   reduced transparency removes every blur
+  OK   reduced motion stops every transition
+  --   12 of 12 routes refused to draw (overview, mirror, files, photos, messages, notifications, clipboard, calls, camera, apps, activity, settings) — the app forces one screen while the link is unpaired or repudiated
+  --   focus rings: NO READING — no route drew a control, so there was no denominator. This is not a pass; re-run with the app on a reachable route
+  OK   the palette is a labelled modal dialog
+  OK   the New-conversation panel is a labelled modal dialog too
+  OK   the toast is announced
+  --   tooltips: 7 title attributes — undefined
+
+1 FAILED
+
