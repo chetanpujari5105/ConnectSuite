@@ -18,9 +18,10 @@ routes rather than from memory; its §5 is what is still open.
 | `889f88f` | **5a** — Settings → **Device info** with `shared/capabilityStatus.ts` (discharges D22) |
 | `9fbd195` | **5b** — Activity: donut and sparkline out (D9), per-event tone in (discharges D23) |
 | `8fd2f36` | **5c** — Apps, Files, Photos, Camera onto the card surfaces |
+| `34809be` | **5e** — the media-session row in the Notifications feed (`40:21209`), the last handoff frame with no code |
 | `9ebcd4a` | **5d** — pairing's four steps from `shared/pairSteps.ts`, and the manual address where it is needed |
 
-Every commit: typecheck clean, `npm test` 843 → **861** green, guards exit 0. **Nothing pushed.**
+Every commit: typecheck clean, `npm test` 843 → **869** green, guards exit 0. **Nothing pushed.**
 Departures **D27–D58**; evidence `docs/evidence/sidekick-batch4/` and `sidekick-batch5/`.
 
 ## 1 · The one thing to read before claiming parity
@@ -60,8 +61,10 @@ every departure row and in every commit message. *Do not upgrade that wording wi
 
 Listed in full in `docs/sidekick-full-app-inventory.md` §5. The short version:
 
-1. **`40:21209`, the media-session row in the Notifications feed** — the one frame with no code
-   behind it. It needs `shared/mediaSessionRow.ts` and **no wire change**.
+1. ~~`40:21209`, the media-session row~~ — **built after this section was first written**
+   (`34809be`), so **every frame in the handoff now has code behind it**. What it has never had is a
+   real session: the row was driven by hand, and `remote.state` arriving in that shape on hardware
+   is unproven.
 2. **One Figma render per screen**, whenever the MCP allows it.
 3. **States needing the phone in a condition this Mac cannot produce**: a revoked grant, a failed
    send, an incoming call, a live mirror session, a real scan advancing the pairing column.
