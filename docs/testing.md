@@ -21226,3 +21226,22 @@ contact or photo content is legible in them.
 **Not proven:** Files' *sending*, *no folders* and *couldn't open* states, and Photos' *partial* and
 *permission* states, were not re-captured after the restyle — all five have existing tests and none
 was touched beyond the surface change.
+
+## Sidekick Batch 5d — Pairing — 2026-09-20
+
+Frames not rendered; built to handoff §6. Departures D57–D58. Capture:
+`docs/evidence/sidekick-batch5/pairing-steps-SYNTHETIC-1440x920.png`.
+
+- **`shared/pairSteps.test.ts` (7)**: a fresh code waits and claims nothing after it; a sighting
+  advances exactly one step; **a handshake advances the steps a missing sighting would have
+  stalled**, with the no-handshake case as its control; paired completes all four; no step is ever
+  drawn as failed, over every input; the fingerprint appears only once something has presented one;
+  the found step names what it knows and says something when it knows nothing.
+- The capture is **synthetic in its steps** — this Mac is paired, so `pairSighting` and a
+  `connecting` phase were set by hand. The **code is real**: `showQr(false)` is exactly what opening
+  the screen does and does not rotate the token (proven in Batch 3's `pairingArm.test.ts`). After
+  the run the link is still `connected`, `paired`, fingerprint `7DE7895FC0DF7C1A` — unchanged.
+- `npm test` **861 / 861**.
+
+**Not proven:** the *Rejected* and *No network* frames, and a real scan advancing the column on
+hardware. Seeing those means unpairing the owner's phone, which this pass will not do.

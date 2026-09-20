@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch5/pairing-steps-SYNTHETIC-1440x920.png",
+  "screen": "pairing",
+  "takenAt": "2026-09-20T04:42:57.289Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 1200,
+  "ready": null,
+  "prep": "(async()=>{ await showQr(false); pairSighting={seen:true,name:'Samsung SM-S938B'}; lastStatus={phase:'connecting',paired:false,address:'10.187.150.87'}; drawPairSteps(); })()",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

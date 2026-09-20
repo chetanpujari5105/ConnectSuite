@@ -433,6 +433,7 @@ function render(status: RendererStatus | null): void {
   shell.setStatus(status);
   // Held for Settings → Device info, which is built when it is opened rather than on every status.
   lastStatus = status;
+  drawPairSteps();
 
   setDiag('state', status?.phase ?? '—');
   setDiag('via', status?.via ?? '—');
@@ -682,13 +683,87 @@ void (async () => {
   if (result?.ok) stampTheme(result.data.theme);
 })();
 
+{
+  // The pairing screen's manual address — the same store Settings → Connection writes, through the
+  // same IPC. One setting, two doors: this one is at the moment the address is needed.
+  const field = document.getElementById('pair-manual') as HTMLInputElement | null;
+  const save = document.getElementById('pair-manual-save');
+  if (field && save) {
+    save.addEventListener('click', () => {
+      void (async () => {
+        const address = field.value.trim();
+        await connect.setManualAddress(address);
+        savedManual = address;
+        shell.toast(address === '' ? 'Address cleared.' : `Trying ${address}…`);
+      })();
+    });
+  }
+}
+
 connect.onPairScanned((payload) => {
   const line = el('pair-scanned');
   line.hidden = false;
   line.textContent = payload.deviceName
     ? `${payload.deviceName} has scanned this code and is looking for this Mac. Keep both on the same Wi-Fi.`
     : 'A phone has scanned this code and is looking for this Mac. Keep both on the same Wi-Fi.';
+  pairSighting = { seen: true, name: payload.deviceName ?? null };
+  drawPairSteps();
 });
+
+/**
+ * The mDNS sighting, held because it is an **event** and the step column is redrawn on every status.
+ * A positive only: an absence is never evidence (F6 / P3, and `docs/protocol.md` says so where the
+ * attribute is declared).
+ */
+let pairSighting: { seen: boolean; name: string | null } = { seen: false, name: null };
+
+/** The four steps beside the code. The rule is `shared/pairSteps.ts`; this only draws it. */
+function drawPairSteps(): void {
+  const host = document.getElementById('pair-steps');
+  if (!host) return;
+  const status = lastStatus;
+  const steps = pairSteps({
+    sighted: pairSighting.seen,
+    sightedName: pairSighting.name,
+    phase: status?.phase ?? null,
+    paired: status?.paired ?? false,
+    fingerprint: macFingerprint,
+    address: status?.address ?? null,
+  });
+  host.replaceChildren();
+  const list = document.createElement('ol');
+  list.className = 'pair-step-list';
+  for (const [index, step] of steps.entries()) {
+    const item = document.createElement('li');
+    item.className = 'pair-step';
+    item.dataset.state = step.state;
+    const mark = document.createElement('span');
+    mark.className = 'pair-step-mark';
+    mark.setAttribute('aria-hidden', 'true');
+    // A tick for a step that is done, the number for the rest — the shape half of the state, so it
+    // does not depend on colour alone (defect 26).
+    if (step.state === 'done') mark.appendChild(iconSvg('check', 12));
+    else mark.textContent = String(index + 1);
+    const lines = document.createElement('div');
+    lines.className = 'pair-step-lines';
+    const label = document.createElement('div');
+    label.className = 'pair-step-label';
+    label.textContent = step.label;
+    lines.appendChild(label);
+    if (step.note) {
+      const note = document.createElement('p');
+      note.className = 'pair-step-note';
+      note.textContent = step.note;
+      lines.appendChild(note);
+    }
+    item.append(mark, lines);
+    list.appendChild(item);
+  }
+  host.appendChild(list);
+}
+
+/** This Mac's own fingerprint, for the verify step — the value the phone shows beside it. */
+let macFingerprint: string | null = null;
 
 /**
  * Keeps the displayed code alive. The token does not change, so a code scanned minutes ago still
@@ -796,6 +871,9 @@ void (async () => {
   el('account-name').textContent = name;
   el('account-avatar').textContent = initialsFor(name);
   if (self.fingerprint) el('account-sub').textContent = `key ${self.fingerprint}…`;
+  // The verify step prints it beside the phone's own, so the two can be compared by eye.
+  macFingerprint = self.fingerprint ?? null;
+  drawPairSteps();
 })();
 
 // Mirroring is only offered when the phone actually advertises it, which is the capability

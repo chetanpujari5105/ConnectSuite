@@ -4803,6 +4803,72 @@ img#qr {
   color: var(--text-body);
 }
 
+/* ---- Pairing: the code, the four steps, and the last resort ------------------------------------
+   Handoff §6: a centred 560 card with the code, the four steps beside it, and *Not finding it?*
+   underneath — locked decision #4's manual address at the moment it is needed rather than three
+   screens away in Settings.
+------------------------------------------------------------------------------------------------ */
+.screen[data-screen="pairing"] {
+  display: grid;
+  grid-template-columns: 560px minmax(0, 320px);
+  grid-template-areas: 'card steps' 'help steps';
+  align-content: start;
+  justify-content: center;
+  gap: var(--space-7) var(--space-10);
+}
+@media (max-width: 1100px) {
+  .screen[data-screen="pairing"] {
+    grid-template-columns: minmax(0, 560px);
+    grid-template-areas: 'card' 'steps' 'help';
+  }
+}
+.screen[data-screen="pairing"] .pair-card { grid-area: card; }
+.pair-steps { grid-area: steps; align-self: start; }
+.pair-help { grid-area: help; }
+
+.pair-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  margin: 0;
+  padding: var(--space-8);
+  list-style: none;
+  border-radius: var(--radius-card);
+  background: var(--card);
+  border: 1px solid var(--hairline);
+}
+.pair-step { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.pair-step-mark {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  color: var(--text-meta);
+  font: 500 11px/1 var(--font-mono);
+}
+/* Done is the only step that takes the accent, and it takes it as a mark rather than as a fill:
+   the step that is *happening* is the one to read, so it gets the weight instead. */
+.pair-step[data-state='done'] .pair-step-mark { color: var(--accent); border-color: var(--accent-border); }
+.pair-step-label { font: 500 13.5px/1.35 var(--font-ui); color: var(--text-body); }
+.pair-step[data-state='active'] .pair-step-label { color: var(--text-primary); font-weight: 600; }
+.pair-step[data-state='waiting'] .pair-step-label { color: var(--text-meta); }
+.pair-step-note { margin: 3px 0 0; font: var(--text-meta-size); line-height: 1.45; color: var(--text-meta); }
+.pair-step[data-state='verify'] .pair-step-note { font-family: var(--font-mono); }
+
+.pair-help {
+  padding: var(--space-8);
+  border-radius: var(--radius-card);
+  background: var(--card);
+  border: 1px solid var(--hairline);
+}
+.pair-help-title { margin: 0 0 var(--space-4); font: var(--text-section); letter-spacing: var(--tracking-section); color: var(--text-primary); }
+.pair-help-line { margin: 0 0 var(--space-3); font: var(--text-meta-size); line-height: 1.5; color: var(--text-body); }
+.pair-help-row { display: flex; gap: var(--space-3); margin-top: var(--space-5); }
+.pair-help-row input { flex: 1; min-width: 0; font-family: var(--font-mono); }
+
 .pair-rejection {
   margin: 0 0 16px;
   padding: 12px 14px;

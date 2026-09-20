@@ -196,6 +196,29 @@
                 <p class="card-meta mono" id="qr-note" data-code-state="none"></p>
                 <button type="button" id="new-qr" class="button">Show a fresh code</button>
               </div>
+
+              <!--
+                The four steps (handoff §6 Pair a phone). Drawn from `shared/pairSteps.ts`, which is
+                where the rule lives that a later fact advances the earlier steps and an earlier
+                absence never retracts a later one — an mDNS sighting is a positive only.
+              -->
+              <aside class="pair-steps" id="pair-steps" aria-label="Pairing progress"></aside>
+
+              <!--
+                Locked decision #4's last resort, at the moment it is needed rather than three
+                screens away in Settings. The field writes the same setting Settings → Connection
+                does, through the same IPC — one store, two doors.
+              -->
+              <section class="pair-help">
+                <h3 class="pair-help-title">Not finding it?</h3>
+                <p class="pair-help-line">Both machines have to be on the same Wi-Fi. A guest or work network often blocks devices from seeing each other.</p>
+                <p class="pair-help-line">The phone’s hotspot works too: turn it on, join it from this Mac, and scan again.</p>
+                <p class="pair-help-line">If you know the phone’s address, type it here and this Mac will try it directly.</p>
+                <div class="pair-help-row">
+                  <input id="pair-manual" type="text" placeholder="192.168.1.42" aria-label="Phone address" />
+                  <button type="button" id="pair-manual-save" class="button">Use this address</button>
+                </div>
+              </section>
             </section>
 
             <!-- ============================== Overview ==================================== -->
@@ -867,6 +890,7 @@
     <script src="../shared/capabilityStatus.js"></script>
     <!-- P5. Before renderer.js, which ticks the pairing screen against it. -->
     <script src="../shared/pairingCode.js"></script>
+    <script src="../shared/pairSteps.js"></script>
     <script src="clipboard.js"></script>
     <script src="../shared/activity.js"></script>
     <script src="activity.js"></script>

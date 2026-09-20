@@ -1261,3 +1261,19 @@ album captions are `--text-meta` (they were lime, a column of accent on the leas
 the pane); the Apps scroller is viewport-bounded rather than capped at 560px; Photos' and Files'
 detail columns use the shared empty state instead of a bare sentence; the Apps search field is the
 36px pill.
+
+## Sidekick Batch 5d — Pairing's four steps and its last resort — 2026-09-20. Rows D57–D58
+
+Frames `34:11219`–`34:12152` **not rendered**; built to handoff §6 Pair a phone.
+
+| Row | Figma / handoff | Built | Why |
+|---|---|---|---|
+| **D57** | Four steps beside the code, the address and discovery method on step 2 and the fingerprint on step 3 | Built from `shared/pairSteps.ts`. Step 2 prints the **sighting's device name and the address**; discovery method is not printed | The Mac knows *that* a phone published its fingerprint over mDNS, not by which route it will arrive. Naming a method it has not used would be an invented fact |
+| **D58** | *Not finding it?* with the same-Wi-Fi line, the hotspot line and the manual address | Built, and the field writes the **same setting** Settings → Connection does, through the same IPC | One store, two doors. Locked decision #4's last resort belongs at the moment it is needed, not three screens away |
+
+**The rule inside `pairSteps.ts` is the part worth keeping:** a later fact advances the earlier
+steps, and an earlier absence never retracts a later one. An mDNS sighting is a **positive only**
+(F6 / P3) — a handshake in progress means the phone found this Mac, so step 2 completes even where
+mDNS was dropped by client isolation or by the router. And **no step is ever drawn as failed**: a
+phone that has not paired yet has not failed, so a rejection is the amber banner's job and the steps
+stay where they are.
