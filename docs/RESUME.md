@@ -1,3 +1,142 @@
+# Resume here — written 2026-09-21: the motion pass, and the audit's first two findings were mine
+
+> A state report, not a note to myself. Written to be handed to someone who was not here.
+
+## 0 · State
+
+**Batch 7 was already committed and is verified** — typecheck clean, 909 Mac tests, phone suite
+green (`BUILD SUCCESSFUL`, all up to date), twelve guards green. Nothing about it needed finishing.
+
+Then a motion and interaction polish pass, in four commits.
+
+| Commit | What |
+|---|---|
+| `baf5664` | **1** — one motion vocabulary; the press that was never eased; `check-motion-tokens.mjs`, the 13th guard |
+| `baee5c7` | **2** — `motion-sweep.mjs`; the press moves to its own `scale` channel |
+| `63b4d77` | **3** — the brand lockup, measured at **1.08:1** |
+| `d016bb6` | **4** — the `review-animations` pass; two hover rules against fifteen |
+
+**909 Mac tests + 46 script fixtures. Thirteen guards green on every commit. Nothing pushed.
+Nothing within reach of pairing, identity, TLS, the trust store, the Android protocol, file
+transfer or migrations.**
+
+`docs/sidekick-motion-system.md` is the inventory, the rules, what must **not** animate, and the
+instrument faults. `docs/evidence/motion-2026-09-21/` is the evidence with a section on what it does
+not cover.
+
+## 1 · The headline, because it is about method rather than motion
+
+**This app's motion was already largely right, and the audit's first two findings were mine rather
+than the code's.** Both are in `docs/sidekick-motion-system.md` §6.
+
+1. **A line-based CSS parser cannot see a single-line rule, and 454 rules here are written on one
+   line.** `.switch.is-on .switch-knob { transform: translateX(18px); }` is one, so `.switch-knob`
+   was reported as a dead transition that is not dead.
+2. **The one that matters.** The corrected parser then reported *nine frequently-pressed controls
+   declaring a transform transition that never receives a transform* — which read exactly like the
+   brief's premise. **It is wrong.** All nine are `<button>`, and `styles.css` carries
+   `button:active:not(:disabled) { transform: scale(...) }`, a bare element selector two thousand
+   lines away. A scan keyed on class names cannot join two halves of one mechanism.
+
+   **The general form, and it is new to this repo:** every instrument fault already recorded here is
+   a reading that is too narrow, too generous, stale, or pointed at the wrong end. This one had the
+   right target and a correct answer to the question it asked. *The question* was wrong. A finding
+   shaped like **"X declares half a mechanism"** is not a finding until you have asked what else
+   supplies the other half — and in CSS the answer is always *a less specific selector you did not
+   enumerate*. The fix was to stop reading CSS and ask the page for `getComputedStyle`, which
+   resolves the cascade instead of re-implementing it. **That reading found the real defect the CSS
+   scan had been sitting on top of.**
+
+## 2 · What was actually wrong, and what fixed it
+
+| | Finding | After |
+|---|---|---|
+| **MA-1** | **134 of 265 buttons snapped their press.** A pane's own `transition` shorthand replaces the base rule's whole list, silently dropping the `transform` it supplies — while `button:active` still applies the scale. The press happened; the easing did not | **every enabled button, 12 routes, both themes** |
+| **MA-2** | Ten selectors ran transform at `--dur-press`, so down and up both took 100ms | 100 down, 160 up |
+| **MA-3** | `hero-spin` had no reduced-motion handling while `state-spin` did. The global kill does not stop it, it **freezes** it — still drawn as a spinner, no longer saying anything | `animation: none`, copy carries the state |
+| **MA-4/5** | Raw literals (`.clip-tab`'s `180ms` is **exactly `--dur-state`**); `--dur-bar` defined and read by nothing | tokenised; deleted |
+| **MA-7** | Three more snappers the static pass missed, found only by sweeping all twelve routes | fixed |
+| **hover** | Two hover transforms ungated against fifteen gated blocks | gated, and `:focus-within` **split out** so the keyboard path is not behind a pointer query |
+
+**The press now rides the independent `scale` property.** `.photos-tile` animates `transform` for a
+hover lift and `.recent-row` for its FLIP, so on those two the press was inheriting 200ms and 220ms.
+One property, two purposes, one correct duration. This also retired an "accepted tension" this
+project had written down hours earlier as unfixable.
+
+## 3 · The brand lockup, and why the obvious fix is wrong
+
+The mask is `rgb(22,23,24)` on a sidebar compositing to `rgb(14,14,14)`: **1.08:1**. Only the eyes
+read.
+
+**A charcoal stage makes it worse** — `#1a1a1c` scores **1.03:1**, because lifting the ground
+*towards* a near-black mask reduces the difference. 3:1 would need `rgb(99,99,99)`, a grey slab. A
+logo is not text and does not owe a text ratio; it owes an **edge**. So: a compact charcoal stage,
+one inset hairline, and a **clipped halo behind the mask** whose hues are sampled from the artwork
+(`rgb(0,196,255)`, `rgb(233,255,19)`).
+
+**Wings against their ground: 1.08 → 1.25.** Modest, and it is the honest number — a naive crop
+reports `13.66:1`, but that 95th percentile is the **eyes**, which were bright all along and were
+never the problem. The legibility comes from the edge and the gradient. The ratio is published so
+nobody later reads the screenshot as a contrast win it did not earn.
+
+The 6s breath is declared **inside** `@media (prefers-reduced-motion: no-preference)` rather than
+overridden under `reduce` — an override would leave it frozen mid-cycle by the global kill, which is
+exactly the `hero-spin` fault above.
+
+## 4 · The two instruments, and the third fault
+
+- **`scripts/check-motion-tokens.mjs`** — commit hook, 22 fixtures. Five sightings reconstructed
+  verbatim and shown red. Comments stripped first, because its own header quotes the durations it
+  forbids. Allowlist cannot rot; an empty read is an instrument failure, not a pass.
+- **`scripts/motion-sweep.mjs`** — the resolved cascade, 12 routes, both themes. **13 readings, each
+  with a control that must disagree with its opposite.** Its approved-duration list is **read from
+  the page's own `--dur-*` tokens**, never restated — the first version hardcoded it and went red the
+  instant a token was added.
+
+**The third instrument fault is in the product's own toolkit and is *not* a product defect.**
+`overview.ts` clears its FLIP's inline `transition: none` inside `afterNextPaint`, which is two
+nested `requestAnimationFrame`s. **rAF does not run in an occluded window.** Measured: `rafFired: 0`
+after 1.88s, four rows carrying `style.transition === "none"` — reported as `snapping: recent-row
+(48)`, reproducibly. The product is fine: rAF runs before the first paint anyone sees. **`RESUME.md`
+already recorded rAF stalling in an occluded window — as an instrument hazard, for a sweep that
+hung.** Same mechanism, same app, met from the other side, and not recognised on sight.
+
+Refusing to run was the first fix and it was wrong: `Page.bringToFront` does not raise an Electron
+window another app is covering. The sweep now reads in both conditions, prints the window's
+visibility on its first line, and excludes elements carrying an inline `transition` by name.
+
+## 5 · What is still open
+
+1. **`prefers-contrast: more` is handled nowhere.** Apple names three accessibility signals; this
+   app answers two. A colour-and-border question, not a motion one — next colour pass.
+2. **`.toast` uses `@keyframes`**, so it restarts rather than retargets. Accepted: toasts here do not
+   stack. If they ever do, this is real.
+3. **One disabled control on screen**, so "disabled controls do not animate" has a denominator of 1.
+   Needs a state that produces more.
+4. **No phone was linked** for any motion reading. Notification rows, activity chips, photo albums
+   and call rows are thinner or absent. More buttons with a phone, not different rules.
+5. **No Figma render — still.** The MCP is not connected on this account; **no motion value here is
+   Figma-verified** and every row says so.
+6. Everything in the previous sitting's §4 that this pass did not touch.
+
+## 6 · How to pick it up
+
+```
+cd desktop && npm run build && npm test
+pkill -f "node_modules/.bin/electron"
+nohup ./node_modules/.bin/electron . --force-renderer-accessibility --remote-debugging-port=9222 &
+node scripts/motion-sweep.mjs              # 13 readings; refuses on an empty denominator
+node scripts/motion-sweep.mjs --only=keyboard
+node scripts/check-motion-tokens.mjs       # and: node --test scripts/check-motion-tokens.test.mjs
+```
+
+**A note on the appearance setting**: the light-theme captures were taken by driving the app's own
+`connect.appearanceSet`, never by stamping `data-theme` — `renderer.ts` is the single writer and a
+second one is the defect that file's comment exists to prevent. It was restored to `system`
+afterwards, which is the store's documented default; the value it held beforehand was not recorded.
+
+---
+
 # Resume here — written 2026-09-20 (third sitting): the phone is back, and the sweep is green
 
 > A state report, not a note to myself. Written to be handed to someone who was not here.
