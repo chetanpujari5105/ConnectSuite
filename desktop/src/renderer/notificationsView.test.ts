@@ -218,18 +218,28 @@ test('un-advertised with no reason hides the card entirely', () => {
   assert.ok(pane.card.classList.contains('hidden'));
 });
 
-test('Muted is drawn as a state with no concept behind it, not as an empty list', () => {
+/**
+ * Sidekick handoff §6, row N1: *"There is no Muted filter."* No mute concept exists on the wire, so
+ * the pill could only ever open a state explaining its own emptiness. Asserted on the filter list
+ * itself, with the control that the other filters are drawn.
+ */
+test('there is no Muted filter, and the real three are drawn', () => {
   const pane = mount();
   pane.view.setAdvertised(true);
   pane.bridge.fire([notif('a')]);
-  const muted = pane.filters.queryAll('button').find((b) => b.textContent.startsWith('Muted'));
-  assert.ok(muted, 'control: the Muted filter is drawn');
-  muted.click();
+  const labels = pane.filters.queryAll('button').map((b) => b.textContent);
+  assert.equal(labels.length, 3, `control: the filters were drawn (${labels.join(' / ')})`);
+  assert.ok(!labels.some((l) => /muted/i.test(l)), 'a Muted filter is drawn');
+});
 
-  // Muting is decided on the phone and is not on the wire. An empty list here would read as "no
-  // apps are muted", which is a claim this Mac has no way to make.
-  assert.match(pane.note.textContent, /Muting is decided on the phone and is not sent to the Mac/);
-  assert.match(pane.list.textContent, /notif.posted — no mute field in this build/);
+test('a row carries a Reply pill only where the phone says it can reply', () => {
+  const pane = mount();
+  pane.view.setAdvertised(true);
+  pane.bridge.fire([notif('a', { canReply: true }), notif('b', { canReply: false })]);
+  const rows = pane.list.queryAll('.notif-row');
+  assert.equal(rows.length, 2, 'control: both rows drawn');
+  assert.equal(rows[0]!.queryAll('.notif-reply-pill').length, 1);
+  assert.equal(rows[1]!.queryAll('.notif-reply-pill').length, 0, 'a read-only row drew a Reply pill');
 });
 
 // ---- The list and its inspector -------------------------------------------------------------------

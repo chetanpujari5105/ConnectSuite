@@ -483,7 +483,6 @@
             -->
             <section class="screen" data-screen="notifications" hidden>
               <div class="pane pane-notifications" id="notif-card">
-                <p class="pane-sub" id="notif-note"></p>
                 <!--
                   The macOS permission banner. Hidden until a native notification has actually been
                   refused: there is no API to ask in advance, and claiming a permission state the
@@ -497,10 +496,6 @@
                   control somebody goes looking for at the moment the thing annoys them, and a
                   preference two screens away from its effect is a preference nobody finds.
                 -->
-                <label class="clip-watch" for="notif-sound">
-                  <input type="checkbox" id="notif-sound" />
-                  <span>Play a sound with these notifications</span>
-                </label>
                 <div class="pane-grid">
                   <!--
                     The left column is a recessed **well** holding the filter pills and the rows,
@@ -514,12 +509,24 @@
                   -->
                   <div class="pane-well">
                     <!-- Counts come from the live list, never from a constant. -->
-                    <div class="pill-row" id="notif-filters" role="tablist" aria-label="Filter notifications"></div>
+                    <div class="notif-listhead">
+                      <div class="pill-row" id="notif-filters" role="tablist" aria-label="Filter notifications"></div>
+                      <!--
+                        Sound is off by default and this is where it is turned on, beside the list it
+                        affects (the same setting is also in Settings → Notifications).
+                      -->
+                      <label class="notif-sound" for="notif-sound">
+                        <input type="checkbox" id="notif-sound" />
+                        <span>Sound</span>
+                      </label>
+                    </div>
                     <div class="pane-list" id="notif-list" role="list"></div>
+                    <p class="pane-sub notif-note" id="notif-note"></p>
                   </div>
                   <aside class="pane-detail" id="notif-detail" aria-live="polite"></aside>
                 </div>
                 <div id="notif-notice" class="mirror-notice" hidden></div>
+                <p class="pane-foot">Sidekick mirrors the phone’s notification shade. Replying or dismissing here does it on the phone.</p>
               </div>
             </section>
 

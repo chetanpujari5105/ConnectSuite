@@ -87,7 +87,7 @@ interface NotifBridge {
 // needs the app's name, it gets a function in notifyLabels.ts and a slot in the enumeration, and
 // the count assertion moves.
 
-type FilterId = 'all' | 'messages' | 'reply' | 'muted';
+type FilterId = 'all' | 'messages' | 'reply';
 
 interface Filter {
   id: FilterId;
@@ -104,10 +104,9 @@ interface Filter {
  *  - **Chat and Messages are one filter, not two.** Android has a single `CATEGORY_MESSAGE`
  *    (`"msg"`), which is what `category` carries. Two pills over one category would have split the
  *    same rows arbitrarily, or left one permanently empty.
- *  - **Muted has nothing behind it.** There is no mute concept anywhere in the protocol — no field,
- *    no message, no capability. The handoff draws it as a designed empty state, and shipped that
- *    way it would be an empty state over nothing: state C rendering what is really state A. It is
- *    kept as a pill, because the roadmap is worth showing, and it renders [unbuiltState].
+ *  - **There is no Muted filter** (Sidekick handoff §6, row N1). No mute concept exists anywhere in
+ *    the protocol, and it used to be drawn as a pill opening an *unbuilt* state. The Sidekick design
+ *    removed it: a filter that can never hold a row is a control that only ever explains itself.
  *
  * `Can reply` replaces the second messages pill with something real, and it is the denominator the
  * pane already publishes in its note — the number that explains why most rows have no reply box.
@@ -116,7 +115,6 @@ const FILTERS: Filter[] = [
   { id: 'all', label: 'All', match: () => true },
   { id: 'messages', label: 'Messages', match: (one) => one.category === 'msg' },
   { id: 'reply', label: 'Can reply', match: (one) => one.canReply },
-  { id: 'muted', label: 'Muted', match: null },
 ];
 
 /**
@@ -249,24 +247,9 @@ class NotificationsView {
 
     this.drawFilters(visible);
 
-    const active = FILTERS.find((one) => one.id === this.filter);
-    if (!active || active.match === null) {
-      // Muted, and anything else that reaches this pane without a concept behind it.
-      this.note.textContent = 'Muting is decided on the phone and is not sent to the Mac.';
-      this.container.appendChild(
-        this.unbuiltState(
-          'Muted apps are not mirrored',
-          'The phone does not tell the Mac which apps are muted, so this list cannot be built ' +
-            'yet. Muted apps simply do not appear in the shade above.',
-          'notif.posted — no mute field in this build',
-        ),
-      );
-      this.detail.appendChild(this.detailPlaceholder('Nothing to inspect in this filter.'));
-      this.restoreAnchor(anchor);
-      return;
-    }
+    const active = FILTERS.find((one) => one.id === this.filter) ?? FILTERS[0]!;
 
-    const shown = visible.filter(active.match);
+    const shown = visible.filter((one) => active.match?.(one) ?? true);
     const replyable = visible.filter((one) => one.canReply).length;
 
     if (visible.length === 0) {
@@ -510,6 +493,23 @@ class NotificationsView {
     }
     row.appendChild(body);
 
+    // The handoff's row: a lime **Reply** pill only where `canReply` is true, and nothing on a
+    // read-only row. It opens the row in the detail column with the reply field focused; it never
+    // sends — the reply verb's failure is one another person sees.
+    if (one.canReply) {
+      const reply = document.createElement('button');
+      reply.type = 'button';
+      reply.className = 'notif-reply-pill';
+      reply.textContent = replyButtonLabelOf(one);
+      reply.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.selected = one.key;
+        this.render();
+        this.detail.querySelector<HTMLInputElement>('.notif-reply input')?.focus();
+      });
+      row.appendChild(reply);
+    }
+
     // Hover-revealed, per the handoff: opacity 0→1 and translateX(6px)→0 in 200ms. Also revealed
     // on keyboard focus within the row — a control that only exists under a pointer is a control
     // a keyboard user does not have.
@@ -554,7 +554,7 @@ class NotificationsView {
     if (one.ongoing) {
       const pill = document.createElement('span');
       pill.className = 'state-pill';
-      pill.textContent = 'ONGOING';
+      pill.textContent = 'Ongoing';
       head.appendChild(pill);
     }
     card.appendChild(head);
@@ -595,10 +595,17 @@ class NotificationsView {
       // The other half of "a reply box is only drawn where a reply can be sent": say so, rather
       // than leaving a gap the user reads as a broken pane. Neutral, not a warning — an app that
       // did not build a reply action has not failed at anything.
+      // The handoff's *Read only* box: a titled, quiet panel rather than a stray sentence.
+      const box = document.createElement('div');
+      box.className = 'detail-readonly';
+      const title = document.createElement('div');
+      title.className = 'detail-readonly-title';
+      title.textContent = 'Read only';
       const why = document.createElement('p');
       why.className = 'detail-note';
       why.textContent = noReplyActionNoteOf(one);
-      card.appendChild(why);
+      box.append(title, why);
+      card.appendChild(box);
     }
 
     card.appendChild(this.actionGrid(one));
@@ -734,33 +741,13 @@ class NotificationsView {
    * sentence, rendered verbatim — see [setAdvertised].
    */
   private unavailableBanner(reason: string): HTMLElement {
-    const banner = document.createElement('div');
-    banner.className = 'state-banner';
-    banner.setAttribute('role', 'status');
-
-    const glyph = document.createElement('span');
-    glyph.className = 'state-banner-glyph';
-    glyph.textContent = '!';
-    glyph.setAttribute('aria-hidden', 'true');
-
-    const body = document.createElement('div');
-    const headline = document.createElement('div');
-    headline.className = 'state-banner-title';
-    headline.textContent = 'Notifications are not available right now';
-    const why = document.createElement('div');
-    why.className = 'state-banner-reason';
-    why.textContent = reason;
-    body.append(headline, why);
-
-    banner.append(glyph, body);
-    return banner;
+    // The shared Permission state (component 11), with the phone's sentence verbatim.
+    return stateBlock({ kind: 'permission', headline: 'Notifications are not available right now', body: reason });
   }
 
+  /** The detail column with nothing chosen: the shared empty state, not a dashed box. */
   private detailPlaceholder(text: string): HTMLElement {
-    const wrap = document.createElement('div');
-    wrap.className = 'detail-placeholder';
-    wrap.textContent = text;
-    return wrap;
+    return stateBlock({ kind: 'empty', icon: 'notifications', headline: 'Nothing selected', body: text });
   }
 
   private async run(intent: Promise<NotifAck>): Promise<void> {

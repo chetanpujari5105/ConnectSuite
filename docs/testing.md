@@ -21115,3 +21115,26 @@ dark), idle light, idle 1100 × 700. The live pane was put back on the phone's d
 
 **Not proven:** a real incoming call against the rebuilt card (the ringing and in-call captures are
 synthetic); the Contacts tab after the restyle was not captured.
+
+## Sidekick Batch 4c — Notifications — 2026-09-20
+
+Frames not rendered; built to handoff §6. Departures D42–D45. Captures in
+`docs/evidence/sidekick-batch4/`, **synthetic** (the live shade is the owner's own notifications):
+inbox, read-only detail, permission (1440 × 920 dark), inbox light, inbox 1100 × 700.
+
+- **The first capture run had to be thrown away, and the reason is worth keeping.** The prep seeded
+  five synthetic notifications, the `--prep-expect` predicate passed — and during the 900 ms settle
+  the phone pushed a real notification, `onNotifChanged` fired, and the pane redrew with the owner's
+  real shade. The file was written with real notification text in it. That is `shot.mjs`'s own
+  warning (*a set-up is only a set-up if nothing overwrites it*) arriving from a source the script
+  cannot see: the stimulus succeeded and was undone by a live event. The captures freeze the view's
+  `render` after seeding, and the renderer is reloaded between shots — the freeze persists in the
+  page, which cost two refusals before it was noticed.
+- `notificationsView.test.ts`: no Muted filter, with the control that the real three are drawn
+  (mutation — the pill restored → **1 red**); a Reply pill only where `canReply`, with both rows as
+  the control (mutation — pill on every row → **1 red**).
+- `npm test` **845 / 845**.
+
+**Not proven:** a real reply sent through the rebuilt pill (unit-tested only); the *media session in
+the feed* variant (`40:21209`) is not built at all — it needs `shared/mediaSessionRow.ts`, and is
+still owed.

@@ -1181,3 +1181,20 @@ component library. Not Figma-exact.
 button, both keeping their words (§5b); Call is a flat lime pill whose confirm state turns red (no
 gradient); every disc is neutral charcoal; the segment's selected tab is the lime fill; times are
 24-hour; the audio copy offers no Bluetooth remedy (**defect 124**).
+
+## Sidekick Batch 4c — Notifications — 2026-09-20. Rows D42–D45
+
+Frames `34:5254`–`34:5989` **not rendered** (Figma MCP limit); built to handoff §6 Notifications.
+
+| Row | Figma / handoff | Built | Why |
+|---|---|---|---|
+| **D42** | *"There is no Muted filter"* (N1) | **Removed**, with the *unbuilt* state it opened | It could never hold a row: no mute concept exists on the wire. A filter that only ever explains its own emptiness is a control with nothing behind it. Three filters remain — All, Messages, Can reply — and *Can reply* is the denominator the pane already publishes |
+| **D43** | A lime **Reply** pill on rows where `canReply` | Built, and it **opens the row with the reply field focused** rather than sending | A one-tap send into someone else's conversation is not recoverable — the same rule the quick replies follow (they fill the field) |
+| **D44** | `ONGOING` pill | `Ongoing`, neutral charcoal, sentence case | It is a fact (the app pinned it), not a warning, and the palette has no cyan (D2). There is still no unread state anywhere on the wire, so none is drawn |
+| **D45** | The sound toggle is not drawn at all | Kept, moved into the list header beside the filters | It is also in Settings → Notifications; it stays here because it is what somebody reaches for at the moment the sound annoys them. Quiet, meta-sized, right-aligned |
+
+**Corrected, not departures:** each column is its own card on the window ground (it was a well inside
+a card inside a pane — three surfaces for one list); the list scrolls inside its card at `812 + 324`;
+rows lose their per-row fill, border and hover lift; the permission banner and the *nothing selected*
+placeholder are the shared state block (the dashed box is gone); the *Read only* box gets a title;
+the reply kicker is meta rather than lime.

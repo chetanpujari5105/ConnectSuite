@@ -1857,13 +1857,70 @@ img#qr {
   padding: 0;
 }
 
-/* The recessed well the rows sit inside. 18px radius and 10px of padding, measured. */
+/*
+ * The list column. It was a recessed well inside a card inside a pane — three surfaces for one list.
+ * The Sidekick frames draw each column as its own card on the window ground, so this is that card.
+ */
 .pane-well {
-  background: var(--well);
-  border-radius: var(--radius-panel);
-  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
 }
+
+/* Notifications is a frame around two cards; the pane's own material is gone (handoff §4: list 812
+   + detail 324, each a card, nothing floating over the content). */
+.screen[data-screen="notifications"] {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.pane.pane-notifications {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  min-height: 0;
+  padding: 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 0;
+  box-shadow: none;
+}
+
+/* Filters left, the sound toggle right, on one line above the rows. */
+.notif-listhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  flex: none;
+  padding: var(--space-7) var(--space-7) var(--space-5);
+}
+.notif-listhead .pill-row { margin-bottom: 0; }
+.notif-sound {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+  cursor: pointer;
+}
+.notif-note {
+  flex: none;
+  margin: 0;
+  padding: var(--space-5) var(--space-7) var(--space-7);
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+}
+.notif-note:empty { display: none; }
 
 .pane {
   background: var(--material-card);
@@ -2015,23 +2072,32 @@ img#qr {
 
 /* ---- The two-column body --------------------------------------------------------------------- */
 
+/* Handoff §4: `812 + 324`. One row pinned to the grid's height so each column scrolls inside itself
+   rather than the page growing to the longer one. */
 .pane-grid {
   display: grid;
-  grid-template-columns: 1fr 380px;
+  grid-template-columns: minmax(0, 1fr) 324px;
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--space-7);
-  align-items: start;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
 }
 
-@media (max-width: 900px) {
-  .pane-grid { grid-template-columns: 1fr; }
+@media (max-width: 1240px) {
+  .pane-grid { grid-template-columns: minmax(0, 1fr) 288px; gap: var(--space-5); }
 }
 
 .pane-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  max-height: 520px;
+  gap: var(--space-1);
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--space-7);
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
 }
 
 /* ---- Rows ------------------------------------------------------------------------------------ */
@@ -2039,7 +2105,7 @@ img#qr {
 .notif-row {
   position: relative;
   display: grid;
-  grid-template-columns: 34px 1fr;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
   gap: var(--space-5);
   align-items: center;
   /*
@@ -2047,27 +2113,24 @@ img#qr {
    * 14px all round — and the **content box was 66px on both**, so every one of those 28px was our
    * own vertical padding. At 94px the list showed five rows where the design shows eight.
    */
-  padding: 0 var(--space-5);
-  min-height: 66px;
-  border-radius: var(--radius-tile);
-  border: 1px solid var(--hairline);
-  background: var(--control);
+  padding: var(--space-4) var(--space-5);
+  min-height: 70px;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  background: transparent;
   cursor: pointer;
-  transition: transform var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease);
+  transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease);
 }
 
-.notif-row:hover {
-  transform: translateY(-2px);
-  border-color: var(--hairline-hover);
+@media (hover: hover) and (pointer: fine) {
+  .notif-row:hover { background: rgba(var(--overlay-rgb), 0.035); }
 }
 
-.notif-row.selected {
-  background: var(--accent-tint);
-  border-color: var(--accent-border);
+.notif-row.selected,
+.notif-row.selected:hover {
+  background: var(--selection-fill);
+  border-color: var(--selection-border);
 }
-
-/* An app-pinned notification. A left edge, not a colour swap — see the hue note in the pane. */
-.notif-row.ongoing { border-left: 2px solid var(--secondary); }
 
 /*
  * Circular, not the rounded-square `--radius-control` — brief: "Circular icon badges: a soft-edged
@@ -2078,16 +2141,36 @@ img#qr {
 .app-tile {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  align-self: start;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-pill);
   background: var(--control);
   box-shadow: inset 0 0 0 1px var(--hairline);
   color: var(--text-body);
-  font: 600 14px/1 var(--font-ui);
-  transition: transform var(--dur-hover) var(--ease);
+  font: 500 13px/1 var(--font-ui);
 }
-.notif-row:hover .app-tile { transform: scale(1.06); }
+
+/*
+ * The handoff's row affordance: a lime **Reply** pill, and only where `canReply` is true. It is the
+ * one lime thing in the list — a read-only row carries nothing at all rather than a dimmed control.
+ */
+.notif-reply-pill {
+  align-self: center;
+  flex: none;
+  height: 28px;
+  min-height: 0;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-on-fill);
+  font: 600 12.5px/1 var(--font-ui);
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .notif-reply-pill:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+}
 
 .notif-body { min-width: 0; }
 
@@ -2103,7 +2186,7 @@ img#qr {
   align-items: baseline;
   gap: var(--space-2);
   min-width: 0;
-  font: 600 13px/var(--leading-13) var(--font-ui);
+  font: 500 12px/var(--leading-13) var(--font-ui);
   color: var(--text-primary);
 }
 
@@ -2140,8 +2223,8 @@ img#qr {
 }
 
 .notif-title {
-  margin-top: var(--space-1);
-  font: var(--text-body-size);
+  margin-top: 3px;
+  font: 500 13.5px/1.35 var(--font-ui);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2200,17 +2283,23 @@ img#qr {
 
 /* ---- The detail card — the ONE primary surface on this pane ----------------------------------- */
 
-.pane-detail { min-width: 0; }
-
-.detail-card {
-  background: var(--elev-3);
-  /* The elevation-3 pair, not the panel pair — measured; this card was carrying a panel's hairline
-   * and lit edge under a primary card's fill and shadow. */
-  border: 1px solid var(--hairline-primary);
-  border-radius: var(--radius-panel);
-  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+/* The detail column *is* the card (one surface, not a card inside a panel inside a pane). */
+.pane-detail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
   padding: var(--space-8);
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
 }
+.pane-detail > .state-block { margin: auto; }
+
+.detail-card { background: none; border: 0; box-shadow: none; padding: 0; }
 
 .detail-head {
   display: flex;
@@ -2225,14 +2314,16 @@ img#qr {
   color: var(--text-meta);
 }
 
+/* `Ongoing` — the one pill the wire can support (there is no read/unread state). Neutral: an app
+   pinning its notification is a fact, not a warning. */
 .state-pill {
   margin-left: auto;
   flex: none;
   padding: 2px var(--space-3);
   border-radius: var(--radius-pill);
-  border: 1px solid rgba(var(--tint-cyan-rgb), 0.3);
-  background: rgba(var(--tint-cyan-rgb), 0.1);
-  color: var(--secondary);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+  color: var(--text-body);
   font: var(--text-meta-size);
   letter-spacing: var(--tracking-meta);
 }
@@ -2247,7 +2338,7 @@ img#qr {
 /* The message quoted in an inset panel, per the handoff. */
 .detail-quote {
   padding: var(--space-6);
-  border-radius: var(--radius-tile);
+  border-radius: var(--radius-control);
   border: 1px solid var(--hairline);
   background: var(--control);
   font: var(--text-body-size);
@@ -2279,7 +2370,18 @@ img#qr {
   cursor: pointer;
   transition: transform var(--dur-press) var(--ease), border-color var(--dur-hover) var(--ease);
 }
-.chip:hover { border-color: var(--accent-border); color: var(--text-primary); }
+.chip:hover { border-color: var(--hairline-hover); color: var(--text-primary); }
+
+/* The *Read only* box: the row has no reply action, which is the app's choice and not a failure. */
+.detail-readonly {
+  margin-top: var(--space-7);
+  padding: var(--space-6);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: var(--control);
+}
+.detail-readonly-title { font: 600 13px/1.4 var(--font-ui); color: var(--text-primary); }
+.detail-readonly .detail-note { margin-top: var(--space-2); }
 
 .notif-reply {
   display: flex;
@@ -2347,58 +2449,14 @@ img#qr {
   color: var(--destructive);
 }
 
-.detail-placeholder {
-  padding: var(--space-9);
-  border-radius: var(--radius-panel);
-  border: 1px dashed var(--hairline);
-  font: var(--text-body-size);
-  color: var(--text-meta);
-  text-align: center;
-}
-
-/* State B. `--warning`, never `--destructive`: an ungranted permission is not a failure. */
-.state-banner {
-  display: flex;
-  gap: var(--space-5);
-  align-items: flex-start;
-  padding: var(--space-6);
-  border-radius: var(--radius-tile);
-  border: 1px solid var(--warning-border);
-  background: var(--warning-fill);
-}
-
-.state-banner-glyph {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-pill);
-  background: var(--warning);
-  color: var(--text-on-warning);
-  font: 600 11px/1 var(--font-ui);
-}
-
-.state-banner-title {
-  font: 600 13.5px/1.4 var(--font-ui);
-  color: var(--text-primary);
-  margin-bottom: 2px;
-}
-
-/* The phone's own sentence, rendered verbatim. Never paraphrased, never cached — defect 27. */
-.state-banner-reason {
-  font: var(--text-body-size);
-  color: var(--text-on-control);
-}
-
-/* The handoff's kicker slot: a small uppercase label naming what the block below it does. */
+/* The handoff's kicker slot: a small uppercase label naming what the block below it does. Meta, not
+   lime — lime is earned by the primary action, and the field below already carries it. */
 .detail-kicker {
   margin: var(--space-7) 0 0;
-  font: var(--text-meta-size);
+  font: var(--text-micro);
   letter-spacing: var(--tracking-group);
   text-transform: uppercase;
-  color: var(--accent-text);
+  color: var(--text-meta);
 }
 .detail-kicker + .chip-row { margin-top: var(--space-3); }
 
