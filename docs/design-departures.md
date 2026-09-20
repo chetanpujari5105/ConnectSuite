@@ -1243,3 +1243,21 @@ a real failure, and red on a past row would put the one colour meaning *the link
 on something that stopped being true minutes ago. `alert-circle` is the shape half. A failure tone is
 reserved for the rows whose own detail says the connection failed, which is what the log writes when
 it did.
+
+## Sidekick Batch 5c — Apps, Files, Photos, Camera — 2026-09-20. Rows D54–D56
+
+Frames `34:8127`–`34:8865`, `31:2550`–`31:3175`, `31:3431`–`31:4122`, `34:11064` **not rendered**;
+built to handoff §6.
+
+| Row | Figma / handoff | Built | Why |
+|---|---|---|---|
+| **D54** | Camera: *"the one control is a route to Mirror, which is real"* | Built as **Mirror the phone instead**, a secondary button on the unbuilt card | The one honest thing an unbuilt pane can offer. It is `unbuiltRoute` on the screen, optional — a pane with nothing honest to offer draws no button rather than a plausible one |
+| **D55** | *"The active nav row for an unbuilt pane is neutral, never lime"* (§11 row 11) | The nav pill drops its lime tint while an unbuilt pane is open | Lime says *this works*. The pill still moves and still marks the selection; only its fill changes |
+| **D56** | Apps: the mechanism is explained in the pane | A pane footer: *"Sidekick asks the phone to open an app — the phone posts a notification and you tap it there. Nothing is launched from this Mac."* | There is no `apps.launch` and there must never be one. The sentence is standing copy, before the tap rather than after it |
+
+**Corrected, not departures:** every pane is a frame around cards rather than a card around cards —
+Apps, Files and Photos each carried an outer `--material-card` panel *and* inner panels; Photos'
+album captions are `--text-meta` (they were lime, a column of accent on the least important text on
+the pane); the Apps scroller is viewport-bounded rather than capped at 560px; Photos' and Files'
+detail columns use the shared empty state instead of a bare sentence; the Apps search field is the
+36px pill.

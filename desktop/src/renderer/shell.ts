@@ -267,6 +267,9 @@ class ShellView {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = `nav-row${screen.state === 'unbuilt' ? ' unbuilt' : ''}`;
+      // The pill follows the selected row and is lime; an unbuilt pane must not take the accent
+      // (handoff §11 row 11), so the row says which it is and `shell.css` drops the tint.
+      if (screen.state === 'unbuilt') row.dataset.unbuilt = 'true';
       row.dataset.nav = screen.id;
       row.appendChild(iconSvg(screen.icon, 16));
 
@@ -336,6 +339,9 @@ class ShellView {
       return;
     }
     pill.hidden = false;
+    // An unbuilt pane's selected row is neutral, never the accent (handoff §11 row 11): lime says
+    // "this works". The pill still moves and still marks the selection — only its fill changes.
+    pill.dataset.unbuilt = String(screenById(this.current)?.state === 'unbuilt');
     pill.style.transform = `translateY(${pillOffsetFor(row.offsetTop)}px)`;
   }
 
@@ -521,6 +527,22 @@ class ShellView {
     handle.textContent = screen.unbuiltHandle ?? '';
 
     card.append(mark, tag, headline, why, handle);
+
+    /*
+     * **The one control, and it is real** (handoff §6 Camera): *"No preview, no disabled Start, no
+     * 'coming soon'. The one control is a route to Mirror, which is real."* A route is not a
+     * consolation prize here — the thing somebody wants a phone camera on a Mac for is usually to
+     * see the phone, and mirroring does that today.
+     */
+    if (screen.unbuiltRoute) {
+      const route = screen.unbuiltRoute;
+      const action = document.createElement('button');
+      action.type = 'button';
+      action.className = 'button unbuilt-action';
+      action.textContent = route.label;
+      action.addEventListener('click', () => this.route(route.screen));
+      card.appendChild(action);
+    }
 
     // The card is centred by a host that has a height to centre it in; see `.unbuilt-host`. The
     // section itself shrink-wraps to its content, so centring the card against the section alone

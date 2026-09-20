@@ -1000,10 +1000,15 @@ class FilesView {
 
     const entry = this.selected;
     if (!entry) {
-      const empty = document.createElement('p');
-      empty.className = 'files-detail-empty';
-      empty.textContent = 'Select a file to see its details.';
-      this.detail.append(empty);
+      // The shared empty state (component 11), not a stray sentence.
+      this.detail.append(
+        stateBlock({
+          kind: 'empty',
+          icon: 'files',
+          headline: 'Nothing selected',
+          body: 'Choose a file to see its details, save it to this Mac, or reveal it in Finder.',
+        }),
+      );
       return;
     }
     const title = document.createElement('h3');

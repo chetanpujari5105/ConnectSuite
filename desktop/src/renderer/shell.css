@@ -312,13 +312,15 @@ body {
   height: 36px;
   border-radius: var(--radius-control);
   background: var(--accent-tint-selected);
-  transition: transform var(--dur-pill) var(--ease-in-out);
+  transition: transform var(--dur-pill) var(--ease-in-out), background var(--dur-state) var(--ease);
   pointer-events: none;
 }
 
 /* Nothing to point at before the first measurement, so no pill — one parked at y=0 would claim
    Overview is selected a frame before it is. */
 .nav-pill[hidden] { display: none; }
+/* An unbuilt pane's row does not take the accent — the lime says a feature works (handoff §11). */
+.nav-pill[data-unbuilt='true'] { background: rgba(var(--overlay-rgb), 0.06); }
 
 /*
  * FIGMA Nav row: 204 × 36, radius 10, padding 0 10, gap 10, a 16px glyph and a 13.5 label.
@@ -769,6 +771,14 @@ body {
   align-self: stretch;
   font-size: 11px;
   color: var(--text-meta);
+}
+
+/* The one control an unbuilt screen may carry: a route to something that works (handoff §6 Camera).
+   Secondary, never the primary fill — the pane it sits on does not work, and lime would say it did. */
+.unbuilt-action {
+  margin-top: var(--space-8);
+  height: 36px;
+  border-radius: var(--radius-pill);
 }
 
 /* ---- Overview --------------------------------------------------------------------------------- */

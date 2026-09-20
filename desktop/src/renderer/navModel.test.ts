@@ -146,7 +146,7 @@ test('a screen with no proposed namespace says so rather than inventing one', ()
     } else {
       assert.match(
         screen.unbuiltHandle,
-        /no namespace proposed|no session store/,
+        /no (wire )?namespace proposed|no session store/,
         `${screen.id}'s handle neither names a real namespace nor admits there is none`,
       );
     }

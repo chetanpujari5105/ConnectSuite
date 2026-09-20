@@ -21200,3 +21200,29 @@ rows carry file sizes and the device name, no message or contact content).
 **Not proven:** the *filtered empty* and *nothing recorded* frames were not re-captured after the
 restyle (both are existing states with their own tests); a `Send refused` row's amber tone has not
 been seen live.
+
+## Sidekick Batch 5c — Apps, Files, Photos, Camera — 2026-09-20
+
+Frames not rendered; built to handoff §6. Departures D54–D56. Captures in
+`docs/evidence/sidekick-batch5/`: `apps`, `files`, `photos`, `camera`, all 1440 × 920 on the real
+phone. The Photos rail names the owner's albums and the Files rail their folders; no message,
+contact or photo content is legible in them.
+
+- **Camera**: the unbuilt card carries *Mirror the phone instead* and routes; the handle reads
+  `no wire namespace proposed · phase 8, behind signing`; the nav pill is neutral while it is open.
+  `navModel.test.ts`'s handle assertion was widened to `no (wire )?namespace proposed` — the string
+  still admits there is nothing to grep for, which is what that test is about.
+- **An instrument fault, twice, and it would have been written up as a defect.** The first Apps
+  capture showed 126 empty circles where the launcher icons belong. The icons were *in the DOM*:
+  read 3 s later, **126 of 126** carried a data-URI `img`. The shot had been taken 1.4 s after the
+  route, before the icons arrived over the wire — a reading taken inside a window I did not control.
+  Both Apps and Photos are captured behind a `--ready` gate now (`.apps-tile-icon` > 100,
+  `.photos-tile` > 6). The Files gate named `.files-table tbody tr`, which this pane does not use;
+  it refused rather than capturing, and the class is `.files-row`.
+- `photosView.test.ts` and `filesView.test.ts` needed `./icons` and `./stateBlock` imported — the
+  page's load order, in the test, the same fault the Clipboard suite hit.
+- `npm test` **854 / 854**.
+
+**Not proven:** Files' *sending*, *no folders* and *couldn't open* states, and Photos' *partial* and
+*permission* states, were not re-captured after the restyle — all five have existing tests and none
+was touched beyond the surface change.

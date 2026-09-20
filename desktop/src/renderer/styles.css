@@ -2837,6 +2837,17 @@ img#qr {
    here and there must never be one.
 ------------------------------------------------------------------------------------------------ */
 
+/* A frame around the cards, like Files and Notifications — the panel and the detail are the
+   surfaces, and the pane's own material would be a second one around them. */
+.pane.pane-photos {
+  padding: 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 0;
+  box-shadow: none;
+}
+
 .photos-grid-wrap {
   display: grid;
   grid-template-columns: 1fr 320px;
@@ -2848,14 +2859,14 @@ img#qr {
   .photos-grid-wrap { grid-template-columns: 1fr; }
 }
 
+/* The Figma card, like every other pane's column: one surface, a hairline, radius 14, no shadow. */
 .photos-panel {
   display: grid;
-  grid-template-columns: 188px 1fr;
-  border-radius: var(--radius-panel);
+  grid-template-columns: 188px minmax(0, 1fr);
+  border-radius: var(--radius-card);
   overflow: hidden;
-  background: var(--elev-3);
-  border: 1px solid var(--hairline-primary);
-  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+  background: var(--card);
+  border: 1px solid var(--hairline);
 }
 
 @media (max-width: 700px) {
@@ -2929,10 +2940,13 @@ img#qr {
 
 /* The second line, when a row has earned one. It spans both columns so it sits under the name
    rather than beside the count. */
+/* `--text-meta`, not lime. The owning app's name is metadata about an album, and lime is earned by
+   the primary action, the active nav row, a selected segment and a ready dot (handoff §2). A column
+   of lime captions down the rail spent the accent on the least important text on the pane. */
 .photos-album-source {
   grid-column: 1 / -1;
   font: var(--text-meta-size);
-  color: var(--accent-text);
+  color: var(--text-meta);
   padding-bottom: var(--space-2);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3274,7 +3288,20 @@ img#qr {
   min-height: 0;
 }
 
-.pane-files { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+/* A frame around the cards, like Notifications and Apps: the columns are the surfaces, and the
+   pane's own material would be a second one around them. */
+.pane.pane-files {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  padding: 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 0;
+  box-shadow: none;
+}
 
 .files-body {
   display: grid;
@@ -3284,15 +3311,15 @@ img#qr {
   flex: 1;
 }
 
+/* The Figma card. `212 + 588` in the handoff's grid; the rail is 208 here and the table takes the
+   rest, which is the same shape at this window width. */
 .files-panel {
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr);
   gap: 0;
-  background: var(--material-card);
-  -webkit-backdrop-filter: var(--material-card-filter);
-  backdrop-filter: var(--material-card-filter);
+  background: var(--card);
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-panel);
+  border-radius: var(--radius-card);
   overflow: hidden;
   min-height: 0;
 }
@@ -4496,10 +4523,27 @@ img#qr {
    owns the frame, and a second `.apps-*` block in either would silently win by document order —
    which is what stylesheets.test.ts refuses and what cost three bugs in one sitting. */
 
-.pane-apps {
-  display: grid;
-  gap: var(--space-5);
+/* A frame around the card, like Notifications: the pane's own material is gone. */
+.screen[data-screen="apps"] {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
+.pane.pane-apps {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-height: 0;
+  padding: 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 0;
+  box-shadow: none;
+}
+.apps-head { flex: none; }
 
 .apps-head {
   display: flex;
@@ -4511,10 +4555,11 @@ img#qr {
 
 .apps-search {
   flex: 0 1 280px;
-  padding: 8px 12px;
-  border-radius: var(--radius-control);
+  height: 36px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-pill);
   border: 1px solid var(--hairline);
-  background: var(--well);
+  background: var(--control);
   color: var(--text-primary);
   font: inherit;
 }
@@ -4593,14 +4638,21 @@ img#qr {
  * combination outright rather than trusting the next person to know which row-sizing keywords
  * happen to escape it.
  */
+/*
+ * The scroller is the pane's card, and it is **viewport-bounded** rather than capped at 560px: a
+ * fixed max-height leaves dead space on a tall window and clips on a short one. The height lives
+ * here and the grid lives inside it — defect 88's structural rule, unchanged.
+ */
 .apps-scroll {
-  max-height: 560px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: var(--space-5);
-  border-radius: var(--radius-panel);
-  background: var(--elev-3);
-  border: 1px solid var(--hairline-primary);
-  box-shadow: 0 1px 0 var(--inner-highlight-primary) inset, var(--shadow-primary);
+  padding: var(--space-6);
+  border-radius: var(--radius-card);
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--overlay-rgb), 0.14) transparent;
 }
 
 .apps-tile {

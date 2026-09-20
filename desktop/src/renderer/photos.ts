@@ -642,7 +642,15 @@ class PhotosView {
     this.detail.textContent = '';
     const item = this.items.find((one) => one.id === this.selectedItem);
     if (!item) {
-      this.detail.appendChild(photoLine('pane-detail-empty', 'Select a photo to see its details.'));
+      // The shared empty state (component 11), not a stray sentence.
+      this.detail.appendChild(
+        stateBlock({
+          kind: 'empty',
+          icon: 'photos',
+          headline: 'Nothing selected',
+          body: 'Choose a photo to see its details and save it to this Mac.',
+        }),
+      );
       // `- 1` for the synthetic All photos row: counting it would report one more album than the
       // phone has, which is a small lie of exactly the kind this pane exists not to tell.
       const real = Math.max(0, this.albums.length - 1);

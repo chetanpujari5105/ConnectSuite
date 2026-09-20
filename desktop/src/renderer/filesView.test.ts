@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeElement, installFakeDocument, el } from './domDouble.testkit';
 import '../shared/filesRoots';
+import './icons';
+import './stateBlock';
 import './files';
 
 /**

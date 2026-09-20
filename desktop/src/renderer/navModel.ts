@@ -88,6 +88,12 @@ interface NavScreen {
    * would send a reader looking for something that was never designed.
    */
   unbuiltHandle?: string;
+  /**
+   * The one real control an unbuilt screen may carry: a route to something that works. Handoff §6
+   * Camera — *"The one control is a route to Mirror, which is real."* Optional, because a screen
+   * with nothing honest to offer draws no button at all rather than a plausible one.
+   */
+  unbuiltRoute?: { label: string; screen: string };
 }
 
 /**
@@ -218,7 +224,8 @@ const SCREENS: NavScreen[] = [
       'The virtual webcam is not in any phase yet. It needs a macOS Camera Extension, which is a ' +
       'signed system extension and a distribution problem before it is a code problem.',
     unbuiltHeadline: 'There is no virtual camera on this Mac',
-    unbuiltHandle: 'no namespace proposed yet',
+    unbuiltHandle: 'no wire namespace proposed · phase 8, behind signing',
+    unbuiltRoute: { label: 'Mirror the phone instead', screen: 'mirror' },
   },
   {
     id: 'apps',
