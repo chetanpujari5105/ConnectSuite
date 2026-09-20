@@ -349,6 +349,13 @@ interface ConnectBridge {
 
 declare const connect: ConnectBridge;
 
+/**
+ * The last status the renderer drew, held because a Settings pane is **built when it is opened** and
+ * `render(status)` is what has the facts. Without this the Device info pane would draw whatever was
+ * true when the app started.
+ */
+let lastStatus: RendererStatus | null = null;
+
 const ALL_CAPABILITIES = [
   'mirror', 'input', 'notifications', 'sms', 'calls', 'contacts',
   'files', 'photos', 'clipboard', 'remote', 'apps', 'mic',
@@ -424,6 +431,8 @@ function paintMirrorLink(status: RendererStatus | null): void {
 
 function render(status: RendererStatus | null): void {
   shell.setStatus(status);
+  // Held for Settings → Device info, which is built when it is opened rather than on every status.
+  lastStatus = status;
 
   setDiag('state', status?.phase ?? '—');
   setDiag('via', status?.via ?? '—');
@@ -506,84 +515,11 @@ function render(status: RendererStatus | null): void {
       'phone. Mirroring works without it; clicking does not.';
 
   /*
-   * The capability chips, and the three things that changed about them on 2026-09-16.
-   *
-   * **A glyph, not only a hue (O14).** A chip's visible state was a green fill against a grey one
-   * and nothing else — which is defect 26 again, one layer out: 26 fixed it for a screen reader by
-   * adding the hidden sentence, and left a *sighted* reader who cannot separate green from grey
-   * with no signal at all. `check` and `lock` are the shape half. Both names are already inside
-   * `navModel.iconNamesUsedByTheShell()`, which is the enumeration that keeps an icon from shipping
-   * as an empty ring.
-   *
-   * **A readable name (O13).** `capabilityLabel` turns the wire id into a word; the id moves into
-   * the tooltip rather than disappearing.
-   *
-   * **The reason is standing copy, not a hover (O15).** See `capsReasons` below.
+   * The capability chips used to be drawn here — a dot beside a name, first on Overview (D10) and
+   * then in Settings' side column (D22). They are **Settings → Device info** now, as component 20
+   * rows, with the phone's sentence under each. The decision moved to `shared/capabilityStatus.ts`
+   * where a test can reach it; this file is reachable by none.
    */
-  const caps = el('caps');
-  caps.replaceChildren();
-  const unavailable: { label: string; reason: string }[] = [];
-  for (const capability of ALL_CAPABILITIES) {
-    const chip = document.createElement('span');
-    const on = status?.capabilities?.includes(capability) ?? false;
-    chip.className = `cap${on ? ' on' : ''}`;
-    const reason = reasons.get(capability);
-    const label = capabilityLabel(capability);
-
-    const glyph = iconSvg(on ? 'check' : 'lock', 11);
-    glyph.setAttribute('class', 'cap-glyph');
-    glyph.setAttribute('aria-hidden', 'true');
-    chip.append(glyph, document.createTextNode(label));
-
-    // The *state* used to be the background colour and nothing else, which made this pane
-    // unreadable to anyone not seeing green-on-grey — a screen reader announced twelve capability
-    // names and no indication which were on (defect 26). The state, and the phone's reason for it
-    // (defect 24), go in a visually hidden span so they are part of the accessible name rather
-    // than a parallel channel that can drift from it.
-    const spoken = document.createElement('span');
-    spoken.className = 'visually-hidden';
-    // `chipTail`, never `chipLabel(...).slice(label.length)`. The slice was arithmetic on another
-    // function's output and it was correct only while the visible text *was* the wire id.
-    spoken.textContent = chipTail(on, reason);
-    chip.append(spoken);
-
-    // The handle, kept reachable rather than kept on screen — the package-id rule. Present on every
-    // chip, not only the dimmed ones, because the id is a fact about the chip and not about its
-    // state.
-    chip.title = `${label} — capability id: ${capability}`;
-
-    if (!on && reason) unavailable.push({ label, reason });
-    caps.append(chip);
-  }
-
-  /*
-   * **The reasons, as visible standing copy under the chips.**
-   *
-   * The card used to say *"Hover a dimmed one for the phone's own reason"*, which put the one piece
-   * of information on this card that a person actually needs — *why can't I do X* — behind a
-   * gesture a keyboard cannot make and a touch device does not have. A `title` is not a fix for
-   * that either: defect 118 measured it and `title` **never fires on keyboard focus**.
-   *
-   * So there is no reveal at all. Every dimmed capability's reason is drawn, in the phone's own
-   * words, in the order the chips are in. It is the same shape as the Mirror pane's Advanced block
-   * and the Files rail's `grantHint` — this project's standing answer to *"explain a state"* is
-   * copy that arrived before the question, not a tooltip.
-   *
-   * It is empty and `hidden` when nothing is dimmed, which is the common case: a list of reasons
-   * for an all-green phone would be a heading over nothing.
-   */
-  const capsReasons = el('caps-reasons');
-  capsReasons.replaceChildren();
-  capsReasons.hidden = unavailable.length === 0;
-  for (const { label, reason } of unavailable) {
-    const line = document.createElement('p');
-    line.className = 'cap-reason';
-    const name = document.createElement('span');
-    name.className = 'cap-reason-name';
-    name.textContent = label;
-    line.append(name, document.createTextNode(` — ${reason}`));
-    capsReasons.append(line);
-  }
 
   // Connection & security and the Recent caption follow the link, so they are redrawn from the same
   // status the rest of this function reads rather than from a second subscription that could be a
@@ -592,6 +528,48 @@ function render(status: RendererStatus | null): void {
     phase: status?.phase,
     paired: status?.paired ?? false,
   });
+}
+
+/** One capability row: glyph, name, state word, and the phone's sentence where there is one. */
+function capabilityRowEl(row: {
+  id: string;
+  label: string;
+  state: 'available' | 'limited' | 'permission' | 'unavailable' | 'unbuilt';
+  note: string | null;
+}): HTMLElement {
+  const el_ = document.createElement('div');
+  el_.className = 'device-cap';
+  el_.dataset.state = row.state;
+  const tone = capabilityTone(row.state);
+  el_.dataset.tone = tone.tone;
+
+  const glyph = document.createElement('span');
+  glyph.className = 'device-cap-glyph';
+  glyph.setAttribute('aria-hidden', 'true');
+  glyph.appendChild(iconSvg(tone.icon, 16));
+
+  const lines = document.createElement('div');
+  lines.className = 'device-cap-lines';
+  const name = document.createElement('div');
+  name.className = 'device-cap-name';
+  name.textContent = row.label;
+  lines.appendChild(name);
+  if (row.note) {
+    const note = document.createElement('p');
+    note.className = 'device-cap-note';
+    // The phone's own sentence, verbatim — never a Mac-side paraphrase (defect 27).
+    note.textContent = row.note;
+    lines.appendChild(note);
+  }
+
+  const state = document.createElement('span');
+  state.className = 'device-cap-state';
+  state.textContent = capabilityStateLabel(row.state);
+
+  // The wire id stays reachable as a handle rather than on screen — the package-id rule.
+  el_.title = `${row.label} — capability id: ${row.id}`;
+  el_.append(glyph, lines, state);
+  return el_;
 }
 
 function describe(status: RendererStatus): string {
@@ -1617,6 +1595,101 @@ shell.addSettingsPane(
           'phone, so there is nowhere for it to check. Updating means installing a new build.',
       ),
     );
+    return body;
+  },
+);
+
+/**
+ * Settings → **Device info** (frame `44:23491`) — the capability list's real home, and what D22
+ * recorded as owed since Batch 2.
+ *
+ * It replaces the Overview chip row (D10) and the side-column card that stood in for it: a dot
+ * beside a name cannot carry a permission, a limit or a failure, and every one of those is a
+ * different sentence. `shared/capabilityStatus.ts` decides which of the five states each feature is
+ * in; this only draws it. An action appears **only** where this Mac can really take someone to the
+ * fix, which today is nowhere — every one of these grants is changed on the phone, and a button
+ * that opens nothing is the greyed-control shape decision 6 rules out.
+ */
+shell.addSettingsPane(
+  'device',
+  'Device info',
+  'What this phone is, and what it is offering this Mac.',
+  () => {
+    const body = document.createElement('div');
+    const status = lastStatus;
+    const connected = status?.phase === 'connected';
+
+    const facts = document.createElement('div');
+    facts.className = 'device-facts';
+    const factRows: Array<[string, string]> = [
+      ['Device', status?.deviceName ?? '—'],
+      ['Address', connected ? (status?.address ?? '—') : '—'],
+      ['Connection', heroTransportOf(status as unknown as Parameters<typeof heroTransportOf>[0])],
+      ['Security', connected ? 'TLS 1.3, pinned' : '—'],
+    ];
+    for (const [label, value] of factRows) {
+      const row = document.createElement('div');
+      row.className = 'device-fact';
+      const name = document.createElement('span');
+      name.className = 'device-fact-label';
+      name.textContent = label;
+      const val = document.createElement('span');
+      val.className = 'device-fact-value mono';
+      val.textContent = value;
+      row.append(name, val);
+      facts.appendChild(row);
+    }
+    body.appendChild(facts);
+
+    const heading = document.createElement('h3');
+    heading.className = 'device-caps-title';
+    heading.textContent = 'Capabilities';
+    body.appendChild(heading);
+
+    const caption = document.createElement('p');
+    caption.className = 'device-caps-sub';
+    caption.textContent =
+      'One row per feature, with the phone’s own answer. Anything missing is granted on the phone.';
+    body.appendChild(caption);
+
+    const list = document.createElement('div');
+    list.className = 'device-caps';
+    const reasons = new Map((status?.unavailable ?? []).map((u) => [u.name, u.reason]));
+    for (const capability of ALL_CAPABILITIES) {
+      const row = capabilityRow({
+        id: capability,
+        label: capabilityLabel(capability),
+        // `mic` is unbuilt on **both** ends — there is no audio channel in the protocol and no
+        // microphone feature in this app — and the phone says so in its own reason ("not built
+        // yet"). Drawing it as *Unavailable* would put the absence on the phone.
+        unbuilt: capability === 'mic',
+        limitedNote:
+          capability === 'mic'
+            ? 'Not built: no audio channel exists in the protocol, on either side.'
+            : null,
+        advertised: status?.capabilities?.includes(capability) ?? false,
+        reason: reasons.get(capability) ?? null,
+        connected,
+      });
+      list.appendChild(capabilityRowEl(row));
+    }
+    // Camera is not a wire capability at all — it is a pane this build does not have. It is listed
+    // because a feature the user can see in the sidebar and not in this list reads as an oversight,
+    // and `unbuilt` is the state that says whose absence it is. No action, no "coming soon".
+    list.appendChild(
+      capabilityRowEl(
+        capabilityRow({
+          id: 'camera',
+          label: 'Camera',
+          unbuilt: true,
+          limitedNote: 'Not built: the virtual webcam needs a signed macOS system extension.',
+          advertised: false,
+          reason: null,
+          connected,
+        }),
+      ),
+    );
+    body.appendChild(list);
     return body;
   },
 );

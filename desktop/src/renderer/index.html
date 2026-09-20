@@ -776,20 +776,6 @@
                     not summarise the features). Same ids, so the chip and reason writers in
                     renderer.ts are unchanged. Each chip carries the phone's own reason, verbatim.
                   -->
-                  <section class="settings-caps" id="caps-card">
-                    <h3 class="card-title">What this phone can do</h3>
-                    <p class="card-sub">
-                      Anything missing needs a permission granting on the phone.
-                    </p>
-                    <div id="caps" class="caps"></div>
-                    <!--
-                      The reasons, drawn rather than revealed — departure O15. The sub above used to
-                      end "Hover a dimmed one for the phone's own reason", which is this app's most
-                      useful sentence hidden behind the one gesture a keyboard cannot make. Hidden
-                      when every capability is available, which is the ordinary case.
-                    -->
-                    <div id="caps-reasons" class="caps-reasons" hidden></div>
-                  </section>
 
                   <!--
                     The design's green "You are up to date" card, with the half of it that is true.
@@ -876,6 +862,7 @@
     <script src="../shared/clipLink.js"></script>
     <script src="../shared/clipPhoneState.js"></script>
     <script src="../shared/deviceVitals.js"></script>
+    <script src="../shared/capabilityStatus.js"></script>
     <!-- P5. Before renderer.js, which ticks the pairing screen against it. -->
     <script src="../shared/pairingCode.js"></script>
     <script src="clipboard.js"></script>

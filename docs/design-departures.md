@@ -1212,3 +1212,18 @@ Frames `34:6160`–`34:6867` **not rendered**; built to handoff §6 Clipboard.
 **Corrected, not departures:** two cards at `796 + 340`, each scrolling inside itself; the selected
 row takes the system's one selection treatment (lime tint + lime hairline) instead of a left rule;
 row times are 24-hour mono; the `--live` green is gone from the *done* state with D1.
+
+## Sidekick Batch 5a — Settings → Device info — 2026-09-20. Rows D49–D51
+
+Frame `44:23491` **not rendered**; built to handoff §6 Settings and component 20. This discharges
+**D22**, which recorded the capability card as standing in Settings' side column until this batch.
+
+| Row | Figma / handoff | Built | Why |
+|---|---|---|---|
+| **D49** | Component 20 rows: Available · Available + note · Limited · Needs permission · Unavailable · Unbuilt | All six, decided in `shared/capabilityStatus.ts`, drawn in the pane | The decision was inline in `renderer.ts`, which **no test can reach**. The states differ by what they claim, and the claims are the part worth pinning |
+| **D50** | An action *"only where Sidekick can really take you to the fix"* | **No action on any row** | Every one of these grants is changed on the phone; this Mac cannot open a phone settings screen. A button that opens nothing is the greyed control decision 6 rules out |
+| **D51** | Camera is listed as Unbuilt | Listed, **and so is Microphone** | `mic` is unbuilt on both ends — no audio channel exists in the protocol — and the phone's own reason says *"not built yet"*. Drawn as *Unavailable* it would put the absence on the phone |
+
+**Corrected, not departures:** the side-column capability card is gone (D22's stand-in); a
+disconnected phone's features read *Unavailable — the phone is not connected, so this is unknown*
+rather than as missing features; the wire id stays a handle on the row's `title`.

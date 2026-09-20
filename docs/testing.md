@@ -21157,3 +21157,22 @@ holds whatever the owner last copied): history at 1440 × 920 dark, light, and 1
 **Not proven:** the *sensitive* and *too_large* rows were rendered from synthetic entries, not from a
 phone that actually withheld a clip; the arrival path (`clip.push` → row) is covered by the existing
 defect 58/59 tests, not re-run on hardware here.
+
+## Sidekick Batch 5a — Settings → Device info — 2026-09-20
+
+Frame not rendered; built to handoff §6 and component 20. Departures D49–D51; discharges D22.
+Capture: `docs/evidence/sidekick-batch5/settings-device-info-1440x920.png` (real phone, no personal
+data on this pane).
+
+- **`shared/capabilityStatus.test.ts` (7)**: an advertised feature claims nothing beyond *Available*;
+  a refusal naming a grant is a permission and one that does not is *Unavailable* (the control);
+  a refusal with no sentence does not invent a cause; **nothing is claimed about a phone that is not
+  connected**, with the connected case as its control; unbuilt survives the phone advertising it;
+  limited names the missing piece; tone never reads unavailable or unbuilt as a failure.
+- Live, on the SM-S938B: **13 rows** — 11 *Available*, and Microphone and Camera *Not built*.
+  Microphone was **Unavailable** on the first build, carrying the phone's own *"not built yet, and
+  missing Microphone"*: the state put Sidekick's absence on the phone. It is `unbuilt` now.
+- `npm test` **853 / 853**.
+
+**Not proven:** the *Needs permission* and *Limited* rows have not been seen against a real revoked
+grant — both are unit-tested only. Seeing them costs revoking a permission on the owner's phone.

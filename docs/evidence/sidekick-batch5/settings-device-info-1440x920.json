@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch5/settings-device-info-1440x920.png",
+  "screen": "settings",
+  "takenAt": "2026-09-20T04:15:15.434Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 900,
+  "ready": null,
+  "prep": "document.querySelectorAll('.settings-rail button')[1].click()",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

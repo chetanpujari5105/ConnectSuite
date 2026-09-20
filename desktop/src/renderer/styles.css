@@ -4908,3 +4908,69 @@ img#qr {
   line-height: 1.4;
   color: var(--text-body);
 }
+
+/* ---- Settings → Device info (frame 44:23491, component 20) ------------------------------------
+   The rows live here, not in shell.css: the Settings *frame* (grid, rail, aside) is the shell's;
+   what is inside a pane is a screen's content. One selector, one sheet.
+------------------------------------------------------------------------------------------------ */
+
+.device-facts {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-10);
+}
+.device-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 12.5px;
+}
+.device-fact-label { color: var(--text-body); }
+.device-fact-value { color: var(--text-primary); text-align: right; overflow-wrap: anywhere; }
+
+.device-caps-title {
+  margin: 0;
+  font: var(--text-section);
+  letter-spacing: var(--tracking-section);
+  color: var(--text-primary);
+}
+.device-caps-sub { margin: var(--space-2) 0 var(--space-6); font: var(--text-meta-size); color: var(--text-meta); }
+
+.device-caps { display: flex; flex-direction: column; gap: var(--space-1); }
+
+/*
+ * One row per feature. The state word is what a person reads and the glyph is the shape half of it,
+ * so a state never depends on colour alone (defect 26). Tone comes from `capabilityStatus.ts`: lime
+ * only for available, amber for a real limit or a missing grant, neutral for unavailable and
+ * unbuilt — neither of which is a failure.
+ */
+.device-cap {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-radius: var(--radius-control);
+  background: var(--control);
+  border: 1px solid var(--hairline);
+}
+.device-cap-glyph { display: inline-flex; color: var(--text-meta); margin-top: 1px; }
+.device-cap[data-tone='ok'] .device-cap-glyph { color: var(--accent); }
+.device-cap[data-tone='warning'] .device-cap-glyph { color: var(--warning); }
+
+.device-cap-lines { min-width: 0; }
+.device-cap-name { font: 500 13px/1.35 var(--font-ui); color: var(--text-primary); }
+/* The phone's own sentence, verbatim (defect 27). */
+.device-cap-note { margin: 3px 0 0; font: var(--text-meta-size); line-height: 1.45; color: var(--text-body); }
+
+.device-cap-state {
+  flex: none;
+  align-self: center;
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+  white-space: nowrap;
+}
+.device-cap[data-tone='warning'] .device-cap-state { color: var(--warning); }
