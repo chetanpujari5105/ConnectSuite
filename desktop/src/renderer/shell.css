@@ -344,7 +344,7 @@ body {
   text-align: left;
   cursor: pointer;
   transition: color var(--dur-state) var(--ease), background-color var(--dur-state) var(--ease),
-    transform var(--dur-release) var(--ease);
+    scale var(--dur-release) var(--ease);
 }
 
 .nav-row svg { flex: none; color: var(--text-body); transition: color var(--dur-state) var(--ease); }
@@ -510,7 +510,7 @@ body {
   font: 500 12.5px/15px var(--font-ui);
   cursor: pointer;
   transition: background-color var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
-    color var(--dur-state) var(--ease), transform var(--dur-release) var(--ease);
+    color var(--dur-state) var(--ease), scale var(--dur-release) var(--ease);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -522,7 +522,7 @@ body {
 }
 .toolbar-button:active {
   background: var(--button-secondary-pressed);
-  transform: scale(var(--press-scale));
+  scale: var(--press-scale);
   transition-duration: var(--dur-press);
 }
 .toolbar-button .tb-key { margin-left: 10px; font-size: 11px; line-height: 13px; color: var(--text-meta); }
@@ -1016,7 +1016,8 @@ body {
      room — rather than all of them teleporting a row lower. */
   transition: background var(--dur-hover) var(--ease),
     transform var(--dur-arrive) var(--ease),
-    opacity var(--dur-arrive) var(--ease);
+    opacity var(--dur-arrive) var(--ease),
+    scale var(--dur-release) var(--ease);
 }
 .recent-row.is-arriving { opacity: 0; transform: translateY(-4px); transition: none; }
 /*
@@ -1545,7 +1546,8 @@ body {
   text-align: left;
   box-sizing: border-box;
   cursor: pointer;
-  transition: background var(--dur-state) var(--ease), color var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease);
+  transition: background var(--dur-state) var(--ease), color var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
+    scale var(--dur-release) var(--ease);
 }
 
 .settings-tab:hover { background: rgba(var(--overlay-rgb), 0.04); color: var(--text-on-control); }

@@ -115,7 +115,7 @@ button,
   cursor: pointer;
   /* Release at --dur-release; the press itself is faster, below. Feedback lands on pointer-down. */
   transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
-    transform var(--dur-release) var(--ease);
+    scale var(--dur-release) var(--ease);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -129,7 +129,7 @@ button,
  */
 button:active:not(:disabled),
 .button:active:not(:disabled) {
-  transform: scale(var(--press-scale));
+  scale: var(--press-scale);
   transition-duration: var(--dur-press);
 }
 
@@ -823,10 +823,10 @@ img#qr {
   background: var(--control);
   color: var(--text-primary);
   cursor: pointer;
-  transition: transform var(--dur-release) var(--ease), background var(--dur-hover) var(--ease);
+  transition: scale var(--dur-release) var(--ease), background var(--dur-hover) var(--ease);
 }
 .remote-button:hover:not(:disabled) { background: rgba(var(--overlay-rgb), 0.1); }
-.remote-button:active:not(:disabled) { transform: scale(var(--press-scale-icon)); }
+.remote-button:active:not(:disabled) { scale: var(--press-scale-icon); }
 .remote-button.primary {
   width: 54px;
   height: 54px;
@@ -1057,7 +1057,7 @@ img#qr {
   font: 500 12.5px/1 var(--font-ui);
   cursor: pointer;
   transition: background var(--dur-state) var(--ease), color var(--dur-state) var(--ease),
-    transform var(--dur-release) var(--ease);
+    scale var(--dur-release) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .sms-tab:hover { background: rgba(var(--overlay-rgb), 0.04); color: var(--text-on-control); }
@@ -1127,7 +1127,7 @@ img#qr {
   text-align: left;
   cursor: pointer;
   transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
-    transform var(--dur-release) var(--ease);
+    scale var(--dur-release) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .sms-thread:hover { background: rgba(var(--overlay-rgb), 0.035); }
@@ -1530,7 +1530,7 @@ img#qr {
   cursor: pointer;
   white-space: nowrap;
   transition: background var(--dur-state) var(--ease), color var(--dur-state) var(--ease),
-    transform var(--dur-release) var(--ease);
+    scale var(--dur-release) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .calls-tab:hover { background: rgba(var(--overlay-rgb), 0.04); color: var(--text-on-control); }
@@ -1615,7 +1615,7 @@ img#qr {
   text-align: left;
   cursor: pointer;
   transition: background var(--dur-state) var(--ease),
-    transform var(--dur-release) var(--ease);
+    scale var(--dur-release) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .call-row:hover { background: rgba(var(--overlay-rgb), 0.035); }
@@ -1730,7 +1730,7 @@ img#qr {
   background: var(--control);
   cursor: pointer;
   transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
-    transform var(--dur-release) var(--ease);
+    scale var(--dur-release) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .dialkey:hover { background: var(--elev-3); border-color: var(--hairline-hover); }
@@ -2011,7 +2011,7 @@ img#qr {
   color: var(--unselected-text);
   font: var(--text-control);
   cursor: pointer;
-  transition: transform var(--dur-release) var(--ease), opacity var(--dur-hover) var(--ease),
+  transition: scale var(--dur-release) var(--ease), opacity var(--dur-hover) var(--ease),
     background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
     color var(--dur-state) var(--ease);
 }
@@ -2386,7 +2386,7 @@ img#qr {
   color: var(--text-on-control);
   font: var(--text-control);
   cursor: pointer;
-  transition: transform var(--dur-release) var(--ease), border-color var(--dur-hover) var(--ease);
+  transition: scale var(--dur-release) var(--ease), border-color var(--dur-hover) var(--ease);
 }
 .chip:hover { border-color: var(--hairline-hover); color: var(--text-primary); }
 
@@ -2430,7 +2430,7 @@ img#qr {
   color: var(--accent-on-fill);
   font: var(--text-control);
   cursor: pointer;
-  transition: transform var(--dur-release) var(--ease);
+  transition: scale var(--dur-release) var(--ease);
 }
 .notif-reply .send:disabled { opacity: 0.45; cursor: default; }
 
@@ -2453,7 +2453,7 @@ img#qr {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: transform var(--dur-release) var(--ease), border-color var(--dur-hover) var(--ease);
+  transition: scale var(--dur-release) var(--ease), border-color var(--dur-hover) var(--ease);
 }
 .action:hover { border-color: var(--hairline-hover); }
 
@@ -2558,7 +2558,7 @@ img#qr {
   border-radius: var(--radius-control);
   color: var(--text-body);
   cursor: pointer;
-  transition: background var(--dur-hover) var(--ease), transform var(--dur-release) var(--ease);
+  transition: background var(--dur-hover) var(--ease), scale var(--dur-release) var(--ease);
 }
 .tool:hover { background: var(--control); color: var(--text-primary); }
 
@@ -2609,7 +2609,7 @@ img#qr {
   color: var(--text-on-control);
   font: var(--text-control);
   cursor: pointer;
-  transition: border-color var(--dur-hover) var(--ease), transform var(--dur-release) var(--ease);
+  transition: border-color var(--dur-hover) var(--ease), scale var(--dur-release) var(--ease);
 }
 .global:hover { border-color: var(--hairline-hover); }
 .global:disabled { opacity: 0.45; cursor: default; }
@@ -2674,7 +2674,7 @@ img#qr {
   background: var(--control);
   cursor: pointer;
   text-align: left;
-  transition: border-color var(--dur-hover) var(--ease), transform var(--dur-release) var(--ease);
+  transition: border-color var(--dur-hover) var(--ease), scale var(--dur-release) var(--ease);
 }
 .quality-row:hover { border-color: var(--hairline-hover); }
 .quality-row.selected { background: var(--selection-fill); border-color: var(--selection-border); }
@@ -2748,7 +2748,7 @@ img#qr {
   font: var(--text-control);
   font-weight: 600;
   cursor: pointer;
-  transition: transform var(--dur-release) var(--ease);
+  transition: scale var(--dur-release) var(--ease);
 }
 .stop-button:disabled,
 .start-button:disabled {
@@ -2928,7 +2928,8 @@ img#qr {
   background: transparent;
   color: var(--text-on-control);
   cursor: pointer;
-  transition: background var(--dur-hover) var(--ease);
+  transition: background var(--dur-hover) var(--ease),
+    scale var(--dur-release) var(--ease);
 }
 
 .photos-album:hover { background: var(--control); }
@@ -3052,7 +3053,8 @@ img#qr {
   background: var(--control);
   cursor: pointer;
   transition: transform var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease),
-    box-shadow var(--dur-hover) var(--ease);
+    box-shadow var(--dur-hover) var(--ease),
+    scale var(--dur-release) var(--ease);
 }
 
 .photos-tile:hover {
@@ -3681,7 +3683,7 @@ img#qr {
   cursor: pointer;
   white-space: nowrap;
   transition: background var(--dur-state) var(--ease), color var(--dur-state) var(--ease),
-    transform var(--dur-release) var(--ease);
+    scale var(--dur-release) var(--ease);
 }
 .clip-tab:hover { color: var(--text-on-control); }
 .clip-tab[aria-selected='true'] {
@@ -4027,7 +4029,7 @@ img#qr {
   text-align: left;
   cursor: pointer;
   transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
-    transform var(--dur-release) var(--ease);
+    scale var(--dur-release) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
   .clip-row:hover { background: rgba(var(--overlay-rgb), 0.035); }
@@ -4262,7 +4264,8 @@ img#qr {
   font: var(--text-control);
   cursor: pointer;
   transition: background var(--dur-state) var(--ease), border-color var(--dur-state) var(--ease),
-    color var(--dur-state) var(--ease);
+    color var(--dur-state) var(--ease),
+    scale var(--dur-release) var(--ease);
 }
 
 .activity-chip:hover { border-color: var(--hairline-hover); color: var(--text-primary); }

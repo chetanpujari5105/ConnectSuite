@@ -57,11 +57,22 @@ nobody is watching it. 100 down, 160 up.
 
 ### The one rule
 
-> **A `transition` shorthand on a `<button>` must include `transform`.**
+> **A `transition` shorthand on a `<button>` must include `scale`.**
 
-This is not style. It is the defect in §3, and it is the reason a runtime sweep exists rather than
-only a static guard: CSS cannot tell you which selectors land on a `<button>`, and the fault is
-invisible in the stylesheet.
+The press rides the independent `scale` property, not `transform`. That is not tidiness — it is
+forced by two elements whose `transform` channel is already spoken for:
+
+| `.photos-tile` | `transform` is a 2px hover lift at `--dur-hover` | the press was releasing at **200ms** |
+| `.recent-row` | `transform` is the FLIP that stops rows teleporting, at `--dur-arrive` | the press was releasing at **220ms** |
+
+One property, two purposes, and only one of them can have the right duration. `scale` and
+`transform` compose, so each purpose now has its own channel and its own timing — and the press's
+timing is no longer something a pane can change by accident while styling something else.
+
+It is still a rule rather than a guarantee: a pane's `transition` shorthand replaces the whole list,
+so it can drop `scale` exactly as it used to drop `transform`. **CSS cannot tell you which selectors
+land on a `<button>`**, which is why this is checked by a runtime sweep against the resolved cascade
+rather than by the commit hook.
 
 ---
 
@@ -95,10 +106,11 @@ unless the Reduced column says otherwise.
 
 | Surface | Trigger | Purpose | Dur | Ease | Properties | Reduced | Kind | Ref |
 |---|---|---|---|---|---|---|---|---|
-| `button`, `.button` | press | feedback. **The base rule every button inherits** | `--dur-press` down, `--dur-release` up | `--ease` | transform `scale(.97)`, background, border | instant | decor | FIGMA |
-| `.remote-button` | press | feedback, round icon button | `--dur-press` / `--dur-release` | `--ease` | transform `scale(.94)` | instant | decor | FIGMA |
-| `.tool`, `.global`, `.quality-row`, `.pill-tab`, `.chip`, `.action`, `.send`, `.start-button`, `.stop-button` | press | feedback | `--dur-press` / `--dur-release` | `--ease` | transform, background/border | instant | decor | FIGMA |
-| `.sms-tab`, `.sms-thread`, `.calls-tab`, `.call-row`, `.dialkey`, `.clip-tab`, `.clip-row`, `.nav-row` | press | feedback — **repaired, see §3 MA-1** | `--dur-press` / `--dur-release` | `--ease` | transform, background/border | instant | decor | FIGMA |
+| `button`, `.button` | press | feedback. **The base rule every button inherits** | `--dur-press` down, `--dur-release` up | `--ease` | `scale: .97`, background, border | instant | decor | FIGMA |
+| `.remote-button` | press | feedback, round icon button | `--dur-press` / `--dur-release` | `--ease` | `scale: .94` | instant | decor | FIGMA |
+| `.tool`, `.global`, `.quality-row`, `.pill-tab`, `.chip`, `.action`, `.send`, `.start-button`, `.stop-button` | press | feedback | `--dur-press` / `--dur-release` | `--ease` | **scale**, background/border | instant | decor | FIGMA |
+| `.sms-tab`, `.sms-thread`, `.calls-tab`, `.call-row`, `.dialkey`, `.clip-tab`, `.clip-row`, `.nav-row` | press | feedback — **repaired, see §3 MA-1** | `--dur-press` / `--dur-release` | `--ease` | **scale**, background/border | instant | decor | FIGMA |
+| `.photos-album`, `.activity-chip`, `.settings-tab` | press | feedback — **repaired, see §3 MA-7** | `--dur-press` / `--dur-release` | `--ease` | **scale**, background/colour | instant | decor | FIGMA |
 
 ### 2.3 · Panes — state and progress
 
@@ -110,7 +122,7 @@ unless the Reduced column says otherwise.
 | `.deep-reveal` | a palette deep link lands | explains *where the thing you asked for is* | `--dur-flash` | `--ease` | border-color, box-shadow | `animation: none`, static border | state | departure |
 | `.notif-row`, `.clip-row`, `.activity-chip`, `.sms-composer-row` | hover / selection | state indication | `--dur-state` | `--ease` | background, border, color | instant | decor | FIGMA |
 | `.row-actions` | row hover | reveals actions without a layout jump | `--dur-hover` | `--ease` | opacity, transform | instant | decor | FIGMA |
-| `.photos-tile` | hover | feedback | `--dur-hover` | `--ease` | transform, border, shadow | instant | decor | FIGMA |
+| `.photos-tile` | hover | feedback | `--dur-hover` (lift) / `--dur-release` (press) | `--ease` | transform lift, **scale** press, border, shadow | instant | decor | FIGMA |
 | `.photos-album`, `.quality-dot`, `.remote-open`, `.remote-seek` thumb | hover | state indication | `--dur-hover` | `--ease` | background / opacity | instant | decor | FIGMA |
 | `.remote-now::before` | track change | prevents an artwork jump-cut | `--dur-route` | `--ease` | opacity | instant | decor | FIGMA |
 
@@ -143,14 +155,20 @@ Each was confirmed at its `file:line` and re-measured in the running app before 
 | **MA-5** | LOW | tokens | `--dur-bar` defined and **used 0 times** | deleted. An unused token is one autocomplete from a second opinion about a duration |
 | **MA-6** | LOW | interruptibility | `.toast` enters via `@keyframes`, which restarts from zero rather than retargeting when a toast is replaced while visible | **not changed** — see §4 |
 
-### Accepted tensions, not fixed
+### MA-7, found by the sweep after the static pass called itself done
 
-- **`.recent-row` animates `transform` at `--dur-arrive` (220ms).** That property serves two
-  purposes on one element: the FLIP that keeps existing rows from teleporting when a new event
-  arrives (correct at 220ms) and the press (too slow at 220ms). Splitting them means a second
-  transform channel on a row whose arrival motion is real state indication and whose press is
-  decoration. **The state motion wins and the press is left slow**, deliberately, because the
-  alternative is breaking a working FLIP to speed up a decoration.
+The static fix list came from a DOM read taken on one route. Sweeping **all twelve** found three
+more buttons snapping — `.photos-album` (1824 nodes), `.activity-chip` (84), `.settings-tab` (84) —
+and two releasing at the wrong duration, `.photos-tile` at 200ms and `.recent-row` at 220ms.
+
+That is the difference between reading a stylesheet and reading a running app, and it is the reason
+the sweep exists. It also **retires the tension this document recorded as unfixable a few hours
+earlier**: `.recent-row`'s press and its FLIP were said to be inseparable because they shared one
+property. They did, and they no longer do. The accepted-tension entry was wrong, and the sweep is
+what said so.
+
+### Still open, and honestly so
+
 - **`prefers-contrast: more` is not handled anywhere in the app.** Apple §14 names three independent
   signals and this app answers two. Out of scope here — it is a colour and border question, not a
   motion one — but it is a real gap and belongs in the next colour pass.
@@ -247,6 +265,39 @@ written its own copy of the cascade.* The browser has one. Use it.
 
 ---
 
+### 6.3 · The third fault, and it is in the product's own toolkit rather than mine
+
+The sweep, once it worked, reported `snapping: recent-row (48)` — reproducibly, three runs running.
+It is not snapping. `overview.ts` writes an inline `transition: none` on each row to do the FLIP and
+clears it inside `afterNextPaint`, which is **two nested `requestAnimationFrame`s**. rAF does not run
+in an occluded window, and this sweep is driven from a terminal.
+
+Measured: `rafFired: 0` after 1.88s, `document.visibilityState === "hidden"`, four `.recent-row`
+nodes carrying `style.transition === "none"`.
+
+**The product is fine, and saying why matters more than the finding.** rAF runs *before* the first
+paint anybody sees, so the cleanup lands before the state can be observed — the rows are never drawn
+stuck. What was broken is the reading.
+
+Two things follow:
+
+- **`docs/RESUME.md` already records rAF stalling in an occluded window — as an instrument hazard,
+  for a sweep that hung.** It is the same mechanism in the same app, met from the other side, and it
+  was not recognised on sight. A hazard written down against one tool does not announce itself when
+  it appears in another.
+- **Refusing to run was the first fix and it was wrong.** `Page.bringToFront` does not raise an
+  Electron window another application is covering, and on this machine System Events reports
+  `windows=0` for the process while CDP screenshots it happily. An instrument that only runs while
+  somebody is looking at the app is the rAF mistake wearing a different hat. So the sweep reads in
+  both conditions, **excludes elements carrying an inline `transition`** — the signature of pending
+  rAF cleanup — and names them and the reason on the line.
+
+The general form: **a value settled in a frame callback is not readable in a window that is not
+painting**, and the instrument must state which of those two worlds it is in. It prints the window's
+visibility on every run.
+
+---
+
 ## 7 · Verification
 
 | What | How | Where |
@@ -258,4 +309,8 @@ written its own copy of the cascade.* The browser has one. Use it.
 | disabled controls do not animate | `motion-sweep.mjs` | same |
 | nothing blocks a keypress | `motion-sweep.mjs` | Escape closes with motion in flight |
 
-Evidence: `docs/evidence/motion-2026-09-21/`.
+**Measured 2026-09-21, dark and light, 12 of 12 routes:** 9 pass, 0 fail, 0 NO READING, ten
+consecutive runs. Press: **8316 of 8316** enabled buttons. Reduced motion: 163 transforms → 0,
+3 animations → 0. Reduced transparency: 4 blurred surfaces → 0. Every one with its control.
+
+Evidence, including what it does **not** cover: `docs/evidence/motion-2026-09-21/`.

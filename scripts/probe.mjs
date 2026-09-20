@@ -708,6 +708,38 @@ export async function openProbe({ port = 9222, endpoint = 'http://localhost', us
     },
 
     /**
+     * Bring the page to the front, and say whether it worked.
+     *
+     * The sixth use of the transport, and this file asks for a reason: **an occluded window stops
+     * `requestAnimationFrame`, and a renderer that schedules cleanup in rAF leaves that cleanup
+     * undone for as long as nobody is looking.** `docs/RESUME.md` already records rAF stalling as
+     * an *instrument* hazard — a sweep that hung behind another window. It is equally a hazard for
+     * the thing being measured: `overview.ts` clears the recent-activity FLIP's inline
+     * `transition: none` inside `afterNextPaint`, so a sweep run against a hidden window reads four
+     * rows with no transition and reports a press defect that does not exist.
+     *
+     * Measured on 2026-09-21: `rafFired: 0` after 1.88s with `document.visibilityState === 'hidden'`,
+     * and four `.recent-row` nodes carrying `style.transition === 'none'`. The product is fine —
+     * rAF runs before the first paint the user sees, so the state is cleared before it can be
+     * observed — and the *reading* was wrong.
+     *
+     * So a sweep whose subject is computed style fronts the window first and **checks that it
+     * took**, rather than assuming. Returns the visibility state the page reports afterwards, so a
+     * caller can refuse rather than quote a number taken from a window nobody is showing.
+     */
+    rawBringToFront: async () => {
+      try {
+        await send('Page.bringToFront', {});
+      } catch {
+        // A target that refuses to be fronted is reported through the read below, not thrown:
+        // the caller's job is to decide whether it can still take its reading.
+      }
+      return evaluate(
+        `JSON.stringify({ visibility: document.visibilityState, hidden: document.hidden })`,
+      );
+    },
+
+    /**
      * Emulate media features — `prefers-reduced-motion`, `prefers-reduced-transparency`,
      * `prefers-color-scheme` — and read something with them on.
      *
