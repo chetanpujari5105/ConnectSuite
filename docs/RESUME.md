@@ -1,3 +1,90 @@
+# Resume here — written 2026-09-20: the full-app Sidekick parity pass, batches 4 and 5
+
+> A state report, not a note to myself. Written to be handed to someone who was not here.
+
+## 0 · What this sitting was
+
+The owner widened the brief: **not a demo shell, a full-app UI completion project** — every screen,
+state, dialog and empty state on one Sidekick visual system. The inventory that scopes it is
+`docs/sidekick-full-app-inventory.md`, built by reading `navModel.ts` and screenshotting all twelve
+routes rather than from memory; its §5 is what is still open.
+
+| Commit | What |
+|---|---|
+| `66ca178` | **4a** — Messages against the one real Figma render, plus the cross-cutting pass: device strip deleted, `renderer/stateBlock.ts` (components 11 and 12), every per-person/per-app hue gone with `shared/discHue.ts`, content starts at y = 140 |
+| `e2cb988` | **4b** — Calls, and **defect 124**: both audio sentences offered the Bluetooth remedy `CLAUDE.md` retracted on 2026-09-14 |
+| `8f41a00` | **4c** — Notifications: Muted filter removed (N1), Reply pills, Read-only box |
+| `0205e4b` | **4d** — Clipboard: direction chips, neutral kind badges |
+| `889f88f` | **5a** — Settings → **Device info** with `shared/capabilityStatus.ts` (discharges D22) |
+| `9fbd195` | **5b** — Activity: donut and sparkline out (D9), per-event tone in (discharges D23) |
+| `8fd2f36` | **5c** — Apps, Files, Photos, Camera onto the card surfaces |
+| `9ebcd4a` | **5d** — pairing's four steps from `shared/pairSteps.ts`, and the manual address where it is needed |
+
+Every commit: typecheck clean, `npm test` 843 → **861** green, guards exit 0. **Nothing pushed.**
+Departures **D27–D58**; evidence `docs/evidence/sidekick-batch4/` and `sidekick-batch5/`.
+
+## 1 · The one thing to read before claiming parity
+
+**Exactly one Figma frame has ever been rendered against this build: `32:4382` (Messages · Thread),
+saved at `docs/evidence/figma-reference/messages-thread-32-4382.png`.** The MCP allowed one call and
+then returned the Starter-plan limit for the rest of two sittings. Every other screen is **built to
+the handoff's written spec**, which is a weaker claim, and it is stated as such in the inventory, in
+every departure row and in every commit message. *Do not upgrade that wording without a render.*
+
+## 2 · Measured, not assumed
+
+- **Overflow sweep, every pane.** 1440 × 920: 11 of 12 at `scrollHeight === clientHeight`; Mirror is
+  264px over because its *Advanced* reference card sits below the fold (D26's layout, carries no
+  state). 1100 × 700: no horizontal scroll anywhere; five panes scroll vertically, which is allowed.
+- **`card-visibility-sweep.mjs`: 19 cards — 18 visible at rest, 1 reachable, 0 stranded.**
+- **Two defects found by measuring rather than looking.** `#page` scrolled to **3,351px in an 808
+  window** on Messages: the unread badges' `.visually-hidden` spans are `position: absolute`, and an
+  absolute box is clipped only by an overflow container that is also its containing block — no row
+  between them was positioned. And at 1100 × 700 the Messages person column wrapped onto a second
+  row because its breakpoint sat **above** the rule it overrides.
+
+## 3 · Where evidence can mislead, in this pass specifically
+
+- **Committed captures of Messages, Notifications, Clipboard and Calls are SYNTHETIC on purpose.**
+  The live panes carry the owner's real SMS (including one-time codes), notifications and contacts.
+  The first Notifications run was thrown away because a real notification arrived *during the
+  settle* and redrew the pane — the stimulus succeeded and was undone. Captures now freeze the
+  view's `render` after seeding and reload the renderer between shots.
+- **Two captures were taken before their content arrived over the wire** (Apps' 126 icons, Photos'
+  thumbnails) and showed empty tiles. The icons were in the DOM 3 s later, 126 of 126. Both are
+  gated on content now.
+- In the *disconnected* and *permission* captures the status island still reads **Connected** —
+  only the pane was driven into those states.
+
+## 4 · What is NOT done
+
+Listed in full in `docs/sidekick-full-app-inventory.md` §5. The short version:
+
+1. **`40:21209`, the media-session row in the Notifications feed** — the one frame with no code
+   behind it. It needs `shared/mediaSessionRow.ts` and **no wire change**.
+2. **One Figma render per screen**, whenever the MCP allows it.
+3. **States needing the phone in a condition this Mac cannot produce**: a revoked grant, a failed
+   send, an incoming call, a live mirror session, a real scan advancing the pairing column.
+4. **Pairing's *Rejected* and *No network* frames.**
+5. **The designer's hour**, now seven panes deep — the state vocabulary is settled in code, but the
+   new prose (Calls' audio sentence, Apps' ask-and-tap footer, the pairing help copy) is unapproved.
+
+## 5 · How to pick it up
+
+```
+cd desktop && npm run build && npm test
+pkill -f "node_modules/.bin/electron"
+nohup ./node_modules/.bin/electron . --force-renderer-accessibility --remote-debugging-port=9222 &
+node scripts/shot.mjs --out=/tmp/x.png --screen=<pane> --viewport=1440x920 --settle=1200
+```
+
+`--viewport` is new: it emulates the layout viewport because this display cannot open a 920-tall
+window, and it clears the emulation on every exit path. **If a shot refuses with "the window is
+zoomed (innerWidth … !== outerWidth 0)", the window is hidden, not zoomed** — the app was closed to
+the Dock. `open -a desktop/node_modules/electron/dist/Electron.app` brings it back.
+
+---
+
 # Resume here — written 2026-09-19: Sidekick Batches 1–3, for the demo
 
 > A state report, not a note to myself. Written to be handed to someone who was not here.
