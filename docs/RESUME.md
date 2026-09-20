@@ -1,3 +1,100 @@
+# Resume here — written 2026-09-20 (third sitting): the phone is back, and the sweep is green
+
+> A state report, not a note to myself. Written to be handed to someone who was not here.
+
+## 0 · State
+
+The phone was re-paired by the owner. Confirmed before anything was read: `phase=connected`,
+`paired=true`, `Samsung SM-S938B`, **10 ms**, 11 capabilities, **13 of 13 routes open** — each
+asserted by routing to it and reading back the `data-screen` of the section actually visible.
+
+| Commit | What |
+|---|---|
+| `2a3d367` | **6a** — pairing's *No network* (`34:12152`), **defect 125**: the screen drew a real QR of `0.0.0.0` |
+| `68bd6ba` | **6b** — the shell's cross-cutting surfaces, **defects 126–128** |
+| `852b9bc` | **6c** — the sweep on a live link; **defect 127's second instance**, found by a column |
+| `dfad544` | **6d** — Files' and Photos' five uncaptured states, and **D67** |
+
+**869 → 905 tests.** Typecheck clean, `probe.test.mjs` 24/24, all twelve guards green on every
+commit. **Nothing pushed. Nothing within reach of pairing, identity, TLS or the trust store.**
+
+## 1 · The one thing that is still true about every screenshot in this repo
+
+**The Figma MCP is not connected on this account** — it returns *"MCP server not connected"*, not
+the plan limit it returned in earlier sittings. Exactly one frame has ever been rendered against
+this build: `32:4382`. Everything else is **built to the handoff**, which is the weaker claim and is
+what every row, departure and commit message says. Do not upgrade that wording without a render.
+
+## 2 · The largest remaining coherence item, with its scope
+
+**D67 — seven state vocabularies, not one.** `docs/design-departures.md` is headed *"One vocabulary
+for states"*; one was deleted (Notifications'), and **six survive**, counted in `styles.css`:
+
+| `files-state*` | `apps-banner*` | `photos-banner*` | `activity-state*` | `files-banner*` | `call-state` |
+|---|---|---|---|---|---|
+| 16 rules | 6 | 5 | 4 | 2 | 1 |
+
+They are unrelated, not near-duplicates — component 11's `error` is transparent, centred, `0px`
+radius, `24px` padding, 600/15px `#F2F3F5`; Files' M4 card is `rgba(255,92,92,.14)`, left-aligned,
+`14px`/`14px`, 500/13px `#FF5C5C`. **Two committed captures show both at once**
+(`files-couldnt-open-SYNTHETIC`, `photos-permission-SYNTHETIC`): one pane, one screenshot, two
+languages for *there is nothing here*.
+
+**It is recorded rather than converted because of a boundary, not a budget.** Component 11's default
+is specified *centred in a pane-sized region*; all six live in a narrow column or a full-width bar.
+`stateBlock` has a `compact` variant and **`compact` has no Figma frame**, so choosing it is
+inventing design. Scope when it is taken: six vocabularies, 34 CSS rules, four panes.
+
+## 3 · Four instrument faults, and two of them are new shapes
+
+| | What it reported | What it was |
+|---|---|---|
+| focus rings | `0 of 17` | `el.focus()` does not fire `:focus-visible` |
+| the whole sweep | **`OK — 0 of 0`** | every route refused, and `0 === 0` is true. A sweep that measured nothing certified everything |
+| **focus rings, again** | **`557 of 829`, twice** | **a stable wrong answer.** Photos streams thumbnails in and *replaces* its elements, so a settle predicate on the node count is satisfied while every forced state sits on a dead node. 272 tiles read as unringed — the exact shape of a real defect |
+| the captures | `--prep did not land` | **a failed shot exited before its restore**, leaving the app holding an invented refusal, which poisoned the *next* run |
+
+The third is the one to carry forward: everything this repo has written about flaky instruments is
+about readings that **vary**, and the fix for those is a settle predicate. This one settled
+perfectly and repeated exactly. What separated it from the truth was asking *what is each one
+measuring* — a settled pane, or dead nodes. Force and read are one atomic pair now, repeated until
+two consecutive pairs agree: **835 of 835 across twelve routes, three consecutive identical runs**,
+control **0 of 835** at rest.
+
+**And a fix that fails in a way nobody would predict:** two `requestAnimationFrame`s before reading.
+**rAF does not fire in an occluded window** — Electron behind another window never ran the callback
+and the sweep hung with no output. An instrument that works only while somebody is looking at the
+app is not one.
+
+## 4 · What is still open
+
+1. **D67**, above — the largest item, and it needs the designer.
+2. **One Figma render per screen.** Blocked on the MCP connection.
+3. **States needing the phone in a condition this Mac cannot produce**: a real revoked grant, a real
+   send failure, an incoming call, a live mirror session, a real `pair.rejected`.
+4. **Mirror's right column at 920** — its *Advanced* card is `reachable`, not `stranded` (0.72).
+5. **The packaged menu bar is unread.** The app menu's title comes from `CFBundleName`, `Electron`
+   in development and `Sidekick` in a packaged bundle — verified from the plist, not from a build.
+6. **The designer's hour**, now nine panes deep, plus pairing's *No network* copy and the decision
+   to keep **194 native `title` tooltips** (the handoff specifies eighteen components, none a
+   tooltip).
+
+## 5 · How to pick it up
+
+```
+cd desktop && npm run build && npm test
+pkill -f "node_modules/.bin/electron"
+nohup ./node_modules/.bin/electron . --force-renderer-accessibility --remote-debugging-port=9222 &
+node scripts/shell-parity-sweep.mjs       # refuses rather than passing on an empty denominator
+node scripts/files-photos-states.mjs      # restores the panes at both ends; control is 152 albums
+node scripts/pair-nonetwork-probe.mjs     # computed style, both card shapes
+```
+
+Every CDP command now times out by name after 30 s. If one does, read which — a hang used to print
+`Detected unsettled top-level await` at a line number in the *caller*, which says nothing.
+
+---
+
 # Resume here — written 2026-09-20 (second sitting): pairing's last state, and the shell
 
 > A state report, not a note to myself. Written to be handed to someone who was not here.
