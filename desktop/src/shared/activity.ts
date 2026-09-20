@@ -52,28 +52,59 @@ const CATEGORY_LABELS: Record<ActivityCategory, string> = {
   system: 'System',
 };
 
-/** The dock/summary tints, reused so the donut and the chips cannot disagree about a colour. */
-/*
- * The category tints, as **references to the stylesheet's tokens** rather than as a second copy of
- * the numbers.
+/**
+ * The badge tone of one event — **the event's own**, not its category's (departure D23).
  *
- * Each value is a CSS custom-property reference, so `rgb(var(--tint-blue-rgb))` resolves in the
- * page against `tokens.css` and follows the theme. It used to hold literal `r,g,b` triples, which
- * made this file a second home for seven colours — and that is not a hypothetical cost: the
- * mirroring tint here read `139,107,255` while `tokens.css` read `124,107,255` for the same
- * violet, for a phase, because a token was changed and this file was not. One home, one answer.
+ * The six category tints this replaces were the last per-category hue in the app (D2): violet for
+ * mirroring, blue for files, pink for clipboard. They said which *kind* of thing happened, which the
+ * glyph and the words already say, and they spent the four colours that mean something.
  *
- * `--tint-darken` is applied by the stylesheet, not here: a dot drawn straight from these on a
- * white ground would be the light-mode failure this whole indirection exists to prevent.
+ * The handoff's rule: *"Badges are neutral charcoal unless the event itself was a connection coming
+ * up (lime), a real limitation (amber) or a real failure (red)."* So:
+ *
+ *  - **connected** — the link came up. The one lime thing in the list.
+ *  - **failure** — something the user asked for did not happen: `Save failed`, `Send failed`,
+ *    `Screenshot failed`, and a disconnect whose own detail says the connection failed.
+ *  - **warning** — a refusal or a partial: `Send refused`, `Pairing refused`, `Phone did not apply
+ *    it`. The phone answered and the answer was no, which is a limitation rather than a breakage.
+ *  - **neutral** — everything else, which is most of it.
+ *
+ * Matched on the kinds `main/activity.ts` actually writes, and read from the *words* only where the
+ * kind alone cannot tell: `Disconnected` is a fact, and whether it was a failure is in its detail.
  */
-const CATEGORY_TINTS: Record<ActivityCategory, string> = {
-  mirroring: 'var(--tint-violet-rgb)',
-  files: 'var(--tint-blue-rgb)',
-  messages: 'var(--tint-green-rgb)',
-  calls: 'var(--tint-cyan-rgb)',
-  clipboard: 'var(--tint-pink-rgb)',
-  system: 'var(--tint-grey-rgb)',
-};
+type ActivityTone = 'connected' | 'warning' | 'failure' | 'neutral';
+
+function activityTone(event: { kind: string; detail?: string }): ActivityTone {
+  if (ACTIVITY_CONNECTED_KINDS.has(event.kind)) return 'connected';
+  if (/failed|failure/i.test(event.kind)) return 'failure';
+  if (/refused|did not|declined|rejected/i.test(event.kind)) return 'warning';
+  if (event.kind === 'Disconnected' && /fail|error|dropp/i.test(event.detail ?? '')) return 'failure';
+  return 'neutral';
+}
+
+/**
+ * The busiest hour of a window, as a fact rather than a chart (D9): *"most activity between 09:00
+ * and 10:00 — 23 events"*. Null when there is nothing to describe, because a busiest hour over an
+ * empty log is a sentence about nothing.
+ */
+function activityBusiestHour(
+  events: ReadonlyArray<{ at: number }>,
+  sinceMs: number,
+): { hour: number; count: number } | null {
+  const buckets = new Map<number, number>();
+  for (const event of events) {
+    if (event.at < sinceMs) continue;
+    const hour = new Date(event.at).getHours();
+    buckets.set(hour, (buckets.get(hour) ?? 0) + 1);
+  }
+  let best: { hour: number; count: number } | null = null;
+  for (const [hour, count] of buckets) {
+    // `>` keeps the earliest hour on a tie, which is stable as the day fills rather than jumping
+    // between two equal hours on every redraw.
+    if (!best || count > best.count) best = { hour, count };
+  }
+  return best;
+}
 
 interface ActivityEvent {
   /** Monotonic within one store. The paging cursor and the tiebreak-that-is-not-needed. */
@@ -276,7 +307,6 @@ function activityPager(pageCount: number, current: number, neighbours = 1): Acti
 interface ActivitySummarySlice {
   category: ActivityCategory;
   label: string;
-  tint: string;
   count: number;
 }
 
@@ -298,7 +328,6 @@ function activitySummary(events: ActivityEvent[], sinceMs: number): ActivitySumm
   const slices = ACTIVITY_CATEGORIES.map((category) => ({
     category,
     label: CATEGORY_LABELS[category],
-    tint: CATEGORY_TINTS[category],
     count: within.filter((event) => event.category === category).length,
   })).filter((slice) => slice.count > 0);
   return { total: within.length, slices };
@@ -310,29 +339,6 @@ interface ActivityDay {
   count: number;
 }
 
-/**
- * Counts per local day for the last [days] days, oldest first, **including days with none**.
- *
- * The zeroes are the point: a sparkline drawn only over days that had events compresses a quiet
- * week into a straight line and makes it look like a busy one. The design draws seven labelled
- * ticks, so seven buckets are always returned even when the log is one day old.
- */
-function activityDaily(events: ActivityEvent[], days: number, now: number): ActivityDay[] {
-  const out: ActivityDay[] = [];
-  for (let back = days - 1; back >= 0; back -= 1) {
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - back);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-    out.push({
-      day: start.getDate(),
-      count: events.filter((event) => event.at >= start.getTime() && event.at < end.getTime())
-        .length,
-    });
-  }
-  return out;
-}
 
 /**
  * The whole log as CSV, for the design's **Export log as CSV** button.
@@ -393,8 +399,8 @@ function activityCsv(events: ActivityEvent[]): string {
 interface ActivityRowView {
   /** An `icons.ts` name. */
   icon: string;
-  /** An `--tint-*-rgb` triplet, for the tonal tile behind the icon. */
-  tint: string;
+  /** The event's own tone — see `activityTone`. Lime, amber and red are earned; most rows are not. */
+  tone: ActivityTone;
   /** Line one. Always `event.kind` — the store's own verb phrase. */
   title: string;
   /** Line two. A sentence; empty when the event is entirely described by its kind. */
@@ -411,7 +417,7 @@ const ACTIVITY_CONNECTED_KINDS = new Set(['Connected', 'Reconnected']);
 function activityRowView(event: ActivityEvent): ActivityRowView {
   const base: ActivityRowView = {
     icon: ACTIVITY_ICONS[event.category] ?? 'activity',
-    tint: CATEGORY_TINTS[event.category] ?? 'var(--tint-grey-rgb)',
+    tone: activityTone(event),
     title: event.kind,
     subtitle: event.detail,
     device: '',
@@ -423,7 +429,6 @@ function activityRowView(event: ActivityEvent): ActivityRowView {
     return {
       ...base,
       icon: 'link',
-      tint: 'var(--tint-green-rgb)',
       subtitle: 'Successfully connected to your phone',
       device: event.detail,
     };
@@ -437,7 +442,6 @@ function activityRowView(event: ActivityEvent): ActivityRowView {
       // `overview`, not `apps`: the 2×2 tile grid, which is what the reference draws and what
       // reads as an application at 26px. `apps` is a 3×3 of dots and turns to noise at this size.
       icon: 'overview',
-      tint: 'var(--tint-violet-rgb)',
       subtitle: 'Application launched',
       badge: version ? `v${version}` : '',
     };
@@ -469,7 +473,10 @@ function activityRowView(event: ActivityEvent): ActivityRowView {
     return {
       ...base,
       icon: 'alert-circle',
-      tint: 'var(--tint-grey-rgb)',
+      // Neutral, not `failure` — O7's argument, unchanged by D23: the disconnection really was a
+      // failure, and red here would put the one colour meaning *the link is down right now* on a
+      // row about five minutes ago. `alert-circle` is the shape half and it survives.
+      tone: 'neutral',
       // The sentence stays where it is: it is the explanation, not metadata.
       subtitle: event.detail,
     };
@@ -546,9 +553,9 @@ function activityWhen(at: number, now: number): string {
   const g = globalThis as Record<string, unknown>;
   g.ACTIVITY_CATEGORIES = ACTIVITY_CATEGORIES;
   g.CATEGORY_LABELS = CATEGORY_LABELS;
-  g.CATEGORY_TINTS = CATEGORY_TINTS;
+  g.activityTone = activityTone;
+  g.activityBusiestHour = activityBusiestHour;
   g.activityCsv = activityCsv;
-  g.activityDaily = activityDaily;
   g.activityPage = activityPage;
   g.activityPager = activityPager;
   g.activityPaneView = activityPaneView;
@@ -563,14 +570,14 @@ if (typeof module !== 'undefined') {
   module.exports = {
     ACTIVITY_CATEGORIES,
     CATEGORY_LABELS,
-    CATEGORY_TINTS,
     activityCsv,
-    activityDaily,
     activityPage,
     activityPager,
     activityPaneView,
     activitySummary,
     activityWhen,
+    activityTone,
+    activityBusiestHour,
     activityClock,
     activityRowView,
     ACTIVITY_ICONS,

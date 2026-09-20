@@ -178,7 +178,9 @@ class ActivityView {
       kind.className = 'activity-kind';
       const dot = document.createElement('span');
       dot.className = 'activity-dot';
-      dot.style.setProperty('--tint', CATEGORY_TINTS[event.category] ?? 'var(--tint-grey-rgb)');
+      // The **event's** tone, not its category's (D23). Most rows are neutral; lime, amber and red
+      // are earned by a connection coming up, a refusal and a real failure.
+      dot.dataset.tone = activityTone(event);
       const kindText = document.createElement('span');
       kindText.textContent = event.kind;
       kind.append(dot, kindText);
@@ -260,7 +262,15 @@ class ActivityView {
     return foot;
   }
 
-  /** The summary rail: the donut, the sparkline, and export. */
+  /**
+   * The summary rail — **a compact list of counts and the busiest hour as a sentence** (D9).
+   *
+   * It held a donut and a seven-day sparkline. The brief rules out analytics-dashboard styling, and
+   * both were charts of the same counts printed beside them: the donut's arcs needed six category
+   * hues, which are gone (D2), and a sparkline with no scale is a shape rather than a measurement —
+   * its own comment said so and printed the peak underneath to compensate. The counts, the
+   * denominator and the peak all survive; only the chart chrome goes.
+   */
   private rail(events: ActivityEvent[]): HTMLElement {
     const rail = document.createElement('aside');
     rail.className = 'activity-rail';
@@ -276,39 +286,52 @@ class ActivityView {
     title.textContent = 'Today';
     today.appendChild(title);
 
+    const total = document.createElement('p');
+    total.className = 'activity-total';
+    const totalValue = document.createElement('span');
+    totalValue.className = 'activity-total-value mono';
+    totalValue.textContent = String(summary.total);
+    total.append(totalValue, document.createTextNode(summary.total === 1 ? ' event' : ' events'));
+    today.appendChild(total);
+
     if (summary.total === 0) {
-      // The one honest thing to draw over a zero total. A donut with no arcs and a `0` in the
-      // middle is a chart of nothing that still looks like a chart.
       const none = document.createElement('p');
       none.className = 'activity-empty-note';
       none.textContent = 'Nothing yet today. The table below covers everything on record.';
       today.appendChild(none);
     } else {
-      today.appendChild(this.donut(summary));
-      const legend = document.createElement('div');
-      legend.className = 'activity-legend';
+      const counts = document.createElement('div');
+      counts.className = 'activity-counts';
       for (const slice of summary.slices) {
         const row = document.createElement('div');
-        const swatch = document.createElement('span');
-        swatch.className = 'activity-dot';
-        swatch.style.setProperty('--tint', slice.tint);
+        // `activity-cat-count`, not `activity-count` — the pager's "Showing 9 of 2000" line already
+        // owns that name, and the first version of this list silently matched it in a test.
+        row.className = 'activity-cat-count';
         const name = document.createElement('span');
         name.textContent = slice.label;
         const value = document.createElement('span');
         value.className = 'mono';
         value.textContent = String(slice.count);
-        row.append(swatch, name, value);
-        legend.appendChild(row);
+        row.append(name, value);
+        counts.appendChild(row);
       }
-      today.appendChild(legend);
+      today.appendChild(counts);
+
+      const busiest = activityBusiestHour(events, midnight.getTime());
+      if (busiest) {
+        const line = document.createElement('p');
+        line.className = 'activity-busiest';
+        const from = String(busiest.hour).padStart(2, '0');
+        const to = String((busiest.hour + 1) % 24).padStart(2, '0');
+        line.textContent = `Busiest between ${from}:00 and ${to}:00 — ${busiest.count} ${busiest.count === 1 ? 'event' : 'events'}.`;
+        today.appendChild(line);
+      }
     }
     rail.appendChild(today);
 
-    rail.appendChild(this.sparkline(activityDaily(events, 7, now)));
-
     const exportButton = document.createElement('button');
     exportButton.type = 'button';
-    exportButton.className = 'btn activity-export';
+    exportButton.className = 'button activity-export';
     exportButton.textContent = 'Export log as CSV';
     exportButton.addEventListener('click', () => {
       void this.bridge.activityExportCsv().then((result) => {
@@ -332,117 +355,6 @@ class ActivityView {
     rail.appendChild(foot);
 
     return rail;
-  }
-
-  private donut(summary: ActivitySummary): SVGElement {
-    const ns = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', '0 0 120 120');
-    svg.setAttribute('class', 'activity-donut');
-    svg.setAttribute('role', 'img');
-    svg.setAttribute(
-      'aria-label',
-      `${summary.total} events today: ${summary.slices.map((s) => `${s.label} ${s.count}`).join(', ')}`,
-    );
-
-    const radius = 48;
-    const circumference = 2 * Math.PI * radius;
-
-    const track = document.createElementNS(ns, 'circle');
-    track.setAttribute('cx', '60');
-    track.setAttribute('cy', '60');
-    track.setAttribute('r', String(radius));
-    track.setAttribute('fill', 'none');
-    track.setAttribute('stroke', 'var(--hairline)');
-    track.setAttribute('stroke-width', '12');
-    svg.appendChild(track);
-
-    let offset = 0;
-    for (const slice of summary.slices) {
-      const fraction = slice.count / summary.total;
-      const arc = document.createElementNS(ns, 'circle');
-      arc.setAttribute('cx', '60');
-      arc.setAttribute('cy', '60');
-      arc.setAttribute('r', String(radius));
-      arc.setAttribute('fill', 'none');
-      arc.style.setProperty('--tint', slice.tint);
-      arc.setAttribute('class', 'activity-arc');
-      arc.setAttribute('stroke-width', '12');
-      arc.setAttribute('stroke-linecap', 'butt');
-      arc.setAttribute('stroke-dasharray', `${fraction * circumference} ${circumference}`);
-      arc.setAttribute('transform', `rotate(${-90 + offset * 360} 60 60)`);
-      svg.appendChild(arc);
-      offset += fraction;
-    }
-
-    const total = document.createElementNS(ns, 'text');
-    total.setAttribute('x', '60');
-    total.setAttribute('y', '58');
-    total.setAttribute('text-anchor', 'middle');
-    total.setAttribute('class', 'activity-donut-total');
-    total.textContent = String(summary.total);
-    const label = document.createElementNS(ns, 'text');
-    label.setAttribute('x', '60');
-    label.setAttribute('y', '73');
-    label.setAttribute('text-anchor', 'middle');
-    label.setAttribute('class', 'activity-donut-label');
-    label.textContent = 'EVENTS';
-    svg.append(total, label);
-    return svg;
-  }
-
-  private sparkline(days: ActivityDay[]): HTMLElement {
-    const ns = 'http://www.w3.org/2000/svg';
-    const card = document.createElement('section');
-    card.className = 'card activity-summary';
-    const title = document.createElement('h3');
-    title.textContent = 'Last 7 days';
-    card.appendChild(title);
-
-    const peak = Math.max(1, ...days.map((d) => d.count));
-    const width = 280;
-    const height = 120;
-    const points = days.map((day, index) => {
-      const x = 8 + (index * (width - 16)) / Math.max(1, days.length - 1);
-      const y = 104 - (day.count / peak) * 84;
-      return { x, y, day };
-    });
-
-    const svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('class', 'activity-spark');
-    svg.setAttribute('role', 'img');
-    svg.setAttribute(
-      'aria-label',
-      `Events per day: ${days.map((d) => `${d.day}: ${d.count}`).join(', ')}`,
-    );
-    const line = document.createElementNS(ns, 'path');
-    line.setAttribute('d', points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' '));
-    line.setAttribute('fill', 'none');
-    line.setAttribute('stroke', 'var(--accent)');
-    line.setAttribute('stroke-width', '2.2');
-    line.setAttribute('stroke-linecap', 'round');
-    line.setAttribute('stroke-linejoin', 'round');
-    svg.appendChild(line);
-    card.appendChild(svg);
-
-    const axis = document.createElement('div');
-    axis.className = 'activity-axis mono';
-    for (const day of days) {
-      const tick = document.createElement('span');
-      tick.textContent = String(day.day);
-      axis.appendChild(tick);
-    }
-    card.appendChild(axis);
-
-    // The peak is printed because a sparkline with no scale is a shape, not a measurement — the
-    // same rule as a count with no denominator. Without it, one event a day and a hundred a day
-    // draw the identical line.
-    const scale = document.createElement('p');
-    scale.className = 'activity-stats mono';
-    scale.textContent = `peak ${peak} event${peak === 1 ? '' : 's'} in a day`;
-    card.appendChild(scale);
-    return card;
   }
 
   private stateCard(view: ActivityPaneView): HTMLElement {

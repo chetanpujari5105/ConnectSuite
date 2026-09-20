@@ -4341,23 +4341,21 @@ img#qr {
   font-weight: 500;
 }
 
+/*
+ * The row dot carries the **event's** tone (D23), not its category's colour: most rows are neutral,
+ * and lime, amber and red are earned by a connection coming up, a refusal and a real failure. The
+ * six-hue `--tint` table it read is gone with the donut (D2, D9).
+ */
 .activity-dot {
   width: 7px;
   height: 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   flex: 0 0 auto;
-  /*
-   * `--tint` is an `r,g,b` triple handed over by activity.ts, which reads it from the tokens rather
-   * than holding its own copy. The darkening happens HERE because it is a theme decision: the same
-   * dot is drawn as-is on dark and 46% darker on light, and neither renderer file needs to know.
-   */
-  background: color-mix(in srgb, rgb(var(--tint, var(--tint-grey-rgb))), #000 var(--tint-darken));
+  background: var(--text-meta);
 }
-
-/* The activity donut's arcs. Same rule as the dot, on a stroke instead of a fill. */
-.activity-arc {
-  stroke: color-mix(in srgb, rgb(var(--tint, var(--tint-grey-rgb))), #000 var(--tint-darken));
-}
+.activity-dot[data-tone='connected'] { background: var(--accent); }
+.activity-dot[data-tone='warning'] { background: var(--warning); }
+.activity-dot[data-tone='failure'] { background: var(--destructive); }
 
 /* The detail is the one field that carries somebody else's text, so it is clipped rather than
    allowed to set the column width. The full string is in the title attribute. */
@@ -4423,15 +4421,30 @@ img#qr {
   color: var(--text-primary);
 }
 
-.activity-donut { display: block; width: 132px; height: 132px; margin: 0 auto 10px; }
-.activity-donut-total { fill: var(--text-primary); font-size: 22px; font-weight: 600; font-family: var(--font-mono); }
-.activity-donut-label { fill: var(--text-meta); font-size: 10px; }
+/* The counts the donut used to chart, as a list (D9). The total is the Numeral role. */
+.activity-total { margin: 0 0 var(--space-5); font: var(--text-meta-size); color: var(--text-meta); }
+.activity-total-value { font: 500 21px/26px var(--font-mono); color: var(--text-primary); margin-right: 6px; }
 
-.activity-legend { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.activity-legend > div { display: grid; grid-template-columns: 8px 1fr auto; gap: 8px; align-items: center; color: var(--text-body); }
+.activity-counts { display: flex; flex-direction: column; gap: var(--space-3); font-size: 12.5px; }
+.activity-cat-count {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-5);
+  color: var(--text-body);
+}
+.activity-cat-count .mono { color: var(--text-primary); }
 
-.activity-spark { display: block; width: 100%; height: auto; }
-.activity-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-meta); padding: 0 4px; }
+/* The busiest hour, printed. A sparkline with no scale is a shape rather than a measurement — its
+   own comment said so and printed the peak underneath to compensate; this is the peak. */
+.activity-busiest {
+  margin: var(--space-6) 0 0;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--hairline);
+  font: var(--text-meta-size);
+  line-height: 1.5;
+  color: var(--text-body);
+}
 
 .activity-export { width: 100%; }
 

@@ -21176,3 +21176,27 @@ data on this pane).
 
 **Not proven:** the *Needs permission* and *Limited* rows have not been seen against a real revoked
 grant — both are unit-tested only. Seeing them costs revoking a permission on the owner's phone.
+
+## Sidekick Batch 5b — Activity — 2026-09-20
+
+Frames not rendered; built to handoff §6. Departures D52–D53; discharges D23. Captures:
+`docs/evidence/sidekick-batch5/activity-1440x920.png` and `overview-1440x920.png` (real log; the
+rows carry file sizes and the device name, no message or contact content).
+
+- `shared/activity.test.ts`: **tone is earned** — connection, failure, refusal, and neutral for the
+  common case, with a `Disconnected` asserted both ways (its kind is a fact; whether it failed is in
+  its detail). The **busiest hour** keeps the earliest hour on a tie and is `null` over nothing.
+- `activityView.test.ts`: the dots are toned `['connected','neutral','neutral']` for a connection, a
+  call and a transfer — the assertion it replaces was *three categories, three tints*, which passed
+  on any six-colour table and was the per-category hue D2 removed. The rail draws **no donut and no
+  sparkline**, counts only the categories with events today, and prints the busiest-hour sentence.
+- **A name collision, caught by a test rather than by eye:** the new per-category count row was
+  `.activity-count`, which the pager's *"Showing 9 of 2000 events"* line already owns — so an
+  assertion that a quiet day draws no count rows found the pager's. Renamed `.activity-cat-count`.
+- Live on the SM-S938B: 2000 events, tones as expected (Connected lime, a failed disconnect red,
+  transfers neutral), *Busiest between 09:00 and 10:00 — 2 events.*
+- `npm test` **854 / 854**; colour and contrast guards green.
+
+**Not proven:** the *filtered empty* and *nothing recorded* frames were not re-captured after the
+restyle (both are existing states with their own tests); a `Send refused` row's amber tone has not
+been seen live.

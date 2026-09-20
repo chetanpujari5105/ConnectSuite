@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 const {
   ACTIVITY_CATEGORIES,
   activityCsv,
-  activityDaily,
+  activityTone,
+  activityBusiestHour,
   activityPage,
   activityPager,
   activityPaneView,
@@ -110,9 +111,9 @@ test('a page past the end of a newly filtered list is clamped, not rendered empt
   assert.equal(result.pageCount, 1);
 });
 
-// ---- summary and sparkline ---------------------------------------------------------------------
+// ---- summary, tone and the busiest hour ---------------------------------------------------------
 
-test('the donut counts only the window, and drops categories with none', () => {
+test('the summary counts only the window, and drops categories with none', () => {
   const now = Date.UTC(2026, 8, 2, 12, 0, 0);
   const events = [
     ev('files', now - 1000),
@@ -129,17 +130,45 @@ test('the donut counts only the window, and drops categories with none', () => {
   );
 });
 
-test('the sparkline returns a bucket for every day, including the quiet ones', () => {
-  const now = new Date(2026, 8, 2, 12, 0, 0).getTime();
-  const oneDay = 24 * 3600 * 1000;
-  const events = [ev('system', now), ev('system', now - 3 * oneDay)];
-  const days = activityDaily(events, 7, now);
-  assert.equal(days.length, 7, 'seven ticks always, even on a one-day-old log');
-  assert.deepEqual(
-    days.map((d) => d.count),
-    [0, 0, 0, 1, 0, 0, 1],
-    'a quiet week must not compress into a busy-looking line',
+/**
+ * D23: the badge tone is the **event's**, not its category's. The six category tints this replaces
+ * were the last per-category hue in the app, and they spent the four colours that mean something.
+ */
+test('tone is earned: a connection, a failure and a refusal, and neutral for everything else', () => {
+  assert.equal(activityTone({ kind: 'Connected', detail: 'phone' }), 'connected');
+  assert.equal(activityTone({ kind: 'Reconnected', detail: 'phone' }), 'connected');
+  assert.equal(activityTone({ kind: 'Send failed', detail: 'a.txt' }), 'failure');
+  assert.equal(activityTone({ kind: 'Send refused', detail: '' }), 'warning');
+  assert.equal(activityTone({ kind: 'Phone did not apply it', detail: '' }), 'warning');
+  // The control, and the common case: an ordinary event of any category is neutral.
+  assert.equal(activityTone({ kind: 'Sent to phone', detail: '5.3 KB' }), 'neutral');
+  assert.equal(activityTone({ kind: 'Mirroring started', detail: '' }), 'neutral');
+  // A disconnect is a fact; whether it was a failure is in its own detail, not in the kind.
+  assert.equal(activityTone({ kind: 'Disconnected', detail: 'You disconnected.' }), 'neutral');
+  assert.equal(
+    activityTone({ kind: 'Disconnected', detail: 'The connection to your phone failed.' }),
+    'failure',
   );
+});
+
+test('the busiest hour is the busiest, keeps the earliest on a tie, and is null over nothing', () => {
+  const at = (hour: number, minute = 0) => new Date(2026, 8, 20, hour, minute).getTime();
+  const midnight = new Date(2026, 8, 20).getTime();
+  const events = [
+    { at: at(9, 5) },
+    { at: at(9, 40) },
+    { at: at(14, 0) },
+    { at: at(3, 0) },
+    // Before the window: counted by nothing.
+    { at: midnight - 3600 * 1000 },
+  ];
+  assert.deepEqual(activityBusiestHour(events, midnight), { hour: 9, count: 2 });
+  // A tie keeps the earlier hour, so the sentence does not flip between two equal hours on redraw.
+  assert.deepEqual(
+    activityBusiestHour([{ at: at(7) }, { at: at(19) }], midnight),
+    { hour: 7, count: 1 },
+  );
+  assert.equal(activityBusiestHour([], midnight), null, 'a busiest hour over nothing is a sentence about nothing');
 });
 
 // ---- export ------------------------------------------------------------------------------------
@@ -176,7 +205,7 @@ test('the TIME column says when, at the resolution that is honest', () => {
 
 // ---- the enumeration ---------------------------------------------------------------------------
 
-test('every category has a label and a tint, and the design chips come first', () => {
+test('every category has a label, and the design chips come first', () => {
   assert.deepEqual(ACTIVITY_CATEGORIES.slice(0, 4), ['mirroring', 'files', 'messages', 'calls']);
   assert.ok(ACTIVITY_CATEGORIES.includes('clipboard'));
   assert.ok(ACTIVITY_CATEGORIES.includes('system'));

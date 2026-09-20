@@ -1051,9 +1051,19 @@ body {
   width: 30px;
   height: 30px;
   border-radius: var(--radius-control);
-  background: rgba(var(--tint, var(--tint-grey-rgb)), 0.16);
-  color: color-mix(in srgb, rgb(var(--tint, var(--tint-grey-rgb))), #000 var(--tint-darken));
+  /*
+   * Neutral by default, toned by the **event** (D23): lime where the link came up, amber for a
+   * refusal, red for a real failure. It read a six-hue category table until 2026-09-20, which is
+   * the per-category colour D2 removed — it said which kind of thing happened, which the glyph and
+   * the words already say.
+   */
+  background: var(--control);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--text-body);
 }
+.recent-tile[data-tone='connected'] { color: var(--accent); }
+.recent-tile[data-tone='warning'] { color: var(--warning); }
+.recent-tile[data-tone='failure'] { color: var(--destructive); }
 
 .recent-main { display: flex; flex-direction: column; min-width: 0; }
 /*

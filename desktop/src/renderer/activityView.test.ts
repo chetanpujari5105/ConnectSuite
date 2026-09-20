@@ -165,7 +165,7 @@ test("the store's own read error becomes A2, not an empty table", async () => {
 
 // ---- the table, the pager, the rail ------------------------------------------------------------
 
-test('the table draws a row per event, newest first, with a tinted dot each', async () => {
+test('the table draws a row per event, newest first, each dot toned by the EVENT', async () => {
   const pane = mount();
   try {
     const base = Date.now();
@@ -181,21 +181,20 @@ test('the table draws a row per event, newest first, with a tinted dot each', as
       'Sent to phone',
     ]);
     assert.deepEqual(texts(pane.host, 'activity-detail'), ['phone', '+91…', 'a.txt']);
-    // Scoped to the rows. The legend in the rail draws dots too, and counting every dot on the
-    // pane would pass with the table's dots deleted — a query that cannot tell its target from
-    // something resembling it.
+    // Scoped to the rows: counting every dot on the pane would pass with the table's dots deleted.
     const rowDots = pane.host
       .queryAll('.activity-row')
       .flatMap((row) => row.queryAll('.activity-dot'));
     assert.equal(rowDots.length, 3, 'one dot per row');
-    // Reads `--tint`, not `background`. The dot stopped computing its own colour when light mode
-    // landed: the renderer hands over the category's token reference and the stylesheet applies
-    // `--tint-darken`, so a dot drawn on a white ground is readable. The assertion is unchanged —
-    // three categories still have to produce three distinct tints — only where it reads moved.
-    assert.equal(
-      new Set(rowDots.map((d) => d.style.getPropertyValue('--tint'))).size,
-      3,
-      'three categories, three tints',
+    /*
+     * **Tone is the event's, not the category's** (D23). This used to assert *three categories,
+     * three tints* — which passed on any six-colour table, and was the per-category hue D2 removed.
+     * A connection coming up is the one lime row here; a file transfer and a ringing call are
+     * ordinary events and are neutral, whatever category they belong to.
+     */
+    assert.deepEqual(
+      rowDots.map((d) => d.dataset.tone),
+      ['connected', 'neutral', 'neutral'],
     );
   } finally {
     pane.restore();
@@ -297,31 +296,46 @@ test('the count line names the filter, so the denominator is not misread', async
   }
 });
 
-test('the rail draws a donut only when today has events, and a sentence when it does not', async () => {
+/**
+ * D9 removed the donut and the sparkline. What replaces them is the same counts as a list and the
+ * busiest hour as a sentence — so the assertion is that **no chart is drawn and the numbers
+ * survive**, which is the half that mattered.
+ */
+test('the rail counts today rather than charting it, and says so when there is nothing', async () => {
   const pane = mount();
   try {
-    // Yesterday only: the table has rows, the donut has nothing to chart.
+    // Yesterday only: the table has rows, today has nothing to count.
     pane.bridge.events = [ev('system', 'Connected', 'phone', Date.now() - 30 * 3600 * 1000)];
     await pane.view.refresh();
-    assert.equal(pane.host.queryAll('.activity-donut').length, 0, 'no chart of nothing');
+    assert.equal(pane.host.queryAll('.activity-donut').length, 0, 'the donut came back');
+    assert.equal(pane.host.queryAll('.activity-spark').length, 0, 'the sparkline came back');
     assert.equal(pane.host.queryAll('.activity-empty-note').length, 1);
+    assert.equal(pane.host.queryAll('.activity-cat-count').length, 0, 'counted a day with nothing in it');
 
     pane.bridge.events.push(ev('files', 'Sent to phone', 'a.txt', Date.now()));
     await pane.view.refresh();
-    assert.equal(pane.host.queryAll('.activity-donut').length, 1);
     assert.equal(pane.host.queryAll('.activity-empty-note').length, 0);
+    // One count row for the one category with events today, and the total beside it.
+    assert.equal(pane.host.queryAll('.activity-cat-count').length, 1);
+    assert.ok(texts(pane.host, 'activity-total').some((line) => line.includes('1 event')));
   } finally {
     pane.restore();
   }
 });
 
-test('the sparkline prints its peak, because a line with no scale is a shape', async () => {
+test('the busiest hour is printed as a sentence, with the count that makes it one', async () => {
   const pane = mount();
   try {
-    pane.bridge.events = [ev('system'), ev('system'), ev('system')];
+    const at = (hour: number) => new Date(new Date().setHours(hour, 5, 0, 0)).getTime();
+    pane.bridge.events = [
+      ev('system', 'Connected', 'phone', at(9)),
+      ev('files', 'Sent to phone', 'a.txt', at(9)),
+      ev('files', 'Sent to phone', 'b.txt', at(14)),
+    ];
     await pane.view.refresh();
-    const stats = texts(pane.host, 'activity-stats');
-    assert.ok(stats.some((line) => line.includes('peak 3 events in a day')));
+    const busiest = texts(pane.host, 'activity-busiest');
+    assert.equal(busiest.length, 1, 'control: the sentence is drawn');
+    assert.match(busiest[0]!, /Busiest between 09:00 and 10:00 — 2 events\./);
   } finally {
     pane.restore();
   }

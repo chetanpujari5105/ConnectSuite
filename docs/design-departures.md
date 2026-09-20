@@ -1227,3 +1227,19 @@ Frame `44:23491` **not rendered**; built to handoff §6 Settings and component 2
 **Corrected, not departures:** the side-column capability card is gone (D22's stand-in); a
 disconnected phone's features read *Unavailable — the phone is not connected, so this is unknown*
 rather than as missing features; the wire id stays a handle on the row's `title`.
+
+## Sidekick Batch 5b — Activity, and the last per-category hue — 2026-09-20. Rows D52–D53
+
+Frames `34:9188`–`34:9849` **not rendered**; built to handoff §6 Activity. Discharges **D23**.
+
+| Row | Figma / handoff | Built | Why |
+|---|---|---|---|
+| **D52** | *"No donut and no sparkline"* (D9) — a compact counts list and the busiest hour printed | Built: a total in the Numeral role, one row per category with a count, and *Busiest between 09:00 and 10:00 — 2 events.* | Both charts drew the counts printed beside them; the donut needed six category hues, which are gone, and the sparkline's own comment said a line with no scale is a shape and printed its peak underneath to compensate. The counts, the denominator and the peak all survive |
+| **D53** | Badge tone is the **event's**: lime for a connection coming up, amber a limitation, red a failure | Built in `shared/activity.ts` (`activityTone`), used by the Activity rows **and** Overview's Recent tiles | D23 recorded this as owed since Batch 2. It also removes `CATEGORY_TINTS` — the last per-category hue in the app (D2) |
+
+**One thing deliberately unchanged:** a `Disconnected` row stays **neutral** even though its tone
+rule could make it red — departure O7's argument, which D53 does not overturn. The disconnection was
+a real failure, and red on a past row would put the one colour meaning *the link is down right now*
+on something that stopped being true minutes ago. `alert-circle` is the shape half. A failure tone is
+reserved for the rows whose own detail says the connection failed, which is what the log writes when
+it did.

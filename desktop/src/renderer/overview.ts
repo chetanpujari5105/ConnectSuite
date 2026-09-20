@@ -369,9 +369,9 @@ class OverviewView {
     const tile = document.createElement('span');
     tile.className = 'recent-tile';
     tile.setAttribute('aria-hidden', 'true');
-    // The tint comes from the same table the Activity pane's donut reads, so the two cannot
-    // disagree about what colour "files" is.
-    tile.style.setProperty('--tint', view.tint);
+    // The event's own tone, from the same rule the Activity pane's rows read (D23), so the two
+    // cannot disagree about what a row means.
+    tile.dataset.tone = view.tone;
     // A 15px glyph in the handoff's 30px badge.
     tile.appendChild(iconSvg(view.icon, 15));
 
