@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch7/files-couldnt-open-SYNTHETIC-1440x920.png",
+  "screen": "files",
+  "takenAt": "2026-09-20T18:22:35.541Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 700,
+  "ready": null,
+  "prep": "(async () => {\n       files.bridge.fsRoots = async () => ({ ok: false,\n         reason: 'The phone could not open that folder.',\n         code: 'TARGET_STALE' });\n       await files.refresh();\n     })()",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

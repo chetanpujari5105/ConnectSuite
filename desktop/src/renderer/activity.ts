@@ -372,35 +372,38 @@ class ActivityView {
     return rail;
   }
 
+  /**
+   * The pane-level state, as a **full** state block (D67's approved two-layout system).
+   *
+   * Full rather than compact: this replaces the whole table, so the region it occupies is
+   * pane-sized and the centred layout is the one specified for it. Files' and Photos' blocks are
+   * compact for the opposite reason — they sit in a narrow column or over a working pane.
+   *
+   * It was `activity-state`, four rules with its own headline typography and a `--warning`
+   * modifier. **A2 changes colour in this migration**: the approved tone map puts an actual
+   * operation failure in red, and *the activity log could not be read* is an operation that ran
+   * and failed. What amber was carrying — that nothing is lost on the phone — is in its body, in
+   * words, where it does not depend on anybody reading a hue.
+   */
   private stateCard(view: ActivityPaneView): HTMLElement {
-    const card = document.createElement('div');
-    card.className = `activity-state activity-state--${view.tone}`;
-    card.dataset.state = view.id;
-
-    const headline = document.createElement('h2');
-    headline.className = 'activity-state-headline';
-    headline.textContent = view.headline;
-    card.appendChild(headline);
-
-    for (const paragraph of view.body) {
-      const p = document.createElement('p');
-      p.className = 'activity-state-body';
-      p.textContent = paragraph;
-      card.appendChild(p);
-    }
-
-    if (view.retry) {
-      const retry = document.createElement('button');
-      retry.type = 'button';
-      retry.className = 'btn';
-      retry.textContent = 'Try again';
-      retry.addEventListener('click', () => {
-        this.fetch = { kind: 'idle' };
-        void this.refresh();
-      });
-      card.appendChild(retry);
-    }
-    return card;
+    const block = stateBlock({
+      kind: view.kind,
+      headline: view.headline,
+      body: view.body,
+      // A3 and A4 are the pane's own emptiness rather than a generic one, so they keep its glyph.
+      icon: view.kind === 'empty' ? 'activity' : undefined,
+      action: view.retry
+        ? {
+            label: 'Try again',
+            run: () => {
+              this.fetch = { kind: 'idle' };
+              void this.refresh();
+            },
+          }
+        : undefined,
+    });
+    block.dataset.state = view.id;
+    return block;
   }
 }
 

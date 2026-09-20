@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { FakeElement, installFakeDocument, el } from './domDouble.testkit';
 // A plain side-effecting import. `apps.ts` touches no DOM at module scope — it only hangs its class
 // and its pure functions on `globalThis` — so the document double goes in around the mounts instead.
+// The page loads these before the pane, and the pane now builds component 11's state
+// block. Without them the suite would exercise a loader the renderer never uses.
+import './icons';
+import './stateBlock';
 import './apps';
 
 /**
@@ -207,7 +211,15 @@ test('with the capability off the grid still draws, and the banner says which ha
     3,
     'a grey chip greys a chip; it does not empty a working list',
   );
-  assert.equal(pane.banner.className.includes('partial'), true, '--warning, never --destructive');
+  /*
+   * The tone is the component's `data-tone`, from the kind, rather than a class this pane chose —
+   * so *amber, never red* is a rule `stateBlock` enforces rather than one this pane remembers.
+   * A feature arriving with one switch off is not a failure.
+   */
+  const block = pane.banner.queryAll('.state-block')[0]!;
+  assert.equal(block.dataset.kind, 'partial');
+  assert.equal(block.dataset.tone, 'warning', 'amber, never destructive');
+  assert.notEqual(block.dataset.tone, 'danger');
 });
 
 test('with the capability on the banner disappears entirely', async () => {
@@ -236,7 +248,9 @@ test('a failed list replaces the grid and keeps the phone reason', async () => {
   assert.equal(pane.grid.queryAll('.apps-tile').length, 0);
   // Empty and failed must not look alike — the rule the Files pane's four independent differences
   // came from. Here the discriminator is the class and the headline verb.
-  assert.equal(pane.banner.className.includes('unavailable'), true);
+  const refusal = pane.banner.queryAll('.state-block')[0]!;
+  assert.equal(refusal.dataset.kind, 'permission');
+  assert.equal(refusal.dataset.tone, 'warning');
   assert.doesNotMatch(pane.grid.textContent, /Nothing matches/);
 });
 

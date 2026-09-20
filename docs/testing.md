@@ -21678,3 +21678,95 @@ All five are **SYNTHETIC** and say so in the filename. The status island and the
 `Connected` in every one, because only the pane was driven. No frame was rendered from Figma — the
 MCP is still not connected on this account — so all five are *built to the handoff*.
 
+## Sidekick Batch 7 — D67 approved: one state system, two layouts — 2026-09-21
+
+The owner approved the decision D67 recorded. Two layouts, a fixed tone map, no third card style.
+**The component design is unified; the exact Figma pixel comparison remains pending** — the MCP is
+still disconnected, so nothing here is Figma-exact and no row says it is.
+
+### The scope was five, not six — and that correction is the first finding
+
+D67 counted six pane-private vocabularies. `call-state` is **not a state card**: it is a call row's
+status *text* (`Ringing · WhatsApp`), one CSS rule setting a font size and a colour. The count had
+matched a **name pattern** rather than a thing — the lookalike rule, in a measurement written to
+enforce a design rule. The real scope:
+
+| Vocabulary | Rules | Layout it took |
+|---|---|---|
+| `files-state*` | 16 | Compact |
+| `apps-banner*` | 6 | Compact |
+| `photos-banner*` | 5 | Compact |
+| `activity-state*` | 4 | **Full** |
+| `files-banner*` | 2 | Compact |
+
+**32 rules, 120 lines of CSS deleted.** Plus a second hand-built copy of the Files card in
+`renderTable`, for a directory that would not open — two copies of one vocabulary inside one pane,
+which is how six accumulated across an app.
+
+### Three changes that are not merely a re-skin
+
+- **`tone` and `icon` are gone from `FilesPaneView` and `ActivityPaneView`.** One `kind` decides
+  the tone, the glyph, the headline's verb and whether an action exists. Files' M2/M4 still differ
+  in the four independent ways §3 of the files proposal requires — now *by construction*, so a pane
+  cannot restyle a state into agreeing with another one.
+- **Activity's A2 is red, not amber** (D70). The approved map puts an actual operation failure in
+  red. What amber was carrying — nothing is lost on the phone — is in the body, in words, where it
+  does not depend on anybody reading a hue.
+- **`partial` is an eighth kind** (D68). *The feature works, and not all of it* is not one of the
+  others wearing another name, and the map puts it in amber.
+
+### Verified where it is drawn, not where it is defined
+
+`scripts/state-system-verify.mjs`: **93 state blocks**, twelve routes × two themes × two sizes,
+each pane driven into its states through its own public path. Thirteen readings, all OK:
+
+| | |
+|---|---|
+| exactly two layouts | no block carries a class outside `state-block` / `state-block compact` |
+| the tone map | every drawn block matches, and **no lime anywhere** |
+| one action maximum | and a `wall` has none |
+| keyboard | every action is a real, tabbable, `type="button"` `<button>` — so Enter and Space work with no code |
+| layout | no action clipped, no block overflowing, none running off the window, at 1440 × 920 **and** 1100 × 700 |
+| shape | one badge and one headline each |
+| **coverage** | each migrated pane **drew** the states it was migrated for |
+
+The migrated panes drew: **files** `error` compact, **photos** `permission` + `partial` compact,
+**apps** `permission` + `partial` compact, **activity** `error` + `empty` **full**.
+
+### Four instrument faults, and the coverage check found two of them
+
+| | What it reported | What it was |
+|---|---|---|
+| 1 | every route drawing an `empty` block, Photos drawing `error` | the query read `document.querySelectorAll('.state-block')` — **every hidden pane's blocks, on every route**. `CLAUDE.md`'s own rule, broken in the file written to enforce a design rule: narrow the selector until it can only be the thing |
+| 2 | `activity/error` never drawn | `failRequest` is a key on the real bridge and **is not honoured by it** — it belongs to the test double. The driver did nothing while reporting nothing |
+| 3 | `photos/permission` never drawn | `shell.onRoute` starts its own `refresh()`; at 220 ms the driver's refusal was installed and rendered, then the route's in-flight fetch resolved over it with `failure = null`. Two callers of one fetch, resolved by order |
+| 4 | every later `shot.mjs` refusing with *"the window is zoomed"* | `Emulation.setDeviceMetricsOverride` is **per-target**, so the override outlived the session and a clear from a later one did not undo it. An instrument that quietly breaks the next instrument |
+
+**The coverage check is why 2 and 3 were found at all.** Without it the sweep would have reported
+thirteen green readings over a run in which two of the four migrated panes never drew a state — a
+pass that certifies the panes it did not measure. It names the states each pane must have drawn and
+fails when one is missing, which is the denominator rule applied to a *set* rather than a count.
+Fault 4 now fails the sweep loudly with the instruction (restart the app) rather than being left to
+be rediscovered.
+
+### Real function, after the migration
+
+`scripts/state-real-function.mjs`, on the live phone: Files **2 entries**, Photos **152 albums**,
+Apps **128 tiles**, Activity **9 rows**, and **no state card drawn on any of them** — the panes work
+and say nothing about themselves, which is the state the component is supposed to leave them in.
+
+### Captures — `docs/evidence/sidekick-batch7/`
+
+Before, from the previous batch, kept for comparison: `BEFORE-files-couldnt-open-1440x920.png` and
+`BEFORE-photos-permission-1440x920.png` are the two images where **two incompatible treatments
+appear together** — a red left-aligned `files-state-card` beside a centred `state-block`, and an
+amber `photos-banner` above one.
+
+After: the same states, dark and light at 1440 × 920 and dark at 1100 × 700, plus Activity's full
+block in both themes. All SYNTHETIC — the status island reads `Connected` in every one, because
+only the pane was driven.
+
+**909 tests** (from 905), typecheck clean, `probe.test.mjs` 24/24, twelve guards green, contrast
+AA in both themes, shell sweep **841 of 841** focus rings with 0 blurred and 0 transitioning under
+the reduced modes.
+

@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch7/files-couldnt-open-light-SYNTHETIC-1440x920.png",
+  "screen": "files",
+  "takenAt": "2026-09-20T18:32:39.547Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 900,
+  "ready": null,
+  "prep": "document.documentElement.dataset.theme='light'; (async () => { window.__r ??= files.bridge.fsRoots; files.bridge.fsRoots = async () => ({ ok:false, reason:\"The phone could not open that folder.\", code:\"TARGET_STALE\" }); await files.refresh(); })()",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

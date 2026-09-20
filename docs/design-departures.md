@@ -1343,46 +1343,58 @@ the browser: **816 of 816** visible, enabled controls across twelve routes, agai
 **0 of 816** outlined at rest. A rule in a stylesheet is not a ring on a control, and until this
 sweep nothing in the repo had ever checked the second thing.
 
-## Sidekick Batch 6d — the state vocabulary, counted — 2026-09-20. Row D67
+## Sidekick Batch 6d / 7 — the state vocabulary, counted then unified — D67 · **approved and built 2026-09-21**
+
+**The decision is made.** There are **two** state layouts and there may not be a third:
+
+| Layout | Where | Shape |
+|---|---|---|
+| **Full State Block** | whole-pane empty, unavailable, loading, permission, disconnected-without-last-known, whole-pane operation errors | centred in the pane region, one icon badge, one title, one explanation, **at most one** action |
+| **Compact State Block** | narrow card columns, Files/Photos panels, inline partial notices, transfer failures, notices inside an otherwise working pane | left-aligned, smaller, **the same component** — same icons, same type hierarchy, same tone map, same one-action limit |
+
+**Tone map**, and it is the component's rule rather than a caller's choice:
+
+| Tone | Kinds |
+|---|---|
+| Neutral | `empty`, `loading`, `unavailable` |
+| Amber | `permission`, `blocked`, `partial`, `wall` |
+| Red | `error` — an actual operation failure |
+| **Lime** | **never**, for any state |
+
+### What was measured before it was changed
+
+Seven vocabularies were live. Counted in `styles.css`, not recalled:
+
+| Vocabulary | Rules | Migrated to |
+|---|---|---|
+| `files-state*` | **16** | Compact (`empty`, `error`, `loading`, `permission`) |
+| `apps-banner*` | 6 | Compact (`permission`, `partial`) |
+| `photos-banner*` | 5 | Compact (`permission`, `partial`) |
+| `activity-state*` | 4 | **Full** (`error`, `empty`, `loading`) |
+| `files-banner*` | 2 | Compact (`partial`) |
+| ~~`call-state`~~ | 1 | **Not a state card.** It is a call row's status *text* (`Ringing · WhatsApp`). D67's count matched a name pattern rather than a thing, and the correction belongs here rather than in a quiet edit: the scope was **five**, not six |
+
+**32 rules and 120 lines of CSS deleted**, plus a second hand-built copy of the Files card that
+`renderTable` drew for a directory that would not open — two copies of one vocabulary inside one
+pane, which is how six accumulated across the app.
 
 | Row | Figma / handoff | Built | Why |
 |---|---|---|---|
-| **D67** | Component 11 (`28:1226`) is **the** state component | **Seven vocabularies are live**: the shared `state-block`, and six pane-private ones | Recorded rather than converted, because the choice between them is a design decision this pass may not make — see below |
+| **D67** | Component 11 (`28:1226`) is **the** state component | Two approved layouts, five vocabularies deleted | The design is unified **and the exact Figma pixel comparison remains pending** — the MCP is disconnected, so none of this is Figma-exact and no row claims it is |
+| **D68** | Component 11 draws six kinds | **Eight.** `partial` joins `blocked` (D61) | *The feature works, and not all of it* is not one of the six wearing another name. It takes amber from the approved map, because a feature arriving in halves is a limitation and not a failure |
+| **D69** | Files' M2/M4 differ in four ways (`phase-5-files-onboarding-proposal.md` §3) | Still four, **by construction** | `tone` and `icon` are gone from `FilesPaneView`; one `kind` decides the tone, the glyph, the headline's verb and whether an action exists. A pane can no longer restyle a state into agreeing with another one |
+| **D70** | Activity's A2 was amber | **Red** | The approved map puts an actual operation failure in red, and *the log could not be read* is an operation that ran and failed. What amber was carrying — that nothing is lost on the phone — is in the body, in words, where it does not depend on anybody reading a hue |
 
-**The measurement, from `styles.css` rather than from memory:**
+### What enforces it
 
-| Vocabulary | Rules | Where |
-|---|---|---|
-| `state-block` (component 11) | shared | Messages, Notifications, Calls, Files, Photos, pairing |
-| `files-state*` | **16** | Files' pane-level M1–M5 card |
-| `apps-banner*` | 6 | Apps |
-| `photos-banner*` | 5 | Photos' top banner |
-| `activity-state*` | 4 | Activity |
-| `files-banner*` | 2 | Files |
-| `call-state` | 1 | Calls |
-
-**They do not merely differ, they are unrelated**, measured as computed style on the same fact —
-an error:
-
-| | component 11 `error` | Files' own M4 card |
-|---|---|---|
-| ground | transparent | `rgba(255, 92, 92, 0.14)` |
-| border | `#F2F3F5` | `rgba(255, 92, 92, 0.34)` |
-| radius | `0px` | `14px` |
-| padding | `24px` | `14px` |
-| alignment | centre | start |
-| headline | 600 15px, `#F2F3F5` | 500 13px, `#FF5C5C` |
-
-**And two panes draw both at once, which is what makes this visible rather than theoretical.** In
-`files-couldnt-open-SYNTHETIC-1440x920.png` the left column carries the red left-aligned M4 card
-and the right column carries a centred `state-block` — one pane, one screenshot, two languages for
-*"there is nothing here"*. `photos-permission-SYNTHETIC-1440x920.png` is the same picture with an
-amber bar.
-
-**Why it is recorded and not converted in this batch.** Component 11's default sits *centred in a
-pane-sized region*; these six all live in a narrow column or a full-width bar. `stateBlock` has a
-`compact` variant for exactly that, and **`compact` has no Figma frame** — so picking it, and
-picking which of the two treatments wins in a column, is inventing design rather than matching it.
-That is the designer's hour, and it is now the single largest coherence item left: **six
-vocabularies, 34 CSS rules, four panes.**
+- `stateBlock.test.ts` — every kind draws `state-block` or `state-block compact` and **nothing
+  else**; the tone map is asserted as a total function over the kinds, so a kind added later cannot
+  default to neutral and land a failure in grey; compact keeps every restriction full has. Four
+  mutations go red: a third presentation mode, `partial` falling back to neutral, a `wall` given an
+  action, lime on a failure.
+- `scripts/state-system-verify.mjs` — the same rules over **what the running app draws**: 93 blocks
+  across twelve routes × two themes × two sizes, scoped to the visible pane. Thirteen readings,
+  including that every action is a real tabbable `<button>` (so Enter and Space work), that none is
+  clipped, that nothing overflows, and a **coverage** check naming the states each migrated pane
+  must have drawn — which caught two panes that had silently drawn nothing.
 

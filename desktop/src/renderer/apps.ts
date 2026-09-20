@@ -264,16 +264,28 @@ class AppsView {
     this.renderToast();
   }
 
+  /**
+   * The two states this pane can be in, as **compact** state blocks (D67).
+   *
+   * It was `apps-banner` — six rules, its own headline/detail/fix typography, the same six facts
+   * component 11 already draws. The comment that used to sit on the second branch is now the
+   * component's rule rather than this pane's: `partial` is amber and never destructive, because a
+   * feature arriving with one switch off is not a failure and red in a connection product reads as
+   * *the link is down*.
+   */
   private renderBanner(): void {
-    this.banner.textContent = '';
+    this.banner.replaceChildren();
     if (this.failure) {
       this.banner.hidden = false;
-      this.banner.className = 'apps-banner unavailable';
-      this.banner.appendChild(appsLine('apps-banner-headline', 'The phone is not sharing its apps'));
-      this.banner.appendChild(appsLine('apps-banner-detail', this.failure.reason));
-      if (this.failure.fixHint) {
-        this.banner.appendChild(appsLine('apps-banner-fix', this.failure.fixHint));
-      }
+      this.banner.appendChild(
+        stateBlock({
+          kind: 'permission',
+          headline: 'The phone is not sharing its apps',
+          // The phone's own sentences, verbatim and unjoined.
+          body: [this.failure.reason, ...(this.failure.fixHint ? [this.failure.fixHint] : [])],
+          compact: true,
+        }),
+      );
       return;
     }
     const notice = appsNotice(this.advertised, this.unavailableReason);
@@ -282,11 +294,9 @@ class AppsView {
       return;
     }
     this.banner.hidden = false;
-    // --warning, never --destructive: a feature arriving with one switch off is not a failure, and
-    // red in a connection product reads as "the link is down".
-    this.banner.className = 'apps-banner partial';
-    this.banner.appendChild(appsLine('apps-banner-headline', notice.headline));
-    this.banner.appendChild(appsLine('apps-banner-detail', notice.detail));
+    this.banner.appendChild(
+      stateBlock({ kind: 'partial', headline: notice.headline, body: notice.detail, compact: true }),
+    );
   }
 
   private renderNote(): void {

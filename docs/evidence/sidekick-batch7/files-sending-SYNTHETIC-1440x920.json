@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch7/files-sending-SYNTHETIC-1440x920.png",
+  "screen": "files",
+  "takenAt": "2026-09-20T18:22:32.350Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 700,
+  "ready": null,
+  "prep": "(async () => {\n       window.__realPush = files.bridge.fsPush;\n       window.__releasePush = null;\n       files.bridge.fsPush = () => new Promise((resolve) => { window.__releasePush = resolve; });\n       void files.sendFiles([{ name: 'holiday-clip.mp4', path: '/tmp/holiday-clip.mp4' }]);\n     })()",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

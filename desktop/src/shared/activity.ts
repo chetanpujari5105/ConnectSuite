@@ -134,8 +134,15 @@ interface ActivityPaneView {
   showsTable: boolean;
   headline: string;
   body: string[];
-  tone: 'neutral' | 'warning';
-  icon: 'activity' | 'alert' | 'spinner';
+  /**
+   * Which of component 11's kinds this state is — the only thing that decides how it draws.
+   *
+   * It replaces the `tone` and `icon` this interface carried beside an `activity-state` card that
+   * no longer exists (D67). A2 moves from amber to **red**: the approved tone map puts an actual
+   * operation failure in red, and *the log could not be read* is an operation that ran and failed.
+   * Its body still says nothing has been lost on the phone, which is the part amber was carrying.
+   */
+  kind: 'loading' | 'error' | 'empty';
   /** Only the failed state offers one. One of the four A3/A4 differences. */
   retry: boolean;
 }
@@ -160,8 +167,7 @@ function activityPaneView(
       showsTable: false,
       headline: 'Reading the activity log',
       body: [],
-      tone: 'neutral',
-      icon: 'spinner',
+      kind: 'loading',
       retry: false,
     };
   }
@@ -174,8 +180,7 @@ function activityPaneView(
         fetch.reason,
         'Nothing has been lost on the phone — this is the Mac’s own record of what it did.',
       ],
-      tone: 'warning',
-      icon: 'alert',
+      kind: 'error',
       retry: true,
     };
   }
@@ -188,8 +193,7 @@ function activityPaneView(
         'This Mac records what it does with your phone — connections, mirroring sessions, ' +
           'transfers, messages and clipboard entries — and it has not done any of them yet.',
       ],
-      tone: 'neutral',
-      icon: 'activity',
+      kind: 'empty',
       retry: false,
     };
   }
@@ -203,8 +207,7 @@ function activityPaneView(
         `There are ${fetch.events.length} recorded events, and none of them are ${label} ones. ` +
           'Choose All to see the rest.',
       ],
-      tone: 'neutral',
-      icon: 'activity',
+      kind: 'empty',
       retry: false,
     };
   }
@@ -213,8 +216,7 @@ function activityPaneView(
     showsTable: true,
     headline: '',
     body: [],
-    tone: 'neutral',
-    icon: 'activity',
+    kind: 'empty',
     retry: false,
   };
 }

@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch7/files-no-folders-SYNTHETIC-1440x920.png",
+  "screen": "files",
+  "takenAt": "2026-09-20T18:22:33.956Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 700,
+  "ready": null,
+  "prep": "(async () => {\n       window.__realRoots = files.bridge.fsRoots;\n       files.bridge.fsRoots = async () => ({ ok: true, data: { roots: [] } });\n       await files.refresh();\n     })()",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

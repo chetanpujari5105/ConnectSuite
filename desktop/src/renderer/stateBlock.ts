@@ -15,6 +15,7 @@
  * | `error` | what happened, what was *not* changed, the machine code in mono | retry |
  * | `wall` | the platform forbids it | **never** — there is nothing to retry |
  * | `blocked` | a precondition **this end** owes is missing, and the user can supply it | one |
+ * | `partial` | the feature works, and not all of it — what is missing and why | optional |
  *
  * `blocked` is the seventh and was added for pairing's *No network* (`34:12152`). It is not one of
  * the six wearing a different name: `permission` is the *phone's* refusal, `wall` is the
@@ -34,7 +35,15 @@
  * Plain script, like `icons.ts`: no `export`, the builders hung on `globalThis` at the foot.
  */
 
-type StateKind = 'empty' | 'unavailable' | 'loading' | 'permission' | 'error' | 'wall' | 'blocked';
+type StateKind =
+  | 'empty'
+  | 'unavailable'
+  | 'loading'
+  | 'permission'
+  | 'error'
+  | 'wall'
+  | 'blocked'
+  | 'partial';
 
 interface StateAction {
   label: string;
@@ -45,7 +54,15 @@ interface StateAction {
 interface StateBlockSpec {
   kind: StateKind;
   headline: string;
-  body?: string;
+  /**
+   * One paragraph, or several.
+   *
+   * An array because the panes migrated onto this component carry a *reason* and a *fix hint* as
+   * two separate sentences — the phone's own words and what to do about them — and joining them
+   * into one string is a paraphrase of somebody else's sentence. Every element becomes its own
+   * `.state-body`, so the typography is the component's in either case.
+   */
+  body?: string | string[];
   /** A mono line: the wire namespace for `unavailable`, the machine code for `error`. */
   code?: string;
   /** Overrides the kind's default glyph — an `empty` block may carry its pane's own icon. */
@@ -66,6 +83,7 @@ const STATE_ICONS: Record<StateKind, string> = {
   error: 'x-circle',
   wall: 'alert',
   blocked: 'link-minus',
+  partial: 'info',
 };
 
 /** Which kinds may carry an action at all. `wall` is the one that may not, ever. */
@@ -76,7 +94,9 @@ function stateAllowsAction(kind: StateKind): boolean {
 /** The tone a kind draws in. Pure, so the test asserts the rule rather than a class name. */
 function stateTone(kind: StateKind): 'neutral' | 'warning' | 'danger' {
   if (kind === 'error') return 'danger';
-  if (kind === 'permission' || kind === 'wall' || kind === 'blocked') return 'warning';
+  if (kind === 'permission' || kind === 'wall' || kind === 'blocked' || kind === 'partial') {
+    return 'warning';
+  }
   return 'neutral';
 }
 
@@ -99,10 +119,13 @@ function stateBlock(spec: StateBlockSpec): HTMLElement {
   headline.textContent = spec.headline;
   block.appendChild(headline);
 
-  if (spec.body) {
+  const paragraphs = (Array.isArray(spec.body) ? spec.body : [spec.body]).filter(
+    (line): line is string => typeof line === 'string' && line.trim().length > 0,
+  );
+  for (const line of paragraphs) {
     const body = document.createElement('p');
     body.className = 'state-body';
-    body.textContent = spec.body;
+    body.textContent = line;
     block.appendChild(body);
   }
   if (spec.code) {

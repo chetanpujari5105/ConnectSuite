@@ -21,7 +21,7 @@
 import { openProbe, format } from './probe.mjs';
 import { execFileSync } from 'node:child_process';
 
-const OUT = 'docs/evidence/sidekick-batch6';
+const OUT = process.env.STATE_OUT || 'docs/evidence/sidekick-batch6';
 const probe = await openProbe({ port: 9222 });
 let failures = 0;
 
@@ -67,6 +67,14 @@ async function restoreLive() {
     await new Promise((r) => setTimeout(r, 50));
     files.pushing = null;
     files.lastPush = null;
+    /*
+     * And tell the status island, which is a *second* surface holding this fact.
+     *
+     * Clearing the field alone left the island reading "Sending holiday-clip.mp4" after the run —
+     * the app claiming a transfer that had never happened, in the one place designed to say what
+     * is happening now. Visible in the first capture taken after the migration.
+     */
+    files.reportWork();
     photos.setAdvertised(true);
     await photos.refresh();
     await files.refresh();
@@ -109,7 +117,7 @@ try {
      * nothing to do with the feature.
      */
     'photos.setAdvertised(true); photos.setAdvertised(false);',
-    "document.querySelectorAll('.photos-banner.partial').length === 1",
+    `document.querySelectorAll('#photos-banner .state-block[data-kind="partial"]').length === 1`,
   );
 
   console.log('\n-- Photos: permission refused — 31:3956 --');
@@ -123,7 +131,7 @@ try {
          fixHint: 'Open Sidekick on the phone and allow access to photos and videos.' });
        await photos.refresh();
      })()`,
-    "document.querySelectorAll('.photos-banner.unavailable').length === 1",
+    `document.querySelectorAll('#photos-banner .state-block[data-kind="permission"]').length === 1`,
   );
 
   console.log('\n-- Files: sending a file — 31:3175 --');
@@ -157,7 +165,7 @@ try {
        files.bridge.fsRoots = async () => ({ ok: true, data: { roots: [] } });
        await files.refresh();
      })()`,
-    `document.querySelectorAll('section[data-screen="files"] .files-state-card').length === 1`,
+    `document.querySelectorAll('section[data-screen="files"] #files-state .state-block').length === 1`,
   );
 
   console.log('\n-- Files: could not open a folder — 31:2985 --');
@@ -170,8 +178,7 @@ try {
          code: 'TARGET_STALE' });
        await files.refresh();
      })()`,
-    `document.querySelectorAll('section[data-screen="files"] .files-state--destructive').length === 1
-       && document.querySelectorAll('section[data-screen="files"] .files-state-code').length === 1`,
+    `document.querySelectorAll('section[data-screen="files"] .state-block[data-tone="danger"]').length === 1 && document.querySelectorAll('section[data-screen="files"] .state-code').length === 1`,
   );
 } finally {
   // Always, including on a failed shot — see `restoreLive`.

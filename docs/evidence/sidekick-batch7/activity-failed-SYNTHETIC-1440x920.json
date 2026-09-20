@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch7/activity-failed-SYNTHETIC-1440x920.png",
+  "screen": "activity",
+  "takenAt": "2026-09-20T18:32:57.916Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 900,
+  "ready": null,
+  "prep": "document.documentElement.dataset.theme='dark'; (async () => { window.__ae ??= activity.bridge.activityEvents; activity.bridge.activityEvents = async () => ({ ok:false, reason:\"the log could not be read\" }); activity.fetch = { kind:\"idle\" }; await activity.refresh(); })()",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

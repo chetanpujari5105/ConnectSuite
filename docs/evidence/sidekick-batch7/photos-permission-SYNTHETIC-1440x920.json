@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch7/photos-permission-SYNTHETIC-1440x920.png",
+  "screen": "photos",
+  "takenAt": "2026-09-20T18:22:30.742Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 700,
+  "ready": null,
+  "prep": "(async () => {\n       window.__realBuckets = photos.bridge.mediaBuckets;\n       photos.bridge.mediaBuckets = async () => ({ ok: false,\n         reason: 'Sidekick does not have permission to read photos on this phone.',\n         fixHint: 'Open Sidekick on the phone and allow access to photos and videos.' });\n       await photos.refresh();\n     })()",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}

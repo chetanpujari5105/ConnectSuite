@@ -164,6 +164,20 @@ export class FakeElement {
 
   setAttribute(name: string, value: string): void {
     this.attributes.set(name, value);
+    /*
+     * `data-*` reaches `dataset`, because in the DOM they are one store seen two ways.
+     *
+     * The second time this double has held one thing in two places — `title` was the first — and
+     * the failure is identical: a view that writes `setAttribute('data-state', …)` and a test that
+     * reads `dataset.state` disagree here and agree in every browser. Both directions are covered:
+     * `dataset` is a live proxy below.
+     */
+    if (name.startsWith('data-')) {
+      const key = name
+        .slice(5)
+        .replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+      Reflect.set(this.dataset, key, value);
+    }
     // `class` and `className` are the same thing in a browser, and an SVG element can only be
     // classed the first way — `className` on an SVGElement is a read-only SVGAnimatedString. A
     // double that kept them apart would make `queryAll('.foo')` silently miss every SVG node, which

@@ -1,0 +1,28 @@
+
+=== D67: 93 state blocks drawn, across 12 routes x 2 themes x 2 sizes ===
+
+  kinds seen: empty, error, partial, permission
+  files          error (compact), empty (full)
+  photos         permission (compact), empty (full), partial (compact)
+  messages       empty (compact)
+  notifications  empty (full)
+  calls          empty (full)
+  apps           permission (compact), partial (compact)
+  activity       error (full), empty (full)
+
+  OK   control: state blocks were actually drawn — 93
+  OK   exactly two layouts, nothing else
+  OK   every drawn block matches the approved tone map
+  OK   no lime on any state
+  OK   at most one action
+  OK   a wall has no action
+  OK   every action is a real, tabbable <button> — so Enter and Space work
+  OK   and typed, so it cannot submit a form it happens to sit in
+  OK   no action is clipped by its block
+  OK   no block overflows or runs off the window
+  OK   one badge and one headline each
+  OK   control: both themes were measured — dark, light
+  OK   every migrated pane drew the states it was migrated for — 4 panes
+
+ALL READINGS OK
+

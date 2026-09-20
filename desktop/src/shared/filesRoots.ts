@@ -74,8 +74,17 @@ interface FilesPaneView {
   headline: string;
   /** Paragraphs, in order. Rendered as text — never as HTML. */
   body: string[];
-  tone: 'neutral' | 'warning' | 'destructive';
-  icon: 'folder' | 'alert' | 'lock' | 'spinner';
+  /**
+   * Which of component 11's kinds this state is, and the **only** thing that decides how it draws.
+   *
+   * It replaces the `tone` and `icon` this interface used to carry. Those were written out per
+   * branch beside a `files-state-card` that no longer exists: the pane drew its own surface, its
+   * own glyph characters (`▤ ! ⌁ ◌`) and its own colour ramp, which is one of the six private
+   * vocabularies D67 counted. The kind is what `stateBlock` takes, and the tone, the glyph and
+   * whether an action is allowed are all its rules now — so a pane cannot disagree with the
+   * component about what `error` looks like.
+   */
+  kind: 'loading' | 'empty' | 'error' | 'permission';
   /** Only the failed state offers one. This is one of the four M2/M4 differences. */
   retry: boolean;
   /** The phone's error code, shown in mono beneath the sentence. Diagnosable beats tidy. */
@@ -177,8 +186,7 @@ function filesPaneView(fetch: FilesFetch, pushAvailable: boolean): FilesPaneView
         id: 'M1',
         headline: 'Reading the phone’s folders…',
         body: [],
-        tone: 'neutral',
-        icon: 'spinner',
+        kind: 'loading',
         retry: false,
         code: null,
         degraded,
@@ -191,8 +199,7 @@ function filesPaneView(fetch: FilesFetch, pushAvailable: boolean): FilesPaneView
         // grant is missing and this side does not.
         headline: 'This phone isn’t offering Files right now',
         body: [fetch.reason, ...(fetch.fixHint ? [fetch.fixHint] : [])],
-        tone: 'warning',
-        icon: 'lock',
+        kind: 'permission',
         retry: false,
         code: null,
         degraded,
@@ -204,8 +211,7 @@ function filesPaneView(fetch: FilesFetch, pushAvailable: boolean): FilesPaneView
         // States what *happened*. M2 states what *is*. That difference is deliberate and tested.
         headline: 'Couldn’t read the phone’s folders',
         body: [fetch.reason, ...(fetch.fixHint ? [fetch.fixHint] : [])],
-        tone: 'destructive',
-        icon: 'alert',
+        kind: 'error',
         retry: true,
         code: fetch.code,
         degraded,
@@ -236,8 +242,7 @@ function filesPaneView(fetch: FilesFetch, pushAvailable: boolean): FilesPaneView
               ADDED_ON_THE_PHONE,
               DOWNLOAD_WALL,
             ],
-        tone: 'neutral',
-        icon: 'folder',
+        kind: 'empty',
         retry: false,
         code: null,
         degraded,

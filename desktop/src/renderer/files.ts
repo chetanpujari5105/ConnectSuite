@@ -626,14 +626,27 @@ class FilesView {
   private render(): void {
     const view = filesPaneView(this.fetch, this.pushAvailable);
 
-    // M6 — advertised, and one direction degraded. A banner over a working pane, never red.
+    /*
+     * M6 — advertised, and one direction degraded. A **compact** state block over a working pane
+     * (D67), `partial` rather than `error`: half a feature is not a failure, and the tone map puts
+     * a partial result in amber. It was `files-banner`, two rules of its own.
+     *
+     * Driven by one fact, so the block and the drop tile cannot disagree: this phone is not
+     * offering the receive direction, so there is nothing to drop onto and the block says why.
+     */
+    this.banner.replaceChildren();
     this.banner.hidden = !(view.degraded && this.fetch.kind === 'ready');
     if (!this.banner.hidden) {
-      // Driven by one fact, so the banner and the drop tile cannot disagree: this phone is not
-      // offering the receive direction, so there is nothing to drop onto and the banner says why.
-      this.banner.textContent =
-        'Copying to the Mac works. Sending files to this phone does not — it is not offering that ' +
-        'direction, so there is nothing here to drop files onto.';
+      this.banner.appendChild(
+        stateBlock({
+          kind: 'partial',
+          headline: 'This phone does not accept files',
+          body:
+            'Copying to the Mac works. Sending files to this phone does not — it is not offering ' +
+            'that direction, so there is nothing here to drop files onto.',
+          compact: true,
+        }),
+      );
     }
 
     // Drawn once, in whichever place is actually visible. The wall is standing copy on both sides
@@ -719,54 +732,42 @@ class FilesView {
 
   }
 
+  /**
+   * The pane-level state, as a **compact** state block (D67's approved two-layout system).
+   *
+   * It used to be `files-state-card` — sixteen CSS rules, four glyph characters and its own colour
+   * ramp, one of six private vocabularies drawing the same six facts as component 11. Two of them
+   * appeared **in one screenshot**: this card, red and left-aligned in the rail column, beside the
+   * detail column's centred `state-block` saying *Nothing selected*.
+   *
+   * Compact rather than full, because this lives in a narrow column: the full layout is centred in
+   * a pane-sized region and would leave the rail's width mostly empty.
+   *
+   * **M2 and M4 still differ in four independent ways** — the rule
+   * `docs/phase-5-files-onboarding-proposal.md` §3 insists on — and they now differ *by
+   * construction* rather than by four fields written out per branch: `empty` and `error` carry
+   * different tones, different glyphs, different headlines, and only one of them is allowed an
+   * action. `filesView.test.ts` asserts all four on the rendered block.
+   */
   private renderState(view: FilesPaneView, stateCard: boolean): void {
     this.stateEl.replaceChildren();
-    // The rule that keeps M2 and M4 apart is expressed once, in `filesPaneView`. This only draws it.
     this.stateEl.hidden = !stateCard;
     if (!stateCard) return;
 
-    const card = document.createElement('div');
-    card.className = `files-state-card files-state--${view.tone}`;
-    card.dataset.state = view.id;
-
-    const head = document.createElement('div');
-    head.className = 'files-state-head';
-    const glyph = document.createElement('span');
-    glyph.className = `files-state-glyph files-state-glyph--${view.icon}`;
-    glyph.setAttribute('aria-hidden', 'true');
-    glyph.textContent = GLYPH[view.icon];
-    const headline = document.createElement('h3');
-    headline.className = 'files-state-headline';
-    headline.textContent = view.headline;
-    head.append(glyph, headline);
-    card.append(head);
-
-    for (const paragraph of view.body) {
-      const p = document.createElement('p');
-      p.className = 'files-state-body';
-      p.textContent = paragraph;
-      card.append(p);
-    }
-
-    if (view.code) {
-      const code = document.createElement('code');
-      code.className = 'files-state-code';
-      // Diagnosable beats tidy: a generic "something went wrong" is the same information as a
-      // blank pane.
-      code.textContent = view.code;
-      card.append(code);
-    }
-
-    if (view.retry) {
-      const retry = document.createElement('button');
-      retry.type = 'button';
-      retry.className = 'files-retry';
-      retry.textContent = 'Try again';
-      retry.addEventListener('click', () => void this.refresh());
-      card.append(retry);
-    }
-
-    this.stateEl.append(card);
+    const block = stateBlock({
+        kind: view.kind,
+        headline: view.headline,
+        body: view.body,
+        code: view.code ?? undefined,
+        // `empty` keeps the pane's own glyph; every other kind takes the component's.
+        icon: view.kind === 'empty' ? 'files' : undefined,
+        compact: true,
+        action: view.retry ? { label: 'Try again', run: () => void this.refresh() } : undefined,
+    });
+    // The state's identity stays readable from the DOM — `filesView.test.ts` and the probes both
+    // name states by M-id, and the component has no opinion about a caller's own labels.
+    block.dataset.state = view.id;
+    this.stateEl.appendChild(block);
   }
 
   /** Where a dropped file would land, in the same words the breadcrumb uses. */
@@ -808,30 +809,25 @@ class FilesView {
       return;
     }
     if (this.listFailure) {
-      // A directory that would not load is its own failure, distinct from the roots failing, and it
-      // gets the same treatment rather than an empty table that looks like an empty folder.
-      const card = document.createElement('div');
-      card.className = 'files-state-card files-state--destructive';
+      /*
+       * A directory that would not load is its own failure, distinct from the roots failing, and
+       * it gets the same treatment rather than an empty table that looks like an empty folder.
+       *
+       * **The second `files-state-card` in this file, and the one that makes the case for D67.**
+       * It was a hand-built copy of the card twenty lines above it: same classes, same structure,
+       * a second `Try again`. Two copies of one vocabulary inside one pane is how six of them
+       * accumulated across the app. It is `stateBlock` now, like its sibling, so the next change
+       * to what a failure looks like reaches both without anyone remembering this one exists.
+       */
+      const card = stateBlock({
+        kind: 'error',
+        headline: 'Couldn’t open this folder',
+        body: this.listFailure.reason,
+        code: this.listFailure.code ?? undefined,
+        compact: true,
+        action: { label: 'Try again', run: () => void this.openPath(this.path) },
+      });
       card.dataset.state = 'M4';
-      const headline = document.createElement('h3');
-      headline.className = 'files-state-headline';
-      headline.textContent = 'Couldn’t open this folder';
-      const body = document.createElement('p');
-      body.className = 'files-state-body';
-      body.textContent = this.listFailure.reason;
-      card.append(headline, body);
-      if (this.listFailure.code) {
-        const code = document.createElement('code');
-        code.className = 'files-state-code';
-        code.textContent = this.listFailure.code;
-        card.append(code);
-      }
-      const retry = document.createElement('button');
-      retry.type = 'button';
-      retry.className = 'files-retry';
-      retry.textContent = 'Try again';
-      retry.addEventListener('click', () => void this.openPath(this.path));
-      card.append(retry);
       this.table.append(card);
       this.footer.textContent = '';
       return;
@@ -1094,13 +1090,6 @@ class FilesView {
     }
   }
 }
-
-const GLYPH: Record<FilesPaneView['icon'], string> = {
-  folder: '▤',
-  alert: '!',
-  lock: '⌁',
-  spinner: '◌',
-};
 
 function fileBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

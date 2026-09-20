@@ -131,7 +131,7 @@ function wallHomes(pane: Pane): { railLine: boolean; stateCard: boolean } {
   const stateCard =
     !pane.state.hidden &&
     pane.state
-      .queryAll('.files-state-body')
+      .queryAll('.state-body')
       .some((p) => p.textContent.toLowerCase().includes('download'));
   return { railLine, stateCard };
 }
@@ -267,7 +267,7 @@ test('the state card is drawn in the almost-empty states and not over a populate
     await empty.view.refresh();
     assert.equal(empty.state.hidden, false, 'a phone with nothing shared must still get a card');
     assert.ok(
-      empty.state.queryAll('.files-state-headline').length === 1,
+      empty.state.queryAll('.state-headline').length === 1,
       'exactly one headline',
     );
   } finally {
@@ -298,18 +298,25 @@ test('empty and failed are visibly different — four ways, in the drawn tree', 
     failed.bridge.rootsResult = { ok: false, reason: 'the phone did not answer', code: 'TIMEOUT' };
     await failed.view.refresh();
 
-    const card = (pane: Pane) => pane.state.queryAll('.files-state-card')[0]!;
+    const card = (pane: Pane) => pane.state.queryAll('.state-block')[0]!;
     assert.notEqual(card(empty).dataset.state, card(failed).dataset.state, 'different state ids');
-    assert.notEqual(card(empty).className, card(failed).className, 'different tone class');
+    /*
+     * The tone is `data-tone` now, written by the component from the kind, rather than a class the
+     * caller chose. That is a stronger assertion than the class string it replaces: a pane cannot
+     * set it to anything, so `empty` and `error` cannot be made to agree by a caller's mistake.
+     */
+    assert.notEqual(card(empty).dataset.tone, card(failed).dataset.tone, 'different tone');
+    assert.equal(card(empty).dataset.kind, 'empty');
+    assert.equal(card(failed).dataset.kind, 'error');
     assert.notEqual(
-      empty.state.queryAll('.files-state-headline')[0]!.textContent,
-      failed.state.queryAll('.files-state-headline')[0]!.textContent,
+      empty.state.queryAll('.state-headline')[0]!.textContent,
+      failed.state.queryAll('.state-headline')[0]!.textContent,
       'different headline',
     );
-    assert.equal(empty.state.queryAll('.files-retry').length, 0, 'no retry on an empty pane');
-    assert.equal(failed.state.queryAll('.files-retry').length, 1, 'a retry on a failed one');
+    assert.equal(empty.state.queryAll('.state-action').length, 0, 'no retry on an empty pane');
+    assert.equal(failed.state.queryAll('.state-action').length, 1, 'a retry on a failed one');
     assert.ok(
-      failed.state.queryAll('.files-state-code')[0]!.textContent.includes('TIMEOUT'),
+      failed.state.queryAll('.state-code')[0]!.textContent.includes('TIMEOUT'),
       'the phone’s code reaches the user — diagnosable beats tidy',
     );
   } finally {

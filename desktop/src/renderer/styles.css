@@ -3116,32 +3116,10 @@ img#qr {
    `.unavailable` is the genuinely-off state and replaces the grid rather than sitting above it.
 ------------------------------------------------------------------------------------------------ */
 
-.photos-banner {
-  border-radius: var(--radius-tile);
-  padding: var(--space-5) var(--space-6);
-  margin-bottom: var(--space-6);
-  border: 1px solid var(--warning-border);
-  background: var(--warning-fill);
-}
 
-.photos-banner[hidden] { display: none; }
 
-.photos-banner-headline {
-  font: var(--text-control);
-  color: var(--warning);
-  margin-bottom: var(--space-2);
-}
 
-.photos-banner-detail {
-  font: var(--text-body-size);
-  color: var(--text-body);
-}
 
-.photos-banner-fix {
-  font: var(--text-body-size);
-  color: var(--text-meta);
-  margin-top: var(--space-2);
-}
 
 /* The preview is a **thumbnail**, so it must never be upscaled.
    `width: 100%` stretched a 180 x 367 portrait thumbnail to 320 x 652 — two and a half times its
@@ -3270,11 +3248,11 @@ img#qr {
    `Alarms`, `Android`, `Downloads`, `Music` beneath it, and none of those can exist under SAF. The
    rail lists the roots `fs.list` returns and nothing else. See `docs/design-departures.md`.
 
-   The state card below is the one part of this pane that is load-bearing rather than decorative.
-   `.files-state--neutral` and `.files-state--destructive` are the empty and failed states, and they
-   differ here in **colour and glyph**; the other two of the four differences — the headline's verb
-   and the presence of a retry — live in `filesRoots.ts` where a test can see them. A stylesheet can
-   guard two of the four and no more, which is why the rule does not live here.
+   The pane's state card is **not styled here any more** (D67). It is component 11's compact state
+   block, and all four of the differences that keep *empty* and *failed* apart — tone, glyph,
+   headline verb and whether an action exists — are the component's, derived from one `kind` in
+   `filesRoots.ts`. This stylesheet used to guard two of the four; now it guards none, which is
+   correct: a pane that can restyle a state is a pane that can disagree with the component.
 ================================================================================================ */
 
 /* Files is the first pane that scrolls *inside itself* rather than letting `.page` scroll, and the
@@ -3497,86 +3475,25 @@ img#qr {
 
 /* ---- The state card: empty and failed, kept apart -------------------------------------------- */
 
-.files-state[hidden] { display: none; }
 
-.files-state-card {
-  border-radius: var(--radius-tile);
-  border: 1px solid var(--hairline);
-  padding: var(--space-6);
-  margin-bottom: var(--space-5);
-}
 
-.files-state--neutral { background: var(--elev-2); border-color: var(--hairline); }
 
-.files-state--warning { background: var(--warning-fill); border-color: var(--warning-border); }
 
-.files-state--destructive {
-  background: var(--destructive-fill);
-  border-color: var(--destructive-border);
-}
 
-.files-state-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
 
-.files-state-glyph {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-pill);
-  border: 1px solid currentColor;
-  font: var(--text-meta-size);
-}
 
-.files-state-glyph--folder { color: var(--text-meta); }
-.files-state-glyph--spinner { color: var(--text-meta); }
-.files-state-glyph--lock { color: var(--warning); }
-.files-state-glyph--alert { color: var(--destructive); }
 
-.files-state-headline { margin: 0; font: var(--text-control); color: var(--text-primary); }
 
-.files-state--destructive .files-state-headline { color: var(--destructive); }
-.files-state--warning .files-state-headline { color: var(--warning); }
 
-.files-state-body {
-  margin: 0 0 var(--space-3);
-  font: var(--text-body-size);
-  color: var(--text-body);
-}
 
 /* The phone's own code, in mono. Diagnosable beats tidy: a generic "something went wrong" carries
    the same information as a blank pane. */
-.files-state-code {
-  display: inline-block;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-meta);
-}
 
-.files-retry {
-  display: block;
-  margin-top: var(--space-4);
-}
 
 /* M6 — advertised, and one direction degraded. A banner over a working pane, `--warning` and never
    `--destructive`: a feature arriving in halves is not a failure. This is also the only thing on
    this pane that mentions sending files to the phone, because there is no affordance for it. */
-.files-banner {
-  border-radius: var(--radius-tile);
-  padding: var(--space-5) var(--space-6);
-  margin-bottom: var(--space-6);
-  border: 1px solid var(--warning-border);
-  background: var(--warning-fill);
-  font: var(--text-body-size);
-  color: var(--text-body);
-}
 
-.files-banner[hidden] { display: none; }
 
 .files-detail-empty,
 .files-detail-title { margin: 0 0 var(--space-4); }
@@ -4493,27 +4410,9 @@ img#qr {
 
 /* The four nothing-here states. Neutral by default; only A2 takes --warning, because an empty log
    has not failed and must not read as though it has. */
-.activity-state {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 28px 24px;
-  min-height: 200px;
-  justify-content: center;
-}
 
-.activity-state-headline {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text-primary);
-}
 
-.activity-state-body { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-body); max-width: 62ch; }
 
-.activity-state--warning .activity-state-headline { color: var(--warning); }
 
 /* The ⌘K deep-link flash. A palette row that routes to a screen and stops is indistinguishable,
    from the user's side, from one that failed — so the card it meant says which one it was. */
@@ -4579,38 +4478,6 @@ img#qr {
 
 .apps-search:focus-visible {
   border-color: var(--accent-border);
-}
-
-/* --warning, never --destructive. A feature with one switch off is not a failure, and red in a
-   connection product reads as "the link is down". Mirrors .photos-banner deliberately: the two
-   panes are in the same designed state — working, and not fully offered. */
-.apps-banner {
-  border-radius: var(--radius-control);
-  padding: var(--space-4) var(--space-5);
-  display: grid;
-  gap: 4px;
-}
-
-.apps-banner.partial {
-  background: var(--warning-fill);
-  border: 1px solid var(--warning-border);
-}
-
-.apps-banner.unavailable {
-  background: var(--well);
-  border: 1px solid var(--hairline);
-}
-
-.apps-banner-headline {
-  font-weight: 600;
-  font-size: 13.5px;
-  color: var(--text-primary);
-}
-
-.apps-banner-detail,
-.apps-banner-fix {
-  font-size: 13px;
-  color: var(--text-body);
 }
 
 .apps-grid {

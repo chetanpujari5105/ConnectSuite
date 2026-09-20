@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { FakeElement, installFakeDocument, el } from './domDouble.testkit';
 // The page loads this before activity.js, and the pane calls it after every draw. Without it the
 // suite would be exercising a loader the renderer never uses — defect 94's shape.
+// `stateBlock` builds its badge with `iconSvg`, so the page's own order applies here too.
+import './icons';
+import './stateBlock';
 import './overflowTitle';
 import './activity';
 
@@ -83,7 +86,7 @@ test('an empty log draws A3, and no table', async () => {
   const pane = mount();
   try {
     await pane.view.refresh();
-    const cards = pane.host.queryAll('.activity-state');
+    const cards = pane.host.queryAll('.state-block');
     assert.equal(cards.length, 1);
     assert.equal(cards[0]!.dataset.state, 'A3');
     assert.equal(pane.host.queryAll('.activity-row').length, 0);
@@ -110,7 +113,7 @@ test('a filter that matches nothing draws A4 — a different card, and the chips
     // log moves under a filter that was valid when it was chosen.
     pane.bridge.events = [ev('system'), ev('system')];
     await pane.view.refresh();
-    const card = pane.host.queryAll('.activity-state')[0];
+    const card = pane.host.queryAll('.state-block')[0];
     assert.ok(card, 'a state card must be drawn');
     assert.equal(card!.dataset.state, 'A4');
     assert.ok(
@@ -131,12 +134,18 @@ test('a failed read draws A2 with a retry, and the retry actually refetches', as
   try {
     pane.bridge.failRequest = true;
     await pane.view.refresh();
-    const card = pane.host.queryAll('.activity-state')[0]!;
+    const card = pane.host.queryAll('.state-block')[0]!;
     assert.equal(card.dataset.state, 'A2');
-    assert.ok(
-      card.className.includes('activity-state--warning'),
-      'A2 is the only warning-toned state',
-    );
+    /*
+     * **A2 is red now, not amber** — the D67 tone map puts an actual operation failure there, and
+     * *the log could not be read* is an operation that ran and failed. The reassurance amber was
+     * carrying is in the body, in words: nothing has been lost on the phone.
+     *
+     * Asserted on `data-tone`, which the component writes from the kind, rather than on a class
+     * name a caller could set to anything.
+     */
+    assert.equal(card.dataset.tone, 'danger', 'A2 is the pane\'s only failure state');
+    assert.equal(card.dataset.kind, 'error');
     assert.ok(card.textContent.includes('the bridge said no'), 'the reason reaches the user');
 
     const retry = pane.host.queryAll('button').find((b) => b.textContent === 'Try again');
@@ -158,7 +167,7 @@ test("the store's own read error becomes A2, not an empty table", async () => {
   try {
     pane.bridge.error = 'EACCES: activity.jsonl';
     await pane.view.refresh();
-    const card = pane.host.queryAll('.activity-state')[0]!;
+    const card = pane.host.queryAll('.state-block')[0]!;
     assert.equal(card.dataset.state, 'A2');
     assert.ok(card.textContent.includes('EACCES'));
   } finally {
@@ -405,7 +414,7 @@ test('control — the harness can see a row, so an absence above means something
     pane.bridge.events = [ev('system', 'Connected', 'phone')];
     await pane.view.refresh();
     assert.equal(pane.host.queryAll('.activity-row').length, 1);
-    assert.equal(pane.host.queryAll('.activity-state').length, 0);
+    assert.equal(pane.host.queryAll('.state-block').length, 0);
     assert.ok(
       shared.activityPaneView({ kind: 'ready', events: pane.bridge.events }, 'all', 1).showsTable,
     );

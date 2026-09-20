@@ -46,8 +46,10 @@ test('the failed state differs from both empty states in four ways', () => {
   const failed = activityPaneView({ kind: 'failed', reason: 'EACCES' }, 'all', 0);
   const empty = activityPaneView({ kind: 'ready', events: [] }, 'all', 0);
   assert.equal(failed.id, 'A2');
-  assert.notEqual(failed.tone, empty.tone, 'tone must differ');
-  assert.notEqual(failed.icon, empty.icon, 'icon must differ');
+  // One `kind` now decides tone, glyph and whether an action is allowed, so the four differences
+  // hold by construction rather than by four fields written out per branch. `stateBlock.test.ts`
+  // asserts the mapping; `activityView.test.ts` asserts what is drawn.
+  assert.notEqual(failed.kind, empty.kind, 'kind must differ');
   assert.notEqual(failed.headline, empty.headline, 'headline must differ');
   assert.notEqual(failed.retry, empty.retry, 'only the failed state offers a retry');
   assert.ok(failed.body.join(' ').includes('EACCES'), 'the reason must reach the user');

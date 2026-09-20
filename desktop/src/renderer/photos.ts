@@ -450,17 +450,32 @@ class PhotosView {
    *
    * A refusal from the phone replaces the grid; the partial notice sits above a working one.
    */
+  /**
+   * The banner, which carries the two states this pane can be in and never blurs them.
+   *
+   * A refusal from the phone replaces the grid; the partial notice sits above a working one. Both
+   * are **compact** state blocks now (D67) rather than `photos-banner`, which was five rules and
+   * its own headline/detail/fix typography — one of six private vocabularies for the same facts.
+   * Compact because this is a full-width notice above a working pane, not an empty region.
+   *
+   * The tones come from the component: `permission` and `partial` are both amber, which is the
+   * approved map — the phone refusing and the feature arriving in halves are both *a real
+   * limitation the user may be able to act on*, and neither is a failure.
+   */
   private renderBanner(): void {
-    this.banner.textContent = '';
+    this.banner.replaceChildren();
     const failure = this.failure;
     if (failure) {
       this.banner.hidden = false;
-      this.banner.className = 'photos-banner unavailable';
-      this.banner.appendChild(photoLine('photos-banner-headline', 'The phone is not sharing its photos'));
-      this.banner.appendChild(photoLine('photos-banner-detail', failure.reason));
-      if (failure.fixHint) {
-        this.banner.appendChild(photoLine('photos-banner-fix', failure.fixHint));
-      }
+      this.banner.appendChild(
+        stateBlock({
+          kind: 'permission',
+          headline: 'The phone is not sharing its photos',
+          // The phone's own sentences, verbatim and unjoined — see `stateBlock`'s `body`.
+          body: [failure.reason, ...(failure.fixHint ? [failure.fixHint] : [])],
+          compact: true,
+        }),
+      );
       return;
     }
     const notice = partialNotice(this.advertised);
@@ -471,9 +486,9 @@ class PhotosView {
       return;
     }
     this.banner.hidden = false;
-    this.banner.className = 'photos-banner partial';
-    this.banner.appendChild(photoLine('photos-banner-headline', notice.headline));
-    this.banner.appendChild(photoLine('photos-banner-detail', notice.detail));
+    this.banner.appendChild(
+      stateBlock({ kind: 'partial', headline: notice.headline, body: notice.detail, compact: true }),
+    );
   }
 
   private renderRail(): void {

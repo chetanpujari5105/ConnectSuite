@@ -110,8 +110,9 @@ test('empty and failed differ in four independent ways', () => {
   // icon alone fails at a glance; the headline alone fails when someone reuses a component.
   const empty = filesPaneView(ready([downloadsRoot, appRoot]), false);
   const broken = filesPaneView(failed, false);
-  assert.notEqual(empty.tone, broken.tone);
-  assert.notEqual(empty.icon, broken.icon);
+  // The tone and the glyph are the component's now, derived from `kind` — so they differ here by
+  // construction, and `filesView.test.ts` asserts all four on the tree a user actually sees.
+  assert.notEqual(empty.kind, broken.kind);
   assert.notEqual(empty.headline, broken.headline);
   assert.notEqual(empty.retry, broken.retry);
 });
@@ -143,13 +144,13 @@ test('an unavailable capability renders the phone’s own sentence, not a paraph
   assert.ok(view.body.includes(reason));
   // A feature the phone is not offering is not a failure. Red in a connection product reads as
   // "the link is down".
-  assert.equal(view.tone, 'warning');
+  assert.equal(view.kind, 'permission');
 });
 
 test('unavailable and failed are not the same state', () => {
   const absent = filesPaneView({ kind: 'unavailable', reason: 'x' }, false);
   assert.notEqual(absent.id, filesPaneView(failed, false).id);
-  assert.notEqual(absent.tone, filesPaneView(failed, false).tone);
+  assert.notEqual(absent.kind, filesPaneView(failed, false).kind);
 });
 
 test('no upload affordance while push is unavailable, in every state', () => {

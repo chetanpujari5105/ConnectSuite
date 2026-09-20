@@ -1,0 +1,19 @@
+{
+  "file": "docs/evidence/sidekick-batch7/photos-partial-SYNTHETIC-1440x920.png",
+  "screen": "photos",
+  "takenAt": "2026-09-20T18:22:29.148Z",
+  "window": {
+    "inner": 1440,
+    "innerH": 920,
+    "dpr": 2
+  },
+  "scrollbarPx": 0,
+  "pageScrolls": false,
+  "settleMs": 700,
+  "ready": null,
+  "prep": "photos.setAdvertised(true); photos.setAdvertised(false);",
+  "scrolledToTop": true,
+  "full": false,
+  "zoomChecked": "innerWidth === outerWidth (on the real window, before any emulation)",
+  "emulated": "1440x920 layout viewport via CDP Emulation"
+}
