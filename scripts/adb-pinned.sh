@@ -55,4 +55,10 @@ if [ -z "$serial" ]; then
   exit 1
 fi
 
-exec adb -s "$serial" "$@" < /dev/null
+#  - **One name for adb, shared with the pin.** `target-device.sh` resolves the binary through
+#    `${CONNECTSUITE_ADB:-adb}` so its refusal branches can be exercised against a fake; this line
+#    used to say `adb` literally, so a caller that faked the pin got a fake pin and a real adb —
+#    two halves of one command talking to two different devices. It cost `adb-count.test.sh` its
+#    two positive fixtures, which could only pass with an SM-S938B on the cable and were red on
+#    every machine without one.
+exec "${CONNECTSUITE_ADB:-adb}" -s "$serial" "$@" < /dev/null

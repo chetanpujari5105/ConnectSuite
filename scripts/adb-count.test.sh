@@ -14,7 +14,11 @@ check() { # check <name> <expect: READING|NO READING> <expected exit> <output> <
   if [[ "$got" == "$want"* ]] && [ "$rc" = "$wantrc" ]; then
     echo "  ok    $name"; pass=$((pass+1))
   else
-    echo "  FAIL  $name"; echo "        wanted '$want…' exit $wantrc"; echo "        got    '$got' exit $rc"; fail=$((fail+1))
+    # `'$want…'` — bash takes the ellipsis bytes as part of the name, so under `set -u` the FAIL
+    # branch died with `want?: unbound variable` and printed no diagnosis at all. It had never run:
+    # this suite was green until adb-pinned.sh stopped being fakeable, and then reported its first
+    # failure by crashing. Braces, so the name ends where it ends.
+    echo "  FAIL  $name"; echo "        wanted '${want}…' exit ${wantrc}"; echo "        got    '${got}' exit ${rc}"; fail=$((fail+1))
   fi
 }
 

@@ -21770,3 +21770,248 @@ only the pane was driven.
 AA in both themes, shell sweep **841 of 841** focus rings with 0 blurred and 0 transitioning under
 the reduced modes.
 
+
+---
+
+## Motion pass close-out — the fix that shipped without taking, and two instruments that called it wrong — 2026-09-21
+
+The motion and brand pass (`baf5664` … `d016bb6`) was finished in this sitting rather than extended.
+Nothing new was designed. What it produced is one product defect, two instrument defects, a
+fifteenth commit hook, and a set of evidence re-taken end to end against the committed tree — the
+mid-pass captures were replaced rather than kept beside the new ones, so no measurement in
+`docs/evidence/motion-2026-09-21/` appears twice with two values.
+
+**Conditions, stated because they changed between the mid-pass captures and these.** A phone **was**
+linked for every reading here — `Samsung SM-S938B`, `link: connected`, on the third line of each
+sweep — where the mid-pass runs were disconnected. That is a coverage difference, not a cosmetic
+one: notification rows, call rows and the 128 app tiles only exist with a phone on the other end.
+
+### Where the sitting started, and what "the defect check" turned out to be
+
+The brief named a `defects: 1` result. Nothing in this repo emits that string, and every
+defect-related check was green when the sitting opened: `check-defects.sh` (112 rows), all thirteen
+hooks, `npm test` at 909, the phone suite `BUILD SUCCESSFUL`. What **was** red was found by running
+the one set of suites nothing runs — see defect 131 — and the product defect underneath the brand
+work was found by measuring the lockup rather than reading its stylesheet. Both are recorded below.
+The original string is unreproduced and is recorded as unreproduced.
+
+### Defect 129 — `.brand-mark` was declared twice and the browser kept the losing rule
+
+| | |
+|---|---|
+| read | `getComputedStyle(.brand-mark)` in the running app |
+| before | `width: 65px`, `object-position: 0% 50%` |
+| after | `width: 57px`, `object-position: 50% 50%` |
+
+The stage is 69px and the artwork 57px, so the fix's own comment specifies 6px of ground either
+side. What was drawn was **2px left and 10px right**, with the lime half of the halo visible in the
+gap. Located in the pixels rather than derived from the CSS, by matching the artwork's own eye
+pixels against each capture:
+
+```
+before artwork starts 2px into the stage, spans 2..59 of 69 -> bare stage 2px left / 10px right
+after  artwork starts 6px into the stage, spans 6..63 of 69 -> bare stage 6px left / 6px right
+   [control: 453 of 598 eye pixels matched at the best offset, in both]
+```
+
+Both crops are the same frame with the halo's breath pinned to its rest keyframe, so they differ by
+the geometry and not by when the shutter fell. `brand-mark-before-dark.png` /
+`brand-mark-after-dark.png`. The "before" is reproduced by setting the two losing values inline and
+the capture is **gated** on `getComputedStyle` returning exactly the pre-fix pair; the inline styles
+are removed afterwards and the restoration asserted.
+
+**The guard that should have caught it passed.** `stylesheets.test.ts` has had a rule against one
+selector declared twice in one sheet since the pre-redesign notification block, and its
+discriminator is **distance** — far apart is dead, adjacent is a deliberate override you can read in
+one screen. Here the new rule was inserted **above** the old one, six lines away, and proximity was
+what hid it: the pair reads as a single commented block. A distance is a claim about two things and
+either can move. The new assertion has no distance in it — two top-level blocks with one selector in
+one sheet may not set one property to two values — and it goes red on the verbatim pair, naming
+`width`, `object-position` and both line numbers, while the distance rule stays silent.
+
+### Defect 130 — the sweep called two product states defects
+
+**(a) The mid-FLIP exclusion covered one of the mechanism's two marks.** `overview.ts` adds
+`is-arriving` to every arriving row and an inline `transition: none` **only when the row moved**,
+clearing both in one `afterNextPaint`. `.recent-row.is-arriving` carries `transition: none` in
+`shell.css`. The sweep read the inline half only, so a row that arrived without moving computed
+`transition-property: none` and was reported as `snapping: recent-row (12)` — the exact sentence the
+exclusion exists to prevent, on the other half of the same mechanism.
+
+Proven at its own layer, because a row arriving with `dy === 0` cannot be demanded: three real
+`.recent-row` buttons were given the class with no inline style.
+
+```
+constructed: {"rows":4,"marked":3,"inlineOnMarked":["(none)","(none)","(none)"],"computed":["none","none","none"]}
+exclusion WITHOUT the is-arriving branch: {"snapped":3,"excluded":0}
+exclusion WITH    the is-arriving branch: {"snapped":0,"excluded":3}
+page restored, rows still marked: 0
+```
+
+A later run met the state in the wild and the fixed exclusion named both marks:
+`recent-row/inline (36), recent-row/is-arriving (12)`.
+
+**(b) A settle predicate over three clocks that named two.** `press-down` forces `:active` and
+settles when `scaled` and `visible` agree across two force-and-read pairs. It never compared how
+many nodes the force **reached** against how many the reader **scored**. Every unreached node
+reports its at-rest `--dur-release` 0.16s, which is indistinguishable from a button that does not
+shorten its press. The run printed:
+
+```
+569 of 697 at 0.1s; others: apps-tile=0.16s …  [forced=573]
+```
+
+569 + 128 = 697, and 697 − 573 = 124. Two numbers that must be equal for the reading to exist, side
+by side, differing, with the verdict computed from the other one — and the finding written from it
+was *"128 apps tiles snap their press"*. `forced === matched` is in the predicate now and a mismatch
+is a **NO READING**. Red against the verbatim case by narrowing the force selector by `.apps-tile`:
+
+```
+NO READING pressing shortens the transition to --dur-press — the force reached 593 nodes and the
+reader matched 721 — the 128 it did not reach report their AT-REST duration, which is
+indistinguishable from a button that does not shorten its press
+```
+
+**And the sweep now prints its theme and its link state.** A dark run and a light run came back
+**byte-identical** — correctly, since no rule in the sweep is about colour — so the two evidence
+files could not be told apart and neither said which theme it was taken in. Two indistinguishable
+files are one reading and a claim.
+
+### Defect 131 — the fixture suites nothing runs, two of them red
+
+Twenty suites under `scripts/`, about two seconds, run by no hook.
+`orphan-tests-none.sh` says so in its own header: *"scripts/\*.test.mjs are counted and reported,
+not checked"*.
+
+- **`check-renderer-scripts.test.mjs`** asserted that `index.html` loads `discHue.js` and the scan
+  sees it. `discHue.ts` was deleted with its last caller — correctly; the Sidekick system has no
+  per-person hue, and `calls.ts` records why. **The guard it belongs to kept passing**, because its
+  scope comes from `index.html` and a file no longer listed there is not in scope. The replacement
+  control is structural: every name the scan returns must resolve to a real `src/shared/*.ts`. It
+  cannot rot on a deletion, and it goes red on the case that matters — index.html and the tree
+  disagreeing, which in the browser is a 404 on a `<script>` nobody sees fail. Shown red two ways:
+  a deleted file still referenced, and every shared `<script>` stripped (the floor).
+- **`adb-count.test.sh`** exports `CONNECTSUITE_ADB` to point at a fake adb. `target-device.sh`
+  honours it; `adb-pinned.sh` execed a literal `adb`. So the pin was fakeable and the command was
+  not, and the two *must READ* fixtures could only pass with an SM-S938B on the cable — red on any
+  machine without one. Its FAIL branch then died under `set -u` on `'$want…'`, because bash takes
+  the ellipsis bytes as part of the name, so the first failure it ever reported was a crash with no
+  diagnosis. Both fixed; `adb-pinned.sh` resolves `${CONNECTSUITE_ADB:-adb}`, and the refusal
+  branches are unchanged (verified against an empty fake bus and against the real one).
+
+The enforcement point is `scripts/check-script-fixtures.mjs` and
+`scripts/hooks/script-fixtures-green.sh`, the **fifteenth** hook on this repo's pre-commit path. It
+runs rather than reading an artifact, because two seconds is affordable and there is no artifact; it
+refuses on a discovery below its floor, because "all fixtures green" over nothing found is the
+reading this directory exists to prevent; and it prints the failing suite's **named lines** rather
+than a stack tail.
+
+Its own suite is one of the twenty, and its last test asserts the floor sits below the real count —
+which recursed until it was killed. The fix is not to exempt this file from discovery: the one suite
+the guard refuses to run would be the one guarding the guard, which is the gap it was written to
+close, one level in. Discovery is separable from running (`--list`), and every suite stays in scope.
+
+Red-first against the historical case: restoring the `discHue` anchor makes the hook **deny** and
+name the assertion.
+
+### The brand lockup, measured
+
+`scripts/brand-lockup-probe.mjs` (the resolved cascade) and `scripts/brand-pixels.py` (the pixels,
+classified by the artwork's **own alpha channel** — a brightness threshold cannot separate a dark
+wing from the dark ground behind it, which is the whole problem). Both themes, all PASS.
+
+The halo breathes 0.5 → 0.72 over 6s, so the ground is a moving number; the animation is pinned at
+each keyframe extreme and the reading is a band.
+
+| dark | wings | ground | ratio |
+|---|---|---|---|
+| bare sidebar, no stage | `L=0.0093` | `rgb(14,14,14)` | **1.09:1** |
+| on the stage, rest | `L=0.0093` | `L=0.0195` | **1.17:1** |
+| on the stage, peak | `L=0.0093` | `L=0.0253` | **1.27:1** |
+
+**That is a very small ratio change and no part of this is a contrast win.** The mask is near-black
+by design and lifting a ground *towards* it reduces the difference; 3:1 would need an
+`rgb(99,99,99)` slab. **What makes the lockup readable is the stage's edge and the clipped halo
+behind the mark — a shape against a gradient.** The ratio is published only so nobody later reads
+the screenshot as a number it did not earn.
+
+The control is the **eyes**, in the same frame: **10.24:1** at rest, **9.48:1** at peak. They were
+bright all along and are not what changed. A run where the wings and eyes converge is an alignment
+wrong for both classes — which is how the first version of this instrument was caught, reporting
+**1.28:1** for the eyes because `clip.scale` multiplies on top of the device pixel ratio and returns
+a **4x** image that a 2x asset cannot be indexed into.
+
+In **light** the mask never needed help and the stage slightly *lowers* its ratio, which is the
+expected direction and is the evidence that light is not over-glowed: **16.55:1** bare, **14.22:1**
+and **14.01:1** on the stage. The halo's whole contribution there is a channel spread of 5–6 over
+the sidebar's own 3.
+
+**The sidebar takes no tint.** Sampled in the left gutter — 14px of padding every row shares, which
+no text enters — beside the lockup and far below it:
+
+| | beside the stage | far below | difference | the stage itself |
+|---|---|---|---|---|
+| dark | `rgb(14,14,14)` | `rgb(14,14,14)` | **0** | `rgb(30,39,37)`, spread 9–13 |
+| light | `rgb(249,249,252)` | `rgb(249,249,252)` | **0** | `rgb(229,233,234)`, spread 5–6 |
+
+The stage's spread is the control: something must be tinted eight pixels away or the reading means
+nothing. The first version of this band sat to the *right* of the stage and caught the **wordmark** —
+`rgb(33,33,34)` against `rgb(14,14,14)`, all three channels moving together. Light text is not a tint.
+
+And from the cascade, both themes: the halo is a **child of the stage** with `overflow: hidden` and
+`isolation: isolate`, overflowing by **31px each side** so the clip is load-bearing; the stage is a
+`<span>`, no role, `tabIndex -1`, not focusable, `cursor: auto` against the control that a real nav
+row in the same sidebar reads `cursor: pointer`; the **wordmark is static** (`animation: none`,
+`transform: none`); the breath is `brand-breathe 6s` at rest and **`none`** under `reduce`, with the
+control that the emulation moved the halo's animation count 1 → 0; and under `reduce` the halo sits
+at **`opacity: 0.5`**, its designed rest value, with no animation attached — it is declared *inside*
+`@media (prefers-reduced-motion: no-preference)`, so there is nothing for the global kill to freeze.
+
+That last row needed its own correction: `getAnimations()` returns CSSAnimation **and**
+CSSTransition, and under the emulation the page reports **191 transitions of 0.01ms** — `tokens.css`'s
+own reduced-motion kill, created *by* applying the media change. Counted together they read as "191
+ambient animations survived reduced motion", the exact reverse. Ambient motion is a keyframe
+animation, and that is what the row counts: **1 (`brand-breathe`) → 0**.
+
+### Verification, as run
+
+```
+desktop typecheck                tsc --noEmit + tsconfig.test.json         clean
+desktop npm test                 911 tests, 911 pass, 0 fail
+phone ./gradlew test             BUILD SUCCESSFUL — 450 tests, 0 failures
+                                 (core 126, sync-module 212, input-module 52,
+                                  mirror-module 49, app 11. A naive sum over the XML
+                                  reads 900: debug and release run the same 450 twice)
+scripts/check-script-fixtures    20 of 20 fixture suites green (floor 12)
+motion-sweep, dark               13 pass, 0 fail, 0 NO READING, 12 of 12 routes
+motion-sweep, light              13 pass, 0 fail, 0 NO READING, 12 of 12 routes
+check-motion-tokens              74 motion declarations, 20 tokens, no raw literals
+brand-lockup-probe, dark/light   ALL READINGS OK
+shell-parity-sweep               ALL READINGS OK — 853 of 853 focus rings, 0 at rest
+state-system-verify              ALL READINGS OK
+card-visibility-sweep            19 cards: 18 visible at rest, 1 reachable, 0 stranded
+check-defects                    115 numbered rows, all with records
+fifteen pre-commit hooks         all allow
+```
+
+Press: **8604 of 8604** enabled buttons, 48 excluded mid-FLIP and named by their mark. Reduced
+motion: 168 transforms → 0, 4 keyframe animations → 0, each against its own before-column control.
+Reduced transparency: 4 blurred surfaces → 0, and independently in the shell sweep, 5 translucent at
+rest with none still blurred or transitioning under `reduce`. Disabled: **1 disabled control on
+screen, 0 carrying a press** — a real reading on a denominator of 1.
+
+### What this does not cover
+
+- **No Figma render, and the Figma MCP is not connected on this account.** No value in this pass has
+  been compared against a Figma file. Everything is built to the handoff and to the two design
+  references in `docs/sidekick-motion-system.md` §0; nothing here is a Figma comparison, and the
+  wording in the docs says so rather than implying a comparison that did not happen.
+- **Both final sweeps were taken with the window occluded**, which each declares on its own second
+  line. That is the better condition rather than a compromise: occlusion stalls `requestAnimationFrame`,
+  so the FLIP never clears its marks and the run exercises the mid-FLIP exclusion instead of skipping
+  past it. `Page.bringToFront` does not raise an Electron window another application covers, and on
+  this machine System Events reports `windows=0` for the process while CDP screenshots it happily.
+- **`prefers-contrast: more` is handled nowhere** and is not measured. A colour-and-border question.
+- **`.toast` uses `@keyframes`** and restarts rather than retargets. Accepted while toasts do not stack.
+- **The `defects: 1` result the brief named was never reproduced.** Every defect-related check was
+  green at the start of the sitting and is green now; what was red was found by other means.

@@ -1,22 +1,25 @@
 tokens: 12 duration values read from :root
-window: visible — rAF-settled values are readable
+window: hidden — requestAnimationFrame is STALLED, so overview.ts's FLIP never clears its marks. Elements carrying an inline `transition` OR the `is-arriving` class are mid-FLIP and are excluded below rather than scored, counted and named by which mark they carry
+theme: light
+link: connected — Samsung SM-S938B
 
 routes
   12 of 12 routes read
 
 press
-  PASS       every enabled button eases its press — 8640 of 8640 enabled buttons  [control=8652 buttons seen across 12 routes]
+  PASS       every enabled button eases its press — 8604 of 8604 enabled buttons  [control=8664 buttons seen across 12 routes]
+             excluded, mid-FLIP (inline transition or .is-arriving): recent-row/inline (48) (expected: the window is occluded, so rAF cleanup has not run)
   PASS       the press releases at --dur-release (0.16s), not at --dur-press — all 0.16s
 
 press-down
-  PASS       pressing shortens the transition to --dur-press (0.1s) — 720 of 720 at 0.1s  [forced=720]
-  PASS       pressing actually applies a scale transform — 23 of 23 VISIBLE buttons actually scale below 1 (697 in non-routed panes report no scale whatever their state, and are excluded) — this is the control for the row above, since a duration on a property that never changes is unobservable
+  PASS       pressing shortens the transition to --dur-press (0.1s) — 717 of 717 at 0.1s  [forced=721 of 721 matched; 4 mid-FLIP skipped]
+  PASS       pressing actually applies a scale transform — 19 of 19 VISIBLE buttons actually scale below 1 (698 in non-routed panes report no scale whatever their state, and are excluded) — this is the control for the row above, since a duration on a property that never changes is unobservable
 
 disabled
   PASS       a disabled control does not animate — 1 disabled buttons, 0 carrying a press
 
 reduced-motion
-  PASS       reduced motion removes every transform — 169 -> 0  [control: the same read with the emulation off returns 169]
+  PASS       reduced motion removes every transform — 168 -> 0  [control: the same read with the emulation off returns 168]
   PASS       reduced motion stops every running animation — 4 -> 0
 
 reduced-transparency
@@ -26,21 +29,22 @@ keyboard
   PASS       the command palette opens with NO animation — transition all / 0s, animation none / 0s — AUDIT.md §1: 100+/day is the never-animate row
   PASS       focus is on the palette input the moment it opens — activeElement = palette-input
   PASS       Escape closes the palette in the same turn — measured synchronously after dispatching a real keydown — no frame in between
-  PASS       no invisible surface is still taking clicks — none  [control: 3854 elements scanned, 45 big enough to swallow a click, 42 at opacity 0 — the intersection is what is empty, not the query]
+  PASS       no invisible surface is still taking clicks — none  [control: 3885 elements scanned, 45 big enough to swallow a click, 45 at opacity 0 — the intersection is what is empty, not the query]
 
 tokens
   PASS       every duration on screen is an approved token value — 9 distinct values, all approved  [control=9 values seen]
-             0s          3020x  none
-             0.18s        942x  --dur-state
-             0.16s        722x  --dur-release / --dur-toggle
-             0.2s         620x  --dur-pill / --dur-hover
-             0.22s          9x  --dur-float / --dur-arrive
+             0s          3048x  none
+             0.18s        950x  --dur-state
+             0.16s        719x  --dur-release / --dur-toggle
+             0.2s         622x  --dur-pill / --dur-hover
              0.6s           2x  --dur-ring
              6s             1x  --dur-brand-breath
              0.14s          1x  --dur-route-fade
              1.2s           1x  --dur-spin
+             0.22s          1x  --dur-float / --dur-arrive
 
 ------------------------------------------------------------------------------
 motion-sweep: 13 pass, 0 fail, 0 NO READING, over 12 of 12 routes.
-  buttons seen: 8652 (12 disabled). A run on a disconnected app
-  sees fewer — notification rows, activity chips and photo albums need a linked phone.
+  buttons seen: 8664 (12 disabled), with the link connected.
+  Notification rows, call rows and app tiles are in that count because a phone is linked;
+  a disconnected run sees fewer buttons, not different rules.

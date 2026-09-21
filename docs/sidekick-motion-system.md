@@ -195,12 +195,15 @@ This list is as load-bearing as the inventory. Each entry names the gate that ki
 
 ## 5 · The brand lockup — a visibility defect, measured
 
-**The mask was at 1.08:1 against its own sidebar.**
+**The mask sits at 1.09:1 against its own sidebar.**
 
-`assets/brand/mark@2x.png` is 114×60, 56% opaque, and its dominant opaque colour is `rgb(22,23,24)`
-— median luminance **31 of 255**. The sidebar is `--elev-1` = `rgba(15,15,15,.82)` composited over
-`--canvas` `#0a0a0a`, which resolves to `rgb(14,14,14)`. Contrast: **1.08:1**. Only the lime/blue
-eyes read; the winged silhouette that carries the brand is invisible.
+`assets/brand/mark@2x.png` is 114×60 and 56% opaque; its dominant opaque colour is `rgb(22,23,24)`.
+The sidebar is `--elev-1` = `rgba(15,15,15,.82)` composited over `--canvas` `#0a0a0a`, which
+resolves to `rgb(14,14,14)` — confirmed by sampling the running app, not computed from the tokens.
+Taken over **every** opaque near-black pixel of the mark rather than its single dominant colour,
+that is **1.09:1**, and one definition is used everywhere below so there is never a second number
+for the same fact. Only the lime/blue eyes read; the winged silhouette that carries the brand is
+invisible.
 
 ### Why a charcoal stage alone cannot fix it
 
@@ -223,27 +226,67 @@ treatment is three things, and only the third is about contrast at all:
 The two hues are **sampled from the artwork**, not invented: `rgb(0,196,255)` is the bluest pixel in
 the mark and `rgb(233,255,19)` its limest, which is `--accent`'s hue.
 
+### The rule shipped twice and the browser kept the wrong copy
+
+Before any number below is read, the correction that makes them worth reading. `shell.css` declared
+`.brand-mark` **twice**, six lines apart: a `57px` / `object-position: center` block carrying the
+comment that explains the stage, and the pre-existing `65px` / `left center` block immediately
+below it. Equal specificity, later rule wins, and nothing errors. So for a day the stylesheet
+described one lockup and the browser drew another — `getComputedStyle` returned `width: 65px`.
+
+The artwork is 57px wide inside a 65px slot at `object-fit: contain`, so `left center` pinned it to
+the left and left **eight empty pixels on the right**, showing the lime half of the halo through.
+Located in the pixels rather than derived from the CSS, by matching the artwork's own eye pixels
+against each capture (control: 453 of 598 matched at the best offset, both times):
+
+| | artwork inside the 69px stage | bare stage left | bare stage right |
+|---|---|---|---|
+| as drawn | x 2 → 59 | **2px** | **10px** |
+| as specified, and now as drawn | x 6 → 63 | **6px** | **6px** |
+
+`stylesheets.test.ts` had a guard for one selector declared twice in a sheet and it passed, because
+its discriminator is **distance** and this pair was adjacent. A distance is a proxy for *could the
+author see both* — and when the new rule is inserted **above** the old one, proximity is exactly
+what hides it: the pair reads as a single commented block. It now also refuses a same-property
+contradiction at any distance, with the shipped shape as its fixture.
+
 ### What it actually moved, stated as the number rather than the impression
 
-| | wings | their ground | ratio |
+Measured against the tree being committed, with the artwork's **alpha channel** as the classifier
+rather than a brightness threshold — a threshold cannot separate a dark wing from the dark ground
+behind it, which is the whole problem. The halo breathes, so the ground moves and the reading is a
+band between the two keyframes:
+
+| dark | wings | their ground | ratio |
 |---|---|---|---|
-| before | `L=0.0085` | bare sidebar `L=0.0044` | **1.08:1** |
-| after | `L=0.0056` | stage + halo `L=0.0193` | **1.25:1** |
+| on the bare sidebar, no stage | `L=0.0093` | `rgb(14,14,14)` | **1.09:1** |
+| on the stage, breath at rest | `L=0.0093` | `L=0.0195` | **1.17:1** |
+| on the stage, breath at peak | `L=0.0093` | `L=0.0253` | **1.27:1** |
 
-**1.08 → 1.25 is a modest ratio and it is the honest one.** A crop of the rendered lockup reports
-`13.66:1` between its 5th and 95th percentiles, and quoting that would be the denominator mistake
-in a different unit — the 95th percentile is the *eyes*, which were bright all along and were never
-the problem. The eyes flatter every measurement of this mark and must be excluded from any claim
-about the wings.
+**Read that as a very small ratio change and as nothing more.** It is not a contrast win and this
+treatment must never be described as one. A crop of the rendered lockup reports `13.66:1` between
+its 5th and 95th percentiles, and quoting that would be the denominator mistake in a different unit
+— the 95th percentile is the *eyes*. Measured in the same frame the eyes are **10.24:1** at rest
+and **9.48:1** at peak; they were bright before any of this work and are not what changed. They
+flatter every measurement of this mark and are excluded from every claim about the wings.
 
-So the defensible statement is: **the wings gained about 16% of relative luminance contrast, and the
-lockup gained an edge and a gradient, which is what makes it legible.** The improvement you can see
-in `docs/evidence/motion-2026-09-21/brand-after.png` is mostly the second thing, and the ratio is
-reported so nobody later reads the screenshot as a contrast win it did not earn.
+**The defensible statement is the one with no ratio in it: the lockup is readable because it has an
+edge and sits on a gradient — a dark shape against varying light, which is how a black mark is
+meant to work.** The stage's inset hairline and the clipped halo are the mechanism. The numbers are
+published so nobody later reads `docs/evidence/motion-2026-09-21/brand-after.png` as a contrast
+improvement it did not earn.
 
-In **light** the mask is near-black on a near-white sidebar and needs none of this. The stage stays
-so the lockup is one object in both themes; the halo drops to a third of its alpha because there it
-is decoration rather than the mechanism.
+In **light** the mask is near-black on a near-white sidebar and needs none of this — **16.55:1** on
+the bare sidebar, **14.22:1** and **14.01:1** on the stage across the breath. The stage *lowers* it
+slightly, which is the expected direction and is the evidence that light is not over-glowed: the
+halo's whole contribution there is a channel spread of 5–6 over the sidebar's own 3. The stage
+stays so the lockup is one object in both themes.
+
+**And the sidebar itself takes no tint from any of it.** Sampled in the left gutter — 14px of
+padding every row shares, which no text enters — beside the lockup and again far below it, the two
+are identical to the byte in both themes (`rgb(14,14,14)` dark, `rgb(249,249,252)` light,
+per-channel difference **0**), against the stage's own spread of 9–13 and 5–6 as the control that
+something *is* tinted eight pixels away.
 
 ### The breath
 
@@ -261,7 +304,7 @@ is a designed state rather than an accident.
 **This is a departure.** The handoff (`61:24256`) draws the lockup on the bare sidebar with no stage
 and no halo, and specifies no motion for it. Recorded in `docs/design-departures.md`.
 
-## 6 · Two instrument faults, and the second is a new shape
+## 6 · Instrument faults, and 6.2 is a new shape
 
 Both were mine, both produced a confident wrong answer, and both were caught before anything was
 written down. They are here because the audit's credibility rests on them.
@@ -307,7 +350,7 @@ written its own copy of the cascade.* The browser has one. Use it.
 
 ---
 
-### 6.3 · The third fault, and it is in the product's own toolkit rather than mine
+### 6.3 · A fault in the product's own toolkit rather than mine
 
 The sweep, once it worked, reported `snapping: recent-row (48)` — reproducibly, three runs running.
 It is not snapping. `overview.ts` writes an inline `transition: none` on each row to do the FLIP and
@@ -337,6 +380,93 @@ Two things follow:
 The general form: **a value settled in a frame callback is not readable in a window that is not
 painting**, and the instrument must state which of those two worlds it is in. It prints the window's
 visibility on every run.
+
+---
+
+### 6.4 · That exclusion covered one of the mechanism's two marks
+
+6.3's fix excluded elements carrying an **inline** `transition`. `overview.ts` marks a row two ways
+and clears both in the same `afterNextPaint`:
+
+```ts
+if (previous && !previous.has(event.seq)) row.classList.add('is-arriving');   // always
+…
+if (dy !== 0) { row.style.transition = 'none'; … }                            // only if it MOVED
+```
+
+and `.recent-row.is-arriving` carries `transition: none` in `shell.css`. So a row that arrived
+**without moving** gets the class alone, computes `transition-property: none`, and is reported as
+`snapping: recent-row (12)` — the exact sentence 6.3 exists to prevent, on the other half of the
+same mechanism.
+
+**This is the sitting's own opening defect in a second place.** `.brand-mark` was one rule expressed
+in two blocks where only the second was read; this is one *state* expressed in two marks where only
+one was read. The question both need is the same: **what else expresses this, and am I reading all
+of it?**
+
+The exclusion now tests both and names which mark it found — `recent-row/inline (36),
+recent-row/is-arriving (12)`. The predicate is proven at its own layer rather than by waiting for
+the state to recur, since a row arriving with `dy === 0` cannot be demanded: three real
+`.recent-row` buttons were given the class with no inline style, and the exclusion read **3 snapped
+/ 0 excluded** without the branch and **0 snapped / 3 excluded** with it.
+
+---
+
+### 6.5 · A settle predicate over three clocks that named two
+
+The sharpest of the set, because the run printed the disproof beside the verdict.
+
+`press-down` forces `:active` over `button:not([disabled])` and settles when `scaled` and `visible`
+agree across two consecutive force-and-read pairs. It never compared **how many nodes the force
+reached** against **how many the reader scored**. `CSS.forcePseudoState` applies to node ids on the
+renderer's own schedule, so a sample can be internally stable while the force has landed on a subset
+— and every node it did not reach reports its **at-rest** duration, `--dur-release` 0.16s, which is
+indistinguishable from a button that does not shorten its press.
+
+It produced this line, and the finding written from it was *"128 apps tiles snap their press"*:
+
+```
+569 of 697 at 0.1s; others: apps-tile=0.16s …  [forced=573]
+```
+
+**569 + 128 = 697, and 697 − 573 = 124.** Two numbers that must be equal for the reading to exist
+sat side by side in the output, differing, with the verdict computed from the other one.
+
+`CLAUDE.md` already says a predicate over independent clocks must settle on every clock. The clock
+here is not a channel or a device — it is *the instrument's own reach*, which is why nobody wrote it
+down: it does not look like state. `forced === matched` is in the predicate now, the line reads
+`[forced=721 of 721 matched; 4 mid-FLIP skipped]`, and a mismatch is a **NO READING** naming the
+shortfall rather than a FAIL. Shown red against the verbatim case by narrowing the force selector by
+`.apps-tile`: *"the force reached 593 nodes and the reader matched 721 — the 128 it did not reach
+report their AT-REST duration"*.
+
+---
+
+### 6.6 · Three smaller ones from the brand readings, each caught by its own control
+
+None cost a written-down number, and all three are the same question — *what is this reading
+actually of?*
+
+- **A `clip` on `Page.captureScreenshot` returns a 4x image on a dpr-2 display.** `clip.scale`
+  multiplies on top of the device pixel ratio rather than replacing it, and `clip` also sets
+  `captureBeyondViewport`, which re-lays-out the page under any rect read beforehand. A 2x asset
+  indexed into a 4x capture sampled the wrong pixels for every class. **The eyes control caught it**:
+  they came back at **1.28:1** against wings at 1.25:1, and two classes agreeing to two decimal
+  places is an alignment wrong for both, not a finding. Plain viewport capture, cropped afterwards.
+- **A "sidebar" band that contained the wordmark.** Sampled to the right of the stage, it read
+  `rgb(33,33,34)` against `rgb(14,14,14)` far below — a 20-point difference, **all three channels
+  moving together**, i.e. light text rather than a tint. Both bands moved into the 14px left gutter
+  that no text enters.
+- **A tint assertion that was theme-dependent.** The wing/eye separation control asserted the *eyes*
+  had the higher ratio. True in dark, false in light, where a lime eye on a near-white ground is the
+  low-contrast class. What the control is for is that two different populations were separated at
+  all, which is a statement about their luminances and not about either one's ratio.
+
+And one in the reduced-motion reading: **`getAnimations()` returns CSSAnimation and CSSTransition
+together.** Under the emulation the page reports **191 transitions of 0.01ms** — `tokens.css`'s own
+reduced-motion kill, created *by* applying the media change — so counting them with the animations
+reads as "191 ambient animations survived reduced motion", the exact reverse. Ambient motion is a
+keyframe animation; the check counts those.
 
 ---
 
@@ -376,10 +506,20 @@ row is a standard from that file, not an opinion.
 | focus lands with the surface | `motion-sweep.mjs --only=keyboard` | `activeElement` after open |
 | Escape closes in the same turn | `motion-sweep.mjs --only=keyboard` | a real `keydown`, read synchronously |
 | nothing invisible still takes clicks | `motion-sweep.mjs --only=keyboard` | with the three-part control |
+| the brand lockup's geometry, clipping, affordance and breath | `scripts/brand-lockup-probe.mjs` | the resolved cascade, both themes |
+| the lockup's wing / eye / ground pixels | `scripts/brand-pixels.py` | the asset's alpha as the classifier |
+| one selector, one sheet, one value per property | `stylesheets.test.ts` | `npm test`, with the shipped `.brand-mark` pair as its fixture |
 
-**Measured 2026-09-21, dark and light, 12 of 12 routes: 13 pass, 0 fail, 0 NO READING.** Press: **8400 of 8400** enabled buttons. Reduced motion: 169
-transforms → 0, 4 animations → 0. Reduced transparency: 4 blurred surfaces → 0. Every one with its
-control.
+**Measured 2026-09-21 against the committed tree, dark and light, 12 of 12 routes: 13 pass, 0 fail,
+0 NO READING, with a phone linked.** Press: **8604 of 8604** enabled buttons, with 48 rows excluded
+mid-FLIP and named by their mark. Reduced motion: 168 transforms → 0, 4 keyframe animations → 0.
+Reduced transparency: 4 blurred surfaces → 0. Focus rings: **853 of 853** controls across 12 routes,
+0 outlined at rest. Every one with its control.
+
+Each sweep now prints **the theme and the link state** on its own first lines, beside the window's
+visibility, for the reason the visibility line already existed: a dark run and a light run came back
+byte-identical — correctly, since no rule here is about colour — and two files that cannot be told
+apart are one reading and a claim.
 
 **The approved-duration list is read from the page's own `--dur-*` tokens, not listed in the
 sweep.** The first version hardcoded it and went red the moment `--dur-brand-breath` was added — a

@@ -167,9 +167,38 @@ console.log(
   `window: ${visibility.visibility}` +
     (windowVisible
       ? ' — rAF-settled values are readable'
-      : ' — requestAnimationFrame is STALLED. Elements with an inline `transition` are mid-FLIP ' +
-        'and are excluded below rather than scored'),
+      : ' — requestAnimationFrame is STALLED, so overview.ts\'s FLIP never clears its marks. ' +
+        'Elements carrying an inline `transition` OR the `is-arriving` class are mid-FLIP and are ' +
+        'excluded below rather than scored, counted and named by which mark they carry'),
 );
+
+/*
+ * The theme, on the first line, for the same reason as the window's visibility: **every bound the
+ * instrument imposes must appear in what it reports.**
+ *
+ * It was not here, and the cost was immediate. A dark run and a light run of this sweep came back
+ * **byte-identical** — same passes, same counts, same token histogram, which is the correct result
+ * since no rule in this file is about colour — so the two evidence files could not be told apart,
+ * and neither one said which theme it had been taken in. Two indistinguishable files are not two
+ * readings; they are one reading and a claim.
+ */
+const theme = JSON.parse(
+  await probe.rawEvaluate(`JSON.stringify(document.documentElement.getAttribute('data-theme'))`),
+);
+console.log(`theme: ${theme}`);
+
+/*
+ * And whether a phone is on the other end, for the same reason again.
+ *
+ * The summary at the bottom has always carried "a run on a disconnected app sees fewer" as a
+ * standing caveat, which is a true sentence about runs in general and says nothing about THIS one.
+ * A reader takes it as a statement that the app was disconnected — the evidence README written
+ * from the first captures said exactly that, and it is a coverage claim, since notification rows,
+ * call rows and app tiles only exist with a phone linked. So the run reads `shell.status` and
+ * prints what it found rather than what is usually true.
+ */
+const link = JSON.parse(await probe.rawEvaluate(`JSON.stringify({ phase: shell.status.phase, device: shell.status.deviceName || null })`));
+console.log(`link: ${link.phase}${link.device ? ` — ${link.device}` : ''}`);
 
 const routes = await probe.rawEvaluate(`SCREENS.map((s) => s.id)`);
 if (!Array.isArray(routes) || routes.length === 0) {
@@ -204,6 +233,30 @@ async function goTo(id) {
 
 /* ---- The page-side reads ---------------------------------------------------------------------- */
 
+/*
+ * Mid-FLIP: an element whose transition is suppressed **by the FLIP that is running on it**, not by
+ * the stylesheet's rule for its kind.
+ *
+ * `overview.ts` marks a row two ways and clears both in the same `afterNextPaint`:
+ *
+ *   row.classList.add('is-arriving')     // .is-arriving { ...; transition: none }   — always
+ *   row.style.transition = 'none'        // inline                                   — only if dy !== 0
+ *
+ * This file checked the inline half only, and a row that arrived **without moving** gets the class
+ * and no inline style. It then reports no transition at all, which is exactly what a missing press
+ * rule looks like — `snapping: recent-row (12)`, in an occluded window where `afterNextPaint` never
+ * fires and the marks are never cleared.
+ *
+ * One mechanism, two marks, and an exclusion that knew about one of them. The same shape as the
+ * `.brand-mark` pair this sitting started with: a rule expressed in two places where only one was
+ * being read.
+ */
+const MID_FLIP = `(function(el){
+  if (el.style && el.style.transition) return 'inline';
+  if (el.classList && el.classList.contains('is-arriving')) return 'is-arriving';
+  return null;
+})`;
+
 /** Every button's press wiring, as the cascade actually resolves it. */
 const READ_PRESS = `(function(){
   var out = { total: 0, disabled: 0, eased: 0, snapped: [], wrongDur: [], midFlip: [] };
@@ -216,8 +269,9 @@ const READ_PRESS = `(function(){
      * never runs, so the node reports no transition and reads exactly like a missing press rule.
      * Counted and named, never scored — the stylesheet's rule is not what is being overridden here.
      */
-    if (b.style && b.style.transition) {
-      out.midFlip.push(String(b.className || '').split(' ')[0] || 'button');
+    var flip = (${MID_FLIP})(b);
+    if (flip) {
+      out.midFlip.push((String(b.className || '').split(' ')[0] || 'button') + '/' + flip);
       out.total++;
       continue;
     }
@@ -330,7 +384,7 @@ if (wanted('press')) {
         (press.snapped.length ? `; snapping: ${tally(press.snapped)}` : '') +
         `  [control=${press.total} buttons seen across ${routes.length - refused.length} routes]` +
         (press.midFlip.length
-          ? `\n             excluded, inline transition mid-FLIP: ${tally(press.midFlip)}` +
+          ? `\n             excluded, mid-FLIP (inline transition or .is-arriving): ${tally(press.midFlip)}` +
             (windowVisible ? '' : ' (expected: the window is occluded, so rAF cleanup has not run)')
           : ''),
     );
@@ -374,7 +428,7 @@ if (wanted('press-down')) {
       var btns = document.querySelectorAll('button:not([disabled])');
       var short = 0, long = [], scaled = 0, visible = 0, hidden = 0, midFlip = 0;
       for (var i = 0; i < btns.length; i++) {
-        if (btns[i].style && btns[i].style.transition) { midFlip++; continue; }
+        if ((${MID_FLIP})(btns[i])) { midFlip++; continue; }
         var cs = getComputedStyle(btns[i]);
         var props = String(cs.transitionProperty||'').split(',').map(function(s){return s.trim();});
         var durs  = String(cs.transitionDuration||'').split(',').map(function(s){return s.trim();});
@@ -393,7 +447,7 @@ if (wanted('press-down')) {
         var t = cs.scale;
         if (t && t !== 'none' && parseFloat(t) < 1) scaled++;
       }
-      return JSON.stringify({ short: short, scaled: scaled, visible: visible, hidden: hidden, midFlip: midFlip, total: btns.length - midFlip, long: long.slice(0,8) });
+      return JSON.stringify({ short: short, scaled: scaled, visible: visible, hidden: hidden, midFlip: midFlip, matched: btns.length, total: btns.length - midFlip, long: long.slice(0,8) });
     })()`;
 
   let previous = null;
@@ -407,7 +461,22 @@ if (wanted('press-down')) {
       read: SAMPLE_ACTIVE,
     });
     const now = JSON.parse(forced.value);
-    if (previous && previous.scaled === now.scaled && previous.visible === now.visible) {
+    /*
+     * THREE clocks, not two, and the third is the one that produced a false FAIL.
+     *
+     * `forced` is how many nodes `CSS.forcePseudoState` was applied to; `total` is how many this
+     * sample scored. The first version settled on `scaled` and `visible` agreeing twice and never
+     * compared those two, so a sample where the force had reached 573 nodes and the reader walked
+     * 697 counted as settled — and the 124 it had not reached reported their AT-REST duration,
+     * `--dur-release` 0.16s, which was then written up as "128 apps tiles snap their press".
+     *
+     * The tell is in the output the run already printed: `569 of 697 at 0.1s [forced=573]`. Two
+     * numbers that have to be equal for the reading to exist, side by side, differing, with the
+     * verdict computed from the other one. `CLAUDE.md`'s rule is that a predicate over independent
+     * clocks must settle on every clock; this is the clock nobody wrote down.
+     */
+    const reachedEverything = forced.forced === now.matched;
+    if (previous && previous.scaled === now.scaled && previous.visible === now.visible && reachedEverything) {
       settled = true;
       break;
     }
@@ -416,9 +485,15 @@ if (wanted('press-down')) {
     await new Promise((r) => setTimeout(r, 200));
   }
   if (!settled) {
+    const last = JSON.parse(forced.value);
+    const why =
+      forced.forced === last.matched
+        ? `the scaled/visible counts never agreed twice in 20s (last: scaled=${last.scaled}, visible=${last.visible})`
+        : `the force reached ${forced.forced} nodes and the reader matched ${last.matched} — ` +
+          `the ${last.matched - forced.forced} it did not reach report their AT-REST duration, ` +
+          'which is indistinguishable from a button that does not shorten its press';
     check('pressing shortens the transition to --dur-press', null,
-      'the forced :active reading never agreed twice in 20s — the style recalc never settled, ' +
-      'so this run holds no reading in either direction');
+      `${why}. The style recalc never settled, so this run holds no reading in either direction`);
   }
   const v = JSON.parse(forced.value);
   if (!settled) {
@@ -429,7 +504,7 @@ if (wanted('press-down')) {
     check(
       'pressing shortens the transition to --dur-press (0.1s)',
       v.short === v.total,
-      `${v.short} of ${v.total} at 0.1s${v.long.length ? `; others: ${v.long.join(', ')}` : ''}  [forced=${forced.forced}]`,
+      `${v.short} of ${v.total} at 0.1s${v.long.length ? `; others: ${v.long.join(', ')}` : ''}  [forced=${forced.forced} of ${v.matched} matched; ${v.midFlip} mid-FLIP skipped]`,
     );
     check(
       'pressing actually applies a scale transform',
@@ -651,8 +726,17 @@ console.log(
     `over ${routes.length - refused.length} of ${routes.length} routes.`,
 );
 if (press.total) {
-  console.log(`  buttons seen: ${press.total} (${press.disabled} disabled). A run on a disconnected app`);
-  console.log('  sees fewer — notification rows, activity chips and photo albums need a linked phone.');
+  console.log(`  buttons seen: ${press.total} (${press.disabled} disabled), with the link ${link.phase}.`);
+  console.log(
+    link.phase === 'connected'
+      ? '  Notification rows, call rows and app tiles are in that count because a phone is linked;'
+      : '  Notification rows, call rows and app tiles are ABSENT from that count: no phone is linked,',
+  );
+  console.log(
+    link.phase === 'connected'
+      ? '  a disconnected run sees fewer buttons, not different rules.'
+      : '  so this run sees fewer buttons than a linked one — not different rules.',
+  );
 }
 if (noReadings) {
   console.log('  A NO READING is not a pass and not a failure: it is a check that had nothing to measure.');

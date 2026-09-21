@@ -7,7 +7,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exportDeclarations, scriptLoadedShared, stripCommentsAndStrings } from './check-renderer-scripts.mjs';
@@ -108,8 +108,22 @@ test('index.html loads shared scripts, and the check can see them', () => {
   const loaded = scriptLoadedShared(html);
   // The control for the scan itself. Zero would make the whole check vacuously green.
   assert.ok(loaded.length >= 8, `only ${loaded.length} shared scripts seen in index.html`);
-  assert.ok(loaded.includes('discHue'), 'discHue.js is loaded by the page and was not seen');
   assert.ok(loaded.includes('contactPhotos'), 'contactPhotos.js is loaded by the page and was not seen');
+  /*
+   * The second anchor was `discHue`, and naming it is what went wrong. The file was deleted with
+   * its last caller — `calls.ts` records why, the Sidekick system has no per-person hue — and this
+   * suite went red on the branch and stayed red, because nothing runs `scripts/*.test.mjs`:
+   * `check-suites-run.mjs` reads Gradle's XML and `desktop/.test-run.json`, and the script fixtures
+   * are in neither. A file name written into a control is an allowlist of one and rots the same
+   * way an allowlist rots.
+   *
+   * So the second reading is structural. Every name the scan returns must resolve to a real source
+   * file: that proves the scan is returning module names rather than parse debris, it cannot go
+   * stale when something is deleted, and it goes red on the case that actually matters — index.html
+   * and the tree disagreeing, which in the browser is a 404 on a <script> nobody sees fail.
+   */
+  const missing = loaded.filter((n) => !existsSync(join(ROOT, 'desktop/src/shared', `${n}.ts`)));
+  assert.deepEqual(missing, [], 'index.html loads a shared script that has no source file');
 });
 
 test('every shared file the page loads is free of export declarations', () => {

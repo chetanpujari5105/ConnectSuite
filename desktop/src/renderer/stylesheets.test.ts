@@ -177,6 +177,126 @@ test('no selector is declared twice in one sheet, far apart', () => {
   );
 });
 
+/**
+ * Every `prop: value` a declaration body sets, normalised. Bodies contain no nested block, so a
+ * split on `;` is the whole parse.
+ */
+function declarationsIn(body: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const part of body.split(';')) {
+    const at = part.indexOf(':');
+    if (at < 0) continue;
+    const prop = part.slice(0, at).trim().toLowerCase();
+    const value = part.slice(at + 1).trim().replace(/\s+/g, ' ').toLowerCase();
+    if (!prop || !value || /[{}]/.test(prop)) continue;
+    out.set(prop, value);
+  }
+  return out;
+}
+
+/**
+ * The same selector, in one sheet, setting one property to two different values.
+ *
+ * ### Why the distance rule above is not enough, and the defect that proved it
+ *
+ * `DEAD_DECLARATION_GAP` presumes the *earlier* block is the dead one and that proximity makes an
+ * override readable. Both halves failed on `.brand-mark` in `shell.css`, 2026-09-21. The brand
+ * stage pass needed the mark to shrink from its 65px slot to the artwork's own 57px and to centre
+ * — and wrote that as a **new block above the existing one**, with a comment explaining it. Equal
+ * specificity, six lines apart, so this file said nothing; the browser kept the *later* 65px rule
+ * and `object-position: left center`, so the artwork sat pinned to the left of its box with eight
+ * empty pixels on the right showing the halo through. `getComputedStyle` reported `width: 65px`
+ * under a comment that said 57.
+ *
+ * So proximity is not the discriminator it looks like. It is a proxy for *could the author see
+ * both*, and when the new rule is inserted **above** the old one the pair reads as a single
+ * commented block — proximity is precisely what hides it. That is the "a distance is a claim about
+ * two things and either can move" shape `CLAUDE.md` records as the fourth test variety, here in the
+ * guard rather than in a test.
+ *
+ * This check has no distance in it. It asserts a fact about one property: two top-level blocks with
+ * the same selector in one sheet may not set it to two values. That is never an override worth
+ * writing — the second value simply wins and the first is unreachable, so the honest form is one
+ * block. Blocks inside an at-rule are excluded, because `@media` re-declaring a property *is* the
+ * mechanism, and a themed or reduced-motion override would otherwise be flagged forever.
+ */
+test('no selector sets one property to two values in one sheet', () => {
+  const offences: string[] = [];
+  for (const name of SHEETS) {
+    const seen = new Map<string, Array<{ line: number; props: Map<string, string> }>>();
+    for (const block of declarationBlocks(read(name), name)) {
+      if (block.depth !== 1) continue;
+      const props = declarationsIn(block.body);
+      for (const part of block.selector.split(',')) {
+        const selector = part.trim().replace(/\s+/g, ' ').toLowerCase();
+        if (!selector) continue;
+        const at = seen.get(selector) ?? [];
+        at.push({ line: block.line, props });
+        seen.set(selector, at);
+      }
+    }
+    for (const [selector, blocks] of seen) {
+      if (blocks.length < 2) continue;
+      for (let i = 0; i < blocks.length; i += 1) {
+        for (let j = i + 1; j < blocks.length; j += 1) {
+          for (const [prop, earlier] of blocks[i]!.props) {
+            const later = blocks[j]!.props.get(prop);
+            if (later !== undefined && later !== earlier) {
+              offences.push(
+                `${name}: "${selector}" sets ${prop} to "${earlier}" on line ${blocks[i]!.line} ` +
+                  `and to "${later}" on line ${blocks[j]!.line} — the first is unreachable`,
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+  assert.deepEqual(
+    offences,
+    [],
+    'one selector, one sheet, one value per property — merge the blocks:\n  ' + offences.join('\n  '),
+  );
+});
+
+test('control_the contradiction check can see the defect it is named for, and lets real overrides through', () => {
+  // Red against the verbatim shape that shipped: the new rule above, the old one below, six lines
+  // apart, which is *inside* DEAD_DECLARATION_GAP and therefore invisible to the check above it.
+  const shipped = [
+    '.brand-mark {',
+    '  position: relative;',
+    '  width: 57px;',
+    '  object-position: center;',
+    '}',
+    '',
+    '.brand-mark {',
+    '  flex: none;',
+    '  width: 65px;',
+    '  object-position: left center;',
+    '}',
+  ].join('\n');
+  const blocks = declarationBlocks(shipped, 'fixture').filter((b) => b.depth === 1);
+  assert.equal(blocks.length, 2, 'the parser must see both blocks');
+  assert.equal(declarationsIn(blocks[0]!.body).get('width'), '57px');
+  assert.equal(declarationsIn(blocks[1]!.body).get('width'), '65px');
+  const gap = blocks[1]!.line - blocks[0]!.line;
+  assert.ok(gap <= DEAD_DECLARATION_GAP, `the distance rule cannot see this — ${gap} lines apart`);
+
+  // And the other half, or this gets deleted by the first person it wakes. A media query setting
+  // the same property is the mechanism, not a contradiction, and is excluded by depth.
+  const themed = '.a { color: red }\n@media (prefers-color-scheme: dark) { .a { color: blue } }';
+  const top = declarationBlocks(themed, 'fixture').filter((b) => b.depth === 1);
+  assert.deepEqual(top.map((b) => b.selector), ['.a'], 'the @media body must not count as top level');
+
+  // Nor is a block that adds properties without contradicting any of them.
+  const additive = '.a { color: red }\n.a { margin: 0 }';
+  const [first, second] = declarationBlocks(additive, 'fixture');
+  const shared = [...declarationsIn(first!.body).keys()].filter((k) =>
+    declarationsIn(second!.body).has(k),
+  );
+  assert.deepEqual(shared, [], 'two blocks sharing no property are not a contradiction');
+});
+
 test('control_the dead-declaration check can see a dead block, and lets an override through', () => {
   // Both halves. A check that only ever says "clean" is the shape this repo keeps recording, and a
   // check that flags every legitimate override gets deleted by the first person it wakes.
@@ -319,9 +439,11 @@ function declarationBlocks(css: string, sheet: string): Array<{
   body: string;
   sheet: string;
   line: number;
+  /** Nesting depth of the block: 1 is top level, 2 is inside one at-rule, and so on. */
+  depth: number;
 }> {
   const blanked = css.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
-  const blocks: Array<{ selector: string; body: string; sheet: string; line: number }> = [];
+  const blocks: Array<{ selector: string; body: string; sheet: string; line: number; depth: number }> = [];
 
   // A stack, because the first version of this walked depth with a single `head` and silently
   // dropped every rule nested inside an `@media` — which is a parser wrong in the **safe**
@@ -347,7 +469,7 @@ function declarationBlocks(css: string, sheet: string): Array<{
         const body = blanked.slice(open.start, i);
         const selector = open.head.replace(/\s+/g, ' ');
         if (!body.includes('{') && selector && !selector.startsWith('@')) {
-          blocks.push({ selector, body, sheet, line: open.line });
+          blocks.push({ selector, body, sheet, line: open.line, depth: stack.length + 1 });
         }
       }
       head = '';

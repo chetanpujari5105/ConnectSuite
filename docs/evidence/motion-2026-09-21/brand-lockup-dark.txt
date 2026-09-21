@@ -1,0 +1,36 @@
+
+brand-lockup-probe — theme: dark
+
+geometry
+  the mark and the stage, as the browser resolves them → {"stageW":69,"markW":57,"cssWidth":"57px","objectPosition":"50% 50%","naturalWidth":57,"leftGap":6,"rightGap":6,"dpr":2,"rect":{"x":20,"y":43,"w":69,"h":36},"markRect":{"x":26,"y":46,"w":57,"h":30}}  [control=3 polls=1 waited=6ms stopped=immediate]
+  PASS       the mark is drawn at the artwork width, not at its 65px slot — 57px drawn, artwork is 57px, cssWidth=57px
+  PASS       the artwork is centred in the stage — equal ground either side — left 6px, right 6px  [control: an asymmetry is what the 65px rule produced — 2 and 10]
+
+halo
+  is the halo inside the stage, and does the stage clip it → {"haloIsChildOfStage":true,"stageOverflow":"hidden","stageIsolation":"isolate","haloOverflowsBy":{"left":31,"right":31},"haloOpacity":"0.5","haloBlur":"blur(7px)"}  [control=1 polls=1 waited=1ms stopped=immediate]
+  PASS       the halo is a child of the stage and the stage clips — child=true, overflow=hidden, isolation=isolate
+  PASS       and it does overflow, so the clip is load-bearing rather than incidental — 31px left and 31px right of the stage would be painted without it
+
+affordance
+  does the brand stage present itself as something to click → {"tag":"SPAN","role":null,"tabIndex":-1,"cursor":"auto","navRowCursor":"pointer","focusable":false,"wordmarkAnimation":"none","wordmarkTransition":"all","wordmarkTransform":"none"}  [control=14 polls=1 waited=2ms stopped=immediate]
+  PASS       the stage is not a control — not focusable, no role, no pointer cursor — <span> role=null tabIndex=-1 cursor=auto  [control: a real nav row in the same sidebar reads cursor=pointer]
+  PASS       the wordmark is static — no animation, no transform — animation=none, transform=none, transition-property=all
+
+breath
+  at rest       {"animationName":"brand-breathe","animationDuration":"6s","opacity":"0.500004","haloAnimations":1,"keyframeAnimationsRunning":3,"keyframeNames":["brand-breathe","page-in","halo"],"transitionsRunning":5,"longestTransitionMs":200}
+  under reduce  {"animationName":"none","animationDuration":"1e-05s","opacity":"0.5","haloAnimations":0,"keyframeAnimationsRunning":0,"keyframeNames":[],"transitionsRunning":244,"longestTransitionMs":200}
+  PASS       the breath runs only under prefers-reduced-motion: no-preference — brand-breathe (6s) -> none  [control: halo animations 1 -> 0]
+  PASS       under reduce the halo is static at its designed rest value, not frozen mid-cycle — opacity=0.5 with no animation attached — a declaration that never runs cannot be frozen, which is why this is a no-preference gate rather than a reduce override
+  PASS       and no ambient animation survives anywhere in the page — keyframe animations 3 (brand-breathe, page-in, halo) -> 0 (none). The 244 transitions alongside are the global kill's own, longest 200ms — they are created BY applying the emulation and are not surviving motion; counting them with the animations reverses this reading
+  breath released: running
+  dpr 2, plain viewport capture, no clip and no captureBeyondViewport
+  rest  halo opacity 0.5  /tmp/brand-viewport-dark-rest.png
+  peak  halo opacity 0.72  /tmp/brand-viewport-dark-peak.png
+  hand these to the classifier:
+    python3 scripts/brand-pixels.py --shot=/tmp/brand-viewport-dark-rest.png --dpr=2 --stage=20,43,69,36 --mark=26,46,57,30 --sidebar=3,43,10,36 --sidebar-far=3,780,10,36 --label=dark/rest
+    python3 scripts/brand-pixels.py --shot=/tmp/brand-viewport-dark-peak.png --dpr=2 --stage=20,43,69,36 --mark=26,46,57,30 --sidebar=3,43,10,36 --sidebar-far=3,780,10,36 --label=dark/peak
+
+------------------------------------------------------------------------------
+brand-lockup-probe: ALL READINGS OK (theme: dark)
+  The pixel classes are computed by scripts/brand-pixels.py against these crops —
+  the asset's alpha channel is the classifier, never a brightness threshold.

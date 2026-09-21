@@ -1,0 +1,37 @@
+brand pixels [dark/rest]
+  wings   n= 2669  rgb=(18, 23, 22)  L=0.0093
+  eyes    n=  889  rgb=(140, 228, 96)  L=0.6615
+  ground  n= 5753  rgb=(30, 39, 37)  L=0.0195   (stage + halo, under and around the mark)
+
+  wings on the bare sidebar       1.09:1   <- what a mask with no stage under it gets
+  wings against their ground      1.17:1   <- with the stage and halo
+  eyes  against the same ground   10.24:1   <- the control: these were always bright and are NOT what was fixed.
+        A run where this comes back near the wings is an alignment that is wrong for
+        both classes, not a finding about the lockup.
+
+  sidebar beside the stage  rgb=(14, 14, 14)  channel spread 0
+  sidebar far from it       rgb=(14, 14, 14)  largest per-channel difference 0
+  stage ground              rgb=(30, 39, 37)  channel spread 9   <- the control: the halo MUST tint here, or "no tint on the sidebar" means nothing
+
+  PASS  the sidebar is not tinted blue or lime — the gutter beside the stage reads rgb(14, 14, 14) and the gutter far below it reads rgb(14, 14, 14) — largest per-channel difference 0  [control: the stage ground itself reads (30, 39, 37), spread 9]
+  PASS  and the halo is genuinely there, so that reading means something — stage ground spread 9 against the sidebar's 0
+  PASS  the wing and eye classes are separated, so the alignment is right — wings L=0.0093 against eyes L=0.6615 — a run where these converge is an alignment wrong for both classes, not a finding about the lockup
+
+brand pixels [dark/peak]
+  wings   n= 2669  rgb=(18, 23, 23)  L=0.0093
+  eyes    n=  889  rgb=(141, 228, 96)  L=0.6631
+  ground  n= 5753  rgb=(32, 45, 41)  L=0.0253   (stage + halo, under and around the mark)
+
+  wings on the bare sidebar       1.09:1   <- what a mask with no stage under it gets
+  wings against their ground      1.27:1   <- with the stage and halo
+  eyes  against the same ground   9.48:1   <- the control: these were always bright and are NOT what was fixed.
+        A run where this comes back near the wings is an alignment that is wrong for
+        both classes, not a finding about the lockup.
+
+  sidebar beside the stage  rgb=(14, 14, 14)  channel spread 0
+  sidebar far from it       rgb=(14, 14, 14)  largest per-channel difference 0
+  stage ground              rgb=(32, 45, 41)  channel spread 13   <- the control: the halo MUST tint here, or "no tint on the sidebar" means nothing
+
+  PASS  the sidebar is not tinted blue or lime — the gutter beside the stage reads rgb(14, 14, 14) and the gutter far below it reads rgb(14, 14, 14) — largest per-channel difference 0  [control: the stage ground itself reads (32, 45, 41), spread 13]
+  PASS  and the halo is genuinely there, so that reading means something — stage ground spread 13 against the sidebar's 0
+  PASS  the wing and eye classes are separated, so the alignment is right — wings L=0.0093 against eyes L=0.6631 — a run where these converge is an alignment wrong for both classes, not a finding about the lockup

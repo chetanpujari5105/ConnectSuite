@@ -286,22 +286,29 @@ body {
 /*
  * Above the halo, and centred in the stage.
  *
- * The width drops to the artwork's own 57px so the stage wraps the mark rather than the mark's
- * box; `object-position` goes to centre for the same reason. Outside the stage this element is
- * still the handoff's 65x30 lockup slot — it is the stage that changed, not the mark.
+ * The width is the artwork's own 57px rather than its 65px slot, and `object-position` is centre,
+ * so the stage wraps the mark instead of wrapping the mark's box. `.brand-mark` exists exactly
+ * once in the page and only ever inside the stage, so there is no second case to keep 65px for.
+ *
+ * **This was two blocks for a day and the browser kept the wrong one.** The stage pass wrote the
+ * 57px rule *above* the pre-existing 65px rule instead of editing it: equal specificity, later
+ * wins, and the mark rendered at 65px with `object-position: left center` — the artwork pinned
+ * left in its box with eight empty pixels on the right, showing the lime half of the halo through.
+ * The comment three lines up described the fix; `getComputedStyle` reported `width: 65px`.
+ *
+ * `stylesheets.test.ts` had a guard for a selector declared twice in one sheet and it passed,
+ * because its discriminator is **distance** — a re-declaration far from the original is dead, an
+ * adjacent one is a deliberate override you can read in one screen. Here proximity was the thing
+ * that hid it: inserted above, the pair reads as one commented block. That guard now also refuses
+ * a same-property contradiction at any distance.
  */
 .brand-mark {
   position: relative;
-  width: 57px;
-  object-position: center;
-}
-
-.brand-mark {
   flex: none;
-  width: 65px;
+  width: 57px;
   height: 30px;
   object-fit: contain;
-  object-position: left center;
+  object-position: center;
 }
 
 .brand-name {
