@@ -340,5 +340,32 @@ phone* when the person chooses Decline. The 30-second timeout and its sentence a
   `linkHealth.ts`): they belong to the deferred Mac rename (Appendix B of the Android redesign plan,
   decision 14), which also splits `linkHealth.ts`, and were left for it.
 
+**Commit:** `d9e681e`
+
+## Motion — after the static features (skills: `find-animation-opportunities`, then `improve-animations`)
+
+**Opportunity sweep** (only the new surfaces). Three survived the gate; everything high-frequency or
+data-bearing was rejected — List/Grid switch and sort reordering (tens a session, over data being
+read), filter typing (keyboard-driven), the 512 → original swap (a crossfade would only delay the
+sharp pixels), the mirror countdown digits (functional text), tile hover (consistency with rows).
+
+| | Change | Purpose | Values |
+|---|---|---|---|
+| 1 | send progress bar | stop the bar trailing the phone's real count | was `--dur-ring` 600 ms eased under 250 ms updates → `--dur-state` 180 ms **linear** |
+| 2 | send card arriving in the detail column | bridge the swap under the pointer | one-frame `.is-arriving` (`opacity 0; translateY(-4px)`) → rest over `--dur-arrive` on `--ease`, **once per card** — measured live: a forced redraw did not replay it; reduced motion keeps the opacity only (`.motion-fade`) |
+| 3 | setup badge Off → On (Android) | state indication on the row the person just acted on | `Crossfade`, 180 ms on `CubicBezierEasing(0.22, 1, 0.36, 1)` — the Mac's `--dur-state` / `--ease` |
+
+**Audit** (`improve-animations`, same scope): one MEDIUM, **fixed** — the first version of #3 animated
+shared colours under both crossfading glyphs, so for ~180 ms the outgoing *Off* circle was drawn lime,
+a frame claiming a grant the OS had not reported. Each glyph now wears its own state's colours. Two
+LOW items kept with feel-checks: whether Chromium transitions `width` on `::-webkit-progress-value` at
+all (harmless either way), and the entrance replaying once when *Send* turns the confirm card into
+the batch card.
+
+`check-motion-tokens`: 77 declarations, 20 tokens, no raw literals. Evidence `e-motion-contacts-on.png`
+(emulator: Contacts allowed through the system dialog, row settled on the lime check).
+
+**Please run `/review-animations` yourself** over this pass — I did not invoke it, as asked.
+
 **Commit:** *(next)*
 

@@ -1404,12 +1404,15 @@ class FilesView {
     // file's details beside it would compete with the one decision on screen.
     if (this.pendingSend !== null) {
       this.renderSendConfirm(this.pendingSend);
+      this.markArrival('confirm');
       return;
     }
     if (this.batch !== null) {
       this.renderSendBatch(this.batch);
+      this.markArrival('batch');
       return;
     }
+    this.lastCard = null;
 
     // More than one row selected: the card describes the *set*, because describing one of them and
     // acting on all of them is the mismatch that makes a multi-file drag feel like it misfired.
@@ -1548,6 +1551,27 @@ class FilesView {
   }
 
   /** The confirmation: phone, folder, count, total, and the collision rule — then Send or Cancel. */
+  /** Which send card was drawn last, so the arrival plays once per card and not on each redraw. */
+  private lastCard: 'confirm' | 'batch' | null = null;
+
+  /**
+   * One frame of `.is-arriving`, then removed — only when the card is new. Progress events redraw the
+   * batch card several times a second; replaying the entrance on each would be motion for nothing.
+   */
+  private markArrival(kind: 'confirm' | 'batch'): void {
+    if (this.lastCard === kind) return;
+    this.lastCard = kind;
+    const card = this.detail.querySelector('.files-send');
+    if (!card) return;
+    card.classList.add('is-arriving');
+    card.classList.add('motion-fade');
+    // After the next paint, the same shape as `overview.ts`'s `afterNextPaint`; with no paint loop
+    // (the view test's DOM double) the mark comes off at once and the card simply is there.
+    const settle = () => card.classList.remove('is-arriving');
+    if (typeof requestAnimationFrame !== 'function') settle();
+    else requestAnimationFrame(() => requestAnimationFrame(settle));
+  }
+
   private renderSendConfirm(files: Array<{ source: string; name: string; size: number }>): void {
     const card = document.createElement('section');
     card.className = 'files-send';

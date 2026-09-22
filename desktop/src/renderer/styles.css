@@ -3856,6 +3856,13 @@ input.files-search {
 
 .files-send .files-detail-title { margin-bottom: 0; }
 
+/* The card arriving in the detail column — once, when it first appears, not on each redraw. The
+   same one-frame `.is-arriving` pattern as the Overview's recent rows. */
+.files-send {
+  transition: opacity var(--dur-arrive) var(--ease), transform var(--dur-arrive) var(--ease);
+}
+.files-send.is-arriving { opacity: 0; transform: translateY(-4px); transition: none; }
+
 .files-send-list {
   list-style: none;
   margin: 0;
@@ -3925,7 +3932,9 @@ input.files-search {
 .files-send-bar::-webkit-progress-value {
   background: var(--accent);
   border-radius: var(--radius-pill);
-  transition: width var(--dur-ring) var(--ease-in-out);
+  /* Shorter than the phone's 250 ms progress cadence and linear: the bar lands on each real reading
+     before the next arrives. It was --dur-ring (600 ms, eased), which always trailed the truth. */
+  transition: width var(--dur-state) linear;
 }
 .files-send-bar--item { height: 3px; margin-top: var(--space-1); }
 

@@ -1,5 +1,8 @@
 package com.chetan.connectsuite.setup
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.Crossfade
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -198,13 +201,21 @@ private fun SetupRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Space.md),
         ) {
-            // Lime only for a switch that is really on — the healthy state, read from the OS.
-            IconBadge(
-                icon = if (on) Icons.Outlined.Check else Icons.Outlined.Circle,
-                tint = if (on) SidekickColors.accent else SidekickColors.textMeta,
-                container = if (on) SidekickColors.accentTint else SidekickColors.cardRaised,
-                border = if (on) SidekickColors.accentBorder else SidekickColors.border,
-            )
+            // Lime only for a switch that is really on — the healthy state, read from the OS. The
+            // change eases rather than snaps, because it is the row the person just acted on and they
+            // come back from Android's dialog looking for it: colour and a crossfade, no movement,
+            // at the Mac's --dur-state and --ease so both apps share one timing.
+            // Each glyph wears its own state's colours; the crossfade alone carries the change. An
+            // earlier version animated shared colours under both children, so for ~180 ms the
+            // outgoing Off circle was drawn lime — a frame claiming a grant the OS had not reported.
+            Crossfade(targetState = on, animationSpec = tween(STATE_MS, easing = STATE_EASE), label = "badge") { isOn ->
+                IconBadge(
+                    icon = if (isOn) Icons.Outlined.Check else Icons.Outlined.Circle,
+                    tint = if (isOn) SidekickColors.accent else SidekickColors.textMeta,
+                    container = if (isOn) SidekickColors.accentTint else SidekickColors.cardRaised,
+                    border = if (isOn) SidekickColors.accentBorder else SidekickColors.border,
+                )
+            }
             Column(Modifier.weight(1f)) {
                 Text(
                     item.title,
@@ -239,6 +250,10 @@ private fun SetupRow(
     }
     if (!last) RowDivider(inset = false)
 }
+
+/** The Mac's `--dur-state` (180 ms) on its `--ease` curve — one timing for a state change, both apps. */
+private const val STATE_MS = 180
+private val STATE_EASE = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 
 private const val PREFS = "sidekick_setup"
 private const val KEY_NOT_NOW = "not_now"
