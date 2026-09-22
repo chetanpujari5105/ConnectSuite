@@ -367,5 +367,49 @@ the batch card.
 
 **Please run `/review-animations` yourself** over this pass — I did not invoke it, as asked.
 
-**Commit:** *(next)*
+**Commit:** `accb386`
 
+---
+
+## Summary
+
+| | Feature | State | Commit |
+|---|---|---|---|
+| A | Android Sharesheet → Mac | **Blocked — needs a new phone→Mac message** (proposal in §A). Its receive-folder setting is built | — |
+| B | Mac → Android | Implemented, **live-tested on the SM-S938B** (send, collision rename, Stop, resume, real drop); phone notification built, not yet seen on the device | `d18ef15` |
+| C | Photos quality + video | Implemented, **live-tested** on generated samples (original 3000×4000, video seek) | `049d9dd` |
+| D | Files grid / sort / filter | Implemented, **live-tested** on Received files; phone only read | `5be1f5e` |
+| E | Set up Sidekick | Implemented, **emulator-tested** from clean data; phone install pending | `0d2d038` |
+| F | Mirror request | Implemented, emulator-verified (real notification, synthetic peer); **live test pending** | `d9e681e` |
+| — | Motion | Three bridges, one audit fix | `accb386` |
+
+Defects found and fixed: **132** (drops failed on `File.path`), **133** (Mac ignored the phone's
+transfer verdict), **134** (four features had no in-app route to their permission). Plus, found by
+live probes in my own new code and fixed before commit: Stop missing the `confirming` phase, a name
+squeezed to zero width, a filter debounce erasing typed text, a badge frame claiming a grant.
+
+## Morning — the manual steps, in order
+
+1. **Install the phone build on the SM-S938B while it is unlocked** (it was locked overnight, and an
+   install restarts the link service): `adb -s "$(scripts/target-device.sh samsung)" install -r
+   app/build/outputs/apk/debug/app-debug.apk`, then `adb -s "$(scripts/target-device.sh samsung)"
+   shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity`, then
+   `scripts/link-up.sh` must print three OKs. Pairing and grants survive `-r`.
+2. **F, live:** with Sidekick in the background on the phone, press **Start mirroring** on the Mac.
+   Expect a heads-up *"<Mac> wants to see this phone's screen"* with **Approve screen sharing**; tap
+   it; read the request card; **Continue**; Android shows its own prompt (on this Samsung *Next*, then
+   *Share screen*). Also try **Decline** once — the Mac should say *"Screen sharing was declined on
+   the phone."* And let one request time out (30 s) to see the notification disappear with it.
+3. **B, phone half:** send a file from the Mac (Files → **Send to phone…**) and look for *"<name>
+   arrived from <Mac>"* on the phone; tap it — it should open Transfers.
+4. **E on the real phone:** open Sync settings → **Set up Sidekick**. Most rows will read **On**
+   already, because Texts, Calls and Contacts were granted by `adb` during earlier testing.
+5. **A needs your decision** — the `share.offer` proposal in §A (and whether the Mac pulls
+   automatically or shows an Accept card). Nothing of A is built.
+6. **Run `/review-animations`** over this pass (not invoked by me, as asked).
+7. **Optional clean-up** of test files — on the phone in *Received files* (`Download/ConnectSuite`):
+   `sidekick-pass-*` (≈550 MB, including two 200 MB samples); on the Mac in `~/Downloads/Sidekick`:
+   `sidekick-pass-portrait-3000x4000.jpg` (saved on purpose) and `sidekick-pass-stop-200mb.bin`,
+   `inbox-probe.bin`, `nogrant-probe.bin` (pulled by the Files pane's selection prefetch while the app
+   was being used at 01:03–01:04 — not by this pass's probes). Nothing was deleted by this pass.
+8. Nothing is pushed.
