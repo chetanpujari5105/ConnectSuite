@@ -35,6 +35,10 @@ import com.chetan.connectsuite.sync.ui.clipboard.ClipboardSection
 import com.chetan.connectsuite.sync.ui.notifications.NotificationsSection
 import com.chetan.connectsuite.sync.ui.notifications.NotificationsUiState
 import com.chetan.connectsuite.sync.v2.ClipFeature
+import com.chetan.connectsuite.core.data.TrustedDeviceEntity
+import com.chetan.connectsuite.core.link.LinkState
+import com.chetan.connectsuite.core.link.LinkWaitStatus
+import com.chetan.connectsuite.link.MacManagementSection
 import com.chetan.connectsuite.core.link.ConnectStage
 import com.chetan.connectsuite.core.link.PairRejectReason
 import com.chetan.connectsuite.core.protocol.Link
@@ -102,6 +106,7 @@ class DesignPreviewActivity : ComponentActivity() {
                     SCREEN_FOLDERS -> FoldersPreview()
                     SCREEN_CLIP -> ClipPreview()
                     SCREEN_FEED -> FeedPreview()
+                    SCREEN_MAC -> MacManagementPreview()
                     else -> DevicesConnectedPreview()
                 }
             }
@@ -121,6 +126,7 @@ class DesignPreviewActivity : ComponentActivity() {
         const val SCREEN_FOLDERS = "folders"
         const val SCREEN_CLIP = "clip"
         const val SCREEN_FEED = "feed"
+        const val SCREEN_MAC = "mac"
     }
 }
 
@@ -445,5 +451,57 @@ private fun FeedPreview() {
             onDismiss = {},
             onEnableListener = {},
         )
+    }
+}
+
+
+/**
+ * Mac management with a Mac paired and connected.
+ *
+ * The emulator can pair with nothing, so the management half of `LinkRoute` is unreachable there —
+ * it only renders once `pairedMacs` is non-empty. `MacManagementSection` was extracted for exactly
+ * this reason, the same way every other section in the app takes its state as a parameter.
+ *
+ * **No bottom bar.** Mac management is not one of the five destinations, and the real screen shows
+ * the bar with nothing lit — which `PreviewNav(selected = -1)` reproduces.
+ */
+@Composable
+private fun MacManagementPreview() {
+    val now = remember { System.currentTimeMillis() }
+    var advancedOpen by remember { mutableStateOf(false) }
+    val mac = TrustedDeviceEntity(
+        deviceId = "3030c8ebcddcd0fb",
+        name = "Chetans-MacBook-Pro",
+        type = DeviceType.DESKTOP,
+        certificate = "",
+        fingerprint = "30:30:C8:EB:CD:DC:D0:FB:A9:1F:4C:2E:8B:07:D5:51:3A:7F:91:C2:04:BE:D5:51:AA:BB:CC:DD:EE:FF:00:11",
+        pairedAtMillis = now - 3L * 24 * 60 * 60 * 1000,
+        lastSeenAtMillis = now - 60_000,
+        lastAddress = "10.36.14.60",
+        lastPort = 42501,
+    )
+    Scaffold(
+        containerColor = SidekickColors.canvas,
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+        bottomBar = { PreviewNav(selected = -1) },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(bottom = padding.calculateBottomPadding())) {
+            MacManagementSection(
+                status = LinkWaitStatus.Connected(listOf("Chetans-MacBook-Pro")),
+                state = LinkState(running = true, clients = listOf("Chetans-MacBook-Pro")),
+                pairedMacs = listOf(mac),
+                capabilities = setOf("mirror", "clipboard", "files", "apps", "notifications", "remote"),
+                capStatuses = emptyList(),
+                lastPaired = null,
+                ownFingerprint = "A1:B2:C3:D4:E5:F6:07:18:29:3A:4B:5C:6D:7E:8F:90:A1:B2:C3:D4:E5:F6:07:18:29:3A:4B:5C:6D:7E:8F:90",
+                nowMillis = now,
+                advancedOpen = advancedOpen,
+                onAdvancedToggle = { advancedOpen = !advancedOpen },
+                onScan = {},
+                onForget = {},
+                onRestartListening = {},
+                onOpenAppInfo = {},
+            )
+        }
     }
 }

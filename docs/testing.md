@@ -22542,3 +22542,79 @@ the decision.
 - Carried from Slice 4, unchanged: the auto-apply toggle's TalkBack label, and dismiss on real
   notification data. Both need hardware or a second device; both are logged for a dedicated
   accessibility pass rather than chased here.
+
+---
+
+## Android UI pass — Slice 6: Mac management (2026-09-22)
+
+**No reference image.** Built to the structure agreed in the brief and the density the other five
+screens established. Evidence: `docs/evidence/phase-7-android-slice-6/`.
+
+### Two things it deliberately does not do
+
+**It does not use `HeroCard`.** There is exactly one gradient surface in this product and it is the
+Devices overview's connection card — that rule is in `HeroCard`'s own KDoc and it is the single
+thing keeping this app from reading as generated. The brief calls this screen's top card a "hero
+card" meaning *prominent*, so prominence is bought with a 64dp badge, the display type and space.
+A second gradient would have cost the first one its meaning.
+
+**It offers no per-Mac Disconnect, because there is no such action.** Checked before drawing:
+`forgetAndDisconnect` forgets *and* drops the session; `LinkServer.stop` stops the whole server;
+`LinkService.stop` is reachable from no UI today and was not given one here. Nothing in the codebase
+ends one session while leaving the pairing and the listener alone. A "Disconnect" button would have
+had to be one of those two wearing the wrong label — the same test that removed the pause button
+from Transfers.
+
+Also absent for the established reason: **latency**. There is no ping on this side.
+
+### The fingerprint rule, measured
+
+Correction #6 says the security fingerprint appears only inside Mac management → Advanced. That is
+now a reading rather than an intention:
+
+| | |
+|---|---|
+| Advanced collapsed | **no** node on screen containing a key-shaped string |
+| Advanced expanded | **two** — `A1:B2:C3:D4:E5:F6:07:18` and `30:30:C8:EB:CD:DC:D0:FB` |
+
+Both halves in one run, so the absence has its positive. `DeviceIdentity.shortFingerprint` is the
+formatter — the same one the pairing dialog uses, not a second one that happens to agree.
+
+### What was measured
+
+| # | Reading | Control | Result |
+|---|---|---|---|
+| 1 | Advanced expands and collapses | collapsed reading taken in the same run | PASS |
+| 2 | The fingerprint is in Advanced and nowhere else | as above | PASS |
+| 3 | No nav tab is lit | `PreviewNav(selected = -1)`, matching the real `mac` route | PASS |
+| 4 | The hero card does not repeat the Mac's name | fixed after the first capture — see below | PASS |
+| 5 | Phone suites | `--rerun-tasks`, artifacts 0-5 s old | **497 tests, 0 failures** |
+
+### Fixed after the first capture
+
+`LinkWaitStatus.Connected`'s headline is *"Connected to &lt;names&gt;"*, and this card's title is
+already that name — so the connected state read **"Chetans-MacBook-Pro / Connected to
+Chetans-MacBook-Pro"**. The sentence is now withheld in exactly that one state, where the pill at
+the top of the screen already carries it. `LinkWaitStatus` keeps owning the wording for every state
+where the name is not the answer; this is a decision about *duplication*, not about copy.
+
+### The extraction, and why it was necessary
+
+`MacManagementSection` is now a function of its inputs — status, link state, paired Macs,
+capabilities, own fingerprint, callbacks — with `LinkRoute` passing the live values. Before this it
+read `LinkController`, the Room database and `DeviceIdentity` itself, which means it could be
+rendered in exactly one situation: the one the device happened to be in. **Every interesting state
+on this screen needs a paired Mac**, and the emulator can pair with nothing. Same shape as
+`DevicesSection`, `TransfersSection`, `FoldersSection`, `ClipboardSection` and
+`NotificationsSection` — this was the last screen still reaching for its own data.
+
+### Open
+
+- **Forget was not exercised.** `onForget` reaches `server.forgetAndDisconnect`, which revokes the
+  trust row *and* closes the live session — the distinction defect-era testing established. Firing
+  it needs a paired Mac. **Stimulus: a real pairing, then Forget, then confirm the session ends and
+  the row is gone** — and per `CLAUDE.md`'s WAL lesson, read the trust store *through the app or
+  with the `-wal` file*, never by copying `connectsuite.db` alone.
+- **"Pair another Mac" sets the same `scanning = true` flag** whose destination was measured in
+  Slice 2 (the real camera flow, proven by the runtime CAMERA prompt). Not re-measured here.
+- Harness capture, for the reason above. Emulator only.

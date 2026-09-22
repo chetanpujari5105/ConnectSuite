@@ -43,7 +43,36 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Laptop
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Wifi
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import com.chetan.connectsuite.core.crypto.DeviceIdentity
+import com.chetan.connectsuite.core.ui.Radius
+import com.chetan.connectsuite.core.ui.RelativeTime
+import com.chetan.connectsuite.core.ui.Size
+import com.chetan.connectsuite.core.ui.Space
+import com.chetan.connectsuite.core.ui.components.DestructiveButton
+import com.chetan.connectsuite.core.ui.components.IconBadge
+import com.chetan.connectsuite.core.ui.components.SecondaryButton
+import com.chetan.connectsuite.core.ui.components.SidekickCard
+import com.chetan.connectsuite.core.ui.components.StateBlock
+import com.chetan.connectsuite.core.ui.components.StateKind
+import com.chetan.connectsuite.core.ui.components.StatusKind
+import com.chetan.connectsuite.core.ui.components.StatusPill
 import com.chetan.connectsuite.core.data.ConnectSuiteDatabase
+import com.chetan.connectsuite.core.data.TrustedDeviceEntity
+import com.chetan.connectsuite.core.link.CapabilityStatus
 import com.chetan.connectsuite.core.link.BackgroundRestriction
 import com.chetan.connectsuite.core.link.heldBackSummary
 import com.chetan.connectsuite.core.link.ConnectStage
@@ -51,6 +80,7 @@ import com.chetan.connectsuite.core.link.LinkController
 import com.chetan.connectsuite.core.link.PhoneAddress
 import com.chetan.connectsuite.core.link.ScannedPairing
 import com.chetan.connectsuite.core.link.LinkService
+import com.chetan.connectsuite.core.link.LinkState
 import com.chetan.connectsuite.core.link.LinkWaitStatus
 import com.chetan.connectsuite.core.model.DeviceType
 import com.chetan.connectsuite.core.ui.SidekickColors
@@ -176,192 +206,377 @@ fun LinkRoute(onDone: () -> Unit = {}) {
         return
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Mac") }) }) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+    MacManagementSection(
+        status = status,
+        state = state,
+        pairedMacs = pairedMacs,
+        capabilities = capabilities,
+        capStatuses = capStatuses,
+        lastPaired = lastPaired,
+        ownFingerprint = server.identity.fingerprint,
+        nowMillis = now,
+        advancedOpen = advancedOpen,
+        onAdvancedToggle = { advancedOpen = !advancedOpen },
+        onScan = { scanning = true },
+        onForget = { deviceId -> scope.launch { server.forgetAndDisconnect(deviceId) } },
+        onRestartListening = { LinkService.start(context) },
+        onOpenAppInfo = {
+            context.startActivity(
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", context.packageName, null),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        },
+    )
+}
+
+/**
+ * The Mac management screen, as a function of its inputs.
+ *
+ * Parameterised for the reason every other section in this app is: a composable that reaches into
+ * `LinkController`, the Room database and `DeviceIdentity` itself can be rendered in exactly one
+ * situation — the one the device happens to be in — and this screen's interesting states all
+ * require a paired Mac. Same shape as `DevicesSection`, `TransfersSection` and the rest.
+ */
+@Composable
+fun MacManagementSection(
+    status: LinkWaitStatus,
+    state: LinkState,
+    pairedMacs: List<TrustedDeviceEntity>,
+    capabilities: Set<String>,
+    capStatuses: List<CapabilityStatus>,
+    lastPaired: String?,
+    ownFingerprint: String,
+    nowMillis: Long,
+    advancedOpen: Boolean,
+    onAdvancedToggle: () -> Unit,
+    onScan: () -> Unit,
+    onForget: (String) -> Unit,
+    onRestartListening: () -> Unit,
+    onOpenAppInfo: () -> Unit,
+) {
+    // ── Mac management ────────────────────────────────────────────────────────────────────────
+    //
+    // No reference image; built to the density the other five screens established. Two things it
+    // deliberately does **not** do:
+    //
+    //  - **It does not use `HeroCard`.** There is exactly one gradient surface in this product and
+    //    it is the Devices overview's connection card. The brief calls this screen's top card a
+    //    "hero card", meaning prominent — so it is a `SidekickCard` with a 64dp badge and the
+    //    display type, which is prominence bought with size and space rather than with the one
+    //    treatment that is supposed to mean *this is the thing*.
+    //  - **It offers no per-Mac Disconnect.** There is no such action. `forgetAndDisconnect`
+    //    forgets *and* drops; `LinkServer.stop` stops the whole server; nothing ends one session
+    //    and leaves the pairing and the listener alone. A "Disconnect" button here would have to be
+    //    one of those two wearing the wrong label.
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = Space.lg),
+        verticalArrangement = Arrangement.spacedBy(Space.sm),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().statusBarsPadding().padding(vertical = Space.md),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            // 1. What is true right now, in the words `LinkWaitStatus` chose.
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = when (status) {
-                        is LinkWaitStatus.Refused -> MaterialTheme.colorScheme.errorContainer
-                        is LinkWaitStatus.Connected -> MaterialTheme.colorScheme.secondaryContainer
-                        else -> MaterialTheme.colorScheme.surfaceVariant
-                    },
-                ),
+            Text(
+                "This Mac",
+                style = SidekickType.display,
+                color = SidekickColors.textPrimary,
+                modifier = Modifier.weight(1f),
+            )
+            StatusPill(
+                text = if (state.isConnected) "Connected" else "Waiting",
+                kind = if (state.isConnected) StatusKind.Connected else StatusKind.Neutral,
+            )
+        }
+
+        // 1. The prominent card: who is connected, or who we are waiting for.
+        val shown = pairedMacs.firstOrNull()
+        SidekickCard {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Space.lg),
             ) {
+                IconBadge(
+                    icon = Icons.Outlined.Laptop,
+                    size = 64.dp,
+                    tint = if (state.isConnected) SidekickColors.accent else SidekickColors.textBody,
+                    container = if (state.isConnected) SidekickColors.accentTint else SidekickColors.cardRaised,
+                    border = if (state.isConnected) SidekickColors.accentBorder else SidekickColors.border,
+                )
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(Space.xs),
                 ) {
-                    Text(status.headline, style = MaterialTheme.typography.titleMedium)
-                    status.detail?.let {
-                        Text(it, style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (pairedMacs.isEmpty()) {
+                    Text(
+                        state.clients.firstOrNull() ?: shown?.name ?: "No Mac paired",
+                        style = SidekickType.title,
+                        color = SidekickColors.textPrimary,
+                    )
+                    // What `LinkWaitStatus` chose, unchanged — the decision lives in `core/`
+                    // where a test can call it, and this screen renders whatever it says.
+                    //
+                    // **Except when it would say the name twice.** `Connected`'s headline is
+                    // "Connected to <names>", and this card's title is already that name, so the
+                    // connected state read "Chetans-MacBook-Pro / Connected to
+                    // Chetans-MacBook-Pro". The pill at the top of the screen carries the state in
+                    // that case; the sentence is for the states where the name is not the answer.
+                    if (status !is LinkWaitStatus.Connected) {
                         Text(
-                            "Pairing lets your Mac see this phone's notifications, texts, calls, " +
-                                "photos and files — and send things back.",
-                            style = MaterialTheme.typography.bodySmall,
+                            status.headline,
+                            style = SidekickType.caption,
+                            color = SidekickColors.textBody,
                         )
                     }
                 }
             }
 
-            lastPaired?.let { Text("Paired with $it.") }
+            status.detail?.let {
+                Spacer(Modifier.height(Space.md))
+                Text(it, style = SidekickType.caption, color = SidekickColors.textBody)
+            }
 
-            // 1b. The wall the phone put up on its own, and the only one here that nobody chose.
-            //
-            // At rest, above Advanced, and not in the "Not offered yet" line — defect 85's rule:
-            // a card carrying a *state* has to be visible where the person is, because somebody
-            // asking "why did mirroring not start" does not open Advanced to find out whether an
-            // answer exists. It draws only while the restriction is set, so the common phone shows
-            // nothing at all.
-            if (capStatuses.any { it.backgroundRestricted }) {
-                Card(
+            // Real facts only. There is no latency here and there is no ping on this side to
+            // produce one — the same omission as the Devices hero, for the same reason.
+            Spacer(Modifier.height(Space.md))
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                shown?.lastAddress?.let { FactChip(Icons.Outlined.Wifi, it) }
+                FactChip(Icons.Outlined.Lock, "TLS 1.3")
+            }
+        }
+
+        lastPaired?.let {
+            SidekickCard(padding = Space.md, container = SidekickColors.accentTint, border = SidekickColors.accentBorder) {
+                Text("Paired with $it.", style = SidekickType.body, color = SidekickColors.textPrimary)
+            }
+        }
+
+        // 2. The wall the phone put up on its own, and the only one here that nobody chose.
+        //
+        // At rest, above Advanced, and not in the "Not offered yet" line — defect 85's rule:
+        // a card carrying a *state* has to be visible where the person is, because somebody
+        // asking "why did mirroring not start" does not open Advanced to find out whether an
+        // answer exists. It draws only while the restriction is set, so the common phone shows
+        // nothing at all.
+        if (capStatuses.any { it.backgroundRestricted }) {
+            SidekickCard(
+                container = SidekickColors.warningTint,
+                border = SidekickColors.warningBorder,
+            ) {
+                Text(
+                    BackgroundRestriction.HEADLINE,
+                    style = SidekickType.body.copy(fontWeight = FontWeight.Medium),
+                    color = SidekickColors.textPrimary,
+                )
+                Spacer(Modifier.height(Space.sm))
+                Text(BackgroundRestriction.BODY, style = SidekickType.caption, color = SidekickColors.textBody)
+                Spacer(Modifier.height(Space.xs))
+                Text(BackgroundRestriction.STEPS, style = SidekickType.caption, color = SidekickColors.textBody)
+                Spacer(Modifier.height(Space.xs))
+                Text(
+                    BackgroundRestriction.NOT_THE_SAME_SWITCH,
+                    style = SidekickType.meta,
+                    color = SidekickColors.textMeta,
+                )
+                Spacer(Modifier.height(Space.md))
+                // Opens App info and stops there. There is no public action for the
+                // Battery page inside it, so the two remaining taps are named above
+                // rather than promised by a button that cannot make them.
+                SecondaryButton(
+                    text = BackgroundRestriction.ACTION_LABEL,
+                    onClick = onOpenAppInfo,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                    ),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            BackgroundRestriction.HEADLINE,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(BackgroundRestriction.BODY, style = MaterialTheme.typography.bodyMedium)
-                        Text(BackgroundRestriction.STEPS, style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            BackgroundRestriction.NOT_THE_SAME_SWITCH,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        // Opens App info and stops there. There is no public action for the
-                        // Battery page inside it, so the two remaining taps are named above
-                        // rather than promised by a button that cannot make them.
-                        OutlinedButton(onClick = {
-                            context.startActivity(
-                                Intent(
-                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    Uri.fromParts("package", context.packageName, null),
-                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                            )
-                        }) { Text(BackgroundRestriction.ACTION_LABEL) }
-                    }
-                }
-            }
-
-            // 2. The action. Primary while nothing is paired; secondary once something is.
-            if (pairedMacs.isEmpty()) {
-                Button(onClick = { scanning = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Scan pairing code")
-                }
-            } else {
-                OutlinedButton(onClick = { scanning = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Pair another Mac")
-                }
-            }
-
-            // 3. The paired list.
-            Text("Paired Macs", style = MaterialTheme.typography.titleSmall)
-            if (pairedMacs.isEmpty()) {
-                Text("None yet.", style = MaterialTheme.typography.bodySmall)
-            } else {
-                // A Column rather than a LazyColumn: this list is the number of Macs a person
-                // owns, and a lazy list nested in a scrolling parent has no bounded height.
-                pairedMacs.forEach { mac ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            Text(mac.name, style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "Key ${mac.fingerprint.take(16)}…",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            OutlinedButton(onClick = {
-                                // Not `trustStore.forget` — that revokes the row and leaves the
-                                // session it authorised running. See LinkServer.forgetAndDisconnect.
-                                scope.launch { server.forgetAndDisconnect(mac.deviceId) }
-                            }) { Text("Forget") }
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(4.dp))
-
-            // 4. Advanced — everything that used to be first.
-            TextButton(onClick = { advancedOpen = !advancedOpen }) {
-                Text("Advanced")
-                Spacer(Modifier.height(0.dp))
-                Icon(
-                    if (advancedOpen) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                    contentDescription = if (advancedOpen) "Hide advanced" else "Show advanced",
                 )
             }
-            AnimatedVisibility(visible = advancedOpen) {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
+        }
+
+        // 3. The paired list.
+        Text(
+            "Paired Macs",
+            style = SidekickType.section,
+            color = SidekickColors.textPrimary,
+            modifier = Modifier.padding(top = Space.md, bottom = Space.xs),
+        )
+
+        // A Column rather than a LazyColumn: this list is the number of Macs a person owns, and a
+        // lazy list nested in a scrolling parent has no bounded height.
+        pairedMacs.forEach { mac ->
+            SidekickCard(padding = Space.md) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Space.md),
+                ) {
+                    IconBadge(Icons.Outlined.Laptop)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            "Ports ${Link.PORT_CONTROL}, ${Link.PORT_VIDEO}, ${Link.PORT_BULK} · " +
-                                "protocol v${Link.PROTOCOL_MAJOR}",
-                            style = MaterialTheme.typography.bodySmall,
+                            mac.name,
+                            style = SidekickType.body.copy(fontWeight = FontWeight.Medium),
+                            color = SidekickColors.textPrimary,
                         )
-                        state.lastError?.let {
-                            Text(
-                                "Last disconnect: $it",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
                         Text(
-                            if (capabilities.isEmpty()) {
-                                "Available to the Mac: nothing yet"
-                            } else {
-                                "Available to the Mac: " + capabilities.sorted().joinToString(", ")
-                            },
-                            style = MaterialTheme.typography.bodySmall,
+                            "Paired ${RelativeTime.of(mac.pairedAtMillis, nowMillis)}",
+                            style = SidekickType.caption,
+                            color = SidekickColors.textBody,
                         )
-                        // A capability is only advertised once its handlers exist, so this list is
-                        // what the Mac will actually grey out — and saying why beats a blank line.
-                        //
-                        // The sentence is built in `core/` by `heldBackSummary`, not here. It used
-                        // to be assembled inline out of two counts that could not add up to the
-                        // list they annotated, and a rule written only inside a @Composable is one
-                        // nothing in the build can check — the `showsState` lesson, twice.
-                        heldBackSummary(capStatuses)?.let { summary ->
-                            Text(
-                                summary,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            OutlinedButton(onClick = { LinkService.start(context) }) {
-                                Text(if (state.running) "Restart listening" else "Start listening")
-                            }
-                        }
                     }
+                    // Not `trustStore.forget` — that revokes the row and leaves the session it
+                    // authorised running. See LinkServer.forgetAndDisconnect.
+                    DestructiveButton(
+                        text = "Forget",
+                        onClick = { onForget(mac.deviceId) },
+                    )
                 }
             }
         }
+
+        if (pairedMacs.isEmpty()) {
+            SidekickCard(padding = Space.xs) {
+                StateBlock(
+                    kind = StateKind.Empty,
+                    icon = Icons.Outlined.Laptop,
+                    headline = "No Macs paired",
+                    body = "Scan the code Sidekick shows on your Mac and this phone will remember " +
+                        "it. Pairing is once per Mac.",
+                )
+            }
+        }
+
+        SecondaryButton(
+            text = if (pairedMacs.isEmpty()) "Scan pairing code" else "Pair another Mac",
+            onClick = { onScan() },
+            icon = Icons.Outlined.QrCodeScanner,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+        )
+
+        // 4. Advanced — everything that used to be first.
+        Spacer(Modifier.height(Space.sm))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(Radius.cardShape)
+                .clickable(onClick = onAdvancedToggle)
+                .padding(vertical = Space.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Advanced",
+                style = SidekickType.section,
+                color = SidekickColors.textPrimary,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                if (advancedOpen) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                contentDescription = if (advancedOpen) "Hide advanced" else "Show advanced",
+                tint = SidekickColors.textBody,
+                modifier = Modifier.size(Size.iconLarge),
+            )
+        }
+        AnimatedVisibility(visible = advancedOpen) {
+            SidekickCard(padding = Space.md) {
+                // **The fingerprint lives here and only here.** It is not a status, and a screen
+                // that shows it at rest teaches people to ignore it — which is the one thing a
+                // fingerprint must not be. It is the number you compare when something looks
+                // wrong, so it is one deliberate tap away.
+                AdvancedRow("This phone's key", DeviceIdentity.shortFingerprint(ownFingerprint))
+                pairedMacs.forEach { mac ->
+                    AdvancedRow("${mac.name}'s key", DeviceIdentity.shortFingerprint(mac.fingerprint))
+                }
+                AdvancedRow(
+                    "Ports",
+                    "${Link.PORT_CONTROL}, ${Link.PORT_VIDEO}, ${Link.PORT_BULK} · protocol v${Link.PROTOCOL_MAJOR}",
+                )
+                AdvancedRow(
+                    "Available to the Mac",
+                    if (capabilities.isEmpty()) "nothing yet" else capabilities.sorted().joinToString(", "),
+                )
+                // A capability is only advertised once its handlers exist, so this list is what
+                // the Mac will actually grey out — and saying why beats a blank line.
+                //
+                // The sentence is built in `core/` by `heldBackSummary`, not here.
+                heldBackSummary(capStatuses)?.let {
+                    Spacer(Modifier.height(Space.sm))
+                    Text(it, style = SidekickType.caption, color = SidekickColors.textMeta)
+                }
+                state.lastError?.let {
+                    Spacer(Modifier.height(Space.sm))
+                    Text(
+                        "Last disconnect: $it",
+                        style = SidekickType.caption,
+                        color = SidekickColors.destructive,
+                    )
+                }
+                Spacer(Modifier.height(Space.md))
+                SecondaryButton(
+                    text = if (state.running) "Restart listening" else "Start listening",
+                    onClick = onRestartListening,
+                    icon = Icons.Outlined.Refresh,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        // 5. The security explainer.
+        Spacer(Modifier.height(Space.sm))
+        SidekickCard(padding = Space.md, container = SidekickColors.canvas) {
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(Space.md),
+            ) {
+                IconBadge(Icons.Outlined.Lock, tint = SidekickColors.textMeta)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+                    Text(
+                        "How this connection is secured",
+                        style = SidekickType.body.copy(fontWeight = FontWeight.Medium),
+                        color = SidekickColors.textPrimary,
+                    )
+                    Text(
+                        "Both ends hold their own key and pinned the other's when you scanned the " +
+                            "code. Every connection after that is checked against the pinned key, " +
+                            "over TLS 1.3, on your local network — there is no account, no server " +
+                            "in the middle and no plaintext fallback. A Mac whose key has changed " +
+                            "is refused and told so.",
+                        style = SidekickType.caption,
+                        color = SidekickColors.textBody,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(Space.xl))
+    }
+}
+
+/** One label-and-value line in Advanced. The value is monospace where it is a number to compare. */
+@Composable
+private fun AdvancedRow(label: String, value: String) {
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = Space.xs),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(label, style = SidekickType.meta, color = SidekickColors.textMeta)
+        Text(
+            value,
+            style = SidekickType.caption.copy(fontFamily = FontFamily.Monospace),
+            color = SidekickColors.onControl,
+        )
+    }
+}
+
+@Composable
+private fun FactChip(icon: ImageVector, label: String) {
+    Row(
+        Modifier
+            .clip(Radius.pillShape)
+            .background(SidekickColors.cardRaised)
+            .padding(horizontal = Space.md, vertical = Space.sm),
+        horizontalArrangement = Arrangement.spacedBy(Space.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = SidekickColors.textBody, modifier = Modifier.size(16.dp))
+        Text(label, style = SidekickType.meta, color = SidekickColors.onControl)
     }
 }
 
