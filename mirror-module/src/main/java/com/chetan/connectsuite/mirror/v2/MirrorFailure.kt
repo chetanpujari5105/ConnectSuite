@@ -32,7 +32,9 @@ sealed class MirrorFailure(
     data object ConsentDenied : MirrorFailure(
         code = ErrorCode.PERMISSION_DENIED,
         reason = "Screen capture was denied on the phone.",
-        fixHint = "Start mirroring again and tap \"Start now\" on the phone.",
+        // Never a quoted button label: Android names it, and it varies by version and maker —
+        // this Samsung shows "Next" then "Share screen", not the "Start now" this used to quote.
+        fixHint = "Start mirroring again and approve screen sharing on the phone.",
     )
 
     /**
@@ -63,7 +65,8 @@ sealed class MirrorFailure(
     data object ConsentTimeout : MirrorFailure(
         code = ErrorCode.CONSENT_TIMEOUT,
         reason = "The phone did not answer the screen capture prompt within 30 seconds.",
-        fixHint = "Open ConnectSuite on the phone, go to the Mirror tab and tap Start mirroring.",
+        fixHint = "Tap the Sidekick notification on the phone, or open Sidekick › Mirror, and " +
+            "approve screen sharing.",
     )
 
     /**
@@ -113,10 +116,22 @@ sealed class MirrorFailure(
         fixHint = "Disconnect and reconnect the Mac to get a fresh session.",
     )
 
+    /**
+     * The person saw Sidekick's own request screen and chose **Decline** — before Android's prompt
+     * was ever shown. Distinct from [ConsentDenied], which is an answer to *Android's* prompt; the
+     * Mac should hear that the phone's owner said no, not that a system dialog was cancelled.
+     */
+    data object DeclinedOnPhone : MirrorFailure(
+        code = ErrorCode.PERMISSION_DENIED,
+        reason = "Screen sharing was declined on the phone.",
+        fixHint = "If that was a mistake, start mirroring again from this Mac.",
+    )
+
     /** For logs: one line naming the case, not the prose. */
     val label: String
         get() = when (this) {
             ConsentDenied -> "consent-denied"
+            DeclinedOnPhone -> "declined-on-phone"
             ConsentDismissed -> "consent-dismissed"
             ConsentTimeout -> "consent-timeout"
             PhoneLocked -> "phone-locked"

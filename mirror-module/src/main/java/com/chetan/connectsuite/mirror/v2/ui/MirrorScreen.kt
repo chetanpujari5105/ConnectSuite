@@ -1,5 +1,11 @@
 package com.chetan.connectsuite.mirror.v2.ui
 
+import com.chetan.connectsuite.core.ui.components.SecondaryButton
+import androidx.compose.ui.platform.testTag
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -83,6 +89,19 @@ fun MirrorScreen(extraCards: @Composable () -> Unit = {}) {
     ) {
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(vertical = Space.md)) {
             Text("Mirror", style = SidekickType.display, color = SidekickColors.textPrimary)
+        }
+
+        if (status.phase == MirrorPhase.AWAITING_FOREGROUND) {
+            // A Mac asked while Sidekick was in the background. This screen — not Android's
+            // prompt — is the first thing the person sees, so it says who asked and what sharing
+            // means before anything is requested. Android's own prompt follows Continue.
+            MirrorRequestCard(
+                status = status,
+                onContinue = { MirrorEngine.startFromPhone(context) },
+                onDecline = { MirrorEngine.declineFromPhone(context) },
+            )
+            Spacer(Modifier.height(Space.xl))
+            return@Column
         }
 
         StateCard(status = status, link = link)
@@ -223,4 +242,88 @@ private fun StateCard(status: MirrorStatus, link: LinkState) {
             )
         }
     }
+}
+
+/**
+ * **A Mac is asking to see this phone's screen** — Feature F, 2026-09-23.
+ *
+ * Reached by tapping the request notification (a user gesture, which is what lets the app come
+ * forward on Android 10+). It explains, in Sidekick's words, what Android's own prompt is about to
+ * ask; it never imitates that prompt, and never quotes its buttons — Android and the phone's maker
+ * word them, and this Samsung says "Next" then "Share screen".
+ *
+ * The countdown is computed from `askedAtMillis`, set in the same breath as the consent timer, so it
+ * ends when the request does. After it ends the phase leaves `AWAITING_FOREGROUND` and this card is
+ * replaced by the ordinary state card carrying the timeout's own sentence.
+ */
+@Composable
+fun MirrorRequestCard(status: MirrorStatus, onContinue: () -> Unit, onDecline: () -> Unit) {
+    val peer = status.peerName ?: "Your Mac"
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(status.askedAtMillis) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
+    val left = status.askedAtMillis?.let {
+        ((it + MirrorEngine.CONSENT_TIMEOUT_MS - now) / 1_000).coerceAtLeast(0)
+    }
+
+    SidekickCard(
+        container = SidekickColors.accentTint,
+        border = SidekickColors.accentBorder,
+        modifier = Modifier.testTag("mirror-request"),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
+            IconBadge(
+                Icons.Outlined.ScreenShare,
+                tint = SidekickColors.accent,
+                container = SidekickColors.accentTint,
+                border = SidekickColors.accentBorder,
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "$peer wants to see this phone's screen",
+                    style = SidekickType.body.copy(fontWeight = FontWeight.Medium),
+                    color = SidekickColors.textPrimary,
+                )
+                if (left != null) {
+                    Text(
+                        if (left > 0) "This request ends in ${left}s" else "This request has ended",
+                        style = SidekickType.meta,
+                        color = SidekickColors.textMeta,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(Space.md))
+        for (line in listOf(
+            "$peer will see everything on this screen until you stop sharing — including " +
+                "notifications that appear while it is on.",
+            "With Sidekick Input turned on, $peer can also tap and type here.",
+            "Android will ask next, in its own words. That prompt is Android's; Sidekick cannot " +
+                "answer it for you.",
+            "Your lock screen, banking apps and protected video stay black on the Mac.",
+        )) {
+            Text(
+                "·  $line",
+                style = SidekickType.caption,
+                color = SidekickColors.textBody,
+                modifier = Modifier.padding(bottom = Space.xs),
+            )
+        }
+    }
+    Spacer(Modifier.height(Space.sm))
+    PrimaryButton(
+        text = "Continue",
+        onClick = onContinue,
+        icon = Icons.Outlined.Cast,
+        modifier = Modifier.fillMaxWidth().height(56.dp).testTag("mirror-request-continue"),
+    )
+    SecondaryButton(
+        text = "Decline",
+        onClick = onDecline,
+        modifier = Modifier.fillMaxWidth().height(52.dp).testTag("mirror-request-decline"),
+    )
 }

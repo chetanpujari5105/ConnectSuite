@@ -22842,3 +22842,39 @@ The phone half on the SM-S938B: installing there interrupts the real link, and i
 Feature F. Photos' Android 14+ *Select photos* (partial) answer reads as **Off** here, because the
 feature itself needs images **and** videos in full; that is the same test `MediaFeature.granted`
 applies, so the row and the Mac's `photos` capability cannot disagree.
+
+
+## Sidekick feature pass — Feature F: the mirror request while the app is backgrounded (2026-09-23)
+
+### The platform rules this is built inside (official Android behaviour, not assumptions)
+
+- **Every MediaProjection session needs fresh consent**, shown by Android; an app cannot answer it.
+- **Background activity launches are restricted** (Android 10+): a backgrounded app may not bring
+  itself forward. A *notification tap* is the user's gesture that allows it — the route already
+  measured on this handset (`MirrorEngine` → `AWAITING_FOREGROUND`).
+- **Full-screen intents** (`USE_FULL_SCREEN_INTENT`) are, since Android 14, granted by default only
+  to calling and alarm apps; others must be granted by the user, and Play policy restricts them to
+  those uses. Sidekick is neither, and a window thrown over another app asking about screen capture
+  is exactly what a spoofed system prompt looks like. **Not used.**
+
+### What changed
+
+| | Before | After |
+|---|---|---|
+| notification | *"<Mac> wants to mirror your screen" / "Tap to open ConnectSuite and start mirroring."* | *"<Mac> wants to see this phone's screen" / "Tap to review. Android will then ask you to approve screen sharing."*, a named **Approve screen sharing** action, `category=reminder`, and `setTimeoutAfter(30 s)` — gone when the request is |
+| tap | the Mirror tab's generic state card and Start button | a **request card**: who asked, what sharing lets them see (including notifications that appear, and control with Sidekick Input on), that Android asks next in its own words, what stays black, a countdown from the real consent timer, **Continue** (then Android's prompt) or **Decline** |
+| decline | not possible except by letting it time out | `MirrorFailure.DeclinedOnPhone` through `fail()` — the Mac hears *"Screen sharing was declined on the phone."*, distinct from a refused system prompt |
+| copy to the Mac | *Tap "Start now" on the phone.* — a label this Samsung does not show (it reads *Next* then *Share screen*) | *Approve screen sharing on your phone.* No sentence quotes a button (`ConsentCopyTest`, red against the verbatim old sentence). *ConnectSuite* → *Sidekick* in every mirror sentence and in the Mac's three *Sidekick Input* instructions |
+
+### Evidence
+
+- **Emulator, synthetic peer "Example Mac"** (debug `DesignPreviewActivity`, `mirror_request`): the
+  production notification posted and drawn as a **heads-up** with its action
+  (`importance=4 category=reminder actions=1 vis=PRIVATE` from `dumpsys notification`); the
+  production request card with the countdown reading *ends in 7s*. `f-heads-up-synthetic.png`,
+  `f-request-card-synthetic.png`. Buttons are no-ops there — layout and copy only, nothing about wiring.
+- **Not run on the SM-S938B.** It was locked and dozing, and installing there restarts the link
+  service, which must then be started by launching the app — on a locked phone that could leave the
+  Mac without its phone overnight. The live test is the first manual step for the morning.
+- Suites: mirror-module 53/53 (`ConsentCopyTest` 4, `MirrorContractTest`'s exhaustive failure list
+  updated — it caught the new subclass on the first run), phone 540 total, Mac 952/952.

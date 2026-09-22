@@ -66,7 +66,7 @@ object MirrorEngine {
     private const val ACK_BUDGET_MS = 2_000L
 
     /** How long a consent request may stay unanswered before it is called a failure by name. */
-    private const val CONSENT_TIMEOUT_MS = 30_000L
+    const val CONSENT_TIMEOUT_MS = 30_000L
 
     private const val STATS_INTERVAL_MS = 2_000L
 
@@ -401,6 +401,19 @@ object MirrorEngine {
         publish(statusFor(MirrorPhase.REQUESTING_CONSENT, session.peerName))
         armConsentTimeout()
         requestConsent(activity)
+    }
+
+    /**
+     * The phone's owner chose **Decline** on Sidekick's request screen — before Android's own
+     * prompt existed. Through [fail], the single exit, so the Mac is told, the consent timer is
+     * cancelled and nothing is left half-running. Only meaningful while a Mac's request is waiting.
+     */
+    fun declineFromPhone(context: Context) {
+        if (_status.value.phase != MirrorPhase.AWAITING_FOREGROUND) return
+        MirrorNotifications.clear(context.applicationContext)
+        MirrorConsentActivity.cancelPending()
+        LinkLog.i("mirror", "Mirror request from ${_status.value.peerName ?: "the Mac"} declined on the phone")
+        fail(MirrorFailure.DeclinedOnPhone)
     }
 
     /**
@@ -1113,18 +1126,22 @@ object MirrorEngine {
     private fun statusFor(phase: MirrorPhase, peerName: String?): MirrorStatus = when (phase) {
         MirrorPhase.AWAITING_FOREGROUND -> MirrorStatus(
             phase = phase,
-            message = "${peerName ?: "Your Mac"} asked to mirror the screen, but ConnectSuite is " +
-                "in the background on the phone and Android will not let it show the screen " +
-                "capture prompt from there.",
-            fixHint = "Open ConnectSuite on the phone, go to the Mirror tab and tap Start mirroring.",
+            message = "Waiting for the phone. Sidekick is in the background there, and Android " +
+                "only shows its screen-sharing prompt to an app that is open, so the phone has " +
+                "been sent a notification to tap.",
+            fixHint = "Approve screen sharing on your phone — tap the Sidekick notification, or " +
+                "open Sidekick › Mirror.",
             peerName = peerName,
             awaitingTap = true,
+            askedAtMillis = System.currentTimeMillis(),
         )
 
+        // No quoted button label, ever: Android and the phone's maker word the prompt, and it
+        // differs — this Samsung shows "Next" then "Share screen", not the "Start now" this quoted.
         MirrorPhase.REQUESTING_CONSENT -> MirrorStatus(
             phase = phase,
-            message = "Asking for screen capture permission on the phone.",
-            fixHint = "Tap \"Start now\" on the phone.",
+            message = "Android is asking for screen-sharing permission on the phone.",
+            fixHint = "Approve screen sharing on your phone.",
             peerName = peerName,
         )
 

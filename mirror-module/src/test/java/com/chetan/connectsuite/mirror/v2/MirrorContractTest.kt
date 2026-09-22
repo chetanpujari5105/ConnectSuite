@@ -172,6 +172,7 @@ class MirrorContractTest {
             MirrorFailure.EncoderInitFailed("codec busy"),
             MirrorFailure.EncoderDied("fatal"),
             MirrorFailure.VideoChannelUnauthorised,
+            MirrorFailure.DeclinedOnPhone,
         )
 
         // The list above is written out by hand so each case can be constructed with a realistic

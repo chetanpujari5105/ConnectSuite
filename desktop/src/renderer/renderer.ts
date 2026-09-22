@@ -552,7 +552,7 @@ function render(status: RendererStatus | null): void {
   el('input-note').textContent = canInput
     ? 'Click the picture to tap, drag to swipe, scroll to scroll, and type to enter text into ' +
       'whichever field is selected on the phone.'
-    : 'Controlling the phone needs ConnectSuite Input turned on under Accessibility on the ' +
+    : 'Controlling the phone needs Sidekick Input turned on under Accessibility on the ' +
       'phone. Mirroring works without it; clicking does not.';
 
   /*

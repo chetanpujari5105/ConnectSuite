@@ -305,5 +305,40 @@ opened and backed out → still *Off* (secure setting confirms); Done → Device
 - The onboarding pages themselves still draw Material colours (as recorded in the Android redesign
   plan); only the new checklist is Sidekick-styled.
 
+**Commit:** `0d2d038`
+
+## F · Mirror request while backgrounded — **implemented; emulator-verified; live Samsung test pending (manual)**
+
+**Decision:** the official route only. A high-importance notification with a named action; the tap
+(the user's gesture) opens Sidekick's own request screen; **Continue** then shows Android's real
+consent. No full-screen intent (Android 14+ reserves it for calling and alarm apps, and it would look
+like a spoofed system prompt), no background popup, no silent MediaProjection.
+
+**What the person sees on the phone:** a heads-up *"<Mac> wants to see this phone's screen — Tap to
+review. Android will then ask you to approve screen sharing."* with **Approve screen sharing**; then a
+card saying who asked, what sharing shows, that Android asks next in its own words, what stays black,
+and how many seconds are left; **Continue** or **Decline**. After Continue, **the prompt is Android's
+and the OEM's** — on this Samsung it reads *Next* then *Share screen*; nothing in Sidekick quotes it.
+
+**What the Mac sees:** the phone's own sentences, now OEM-neutral (*"Approve screen sharing on your
+phone — tap the Sidekick notification, or open Sidekick › Mirror."*), and a distinct *declined on the
+phone* when the person chooses Decline. The 30-second timeout and its sentence are unchanged.
+
+**Changed files:** `mirror-module/.../{MirrorEngine,MirrorFailure,MirrorNotifications,MirrorState,MirrorStopReason}.kt`,
+`ui/MirrorScreen.kt` (+`ConsentCopyTest`, `MirrorContractTest`), `app/src/debug/.../DesignPreviewActivity.kt`,
+`desktop/src/renderer/{renderer,float,mirror}.ts` (*Sidekick Input*), `docs/protocol.md`.
+
+**Evidence:** `f-heads-up-synthetic.png`, `f-request-card-synthetic.png` (emulator, synthetic peer).
+
+**Remaining limitations:**
+
+- **Live Samsung test not run** (locked, and an install could strand the link overnight) — see the
+  manual steps below.
+- Whether the heads-up appears over a full-screen app, and for how long, is Android's and One UI's
+  decision (Do Not Disturb, notification settings); nothing here can force it.
+- Two Mac sentences still say *"Open ConnectSuite on the phone"* (pairing placeholder,
+  `linkHealth.ts`): they belong to the deferred Mac rename (Appendix B of the Android redesign plan,
+  decision 14), which also splits `linkHealth.ts`, and were left for it.
+
 **Commit:** *(next)*
 

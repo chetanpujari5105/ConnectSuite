@@ -139,7 +139,7 @@ sealed class MirrorStopReason(
     data object AndroidRevokedWhileRestricted : MirrorStopReason(
         actor = Actor.ANDROID,
         label = "android-revoked-restricted",
-        sentence = "Android stopped the capture because ConnectSuite's screen-recording service " +
+        sentence = "Android stopped the capture because Sidekick's screen-recording service " +
             "lost its foreground status. This app is background-restricted on this phone.",
         fixHint = BackgroundRestriction.STEPS,
     )

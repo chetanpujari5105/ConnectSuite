@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -94,6 +95,11 @@ class DesignPreviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val screen = intent?.getStringExtra(EXTRA_SCREEN) ?: SCREEN_DEVICES_CONNECTED
+        if (screen == SCREEN_MIRROR_REQUEST) {
+            // SYNTHETIC — the production notification, posted for a Mac named "Example Mac" so its
+            // wording and its action can be seen on a real shade. No mirror.start exists behind it.
+            com.chetan.connectsuite.mirror.v2.MirrorNotifications.askUserToStart(this, "Example Mac")
+        }
         setContent {
             ConnectSuiteTheme {
                 when (screen) {
@@ -108,6 +114,7 @@ class DesignPreviewActivity : ComponentActivity() {
                     SCREEN_CLIP -> ClipPreview()
                     SCREEN_FEED -> FeedPreview()
                     SCREEN_MAC -> MacManagementPreview()
+                    SCREEN_MIRROR_REQUEST -> MirrorRequestPreview()
                     else -> DevicesConnectedPreview()
                 }
             }
@@ -128,6 +135,7 @@ class DesignPreviewActivity : ComponentActivity() {
         const val SCREEN_CLIP = "clip"
         const val SCREEN_FEED = "feed"
         const val SCREEN_MAC = "mac"
+        const val SCREEN_MIRROR_REQUEST = "mirror_request"
     }
 }
 
@@ -528,5 +536,39 @@ private fun MacManagementPreview() {
                 onOpenAppInfo = {},
             )
         }
+    }
+}
+
+/**
+ * SYNTHETIC — Feature F's request card as the Mirror tab draws it while a Mac's `mirror.start` is
+ * waiting, with a peer named "Example Mac" and a request made now. The production composable; the
+ * buttons are no-ops here, so this proves layout and copy and nothing about wiring.
+ */
+@androidx.compose.runtime.Composable
+private fun MirrorRequestPreview() {
+    androidx.compose.foundation.layout.Column(
+        androidx.compose.ui.Modifier
+            .fillMaxSize()
+            .background(com.chetan.connectsuite.core.ui.SidekickColors.canvas)
+            .statusBarsPadding()
+            .padding(horizontal = com.chetan.connectsuite.core.ui.Space.lg),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(com.chetan.connectsuite.core.ui.Space.sm),
+    ) {
+        androidx.compose.material3.Text(
+            "Mirror",
+            style = com.chetan.connectsuite.core.ui.SidekickType.display,
+            color = com.chetan.connectsuite.core.ui.SidekickColors.textPrimary,
+            modifier = androidx.compose.ui.Modifier.padding(vertical = com.chetan.connectsuite.core.ui.Space.md),
+        )
+        com.chetan.connectsuite.mirror.v2.ui.MirrorRequestCard(
+            status = com.chetan.connectsuite.mirror.v2.MirrorStatus(
+                phase = com.chetan.connectsuite.mirror.v2.MirrorPhase.AWAITING_FOREGROUND,
+                peerName = "Example Mac",
+                awaitingTap = true,
+                askedAtMillis = System.currentTimeMillis(),
+            ),
+            onContinue = {},
+            onDecline = {},
+        )
     }
 }

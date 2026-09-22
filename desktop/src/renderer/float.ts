@@ -673,7 +673,7 @@ async function onRailPress(item: (typeof FLOAT_RAIL)[number]): Promise<void> {
   if (!inputAdvertised) {
     // The disabled state already stops this, so reaching here means something else did — and a press
     // that produces neither an action nor a sentence is the silent no-op class defect 18 is about.
-    say('Controlling the phone needs ConnectSuite Input turned on under Accessibility.');
+    say('Controlling the phone needs Sidekick Input turned on under Accessibility.');
     return;
   }
   const result = await floatBridge

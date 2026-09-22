@@ -53,6 +53,13 @@ data class MirrorStatus(
      */
     val awaitingTap: Boolean = false,
 
+    /**
+     * When the Mac's request arrived on this phone, for the request screen's countdown. The consent
+     * timer is armed in the same breath, so `askedAtMillis + CONSENT_TIMEOUT_MS` is when it ends —
+     * a countdown computed from anything else would be a guess drawn as a fact.
+     */
+    val askedAtMillis: Long? = null,
+
     /** Set once capture is live. */
     val geometry: CaptureGeometry? = null,
 

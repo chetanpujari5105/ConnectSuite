@@ -47,13 +47,25 @@ object MirrorNotifications {
             return
         }
 
+        // A heads-up (the channel is IMPORTANCE_HIGH) with one named action. Deliberately **not** a
+        // full-screen intent: since Android 14 `USE_FULL_SCREEN_INTENT` is granted by default only
+        // to calling and alarm apps, and a window thrown over whatever the person is doing, asking
+        // about screen capture, is exactly what a spoofed system prompt looks like. The tap is the
+        // user's gesture that lets the app come forward; Android then shows its own prompt.
+        val open = openMirrorTab(context)
         val notification = Notification.Builder(context, NotificationChannels.MIRROR_REQUEST)
-            .setContentTitle("$peerName wants to mirror your screen")
-            .setContentText("Tap to open ConnectSuite and start mirroring.")
+            .setContentTitle("$peerName wants to see this phone's screen")
+            .setContentText("Tap to review. Android will then ask you to approve screen sharing.")
             .setSmallIcon(android.R.drawable.ic_menu_view)
-            .setCategory(Notification.CATEGORY_STATUS)
+            .setCategory(Notification.CATEGORY_REMINDER)
             .setAutoCancel(true)
-            .setContentIntent(openMirrorTab(context))
+            .setContentIntent(open)
+            .addAction(
+                Notification.Action.Builder(null, "Approve screen sharing", open).build(),
+            )
+            // Gone when the request is: the consent timer ends it after the same 30 seconds, and a
+            // notification outliving it would offer to approve something that no longer exists.
+            .setTimeoutAfter(MirrorEngine.CONSENT_TIMEOUT_MS)
             .build()
 
         runCatching { manager.notify(REQUEST_ID, notification) }

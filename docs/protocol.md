@@ -181,7 +181,7 @@ once the link is known to hold.
 before a frame exists — and the ack carries only the state the request has entered:
 
 ```json
-{"state":"requesting-consent","message":"Asking for screen capture permission on the phone.","fixHint":"Tap \"Start now\" on the phone."}
+{"state":"requesting-consent","message":"Android is asking for screen-sharing permission on the phone.","fixHint":"Approve screen sharing on your phone."}
 ```
 
 Everything after that arrives as `mirror.state` events. This is deliberate: consent is a human
@@ -241,7 +241,7 @@ a session is progressing, so the Mac drives its canvas from these and never from
 
 | `state` | Meaning | Terminal |
 |---|---|---|
-| `awaiting-foreground` | ConnectSuite is backgrounded on the phone, so Android will not let it show the consent prompt. The phone has posted a notification; the user must open the app and tap **Start mirroring**. | no |
+| `awaiting-foreground` | Sidekick is backgrounded on the phone, so Android will not let it show the consent prompt. The phone has posted a request notification; the user taps it, reads Sidekick's request screen and chooses **Continue** (Android's prompt follows) or **Decline**. | no |
 | `requesting-consent` | The system screen-capture prompt is on the phone's screen now. | no |
 | `starting` | Consent granted; the capture service and encoder are coming up. | no |
 | `running` | Frames are flowing. Carries the capture geometry — see below. | no |
@@ -369,6 +369,7 @@ paths, each with its own reason string:
 
 | Cause | `code` |
 |---|---|
+| Declined on Sidekick's own request screen, before Android's prompt was shown | `PERMISSION_DENIED` |
 | Consent prompt answered "no" | `PERMISSION_DENIED` |
 | Consent prompt closed unanswered | `PERMISSION_DENIED` |
 | Consent unanswered for 30 seconds | `CONSENT_TIMEOUT` |
@@ -378,7 +379,10 @@ paths, each with its own reason string:
 | Encoder died mid-stream | `ENCODER_FAILED` |
 | Video socket token invalid | `UNAUTHORIZED` |
 
-The codes repeat; the messages do not. `SECURE_SURFACE` is the only one that does not end the
+The codes repeat; the messages do not. **No message or `fixHint` quotes a button of Android's
+prompt** — Android and the phone's maker word it, and it differs (the SM-S938B reads *Next* then
+*Share screen*); the phone says *approve screen sharing* and leaves the label to the phone
+(`ConsentCopyTest`). `SECURE_SURFACE` is the only one that does not end the
 session — the user walks out of the banking app and frames resume. Because it does not end the
 session it is the only one that has to be **retracted**, which the phone does by sending
 `mirror.state: running` again; see [`mirror.state`](#mirrorstate). Everything else in this table

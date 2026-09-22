@@ -993,7 +993,7 @@ class MirrorView {
   private showInputUnavailable(): void {
     this.showNotice(
       'This phone is not accepting taps or typing yet.',
-      'On the phone: Settings > Accessibility > Installed apps > ConnectSuite Input, and turn it on.',
+      'On the phone: Settings > Accessibility > Installed apps > Sidekick Input, and turn it on.',
     );
   }
 
