@@ -155,8 +155,8 @@ fun LinkRoute(onDone: () -> Unit = {}) {
 
     // Read once per tick rather than once per composition: the answer changes when Wi-Fi does, and
     // the `now` ticker above is already running at exactly the cadence this needs.
-    val localEndpoint = remember(now) { PhoneAddress.controlEndpoint() }
-    val localAddress = remember(now) { PhoneAddress.localIpv4() }
+    val localEndpoint = remember(now) { PhoneAddress.controlEndpoint(context) }
+    val localAddress = remember(now) { PhoneAddress.localIpv4(context) }
 
     val stage = remember(state, scanned, localAddress, now) {
         ConnectStage.of(state, scanned, localAddress, now)

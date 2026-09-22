@@ -21,5 +21,17 @@
             android:exported="true"
             android:excludeFromRecents="true"
             android:theme="@style/Theme.ConnectSuite" />
+
+        <!--
+          Same containment and the same reason for `exported="true"`: it is started by
+          `adb shell am start` and nothing else. It draws no UI, finishes immediately, reads no
+          user data, and writes only to logcat. See the class comment for why it has to exist at
+          all — the address it prints has no other surface on a phone that is already paired.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.PhoneAddressProbe"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay" />
     </application>
 </manifest>
