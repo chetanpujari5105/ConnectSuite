@@ -138,7 +138,7 @@ fun InputOnboardingCard() {
     }
 }
 
-private fun accessibilitySettings(): Intent =
+fun accessibilitySettings(): Intent =
     Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
 /**
@@ -149,7 +149,7 @@ private fun accessibilitySettings(): Intent =
  * setting flips first, so checking both means the card never shows "off" over a service the user
  * has just enabled.
  */
-private fun isInputServiceEnabled(context: Context): Boolean {
+fun isInputServiceEnabled(context: Context): Boolean {
     if (ConnectSuiteInputService.isConnected()) return true
     val enabled = Settings.Secure.getString(
         context.contentResolver,

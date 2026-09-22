@@ -144,8 +144,11 @@ object OnboardingCopy {
         primaryLabel = "Continue",
         secondaryLabel = "Skip for now",
         body = listOf(
-            "Notification mirroring, texts and calls need extra access. Those are asked for " +
-                "from the Sync tab, when you turn them on — not now.",
+            // Defect 134: this sentence promised a Sync-tab route that did not exist — no screen
+            // asked for texts, calls, contacts or photos. They are asked in Set up Sidekick now,
+            // which is the screen that follows pairing.
+            "Notification mirroring, texts, calls and photos need extra access. You choose them " +
+                "one at a time on the next screens — not now.",
         ),
     )
 

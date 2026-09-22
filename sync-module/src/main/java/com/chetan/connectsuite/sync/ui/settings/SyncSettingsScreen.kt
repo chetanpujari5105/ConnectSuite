@@ -42,6 +42,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 @Composable
 fun SyncSettingsScreen(
     onBack: () -> Unit,
+    /** Opens **Set up Sidekick** — the one place every feature's grant is asked for (defect 134). */
+    onOpenSetup: (() -> Unit)? = null,
     viewModel: SyncSettingsViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -66,6 +68,22 @@ fun SyncSettingsScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (onOpenSetup != null) {
+                item {
+                    com.chetan.connectsuite.core.ui.components.SidekickCard(
+                        padding = 4.dp,
+                        onClick = onOpenSetup,
+                    ) {
+                        com.chetan.connectsuite.core.ui.components.ListRow(
+                            title = "Set up Sidekick",
+                            subtitle = "Turn on texts, calls, photos, folders and control from " +
+                                "your Mac — one at a time, each asking only for what it needs.",
+                            showChevron = true,
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                }
+            }
             item {
                 Card(
                     Modifier.fillMaxWidth(),

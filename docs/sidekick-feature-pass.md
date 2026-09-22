@@ -258,5 +258,52 @@ it; red-first test). The first toolbar wrapped into three rows.
 tiles have no keyboard focus ring of their own — they are pointer targets like the list rows before
 them, and keyboard navigation of the listing is unchanged (not added) by this pass.
 
+**Commit:** `5be1f5e`
+
+## E · First-run setup and permissions — **implemented, emulator-tested; phone install pending with F**
+
+**Decision:** a *Set up Sidekick* checklist after pairing (and from Sync settings), not a wall of
+prompts. No permission added to the manifest; none asked that a feature does not need.
+
+**Existing behaviour found — defect 134:** four features (**Texts, Calls, Contacts, Photos**) had
+**no in-app route to being turned on**. Onboarding promised a Sync-tab route that did not exist; on
+the test phone those grants had been made by `adb`, without `USER_SET`.
+
+| Item | How it is asked | Status read from |
+|---|---|---|
+| Sidekick's own notifications (the one non-optional item) | runtime dialog | `POST_NOTIFICATIONS` |
+| Camera | **not asked here** — the QR scanner asks when opened | `CAMERA` |
+| Show notifications on your Mac | Settings deep link, re-read on return | `enabled_notification_listeners` |
+| Texts / Calls / Contacts | runtime dialog; *Turned off in Settings* + **Open Settings** once Android stops asking | the same groups the features check |
+| Photos and videos | runtime dialog | `MediaFeature.granted` — the feature's own test |
+| Folders | the existing Folders screen (SAF picker) | `persistedUriPermissions` |
+| Control from your Mac (*Sidekick Input*) | Accessibility Settings deep link | the input service's own check |
+| Keep running in the background | battery-optimisation request | `isIgnoringBatteryOptimizations` |
+
+Every feature row has **Not now** (remembered as a convenience, never as a grant). The header is a
+count with its denominator (*1 of 9 turned on*). Lime only on a row that is really on; amber only
+where Android has closed the easy route.
+
+**Changed files:** `app/.../setup/{SetupPlan,SetupScreen}.kt` (+`SetupPlanTest`), `AppNavigation.kt`,
+`onboarding/OnboardingCopy.kt` (the false sentence), `sync-module/.../SyncSettingsScreen.kt` (entry),
+`input-module/.../InputOnboardingCard.kt` (two helpers made public).
+
+**Test evidence:** emulator, clean data — 0 of 9 → Texts allowed through the system dialog (OS:
+`USER_SET` grants) → 1 of 9; Calls refused twice → *Turned off in Settings*; notification access
+opened and backed out → still *Off* (secure setting confirms); Done → Devices. `SetupPlanTest` 9/9.
+
+**Screenshots:** `e-setup-first-run.png`, `e-system-dialog-sms.png`, `e-setup-texts-on-calls-blocked.png`
+(emulator; no personal data).
+
+**Remaining limitations / manual steps:**
+
+- Not yet installed on the SM-S938B (done once with F, to limit link interruptions). On that phone
+  most rows will read **On** already, because of the earlier `adb` grants.
+- *Not now* hides nothing — the row stays, marked, so it can be revisited.
+- Android 14+ *Select photos* (partial access) reads as Off, because the Photos feature needs full
+  image **and** video access; that is the feature's own rule, not a new one.
+- The onboarding pages themselves still draw Material colours (as recorded in the Android redesign
+  plan); only the new checklist is Sidekick-styled.
+
 **Commit:** *(next)*
 

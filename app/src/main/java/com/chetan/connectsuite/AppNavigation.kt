@@ -35,6 +35,7 @@ import com.chetan.connectsuite.mirror.v2.MirrorEngine
 import com.chetan.connectsuite.mirror.v2.ui.MirrorScreen
 import com.chetan.connectsuite.onboarding.OnboardingOutcome
 import com.chetan.connectsuite.onboarding.OnboardingScreen
+import com.chetan.connectsuite.setup.SetupScreen
 import com.chetan.connectsuite.sync.ui.SyncRoute
 import com.chetan.connectsuite.sync.ui.SyncSection
 import com.chetan.connectsuite.sync.ui.settings.SyncSettingsScreen
@@ -85,6 +86,9 @@ private val BAR = listOf(
 )
 
 private const val ROUTE_SYNC_SETTINGS = "sync/settings"
+
+/** **Set up Sidekick** (Feature E / defect 134): after onboarding, and from Sync settings. */
+private const val ROUTE_SETUP = "setup"
 private const val KEY_ONBOARDING_DONE = "onboarding_complete"
 
 /**
@@ -108,6 +112,9 @@ fun ConnectSuiteRoot(
     // Where onboarding asked us to open. Null on every launch after the first, which is why the
     // fallback below is the ordinary start destination rather than anything conditional.
     var landingTab by rememberSaveable { mutableStateOf<String?>(null) }
+    // Where Done on the first-run checklist goes. Null when the checklist was opened from Settings,
+    // in which case Done is Back.
+    var setupReturnsTo by rememberSaveable { mutableStateOf<String?>(null) }
 
     if (!onboardingDone) {
         OnboardingScreen(
@@ -116,10 +123,13 @@ fun ConnectSuiteRoot(
                 // Somebody who has just paired should land on the thing they paired, not on the
                 // device list — which is the v1 Android-to-Android feature and has nothing to do
                 // with a Mac.
-                landingTab = when (outcome) {
+                // The checklist comes next either way: onboarding asks for the one grant the link
+                // needs, and every feature's grant is asked there, one at a time, on a tap.
+                setupReturnsTo = when (outcome) {
                     OnboardingOutcome.PAIRED -> TopLevelTab.Mac.route
-                    OnboardingOutcome.NOT_PAIRED -> null
+                    OnboardingOutcome.NOT_PAIRED -> TopLevelTab.Sync.route
                 }
+                landingTab = ROUTE_SETUP
                 onboardingDone = true
             },
         )
@@ -167,7 +177,7 @@ fun ConnectSuiteRoot(
     // Sync settings takes the whole screen; everything else keeps the bar, including Mac
     // management — which shows the bar with *nothing* lit, because it is a settings-tier screen
     // rather than a tab.
-    val showBottomBar = currentRoute != ROUTE_SYNC_SETTINGS
+    val showBottomBar = currentRoute != ROUTE_SYNC_SETTINGS && currentRoute != ROUTE_SETUP
 
     /**
      * -1 means no tab is lit. Folders deliberately maps to Transfers: it is a drill-down from that
@@ -251,7 +261,23 @@ fun ConnectSuiteRoot(
                 )
             }
             composable(ROUTE_SYNC_SETTINGS) {
-                SyncSettingsScreen(onBack = { navController.popBackStack() })
+                SyncSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenSetup = { navController.navigate(ROUTE_SETUP) },
+                )
+            }
+            composable(ROUTE_SETUP) {
+                SetupScreen(
+                    onOpenFolders = {
+                        section = SyncSection.Folders
+                        openRoute(TopLevelTab.Sync.route)
+                    },
+                    onDone = {
+                        val next = setupReturnsTo
+                        setupReturnsTo = null
+                        if (next != null) openRoute(next) else navController.popBackStack()
+                    },
+                )
             }
         }
     }

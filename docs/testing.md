@@ -22790,3 +22790,55 @@ Send, then filter (taking the free width), sort, direction and the List | Grid p
 ### Suites
 
 Mac 952/952 (`filesListing.test.ts` 8, `filesView.test.ts` +4), typecheck clean.
+
+
+## Sidekick feature pass — Feature E: Set up Sidekick (2026-09-23)
+
+### Defect 134 — four features no screen could turn on
+
+Read from the code before building anything: the only `ActivityResultContracts` in shipped code are
+`SyncRoute`'s file and folder pickers, `QrScanScreen`'s camera, and onboarding's notification
+permission. **Nothing requests SMS, Calls, Contacts or Photos**, while onboarding tells the user they
+are asked *"from the Sync tab, when you turn them on"*. The SM-S938B's grants agree: `READ_SMS`,
+`READ_CALL_LOG` and `READ_CONTACTS` are `granted=true` **without `USER_SET`** — set by `adb`, not by
+a person tapping Allow — while `CAMERA`, `POST_NOTIFICATIONS` and `READ_MEDIA_IMAGES`, which do have
+UI, carry `USER_SET`.
+
+### What was built
+
+`SetupPlan` (pure, 10 items in three sections — the link, what the Mac can do, staying connected)
+and `SetupScreen`. What it deliberately does not ask for: `NEARBY_DEVICES` (defect 69 — the Mac link
+was measured not to need it), and the camera (reported only; the scanner asks at the moment it is
+needed). Every feature has **Not now**. Status is read from the OS on every resume.
+
+### On the emulator only — the SM-S938B's data was never cleared
+
+`emulator-5554` (Android 16, SDK 37), `pm clear` then a fresh first run, every tap resolved from a
+fresh `uiautomator dump` by text or by the permission controller's resource id:
+
+| Step | Reading |
+|---|---|
+| onboarding → *I'll do this later* | lands on *Set up Sidekick*, **0 of 9 turned on**, camera *Asked when you scan* |
+| Texts → Allow → the system's own dialog *"Allow Sidekick to send and view SMS messages?"* → Allow | row **On**, **1 of 9**; `dumpsys package`: `READ_SMS`, `RECEIVE_SMS`, `SEND_SMS` all `granted=true` **with `USER_SET`** |
+| Calls → Allow → **two** dialogs (call log, then phone) → Don't allow, twice over | row **Turned off in Settings** (amber), action **Open Settings** — Android's second-round dialog used `permission_deny_and_dont_ask_again_button`, after which it answers without a dialog |
+| Show notifications → Open Settings → Back without changing it | Settings opened `NotificationAccessSettingsActivity`; back in the app the row still reads **Off**; `enabled_notification_listeners` lists two other packages and not ours (the control: the query can see the list) |
+| Done | lands on Devices (the not-paired outcome) |
+
+Two instrument faults, both caught before a reading: a helper matched only `permission_deny_button`
+and missed the second-round id (no tap happened, and the next dump showed the dialog still up); and
+a cold start had not drawn onboarding yet, so every tap was **refused** rather than guessed — the
+retry waits for the node instead of sleeping.
+
+### A layout fault from the first capture
+
+The title and scrolled content drew under the status bar. The scroll region now starts below it and
+ends above the gesture bar (`statusBarsPadding` / `navigationBarsPadding` before `verticalScroll`).
+`e-setup-first-run.png` is the corrected capture; `e-setup-texts-on-calls-blocked.png` was taken
+before the fix, mid-scroll, and shows the states it is named for.
+
+### Not exercised
+
+The phone half on the SM-S938B: installing there interrupts the real link, and is done once, with
+Feature F. Photos' Android 14+ *Select photos* (partial) answer reads as **Off** here, because the
+feature itself needs images **and** videos in full; that is the same test `MediaFeature.granted`
+applies, so the row and the Mac's `photos` capability cannot disagree.
