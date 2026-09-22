@@ -26,6 +26,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.Alignment
+import com.chetan.connectsuite.core.ui.SidekickColors
+import com.chetan.connectsuite.core.ui.SidekickType
+import com.chetan.connectsuite.core.ui.Space
+import com.chetan.connectsuite.core.ui.components.IconBadge
+import com.chetan.connectsuite.core.ui.components.SecondaryButton
+import com.chetan.connectsuite.core.ui.components.SidekickCard
+import com.chetan.connectsuite.core.ui.components.StatusKind
+import com.chetan.connectsuite.core.ui.components.StatusPill
 import com.chetan.connectsuite.core.link.LinkController
 import com.chetan.connectsuite.input.ConnectSuiteInputService
 
@@ -64,54 +76,65 @@ fun InputOnboardingCard() {
         onDispose { resolver.unregisterContentObserver(observer) }
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (enabled) {
-                MaterialTheme.colorScheme.surfaceVariant
-            } else {
-                // Not an error colour: nothing has failed, and mirroring works without this. It is
-                // an offer, so it looks like one.
-                MaterialTheme.colorScheme.secondaryContainer
-            },
-        ),
+    // Not an error colour when it is off: nothing has failed, and mirroring works without this.
+    // It is an offer, so it looks like one — and the heading is conditional for the same reason.
+    // The reference draws "Your Mac can control this phone" unconditionally, which is a statement
+    // of fact about a permission the user may never have granted.
+    SidekickCard(
+        container = if (enabled) SidekickColors.card else SidekickColors.cardRaised,
+        border = if (enabled) SidekickColors.accentBorder else SidekickColors.border,
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.md),
         ) {
+            IconBadge(
+                icon = Icons.Outlined.TouchApp,
+                tint = if (enabled) SidekickColors.accent else SidekickColors.textBody,
+                container = if (enabled) SidekickColors.accentTint else SidekickColors.card,
+                border = if (enabled) SidekickColors.accentBorder else SidekickColors.border,
+            )
             Text(
                 if (enabled) "Your Mac can control this phone" else "Let your Mac control this phone",
-                style = MaterialTheme.typography.titleMedium,
+                style = SidekickType.section,
+                color = SidekickColors.textPrimary,
+                modifier = Modifier.weight(1f),
             )
-            Text(
-                if (enabled) {
-                    "Clicking the mirrored screen on the Mac taps here, dragging swipes, and " +
-                        "typing goes into the selected text field."
-                } else {
-                    "Mirroring shows the screen. To click and type on it from the Mac, turn on " +
-                        "ConnectSuite Input under Accessibility — Android has no other way to " +
-                        "grant this, and it cannot be done from inside the app."
-                },
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                "The power and volume buttons stay out of reach either way. No app can press " +
-                    "them, ours included.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedButton(
-                onClick = { context.startActivity(accessibilitySettings()) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Outlined.TouchApp, contentDescription = null)
-                Text(
-                    if (enabled) "Accessibility settings" else "Open Accessibility settings",
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
+            if (enabled) StatusPill("On", StatusKind.Connected)
         }
+
+        Spacer(Modifier.height(Space.md))
+
+        Text(
+            if (enabled) {
+                "Clicking the mirrored screen on the Mac taps here, dragging swipes, and " +
+                    "typing goes into the selected text field."
+            } else {
+                "Mirroring shows the screen. To click and type on it from the Mac, turn on " +
+                    "Sidekick Input under Accessibility — Android has no other way to " +
+                    "grant this, and it cannot be done from inside the app."
+            },
+            style = SidekickType.body,
+            color = SidekickColors.textBody,
+        )
+
+        Spacer(Modifier.height(Space.sm))
+
+        Text(
+            "The power and volume buttons stay out of reach either way. No app can press " +
+                "them, ours included.",
+            style = SidekickType.caption,
+            color = SidekickColors.textMeta,
+        )
+
+        Spacer(Modifier.height(Space.md))
+
+        SecondaryButton(
+            text = if (enabled) "Accessibility settings" else "Open Accessibility settings",
+            onClick = { context.startActivity(accessibilitySettings()) },
+            icon = Icons.Outlined.TouchApp,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

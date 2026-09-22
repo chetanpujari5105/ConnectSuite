@@ -344,9 +344,13 @@ private fun SectionHeaderBar(
                     .padding(Space.sm),
             )
         }
+        // Display, not title. Every reference draws a screen's own name at roughly twice the size
+        // of a card's title, and rendering both at 21sp flattened the page: the screen name and
+        // the first card heading had the same weight, so nothing said which was the page. Changed
+        // once here rather than five times, which is why the header is shared.
         Text(
             title,
-            style = SidekickType.title,
+            style = SidekickType.display,
             color = SidekickColors.textPrimary,
             modifier = Modifier.weight(1f),
         )

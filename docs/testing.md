@@ -22471,3 +22471,74 @@ is now in the run: **read the setting back after writing it, before reading the 
 The two explanatory cards stacked above the entries were **seven lines of prose before any
 content**. The clipboard wall moved down beside the memory-only footer — neither is an error,
 neither is urgent, and both are things read once. The toggle's sub-line went from four lines to one.
+
+---
+
+## Android UI pass — Slice 5: Mirror (2026-09-22)
+
+Reference `15`. Evidence: `docs/evidence/phase-7-android-slice-5/`.
+
+### This is the one reference that was already telling the truth
+
+Four slices in, `15` is the outlier: almost everything it draws, the app does. Its best line is one
+kept verbatim — *"The power and volume buttons stay out of reach either way. No app can press them,
+ours included."* That is the locked platform wall (`INJECT_EVENTS` is signature-level and no
+`AccessibilityService` can synthesise a `KeyEvent`) written as a reassurance rather than an apology.
+
+**Its one overreach is the heading.** *"Your Mac can control this phone"* is stated as fact, and the
+accessibility service it depends on may never have been granted. `InputOnboardingCard` has always
+made that conditional — *"Let your Mac control this phone"* when it is off — and it observes
+`Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES` through a `ContentObserver`, so the card changes
+under the user's hand. That stays exactly as it was; only the chrome changed.
+
+### The defect this slice found was mine, from Slice 2
+
+The Sidekick rename changed the accessibility service's label to **"Sidekick Input"**. Two pieces of
+copy still told the user to look for **"ConnectSuite Input"**:
+
+- `InputOnboardingCard` — the instruction for granting it;
+- **`InputFailure.fixHint`** — the sentence shown *when input fails*, naming a Settings row that no
+  longer exists.
+
+Both now read "Sidekick Input". Worth stating plainly: a rename sweep that checks only the strings
+it changes will miss every sentence that **names** one of them. The grep that found these is for
+copy quoting a system row, not for the old product name — those were already clean.
+
+### What was measured
+
+| # | Reading | Control | Result |
+|---|---|---|---|
+| 1 | Mirror tab → the real Mirror screen | pixel probe: 4 muted, Mirror at `(198,255,51)` | PASS |
+| 2 | "Open Accessibility settings" → real destination | resumed `com.android.settings/.Settings$AccessibilitySettingsActivity` | PASS |
+| 3 | The heading is conditional on the real grant | service off on this emulator → *"Let your Mac control this phone"*, and the body names **Sidekick Input** | PASS |
+| 4 | The disabled Start **gates**, not just greys | tapped it: no activity change, no `MediaProjectionPermissionActivity`, no new mirror line in `link.log` | PASS, with the caveat below |
+| 5 | Phone suites | `--rerun-tasks`, artifacts 0-5 s old, exit 0 | **497 tests, 0 failures** |
+
+**Reading 4's caveat, stated rather than buried.** It is an absence with **no known positive**: the
+consent prompt cannot be produced on this emulator, because raising it needs a connected Mac. So
+what is proven is that nothing happened, not that the thing which would have happened is visible to
+this query. The strong half is structural — `enabled` reaches `Modifier.clickable(enabled = …)` in
+`ButtonShell`, so the callback is not merely styled away. **Stimulus for the real reading: a
+connected Mac, then tap Start and watch `MediaProjectionPermissionActivity` appear.**
+
+### A systematic mismatch, found by comparing and fixed once
+
+Every reference draws a screen's own name at roughly twice the size of a card title. The shared
+`SectionHeaderBar` was rendering them at `SidekickType.title` — the **same 21sp as a card heading** —
+so the page name and the first card heading had identical weight and nothing on the page said which
+was the page. One line in the shared header, and **Transfers, Folders, Clip, Feed and Mirror** all
+corrected together. That is the argument for the header being shared, arriving three slices after
+the decision.
+
+### Open
+
+- Emulator only.
+- **The running mirror state is unseen.** `MirrorPhase.RUNNING`, `AWAITING_FOREGROUND`,
+  `REQUESTING_CONSENT` and `STARTING` all have real copy, real tone and real geometry
+  (`Capturing W×H at N dpi`) and none was rendered — every one needs a Mac to ask. Unlike the other
+  slices, **no harness entry was added for them**: `MirrorStatus` is `MirrorEngine`'s own state, and
+  a preview that constructed one would be showing a state machine the preview had written rather
+  than one the engine produced.
+- Carried from Slice 4, unchanged: the auto-apply toggle's TalkBack label, and dismiss on real
+  notification data. Both need hardware or a second device; both are logged for a dedicated
+  accessibility pass rather than chased here.

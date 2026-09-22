@@ -2,52 +2,70 @@ package com.chetan.connectsuite.mirror.v2.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cast
+import androidx.compose.material.icons.outlined.HourglassEmpty
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.ScreenShare
 import androidx.compose.material.icons.outlined.StopCircle
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chetan.connectsuite.core.link.LinkController
 import com.chetan.connectsuite.core.link.LinkState
+import com.chetan.connectsuite.core.ui.SidekickColors
+import com.chetan.connectsuite.core.ui.SidekickType
+import com.chetan.connectsuite.core.ui.Space
+import com.chetan.connectsuite.core.ui.components.DestructiveButton
+import com.chetan.connectsuite.core.ui.components.IconBadge
+import com.chetan.connectsuite.core.ui.components.PrimaryButton
+import com.chetan.connectsuite.core.ui.components.SidekickCard
+import com.chetan.connectsuite.core.ui.components.StatusKind
+import com.chetan.connectsuite.core.ui.components.StatusPill
 import com.chetan.connectsuite.mirror.v2.MirrorEngine
 import com.chetan.connectsuite.mirror.v2.MirrorPhase
 import com.chetan.connectsuite.mirror.v2.MirrorStatus
 
 /**
- * The Mirror tab: the phone's own control over mirroring, and the **primary consent path**.
+ * Mirror — reference `15_android_mirror.png`.
  *
- * Android 16 blocks background activity starts, so a `mirror.start` arriving while the app is
- * backgrounded cannot raise the system capture prompt by itself. The phone tells the Mac to send
- * the user here and posts a notification that lands on this screen; the Start button below is then
- * the tap that supplies the foreground Android insists on. That makes this screen load-bearing
- * rather than decorative, which is why it shows the live phase and the last failure rather than
- * only a button.
+ * ### This screen was already honest; the pass is a restyle
+ *
+ * Unlike the other references, 15 claims almost nothing the app cannot do. Its one overreach is the
+ * heading **"Your Mac can control this phone"**, stated as fact — the accessibility service it
+ * depends on may never have been granted, and `InputOnboardingCard` has always made that heading
+ * conditional (*"Let your Mac control this phone"* when it is off). That stays.
+ *
+ * Its most interesting line is one to keep exactly: *"The power and volume buttons stay out of
+ * reach either way. No app can press them, ours included."* That is the locked platform wall —
+ * `INJECT_EVENTS` is signature-level and no `AccessibilityService` can synthesise a `KeyEvent` —
+ * written as a reassurance rather than an apology.
+ *
+ * ### Not a status page
+ *
+ * Android 16 will not let a backgrounded app raise the capture prompt, so the Start button here is
+ * the **primary consent path** and not a convenience. `MirrorPhase.AWAITING_FOREGROUND` is the
+ * state where a Mac has asked and only a tap on this phone can finish it, which is why that phase
+ * is the one drawn in the accent rather than in the neutral every other line uses.
  */
-/**
- * [extraCards] is drawn under the state card. It exists for the input feature's onboarding card:
- * turning on the accessibility service belongs on this screen, next to the picture it makes
- * clickable, but `mirror-module` must not depend on `input-module` to say so. `:app` is the one
- * place that can see both, so it passes the card in.
- */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MirrorScreen(extraCards: @Composable () -> Unit = {}) {
     val context = LocalContext.current
@@ -56,52 +74,71 @@ fun MirrorScreen(extraCards: @Composable () -> Unit = {}) {
     // link, and a null here would silently disable the Start button forever.
     val link by remember(context) { LinkController.get(context).state }.collectAsStateWithLifecycle()
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Mirror") }) }) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            StateCard(status = status, link = link)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = Space.lg),
+        verticalArrangement = Arrangement.spacedBy(Space.sm),
+    ) {
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(vertical = Space.md)) {
+            Text("Mirror", style = SidekickType.display, color = SidekickColors.textPrimary)
+        }
 
-            extraCards()
+        StateCard(status = status, link = link)
 
-            if (status.phase == MirrorPhase.RUNNING) {
-                OutlinedButton(
-                    onClick = { MirrorEngine.stopFromPhone(context) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Outlined.StopCircle, contentDescription = null)
-                    Text("Stop mirroring", modifier = Modifier.padding(start = 8.dp))
-                }
-            } else {
-                Button(
-                    onClick = { MirrorEngine.startFromPhone(context) },
-                    enabled = link.isConnected,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Outlined.Cast, contentDescription = null)
-                    Text("Start mirroring", modifier = Modifier.padding(start = 8.dp))
-                }
-            }
+        extraCards()
 
-            // A disabled button with no explanation is the silent failure this project keeps
-            // ruling out, so the one reason it can be disabled is written next to it.
-            if (!link.isConnected && status.phase != MirrorPhase.RUNNING) {
-                Text(
-                    "No Mac is connected. Connect one on the Mac tab first — mirroring needs " +
-                        "somewhere to send the screen.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        Spacer(Modifier.height(Space.xs))
 
-            Text(
-                "Android asks for screen capture permission every time a session starts. That is " +
-                    "enforced by the system and cannot be remembered, so this prompt is not a bug.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        if (status.phase == MirrorPhase.RUNNING) {
+            DestructiveButton(
+                text = "Stop mirroring",
+                onClick = { MirrorEngine.stopFromPhone(context) },
+                icon = Icons.Outlined.StopCircle,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+            )
+        } else {
+            PrimaryButton(
+                text = "Start mirroring",
+                onClick = { MirrorEngine.startFromPhone(context) },
+                icon = Icons.Outlined.Cast,
+                enabled = link.isConnected,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
             )
         }
+
+        // A disabled button with no explanation is the silent failure this project keeps ruling
+        // out, so the one reason it can be disabled is written next to it.
+        if (!link.isConnected && status.phase != MirrorPhase.RUNNING) {
+            Text(
+                "No Mac is connected. Connect one first — mirroring needs somewhere to send the " +
+                    "screen.",
+                style = SidekickType.caption,
+                color = SidekickColors.textMeta,
+            )
+        }
+
+        Spacer(Modifier.height(Space.sm))
+
+        SidekickCard(padding = Space.md, container = SidekickColors.canvas) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Space.md),
+            ) {
+                IconBadge(Icons.Outlined.Info, tint = SidekickColors.textMeta)
+                Text(
+                    "Android asks for screen capture permission every time a session starts. " +
+                        "That is enforced by the system and cannot be remembered, so this prompt " +
+                        "is not a bug.",
+                    style = SidekickType.caption,
+                    color = SidekickColors.textMeta,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(Space.xl))
     }
 }
 
@@ -119,50 +156,71 @@ private fun StateCard(status: MirrorStatus, link: LinkState) {
 
     // The waiting state is the one the user has been sent here to act on, so it is the one that
     // does not look like every other line on the screen.
-    val container = if (status.phase == MirrorPhase.AWAITING_FOREGROUND) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant
+    val awaiting = status.phase == MirrorPhase.AWAITING_FOREGROUND
+    val live = status.phase == MirrorPhase.RUNNING
+    val tone: Color = when {
+        awaiting || live -> SidekickColors.accent
+        else -> SidekickColors.textBody
+    }
+    val icon: ImageVector = when (status.phase) {
+        MirrorPhase.AWAITING_FOREGROUND -> Icons.Outlined.HourglassEmpty
+        MirrorPhase.RUNNING -> Icons.Outlined.ScreenShare
+        else -> Icons.Outlined.Cast
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = container),
+    SidekickCard(
+        container = if (awaiting) SidekickColors.accentTint else SidekickColors.card,
+        border = if (awaiting || live) SidekickColors.accentBorder else SidekickColors.border,
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.md),
         ) {
-            Text(headline, style = MaterialTheme.typography.titleMedium)
+            IconBadge(
+                icon = icon,
+                tint = tone,
+                container = if (awaiting || live) SidekickColors.accentTint else SidekickColors.cardRaised,
+                border = if (awaiting || live) SidekickColors.accentBorder else SidekickColors.border,
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    headline,
+                    style = SidekickType.body.copy(fontWeight = FontWeight.Medium),
+                    color = SidekickColors.textPrimary,
+                )
+                status.message?.let {
+                    Text(it, style = SidekickType.caption, color = SidekickColors.textBody)
+                }
+            }
+            if (live) StatusPill("Live", StatusKind.Connected)
+        }
 
-            status.message?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium)
-            }
-            status.fixHint?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            status.geometry?.let {
-                Text(
-                    "Capturing ${it.width}x${it.height} at ${it.dpi}dpi.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            // Kept after the session ends: "it stopped" without "because consent timed out" is
-            // exactly the answer this screen exists to stop giving.
-            if (status.phase != MirrorPhase.RUNNING && status.lastError != null &&
-                status.lastError != status.message
-            ) {
-                Text(
-                    "Last error: ${status.lastError}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
+        status.fixHint?.let {
+            Spacer(Modifier.height(Space.sm))
+            Text(it, style = SidekickType.caption, color = SidekickColors.textBody)
+        }
+
+        // Real numbers from a real capture, and only while there is one.
+        status.geometry?.let {
+            Spacer(Modifier.height(Space.sm))
+            Text(
+                "Capturing ${it.width}×${it.height} at ${it.dpi} dpi.",
+                style = SidekickType.meta,
+                color = SidekickColors.textMeta,
+            )
+        }
+
+        // Kept after the session ends: "it stopped" without "because consent timed out" is
+        // exactly the answer this screen exists to stop giving.
+        if (status.phase != MirrorPhase.RUNNING && status.lastError != null &&
+            status.lastError != status.message
+        ) {
+            Spacer(Modifier.height(Space.sm))
+            Text(
+                "Last error: ${status.lastError}",
+                style = SidekickType.caption,
+                color = SidekickColors.destructive,
+            )
         }
     }
 }

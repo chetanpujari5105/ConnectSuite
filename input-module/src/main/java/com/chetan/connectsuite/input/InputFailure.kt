@@ -37,7 +37,7 @@ sealed class InputFailure(
         code = ErrorCode.PERMISSION_DENIED,
         reason = "ConnectSuite's accessibility service is not enabled on the phone, so it cannot " +
             "tap, type or swipe.",
-        fixHint = "On the phone: Settings > Accessibility > Installed apps > ConnectSuite Input, " +
+        fixHint = "On the phone: Settings > Accessibility > Installed apps > Sidekick Input, " +
             "and turn it on.",
     )
 
