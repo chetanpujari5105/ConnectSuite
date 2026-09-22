@@ -1,101 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Debug-only. This source set is not merged into a release build, so no probe here can ship.
-  All are exported so `adb shell am start -n` can launch them; that is the whole reason they exist,
-  and it is why they must not exist outside a debug build.
--->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
-        <activity
-            android:name="com.chetan.connectsuite.probe.SafProbeActivity"
-            android:exported="true"
-            android:label="SAF probe"
-            android:theme="@style/Theme.ConnectSuite" />
-        <activity
-            android:name="com.chetan.connectsuite.probe.DownloadsProbeActivity"
-            android:exported="true"
-            android:label="Downloads probe"
-            android:theme="@style/Theme.ConnectSuite" />
-        <activity
-            android:name="com.chetan.connectsuite.probe.MediaProbeActivity"
-            android:exported="true"
-            android:label="Media probe"
-            android:theme="@style/Theme.ConnectSuite" />
-        <activity
-            android:name="com.chetan.connectsuite.probe.ClipProbeActivity"
-            android:exported="true"
-            android:label="Clip probe"
-            android:launchMode="singleTask"
-            android:theme="@style/Theme.ConnectSuite" />
-        <activity
-            android:name="com.chetan.connectsuite.probe.FsProbeActivity"
-            android:exported="true"
-            android:label="Fs probe"
-            android:theme="@style/Theme.ConnectSuite" />
-
         <!--
-          Defect 50's first instrument. Reading A asks whether this provider honours a BOUND
-          selection; reading B pages through the product's own client. It reads counts, thread ids
-          and dates and NO message content — which is what makes it takeable on a handset whose
-          owner is not the developer.
+          Debug source set only. It is never merged into a release manifest, so this activity does
+          not exist in a shipping build — the same containment as `ClipProbeActivity`.
+
+          `exported="true"`, and that is a deliberate, stated trade rather than an oversight. The
+          harness is driven by `adb shell am start`, which runs as uid 2000 and is refused by a
+          non-exported component:
+
+              SecurityException: … not exported from uid 10237
+
+          So an unexported harness is one that cannot be started by the only thing that starts it.
+          What is exposed is bounded: the activity reads no user data, touches no ViewModel, opens
+          no socket and renders a hardcoded sample state. There is no launcher intent filter, so it
+          has no icon and cannot be reached by tapping.
         -->
         <activity
-            android:name="com.chetan.connectsuite.probe.SmsProbeActivity"
+            android:name="com.chetan.connectsuite.designpreview.DesignPreviewActivity"
             android:exported="true"
-            android:label="SMS probe"
+            android:excludeFromRecents="true"
             android:theme="@style/Theme.ConnectSuite" />
-
-        <activity
-            android:name="com.chetan.connectsuite.probe.AppsProbeActivity"
-            android:exported="true"
-            android:label="Fs probe"
-            android:theme="@style/Theme.ConnectSuite" />
-
-        <!--
-          The trigger probe — four candidate routes to "cheaper than opening the app", each
-          measured rather than deduced from Slice 11's focus rule. See ClipTriggerProbe.kt.
-        -->
-        <activity
-            android:name="com.chetan.connectsuite.probe.ClipTriggerProbeActivity"
-            android:exported="true"
-            android:label="Clip trigger probe"
-            android:theme="@style/Theme.ConnectSuite" />
-
-        <!--
-          Route 3's landing point. **Its `ACTION_PROCESS_TEXT` and `ACTION_SEND` filters were
-          removed once the real feature shipped** — `SendSelectionActivity` in `app/src/main`. Two
-          activities answering the same intent puts *two* ConnectSuite entries in the user's
-          selection toolbar, and the debug one wins nothing and confuses the hand test. The route 4
-          measurement it was written for is recorded in `docs/testing.md` → Phase 7 Slice 17 and
-          does not need to be re-runnable to stay true.
-        -->
-        <activity
-            android:name="com.chetan.connectsuite.probe.ClipTriggerSinkActivity"
-            android:exported="true"
-            android:label="Clip sink probe"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
-
-        <!--
-          Exported for the same reason every probe here is: so `adb shell am broadcast -n` can
-          reach it. The delivery client differs from the product path — a notification tap, not a
-          shell broadcast — and that difference is recorded with the reading rather than waved at,
-          because "verify a mechanism through the same client the product uses" is a rule here. It
-          does not move the gate: `ClipboardService` tests the calling uid's **window focus**, and a
-          BroadcastReceiver has no window on either delivery path.
-        -->
-        <receiver
-            android:name="com.chetan.connectsuite.probe.ClipTriggerReceiver"
-            android:exported="true" />
-
-        <service
-            android:name="com.chetan.connectsuite.probe.ClipTriggerTile"
-            android:exported="true"
-            android:icon="@android:drawable/ic_menu_send"
-            android:label="Clip trigger probe"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE" />
-            </intent-filter>
-        </service>
     </application>
 </manifest>

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">ConnectSuite</string>
+    <string name="app_name">Sidekick</string>
     <!--
       The text-selection toolbar label. Two or three words is the whole budget there — the toolbar
       truncates and the app's own name is the icon's job. "Send to Mac" says the destination, which

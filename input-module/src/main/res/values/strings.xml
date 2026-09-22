@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Shown as the service's name in Settings > Accessibility > Installed apps. -->
-    <string name="input_service_label">ConnectSuite Input</string>
+    <string name="input_service_label">Sidekick Input</string>
 
     <!-- One line under the name in the Settings list. -->
     <string name="input_service_summary">Lets your paired Mac tap, swipe and type on this phone</string>
@@ -12,8 +12,8 @@
       to stop it - not marketing.
     -->
     <string name="input_service_description">Turn this on to control this phone from the Mac you
-        have paired with ConnectSuite: clicking the mirrored screen taps here, dragging swipes
-        here, and typing goes into the text field you have selected.\n\nConnectSuite does not read
+        have paired with Sidekick: clicking the mirrored screen taps here, dragging swipes
+        here, and typing goes into the text field you have selected.\n\nSidekick does not read
         the screen, watch what you do, or send anything anywhere on its own. It only acts when
         your Mac asks it to, over the private connection between the two devices - never through
         the internet.\n\nIt cannot press the power or volume buttons: no app can. Turn this off

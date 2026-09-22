@@ -37,6 +37,27 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.chetan.connectsuite.core.link.PairingQrPayload
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.ui.draw.clip
+import com.chetan.connectsuite.core.ui.Radius
+import com.chetan.connectsuite.core.ui.SidekickColors
+import com.chetan.connectsuite.core.ui.SidekickType
+import com.chetan.connectsuite.core.ui.Space
+import com.chetan.connectsuite.core.ui.components.HeaderIconButton
+import com.chetan.connectsuite.core.ui.components.IconBadge
+import com.chetan.connectsuite.core.ui.components.SecondaryButton
+import com.chetan.connectsuite.core.ui.components.SidekickCard
+import com.chetan.connectsuite.core.ui.components.StateBlock
+import com.chetan.connectsuite.core.ui.components.StateKind
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 
@@ -60,7 +81,7 @@ fun QrScanScreen(
                 PackageManager.PERMISSION_GRANTED,
         )
     }
-    var status by remember { mutableStateOf("Point the camera at the QR code on your Mac") }
+    var status by remember { mutableStateOf<String?>(null) }
     // One scan per visit: the analyzer keeps firing while the camera unbinds, and pairing twice
     // from one code would consume the one-time token on the wrong connection.
     var consumed by remember { mutableStateOf(false) }
@@ -69,7 +90,6 @@ fun QrScanScreen(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         hasCamera = granted
-        if (!granted) status = "Camera access is needed to scan the pairing code."
     }
 
     LaunchedEffect(Unit) {
@@ -82,20 +102,48 @@ fun QrScanScreen(
         // half-hidden behind the clock, which is what a screenshot showed on 2026-09-02 and what
         // no `uiautomator` dump could have: the text is present, correctly bounded, and painted
         // beneath something else. Every other bare-Column screen in this app already does this.
-        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SidekickColors.canvas)
+            .systemBarsPadding()
+            .padding(horizontal = Space.lg),
+        verticalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        Text("Pair with your Mac", style = MaterialTheme.typography.headlineSmall)
-        Text(status, style = MaterialTheme.typography.bodyMedium)
+        Row(
+            Modifier.fillMaxWidth().padding(top = Space.sm),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(Space.md),
+        ) {
+            HeaderIconButton(Icons.Outlined.ArrowBack, "Back", onCancel)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "Scan the code on your Mac",
+                    style = SidekickType.title,
+                    color = SidekickColors.textPrimary,
+                )
+                Text(
+                    "Open Sidekick on your Mac and show the pairing code.",
+                    style = SidekickType.caption,
+                    color = SidekickColors.textBody,
+                )
+            }
+        }
 
-        Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clip(Radius.cardShape)
+                .background(SidekickColors.card),
+            contentAlignment = Alignment.Center,
+        ) {
             if (hasCamera) {
                 CameraPreview(
                     onBarcode = { raw ->
                         if (consumed) return@CameraPreview
                         val payload = PairingQrPayload.parse(raw)
                         if (payload == null) {
-                            status = "That code is not a ConnectSuite pairing code."
+                            status = "That code is not a Sidekick pairing code."
                             return@CameraPreview
                         }
                         consumed = true
@@ -103,14 +151,92 @@ fun QrScanScreen(
                         onScanned(payload)
                     },
                 )
+                // The viewfinder. Four corner brackets rather than a full rectangle: a closed frame
+                // reads as a boundary the code must fit exactly, and it does not have to.
+                ScanBrackets()
             } else {
-                Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
-                    Text("Allow camera")
+                // The permission state is the shared component, not a bare button. A refusal here
+                // is not an error — it is a thing the user chose and can unchoose — so it is the
+                // Permission kind, amber, with the reason stated and one action.
+                StateBlock(
+                    kind = StateKind.Permission,
+                    headline = "Camera access is off",
+                    body = "Scanning a pairing code is the only thing Sidekick uses the camera " +
+                        "for. Nothing is recorded and no image leaves this phone.",
+                    actionLabel = "Allow camera",
+                    onAction = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                )
+            }
+        }
+
+        SidekickCard {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Space.md),
+            ) {
+                IconBadge(
+                    Icons.Outlined.QrCodeScanner,
+                    tint = SidekickColors.accent,
+                    container = SidekickColors.accentTint,
+                    border = SidekickColors.accentBorder,
+                )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        status ?: "The code is detected automatically.",
+                        style = SidekickType.body,
+                        color = if (status != null) {
+                            SidekickColors.accentText
+                        } else {
+                            SidekickColors.textPrimary
+                        },
+                    )
+                    Text(
+                        "Both machines have to be on the same network for the Mac to reach this " +
+                            "phone afterwards.",
+                        style = SidekickType.caption,
+                        color = SidekickColors.textBody,
+                    )
                 }
             }
         }
 
-        Button(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+        SecondaryButton(
+            "Cancel",
+            onCancel,
+            Modifier.fillMaxWidth().height(52.dp).padding(bottom = Space.xs),
+        )
+    }
+}
+
+/** Four lime corner brackets over the preview. Drawn, because no stock glyph is a viewfinder. */
+@Composable
+private fun BoxScope.ScanBrackets() {
+    val arm = 34.dp
+    val thickness = 3.dp
+    @Composable
+    fun corner(align: Alignment, top: Boolean, start: Boolean) {
+        Box(Modifier.align(align).size(arm)) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(thickness)
+                    .align(if (top) Alignment.TopStart else Alignment.BottomStart)
+                    .background(SidekickColors.accent),
+            )
+            Box(
+                Modifier
+                    .width(thickness)
+                    .fillMaxHeight()
+                    .align(if (start) Alignment.TopStart else Alignment.TopEnd)
+                    .background(SidekickColors.accent),
+            )
+        }
+    }
+    Box(Modifier.fillMaxSize().padding(Space.xl)) {
+        corner(Alignment.TopStart, top = true, start = true)
+        corner(Alignment.TopEnd, top = true, start = false)
+        corner(Alignment.BottomStart, top = false, start = true)
+        corner(Alignment.BottomEnd, top = false, start = false)
     }
 }
 

@@ -35,6 +35,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,10 +46,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chetan.connectsuite.core.data.ConnectSuiteDatabase
 import com.chetan.connectsuite.core.link.BackgroundRestriction
 import com.chetan.connectsuite.core.link.heldBackSummary
+import com.chetan.connectsuite.core.link.ConnectStage
 import com.chetan.connectsuite.core.link.LinkController
+import com.chetan.connectsuite.core.link.PhoneAddress
+import com.chetan.connectsuite.core.link.ScannedPairing
 import com.chetan.connectsuite.core.link.LinkService
 import com.chetan.connectsuite.core.link.LinkWaitStatus
 import com.chetan.connectsuite.core.model.DeviceType
+import com.chetan.connectsuite.core.ui.SidekickColors
+import com.chetan.connectsuite.core.ui.SidekickType
+import com.chetan.connectsuite.core.ui.components.PrimaryButton
+import androidx.compose.ui.text.font.FontFamily
 import com.chetan.connectsuite.core.protocol.Link
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
@@ -77,7 +85,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun LinkRoute() {
+fun LinkRoute(onDone: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val server = remember { LinkController.get(context) }
@@ -106,6 +114,24 @@ fun LinkRoute() {
     }
     val status = remember(state, now) { LinkWaitStatus.of(state, now) }
 
+    // What this phone has scanned and is now expecting, if anything. `rememberSaveable` because a
+    // rotation mid-wait must not silently drop the pairing attempt — the token is still armed in
+    // `LinkServer` either way, and a screen that forgot about it would show Entry over a live
+    // pairing.
+    var scanned by rememberSaveable(stateSaver = ScannedPairingSaver) {
+        mutableStateOf<ScannedPairing?>(null)
+    }
+    var showAddress by remember { mutableStateOf(false) }
+
+    // Read once per tick rather than once per composition: the answer changes when Wi-Fi does, and
+    // the `now` ticker above is already running at exactly the cadence this needs.
+    val localEndpoint = remember(now) { PhoneAddress.controlEndpoint() }
+    val localAddress = remember(now) { PhoneAddress.localIpv4() }
+
+    val stage = remember(state, scanned, localAddress, now) {
+        ConnectStage.of(state, scanned, localAddress, now)
+    }
+
     if (scanning) {
         QrScanScreen(
             onScanned = { payload ->
@@ -113,10 +139,39 @@ fun LinkRoute() {
                     server.completePairing(payload)
                     LinkService.start(context)
                     lastPaired = payload.name
+                    // The wait begins now. `completePairing` armed the token with the same TTL, so
+                    // the countdown on screen and the deadline the server enforces come from one
+                    // constant — see `ScannedPairing`.
+                    scanned = ScannedPairing(payload.name, System.currentTimeMillis())
                     scanning = false
                 }
             },
             onCancel = { scanning = false },
+        )
+        return
+    }
+
+    // The Connect-a-Mac flow owns the screen while there is nothing paired, or while a pairing
+    // attempt is in flight. Once a Mac is paired and the attempt is finished, this is the Mac
+    // management screen below — which still has its own design pass owing.
+    if (pairedMacs.isEmpty() || scanned != null) {
+        if (showAddress && localEndpoint != null) {
+            PhoneAddressDialog(endpoint = localEndpoint, onDismiss = { showAddress = false })
+        }
+        ConnectMacScreen(
+            stage = stage,
+            nowMillis = now,
+            localEndpoint = localEndpoint,
+            onScan = { scanning = true },
+            onShowAddress = { showAddress = true },
+            onCancel = { scanned = null },
+            onRetry = { scanned = null; scanning = true },
+            onOpenWifiSettings = {
+                context.startActivity(
+                    Intent(Settings.ACTION_WIFI_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            },
+            onOpenDevices = { scanned = null; onDone() },
         )
         return
     }
@@ -312,3 +367,57 @@ fun LinkRoute() {
 
 /** Called from the activity so permission changes reach connected Macs without a reconnect. */
 fun refreshLinkCapabilities(context: Context) = LinkService.refreshCapabilities(context)
+
+
+/**
+ * `ScannedPairing` across a rotation.
+ *
+ * A two-element list rather than `Serializable`: the type is a plain pair of a name and a
+ * timestamp, and a hand-written saver keeps it that way. It is here rather than in `core/` because
+ * saving is a UI concern and `core` should not gain a Compose dependency for it.
+ */
+private val ScannedPairingSaver: Saver<ScannedPairing?, Any> = Saver(
+    save = { it?.let { p -> listOf(p.macName, p.scannedAtMillis) } ?: emptyList<Any>() },
+    restore = {
+        @Suppress("UNCHECKED_CAST")
+        val list = it as List<Any>
+        if (list.isEmpty()) null else ScannedPairing(list[0] as String, list[1] as Long)
+    },
+)
+
+/**
+ * The phone's own address, for typing into the Mac.
+ *
+ * This is the honest other half of reference 02's "Enter address manually": the Mac dials out, so
+ * the number a person needs is this one, on this screen, to read across to the other machine.
+ */
+@Composable
+private fun PhoneAddressDialog(endpoint: String, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SidekickColors.card,
+        titleContentColor = SidekickColors.textPrimary,
+        textContentColor = SidekickColors.textBody,
+        title = { Text("This phone's address", style = SidekickType.title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "In Sidekick on your Mac, choose to enter an address by hand and type this:",
+                    style = SidekickType.body,
+                )
+                Text(
+                    endpoint,
+                    style = SidekickType.title.copy(fontFamily = FontFamily.Monospace),
+                    color = SidekickColors.accentText,
+                )
+                Text(
+                    "It changes when this phone joins a different network, so it is worth " +
+                        "checking here rather than remembering it.",
+                    style = SidekickType.caption,
+                    color = SidekickColors.textMeta,
+                )
+            }
+        },
+        confirmButton = { PrimaryButton("Done", onDismiss) },
+    )
+}

@@ -1,4 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.ConnectSuite" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+      The launch theme, and it is dark whatever the system is set to.
+
+      This was `android:Theme.Material.Light.NoActionBar`, which painted the window white for the
+      frame or two before Compose drew anything — a white flash in front of a #0A0A0A app, every
+      cold start. The `values-night` copy of this file is gone for the same reason the Compose
+      theme no longer calls `isSystemInDarkTheme()`: there is one Sidekick canvas, so a night
+      variant is a second answer to a question with one.
+
+      windowBackground is the token value, not a near-miss: it is what the user sees first.
+    -->
+    <style name="Theme.ConnectSuite" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/sidekick_canvas</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
 </resources>

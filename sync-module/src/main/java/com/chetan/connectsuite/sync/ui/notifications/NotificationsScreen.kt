@@ -61,7 +61,7 @@ fun NotificationsSection(
                         Spacer(Modifier.height(6.dp))
                         Text(
                             "This device can still receive notifications from paired devices, " +
-                                "but it cannot send its own until you enable ConnectSuite in " +
+                                "but it cannot send its own until you enable Sidekick in " +
                                 "the system notification-access list.",
                             style = MaterialTheme.typography.bodySmall,
                         )

@@ -26,7 +26,7 @@ enum class PermissionGroup(
     /** Needed before Wi-Fi Direct peer discovery returns anything. */
     NEARBY_DEVICES(
         title = "Nearby devices",
-        rationale = "ConnectSuite needs this to find other devices over Wi-Fi Direct. " +
+        rationale = "Sidekick needs this to find other devices over Wi-Fi Direct. " +
             "On Android 12 and below the system reports nearby Wi-Fi peers through the location " +
             "permission — no location is ever collected or sent anywhere.",
         required = true,

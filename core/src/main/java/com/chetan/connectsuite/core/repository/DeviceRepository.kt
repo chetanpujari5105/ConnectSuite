@@ -127,7 +127,7 @@ class DeviceRepository private constructor(private val appContext: Context) {
             return Result.failure(
                 IllegalStateException(
                     "${device.name} is a Mac. Macs connect to the phone, not the other way " +
-                        "round — open ConnectSuite on the Mac instead.",
+                        "round — open Sidekick on the Mac instead.",
                 ),
             )
         }

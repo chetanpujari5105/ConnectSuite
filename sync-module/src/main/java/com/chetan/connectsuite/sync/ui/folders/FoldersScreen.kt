@@ -147,7 +147,7 @@ private fun NoFoldersCard(onAddFolder: () -> Unit) {
             Spacer(Modifier.height(6.dp))
             Text(
                 "Add a folder and the Mac can open it. Until you do, the Mac sees only " +
-                    "ConnectSuite's own folder.",
+                    "Sidekick's own folder.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -23,10 +23,24 @@
 
 # label|serial|model   — model is checked against the device, so a re-flashed or swapped handset
 # refuses rather than answering to a serial somebody remembers.
+#
+# **2026-09-22: the list has a non-phone on it now.** `emu` is the Pixel_10 AVD, added so the UI
+# pass can install and screenshot without reaching for the guard's off switch. Two things about it
+# are worth stating rather than discovering:
+#
+#   - its serial is a **port**, not a hardware id. `emulator-5554` is whatever slot the AVD landed
+#     in, so a second emulator would take 5556 and this entry would silently point at the first
+#     one. The model check below is what stops that mattering: a different AVD reports a different
+#     `ro.product.model` and is refused.
+#   - **nothing measured on it is a hardware reading.** `docs/single-device-audit.md` is about
+#     which findings came from one SM-S938B; an emulator is not a second data point for any of
+#     them. It is here to render a screen, and a screenshot is the only kind of evidence it may be
+#     quoted for.
 CONNECTSUITE_DEVICES='samsung|RZCY12330DT|SM-S938B
 moto|ZA222JT75K|moto g34 5G
 moto45|ZN4222NSN6|moto g45 5G
-vivo|137354726800049|V2141'
+vivo|137354726800049|V2141
+emu|emulator-5554|sdk_gphone16k_arm64'
 
 # Test seam only. `scripts/target-device.test.sh` points this at a fixture adb so the refusal
 # branches can be exercised without owning five phones. Nothing in the product sets it.

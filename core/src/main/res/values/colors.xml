@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The two palette values that have to exist outside Compose: the launch window's ground, and
+      the notification accent. Every other colour in this app lives in `SidekickColors.kt` — these
+      are here because the platform reads them before any Composable exists.
+    -->
+    <color name="sidekick_canvas">#FF0A0A0A</color>
+    <color name="sidekick_accent">#FFC6FF33</color>
+</resources>

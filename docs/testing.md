@@ -22015,3 +22015,268 @@ screen, 0 carrying a press** — a real reading on a denominator of 1.
 - **`.toast` uses `@keyframes`** and restarts rather than retargets. Accepted while toasts do not stack.
 - **The `defects: 1` result the brief named was never reproduced.** Every defect-related check was
   green at the start of the sitting and is green now; what was red was found by other means.
+
+---
+
+## Android UI pass — Slice 1: the design foundation and the Devices overview (2026-09-22)
+
+The brief is `~/Downloads/claude-code-android-full-detailed-prompt.md`; the references are
+`Sidekick android ui/*.png`. Screen 01 (Devices overview) is the anchor screen. Evidence:
+`docs/evidence/phase-7-android-slice-1/`.
+
+**Where the tokens came from, and why it is not a second reading of the design.** The palette is
+ported digit-for-digit from `desktop/src/renderer/tokens.css` — `--canvas #0a0a0a`, `--card
+#161616`, `--card-raised #1c1c1c`, `--accent #c6ff33`, `--text-primary #f2f3f5`, `--text-body
+#9a9ca8`, `--hairline rgba(255,255,255,.08)`, `--radius-panel 14`, `--warning #ffb547`,
+`--destructive #ff5c5c`, plus the `--dur-*`/`--ease-*` scale. Two values are `DERIVED` and say so in
+`SidekickColors.kt`: `accentPressed` (the Mac's `--accent-hover` *lightens*, which is wrong for a
+finger) and `textDisabled`.
+
+**The change that made any of it visible.** `ConnectSuiteTheme` had `dynamicColor = true`, so on
+Android 12+ the OEM wallpaper supplied the palette and the schemes declared in that file had never
+once been drawn. Also `isSystemInDarkTheme()`, and `values/themes.xml` inheriting
+`Theme.Material.Light.NoActionBar` — a white launch window in front of a `#0A0A0A` app.
+
+### What was measured
+
+| # | Reading | Control | Result |
+|---|---|---|---|
+| 1 | Nav: the lit tab, by pixel | the other four tabs in the same reading | see below |
+| 2 | Folders keeps **Transfers** lit | same probe, same run | PASS |
+| 3 | Mac management lights **nothing** | same probe; a `Devices`-lit reading immediately before | PASS |
+| 4 | `EXTRA_OPEN_TAB` deep link → Mirror | parked on Devices first, so a pass cannot be "already there" | PASS |
+| 5 | Phone unit suites | — | **469 tests, 0 failures**, artifacts 0-1 s old, gradle exit 0 |
+
+**`selected` in a uiautomator dump is not the state of a Compose tab.** The first version of the nav
+probe read the XML's `selected` attribute and returned `selected="false"` for all five cells —
+*including the one that was visibly lime*. Compose's tab-selection semantics do not reach that
+attribute. A probe that reads `false` for the known positive has no reading, so the discriminator
+moved to the thing the state actually is: the brightest pixel inside each label's bounds.
+`(198,255,51)` is exactly `#C6FF33`; muted is `(154,156,168)` = `#9A9CA8`. **The probe prints the
+distance for all five tabs on every row**, so a run where nothing separates says so instead of
+naming whichever was marginally closest.
+
+`selectable` replaced `clickable` on the nav cells anyway — not for the probe, which does not use
+it, but because the selected state existed *only* as a colour, which is precisely what a screen
+reader cannot see.
+
+**Two instrument faults, both caught before they were written down as findings:**
+
+- The first `am start` of a nav run resumed the task **where the previous run left it** — Mac
+  management, where no tab is lit — and the probe dutifully reported "0 tabs lit" against an
+  expectation of `Devices`. The instrument was right and the premise was stale. Every later run
+  establishes the starting state with a tap first.
+- The deep-link check used `--es open_tab mirror` and failed. The key is
+  `MirrorNotifications.EXTRA_OPEN_TAB = "com.chetan.connectsuite.OPEN_TAB"`. That is
+  `CLAUDE.md`'s *a pass criterion naming a string the code does not write* — the string was typed
+  from memory; re-run against the constant, it passes.
+
+**And one during the build itself, worth the line because the output looked like progress.** A BSD
+`sed` with `\b` silently did nothing, and the recompile's error list — clipped by `tail -40` —
+appeared to shrink from 18 to 15. Two instrument faults stacked: a substitution that never ran, and
+a bound the instrument imposed and did not report. `grep -c` on the file showed 18 occurrences
+untouched.
+
+### What the screen does **not** draw, and why
+
+- **Latency.** References 01 and 10 both show `8 ms`. The phone cannot honestly produce it: RTT is
+  measured on the Mac's HUD, and while `MessageType.PING`/`PONG` exist in the contract, nothing on
+  this side times them. The chip carries the connected Mac's **address**, which is real
+  (`TrustedDeviceEntity.lastAddress`). Wiring a phone-side RTT is a protocol-adjacent change and was
+  not made under a UI brief.
+- **"See all" on Quick actions and Recent activity.** Both appear in reference 01 and neither has a
+  destination — Activity is not a screen on the phone, and Recent activity spans three sources, so
+  pointing it at Transfers would be true of a third of it. Omitted rather than drawn as a link that
+  goes nowhere.
+- **"Open on Mac"** (reference 01's third hero button) is not an action this app has. The slot is
+  `Device info`, which reaches Mac management — reference 10's own second button.
+- **Battery and Storage cards** (reference 10) are not built. Both are locally available and neither
+  is speculative; they belong to whichever slice builds reference 10's variant.
+
+**Recent activity invents nothing.** There is no activity log on the phone. `RecentActivity.of` is a
+projection over three stores that already exist: transfer history (`updatedAtMillis`), mirrored
+notifications (`postedAtMillis`), and the clipboard's own timestamps — memory-only by design, which
+the empty state says out loud rather than leaving the reader to discover.
+
+Red-first, each mutation run with `--rerun-tasks` and a 0 s-old results directory:
+
+| Mutation | Result |
+|---|---|
+| `sortedByDescending` → `sortedBy` (the Overview *five oldest* defect, verbatim) | **3 red** |
+| `take(limit)` moved before the sort | **1 red** |
+| `clip.lastSentAtMs > 0L` → `>= 0L` (a 1970 row) | **4 red** |
+| restored | green, exit 0 |
+
+### The screenshots, and what each may be quoted for
+
+- `devices-real-unpaired.png` — **the real app**, real state, no Mac paired. This is the functional
+  evidence.
+- `devices-harness-connected.png` — the **production** `DevicesSection` and theme, on the device, at
+  real density, with a constructed state: `DesignPreviewActivity`, debug source set only. The
+  connected state is unobservable on an emulator (the Mac dials *out* to the phone, and pairing needs
+  a QR through a camera that does not exist). **It proves layout, palette, type, spacing and insets.
+  It proves nothing about wiring** — no ViewModel is attached and every callback is a no-op.
+
+### Fixed after the first run on hardware, not before it
+
+1. **The status-bar inset was applied twice** — Scaffold's default `contentWindowInsets` is
+   `systemBars` and with no top app bar it hands that straight to content, on top of each section's
+   own `statusBarsPadding()`. ~74 dp of empty canvas above the brand lockup.
+2. **Quick-action tiles were as tall as their own copy**, so the row had a ragged bottom edge.
+   `IntrinsicSize.Min` + `fillMaxHeight`.
+3. **The hero bloom washed two thirds of the card olive** at `alpha 0.55, radius 900`. Now `0.20` at
+   `620`, and the reference's card is mostly `#161616` with light entering a corner.
+4. **The trailing chevron sat beside the label**, mid-button, with a hand's width of empty pill past
+   it. It is `align(CenterEnd)` with the label optically centred.
+5. **The phone glyph read as an empty card** when flat. One 3 dp earpiece slit.
+
+### Open
+
+- `Icons.Filled`/`Default` still appear outside the Devices screen; the one-weight sweep finishes as
+  each screen is built.
+- Grain over the hero bloom is not implemented (needs a tiling noise bitmap or an AGSL shader).
+- Recent activity uses squircle badges (reference 10); reference 01 draws circles. One vocabulary
+  across the app was preferred; it is a one-line change if the other is wanted.
+- **Motion has not been touched.** `find-animation-opportunities` and `improve-animations` come after
+  the static layouts are confirmed; `review-animations` needs the user's own invocation.
+
+---
+
+## Android UI pass — Slice 2: Connect a Mac (2026-09-22)
+
+References `02`-`09`. Evidence: `docs/evidence/phase-7-android-slice-2/`.
+Components are Slice 1's; nothing here hand-rolls a card, a button or a state block.
+
+### The finding that shaped the whole slice
+
+**`completePairing` does not connect.** It writes the trust row, arms a token for
+`Link.PAIR_TOKEN_TTL_MS`, advertises the pair intent — and returns. The Mac then dials in
+(locked decision #2: Android binds, the Mac connects out). So the phone, after a scan,
+**listens**. It never searches, never dials, and has no vantage point on a handshake: TLS and the
+token check both happen inside `accept()`, and the first thing the phone can publish is a session
+that already exists.
+
+Three reference states are therefore **not built**, and this is the unreachable-state rule rather
+than a shortcut — a stage nobody can tell from a bug in its neighbour must not be drawn beside
+stages that can:
+
+| Reference | Built? | Why |
+|---|---|---|
+| 04 *Searching* — "Looking for your Mac" | **no** | the phone does not look for anything |
+| *Verifying* (the un-referenced screen in the brief) | **no** | not observable from this side |
+| 05 *Connecting*, with a 3-step stepper | **as one honest state** | the phone observes neither "found" nor "verifying" |
+
+What replaced them is `ConnectStage.Waiting`, which carries the one real quantity a wait has: the
+token's remaining life, as a **determinate** bar and a `m:ss` countdown. Both come from
+`Link.PAIR_TOKEN_TTL_MS` — the same constant `LinkServer` arms with — so the screen's deadline and
+the server's cannot drift. On the emulator it read **4:18** for a 42-second-old scan.
+
+**Reference 07 — "Confirm this Mac", with a fingerprint — is a true screen about the wrong path.**
+That is the **v1 Sync** trust-on-first-use dialog (`PairingRequestDialog`, restyled in Slice 1 and
+already shipping). In the v2 QR flow the QR **is** the confirmation: the fingerprint is in the
+payload and pinned by `LinkTls` before any UI runs. Adding a second confirm step would be a weaker
+trust decision bolted onto a stronger one. This is `CLAUDE.md`'s defect 63 exactly — a sentence that
+is true of one of two paths, in front of a reader on the other.
+
+**Reference 02's "Enter address manually" points the wrong way.** Manual IP entry is discovery
+order #4 and it is the **Mac's** affordance, because the Mac dials. A phone has nothing to type an
+address into. The honest inverse is **"Show this phone's address"**, which prints the real endpoint
+from `PhoneAddress`. Same journey, and the direction the architecture actually runs.
+
+**Reference 02's third trust column said "No cloud, no account, no data stored".** The last third is
+false — Room holds a trust store, a transfer history and mirrored notifications. It ships as
+*"No cloud, no account, nothing leaves your network"*, which is true. A privacy claim is the worst
+place to round a sentence up.
+
+### What was measured
+
+| # | Reading | Control | Result |
+|---|---|---|---|
+| 1 | Entry renders with the phone's real address | the string is the emulator's actual `10.0.2.15` | PASS |
+| 2 | "Show this phone's address" → real endpoint dialog | dialog text read back: `10.0.2.15:42501` | PASS |
+| 3 | "Scan QR code" → the real camera flow | it raised the **real runtime CAMERA prompt** | PASS |
+| 4 | QR screen runs the real pipeline | live preview + ML Kit analyzer bound | PASS |
+| 5 | "Check Wi-Fi settings" → real destination | resumed `com.android.settings/.Settings$WifiSettingsActivity` | PASS |
+| 6 | No-network is **real**, not staged | round trip: address → none → address | PASS |
+| 7 | Phone suites | `--rerun-tasks`, artifacts 0-5 s old, exit 0 | **478 tests, 0 failures** |
+
+**Reading 3 is the one worth keeping.** A screenshot of a camera screen proves a composable drew;
+the *permission prompt* proves `QrScanScreen` mounted and asked the system for the camera. It is a
+line only a running thing can emit, which is the property `CLAUDE.md` demands of a control after the
+`Mirror session started` sighting.
+
+**Reading 6, and its limit.** Wi-Fi and data off, then airplane mode: the app showed *No network
+connection* both times, and returned to showing the address when they came back — so the reading is
+responsive in both directions rather than stuck. **The mechanism is unconfirmed**: `ip -4 addr` still
+listed `eth0` at `10.0.2.15` throughout (the AVD's fixed NAT interface), and `ip link show` returns
+nothing to the shell user, so *why* that interface stopped qualifying was not established. Recorded
+as a correlation, not a cause — the FGS/wake-lock retraction is the precedent.
+
+**The risk that follows from it, stated rather than filed:** if `PhoneAddress.localIpv4()` can
+return null for a reason not understood, it can do so on a phone that *is* reachable, and show
+"No network connection" over a working setup. `ConnectStage` already puts `Connected` above
+`NoNetwork` (tested), so a live session can never be hidden this way — but a reachable-but-not-yet-
+connected phone could be. **The stimulus that settles it is one reading on the SM-S938B with Wi-Fi
+on**: does the entry card print an address? Not taken; this slice ran on an emulator only.
+
+### Red-first
+
+`ConnectStageTest`, 10 tests. The boundary cases are transitions, which is the half
+`LinkWaitStatusTest` structurally could not reach (defect 67):
+
+- the expiry boundary from **both** sides, at `t0 + ttl - 1` and `t0 + ttl`;
+- a refusal **after** the scan outranks the wait; one **before** it does not;
+- `Connected` outranks `NoNetwork`, because a live session proves the interface read wrong;
+- the countdown clamps at 0 rather than going negative.
+
+`ConnectStage.of` composes `LinkWaitStatus.of` rather than restating its precedence — one rule, one
+home, per the rule that two expressions eventually disagree.
+
+**One test failed first and the test was wrong, not the code**: *a stale refusal stops outranking the
+wait* asserted `Expired` at `t0 + 62 s`, against a **five-minute** token. Two clocks, and the
+assertion read the wrong one. It now asserts `Waiting` and carries `assertTrue(late < t0 + ttl)` so
+the next reader can see which clock is which.
+
+### Fixed after looking at the device
+
+1. **The art was invisible.** Two outlines at 12% white on `#0A0A0A` read as an illustration that
+   had failed to load. A named `artEdge` token at 24% fixed it — a literal would have been the
+   thing `check-color-tokens` exists to stop.
+2. **The waiting art lit the Mac's screen** while the caption said the Mac had not arrived. Two
+   writers on one surface, in pictures. `macLit` is now its own parameter and only a live session
+   sets it.
+3. **The harness lit a nav tab the real route leaves dark.** The Connect flow lives on `mac`, where
+   nothing is selected; `PreviewNav` defaulted to 0 and drew Devices lime. An inaccurate harness is
+   worse than none — it is evidence for a state the product never produces.
+4. **The connected Mac card carried a server-rack glyph** (`Dns`). It is a Mac; it gets `Laptop`.
+5. Two **dead affordances** were removed rather than styled: reference 02's header "?" and
+   reference 03's "Having trouble?" row both go nowhere in this app, and the network requirement
+   they would have explained is already standing copy on both screens.
+
+### The rename
+
+All user-visible copy now says **Sidekick**. `app_name`, `app_display_name`, the notification-listener
+label, the accessibility-service label/summary/description, the pairing notification, and nine
+in-app strings. The camera prompt read *"Allow ConnectSuite to take pictures"* before this.
+
+**What deliberately did not change, because it is not copy:** `Download/ConnectSuite` (a real
+directory — renaming it orphans every received file), `NsdAdvertiser`'s `serviceName` (**the
+discovery protocol**; the Mac matches on it), `O=ConnectSuite` in the certificate subject,
+`"ConnectSuite:link"` wake-lock tags, `Theme.ConnectSuite`, `.ConnectSuiteApp`,
+`.ConnectSuiteInputService`, and the package. 478 tests green after it.
+
+### Open
+
+- **Not seen on real hardware.** Every reading here is from `sdk_gphone16k_arm64`. Per
+  `scripts/target-device.sh`, an emulator is not a hardware reading.
+- **`PairRejectReason` never reaches the screen.** `TOKEN_EXPIRED`, `TOKEN_MISMATCH` and
+  `TOKEN_MISSING` are decided in `LinkServer`, sent to the Mac as `pair.rejected`, and published
+  **nowhere the phone can render**. The phone's own expiry state is derived independently in the UI
+  from the same constant, so the common case is covered; a *mismatched* or *missing* token still
+  shows as a plain wait until it times out. The fix is one field on `LinkState` and one
+  `_state.update` — **not made**, because it is link-layer code and the brief says to ask first.
+- **No scan line on the QR screen.** Reference 03 draws a travelling lime line. It is motion, and
+  motion has not had its pass.
+- Waiting, Connected, Expired and Refused are **harness** captures — the emulator cannot pair with a
+  Mac (it dials the phone, and `10.0.2.15` is unreachable from the host without forwarding; pairing
+  also needs a QR through a camera that does not exist). Entry, QR scan and No-network are real.

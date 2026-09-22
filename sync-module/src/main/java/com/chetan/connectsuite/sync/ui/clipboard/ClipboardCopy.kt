@@ -54,7 +54,7 @@ object ClipboardCopy {
         "Select some text in any app and let the little toolbar appear.",
         "Tap the three dots at the end of that toolbar.",
         "Tap Manage apps.",
-        "Turn on ConnectSuite — the row says Send to Mac.",
+        "Turn on Sidekick — the row says Send to Mac.",
     )
 
     /**

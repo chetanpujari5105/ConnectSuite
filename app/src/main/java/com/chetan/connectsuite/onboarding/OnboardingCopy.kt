@@ -86,7 +86,7 @@ object OnboardingCopy {
 
     val welcome = Page(
         id = WELCOME,
-        title = "ConnectSuite",
+        title = "Sidekick",
         subtitle = "Your phone and your Mac, over your own network. Nothing goes through a " +
             "server, and nothing uses mobile data.",
         primaryLabel = "Get started",
@@ -181,7 +181,7 @@ object OnboardingCopy {
         id = RELIABILITY,
         title = "Keeping it running",
         subtitle = "Android stops background apps aggressively. For notifications to keep " +
-            "arriving while ConnectSuite is not open, it needs to be exempt from battery " +
+            "arriving while Sidekick is not open, it needs to be exempt from battery " +
             "optimisation.",
         primaryLabel = "Next",
         body = listOf(
@@ -192,7 +192,7 @@ object OnboardingCopy {
             "Xiaomi, Samsung, OnePlus, Oppo and Vivo run their own app killers on top of " +
                 "Android's. The Android setting above does not disable those. If notifications " +
                 "stop arriving after a while, look for \"Autostart\", \"Battery saver\" or " +
-                "\"Protected apps\" in your system settings and allow ConnectSuite there too.",
+                "\"Protected apps\" in your system settings and allow Sidekick there too.",
             "Open app settings",
         ),
     )
@@ -211,7 +211,7 @@ object OnboardingCopy {
     val pair = Page(
         id = PAIR,
         title = "Connect your Mac",
-        subtitle = "Open ConnectSuite on your Mac. It will show a code — scan it here, once, and " +
+        subtitle = "Open Sidekick on your Mac. It will show a code — scan it here, once, and " +
             "the two are paired for good.",
         primaryLabel = "Scan the code",
         secondaryLabel = "I'll do this later",

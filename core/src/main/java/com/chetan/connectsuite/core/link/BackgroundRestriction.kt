@@ -51,7 +51,7 @@ object BackgroundRestriction {
      */
     const val CAPABILITY_REASON: String =
         "the phone has restricted this app's background activity, so it cannot hold the " +
-            "foreground service screen capture needs — open ConnectSuite on the phone to fix it"
+            "foreground service screen capture needs — open Sidekick on the phone to fix it"
 
     /** The phone card's headline. A statement of fact, not a warning. */
     const val HEADLINE: String = "Android has restricted this app"
