@@ -14,13 +14,13 @@
  * decision and does not re-take it: there is no `if (roots.length === 0)` here, and there must not
  * be one, or the rule would have two homes and they would disagree.
  *
- * ### There is no upload affordance and adding one is not a small change
+ * ### Sending to the phone is gated on the phone's own answer
  *
- * The canvas draws *"Drop files to send to phone"*. `direction: "push"` answers
- * `FEATURE_UNAVAILABLE`, and `docs/protocol.md` says a Files pane must not draw the affordance
- * against this build. `uploadAffordance(pushAvailable)` is the one condition, driven by the
- * capability rather than a constant, so the tile appears in the same moment push ships and not by
- * anyone remembering.
+ * The drop tile and **Send to phone…** exist only while the roots ack says `push: true` —
+ * `uploadAffordance(pushAvailable)` is the one condition — and only over a writable folder. Both
+ * routes end on the same confirmation card, and the batch it starts is drawn from **the phone's**
+ * `fs.transfer.progress` and `fs.transfer.done`, never from this Mac's write count
+ * (`shared/sendBatch.ts`).
  *
  * Module-free like the other panes: the page is CSP-locked and loads plain scripts, so the pure
  * half hangs on `globalThis` and `filesRoots.test.ts` runs against it.
@@ -45,12 +45,23 @@ interface FilesBridge {
     afterName?: string;
     afterId?: string;
   }): Promise<FilesBridgeResult<{ entries: FsEntryRow[]; hasMore: boolean }>>;
-  fsPush(options: {
+  /**
+   * One file to the phone, collision-safe: a name already there is offered again as `name (2)`, and
+   * `sentAs` is the name the phone took. Nothing on this Mac asks the phone to overwrite.
+   */
+  fsSend(options: {
     rootId: string;
     path: string;
     source: string;
-    overwrite?: boolean;
-  }): Promise<{ ok: boolean; bytes?: number; reason?: string; code?: string; fixHint?: string }>;
+  }): Promise<{ ok: boolean; reason?: string; code?: string; fixHint?: string; sentAs?: string }>;
+  /** **Send to phone…**'s picker. Optional so a double without a picker still constructs. */
+  fsPickSend?(): Promise<
+    | { ok: true; data: { files: Array<{ source: string; name: string; size: number }>; skipped: number } }
+    | { ok: false; reason?: string }
+  >;
+  fsCancel?(options: { transferId: string }): Promise<{ ok: boolean; reason?: string }>;
+  /** Defect 132 — the supported way to get a dropped file's path. */
+  pathForFile?(file: File): string;
   fsPull(options: {
     rootId: string;
     id: string;
@@ -120,8 +131,26 @@ class FilesView {
    */
   private pushAvailable = false;
 
-  /** What the last push said, so the pane can report a refusal the phone gave a reason for. */
-  private lastPush: { ok: boolean; text: string } | null = null;
+  /**
+   * Files chosen and not yet confirmed. **Nothing moves until Send is pressed** — the card names the
+   * phone, the folder, the count and the total first, for a drop and for the picker alike.
+   */
+  private pendingSend: Array<{ source: string; name: string; size: number }> | null = null;
+
+  /** Files that could not be offered at all (no path on disk, unreadable), counted for the card. */
+  private pendingSkipped = 0;
+
+  /**
+   * The batch in flight, or the last one until it is dismissed. Its numbers are **the phone's** —
+   * `fs.transfer.progress` bytes and the `fs.transfer.done` verdict — see `shared/sendBatch.ts`.
+   */
+  private batch: SendBatch | null = null;
+
+  /** Where the batch is going, captured at Send, so navigating mid-batch cannot re-aim it. */
+  private batchTarget: { rootId: string; path: string } | null = null;
+
+  /** The phone's name, from the connection status, for the confirmation and the headline. */
+  private phoneName = 'your phone';
 
   /**
    * Entry id → where that file now sits on this Mac.
@@ -195,6 +224,8 @@ class FilesView {
     private readonly footer: HTMLElement,
     private readonly drop: HTMLElement,
     private readonly detail: HTMLElement,
+    /** The listing's toolbar. Optional so the view test's eleven-element mount still constructs. */
+    private readonly tools: HTMLElement | null = null,
   ) {
     // The drop target. Registered once and *shown* conditionally, rather than wired up when push
     // appears: a listener added later is a listener that can be added twice, and this pane already
@@ -212,7 +243,7 @@ class FilesView {
       this.drop.classList.remove('is-over');
       if (!this.pushAvailable) return;
       const files = Array.from((event as DragEvent).dataTransfer?.files ?? []);
-      void this.sendFiles(files);
+      this.offerDropped(files);
     });
 
     this.table.addEventListener('scroll', () => {
@@ -348,51 +379,172 @@ class FilesView {
     }
   }
 
+  /** Called by the renderer whenever the connection status names the phone. */
+  setPhoneName(name: string | null | undefined): void {
+    const next = name && name.trim() ? name.trim() : 'your phone';
+    if (next === this.phoneName) return;
+    this.phoneName = next;
+    this.render();
+  }
+
+  /** **Send to phone…** — the picker, then the same confirmation a drop gets. */
+  async pickAndOffer(): Promise<void> {
+    if (!this.bridge.fsPickSend || !this.canSendHere()) return;
+    const picked = await this.bridge.fsPickSend();
+    if (!picked.ok) return; // cancelled, or nothing chosen: nothing changes, nothing to say
+    this.offer(picked.data.files, picked.data.skipped);
+  }
+
   /**
-   * Sends dropped files, one at a time.
+   * A drop becomes an offer, not a send.
    *
-   * **Serially, not in parallel**, and that is the protocol rather than caution: one `transferId`,
-   * one file, one bulk connection. A folder copy is this loop, which is why it is a loop here and
-   * not a protocol feature.
+   * **Defect 132:** `file.path` does not exist in Electron ≥ 32, so every drop used to end in
+   * *"could not be read from this drop"*. The path now comes from `webUtils` through the bridge. A
+   * file with no path on disk — a drag out of a browser — is counted as skipped and named on the card
+   * rather than sent as zero bytes.
    */
-  private async sendFiles(files: File[]): Promise<void> {
-    if (!files.length || this.selectedRoot === null) return;
+  private offerDropped(files: File[]): void {
+    if (!files.length) return;
+    const offered: Array<{ source: string; name: string; size: number }> = [];
+    let skipped = 0;
     for (const file of files) {
-      // Electron exposes the real path on a dropped File. Without one there is nothing to read, and
-      // saying so beats sending zero bytes and reporting success.
-      const source = (file as File & { path?: string }).path;
+      const source = this.bridge.pathForFile?.(file) ?? '';
       if (!source) {
-        this.lastPush = { ok: false, text: `${file.name} could not be read from this drop.` };
-        this.render();
+        skipped += 1;
         continue;
       }
-      this.lastPush = { ok: true, text: `Sending ${file.name}…` };
-      this.pushing = file.name;
+      offered.push({ source, name: file.name, size: file.size });
+    }
+    this.offer(offered, skipped);
+  }
+
+  private offer(files: Array<{ source: string; name: string; size: number }>, skipped: number): void {
+    // One entry per path: the same file dropped twice is one send, never two copies on the phone.
+    const unique = [...new Map(files.map((f) => [f.source, f])).values()];
+    if (unique.length === 0 && skipped === 0) return;
+    this.pendingSend = unique;
+    this.pendingSkipped = skipped;
+    this.render();
+  }
+
+  /** Only a ready pane over a writable folder, on a phone that serves push, can be sent to. */
+  private canSendHere(): boolean {
+    if (!this.pushAvailable || this.fetch.kind !== 'ready' || this.selectedRoot === null) return false;
+    const root = this.roots.find((r) => r.rootId === this.selectedRoot);
+    return root?.writable === true;
+  }
+
+  private cancelOffer(): void {
+    this.pendingSend = null;
+    this.pendingSkipped = 0;
+    this.render();
+  }
+
+  /**
+   * Sends the confirmed files, **serially** — one `transferId`, one file, one bulk connection is the
+   * protocol, and a batch is this loop rather than a protocol feature.
+   *
+   * The batch model decides what is next and what each item's state is; this method only drives the
+   * bridge. Progress and the verdict arrive separately, as the phone's own events, through
+   * [onPushAgreed] and [onTransferEvent].
+   */
+  private async confirmSend(): Promise<void> {
+    const files = this.pendingSend;
+    if (!files || files.length === 0 || this.selectedRoot === null) return;
+    if (this.batch && !sendBatchSettled(this.batch)) return;
+    this.pendingSend = null;
+    this.pendingSkipped = 0;
+    this.batchTarget = { rootId: this.selectedRoot, path: this.path };
+    this.batch = sendBatchCreate(files, this.phoneName, this.crumbLabel());
+    this.render();
+
+    let next = sendBatchNext(this.batch);
+    while (next && this.batch && this.batchTarget) {
+      const item = next;
+      this.pushing = item.name;
       this.reportWork();
-      this.render();
-      let result;
+      let result: { ok: boolean; reason?: string; code?: string };
       try {
-        result = await this.bridge.fsPush({
-          rootId: this.selectedRoot,
-          path: this.path,
-          source,
+        result = await this.bridge.fsSend({
+          rootId: this.batchTarget.rootId,
+          path: this.batchTarget.path,
+          source: item.source,
         });
+      } catch (error) {
+        result = { ok: false, reason: String(error) };
       } finally {
         this.pushing = null;
         this.reportWork();
       }
-      this.lastPush = result.ok
-        ? { ok: true, text: `${file.name} sent. The phone reports whether it arrived intact.` }
-        : {
-            ok: false,
-            // The phone's own sentence, and its code beside it. A generic failure here would throw
-            // away the one thing that distinguishes "already there" from "no room".
-            text: `${file.name} — ${result.reason ?? 'the phone refused it.'}` +
-              (result.code ? ` (${result.code})` : ''),
-          };
+      this.batch = sendBatchOnWriteFinished(this.batch, item.source, result);
       this.render();
+      // The next file waits for this one's `transferId` to leave `sending`, which the write
+      // resolving has just done — so the loop is serial without a timer.
+      next = sendBatchNext(this.batch);
     }
-    await this.openPath(this.path);
+    // Show what landed. The listing is re-read from the phone, never patched from what we sent.
+    if (this.batchTarget && this.selectedRoot === this.batchTarget.rootId && this.path === this.batchTarget.path) {
+      await this.openPath(this.path);
+    }
+  }
+
+  /** The phone acked a send; from here its events carry this id. Called by the renderer. */
+  onPushAgreed(agreed: { source: string; transferId: string; name: string }): void {
+    if (!this.batch) return;
+    const next = sendBatchOnAgreed(this.batch, agreed.source, agreed.transferId, agreed.name);
+    if (next === this.batch) return;
+    this.batch = next;
+    this.render();
+  }
+
+  /**
+   * `fs.transfer.progress` and `fs.transfer.done`, straight from the phone. Ids this batch does not
+   * hold — a pull, a photo — fall through untouched, because `updateItem` matches nothing.
+   */
+  onTransferEvent(envelope: unknown): void {
+    if (!this.batch) return;
+    const message = envelope as { type?: string; payload?: Record<string, unknown> };
+    const payload = message?.payload;
+    if (!payload || typeof payload.transferId !== 'string') return;
+    let next = this.batch;
+    if (message.type === 'fs.transfer.progress' && typeof payload.bytes === 'number') {
+      next = sendBatchOnProgress(this.batch, payload.transferId, payload.bytes);
+    } else if (message.type === 'fs.transfer.done') {
+      next = sendBatchOnDone(this.batch, {
+        transferId: payload.transferId,
+        ok: payload.ok === true,
+        ...(typeof payload.bytes === 'number' ? { bytes: payload.bytes } : {}),
+        ...(typeof payload.verified === 'boolean' ? { verified: payload.verified } : {}),
+        ...(typeof payload.message === 'string' ? { message: payload.message } : {}),
+        ...(typeof payload.code === 'string' ? { code: payload.code } : {}),
+      });
+    }
+    if (next === this.batch) return;
+    this.batch = next;
+    this.render();
+  }
+
+  /** Stop: queued files are not started; the one in flight is cancelled on the phone. */
+  private async stopBatch(): Promise<void> {
+    if (!this.batch) return;
+    // `sending` **or** `confirming`: the Mac's write finishes well before the phone has the bytes —
+    // measured live, the item was `confirming` at 866 ms with the phone reporting 30% — so a Stop
+    // that looked only for `sending` would leave the phone receiving a file the person stopped.
+    const live = this.batch.items.find(
+      (i) => (i.phase === 'sending' || i.phase === 'confirming') && i.transferId,
+    );
+    this.batch = sendBatchStop(this.batch);
+    this.render();
+    if (live?.transferId && this.bridge.fsCancel) {
+      await this.bridge.fsCancel({ transferId: live.transferId });
+    }
+  }
+
+  private dismissBatch(): void {
+    if (this.batch && !sendBatchSettled(this.batch)) return;
+    this.batch = null;
+    this.batchTarget = null;
+    this.render();
   }
 
   /**
@@ -669,19 +821,40 @@ class FilesView {
     // F4: the canvas draws two drop tiles. One condition decides whether either exists, and it is
     // the phone's answer rather than a constant — so the tile appears the moment a phone that
     // serves push connects, and never over one that does not.
-    const canUpload = uploadAffordance(this.pushAvailable) && this.fetch.kind === 'ready';
+    const canUpload = uploadAffordance(this.pushAvailable) && this.canSendHere();
     this.drop.hidden = !canUpload;
     if (canUpload) {
-      this.drop.textContent = this.lastPush?.text
-        ?? `Drop files here to send them to ${this.crumbLabel()}`;
-      this.drop.classList.toggle('is-error', this.lastPush?.ok === false);
+      this.drop.textContent = this.batch && !sendBatchSettled(this.batch)
+        ? 'A send is in progress. Drop more files when it has finished.'
+        : `Drop files here to send them to ${this.crumbLabel()}`;
     }
+    this.renderTools(canUpload);
 
     this.renderRail(homes.railLine);
     this.renderState(view, homes.stateCard);
     this.renderCrumbs();
     this.renderTable();
     this.renderDetail();
+  }
+
+  /**
+   * The listing's toolbar. **Send to phone…** is drawn under exactly the drop tile's condition, so
+   * the two affordances cannot disagree about whether this folder accepts files.
+   */
+  private renderTools(canUpload: boolean): void {
+    if (!this.tools) return;
+    this.tools.replaceChildren();
+    if (!canUpload || !this.bridge.fsPickSend) return;
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'button files-tool files-send-button';
+    // A stable name, so a driver presses it by its label and never by a coordinate.
+    send.id = 'files-send-to-phone';
+    send.setAttribute('aria-label', `Send files to ${this.crumbLabel()}`);
+    send.append(iconSvg('upload', 14), document.createTextNode('Send to phone…'));
+    send.disabled = this.batch !== null && !sendBatchSettled(this.batch);
+    send.addEventListener('click', () => void this.pickAndOffer());
+    this.tools.append(send);
   }
 
   private renderRail(railLine: boolean): void {
@@ -954,6 +1127,17 @@ class FilesView {
   private renderDetail(): void {
     this.detail.replaceChildren();
 
+    // A send being confirmed, or running, owns the column: it is what the person just did, and a
+    // file's details beside it would compete with the one decision on screen.
+    if (this.pendingSend !== null) {
+      this.renderSendConfirm(this.pendingSend);
+      return;
+    }
+    if (this.batch !== null) {
+      this.renderSendBatch(this.batch);
+      return;
+    }
+
     // More than one row selected: the card describes the *set*, because describing one of them and
     // acting on all of them is the mismatch that makes a multi-file drag feel like it misfired.
     if (this.selectedIds.size > 1) {
@@ -1089,6 +1273,213 @@ class FilesView {
       this.detail.append(status);
     }
   }
+
+  /** The confirmation: phone, folder, count, total, and the collision rule — then Send or Cancel. */
+  private renderSendConfirm(files: Array<{ source: string; name: string; size: number }>): void {
+    const card = document.createElement('section');
+    card.className = 'files-send';
+    card.setAttribute('aria-label', 'Send to phone');
+
+    const title = document.createElement('h3');
+    title.className = 'files-detail-title';
+    const total = files.reduce((sum, f) => sum + f.size, 0);
+    title.textContent = files.length === 0
+      ? 'Nothing to send'
+      : `Send ${files.length} file${files.length === 1 ? '' : 's'} to ${this.phoneName}?`;
+    card.append(title);
+
+    const facts = document.createElement('dl');
+    facts.className = 'files-detail-facts';
+    for (const [key, value] of [
+      ['To', this.crumbLabel()],
+      ['Total', fileBytes(total)],
+    ] as const) {
+      const dt = document.createElement('dt');
+      dt.textContent = key;
+      const dd = document.createElement('dd');
+      dd.textContent = value;
+      facts.append(dt, dd);
+    }
+    card.append(facts);
+
+    if (files.length > 0) {
+      const list = document.createElement('ul');
+      list.className = 'files-send-list';
+      const SHOWN = 6;
+      for (const f of files.slice(0, SHOWN)) {
+        const li = document.createElement('li');
+        li.className = 'files-send-item';
+        const name = document.createElement('span');
+        name.className = 'files-send-name';
+        name.textContent = f.name;
+        const size = document.createElement('span');
+        size.className = 'files-send-meta';
+        size.textContent = fileBytes(f.size);
+        li.append(name, size);
+        list.append(li);
+      }
+      if (files.length > SHOWN) {
+        const more = document.createElement('li');
+        more.className = 'files-send-more';
+        more.textContent = `and ${files.length - SHOWN} more`;
+        list.append(more);
+      }
+      card.append(list);
+    }
+
+    const notes: string[] = [];
+    if (this.pendingSkipped > 0) {
+      notes.push(
+        `${this.pendingSkipped} item${this.pendingSkipped === 1 ? ' was' : 's were'} left out — ` +
+          'only files saved on this Mac can be sent, not folders or items dragged from an app.',
+      );
+    }
+    notes.push(
+      'Nothing on the phone is replaced. A name that is already there arrives as “name (2)”.',
+    );
+    for (const text of notes) {
+      const p = document.createElement('p');
+      p.className = 'files-detail-note';
+      p.textContent = text;
+      card.append(p);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'files-send-actions';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'button';
+    cancel.id = 'files-send-cancel';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => this.cancelOffer());
+    actions.append(cancel);
+    if (files.length > 0) {
+      const send = document.createElement('button');
+      send.type = 'button';
+      send.className = 'button primary-action';
+      send.id = 'files-send-confirm';
+      send.textContent = 'Send';
+      send.addEventListener('click', () => void this.confirmSend());
+      actions.append(send);
+    }
+    card.append(actions);
+    this.detail.append(card);
+  }
+
+  private renderSendBatch(batch: SendBatch): void {
+    const summary = sendBatchSummary(batch);
+    const settled = sendBatchSettled(batch);
+
+    const card = document.createElement('section');
+    card.className = 'files-send';
+    card.setAttribute('aria-label', 'Sending to phone');
+    card.dataset.state = settled ? (summary.failed > 0 ? 'partial' : 'done') : 'sending';
+
+    const title = document.createElement('h3');
+    title.className = 'files-detail-title';
+    title.textContent = summary.headline;
+    card.append(title);
+
+    // One bar for the batch, from bytes the phone reported. `progress` with a real value — never an
+    // indeterminate bar: a small file emits no progress at all, and then the bar simply jumps.
+    const bar = document.createElement('progress');
+    bar.className = 'files-send-bar';
+    bar.max = 1;
+    bar.value = summary.fraction;
+    bar.setAttribute('aria-label', `${Math.round(summary.fraction * 100)}% delivered to the phone`);
+    card.append(bar);
+
+    const detail = document.createElement('p');
+    detail.className = 'files-detail-note';
+    detail.textContent = summary.detail;
+    card.append(detail);
+
+    const list = document.createElement('ul');
+    list.className = 'files-send-list';
+    for (const item of batch.items) {
+      const li = document.createElement('li');
+      li.className = 'files-send-item';
+      li.dataset.phase = item.phase;
+      const name = document.createElement('span');
+      name.className = 'files-send-name';
+      name.textContent = item.name;
+      const status = sendItemStatus(item);
+      const meta = document.createElement('span');
+      meta.className = `files-send-meta is-${status.tone}`;
+      // A glyph only where the state has settled one way or the other; in flight, the bar says it.
+      if (status.tone === 'good') meta.append(iconSvg('check', 12));
+      if (status.tone === 'bad') meta.append(iconSvg('alert', 12));
+      meta.append(document.createTextNode(status.text));
+      li.append(name, meta);
+      if ((item.phase === 'sending' || item.phase === 'confirming') && item.size > 0) {
+        const own = document.createElement('progress');
+        own.className = 'files-send-bar files-send-bar--item';
+        own.max = item.size;
+        own.value = item.delivered;
+        li.append(own);
+      }
+      list.append(li);
+    }
+    card.append(list);
+
+    const actions = document.createElement('div');
+    actions.className = 'files-send-actions';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'button';
+    if (settled) {
+      button.id = 'files-send-done';
+      button.textContent = 'Done';
+      button.addEventListener('click', () => this.dismissBatch());
+    } else {
+      button.id = 'files-send-stop';
+      button.textContent = 'Stop';
+      button.addEventListener('click', () => void this.stopBatch());
+    }
+    actions.append(button);
+    card.append(actions);
+
+    if (!settled && batch.items.some((i) => i.phase === 'sending' || i.phase === 'confirming')) {
+      const note = document.createElement('p');
+      note.className = 'files-detail-note';
+      note.textContent =
+        'Stopping keeps what has arrived as a partial file on the phone; sending the same file again resumes it.';
+      card.append(note);
+    }
+    this.detail.append(card);
+  }
+
+}
+
+/** What each item is doing, in the phone's words where the phone has said something. */
+function sendItemStatus(item: SendItem): { text: string; tone: 'neutral' | 'live' | 'good' | 'bad' } {
+  switch (item.phase) {
+    case 'queued':
+      return { text: 'Waiting', tone: 'neutral' };
+    case 'sending':
+    case 'confirming':
+      // Both phases draw the **phone's** count. `confirming` means this Mac has finished writing,
+      // which happens long before the phone has received the bytes — so while the phone is still
+      // counting, the count is what is true; once it has all of them, the verdict is what is owed.
+      if (item.delivered > 0 && item.delivered < item.size) {
+        return { text: `${fileBytes(item.delivered)} of ${fileBytes(item.size)} on the phone`, tone: 'live' };
+      }
+      return {
+        text: item.phase === 'sending' ? 'Starting…' : 'Waiting for the phone to confirm',
+        tone: 'live',
+      };
+    case 'arrived':
+      return {
+        text:
+          (item.sentAs && item.sentAs !== item.name ? `Arrived as ${item.sentAs}` : 'Arrived') +
+          (item.verified ? ' · checksum matched' : ' · not checksummed'),
+        tone: 'good',
+      };
+    case 'failed':
+      return { text: item.reason ?? 'Failed', tone: 'bad' };
+    case 'cancelled':
+      return { text: item.reason ?? 'Stopped', tone: 'neutral' };
+  }
 }
 
 function fileBytes(bytes: number): string {
@@ -1122,13 +1513,14 @@ function createFilesView(bridge: FilesBridge): FilesView | null {
   const footer = document.getElementById('files-footer');
   const drop = document.getElementById('files-drop');
   const detail = document.getElementById('files-detail');
+  const tools = document.getElementById('files-tools');
   if (
     !banner || !rail || !hint || !wall || !crumbs || !state || !table || !footer || !drop || !detail
   ) {
     return null;
   }
   return new FilesView(
-    bridge, banner, rail, hint, wall, crumbs, state, table, footer, drop, detail,
+    bridge, banner, rail, hint, wall, crumbs, state, table, footer, drop, detail, tools,
   );
 }
 

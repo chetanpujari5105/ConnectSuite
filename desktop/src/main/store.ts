@@ -42,6 +42,14 @@ interface Schema {
    * hand-edited or future value cannot make the app unstartable; `asAppearance` narrows it on read.
    */
   appearance: string;
+  /**
+   * Where phone files land on this Mac, or null for `~/Downloads/Sidekick`.
+   *
+   * A path, not a bookmark: the app is not sandboxed, so there is no security scope to store. What a
+   * path cannot survive — a rename, an unplugged drive — is answered in `downloads.ts` by refusing
+   * with the folder named, never by recreating it somewhere nobody is looking.
+   */
+  receiveFolder: string | null;
 }
 
 /**
@@ -75,6 +83,7 @@ export const store = new Store<Schema>({
     watchClipboard: true,
     notificationSound: false,
     appearance: 'system',
+    receiveFolder: null,
   },
 });
 

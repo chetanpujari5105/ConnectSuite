@@ -38,6 +38,7 @@ import com.chetan.connectsuite.onboarding.OnboardingScreen
 import com.chetan.connectsuite.sync.ui.SyncRoute
 import com.chetan.connectsuite.sync.ui.SyncSection
 import com.chetan.connectsuite.sync.ui.settings.SyncSettingsScreen
+import com.chetan.connectsuite.sync.v2.ReceivedFileNotifications
 
 /**
  * The routes. **These strings are a contract with things outside the UI and did not change.**
@@ -87,9 +88,9 @@ private const val ROUTE_SYNC_SETTINGS = "sync/settings"
 private const val KEY_ONBOARDING_DONE = "onboarding_complete"
 
 /**
- * [requestedTab] is a tab something outside the UI has asked to open — today only the mirroring
- * notification, which on Android 16 is the route to the one screen where capture consent can be
- * given. [onTabOpened] fires once it has been honoured, so returning to the app later does not
+ * [requestedTab] is a tab something outside the UI has asked to open — the mirroring notification,
+ * which on Android 16 is the route to the one screen where capture consent can be given, and since
+ * 2026-09-23 the received-file notification (`"transfers"`). [onTabOpened] fires once it has been honoured, so returning to the app later does not
  * yank the user back to it.
  */
 @Composable
@@ -138,6 +139,18 @@ fun ConnectSuiteRoot(
     val link by remember { LinkController.get(context).state }.collectAsStateWithLifecycle()
 
     LaunchedEffect(requestedTab) {
+        // A received-file notification asks for Transfers, which is a *section* of the Sync host
+        // rather than a route of its own — so it selects the section, then opens the host.
+        if (requestedTab == ReceivedFileNotifications.TAB_TRANSFERS) {
+            section = SyncSection.Transfers
+            navController.navigate(TopLevelTab.Sync.route) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+            onTabOpened()
+            return@LaunchedEffect
+        }
         val target = TopLevelTab.entries.firstOrNull { it.route == requestedTab } ?: return@LaunchedEffect
         navController.navigate(target.route) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }

@@ -8,6 +8,16 @@ import androidx.core.content.getSystemService
 /** Every notification channel the app posts to, created once at process start. */
 object NotificationChannels {
 
+    /**
+     * Extra on the launcher Intent asking the app to open a named tab — `"mirror"`, `"transfers"`.
+     *
+     * Here, in `core`, because two modules post notifications that deep-link and neither can see the
+     * other: the mirroring request (`mirror-module`) and a received file (`sync-module`). It lived
+     * in `MirrorNotifications` while that was the only one, and a second module copying the string
+     * would be two homes for one key — a miss navigates nowhere and throws nothing.
+     */
+    const val EXTRA_OPEN_TAB = "com.chetan.connectsuite.OPEN_TAB"
+
     /** Persistent low-priority channel for the always-on connection service. */
     const val CONNECTION = "connection_status"
 
@@ -85,7 +95,7 @@ object NotificationChannels {
                     "File transfers",
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply {
-                    description = "Progress for files being sent or received."
+                    description = "Files your Mac sends to this phone, once they have arrived."
                     setShowBadge(false)
                 },
                 NotificationChannel(

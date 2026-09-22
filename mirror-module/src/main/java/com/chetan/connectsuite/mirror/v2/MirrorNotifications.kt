@@ -31,7 +31,7 @@ object MirrorNotifications {
      * :mirror-module cannot see the app's Activity or its nav graph, and the launch Intent is the
      * one thing every module can build.
      */
-    const val EXTRA_OPEN_TAB = "com.chetan.connectsuite.OPEN_TAB"
+    const val EXTRA_OPEN_TAB = NotificationChannels.EXTRA_OPEN_TAB
     const val TAB_MIRROR = "mirror"
 
     /** Posts the prompt. Safe to call repeatedly; it replaces rather than stacks. */

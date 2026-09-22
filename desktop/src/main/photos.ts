@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { promises as fs } from 'node:fs';
-import { downloadsFolder } from './downloads';
+import { ensureReceiveFolder } from './downloads';
 import {
   MessageType,
   type MediaBucket,
@@ -178,7 +178,28 @@ export class PhotosClient {
    * suffixing rather than overwriting: two photos really can share a display name across buckets,
    * and silently replacing someone's file to avoid a dialog is the wrong trade.
    */
-  async original(id: string): Promise<PhoneResult<{ path: string; bytes: number; elapsedMs: number }>> {
+  async original(
+    id: string,
+    into?: string,
+  ): Promise<PhoneResult<{ path: string; bytes: number; elapsedMs: number }>> {
+    // The destination is settled **before** the phone is asked: a receive folder on an unplugged
+    // drive must refuse here, not after the phone has agreed a transfer nobody will claim.
+    let folder: string;
+    if (into) {
+      folder = into;
+    } else {
+      const ready = await ensureReceiveFolder();
+      if (!ready.ok) {
+        return {
+          ok: false,
+          feature: 'photos',
+          type: MessageType.MEDIA_ORIGINAL,
+          reason: ready.reason,
+          fixHint: ready.fixHint,
+        } as PhoneResult<{ path: string; bytes: number; elapsedMs: number }>;
+      }
+      folder = ready.folder;
+    }
     const ticket = await ask(
       this.link(),
       'photos',
@@ -206,7 +227,6 @@ export class PhotosClient {
       } as PhoneResult<{ path: string; bytes: number; elapsedMs: number }>;
     }
 
-    const folder = downloadsFolder();
     await fs.mkdir(folder, { recursive: true });
     const destination = await freeName(folder, ticket.data.name);
 

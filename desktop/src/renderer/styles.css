@@ -3407,12 +3407,36 @@ img#qr {
   padding: var(--space-5);
 }
 
+/* The breadcrumb and the listing's tools share one row: location on the left, what you can do
+   with it on the right. The crumbs wrap; the tools never do. */
+.files-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
 .files-crumbs {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
-  margin-bottom: var(--space-4);
+  min-width: 0;
+}
+
+.files-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.files-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
 }
 
 .files-crumb {
@@ -3626,6 +3650,97 @@ img#qr {
 }
 
 .files-detail-note.is-error { color: var(--destructive); }
+
+/* ---- Send to phone: the confirmation and the batch (Feature B, 2026-09-23) -------------------
+   One card in the detail column for both. Every number in it is the phone's — see
+   shared/sendBatch.ts — so the bar is filled from fs.transfer.progress, never from a timer. */
+.files-send {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.files-send .files-detail-title { margin-bottom: 0; }
+
+.files-send-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--space-3);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.files-send-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  min-width: 0;
+}
+
+.files-send-name {
+  font: var(--text-body-size);
+  color: var(--text-on-control);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The status line sits under the name, never beside it: in a 320px column a long status beside the
+   name squeezed the name to zero width (seen in the first capture). Tone lives on the glyph; the
+   words stay neutral except for a real failure, so a finished batch is not a column of lime. */
+.files-send-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.files-send-meta svg { flex: none; }
+.files-send-meta.is-live { color: var(--text-body); }
+.files-send-meta.is-good svg { color: var(--live); }
+.files-send-meta.is-bad { color: var(--destructive); }
+
+.files-send-more {
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+  padding-top: var(--space-1);
+}
+
+/* The batch and per-file bars: the same 4px pill track as the Overview vitals. */
+.files-send-bar {
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: rgba(var(--overlay-rgb), 0.08);
+  overflow: hidden;
+}
+.files-send-bar::-webkit-progress-bar {
+  background: rgba(var(--overlay-rgb), 0.08);
+  border-radius: var(--radius-pill);
+}
+.files-send-bar::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  transition: width var(--dur-ring) var(--ease-in-out);
+}
+.files-send-bar--item { height: 3px; margin-top: var(--space-1); }
+
+.files-send-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
 
 /* ============================== Clipboard ====================================================
    Owned here because it is what lives inside a screen; the window, sidebar and dock are

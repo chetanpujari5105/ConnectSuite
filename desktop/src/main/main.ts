@@ -10,7 +10,13 @@ import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
 import { ClipboardWatcher } from './clipboardWatcher';
-import { downloadsFolder } from './downloads';
+import {
+  checkWritableFolder,
+  chosenDownloadsFolder,
+  defaultDownloadsFolder,
+  downloadsFolder,
+  ensureReceiveFolder,
+} from './downloads';
 /*
  * `shared/appearance.ts` is a plain script for the same reason `shared/activity.ts` is — the
  * CSP-locked renderer loads it with a `<script>` tag, so it carries no top-level `export` and has
@@ -49,10 +55,16 @@ const sharedActivity = require('../shared/activity') as {
  * time somebody fixes one of them. It is the same function the Device status ring renders with, so
  * a size in the Activity log and a size under a ring cannot come out in different units.
  */
+// The send batch's naming rule, shared with the renderer that draws the batch — `name (2).ext` has
+// one home, so the name the phone is offered and the name the pane reports cannot disagree.
+const sharedSendBatch = require('../shared/sendBatch') as {
+  suffixedName: (name: string, n: number) => string;
+};
 const sharedVitals = require('../shared/deviceVitals') as {
   humanBytes: (bytes: number) => string;
 };
 import { FilesClient } from './files';
+import { ask } from './feature';
 import { AppsClient } from './apps';
 import { PhotosClient } from './photos';
 import { NotificationClient } from './notifications';
@@ -1758,8 +1770,45 @@ ipcMain.handle('login-item-set', (_event, on: boolean) => {
 /** Settings → File transfer: the real destination, from the one place that owns it. */
 ipcMain.handle('downloads-folder', () => ({
   ok: true,
-  data: { path: downloadsFolder(), legacyPath: legacyDownloadsFolder(homedir()) },
+  data: {
+    path: downloadsFolder(),
+    chosen: chosenDownloadsFolder() !== null,
+    defaultPath: defaultDownloadsFolder(),
+    legacyPath: legacyDownloadsFolder(homedir()),
+  },
 }));
+
+/**
+ * Settings → File transfer → **Choose…**, departure T1 made real.
+ *
+ * The folder is checked for writability **before** it is stored, so the setting can never hold a
+ * destination the next pull would refuse. A cancelled picker changes nothing and says so.
+ */
+ipcMain.handle('downloads-choose', async () => {
+  const picked = await dialog.showOpenDialog({
+    title: 'Choose where files from your phone are saved',
+    buttonLabel: 'Use this folder',
+    defaultPath: downloadsFolder(),
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (picked.canceled || picked.filePaths.length === 0) return { ok: false, reason: 'cancelled' };
+  const chosen = picked.filePaths[0]!;
+  const problem = await checkWritableFolder(chosen);
+  if (problem) {
+    log.warn('files', `receive folder not changed: ${problem}`);
+    return { ok: false, reason: problem };
+  }
+  store.set('receiveFolder', chosen);
+  log.info('files', `receive folder set to ${chosen}`);
+  return { ok: true, data: { path: chosen } };
+});
+
+/** Back to `~/Downloads/Sidekick`. Nothing already saved is moved. */
+ipcMain.handle('downloads-use-default', () => {
+  store.set('receiveFolder', null);
+  log.info('files', `receive folder reset to the default ${defaultDownloadsFolder()}`);
+  return { ok: true, data: { path: defaultDownloadsFolder() } };
+});
 /**
  * Reveal that folder in Finder, creating it first.
  *
@@ -1769,10 +1818,12 @@ ipcMain.handle('downloads-folder', () => ({
  * silent-no-op shape this project rules out everywhere else.
  */
 ipcMain.handle('downloads-reveal', async () => {
-  const folder = downloadsFolder();
-  await fsp.mkdir(folder, { recursive: true });
-  shell.showItemInFolder(folder);
-  return { ok: true, data: { path: folder } };
+  // The default is created on demand; a chosen folder that has gone is refused with its name,
+  // never recreated — see `ensureReceiveFolder`.
+  const ready = await ensureReceiveFolder();
+  if (!ready.ok) return { ok: false, reason: ready.reason };
+  shell.showItemInFolder(ready.folder);
+  return { ok: true, data: { path: ready.folder } };
 });
 
 /**
@@ -1897,21 +1948,96 @@ ipcMain.handle('activity-csv', async () => {
     return { ok: false, reason: String(error) };
   }
 });
-/*
- * R6 and R7 (files). Recorded here rather than inside `FilesClient` so that every recording site in
- * this app is in one file — see the note on `ActivityStore`. Both outcomes are written: a transfer
- * that failed is exactly the row somebody comes to this screen looking for.
+/**
+ * **Send to phone…** — the multi-file picker. Files only; a folder is a loop of pushes nobody asked
+ * for, and `fs.transfer` moves one file. Sizes are read here so the confirmation can state a total.
  */
+ipcMain.handle('fs-pick-send', async () => {
+  const picked = await dialog.showOpenDialog({
+    title: 'Choose files to send to your phone',
+    buttonLabel: 'Choose',
+    properties: ['openFile', 'multiSelections'],
+  });
+  if (picked.canceled || picked.filePaths.length === 0) return { ok: false, reason: 'cancelled' };
+  const chosen: Array<{ source: string; name: string; size: number }> = [];
+  for (const source of picked.filePaths) {
+    try {
+      const info = await fsp.stat(source);
+      if (info.isFile()) chosen.push({ source, name: basename(source), size: info.size });
+    } catch {
+      // Unreadable between the picker and here: left out, and the count the user sees says so.
+    }
+  }
+  return { ok: true, data: { files: chosen, skipped: picked.filePaths.length - chosen.length } };
+});
+
+/**
+ * One file of a send batch, **collision-safe**.
+ *
+ * The phone refuses a push over an existing name with `TARGET_STALE` and never overwrites. That
+ * refusal used to end the send. Here it is answered the way a pull into a Mac folder is: the same
+ * file, offered again as `name (2).ext`, `name (3).ext` — so nothing is replaced and the original
+ * name is kept whenever it is free. The `name` field is already in `fs.transfer.begin push`; no
+ * protocol change.
+ *
+ * The `transferId` is announced as soon as the phone acks (`fs-push-agreed`), so the renderer can
+ * match the phone's own `fs.transfer.progress` and `fs.transfer.done` to this file.
+ */
+const SEND_COLLISION_LIMIT = 50;
 ipcMain.handle(
-  'fs-push',
-  async (_event, options: { rootId: string; path: string; source: string; overwrite?: boolean }) => {
-    const result = await files.push(options);
-    const name = basename(options.source ?? '');
-    if (result?.ok) activity.record('files', 'Sent to phone', `${name} → ${options.rootId}`);
-    else activity.record('files', 'Send failed', `${name}: ${describeFailure(result)}`);
-    return result;
+  'fs-send',
+  async (_event, options: { rootId: string; path: string; source: string }) => {
+    const original = basename(options.source ?? '');
+    let last: Awaited<ReturnType<typeof files.push>> | null = null;
+    for (let n = 1; n <= SEND_COLLISION_LIMIT; n += 1) {
+      const name = sharedSendBatch.suffixedName(original, n);
+      last = await files.push({
+        rootId: options.rootId,
+        path: options.path,
+        source: options.source,
+        name,
+        onAgreed: (transferId, agreedName) =>
+          sendAll('fs-push-agreed', { source: options.source, transferId, name: agreedName }),
+      });
+      if (last.ok || last.code !== ErrorCode.TARGET_STALE) {
+        if (last.ok) {
+          activity.record(
+            'files',
+            'Sent to phone',
+            `${name}${n > 1 ? ` (renamed from ${original})` : ''} → ${options.rootId}`,
+          );
+        } else {
+          activity.record('files', 'Send failed', `${original}: ${describeFailure(last)}`);
+        }
+        return { ...last, sentAs: name };
+      }
+      log.info('files', `${name} already exists on the phone; offering it as the next free name`);
+    }
+    activity.record('files', 'Send failed', `${original}: ${SEND_COLLISION_LIMIT} names taken`);
+    return {
+      ok: false,
+      reason: `${original} was not sent — ${SEND_COLLISION_LIMIT} files with that name are already there.`,
+      code: last?.code,
+    };
   },
 );
+
+/** Stop a send in flight. The phone keeps the partial as `.part`, resumable by sending it again. */
+ipcMain.handle('fs-cancel', async (_event, options: { transferId: string }) => {
+  const result = await ask(
+    link,
+    'files',
+    MessageType.FS_TRANSFER_CANCEL,
+    { transferId: options.transferId, reason: 'user' },
+    (payload) => ({ stopped: payload.stopped === true }),
+  );
+  log.info('files', `fs.transfer.cancel ${options.transferId} → ${result.ok ? 'acked' : result.reason}`);
+  return result;
+});
+
+// R6 and R7 (files). Recorded here rather than inside `FilesClient` so every recording site is in
+// one file — see the note on `ActivityStore`. Both outcomes are written: a transfer that failed is
+// exactly the row somebody comes to the Activity screen looking for.
 ipcMain.handle(
   'fs-pull',
   async (_event, options: { rootId: string; id: string; name: string; size: number }) => {

@@ -3,7 +3,7 @@ import { createReadStream, promises as fsp } from 'node:fs';
 import { basename, join } from 'node:path';
 import { MessageType, type PhoneResult } from '../shared/protocol';
 import type { BulkClient } from './bulk';
-import { downloadsFolder } from './downloads';
+import { ensureReceiveFolder } from './downloads';
 
 // `shared/filesRoots.ts` is a plain script, not a module — it has to be loadable by a `<script>` tag
 // in the CSP-locked renderer, so it has no top-level `export` and a `module.exports` shim instead.
@@ -300,6 +300,14 @@ export class FilesClient {
       return { ok: false, reason: 'The file channel is not ready.' };
     }
 
+    // Settled before the phone is asked, so an unavailable receive folder refuses here rather than
+    // leaving the phone holding an agreed transfer nobody claims.
+    const ready = await ensureReceiveFolder();
+    if (!ready.ok) {
+      log.warn('files', `pull of ${options.name} refused on this Mac: receive folder unavailable`);
+      return { ok: false, reason: ready.reason, fixHint: ready.fixHint };
+    }
+
     const agreed = await ask(
       link,
       'files',
@@ -322,9 +330,7 @@ export class FilesClient {
       };
     }
 
-    const folder = downloadsFolder();
-    await fsp.mkdir(folder, { recursive: true });
-    const destination = await freeName(folder, options.name);
+    const destination = await freeName(ready.folder, options.name);
 
     const result = await bulk.pull({
       host,
@@ -383,6 +389,19 @@ export class FilesClient {
     path: string;
     source: string;
     overwrite?: boolean;
+    /**
+     * The name to ask the phone for, when it is not the file's own — a collision retry sends
+     * `name (2).ext`. Absent means the local file's basename, which is what every push sent before.
+     */
+    name?: string;
+    /**
+     * Told the `transferId` the moment the phone acks, **before** the bytes move.
+     *
+     * Without it the renderer learns the id only when the push resolves, which is after every
+     * `fs.transfer.progress` for that id has already gone past unrecognised — and the only progress
+     * left to draw would be this Mac's own write count, which is bytes queued, not bytes delivered.
+     */
+    onAgreed?: (transferId: string, name: string) => void;
   }): Promise<PushOutcome> {
     const link = this.link();
     if (!link?.isConnected()) return { ok: false, reason: 'The phone is not connected.' };
@@ -392,7 +411,7 @@ export class FilesClient {
       return { ok: false, reason: 'The file channel is not ready.' };
     }
 
-    const name = basename(options.source);
+    const name = options.name ?? basename(options.source);
     let size: number;
     try {
       size = (await fsp.stat(options.source)).size;
@@ -438,6 +457,8 @@ export class FilesClient {
         ...(agreed.code ? { code: agreed.code } : {}),
       };
     }
+
+    options.onAgreed?.(agreed.data.transferId, name);
 
     const result = await bulk.push({
       host,

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   AppEntry,
   ClipEntry,
@@ -337,9 +337,17 @@ contextBridge.exposeInMainWorld('connect', {
     ipcRenderer.invoke('login-item-get'),
   loginItemSet: (on: boolean): Promise<PhoneResult<{ openAtLogin: boolean; honoured: boolean }>> =>
     ipcRenderer.invoke('login-item-set', on),
-  /** `legacyPath` is `~/Downloads/ConnectSuite` when it exists, else `null`. */
-  downloadsFolder: (): Promise<PhoneResult<{ path: string; legacyPath: string | null }>> =>
-    ipcRenderer.invoke('downloads-folder'),
+  /**
+   * The receive folder. `chosen` is false while it is the default `~/Downloads/Sidekick`.
+   * `legacyPath` is `~/Downloads/ConnectSuite` when it exists, else `null`.
+   */
+  downloadsFolder: (): Promise<
+    PhoneResult<{ path: string; chosen: boolean; defaultPath: string; legacyPath: string | null }>
+  > => ipcRenderer.invoke('downloads-folder'),
+  /** The folder picker. `reason: 'cancelled'` when the person closed it; nothing changed. */
+  downloadsChoose: (): Promise<PhoneResult<{ path: string }>> => ipcRenderer.invoke('downloads-choose'),
+  downloadsUseDefault: (): Promise<PhoneResult<{ path: string }>> =>
+    ipcRenderer.invoke('downloads-use-default'),
   downloadsReveal: (): Promise<PhoneResult<{ path: string }>> =>
     ipcRenderer.invoke('downloads-reveal'),
   /** The pairing screen's rename notice, or `null` once the rename re-pair is no longer owed. */
@@ -380,18 +388,35 @@ contextBridge.exposeInMainWorld('connect', {
   }): Promise<PhoneResult<{ entries: FsEntryRow[]; hasMore: boolean }>> =>
     ipcRenderer.invoke('fs-list', options),
   /**
-   * Sends one local file to the phone.
-   *
-   * `overwrite` is omitted unless the caller means it: the phone refuses with `TARGET_STALE` when
-   * something is already at that name, and that refusal is what stands between a push and a file
-   * the user already had.
+   * Sends one local file to the phone, **never over an existing name**: a collision is offered
+   * again as `name (2).ext` and `sentAs` says which name the phone took. `overwrite` is not
+   * exposed at all — nothing on this Mac asks the phone to replace a file.
    */
-  fsPush: (options: {
+  fsSend: (options: {
     rootId: string;
     path: string;
     source: string;
-    overwrite?: boolean;
-  }): Promise<PushOutcome> => ipcRenderer.invoke('fs-push', options),
+  }): Promise<PushOutcome & { sentAs?: string }> => ipcRenderer.invoke('fs-send', options),
+  /**
+   * The real path behind a dropped `File` — **defect 132**.
+   *
+   * The drop target read `file.path`, a non-standard property Electron **removed in v32**; this app
+   * runs v43, where it is `undefined` on every file, so every drop onto the phone answered *"could not
+   * be read from this drop"*. `webUtils.getPathForFile` is the supported replacement and it only
+   * works in the preload, which is why it is here. An empty string means the file has no path on
+   * disk (a drag from a browser, say), and the pane says so rather than sending zero bytes.
+   */
+  pathForFile: (file: File): string => webUtils.getPathForFile(file),
+  /** The multi-file picker for **Send to phone…**. Folders are not offered. */
+  fsPickSend: (): Promise<
+    PhoneResult<{ files: Array<{ source: string; name: string; size: number }>; skipped: number }>
+  > => ipcRenderer.invoke('fs-pick-send'),
+  fsCancel: (options: { transferId: string }): Promise<PhoneResult<{ stopped: boolean }>> =>
+    ipcRenderer.invoke('fs-cancel', options),
+  /** The phone acked a send: from here its `fs.transfer.progress`/`done` carry this id. */
+  onPushAgreed: (
+    callback: (agreed: { source: string; transferId: string; name: string }) => void,
+  ) => ipcRenderer.on('fs-push-agreed', (_event, agreed) => callback(agreed)),
   /**
    * Copies one file from the phone to `~/Downloads/Sidekick` and answers with its local path.
    *

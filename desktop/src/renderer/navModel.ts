@@ -716,6 +716,8 @@ function iconNamesUsedByTheShell(): string[] {
     'x-circle',
     'external',
     'send',
+    // Files: **Send to phone…**, drawn from `files.ts` (2026-09-23 feature pass, Feature B).
+    'upload',
   ];
 }
 

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeElement, installFakeDocument, el } from './domDouble.testkit';
 import '../shared/filesRoots';
+import '../shared/sendBatch';
 import './icons';
 import './stateBlock';
 import './files';
@@ -55,8 +56,28 @@ class FakeBridge {
     if (!this.listOk) return { ok: false as const, reason: 'fs.list timed out', code: 'TIMEOUT' };
     return { ok: true as const, data: { entries: this.entries, hasMore: false } };
   }
-  async fsPush() {
-    return { ok: true as const, bytes: 1 };
+  /** Every send, in order — the assertion that nothing moved before Send is on this list. */
+  readonly sent: string[] = [];
+  /** How a send resolves. Each call takes the next; the default is a plain success. */
+  sendResults: Array<{ ok: boolean; reason?: string; code?: string; sentAs?: string }> = [];
+  /** Called when a send is agreed, so a test can play the phone's events against the right id. */
+  onAgreed: ((source: string) => void) | null = null;
+  async fsSend(options: { source: string }) {
+    this.sent.push(options.source);
+    this.onAgreed?.(options.source);
+    return this.sendResults.shift() ?? { ok: true };
+  }
+  picked: Array<{ source: string; name: string; size: number }> = [];
+  async fsPickSend() {
+    return { ok: true as const, data: { files: this.picked, skipped: 0 } };
+  }
+  readonly cancelled: string[] = [];
+  async fsCancel(options: { transferId: string }) {
+    this.cancelled.push(options.transferId);
+    return { ok: true };
+  }
+  pathForFile(file: { name: string; path?: string }) {
+    return file.path ?? '';
   }
   async fsPull() {
     return { ok: true as const, path: '/tmp/x' };
@@ -81,7 +102,15 @@ interface Pane {
   footer: FakeElement;
   drop: FakeElement;
   detail: FakeElement;
-  view: { refresh(): Promise<void>; setAdvertised(on: boolean, reason: string | null): void };
+  tools: FakeElement;
+  view: {
+    refresh(): Promise<void>;
+    setAdvertised(on: boolean, reason: string | null): void;
+    setPhoneName(name: string): void;
+    pickAndOffer(): Promise<void>;
+    onPushAgreed(agreed: { source: string; transferId: string; name: string }): void;
+    onTransferEvent(envelope: unknown): void;
+  };
   restore: () => void;
 }
 
@@ -99,6 +128,7 @@ function mount(): Pane {
     footer: el('div'),
     drop: el('div'),
     detail: el('div'),
+    tools: el('div'),
   };
   const View = (globalThis as Record<string, unknown>).FilesView as new (
     ...args: unknown[]
@@ -115,6 +145,7 @@ function mount(): Pane {
     parts.footer,
     parts.drop,
     parts.detail,
+    parts.tools,
   );
   return { bridge, ...parts, view, restore: fake.restore };
 }
@@ -395,6 +426,183 @@ test('control — the harness can see a rail row, so an absence above means some
       ['ConnectSuite', 'App files', 'DCIM'],
       'and the labels are the phone’s, in the phone’s order',
     );
+  } finally {
+    pane.restore();
+  }
+});
+
+// ---- Feature B: Send to phone (2026-09-23) -------------------------------------------------------
+
+/** The button that confirms or ends a send, found by its role in the card rather than a pixel. */
+function cardButton(pane: Pane, label: string): FakeElement {
+  const found = pane.detail.queryAll('button').filter((b) => b.textContent === label);
+  assert.equal(found.length, 1, `exactly one "${label}" button on the send card`);
+  return found[0]!;
+}
+
+async function readyToSend(pane: Pane, roots: RootRow[] = [DOWNLOADS, TREE]): Promise<void> {
+  pane.view.setAdvertised(true, null);
+  pane.bridge.roots = roots;
+  pane.bridge.push = true;
+  pane.view.setPhoneName('Samsung SM-S938B');
+  await pane.view.refresh();
+}
+
+test('picking files sends nothing until Send is pressed, and the card names phone and folder', async () => {
+  const pane = mount();
+  try {
+    await readyToSend(pane);
+    pane.bridge.picked = [
+      { source: '/m/a.jpg', name: 'a.jpg', size: 2048 },
+      { source: '/m/b.pdf', name: 'b.pdf', size: 4096 },
+    ];
+    await pane.view.pickAndOffer();
+    assert.deepEqual(pane.bridge.sent, [], 'a confirmation, not a send');
+    const text = pane.detail.textContent;
+    assert.ok(text.includes('Send 2 files to Samsung SM-S938B?'), text);
+    assert.ok(text.includes('DCIM'), 'the destination is the folder open in the pane');
+    assert.ok(text.includes('arrives as “name (2)”'), 'the collision rule is stated before sending');
+
+    cardButton(pane, 'Cancel').click();
+    assert.deepEqual(pane.bridge.sent, [], 'Cancel sends nothing');
+    assert.equal(pane.detail.textContent.includes('Send 2 files'), false, 'and the card is gone');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('the bar and "arrived" come from the phone’s events, never from the Mac finishing its write', async () => {
+  const pane = mount();
+  try {
+    await readyToSend(pane);
+    pane.bridge.picked = [{ source: '/m/v.mov', name: 'v.mov', size: 1000 }];
+    // The phone acks before the bytes move; the pane learns the id at that moment.
+    pane.bridge.onAgreed = (source) =>
+      pane.view.onPushAgreed({ source, transferId: 't-1', name: 'v.mov' });
+    await pane.view.pickAndOffer();
+    cardButton(pane, 'Send').click();
+    await new Promise((r) => setImmediate(r));
+
+    assert.deepEqual(pane.bridge.sent, ['/m/v.mov']);
+    const phaseOf = () => pane.detail.queryAll('.files-send-item')[0]!.dataset.phase;
+    assert.equal(phaseOf(), 'confirming', 'the Mac has written; the phone has not answered');
+    assert.equal(pane.detail.textContent.includes('arrived on'), false);
+
+    pane.view.onTransferEvent({ type: 'fs.transfer.progress', payload: { transferId: 't-other', bytes: 900 } });
+    const bar = pane.detail.queryAll('progress')[0]!;
+    assert.equal((bar as unknown as { value: number }).value, 0, 'another transfer’s bytes move nothing');
+
+    pane.view.onTransferEvent({
+      type: 'fs.transfer.done',
+      payload: { transferId: 't-1', ok: true, bytes: 1000, verified: true },
+    });
+    assert.equal(phaseOf(), 'arrived');
+    assert.ok(pane.detail.textContent.includes('1 file arrived on Samsung SM-S938B'));
+    assert.ok(pane.detail.textContent.includes('checksum matched'));
+  } finally {
+    pane.restore();
+  }
+});
+
+test('a drop is an offer too, and a file with no path on disk is counted rather than sent', async () => {
+  const pane = mount();
+  try {
+    await readyToSend(pane);
+    pane.drop.dispatch('drop', {
+      dataTransfer: {
+        files: [
+          { name: 'real.txt', size: 5, path: '/m/real.txt' },
+          { name: 'from-a-browser.png', size: 9 },
+        ],
+      },
+    });
+    assert.deepEqual(pane.bridge.sent, [], 'dropping is not sending');
+    const text = pane.detail.textContent;
+    assert.ok(text.includes('Send 1 file to'), text);
+    assert.ok(text.includes('1 item was left out'), 'the pathless file is named, not dropped silently');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('Send to phone… is drawn only where the drop tile is — push served and a writable folder', async () => {
+  for (const [label, roots, push, expected] of [
+    ['push served, writable', [DOWNLOADS, TREE], true, 1],
+    ['push not served', [DOWNLOADS, TREE], false, 0],
+    ['read-only folder', [{ ...TREE, writable: false }], true, 0],
+  ] as const) {
+    const pane = mount();
+    try {
+      pane.view.setAdvertised(true, null);
+      pane.bridge.roots = roots as RootRow[];
+      pane.bridge.push = push;
+      await pane.view.refresh();
+      assert.equal(pane.tools.queryAll('button').length, expected, label);
+      assert.equal(pane.drop.hidden, expected === 0, `${label}: the tile agrees with the button`);
+    } finally {
+      pane.restore();
+    }
+  }
+});
+
+test('Stop cancels the file in flight on the phone and starts nothing queued', async () => {
+  const pane = mount();
+  try {
+    await readyToSend(pane);
+    pane.bridge.picked = [
+      { source: '/m/1.bin', name: '1.bin', size: 10 },
+      { source: '/m/2.bin', name: '2.bin', size: 10 },
+    ];
+    let release: (() => void) | null = null;
+    pane.bridge.onAgreed = (source) =>
+      pane.view.onPushAgreed({ source, transferId: `t-${source}`, name: source.slice(3) });
+    // Hold the first send open so Stop lands while it is in flight.
+    const original = pane.bridge.fsSend.bind(pane.bridge);
+    pane.bridge.fsSend = async (options: { source: string }) => {
+      const result = original(options);
+      await new Promise<void>((r) => { release = r; });
+      return result;
+    };
+    await pane.view.pickAndOffer();
+    cardButton(pane, 'Send').click();
+    await new Promise((r) => setImmediate(r));
+    cardButton(pane, 'Stop').click();
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pane.bridge.cancelled, ['t-/m/1.bin'], 'the live transfer is cancelled by id');
+    release!();
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pane.bridge.sent, ['/m/1.bin'], 'the queued file never started');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('Stop after the Mac has finished writing still cancels on the phone — the confirming gap', async () => {
+  // Measured live on 2026-09-23: a 60 MB send was `confirming` at 866 ms with the phone reporting
+  // 30%. The Mac's write finishes long before the phone has the bytes, so a Stop that looked only
+  // for `sending` left the phone receiving a file the person had stopped.
+  const pane = mount();
+  try {
+    await readyToSend(pane);
+    pane.bridge.picked = [{ source: '/m/big.bin', name: 'big.bin', size: 1000 }];
+    pane.bridge.onAgreed = (source) =>
+      pane.view.onPushAgreed({ source, transferId: 't-big', name: 'big.bin' });
+    await pane.view.pickAndOffer();
+    cardButton(pane, 'Send').click();
+    await new Promise((r) => setImmediate(r));
+    pane.view.onTransferEvent({ type: 'fs.transfer.progress', payload: { transferId: 't-big', bytes: 300 } });
+    const item = pane.detail.queryAll('.files-send-item')[0]!;
+    assert.equal(item.dataset.phase, 'confirming', 'the write resolved; the phone is still counting');
+    assert.ok(item.textContent.includes('on the phone'), 'the phone’s count is still drawn: ' + item.textContent);
+
+    cardButton(pane, 'Stop').click();
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pane.bridge.cancelled, ['t-big']);
+    pane.view.onTransferEvent({
+      type: 'fs.transfer.done',
+      payload: { transferId: 't-big', ok: false, code: 'TRANSFER_FAILED', message: 'cancelled' },
+    });
+    assert.equal(pane.detail.queryAll('.files-send-item')[0]!.dataset.phase, 'cancelled');
   } finally {
     pane.restore();
   }

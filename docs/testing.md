@@ -22618,3 +22618,68 @@ on this screen needs a paired Mac**, and the emulator can pair with nothing. Sam
 - **"Pair another Mac" sets the same `scanning = true` flag** whose destination was measured in
   Slice 2 (the real camera flow, proven by the runtime CAMERA prompt). Not re-measured here.
 - Harness capture, for the reason above. Emulator only.
+
+
+## Sidekick feature pass — Feature B: Mac → phone (2026-09-23)
+
+Running report: `docs/sidekick-feature-pass.md`. Destination for every live send below: the phone's
+grant-free `downloads:connectsuite` root (*Received files*), which only ever gains files. Every file
+sent was a generated sample (`sidekick-pass-*`), no user data.
+
+### What was run, and what each run read
+
+| Run | Instrument | Reading |
+|---|---|---|
+| 2 files, fresh names | `scripts/sidekick-send-probe.mjs` (card) and the phone's `link.log` | card: `arrived \| Arrived · checksum matched` ×2. Phone: `t-1… verified=true`, `t-2… 6291456 bytes in 168ms … verified=true` |
+| the same 2 again | same | card: `Arrived as sidekick-pass-sample (2).txt`, `… -6mb (2).bin`. Phone: 2 refusals (`27 delivered / 1 refused`, `28 / 2`) then both received, `verified=true` — **nothing replaced** |
+| 200 MB, Stop mid-way | `scripts/sidekick-stop-probe.mjs` | before Stop: `confirming \| 22 MB of 200 MB on the phone`, bar 0.109. After: `cancelled \| … stopped after 29622272 bytes and can be resumed.` |
+| the same 200 MB again | same + phone log | phone: `reusing the pending item … 29622272 bytes already staged — this is the resume path`, `starting at 29622272`, received, `verified=false (nothing was agreed in advance)` — above the 64 MB pre-hash ceiling, reported as such on the card (`not checksummed`) |
+| a real drop | `scripts/sidekick-drop-probe.mjs` | `oldPathProp: "undefined"`, `viaWebUtils: "/…/sidekick-pass-sample.txt"`; the card drew `Send 1 file…`; **Cancel pressed, nothing sent** |
+
+Phone tally after the runs: `8 completed / 1 failed since start` — the one failure is the Stop.
+
+### Defect 132 — every drop onto the phone failed on `File.path`
+
+The drop tile read `file.path`, removed from Electron in v32 (this app is 43.4.1). A real Chromium
+drop, dispatched at the centre of the named `#files-drop` element measured immediately before, gave
+the page a `File` whose `path` read `undefined` — the old code's input — while `webUtils` returned
+the real path for the **same** `File` in the same event. The unit double cannot see this defect
+(its `pathForFile` reads the fake's own field), which is why the evidence is a live drop.
+
+### Defect 133 — the Mac never read the phone's verdict
+
+`fs.transfer.progress` and `fs.transfer.done` were emitted and dropped. The recorded envelope order
+on a 60 MB send, renderer-side:
+
+```
+[603,"agreed","t-6-95883"],[674,"fs.transfer.progress",…,262144],[948,…,17825792],
+[1184,…,40108032],[1569,…,62914560],[1570,"fs.transfer.done",…,62914560]
+```
+
+and a second 60 MB send sampled the drawn card at 866 ms as `confirming` with the batch bar at
+**0.304** — the Mac's write had resolved and the phone had 30%. So the Mac's own completion is
+bytes queued, and only the phone's `done` may say *arrived*.
+
+### An instrument fault that found a product defect
+
+The first Stop probe settled on `phase === 'sending' && bar > 0.05` and could never settle: by the
+time the phone had reported 5%, the Mac's write had resolved and the item was `confirming`. That is
+*a predicate over two clocks settling on one* (`CLAUDE.md`). Writing the probe correctly is what
+showed the product had the same blind spot — **Stop looked only for a `sending` item**, so a Stop
+pressed during `confirming` would never have reached the phone. Fixed in the same sitting, with a
+view test that goes red against the old lookup.
+
+### A layout defect found in the first capture
+
+The first capture of the arrived card showed **no file name**: status and name shared a grid row,
+and a long status took the `auto` column and squeezed the name to zero width. Now two lines per file,
+tone on a glyph rather than on the words. `docs/evidence/sidekick-feature-pass-2026-09-23/b-send-*.png`
+are the corrected captures; `b-send-synthetic-states.png` is **synthetic** — the pane's own reducers
+fed invented ids, no transfer.
+
+### Suites
+
+Mac `npm test` 926/926, typecheck clean. Phone `ReceivedFilesTest` 5/5 (artifact 12 s old, Gradle
+exit 0). The phone's received-file notification is **built and not yet observed on the device** —
+the phone build carrying it is installed with Feature F's, once, to limit how often the real link
+is interrupted.

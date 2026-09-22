@@ -221,7 +221,15 @@ interface ConnectBridge {
     { ok: true; data: { openAtLogin: boolean; honoured: boolean } } | { ok: false; reason?: string }
   >;
   downloadsFolder(): Promise<
-    { ok: true; data: { path: string; legacyPath: string | null } } | { ok: false; reason?: string }
+    | {
+        ok: true;
+        data: { path: string; chosen: boolean; defaultPath: string; legacyPath: string | null };
+      }
+    | { ok: false; reason?: string }
+  >;
+  downloadsChoose(): Promise<{ ok: true; data: { path: string } } | { ok: false; reason?: string }>;
+  downloadsUseDefault(): Promise<
+    { ok: true; data: { path: string } } | { ok: false; reason?: string }
   >;
   /** A phone published this Mac's fingerprint over mDNS — it scanned the code. F6. */
   onPairScanned(callback: (payload: { deviceName: string | null }) => void): void;
@@ -240,19 +248,36 @@ interface ConnectBridge {
   onClipChanged(callback: () => void): void;
   onClipArrived(callback: (entry: ClipEntryRow) => void): void;
 
-  // Files, both directions. `fsPush` arrived with the phone's receiver in slice 8, `fsPull` and
+  // Files, both directions. Push arrived with the phone's receiver in slice 8 (`fsSend` since the
+  // 2026-09-23 pass, collision-safe and matched to the phone's own progress), `fsPull` and
   // `fsDrag` with drag to Finder in slice 9. The upload affordance is still gated — on the phone's
   // own `push` field in the roots ack, never on these methods existing.
   fsRoots(): Promise<
     | { ok: true; data: { roots: FsRootRow[]; grantHint: string | null; push: boolean } }
     | { ok: false; reason?: string; fixHint?: string; code?: string }
   >;
-  fsPush(options: {
+  fsSend(options: {
     rootId: string;
     path: string;
     source: string;
-    overwrite?: boolean;
-  }): Promise<{ ok: boolean; bytes?: number; reason?: string; code?: string; fixHint?: string }>;
+  }): Promise<{
+    ok: boolean;
+    bytes?: number;
+    reason?: string;
+    code?: string;
+    fixHint?: string;
+    sentAs?: string;
+  }>;
+  fsPickSend(): Promise<
+    | { ok: true; data: { files: Array<{ source: string; name: string; size: number }>; skipped: number } }
+    | { ok: false; reason?: string }
+  >;
+  fsCancel(options: { transferId: string }): Promise<{ ok: boolean; reason?: string }>;
+  onPushAgreed(callback: (agreed: { source: string; transferId: string; name: string }) => void): void;
+  /** Defect 132: `File.path` does not exist in Electron ≥ 32. */
+  pathForFile(file: File): string;
+  /** Every envelope the phone sends. The Files pane reads `fs.transfer.progress`/`done` from it. */
+  onMessage(callback: (envelope: unknown) => void): void;
   fsPull(options: {
     rootId: string;
     id: string;
@@ -1098,7 +1123,10 @@ shell.onRoute((id) => {
 const files = createFilesView({
   fsRoots: () => connect.fsRoots(),
   fsList: (options) => connect.fsList(options),
-  fsPush: (options) => connect.fsPush(options),
+  fsSend: (options) => connect.fsSend(options),
+  fsPickSend: () => connect.fsPickSend(),
+  fsCancel: (options) => connect.fsCancel(options),
+  pathForFile: (file) => connect.pathForFile(file),
   fsPull: (options) => connect.fsPull(options),
   fsDrag: (paths) => connect.fsDrag(paths),
   fsThumbs: (options) => connect.fsThumbs(options),
@@ -1115,6 +1143,14 @@ shell.onRoute((id) => {
  * recorded in Activity and acknowledged by the toast, which is what a moment gets.
  */
 if (files) files.onWorkChanged = (work) => shell.setWork(work);
+// Feature B (2026-09-23): a send is drawn from the phone's own events. The id arrives the moment the
+// phone acks, then every `fs.transfer.progress`/`done` for it is routed here; the pane ignores ids it
+// does not hold, so a pull or a photo passing through changes nothing.
+if (files) {
+  connect.onPushAgreed((agreed) => files.onPushAgreed(agreed));
+  connect.onMessage((envelope) => files.onTransferEvent(envelope));
+  connect.onStatus((status) => files.setPhoneName(status.deviceName));
+}
 
 
 // Clipboard. Built on all three verbs, and it does not gate itself on the capability for a reason
@@ -2010,18 +2046,34 @@ shell.addSettingsPane(
   () => {
     const body = document.createElement('div');
 
+    // T1, made real on 2026-09-23: **Choose…** stores a folder the main process has already checked
+    // it can write to; **Use default** puts it back. Neither moves a file already saved.
+    const controls = document.createElement('div');
+    controls.className = 'setting-actions';
+    const choose = document.createElement('button');
+    choose.type = 'button';
+    choose.id = 'settings-receive-choose';
+    choose.textContent = 'Choose…';
+    const useDefault = document.createElement('button');
+    useDefault.type = 'button';
+    useDefault.id = 'settings-receive-default';
+    useDefault.textContent = 'Use default';
+    useDefault.hidden = true;
     const reveal = document.createElement('button');
     reveal.type = 'button';
     reveal.textContent = 'Reveal in Finder';
     reveal.addEventListener('click', () => {
       void connect.downloadsReveal().then((result) => {
-        if (result.ok) shell.toast(`Opened ${result.data.path}`);
+        // A chosen folder that has gone is refused with its name, never recreated — say which.
+        shell.toast(result.ok ? `Opened ${result.data.path}` : (result.reason ?? 'Could not open the folder.'));
       });
     });
+    controls.append(choose, useDefault, reveal);
     const macRow = settingRow(
       'Save downloads to',
-      'Where phone files land on this Mac. Not configurable — see the note below.',
-      reveal,
+      'Where files from your phone land on this Mac — Files, Photos and anything sent from the ' +
+        'phone. Changing it does not move files already saved.',
+      controls,
     );
     // The path is read from the main process rather than written here, because it is written in
     // exactly one place (`main/downloads.ts`) and a settings screen showing a folder the app does
@@ -2040,9 +2092,31 @@ shell.addSettingsPane(
     legacyRow.hidden = true;
     body.appendChild(legacyRow);
 
+    const showFolder = (): void => {
+      void connect.downloadsFolder().then((result) => {
+        if (!result.ok) return;
+        path.textContent = result.data.chosen ? result.data.path : `${result.data.path} (default)`;
+        useDefault.hidden = !result.data.chosen;
+      });
+    };
+    choose.addEventListener('click', () => {
+      void connect.downloadsChoose().then((result) => {
+        if (result.ok) shell.toast(`Files from your phone will be saved to ${result.data.path}`);
+        else if (result.reason && result.reason !== 'cancelled') shell.toast(result.reason);
+        showFolder();
+      });
+    });
+    useDefault.addEventListener('click', () => {
+      void connect.downloadsUseDefault().then((result) => {
+        if (result.ok) shell.toast(`Back to ${result.data.path}`);
+        showFolder();
+      });
+    });
+
     void connect.downloadsFolder().then((result) => {
       if (!result.ok) return;
-      path.textContent = result.data.path;
+      path.textContent = result.data.chosen ? result.data.path : `${result.data.path} (default)`;
+      useDefault.hidden = !result.data.chosen;
       const legacyPath = result.data.legacyPath;
       if (!legacyPath) return;
       const show = document.createElement('button');
@@ -2064,17 +2138,17 @@ shell.addSettingsPane(
     body.appendChild(
       settingValue(
         'Send to the phone',
-        'Where files pushed from this Mac arrive. This folder needs no permission of any kind on ' +
-          'the phone — it is the one destination that works on a phone that has shared nothing.',
-        'Download/ConnectSuite',
+        'Files sent from this Mac arrive in the folder open in the Files pane. Received files — ' +
+          'Download/ConnectSuite on the phone — needs no permission of any kind, so it works on a ' +
+          'phone that has shared nothing.',
+        'The open folder',
       ),
     );
     body.appendChild(
       settingValue(
         'Duplicate handling',
-        'A name that already exists gets a numbered suffix. Nothing is ever overwritten in either ' +
-          'direction without being asked, and a push over an existing name is refused rather than ' +
-          'silently replacing it.',
+        'A name that already exists gets a numbered suffix, in both directions: a file sent to the ' +
+          'phone over a name already there arrives as “name (2)”. Nothing is ever overwritten.',
         'Keep both',
       ),
     );

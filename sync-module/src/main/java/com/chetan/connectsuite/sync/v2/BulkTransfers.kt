@@ -739,6 +739,16 @@ object BulkTransfers {
                     (if (verified) "(agreed in advance and matched)" else "(nothing was agreed in advance)") +
                     " — ${tally()}; ${framing.tally.summary()}",
             )
+            // Only here, after the Complete verdict: a stopped, short, overrun or corrupt arrival
+            // is not "received", and the notification must never say it was.
+            ReceivedFileNotifications.arrived(
+                context = context,
+                name = entry.name,
+                sizeBytes = total,
+                folderLabel = entry.rootLabel,
+                peerName = channel.session.peerName,
+                verified = verified,
+            )
         } catch (e: Exception) {
             failed.incrementAndGet()
             val total = entry.offset + received

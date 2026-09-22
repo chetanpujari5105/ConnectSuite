@@ -1,0 +1,180 @@
+# Sidekick feature pass — A to F
+
+> Running report, opened 2026-09-23. Each feature carries: **decision**, existing behaviour, changed
+> files, test evidence, screenshot evidence, remaining limitations, commit hash. It is appended to as
+> each group lands; the audit (§0) was written **before any code changed** and is not edited
+> afterwards except to strike a line that turned out wrong, with the reason beside it.
+>
+> **Standing constraints for the whole pass.** The real Mac↔SM-S938B link is not unpaired,
+> disconnected, reset, revoked or re-networked. No Forget test. No push, no release, no signing, no
+> identity change. Nothing private — clipboard text, file contents, thumbnails, real filenames of
+> the owner's media — enters this file, `docs/evidence/`, or a commit.
+
+---
+
+## 0 · Audit — what exists, read from the code
+
+Everything below was read from the current tree (`733bd00`), not recalled from docs.
+
+### The one structural fact that decides two features
+
+**Every transfer on this wire is started by the Mac.** `fs.transfer.begin` carries `direction`
+*from the Mac's point of view* (`pull` = phone → Mac, `push` = Mac → phone), `media.original` is a
+Mac request, and the phone binds the sockets and only *serves* (locked decision #2). There is **no
+phone-initiated message that offers a file to the Mac** — the phone → Mac events that exist are
+notifications, calls, SMS, clipboard, media-remote, mirror state and transfer progress. So:
+
+- **Mac → phone (B)** rides an existing verb.
+- **Phone → Mac, started on the phone (A)** has no verb to ride. It needs a new protocol message.
+
+### Second fact: the Mac drops the phone's transfer verdict on the floor
+
+The phone emits `fs.transfer.progress` (≤ 4/s plus a final) and `fs.transfer.done`
+(`ok`, `bytes`, `verified`) for every transfer. `desktop/src/main/main.ts`'s `link.on('message')`
+dispatcher handles notifications, calls, SMS, clipboard and remote state — **and neither transfer
+event.** Consequences today:
+
+- a push is reported *"sent"* when the Mac finishes **writing**, which `CLAUDE.md` already records as
+  the wrong number (bytes queued ≠ bytes delivered — the push-resume probe, defect 56);
+- the phone's `verified` verdict on a push is never shown anywhere on the Mac;
+- the Files pane cannot draw real push progress, because the only progress it could draw is the
+  sender's own write count.
+
+Reading those two events is inside the existing contract and is the foundation for B.
+
+### Feature-by-feature
+
+| | Feature | Real data path today | Protocol support | Decision |
+|---|---|---|---|---|
+| **A** | Android Sharesheet → Mac | `SendSelectionActivity` handles `SEND` for **`text/plain` only** (selected text → `clip.push`). No stream handling, no file offer | **None.** No phone-initiated offer message exists (above) | **Blocked on a protocol decision** — proposal in §A. The Mac-side receive-folder setting it depends on is independent and is built (see B) |
+| **B** | Mac → Android | Files pane: a drop target over the selected folder → `fs.transfer.begin push` → bulk socket. Serial. Phone records a `TransferEntity` and the phone's Transfers screen lists it. Name collision → phone refuses `TARGET_STALE` (never overwrites) and the Mac shows the refusal | Full: push, resume, `overwrite` opt-in, progress + done events | **Build.** Add a *Send to phone* button + multi-file picker + confirmation naming the phone and the destination folder; read `fs.transfer.progress`/`done` for truthful per-file and batch progress and the phone's verdict; collision-safe retry under `name (2).ext` (a different `name` is an existing field). Phone: a completion notification (local only, no wire change) |
+| **C** | Photos quality + video | Detail preview = the grid's **256 px** `media.thumb`, drawn into a 4:3 well at `object-fit: cover` → upscaled ~1.2–2.5× and **portraits cropped**. No video element. CSP `img-src 'self' data:` blocks any local file | `media.thumb` allows **`maxEdge` 512** (pane asks 256). `media.original` delivers real bytes over bulk (today into `~/Downloads/Sidekick` only) | **Build**, Mac only. 512 px preview immediately, labelled as a preview; the original on request into a **private preview cache** (not Downloads) served by a narrow `sidekick-media:` protocol with Range support; `<video controls>` gated on `canPlayType` + `error`; `contain` on a dark stage; honest states |
+| **D** | Files grid / sort / search | List only, order = the phone's (`dir` desc, name byte-wise). Paged 200 at a time | `fs.list` carries `name`, `size`, `mtimeMs`, `mime`; `fs.thumb` batches 32 | **Build**, Mac only. Sort and search operate on **loaded** entries and say so when `hasMore`. Range-select follows the drawn order. Grid thumbnails only for `image/*`/`video/*` |
+| **E** | First-run setup | 5-page onboarding: welcome → **one** runtime permission (notifications) → mirror note → battery exemption → QR pair. Other grants are asked from the Sync tab when features are turned on. Onboarding still draws Material colours | n/a (phone only) | **Build**, phone only: a *Set up Sidekick* checklist reading real status per item, runtime prompts through the platform API on tap, special access by deep link and re-read on resume. Tested on the **emulator** (`emulator-5554`), never with `pm clear` on the SM-S938B |
+| **F** | Mirror request while backgrounded | `mirror.start` with no visible Activity → `AWAITING_FOREGROUND`, a HIGH-importance *"X wants to mirror your screen"* notification that deep-links to the Mirror tab; 30 s consent timeout; Mirror tab shows *"X is waiting for you"* and a **Start mirroring** button | Full; the Mac renders the phone's `message`/`fixHint` | **Build the official version**: a notification action *Approve screen sharing*, a dedicated in-app request card (which Mac, what it permits, that Android shows its own prompt), only then the real consent. **No full-screen intent** (reason in §F). Copy: the phone currently tells the Mac *Tap "Start now"* — a label this Samsung does not show — and still says *ConnectSuite* |
+
+### What must not change, checked
+
+- Pairing / trust store / TLS / mDNS / ports: untouched by every group below.
+- `applicationId` `com.chetan.connectsuite`, bundle id `com.chetan.sidekick.desktop`: untouched.
+- The `Download` wall, `push` gating on the phone's own roots field, compare-and-delete: unchanged.
+- The accessibility service's visible name *Sidekick Input* and the app name *Sidekick*: unchanged.
+
+---
+
+## A · Android Sharesheet → Mac — **BLOCKED: needs a protocol decision**
+
+**Status: not implemented.** Stopped per the pass rule *"if a feature requires a new protocol
+message… document it and stop."*
+
+### Why no existing message can carry it
+
+The phone cannot start a transfer. It can only answer a Mac's `fs.transfer.begin` or
+`media.original`. A share sheet begins on the phone, while the Mac may be idle, so something has to
+tell the Mac *there is a file for you*. Nothing on the wire says that. The workarounds that avoid a
+new message were each considered and rejected:
+
+| Workaround | Why not |
+|---|---|
+| Copy shared files into the `app:files` root and let the user pull them from Files | Not a send. The user has to walk to the Mac and fetch them; duplicates bytes on the phone |
+| Mac polls `app:files` for new entries | A timer on the control channel for an event the phone already knows about; `media.buckets` is already documented as *must not be sent on a timer* for the same cost reason |
+| Smuggle it in `clip.push` / a notification | A clipboard entry and a notification are contracts with their own storage and privacy rules (§6 of the clipboard proposal); overloading either breaks them |
+
+### Proposal for decision (nothing below is built)
+
+One new **phone → Mac event** and one new root `kind`, with the bytes moving on the **existing**
+pull path so no second transfer mechanism appears:
+
+```json
+share.offer   (event, phone → Mac)
+{"offerId":"s-3f1a","rootId":"share:s-3f1a","from":"Samsung SM-S938B",
+ "items":[{"id":"0","name":"IMG_2041.jpg","mime":"image/jpeg","size":3874112},
+          {"id":"1","name":"report.pdf","mime":"application/pdf","size":null}],
+ "expiresMs":600000}
+```
+
+- The Mac pulls each item with the **existing** `fs.transfer.begin {"direction":"pull","rootId":"share:s-3f1a","id":"0"}` — resume, digest, progress and done all come for free.
+- `share:<offerId>` is a transient root that exists only on the phone, holds read grants for the
+  shared `content://` URIs for the offer's lifetime, and is never listed by `fs.list` with no
+  `rootId`.
+- `size: null` is legal (a provider that does not report `OpenableColumns.SIZE`), and the Mac shows
+  *size unknown* rather than `0 B`.
+- **Consent model to decide:** does a paired Mac pull automatically into its receive folder, or does
+  the Mac show an *Accept* card? The phone's user already chose *Send* on a confirmation screen, so
+  the proposal is **auto-pull on the Mac**, with a Mac setting to require acceptance. That is a
+  product/security decision and is left to you.
+- A `share.cancel` (either side) is the one other message, for a phone user who backs out while the
+  Mac is pulling.
+
+**Android side, ready to build once the message exists:** an exported `ShareToMacActivity` with
+`SEND` + `SEND_MULTIPLE` for `*/*`; `EXTRA_STREAM` read with `IntentCompat.getParcelableExtra` /
+`getParcelableArrayListExtra`; **no `file://` conversion**; the grants that come with the share
+intent are only valid while the receiving component is alive, so the offer is held by the
+foreground `LinkService` and the confirmation screen, and expires with them. The URIs cannot be
+persisted with `takePersistableUriPermission` — that works only for SAF document URIs, not for
+arbitrary share URIs — and the proposal says so instead of promising resumability across a phone
+restart.
+
+**What was built for A anyway, because it is independent:** the Mac's configurable receive
+folder (Settings → File transfer). It is where every pull already lands (Files, Photos), so it is
+useful today and is the destination A would use. Recorded under B.
+
+---
+
+## B · Mac → Android — **implemented, real-device tested**
+
+**Decision:** build on the existing `fs.transfer.begin push`. No protocol change.
+
+**Existing behaviour found:** a drop tile over the open folder, serial pushes, a phone that refuses
+a name collision with `TARGET_STALE` and never overwrites. Two defects underneath it:
+
+- **Defect 132** — every drop failed: the tile read `file.path`, removed from Electron in v32 (this
+  app runs 43.4.1). Proven with a real Chromium drop: `path` read `undefined`, `webUtils` returned
+  the real path for the same `File`.
+- **Defect 133** — the Mac never read `fs.transfer.progress`/`done`, so a push was "sent" when this
+  Mac finished **writing** (bytes queued) and the phone's `verified` never reached a screen. Measured:
+  a 60 MB write resolved at 866 ms with the phone at 30%.
+
+**What changed:**
+
+| | |
+|---|---|
+| Mac → phone flow | **Send to phone…** in the Files toolbar (native multi-file picker) and the drop tile both end on one **confirmation card**: phone name, destination folder, count, total, file list, the collision rule — then Send or Cancel. Nothing moves before Send |
+| progress | per-file and batch bars from the **phone's** `fs.transfer.progress`; *arrived* only on the phone's `fs.transfer.done`; `confirming` for "this Mac finished, the phone has not answered" |
+| collisions | a name already on the phone is re-offered as `name (2).ext`, `(3)`… (the `name` field is already in the contract) — the original name is kept whenever it is free, nothing is replaced |
+| Stop | queued files are not started; the in-flight one is cancelled on the phone with `fs.transfer.cancel`, whose partial stays and **resumes** on the next send (proven: resumed at 29,622,272 bytes) |
+| receive folder (also Feature A's) | Settings → File transfer → **Choose… / Use default / Reveal in Finder**. Checked writable before storing; an unavailable chosen folder is refused with its name **before the phone is asked**, never recreated |
+| phone | a low-importance *"<name> arrived from <Mac>"* notification after the phone's own **Complete** verdict only, batching a serial send into one running count, tapping through to Transfers. Built and unit-tested; **not yet observed on the device** (installed with F's build) |
+
+**Changed files:** `desktop/src/shared/sendBatch.ts` (+test), `desktop/src/main/{files,downloads,photos,main,store}.ts`,
+`desktop/src/preload.ts`, `desktop/src/renderer/{files,renderer,navModel}.ts`, `index.html`,
+`styles.css`, `shell.css`, `filesView.test.ts`; `sync-module/.../v2/{ReceivedFiles,ReceivedFileNotifications,BulkTransfers}.kt`
+(+`ReceivedFilesTest`), `core/.../NotificationChannels.kt`, `mirror-module/.../MirrorNotifications.kt`,
+`app/.../AppNavigation.kt`. Probes: `scripts/sidekick-{send,stop,drop}-probe.mjs`, `sidekick-send-shots.mjs`,
+`electron-file-path-probe.mjs`.
+
+**Test evidence:** `docs/testing.md` → *Sidekick feature pass — Feature B*. Live, on the SM-S938B:
+2 fresh sends (checksum matched), the same 2 again (arrived as `(2)`, phone logged the refusals),
+200 MB stopped at 29.6 MB and resumed from exactly there, a real drop proving defect 132 (cancelled,
+nothing sent). Phone tally `8 completed / 1 failed` — the one failure is the Stop.
+
+**Screenshots** (`docs/evidence/sidekick-feature-pass-2026-09-23/`, cropped to the card — the rest
+of the pane lists real folder contents): `b-toolbar.png`, `b-send-confirm.png`, `b-send-arrived.png`,
+`b-send-synthetic-states.png` (**synthetic** — the pane's reducers fed invented ids, no transfer).
+
+**Found and fixed while testing (my own, not shipped):** Stop did not cancel once the Mac had
+finished writing (`confirming`); the per-file count vanished in `confirming`; a long status line
+squeezed the file name to zero width; *"Stopped — nothing was sent"* after 29.6 MB had been sent.
+
+**Remaining limitations:**
+
+- The native picker cannot be driven by the harness, so the live runs enter at the pane's `offer()`
+  — the method the picker and the drop both end in. The picker itself was not exercised.
+- Destination is the folder open in the Files pane; a read-only folder or a phone without `push`
+  shows no Send affordance at all. `Download/` itself is still unreachable (the wall).
+- Test files left on the phone in **Received files** (`Download/ConnectSuite`): `sidekick-pass-sample*.txt`
+  ×3, `sidekick-pass-sample-6mb*.bin` ×2, `sidekick-pass-stop-200mb*.bin` ×2, `sidekick-pass-60mb*.bin` ×2 —
+  about 540 MB. Deleting them is yours to do; this pass does not delete files on the phone.
+
+**Commit:** *(filled below when committed)*
+
