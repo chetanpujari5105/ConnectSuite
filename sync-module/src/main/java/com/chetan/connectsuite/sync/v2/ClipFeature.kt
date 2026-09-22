@@ -118,12 +118,53 @@ object ClipFeature {
         val lastReceivedAtMs: Long = 0L,
         /** Whether the last arriving entry reached the clipboard, so the card names what happened. */
         val lastReceivedApplied: Boolean = false,
-        val historySize: Int = 0,
+        /**
+         * Every entry this phone is holding, newest first — the same list [onHistory] hands the
+         * Mac, and the same list, not a second one assembled for this screen.
+         *
+         * It carries text, and that is the same decision the previews two fields up already are:
+         * this never leaves the device, is never written to storage, and is never logged. The
+         * history it projects refuses a [ClipboardPayloads.KIND_SENSITIVE] entry at `add` time, so
+         * a flagged clip cannot reach this field for the screen to have to remember to filter.
+         *
+         * **There was an honesty argument for withholding it and it does not survive contact with
+         * the code.** The Mac has shown all twenty entries since the feature shipped; the phone
+         * that holds them showed their *count*. Nothing about the wall this feature is built on —
+         * the phone may not read its clipboard while unfocused — says anything about displaying
+         * what the phone already has.
+         */
+        val history: List<ClipboardPayloads.History.Item> = emptyList(),
         val linkUp: Boolean = false,
-    )
+    ) {
+        /**
+         * **Derived, never stored.** It was a stored `Int` beside nothing, and the moment the list
+         * arrived it would have become the second of two fields expressing one fact — which
+         * `CLAUDE.md` records as the shape that gets cleared apart (defect 97: `lastError` assigned
+         * in four places and cleared in none). A `get()` cannot drift from the list it counts.
+         */
+        val historySize: Int get() = history.size
+    }
 
     private val _state = MutableStateFlow(PhoneState())
     val state: StateFlow<PhoneState> = _state
+
+    /**
+     * **The only thing that assigns [_state], so the published history cannot go stale.**
+     *
+     * Every write re-projects [history] rather than accepting a caller's idea of it. The
+     * alternative — each site remembering to pass the list along with whatever it came to change —
+     * is the status island's two writers again: five call sites, one of them eventually updating a
+     * preview and leaving the entries as they were, and a screen that disagrees with the wire for
+     * the rest of the session.
+     *
+     * What no JVM test can see is that all five sites call *this*: `LinkLog.i` reaches
+     * `android.util.Log`, so merely touching [onLinkDropped] from a unit test throws. The decisions
+     * are tested where they live — `ClipHistoryRowsTest` and `ClipboardPayloadsTest` — and this
+     * glue is stated as unreached rather than covered by a test that models it.
+     */
+    private fun publish(update: (PhoneState) -> PhoneState) {
+        _state.value = update(_state.value).copy(history = history.newestFirst())
+    }
 
     private fun tally(): String =
         "${sent.get()} sent / ${received.get()} received / ${applied.get()} of ${received.get()} applied / " +
@@ -179,7 +220,7 @@ object ClipFeature {
         // person copied in the meantime. One hop, terminating, silently destroying live work. See
         // `ClipEcho` and `ClipEchoTest`'s last case.
         echo.linkDropped()
-        _state.value = PhoneState()
+        publish { PhoneState() }
         LinkLog.i("clip", "Link dropped; cleared $had clipboard entries — ${tally()}")
     }
 
@@ -207,7 +248,7 @@ object ClipFeature {
         // arrive, because the text had not changed. The feature would look broken exactly once,
         // for the person whose phone was open before their Mac was.
         if (server.anyLiveSession() == null) {
-            _state.value = _state.value.copy(historySize = history.size, linkUp = false)
+            publish { it.copy(linkUp = false) }
             LinkLog.i(
                 "clip",
                 "Clipboard read on focus and not sent: no Mac is connected. Nothing was counted as " +
@@ -270,12 +311,13 @@ object ClipFeature {
         echo.sent(text)
         sent.incrementAndGet()
         server.broadcast { session -> session.send(Envelope(type = MessageType.CLIP_PUSH, payload = payload)) }
-        _state.value = _state.value.copy(
-            lastSentPreview = text,
-            lastSentAtMs = now,
-            historySize = history.size,
-            linkUp = server.anyLiveSession() != null,
-        )
+        publish {
+            it.copy(
+                lastSentPreview = text,
+                lastSentAtMs = now,
+                linkUp = server.anyLiveSession() != null,
+            )
+        }
         // The route is on the line because there are now two of them, and a single "clip.push → Mac"
         // could not say which. Defect 60's corollary: when two mechanisms satisfy one guarantee, the
         // log must name the one that did.
@@ -435,13 +477,14 @@ object ClipFeature {
             applied.incrementAndGet()
         }
 
-        _state.value = _state.value.copy(
-            lastReceivedPreview = text,
-            lastReceivedAtMs = System.currentTimeMillis(),
-            lastReceivedApplied = arrival.writesClipboard,
-            historySize = history.size,
-            linkUp = true,
-        )
+        publish {
+            it.copy(
+                lastReceivedPreview = text,
+                lastReceivedAtMs = System.currentTimeMillis(),
+                lastReceivedApplied = arrival.writesClipboard,
+                linkUp = true,
+            )
+        }
         if (arrival != ClipArrival.KEEP_ONLY) {
             ClipNotifications.post(context, text, applied = arrival.writesClipboard)
         }
@@ -512,7 +555,7 @@ object ClipFeature {
     fun apply(context: Context, text: String) {
         applyToClipboard(context, text)
         applied.incrementAndGet()
-        _state.value = _state.value.copy(lastReceivedApplied = true)
+        publish { it.copy(lastReceivedApplied = true) }
         LinkLog.i(
             "clip",
             "Applied a Mac entry to the phone clipboard on a tap: " +

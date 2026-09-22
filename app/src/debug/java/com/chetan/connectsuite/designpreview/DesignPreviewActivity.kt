@@ -32,6 +32,7 @@ import com.chetan.connectsuite.sync.ui.transfers.TransfersSection
 import com.chetan.connectsuite.sync.ui.transfers.TransfersUiState
 import com.chetan.connectsuite.core.data.MirroredNotificationEntity
 import com.chetan.connectsuite.sync.ui.clipboard.ClipboardSection
+import com.chetan.connectsuite.sync.v2.ClipboardPayloads
 import com.chetan.connectsuite.sync.ui.notifications.NotificationsSection
 import com.chetan.connectsuite.sync.ui.notifications.NotificationsUiState
 import com.chetan.connectsuite.sync.v2.ClipFeature
@@ -391,22 +392,46 @@ private fun PreviewShell(title: String, selected: Int, content: @Composable () -
 }
 
 
-/** Clip with one entry each way, the toggle off, and a link up. */
+/** Clip with a seven-entry history both ways, the toggle off, and a link up. */
 @Composable
 private fun ClipPreview() {
     val now = remember { System.currentTimeMillis() }
     var autoApply by remember { mutableStateOf(false) }
+    // Newest first, the order `ClipboardPayloads.History` hands out — the preview supplies the list
+    // rather than a count, because the count is derived from it now and a preview that set one
+    // would be describing a state the product cannot produce.
+    val history = remember {
+        fun entry(text: String, minutesAgo: Long, fromMac: Boolean) =
+            ClipboardPayloads.History.Item(
+                kind = ClipboardPayloads.KIND_TEXT,
+                text = text,
+                atMs = now - minutesAgo * 60_000,
+                source = if (fromMac) ClipboardPayloads.SOURCE_MAC else ClipboardPayloads.SOURCE_PHONE,
+            )
+        listOf(
+            entry(
+                "https://developer.android.com/studio — Android Studio is the official IDE for " +
+                    "Android development, providing the fastest tools for building apps on every " +
+                    "kind of Android device.",
+                2, fromMac = true,
+            ),
+            entry("git rebase -i origin/main", 14, fromMac = false),
+            entry("RZCY12330DT", 31, fromMac = false),
+            entry("./gradlew :app:assembleDebug", 48, fromMac = true),
+            entry("42501 control, 42502 video, 42503 bulk", 63, fromMac = true),
+            entry("docs/phase-7-state.md", 95, fromMac = false),
+            entry("_connectsuite._tcp", 140, fromMac = true),
+        )
+    }
     PreviewShell(title = "Clip", selected = 2) {
         ClipboardSection(
             state = ClipFeature.PhoneState(
                 lastSentPreview = "git rebase -i origin/main",
                 lastSentAtMs = now - 14 * 60_000,
-                lastReceivedPreview = "https://developer.android.com/studio — Android Studio is " +
-                    "the official IDE for Android development, providing the fastest tools for " +
-                    "building apps on every kind of Android device.",
+                lastReceivedPreview = history.first().text,
                 lastReceivedAtMs = now - 2 * 60_000,
                 lastReceivedApplied = false,
-                historySize = 7,
+                history = history,
                 linkUp = true,
             ),
             autoApply = autoApply,

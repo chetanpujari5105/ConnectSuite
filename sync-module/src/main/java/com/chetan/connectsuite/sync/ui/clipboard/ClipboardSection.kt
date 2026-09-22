@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Info
@@ -60,14 +61,20 @@ import com.chetan.connectsuite.sync.v2.ClipFeature
  * cannot read its clipboard while unfocused, so an auto-apply cannot see what it is about to
  * destroy and cannot offer it back. The Mac's half can, and does.
  *
- * ### The direction chips have nothing to filter yet
+ * ### The list is drawn from the history now, and the chips are still not built
  *
- * `ClipboardPayloads.History` really does hold 20 entries with their kind, text, time and source —
- * and it is **private to `ClipFeature`**, exposed on the wire as `clip.history` for the Mac and to
- * this screen only as a `historySize` count. So the reference's filtered list is not drawable
- * today. What *is* exposed is the most recent entry each way, which is what this screen shows, with
- * the count of what is held behind it. Wiring the list is a small, scoped change to `ClipFeature`
- * and is flagged rather than taken.
+ * This section used to say the list was *not drawable today*, because `ClipboardPayloads.History`
+ * held 20 entries with their kind, text, time and source and reached this screen only as a
+ * `historySize` count. That is no longer true: `ClipFeature.PhoneState.history` is the same list
+ * `clip.history` hands the Mac, and the screen draws all of it, newest first.
+ *
+ * **The reference's direction chips are still not here**, and that is a separate thing from the
+ * list they filter. Two entries do not need a filter, and twenty rarely do; a chip row that is
+ * always present and almost never useful is chrome. It is the kind of thing to add when somebody
+ * scrolling their own history wants it, not because a drawing has one.
+ *
+ * What each row may *claim* is `ClipHistoryRows`', not this file's — see the note there about why
+ * only the newest Mac entry carries an action.
  *
  * ### The footer is accurate, and was checked rather than repeated
  *
@@ -104,10 +111,12 @@ fun ClipboardSection(
 
         item { AutoApplyRow(autoApply = autoApply, onSetAutoApply = onSetAutoApply) }
 
-        val hasSent = state.lastSentAtMs > 0L
-        val hasReceived = state.lastReceivedAtMs > 0L
+        // One list, from one source. The two cards this used to assemble out of `lastSentPreview`
+        // and `lastReceivedPreview` were a second view of the newest one or two of these entries,
+        // and drawing both would have put the same clip on screen twice.
+        val rows = ClipHistoryRows.of(state.history, state.lastReceivedApplied)
 
-        if (!hasSent && !hasReceived) {
+        if (rows.isEmpty()) {
             item {
                 SidekickCard(padding = Space.xs) {
                     StateBlock(
@@ -127,35 +136,24 @@ fun ClipboardSection(
         } else {
             item {
                 Text(
-                    "Most recent",
+                    "History",
                     style = SidekickType.section,
                     color = SidekickColors.textPrimary,
                     modifier = Modifier.padding(top = Space.sm, bottom = Space.xs),
                 )
             }
-            if (hasReceived) {
-                item {
-                    ClipEntryCard(
-                        fromMac = true,
-                        preview = state.lastReceivedPreview,
-                        atMs = state.lastReceivedAtMs,
-                        nowMillis = nowMillis,
-                        applied = state.lastReceivedApplied,
-                        onApply = { state.lastReceivedPreview?.let(onApplyFromMac) },
-                    )
-                }
-            }
-            if (hasSent) {
-                item {
-                    ClipEntryCard(
-                        fromMac = false,
-                        preview = state.lastSentPreview,
-                        atMs = state.lastSentAtMs,
-                        nowMillis = nowMillis,
-                        applied = true,
-                        onApply = null,
-                    )
-                }
+            // Keyed on the text, which `ClipboardPayloads.History` guarantees is unique — it
+            // collapses duplicates to the most recent occurrence rather than holding two. The index
+            // is the fallback for an entry carrying no text, and cannot collide with a `String`.
+            itemsIndexed(rows, key = { index, row -> row.item.text ?: index }) { _, row ->
+                ClipEntryCard(
+                    fromMac = row.fromMac,
+                    preview = row.item.text,
+                    atMs = row.item.atMs,
+                    nowMillis = nowMillis,
+                    action = row.action,
+                    onApply = { row.item.text?.let(onApplyFromMac) },
+                )
             }
         }
 
@@ -242,9 +240,9 @@ private fun AutoApplyRow(autoApply: Boolean, onSetAutoApply: (Boolean) -> Unit) 
 /**
  * One clipboard entry, in the direction it travelled.
  *
- * [onApply] is null for anything this phone sent — writing your own clip back to your own clipboard
- * is a control with no effect, and a control with no effect is the thing this project keeps
- * deleting.
+ * The card decides nothing about [action] — `ClipHistoryRows` does, so the rule has one home and
+ * this file cannot grow a second copy of it that disagrees. The reason most rows carry
+ * [ClipHistoryRows.Action.NONE] is written down there.
  */
 @Composable
 private fun ClipEntryCard(
@@ -252,8 +250,8 @@ private fun ClipEntryCard(
     preview: String?,
     atMs: Long,
     nowMillis: Long,
-    applied: Boolean,
-    onApply: (() -> Unit)?,
+    action: ClipHistoryRows.Action,
+    onApply: () -> Unit,
 ) {
     SidekickCard(padding = Space.md) {
         Row(
@@ -279,11 +277,16 @@ private fun ClipEntryCard(
             overflow = TextOverflow.Ellipsis,
         )
 
-        if (fromMac) {
-            Spacer(Modifier.height(Space.md))
-            if (applied) {
+        // Exhaustive on purpose: a new Action added to the enum and forgotten here is a compile
+        // error rather than a row that silently draws nothing.
+        when (action) {
+            ClipHistoryRows.Action.NONE -> Unit
+            ClipHistoryRows.Action.ON_CLIPBOARD -> {
+                Spacer(Modifier.height(Space.md))
                 StatusPill("On your clipboard", StatusKind.Connected)
-            } else if (onApply != null && preview != null) {
+            }
+            ClipHistoryRows.Action.COPY_TO_PHONE -> {
+                Spacer(Modifier.height(Space.md))
                 PrimaryButton(
                     text = "Copy to this phone",
                     onClick = onApply,
