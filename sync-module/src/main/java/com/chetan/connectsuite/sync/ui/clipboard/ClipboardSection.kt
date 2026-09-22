@@ -361,13 +361,7 @@ private fun MemoryOnlyFooter(historySize: Int) {
         ) {
             IconBadge(Icons.Outlined.Info, tint = SidekickColors.textMeta)
             Text(
-                if (historySize > 0) {
-                    "$historySize entries are held in memory only, and are cleared when the Mac " +
-                        "disconnects. Nothing is written to storage and nothing is logged."
-                } else {
-                    "Entries are held in memory only, and are cleared when the Mac disconnects. " +
-                        "Nothing is written to storage and nothing is logged."
-                },
+                ClipboardCopy.memoryOnly(historySize),
                 style = SidekickType.caption,
                 color = SidekickColors.textMeta,
                 modifier = Modifier.weight(1f),

@@ -73,6 +73,52 @@ class ClipboardCopyTest {
     }
 
     @Test
+    fun `one entry is singular, in both of its verbs`() {
+        // The shipped bug, verbatim: "1 entries are held in memory only". Found on hardware, on the
+        // screen, which was the only place it was ever visible.
+        val one = ClipboardCopy.memoryOnly(1)
+        assertTrue("saw: $one", one.startsWith("1 entry is held"))
+        assertTrue("saw: $one", one.contains("is cleared when the Mac disconnects"))
+        // The half a naive entry/entries fix leaves behind.
+        assertFalse("saw: $one", one.contains("entries"))
+        assertFalse("saw: $one", one.contains("are held"))
+        assertFalse("saw: $one", one.contains("are cleared"))
+    }
+
+    @Test
+    fun `more than one entry is plural, in both of its verbs`() {
+        val many = ClipboardCopy.memoryOnly(7)
+        assertTrue("saw: $many", many.startsWith("7 entries are held"))
+        assertTrue("saw: $many", many.contains("are cleared when the Mac disconnects"))
+        assertFalse("saw: $many", many.contains("is held"))
+    }
+
+    @Test
+    fun `an empty history states the promise without leading with a zero`() {
+        // "0 entries are held" reads as a fault rather than as an empty history, and the promise —
+        // memory only, cleared on disconnect — is the part worth saying either way.
+        val none = ClipboardCopy.memoryOnly(0)
+        assertTrue("saw: $none", none.startsWith("Entries are held"))
+        assertFalse("saw: $none", none.contains("0"))
+        // Defensive: the count comes from a list size, but a negative must not print either.
+        assertEquals(none, ClipboardCopy.memoryOnly(-1))
+    }
+
+    @Test
+    fun `every count keeps the two promises the footer exists to make`() {
+        // The agreement is the bug; these two clauses are the point. A rewrite that fixed the
+        // grammar and dropped "nothing is logged" would pass the tests above and lose the sentence
+        // that matters — §6 of the clipboard proposal is the first at-rest storage decision in this
+        // project, and this footer is where it is stated to the user.
+        for (n in listOf(0, 1, 2, 20)) {
+            val line = ClipboardCopy.memoryOnly(n)
+            assertTrue("n=$n saw: $line", line.contains("in memory only"))
+            assertTrue("n=$n saw: $line", line.contains("Nothing is written to storage"))
+            assertTrue("n=$n saw: $line", line.contains("nothing is logged"))
+        }
+    }
+
+    @Test
     fun `every line says something — a blank would draw an empty row`() {
         assertTrue(ClipboardCopy.sendToMacBlock.all { it.trim().length > 15 })
     }

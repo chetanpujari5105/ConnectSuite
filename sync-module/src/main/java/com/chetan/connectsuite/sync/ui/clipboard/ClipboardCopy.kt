@@ -81,6 +81,35 @@ object ClipboardCopy {
         listOf(SEND_TO_MAC_TITLE, SEND_TO_MAC_WHAT) + SEND_TO_MAC_STEPS + listOf(SEND_TO_MAC_WHERE, SEND_TO_MAC_WHY_OFF)
 
     /**
+     * The footer under the history: what is held, and the promise that it is held nowhere else.
+     *
+     * **It shipped saying "1 entries".** One line of copy, wrong for exactly one value, on the one
+     * screen where the count is usually small — a fresh link holds one entry far more often than it
+     * holds twelve, so the broken case was the common case. Found by reading the phone's screen on
+     * hardware, which is the only place it was ever visible.
+     *
+     * Two verbs agree with the subject, not one. The tempting fix is `entry`/`entries` and nothing
+     * else, which leaves *"1 entry **are** held … and **are** cleared"* — a sentence that is wrong
+     * in two more places than the one that was noticed. [ClipboardCopyTest] asserts all three.
+     *
+     * Here rather than in the composable for this file's own reason: a string inside a
+     * `@Composable` is reachable by nothing, which is how defect 65 shipped instructions for a
+     * feature that had been deleted.
+     */
+    fun memoryOnly(historySize: Int): String {
+        val subject = when {
+            // Nothing held yet: the promise is still worth stating, and a leading "0" would read
+            // as an error rather than as an empty history.
+            historySize <= 0 -> "Entries are held"
+            historySize == 1 -> "1 entry is held"
+            else -> "$historySize entries are held"
+        }
+        val cleared = if (historySize == 1) "is cleared" else "are cleared"
+        return "$subject in memory only, and $cleared when the Mac disconnects. " +
+            "Nothing is written to storage and nothing is logged."
+    }
+
+    /**
      * Mechanisms this screen may never name, with the reason each is banned.
      *
      * `OnboardingCopy.forbiddenMechanisms`' shape, and its lesson: the `why` is a string in the same
