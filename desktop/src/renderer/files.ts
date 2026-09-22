@@ -152,6 +152,31 @@ class FilesView {
   /** The phone's name, from the connection status, for the confirmation and the headline. */
   private phoneName = 'your phone';
 
+  /*
+   * Feature D: how the loaded entries are shown. `visibleEntries` (shared/filesListing.ts) owns the
+   * rule; these are its inputs. View and sort persist per viewer; the filter belongs to one folder
+   * and is cleared when the folder changes.
+   */
+  private viewMode: FilesViewMode = readPref('sidekick.files.view', ['list', 'grid'], 'list');
+  private sortKey: FilesSortKey = readPref('sidekick.files.sort', ['name', 'date', 'size', 'type'], 'name');
+  private sortDir: FilesSortDir = readPref('sidekick.files.dir', ['asc', 'desc'], 'asc');
+  private query = '';
+  private queryTimer: ReturnType<typeof setTimeout> | null = null;
+  private toolbar: {
+    search: HTMLInputElement;
+    sort: HTMLSelectElement;
+    dir: HTMLButtonElement;
+    list: HTMLButtonElement;
+    grid: HTMLButtonElement;
+    send: HTMLButtonElement;
+    group: HTMLElement;
+  } | null = null;
+
+  /** The entries as drawn: filtered and sorted. Never reorders [entries], which is the pager's. */
+  private displayed(): FsEntryRow[] {
+    return visibleEntries(this.entries, { query: this.query, sort: this.sortKey, dir: this.sortDir });
+  }
+
   /**
    * Entry id → where that file now sits on this Mac.
    *
@@ -333,6 +358,9 @@ class FilesView {
   }
 
   private async openPath(path: string): Promise<void> {
+    // The filter is for the folder on screen; carrying it into another would hide that folder's
+    // files behind a word typed about a different one.
+    if (path !== this.path) this.query = '';
     this.path = path;
     this.entries = [];
     this.hasMore = false;
@@ -616,11 +644,14 @@ class FilesView {
     const toggle = event.metaKey || event.ctrlKey;
 
     if (extend && this.selectionAnchorId !== null) {
-      const from = this.entries.findIndex((e) => e.id === this.selectionAnchorId);
-      const to = this.entries.findIndex((e) => e.id === entry.id);
+      // Over the **drawn** order — sorted and filtered — or a shift-click would select a range the
+      // person cannot see. It used to be `this.entries` when the drawn order was the phone's.
+      const shown = this.displayed();
+      const from = shown.findIndex((e) => e.id === this.selectionAnchorId);
+      const to = shown.findIndex((e) => e.id === entry.id);
       if (from !== -1 && to !== -1) {
         const [lo, hi] = from <= to ? [from, to] : [to, from];
-        this.selectedIds = new Set(this.entries.slice(lo, hi + 1).map((e) => e.id));
+        this.selectedIds = new Set(shown.slice(lo, hi + 1).map((e) => e.id));
         this.selected = entry;
         return;
       }
@@ -652,7 +683,7 @@ class FilesView {
 
   /** The selected rows, in the drawn order, files only. The order Finder receives them in. */
   private selectedFiles(): FsEntryRow[] {
-    return this.entries.filter((e) => this.selectedIds.has(e.id) && !e.dir);
+    return this.displayed().filter((e) => this.selectedIds.has(e.id) && !e.dir);
   }
 
   /** Thumbnails that have arrived, keyed by entry id. Cleared when the folder changes. */
@@ -843,18 +874,127 @@ class FilesView {
    */
   private renderTools(canUpload: boolean): void {
     if (!this.tools) return;
-    this.tools.replaceChildren();
-    if (!canUpload || !this.bridge.fsPickSend) return;
+    const t = this.toolbar ?? this.buildToolbar(this.tools);
+    // The listing controls exist whenever there is a listing; Send only where the folder takes files.
+    const listing = this.fetch.kind === 'ready' && !this.listFailure;
+    t.group.hidden = !listing;
+    t.send.hidden = !canUpload || !this.bridge.fsPickSend;
+    t.send.disabled = this.batch !== null && !sendBatchSettled(this.batch);
+    t.send.setAttribute('aria-label', `Send files to ${this.crumbLabel()}`);
+    // Only written back when nobody is typing: a render inside the debounce (a click on Grid, a
+    // progress tick) used to put the *old* query into the field and erase the new one before the
+    // debounce read it — caught live by the Feature D probe. A programmatic change (Clear filter,
+    // a new folder) arrives with no pending keystrokes, and is written.
+    if (this.queryTimer === null && t.search.value !== this.query) t.search.value = this.query;
+    t.sort.value = this.sortKey;
+    t.dir.textContent = this.sortDir === 'asc' ? '↑' : '↓';
+    t.dir.setAttribute(
+      'aria-label',
+      `Sort ${this.sortDir === 'asc' ? 'ascending' : 'descending'} — press to reverse`,
+    );
+    t.list.setAttribute('aria-pressed', String(this.viewMode === 'list'));
+    t.grid.setAttribute('aria-pressed', String(this.viewMode === 'grid'));
+  }
+
+  /**
+   * Built once. Rebuilding on every render would replace the search field under the person typing
+   * in it — focus and caret gone on each keystroke.
+   */
+  private buildToolbar(host: HTMLElement): NonNullable<FilesView['toolbar']> {
+    const group = document.createElement('div');
+    group.className = 'files-tool-group';
+
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'files-search';
+    search.id = 'files-search';
+    search.placeholder = 'Filter this folder';
+    // Says what it searches: the files already loaded here — there is no device-wide search.
+    search.setAttribute('aria-label', 'Filter the files loaded in this folder by name');
+    search.addEventListener('input', () => {
+      if (this.queryTimer !== null) clearTimeout(this.queryTimer);
+      this.queryTimer = setTimeout(() => {
+        this.queryTimer = null;
+        this.query = search.value;
+        this.render();
+      }, 120);
+    });
+    search.addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key === 'Escape' && search.value) {
+        search.value = '';
+        this.query = '';
+        this.render();
+      }
+    });
+
+    const sort = document.createElement('select');
+    sort.className = 'files-sort';
+    sort.id = 'files-sort';
+    sort.setAttribute('aria-label', 'Sort by');
+    for (const [value, label] of [
+      ['name', 'Name'],
+      ['date', 'Date modified'],
+      ['size', 'Size'],
+      ['type', 'Type'],
+    ] as const) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      sort.append(option);
+    }
+    sort.addEventListener('change', () => this.setSort(sort.value as FilesSortKey, this.sortDir));
+
+    const dir = document.createElement('button');
+    dir.type = 'button';
+    dir.className = 'button files-tool files-sort-dir';
+    dir.id = 'files-sort-dir';
+    dir.addEventListener('click', () => this.setSort(this.sortKey, this.sortDir === 'asc' ? 'desc' : 'asc'));
+
+    const views = document.createElement('div');
+    views.className = 'files-view-toggle';
+    views.setAttribute('role', 'group');
+    views.setAttribute('aria-label', 'View');
+    const mk = (mode: FilesViewMode, label: string, icon: string): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'files-view-button';
+      b.id = `files-view-${mode}`;
+      b.setAttribute('aria-label', label);
+      b.title = label;
+      b.append(iconSvg(icon, 14));
+      b.addEventListener('click', () => {
+        if (this.viewMode === mode) return;
+        this.viewMode = mode;
+        writePref('sidekick.files.view', mode);
+        this.render();
+      });
+      views.append(b);
+      return b;
+    };
+    const list = mk('list', 'List view', 'list');
+    const grid = mk('grid', 'Grid view', 'grid');
+
+    group.append(search, sort, dir, views);
+
     const send = document.createElement('button');
     send.type = 'button';
     send.className = 'button files-tool files-send-button';
     // A stable name, so a driver presses it by its label and never by a coordinate.
     send.id = 'files-send-to-phone';
-    send.setAttribute('aria-label', `Send files to ${this.crumbLabel()}`);
     send.append(iconSvg('upload', 14), document.createTextNode('Send to phone…'));
-    send.disabled = this.batch !== null && !sendBatchSettled(this.batch);
     send.addEventListener('click', () => void this.pickAndOffer());
-    this.tools.append(send);
+
+    host.append(group, send);
+    this.toolbar = { search, sort, dir, list, grid, send, group };
+    return this.toolbar;
+  }
+
+  private setSort(key: FilesSortKey, dir: FilesSortDir): void {
+    this.sortKey = key;
+    this.sortDir = dir;
+    writePref('sidekick.files.sort', key);
+    writePref('sidekick.files.dir', dir);
+    this.render();
   }
 
   private renderRail(railLine: boolean): void {
@@ -1006,112 +1146,65 @@ class FilesView {
       return;
     }
 
-    const header = document.createElement('div');
-    header.className = 'files-row files-row--head';
-    for (const [label, cls] of [
-      ['NAME', 'files-cell-name'],
-      ['DATE MODIFIED', 'files-cell-date'],
-      ['SIZE', 'files-cell-size'],
-    ] as const) {
-      const cell = document.createElement('span');
-      cell.className = cls;
-      cell.textContent = label;
-      header.append(cell);
-    }
-    this.table.append(header);
+    const shown = this.displayed();
+    const grid = this.viewMode === 'grid';
+    this.table.classList.toggle('files-table--grid', grid);
+    this.table.setAttribute('aria-label', grid ? 'Files, as a grid' : 'Files');
 
-    for (const entry of this.entries) {
-      const row = document.createElement('div');
-      row.className = 'files-row';
-      if (this.selectedIds.has(entry.id)) row.classList.add('is-selected');
-      row.setAttribute('role', 'row');
-
-      const name = document.createElement('span');
-      name.className = 'files-cell-name';
-      const glyph = document.createElement('span');
-      glyph.className = 'files-glyph';
-      glyph.setAttribute('aria-hidden', 'true');
-      glyph.textContent = entry.dir ? '▸' : '·';
-      const text = document.createElement('span');
-      // `name` is the real path component and stays that way — prettifying it breaks navigation.
-      // A package-shaped folder that resolves to an installed app carries `displayName` beside it,
-      // and that is what goes in the muted second line, never in place of the name.
-      text.textContent = entry.name;
-      name.append(glyph, text);
-      if (entry.displayName && entry.displayName !== entry.name) {
-        const label = document.createElement('span');
-        label.className = 'files-cell-app';
-        label.textContent = entry.displayName;
-        name.append(label);
+    if (!grid) {
+      // The header sorts, as in Finder: press a column to sort by it, press it again to reverse.
+      const header = document.createElement('div');
+      header.className = 'files-row files-row--head';
+      for (const [label, cls, key] of [
+        ['NAME', 'files-cell-name', 'name'],
+        ['DATE MODIFIED', 'files-cell-date', 'date'],
+        ['SIZE', 'files-cell-size', 'size'],
+      ] as const) {
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = `${cls} files-head-sort`;
+        const active = this.sortKey === key;
+        cell.textContent = active ? `${label} ${this.sortDir === 'asc' ? '↑' : '↓'}` : label;
+        cell.setAttribute(
+          'aria-sort',
+          active ? (this.sortDir === 'asc' ? 'ascending' : 'descending') : 'none',
+        );
+        cell.addEventListener('click', () =>
+          this.setSort(key, active && this.sortDir === 'asc' ? 'desc' : 'asc'),
+        );
+        header.append(cell);
       }
-
-      const date = document.createElement('span');
-      date.className = 'files-cell-date';
-      date.textContent = entry.mtimeMs
-        ? new Date(entry.mtimeMs).toLocaleString([], {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : '';
-
-      const size = document.createElement('span');
-      size.className = 'files-cell-size';
-      size.textContent = entry.dir ? '—' : fileBytes(entry.size);
-
-      row.append(name, date, size);
-      row.addEventListener('click', (event) => {
-        this.selectOn(entry, event as MouseEvent);
-        this.render();
-        this.prefetchSelection();
-      });
-      row.addEventListener('dblclick', () => {
-        if (entry.dir) void this.openPath(this.path ? `${this.path}/${entry.name}` : entry.name);
-        else void this.copyToMac(entry);
-      });
-
-      // Drag to Finder. A folder is never draggable — `fs.transfer` moves one file and a folder
-      // copy is a loop the Mac would have to drive, which is a transfer queue and not this.
-      const local = this.localCopies.get(entry.id);
-      if (!entry.dir) {
-        row.draggable = true;
-        if (local) row.classList.add('is-local');
-        // The wait, at the row rather than only in the detail card. A selected row whose bytes are
-        // still arriving is the one state where a drag will be refused, so it is the one state that
-        // has to be legible without reading the card on the other side of the pane.
-        if (this.copying.has(entry.id)) {
-          row.classList.add('is-copying');
-          row.setAttribute('aria-busy', 'true');
-        }
-        row.addEventListener('dragstart', (event) => {
-          // Dragging a row that is not in the selection drags **that row**, and makes it the
-          // selection — the behaviour every file manager has, and the one that avoids a drag
-          // quietly carrying rows the user selected somewhere further up the table.
-          const dragging = this.selectedIds.has(entry.id) ? this.selectedFiles() : [entry];
-
-          const ready = dragging.filter((e) => this.localCopies.has(e.id));
-          if (ready.length !== dragging.length) {
-            // **The drag is cancelled, and the copies start.** Finder needs files that exist at the
-            // instant the gesture begins; awaiting them here would hand it nothing and look like a
-            // drag that did not register. Partial is not an option either — handing over the ready
-            // half of a selection is a silent wrong answer, which is defect 56's shape.
-            event.preventDefault();
-            for (const e of dragging) {
-              if (this.prefetchable(e)) void this.copyToMac(e);
-            }
-            return;
-          }
-
-          // `startDrag` must be called while this handler is still on the stack — the bridge sends
-          // rather than invokes, and nothing here may be awaited.
-          event.preventDefault();
-          this.bridge.fsDrag(dragging.map((e) => this.localCopies.get(e.id)!));
-        });
-      }
-      this.table.append(row);
+      this.table.append(header);
     }
+
+    if (shown.length === 0 && this.entries.length > 0 && this.query.trim()) {
+      // Filtered to nothing is not an empty folder, and must not look like one.
+      const none = stateBlock({
+        kind: 'empty',
+        icon: 'search',
+        headline: `Nothing loaded here matches “${this.query.trim()}”`,
+        body: this.hasMore
+          ? 'Only the files loaded so far are searched. Load more, or clear the filter.'
+          : 'The filter covers every file in this folder.',
+        compact: true,
+        action: {
+          label: 'Clear filter',
+          run: () => {
+            this.query = '';
+            this.render();
+          },
+        },
+      });
+      none.dataset.state = 'filtered-empty';
+      this.table.append(none);
+    }
+
+    for (const entry of shown) {
+      const cell = grid ? this.tileFor(entry) : this.rowFor(entry);
+      this.wireEntry(cell, entry);
+      this.table.append(cell);
+    }
+    if (grid) this.requestGridThumbs(shown);
 
     if (this.loading) {
       const more = document.createElement('div');
@@ -1120,8 +1213,188 @@ class FilesView {
       this.table.append(more);
     }
 
-    // F5: never a total. `fs.list` has no count, and getting one means paging to exhaustion.
-    this.footer.textContent = loadedFooter(this.entries.length, this.hasMore);
+    // F5: never a total. `fs.list` has no count, and getting one means paging to exhaustion. With a
+    // filter or a sort in force the footer says they cover only what is loaded, and it carries an
+    // explicit Load more — a filtered list may be too short to scroll, so scrolling cannot be the
+    // only way to reach the rest.
+    this.footer.replaceChildren();
+    const text = document.createElement('span');
+    text.textContent = listingFooter({
+      shown: shown.length,
+      loaded: this.entries.length,
+      hasMore: this.hasMore,
+      query: this.query,
+      sorted: this.sortKey !== 'name' || this.sortDir !== 'asc',
+    });
+    this.footer.append(text);
+    if (this.hasMore && !this.loading) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'files-load-more';
+      more.id = 'files-load-more';
+      more.textContent = 'Load more';
+      more.addEventListener('click', () => void this.loadMore());
+      this.footer.append(more);
+    }
+  }
+
+  /** One list row: name (with the resolved app label beside a package folder), date, size. */
+  private rowFor(entry: FsEntryRow): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'files-row';
+    row.setAttribute('role', 'row');
+
+    const name = document.createElement('span');
+    name.className = 'files-cell-name';
+    const glyph = document.createElement('span');
+    glyph.className = 'files-glyph';
+    glyph.setAttribute('aria-hidden', 'true');
+    glyph.textContent = entry.dir ? '▸' : '·';
+    const text = document.createElement('span');
+    // `name` is the real path component and stays that way — prettifying it breaks navigation.
+    // A package-shaped folder that resolves to an installed app carries `displayName` beside it,
+    // and that is what goes in the muted second line, never in place of the name.
+    text.textContent = entry.name;
+    name.append(glyph, text);
+    if (entry.displayName && entry.displayName !== entry.name) {
+      const label = document.createElement('span');
+      label.className = 'files-cell-app';
+      label.textContent = entry.displayName;
+      name.append(label);
+    }
+
+    const date = document.createElement('span');
+    date.className = 'files-cell-date';
+    date.textContent = entry.mtimeMs
+      ? new Date(entry.mtimeMs).toLocaleString([], {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : '';
+
+    const size = document.createElement('span');
+    size.className = 'files-cell-size';
+    size.textContent = entry.dir ? '—' : fileBytes(entry.size);
+
+    row.append(name, date, size);
+    return row;
+  }
+
+  /**
+   * One grid tile. A picture only where the phone sent one (`fs.thumb`, images and videos only);
+   * every other file is a neutral badge carrying its real extension — never a stand-in image.
+   */
+  private tileFor(entry: FsEntryRow): HTMLElement {
+    const tile = document.createElement('div');
+    tile.className = 'files-tile';
+    tile.setAttribute('role', 'gridcell');
+    tile.title = entry.name;
+    const art = document.createElement('div');
+    art.className = 'files-tile-art';
+    const thumb = this.thumbCache.get(entry.id);
+    if (thumb) {
+      const img = document.createElement('img');
+      img.className = 'files-tile-thumb';
+      img.src = `data:image/jpeg;base64,${thumb}`;
+      img.alt = '';
+      art.append(img);
+    } else if (entry.dir) {
+      art.classList.add('is-folder');
+      art.append(iconSvg('files', 28));
+    } else {
+      const badge = document.createElement('span');
+      badge.className = 'files-tile-badge';
+      badge.textContent = fileBadge(entry);
+      art.append(badge);
+    }
+    const name = document.createElement('span');
+    name.className = 'files-tile-name';
+    name.textContent = entry.name;
+    const meta = document.createElement('span');
+    meta.className = 'files-tile-meta';
+    meta.textContent = entry.dir ? (entry.displayName ?? 'Folder') : fileBytes(entry.size);
+    tile.append(art, name, meta);
+    return tile;
+  }
+
+  /** Selection, open, and drag to Finder — identical for a row and a tile. */
+  private wireEntry(cell: HTMLElement, entry: FsEntryRow): void {
+    if (this.selectedIds.has(entry.id)) {
+      cell.classList.add('is-selected');
+      cell.setAttribute('aria-selected', 'true');
+    }
+    cell.addEventListener('click', (event) => {
+      this.selectOn(entry, event as MouseEvent);
+      this.render();
+      this.prefetchSelection();
+    });
+    cell.addEventListener('dblclick', () => {
+      if (entry.dir) void this.openPath(this.path ? `${this.path}/${entry.name}` : entry.name);
+      else void this.copyToMac(entry);
+    });
+
+    // Drag to Finder. A folder is never draggable — `fs.transfer` moves one file and a folder
+    // copy is a loop the Mac would have to drive, which is a transfer queue and not this.
+    if (entry.dir) return;
+    const local = this.localCopies.get(entry.id);
+    cell.draggable = true;
+    if (local) cell.classList.add('is-local');
+    // The wait, at the row rather than only in the detail card. A selected row whose bytes are
+    // still arriving is the one state where a drag will be refused, so it is the one state that
+    // has to be legible without reading the card on the other side of the pane.
+    if (this.copying.has(entry.id)) {
+      cell.classList.add('is-copying');
+      cell.setAttribute('aria-busy', 'true');
+    }
+    cell.addEventListener('dragstart', (event) => {
+      // Dragging a row that is not in the selection drags **that row**, and makes it the
+      // selection — the behaviour every file manager has, and the one that avoids a drag
+      // quietly carrying rows the user selected somewhere further up the table.
+      const dragging = this.selectedIds.has(entry.id) ? this.selectedFiles() : [entry];
+
+      const ready = dragging.filter((e) => this.localCopies.has(e.id));
+      if (ready.length !== dragging.length) {
+        // **The drag is cancelled, and the copies start.** Finder needs files that exist at the
+        // instant the gesture begins; awaiting them here would hand it nothing and look like a
+        // drag that did not register. Partial is not an option either — handing over the ready
+        // half of a selection is a silent wrong answer, which is defect 56's shape.
+        event.preventDefault();
+        for (const e of dragging) {
+          if (this.prefetchable(e)) void this.copyToMac(e);
+        }
+        return;
+      }
+
+      // `startDrag` must be called while this handler is still on the stack — the bridge sends
+      // rather than invokes, and nothing here may be awaited.
+      event.preventDefault();
+      this.bridge.fsDrag(dragging.map((e) => this.localCopies.get(e.id)!));
+    });
+  }
+
+  /**
+   * Grid thumbnails, batched at the phone's cap by the main process, asked **once** per id —
+   * including when the answer is "none" — and only for images and videos, which are the only files
+   * the phone can make one for. Redraws once when any arrive.
+   */
+  private requestGridThumbs(shown: FsEntryRow[]): void {
+    if (this.selectedRoot === null) return;
+    const rootId = this.selectedRoot;
+    const wanted = shown.filter((e) => mayHaveThumbnail(e) && !this.thumbAsked.has(e.id)).map((e) => e.id);
+    if (wanted.length === 0) return;
+    for (const id of wanted) this.thumbAsked.add(id);
+    void this.bridge.fsThumbs({ rootId, ids: wanted }).then((result) => {
+      if (!result.ok || !result.entries || this.selectedRoot !== rootId) return;
+      let arrived = 0;
+      for (const [id, data] of result.entries) {
+        this.thumbCache.set(id, data);
+        arrived += 1;
+      }
+      if (arrived > 0 && this.viewMode === 'grid') this.render();
+    });
   }
 
   private renderDetail(): void {
@@ -1479,6 +1752,28 @@ function sendItemStatus(item: SendItem): { text: string; tone: 'neutral' | 'live
       return { text: item.reason ?? 'Failed', tone: 'bad' };
     case 'cancelled':
       return { text: item.reason ?? 'Stopped', tone: 'neutral' };
+  }
+}
+
+/**
+ * A per-viewer convenience — the view and sort someone last chose. `localStorage` can be absent or
+ * throw (a private profile, cleared site data), so a failed read is the default and a failed write
+ * is nothing: the pane never depends on it.
+ */
+function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const value = globalThis.localStorage?.getItem(key);
+    return allowed.includes(value as T) ? (value as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writePref(key: string, value: string): void {
+  try {
+    globalThis.localStorage?.setItem(key, value);
+  } catch {
+    // Remembering is a convenience; forgetting is not a failure.
   }
 }
 

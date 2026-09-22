@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { FakeElement, installFakeDocument, el } from './domDouble.testkit';
 import '../shared/filesRoots';
 import '../shared/sendBatch';
+import '../shared/filesListing';
 import './icons';
 import './stateBlock';
 import './files';
@@ -537,7 +538,10 @@ test('Send to phone… is drawn only where the drop tile is — push served and 
       pane.bridge.roots = roots as RootRow[];
       pane.bridge.push = push;
       await pane.view.refresh();
-      assert.equal(pane.tools.queryAll('button').length, expected, label);
+      // The Send button specifically — the toolbar also holds sort and view controls now.
+      const send = pane.tools.queryAll('.files-send-button');
+      assert.equal(send.length, 1, 'built once, shown or hidden');
+      assert.equal(send[0]!.hidden ? 0 : 1, expected, label);
       assert.equal(pane.drop.hidden, expected === 0, `${label}: the tile agrees with the button`);
     } finally {
       pane.restore();
@@ -603,6 +607,88 @@ test('Stop after the Mac has finished writing still cancels on the phone — the
       payload: { transferId: 't-big', ok: false, code: 'TRANSFER_FAILED', message: 'cancelled' },
     });
     assert.equal(pane.detail.queryAll('.files-send-item')[0]!.dataset.phase, 'cancelled');
+  } finally {
+    pane.restore();
+  }
+});
+
+// ---- Feature D: list/grid, sort, filter (2026-09-23) ---------------------------------------------
+
+const D_ENTRIES = [
+  { id: 'd1', name: 'Camera', dir: true, size: 0, mtimeMs: 5, mime: 'inode/directory' },
+  { id: 'f1', name: 'IMG_10.jpg', dir: false, size: 300, mtimeMs: 1, mime: 'image/jpeg' },
+  { id: 'f2', name: 'IMG_2.jpg', dir: false, size: 900, mtimeMs: 9, mime: 'image/jpeg' },
+  { id: 'f3', name: 'report.pdf', dir: false, size: 10, mtimeMs: 3, mime: 'application/pdf' },
+];
+
+async function loaded(pane: Pane): Promise<void> {
+  pane.view.setAdvertised(true, null);
+  pane.bridge.roots = [TREE];
+  pane.bridge.entries = D_ENTRIES;
+  await pane.view.refresh();
+}
+
+const drawnNames = (pane: Pane) =>
+  pane.table.queryAll('.files-row').filter((r) => !r.className.includes('files-row--head'))
+    .map((r) => r.queryAll('.files-cell-name span')[1]!.textContent);
+
+test('sorting reorders what is drawn, folders first, and the header column reverses it', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    assert.deepEqual(drawnNames(pane), ['Camera', 'IMG_2.jpg', 'IMG_10.jpg', 'report.pdf'], 'natural name order');
+    const sizeHead = pane.table.queryAll('.files-head-sort')[2]!;
+    sizeHead.click();
+    assert.deepEqual(drawnNames(pane), ['Camera', 'report.pdf', 'IMG_10.jpg', 'IMG_2.jpg']);
+    pane.table.queryAll('.files-head-sort')[2]!.click();
+    assert.deepEqual(drawnNames(pane), ['Camera', 'IMG_2.jpg', 'IMG_10.jpg', 'report.pdf'], 'pressed again: largest first');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('a shift-click selects the range as drawn, not as the phone returned it', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    pane.table.queryAll('.files-head-sort')[2]!.click(); // size ascending: report, IMG_10, IMG_2
+    const rows = () => pane.table.queryAll('.files-row').filter((r) => !r.className.includes('files-row--head'));
+    rows()[1]!.dispatch('click'); // report.pdf
+    rows()[3]!.dispatch('click', { shiftKey: true }); // IMG_2.jpg
+    const selected = rows().filter((r) => r.className.includes('is-selected')).map((r) => r.queryAll('.files-cell-name span')[1]!.textContent);
+    assert.deepEqual(selected, ['report.pdf', 'IMG_10.jpg', 'IMG_2.jpg']);
+  } finally {
+    pane.restore();
+  }
+});
+
+test('grid tiles carry a real extension badge, and only images and videos are asked for a picture', async () => {
+  const pane = mount();
+  try {
+    const asked: string[][] = [];
+    pane.bridge.fsThumbs = (async (o: { ids: string[] }) => { asked.push(o.ids); return { ok: true, entries: [] }; }) as never;
+    await loaded(pane);
+    pane.tools.queryAll('.files-view-button')[1]!.click();
+    assert.equal(pane.table.queryAll('.files-tile').length, 4);
+    assert.deepEqual(pane.table.queryAll('.files-tile-badge').map((b) => b.textContent), ['JPG', 'JPG', 'PDF']);
+    assert.deepEqual(asked, [['f2', 'f1']], 'one batch, the two images, in drawn order — never the PDF or the folder');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('a render inside the filter’s debounce does not erase what was just typed', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    const search = pane.tools.queryAll('input')[0]! as unknown as FakeElement & { value: string };
+    search.value = 'IMG';
+    search.dispatch('input');
+    // Something redraws before the debounce fires — here, the view toggle.
+    pane.tools.queryAll('.files-view-button')[1]!.click();
+    assert.equal(search.value, 'IMG', 'the typed text survives the redraw');
+    await new Promise((r) => setTimeout(r, 160));
+    assert.equal(pane.table.queryAll('.files-tile').length, 2, 'and the filter it asked for is applied');
   } finally {
     pane.restore();
   }

@@ -22746,3 +22746,47 @@ readings above select their own items by byte size and are not affected.
 Mac 940/940 (+`byteRange.test.ts` 6, `photos.test.ts` +8 — red on *listing size beats decoded
 size*), typecheck clean, colour and contrast guards green with `--media-stage` added as a
 theme-fixed token beside `--media-scrim`.
+
+
+## Sidekick feature pass — Feature D: Files grid, sort and filter (2026-09-23)
+
+`shared/filesListing.ts` owns the rule (`visibleEntries`): natural name order, folders first under
+every sort, **unknown dates and types last in both directions**, a case-insensitive filter over the
+name and the resolved app label, and the input never reordered in place (it is the pager's cursor).
+Sort and filter act on the **loaded** entries only and the footer says so while more is unloaded;
+an explicit **Load more** sits in the footer because a filtered list may be too short to scroll.
+
+### Live, on the phone's Received files (13 entries, all test files)
+
+`scripts/sidekick-files-view-probe.mjs`:
+
+```
+default order         → inbox-probe.bin, nogrant-probe.bin, sidekick-pass-60mb (2).bin, …  (13)
+Size ↓                → 200 MB ×2, 60 MB ×2, 6 MB …; nonIncreasing true, drawn == model true
+filter "sidekick-pass"→ 11 rows; footer "11 of 13 items loaded match “sidekick-pass”"
+filter to nothing     → "Nothing loaded here matches “zzqqxx-no-such” … Clear filter"
+grid                  → portrait JPEG → picture; .bin → BIN, .mp4 → MP4, .txt → TXT
+```
+
+**The phone was only read.** In the probe's window the Mac log carries 6 `fs.list` and 1 `fs.thumb`
+and **0** `fs.delete` / `fs.mkdir` / `fs.transfer.begin` / pushed / pulled lines — the same pattern
+matched `pulled` lines earlier the same night, so the zero is a reading.
+
+### A product defect the probe caught
+
+The first grid read was **NOT REPORTABLE** (empty after 10 s). Inspected: `query` still held the
+previous text. Clicking Grid re-rendered inside the filter's 120 ms debounce, and the toolbar wrote
+the **old** query back into the field — erasing what had just been typed before the debounce read
+it. A person who types and then clicks anything loses the text. Fixed (the field is written back only
+when no keystroke is pending); `filesView.test.ts` *a render inside the filter's debounce does not
+erase what was just typed* goes red against the old line. The unchanged probe then passed.
+
+### Layout, from the first capture
+
+The toolbar wrapped into three rows and stranded **Send to phone…** alone. Now two: breadcrumb and
+Send, then filter (taking the free width), sort, direction and the List | Grid pair. Evidence
+`docs/evidence/sidekick-feature-pass-2026-09-23/d-grid.png` (Received files: test files only).
+
+### Suites
+
+Mac 952/952 (`filesListing.test.ts` 8, `filesView.test.ts` +4), typecheck clean.

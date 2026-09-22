@@ -3448,13 +3448,20 @@ img#qr {
 
 /* The breadcrumb and the listing's tools share one row: location on the left, what you can do
    with it on the right. The crumbs wrap; the tools never do. */
+/* Two rows: where you are and the one action (Send), then the controls over the listing. The tools
+   host is `display: contents` so its two children take their own grid areas — the first layout
+   wrapped into three rows and stranded Send on a line of its own. */
 .files-toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'crumbs send' 'group group';
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-3) var(--space-4);
   margin-bottom: var(--space-4);
 }
+.files-toolbar .files-crumbs { grid-area: crumbs; }
+.files-toolbar .files-send-button { grid-area: send; }
+.files-toolbar .files-tool-group { grid-area: group; }
 
 .files-crumbs {
   display: flex;
@@ -3464,18 +3471,75 @@ img#qr {
   min-width: 0;
 }
 
-.files-tools {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-shrink: 0;
-}
+.files-tools { display: contents; }
 
 .files-tool {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   white-space: nowrap;
+}
+
+/* Feature D: filter, sort, direction, view. One 32px row of controls, the same height as the Send
+   button, so the toolbar reads as one strip rather than a set of differently sized things. */
+.files-tool-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.files-tool-group[hidden] { display: none; }
+.files-send-button[hidden] { display: none; }
+
+input.files-search {
+  flex: 1 1 auto;
+  min-width: 120px;
+  padding: 0 var(--space-4);
+}
+
+.files-sort {
+  height: 32px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--control);
+  border: 1px solid var(--hairline);
+  color: var(--text-on-control);
+  font: var(--text-control);
+  font-family: var(--font-ui);
+}
+.files-sort:hover { border-color: var(--hairline-hover); }
+
+/* The direction button is a glyph, so it is square rather than padded like a labelled button. */
+.files-sort-dir {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* List | Grid — a segmented pair. The selected half takes the selection tint, never lime fill:
+   lime is for the primary action and live states, and a view mode is neither. */
+.files-view-toggle {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: var(--radius-control);
+  background: var(--control);
+  border: 1px solid var(--hairline);
+}
+.files-view-button {
+  min-height: 26px;
+  width: 30px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-meta);
+  border-radius: calc(var(--radius-control) - 2px);
+}
+.files-view-button[aria-pressed='true'] {
+  background: var(--accent-tint-selected);
+  color: var(--text-primary);
 }
 
 .files-crumb {
@@ -3521,6 +3585,23 @@ img#qr {
 
 .files-row--head:hover { background: var(--elev-2); }
 
+/* The header's columns are sort buttons — press to sort, press again to reverse. They keep the
+   header's type; only the active column is lifted to body colour. */
+.files-head-sort {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.files-head-sort[aria-sort='ascending'],
+.files-head-sort[aria-sort='descending'] { color: var(--text-body); }
+.files-head-sort.files-cell-size { text-align: right; }
+
 .files-cell-name {
   display: flex;
   align-items: baseline;
@@ -3557,7 +3638,81 @@ img#qr {
 /* The footer never claims a total: `fs.list` has no count, and getting one means paging to
    exhaustion — defect 55's 16,377 entries. The canvas's `1,245 items` would be a number with
    nothing behind it. */
-.files-footer { border-top: 1px solid var(--hairline); }
+.files-footer {
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.files-load-more { min-height: 26px; padding: 0 var(--space-4); font: var(--text-meta-size); }
+
+/* ---- Grid view (Feature D) --------------------------------------------------------------------
+   Square art, a name, a size. `cover` here and only here: a tile is a crop by design, and the
+   detail card beside it shows the whole picture. A file with no picture is a neutral badge carrying
+   its real extension — never a stand-in image. */
+.files-table--grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: var(--space-4);
+  align-content: start;
+  padding: var(--space-1);
+}
+.files-table--grid > .state-block,
+.files-table--grid > .files-loading { grid-column: 1 / -1; }
+
+.files-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-tile);
+  cursor: default;
+  min-width: 0;
+}
+.files-tile:hover { background: var(--well); }
+.files-tile.is-selected { background: var(--accent-tint-selected); }
+.files-tile.is-local { cursor: grab; }
+.files-tile.is-copying { cursor: progress; }
+
+.files-tile-art {
+  aspect-ratio: 1;
+  border-radius: var(--radius-control);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: var(--text-meta);
+  margin-bottom: var(--space-1);
+}
+.files-tile-art.is-folder { color: var(--text-body); }
+.files-tile-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.files-tile-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-meta);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-control);
+}
+.files-tile-name {
+  font: var(--text-meta-size);
+  color: var(--text-on-control);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.files-tile-meta {
+  font: var(--text-meta-size);
+  color: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* ---- The state card: empty and failed, kept apart -------------------------------------------- */
 

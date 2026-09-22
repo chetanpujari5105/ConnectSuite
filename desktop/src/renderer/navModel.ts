@@ -718,6 +718,9 @@ function iconNamesUsedByTheShell(): string[] {
     'send',
     // Files: **Send to phone…**, drawn from `files.ts` (2026-09-23 feature pass, Feature B).
     'upload',
+    // Files' List / Grid toggle (Feature D).
+    'list',
+    'grid',
   ];
 }
 

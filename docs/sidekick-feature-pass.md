@@ -225,5 +225,38 @@ only, cropped to the detail column; the grid (the owner's library) is never in f
 - Test files: two samples were added to the phone's Received files (`sidekick-pass-portrait-…jpg`,
   `sidekick-pass-video-720p.mp4`), and one saved to `~/Downloads/Sidekick`.
 
+**Commit:** `049d9dd`
+
+## D · Files grid, sort, filter — **implemented, real-device tested**
+
+**Decision:** Mac only; `fs.list` already carries name, size, `mtimeMs` and MIME, and `fs.thumb` makes
+pictures. No protocol change, no device-wide search (none exists on this wire and none is implied).
+
+| | |
+|---|---|
+| view | **List | Grid** toggle; grid tiles show the phone's picture for images/videos (`fs.thumb`, asked once per id, batched) and otherwise a neutral badge carrying the **real extension** — never a stand-in image. Folders get the folder glyph |
+| sort | Name (natural), Date modified, Size, Type (the phone's MIME), ↑/↓, from a toolbar select **and** by pressing a list column header (`aria-sort`). Folders first always; unknown dates/types last in both directions |
+| filter | debounced 120 ms, `aria-label` *"Filter the files loaded in this folder by name"*, Escape clears, cleared on folder change; matches the name or the resolved app label |
+| honesty | footer states *N of M loaded match …* and, while more is unloaded, that filter and sort cover only what is loaded; **Load more** button; filtered-to-nothing is its own state with **Clear filter**, distinct from an empty folder |
+| selection | shift-click ranges over the **drawn** order; drag to Finder, copy and prefetch unchanged, shared by rows and tiles |
+| memory | view and sort remembered per viewer in `localStorage`, wrapped so a refusal is harmless |
+| wall | the `Download` wall and root list untouched |
+
+**Changed files:** `desktop/src/shared/filesListing.ts` (+test), `desktop/src/renderer/{files,icons,navModel}.ts`,
+`index.html`, `styles.css`, `filesView.test.ts`; probe `scripts/sidekick-files-view-probe.mjs`.
+
+**Test evidence:** `docs/testing.md` → Feature D. Live over the phone's Received files: sort order
+verified against the model, filter, filtered-empty, grid pictures and badges; the phone only read
+(0 mutating requests in the log window).
+
+**Found and fixed:** a render during the filter's debounce erased freshly typed text (probe caught
+it; red-first test). The first toolbar wrapped into three rows.
+
+**Screenshot:** `d-grid.png`.
+
+**Remaining limitations:** sort and filter cover loaded entries only (by design, stated in the UI);
+tiles have no keyboard focus ring of their own — they are pointer targets like the list rows before
+them, and keyboard navigation of the listing is unchanged (not added) by this pass.
+
 **Commit:** *(next)*
 
