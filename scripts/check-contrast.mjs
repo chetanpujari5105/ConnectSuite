@@ -107,6 +107,8 @@ const ON_FILL = [
   // surface that is too — which is exactly why they need checking here: nothing else would.
   ['--text-on-media', '--media-scrim'],
   ['--text-on-media-dim', '--media-scrim'],
+  // The stage's Play / Load full size button text sits on the scrim, which sits on the stage.
+  ['--text-on-media', '--media-stage'],
 ];
 
 function themeOf(tokens, name) {

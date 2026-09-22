@@ -79,6 +79,170 @@ interface PhotosBridge {
   mediaOriginal(options: { id: string }): Promise<
     PhotosResult<{ path: string; bytes: number; elapsedMs: number }>
   >;
+  /** Feature C. Optional so a double without them still constructs, and the stage says so. */
+  mediaPreviewThumb?(options: { id: string }): Promise<
+    PhotosResult<{ data: string | null; error: string | null }>
+  >;
+  mediaPreviewOriginal?(options: { id: string }): Promise<
+    PhotosResult<{ url: string; name: string; bytes: number; mime: string }>
+  >;
+  revealSaved?(options: { path: string }): Promise<PhotosResult<{ path: string }>>;
+}
+
+/**
+ * Images at or below this size load their original automatically when selected (after a short
+ * dwell, so arrowing through a grid does not pull every photo passed over). Larger images and every
+ * video wait for a click: 40 MB is ~1 s on the measured 300 Mbit/s LAN, and a 2 GB video is not
+ * something to fetch because a tile was clicked.
+ */
+const AUTO_ORIGINAL_MAX = 40 * 1024 * 1024;
+const ORIGINAL_DWELL_MS = 350;
+
+/** What the stage knows about one item's full-size bytes. */
+interface OriginalState {
+  phase: 'loading' | 'ready' | 'failed' | 'undecodable' | 'unsupported';
+  url?: string;
+  name?: string;
+  mime?: string;
+  bytes?: number;
+  /** Pixel size **measured from the decoded bytes**, never copied from the listing. */
+  width?: number;
+  height?: number;
+  transferId?: string;
+  delivered: number;
+  total: number;
+  reason?: string;
+}
+
+/** What the stage should show, and the one sentence it may say about it. */
+interface StageView {
+  show: 'original' | 'preview512' | 'grid' | 'none';
+  caption: string;
+  tone: 'neutral' | 'warning' | 'danger';
+  action: null | { label: string; kind: 'play' | 'load' | 'retry' };
+  busy: boolean;
+}
+
+/**
+ * The stage's decision, pure: which picture, which caption, which action.
+ *
+ * **The caption is a claim about resolution, so it is only ever made from a measurement.**
+ * "Original · 4032 × 3024" appears only when the original has been decoded and its natural size
+ * read; the 512 preview is always called a preview; the grid's 256 is called 256. Nothing is
+ * upscaled and called sharp.
+ */
+function photoStageView(input: {
+  kind: 'image' | 'video';
+  mime: string;
+  size: number;
+  durationMs: number | null;
+  preview512: string | null | undefined;
+  gridThumb: boolean;
+  original: OriginalState | undefined;
+  originalsServed: boolean;
+  canPlay: boolean;
+}): StageView {
+  const o = input.original;
+  const picture: StageView['show'] = input.preview512 ? 'preview512' : input.gridThumb ? 'grid' : 'none';
+  const previewWords =
+    picture === 'preview512'
+      ? 'Preview · 512 px, the phone’s thumbnail'
+      : picture === 'grid'
+        ? 'Preview · 256 px'
+        : input.preview512 === null
+          ? 'The phone could not make a preview of this one. It is still on the phone.'
+          : 'Loading preview…';
+  const progress = o && o.total > 0 ? ` · ${fileSize(o.delivered)} of ${fileSize(o.total)}` : '';
+
+  if (o?.phase === 'ready') {
+    if (input.kind === 'video') {
+      return {
+        show: 'original',
+        caption: o.width && o.height ? `Original video · ${o.width} × ${o.height}` : 'Original video',
+        tone: 'neutral',
+        action: null,
+        busy: false,
+      };
+    }
+    return {
+      show: 'original',
+      caption: o.width && o.height ? `Original · ${o.width} × ${o.height}` : 'Original',
+      tone: 'neutral',
+      action: null,
+      busy: false,
+    };
+  }
+  if (o?.phase === 'loading') {
+    return {
+      show: picture,
+      caption: `${input.kind === 'video' ? 'Loading the video' : 'Loading the original'}${progress}`,
+      tone: 'neutral',
+      action: null,
+      busy: true,
+    };
+  }
+  if (o?.phase === 'undecodable') {
+    return {
+      show: picture,
+      caption:
+        `This Mac cannot display ${mimeLabel(input.mime)} here, so this is the phone’s 512 px ` +
+        'preview. Save to Mac keeps the original exactly as it is.',
+      tone: 'warning',
+      action: null,
+      busy: false,
+    };
+  }
+  if (o?.phase === 'unsupported' || (input.kind === 'video' && !input.canPlay)) {
+    return {
+      show: picture,
+      caption:
+        `This Mac’s player cannot play this ${mimeLabel(input.mime)} video. Save to Mac to open it ` +
+        'in another app.',
+      tone: 'warning',
+      action: null,
+      busy: false,
+    };
+  }
+  if (o?.phase === 'failed') {
+    return {
+      show: picture,
+      caption: `The original did not load — ${o.reason ?? 'the transfer did not finish.'}`,
+      tone: 'danger',
+      action: { label: 'Try again', kind: 'retry' },
+      busy: false,
+    };
+  }
+  if (!input.originalsServed) {
+    return {
+      show: picture,
+      caption: `${previewWords}. Full size needs the file channel, which this phone is not offering.`,
+      tone: 'neutral',
+      action: null,
+      busy: false,
+    };
+  }
+  if (input.kind === 'video') {
+    return {
+      show: picture,
+      caption: `Video${input.durationMs ? ` · ${clockOf(input.durationMs)}` : ''} · ${fileSize(input.size)}`,
+      tone: 'neutral',
+      action: { label: 'Play', kind: 'play' },
+      busy: false,
+    };
+  }
+  return {
+    show: picture,
+    caption: previewWords,
+    tone: 'neutral',
+    action: input.size > AUTO_ORIGINAL_MAX ? { label: `Load full size · ${fileSize(input.size)}`, kind: 'load' } : null,
+    busy: false,
+  };
+}
+
+/** `image/heic` → `HEIC photos`, for a sentence. The subtype is the useful word. */
+function mimeLabel(mime: string): string {
+  const sub = (mime.split('/')[1] ?? mime).replace(/^x-/, '').toUpperCase();
+  return mime.startsWith('image/') ? `${sub} photos` : sub;
 }
 
 /**
@@ -304,6 +468,31 @@ class PhotosView {
 
   /** Where the last pull landed, for the one line that tells the user their file exists. */
   private lastPull: { path: string; bytes: number; elapsedMs: number } | null = null;
+
+  /** 512 px previews by id. `null` means the phone answered that it has none. */
+  private preview512 = new Map<string, string | null>();
+  private previewAsked = new Set<string>();
+
+  /** Full-size bytes fetched for viewing, by media id. Never the receive folder — see mediaPreview.ts. */
+  private originals = new Map<string, OriginalState>();
+  private originalTimer: ReturnType<typeof setTimeout> | null = null;
+  /** One original at a time: one bulk socket per file is the protocol's own shape. */
+  private originalInFlight: string | null = null;
+
+  /**
+   * The stage for the selected item, **kept across redraws**. Removing a `<video>` from the
+   * document pauses it, so a redraw that rebuilt the stage would stop a playing video on every
+   * progress tick. It is rebuilt only when the selection changes.
+   */
+  private stage: {
+    id: string;
+    root: HTMLElement;
+    frame: HTMLElement;
+    img: HTMLImageElement;
+    video: HTMLVideoElement | null;
+    caption: HTMLElement;
+    action: HTMLButtonElement;
+  } | null = null;
 
   constructor(
     private readonly bridge: PhotosBridge,
@@ -594,6 +783,7 @@ class PhotosView {
       tile.addEventListener('click', () => {
         this.selectedItem = item.id;
         this.render();
+        this.onSelected(item);
       });
       return tile;
     }
@@ -623,6 +813,211 @@ class PhotosView {
       this.pulling = null;
       this.render();
     }
+  }
+
+  /**
+   * Selection → the sharper preview now, the original after a short dwell.
+   *
+   * The dwell is re-tested when it fires: arrowing or clicking across a grid schedules and cancels,
+   * so only the photo someone **stopped on** is fetched at full size.
+   */
+  private onSelected(item: MediaItemRow): void {
+    void this.loadPreview512(item.id);
+    if (this.originalTimer !== null) clearTimeout(this.originalTimer);
+    this.originalTimer = null;
+    if (item.kind !== 'image' || item.size > AUTO_ORIGINAL_MAX) return;
+    this.originalTimer = setTimeout(() => {
+      this.originalTimer = null;
+      if (this.selectedItem === item.id) void this.loadOriginal(item);
+    }, ORIGINAL_DWELL_MS);
+  }
+
+  private async loadPreview512(id: string): Promise<void> {
+    if (!this.bridge.mediaPreviewThumb || this.previewAsked.has(id)) return;
+    this.previewAsked.add(id);
+    const result = await this.bridge.mediaPreviewThumb({ id });
+    if (!result.ok || !result.data) {
+      this.previewAsked.delete(id); // a failed ask may be retried on the next selection
+      return;
+    }
+    this.preview512.set(id, result.data.data);
+    if (this.selectedItem === id) this.renderDetail();
+  }
+
+  /** Fetches the original **for viewing** — into the private preview cache, never the receive folder. */
+  private async loadOriginal(item: MediaItemRow): Promise<void> {
+    if (!this.bridge.mediaPreviewOriginal || !this.advertised) return;
+    const known = this.originals.get(item.id);
+    if (known && known.phase !== 'failed') return;
+    if (this.originalInFlight !== null) return;
+    if (item.kind === 'video' && !canPlayMime(item.mime)) {
+      // Checked before a byte moves: pulling 200 MB to find out the player refuses it would be the
+      // expensive way to learn something the browser can answer from the type.
+      this.originals.set(item.id, { phase: 'unsupported', delivered: 0, total: 0 });
+      this.renderDetail();
+      return;
+    }
+    this.originalInFlight = item.id;
+    this.originals.set(item.id, { phase: 'loading', delivered: 0, total: item.size });
+    this.renderDetail();
+    try {
+      const result = await this.bridge.mediaPreviewOriginal({ id: item.id });
+      if (!result.ok || !result.data) {
+        this.originals.set(item.id, {
+          phase: 'failed',
+          delivered: 0,
+          total: item.size,
+          reason: result.reason ?? 'the transfer did not finish.',
+        });
+        return;
+      }
+      const got = result.data;
+      if (item.kind === 'image') {
+        // Decoded **off-stage** first. Only a successful decode replaces the preview, and the
+        // caption's pixel size is read from that decode — never from the listing.
+        const probe = new Image();
+        const decoded = await new Promise<{ w: number; h: number } | null>((resolve) => {
+          probe.onload = () => resolve({ w: probe.naturalWidth, h: probe.naturalHeight });
+          probe.onerror = () => resolve(null);
+          probe.src = got.url;
+        });
+        this.originals.set(item.id, decoded
+          ? { phase: 'ready', url: got.url, name: got.name, mime: got.mime, bytes: got.bytes, width: decoded.w, height: decoded.h, delivered: got.bytes, total: got.bytes }
+          : { phase: 'undecodable', name: got.name, mime: got.mime, bytes: got.bytes, delivered: got.bytes, total: got.bytes });
+      } else {
+        this.originals.set(item.id, { phase: 'ready', url: got.url, name: got.name, mime: got.mime, bytes: got.bytes, delivered: got.bytes, total: got.bytes });
+      }
+    } finally {
+      this.originalInFlight = null;
+      if (this.selectedItem === item.id) this.renderDetail();
+    }
+  }
+
+  /** The phone acked an original; its `fs.transfer.progress` for this id is now ours to draw. */
+  onPreviewAgreed(ticket: { id: string; transferId: string; size: number }): void {
+    const state = this.originals.get(ticket.id);
+    if (!state || state.phase !== 'loading') return;
+    this.originals.set(ticket.id, { ...state, transferId: ticket.transferId, total: ticket.size });
+  }
+
+  onTransferEvent(envelope: unknown): void {
+    const message = envelope as { type?: string; payload?: Record<string, unknown> };
+    if (message?.type !== 'fs.transfer.progress') return;
+    const id = message.payload?.transferId;
+    const bytes = message.payload?.bytes;
+    if (typeof id !== 'string' || typeof bytes !== 'number') return;
+    for (const [mediaId, state] of this.originals) {
+      if (state.transferId === id && state.phase === 'loading') {
+        this.originals.set(mediaId, { ...state, delivered: Math.max(state.delivered, bytes) });
+        if (this.selectedItem === mediaId) this.updateStage();
+        return;
+      }
+    }
+  }
+
+  /** The stage for [item]: reused while it stays selected, built fresh when the selection moves. */
+  private stageFor(item: MediaItemRow): NonNullable<PhotosView['stage']> {
+    if (this.stage && this.stage.id === item.id) return this.stage;
+    const root = document.createElement('div');
+    root.className = 'photos-stage';
+    const frame = document.createElement('div');
+    frame.className = 'photos-stage-frame';
+    // The frame takes the photo's own shape where the phone reported one, so a portrait photo is a
+    // portrait box — letterboxed by `contain` only when it has to be, never cropped.
+    if (item.width && item.height) frame.style.aspectRatio = `${item.width} / ${item.height}`;
+    const img = document.createElement('img');
+    img.className = 'photos-stage-media';
+    img.alt = '';
+    frame.appendChild(img);
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'button photos-stage-action';
+    action.id = 'photos-stage-action';
+    action.addEventListener('click', () => {
+      const current = this.items.find((one) => one.id === this.selectedItem);
+      if (current) void this.loadOriginal(current);
+    });
+    frame.appendChild(action);
+    const caption = document.createElement('div');
+    caption.className = 'photos-stage-caption';
+    caption.setAttribute('aria-live', 'polite');
+    root.append(frame, caption);
+    this.stage = { id: item.id, root, frame, img, video: null, caption, action };
+    return this.stage;
+  }
+
+  /** Brings the stage in line with what is known, touching only what changed. */
+  private updateStage(): void {
+    const item = this.items.find((one) => one.id === this.selectedItem);
+    if (!item) return;
+    const stage = this.stageFor(item);
+    const original = this.originals.get(item.id);
+    const view = photoStageView({
+      kind: item.kind,
+      mime: item.mime,
+      size: item.size,
+      durationMs: item.durationMs,
+      preview512: this.preview512.has(item.id) ? this.preview512.get(item.id) : undefined,
+      gridThumb: this.thumbs.has(item.id),
+      original,
+      originalsServed: this.advertised && !!this.bridge.mediaPreviewOriginal,
+      canPlay: item.kind !== 'video' || canPlayMime(item.mime),
+    });
+
+    const wantVideo = view.show === 'original' && item.kind === 'video' && original?.url;
+    if (wantVideo && !stage.video) {
+      const video = document.createElement('video');
+      video.className = 'photos-stage-media';
+      // Real controls — play, pause, seek, time, volume, fullscreen — from the platform's own
+      // player. No autoplay, muted or otherwise: the person pressed Play to fetch it, and the
+      // player's own button is the second press that starts sound.
+      video.controls = true;
+      video.preload = 'metadata';
+      video.playsInline = true;
+      video.addEventListener('loadedmetadata', () => {
+        const state = this.originals.get(item.id);
+        if (state) this.originals.set(item.id, { ...state, width: video.videoWidth, height: video.videoHeight });
+        if (video.videoWidth && video.videoHeight) stage.frame.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+        this.updateStage();
+      });
+      video.addEventListener('error', () => {
+        // A codec the player refuses — HEVC, say, where the platform decoder is absent. The type
+        // looked playable; the bytes were not. Said, with the save still on offer.
+        const state = this.originals.get(item.id);
+        this.originals.set(item.id, { ...(state ?? { delivered: 0, total: 0 }), phase: 'unsupported', url: undefined });
+        video.remove();
+        stage.video = null;
+        this.updateStage();
+      });
+      video.src = original!.url!;
+      stage.img.hidden = true;
+      stage.frame.insertBefore(video, stage.action);
+      stage.video = video;
+    }
+    if (!wantVideo && stage.video) {
+      stage.video.remove();
+      stage.video = null;
+    }
+
+    if (!stage.video) {
+      const src =
+        view.show === 'original' && original?.url
+          ? original.url
+          : view.show === 'preview512'
+            ? `data:image/jpeg;base64,${this.preview512.get(item.id)}`
+            : view.show === 'grid'
+              ? `data:image/jpeg;base64,${this.thumbs.get(item.id)}`
+              : '';
+      stage.img.hidden = src === '';
+      if (src && stage.img.getAttribute('src') !== src) stage.img.setAttribute('src', src);
+      stage.frame.dataset.show = view.show;
+    }
+
+    stage.caption.textContent = view.caption;
+    stage.caption.dataset.tone = view.tone;
+    stage.root.dataset.busy = String(view.busy);
+    stage.action.hidden = view.action === null;
+    if (view.action) stage.action.textContent = view.action.label;
   }
 
   /**
@@ -657,6 +1052,7 @@ class PhotosView {
     this.detail.textContent = '';
     const item = this.items.find((one) => one.id === this.selectedItem);
     if (!item) {
+      this.stage = null;
       // The shared empty state (component 11), not a stray sentence.
       this.detail.appendChild(
         stateBlock({
@@ -679,21 +1075,16 @@ class PhotosView {
     const card = document.createElement('section');
     card.className = 'photos-detail-card';
 
-    const frame = document.createElement('div');
-    frame.className = 'photos-detail-frame';
-    const preview = this.thumbs.get(item.id);
-    if (preview) {
-      const img = document.createElement('img');
-      img.className = 'photos-detail-preview';
-      img.src = `data:image/jpeg;base64,${preview}`;
-      img.alt = '';
-      frame.appendChild(img);
-    }
-    card.appendChild(frame);
+    // The stage is the same element for as long as this item stays selected, so a playing video
+    // survives the redraw (see [stage]). Re-inserting it in the same task does not pause it.
+    const stage = this.stageFor(item);
+    card.appendChild(stage.root);
+    this.updateStage();
 
+    const original = this.originals.get(item.id);
     const facts = document.createElement('div');
     facts.className = 'photos-detail-facts';
-    for (const [label, value, mono] of detailFacts(item)) {
+    for (const [label, value, mono] of detailFacts(item, original)) {
       facts.appendChild(photoLine('photos-detail-fact-label', label));
       facts.appendChild(photoLine(`photos-detail-fact-value${mono ? ' mono' : ''}`, value));
     }
@@ -727,6 +1118,23 @@ class PhotosView {
             `Saved ${fileSize(this.lastPull.bytes)} to ${this.lastPull.path}`,
           ),
         );
+        // Only once a file exists to show: the saved copy in the receive folder, never the
+        // private preview cache, which is not the person's file.
+        if (this.bridge.revealSaved) {
+          const saved = this.lastPull.path;
+          const reveal = document.createElement('button');
+          reveal.type = 'button';
+          reveal.className = 'button photos-detail-reveal';
+          reveal.id = 'photos-reveal-saved';
+          reveal.textContent = 'Reveal in Finder';
+          reveal.addEventListener('click', () => {
+            void this.bridge.revealSaved?.({ path: saved }).then((result) => {
+              if (!result.ok) this.failure = { reason: result.reason ?? 'That file is not there any more.' };
+              if (!result.ok) this.render();
+            });
+          });
+          actions.appendChild(reveal);
+        }
       }
     } else {
       // Said here as well as in the banner, because this is the moment someone reaches for it: the
@@ -765,8 +1173,14 @@ const PHOTO_ACTION_REFUSAL =
  * an empty value is the defect this replaces. A test that asserted a second copy of the list would
  * assert nothing.
  */
-function detailFacts(item: MediaItemRow): Array<[string, string, boolean]> {
+function detailFacts(
+  item: MediaItemRow,
+  original?: { name?: string; width?: number; height?: number },
+): Array<[string, string, boolean]> {
   const rows: Array<[string, string, boolean]> = [];
+  // The file's name is not in `media.list` — only `media.original`'s ack carries it — so it appears
+  // once the original has been fetched, and not before. No placeholder stands in for it.
+  if (original?.name) rows.push(['Name', original.name, false]);
   rows.push(['Kind', item.kind === 'video' ? 'Video' : 'Photo', false]);
   rows.push([
     'Taken',
@@ -782,19 +1196,28 @@ function detailFacts(item: MediaItemRow): Array<[string, string, boolean]> {
   // The design's `3.2 MB · 4032 × 3024` on one row. `width`/`height` are null for a file another app
   // wrote and the provider never measured, which is ordinary rather than exceptional — so the
   // dimensions join the row when they exist and the row is just a size when they do not.
-  rows.push([
-    'Size',
-    item.width && item.height
-      ? `${fileSize(item.size)} · ${item.width} × ${item.height}`
-      : fileSize(item.size),
-    true,
-  ]);
+  // Pixel size: measured from the decoded original when there is one, else what the phone's
+  // provider recorded, else nothing — never a guess.
+  const w = original?.width ?? item.width;
+  const h = original?.height ?? item.height;
+  rows.push(['Size', w && h ? `${fileSize(item.size)} · ${w} × ${h}` : fileSize(item.size), true]);
   if (item.kind === 'video' && item.durationMs) {
     rows.push(['Length', clockOf(item.durationMs), true]);
   }
   rows.push(['Type', item.mime, true]);
   if (item.ownerAppName) rows.push(['Saved by', item.ownerAppName, false]);
   return rows;
+}
+
+/**
+ * Whether this Mac's player claims it can play the type at all. `''` is a firm no; `maybe` and
+ * `probably` are not promises — a codec inside an `mp4` can still be refused, which is what the
+ * `<video>` element's `error` event catches after the bytes arrive.
+ */
+function canPlayMime(mime: string): boolean {
+  if (typeof document === 'undefined') return true;
+  const probe = document.createElement('video') as HTMLVideoElement;
+  return typeof probe.canPlayType !== 'function' || probe.canPlayType(mime) !== '';
 }
 
 function photoLine(className: string, text: string): HTMLElement {
@@ -816,6 +1239,7 @@ function photoLine(className: string, text: string): HTMLElement {
   dayHeading,
   groupByDay,
   detailFacts,
+  photoStageView,
   PHOTO_ACTION_REFUSAL,
 };
 

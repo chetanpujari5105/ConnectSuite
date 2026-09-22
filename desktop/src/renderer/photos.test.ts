@@ -298,3 +298,91 @@ test('the refusal line names all three removed controls and claims nothing about
   // It must not read as a failure or a degradation — nothing broke, these were never built.
   assert.doesNotMatch(line, /fail|error|unavailable|try again|not right now/i);
 });
+
+// ---- Feature C: the stage, and what its caption may claim (2026-09-23) --------------------------
+
+const stage = (globalThis as Record<string, unknown>).__photoLabels as unknown as {
+  photoStageView(input: Record<string, unknown>): {
+    show: string;
+    caption: string;
+    tone: string;
+    action: null | { label: string; kind: string };
+    busy: boolean;
+  };
+  detailFacts(item: Record<string, unknown>, original?: Record<string, unknown>): Array<[string, string, boolean]>;
+};
+
+const view = (over: Record<string, unknown> = {}) =>
+  stage.photoStageView({
+    kind: 'image',
+    mime: 'image/jpeg',
+    size: 3_874_112,
+    durationMs: null,
+    preview512: 'b64',
+    gridThumb: true,
+    original: undefined,
+    originalsServed: true,
+    canPlay: true,
+    ...over,
+  });
+
+test('the stage calls the 512 thumbnail a preview, and never an original', () => {
+  const v = view();
+  assert.equal(v.show, 'preview512');
+  assert.match(v.caption, /^Preview · 512 px/);
+  assert.doesNotMatch(v.caption, /Original/);
+});
+
+test('"Original · w × h" appears only from a decode, and the size is the decoded one', () => {
+  // The listing says 4032 × 3024; the decoded bytes say 3024 × 4032 (a rotated portrait). The
+  // caption must carry the measurement, never the listing's number.
+  const v = view({ original: { phase: 'ready', url: 'sidekick-media://preview/t', width: 3024, height: 4032, delivered: 1, total: 1 } });
+  assert.equal(v.show, 'original');
+  assert.equal(v.caption, 'Original · 3024 × 4032');
+});
+
+test('without the 512 preview the grid thumbnail is shown and called 256, not sharp', () => {
+  const v = view({ preview512: undefined });
+  assert.equal(v.show, 'grid');
+  assert.match(v.caption, /256 px/);
+});
+
+test('an original that will not decode is said, and the preview stays', () => {
+  const v = view({ mime: 'image/heic', original: { phase: 'undecodable', delivered: 1, total: 1 } });
+  assert.equal(v.show, 'preview512');
+  assert.equal(v.tone, 'warning');
+  assert.match(v.caption, /cannot display HEIC photos here/);
+  assert.match(v.caption, /Save to Mac keeps the original/);
+});
+
+test('a video offers Play — real bytes on request, never autoplay — and a refused type says so before fetching', () => {
+  const idle = view({ kind: 'video', mime: 'video/mp4', durationMs: 64_000 });
+  assert.deepEqual(idle.action, { label: 'Play', kind: 'play' });
+  assert.match(idle.caption, /1:04/);
+  const refused = view({ kind: 'video', mime: 'video/3gpp', canPlay: false });
+  assert.equal(refused.action, null, 'no Play for a type the player has already refused');
+  assert.match(refused.caption, /cannot play this 3GPP video/);
+});
+
+test('loading shows the phone’s byte count; a failure offers a retry in red', () => {
+  const loading = view({ kind: 'video', original: { phase: 'loading', delivered: 1_048_576, total: 10_485_760 } });
+  assert.equal(loading.busy, true);
+  assert.match(loading.caption, /Loading the video · 1\.0 MB of 10 MB/);
+  const failed = view({ original: { phase: 'failed', delivered: 0, total: 1, reason: 'the socket dropped' } });
+  assert.equal(failed.tone, 'danger');
+  assert.deepEqual(failed.action, { label: 'Try again', kind: 'retry' });
+});
+
+test('a phone not offering originals says so instead of offering a load that cannot happen', () => {
+  const v = view({ originalsServed: false, size: 90_000_000 });
+  assert.equal(v.action, null);
+  assert.match(v.caption, /Full size needs the file channel/);
+});
+
+test('the file name appears once the original’s ack has carried it, and not before', () => {
+  const item = { id: '1', kind: 'image', mime: 'image/jpeg', size: 10, width: 4, height: 3, dateMs: 0, durationMs: null };
+  assert.equal(stage.detailFacts(item).some(([l]) => l === 'Name'), false);
+  const named = stage.detailFacts(item, { name: 'IMG_2041.jpg', width: 3, height: 4 });
+  assert.deepEqual(named[0], ['Name', 'IMG_2041.jpg', false]);
+  assert.equal(named.find(([l]) => l === 'Size')![1], '10 B · 3 × 4', 'decoded size wins over the listing');
+});

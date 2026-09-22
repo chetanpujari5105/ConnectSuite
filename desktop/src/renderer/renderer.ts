@@ -318,6 +318,17 @@ interface ConnectBridge {
     { ok: true; data: { path: string; bytes: number; elapsedMs: number } }
     | { ok: false; reason?: string; fixHint?: string }
   >;
+  mediaPreviewThumb(options: { id: string }): Promise<
+    { ok: true; data: { data: string | null; error: string | null } } | { ok: false; reason?: string }
+  >;
+  mediaPreviewOriginal(options: { id: string }): Promise<
+    | { ok: true; data: { url: string; name: string; bytes: number; mime: string } }
+    | { ok: false; reason?: string; fixHint?: string; code?: string }
+  >;
+  onMediaPreviewAgreed(
+    callback: (ticket: { id: string; transferId: string; size: number; name: string; mime: string }) => void,
+  ): void;
+  revealSaved(options: { path: string }): Promise<{ ok: true; data: { path: string } } | { ok: false; reason?: string }>;
 
   // Phase 7: the app grid. `appsOpenAsk` returns a bare ack on purpose — the phone answers
   // `{ asked: true }` and there is no field saying whether the app opened, because it does not know.
@@ -1080,6 +1091,9 @@ const photos = new PhotosView(
     mediaList: (options) => connect.mediaList(options),
     mediaThumbs: (options) => connect.mediaThumbs(options),
     mediaOriginal: (options) => connect.mediaOriginal(options),
+    mediaPreviewThumb: (options) => connect.mediaPreviewThumb(options),
+    mediaPreviewOriginal: (options) => connect.mediaPreviewOriginal(options),
+    revealSaved: (options) => connect.revealSaved(options),
   },
   el('photos-card'),
   el('photos-banner'),
@@ -1088,6 +1102,9 @@ const photos = new PhotosView(
   el('photos-tiles'),
   el('photos-detail'),
 );
+// Feature C: the original being fetched for viewing is drawn from the phone's own progress.
+connect.onMediaPreviewAgreed((ticket) => photos.onPreviewAgreed(ticket));
+connect.onMessage((envelope) => photos.onTransferEvent(envelope));
 shell.onRoute((id) => {
   if (id === 'photos') void photos.refresh();
 });

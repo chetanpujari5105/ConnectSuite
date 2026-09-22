@@ -22683,3 +22683,66 @@ Mac `npm test` 926/926, typecheck clean. Phone `ReceivedFilesTest` 5/5 (artifact
 exit 0). The phone's received-file notification is **built and not yet observed on the device** —
 the phone build carrying it is installed with Feature F's, once, to limit how often the real link
 is interrupted.
+
+
+## Sidekick feature pass — Feature C: Photos preview quality and video (2026-09-23)
+
+### Root cause, read before anything changed
+
+| Suspect | Finding |
+|---|---|
+| thumbnail instead of original | **Yes.** The detail preview was the grid's own `media.thumb` at `maxEdge: 256` — the same bytes as the tile |
+| CSS scaling / `object-fit` | **Yes.** Drawn into a 4:3 well at `object-fit: cover`: ~1.2–2.5× upscale, and every portrait photo cropped to a landscape strip |
+| stale cache | **Latent.** `PhotosClient.thumbsFor` keys its cache by id alone, so asking it for 512 after the grid's 256 would have returned the 256 as a hit. The preview now has its own cache |
+| limited preview URL handling | **Yes.** CSP `img-src 'self' data:` — no way to show bytes from disk, so no original and no video was ever possible in the pane |
+| decoding limitations | Real for HEIC stills and HEVC video on some Macs; now detected and said, not assumed away |
+| the Android source query | No fault: `media.thumb` honours up to 512 and `media.original` streams real bytes |
+
+### What the pane does now
+
+The 512 px preview at once, **labelled as a preview**; images ≤ 40 MB fetch their original after a
+350 ms dwell into a private temp cache (`main/mediaPreview.ts`, mode 0700, emptied at start, on
+disconnect and at quit, 12 kept at most); videos fetch only on **Play**. A `sidekick-media://` URL
+carries an opaque token, never a path, and answers `Range` (`shared/byteRange.ts`) so a video seeks.
+
+### Live, on generated samples only
+
+A 3000 × 4000 portrait JPEG and a 12 s 1280 × 720 H.264 MP4 were made on this Mac, sent to the
+phone's Received files with Feature B (both `checksum matched`), and selected **by exact byte size**
+— no other photo was opened. `scripts/sidekick-photos-probe.mjs`:
+
+```
+photo, original decoded → caption "Original · 3000 × 4000", scheme sidekick-media,
+                          natural 3000x4000, drawn 246x329, object-fit contain, frame 3000 / 4000
+facts                   → Name sidekick-pass-portrait-3000x4000.jpg · Photo · 680 KB · 3000 × 4000
+video before Play       → caption "Video · 0:12 · 4.6 MB", action "Play", <video> elements: 0
+video after Play        → "Original video · 1280 × 720", controls true, autoplay false, paused true,
+                          duration 12, seekable [0, 12]
+seek to 7 s             → currentTime 7, readyState 4, error null
+```
+
+**One reading is not reportable and is not claimed:** the 512-preview state before the original
+decoded. The 680 KB original decoded inside the probe's first poll, so the instrument gave up on a
+transient it could not catch (`stopped=deadline`). The preview caption is covered by
+`photos.test.ts` instead.
+
+Viewing wrote nothing to the receive folder: after the run `~/Downloads/Sidekick` held only the
+photo that **Save to Mac** was pressed for; the two viewed originals were in the 0700 cache.
+
+**Reveal in Finder** refuses anything outside the receive folder — `/etc/hosts`, a `../` escape
+from inside it, and a prefix lookalike (`…/SidekickEvil/x`) all `false` — with the positive control
+`true` on the file Save to Mac had just written.
+
+### Observed during the run, not caused by it
+
+At 01:03–01:04 the Mac log shows the app being used by a person while these probes ran: rows
+selected in Received files (the pane's existing selection prefetch pulled `inbox-probe.bin`,
+`nogrant-probe.bin` and later `sidekick-pass-stop-200mb.bin` into `~/Downloads/Sidekick`), every
+Files root opened in turn, and Photos opened twice. No probe in this pass clicks a Files row; the
+readings above select their own items by byte size and are not affected.
+
+### Suites
+
+Mac 940/940 (+`byteRange.test.ts` 6, `photos.test.ts` +8 — red on *listing size beats decoded
+size*), typecheck clean, colour and contrast guards green with `--media-stage` added as a
+theme-fixed token beside `--media-scrim`.

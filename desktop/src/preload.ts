@@ -522,6 +522,22 @@ contextBridge.exposeInMainWorld('connect', {
     options: { id: string },
   ): Promise<PhoneResult<{ path: string; bytes: number; elapsedMs: number }>> =>
     ipcRenderer.invoke('media-original', options),
+  /** Feature C: the 512 px preview, from its own cache — never the grid's 256 upscaled. */
+  mediaPreviewThumb: (
+    options: { id: string },
+  ): Promise<PhoneResult<{ data: string | null; error: string | null }>> =>
+    ipcRenderer.invoke('media-preview-thumb', options),
+  /** The original, for viewing: a `sidekick-media://` URL into the private preview cache. */
+  mediaPreviewOriginal: (
+    options: { id: string },
+  ): Promise<PhoneResult<{ url: string; name: string; bytes: number; mime: string }>> =>
+    ipcRenderer.invoke('media-preview-original', options),
+  onMediaPreviewAgreed: (
+    callback: (ticket: { id: string; transferId: string; size: number; name: string; mime: string }) => void,
+  ) => ipcRenderer.on('media-preview-agreed', (_event, ticket) => callback(ticket)),
+  /** Reveal a saved file in Finder — refused for anything outside the receive folder. */
+  revealSaved: (options: { path: string }): Promise<PhoneResult<{ path: string }>> =>
+    ipcRenderer.invoke('reveal-saved', options),
 
   /**
    * The media remote: one state the phone pushes, and one verb.

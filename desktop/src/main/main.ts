@@ -64,6 +64,14 @@ const sharedVitals = require('../shared/deviceVitals') as {
   humanBytes: (bytes: number) => string;
 };
 import { FilesClient } from './files';
+import {
+  cachedPreview,
+  clearPreviews,
+  previewFolder,
+  registerPreviewScheme,
+  rememberPreview,
+  servePreviews,
+} from './mediaPreview';
 import { ask } from './feature';
 import { AppsClient } from './apps';
 import { PhotosClient } from './photos';
@@ -850,7 +858,11 @@ ipcMain.handle('menu-routes', (_event, routes: unknown) => {
   installAppMenu(routes as MenuRoute[]);
 });
 
+// Chromium fixes its scheme table at startup, so this runs at module load, before ready.
+registerPreviewScheme();
+
 app.whenReady().then(() => {
+  servePreviews();
   initLogger();
   installAppMenu([]);
   /*
@@ -1226,6 +1238,8 @@ app.whenReady().then(() => {
       contacts.clear();
       clip.clear();
       photos.clear();
+      // Originals fetched for viewing are private photos on disk; they go when the phone does.
+      clearPreviews('link dropped');
       apps.clear();
       remote.clear();
       sms.clear();
@@ -1465,6 +1479,7 @@ app.on('window-all-closed', () => {
   /* stay running */
 });
 
+app.on('will-quit', () => clearPreviews('app quit'));
 app.on('before-quit', () => {
   video?.close('app quit');
   link?.stop('app quit');
@@ -2149,6 +2164,49 @@ ipcMain.handle(
 );
 
 ipcMain.handle('media-original', (_event, options: { id: string }) => photos.original(options.id));
+
+/**
+ * Feature C: the detail preview's two sources, neither of which is a save.
+ *
+ * `media-preview-thumb` is the protocol's largest thumbnail (512 px), in its own cache so a grid
+ * tile's 256 is never returned for it. `media-preview-original` fetches the real bytes into the
+ * private preview cache (`main/mediaPreview.ts`) and answers with a `sidekick-media://` URL carrying
+ * an opaque token. The `transferId` is announced at the ack so the pane can draw the phone's own
+ * `fs.transfer.progress` while a video is on its way.
+ */
+ipcMain.handle('media-preview-thumb', (_event, options: { id: string }) => photos.previewThumb(options.id));
+ipcMain.handle('media-preview-original', async (_event, options: { id: string }) => {
+  const hit = cachedPreview(options.id);
+  if (hit) return { ok: true, data: hit };
+  const folder = await previewFolder();
+  const result = await photos.original(options.id, folder, (ticket) =>
+    sendAll('media-preview-agreed', { id: options.id, ...ticket }),
+  );
+  if (!result.ok) return result;
+  const url = rememberPreview(options.id, {
+    path: result.data.path,
+    name: result.data.name,
+    mime: result.data.mime,
+    bytes: result.data.bytes,
+  });
+  log.info('photos', `original fetched for viewing: ${result.data.bytes} bytes in ${result.data.elapsedMs} ms`);
+  return { ok: true, data: { url, name: result.data.name, bytes: result.data.bytes, mime: result.data.mime } };
+});
+
+/**
+ * Reveal a file the person saved — and only one inside the receive folder. The renderer names a
+ * path it was handed by a pull; refusing anything outside that folder keeps this from being a way
+ * to open Finder on an arbitrary path.
+ */
+ipcMain.handle('reveal-saved', (_event, options: { path: string }) => {
+  const folder = downloadsFolder();
+  const target = String(options?.path ?? '');
+  if (!target.startsWith(folder + '/') || target.includes('/../') || !existsSync(target)) {
+    return { ok: false, reason: 'That file is not in the receive folder any more.' };
+  }
+  shell.showItemInFolder(target);
+  return { ok: true, data: { path: target } };
+});
 
 ipcMain.handle('apps-list', () => apps.list());
 ipcMain.handle(

@@ -178,10 +178,42 @@ export class PhotosClient {
    * suffixing rather than overwriting: two photos really can share a display name across buckets,
    * and silently replacing someone's file to avoid a dialog is the wrong trade.
    */
+  /**
+   * One photo at the protocol's largest thumbnail, **512 px** — the detail preview, not a tile.
+   *
+   * Its own cache, keyed by id, because [thumbsFor]'s is keyed by id alone: asking it for 512 after
+   * the grid had fetched 256 would return the 256 as a cache hit, and the preview would be the
+   * grid's thumbnail upscaled and called sharp. `NO_THUMBNAIL` comes back as `null` with the code,
+   * because the photo is there and an original may still load (defect 57).
+   */
+  private readonly previews = new Map<string, string>();
+
+  async previewThumb(id: string): Promise<PhoneResult<{ data: string | null; error: string | null }>> {
+    const cached = this.previews.get(id);
+    if (cached) return { ok: true, data: { data: cached, error: null } };
+    const result = await ask(
+      this.link(),
+      'photos',
+      MessageType.MEDIA_THUMB,
+      { ids: [id], maxEdge: 512 },
+      (payload) => rows(payload, 'thumbs').map(toThumb),
+    );
+    if (!result.ok) return result;
+    const row = result.data.find((t) => t.id === id);
+    if (row?.data) {
+      this.previews.set(id, row.data);
+      // Bounded: ~100 KB of base64 each; the last sixty cover any browsing session and cap it at ~6 MB.
+      if (this.previews.size > 60) this.previews.delete(this.previews.keys().next().value!);
+      return { ok: true, data: { data: row.data, error: null } };
+    }
+    return { ok: true, data: { data: null, error: row?.error ?? 'NO_THUMBNAIL' } };
+  }
+
   async original(
     id: string,
     into?: string,
-  ): Promise<PhoneResult<{ path: string; bytes: number; elapsedMs: number }>> {
+    onAgreed?: (ticket: { transferId: string; size: number; name: string; mime: string }) => void,
+  ): Promise<PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string }>> {
     // The destination is settled **before** the phone is asked: a receive folder on an unplugged
     // drive must refuse here, not after the phone has agreed a transfer nobody will claim.
     let folder: string;
@@ -196,7 +228,7 @@ export class PhotosClient {
           type: MessageType.MEDIA_ORIGINAL,
           reason: ready.reason,
           fixHint: ready.fixHint,
-        } as PhoneResult<{ path: string; bytes: number; elapsedMs: number }>;
+        } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string }>;
       }
       folder = ready.folder;
     }
@@ -224,9 +256,15 @@ export class PhotosClient {
         feature: 'photos',
         type: MessageType.MEDIA_ORIGINAL,
         reason: 'There is no live session with the phone.',
-      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number }>;
+      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string }>;
     }
 
+    onAgreed?.({
+      transferId: ticket.data.transferId,
+      size: ticket.data.size,
+      name: ticket.data.name,
+      mime: ticket.data.mime,
+    });
     await fs.mkdir(folder, { recursive: true });
     const destination = await freeName(folder, ticket.data.name);
 
@@ -243,11 +281,17 @@ export class PhotosClient {
         feature: 'photos',
         type: MessageType.MEDIA_ORIGINAL,
         reason: result.reason ?? 'The transfer did not finish.',
-      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number }>;
+      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string }>;
     }
     return {
       ok: true,
-      data: { path: result.path!, bytes: result.bytes, elapsedMs: result.elapsedMs },
+      data: {
+        path: result.path!,
+        bytes: result.bytes,
+        elapsedMs: result.elapsedMs,
+        name: ticket.data.name,
+        mime: ticket.data.mime,
+      },
     };
   }
 
@@ -261,6 +305,7 @@ export class PhotosClient {
   clear(): void {
     const held = this.thumbs.size;
     this.thumbs.clear();
+    this.previews.clear();
     this.missing.clear();
     this.bucketCount = 0;
     this.listCount = 0;

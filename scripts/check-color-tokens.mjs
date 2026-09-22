@@ -77,6 +77,8 @@ export const SAME_IN_BOTH = new Map([
   ['--media-scrim-soft', 'as --media-scrim'],
   ['--text-on-media', 'white, because it sits on --media-scrim, which does not invert'],
   ['--text-on-media-dim', 'as --text-on-media — the hint weight on the same scrim'],
+  ['--media-stage', 'the ground behind a user photo at object-fit: contain; light letterbox bars read as part of the picture'],
+  ['--media-hairline', 'the edge of a control on --media-stage, which does not invert'],
   ['--qr-ground', 'a QR code is a data matrix; invert it and it stops scanning'],
   ['--traffic-close', "macOS's own window-control colour, which does not change with the system theme"],
   ['--traffic-min', 'as --traffic-close'],

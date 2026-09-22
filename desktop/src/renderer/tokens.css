@@ -273,6 +273,15 @@
    */
   --text-on-media-dim: rgba(255, 255, 255, 0.72);
 
+  /*
+   * The Photos detail stage — the ground behind a photo or video drawn at `object-fit: contain`
+   * (Feature C, 2026-09-23). Dark in both themes for the `--media-scrim` reason and not a new one:
+   * letterbox bars are part of how a photograph is seen, and light-grey bars read as part of the
+   * picture. `--media-hairline` is the edge of a control sitting on it.
+   */
+  --media-stage: #060607;
+  --media-hairline: rgba(255, 255, 255, 0.18);
+
   /* Text sitting on the accent fill, dimmed — the timestamp inside an outbound SMS bubble. */
   --text-on-fill-dim: rgba(255, 255, 255, 0.66);
 

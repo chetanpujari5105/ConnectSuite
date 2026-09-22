@@ -176,5 +176,54 @@ squeezed the file name to zero width; *"Stopped — nothing was sent"* after 29.
   ×3, `sidekick-pass-sample-6mb*.bin` ×2, `sidekick-pass-stop-200mb*.bin` ×2, `sidekick-pass-60mb*.bin` ×2 —
   about 540 MB. Deleting them is yours to do; this pass does not delete files on the phone.
 
-**Commit:** *(filled below when committed)*
+**Commit:** `d18ef15`
+
+## C · Photos preview quality and video — **implemented, real-device tested (on samples)**
+
+**Decision:** Mac only, no protocol change. The largest thumbnail the protocol allows (512) at once,
+the real original on the bulk channel for viewing, a native player for video.
+
+**Root cause (recorded before changing anything):** the detail preview was the grid's 256 px
+thumbnail drawn at `object-fit: cover` into a 4:3 well — upscaled, and portraits cropped. The CSP
+allowed no bytes from disk, so an original or a video could never have been shown. And the
+thumbnail cache was keyed by id alone, so a naive "ask for 512" would have returned the cached 256.
+Full table: `docs/testing.md` → Feature C.
+
+**What changed:**
+
+| | |
+|---|---|
+| stage | a dark `--media-stage` (theme-fixed, like `--media-scrim`), frame shaped to the photo's own aspect, `object-fit: contain`, capped at 360 px tall. Grid tiles keep `cover` |
+| preview | `media.thumb maxEdge: 512` in its **own** cache; captioned *Preview · 512 px, the phone's thumbnail* |
+| original | images ≤ 40 MB fetched after a 350 ms dwell, decoded off-stage, swapped in only on success; caption *Original · W × H* from the **decoded** size. Larger images: *Load full size · N MB* |
+| video | **Play** fetches the original (with the phone's byte count while it loads), then a native `<video controls>` — play/pause, seek, time, fullscreen. No autoplay. `canPlayType` refusal is said before a byte moves; a codec refused after arrival (`error`) is said too |
+| states | loading, undecodable (e.g. HEIC here), unsupported video, failed with **Try again**, *no preview on the phone*, *phone not offering originals* |
+| metadata | Name (from `media.original`'s ack — not in `media.list`, so shown only once known), kind, taken, size, pixel size (decoded wins over listing), length, type, saved by |
+| Save / Reveal | Save to Mac unchanged (receive folder); **Reveal in Finder** after a save, refused for any path outside the receive folder |
+| privacy | originals for viewing go to a 0700 temp cache, never the receive folder; emptied at start, on disconnect and at quit; at most 12; no names logged |
+
+**Changed files:** `desktop/src/main/{mediaPreview,photos,main}.ts`, `desktop/src/shared/byteRange.ts`
+(+test), `desktop/src/preload.ts`, `desktop/src/renderer/{photos,renderer}.ts`, `index.html` (CSP),
+`styles.css`, `tokens.css`, `photos.test.ts`; `scripts/check-color-tokens.mjs`,
+`scripts/check-contrast.mjs`; probes `scripts/sidekick-photos-{probe,shots}.mjs`.
+
+**Test evidence:** live on the SM-S938B over two generated samples — the portrait original at
+3000 × 4000 via `sidekick-media:`, the video's metadata, controls, no autoplay, and a seek to 7 s with
+frame data. One transient (the 512 stage before a small original decodes) was not caught and is not
+claimed. Reveal's refusal proven with a positive control.
+
+**Screenshots:** `c-photo-original.png`, `c-video-before-play.png`, `c-video-player.png` — samples
+only, cropped to the detail column; the grid (the owner's library) is never in frame.
+
+**Remaining limitations:**
+
+- No universal codec support is claimed. HEVC video and HEIC stills depend on this Mac's decoders;
+  both are detected and said, with Save to Mac as the route.
+- A 2 GB video is fetched in full before it plays — the bulk channel has no streaming mode. The
+  pane shows the phone's byte count while it loads.
+- The 512 preview is the protocol's ceiling for a thumbnail; anything sharper is the original.
+- Test files: two samples were added to the phone's Received files (`sidekick-pass-portrait-…jpg`,
+  `sidekick-pass-video-720p.mp4`), and one saved to `~/Downloads/Sidekick`.
+
+**Commit:** *(next)*
 

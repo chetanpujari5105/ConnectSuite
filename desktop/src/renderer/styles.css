@@ -3171,18 +3171,65 @@ img#qr {
   box-shadow: 0 1px 0 var(--inner-highlight) inset, var(--shadow-panel);
 }
 
-/* The design's 4:3 preview well. `object-fit: cover` on a thumbnail whose real aspect is unknown —
-   a portrait photo in a landscape frame is cropped, not letterboxed, which is what every photo app
-   does and what the design draws. */
-.photos-detail-frame {
+/*
+ * The media stage (Feature C, 2026-09-23). It replaced a 4:3 well that drew the grid's 256 px
+ * thumbnail at `object-fit: cover` — upscaled, and a portrait photo cropped to a landscape strip.
+ *
+ * - **`contain`, on a ground that does not invert.** `--media-stage` is dark in both themes for the
+ *   `--media-scrim` reason: the subject is an arbitrary user photo, and letterbox bars in a light
+ *   grey read as part of the picture.
+ * - **The frame takes the photo's shape** (inline `aspect-ratio` from the phone's width/height,
+ *   then the decoded video's), capped in height so a tall portrait does not push the facts off the
+ *   card. Without a reported shape it falls back to 4:3.
+ */
+.photos-stage { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.photos-stage-frame {
+  position: relative;
   aspect-ratio: 4 / 3;
+  max-height: 360px;
+  width: 100%;
   border-radius: var(--radius-tile);
   overflow: hidden;
-  background: var(--control);
+  background: var(--media-stage);
   border: 1px solid var(--hairline);
   display: grid;
   place-items: center;
 }
+
+.photos-stage-media {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  display: block;
+  background: var(--media-stage);
+}
+.photos-stage-media[hidden] { display: none; }
+
+/* Play / Load full size / Try again. Centred over the preview, on the scrim that does not invert. */
+.photos-stage-action {
+  grid-area: 1 / 1;
+  z-index: 1;
+  background: var(--media-scrim);
+  border-color: var(--media-hairline);
+  color: var(--text-on-media);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.photos-stage-action[hidden] { display: none; }
+
+.photos-stage-caption {
+  font: var(--text-meta-size);
+  line-height: 1.5;
+  color: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+.photos-stage-caption[data-tone='warning'] { color: var(--warning); }
+.photos-stage-caption[data-tone='danger'] { color: var(--destructive); }
+
+.photos-detail-reveal { margin-top: var(--space-3); }
 
 /* The design's label/value grid: `auto 1fr`, 4px row gap, 12px column gap, 11.5px. */
 .photos-detail-facts {
@@ -3212,14 +3259,6 @@ img#qr {
   color: var(--text-body);
 }
 
-/* Inside `.photos-detail-frame`, so it fills the 4:3 well the design draws rather than sizing
-   itself. `contain` would letterbox a portrait photo into grey bars; the design's well is filled. */
-.photos-detail-preview {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
 
 .photos-detail-title {
   font: var(--text-card-title);
