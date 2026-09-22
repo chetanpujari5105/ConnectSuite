@@ -22280,3 +22280,91 @@ discovery protocol**; the Mac matches on it), `O=ConnectSuite` in the certificat
 - Waiting, Connected, Expired and Refused are **harness** captures — the emulator cannot pair with a
   Mac (it dials the phone, and `10.0.2.15` is unreachable from the host without forwarding; pairing
   also needs a QR through a camera that does not exist). Entry, QR scan and No-network are real.
+
+---
+
+## Android UI pass — Slice 3: Transfers and Folders (2026-09-22)
+
+References `11` and `12`. Evidence: `docs/evidence/phase-7-android-slice-3/`.
+Folders is the drill-down from the Transfers header, and Transfers stays lit while it is open —
+measured, not assumed (the pixel probe from Slice 1).
+
+### What the data layer actually offers, checked before anything was drawn
+
+| Reference draws | Real? | What shipped |
+|---|---|---|
+| A **pause button** on every live row | **no** | `TransferStatus.PAUSED` is written by `TransferManager`/`BulkTransfers` when the **connection drops** — the error string is literally `"Connection lost"`. There is no user-initiated pause anywhere in the API. Pausing happens *to* a transfer here. **Cancel** is the one real live action and is what the row carries |
+| **"Failed — retry"** as a control | **no** | `resumePausedTransfers` resumes `PAUSED` work; nothing resumes `FAILED`. A failed row shows its real `errorMessage` instead of a button that would not fire |
+| A **search field** and a header **overflow** | **no** | neither has anything behind it |
+| **"2 min left"** | **yes** | `TransferProgress.etaSeconds`, which was already written to return null when throughput is unknown |
+| Per-type **colour** — blue images, red PDFs, purple video, orange archives | **no** | the category-hue system the brief rules out. The *glyph* still varies by type; the colour does not |
+| **Downloads** as an addable folder | **no, and it must never be** | Android refuses `Download` to every app — the picker lists it and **disables** confirm. The reference offers it as a row *and* carries a card at the bottom explaining the wall: a row contradicting its own footnote |
+| Per-folder **file counts and sizes** | **no** | counting a SAF tree means enumerating it, and `fs.list` over one 16,377-entry directory took **490 s** before the snapshot fix. Per folder, on every open |
+| Documents / Pictures / Videos as a fixed **catalogue** | **no** | the model is *grants the user made* (`FolderRow`), not a folder directory |
+
+**The quick picks are two by decision, not by breakage.** `FolderQuickPicks.ALL` offered four;
+Documents and Pictures were removed on an explicit product call. Both were safe targets that
+`EXTRA_INITIAL_URI` was measured honouring on this handset, and the comment in that file says so —
+restoring them is putting two lines back.
+
+### The defect found by writing the feed
+
+`TransfersViewModel` puts `RUNNING` **and** `PENDING` in `active`, and drops from `history` only
+rows that are `RUNNING` *and* in the progress map. A **`PENDING` transfer satisfies neither
+exclusion and was rendered twice.** Nothing noticed, because two identical file names one above the
+other read as two files rather than as a bug. `TransferFeed` de-duplicates, live row wins.
+
+Two more decisions live in `TransferFeed` rather than in the composable, so a test can reach them:
+a progress bar is drawn **only where one still means something** (live and paused; not completed,
+failed or cancelled — those are over, and a bar invites watching), and the chip counts are computed
+over **the same merged list the rows come from**, so a chip cannot claim a total its list does not
+contain.
+
+### What was measured
+
+| # | Reading | Control | Result |
+|---|---|---|---|
+| 1 | Transfers tab → the real, empty Transfers | pixel probe: 4 tabs muted, Transfers at `(198,255,51)` | PASS |
+| 2 | "Manage folders" → Folders, **Transfers stays lit** | same probe, same run | PASS |
+| 3 | "Add folder" → the real SAF picker | resumed `com.google.android.documentsui/…picker.PickActivity` | PASS |
+| 4 | A quick pick → the same picker, aimed | resumed `PickActivity`; degraded to the parent, which showed **"Can't use this folder"** live | PASS |
+| 5 | Camera hidden from the picks once granted | harness state with Camera granted: only Screenshots offered | PASS |
+| 6 | Phone suites | `--rerun-tasks`, artifacts 0-7 s old, exit 0 | **497 tests, 0 failures** |
+
+**Reading 4 is worth more than a pass.** The aimed pick degraded to internal storage because the
+emulator has no `DCIM/Camera`, and DocumentsUI then displayed *"Can't use this folder"* — the exact
+refusal string recorded in `docs/evidence/saf-probe-2026-08-31/`. The wall this screen's copy is
+built around was observed live, in passing, on this run.
+
+### Red-first, four mutations, each against a 0-1 s old results directory
+
+| Mutation | Result |
+|---|---|
+| no de-duplication (the `PENDING` row drawn twice, verbatim) | **2 red** |
+| history sorted oldest-first (the Overview defect's shape) | **2 red** |
+| chip counts computed over the un-deduplicated inputs | **1 red** |
+| finished rows carry a progress bar again | **1 red** |
+
+### Two defects the device found that review did not
+
+1. **"0 sec left".** `etaSeconds` is an integer division, so a transfer with under a second of data
+   remaining computes to **0** — and *"4.2 MB · Sending to Mac · 0 sec left"* sat on screen beside a
+   bar at 68%. The formatter was fine; the caller had to suppress zero. There is now a test for the
+   boundary, written after the screenshot rather than before it.
+2. **Two controls labelled "Add folder" on one screen** — the empty state's action and the
+   persistent row. Found because `tap_named` **refused to guess** between two matching nodes rather
+   than picking the first. The empty state now explains and the row acts.
+
+The second is the more interesting one: a probe built to obey the discrimination rule reported an
+ambiguity, and the ambiguity was not in the probe.
+
+### Open
+
+- Emulator only. No reading here is a hardware reading.
+- **Populated Transfers and Folders are harness captures** — the emulator has no Mac, so it has no
+  transfers and no granted trees. Empty Transfers, empty Folders, and both picker destinations are
+  real.
+- A paused row's subtitle wraps to two lines. It is the one row carrying a real error string plus
+  what happens next, and it was left long deliberately.
+- No row opens anything. The reference's per-row `⋮` is absent because there is no second action:
+  no preview, no reveal, no share. When one exists it gets a menu.

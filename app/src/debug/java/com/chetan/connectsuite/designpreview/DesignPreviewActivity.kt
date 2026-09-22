@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -14,6 +15,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.Text
+import androidx.compose.ui.unit.dp
+import com.chetan.connectsuite.core.data.TransferDirection
+import com.chetan.connectsuite.core.data.TransferEntity
+import com.chetan.connectsuite.core.data.TransferStatus
+import com.chetan.connectsuite.core.ui.SidekickType
+import com.chetan.connectsuite.sync.transfer.TransferProgress
+import com.chetan.connectsuite.sync.ui.folders.FolderQuickPicks
+import com.chetan.connectsuite.sync.ui.folders.FolderRow
+import com.chetan.connectsuite.sync.ui.folders.FoldersSection
+import com.chetan.connectsuite.sync.ui.folders.FoldersUiState
+import com.chetan.connectsuite.sync.ui.transfers.TransfersSection
+import com.chetan.connectsuite.sync.ui.transfers.TransfersUiState
 import com.chetan.connectsuite.core.link.ConnectStage
 import com.chetan.connectsuite.core.link.PairRejectReason
 import com.chetan.connectsuite.core.protocol.Link
@@ -77,6 +93,8 @@ class DesignPreviewActivity : ComponentActivity() {
                     SCREEN_CONNECT_REFUSED -> ConnectPreview(ConnectStagePreview.Refused)
                     SCREEN_CONNECT_REJECTED -> ConnectPreview(ConnectStagePreview.Rejected)
                     SCREEN_CONNECT_NO_NETWORK -> ConnectPreview(ConnectStagePreview.NoNetwork)
+                    SCREEN_TRANSFERS -> TransfersPreview()
+                    SCREEN_FOLDERS -> FoldersPreview()
                     else -> DevicesConnectedPreview()
                 }
             }
@@ -92,6 +110,8 @@ class DesignPreviewActivity : ComponentActivity() {
         const val SCREEN_CONNECT_REFUSED = "connect_refused"
         const val SCREEN_CONNECT_REJECTED = "connect_rejected"
         const val SCREEN_CONNECT_NO_NETWORK = "connect_no_network"
+        const val SCREEN_TRANSFERS = "transfers"
+        const val SCREEN_FOLDERS = "folders"
     }
 }
 
@@ -256,4 +276,101 @@ private fun PreviewNav(selected: Int = 0) {
         selectedIndex = selected,
         onSelect = {},
     )
+}
+
+
+/**
+ * Transfers with work in it. The emulator has no Mac, so it has no transfers — every row here is
+ * constructed, and the **production** `TransfersSection` renders them.
+ *
+ * The set is chosen to put every status on one screen at once: a running send with a real rate, a
+ * running receive, a paused one carrying `TransferManager`'s own "Connection lost", a failure, a
+ * cancellation and two completions. That is what a screenshot is for — states that never co-occur
+ * naturally still have to look right beside each other.
+ */
+@Composable
+private fun TransfersPreview() {
+    val now = remember { System.currentTimeMillis() }
+    val minute = 60_000L
+
+    fun live(
+        id: String, name: String, dir: TransferDirection, total: Long, done: Long, rate: Long,
+    ) = TransferProgress(
+        transferId = id, jobId = "job-$id", peerDeviceId = "mac-1", fileName = name,
+        direction = dir, totalBytes = total, bytesTransferred = done,
+        status = TransferStatus.RUNNING, bytesPerSecond = rate,
+    )
+
+    fun past(
+        id: String, name: String, dir: TransferDirection, total: Long, done: Long,
+        status: TransferStatus, agoMinutes: Long, error: String? = null,
+    ) = TransferEntity(
+        transferId = id, jobId = "job-$id", peerDeviceId = "mac-1", direction = dir,
+        fileName = name, relativePath = name, mimeType = "application/octet-stream",
+        totalBytes = total, bytesTransferred = done, status = status, checksum = null,
+        localUri = null, startedAtMillis = now - agoMinutes * minute - minute,
+        updatedAtMillis = now - agoMinutes * minute, errorMessage = error,
+    )
+
+    val state = TransfersUiState(
+        active = listOf(
+            live("t1", "IMG_2481.jpg", TransferDirection.OUTGOING, 4_200_000, 2_856_000, 1_400_000),
+            live("t2", "Screen Recording.mov", TransferDirection.OUTGOING, 232_000_000, 201_840_000, 3_100_000),
+        ),
+        history = listOf(
+            past("t3", "Design Assets.zip", TransferDirection.OUTGOING, 486_000_000, 141_000_000,
+                TransferStatus.PAUSED, 3, "Connection lost"),
+            past("t4", "Wallpaper.png", TransferDirection.OUTGOING, 2_400_000, 0,
+                TransferStatus.FAILED, 8, "The Mac closed the connection"),
+            past("t5", "Notes.txt", TransferDirection.INCOMING, 12_000, 12_000, TransferStatus.COMPLETED, 12),
+            past("t6", "Demo.mp4", TransferDirection.INCOMING, 78_000_000, 78_000_000, TransferStatus.COMPLETED, 64),
+            past("t7", "Q3-report.pdf", TransferDirection.OUTGOING, 1_800_000, 400_000, TransferStatus.CANCELLED, 130),
+        ),
+    )
+
+    PreviewShell(title = "Transfers", selected = 1) {
+        TransfersSection(state = state, onCancel = {})
+    }
+}
+
+/** Folders with two grants, one of which has outlived its folder. */
+@Composable
+private fun FoldersPreview() {
+    val state = FoldersUiState.Folders(
+        rows = listOf(
+            FolderRow(rootId = "saf:primary%3ADCIM%2FCamera", label = "DCIM › Camera", writable = true, resolves = true),
+            FolderRow(rootId = "saf:primary%3ASnaps", label = "Snaps", writable = false, resolves = false),
+        ),
+    )
+    PreviewShell(title = "Folders", selected = 1) {
+        FoldersSection(
+            state = state,
+            onAddFolder = {},
+            onRemove = {},
+            quickPicks = FolderQuickPicks.offered(setOf("saf:primary%3ADCIM%2FCamera")),
+            onQuickPick = {},
+        )
+    }
+}
+
+/** The header and bar the Sync host puts around a section, so a preview is framed like the app. */
+@Composable
+private fun PreviewShell(title: String, selected: Int, content: @Composable () -> Unit) {
+    Scaffold(
+        containerColor = SidekickColors.canvas,
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+        bottomBar = { PreviewNav(selected = selected) },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(bottom = padding.calculateBottomPadding())) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                Text(title, style = SidekickType.title, color = SidekickColors.textPrimary)
+            }
+            content()
+        }
+    }
 }

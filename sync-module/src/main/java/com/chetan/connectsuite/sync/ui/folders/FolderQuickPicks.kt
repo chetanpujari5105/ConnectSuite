@@ -81,8 +81,11 @@ object FolderQuickPicks {
     val ALL: List<Pick> = listOf(
         Pick("Camera", "primary:DCIM/Camera"),
         Pick("Screenshots", "primary:DCIM/Screenshots"),
-        Pick("Documents", "primary:Documents"),
-        Pick("Pictures", "primary:Pictures"),
+        // Documents ("primary:Documents") and Pictures ("primary:Pictures") were here and were
+        // removed by an explicit product decision on 2026-09-22, **not because they stopped
+        // working**: both are safe targets and `EXTRA_INITIAL_URI` was measured honouring them on
+        // this handset. The Folders screen shows Camera, Screenshots and Add folder. Restoring the
+        // other two is putting those two lines back, and nothing else has to change.
     )
 
     /**
