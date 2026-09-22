@@ -87,7 +87,11 @@ internal fun initialsOf(name: String): String {
     val words = name.trim().split(Regex("[\\s._-]+")).filter { it.isNotBlank() }
     return when {
         words.isEmpty() -> "?"
-        words.size == 1 -> words[0].take(2).uppercase()
+        // **One** letter for one word, not two. Found on the emulator once app names reached this:
+        // "WhatsApp" rendered as "WH" and "Gmail" as "GM", which read as abbreviations rather than
+        // monograms — and an app's monogram is conventionally its initial. Two words still give
+        // two letters, so "Chetans-MacBook-Pro" is still "CM".
+        words.size == 1 -> words[0].take(1).uppercase()
         else -> (words[0].take(1) + words[1].take(1)).uppercase()
     }
 }

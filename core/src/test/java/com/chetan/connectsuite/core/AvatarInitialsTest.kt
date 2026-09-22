@@ -16,8 +16,12 @@ class AvatarInitialsTest {
     }
 
     @Test
-    fun `one word gives its first two letters`() {
-        assertEquals("CH", initialsOf("Chetan"))
+    fun `one word gives one letter`() {
+        assertEquals("C", initialsOf("Chetan"))
+        // The case that changed the rule: app names reach this now, and "WH" is an abbreviation
+        // where "W" is a monogram.
+        assertEquals("W", initialsOf("WhatsApp"))
+        assertEquals("G", initialsOf("Gmail"))
     }
 
     @Test

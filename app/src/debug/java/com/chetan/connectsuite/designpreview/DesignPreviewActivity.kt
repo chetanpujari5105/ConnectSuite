@@ -30,6 +30,11 @@ import com.chetan.connectsuite.sync.ui.folders.FoldersSection
 import com.chetan.connectsuite.sync.ui.folders.FoldersUiState
 import com.chetan.connectsuite.sync.ui.transfers.TransfersSection
 import com.chetan.connectsuite.sync.ui.transfers.TransfersUiState
+import com.chetan.connectsuite.core.data.MirroredNotificationEntity
+import com.chetan.connectsuite.sync.ui.clipboard.ClipboardSection
+import com.chetan.connectsuite.sync.ui.notifications.NotificationsSection
+import com.chetan.connectsuite.sync.ui.notifications.NotificationsUiState
+import com.chetan.connectsuite.sync.v2.ClipFeature
 import com.chetan.connectsuite.core.link.ConnectStage
 import com.chetan.connectsuite.core.link.PairRejectReason
 import com.chetan.connectsuite.core.protocol.Link
@@ -95,6 +100,8 @@ class DesignPreviewActivity : ComponentActivity() {
                     SCREEN_CONNECT_NO_NETWORK -> ConnectPreview(ConnectStagePreview.NoNetwork)
                     SCREEN_TRANSFERS -> TransfersPreview()
                     SCREEN_FOLDERS -> FoldersPreview()
+                    SCREEN_CLIP -> ClipPreview()
+                    SCREEN_FEED -> FeedPreview()
                     else -> DevicesConnectedPreview()
                 }
             }
@@ -112,6 +119,8 @@ class DesignPreviewActivity : ComponentActivity() {
         const val SCREEN_CONNECT_NO_NETWORK = "connect_no_network"
         const val SCREEN_TRANSFERS = "transfers"
         const val SCREEN_FOLDERS = "folders"
+        const val SCREEN_CLIP = "clip"
+        const val SCREEN_FEED = "feed"
     }
 }
 
@@ -372,5 +381,69 @@ private fun PreviewShell(title: String, selected: Int, content: @Composable () -
             }
             content()
         }
+    }
+}
+
+
+/** Clip with one entry each way, the toggle off, and a link up. */
+@Composable
+private fun ClipPreview() {
+    val now = remember { System.currentTimeMillis() }
+    var autoApply by remember { mutableStateOf(false) }
+    PreviewShell(title = "Clip", selected = 2) {
+        ClipboardSection(
+            state = ClipFeature.PhoneState(
+                lastSentPreview = "git rebase -i origin/main",
+                lastSentAtMs = now - 14 * 60_000,
+                lastReceivedPreview = "https://developer.android.com/studio — Android Studio is " +
+                    "the official IDE for Android development, providing the fastest tools for " +
+                    "building apps on every kind of Android device.",
+                lastReceivedAtMs = now - 2 * 60_000,
+                lastReceivedApplied = false,
+                historySize = 7,
+                linkUp = true,
+            ),
+            autoApply = autoApply,
+            onSetAutoApply = { autoApply = it },
+            onApplyFromMac = {},
+        )
+    }
+}
+
+/**
+ * Feed with notifications mirrored from a paired device.
+ *
+ * `iconBase64` is null on every row here, which is deliberate: the harness has no real peer icons
+ * to hand, and inventing PNGs would make the screenshot prettier than the code. The rows therefore
+ * show the [AvatarBadge] fallback — which is the path worth seeing, because it is the one that runs
+ * whenever an app sent no icon.
+ */
+@Composable
+private fun FeedPreview() {
+    val now = remember { System.currentTimeMillis() }
+    val minute = 60_000L
+    fun n(id: String, app: String, title: String, text: String, ago: Long, clearable: Boolean = true) =
+        MirroredNotificationEntity(
+            id = id, peerDeviceId = "peer-1", remoteKey = id,
+            packageName = "com.example.${app.lowercase()}", appName = app,
+            title = title, text = text,
+            postedAtMillis = now - ago * minute, receivedAtMillis = now - ago * minute,
+            isClearable = clearable,
+        )
+    PreviewShell(title = "Feed", selected = 3) {
+        NotificationsSection(
+            state = NotificationsUiState(
+                notifications = listOf(
+                    n("1", "WhatsApp", "Payal", "Hey! Are we still on for dinner tonight?", 2),
+                    n("2", "Gmail", "Udemy", "New sale! You earned $12.99 from your course", 12),
+                    n("3", "Slack", "Team Update", "Standup in 10 minutes. Please be ready.", 28),
+                    n("4", "Phone", "Ongoing call", "Mom · 04:12", 31, clearable = false),
+                    n("5", "LinkedIn", "New connection", "Mangesh Raut sent you a connection request", 124),
+                ),
+                listenerEnabled = true,
+            ),
+            onDismiss = {},
+            onEnableListener = {},
+        )
     }
 }

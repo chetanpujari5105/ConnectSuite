@@ -22368,3 +22368,106 @@ ambiguity, and the ambiguity was not in the probe.
   what happens next, and it was left long deliberately.
 - No row opens anything. The reference's per-row `⋮` is absent because there is no second action:
   no preview, no reveal, no share. When one exists it gets a menu.
+
+---
+
+## Android UI pass — Slice 4: Clip and Feed (2026-09-22)
+
+References `13` and `14`. Evidence: `docs/evidence/phase-7-android-slice-4/`.
+
+### Clip: the reference's main control is the one thing this phone cannot do
+
+Reference 13 shows **"Send what I copy automatically"**, switched on. There is no such setting and
+there cannot be. `ClipboardManager.getPrimaryClip` is refused unless the app is **focused** —
+Slice 11's measurement, 90 of 90 samples refused with the AccessibilityService bound and 60 of 60
+with it disabled, each carrying the platform's own *"application is not in focus nor is it a system
+service"*. `OnPrimaryClipChangedListener` never fires backgrounded. Phone → Mac happens in
+`ClipFeature.onWindowFocused` and nowhere else.
+
+The real setting is `SettingsStore.clipboardAutoApply` and it points the **other way**: whether an
+entry arriving *from* the Mac is written to this clipboard without a tap. So the row reads
+**"Apply what arrives automatically"**. Three sentences in the earlier brief were wrong against the
+code, and re-reading the implementation rather than trusting the thread is what caught it.
+
+**The direction chips have nothing to filter yet, and that is a real gap rather than a design
+choice.** `ClipboardPayloads.History` genuinely holds 20 entries with kind, text, time and source —
+duplicates collapsed, `KIND_SENSITIVE` never stored — and it is **private to `ClipFeature`**. It is
+served to the Mac as `clip.history` and exposed to this screen only as `historySize`. So the screen
+shows the most recent entry **each way**, which *is* exposed, with the held count beneath it.
+Wiring the list is the same shape as the `pair.rejected` change and is **not taken here**.
+
+The footer was checked rather than repeated: `onSessionEnded` calls `history.clear()` and resets
+`PhoneState()`, and no code path writes the deque to Room or to a file. Memory-only, cleared on
+disconnect — accurate.
+
+### Feed: the reference has the direction backwards
+
+Its subtitle is *"Notifications from your phone."* These are not this phone's notifications.
+`MirroredNotificationEntity` is keyed `"<peerDeviceId>:<remoteKey>"` and written by
+`MirroredNotificationRepository.onPosted` from a packet **another paired device sent**. Had that
+gone unchecked, every sentence on the screen would have been wrong in the same direction.
+
+**Reply does not exist on this side, and the check was specific.** Reply is a **Mac → phone** verb:
+`notif.reply` arrives and `NotificationFeature.onReply` fires the originating app's own
+`PendingIntent`. The phone *executes* replies. `MirroredNotificationEntity` carries no reply action,
+no `canReply` and no `RemoteInput` — those live on the outgoing side in `NotificationRelay`. A reply
+box here would have nothing to fire, and the "Can reply" filter would have no column to filter on.
+There is no Sound setting anywhere in `SettingsStore`.
+
+What is real and is drawn: the sender's own icon (`iconBase64`, downscaled before it crossed the
+wire), the app name, title, text, `postedAtMillis`, and **dismiss**, which clears on the other
+device too. `isClearable` is honoured — an ongoing call shows **no** dismiss, visible in the
+harness capture.
+
+### What was measured
+
+| # | Reading | Control | Result |
+|---|---|---|---|
+| 1 | Clip tab → the real Clip | pixel probe: 4 muted, Clip at `(198,255,51)` | PASS |
+| 2 | Feed tab → the real Feed | same probe | PASS |
+| 3 | The auto-apply toggle **persists** | toggled, left to Devices, returned: still `true`; restored to `false` | PASS |
+| 4 | Notification-access card appears when access is off | the revoke was **read back** before the screen was read | PASS |
+| 5 | "Open notification access" → real destination | resumed `com.android.settings/.Settings$NotificationAccessSettingsActivity` | PASS |
+| 6 | Phone suites | `--rerun-tasks`, artifacts 0-5 s old, exit 0 | **497 tests, 0 failures** |
+
+**Reading 3's control is the point.** A switch that flips is not a switch that saves. The round trip
+through another tab is what distinguishes `SettingsStore` from a `remember`.
+
+**Reading 4 is the instrument failing four times in a row, caught by one command.**
+`settings put secure enabled_notification_listeners ""` **silently does nothing** on this build —
+the value read back **unchanged, immediately**. Four separate runs reported "the permission card is
+absent" and every one of them was a reading of a stimulus that never happened. The supported route
+is `cmd notification disallow_listener <component>`, after which the component really is gone from
+the list and the card really does appear.
+
+That is `CLAUDE.md`'s rule about establishing that the thing has been triggered before reading its
+absence — and it took four rounds because the absence was *plausible*. The fix is one line and it
+is now in the run: **read the setting back after writing it, before reading the screen.**
+
+### Two defects found on the device
+
+1. **The auto-apply switch had no accessible label and the row was not the target.** In the UI dump
+   it was a bare `checkable` node with an empty `content-desc`, and tapping the label — which is
+   what a person aims at — did nothing. The row is now `toggleable` with `Role.Switch`, full width
+   (`[42,366][1038,557]`), and the label taps.
+2. **`initialsOf` produced abbreviations, not monograms.** App names reached `AvatarBadge` for the
+   first time and "WhatsApp" rendered as **"WH"**, "Gmail" as "GM". One word now gives one letter;
+   two words still give two, so `Chetans-MacBook-Pro` is still `CM`.
+
+### Unverified, and the stimulus that would settle each
+
+- **The switch's screen-reader label.** Whichever order `semantics` and `toggleable` are declared
+  in, Compose projects them into uiautomator as **two nodes at identical bounds** — one carrying
+  `content-desc`, one carrying `checkable`/`checked`. TalkBack reads the merged tree and would
+  announce both; a UI dump cannot show that. **Stimulus: TalkBack on hardware**, or a Compose UI
+  test asserting `hasContentDescription` — there is no instrumentation source set in this project.
+- **Dismiss was never tapped on real data.** The emulator has no paired Android device, so the real
+  Feed is empty. `repository.dismiss` and its call site are unchanged. **Stimulus: a second paired
+  Android phone.**
+- Emulator only, as with every slice so far.
+
+### Layout fixed after looking at it
+
+The two explanatory cards stacked above the entries were **seven lines of prose before any
+content**. The clipboard wall moved down beside the memory-only footer — neither is an error,
+neither is urgent, and both are things read once. The toggle's sub-line went from four lines to one.
