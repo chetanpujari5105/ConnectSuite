@@ -65,8 +65,35 @@ data class LinkState(
      * dialled at all.
      */
     val lastRefusal: RefusedConnection? = null,
+    /**
+     * The last `hello` turned away for a **pairing-token** reason, for the phone's own screen.
+     *
+     * Distinct from [lastRefusal] and not a substitute for it: a refusal happens *at the TLS
+     * handshake*, when the certificate is not pinned; this happens **after** TLS succeeded, to a
+     * Mac this phone already trusts, because the one-time token was expired, wrong or absent.
+     * `PairTokenVerdict`'s own KDoc says the two are different failures and neither substitutes for
+     * the other, and that stays true of the two fields.
+     *
+     * It existed only as a `pair.rejected` message to the Mac and a log line. The phone showed the
+     * user a plain wait, and at best a locally-derived timeout guess, while the server knew exactly
+     * which of three things had gone wrong and already had the sentence written.
+     */
+    val lastPairReject: PairRejection? = null,
 ) {
     val isConnected: Boolean get() = clients.isNotEmpty()
+
+    /**
+     * The state after a `hello` was turned away over its pairing token.
+     *
+     * Extracted onto the state rather than written inline in `LinkServer`, for the reason defect 67
+     * is in `CLAUDE.md`: `LinkServer` needs a `Context` and an Android Keystore, so **no JVM test
+     * can reach a write that happens inside it**. A suite can then prove the decision perfectly and
+     * be entirely silent about whether the field is ever set — which is how a feature ships having
+     * never once worked. With the transition here, `PairRejectStageTest` calls exactly what the
+     * server calls, and what is left unreached is a single line at the call site.
+     */
+    fun afterPairRejected(reason: PairRejectReason, nowMillis: Long): LinkState =
+        copy(lastPairReject = PairRejection(reason, nowMillis))
 
     /**
      * The state after the accept loops come up.
@@ -77,6 +104,9 @@ data class LinkState(
     fun afterListeningStarted(nowMillis: Long): LinkState = copy(
         running = true,
         lastError = null,
+        // A fresh listen is a fresh wait, so a pairing rejected before it is not an explanation
+        // for this one's silence — the same reasoning `lastRefusal` is cleared under.
+        lastPairReject = null,
         waitingSinceMillis = nowMillis,
         lastRefusal = null,
     )
@@ -335,14 +365,27 @@ class LinkServer(
         if (System.currentTimeMillis() > armed.expiresAt) {
             armedPairing = null
             clearPairIntent()
-            return PairTokenVerdict.Rejected(PairRejectReason.TOKEN_EXPIRED)
+            return rejectPair(PairRejectReason.TOKEN_EXPIRED)
         }
-        if (pairToken == null) return PairTokenVerdict.Rejected(PairRejectReason.TOKEN_MISSING)
-        if (pairToken != armed.token) return PairTokenVerdict.Rejected(PairRejectReason.TOKEN_MISMATCH)
+        if (pairToken == null) return rejectPair(PairRejectReason.TOKEN_MISSING)
+        if (pairToken != armed.token) return rejectPair(PairRejectReason.TOKEN_MISMATCH)
         armedPairing = null
         clearPairIntent()
         pairAccepted.incrementAndGet()
         return PairTokenVerdict.Accepted
+    }
+
+    /**
+     * Publish the rejection and return it. **One writer**, deliberately.
+     *
+     * The three branches above could each have carried their own `_state.update`; that is three
+     * writers on one field, which is the shape `CLAUDE.md` records against the status island. Here
+     * the decision stays in `acceptPairToken` and the *write* happens once, so a fourth reason
+     * added later cannot forget to publish itself.
+     */
+    private fun rejectPair(reason: PairRejectReason): PairTokenVerdict {
+        _state.update { it.afterPairRejected(reason, System.currentTimeMillis()) }
+        return PairTokenVerdict.Rejected(reason)
     }
 
     // ---- lifecycle ----------------------------------------------------------------------

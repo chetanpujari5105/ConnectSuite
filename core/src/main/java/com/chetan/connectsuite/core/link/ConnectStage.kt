@@ -64,8 +64,24 @@ sealed interface ConnectStage {
         }
     }
 
-    /** The token's five minutes ran out with no Mac. Amber: nothing broke, a deadline passed. */
+    /**
+     * The token's five minutes ran out **by this screen's own clock**, with no Mac.
+     *
+     * Derived locally, and therefore a *guess about silence*: nothing arrived, and the deadline
+     * passed. It is the weaker of the two expiry statements and [Rejected] outranks it.
+     */
     data class Expired(val macName: String) : ConnectStage
+
+    /**
+     * The server turned a Mac away over its pairing token, and said which of three reasons.
+     *
+     * This is the **authoritative** failure: a Mac got through TLS, presented a token, and
+     * `acceptPairToken` refused it. It outranks [Expired] because the two can both apply at once —
+     * a Mac arriving one second late produces a real `TOKEN_EXPIRED` *and* satisfies the local
+     * clock — and only one of them knows whether anything actually turned up. "Your Mac connected
+     * too late" and "nothing ever came" are different things to tell somebody.
+     */
+    data class Rejected(val reason: PairRejectReason, val macName: String) : ConnectStage
 
     /** A session exists. */
     data class Connected(val macName: String) : ConnectStage
@@ -114,6 +130,17 @@ sealed interface ConnectStage {
                 refusal.atMillis >= (scanned?.scannedAtMillis ?: Long.MIN_VALUE)
             ) {
                 return Refused(wait.fingerprintPrefix, wait.address)
+            }
+
+            // The server's reason beats the local clock's guess whenever both could apply.
+            //
+            // Tied to the scan rather than to a time window: a rejection from before this scan is
+            // about a previous attempt, and a new scan is exactly the act that makes the old one
+            // irrelevant. `Entry` deliberately shows nothing — a rejection with nothing scanned has
+            // no attempt to be about.
+            val reject = state.lastPairReject
+            if (scanned != null && reject != null && reject.atMillis >= scanned.scannedAtMillis) {
+                return Rejected(reject.reason, scanned.macName)
             }
 
             if (scanned != null) {

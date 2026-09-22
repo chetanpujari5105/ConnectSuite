@@ -152,3 +152,12 @@ data class RefusedConnection(
     val atMillis: Long,
 )
 
+
+/**
+ * A `hello` turned away because of its pairing token, kept so the phone can say which of the three
+ * reasons it was.
+ *
+ * The sentence is not stored: [PairRejectReason.message] already holds it, written once, and a
+ * copy here would be the second expression of one rule that eventually disagrees with the first.
+ */
+data class PairRejection(val reason: PairRejectReason, val atMillis: Long)

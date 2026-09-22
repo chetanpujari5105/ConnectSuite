@@ -50,6 +50,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chetan.connectsuite.core.link.ConnectStage
+import com.chetan.connectsuite.core.link.PairRejectReason
 import com.chetan.connectsuite.core.ui.Radius
 import com.chetan.connectsuite.core.ui.SidekickColors
 import com.chetan.connectsuite.core.ui.SidekickType
@@ -125,6 +126,7 @@ fun ConnectMacScreen(
             is ConnectStage.Waiting -> WaitingStage(stage, nowMillis, onCancel)
             is ConnectStage.Connected -> ConnectedStage(stage, onOpenDevices)
             is ConnectStage.Expired -> ExpiredStage(stage, onRetry, onCancel)
+            is ConnectStage.Rejected -> RejectedStage(stage, onRetry, onCancel)
             is ConnectStage.Refused -> RefusedStage(stage, onRetry, onCancel)
             is ConnectStage.NoNetwork -> NoNetworkStage(onOpenWifiSettings)
         }
@@ -418,6 +420,29 @@ private fun ExpiredStage(stage: ConnectStage.Expired, onRetry: () -> Unit, onCan
             "Mac and scan it again.",
         hintTitle = "The code is good for five minutes.",
         hintBody = "It expires on purpose, so a screenshot of an old one cannot be used later.",
+        onRetry = onRetry,
+        onCancel = onCancel,
+        retryLabel = "Scan again",
+    )
+}
+
+/**
+ * The server said why. [PairRejectReason.message] is that sentence, written once in `core/` and
+ * rendered here — not paraphrased, because the Mac shows its own copy keyed on the same reason and
+ * two machines describing one event differently is worse than either wording.
+ */
+@Composable
+private fun RejectedStage(stage: ConnectStage.Rejected, onRetry: () -> Unit, onCancel: () -> Unit) {
+    FailureStage(
+        headline = when (stage.reason) {
+            PairRejectReason.TOKEN_EXPIRED -> "Pairing code expired"
+            PairRejectReason.TOKEN_MISMATCH -> "That was a different code"
+            PairRejectReason.TOKEN_MISSING -> "The Mac sent no code"
+        },
+        body = stage.reason.message,
+        hintTitle = "${stage.macName} did reach this phone.",
+        hintBody = "The connection worked and the code did not, so this is not a network problem " +
+            "— a fresh code on the Mac is all it needs.",
         onRetry = onRetry,
         onCancel = onCancel,
         retryLabel = "Scan again",

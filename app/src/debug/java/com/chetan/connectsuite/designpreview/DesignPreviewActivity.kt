@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.chetan.connectsuite.core.link.ConnectStage
+import com.chetan.connectsuite.core.link.PairRejectReason
 import com.chetan.connectsuite.core.protocol.Link
 import com.chetan.connectsuite.link.ConnectMacScreen
 import com.chetan.connectsuite.core.model.Device
@@ -74,6 +75,7 @@ class DesignPreviewActivity : ComponentActivity() {
                     SCREEN_CONNECT_CONNECTED -> ConnectPreview(ConnectStagePreview.Connected)
                     SCREEN_CONNECT_EXPIRED -> ConnectPreview(ConnectStagePreview.Expired)
                     SCREEN_CONNECT_REFUSED -> ConnectPreview(ConnectStagePreview.Refused)
+                    SCREEN_CONNECT_REJECTED -> ConnectPreview(ConnectStagePreview.Rejected)
                     SCREEN_CONNECT_NO_NETWORK -> ConnectPreview(ConnectStagePreview.NoNetwork)
                     else -> DevicesConnectedPreview()
                 }
@@ -88,6 +90,7 @@ class DesignPreviewActivity : ComponentActivity() {
         const val SCREEN_CONNECT_CONNECTED = "connect_connected"
         const val SCREEN_CONNECT_EXPIRED = "connect_expired"
         const val SCREEN_CONNECT_REFUSED = "connect_refused"
+        const val SCREEN_CONNECT_REJECTED = "connect_rejected"
         const val SCREEN_CONNECT_NO_NETWORK = "connect_no_network"
     }
 }
@@ -180,7 +183,7 @@ private fun DevicesConnectedPreview() {
 }
 
 
-private enum class ConnectStagePreview { Waiting, Connected, Expired, Refused, NoNetwork }
+private enum class ConnectStagePreview { Waiting, Connected, Expired, Refused, Rejected, NoNetwork }
 
 /**
  * The Connect-a-Mac stages that the emulator cannot produce.
@@ -207,6 +210,7 @@ private fun ConnectPreview(which: ConnectStagePreview) {
         ConnectStagePreview.Connected -> ConnectStage.Connected(mac)
         ConnectStagePreview.Expired -> ConnectStage.Expired(mac)
         ConnectStagePreview.Refused -> ConnectStage.Refused("a91f4c2e8b07d5", "10.36.14.77")
+        ConnectStagePreview.Rejected -> ConnectStage.Rejected(PairRejectReason.TOKEN_MISMATCH, mac)
         ConnectStagePreview.NoNetwork -> ConnectStage.NoNetwork
     }
 
