@@ -145,10 +145,19 @@ object SetupPlan {
         status == Status.On -> null
         item.mechanism == Mechanism.ReportOnly -> null
         status == Status.NeedsSettings -> "Open Settings"
+        // The battery exemption is asked by a system dialog on this screen, not a Settings page —
+        // measured on the emulator: "Let app always run in background? Deny / Allow".
+        item.id == BATTERY -> "Allow"
         item.mechanism == Mechanism.SpecialAccess -> "Open Settings"
         item.mechanism == Mechanism.InApp -> "Choose"
         else -> "Allow"
     }
+
+    /**
+     * What a screen reader hears for a row's button: the button's words and the feature they act on.
+     * The visible labels repeat down the list ("Allow", "Not now"), so the words alone name no row.
+     */
+    fun buttonDescription(item: Item, buttonLabel: String): String = "$buttonLabel: ${item.title}"
 
     /** The header line: a count with its denominator, never a percentage. */
     fun summary(statuses: Map<String, Status>): String {

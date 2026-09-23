@@ -23143,3 +23143,80 @@ this uid. Per the brief, the run stopped there — no re-grant, no `MediaStore`/
 was run once before the probe, through the pin, so the probe's lines stood alone; it discarded the
 device's logcat buffer, not `link.log`.)
 Suites: sync-module 250/250 with the refactor.
+
+## Feature E review — Set up Sidekick (2026-09-23)
+
+E is commit `0d2d038` (not rebuilt): `app/.../setup/SetupPlan.kt` (the list and its words, pure),
+`app/.../setup/SetupScreen.kt` (statuses read from the OS on every resume; runtime groups through
+`RequestMultiplePermissions`; special access by deep link), `AppNavigation.kt` (`ROUTE_SETUP` after
+onboarding, and from Sync settings), `SyncSettingsScreen.kt` (the entry row), `InputOnboardingCard.kt`
+(two functions made public), `OnboardingCopy.kt` (the promise it replaced), `SetupPlanTest.kt`.
+`SetupScreen.kt` was touched once since, by the motion commit `accb386` (the badge crossfade).
+
+**Environment:** the `Pixel_10` AVD (`emulator-5554`, SDK 37, pinned as `emu`), app data cleared there.
+**The paired SM-S938B was not touched for E** — no install, no clear, no permission change.
+
+### Walkthrough (emulator, clean data), each reading from the UI and from `dumpsys package` / secure settings
+
+| Step | Row | OS |
+|---|---|---|
+| baseline | — | every runtime permission `granted=false`; listener 0, accessibility 0, battery whitelist 0 |
+| onboarding, notifications skipped, *I'll do this later* | checklist follows; `0 of 9 turned on` | nothing granted |
+| Notifications → Allow → Allow | **On**, `1 of 9` | only `POST_NOTIFICATIONS`, `USER_SET` |
+| Texts → Allow → Don't allow | **Off** | not granted |
+| Texts → Allow → Don't allow (second) | **Turned off in Settings** | `USER_FIXED` on all three SMS permissions |
+| Texts → Open Settings → Back, no change | still *Turned off in Settings* | unchanged |
+| Texts → Open Settings → Permissions → SMS → Allow → back | **On**, `2 of 9` | three SMS permissions `granted=true` |
+| Notification access → Open Settings → Back | **Off** | listener 0 — opening Settings claims nothing |
+| Notification access → Sidekick → Allow → back | **On** | listener 1 |
+| Control → Open Settings → Back | **Off** | accessibility 0 |
+| Control → Sidekick Input → Allow → back | **On** | accessibility 1 |
+| Calls → Not now | **Not now**, no dialog | four call permissions untouched (no `USER_SET`) |
+| Photos → Allow → *Allow limited access*, one photo | **On** | IMAGES/VIDEO `granted=true` **`REVOKED_COMPAT\|ONE_TIME`**; `VISUAL_USER_SELECTED` true — **defect 139** |
+| Contacts → Allow → Allow | **On** | `READ_CONTACTS` `USER_SET` |
+| Battery → *Open Settings* | a system **dialog**, not Settings — **defect 143** | — |
+| Battery → Deny | **Off** | whitelist 0 |
+| Folders → Choose → Back | back on the checklist | — |
+| Done (first run, unpaired) | Sync tab | — |
+| Sync settings → Set up Sidekick → Done | back to Sync settings | — |
+| process ended, cold launch | no onboarding, no checklist; rows re-read: Texts, Contacts, notification access On; Calls *Not now* (persisted); Photos **Turned off in Settings** (139) | compatibility grants gone, `VISUAL_USER_SELECTED` still true |
+| reaching the checklist again | only via Transfers → Manage folders → gear → Set up Sidekick — **defect 140** | — |
+
+Touch targets: every checklist button measured **126 px tall at 420 dpi = 48 dp** (widths 173-996 px).
+Theme: Sidekick tokens throughout; lime only for a row the OS reports on, amber only for *Turned off in
+Settings*. Headings: no Sidekick screen marks headings, so this is app-wide rather than E's.
+
+Pairing/trust: E touches no trust code (`SetupScreen` imports none, and nothing in it clears data). On the
+emulator nothing was paired, so this is a **static** reading; the paired-phone check is below.
+
+**An instrument fault of mine, recorded because it cost something:** a cold relaunch was run with
+`am start -S`, which **force-stops** the app first. The force-stop hook did not catch it (defect 144), and
+on the emulator it cleared the accessibility grant (1 → 0) — the cost the hook exists to prevent.
+Emulator only.
+
+### Defect 141 — the checklist read the grant list itself
+
+`AppGrantReaderTest`: controls (13 sources seen; the `FsRoots` call seen; the stripper keeps a call and drops
+prose) and the rule. **Red** with `persistedUriPermissions` restored in `SetupScreen` (1 failing test, results
+1 s old, gradle exit 1); green restored.
+
+### Defect 142 — buttons unnamed for a screen reader
+
+`buttonDescription` asserted per item. **Red** with the title dropped (1 failing, 0 s old); green restored.
+
+### Defect 143 — the battery row's word
+
+**Red** with the battery rule removed (1 failing, 0 s old); green restored.
+
+**Not seen on screen:** 141-143 are unit-verified only. The rebuilt APK could not be installed on the
+emulator — `Requested internal only, but not enough space` (381 MB free on a 6 GB `/data`, under Android's
+low-storage reserve) — and the Mac has **384 MB** free, so no second AVD could be made. The old debug app
+was uninstalled from the emulator to make room and it was not enough; **the emulator currently has no
+ConnectSuite installed.** Nothing else on it was touched.
+
+**Paired SM-S938B after the E review (read-only):** grants unchanged (`persistedCreate` 1788259600815 /
+1788211970787 / 1788259570873), `lastUpdateTime` still 10:05:53, link 3 OK with 1 session. The first
+`scripts/link-up.sh` read said *"cannot read … uid (device offline, or not debuggable)"*: it calls bare
+`adb`, and with the emulator attached that is *more than one device*. With `ANDROID_SERIAL` set to the
+pinned serial for that one read it passed. A two-device bus makes the script report a healthy phone as
+offline.

@@ -38,6 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -57,13 +59,15 @@ import com.chetan.connectsuite.input.ui.accessibilitySettings
 import com.chetan.connectsuite.input.ui.isInputServiceEnabled
 import com.chetan.connectsuite.setup.SetupPlan.Mechanism
 import com.chetan.connectsuite.setup.SetupPlan.Status
+import com.chetan.connectsuite.sync.v2.FsRoots
 import com.chetan.connectsuite.sync.v2.MediaFeature
 
 /**
  * **Set up Sidekick** — the checklist `SetupPlan` describes, drawn from what the OS says right now.
  *
  * Every status is **read**, never remembered: runtime grants from `checkSelfPermission`, special
- * access from the secure settings, folders from `persistedUriPermissions`. They are re-read on every
+ * access from the secure settings, folders from `FsRoots.grantedTrees` — the one reader of the
+ * platform's grant list, so this row and the Folders screen count the same thing. They are re-read on every
  * resume, which is the moment someone comes back from Settings — so a switch they looked at and
  * left off reads *Off*.
  *
@@ -92,7 +96,7 @@ fun SetupScreen(onOpenFolders: () -> Unit, onDone: () -> Unit) {
     val statuses = remember(refresh) {
         SetupPlan.items.associate { it.id to statusOf(context, it, prefs) }
     }
-    val folderCount = remember(refresh) { context.contentResolver.persistedUriPermissions.size }
+    val folderCount = remember(refresh) { FsRoots.grantedTrees(context).size }
 
     fun act(item: SetupPlan.Item) {
         val status = statuses[item.id] ?: Status.Off
@@ -235,13 +239,22 @@ private fun SetupRow(
         val action = SetupPlan.actionLabel(item, status)
         if (action != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalAlignment = Alignment.CenterVertically) {
+                // Every row's button says the same few words; the description names the feature, so
+                // a screen reader moving button to button hears which "Allow" it is on.
                 SecondaryButton(
                     text = action,
                     onClick = onAction,
-                    modifier = Modifier.testTag("setup-action-${item.id}"),
+                    modifier = Modifier
+                        .testTag("setup-action-${item.id}")
+                        .semantics { contentDescription = SetupPlan.buttonDescription(item, action) },
                 )
                 if (item.optional && status != Status.NotNow && !on) {
-                    TextButton(onClick = onNotNow, modifier = Modifier.testTag("setup-notnow-${item.id}")) {
+                    TextButton(
+                        onClick = onNotNow,
+                        modifier = Modifier
+                            .testTag("setup-notnow-${item.id}")
+                            .semantics { contentDescription = SetupPlan.buttonDescription(item, SetupPlan.NOT_NOW) },
+                    ) {
                         Text(SetupPlan.NOT_NOW, style = SidekickType.control, color = SidekickColors.textBody)
                     }
                 }
@@ -290,7 +303,7 @@ private fun statusOf(context: Context, item: SetupPlan.Item, prefs: android.cont
         SetupPlan.CONTACTS -> PermissionGroup.CONTACTS.isGranted(context)
         // The feature's own test, so this row and the Mac's `photos` capability cannot disagree.
         SetupPlan.PHOTOS -> MediaFeature.granted(context)
-        SetupPlan.FOLDERS -> context.contentResolver.persistedUriPermissions.isNotEmpty()
+        SetupPlan.FOLDERS -> FsRoots.grantedTrees(context).isNotEmpty()
         SetupPlan.CONTROL -> isInputServiceEnabled(context)
         SetupPlan.BATTERY -> SpecialAccess.isIgnoringBatteryOptimizations(context)
         else -> false

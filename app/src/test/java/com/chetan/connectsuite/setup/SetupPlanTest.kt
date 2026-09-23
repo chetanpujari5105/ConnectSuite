@@ -74,4 +74,26 @@ class SetupPlanTest {
         assertEquals("9 of 9 turned on", SetupPlan.summary(all))
         assertEquals("0 of 9 turned on", SetupPlan.summary(emptyMap()))
     }
+
+    @Test
+    fun `every row's buttons name their own feature for a screen reader`() {
+        SetupPlan.items.forEach { item ->
+            listOf(SetupPlan.actionLabel(item, Status.Off), SetupPlan.NOT_NOW).filterNotNull().forEach { label ->
+                val said = SetupPlan.buttonDescription(item, label)
+                assertTrue("'$said' does not name '${item.title}'", said.contains(item.title))
+                assertTrue("'$said' does not say what the button does", said.contains(label))
+            }
+        }
+    }
+
+    @Test
+    fun `the battery row's button says Allow, because Android answers it with a dialog here`() {
+        val battery = SetupPlan.items.single { it.id == SetupPlan.BATTERY }
+        assertEquals("Allow", SetupPlan.actionLabel(battery, Status.Off))
+        // Once refused for good, Settings is the only route left, and the label says so.
+        assertEquals("Open Settings", SetupPlan.actionLabel(battery, Status.NeedsSettings))
+        // The other special-access rows really do open Settings.
+        val control = SetupPlan.items.single { it.id == SetupPlan.CONTROL }
+        assertEquals("Open Settings", SetupPlan.actionLabel(control, Status.Off))
+    }
 }
