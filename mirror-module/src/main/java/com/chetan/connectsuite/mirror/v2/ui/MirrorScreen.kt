@@ -1,5 +1,8 @@
 package com.chetan.connectsuite.mirror.v2.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.mutableStateOf
 import com.chetan.connectsuite.core.ui.components.SecondaryButton
 import androidx.compose.ui.platform.testTag
 import kotlinx.coroutines.delay
@@ -91,73 +94,84 @@ fun MirrorScreen(extraCards: @Composable () -> Unit = {}) {
             Text("Mirror", style = SidekickType.display, color = SidekickColors.textPrimary)
         }
 
-        if (status.phase == MirrorPhase.AWAITING_FOREGROUND) {
-            // A Mac asked while Sidekick was in the background. This screen — not Android's
-            // prompt — is the first thing the person sees, so it says who asked and what sharing
-            // means before anything is requested. Android's own prompt follows Continue.
-            MirrorRequestCard(
-                status = status,
-                onContinue = { MirrorEngine.startFromPhone(context) },
-                onDecline = { MirrorEngine.declineFromPhone(context) },
-            )
-            Spacer(Modifier.height(Space.xl))
-            return@Column
-        }
+        // Motion item 4 (RequestCardMotion): the request card arrives and resolves as one swap
+        // with the state card, which always draws the phase the engine reported.
+        val risePx = with(LocalDensity.current) { RequestCardMotion.RISE_DP.dp.roundToPx() }
+        AnimatedContent(
+            targetState = status.phase == MirrorPhase.AWAITING_FOREGROUND,
+            transitionSpec = { with(RequestCardMotion) { transition(risePx) } },
+            label = "mirror-request",
+        ) { awaiting ->
+            Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+                if (awaiting) {
+                    // A Mac asked while Sidekick was in the background. This screen — not Android's
+                    // prompt — is the first thing the person sees, so it says who asked and what
+                    // sharing means before anything is requested. Android's own prompt follows
+                    // Continue.
+                    MirrorRequestCard(
+                        status = status,
+                        onContinue = { MirrorEngine.startFromPhone(context) },
+                        onDecline = { MirrorEngine.declineFromPhone(context) },
+                    )
+                    Spacer(Modifier.height(Space.xl))
+                } else {
+                StateCard(status = status, link = link)
 
-        StateCard(status = status, link = link)
+                extraCards()
 
-        extraCards()
+                Spacer(Modifier.height(Space.xs))
 
-        Spacer(Modifier.height(Space.xs))
+                if (status.phase == MirrorPhase.RUNNING) {
+                    DestructiveButton(
+                        text = "Stop mirroring",
+                        onClick = { MirrorEngine.stopFromPhone(context) },
+                        icon = Icons.Outlined.StopCircle,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    )
+                } else {
+                    PrimaryButton(
+                        text = "Start mirroring",
+                        onClick = { MirrorEngine.startFromPhone(context) },
+                        icon = Icons.Outlined.Cast,
+                        enabled = link.isConnected,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    )
+                }
 
-        if (status.phase == MirrorPhase.RUNNING) {
-            DestructiveButton(
-                text = "Stop mirroring",
-                onClick = { MirrorEngine.stopFromPhone(context) },
-                icon = Icons.Outlined.StopCircle,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-            )
-        } else {
-            PrimaryButton(
-                text = "Start mirroring",
-                onClick = { MirrorEngine.startFromPhone(context) },
-                icon = Icons.Outlined.Cast,
-                enabled = link.isConnected,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-            )
-        }
+                // A disabled button with no explanation is the silent failure this project keeps ruling
+                // out, so the one reason it can be disabled is written next to it.
+                if (!link.isConnected && status.phase != MirrorPhase.RUNNING) {
+                    Text(
+                        "No Mac is connected. Connect one first — mirroring needs somewhere to send the " +
+                            "screen.",
+                        style = SidekickType.caption,
+                        color = SidekickColors.textMeta,
+                    )
+                }
 
-        // A disabled button with no explanation is the silent failure this project keeps ruling
-        // out, so the one reason it can be disabled is written next to it.
-        if (!link.isConnected && status.phase != MirrorPhase.RUNNING) {
-            Text(
-                "No Mac is connected. Connect one first — mirroring needs somewhere to send the " +
-                    "screen.",
-                style = SidekickType.caption,
-                color = SidekickColors.textMeta,
-            )
-        }
+                Spacer(Modifier.height(Space.sm))
 
-        Spacer(Modifier.height(Space.sm))
+                SidekickCard(padding = Space.md, container = SidekickColors.canvas) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Space.md),
+                    ) {
+                        IconBadge(Icons.Outlined.Info, tint = SidekickColors.textMeta)
+                        Text(
+                            "Android asks for screen capture permission every time a session starts. " +
+                                "That is enforced by the system and cannot be remembered, so this prompt " +
+                                "is not a bug.",
+                            style = SidekickType.caption,
+                            color = SidekickColors.textMeta,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
 
-        SidekickCard(padding = Space.md, container = SidekickColors.canvas) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Space.md),
-            ) {
-                IconBadge(Icons.Outlined.Info, tint = SidekickColors.textMeta)
-                Text(
-                    "Android asks for screen capture permission every time a session starts. " +
-                        "That is enforced by the system and cannot be remembered, so this prompt " +
-                        "is not a bug.",
-                    style = SidekickType.caption,
-                    color = SidekickColors.textMeta,
-                    modifier = Modifier.weight(1f),
-                )
+                Spacer(Modifier.height(Space.xl))
+                }
             }
         }
-
-        Spacer(Modifier.height(Space.xl))
     }
 }
 
@@ -315,15 +329,21 @@ fun MirrorRequestCard(status: MirrorStatus, onContinue: () -> Unit, onDecline: (
         }
     }
     Spacer(Modifier.height(Space.sm))
+    // One answer per request, taken in the tap (OneTap): the engine is called at once, and a second
+    // tap — on either button, in the same frame or during the swap — does nothing.
+    val gate = remember(status.askedAtMillis) { OneTap() }
+    var answered by remember(status.askedAtMillis) { mutableStateOf(false) }
     PrimaryButton(
         text = "Continue",
-        onClick = onContinue,
+        onClick = { if (gate.take()) { answered = true; onContinue() } },
         icon = Icons.Outlined.Cast,
+        enabled = !answered,
         modifier = Modifier.fillMaxWidth().height(56.dp).testTag("mirror-request-continue"),
     )
     SecondaryButton(
         text = "Decline",
-        onClick = onDecline,
+        onClick = { if (gate.take()) { answered = true; onDecline() } },
+        enabled = !answered,
         modifier = Modifier.fillMaxWidth().height(52.dp).testTag("mirror-request-decline"),
     )
 }
