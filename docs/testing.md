@@ -23649,3 +23649,40 @@ with `adb`. `scripts/hooks/no-force-stop.test.sh`, text fixtures only:
 
 No force-stop, `am start -S` or other device command was run to test this. What the fixtures cannot show is
 Claude Code re-reading `.claude/settings.json`: the registration takes effect when the harness loads settings.
+
+## Feature A — URI grant lifetime, emulator (2026-09-23, evening)
+
+The experiment `docs/phase-7-share-proposal.md` §4 required before any Feature A code. Instrument:
+commit `a79efa1` — the debug-only `ShareGrantProbeActivity`, with its rules in `ShareGrantRun`
+(12 tests; four rule mutations each turn one red). It reads the shared stream inside the activity
+before `finish()` as the control, then reopens the same URI from the same process at +1 s, +30 s and
++120 s after `onDestroy`, recording whether the foreground `LinkService` was running in the process.
+It logs the authority and the exception **class**, never the URI, a path, a display name or the
+exception message.
+
+**Device: Pixel 10 emulator only.** The results below are the run's results as accepted by the owner;
+raw log lines are not reproduced here.
+
+| Source app | Authority | Control (inside the activity) | +1 s | +30 s | +120 s |
+|---|---|---|---|---|---|
+| Google Photos | `com.google.android.apps.photos.contentprovider` | read succeeded | `SecurityException` | `SecurityException` | `SecurityException` |
+| DocumentsUI | `com.android.externalstorage.documents` | read succeeded | `SecurityException` | `SecurityException` | `SecurityException` |
+
+The foreground `LinkService` was running in the same process. The control succeeding on both rows is
+what makes the six failures a reading about the grant rather than about the file or the instrument.
+
+**Consequence:** rev 1's architecture — finish the Share-receiving activity and read the URI later
+from `LinkService` — is **rejected**. The proposal is revised to rev 2: the activity copies the file
+into private staging (`cacheDir/share-staging/`) before it can finish, computing exact size, SHA-256,
+sanitised name and MIME type, and only the staged copy is ever streamed, after the Mac accepts.
+Nothing of Feature A is implemented.
+
+**Not yet proven:** the same on the SM-S938B (Samsung Gallery, Samsung My Files). It must be repeated
+there before release validation; not run, and not approved yet.
+
+**Left in place on the emulator, untouched:** `/sdcard/Pictures/SidekickShareTest/sidekick-share-test-image.png`,
+`/sdcard/Documents/SidekickShareTest/sidekick-share-test-file.bin`, and `/sdcard/window.xml`. None is
+deleted without asking.
+
+No build, install, device command, protocol change or `docs/protocol.md` change was made for this
+entry.

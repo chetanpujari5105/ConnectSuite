@@ -1,21 +1,32 @@
-# Feature A — Android Sharesheet → Sidekick → Mac (proposal, rev 1)
+# Feature A — Android Sharesheet → Sidekick → Mac (proposal, rev 2)
 
 > **Status: proposal only. Nothing here is implemented, and `docs/protocol.md` is unchanged.**
-> Written 2026-09-23 from the tree at `ea82319`. It supersedes the sketch in
+> Rev 1 was written 2026-09-23 from the tree at `ea82319`. It supersedes the sketch in
 > `docs/sidekick-feature-pass.md` §A, which proposed batching, auto-accept and resume; all three are
 > cut from v1 below.
 >
-> **An experiment gates the architecture (§4).** If the foreground `LinkService` cannot open a shared
-> URI after the receiving activity finishes, work stops and the readings are reported before any
-> design choice is made. §4 is the first thing to run, before any code.
+> **Rev 2 (2026-09-23, evening) replaces the architecture, because §4's experiment refuted it.** Rev 1
+> let the Share-receiving activity finish and had `LinkService` read the shared `content://` URI later.
+> On the emulator, a read from the same process — with the foreground `LinkService` running in it —
+> failed with `SecurityException` at +1 s, +30 s and +120 s after the activity was destroyed, for both
+> source apps tested, while the control read inside the activity succeeded. **That design is
+> rejected.** In rev 2 the activity copies the file into private staging before it can finish, and only
+> the staged copy is ever sent (§5). The instrument is commit `a79efa1`; the readings are §4 and
+> `docs/testing.md` → *Feature A — URI grant lifetime, emulator*.
+>
+> **The readings are from a Pixel 10 emulator only.** They must be repeated on the SM-S938B before
+> release validation (§4).
+>
+> **Still not authorised by this revision:** implementing Feature A, any build or install, any change
+> to `docs/protocol.md` or protocol code, and anything on the Samsung.
 
 ## 0 · What the code allows today (read from the tree, not recalled)
 
 | Fact | Where | Consequence |
 |---|---|---|
 | **Every transfer is started by the Mac.** The phone serves `fs.transfer.begin` and `media.original` and has no phone → Mac request/response. It sends only events | `ControlSession.kt`, `desktop/src/main/link.ts` (the Mac has no code that acks a phone request) | The phone's opening message must be an **event**. Every answer goes Mac → phone as a **request**, which is the direction that already works |
-| `BulkTransfers.Pending.open` is a supplier `() -> InputStream?` | `sync-module/.../v2/BulkTransfers.kt` | A `content://` stream can use the existing pull path unchanged: the bulk header, the 256 KB chunks, the whole-file digest, `fs.transfer.progress` and `fs.transfer.done` |
-| The Mac's `bulk.pull` needs `expectedBytes` and fails when `received !== expectedBytes` | `desktop/src/main/bulk.ts` | **The size must be known before the offer.** It is the only witness to a truncated stream above the 64 MB pre-hash ceiling |
+| `BulkTransfers.Pending.open` is a supplier `() -> InputStream?` | `sync-module/.../v2/BulkTransfers.kt` | The **staged file** (§5) can use the existing pull path unchanged: the bulk header, the 256 KB chunks, the whole-file digest, `fs.transfer.progress` and `fs.transfer.done`. The supplier opens the private staged copy, **never** the shared `content://` URI (§4) |
+| The Mac's `bulk.pull` needs `expectedBytes` and fails when `received !== expectedBytes` | `desktop/src/main/bulk.ts` | **The size must be known before the offer.** On the Files path it is the only witness to a truncated stream above the 64 MB pre-hash ceiling; for a share it is the staged copy's exact length, and the digest is always present too (§5) |
 | A pull writes to `name.part`, renames only after the length and digest verdicts, writes `name.failed` on a mismatch, and `freeName` picks `name (2).ext` | `bulk.ts`, `files.ts` | Nothing is overwritten and partial files never appear at the final name. **v1 reuses this as it is** |
 | The Mac's `link.on('message')` handles events with a chain of `if` checks on type and **silently ignores** types it does not know | `desktop/src/main/main.ts` | A phone that sent an offer to an old Mac would wait forever. **An offer must never go to a peer that has not advertised support for it** (§2) |
 | Both `hello` parsers read payload fields by key, and the envelope `Json` has `ignoreUnknownKeys = true`. The Mac reads `hello.ack` fields with `?? []` defaults | `ControlSession.kt`, `Messages.kt`, `link.ts` | An **added optional field** is invisible to an old peer. That is the only hello change proposed (§2) |
@@ -34,7 +45,7 @@ Mac on the current session. The Mac **asks**, and nothing moves before Accept.
 | `ACTION_SEND_MULTIPLE`, batches, partial-batch states, batch resume | Each adds states to both UIs. v1 proves the single-file path end to end first |
 | Automatic acceptance (and any setting for it) | Ask by default was decided. With no setting, there is only one consent path to test |
 | macOS notifications | The Mac posts none today. The first one is a separate decision (`docs/phase-7-state.md` §5) |
-| Transfer resume | An interrupted transfer is **retried from byte 0** while the offer is valid. The existing `.part` / `.failed` safety is preserved exactly |
+| Transfer resume | An interrupted transfer is **retried from byte 0**, from the staged copy, while the Retry window is open (§5). The existing `.part` / `.failed` safety is preserved exactly |
 | Re-offering across a reconnect | An offer dies with the session it was sent on (§5) |
 
 **Never, in any version:** a new port, a listener, a cloud service, a relay, a public discovery
@@ -115,10 +126,12 @@ tells the phone the result.
   other root, and it is never listed by `fs.list` with no `rootId`.
 - **`item`** is a single object, not an array. v1 does not represent batches on the wire at all, so
   there is no half-built batch shape for a later version to inherit.
-- **`size`** is required, never null, and ≥ 0 (see §5 for how it is obtained).
-- **`sha256`** is the phone's whole-file digest where it pre-hashed (≤ 64 MB, the existing ceiling,
-  or any file it had to read to measure). Otherwise it is `null`, and `verified` is then `false`,
-  which is the honest answer.
+- **`size`** is required, never null, and ≥ 0. It is the **exact byte count of the staged copy**
+  (§5), not a provider's claim.
+- **`sha256`** is required and never null in rev 2: it is the digest computed while the staged copy
+  was written, so every file is pre-hashed whatever its size. (Rev 1 allowed `null` above a 64 MB
+  pre-hash ceiling; staging removes the reason for it.)
+- **`name`** is the phone's **sanitised** display name (§5). The Mac re-sanitises regardless.
 - **`expiresAtMs`** is when the phone will stop honouring the offer (§5).
 
 **The Mac validates before showing anything.** It checks that `ext` was negotiated, that `offerId`
@@ -169,92 +182,264 @@ until it expires, and the Mac's **Retry** starts a fresh `fs.transfer.begin` fro
 ### `share.cancel` — either side
 
 ```json
-phone → Mac, event    {"offerId":"s-…","reason":"user"|"expired"|"access-lost"}
+phone → Mac, event    {"offerId":"s-…","reason":"user"|"expired"|"staging-lost"}
 Mac → phone, request  {"offerId":"s-…","reason":"user"}
 ack                   {"offerId":"s-…","stopped":true}
 ```
 
 On a cancel from either side, the phone calls the existing `BulkTransfers.cancel` for any live
-`transferId` on the offer's root, and the Mac deletes that offer's `.part`. The offer is then gone,
-and in v1 no resume could use the partial anyway.
+`transferId` on the offer's root, deletes the staged copy (§5), and the Mac deletes that offer's
+`.part`. The offer is then gone, and in v1 no resume could use the partial anyway.
 
-## 4 · Required experiment — URI grant lifetime (run first; no code for it exists yet)
+`staging-lost` replaces rev 1's `access-lost`: the phone no longer holds any access to the source
+that could be lost after the offer. It means the staged copy is missing, the wrong length, or read
+back with a different digest (§5), which is unrecoverable.
 
-**The question:** after the activity that received `ACTION_SEND` finishes, can the foreground
-`LinkService` in the same process still open the shared `content://` URI?
+## 4 · URI grant lifetime — measured on the emulator; the rev 1 design is rejected
+
+**The question:** after the activity that received `ACTION_SEND` is destroyed, can the same process
+still open the shared `content://` URI while the foreground `LinkService` is running in it?
 
 A grant attached to a share intent belongs to the receiving activity, and
 `takePersistableUriPermission` works only for SAF documents. Documentation alone does not say how
-long this grant lasts on this handset, and the repo's rule is to measure it.
+long this grant lasts, and the repo's rule is to measure it.
 
-### Instrument (to be built only after this proposal is approved)
+### Instrument (commit `a79efa1`, debug source set only)
 
-A debug-only `ShareGrantProbeActivity` (the same shape as `ClipProbeActivity`) that receives
-`ACTION_SEND`, and a debug-only hook in `LinkService` that retries the read. It logs **three lines,
-with the URI's authority only, never the full URI or the file name**:
+`ShareGrantProbeActivity` receives one `ACTION_SEND` (`image/png` or `application/octet-stream`) and
+reads the whole stream inside the activity, before `finish()`, as the **control** (bytes and SHA-256).
+From the same process it then reopens the same URI at **+1 s, +30 s and +120 s after `onDestroy`**,
+recording at each reading whether the foreground `LinkService` was running in this process.
+`ShareGrantRun` holds the rules: the control gates every reading, readings are timed from
+destruction, a missing reading is `NO_READING` and never `FAIL`, and PASS requires a foreground
+`LinkService` at every reading. Logged: the URI's authority, the case, the offset and elapsed time,
+`ok`, the exception **class** (never its message, which names the URI), bytes and digest. Never the
+URI, a path or a display name.
 
-1. `R0 control` — `openInputStream(uri)` inside the activity, before `finish()`, reading the whole
-   stream and logging the byte count. **It must succeed and match the known size, or the run holds
-   no reading.**
-2. `R1` — the same read from `LinkService` at +1 s, +30 s and +120 s after the activity's
-   `onDestroy`, each logging `ok bytes=N` or the exception's **class and message**. No
-   `runCatching { }.getOrNull()`.
-3. `R1 settle` — `dumpsys activity activities` confirms the probe activity is **destroyed**, not
-   paused, before each R1 read. Otherwise the reading measures a live activity.
+### Readings — Pixel 10 emulator, 2026-09-23
 
-### Matrix
+| Source app | Authority that answered | Control (in the activity) | +1 s | +30 s | +120 s |
+|---|---|---|---|---|---|
+| Google Photos | `com.google.android.apps.photos.contentprovider` | **read succeeded** | `SecurityException` | `SecurityException` | `SecurityException` |
+| DocumentsUI | `com.android.externalstorage.documents` | **read succeeded** | `SecurityException` | `SecurityException` | `SecurityException` |
 
-| Device | Source app | Stimulus |
-|---|---|---|
-| SM-S938B | Samsung Gallery (`com.sec.android.gallery3d`, a MediaStore URI) | one generated synthetic image |
-| SM-S938B | Samsung My Files (`com.sec.android.app.myfiles`, its own provider) | one generated synthetic file |
-| emulator | Google Photos, or the AOSP gallery if Photos is absent (named in the result) | one generated synthetic image |
-| emulator | Files by Google / DocumentsUI | one generated synthetic file |
+The foreground `LinkService` was running in the same process for the readings. The control
+succeeding is what makes the failures a reading about the grant rather than about the instrument
+or the file.
 
-The package that answers each URI is recorded (`dumpsys package` on the authority), because in this
-repo the provider has turned out not to be the vendor it appears to be (`docs/single-device-audit.md`).
+### Decision
 
-### Decision rule
+The grant does not outlive the receiving activity on either source. **The rev 1 design — finish the
+Share-receiving activity and read later from `LinkService` — is rejected.** Rev 1's decision rule
+said *stop and report, choose no architecture*; the readings were reported, and the replacement in §5
+was chosen by the owner afterwards, not pre-chosen here.
 
-| Result | Next step |
-|---|---|
-| R1 `ok` at every interval, on every row | The architecture in §5 stands: `LinkService` holds the offer, and the share screen may close |
-| R1 fails on **any** row | **Stop. Report the readings. Choose no architecture.** Options such as a self-grant or keeping the screen open are for the next conversation, not pre-chosen here |
+The staging design in §5 does not depend on how long a grant lasts: it reads the URI only while the
+activity is alive, which is the condition under which both controls succeeded. It would be correct
+even on a device where the grant does outlive the activity.
 
-### Preconditions not yet met (deliberately)
+### Still owed: the Samsung repeat, before release validation
 
-- The synthetic media does **not exist yet**. The folder `Pictures/SidekickShareTest/` is **not**
-  created, and no test media is generated, until you approve that step. When it is created, the files
-  are removed afterwards through MediaStore (never `rm`) and the removal is checked by path and by
-  MediaStore row, each with a positive control.
-- No existing personal media is used as a stimulus.
+**This is Pixel 10 emulator evidence only.** The SM-S938B rows have not been run:
+
+| Device | Source app | Stimulus | State |
+|---|---|---|---|
+| SM-S938B | Samsung Gallery (`com.sec.android.gallery3d`, a MediaStore URI) | one generated synthetic image | **not run** |
+| SM-S938B | Samsung My Files (`com.sec.android.app.myfiles`, its own provider) | one generated synthetic file | **not run** |
+
+They are repeated with the same instrument before release validation, recording the package that
+answers each authority (`docs/single-device-audit.md`). The point of the repeat is not to reopen the
+architecture: it is that *"the share grant dies with the activity"* is currently a one-device,
+emulator-only sentence, and that the Samsung providers must pass the **control** — a read inside the
+live activity — because staging depends on exactly that read. No synthetic media is placed on the
+SM-S938B until that step is separately approved.
+
+### The emulator's test files stay where they are
+
+These were created on the emulator for §4 and are **left untouched** by this revision:
+
+- `/sdcard/Pictures/SidekickShareTest/sidekick-share-test-image.png`
+- `/sdcard/Documents/SidekickShareTest/sidekick-share-test-file.bin`
+
+They are not deleted, and neither is `/sdcard/window.xml`, without asking first. When removal is
+approved, media goes through MediaStore (never `rm`) and removal is checked by path and by MediaStore
+row, each with a positive control. No existing personal media was or will be used as a stimulus.
 
 ## 5 · Behaviour
 
 ### The offer's lifecycle (one state machine, on the phone)
 
-`preparing → offered → accepted → sending → saved | failed → (retry → sending) | expired | cancelled | declined`
+`staging → staged → offered → accepted → sending → saved | failed → (retry → sending) | expired | cancelled | declined`
+
+plus `staging-failed` (no space, source unreadable, over the limit, or cancelled during the copy),
+which is terminal and sends nothing to the Mac.
 
 It will be written as a pure transition function (`ShareOffer.after(event, nowMillis)`) that
 `LinkService` calls and a JVM test calls too. This is the defect-67 rule: the test reaches the
-transition, not a hand-built state.
+transition, not a hand-built state. **Every transition into a terminal state carries the instruction
+to delete the staged copy**, so deletion is part of the transition the test reaches rather than a
+side effect somewhere a test cannot see.
+
+### Staging (rev 2 — replaces rev 1's "read the URI later")
+
+1. **`ACTION_SEND`, one file only.** Anything else is refused on the phone (§6).
+2. **The Share-receiving activity owns the granted URI.** Nothing else in the app is ever given it:
+   not `LinkService`, not `savedInstanceState`, not anything that outlives the activity. (The
+   activity-scoped `ViewModel` that carries the copy across a rotation is cleared with the activity.)
+3. **Before the activity can finish, it copies the URI into a private staging file**, in one pass,
+   computing as it goes:
+   - the **exact byte size** — the count of bytes actually written, which becomes the offer's `size`
+   - the **SHA-256** of those bytes, which becomes the offer's `sha256`
+   - the **sanitised display name** (the rules below, applied on the phone too)
+   - the **MIME type** (the rules below)
+
+   The sheet shows *Preparing…* with a byte-count progress bar during the copy. **Send is disabled
+   until the copy has completed and been closed.** Once it has, the activity drops its reference to
+   the URI and may finish at any time; nothing afterwards touches the source.
+4. **Nothing is ever uploaded from a URI after the activity is destroyed.** The pull supplier opens
+   the staged file and nothing else. There is no fallback to the URI.
+5. **Space is checked before the copy** (the preflight formula below). If it fails, the sheet shows
+   *"Not enough space on this phone to prepare <N> — free up <M> and share again."* and **no offer is
+   made**.
+6. **Where the staged copy lives:** `cacheDir/share-staging/`, private app storage. **Never** public
+   `Download`/`Pictures`, never `MediaStore`, never a cloud or backup location. (`cacheDir` is
+   excluded from Auto Backup.)
+7. **The Mac still asks before any byte moves.** Staging is local to the phone; the offer, Accept and
+   Decline are exactly as in §3 and §7.
+8. **`LinkService` streams only the staged file, and only after `share.respond accept`.**
+9. **The staged copy is deleted** on decline, expiry, cancel (either side, any state), completion
+   (`share.saved ok:true`), unrecoverable failure, and the end of the session the offer was made on.
+10. **It is kept only for a visible Retry**, for a bounded time (the Retry window below).
+11. **Not in v1:** transfer resume, batching, auto-accept, macOS notifications, silent overwrite.
+12. **Logging:** never the content URI (not even with the authority, outside the debug probe), never
+    file contents, **never the staging path**. The staged file is named by `offerId`, and lines carry
+    `offerId`, byte counts and outcomes (§8).
+
+#### Layout of the staging directory
+
+```
+cacheDir/share-staging/
+  s-<22 base64url>.part   the copy in progress
+  s-<22 base64url>.bin    the finished copy (renamed from .part after close, length and digest)
+  s-<22 base64url>.json   marker: {"owner":"sidekick-share-staging","v":1,"offerId":"s-…",
+                                   "createdAtMs":…, "size":…, "sha256":"…"}
+```
+
+The marker carries **no file name, no MIME type and no URI**. It exists only so a later sweep can
+prove an entry is Sidekick's staging data before deleting it.
+
+#### Preflight formula
+
+Let:
+
+- `A` = `cacheDir.usableSpace` at the moment of checking — bytes free **without** evicting anything.
+  (`StorageManager.getAllocatableBytes` is deliberately not used: it counts other apps' clearable
+  caches, and staging one share must not empty them.)
+- `S` = the expected size: `OpenableColumns.SIZE`, else `openAssetFileDescriptor(uri,"r").length` if
+  not `UNKNOWN_LENGTH`, else **unknown**.
+- `M(S)` = the safety margin = `max(256 MiB, ⌈S / 10⌉)`.
+
+**Proceed only if `S + M(S) ≤ A`.** When `S` is unknown, proceed only if `A > 256 MiB`, and copy
+under the limit `L` below.
+
+During the copy, `A` is re-read every 8 MiB written. If it falls below **256 MiB**, the copy stops,
+the partial is deleted, and the sheet shows the space error. A provider that delivers **more** bytes
+than `S` is not trusted over the count: the count wins, and the copy is still bounded by `L`.
+
+#### The v1 size limit is derived, not declared
+
+There is no fixed maximum. The largest file that may be staged is the largest `s` satisfying
+`s + M(s) ≤ A`:
+
+```
+L(A) = A − 256 MiB        when A ≤ 2816 MiB   (the margin is its 256 MiB floor)
+L(A) = ⌊A / 1.1⌋          when A > 2816 MiB   (the margin is 10% of the file)
+L(A) = 0, refuse          when A ≤ 256 MiB
+```
+
+(The two branches meet at `A = 2816 MiB`, `L = 2560 MiB`.) `L` is computed at the start of the copy
+and the copy aborts at byte `L + 1`. The sheet states the limit with the real number when it refuses:
+*"This phone has room to prepare files up to <L> right now."* The Mac's own free-space check (below)
+is independent and still applies.
+
+#### Cancellation: copying versus sending
+
+| When | Trigger | What happens | Message to the Mac |
+|---|---|---|---|
+| **Copying** (`staging`) | Cancel, Back, or the activity finishing | The copy coroutine is cancelled, the stream closed, the `.part` deleted. `staging-failed(cancelled)` | **none** — nothing was offered |
+| **Staged, not yet sent** | Cancel on the sheet | Staged copy deleted | **none** |
+| **Waiting for the Mac** (`offered`) | Cancel on the phone | `share.cancel{user}` event, staged copy deleted | `share.cancel` |
+| **Waiting for the Mac** | Mac declines | staged copy deleted | — |
+| **Sending** | Cancel on either side | `BulkTransfers.cancel`, the bulk stream closed, **then** the staged copy deleted; the Mac deletes its `.part` | `share.cancel` |
+| **Failed, Retry visible** | Cancel on either side, or the window closing | staged copy deleted | `share.cancel` from the side that cancelled; `expired` when the window closes |
+
+A configuration change (rotation) must not cancel a copy: the copy's job is held across
+recreation by the activity's `ViewModel`, on the expectation that the same activity record still
+holds the grant. **That the
+grant survives recreation is unmeasured** and is a row in §9's staging matrix; if it fails there, the
+copy is cancelled and the sheet says so rather than finishing silently.
+
+#### Retry window — exact timeout and cleanup trigger
+
+- **Offer expiry:** `expiresAtMs = offeredAt + 10 min`. It applies to `offered` and to `failed`. It
+  does **not** cut a transfer in `sending`; the 30 s stall rule bounds that.
+- **Retry window:** on entering `failed`, `retryUntil = min(failedAt + 5 min, expiresAtMs)`. If
+  `failedAt ≥ expiresAtMs`, the offer goes straight to `expired` and there is no Retry.
+- **Cleanup trigger:** `LinkService`'s coroutine scope schedules one `delay` to `retryUntil` on
+  entering `failed`. When it fires, `ShareOffer.after(RetryWindowClosed)` → `expired`, the phone sends
+  `share.cancel{expired}`, and the staged copy is deleted. A Retry cancels that timer; a Retry that
+  fails starts a new window under the same `min(…, expiresAtMs)`, so no staged copy outlives
+  `expiresAtMs` except while bytes are actively moving.
+- The Mac's Retry button disappears on `share.cancel{expired}`, and a late Retry gets `NOT_FOUND`.
+
+#### Process death and the startup sweep
+
+Offers live in memory only, so **after a process death every staging entry is orphaned by
+definition**. On the next process start (`Application.onCreate`, before `LinkService` accepts a
+session), a sweep of `cacheDir/share-staging/` deletes an entry **only if all of these hold**:
+
+- it is a regular file directly in that directory — not a symlink, and its canonical path is inside
+  the canonical staging directory
+- its name matches `^s-[A-Za-z0-9_-]{22}\.(part|bin|json)$`
+- for `.bin`, a `.json` marker with the same `offerId` exists and carries
+  `"owner":"sidekick-share-staging"`; a `.part` needs no marker (it is always an interrupted copy)
+- for `.json`, it parses and carries that owner
+
+Anything else in the directory is **left alone** and counted. The sweep logs one line:
+`share staging sweep: deleted N (bytes B), left K unrecognised` — counts only, no names or paths. The
+same sweep runs, restricted to entries older than 15 minutes with no live offer, whenever a new share
+begins staging, as a backstop for a crash that the process survived.
+
+v1 allows **one staging entry at a time**: a second share while one is live is refused with *"A file
+is already being sent to <Mac> — wait for it or cancel it."* This is the no-batching rule, not a new
+feature.
+
+#### Integrity of the staged copy
+
+The OS may evict `cacheDir` under storage pressure. So before **each** send attempt the phone checks
+the staged file exists and its length equals `size`, and while streaming it compares the digest of
+the bytes read against the staged `sha256`. A missing file, a wrong length, or a phone-side digest
+mismatch is **unrecoverable**: the phone sends `share.cancel{staging-lost}`, deletes what is left, and
+shows *"The prepared copy was lost on this phone — share the file again."* A **Mac-side** checksum
+mismatch (`share.saved ok:false "checksum"`) is the ordinary retryable failure, because the staged
+copy is still intact.
 
 | Case | Behaviour |
 |---|---|
-| **Filename** | `OpenableColumns.DISPLAY_NAME`, then the URI's last path segment, then `Shared file <yyyy-MM-dd HHmmss>`. If there is no extension, one is added from the MIME type via `MimeTypeMap` |
+| **Filename** | `OpenableColumns.DISPLAY_NAME`, then the URI's last path segment, then `Shared file <yyyy-MM-dd HHmmss>`. If there is no extension, one is added from the MIME type via `MimeTypeMap`. The phone then applies the same sanitiser as the Mac (next row), so the name it shows is the name it offers |
 | **Mac-side name** | The Mac **re-sanitises and never trusts the phone's name**: normalise to NFC, drop control characters, replace `/` and `:` with `-`, replace a leading `.` with `_`, and cap at 255 UTF-8 bytes keeping the extension. An empty result becomes `Shared file` |
 | **MIME** | `ContentResolver.getType(uri)`, then the intent's type if it is not a wildcard, then `application/octet-stream`. **Display only**: the Mac never chooses a handler from it |
-| **Size** | `OpenableColumns.SIZE`, then `openAssetFileDescriptor(uri,"r").length` if it is not `UNKNOWN_LENGTH`, then one full read under *Preparing…*, which also gives the digest. A source that cannot be read is refused on the phone, and no offer is sent |
+| **Size** | The **byte count of the staged copy**, always. `OpenableColumns.SIZE` and the descriptor length are used only as the preflight's `S`. A source that cannot be read, or fails mid-copy, is refused on the phone: the `.part` is deleted, the sheet says *"Couldn't read this file from <app>"*, and no offer is sent |
 | **Collision** | The existing `freeName` gives `name (2).ext`. **The final file is never overwritten**, and the card shows the name it will be saved as |
 | **Offer timeout** | 10 minutes from the offer. The phone sends `share.cancel{expired}` and the Mac card changes to *Expired* with no buttons |
-| **Stall** | 30 s with no bytes on the bulk socket fails the attempt with `share.saved{ok:false, reason:"interrupted"}`. The Mac offers **Retry** while the offer is valid |
+| **Stall** | 30 s with no bytes on the bulk socket fails the attempt with `share.saved{ok:false, reason:"interrupted"}`. The Mac offers **Retry** while the Retry window is open |
 | **Cancel** | Either side, with `share.cancel` (§3). The Mac deletes the offer's `.part` |
-| **Checksum** | Verified when `sha256` was agreed. On a mismatch: `.failed` is written, `share.saved{ok:false,"checksum"}` is sent, and Retry is offered |
-| **Retry** | A new `fs.transfer.begin` from byte 0. The old `.part` is deleted first; there is no appending in v1 |
-| **Mac disconnects** | Before Accept: the offer dies with the session, and the phone shows *"<Mac> disconnected — share again when it is back."* During sending: the Mac's `.part` stays (the existing convention) and no resume is attempted. The next share of the same file starts fresh, and `freeName` means the earlier `.part` never blocks it |
-| **Mac not connected at share time** | **Send** is disabled with *"<Mac> isn't connected — open Sidekick on your Mac."* Nothing is queued |
+| **Checksum** | Always verified (rev 2's `sha256` is never null). On a Mac-side mismatch: `.failed` is written, `share.saved{ok:false,"checksum"}` is sent, and Retry is offered from the staged copy. A phone-side mismatch is `staging-lost` (above) |
+| **Retry** | A new `fs.transfer.begin` from byte 0 of the staged copy, while the Retry window is open. The old `.part` is deleted first; there is no appending in v1 |
+| **Mac disconnects** | Before Accept: the offer dies with the session, the staged copy is deleted, and the phone shows *"<Mac> disconnected — share again when it is back."* During sending: the staged copy is deleted too, the Mac's `.part` stays (the existing convention) and no resume is attempted. The next share of the same file stages and starts fresh, and `freeName` means the earlier `.part` never blocks it |
+| **Mac not connected at share time** | **Send** is disabled with *"<Mac> isn't connected — open Sidekick on your Mac."* Nothing is queued. Staging still runs so the file is ready if the Mac connects while the sheet is open; if the sheet is closed first, the staged copy is deleted |
 | **Folder / space** | The Mac checks `ensureReceiveFolder()` and free space ≥ `size` **when the offer arrives, and again at Accept**. A failure declines with its reason before any bytes move |
-| **Zero bytes** | Allowed. The Mac creates an empty file, verified against the empty-input digest |
+| **Zero bytes** | Allowed. The staged copy is empty, the offer carries `size: 0` and the empty-input digest (`e3b0c442…b855`), and the Mac creates an empty file verified against it |
 | **Refused on the phone before any offer** | A non-`content://` scheme (including `file://`), a directory MIME type, or no `EXTRA_STREAM` |
 
 ## 6 · Android: manifest and activity
@@ -289,10 +474,11 @@ A **new** `ShareToMacActivity`, **not built yet**:
 - **Reading the URI:** `IntentCompat.getParcelableExtra(intent, EXTRA_STREAM, Uri::class.java)`,
   then `intent.clipData?.getItemAt(0)?.uri` as a fallback, since some senders attach the grant there.
   Anything with more than one `ClipData` item is refused with *"Send one file at a time for now."*
-- The URI is never put in `savedInstanceState`. No storage permission and no new foreground-service
-  type: `LinkService` is already foreground (`connectedDevice`).
-- **The grant-holding design depends on §4.** Nothing about finishing the activity or backgrounding
-  the send is decided until those readings exist.
+- The URI is never put in `savedInstanceState` and is never handed to `LinkService`. No storage
+  permission and no new foreground-service type: `LinkService` is already foreground
+  (`connectedDevice`).
+- **The activity may finish only after staging has completed or been abandoned** (§5). Rev 1 left
+  this open pending §4; §4 answered it.
 
 ## 7 · UI
 
@@ -306,13 +492,16 @@ A **new** `ShareToMacActivity`, **not built yet**:
 
 | State | Headline |
 |---|---|
-| preparing | *Preparing…* |
+| staging | *Preparing…*, with a progress bar of bytes copied; **Send** disabled |
+| not enough space | *Not enough space on this phone* with the numbers (§5); no offer made |
+| couldn't read | *Couldn't read this file from <app>*; no offer made |
+| staging lost | *The prepared copy was lost on this phone — share the file again* |
 | not connected | *<Mac> isn't connected* |
 | Mac needs updating | *Update Sidekick on your Mac* |
 | waiting | *Waiting for you to accept on <Mac>* |
 | sending | a progress bar, `bytes of total` |
 | saved | *Saved on <Mac> as <savedAs>*, only after `share.saved ok:true`. `verified: false` adds *"not checked against a checksum"* |
-| failed | the reason, with *Retry from your Mac* |
+| failed | the reason, with *Retry from your Mac* and the time the Retry window closes |
 | declined | the Mac's reason |
 | expired | *Expired* |
 | cancelled | *Stopped on your Mac* / *Cancelled* |
@@ -349,8 +538,12 @@ A **new** `ShareToMacActivity`, **not built yet**:
   **A refused verb is a tested case, one per verb.**
 - **No silent overwrite:** partial files are only ever `.part`, a mismatch leaves `.failed`, and the
   final name comes from `freeName`.
+- **Staging:** the staged copy is in private app storage (`cacheDir/share-staging/`), readable by
+  no other app, excluded from backup, and deleted on every terminal state and on the startup sweep
+  (§5). It is never written to shared storage or `MediaStore`.
 - **Logging:**
-  - never a full content URI (the authority only)
+  - never a content URI (the debug probe logs the authority; Feature A logs none)
+  - never the staging path or a staged file name — lines name the `offerId`
   - never file contents
   - the file name only where the UI already shows it, and not in `LinkLog`. Log lines carry
     `offerId`, `transferId`, byte counts, the MIME type's top-level type and the outcome
@@ -364,22 +557,50 @@ A **new** `ShareToMacActivity`, **not built yet**:
 `share-synth-70mb.bin`, `share-synth-3000x4000.png`), plus a debug-only `SyntheticShareProvider`
 that serves generated bytes and can drop `SIZE` or `DISPLAY_NAME`, omit the MIME type, stall, or
 fail mid-stream. **No personal media, ever.** No synthetic media is placed on the SM-S938B until that
-step is approved (§4).
+step is approved (§4). The emulator's two §4 files stay in place (§4).
 
 **Unit tests (each shown red against the defect it is named for):**
 
 - the `ext` parsing rules 1–6, with a fixture for each malformed shape, an absent field, and
   `min()` negotiation
 - `share.offer` validation: every reason for declining
-- the phone's `ShareOffer.after` transitions, including answer-once, expiry, and cancel from each
-  state
+- the phone's `ShareOffer.after` transitions, including answer-once, expiry, cancel from each
+  state, the Retry window (`min(failedAt + 5 min, expiresAtMs)`), and **every terminal transition
+  carrying the delete-staged instruction** — shown red with the instruction removed from one
+- the preflight and limit functions: `M(S)`, `L(A)` at both branches and their meeting point
+  (`A = 2816 MiB`), and `A ≤ 256 MiB`
+- the sweep's ownership predicate: a planted symlink, a wrong-pattern name, a `.bin` without a
+  marker and a marker with the wrong owner are all **kept**; only matching entries are deleted
 - the Mac's name sanitiser and `freeName` interaction
 - a share root refusing every verb but the one pull, **one test per refused verb**
 - errors carrying `feature: "share"`
 - `SendSelectionActivity` still owning `SEND` `text/plain` (a manifest test, so a later change
   cannot silently steal it)
 
-**On hardware and the emulator, after §4 passes (each with a control):**
+**Staging matrix (emulator first; the SM-S938B only after the §4 repeat is approved). Every row also
+asserts the staging directory's contents after the case, with a control that the listing can see a
+known entry:**
+
+| # | Case | Pass criterion | Control |
+|---|---|---|---|
+| S1 | Zero-byte file | staged `size: 0`, empty-input digest, offer sent, Mac saves an empty verified file, staging empty afterwards | a 1 KB run through the same path |
+| S2 | 1 KB | staged length = 1,024, digest = source digest, saved and verified | the digest computed independently on the generated file |
+| S3 | 6 MB | as S2 at 6 MB; progress reaches 100% before Send enables | Send observed disabled during staging |
+| S4 | 70 MB | as S2 at 70 MB; staging's peak disk use ≤ size + one buffer | `A` read before and after |
+| S5 | Insufficient storage | preflight refuses, sheet states `L` and the shortfall, **no offer** reaches the Mac, no `.part` left | a file under `L` in the same state stages |
+| S6 | Source-read failure (`SyntheticShareProvider` fails mid-stream) | `.part` deleted, *Couldn't read…*, no offer | the same provider without the fault stages |
+| S7 | Cancel during copy | copy stops, `.part` deleted, no offer, no `share.*` message on the Mac | the Mac's message log shows a normal offer for an uncancelled run |
+| S8 | Cancel while waiting for the Mac | `share.cancel{user}`, Mac card leaves, staged copy deleted | the staged `.bin` observed present before the cancel |
+| S9 | Decline | staged copy deleted, phone *Declined* | as S8 |
+| S10 | Expiry (10 min unanswered) | `share.cancel{expired}`, staged copy deleted, late Accept → `NOT_FOUND` | the card rendered before expiry |
+| S11 | Checksum mismatch, Mac side (`corruptIfArmed`) | `.failed` on the Mac, phone *failed* with Retry, staged copy **kept**; Retry from byte 0 verifies; after the Retry window with no Retry, staged copy deleted | the staged digest read before and after equals the offer's |
+| S11b | Checksum/length mismatch, phone side (staged file altered in a debug build) | `share.cancel{staging-lost}`, staged copy deleted, *…lost on this phone* | an unaltered staged file sends cleanly |
+| S12 | Mac disconnect — before Accept, and during sending | offer dies, staged copy deleted in both; Mac keeps its `.part` only in the second | bytes *received* on the Mac > 0 at the disconnect in the second |
+| S13 | Cleanup after process death (process killed while staged and while sending — not with `am force-stop`, which the repo's hook refuses for this package) | on next start, the sweep deletes the Sidekick entries and logs the counts; an unrelated file planted in the directory is **left** | the directory listed before the restart shows the entries |
+| S14 | Rotation during copy | the copy continues and completes, or is cancelled with a message; never finishes silently | an unrotated run of the same file |
+| S15 | Log audit after S1–S14 | 0 content URIs, 0 staging paths, 0 synthetic file names in `link.log` | the same grep finds `offerId` and sweep-count lines |
+
+**On hardware and the emulator, after the staging matrix (each with a control):**
 
 | # | Case | Pass criterion | Control |
 |---|---|---|---|
@@ -387,7 +608,7 @@ step is approved (§4).
 | 2 | Decline | no file, no `.part`, phone *Declined* | the receive folder listed before and after, with a known file present in both |
 | 3 | Wait 10 min without answering | the card turns *Expired*, the phone *Expired*, a late Accept gets `NOT_FOUND` | the card was rendered before expiry (`probe.mjs` with `onScreen`) |
 | 4 | The same file twice | the second is `(2)`, the first unchanged (hash) | the first file's hash before and after |
-| 5 | 70 MB, cancel on the phone | the Mac deletes the `.part`, no final file | the Mac's bytes-*received* counter was > 0 at the cancel |
+| 5 | 70 MB, cancel on the phone | the Mac deletes the `.part`, no final file, phone staged copy deleted | the Mac's bytes-*received* counter was > 0 at the cancel |
 | 6 | 70 MB, cancel on the Mac | phone *Stopped on your Mac* | as above |
 | 7 | Stall injected by the provider | `interrupted`, then Retry from 0 succeeds | the retry's bulk header carried `offset: 0` |
 | 8 | Corruption injected (`corruptIfArmed`) | `.failed` written, `ok:false checksum` | a clean run of the same file verifies |
@@ -395,9 +616,9 @@ step is approved (§4).
 | 10 | `hello` without `ext` (a Mac build with the field stripped) | the phone sends no offer and shows the update sentence | the same build with `ext` negotiates |
 | 11 | `file://`, a directory, a two-item `ClipData` | each refused on the phone, no offer | one valid content URI in the same run produces an offer |
 | 12 | A plain-text share | still reaches `clip.push`; "Send to Mac" is not listed | the Sharesheet for an image lists it |
-| 13 | Unknown size | measured, and the offer's `size` = bytes received | a SIZE-reporting run of the same bytes |
+| 13 | Unknown size | staged under `L`, and the offer's `size` = staged bytes = bytes received | a SIZE-reporting run of the same bytes |
 | 14 | Zero bytes | an empty file, verified | — |
-| 15 | Log audit after 1–14 | 0 full content URIs, 0 synthetic file names in `link.log` | the same grep finds `offerId` lines (positive control) |
+| 15 | Log audit after 1–14 | 0 content URIs, 0 staging paths, 0 synthetic file names in `link.log` | the same grep finds `offerId` lines (positive control) |
 
 **Instruments:** Mac readings go through `scripts/probe.mjs`. Device writes go through
 `scripts/adb-pinned.sh`. Every progress figure is bytes *received*.
@@ -405,5 +626,7 @@ step is approved (§4).
 ## 10 · What approval of this document does not authorise
 
 Code in any module, a new Android activity, protocol code, a change to `docs/protocol.md`, building
-or installing an APK, creating synthetic media on a device, or anything touching pairing,
-permissions or existing personal media. Each is a separate go-ahead, and §4 comes first.
+or installing an APK, creating synthetic media on a device, deleting the emulator's §4 test files or
+`/sdcard/window.xml`, running anything on the SM-S938B (including the §4 repeat), or anything touching
+pairing, permissions, link state, emulator system settings, log buffers or existing personal media.
+Each is a separate go-ahead.
