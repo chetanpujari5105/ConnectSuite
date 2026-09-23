@@ -129,7 +129,9 @@ sealed class MirrorFailure(
     data object DeclinedOnPhone : MirrorFailure(
         code = ErrorCode.PERMISSION_DENIED,
         reason = "Screen sharing was declined on the phone.",
-        fixHint = "If that was a mistake, start mirroring again from this Mac.",
+        // "your Mac", not "this Mac": the phone's own Mirror screen shows this sentence too, to the
+        // person who just declined — read there on the SM-S938B, 2026-09-23.
+        fixHint = "If that was a mistake, start mirroring again from your Mac.",
     )
 
     /** For logs: one line naming the case, not the prose. */

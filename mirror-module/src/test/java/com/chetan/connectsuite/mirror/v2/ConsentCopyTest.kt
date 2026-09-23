@@ -73,4 +73,15 @@ class ConsentCopyTest {
         val reason = MirrorFailure.ConsentTimeout.reason
         assertTrue(reason, !reason.contains("prompt", ignoreCase = true))
     }
+
+    @Test
+    fun `no sentence speaks from one end, because both ends show it`() {
+        // Each failure is drawn on the Mac and on the phone's Mirror screen. "this Mac" is false on
+        // the phone; "this phone" is false on the Mac.
+        for (failure in every) {
+            for (text in listOfNotNull(failure.reason, failure.fixHint)) {
+                assertTrue("${failure.label}: $text", !text.contains("this Mac") && !text.contains("this phone"))
+            }
+        }
+    }
 }
