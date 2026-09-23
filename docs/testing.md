@@ -23499,3 +23499,23 @@ guidance line and its absence elsewhere are unit-tested (three mutations red); i
 read on this phone in the previous run.
 
 Evidence: `docs/evidence/defect-145-2026-09-23/` — one *before* (from the previous run) and four *after*.
+
+#### Devices header and address chip — reflow instead of truncation (2026-09-23, 16:30)
+
+Revealed by the defect 145 fix: with the wider *Connected* pill the header tagline was cut to *"Your phone. More
+pos…"* and the address chip to *"10.36.14.…"* (`before-connected-truncated.png`). No type size changed and
+nothing is hidden:
+
+- the tagline (`SidekickHeader`, shared by every section) may take two lines, with `LineBreak.Heading` so it
+  breaks at the sentence — the first two-line build broke as *"Your phone. More / possible."*, fixed before
+  commit;
+- the three fact chips are a `FlowRow` with the existing `Space.sm` gaps, and the address chip lost its
+  shrinking `weight`, so it keeps its width and the next chip moves down.
+
+SM-S938B, read from `uiautomator` and the screenshots: **connected** — *Your phone.* / *More possible.*,
+chips `10.36.14.246` · `TLS 1.3` on one row and `Local network` on the next; **disconnected** (Mac app quit,
+*Offline* in 2.5 s) — the tagline on one line beside the narrower pill, chips `TLS 1.3` · `Local network` on
+one row (the address chip shows only while connected, as before); reconnect in 3.2 s. `DevicesMacSourceTest`
+gains *the address chip keeps its width, in a flow that can wrap*, red against the old weighted row.
+
+Evidence: `docs/evidence/devices-header-chips-2026-09-23/`.

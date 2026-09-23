@@ -45,4 +45,13 @@ class DevicesMacSourceTest {
         assertTrue(screen.contains("enabled = macLink.canSendFiles"))
         assertTrue(screen.contains("MacLinkView.SEND_FILES_REASON"))
     }
+
+    @Test
+    fun `the address chip keeps its width, in a flow that can wrap`() {
+        // The truncation was a weighted chip in a fixed row: FactChip(…, address, Modifier.weight(…)).
+        val chips = screen.substringAfter("val address = macLink.address").substringBefore("Spacer(")
+        assertFalse("no shrinking weight on the address chip", chips.contains("weight("))
+        assertTrue("the chips sit in a FlowRow", screen.substringBefore("val address = macLink.address").trimEnd().endsWith("{") &&
+            screen.contains("FlowRow(\n            horizontalArrangement = Arrangement.spacedBy(Space.sm),"))
+    }
 }

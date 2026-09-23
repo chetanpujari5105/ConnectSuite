@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chetan.connectsuite.core.ui.Radius
@@ -59,11 +60,15 @@ fun SidekickHeader(
         )
         Column(Modifier.weight(1f)) {
             Text("Sidekick", style = SidekickType.title, color = SidekickColors.textPrimary)
+            // Two lines, not one: beside a trailing pill as wide as *Connected* the single line was
+            // cut to "Your phone. More pos…" on the SM-S938B. It reflows instead, in the same type,
+            // with balanced breaking so it does not strand one word ("…More / possible.") on the
+            // second line; the ellipsis stays only for a width nothing could fit.
             Text(
-                "Your phone. More possible.",
-                style = SidekickType.caption,
+                TAGLINE,
+                style = SidekickType.caption.copy(lineBreak = LineBreak.Heading),
                 color = SidekickColors.textBody,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -94,3 +99,5 @@ fun HeaderIconButton(
         )
     }
 }
+
+const val TAGLINE = "Your phone. More possible."

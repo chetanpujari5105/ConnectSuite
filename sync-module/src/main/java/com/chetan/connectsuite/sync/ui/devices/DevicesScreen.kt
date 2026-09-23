@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -313,10 +314,15 @@ private fun ConnectionHero(
         Spacer(Modifier.height(Space.md))
 
         // Three facts the phone actually owns. See the KDoc above on why none of them is a latency.
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+        // A flow, not a row: three chips in one row cut the address to "10.36.14.…" on the
+        // SM-S938B. The address keeps its whole width and the chips after it move down a line.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            verticalArrangement = Arrangement.spacedBy(Space.sm),
+        ) {
             val address = macLink.address
             if (connected && address != null) {
-                FactChip(Icons.Outlined.Wifi, address, Modifier.weight(1f, fill = false))
+                FactChip(Icons.Outlined.Wifi, address)
             }
             FactChip(Icons.Outlined.Lock, "TLS 1.3")
             FactChip(Icons.Outlined.Hub, "Local network")
