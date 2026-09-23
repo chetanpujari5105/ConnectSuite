@@ -1,7 +1,6 @@
 package com.chetan.connectsuite.setup
 
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.Crossfade
 import android.Manifest
 import android.app.Activity
@@ -48,6 +47,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import com.chetan.connectsuite.core.permissions.MediaAccess
 import com.chetan.connectsuite.core.permissions.PermissionGroup
 import com.chetan.connectsuite.core.permissions.SpecialAccess
+import com.chetan.connectsuite.core.ui.Motion
 import com.chetan.connectsuite.core.ui.SidekickColors
 import com.chetan.connectsuite.core.ui.SidekickType
 import com.chetan.connectsuite.core.ui.Space
@@ -220,7 +220,7 @@ private fun SetupRow(
             // Each glyph wears its own state's colours; the crossfade alone carries the change. An
             // earlier version animated shared colours under both children, so for ~180 ms the
             // outgoing Off circle was drawn lime — a frame claiming a grant the OS had not reported.
-            Crossfade(targetState = on, animationSpec = tween(STATE_MS, easing = STATE_EASE), label = "badge") { isOn ->
+            Crossfade(targetState = on, animationSpec = tween(Motion.STATE_MS, easing = Motion.ease), label = "badge") { isOn ->
                 IconBadge(
                     icon = if (isOn) Icons.Outlined.Check else Icons.Outlined.Circle,
                     tint = if (isOn) SidekickColors.accent else SidekickColors.textMeta,
@@ -293,9 +293,6 @@ private fun SetupRow(
     if (!last) RowDivider(inset = false)
 }
 
-/** The Mac's `--dur-state` (180 ms) on its `--ease` curve — one timing for a state change, both apps. */
-private const val STATE_MS = 180
-private val STATE_EASE = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 
 private const val PREFS = "sidekick_setup"
 private const val KEY_NOT_NOW = "not_now"
