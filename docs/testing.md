@@ -22919,3 +22919,67 @@ it — live: *"… Choose another folder in Settings → File transfer, or recon
 **Pairing:** the trust-related lines in the phone log (*Forgot*, *Rejected unpaired client*) are all
 from 2026-09-22 20:35, before this pass, for another Mac identity; nothing trust-related since.
 Receive folder restored to the default; the Files pane restored to List view.
+
+
+## Sidekick feature pass — Feature C review, on the owner's real library (2026-09-23, morning)
+
+Mac only; **the phone was not reinstalled** (it runs B's build, and `media.*` there is unchanged).
+Every reading prints metadata and numbers only — no file name, no pixels. Items were chosen by
+album, kind, MIME and orientation. Media sampled across the 20 largest albums: JPEG 2588, PNG 224,
+MP4 332, **HEIC 74**, WebP 42, GIF 4.
+
+### Defect 135 — rotated portraits were cropped
+
+| Real photo | listed | 512 preview (decoded) | original (decoded) | frame before → after | visible |
+|---|---|---|---|---|---|
+| Camera JPEG | 4000 × 2252 | 288 × 512 | **2252 × 4000** | 248 × 140 (`4000/2252`), image 203 × 360 → **248 × 360** (`2252/4000`) | ~40% → **100%** |
+| Camera JPEG (true landscape) | 1280 × 960 | 640 × 480 | 1280 × 960 | 248 × 186 | 100% |
+
+5 of the first 6 Camera photos listed as landscape decoded as portrait. The first probe version said
+`cropped: false` over the clipped photo — it compared the picture with its own element, not with the
+frame; it now compares with the frame and reports the visible fraction.
+
+Loading sequence as drawn (rotated portrait, final code): *Loading preview…* 12 ms → *Preview ·
+288 × 512, the phone's thumbnail* 43 ms → *Loading the original · 0 B of 1.8 MB* 394 ms → *… 1.8 MB of
+1.8 MB* 425 ms → *Original · 2252 × 4000*.
+
+### Two more claims the captions made without measuring, fixed
+
+- *"Preview · 512 px"* — the phone answered 640 × 480 and 453 × 806 (defect 136). The caption now
+  states the preview's **decoded** size, and the grid thumbnail's caption claims no size.
+- A video type the player does not *list* (`canPlayType === ''` — this Mac: `video/quicktime`) was
+  called *"cannot play"* **before trying**. Chromium's list is conservative for `.mov`, so that was an
+  unproven refusal. Now: *"does not list … It may still play"* with **Try anyway · N MB**; only the
+  player's own `error` says "cannot play". Measured on this Mac: `video/mp4` maybe, `avc1` probably,
+  **`hvc1` probably**, WebM / 3GPP / Matroska maybe, QuickTime no.
+
+### Video, real files
+
+| Real video | listed | decoded | frame | player |
+|---|---|---|---|---|
+| Camera MP4, 184 MB, 1:13 | 1440 × 2560 | 1440 × 2560 | 248 × 360 | fetched in 3.7 s; controls, no autoplay; muted `play()` advanced 0 → 1.16 s; pause; seek to 43.74 s of 72.89, readyState 4, no error |
+| Camera MP4, 20 MB, 0:06 | 1920 × 1080 | **1080 × 1920** (rotated) | 248 × 360 — followed the decoded shape | 0.5 s; played 0 → 1.16 s; seek 3.38 of 5.64, readyState 4 |
+
+Nothing was heard: playback was muted for the reading and left paused and unmuted as the player had it.
+(A third "landscape" video matched the generated 1280 × 720 sample byte for byte and is not counted.)
+
+### Unsupported and error, real
+
+- **HEIC** (Pictures, 2268 × 4032, 1.9 MB): original fetched, did not decode on this Mac; stage kept
+  the phone's preview (453 × 806) in a portrait frame; caption, warning tone: *"This Mac cannot display
+  HEIC photos here, so this is the phone's preview (453 × 806). Save to Mac keeps the original exactly
+  as it is."*
+- **Error:** `media-preview-original` for an id that does not exist → the phone's own
+  `{"ok":false,"reason":"That photo is no longer on the phone.","code":"NOT_FOUND"}`. The failed stage
+  (red, **Try again**) is asserted in `photos.test.ts`; it was not produced live, which would need a
+  photo to vanish mid-selection.
+
+### Suites and guards
+
+Mac 954/954, typecheck clean; `check-color-tokens`, `check-contrast`, `check-motion-tokens`,
+`check-renderer-scripts`, `check-protocol-spec`, `check-renderer-views`, `check-defects` all exit 0.
+Red-first: listing preferred over the decoded shape → red; *"cannot play"* before trying → red.
+
+Evidence: `c-review-rotated-portrait-redacted.png`, `c-review-heic-redacted.png` — the picture reduced
+to a 3 × 4 grid of flat colour and the Name and Taken values blacked out **before** the file was
+written; the unredacted captures lived only in the scratchpad and were deleted.

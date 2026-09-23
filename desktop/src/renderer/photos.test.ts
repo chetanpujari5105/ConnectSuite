@@ -326,11 +326,13 @@ const view = (over: Record<string, unknown> = {}) =>
     ...over,
   });
 
-test('the stage calls the 512 thumbnail a preview, and never an original', () => {
-  const v = view();
-  assert.equal(v.show, 'preview512');
-  assert.match(v.caption, /^Preview · 512 px/);
-  assert.doesNotMatch(v.caption, /Original/);
+test('the stage calls the thumbnail a preview, never an original, and states only a measured size', () => {
+  const unmeasured = view();
+  assert.equal(unmeasured.show, 'preview512');
+  assert.equal(unmeasured.caption, 'Preview, the phone’s thumbnail', 'no size claimed before one is measured');
+  assert.doesNotMatch(unmeasured.caption, /Original|512/);
+  // Measured on the SM-S938B: a 512 request answered with 640 × 480.
+  assert.match(view({ previewSize: { w: 640, h: 480 } }).caption, /^Preview · 640 × 480, the phone’s thumbnail$/);
 });
 
 test('"Original · w × h" appears only from a decode, and the size is the decoded one', () => {
@@ -341,10 +343,10 @@ test('"Original · w × h" appears only from a decode, and the size is the decod
   assert.equal(v.caption, 'Original · 3024 × 4032');
 });
 
-test('without the 512 preview the grid thumbnail is shown and called 256, not sharp', () => {
+test('without the 512 preview the grid thumbnail is shown, and no size is claimed for it', () => {
   const v = view({ preview512: undefined });
   assert.equal(v.show, 'grid');
-  assert.match(v.caption, /256 px/);
+  assert.equal(v.caption, 'Preview · the grid’s thumbnail');
 });
 
 test('an original that will not decode is said, and the preview stays', () => {
@@ -353,15 +355,25 @@ test('an original that will not decode is said, and the preview stays', () => {
   assert.equal(v.tone, 'warning');
   assert.match(v.caption, /cannot display HEIC photos here/);
   assert.match(v.caption, /Save to Mac keeps the original/);
+  assert.doesNotMatch(v.caption, /512/, 'no size claimed that was not measured');
+  // Measured on the SM-S938B: a HEIC's preview decoded at 453 × 806.
+  const measured = view({ mime: 'image/heic', previewSize: { w: 453, h: 806 }, original: { phase: 'undecodable', delivered: 1, total: 1 } });
+  assert.match(measured.caption, /the phone’s preview \(453 × 806\)\./);
 });
 
-test('a video offers Play — real bytes on request, never autoplay — and a refused type says so before fetching', () => {
+test('a video offers Play — real bytes on request, never autoplay — and an unlisted type is offered, not refused', () => {
   const idle = view({ kind: 'video', mime: 'video/mp4', durationMs: 64_000 });
   assert.deepEqual(idle.action, { label: 'Play', kind: 'play' });
   assert.match(idle.caption, /1:04/);
-  const refused = view({ kind: 'video', mime: 'video/3gpp', canPlay: false });
-  assert.equal(refused.action, null, 'no Play for a type the player has already refused');
-  assert.match(refused.caption, /cannot play this 3GPP video/);
+  // Not listed is not refused: Chromium answers '' for video/quicktime, which it can often play.
+  const unlisted = view({ kind: 'video', mime: 'video/quicktime', size: 50_000_000, canPlay: false });
+  assert.deepEqual(unlisted.action, { label: 'Try anyway · 48 MB', kind: 'play' });
+  assert.match(unlisted.caption, /does not list QUICKTIME video as supported\. It may still play/);
+  assert.doesNotMatch(unlisted.caption, /cannot play/, 'no refusal claimed before the player has refused');
+  // Only the player's own refusal (`error`) produces "cannot play".
+  const refused = view({ kind: 'video', mime: 'video/quicktime', canPlay: false, original: { phase: 'unsupported', delivered: 0, total: 0 } });
+  assert.equal(refused.action, null);
+  assert.match(refused.caption, /cannot play this QUICKTIME video/);
 });
 
 test('loading shows the phone’s byte count; a failure offers a retry in red', () => {
@@ -385,4 +397,17 @@ test('the file name appears once the original’s ack has carried it, and not be
   const named = stage.detailFacts(item, { name: 'IMG_2041.jpg', width: 3, height: 4 });
   assert.deepEqual(named[0], ['Name', 'IMG_2041.jpg', false]);
   assert.equal(named.find(([l]) => l === 'Size')![1], '10 B · 3 × 4', 'decoded size wins over the listing');
+});
+
+test('the stage takes the photo’s real shape: decoded, then the rotated preview, then the listing', () => {
+  const shape = ((globalThis as Record<string, unknown>).__photoLabels as {
+    stageShape(s: Record<string, unknown>): { w: number; h: number } | null;
+  }).stageShape;
+  // Measured on the SM-S938B: listed 4000 × 2252, preview 288 × 512, decoded 2252 × 4000.
+  const listed = { w: 4000, h: 2252 };
+  assert.deepEqual(shape({ listed, preview: null, decoded: null }), listed, 'the listing is only the first guess');
+  assert.deepEqual(shape({ listed, preview: { w: 288, h: 512 }, decoded: null }), { w: 288, h: 512 }, 'the rotated preview beats it');
+  assert.deepEqual(shape({ listed, preview: { w: 288, h: 512 }, decoded: { w: 2252, h: 4000 } }), { w: 2252, h: 4000 });
+  assert.equal(shape({ listed: null, preview: null, decoded: null }), null);
+  assert.deepEqual(shape({ listed: { w: 0, h: 0 }, preview: null, decoded: { w: 3, h: 4 } }), { w: 3, h: 4 });
 });

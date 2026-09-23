@@ -141,14 +141,20 @@ function photoStageView(input: {
   original: OriginalState | undefined;
   originalsServed: boolean;
   canPlay: boolean;
+  /** The preview's **decoded** size. The phone may return more than 512 (640 × 480 was measured). */
+  previewSize?: { w: number; h: number } | null;
 }): StageView {
   const o = input.original;
   const picture: StageView['show'] = input.preview512 ? 'preview512' : input.gridThumb ? 'grid' : 'none';
+  // A resolution is stated only when it was measured: the preview's decoded size, never the size
+  // that was asked for — the phone answered a 512 request with 640 × 480 for a 1280 × 960 photo.
   const previewWords =
     picture === 'preview512'
-      ? 'Preview · 512 px, the phone’s thumbnail'
+      ? input.previewSize
+        ? `Preview · ${input.previewSize.w} × ${input.previewSize.h}, the phone’s thumbnail`
+        : 'Preview, the phone’s thumbnail'
       : picture === 'grid'
-        ? 'Preview · 256 px'
+        ? 'Preview · the grid’s thumbnail'
         : input.preview512 === null
           ? 'The phone could not make a preview of this one. It is still on the phone.'
           : 'Loading preview…';
@@ -185,14 +191,16 @@ function photoStageView(input: {
     return {
       show: picture,
       caption:
-        `This Mac cannot display ${mimeLabel(input.mime)} here, so this is the phone’s 512 px ` +
-        'preview. Save to Mac keeps the original exactly as it is.',
+        `This Mac cannot display ${mimeLabel(input.mime)} here, so this is the phone’s preview` +
+        (input.previewSize ? ` (${input.previewSize.w} × ${input.previewSize.h})` : '') +
+        '. Save to Mac keeps the original exactly as it is.',
       tone: 'warning',
       action: null,
       busy: false,
     };
   }
-  if (o?.phase === 'unsupported' || (input.kind === 'video' && !input.canPlay)) {
+  // A refusal is claimed only after the player has actually refused the bytes (`error`).
+  if (o?.phase === 'unsupported') {
     return {
       show: picture,
       caption:
@@ -200,6 +208,19 @@ function photoStageView(input: {
         'in another app.',
       tone: 'warning',
       action: null,
+      busy: false,
+    };
+  }
+  // Before trying, `canPlayType === ''` is only the player's *list* — Chromium answers no for
+  // `video/quicktime`, a type it can often decode. So it is said as what it is, with the choice.
+  if (input.kind === 'video' && !input.canPlay && !o && input.originalsServed) {
+    return {
+      show: picture,
+      caption:
+        `This Mac’s player does not list ${mimeLabel(input.mime)} video as supported. It may still ` +
+        'play — or Save to Mac to open it in another app.',
+      tone: 'warning',
+      action: { label: `Try anyway · ${fileSize(input.size)}`, kind: 'play' },
       busy: false,
     };
   }
@@ -237,6 +258,25 @@ function photoStageView(input: {
     action: input.size > AUTO_ORIGINAL_MAX ? { label: `Load full size · ${fileSize(input.size)}`, kind: 'load' } : null,
     busy: false,
   };
+}
+
+/**
+ * The shape the stage's frame takes — **the picture's real shape, as best known so far**.
+ *
+ * `media.list`'s width and height are the *stored* pixels and ignore EXIF rotation, so a Samsung
+ * portrait photo is listed as 4000 × 2252. Measured on the SM-S938B, 2026-09-23: 5 of the first 6
+ * camera photos listed as landscape decoded as 2252 × 4000, and a frame shaped from the listing
+ * showed each through a 248 × 140 slot. The phone's 512 preview is made with the rotation applied,
+ * and the decoded original is the truth — so those win, in that order, and the listing is only the
+ * first guess.
+ */
+function stageShape(shapes: {
+  listed: { w: number; h: number } | null;
+  preview: { w: number; h: number } | null;
+  decoded: { w: number; h: number } | null;
+}): { w: number; h: number } | null {
+  const ok = (s: { w: number; h: number } | null) => (s && s.w > 0 && s.h > 0 ? s : null);
+  return ok(shapes.decoded) ?? ok(shapes.preview) ?? ok(shapes.listed);
 }
 
 /** `image/heic` → `HEIC photos`, for a sentence. The subtype is the useful word. */
@@ -471,6 +511,8 @@ class PhotosView {
 
   /** 512 px previews by id. `null` means the phone answered that it has none. */
   private preview512 = new Map<string, string | null>();
+  /** The 512 preview's decoded size — the first reading that carries the photo's rotation. */
+  private previewShape = new Map<string, { w: number; h: number }>();
   private previewAsked = new Set<string>();
 
   /** Full-size bytes fetched for viewing, by media id. Never the receive folder — see mediaPreview.ts. */
@@ -845,6 +887,17 @@ class PhotosView {
       return;
     }
     this.preview512.set(id, result.data.data);
+    // Its decoded size is the photo's real shape (the phone applies EXIF rotation when it makes a
+    // thumbnail); the listing's is not. Measured, never assumed.
+    const data = result.data.data;
+    if (data && typeof Image === 'function') {
+      const im = new Image();
+      im.onload = () => {
+        this.previewShape.set(id, { w: im.naturalWidth, h: im.naturalHeight });
+        if (this.selectedItem === id) this.updateStage();
+      };
+      im.src = `data:image/jpeg;base64,${data}`;
+    }
     if (this.selectedItem === id) this.renderDetail();
   }
 
@@ -854,13 +907,9 @@ class PhotosView {
     const known = this.originals.get(item.id);
     if (known && known.phase !== 'failed') return;
     if (this.originalInFlight !== null) return;
-    if (item.kind === 'video' && !canPlayMime(item.mime)) {
-      // Checked before a byte moves: pulling 200 MB to find out the player refuses it would be the
-      // expensive way to learn something the browser can answer from the type.
-      this.originals.set(item.id, { phase: 'unsupported', delivered: 0, total: 0 });
-      this.renderDetail();
-      return;
-    }
+    // No refusal before trying. `canPlayType === ''` puts a warning and a sized *Try anyway* on the
+    // stage (photoStageView); the fetch happens only when that is pressed, and only the player's own
+    // `error` may then say "cannot play".
     this.originalInFlight = item.id;
     this.originals.set(item.id, { phase: 'loading', delivered: 0, total: item.size });
     this.renderDetail();
@@ -928,7 +977,7 @@ class PhotosView {
     frame.className = 'photos-stage-frame';
     // The frame takes the photo's own shape where the phone reported one, so a portrait photo is a
     // portrait box — letterboxed by `contain` only when it has to be, never cropped.
-    if (item.width && item.height) frame.style.aspectRatio = `${item.width} / ${item.height}`;
+    // Shaped in `updateStage`, from the best reading so far — see `stageShape`.
     const img = document.createElement('img');
     img.className = 'photos-stage-media';
     img.alt = '';
@@ -966,6 +1015,7 @@ class PhotosView {
       original,
       originalsServed: this.advertised && !!this.bridge.mediaPreviewOriginal,
       canPlay: item.kind !== 'video' || canPlayMime(item.mime),
+      previewSize: this.previewShape.get(item.id) ?? null,
     });
 
     const wantVideo = view.show === 'original' && item.kind === 'video' && original?.url;
@@ -981,7 +1031,6 @@ class PhotosView {
       video.addEventListener('loadedmetadata', () => {
         const state = this.originals.get(item.id);
         if (state) this.originals.set(item.id, { ...state, width: video.videoWidth, height: video.videoHeight });
-        if (video.videoWidth && video.videoHeight) stage.frame.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
         this.updateStage();
       });
       video.addEventListener('error', () => {
@@ -1016,6 +1065,15 @@ class PhotosView {
       if (src && stage.img.getAttribute('src') !== src) stage.img.setAttribute('src', src);
       stage.frame.dataset.show = view.show;
     }
+
+    // The frame's shape: decoded original (or video) > the phone's rotated 512 preview > listing.
+    const shape = stageShape({
+      listed: item.width && item.height ? { w: item.width, h: item.height } : null,
+      preview: this.previewShape.get(item.id) ?? null,
+      decoded: original?.width && original?.height ? { w: original.width, h: original.height } : null,
+    });
+    const aspect = shape ? `${shape.w} / ${shape.h}` : '';
+    if (stage.frame.style.aspectRatio !== aspect) stage.frame.style.aspectRatio = aspect;
 
     stage.caption.textContent = view.caption;
     stage.caption.dataset.tone = view.tone;
@@ -1244,6 +1302,7 @@ function photoLine(className: string, text: string): HTMLElement {
   groupByDay,
   detailFacts,
   photoStageView,
+  stageShape,
   PHOTO_ACTION_REFUSAL,
 };
 

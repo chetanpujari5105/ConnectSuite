@@ -237,6 +237,17 @@ only, cropped to the detail column; the grid (the owner's library) is never in f
 
 **Commit:** `049d9dd`
 
+### C — review on the owner's real library (morning of 2026-09-23)
+
+Found in `049d9dd` and fixed in a separate commit: **defect 135** — rotated portrait photos (listed
+4000 × 2252, decoded 2252 × 4000) were shown through a landscape slot and ~60% cropped; the frame now
+takes the real shape and the image is pinned to it. Also fixed: two captions claimed an unmeasured
+size ("512 px") and a video type the player merely does not *list* was refused before trying. Found,
+not fixed (phone-side): **defect 136**, `media.thumb` exceeds `maxEdge`. Verified live on real photos
+(portrait, landscape, HEIC) and real videos (portrait, rotated landscape): full picture visible,
+play/pause/seek, honest HEIC fallback, the phone's own not-found sentence. Full record:
+`docs/testing.md` → *Feature C review*.
+
 ## D · Files grid, sort, filter — **implemented, real-device tested**
 
 **Decision:** Mac only; `fs.list` already carries name, size, `mtimeMs` and MIME, and `fs.thumb` makes
