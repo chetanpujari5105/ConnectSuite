@@ -3448,6 +3448,20 @@ img#qr {
   flex-direction: column;
   min-height: 0;
   padding: var(--space-5);
+  /* The list's columns answer to **this column's** width, not the window's (defect 138): the rail
+     and the detail card take fixed widths, so the window size says little about what is left here. */
+  container: files-listing / inline-size;
+}
+
+/* Defect 138. At the window's 1100 px minimum this column is ~229 px of rows, and
+   `minmax(0, 1fr) 180px 90px` computed to `0px 180px 90px` — every file name invisible. Below 480 px
+   the date column goes (the detail card carries *Modified* for the selected file) and Name and Size
+   share the width, the size narrowed to what "200 MB" and the SIZE header need. */
+@container files-listing (max-width: 480px) {
+  /* Scoped under .files-listing on purpose: the base .files-row rule comes later in this sheet, and
+     at equal specificity it won — the first live reading still computed `0px 180px 90px`. */
+  .files-listing .files-row { grid-template-columns: minmax(0, 1fr) 72px; }
+  .files-listing .files-row .files-cell-date { display: none; }
 }
 
 /* The breadcrumb and the listing's tools share one row: location on the left, what you can do
