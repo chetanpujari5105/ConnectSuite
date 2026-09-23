@@ -25,7 +25,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.chetan.connectsuite.core.data.ConnectSuiteDatabase
 import com.chetan.connectsuite.core.link.LinkController
+import com.chetan.connectsuite.core.link.MacLinkView
 import com.chetan.connectsuite.core.ui.SidekickColors
 import com.chetan.connectsuite.core.ui.components.NavItem
 import com.chetan.connectsuite.core.ui.components.SidekickBottomNav
@@ -150,6 +152,12 @@ fun ConnectSuiteRoot(
     var section by rememberSaveable { mutableStateOf(SyncSection.Devices) }
 
     val link by remember { LinkController.get(context).state }.collectAsStateWithLifecycle()
+    // Defect 145: the paired Mac as every Mac-facing screen shows it, from the v2 link. Collected
+    // here, so Devices redraws on connect, drop and reconnect while it is on screen.
+    val trusted by remember {
+        ConnectSuiteDatabase.get(context).trustedDeviceDao().observeAll()
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val macLink = remember(link, trusted) { MacLinkView.of(link, trusted) }
 
     LaunchedEffect(requestedTab) {
         // A received-file notification asks for Transfers, which is a *section* of the Sync host
@@ -232,7 +240,8 @@ fun ConnectSuiteRoot(
                     onSelectSection = { section = it },
                     // The same condition the Mirror screen's own Start button uses. Read here so
                     // the hero can say *why* it is disabled instead of just being grey.
-                    mirroringAvailable = link.isConnected,
+                    mirroringAvailable = macLink.connected,
+                    macLink = macLink,
                     // The same call the Mirror screen makes. Not a copy of it, and not a navigation
                     // that pretends to be one — "Start mirroring" starts mirroring.
                     onStartMirroring = { MirrorEngine.startFromPhone(context) },

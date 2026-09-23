@@ -128,6 +128,13 @@ data class LinkState(
      * The clock restarts only when the **last** client leaves. With a second Mac still connected
      * there is no wait to time.
      */
+    /**
+     * A Mac's control session is up. Named, like [afterSessionEnded], so the connect edge is a call
+     * a JVM test can make rather than a `copy()` inside [LinkServer] no test can reach — defect 145's
+     * projection is checked across connect, drop and reconnect through these two, not by hand.
+     */
+    fun afterSessionReady(peerName: String): LinkState = copy(clients = clients + peerName)
+
     fun afterSessionEnded(peerName: String, closeReason: String?, nowMillis: Long): LinkState {
         val remaining = clients.filterNot { it == peerName }
         return copy(
@@ -576,7 +583,7 @@ class LinkServer(
     }
 
     fun onSessionReady(session: ControlSession) {
-        _state.update { it.copy(clients = it.clients + session.peerName) }
+        _state.update { it.afterSessionReady(session.peerName) }
         // Each listener is guarded on its own: a feature that throws while replaying its state
         // must not stop the next feature from replaying its own, and must not take down a
         // session that is otherwise perfectly good.

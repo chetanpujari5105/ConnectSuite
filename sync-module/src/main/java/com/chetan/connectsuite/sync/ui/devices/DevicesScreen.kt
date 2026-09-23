@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chetan.connectsuite.core.discovery.WifiDirectState
+import com.chetan.connectsuite.core.link.MacLinkView
 import com.chetan.connectsuite.core.model.Device
 import com.chetan.connectsuite.core.model.DeviceType
 import com.chetan.connectsuite.core.model.DiscoveryChannel
@@ -117,6 +118,8 @@ enum class QuickAction { Mirror, Files, Clip, Feed }
 @Composable
 fun DevicesSection(
     state: DevicesUiState,
+    /** The paired Mac, from the v2 link (defect 145) — never from `state.devices`, which is v1. */
+    macLink: MacLinkView,
     recent: List<ActivityItem>,
     mirroringAvailable: Boolean,
     nowMillis: Long,
@@ -131,9 +134,9 @@ fun DevicesSection(
     onQuickAction: (QuickAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val mac = state.devices.firstOrNull { it.type == DeviceType.DESKTOP && it.isConnected }
-        ?: state.devices.firstOrNull { it.type == DeviceType.DESKTOP }
-    val connected = mac?.isConnected == true
+    // Defect 145: every Mac-specific element below reads this, not `Device.isConnected` — that is
+    // the v1 Android-to-Android transport, which the Mac never uses.
+    val connected = macLink.connected
     val others = state.devices.filterNot { it.type == DeviceType.DESKTOP }
 
     LazyColumn(
@@ -159,17 +162,15 @@ fun DevicesSection(
         item {
             ConnectionHero(
                 deviceName = state.thisDeviceName,
-                mac = mac,
-                connected = connected,
+                macLink = macLink,
                 mirroringAvailable = mirroringAvailable,
                 onStartMirroring = onStartMirroring,
-                onSendFiles = { mac?.let(onOpenDevice) },
                 onOpenMac = onOpenMac,
             )
         }
 
-        if (mac != null) {
-            item { YourMacCard(mac = mac, onClick = onOpenMac) }
+        if (macLink.paired) {
+            item { YourMacCard(macLink = macLink, onClick = onOpenMac) }
         }
 
         item { SectionHeader("Quick actions") }
@@ -270,13 +271,13 @@ fun DevicesSection(
 @Composable
 private fun ConnectionHero(
     deviceName: String,
-    mac: Device?,
-    connected: Boolean,
+    macLink: MacLinkView,
     mirroringAvailable: Boolean,
     onStartMirroring: () -> Unit,
-    onSendFiles: () -> Unit,
     onOpenMac: () -> Unit,
 ) {
+    val connected = macLink.connected
+    val macName = macLink.name
     HeroCard(live = connected) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.lg)) {
             PhoneGlyph(live = connected)
@@ -299,8 +300,8 @@ private fun ConnectionHero(
                 )
                 Text(
                     when {
-                        connected && mac != null -> "Connected to ${mac.name}"
-                        mac != null -> "Paired with ${mac.name} · waiting for it to connect"
+                        connected && macName != null -> "Connected to $macName"
+                        macName != null -> "Paired with $macName · waiting for it to connect"
                         else -> "No Mac paired yet"
                     },
                     style = SidekickType.body,
@@ -313,8 +314,9 @@ private fun ConnectionHero(
 
         // Three facts the phone actually owns. See the KDoc above on why none of them is a latency.
         Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-            if (connected && mac?.address != null) {
-                FactChip(Icons.Outlined.Wifi, mac.address!!, Modifier.weight(1f, fill = false))
+            val address = macLink.address
+            if (connected && address != null) {
+                FactChip(Icons.Outlined.Wifi, address, Modifier.weight(1f, fill = false))
             }
             FactChip(Icons.Outlined.Lock, "TLS 1.3")
             FactChip(Icons.Outlined.Hub, "Local network")
@@ -334,11 +336,13 @@ private fun ConnectionHero(
         Spacer(Modifier.height(Space.sm))
 
         Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+            // Gated on whether a send can work, not on the link: the phone has no route to push a
+            // file to the Mac (Feature A), so a lit button here would lead only to a failure.
             SecondaryButton(
                 text = "Send files",
-                onClick = onSendFiles,
+                onClick = {},
                 icon = Icons.Outlined.Upload,
-                enabled = connected,
+                enabled = macLink.canSendFiles,
                 modifier = Modifier.weight(1f),
             )
             SecondaryButton(
@@ -350,6 +354,10 @@ private fun ConnectionHero(
         }
 
         // A disabled control with no reason beside it is the thing this project keeps ruling out.
+        if (!macLink.canSendFiles) {
+            Spacer(Modifier.height(Space.sm))
+            Text(MacLinkView.SEND_FILES_REASON, style = SidekickType.caption, color = SidekickColors.textMeta)
+        }
         if (!mirroringAvailable) {
             Spacer(Modifier.height(Space.sm))
             Text(
@@ -447,7 +455,7 @@ private fun FactChip(icon: ImageVector, label: String, modifier: Modifier = Modi
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun YourMacCard(mac: Device, onClick: () -> Unit) {
+private fun YourMacCard(macLink: MacLinkView, onClick: () -> Unit) {
     SidekickCard(onClick = onClick) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -456,20 +464,20 @@ private fun YourMacCard(mac: Device, onClick: () -> Unit) {
             IconBadge(
                 icon = Icons.Outlined.Laptop,
                 size = 56.dp,
-                tint = if (mac.isConnected) SidekickColors.accent else SidekickColors.textBody,
+                tint = if (macLink.connected) SidekickColors.accent else SidekickColors.textBody,
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
                 Text("YOUR MAC", style = SidekickType.overline, color = SidekickColors.textMeta)
                 Text(
-                    mac.name,
+                    macLink.name ?: "Your Mac",
                     style = SidekickType.title,
                     color = SidekickColors.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 StatusPill(
-                    text = if (mac.isConnected) "Connected" else "Not connected",
-                    kind = if (mac.isConnected) StatusKind.Connected else StatusKind.Neutral,
+                    text = if (macLink.connected) "Connected" else "Not connected",
+                    kind = if (macLink.connected) StatusKind.Connected else StatusKind.Neutral,
                     showBackground = false,
                 )
             }

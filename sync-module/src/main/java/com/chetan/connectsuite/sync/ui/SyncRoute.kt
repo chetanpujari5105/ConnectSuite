@@ -1,5 +1,6 @@
 package com.chetan.connectsuite.sync.ui
 
+import com.chetan.connectsuite.core.link.MacLinkView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -79,6 +80,8 @@ fun SyncRoute(
     section: SyncSection,
     onSelectSection: (SyncSection) -> Unit,
     mirroringAvailable: Boolean,
+    /** The paired Mac from the v2 link (defect 145); Devices reads nothing else for the Mac. */
+    macLink: MacLinkView,
     onStartMirroring: () -> Unit,
     onOpenMirror: () -> Unit,
     onOpenMac: () -> Unit,
@@ -200,6 +203,7 @@ fun SyncRoute(
             when (section) {
                 SyncSection.Devices -> DevicesSection(
                     state = devicesState,
+                    macLink = macLink,
                     recent = RecentActivity.of(
                         transfers = transfersState.history,
                         notifications = notificationsState.notifications,

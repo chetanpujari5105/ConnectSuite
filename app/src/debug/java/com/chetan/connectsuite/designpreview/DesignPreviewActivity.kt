@@ -38,6 +38,7 @@ import com.chetan.connectsuite.sync.ui.notifications.NotificationsSection
 import com.chetan.connectsuite.sync.ui.notifications.NotificationsUiState
 import com.chetan.connectsuite.sync.v2.ClipFeature
 import com.chetan.connectsuite.core.data.TrustedDeviceEntity
+import com.chetan.connectsuite.core.link.MacLinkView
 import com.chetan.connectsuite.core.link.LinkState
 import com.chetan.connectsuite.core.link.LinkWaitStatus
 import com.chetan.connectsuite.link.MacManagementSection
@@ -209,6 +210,18 @@ private fun DevicesConnectedPreview() {
         Column(Modifier.fillMaxSize().padding(bottom = padding.calculateBottomPadding())) {
             DevicesSection(
                 state = state,
+                // Through the production projection, from a live link — not a v1 `Device` marked
+                // connected, which is a state the real Mac never produces (defect 145).
+                macLink = MacLinkView.of(
+                    LinkState(running = true, clients = listOf("Chetans-MacBook-Pro")),
+                    listOf(
+                        TrustedDeviceEntity(
+                            deviceId = "mac-1", name = "Chetans-MacBook-Pro", type = DeviceType.DESKTOP,
+                            certificate = "", fingerprint = "", pairedAtMillis = now, lastSeenAtMillis = now,
+                            lastAddress = "10.36.14.60",
+                        ),
+                    ),
+                ),
                 recent = recent,
                 mirroringAvailable = true,
                 nowMillis = now,
@@ -522,6 +535,7 @@ private fun MacManagementPreview() {
             MacManagementSection(
                 status = LinkWaitStatus.Connected(listOf("Chetans-MacBook-Pro")),
                 state = LinkState(running = true, clients = listOf("Chetans-MacBook-Pro")),
+                macLink = MacLinkView.of(LinkState(running = true, clients = listOf("Chetans-MacBook-Pro")), listOf(mac)),
                 pairedMacs = listOf(mac),
                 capabilities = setOf("mirror", "clipboard", "files", "apps", "notifications", "remote"),
                 capStatuses = emptyList(),

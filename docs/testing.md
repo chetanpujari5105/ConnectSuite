@@ -23431,3 +23431,71 @@ connected*, and drew *Send files* disabled — twice, 5 s apart (`s-07-devices-a
 `DevicesSection` sets `connected = mac?.isConnected`; `DeviceRepository` fills `isConnected` from
 `ConnectionManager.connectedDevices`, the v1 Android-to-Android transport. The Mac is on v2 `LinkServer`.
 Not fixed; fix direction in the register.
+
+#### Defect 145 — fixed (2026-09-23, 15:10–16:07)
+
+**The trace — every Mac element on Devices and what it read before:**
+
+| Element | Before | After |
+|---|---|---|
+| header pill *Connected / Offline* | `Device.isConnected` (v1 `ConnectionManager`) | `MacLinkView.connected` |
+| hero line *Connected to … / Paired with … · waiting* | same | same projection |
+| address chip | `Device.address`, shown only if v1-connected | `MacLinkView.address`, shown when connected |
+| *Your Mac* card (icon tint, *Connected / Not connected*) | same v1 flag | projection |
+| **Send files** | enabled on the v1 flag; tap → `TransferManager.send`, which needs `connections.connectionTo(mac)` — v1, never present for the Mac | **disabled with a reason** on every link state, `MacLinkView.canSendFiles = false` |
+| Start mirroring, the reason under it | `link.isConnected` (v2 — already right) | `MacLinkView.connected`, one source |
+| Quick actions (Mirror, Files, Clip, Feed) | not gated on the link — navigation only | unchanged |
+| Mac settings (pill, badge, name, address) | `state.isConnected` / `state.clients` / the trusted row, inline | the same `MacLinkView` |
+
+`ConnectionManager` is untouched; the v1 device list below the overview still reads it for Android-to-Android.
+
+**Why Send files is not lit on the v2 link.** There is no phone-to-Mac send: `TransferManager.send` is v1-only,
+and a phone-initiated transfer to the Mac is Feature A, blocked on a protocol decision. Gating the button on
+the live link would move the defect from *says Offline* to *promises a send that fails*. Its reason line:
+*"Sending files from this phone to your Mac isn't available yet — send them from the Files pane on your Mac
+instead."*
+
+**Tests.** `MacLinkViewTest` (core, 5) drives connect → drop → reconnect through `afterListeningStarted`,
+`afterSessionReady` — the connect edge, extracted from an inline `copy()` in `LinkServer.onSessionReady` so
+a test can reach it — and `afterSessionEnded`. `DevicesMacSourceTest` (sync-module, 4) holds the wiring, with
+a control showing its matcher sees the defect line. Mutations, each reverted:
+
+| | Mutation | Red |
+|---|---|---|
+| M1 | **the defect verbatim** — Devices takes the Mac from `state.devices` | 2 `DevicesMacSourceTest` |
+| M2 | projection reads *paired* as *connected* | 2 `MacLinkViewTest` |
+| M3 | `afterSessionReady` writes nothing | 3 `MacLinkViewTest` |
+| M4 | Send files gated on the link | 1 `DevicesMacSourceTest` |
+| M5 | projection claims a send path | 1 `MacLinkViewTest` |
+
+M1's first attempt **did not apply**: its anchor line occurs twice (the hero has one too), the substitution
+refused, and the results the harness printed were 76 s old — the previous run's. The age column is what
+showed it; it was re-run with a unique anchor and went red at 0 s.
+
+The debug design preview built the Mac as a v1 `Device` with `isConnected = true`, so it always showed
+*Connected* — a state the real app could never produce. It now goes through `MacLinkView.of` from a
+`LinkState` with a client.
+
+**SM-S938B.** Baseline before install, after install and at the end identical apart from `lastUpdateTime`
+(trust row `b59f4bbaf2fc…`, Mac record `2F:97:0F:EC:D3:F6` / `pairedAt 1789648162824`, three `persisted=0x3`
+folder grants, both bindings, all permissions). `install -r` → Mac reconnected by itself, `via last-known`.
+The phone was locked; its owner unlocked it.
+
+| | Devices | Mac settings |
+|---|---|---|
+| live link | **Connected** · *Connected to Chetans-MacBook-Pro* · *Your Mac: Connected*; Start mirroring and Device info `enabled=true`, Send files `enabled=false` with its reason | **Connected** |
+| Mac app quit, 16:05:58, Devices left on screen | **Offline** · *Paired with … · waiting for it to connect* at 16:06:01 (+2.4 s) | — |
+| Mac app relaunched, 16:06:13 | **Connected** · *Connected to …* at 16:06:16 (+3.3 s); Mac log `Connected … via last-known` 16:06:13.722 | — |
+
+Read by a 1 s `uiautomator` poll that printed each change of (pill, hero, on-Devices) and stopped only when
+the wanted pill was on the Devices screen.
+
+**Noticed, not fixed:** with the wider *Connected* pill the header tagline truncates (*"Your phone. More
+pos…"*), and the address chip truncates to *10.36.14.…*. Both are on `after-h-01-devices-connected.png`.
+
+**Not verified on the phone: the *Open app settings* label (`bd3b91f`).** It appears only with selected-only
+access, and reaching that means revoking full photo access, which was ruled out for this run. Its copy, its
+guidance line and its absence elsewhere are unit-tested (three mutations red); its destination, App info, was
+read on this phone in the previous run.
+
+Evidence: `docs/evidence/defect-145-2026-09-23/` — one *before* (from the previous run) and four *after*.

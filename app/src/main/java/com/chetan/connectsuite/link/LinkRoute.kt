@@ -77,6 +77,7 @@ import com.chetan.connectsuite.core.link.BackgroundRestriction
 import com.chetan.connectsuite.core.link.heldBackSummary
 import com.chetan.connectsuite.core.link.ConnectStage
 import com.chetan.connectsuite.core.link.LinkController
+import com.chetan.connectsuite.core.link.MacLinkView
 import com.chetan.connectsuite.core.link.PhoneAddress
 import com.chetan.connectsuite.core.link.ScannedPairing
 import com.chetan.connectsuite.core.link.LinkService
@@ -210,6 +211,7 @@ fun LinkRoute(onDone: () -> Unit = {}, onOpenSetup: (() -> Unit)? = null) {
     MacManagementSection(
         status = status,
         state = state,
+        macLink = MacLinkView.of(state, pairedMacs),
         pairedMacs = pairedMacs,
         capabilities = capabilities,
         capStatuses = capStatuses,
@@ -245,6 +247,8 @@ fun LinkRoute(onDone: () -> Unit = {}, onOpenSetup: (() -> Unit)? = null) {
 fun MacManagementSection(
     status: LinkWaitStatus,
     state: LinkState,
+    /** The same projection Devices reads (defect 145), so the two screens cannot disagree. */
+    macLink: MacLinkView,
     pairedMacs: List<TrustedDeviceEntity>,
     capabilities: Set<String>,
     capStatuses: List<CapabilityStatus>,
@@ -292,13 +296,12 @@ fun MacManagementSection(
                 modifier = Modifier.weight(1f),
             )
             StatusPill(
-                text = if (state.isConnected) "Connected" else "Waiting",
-                kind = if (state.isConnected) StatusKind.Connected else StatusKind.Neutral,
+                text = if (macLink.connected) "Connected" else "Waiting",
+                kind = if (macLink.connected) StatusKind.Connected else StatusKind.Neutral,
             )
         }
 
         // 1. The prominent card: who is connected, or who we are waiting for.
-        val shown = pairedMacs.firstOrNull()
         SidekickCard {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -307,16 +310,16 @@ fun MacManagementSection(
                 IconBadge(
                     icon = Icons.Outlined.Laptop,
                     size = 64.dp,
-                    tint = if (state.isConnected) SidekickColors.accent else SidekickColors.textBody,
-                    container = if (state.isConnected) SidekickColors.accentTint else SidekickColors.cardRaised,
-                    border = if (state.isConnected) SidekickColors.accentBorder else SidekickColors.border,
+                    tint = if (macLink.connected) SidekickColors.accent else SidekickColors.textBody,
+                    container = if (macLink.connected) SidekickColors.accentTint else SidekickColors.cardRaised,
+                    border = if (macLink.connected) SidekickColors.accentBorder else SidekickColors.border,
                 )
                 Column(
                     Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(Space.xs),
                 ) {
                     Text(
-                        state.clients.firstOrNull() ?: shown?.name ?: "No Mac paired",
+                        macLink.name ?: "No Mac paired",
                         style = SidekickType.title,
                         color = SidekickColors.textPrimary,
                     )
@@ -347,7 +350,7 @@ fun MacManagementSection(
             // produce one — the same omission as the Devices hero, for the same reason.
             Spacer(Modifier.height(Space.md))
             Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                shown?.lastAddress?.let { FactChip(Icons.Outlined.Wifi, it) }
+                macLink.address?.let { FactChip(Icons.Outlined.Wifi, it) }
                 FactChip(Icons.Outlined.Lock, "TLS 1.3")
             }
         }
