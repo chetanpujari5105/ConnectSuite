@@ -45,5 +45,28 @@
             android:exported="true"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.NoDisplay" />
+        <!--
+          `docs/phase-7-share-proposal.md` §4, the URI-grant lifetime experiment. Debug source set
+          only, like every probe here. It must be a Sharesheet target to receive a real grant, so it
+          is exported with a SEND filter, and that filter is narrowed to the two synthetic stimuli's
+          types (`image/png`, `application/octet-stream`): no `text/*`, so a plain-text share never
+          lists it and `SendSelectionActivity` keeps that path, and no `SEND_MULTIPLE`. The label
+          says "debug" so nobody mistakes it for Feature A. It reads the stream, logs counts and a
+          digest, and finishes; it shows nothing and writes nothing.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.ShareGrantProbeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:label="Sidekick grant probe (debug)"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/png" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>
