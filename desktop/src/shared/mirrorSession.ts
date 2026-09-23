@@ -61,11 +61,33 @@ function mirrorButtons(canMirror: boolean, session: MirrorSession): MirrorButton
   return { startShown: idle, startEnabled: idle && canMirror, stopShown: !idle };
 }
 
+/**
+ * The sentence under the one button: what pressing it will do, in the phone's terms.
+ *
+ * MediaProjection consent cannot be cached, so every start is an approval on the phone — said
+ * before, not after. **It names the approval, never a button:** Android and the phone's maker word
+ * the prompt, and it differs — the SM-S938B shows *Next* or *Share screen*, never the "Start now"
+ * this app used to quote. "Approve screen sharing" is also the name of the phone's own
+ * notification action, so the Mac's words and the phone's match.
+ */
+function mirrorNote(canMirror: boolean, session: MirrorSession): string {
+  const b = mirrorButtons(canMirror, session);
+  if (!b.startShown) {
+    return session === 'starting'
+      ? 'Waiting for the phone. Approve screen sharing on your phone.'
+      : 'Mirroring. Stop ends capture on the phone.';
+  }
+  return canMirror
+    ? 'Every start asks the phone for permission. Approve screen sharing on your phone when it asks.'
+    : 'Mirroring needs the phone connected and offering screen capture.';
+}
+
 {
   const g = globalThis as Record<string, unknown>;
   g.mirrorSessionAfter = mirrorSessionAfter;
   g.mirrorButtons = mirrorButtons;
+  g.mirrorNote = mirrorNote;
 }
 if (typeof module !== 'undefined') {
-  module.exports = { mirrorSessionAfter, mirrorButtons };
+  module.exports = { mirrorSessionAfter, mirrorButtons, mirrorNote };
 }

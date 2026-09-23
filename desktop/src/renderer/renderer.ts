@@ -427,16 +427,9 @@ function paintMirrorButtons(): void {
   start.hidden = !b.startShown;
   start.disabled = !b.startEnabled;
   stop.hidden = !b.stopShown;
-  // The sentence under the one button: what pressing it will do, in the phone's terms. MediaProjection
-  // consent cannot be cached, so every start is a tap on the phone — said before, not after.
+  // The sentence under the one button — `mirrorNote` in shared/mirrorSession.ts, where it is tested.
   el('mirror-session').dataset.session = mirrorSession;
-  el('mirror-session-note').textContent = !b.startShown
-    ? mirrorSession === 'starting'
-      ? 'Waiting for you to allow capture on the phone.'
-      : 'Mirroring. Stop ends capture on the phone.'
-    : canMirror
-      ? 'Every start asks the phone for permission. Allow it on the phone when it asks.'
-      : 'Mirroring needs the phone connected and offering screen capture.';
+  el('mirror-session-note').textContent = mirrorNote(canMirror, mirrorSession);
   // The Overview hero's primary action follows the same rule: while a session exists it does not
   // offer to start a second one — it opens the picture that is already running.
   const running = b.stopShown;

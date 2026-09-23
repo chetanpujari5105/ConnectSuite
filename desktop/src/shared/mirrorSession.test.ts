@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-const { mirrorSessionAfter, mirrorButtons } = require('./mirrorSession.ts');
+const { mirrorSessionAfter, mirrorButtons, mirrorNote } = require('./mirrorSession.ts');
 
 /*
  * The defect: `renderer.ts` enabled Start *and* Stop from one fact — whether the phone advertises
@@ -71,4 +71,26 @@ test('never both at once, in any reachable state', () => {
     const b = mirrorButtons(can, s);
     assert.notEqual(b.startShown, b.stopShown, `${s}/${can}: exactly one of Start and Stop is on screen`);
   }
+});
+
+test('the waiting sentence asks for the approval by the name the phone uses', () => {
+  // "Approve screen sharing" is the phone notification's own action label (Feature F).
+  assert.equal(mirrorNote(true, 'starting'), 'Waiting for the phone. Approve screen sharing on your phone.');
+  assert.match(mirrorNote(true, 'idle'), /Approve screen sharing on your phone/);
+});
+
+test('no mirror sentence quotes a button of Android\'s prompt', () => {
+  const quoted = /["“][A-Z][^"”]{1,30}["”]/;
+  // Control: the pattern sees the sentence this app once shipped.
+  assert.ok(quoted.test('Tap "Start now" on the phone.'));
+  let checked = 0;
+  for (const can of [true, false]) {
+    for (const session of ['idle', 'starting', 'active']) {
+      const note = mirrorNote(can, session);
+      assert.ok(!quoted.test(note), note);
+      assert.ok(!/start now/i.test(note), note);
+      checked++;
+    }
+  }
+  assert.equal(checked, 6);
 });
