@@ -23571,3 +23571,60 @@ today is `PACKAGE UPDATED` (the installs) or the 14:55 photo revoke. It was **no
 the owner's switch. Everything else in the baseline is unchanged.
 
 Evidence: `docs/evidence/feature-f-review-samsung-2026-09-23/` (Sidekick and Android's own dialogs only).
+
+### Android motion pass — items 1, 2, 4, 5 of the approved proposal (2026-09-23, 17:05–17:55)
+
+Survey and audit by `find-animation-opportunities` and `improve-animations` (read-only); the Mac's motion is
+unchanged, including the brand breath; item 3 of the proposal (the Mac mirror-overlay fade) is held. Every
+duration and curve is a shared `Motion` token (`core/ui/SidekickDimens.kt`), the Mac's `--dur-*` / `--ease`
+ported. Compose scales them by Android's `animator_duration_scale` — read by ui-android 1.9.1, confirmed in
+the jar — which is the setting behind *Remove animations*; the Samsung's was never changed, so reduced motion
+was measured on the emulator. Widths below are read per frame from `screenrecord` videos (`ffmpeg`, PIL);
+recordings drop unchanged frames, so rows are the frames where something changed.
+
+| Order (proposal #) | Commit | What | Normal motion (measured) | Remove animations (emulator) |
+|---|---|---|---|---|
+| 1 (1) | `0be1ba0` | Transfers bar eases between real byte counts (`ProgressMotion`; Transfers only — the pairing countdown is a clock) | SM-S938B, 120 fps: first reading one frame after the jump bar (no ease from empty); 18→31 % eased linearly over **183 ms** in 22 steps, landing before the next 250 ms reading; 96→100 % **snaps** in one frame; unknown → no fill | every step lands in the next frame |
+| 2 (4) | `6e51d9c` | `PrimaryButton` press: `PRESS_SCALE` 0.97 in at `PRESS_MS`, out at `RELEASE_MS`, colour on the same timings | SM-S938B: 1169 → 1132 px (0.968) in ~57 ms; back ~90 ms into the release. Emulator: 908 → 880 | one frame each way — pressed look, no motion |
+| 3 (5) | `c3c896f` | Bottom nav: tint, label and dot colour at `PILL_MS`; `selected` and route immediate; nothing moves | SM-S938B, 120 fps: label grey → lime over ~110 ms of the 200 ms ease-out; cell `selected=true` in the dump right after | label final in one frame (the tint sample also carries the tab's existing ripple) |
+| 4 (2) | `fad00d9` | Request card ↔ state card in one `AnimatedContent` (`RequestCardMotion`): arrive fade + 8 dp at `ARRIVE_MS`, resolve crossfade at `STATE_MS`, size snaps; `OneTap` gate per request | SM-S938B: see below | not measured for this item — same Compose mechanism as 1–3; the Mac cannot reach the emulator's link |
+| — | `1cea7f2` | `SetupScreen` reads `Motion.STATE_MS` / `Motion.ease` instead of its own identical 180 ms / (0.22, 1, 0.36, 1) | unchanged | unchanged |
+
+**Item 4 on the SM-S938B** (Mac driven through `probe.mjs`; phone log for every resolution):
+
+| Resolution | Reading |
+|---|---|
+| Approve | **double tap on Continue → one** `Mirroring started from the phone` (17:47:39.809). First frame after the tap shows the state card at the reported phase, *"Asking for permission — Android is asking for screen-sharing permission on the phone"*; Android's prompt ~150 ms later (`card-resolved-asking-permission.png`). Share entire screen → `Encoded +42 frames (21.0/s)`, Mac `active`; Stop from the Mac → `media_projection: null` |
+| Decline | double tap on Decline → one decline (request line and failure line, same millisecond, 17:49:33.032); Continue's fill starts dimming and the card starts crossfading in the next 8 ms frame, settled in ~60 ms |
+| Mac cancel | card → *"Mirroring was stopped from the Mac."* within ~70 ms, no Continue/Decline left |
+| Timeout | untouched → `consent-timeout` at 30.0 s (17:50:12 → 17:50:42.696), the new copy on the phone |
+
+**Instrument, not app:** two approve attempts first timed out at Android's prompt — Continue re-arms 30 s and the
+harness's dumps took longer than that between Continue and *Share screen*. The late grant was logged and dropped
+(`media_projection: null`), the known limitation. The run was repeated as one command and passed.
+
+**The arrival** is visible only when returning to a Mirror tab last drawn without the card: with Sidekick in front,
+a Mac's request goes straight to Android's prompt. The recordings above start after the return, so they show the
+resolution, not the entry; the entry is covered by the tokens test and the drawn swap, not by a frame count.
+
+**Audit:** `LinkRoute`'s *Advanced* `AnimatedVisibility` keeps Compose's default expand/fade — read, not changed:
+it is a rarely-opened disclosure and was not visibly inconsistent in this pass.
+
+**Tests and mutations** (each red on its own test, results 0 s old; one mutant that did not compile was rerun as a
+compiling one): `ProgressMotionTest` 5 + `TransfersProgressSourceTest` 1 (3 mutations), `PressMotionTest` 4
+(3), `NavMotionTest` 3 (3), `RequestCardMotionTest` 4 (3).
+
+**Found, not fixed:** a Mac → phone push draws no bar on the phone while running (a history row gets a bar only
+when paused) — so item 1's device evidence uses a synthetic debug preview (`progress_steps`); and defect 146 below.
+
+**Recordings left on the phone** (`/sdcard/`, 9 files, ~49 MB, Sidekick's own screen and Android's prompt only):
+`sidekick-motion-card-{approve,approve2,running,decline,maccancel,timeout}.mp4`, `sidekick-motion-{nav,press,
+progress}.mp4`. Not deleted.
+
+### Defect 146 — the force-stop guard does not run on pinned-wrapper commands
+
+`no-force-stop.sh` is registered with `"if": "Bash(adb *)"`. During motion item 1 a command beginning with a
+variable and calling `scripts/adb-pinned.sh emu … am start -S -n com.chetan.connectsuite.debug/…` ran without the
+hook firing, and force-stopped Sidekick **on the emulator**. The same command fed to the hook directly is denied —
+the matcher is right, the registration is too narrow, and it is narrow in exactly the form this repo requires for
+device writes. The Samsung was not touched. Open; fix direction in the register.
