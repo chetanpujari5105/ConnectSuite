@@ -23220,3 +23220,11 @@ ConnectSuite installed.** Nothing else on it was touched.
 `adb`, and with the emulator attached that is *more than one device*. With `ANDROID_SERIAL` set to the
 pinned serial for that one read it passed. A two-device bus makes the script report a healthy phone as
 offline.
+
+### Defect 144 — the force-stop hook now sees `am start -S`
+
+`scripts/hooks/no-force-stop.test.sh`, 14 fixtures. Against the **original** hook the four new deny
+fixtures fail (`expected deny, got pass`) — including the verbatim command that ran on the emulator —
+and the six original fixtures pass. Against the fixed hook, 14 of 14. The first version of the new
+matcher also failed its own denies: it piped one command with no trailing newline into `while read`,
+which never runs the body for an unterminated last line. Fixed by printing with `\n`.

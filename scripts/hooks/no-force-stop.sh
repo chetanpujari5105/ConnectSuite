@@ -74,14 +74,31 @@ executable=$(printf '%s' "$executable" | sed -E \
 
 # 2. The real shape: `am force-stop` (allowing `adb shell` and quoting around it) with the package
 #    as an argument that follows, not merely a word that co-occurs.
+# 3. Defect 144: `am start -S` force-stops the target before launching it — the same grant loss
+#    under a different verb. It ran once, on the emulator, on 2026-09-23 and cleared the
+#    accessibility grant (1 → 0). Matched per command segment: an `am start` (or `start-activity`),
+#    a short-flag token whose letters include `S` — alone or clustered, `-S`, `-SW`, `-WS` — and our
+#    package, in any order within the segment. Lowercase `-s` (adb's serial flag) has no `S`.
+starts_with_stop() {
+  printf '%s\n' "$executable" | tr ';&|' '\n\n\n' | while IFS= read -r segment; do
+    if printf '%s' "$segment" | grep -Eq 'am[[:space:]]+start(-activity)?([[:space:]]|$)' &&
+       printf '%s' "$segment" | grep -Eq "(^|[[:space:]\"'])-[A-Za-z]*S[A-Za-z]*([[:space:]\"']|\$)" &&
+       printf '%s' "$segment" | grep -Eq 'com\.chetan\.connectsuite'; then
+      echo yes
+      break
+    fi
+  done
+}
+
 if printf '%s' "$executable" |
-   grep -Eq 'am[[:space:]]+force-stop[[:space:]]+[^;&|]*com\.chetan\.connectsuite'; then
+   grep -Eq 'am[[:space:]]+force-stop[[:space:]]+[^;&|]*com\.chetan\.connectsuite' ||
+   [ -n "$(starts_with_stop)" ]; then
   jq -n '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
       permissionDecisionReason:
-        "force-stop on the ConnectSuite package clears enabled_accessibility_services — the grant, not just the binding — and it cannot be restored except by hand in Settings > Accessibility. Every `input` step is untestable until someone does that.\n\nTo drop the link instead, use one of:\n  - the Mac app'"'"'s Disconnect button (same \"link dropped\" contract, costs nothing)\n  - `adb shell am crash com.chetan.connectsuite.debug` (real process death, no grant loss). It may print `Shell does not have permission to crash packages for user 150` and work anyway — read the pid, not the exit line.\n  - `adb shell am kill com.chetan.connectsuite.debug` — but note it does NOTHING while the foreground service is running: measured 2026-09-01, identical pid before and after. Use it only for a backgrounded process.\n  - turn Wi-Fi off on the phone\n\nSee docs/testing.md, \"Force-stopping the phone app costs the accessibility grant\"."
+        "force-stop on the ConnectSuite package — `am force-stop`, or `am start -S`, which force-stops before launching — clears enabled_accessibility_services — the grant, not just the binding — and it cannot be restored except by hand in Settings > Accessibility. Every `input` step is untestable until someone does that.\n\nTo drop the link instead, use one of:\n  - the Mac app'"'"'s Disconnect button (same \"link dropped\" contract, costs nothing)\n  - `adb shell am crash com.chetan.connectsuite.debug` (real process death, no grant loss). It may print `Shell does not have permission to crash packages for user 150` and work anyway — read the pid, not the exit line.\n  - `adb shell am kill com.chetan.connectsuite.debug` — but note it does NOTHING while the foreground service is running: measured 2026-09-01, identical pid before and after. Use it only for a backgrounded process.\n  - turn Wi-Fi off on the phone\n\nSee docs/testing.md, \"Force-stopping the phone app costs the accessibility grant\"."
     }
   }'
 fi
