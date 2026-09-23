@@ -342,7 +342,7 @@ opened and backed out → still *Off* (secure setting confirms); Done → Device
 
 **Commit:** `0d2d038`
 
-## F · Mirror request while backgrounded — **implemented; emulator-verified; live Samsung test pending (manual)**
+## F · Mirror request while backgrounded — **implemented; verified on the SM-S938B 2026-09-23** (notification, card, Android's consent, a real session, Stop, Decline, Mac cancel, timeout, retry); three copy fixes; see `docs/testing.md` → *Feature F — review on the SM-S938B*
 
 **Decision:** the official route only. A high-importance notification with a named action; the tap
 (the user's gesture) opens Sidekick's own request screen; **Continue** then shows Android's real

@@ -23519,3 +23519,55 @@ one row (the address chip shows only while connected, as before); reconnect in 3
 gains *the address chip keeps its width, in a flow that can wrap*, red against the old weighted row.
 
 Evidence: `docs/evidence/devices-header-chips-2026-09-23/`.
+
+### Feature F — review on the SM-S938B (2026-09-23, 16:34–16:55)
+
+**What F is** (`d9e681e`, mirror-module, the Mac's three mirror sentences, `docs/protocol.md`). **Before it:** a
+backgrounded `mirror.start` already posted a notification — *"<Mac> wants to mirror your screen" / "Tap to open
+ConnectSuite and start mirroring"*, `CATEGORY_STATUS`, no action, no expiry — and three sentences quoted
+*"Start now"*. **F added:** the named action *Approve screen sharing*, `setTimeoutAfter(30 s)`, `CATEGORY_REMINDER`
+on the `IMPORTANCE_HIGH` channel `screen_mirror_request`; Sidekick's own request card (who, what is shown, a
+countdown from the real timer, Continue / Decline); `MirrorFailure.DeclinedOnPhone`; no quoted button labels. No
+full-screen intent (Android 14+ reserves it for calling and alarm apps).
+
+**Method.** The Mac driven by id through `probe.mjs` (`#mirror-start`, `#mirror-stop`, the overlay, the note; control:
+the section's button count); the phone read from `dumpsys notification --noredact` (control: Sidekick's other
+notifications counted in the same read), `uiautomator` and both logs. Pairing, trust, folders and permissions were
+checked before and after (see the accessibility note below). The owner put the phone down on the home screen
+before the runs; one run where the phone was in use (16:36) is void.
+
+| Run | What | Result |
+|---|---|---|
+| 1 | Start, Sidekick backgrounded | notification in 3 s: *"Chetans-MacBook-Pro wants to see this phone's screen"* / *"Tap to review. Android will then ask you to approve screen sharing."*, action **Approve screen sharing**, `timeout=PT30S`, importance 4. Mac overlay: *"…Approve screen sharing on your phone — tap the Sidekick notification, or open Sidekick › Mirror."* |
+| 1 (cont.) | untouched | **expired at 30.0 s** (16:35:05.404 → 16:35:35.411), notification gone, Mac Start re-enabled — **with the old copy** pointing at the removed notification (fixed, `cfb38d1`) |
+| 4, 6 | tap the notification in the shade | **Sidekick → Mirror** in front with the request card, *"This request ends in 21s"*; the notification removed itself |
+| 3, 5, 7 | the same tap | **no reading**: the shade closed between `uiautomator`'s dump and the tap, and the tap reached the launcher (`HoneySpace … checkMultiFingerGesture`), which ignored it. Samsung also groups Sidekick's notifications, and a tap in the shade can expand the group rather than fire it. The instrument, not F; runs 4 and 6 are the reading |
+| 2, 6 | Continue with the clock nearly out | expired before the tap — **5–7 s per `uiautomator` dump** on this phone; slow instrument, not a product failure |
+| 8 | open Sidekick › Mirror during a request → Continue | Android's own `MediaProjectionPermissionActivity`: *"Share your screen with Sidekick?"*, default **Share one app** with **Next**; switched to **Share entire screen**, the button becomes **Share screen** |
+| 8 (cont.) | Share screen | a real session: `Encoded +26 frames (13.0/s)` then static-screen ticks; Mac `session: active`, overlay hidden. **Stop from the Mac** → phone `stopped-by-mac`, projection released 4 ms later, `dumpsys media_projection` → `null` |
+| 9 | Decline on the card | Mac: *"Screen sharing was declined on the phone. If that was a mistake, start mirroring again from this Mac."* — **the same sentence on the phone's own screen** (fixed to *"your Mac"*, `75f5363`; verified after on both ends) |
+| 10 | Stop on the Mac while the phone's request is pending | notification removed within 3 s; phone Mirror tab *"Mirroring was stopped from the Mac."*, no Continue/Decline left. **The phone wrote no log line for it** — noted, not changed (pre-F path) |
+| 11 | untouched, then retry | new copy on both ends: *"Screen sharing was not approved within 30 seconds, so the request ended." / "Start mirroring again from your Mac, then approve screen sharing on your phone."*; an immediate retry posted a fresh notification |
+
+**A late approval is dropped, and nothing says so.** After Continue the timer re-arms for Android's prompt; when
+it expired with the prompt still up (16:40:38), *Share screen* tapped at 16:41:14 logged *"Screen capture consent
+granted"* and started nothing — no projection (`null`), the phone still showing *"Mirroring stopped"* under
+Android's dialog (`f-03`). The app cannot dismiss Android's prompt. Not changed: the consent timer predates F.
+
+**Heads-up.** The notification is importance 4 (heads-up eligible) and Samsung drew an edge-lighting window at
+post time; a heads-up was **not** seen in a dump taken 6 s later. Whether and how long One UI shows it is the
+OEM's, and was not measured.
+
+**Copy fixed** (each its own commit): `cfb38d1` the timeout; `75f5363` the decline hint; `bd4b295` the Mac's note
+under Start (*"Waiting for the phone. Approve screen sharing on your phone."*), moved into
+`shared/mirrorSession.ts` where a test reaches it. No Mac or phone sentence quotes *"Start now"* or any label of
+Android's prompt; `ConsentCopyTest` and `mirrorSession.test.ts` hold it.
+
+**Sidekick Input was switched off at 16:25:46 by a Force stop in Settings, not by this work.**
+`dumpsys activity exit-info`: `reason=10 (USER REQUESTED) subreason=21 (FORCE STOP) … from pid 26472
+(com.android.settings)`; `dumpsys settings` history: `enabled_accessibility_services` → `null` by `android` at
+16:25:46.261 (and once before, 09-19 08:31:56). No command was sent to the phone at that time; every other exit
+today is `PACKAGE UPDATED` (the installs) or the 14:55 photo revoke. It was **not** re-enabled from adb — it is
+the owner's switch. Everything else in the baseline is unchanged.
+
+Evidence: `docs/evidence/feature-f-review-samsung-2026-09-23/` (Sidekick and Android's own dialogs only).
