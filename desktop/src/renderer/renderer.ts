@@ -283,7 +283,14 @@ interface ConnectBridge {
     id: string;
     name: string;
     size: number;
-  }): Promise<{ ok: boolean; path?: string; bytes?: number; verified?: boolean; reason?: string }>;
+  }): Promise<{
+    ok: boolean;
+    path?: string;
+    bytes?: number;
+    verified?: boolean;
+    reason?: string;
+    fixHint?: string;
+  }>;
   /** Fire-and-forget by necessity: `startDrag` cannot survive an awaited round trip. */
   fsDrag(paths: string[]): void;
   fsThumbs(options: {

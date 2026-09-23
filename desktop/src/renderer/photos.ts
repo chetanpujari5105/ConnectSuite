@@ -807,7 +807,11 @@ class PhotosView {
       } else {
         // The phone's own sentence, not a generic one. A failed transfer is the case where a
         // specific reason matters most: "no space" and "the socket dropped" want opposite responses.
-        this.failure = { reason: result.reason ?? 'The transfer did not finish.' };
+        // The fix hint too — an unavailable receive folder names where to choose another.
+        this.failure = {
+          reason: result.reason ?? 'The transfer did not finish.',
+          ...(result.fixHint ? { fixHint: result.fixHint } : {}),
+        };
       }
     } finally {
       this.pulling = null;

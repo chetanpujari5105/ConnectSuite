@@ -22878,3 +22878,44 @@ applies, so the row and the Mac's `photos` capability cannot disagree.
   Mac without its phone overnight. The live test is the first manual step for the morning.
 - Suites: mirror-module 53/53 (`ConsentCopyTest` 4, `MirrorContractTest`'s exhaustive failure list
   updated — it caught the new subclass on the first run), phone 540 total, Mac 952/952.
+
+
+## Sidekick feature pass — Feature B completion run (2026-09-23, morning)
+
+**Exactly B's code on both ends.** Phone: an APK built from `d18ef15` in a separate worktree —
+content-checked: `ReceivedFileNotifications` present (9), E's `SetupPlan` and F's `DeclinedOnPhone`
+absent (0). Installed with `adb install -r` through the pin; before/after: **28 granted permissions,
+identical**; notification-listener and accessibility bindings present; `scripts/link-up.sh` three
+OKs both times. Mac: the same commit's desktop, built and run from the worktree (cwd confirmed),
+926/926 tests there; it reconnected via last-known with the existing identity.
+
+| Check | Mac card | Phone |
+|---|---|---|
+| one file | `1 file arrived … · checksum matched` | `t-1-44706 received sidekick-b-final-one.txt … verified=true`; notification id 3101 *"sidekick-b-final-one.txt arrived from Chetans-MacBook-Pro" / "In Received files · 2.8 KB · checksum matched"* |
+| three files | `3 of 3 arrived`, all checksum matched | notification *"4 files arrived from Chetans-MacBook-Pro" / "Latest: sidekick-b-final-multi-3.bin, in Received files"* — **4**, because the one-file send was inside the 60 s batch window |
+| collision | `Arrived as sidekick-b-final-one (2).txt · checksum matched` | `16 delivered / 1 refused`, then `(2).txt … verified=true`; original untouched |
+| stop during receiver progress | `confirming · 18 MB of 200 MB on the phone` → Stop → `stopped after 25165824 bytes and can be resumed` | `keeping the pending … at 25165824 bytes` |
+| resume | `Arrived · not checksummed` | `reusing the pending item … 25165824 bytes already staged — this is the resume path`, `starting at 25165824`; phone sha256 `bf375859eeb4…` = source `bf375859eeb4…` |
+
+The notification reader's first version matched another package's notification (*"Numbers
+temporarily unblocked"*) — a lookalike caught before it counted; the reading above matches our
+package **and** id 3101, with our other records (ids 1001, 2001) as the control.
+
+### Receive folder, live
+
+| Case | Result |
+|---|---|
+| default | `~/Downloads/Sidekick`, `chosen: false`; a pull landed there (and a same-name pull as `(2)`) |
+| **Choose…** | driven through the real macOS panel (Go to folder + Return — on macOS 26 the panel's buttons are not exposed to System Events); stored `…/sk-receive-chosen`, row shows it, *Use default* appears; a pull landed in it and not in the default |
+| renamed folder | refused: *"The receive folder …/sk-receive-chosen is not available — it may have been moved, renamed, or be on a drive that is not connected."*; phone **not asked** (0 of 80 new log lines name the file); Reveal refused; folder **not recreated** |
+| **Use default** | back to `~/Downloads/Sidekick (default)`; next pull landed there |
+| external drive | a 20 MB APFS image mounted as `/Volumes/SKReceiveTest`, chosen through the panel, a pull landed on it; **ejected** → refused with the volume named, phone not asked (0 of 80), `/Volumes/SKReceiveTest` not recreated |
+
+**Found and fixed in this run:** the refusal showed the reason but dropped the main process's fix
+hint, so the person learned what broke and not what to do. Files and Photos' Save to Mac now carry
+it — live: *"… Choose another folder in Settings → File transfer, or reconnect the drive."*
+`filesView.test.ts` red with the hint dropped, green with it. Mac 953/953.
+
+**Pairing:** the trust-related lines in the phone log (*Forgot*, *Rejected unpaired client*) are all
+from 2026-09-22 20:35, before this pass, for another Mac identity; nothing trust-related since.
+Receive folder restored to the default; the Files pane restored to List view.

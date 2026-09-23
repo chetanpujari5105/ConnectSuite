@@ -67,7 +67,14 @@ interface FilesBridge {
     id: string;
     name: string;
     size: number;
-  }): Promise<{ ok: boolean; path?: string; bytes?: number; verified?: boolean; reason?: string }>;
+  }): Promise<{
+    ok: boolean;
+    path?: string;
+    bytes?: number;
+    verified?: boolean;
+    reason?: string;
+    fixHint?: string;
+  }>;
   /** Synchronous by necessity — see the preload comment. Nothing may be awaited before it. */
   fsDrag(paths: string[]): void;
 
@@ -793,7 +800,15 @@ class FilesView {
               : ' No checksum was agreed in advance, so nothing compared the bytes.'),
         };
       } else {
-        this.lastPull = { ok: false, text: `${entry.name} — ${result.reason ?? 'the copy failed.'}` };
+        // The fix hint travels with the reason: an unavailable receive folder says *which* folder
+        // and *where to choose another* — the first half alone left the person knowing what broke and
+        // not what to do (found checking the renamed-folder case live).
+        this.lastPull = {
+          ok: false,
+          text:
+            `${entry.name} — ${result.reason ?? 'the copy failed.'}` +
+            (result.fixHint ? ` ${result.fixHint}` : ''),
+        };
       }
     } finally {
       this.copying.delete(entry.id);

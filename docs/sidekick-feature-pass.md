@@ -178,6 +178,16 @@ squeezed the file name to zero width; *"Stopped — nothing was sent"* after 29.
 
 **Commit:** `d18ef15`
 
+### B — completion run (morning of 2026-09-23)
+
+Everything below ran on **B's own commit** on both ends (phone APK and Mac desktop built from
+`d18ef15` in a worktree). Real SM-S938B: one file, three files, collision rename, stop during
+receiver-side progress, resume (byte-identical, hash checked), and the **Android received-file
+notification** — all confirmed. Receive folder: default, Choose… (real panel), Use default, renamed
+folder and ejected drive refusals (phone never asked, nothing recreated) — all confirmed. One gap
+found and fixed as a follow-up commit: the refusal now carries its fix hint. Full table:
+`docs/testing.md` → *Feature B completion run*.
+
 ## C · Photos preview quality and video — **implemented, real-device tested (on samples)**
 
 **Decision:** Mac only, no protocol change. The largest thumbnail the protocol allows (512) at once,

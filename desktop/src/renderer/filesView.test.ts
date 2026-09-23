@@ -693,3 +693,24 @@ test('a render inside the filter’s debounce does not erase what was just typed
     pane.restore();
   }
 });
+
+test('a pull refused for an unavailable receive folder says what to do, not only what broke', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    pane.bridge.fsPull = (async () => ({
+      ok: false,
+      reason: 'The receive folder /Volumes/X is not available — it may have been moved, renamed, or be on a drive that is not connected.',
+      fixHint: 'Choose another folder in Settings → File transfer, or reconnect the drive.',
+    })) as never;
+    const report = pane.table.queryAll('.files-row').find((r) => r.textContent.includes('report.pdf'))!;
+    report.dispatch('click'); // select — the card that carries the status line describes this row
+    report.dispatch('dblclick');
+    await new Promise((r) => setImmediate(r));
+    const text = pane.detail.textContent;
+    assert.ok(text.includes('/Volumes/X is not available'), text);
+    assert.ok(text.includes('Choose another folder in Settings → File transfer'), 'the fix hint reaches the pane');
+  } finally {
+    pane.restore();
+  }
+});
