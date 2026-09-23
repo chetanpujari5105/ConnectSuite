@@ -1,5 +1,10 @@
 package com.chetan.connectsuite.core.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
+import com.chetan.connectsuite.core.ui.Motion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -92,7 +97,19 @@ private fun NavCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val tone = if (selected) SidekickColors.accent else SidekickColors.textBody
+    // Colour only, eased at `--dur-pill` (NavMotion). The route change and `selectable`'s selected
+    // state use the raw `selected` below, so the screen and TalkBack change at once; only the paint
+    // catches up. Nothing moves or scales. Android's animator scale applies (Remove animations).
+    val colours = tween<Color>(NavMotion.DURATION_MS, easing = Motion.ease)
+    val tone by animateColorAsState(
+        if (selected) SidekickColors.accent else SidekickColors.textBody, colours, label = "nav-tone",
+    )
+    val tint by animateColorAsState(
+        if (selected) SidekickColors.accentTint else Color.Transparent, colours, label = "nav-tint",
+    )
+    val dot by animateColorAsState(
+        if (selected) SidekickColors.accent else Color.Transparent, colours, label = "nav-dot",
+    )
     Column(
         modifier = modifier
             .clip(Radius.cardShape)
@@ -117,7 +134,7 @@ private fun NavCell(
                 .width(52.dp)
                 .height(30.dp)
                 .clip(Radius.controlShape)
-                .background(if (selected) SidekickColors.accentTint else androidx.compose.ui.graphics.Color.Transparent),
+                .background(tint),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -138,9 +155,13 @@ private fun NavCell(
             Modifier
                 .size(4.dp)
                 .clip(CircleShape)
-                .background(
-                    if (selected) SidekickColors.accent else androidx.compose.ui.graphics.Color.Transparent,
-                ),
+                .background(dot),
         )
     }
 }
+
+/** The bottom nav's selection timing: `--dur-pill`, the Mac nav pill's, for colour alone. */
+object NavMotion {
+    const val DURATION_MS = Motion.PILL_MS
+}
+
