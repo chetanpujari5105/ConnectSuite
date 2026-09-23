@@ -1,5 +1,10 @@
 package com.chetan.connectsuite.core.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import com.chetan.connectsuite.core.ui.Motion
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,17 +58,30 @@ fun PrimaryButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val fill = when {
+    val target = when {
         !enabled -> SidekickColors.cardRaised
         pressed -> SidekickColors.accentPressed
         else -> SidekickColors.accent
     }
+    // The press eases in and out (PressMotion); a disabled button takes neither the scale nor the
+    // pressed colour. Compose scales these by Android's animator scale, so under *Remove animations*
+    // the pressed look still appears, in one frame, with no motion (measured on the emulator).
+    val spec = tween<Float>(PressMotion.durationMs(pressed), easing = Motion.ease)
+    val fill by animateColorAsState(
+        target,
+        tween(PressMotion.durationMs(pressed), easing = Motion.ease),
+        label = "primary-fill",
+    )
+    val scale by animateFloatAsState(PressMotion.scale(pressed, enabled), spec, label = "primary-press")
     val content = if (enabled) SidekickColors.onAccent else SidekickColors.textDisabled
 
     ButtonShell(
         text = text,
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
         icon = icon,
         trailingIcon = trailingIcon,
         enabled = enabled,

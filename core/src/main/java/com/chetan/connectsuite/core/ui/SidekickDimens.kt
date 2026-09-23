@@ -82,4 +82,6 @@ object Motion {
     const val ARRIVE_MS = 220
     /** `--dur-route` — a screen change. */
     const val ROUTE_MS = 260
+    /** `--press-scale` — a labelled control under a finger. */
+    const val PRESS_SCALE = 0.97f
 }
