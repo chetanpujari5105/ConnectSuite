@@ -23286,3 +23286,148 @@ Owed, on an isolated emulator:
 - the Mac pane's wording against a live `capabilities.changed`.
 
 Blocked: 316 MB free on the Mac after the builds.
+
+### Feature E — emulator verification of defects 139 and 140 (2026-09-23, afternoon)
+
+**Target:** `emulator-5554` only, through `scripts/adb-pinned.sh emu` (model-checked `sdk_gphone16k_arm64`,
+API 37). The SM-S938B was **not on the bus** for the whole run. APK: the HEAD build (no phone source newer
+than `app-debug.apk`), uninstalled and installed clean **twice**. Every tap from a fresh `uiautomator dump`
+by text, content description or resource id; none by remembered coordinate. **Nothing here is a hardware
+reading** — it is one AOSP permission controller (`com.google.android.permissioncontroller`) and one
+photo picker (`com.google.android.photopicker`); One UI's are not measured.
+
+Test media: three synthetic solid-colour PNGs pushed to `Pictures/`. The emulator also holds older
+root-level screencaps from earlier sessions, some showing third-party social content; **the picker
+screenshots are cropped above them** and `e2-11` (a duplicate picker frame) was deleted.
+
+**Restart** = HOME, `am crash` (the only restart that works with `LinkService` up — `am kill` left pid 7424
+unchanged, confirming the note in `no-force-stop.sh`), relaunch; the pid is printed each time.
+
+| Step | Checklist row (read from the dump) | OS (`dumpsys package`) | After restart |
+|---|---|---|---|
+| Photos → Allow → *Allow limited access*, 2 of 3 picked | **Some photos allowed** · *Change selection* | `VISUAL_USER_SELECTED` true; IMAGES/VIDEO false; `USER_SET` — **no** `REVOKED_COMPAT`/`ONE_TIME` | same (pid 7424 → 9198), *2 of 9 turned on* |
+| *Change selection* (1st) | → **`GrantPermissionsActivity`**: *access **more** photos* · Allow limited / Allow all / *Don't select more* | — | — |
+| → *Allow limited access* | picker reopens with the **2 prior picks selected**; Done → unchanged | flags gain `USER_FIXED` | — |
+| *Change selection* (2nd) | → **straight into `PhotopickerUserSelectActivity`**, no dialog | `USER_FIXED` on all three | — |
+| Settings → Photos → *Always allow all* | **On**, no button; re-read on return | all three true | same (9198 → 11075) |
+| Settings → Photos → *Don't allow* | **Off** · *Allow* | all false, `USER_SET` | Android killed the process on revoke (→ 11894) |
+| → Allow → *Don't allow* (offered as **deny-and-don't-ask-again**) | **Turned off in Settings** · *Open Settings* | `USER_FIXED` | same (11894 → 13167) |
+| clean reinstall → Allow → *Don't allow* | **Off** · *Allow* | `USER_SET`, no `USER_FIXED` | — |
+| → *Not now* | **Not now** · *Allow* | unchanged | same (14211 → 14887) |
+| → Allow → *Don't allow* (don't-ask-again) | **Turned off in Settings** · *Open Settings* | `USER_FIXED` | same, cold start (pid 15975) |
+
+**Change selection is Android's real flow**, in two forms: the platform dialog while it will still ask, then
+the platform picker directly once it has fixed the choice.
+
+**Open Settings** (clean Settings task) → `SpaActivity`, App info for Sidekick; **one** Back → the checklist,
+row unchanged. An earlier reading in this run showed it opening the Photos permission page and needing two
+Backs — **that was the Settings task I had navigated by hand**, brought forward; it was closed and the
+reading retaken.
+
+**Defect 140, rendered:** Devices → gear (*Mac settings*, unpaired) → the *Set up Sidekick* card → checklist;
+**Back** → Mac settings → Devices; **Done** → Mac settings. Every relaunch in the run (five) landed on
+**Devices**, never the checklist; the checklist was landed on once, after onboarding.
+
+**Screen-reader labels** — every button content description, swept top to bottom (16 distinct):
+`Allow: Texts|Calls|Contacts|Photos and videos|Keep running in the background`, `Choose: Folders`,
+`Change selection: Photos and videos`, `Open Settings: Show notifications on your Mac|Control from your
+Mac|Photos and videos`, `Not now: <each of 8 features>`. None bare; `Done` is the only unqualified label and
+is unique on the screen.
+
+**Findings, not fixed (stopped for approval):**
+1. **No in-app route to full access once Android has fixed a limited choice.** After two *Allow limited
+   access* answers, *Change selection* opens only the picker; *Allow all* is reachable only through Settings.
+   The row stays honest (*Some photos allowed*), but it offers no way to the state above it. A secondary
+   *Open Settings* on the `Limited` row would close it.
+2. **The *Set up Sidekick* card is below the fold on unpaired Mac settings** (1916 px in a 2424 px screen,
+   under the tab bar; one scroll reaches it). It is an entry, not a state, so the visible-at-rest rule does
+   not strictly apply — recorded because it was the one thing in this run that looked missing.
+
+**Not done — item 7 (Mac capability observation).** The Mac stores exactly **one** phone
+(`store.ts`: `paired: PairedPhone | null`); pairing the emulator would replace the SM-S938B. So the `limited`
+wire field, `link.ts`, the renderer hand-off and the Photos pane's *Some photos allowed* are still
+**unobserved end to end**; they are unit-tested only (M1, M2). The route that settles it without touching
+the Samsung pairing is the SM-S938B itself, when its owner chooses limited access there.
+
+**Suites:** Mac `tsc` exit 0, `npm test` 963/963; phone `testDebugUnitTest` gradle exit 0, 564 tests,
+0 failures (all test tasks up-to-date — no phone source changed since the results were written); all 15
+commit checkers run directly, each printing its OK line. Graph rebuilt (4060 nodes).
+
+Screenshots: `docs/evidence/sidekick-e-verify-2026-09-23/` (18; emulator; synthetic media only).
+
+### Feature E — SM-S938B verification (2026-09-23, 14:41–15:05)
+
+**Target:** the SM-S938B only, every write through `scripts/adb-pinned.sh samsung` (the emulator was shut
+down first, so `link-up.sh`'s plain `adb` could only reach the Samsung). Pairing never reset, app data never
+cleared. The phone was in use when the run began (LinkedIn, Gallery, Instagram in 30 s of samples); the
+owner was asked and said go ahead before the screen was taken over. The tap helper refused to read or tap
+any package other than Sidekick, the permission controller, the photo picker and Settings; no screenshot
+was taken of the picker or of any other app.
+
+**Baseline, read-only, before the install** (and identical after it, and at the end, apart from
+`lastUpdateTime` and the listener's new binder object):
+- phone trust store, copied **with** its `-wal` and `-shm`: one row, `Chetans-MacBook-Pro`, `b59f4bbaf2fc…`;
+  Mac `sidekick.json`: `Samsung SM-S938B`, `2F:97:0F:EC:D3:F6`, `pairedAt 1789648162824`;
+- folder grants at `persisted=0x3`: `primary:Documents`, `primary:DCIM`, `primary:Pictures`;
+- notification listener in the secure setting **and** bound; *Sidekick Input* in the secure setting **and**
+  in `Bound services`;
+- 14 runtime grants (photos: images, video and selected all `granted=true`, `USER_SET`);
+- battery: **not** exempt — `deviceidle whitelist` returns 176 rows and none is Sidekick (the checklist's
+  *Keep running in the background: Off* agrees);
+- link: `link-up.sh` three OKs, one session; Mac log `Connected … via last-known` at 13:45.
+
+**The Mac build it was connected to predated defect 139** (`dist/` 09:58, the fix 11:04), so it was rebuilt
+and relaunched. **Install:** `adb install -r` of `724f03e`'s debug build, then `am start` by name →
+`link-up.sh` three OKs (service 5.7 s old); the relaunched Mac reconnected by itself in 148 ms,
+`via last-known`, no pairing prompt.
+
+**Readings** (`scripts/photos-limited-probe.mjs` for the Mac pane — banner words and an album-row count,
+never names or thumbnails):
+
+| Step | Phone row | Phone `[caps]` | Mac pane |
+|---|---|---|---|
+| full (baseline) | *8 of 9*; Photos **On** | — | no notice (control: 153 albums) |
+| Settings → *Allow limited access* (process restarted by Android; Mac reconnected in 4 s) | **Some photos allowed** · *Change selection* · *Open photo settings* | `photos` advertised; `limited: photos — Some photos allowed — only the photos and videos chosen on the phone are shared. Change the selection on the phone, in Set up Sidekick.` | **Some photos allowed** + that sentence, verbatim (control: 153 — the pre-switch album list) |
+| *Change selection* | → `GrantPermissionsActivity`, *access **more** photos* → *Allow limited access* → `PhotopickerUserSelectActivity` | — | — |
+| 3 synthetic PNGs selected (5 in all; 2 were already selected before this run and left alone) | unchanged | unchanged | notice unchanged (control: 2 albums) |
+| *Open photo settings* | → `com.android.settings/.applications.InstalledAppDetails` (**App info**) | — | — |
+| App info → Permissions → Photos → *Always allow all* | — | still limited at 15:02:31 (Settings in front) | still the notice |
+| back to Sidekick (resume) | **On** | 15:03:47 `limited: none` | **no notice** (control: 153 albums) |
+
+**Picking only synthetic images.** The picker's descriptions carry the minute only, and **six** items were
+dated 2:53–2:54 PM. MediaStore separated them: mine are `owner=com.android.shell`, added 14:53:27–28;
+the other three are `owner=com.android.systemui` screenshots taken on the phone at 14:54:31–39. With no
+other item in the 2:53 minute, *2:53 PM* was a sound discriminator here, and the picker then read
+`Selected` on exactly those three.
+
+**Two readings the run's own requirement could not have**:
+- *Open photo settings opens the photo permission page* — **not possible for any app.** On this phone
+  `MANAGE_APP_PERMISSION` resolves to `ManagePermissionsActivity` with
+  `permission=android.permission.GRANT_RUNTIME_PERMISSIONS`. It opens App info; Photos is Permissions →
+  Photos and videos from there.
+- *Switching to full removes the notice on both* — true, **when Sidekick resumes.** A runtime grant made in
+  Settings changes nothing the capability detector watches; a revoke restarts the process and so
+  re-handshakes. Recorded under defect 139.
+
+**A platform fault met on the way:** Google's permission controller crashed twice opening Sidekick's
+Permissions page (14:59:35, 15:00:51) — `BadParcelableException: only received 23 of 619` in
+`UserPackageInfosLiveData`, `DeadObjectException` on the binder. It is the list of **every installed
+package**; nothing in the trace is Sidekick's, and the same page opened at 14:54 and on the third try.
+My first attempt's second tap therefore matched *Photos and videos* in **Sidekick's own checklist** (the
+row title, no action); nothing changed, and the steps were redone one at a time with the foreground read
+between each.
+
+**Left on the phone:** `Pictures/sidekick-e-test-{red,green,blue}.png` (synthetic, 1 KB each). Photo access
+ends where it began (`USER_SET`, all three granted); the selection list Android keeps now includes the three
+test images.
+
+Screenshots: `docs/evidence/sidekick-e-samsung-2026-09-23/` (Sidekick, Settings and permission dialogs only).
+
+### Defect 145 — the Devices screen says Offline while the Mac is connected
+
+Found in the run above. With `link-up.sh` at one session ESTABLISHED and Mac settings reading *Connected*,
+Devices read *Offline*, *Paired with Chetans-MacBook-Pro · waiting for it to connect*, *Your Mac: Not
+connected*, and drew *Send files* disabled — twice, 5 s apart (`s-07-devices-after.png`).
+`DevicesSection` sets `connected = mac?.isConnected`; `DeviceRepository` fills `isConnected` from
+`ConnectionManager.connectedDevices`, the v1 Android-to-Android transport. The Mac is on v2 `LinkServer`.
+Not fixed; fix direction in the register.

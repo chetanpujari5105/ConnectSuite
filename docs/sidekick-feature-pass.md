@@ -292,7 +292,7 @@ empty. Open and not D's: **137** (phone-side) and **138** (pre-existing list col
 minimum). Rows and tiles are not keyboard-reachable (pre-existing). Record: `docs/testing.md` →
 *Feature D review*.
 
-## E · First-run setup and permissions — **implemented, emulator-tested; phone install pending with F**
+## E · First-run setup and permissions — **implemented; verified on the emulator and on the SM-S938B end to end (2026-09-23)** — see `docs/testing.md` → *Feature E — SM-S938B verification*; defect 145 found there, open
 
 **Decision:** a *Set up Sidekick* checklist after pairing (and from Sync settings), not a wall of
 prompts. No permission added to the manifest; none asked that a feature does not need.
@@ -332,8 +332,11 @@ opened and backed out → still *Off* (secure setting confirms); Done → Device
 - Not yet installed on the SM-S938B (done once with F, to limit link interruptions). On that phone
   most rows will read **On** already, because of the earlier `adb` grants.
 - *Not now* hides nothing — the row stays, marked, so it can be revisited.
-- Android 14+ *Select photos* (partial access) reads as Off, because the Photos feature needs full
-  image **and** video access; that is the feature's own rule, not a new one.
+- ~~Android 14+ *Select photos* reads as Off~~ — **superseded by defect 139**: selected-only is its
+  own state, *Some photos allowed* · *Change selection*, verified on the emulator with restarts. Once
+  Android fixes a limited choice, full access is reachable only through Settings (no in-app route).
+- The `limited` capability field and the Mac pane's wording are unit-tested only: the Mac holds one
+  phone, so the emulator was not paired. Full run: `docs/testing.md` → *Feature E — emulator verification*.
 - The onboarding pages themselves still draw Material colours (as recorded in the Android redesign
   plan); only the new checklist is Sidekick-styled.
 
