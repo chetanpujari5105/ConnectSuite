@@ -1,5 +1,7 @@
 package com.chetan.connectsuite.core.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -11,7 +13,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -38,7 +44,35 @@ fun SidekickProgress(
     progress: Float?,
     modifier: Modifier = Modifier,
     tone: Color = SidekickColors.accent,
+    /**
+     * Ease the fill between successive readings ([ProgressMotion]). For byte counts — the Transfers
+     * bar. Off for a bar that *is* a clock, like the pairing countdown, which is redrawn every second
+     * and would otherwise trail its own time.
+     */
+    easeBetweenReadings: Boolean = false,
 ) {
+    // `Animatable` starts at the first value, so the first frame already shows it — the first known
+    // reading is never eased in from empty. Compose scales its duration by Android's animator scale
+    // (`animator_duration_scale`, read by ui-android 1.9.1), so *Remove animations* makes each step
+    // land at once.
+    val fill = remember { Animatable(progress?.coerceIn(0f, 1f) ?: 0f) }
+    var last by remember { mutableStateOf(progress) }
+    if (easeBetweenReadings) {
+        LaunchedEffect(progress) {
+            // Decided against the previous *reading*, recorded before any easing, so a reading that
+            // interrupts an ease is compared with the last real value, never with a half-way frame.
+            val step = ProgressMotion.step(last, progress)
+            last = progress
+            when (step) {
+                ProgressMotion.Step.Hide -> fill.snapTo(0f)
+                is ProgressMotion.Step.Snap -> fill.snapTo(step.to)
+                // Linear and at `--dur-state`, the Mac bar's values: shorter than the 250 ms
+                // progress cadence, so the fill lands on each reading before the next arrives.
+                is ProgressMotion.Step.Ease -> fill.animateTo(step.to, tween(Motion.STATE_MS, easing = LinearEasing))
+            }
+        }
+    }
+    val drawn = if (easeBetweenReadings) fill.value else progress?.coerceIn(0f, 1f) ?: 0f
     Box(
         modifier
             .fillMaxWidth()
@@ -50,7 +84,7 @@ fun SidekickProgress(
             Box(
                 Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                    .fillMaxWidth(drawn)
                     .clip(Radius.pillShape)
                     .background(tone),
             )

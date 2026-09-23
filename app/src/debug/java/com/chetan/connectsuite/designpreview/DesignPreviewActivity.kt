@@ -1,5 +1,9 @@
 package com.chetan.connectsuite.designpreview
 
+import androidx.compose.runtime.LaunchedEffect
+import com.chetan.connectsuite.core.ui.Space
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -116,6 +120,7 @@ class DesignPreviewActivity : ComponentActivity() {
                     SCREEN_FEED -> FeedPreview()
                     SCREEN_MAC -> MacManagementPreview()
                     SCREEN_MIRROR_REQUEST -> MirrorRequestPreview()
+                    SCREEN_PROGRESS_STEPS -> ProgressStepsPreview()
                     else -> DevicesConnectedPreview()
                 }
             }
@@ -137,6 +142,7 @@ class DesignPreviewActivity : ComponentActivity() {
         const val SCREEN_FEED = "feed"
         const val SCREEN_MAC = "mac"
         const val SCREEN_MIRROR_REQUEST = "mirror_request"
+        const val SCREEN_PROGRESS_STEPS = "progress_steps"
     }
 }
 
@@ -586,3 +592,34 @@ private fun MirrorRequestPreview() {
         )
     }
 }
+
+/**
+ * SYNTHETIC — the production `SidekickProgress`, fed a scripted sequence of readings 250 ms apart
+ * (the phone's progress cadence), once easing between them and once not. It exists because a live
+ * bar cannot be produced on the test phone: a Mac → phone push is a history row, which draws no bar
+ * while running. It proves the motion and nothing about where readings come from.
+ */
+@Composable
+private fun ProgressStepsPreview() {
+    val readings = listOf<Float?>(null, 0.18f, 0.31f, 0.47f, 0.64f, 0.82f, 0.96f, 1f)
+    var index by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(if (index == readings.lastIndex) 2_000L else 250L)
+            index = (index + 1) % readings.size
+        }
+    }
+    val reading = readings[index]
+    Column(
+        Modifier.fillMaxSize().background(SidekickColors.canvas).statusBarsPadding().padding(Space.lg),
+        verticalArrangement = Arrangement.spacedBy(Space.lg),
+    ) {
+        Text("SYNTHETIC — readings every 250 ms", style = SidekickType.overline, color = SidekickColors.warning)
+        Text("Reading: ${reading?.let { "${(it * 100).toInt()}%" } ?: "unknown"}", style = SidekickType.body, color = SidekickColors.textPrimary)
+        Text("Eases between readings", style = SidekickType.meta, color = SidekickColors.textMeta)
+        com.chetan.connectsuite.core.ui.components.SidekickProgress(progress = reading, easeBetweenReadings = true, modifier = Modifier.height(24.dp))
+        Text("Before: jumps", style = SidekickType.meta, color = SidekickColors.textMeta)
+        com.chetan.connectsuite.core.ui.components.SidekickProgress(progress = reading, easeBetweenReadings = false, modifier = Modifier.height(24.dp))
+    }
+}
+

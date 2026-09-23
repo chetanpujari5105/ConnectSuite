@@ -191,6 +191,8 @@ private fun TransferCard(row: TransferRowModel, onCancel: () -> Unit) {
                     progress = row.fraction,
                     tone = row.tone(),
                     modifier = Modifier.weight(1f),
+                    // A byte count from the transfer, so it eases between readings (ProgressMotion).
+                    easeBetweenReadings = true,
                 )
                 Text(
                     "${(row.fraction * 100).toInt()}%",
