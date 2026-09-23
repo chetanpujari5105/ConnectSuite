@@ -752,3 +752,70 @@ test('a folder the phone lists as empty says so — and claims only what the pho
     pane.restore();
   }
 });
+
+// ---- keyboard access (2026-09-23): one tab stop, arrows, Space, Enter = the double-click ---------
+
+const bodyRows = (pane: Pane) =>
+  pane.table.queryAll('.files-row').filter((r) => !r.className.includes('files-row--head'));
+
+test('the listing is one tab stop, and every row says what it is', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    const stops = bodyRows(pane).filter((r) => r.tabIndex === 0);
+    assert.equal(stops.length, 1, 'exactly one row carries tabindex 0 — the roving stop');
+    assert.equal(bodyRows(pane).filter((r) => r.tabIndex === -1).length, D_ENTRIES.length - 1);
+    const labels = bodyRows(pane).map((r) => r.getAttribute('aria-label'));
+    assert.equal(labels[0], 'Camera, folder');
+    assert.match(String(labels[1]), /^IMG_2\.jpg, 900 B/);
+  } finally {
+    pane.restore();
+  }
+});
+
+test('ArrowDown selects the next row as drawn, and moves the tab stop with it', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    bodyRows(pane)[1]!.dispatch('keydown', { key: 'ArrowDown' });
+    const selected = bodyRows(pane).filter((r) => r.className.includes('is-selected'));
+    assert.equal(selected.length, 1);
+    assert.match(String(selected[0]!.getAttribute('aria-label')), /^IMG_10\.jpg/, 'the next drawn row, natural order');
+    assert.equal(selected[0]!.tabIndex, 0, 'the tab stop follows the selection');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('Enter does what a double-click does and nothing else: a file is copied, a folder opened', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    const pulls: string[] = [];
+    pane.bridge.fsPull = (async (o: { name: string }) => { pulls.push(o.name); return { ok: true, path: '/tmp/x' }; }) as never;
+    bodyRows(pane)[3]!.dispatch('keydown', { key: 'Enter' }); // report.pdf
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pulls, ['report.pdf'], 'Copy to Mac — the existing double-click action');
+    const lists = pane.bridge.calls.filter((c) => c === 'fsList').length;
+    bodyRows(pane)[0]!.dispatch('keydown', { key: 'Enter' }); // Camera, a folder
+    await new Promise((r) => setImmediate(r));
+    assert.equal(pane.bridge.calls.filter((c) => c === 'fsList').length, lists + 1, 'the folder was opened');
+    assert.deepEqual(pulls, ['report.pdf'], 'a folder is never copied');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('Space selects, like a click; keys the rows do not use change nothing', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    bodyRows(pane)[2]!.dispatch('keydown', { key: ' ' });
+    assert.equal(bodyRows(pane).filter((r) => r.className.includes('is-selected')).length, 1);
+    const before = pane.bridge.calls.length;
+    bodyRows(pane)[2]!.dispatch('keydown', { key: 'a' });
+    assert.equal(pane.bridge.calls.length, before, 'an unused key asks the phone for nothing');
+  } finally {
+    pane.restore();
+  }
+});

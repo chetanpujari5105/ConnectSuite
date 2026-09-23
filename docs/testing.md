@@ -23027,3 +23027,66 @@ focusable) — true of the list rows before D too; recorded, not changed.
 collapses to 0 px at the window minimum). Suites: Mac 956/956, typecheck clean, six guards green,
 `probe.test.mjs` 24/24. Evidence (test files only): `d-review-grid.png`, `d-review-list-size-desc.png`,
 `d-review-filtered-empty.png`, `d-review-listed-empty.png`.
+
+
+## Files follow-up — defect 137 diagnosis, defect 138, keyboard access (2026-09-23)
+
+### Defect 137, diagnosed to one layer — not fixed
+
+`SafProbeActivity` only opens the picker and takes a new grant — the re-request this work must not
+do — so it was not used. Instead a debug-only Mac IPC (`debug-fs-stat`, registered only unpackaged)
+sends one `fs.stat` through the phone's **own** `ContentResolver` and tree grant:
+
+| Read (phone's client, bounded) | Result |
+|---|---|
+| grant | `persisted=0x3` for DCIM, Documents, Pictures |
+| `fs.stat primary:DCIM` / `primary:Pictures` | directory, readable |
+| `fs.stat primary:DCIM/Camera` | directory, readable |
+| control: `fs.stat primary:DCIM/NoSuchFolderXYZ` | `NOT_FOUND` |
+| children query of `primary:DCIM` (`fs.list`, limit 5) | 0 entries |
+| `fs.list` path `Camera` | `NOT_FOUND` — the path walk needs the children query |
+
+History from the phone's rotated logs: Documents 1 entry and DCIM 29 until **00:47:44** on
+2026-09-23; Documents 0 at **00:53:27**, same process (request counters continuous); still 0 after this
+morning's reinstall. Provider packages unchanged (`ExternalStorageProvider` and MediaProvider are
+system/APEX builds; DocumentsUI updated 2026-07-16; OS build August); `SafTreeStore` unchanged since
+2026-09-01. **Boundary:** the children query's cursor, or `entryOf` dropping its rows. Splitting the
+two needs one log line on the phone → a phone install, left for approval.
+
+### Defect 138, fixed
+
+The listing is a size container (`container: files-listing / inline-size`); below 480 px the date
+column is dropped. `scripts/sidekick-files-layout-probe.mjs`:
+
+| | before | after |
+|---|---|---|
+| 1100 × 700, list | `0px 180px 90px` — names invisible, table scrolls sideways (300 in 229) | `127px 72px`, date dropped, no sideways scroll |
+| 1100 × 700, grid | 2 per row | 2 per row |
+| 1440 × 920, list | `259px 180px 90px` | unchanged |
+| toolbar / detail | inside / 320 px | inside / 320 px |
+
+The first after-reading still computed `0px 180px 90px`: the container override sat above the base
+`.files-row` rule at equal specificity and lost. Scoped under `.files-listing`.
+
+### Keyboard access, added
+
+One tab stop for the listing (roving `tabindex`), rows and tiles named (`"inbox-probe.bin, 2.9 MB,
+modified 9/1/2026"`, `"Camera, folder"`), arrows select as a click does, Shift extends, Space selects,
+**Enter = the double-click** (open folder / Copy to Mac) — nothing new. Live with real CDP key events,
+focus read independently (`document.activeElement`, `:focus-visible`):
+
+```
+Tab ×9 from the filter: Sort by · Sort direction · List · Grid · Send · NAME · DATE · SIZE · first row
+  every stop focus-visible, 2 px solid outline; the row is the listing's only tab stop
+ArrowDown ×2 → the next rows, selection = the focused row; Shift+ArrowDown → 2 selected; ArrowUp; Space
+Enter on a file → Copy to Mac ran (generated test file), focus stayed on the row
+Grid: 5 per row; index 2 → Right 3 → Down 8 → Left 7
+```
+
+Found while verifying: a copy finishing redrew the list and dropped keyboard focus, because the
+"was focus in the list?" read happened after the rows were replaced — now read before.
+
+Tests: `filesView.test.ts` +4 (one tab stop and names; ArrowDown; Enter = double-click; Space and an
+unused key) — red with every row a tab stop and with Enter doing nothing. Mac 960/960, typecheck clean,
+six guards green, `probe.test.mjs` 24/24. Evidence: `files-138-minimum-list.png` (test files only).
+Real granted trees: metadata only, as above.

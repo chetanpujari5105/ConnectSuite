@@ -364,6 +364,13 @@ class FilesView {
     await this.openPath('');
   }
 
+  /**
+   * The one row or tile that carries `tabindex=0` — the listing's single tab stop (a roving
+   * tabindex), so Tab reaches the list once rather than stopping on every file. Follows the last
+   * clicked or keyed entry; the first drawn entry when there is none.
+   */
+  private focusId: string | null = null;
+
   /** The folder last opened, as root + path — the filter belongs to exactly this. */
   private openedKey: string | null = null;
 
@@ -1138,6 +1145,12 @@ class FilesView {
   }
 
   private renderTable(): void {
+    // Read BEFORE the rows are replaced: emptying the table moves focus to the page, so asking
+    // afterwards always answered "no" and any redraw not started by a key — a copy finishing —
+    // dropped the keyboard out of the list (seen live after Enter).
+    const hadFocus =
+      typeof document !== 'undefined' && !!document.activeElement &&
+      this.table.contains?.(document.activeElement as Node) === true;
     this.table.replaceChildren();
     if (this.fetch.kind !== 'ready') {
       this.footer.textContent = '';
@@ -1170,6 +1183,11 @@ class FilesView {
 
     const shown = this.displayed();
     const grid = this.viewMode === 'grid';
+    // A redraw replaces every row; `hadFocus` (read above, before the rows went) brings the
+    // keyboard back to the same file afterwards.
+    if (this.focusId === null || !shown.some((e) => e.id === this.focusId)) {
+      this.focusId = shown[0]?.id ?? null;
+    }
     this.table.classList.toggle('files-table--grid', grid);
     this.table.setAttribute('aria-label', grid ? 'Files, as a grid' : 'Files');
 
@@ -1242,6 +1260,7 @@ class FilesView {
       this.table.append(cell);
     }
     if (grid) this.requestGridThumbs(shown);
+    if (hadFocus) this.focusCell(this.focusId);
 
     if (this.loading) {
       const more = document.createElement('div');
@@ -1273,6 +1292,70 @@ class FilesView {
       more.addEventListener('click', () => void this.loadMore());
       this.footer.append(more);
     }
+  }
+
+  /**
+   * Keys on a focused row or tile. Only what a pointer already does:
+   * arrows = a plain click on the next row (Shift = a shift-click), Space = click, Enter = the same
+   * as a double-click — open a folder, or **Copy to Mac** for a file. Nothing new is invented.
+   */
+  private onEntryKey(event: KeyboardEvent, entry: FsEntryRow): void {
+    const shown = this.displayed();
+    const at = shown.findIndex((e) => e.id === entry.id);
+    if (at === -1) return;
+    const columns = this.viewMode === 'grid' ? this.gridColumns() : 1;
+    const step: Record<string, number> = this.viewMode === 'grid'
+      ? { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columns, ArrowDown: columns }
+      : { ArrowUp: -1, ArrowDown: 1 };
+    let target: number | null = null;
+    if (event.key in step) target = Math.min(shown.length - 1, Math.max(0, at + step[event.key]!));
+    else if (event.key === 'Home') target = 0;
+    else if (event.key === 'End') target = shown.length - 1;
+
+    if (target !== null) {
+      event.preventDefault();
+      const next = shown[target]!;
+      this.selectOn(next, { shiftKey: event.shiftKey, metaKey: false, ctrlKey: false } as MouseEvent);
+      this.focusId = next.id;
+      this.render();
+      this.focusCell(next.id);
+      this.prefetchSelection();
+      return;
+    }
+    if (event.key === ' ') {
+      event.preventDefault();
+      this.selectOn(entry, { shiftKey: event.shiftKey, metaKey: event.metaKey, ctrlKey: event.ctrlKey } as MouseEvent);
+      this.render();
+      this.focusCell(entry.id);
+      this.prefetchSelection();
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      // Exactly the double-click handler's two branches.
+      if (entry.dir) void this.openPath(this.path ? `${this.path}/${entry.name}` : entry.name);
+      else void this.copyToMac(entry);
+    }
+  }
+
+  /** How many tiles share the first row, measured — never assumed from a width. */
+  private gridColumns(): number {
+    const tiles = Array.from(this.table.querySelectorAll('.files-tile')) as HTMLElement[];
+    if (tiles.length === 0 || typeof tiles[0]!.getBoundingClientRect !== 'function') return 1;
+    const top = tiles[0]!.getBoundingClientRect().top;
+    return Math.max(1, tiles.filter((t) => Math.abs(t.getBoundingClientRect().top - top) < 2).length);
+  }
+
+  private focusCell(id: string | null): void {
+    if (id === null) return;
+    const cells = [
+      ...Array.from(this.table.querySelectorAll('.files-row')),
+      ...Array.from(this.table.querySelectorAll('.files-tile')),
+    ];
+    const cell = cells.find(
+      (c) => (c as HTMLElement).dataset?.id === id,
+    ) as HTMLElement | undefined;
+    if (cell && typeof cell.focus === 'function') cell.focus();
   }
 
   /** One list row: name (with the resolved app label beside a package folder), date, size. */
@@ -1362,8 +1445,25 @@ class FilesView {
     if (this.selectedIds.has(entry.id)) {
       cell.classList.add('is-selected');
       cell.setAttribute('aria-selected', 'true');
+    } else {
+      cell.setAttribute('aria-selected', 'false');
     }
+    // Keyboard: one tab stop for the whole listing, and a name that says what the row is.
+    cell.tabIndex = entry.id === this.focusId ? 0 : -1;
+    cell.dataset.id = entry.id;
+    cell.setAttribute(
+      'aria-label',
+      entry.dir
+        ? `${entry.name}, folder`
+        : `${entry.name}, ${fileBytes(entry.size)}` +
+          (entry.mtimeMs ? `, modified ${new Date(entry.mtimeMs).toLocaleDateString()}` : ''),
+    );
+    cell.addEventListener('focus', () => {
+      this.focusId = entry.id;
+    });
+    cell.addEventListener('keydown', (event) => this.onEntryKey(event as KeyboardEvent, entry));
     cell.addEventListener('click', (event) => {
+      this.focusId = entry.id;
       this.selectOn(entry, event as MouseEvent);
       this.render();
       this.prefetchSelection();
