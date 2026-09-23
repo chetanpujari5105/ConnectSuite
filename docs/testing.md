@@ -23628,3 +23628,24 @@ variable and calling `scripts/adb-pinned.sh emu … am start -S -n com.chetan.co
 hook firing, and force-stopped Sidekick **on the emulator**. The same command fed to the hook directly is denied —
 the matcher is right, the registration is too narrow, and it is narrow in exactly the form this repo requires for
 device writes. The Samsung was not touched. Open; fix direction in the register.
+
+#### Defect 146 — fixed (2026-09-23)
+
+`.claude/settings.json`: the `no-force-stop.sh` entry loses `"if": "Bash(adb *)"` (one line). The matcher was
+unchanged — it already denied every wrapper form; it was simply never asked about commands that did not start
+with `adb`. `scripts/hooks/no-force-stop.test.sh`, text fixtures only:
+
+| Expect | Command shape |
+|---|---|
+| deny | `adb shell am start -S -n com.chetan.connectsuite.debug/…` (existing) |
+| deny | `scripts/adb-pinned.sh samsung shell am start -S -n com.chetan.connectsuite.debug/…` |
+| deny | `adb -s "$(scripts/target-device.sh samsung)" shell am start -S -n com.chetan.connectsuite.debug/…` |
+| deny | `SP=/tmp/x; $SP/e shell am force-stop com.chetan.connectsuite.debug` |
+| deny | the verbatim command that reached the emulator (`SP=/x; $SP/e shell am start -S -n …DesignPreviewActivity …`) |
+| pass | `scripts/adb-pinned.sh samsung shell am start -n com.chetan.connectsuite.debug/…MainActivity` |
+| pass | `scripts/adb-pinned.sh samsung shell am start -S -n com.example.other/.Main` |
+| pass | `scripts/adb-pinned.sh samsung shell am force-stop com.example.other` |
+| check | the hook is registered once on `Bash` with no `if` — **red** with `"if": "Bash(adb *)"` restored, green without |
+
+No force-stop, `am start -S` or other device command was run to test this. What the fixtures cannot show is
+Claude Code re-reading `.claude/settings.json`: the registration takes effect when the harness loads settings.

@@ -56,6 +56,20 @@ check deny "am start -WS clustered" \
 check deny "am start-activity with -S after the component" \
   'adb shell am start-activity -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity -S'
 
+# Defect 146: the wrapper forms this repo requires for device writes. The matcher always denied
+# them; the hook's registration ("if": "Bash(adb *)") kept it from ever being run on them.
+check deny "am start -S through adb-pinned.sh on the Samsung label" \
+  'scripts/adb-pinned.sh samsung shell am start -S -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity'
+
+check deny "am start -S with the serial from target-device.sh" \
+  'adb -s "$(scripts/target-device.sh samsung)" shell am start -S -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity'
+
+check deny "am force-stop through a variable wrapper (the defect 146 form)" \
+  'SP=/tmp/x; $SP/e shell am force-stop com.chetan.connectsuite.debug'
+
+check deny "am start -S through a variable wrapper (verbatim, defect 146)" \
+  'SP=/x; $SP/e shell am start -S -n com.chetan.connectsuite.debug/com.chetan.connectsuite.designpreview.DesignPreviewActivity --es screen progress_steps >/dev/null 2>&1; echo "am start exit $?"'
+
 echo
 echo "must PASS — these only talk about the rule, and were all denied before defect 41 was fixed:"
 
@@ -87,6 +101,31 @@ check pass "am start -S on a different package" \
 # -S in a different segment from our start does not stop our app.
 check pass "-S belongs to another command in the chain" \
   'sort -S 10% big.txt; adb shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity'
+
+check pass "ordinary am start through adb-pinned.sh" \
+  'scripts/adb-pinned.sh samsung shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity'
+
+check pass "am start -S on another package through adb-pinned.sh" \
+  'scripts/adb-pinned.sh samsung shell am start -S -n com.example.other/.Main'
+
+check pass "am force-stop on another package through adb-pinned.sh" \
+  'scripts/adb-pinned.sh samsung shell am force-stop com.example.other'
+
+echo
+echo "registration — the hook has to be asked, or none of the above matters (defect 146):"
+# The matcher above was right the whole time; the gap was that Claude Code only ran it for commands
+# starting with `adb`. So the registration is a fixture too: no `if` may narrow which Bash commands
+# reach this hook — the script decides, and it already ignores prose, heredocs and messages.
+SETTINGS="$(dirname "$0")/../../.claude/settings.json"
+reg=$(jq -c '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | test("no-force-stop"))]' "$SETTINGS" 2>/dev/null)
+count=$(printf '%s' "$reg" | jq 'length' 2>/dev/null || echo 0)
+narrowed=$(printf '%s' "$reg" | jq '[.[] | select(has("if"))] | length' 2>/dev/null || echo 1)
+if [ "$count" = "1" ] && [ "$narrowed" = "0" ]; then
+  printf '  ok    %-52s (%s)\n' "registered once on Bash, not narrowed by an if" "$reg"
+else
+  printf '  FAIL  %-52s count=%s narrowed=%s %s\n' "registered once on Bash, not narrowed by an if" "$count" "$narrowed" "$reg"
+  fail=1
+fi
 
 echo
 if [ "$fail" -eq 0 ]; then
