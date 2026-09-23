@@ -23228,3 +23228,19 @@ fixtures fail (`expected deny, got pass`) — including the verbatim command tha
 and the six original fixtures pass. Against the fixed hook, 14 of 14. The first version of the new
 matcher also failed its own denies: it piped one command with no trailing newline into `while read`,
 which never runs the body for an unterminated last line. Fixed by printing with `\n`.
+
+### Defect 140 — Set up Sidekick from the Devices gear (code; device run blocked)
+
+Devices → gear (*Mac settings*) → `LinkRoute`, which is the pairing screen with nothing paired and Mac
+management once paired. Both now draw `SetupEntryCard`; its tap pushes `ROUTE_SETUP`. `SetupReachabilityTest`
+(5 tests, including a control that its call-argument reader skips a declaration and handles nesting):
+
+| Mutation | Result |
+|---|---|
+| the `onOpenSetup` line removed from `AppNavigation`'s `LinkRoute(…)` | red: *the Devices gear's destination pushes the checklist* |
+| `onOpenSetup` not passed to `MacManagementSection` | red: *both states of Mac settings receive it* |
+| a second `landingTab = ROUTE_SETUP` on every launch | red: *landed on only when onboarding completes* |
+
+Each run: gradle exit 1, results 0 s old; restored: exit 0. **Not exercised:** the card rendering, the tap,
+and Back/Done returning to Mac settings from a completed first run. The emulator verification is **blocked**:
+436 MB free on the Mac.

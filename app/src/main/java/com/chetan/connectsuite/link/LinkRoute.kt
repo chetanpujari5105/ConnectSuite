@@ -115,7 +115,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun LinkRoute(onDone: () -> Unit = {}) {
+fun LinkRoute(onDone: () -> Unit = {}, onOpenSetup: (() -> Unit)? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val server = remember { LinkController.get(context) }
@@ -202,6 +202,7 @@ fun LinkRoute(onDone: () -> Unit = {}) {
                 )
             },
             onOpenDevices = { scanned = null; onDone() },
+            onOpenSetup = onOpenSetup,
         )
         return
     }
@@ -228,6 +229,7 @@ fun LinkRoute(onDone: () -> Unit = {}) {
                 ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         },
+        onOpenSetup = onOpenSetup,
     )
 }
 
@@ -255,6 +257,8 @@ fun MacManagementSection(
     onForget: (String) -> Unit,
     onRestartListening: () -> Unit,
     onOpenAppInfo: () -> Unit,
+    /** Set up Sidekick (defect 140): the way back to every feature's switch after first run. */
+    onOpenSetup: (() -> Unit)? = null,
 ) {
     // ── Mac management ────────────────────────────────────────────────────────────────────────
     //
@@ -392,6 +396,10 @@ fun MacManagementSection(
                 )
             }
         }
+
+        // 2b. The way back to every feature's switch. Above the paired list, because a person here
+        //     asking "why doesn't my Mac show my texts" is asking a question about this phone.
+        if (onOpenSetup != null) com.chetan.connectsuite.setup.SetupEntryCard(onClick = onOpenSetup)
 
         // 3. The paired list.
         Text(

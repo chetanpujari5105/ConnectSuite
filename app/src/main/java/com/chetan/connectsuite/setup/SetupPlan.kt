@@ -169,9 +169,14 @@ object SetupPlan {
     /** Every sentence on the screen, for the copy guard shared with onboarding. */
     val allText: List<String>
         get() = items.flatMap { listOf(it.title, it.why) } + Section.entries.map { it.title } +
-            listOf(TITLE, SUBTITLE, NOT_NOW, DONE)
+            listOf(TITLE, SUBTITLE, NOT_NOW, DONE, ENTRY_TITLE, ENTRY_SUBTITLE)
 
     const val TITLE = "Set up Sidekick"
+
+    /** The entry behind the Devices gear (defect 140). The title is the screen it opens. */
+    const val ENTRY_TITLE = TITLE
+    const val ENTRY_SUBTITLE = "Turn on texts, calls, photos, folders and control from your Mac — " +
+        "one at a time, each asking only for what it needs."
     const val SUBTITLE = "Turn on what you want, when you want it. Each switch asks only for what " +
         "that feature needs, and you can change any of them later."
     const val NOT_NOW = "Not now"

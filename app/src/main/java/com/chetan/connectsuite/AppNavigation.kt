@@ -87,7 +87,10 @@ private val BAR = listOf(
 
 private const val ROUTE_SYNC_SETTINGS = "sync/settings"
 
-/** **Set up Sidekick** (Feature E / defect 134): after onboarding, and from Sync settings. */
+/**
+ * **Set up Sidekick** (Feature E / defect 134): after onboarding, from Sync settings, and — defect
+ * 140 — from the Devices gear, which opens Mac settings in either of its states. Never on launch.
+ */
 private const val ROUTE_SETUP = "setup"
 private const val KEY_ONBOARDING_DONE = "onboarding_complete"
 
@@ -258,6 +261,8 @@ fun ConnectSuiteRoot(
                         section = SyncSection.Devices
                         openRoute(TopLevelTab.Sync.route)
                     },
+                    // Pushed, not `openRoute`: Back and Done both pop to these Mac settings.
+                    onOpenSetup = { navController.navigate(ROUTE_SETUP) },
                 )
             }
             composable(ROUTE_SYNC_SETTINGS) {

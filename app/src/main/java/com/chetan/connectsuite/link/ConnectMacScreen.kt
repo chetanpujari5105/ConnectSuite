@@ -105,6 +105,8 @@ fun ConnectMacScreen(
     onOpenWifiSettings: () -> Unit,
     onOpenDevices: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Set up Sidekick (defect 140), offered at the entry stage only — never over a pairing in flight. */
+    onOpenSetup: (() -> Unit)? = null,
 ) {
     Column(
         modifier
@@ -129,6 +131,10 @@ fun ConnectMacScreen(
             is ConnectStage.Rejected -> RejectedStage(stage, onRetry, onCancel)
             is ConnectStage.Refused -> RefusedStage(stage, onRetry, onCancel)
             is ConnectStage.NoNetwork -> NoNetworkStage(onOpenWifiSettings)
+        }
+
+        if (stage is ConnectStage.Entry && onOpenSetup != null) {
+            com.chetan.connectsuite.setup.SetupEntryCard(onClick = onOpenSetup)
         }
 
         Spacer(Modifier.height(Space.xl))
