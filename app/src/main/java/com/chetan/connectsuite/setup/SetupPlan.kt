@@ -167,11 +167,17 @@ object SetupPlan {
     /**
      * A quieter second action, or null. Only selected-only photos has one: once Android has fixed a
      * limited choice, *Change selection* opens the picker alone, and full access is reachable only
-     * in Settings — measured on the emulator, 2026-09-23. It opens the app's page in Settings; the
-     * Photos permission page itself needs `GRANT_RUNTIME_PERMISSIONS`, which no app can hold.
+     * in Settings — measured on the emulator, 2026-09-23. It opens the app's page in Settings (App
+     * info), and says so: the Photos permission page itself needs `GRANT_RUNTIME_PERMISSIONS`, which
+     * no app can hold (read from the SM-S938B's permission controller), so the label names the page
+     * it reaches and [secondaryGuidance] names the two taps from there.
      */
     fun secondaryActionLabel(item: Item, status: Status): String? =
-        if (item.id == PHOTOS && status == Status.Limited) OPEN_PHOTO_SETTINGS else null
+        if (item.id == PHOTOS && status == Status.Limited) OPEN_APP_SETTINGS else null
+
+    /** The sentence under a second action, saying how to get from where it lands; null with none. */
+    fun secondaryGuidance(item: Item, status: Status): String? =
+        if (secondaryActionLabel(item, status) != null) PHOTOS_SETTINGS_GUIDANCE else null
 
     /**
      * What a screen reader hears for a row's button: the button's words and the feature they act on.
@@ -190,7 +196,7 @@ object SetupPlan {
     /** Every sentence on the screen, for the copy guard shared with onboarding. */
     val allText: List<String>
         get() = items.flatMap { listOf(it.title, it.why) } + Section.entries.map { it.title } +
-            listOf(TITLE, SUBTITLE, NOT_NOW, DONE, ENTRY_TITLE, ENTRY_SUBTITLE, OPEN_PHOTO_SETTINGS)
+            listOf(TITLE, SUBTITLE, NOT_NOW, DONE, ENTRY_TITLE, ENTRY_SUBTITLE, OPEN_APP_SETTINGS, PHOTOS_SETTINGS_GUIDANCE)
 
     const val TITLE = "Set up Sidekick"
 
@@ -201,6 +207,7 @@ object SetupPlan {
     const val SUBTITLE = "Turn on what you want, when you want it. Each switch asks only for what " +
         "that feature needs, and you can change any of them later."
     const val NOT_NOW = "Not now"
-    const val OPEN_PHOTO_SETTINGS = "Open photo settings"
+    const val OPEN_APP_SETTINGS = "Open app settings"
+    const val PHOTOS_SETTINGS_GUIDANCE = "Tap Permissions, then Photos and videos."
     const val DONE = "Done"
 }

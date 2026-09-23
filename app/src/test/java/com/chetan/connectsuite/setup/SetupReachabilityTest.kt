@@ -76,4 +76,11 @@ class SetupReachabilityTest {
         assertTrue("SetupRow is handed an onSecondary", args.contains("onSecondary ="))
         assertTrue("it opens the app details page", secondary.contains("SpecialAccess.appDetailsIntent(context)"))
     }
+
+    @Test
+    fun `the row draws the guidance under the second action`() {
+        val screen = source("setup/SetupScreen.kt")
+        val row = screen.substringAfter("private fun SetupRow(")
+        assertTrue("SetupRow draws SetupPlan.secondaryGuidance", row.contains("SetupPlan.secondaryGuidance(item, status)"))
+    }
 }

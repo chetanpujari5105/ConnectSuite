@@ -279,6 +279,15 @@ private fun SetupRow(
                     }
                 }
             }
+            // The second action lands on App info, not the Photos page; this says how to go on.
+            SetupPlan.secondaryGuidance(item, status)?.let { guidance ->
+                Text(
+                    guidance,
+                    style = SidekickType.caption,
+                    color = SidekickColors.textMeta,
+                    modifier = Modifier.testTag("setup-guidance-${item.id}"),
+                )
+            }
         }
     }
     if (!last) RowDivider(inset = false)

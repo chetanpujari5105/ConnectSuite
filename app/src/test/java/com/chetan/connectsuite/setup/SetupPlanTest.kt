@@ -117,13 +117,32 @@ class SetupPlanTest {
     }
 
     @Test
-    fun `selected-only photos also offers photo settings, with change selection still first`() {
+    fun `selected-only photos also offers app settings, with change selection still first`() {
         assertEquals("Change selection", SetupPlan.actionLabel(photos, Status.Limited))
-        assertEquals("Open photo settings", SetupPlan.secondaryActionLabel(photos, Status.Limited))
+        assertEquals("Open app settings", SetupPlan.secondaryActionLabel(photos, Status.Limited))
         assertEquals(
-            "Open photo settings: Photos and videos",
+            "Open app settings: Photos and videos",
             SetupPlan.buttonDescription(photos, SetupPlan.secondaryActionLabel(photos, Status.Limited)!!),
         )
+    }
+
+    @Test
+    fun `the second action names the page it reaches, not the one it cannot`() {
+        val label = SetupPlan.secondaryActionLabel(photos, Status.Limited)!!
+        // It lands on App info (SpecialAccess.appDetailsIntent); the Photos page is closed to apps.
+        assertFalse(label, label.contains("photo", ignoreCase = true))
+        assertEquals("Tap Permissions, then Photos and videos.", SetupPlan.secondaryGuidance(photos, Status.Limited))
+    }
+
+    @Test
+    fun `the guidance appears only where the second action does`() {
+        for (item in SetupPlan.items) for (status in Status.entries) {
+            assertEquals(
+                "${item.id} / $status",
+                SetupPlan.secondaryActionLabel(item, status) != null,
+                SetupPlan.secondaryGuidance(item, status) != null,
+            )
+        }
     }
 
     @Test
