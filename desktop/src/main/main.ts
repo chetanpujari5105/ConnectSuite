@@ -2445,6 +2445,23 @@ if (!app.isPackaged) {
    * prove the *tiebreaker* ran. Without that count, a green pager is not evidence for the clause
    * most likely to be deleted as redundant later.
    */
+  /**
+   * One `fs.stat` for an id the caller names — defect 137's instrument, **debug builds only**.
+   *
+   * `fs.stat` reads a single document through the same tree grant and the same `ContentResolver` as
+   * a listing, but **not** through the children query. So stat succeeding where a listing returns 0
+   * puts the loss in the children query, not in the grant or the document id. Read-only.
+   */
+  ipcMain.handle('debug-fs-stat', async (_event, options: { rootId: string; id: string }) => {
+    if (!link?.isConnected()) return { ok: false, reason: 'not connected' };
+    try {
+      const reply = await link.request(MessageType.FS_STAT, { rootId: options.rootId, id: options.id }, 15_000);
+      return { ok: true, payload: reply.payload ?? {} };
+    } catch (error) {
+      return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
   ipcMain.handle('debug-fs-probe', async (_event, options: {
     rootId?: string;
     path?: string;

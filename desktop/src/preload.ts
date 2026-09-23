@@ -486,6 +486,9 @@ contextBridge.exposeInMainWorld('connect', {
   debugFsProbe: (
     options: { rootId?: string; path?: string; limit?: number; pageCap?: number } = {},
   ): Promise<unknown> => ipcRenderer.invoke('debug-fs-probe', options),
+  /** Defect 137 — one `fs.stat` by id. Debug builds only; answered by main only when unpackaged. */
+  debugFsStat: (options: { rootId: string; id: string }): Promise<unknown> =>
+    ipcRenderer.invoke('debug-fs-stat', options),
   /** Debug builds only: one fs pull with a digest agreed in advance, and what it left on disk. */
   debugFsPullProbe: (
     options: { rootId: string; path?: string; name: string },
