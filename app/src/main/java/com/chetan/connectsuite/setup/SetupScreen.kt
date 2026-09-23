@@ -165,6 +165,10 @@ fun SetupScreen(onOpenFolders: () -> Unit, onDone: () -> Unit) {
                         status = statuses[item.id] ?: Status.Off,
                         folderCount = folderCount,
                         onAction = { act(item) },
+                        // The row re-reads on resume, so returning from Settings shows what changed.
+                        onSecondary = {
+                            runCatching { context.startActivity(SpecialAccess.appDetailsIntent(context)) }
+                        },
                         onNotNow = {
                             prefs.edit().putStringSet(KEY_NOT_NOW, notNow(prefs) + item.id).apply()
                             refresh++
@@ -191,6 +195,7 @@ private fun SetupRow(
     status: Status,
     folderCount: Int,
     onAction: () -> Unit,
+    onSecondary: () -> Unit,
     onNotNow: () -> Unit,
     last: Boolean,
 ) {
@@ -251,6 +256,18 @@ private fun SetupRow(
                         .testTag("setup-action-${item.id}")
                         .semantics { contentDescription = SetupPlan.buttonDescription(item, action) },
                 )
+                // Change selection stays first; this is the quieter route to the state above it.
+                val secondary = SetupPlan.secondaryActionLabel(item, status)
+                if (secondary != null) {
+                    TextButton(
+                        onClick = onSecondary,
+                        modifier = Modifier
+                            .testTag("setup-secondary-${item.id}")
+                            .semantics { contentDescription = SetupPlan.buttonDescription(item, secondary) },
+                    ) {
+                        Text(secondary, style = SidekickType.control, color = SidekickColors.textBody)
+                    }
+                }
                 if (item.optional && status != Status.NotNow && !on) {
                     TextButton(
                         onClick = onNotNow,

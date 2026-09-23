@@ -68,4 +68,12 @@ class SetupReachabilityTest {
         val onboarding = callArgs(nav, "OnboardingScreen")
         assertTrue("the one landing is not inside onboarding's completion", onboarding.contains("landingTab = ROUTE_SETUP"))
     }
+
+    @Test
+    fun `the checklist's second action opens this app's page in Settings`() {
+        val args = callArgs(source("setup/SetupScreen.kt"), "SetupRow")
+        val secondary = args.substringAfter("onSecondary =").substringBefore("onNotNow =")
+        assertTrue("SetupRow is handed an onSecondary", args.contains("onSecondary ="))
+        assertTrue("it opens the app details page", secondary.contains("SpecialAccess.appDetailsIntent(context)"))
+    }
 }

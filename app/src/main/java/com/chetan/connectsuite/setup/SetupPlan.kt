@@ -165,6 +165,15 @@ object SetupPlan {
     }
 
     /**
+     * A quieter second action, or null. Only selected-only photos has one: once Android has fixed a
+     * limited choice, *Change selection* opens the picker alone, and full access is reachable only
+     * in Settings — measured on the emulator, 2026-09-23. It opens the app's page in Settings; the
+     * Photos permission page itself needs `GRANT_RUNTIME_PERMISSIONS`, which no app can hold.
+     */
+    fun secondaryActionLabel(item: Item, status: Status): String? =
+        if (item.id == PHOTOS && status == Status.Limited) OPEN_PHOTO_SETTINGS else null
+
+    /**
      * What a screen reader hears for a row's button: the button's words and the feature they act on.
      * The visible labels repeat down the list ("Allow", "Not now"), so the words alone name no row.
      */
@@ -181,7 +190,7 @@ object SetupPlan {
     /** Every sentence on the screen, for the copy guard shared with onboarding. */
     val allText: List<String>
         get() = items.flatMap { listOf(it.title, it.why) } + Section.entries.map { it.title } +
-            listOf(TITLE, SUBTITLE, NOT_NOW, DONE, ENTRY_TITLE, ENTRY_SUBTITLE)
+            listOf(TITLE, SUBTITLE, NOT_NOW, DONE, ENTRY_TITLE, ENTRY_SUBTITLE, OPEN_PHOTO_SETTINGS)
 
     const val TITLE = "Set up Sidekick"
 
@@ -192,5 +201,6 @@ object SetupPlan {
     const val SUBTITLE = "Turn on what you want, when you want it. Each switch asks only for what " +
         "that feature needs, and you can change any of them later."
     const val NOT_NOW = "Not now"
+    const val OPEN_PHOTO_SETTINGS = "Open photo settings"
     const val DONE = "Done"
 }

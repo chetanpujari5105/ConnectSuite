@@ -117,6 +117,28 @@ class SetupPlanTest {
     }
 
     @Test
+    fun `selected-only photos also offers photo settings, with change selection still first`() {
+        assertEquals("Change selection", SetupPlan.actionLabel(photos, Status.Limited))
+        assertEquals("Open photo settings", SetupPlan.secondaryActionLabel(photos, Status.Limited))
+        assertEquals(
+            "Open photo settings: Photos and videos",
+            SetupPlan.buttonDescription(photos, SetupPlan.secondaryActionLabel(photos, Status.Limited)!!),
+        )
+    }
+
+    @Test
+    fun `no other row or state has a second action`() {
+        var checked = 0
+        for (item in SetupPlan.items) for (status in Status.entries) {
+            if (item.id == SetupPlan.PHOTOS && status == Status.Limited) continue
+            assertEquals("${item.id} / $status", null, SetupPlan.secondaryActionLabel(item, status))
+            checked++
+        }
+        // Control: the loop really covered every other pair, so its silence means something.
+        assertEquals(SetupPlan.items.size * Status.entries.size - 1, checked)
+    }
+
+    @Test
     fun `the Mac's limited reason and the phone's row say the same first words`() {
         assertTrue(
             com.chetan.connectsuite.core.permissions.MediaAccess.SELECTED_REASON
