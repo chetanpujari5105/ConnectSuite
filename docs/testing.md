@@ -23090,3 +23090,56 @@ Tests: `filesView.test.ts` +4 (one tab stop and names; ArrowDown; Enter = double
 unused key) — red with every row a tab stop and with Enter doing nothing. Mac 960/960, typecheck clean,
 six guards green, `probe.test.mjs` 24/24. Evidence: `files-138-minimum-list.png` (test files only).
 Real granted trees: metadata only, as above.
+
+## Defect 137 probe — the provider answers an empty cursor (2026-09-23, 10:06)
+
+Owner-approved debug-only `-r` install on the pinned SM-S938B (`RZCY12330DT`), to split the children
+query from the row parse. **Not fixed; no grant requested; no file touched.**
+
+**The instrument.** `SafChildrenProbeActivity` (debug manifest only, `Theme.NoDisplay`, finishes at once)
+calls `SafTreeStore.probeRootChildren(20)` for each tree from `FsRoots.all`: the same
+`buildChildDocumentsUriUsingTree`, projection and resolver as `childrenOf`, the tree **root** only, no
+cache, no recursion, at most 20 rows (hard ceiling `PROBE_MAX_ROWS`). Rows are classified by
+`parseRow` — the one home `entryOf` now delegates to, so the probe and the listing cannot disagree about
+what a rejection is. It logs counts, column names, extras *keys* and exception class names; no name,
+document id or extra text.
+
+**Install preserved everything** (read before and after):
+
+| | before | after |
+|---|---|---|
+| tree grants | DCIM / Documents / Pictures `persisted=0x3`, `persistedCreate` 1788211970787 / 1788259600815 / 1788259570873 | identical |
+| notification listener / accessibility entries naming the package | 1 / 1 | 1 / 1 |
+| `granted=true` | 28 | 28 |
+| `trusted_devices` (copied **with** `-wal`) | 1 row, `b59f4bbaf2fc…` | 1 row, `b59f4bbaf2fc…` |
+| link (`scripts/link-up.sh`, after `am start -n …/MainActivity`) | 3 OK, 1 session | 3 OK, 1 session — the Mac reconnected unaided |
+
+**The reading:**
+
+| tree | cursor | `count` | columns | examined / cap | accepted | rejected | extras | failure |
+|---|---|---|---|---|---|---|---|---|
+| Documents | returned | **0** | the 5 requested | 0 / 20 | 0 | — | none | none |
+| DCIM | returned | **0** | the 5 requested | 0 / 20 | 0 | — | none | none |
+| Pictures | returned | **0** | the 5 requested | 0 / 20 | 0 | — | none | none |
+
+`count` is the cursor's own, taken before the parse loop, so **`entryOf` is ruled out**: there were no rows
+to drop. No `EXTRA_LOADING` (not a pending async load), no `EXTRA_ERROR`, no exception.
+
+**What else would produce 0, and why each is ruled out or not:**
+
+- *The folders are empty* — no. `ls -A /sdcard/<dir> | wc -l` through the shell: DCIM **29**, Documents
+  **1**, Pictures **229**. DCIM 29 and Documents 1 are the exact counts the app listed before the flip.
+  This is a **different client** (shell uid, no SAF), so it proves the directories are populated and
+  nothing about what the provider serves us.
+- *A stale provider process* — no. `com.android.externalstorage` started 09:05:58, hours after the flip,
+  and answers 0.
+- *A lost grant* — no. Persisted, unchanged across the install, and `fs.stat` resolves through it.
+- *The instrument cannot see a row* — **not controllable here without a new grant**, since every granted
+  tree is the thing under test. What bounds it: it is the product's path, which listed DCIM 29 at 00:47:44,
+  and the failing value (`count`) is read from the provider's cursor, not produced by our loop.
+
+**Boundary:** `ExternalStorageProvider` returns a well-formed, empty children cursor for these trees to
+this uid. Per the brief, the run stopped there — no re-grant, no `MediaStore`/path fallback. (`logcat -c`
+was run once before the probe, through the pin, so the probe's lines stood alone; it discarded the
+device's logcat buffer, not `link.log`.)
+Suites: sync-module 250/250 with the refactor.

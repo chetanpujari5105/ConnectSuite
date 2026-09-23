@@ -33,5 +33,17 @@
             android:exported="true"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.NoDisplay" />
+
+        <!--
+          Defect 137. Same containment and the same reason for `exported="true"`. No UI, finishes
+          immediately, requests no grant and writes nothing; one children query per granted tree
+          root, capped at 20 rows, and logcat carries counts, column names and failure categories
+          only — never a file name.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.SafChildrenProbeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay" />
     </application>
 </manifest>

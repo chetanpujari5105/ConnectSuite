@@ -73,12 +73,26 @@ class SafTreeStore(
         DocumentsContract.Document.COLUMN_LAST_MODIFIED,
     )
 
-    private fun entryOf(cursor: Cursor): FsPaths.Entry? {
-        val docId = cursor.getString(0) ?: return null
-        val name = cursor.getString(1) ?: return null
+    private fun entryOf(cursor: Cursor): FsPaths.Entry? = (parseRow(cursor) as? RowParse.Accepted)?.entry
+
+    /** Why a children row did not become an entry. Names only which column was null, never its value. */
+    enum class RejectReason { NULL_DOCUMENT_ID, NULL_DISPLAY_NAME }
+
+    /**
+     * [entryOf] with its reason kept. One home for the parse, so the debug probe for defect 137
+     * classifies rows with the same code the listing uses rather than with a copy of it.
+     */
+    sealed interface RowParse {
+        data class Accepted(val entry: FsPaths.Entry) : RowParse
+        data class Rejected(val reason: RejectReason) : RowParse
+    }
+
+    private fun parseRow(cursor: Cursor): RowParse {
+        val docId = cursor.getString(0) ?: return RowParse.Rejected(RejectReason.NULL_DOCUMENT_ID)
+        val name = cursor.getString(1) ?: return RowParse.Rejected(RejectReason.NULL_DISPLAY_NAME)
         val mime = cursor.getString(2)
         val isDir = mime == DocumentsContract.Document.MIME_TYPE_DIR
-        return FsPaths.Entry(
+        return RowParse.Accepted(FsPaths.Entry(
             id = FsPaths.encodeId(docId),
             name = name,
             dir = isDir,
@@ -91,7 +105,86 @@ class SafTreeStore(
             // `vnd.android.document/directory`; the wire says `inode/directory`, and one home for
             // that translation is this line.
             mime = if (isDir) FsPaths.DIR_MIME else (mime ?: "application/octet-stream"),
-        )
+        ))
+    }
+
+    /** What one bounded children query of the tree root returned. Counts and shape only. */
+    data class ChildrenProbe(
+        val uriShape: String,
+        /** False when `ContentResolver.query` returned no cursor at all. */
+        val cursorReturned: Boolean,
+        val cursorCount: Int?,
+        val columnNames: List<String>,
+        val rowsExamined: Int,
+        val cap: Int,
+        val accepted: Int,
+        val rejected: Map<String, Int>,
+        /** Extras keys only; `EXTRA_ERROR` / `EXTRA_INFO` are reported by presence, never by text. */
+        val extrasKeys: List<String>,
+        val loading: Boolean?,
+        val hasError: Boolean,
+        val hasInfo: Boolean,
+        /** Exception class name only, from the query itself. */
+        val queryFailure: String?,
+    )
+
+    /**
+     * **Diagnostic for defect 137, called only by a debug-build probe.** The same children query
+     * [childrenOf] makes — same URI builder, same projection, same resolver — against the tree root
+     * only, reading at most [cap] rows, bypassing the snapshot cache so the provider is actually
+     * asked. It returns counts, column names and failure categories; no display name, document id or
+     * extra's text leaves this function.
+     */
+    fun probeRootChildren(cap: Int): ChildrenProbe {
+        val bounded = cap.coerceIn(1, PROBE_MAX_ROWS)
+        val uri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, treeDocumentId)
+        val shape = "content://${uri.authority}/tree/<$label>/document/<$label>/children"
+        var failure: String? = null
+        val cursor = try {
+            resolver.query(uri, projection, null, null, null)
+        } catch (t: Throwable) {
+            failure = t.javaClass.name
+            null
+        }
+        if (cursor == null) {
+            return ChildrenProbe(shape, false, null, emptyList(), 0, bounded, 0, emptyMap(),
+                emptyList(), null, false, false, failure)
+        }
+        return cursor.use { c ->
+            val rejected = sortedMapOf<String, Int>()
+            var accepted = 0
+            var examined = 0
+            val count = runCatching { c.count }.getOrNull()
+            while (examined < bounded && c.moveToNext()) {
+                examined++
+                val reason = try {
+                    when (val row = parseRow(c)) {
+                        is RowParse.Accepted -> { accepted++; null }
+                        is RowParse.Rejected -> row.reason.name
+                    }
+                } catch (t: Throwable) {
+                    "THREW_${t.javaClass.simpleName}"
+                }
+                if (reason != null) rejected[reason] = (rejected[reason] ?: 0) + 1
+            }
+            val extras = c.extras
+            ChildrenProbe(
+                uriShape = shape,
+                cursorReturned = true,
+                cursorCount = count,
+                columnNames = c.columnNames.toList(),
+                rowsExamined = examined,
+                cap = bounded,
+                accepted = accepted,
+                rejected = rejected,
+                extrasKeys = extras?.keySet()?.sorted() ?: emptyList(),
+                loading = if (extras?.containsKey(DocumentsContract.EXTRA_LOADING) == true)
+                    extras.getBoolean(DocumentsContract.EXTRA_LOADING) else null,
+                hasError = extras?.containsKey(DocumentsContract.EXTRA_ERROR) == true,
+                hasInfo = extras?.containsKey(DocumentsContract.EXTRA_INFO) == true,
+                queryFailure = null,
+            )
+        }
     }
 
     private fun childrenOf(parentDocumentId: String): List<FsPaths.Entry>? =
@@ -421,6 +514,9 @@ class SafTreeStore(
     }
 
     companion object {
+        /** Hard ceiling on rows [probeRootChildren] reads, whatever it is asked for. */
+        const val PROBE_MAX_ROWS = 20
+
         /** Free bytes on a real path, for the roots that have one. */
         fun freeBytesAt(path: String): Long = runCatching { StatFs(path).availableBytes }.getOrDefault(0L)
     }
