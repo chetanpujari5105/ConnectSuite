@@ -64,9 +64,14 @@ sealed class MirrorFailure(
      */
     data object ConsentTimeout : MirrorFailure(
         code = ErrorCode.CONSENT_TIMEOUT,
-        reason = "The phone did not answer the screen capture prompt within 30 seconds.",
-        fixHint = "Tap the Sidekick notification on the phone, or open Sidekick › Mirror, and " +
-            "approve screen sharing.",
+        // Shown on both ends, and true on both. It does not say a prompt was shown — while
+        // Sidekick is backgrounded the request ends as a notification nobody tapped — and the hint
+        // does not send anyone to that notification: it is removed at the same moment
+        // (`setTimeoutAfter(CONSENT_TIMEOUT_MS)`), so after a timeout there is nothing to tap.
+        // Measured on the SM-S938B, 2026-09-23: the old hint read, on the phone's own Mirror
+        // screen, "Tap the Sidekick notification on the phone, or open Sidekick › Mirror".
+        reason = "Screen sharing was not approved within 30 seconds, so the request ended.",
+        fixHint = "Start mirroring again from your Mac, then approve screen sharing on your phone.",
     )
 
     /**

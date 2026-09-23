@@ -57,4 +57,20 @@ class ConsentCopyTest {
         assertTrue(MirrorFailure.DeclinedOnPhone.reason != MirrorFailure.ConsentDenied.reason)
         assertTrue(MirrorFailure.DeclinedOnPhone.reason.contains("declined on the phone"))
     }
+
+    @Test
+    fun `after a timeout the hint does not point at the notification that the timeout removed`() {
+        // The request notification carries setTimeoutAfter(CONSENT_TIMEOUT_MS): it is gone the
+        // moment this failure is raised, on the phone and in the sentence the Mac shows.
+        val hint = MirrorFailure.ConsentTimeout.fixHint!!
+        assertTrue(hint, !hint.contains("notification", ignoreCase = true))
+        assertTrue(hint, hint.startsWith("Start mirroring again"))
+    }
+
+    @Test
+    fun `the timeout does not claim Android's prompt was shown`() {
+        // A backgrounded request usually ends as an untapped notification, with no prompt at all.
+        val reason = MirrorFailure.ConsentTimeout.reason
+        assertTrue(reason, !reason.contains("prompt", ignoreCase = true))
+    }
 }
