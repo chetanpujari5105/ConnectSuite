@@ -3489,14 +3489,19 @@ img#qr {
 .files-tool-group {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
+  min-width: 0;
 }
 .files-tool-group[hidden] { display: none; }
 .files-send-button[hidden] { display: none; }
 
+/* The filter takes the free width and the controls wrap under it when there is none: at the window's
+   1100 px minimum the listing column is ~260 px, and a single unwrapping row pushed Sort direction,
+   List and Grid outside the column (measured in the D review). */
 input.files-search {
-  flex: 1 1 auto;
-  min-width: 120px;
+  flex: 1 1 140px;
+  min-width: 0;
   padding: 0 var(--space-4);
 }
 
@@ -3658,7 +3663,7 @@ input.files-search {
    its real extension — never a stand-in image. */
 .files-table--grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: var(--space-4);
   align-content: start;
   padding: var(--space-1);

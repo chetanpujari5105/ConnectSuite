@@ -22983,3 +22983,47 @@ Red-first: listing preferred over the decoded shape → red; *"cannot play"* bef
 Evidence: `c-review-rotated-portrait-redacted.png`, `c-review-heic-redacted.png` — the picture reduced
 to a 3 × 4 grid of flat colour and the Name and Taken values blacked out **before** the file was
 written; the unredacted captures lived only in the scratchpad and were deleted.
+
+
+## Sidekick feature pass — Feature D review, live (2026-09-23, morning)
+
+Mac only; phone not reinstalled (it runs B's build). **Real accessible folder:** only *Received files*
+lists anything — the three granted trees answer 0 entries (defect 137) — so the review ran there: 19
+entries, all generated test files (prefix-checked), 4 MIME types, 15 distinct modification times, 10
+distinct sizes. `scripts/sidekick-files-review-probe.mjs`, 23 checks:
+
+| Area | Result |
+|---|---|
+| sort — name, date modified, size, type × ascending, descending | **8 of 8** drawn orders equal an order computed in the probe from the phone's metadata (not by calling the rule); the SIZE header toggles and carries `aria-sort` |
+| List ↔ Grid | folder, selection (drawn as selected) and detail card kept |
+| thumbnails | `image/jpeg → picture`; `video/mp4 → badge MP4` (the phone makes none for it); `.bin → BIN`, `.txt → TXT`; `fs.thumb` asked only about the image and the video |
+| filter | only matching names of the loaded folder (`3 of 19 items loaded match "multi"`); filtered-to-nothing is its own state with **Clear filter**; Escape clears field and filter |
+| changing folder | **FAIL, fixed** — see below |
+| pagination (instrumented 5-per-page over the real listing, restored after) | `5 items loaded · more in this folder` + **Load more**; filter over a partial folder says *filtering and sorting cover only what is loaded*; Load more → 10 loaded, filter re-applied |
+| the phone | listing identical before and after (id, name, size, mtime, MIME); Mac log: 0 fs.delete / fs.mkdir / push in the window. Selecting a file ran the pane's existing copy-on-select **pull** twice — the phone read, two copies of the sample written to `~/Downloads/Sidekick` |
+
+### D defects found and fixed (separate commit)
+
+1. **The filter followed you into another shared folder.** `openPath` cleared it only when the *path*
+   changed, and every root's top level is `''` — *"multi"* typed over Received files stayed on over
+   Documents. Now keyed by root + path. View test red with the path-only check.
+2. **At the window minimum (1100 × 700) the toolbar's second row overflowed**: Sort direction, List
+   and Grid sat outside the column. The controls now wrap (toolbar 72 → 110 px tall, all six inside),
+   and grid tiles go to 96 px so the ~229 px column holds **2 per row** (was 1).
+3. **A folder the phone lists as empty drew a bare column header.** Pre-existing, but inside D's
+   "empty states": it now says *"No files listed here — The phone returned nothing for this folder"*,
+   deliberately **not** "this folder is empty" (defect 137 shows the pane cannot know). Red-first.
+
+### Keyboard and labels
+
+Real Tab key events (CDP): search → **Sort by** → *Sort ascending — press to reverse* → **List view**
+→ **Grid view** → *Send files to Received files* → NAME ↑ → DATE MODIFIED; every stop matches
+`:focus-visible` with a 2 px solid outline. **File rows and tiles are not keyboard-reachable** (0 of 19
+focusable) — true of the list rows before D too; recorded, not changed.
+
+### Open, not D's
+
+**137** (phone-side: granted trees list 0 entries) and **138** (pre-existing: the list's name column
+collapses to 0 px at the window minimum). Suites: Mac 956/956, typecheck clean, six guards green,
+`probe.test.mjs` 24/24. Evidence (test files only): `d-review-grid.png`, `d-review-list-size-desc.png`,
+`d-review-filtered-empty.png`, `d-review-listed-empty.png`.

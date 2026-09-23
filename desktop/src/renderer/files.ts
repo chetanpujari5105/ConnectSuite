@@ -364,10 +364,17 @@ class FilesView {
     await this.openPath('');
   }
 
+  /** The folder last opened, as root + path — the filter belongs to exactly this. */
+  private openedKey: string | null = null;
+
   private async openPath(path: string): Promise<void> {
     // The filter is for the folder on screen; carrying it into another would hide that folder's
-    // files behind a word typed about a different one.
-    if (path !== this.path) this.query = '';
+    // files behind a word typed about a different one. Keyed by root **and** path: every root's top
+    // level is path '', so a path-only check kept "multi" typed in Received files as the filter over
+    // Documents (found in the D review, live).
+    const key = `${this.selectedRoot ?? ''}\u0000${path}`;
+    if (key !== this.openedKey) this.query = '';
+    this.openedKey = key;
     this.path = path;
     this.entries = [];
     this.hasMore = false;
@@ -1211,6 +1218,21 @@ class FilesView {
         },
       });
       none.dataset.state = 'filtered-empty';
+      this.table.append(none);
+    }
+
+    if (this.entries.length === 0 && !this.loading && !this.hasMore) {
+      // The phone listed nothing. Said as exactly that — not "this folder is empty": on the
+      // SM-S938B the phone answers 0 for granted DCIM, Documents and Pictures trees that are not
+      // empty (defect 137), so the pane cannot know emptiness, only what it was told.
+      const none = stateBlock({
+        kind: 'empty',
+        icon: 'files',
+        headline: 'No files listed here',
+        body: 'The phone returned nothing for this folder.',
+        compact: true,
+      });
+      none.dataset.state = 'listed-empty';
       this.table.append(none);
     }
 

@@ -281,6 +281,17 @@ them, and keyboard navigation of the listing is unchanged (not added) by this pa
 
 **Commit:** `5be1f5e`
 
+### D — review, live (morning of 2026-09-23)
+
+23 live checks over Received files (the only folder the phone lists — defect 137): every sort field
+both ways against the phone's metadata, List ↔ Grid keeping folder/selection/detail, real thumbnails
+only for images, filter scope, empty and filtered-empty states, instrumented pagination, the phone's
+listing unchanged. Fixed in a separate commit: the filter following you into another shared folder,
+the toolbar overflowing at the window minimum, and a bare header for a folder the phone lists as
+empty. Open and not D's: **137** (phone-side) and **138** (pre-existing list column collapse at the
+minimum). Rows and tiles are not keyboard-reachable (pre-existing). Record: `docs/testing.md` →
+*Feature D review*.
+
 ## E · First-run setup and permissions — **implemented, emulator-tested; phone install pending with F**
 
 **Decision:** a *Set up Sidekick* checklist after pairing (and from Sync settings), not a wall of

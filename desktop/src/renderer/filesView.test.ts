@@ -714,3 +714,41 @@ test('a pull refused for an unavailable receive folder says what to do, not only
     pane.restore();
   }
 });
+
+// ---- D review (2026-09-23): found live on the phone ----------------------------------------------
+
+test('changing to another shared folder clears the filter — every root’s top level is path ""', async () => {
+  const pane = mount();
+  try {
+    pane.view.setAdvertised(true, null);
+    pane.bridge.roots = [DOWNLOADS, TREE];
+    pane.bridge.entries = D_ENTRIES;
+    await pane.view.refresh();
+    const view = pane.view as unknown as { query: string; render(): void };
+    view.query = 'IMG';
+    view.render();
+    const other = pane.rail.queryAll('.files-root').find((r) => r.textContent.includes('ConnectSuite'))!;
+    other.click();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(view.query, '', 'the filter typed over one folder does not follow you into another');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('a folder the phone lists as empty says so — and claims only what the phone said', async () => {
+  const pane = mount();
+  try {
+    pane.view.setAdvertised(true, null);
+    pane.bridge.roots = [TREE];
+    pane.bridge.entries = [];
+    await pane.view.refresh();
+    const block = pane.table.queryAll('.state-block')[0];
+    assert.ok(block, 'a sentence, not a bare header');
+    assert.equal(block!.dataset.state, 'listed-empty');
+    assert.ok(block!.textContent.includes('The phone returned nothing for this folder.'));
+    assert.equal(block!.textContent.includes('is empty'), false, 'emptiness is not claimed — the phone only reported none');
+  } finally {
+    pane.restore();
+  }
+});
