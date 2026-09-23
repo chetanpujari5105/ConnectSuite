@@ -20,6 +20,12 @@ data class AdvertisedState(
     val names: Set<String>,
     /** Why each absent capability is absent. Same payload the wire carries as `unavailable`. */
     val reasons: Map<String, String>,
+    /**
+     * Advertised capabilities that work only in part, and why — the wire's `limited` (defect 139).
+     * Part of the state for the same reason `reasons` is: full → selected-only photos leaves the
+     * name set unchanged, and a comparison of names alone would never tell the Mac.
+     */
+    val limits: Map<String, String> = emptyMap(),
 )
 
 /**

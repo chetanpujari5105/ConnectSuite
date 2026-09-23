@@ -1,5 +1,6 @@
 package com.chetan.connectsuite.core.link
 
+import com.chetan.connectsuite.core.permissions.MediaAccess
 import com.chetan.connectsuite.core.protocol.Capability
 import com.chetan.connectsuite.core.protocol.MessageType
 
@@ -98,6 +99,8 @@ object CapabilityContract {
         "android.permission.READ_MEDIA_IMAGES" to "Photos and videos",
         "android.permission.READ_MEDIA_VIDEO" to "Photos and videos",
         "android.permission.READ_EXTERNAL_STORAGE" to "Photos and videos",
+        // Android 14+'s "Allow limited access" is the same switch on the same screen (defect 139).
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED" to "Photos and videos",
         "android.permission.RECORD_AUDIO" to "Microphone",
         // Android's own switch is called "Notifications" on the app's Settings page. Named here so
         // an `apps` chip that is off says "missing Notifications" rather than "missing
@@ -249,13 +252,12 @@ object CapabilityContract {
             // through one list — `media.list` items carry `kind` and `durationMs` — so an
             // images-only grant is a photo browser with every video invisible and a green chip
             // over it.
-            permissionAlternatives = setOf(
-                setOf(
-                    "android.permission.READ_MEDIA_IMAGES",
-                    "android.permission.READ_MEDIA_VIDEO",
-                ),
-                setOf("android.permission.READ_EXTERNAL_STORAGE"),
-            ),
+            //
+            // Defect 139: the alternatives come from `MediaAccess`, the one home for full /
+            // selected / none, and include Android 14's selected-photos grant — with it the verbs
+            // answer for the photos the person chose, so the capability is on and carries a
+            // `limited` reason (see [limitations]) rather than being off or claiming the library.
+            permissionAlternatives = MediaAccess.FULL_ALTERNATIVES + setOf(MediaAccess.SELECTED_ALTERNATIVE),
             // `media.original` resolves a MediaStore id to a transfer that runs on the bulk
             // channel, exactly as `fs.transfer.begin` does — so photos is as dependent on that
             // socket as files is. Defect 54: this line was missing, and without it the capability
@@ -495,6 +497,18 @@ object CapabilityContract {
      * to be declared, because the device decides which alternative applies and a permission missing
      * from the manifest is one the user can never grant on the device that needs it.
      */
+    /**
+     * Advertised capabilities that work only in part, each with the phone's sentence — the wire's
+     * `limited` list (defect 139). Today that is one case: `photos` on selected-only access, which
+     * serves exactly the photos the person chose. Pure, so a JVM test calls what the link sends.
+     */
+    fun limitations(advertised: Set<String>, grantedPermissions: Set<String>): Map<String, String> =
+        buildMap {
+            if (Capability.PHOTOS in advertised && MediaAccess.of(grantedPermissions) == MediaAccess.SELECTED) {
+                put(Capability.PHOTOS, MediaAccess.SELECTED_REASON)
+            }
+        }
+
     fun allDeclaredPermissions(): Set<String> =
         contracts.values.flatMapTo(mutableSetOf()) { it.permissions + it.permissionAlternatives.flatten() }
 }

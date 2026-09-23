@@ -82,6 +82,14 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <!--
+      Defect 139. Declared so Android 14+ treats "Allow limited access" as a real, lasting grant of
+      the photos the person picked. Undeclared, Android ran the app in compatibility mode: a limited
+      pick handed out READ_MEDIA_IMAGES/VIDEO as a one-time grant (REVOKED_COMPAT|ONE_TIME) that the
+      checklist read as full access and lost on the next process start. Requested with the two above
+      — see MediaAccess.requestFor — and asking again is Android's own change-selection flow.
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
 
     <uses-feature
         android:name="android.hardware.wifi.direct"

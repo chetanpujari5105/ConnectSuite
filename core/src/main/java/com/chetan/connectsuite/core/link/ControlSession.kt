@@ -291,6 +291,7 @@ class ControlSession(
                 put("sessionToken", sessionToken)
                 put("capabilities", capabilitiesJson())
                 put("unavailable", unavailableJson())
+                put("limited", limitedJson())
             },
         )
         server.onSessionReady(this)
@@ -304,6 +305,7 @@ class ControlSession(
             Envelope.of(MessageType.CAPABILITIES_CHANGED) {
                 put("capabilities", capabilitiesJson())
                 put("unavailable", unavailableJson())
+                put("limited", limitedJson())
             },
         )
     }
@@ -319,6 +321,22 @@ class ControlSession(
      * name what was missing and never say why (defect 24). This is the success case's denominator
      * in wire form: `capabilities` alone is a count without one.
      */
+    /**
+     * Capabilities that are on offer but work only in part, each with the phone's sentence (defect
+     * 139): today, `photos` on selected-only access. Same shape as `unavailable` and optional on the
+     * wire in the same way — see docs/protocol.md, "`limited`".
+     */
+    private fun limitedJson() = JsonArray(
+        server.capabilities.limited().entries
+            .sortedBy { it.key }
+            .map { (name, reason) ->
+                buildJsonObject {
+                    put("name", JsonPrimitive(name))
+                    put("reason", JsonPrimitive(reason))
+                }
+            },
+    )
+
     private fun unavailableJson() = JsonArray(
         server.capabilities.unavailable().entries
             .sortedBy { it.key }

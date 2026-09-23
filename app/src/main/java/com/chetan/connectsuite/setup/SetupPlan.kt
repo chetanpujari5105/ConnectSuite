@@ -123,8 +123,16 @@ object SetupPlan {
         ),
     )
 
-    /** What a row can be. Worked out by the screen from the OS; worded here. */
-    enum class Status { On, Off, NotNow, NeedsSettings, NotAskedYet }
+    /**
+     * What a row can be. Worked out by the screen from the OS; worded here.
+     *
+     * [Limited] is Android 14's *Allow limited access* on Photos (defect 139): the feature works, for
+     * the photos the person chose. It is neither *On* (that would claim the library) nor *Off*.
+     */
+    enum class Status { On, Limited, Off, NotNow, NeedsSettings, NotAskedYet }
+
+    /** A row whose feature works — fully, or for what the person chose. */
+    fun isWorking(status: Status): Boolean = status == Status.On || status == Status.Limited
 
     fun statusLabel(item: Item, status: Status, folderCount: Int = 0): String = when (status) {
         Status.On -> if (item.id == FOLDERS) {
@@ -132,6 +140,7 @@ object SetupPlan {
         } else {
             "On"
         }
+        Status.Limited -> "Some photos allowed"
         Status.Off -> "Off"
         Status.NotNow -> "Not now"
         // The platform stops showing its dialog after two refusals; only Settings can grant it now.
@@ -143,6 +152,8 @@ object SetupPlan {
     fun actionLabel(item: Item, status: Status): String? = when {
         status == Status.On && item.id == FOLDERS -> "Manage"
         status == Status.On -> null
+        // Asking again is Android's own change-selection flow: the same dialog, with the pick.
+        status == Status.Limited -> "Change selection"
         item.mechanism == Mechanism.ReportOnly -> null
         status == Status.NeedsSettings -> "Open Settings"
         // The battery exemption is asked by a system dialog on this screen, not a Settings page —
@@ -162,7 +173,8 @@ object SetupPlan {
     /** The header line: a count with its denominator, never a percentage. */
     fun summary(statuses: Map<String, Status>): String {
         val counted = items.filter { it.mechanism != Mechanism.ReportOnly }
-        val on = counted.count { statuses[it.id] == Status.On }
+        // Selected-only photos is a feature that is on, for what the person chose; its row says so.
+        val on = counted.count { statuses[it.id]?.let(::isWorking) == true }
         return "$on of ${counted.size} turned on"
     }
 

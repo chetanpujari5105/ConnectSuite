@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.chetan.connectsuite.core.permissions.MediaAccess
 import com.chetan.connectsuite.core.permissions.PermissionGroup
 import com.chetan.connectsuite.core.permissions.SpecialAccess
 import com.chetan.connectsuite.core.ui.SidekickColors
@@ -193,7 +194,9 @@ private fun SetupRow(
     onNotNow: () -> Unit,
     last: Boolean,
 ) {
-    val on = status == Status.On
+    // Lime for a feature that works, read from the OS — selected-only photos included; its status
+    // line says "Some photos allowed", so the badge claims nothing the words do not.
+    val on = SetupPlan.isWorking(status)
     Column(
         Modifier
             .fillMaxWidth()
@@ -284,16 +287,20 @@ private fun runtimePermissions(id: String): List<String> = when (id) {
     SetupPlan.TEXTS -> PermissionGroup.SMS.permissions
     SetupPlan.CALLS -> PermissionGroup.CALLS.permissions
     SetupPlan.CONTACTS -> PermissionGroup.CONTACTS.permissions
-    SetupPlan.PHOTOS -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        listOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
-    } else {
-        listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-    }
+    // With the selected-photos grant on 34+ (defect 139): Android then offers *Allow limited
+    // access* as a real grant, and asking again is its change-selection flow.
+    SetupPlan.PHOTOS -> MediaAccess.requestFor(Build.VERSION.SDK_INT)
     SetupPlan.CAMERA -> listOf(Manifest.permission.CAMERA)
     else -> emptyList()
 }
 
 private fun statusOf(context: Context, item: SetupPlan.Item, prefs: android.content.SharedPreferences): Status {
+    // The feature's own reading, so this row and the Mac's `photos` capability cannot disagree:
+    // both come from `MediaAccess` (defect 139). Selected-only is checked before the refusal logic —
+    // Android shows no rationale then, which `blocked` would misread as "Turned off in Settings".
+    if (item.id == SetupPlan.PHOTOS && MediaFeature.access(context) == MediaAccess.SELECTED) {
+        return Status.Limited
+    }
     val granted = when (item.id) {
         SetupPlan.NOTIFICATIONS -> PermissionGroup.NOTIFICATIONS.isGranted(context)
         SetupPlan.CAMERA -> has(context, Manifest.permission.CAMERA)
@@ -301,8 +308,8 @@ private fun statusOf(context: Context, item: SetupPlan.Item, prefs: android.cont
         SetupPlan.TEXTS -> PermissionGroup.SMS.isGranted(context)
         SetupPlan.CALLS -> PermissionGroup.CALLS.isGranted(context)
         SetupPlan.CONTACTS -> PermissionGroup.CONTACTS.isGranted(context)
-        // The feature's own test, so this row and the Mac's `photos` capability cannot disagree.
-        SetupPlan.PHOTOS -> MediaFeature.granted(context)
+        // Full access only. Selected-only is answered above, before this, as its own state.
+        SetupPlan.PHOTOS -> MediaFeature.access(context) == MediaAccess.FULL
         SetupPlan.FOLDERS -> FsRoots.grantedTrees(context).isNotEmpty()
         SetupPlan.CONTROL -> isInputServiceEnabled(context)
         SetupPlan.BATTERY -> SpecialAccess.isIgnoringBatteryOptimizations(context)

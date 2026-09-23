@@ -14,6 +14,7 @@ import {
   type HelloAckPayload,
   type PairingQrPayload,
   type PhoneRequestError,
+  type LimitedCapability,
   type UnavailableCapability,
   type PairRejected,
 } from '../shared/protocol';
@@ -176,6 +177,7 @@ export class LinkClient extends EventEmitter {
       deviceName: this.deviceName,
       capabilities: this.session.capabilities,
       unavailable: this.session.unavailable,
+      limited: this.session.limited,
       rttMs: this.rttMs,
       // The classified sentence, never the raw text. `lastErrorRaw` carries the original for the
       // debug HUD and the log, which are the only places it belongs.
@@ -466,9 +468,11 @@ export class LinkClient extends EventEmitter {
           const payload = envelope.payload as {
             capabilities?: string[];
             unavailable?: UnavailableCapability[];
+            limited?: LimitedCapability[];
           };
           this.session.capabilities = payload.capabilities ?? [];
           this.session.unavailable = payload.unavailable ?? [];
+          this.session.limited = payload.limited ?? [];
         }
         // Both halves, on one line. A list of what is on says nothing about the size of what is
         // off, and the reasons are the whole point of sending them — see the log rule in
@@ -477,7 +481,9 @@ export class LinkClient extends EventEmitter {
           'link',
           `Capabilities changed: ${this.session.capabilities.join(', ') || 'none'} ` +
             `(${this.session.unavailable.length} unavailable` +
-            `${this.session.unavailable.length > 0 ? ': ' + this.session.unavailable.map((u) => `${u.name} — ${u.reason}`).join('; ') : ''})`,
+            `${this.session.unavailable.length > 0 ? ': ' + this.session.unavailable.map((u) => `${u.name} — ${u.reason}`).join('; ') : ''}; ` +
+            `${this.session.limited.length} limited` +
+            `${this.session.limited.length > 0 ? ': ' + this.session.limited.map((u) => `${u.name} — ${u.reason}`).join('; ') : ''})`,
         );
         this.emitStatus();
         return;
@@ -536,6 +542,7 @@ export class LinkClient extends EventEmitter {
     this.deviceName = payload.deviceName;
     this.session.capabilities = payload.capabilities ?? [];
     this.session.unavailable = payload.unavailable ?? [];
+    this.session.limited = payload.limited ?? [];
     this.missedPongs = 0;
     this.backoffMs = BACKOFF_START_MS;
     // The handshake completed, so whatever failed before it is over. See [lastFailure] for what

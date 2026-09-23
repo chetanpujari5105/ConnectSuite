@@ -60,6 +60,41 @@ is what keeps this a minor-version addition rather than a break.
 Reason strings are for a person to read and are **not** a stable API: do not switch on them, do not
 parse them. Switch on `name`.
 
+#### `limited` — on, but only in part
+
+`hello.ack` and `capabilities.changed` carry a third field, for a capability that **is** in
+`capabilities` and works only in part:
+
+```json
+{
+  "capabilities": ["photos", "files"],
+  "unavailable": [],
+  "limited": [
+    { "name": "photos", "reason": "Some photos allowed — only the photos and videos chosen on the phone are shared. Change the selection on the phone, in Set up Sidekick." }
+  ]
+}
+```
+
+Today it has one member: `photos` when the person chose Android 14's **Allow limited access**
+(defect 139). The four `media.*` verbs answer, and `MediaStore` returns exactly the items they
+picked — so the capability is on, and a pane that showed the library as complete would be wrong.
+The phone sends the same sentence its Set up Sidekick screen means by *Some photos allowed*; both
+read one state (`MediaAccess`: full, selected, or none).
+
+The three states, as the Mac sees them:
+
+| Phone's access | `capabilities` | `unavailable` | `limited` |
+|---|---|---|---|
+| full | has `photos` | — | — |
+| selected only | has `photos` | — | `photos` with its reason |
+| none | — | `photos` with its reason | — |
+
+A name appears in `limited` only if it is also in `capabilities`. Like `unavailable`, `limited` is
+**optional on the wire** and defaults to empty: an older phone sends nothing and the Mac shows the
+capability as whole, which is what it did before. The reason is for a person; switch on `name`.
+A change between full and selected-only moves no name, so the phone re-sends `capabilities.changed`
+whenever `limited` changes, exactly as it does when a reason in `unavailable` changes (defect 27).
+
 `hello` is rejected with `PROTOCOL_MISMATCH` when the major version differs. The Mac's TLS
 certificate fingerprint must already be in the phone's trust store or the TLS handshake itself
 fails before `hello` is read.

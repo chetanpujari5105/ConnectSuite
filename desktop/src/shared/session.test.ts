@@ -16,6 +16,7 @@ test('a cleared session holds no claim the connection made', () => {
   assert.equal(cleared.sessionToken, null, 'the token authorises sockets that no longer exist');
   assert.deepEqual(cleared.capabilities, [], 'defect 25: capabilities outlived their connection');
   assert.deepEqual(cleared.unavailable, [], 'the reasons are the other half of the same claim');
+  assert.deepEqual(cleared.limited, [], 'defect 139: a partial capability is a claim about a connection too');
 });
 
 /**
@@ -27,7 +28,7 @@ test('a cleared session holds no claim the connection made', () => {
  */
 test('every session-scoped field is accounted for', () => {
   const cleared = clearedSession();
-  const known = ['sessionToken', 'capabilities', 'unavailable'];
+  const known = ['sessionToken', 'capabilities', 'unavailable', 'limited'];
 
   assert.deepEqual(
     Object.keys(cleared).sort(),

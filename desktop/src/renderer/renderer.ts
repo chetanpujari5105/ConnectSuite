@@ -25,6 +25,8 @@ interface RendererStatus {
   deviceName?: string;
   capabilities: string[];
   unavailable?: UnavailableCapability[];
+  /** Offered but partial, with the phone's sentence (defect 139). Same shape as `unavailable`. */
+  limited?: UnavailableCapability[];
   rttMs?: number;
   lastError?: string;
   nextRetryInMs?: number;
@@ -512,7 +514,10 @@ function render(status: RendererStatus | null): void {
   // either way; what the capability decides is whether full-size originals work, which is exactly
   // what the pane's banner says — so this call turns the banner off and the Save button on in the
   // same moment the chip goes green, from the same fact.
-  photos.setAdvertised(status?.capabilities?.includes('photos') ?? false);
+  // Defect 139: selected-only access is advertised *and* limited; the phone's sentence is passed
+  // through so the pane says "Some photos allowed" exactly when the phone's checklist does.
+  const limited = new Map((status?.limited ?? []).map((l) => [l.name, l.reason]));
+  photos.setAdvertised(status?.capabilities?.includes('photos') ?? false, limited.get('photos') ?? null);
   // Apps, and it is the Photos rule with one difference worth naming: the grid works either way,
   // and what the capability decides is whether the *ask* can be delivered at all. The phone's own
   // reason is passed straight through rather than paraphrased — this side cannot know which switch

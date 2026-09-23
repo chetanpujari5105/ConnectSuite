@@ -317,6 +317,28 @@ function partialNotice(advertised: boolean): { headline: string; detail: string 
   };
 }
 
+/**
+ * The pane's one notice about how much of the library it can see (defect 139), in three states that
+ * match the phone's Set up Sidekick row:
+ *
+ * - **not advertised** → [partialNotice]'s "Thumbnails only", unchanged;
+ * - **advertised, `limited`** → *Some photos allowed*, with the phone's own sentence verbatim — the
+ *   person picked some photos on the phone, and a pane that looked complete would be wrong;
+ * - **advertised, whole** → no notice.
+ *
+ * The headline is the phone row's words; the body is never a Mac-side paraphrase of the reason.
+ */
+function accessNotice(
+  advertised: boolean,
+  limitedReason: string | null,
+): { kind: 'partial'; headline: string; detail: string } | null {
+  const partial = partialNotice(advertised);
+  if (partial) return { kind: 'partial', ...partial };
+  const reason = limitedReason?.trim();
+  if (!reason) return null;
+  return { kind: 'partial', headline: 'Some photos allowed', detail: reason };
+}
+
 /** `2,841 items` — a count a person reads, with the thousands separator their locale uses. */
 function albumCount(count: number): string {
   return `${count.toLocaleString()}`;
@@ -502,6 +524,8 @@ class PhotosView {
 
   /** True when the phone advertises `photos` — all four verbs and a served bulk channel. */
   private advertised = false;
+  /** The phone's `limited` sentence for `photos`, or null when access is whole (defect 139). */
+  private limitedReason: string | null = null;
 
   /** The id currently being pulled at full size, so the button can say so and not be pressed twice. */
   private pulling: string | null = null;
@@ -565,9 +589,10 @@ class PhotosView {
    * Only redraws — it never refetches. The three read verbs answer whether or not `photos` is
    * advertised, so a capability change alters what the pane *says about itself*, not what it holds.
    */
-  setAdvertised(advertised: boolean): void {
-    if (this.advertised === advertised) return;
+  setAdvertised(advertised: boolean, limitedReason: string | null = null): void {
+    if (this.advertised === advertised && this.limitedReason === limitedReason) return;
     this.advertised = advertised;
+    this.limitedReason = limitedReason;
     this.render();
   }
 
@@ -709,7 +734,7 @@ class PhotosView {
       );
       return;
     }
-    const notice = partialNotice(this.advertised);
+    const notice = accessNotice(this.advertised, this.limitedReason);
     if (!notice) {
       // Full capability: no banner at all. The pane says nothing about itself because there is
       // nothing left to explain.
@@ -1293,6 +1318,7 @@ function photoLine(className: string, text: string): HTMLElement {
 // code that draws the copy, rather than a second copy of the rule that can drift from it.
 (globalThis as Record<string, unknown>).__photoLabels = {
   partialNotice,
+  accessNotice,
   albumCount,
   itemSummary,
   fileSize,

@@ -23244,3 +23244,45 @@ management once paired. Both now draw `SetupEntryCard`; its tap pushes `ROUTE_SE
 Each run: gradle exit 1, results 0 s old; restored: exit 0. **Not exercised:** the card rendering, the tap,
 and Back/Done returning to Mac settings from a completed first run. The emulator verification is **blocked**:
 436 MB free on the Mac.
+
+### Defect 139 — one photo-access state, on both ends (code; device run blocked)
+
+Per Android's Selected Photos Access guidance for `targetSdk 36`: `READ_MEDIA_VISUAL_USER_SELECTED` declared and
+requested with `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` on 34+ (`MediaAccess.requestFor`), which removes the
+compatibility mode measured before the fix. `MediaAccess.of(granted)` is the one state:
+
+| Granted (from the OS) | State | Phone checklist | `capabilities` | `limited` | Mac Photos pane |
+|---|---|---|---|---|---|
+| images + video (or storage ≤ 32) | full | On | `photos` | — | no notice |
+| selected-photos only | selected | *Some photos allowed* · *Change selection* | `photos` | `photos` + the phone's sentence | *Some photos allowed* + that sentence |
+| nothing (or images alone) | none | Off / Not now / Turned off in Settings | — | — (`unavailable` carries the reason) | *Thumbnails only* |
+
+`docs/protocol.md` gained `limited` before either side used it.
+
+**Mutations** (each run: fresh results, exit 1; restored: exit 0):
+
+| | Mutation | Red |
+|---|---|---|
+| P1 | manifest declaration removed | first **green** — `CapabilityPermissionTest` accepts any one declared alternative. Red after adding *every permission MediaAccess asks for is declared* |
+| P2 | selected read as full (the compat-grant defect) | 4 `MediaAccessTest` tests |
+| P3 | contract alternatives without the selected grant | *permitted exactly when access is not none* |
+| P4 | no limited reason | 2 tests, including *full to selected-only is a change the Mac is sent* |
+| P5 | selected-photos permission not requested on 34+ | *Android 14 and later ask for …* |
+| P6 | checklist says *On* for selected | 3 `SetupPlanTest` tests |
+| M1 | Photos pane ignores `limited` | 1 of 963 |
+| M2 | teardown leaves `limited` behind | 2 of 963 (`session.test.ts`) |
+
+**Not reached by any test**, so unproven until a device run:
+- `CapabilityDetector.refresh` building `AdvertisedState` with `limited()`, since it needs a `Context`;
+- the `limited` JSON the session emits;
+- `link.ts` storing it;
+- `renderer.ts` handing it to the pane;
+- the checklist ordering `Limited` before the refusal check;
+- **what Android actually grants for each dialog choice once the permission is declared.**
+
+Owed, on an isolated emulator:
+- full access, selected-only, denied, and each after a process restart;
+- *Change selection* opening the platform picker;
+- the Mac pane's wording against a live `capabilities.changed`.
+
+Blocked: 316 MB free on the Mac after the builds.

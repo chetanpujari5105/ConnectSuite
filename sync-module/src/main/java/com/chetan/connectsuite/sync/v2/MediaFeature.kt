@@ -1,10 +1,7 @@
 package com.chetan.connectsuite.sync.v2
 
-import android.Manifest
+import com.chetan.connectsuite.core.permissions.MediaAccess
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.core.content.ContextCompat
 import com.chetan.connectsuite.core.link.ControlSession
 import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.core.link.LinkServer
@@ -97,24 +94,20 @@ object MediaFeature {
     }
 
     /**
-     * True when the OS would let us read images **and** videos.
-     *
-     * Both, on API 33+, because `media.list` returns them through one list: a build that accepted
-     * images alone would serve a browser with every video missing and nothing saying so. This
-     * mirrors `CapabilityContract`'s photos alternatives, and the two agree by construction —
-     * `Capabilities` derives the advertised answer from the contract, and this is the same question
-     * asked locally at request time.
+     * Full, selected-only, or none — read from the OS through `MediaAccess`, the one home the
+     * `photos` capability and Set up Sidekick also read (defect 139).
      */
-    fun granted(context: Context): Boolean {
-        val required = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            listOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
-        } else {
-            listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-        return required.all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-        }
-    }
+    fun access(context: Context): MediaAccess = MediaAccess.current(context)
+
+    /**
+     * True when the verbs may answer: full access, or the photos the person selected on Android 14+.
+     *
+     * Full still means images **and** videos, because `media.list` returns them through one list and
+     * an images-only grant would be a browser with every video missing. Selected-only answers too —
+     * `MediaStore` then returns exactly the chosen items — and the Mac is told it is partial through
+     * the capability's `limited` reason rather than by this returning false.
+     */
+    fun granted(context: Context): Boolean = access(context) != MediaAccess.DENIED
 
     private fun handlerFor(type: String, context: Context): MessageHandler = when (type) {
         MessageType.MEDIA_BUCKETS -> MessageHandler { session, request -> onBuckets(session, request, context) }

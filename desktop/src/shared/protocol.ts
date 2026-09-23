@@ -443,6 +443,17 @@ export interface UnavailableCapability {
   reason: string;
 }
 
+/**
+ * One capability the phone **is** offering that works only in part, and its sentence saying how.
+ * Today: `photos` when the person allowed only the photos they picked (Android 14's *Allow limited
+ * access*, defect 139). A name here is always also in `capabilities`. Render `reason`, switch on
+ * `name`. See docs/protocol.md, "`limited` — on, but only in part".
+ */
+export interface LimitedCapability {
+  name: string;
+  reason: string;
+}
+
 export interface HelloAckPayload {
   protocolVersion: number;
   appVersion: string;
@@ -453,6 +464,8 @@ export interface HelloAckPayload {
   capabilities: string[];
   /** Optional on the wire: an older phone sends nothing and the Mac shows a name with no reason. */
   unavailable?: UnavailableCapability[];
+  /** Optional on the wire: an older phone sends nothing and the Mac treats every capability as whole. */
+  limited?: LimitedCapability[];
 }
 
 /**
@@ -784,6 +797,8 @@ export interface ConnectionStatus {
   capabilities: string[];
   /** Why each absent capability is absent, as the phone explained it. Empty when disconnected. */
   unavailable: UnavailableCapability[];
+  /** Offered but partial, as the phone explained it (defect 139). Empty when disconnected. */
+  limited: LimitedCapability[];
   rttMs?: number;
   /** A sentence for a person. Classified by `classifyLinkError`; never a raw transport error. */
   lastError?: string;

@@ -96,4 +96,31 @@ class SetupPlanTest {
         val control = SetupPlan.items.single { it.id == SetupPlan.CONTROL }
         assertEquals("Open Settings", SetupPlan.actionLabel(control, Status.Off))
     }
+
+    // ---- defect 139: selected-only photos ----------------------------------------------------
+
+    private val photos get() = SetupPlan.items.single { it.id == SetupPlan.PHOTOS }
+
+    @Test
+    fun `selected-only photos says so, and offers the platform's change-selection flow`() {
+        assertEquals("Some photos allowed", SetupPlan.statusLabel(photos, Status.Limited))
+        assertEquals("Change selection", SetupPlan.actionLabel(photos, Status.Limited))
+    }
+
+    @Test
+    fun `selected-only is neither On nor Off in words, and counts as a feature that works`() {
+        assertFalse(SetupPlan.statusLabel(photos, Status.Limited) == SetupPlan.statusLabel(photos, Status.On))
+        assertFalse(SetupPlan.statusLabel(photos, Status.Limited) == SetupPlan.statusLabel(photos, Status.NeedsSettings))
+        assertTrue(SetupPlan.isWorking(Status.Limited))
+        val counted = SetupPlan.items.filter { it.mechanism != Mechanism.ReportOnly }
+        assertEquals("1 of ${counted.size} turned on", SetupPlan.summary(mapOf(SetupPlan.PHOTOS to Status.Limited)))
+    }
+
+    @Test
+    fun `the Mac's limited reason and the phone's row say the same first words`() {
+        assertTrue(
+            com.chetan.connectsuite.core.permissions.MediaAccess.SELECTED_REASON
+                .startsWith(SetupPlan.statusLabel(photos, Status.Limited)),
+        )
+    }
 }

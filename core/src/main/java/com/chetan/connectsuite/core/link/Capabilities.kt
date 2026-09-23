@@ -301,13 +301,17 @@ class CapabilityDetector(
      * which made a correction to a reason invisible: the wrong sentence stood for as long as the
      * grant stayed off, telling the user to toggle a switch that was already off.
      */
+    /** Advertised but partial, with the phone's sentence — the wire's `limited` (defect 139). */
+    fun limited(): Map<String, String> =
+        CapabilityContract.limitations(_capabilities.value, grantedPermissions())
+
     fun refresh(): Boolean {
         val fresh = detect()
         // Order matters: `unavailable()` reads `_capabilities.value` to decide what is absent, so
         // the names go in first and the reasons are computed against them.
         val previous = lastAdvertised
         _capabilities.value = fresh
-        val next = AdvertisedState(fresh, unavailable())
+        val next = AdvertisedState(fresh, unavailable(), limited())
         if (!advertisementChanged(previous, next)) return false
         lastAdvertised = next
 
@@ -320,20 +324,28 @@ class CapabilityDetector(
                         diagnostics().filter { it.permitted && !it.implemented }
                             .joinToString("; ") { "${it.name} ${it.reason}" }
                             .ifEmpty { "no permissions granted" }
-                namesChanged -> "Capabilities now: ${fresh.sorted().joinToString(",")}"
+                namesChanged -> "Capabilities now: ${fresh.sorted().joinToString(",")}" +
+                    limitsLine(next.limits)
                 // The case that used to be silent, and the whole of defect 27. Logged at the same
                 // volume as a name change, with the sentence that replaced the old one, because a
                 // reason is what the user acts on.
                 else -> "Capabilities unchanged (${fresh.sorted().joinToString(",").ifEmpty { "none" }}); " +
                     "reason changed: " + next.reasons.entries
                         .filter { previous?.reasons?.get(it.key) != it.value }
-                        .joinToString("; ") { "${it.key} — ${it.value}" }
+                        .joinToString("; ") { "${it.key} — ${it.value}" } +
+                    // Full ↔ selected-only photos moves no name and no absent reason; this is the
+                    // line that says it did (defect 139).
+                    (if (previous?.limits != next.limits) limitsLine(next.limits) else "")
             },
         )
         return true
     }
 
     fun current(): Set<String> = _capabilities.value
+
+    private fun limitsLine(limits: Map<String, String>): String =
+        if (limits.isEmpty()) "; limited: none"
+        else "; limited: " + limits.entries.joinToString("; ") { "${it.key} — ${it.value}" }
 
     // ---- watching the two Settings toggles ----------------------------------------------------
 

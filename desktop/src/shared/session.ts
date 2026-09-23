@@ -1,4 +1,4 @@
-import type { UnavailableCapability } from './protocol';
+import type { LimitedCapability, UnavailableCapability } from './protocol';
 
 /**
  * Everything the Mac believes *because a session told it so*, in one object.
@@ -24,9 +24,11 @@ export interface SessionScoped {
   capabilities: string[];
   /** What it said it cannot do, and why. Same lifetime as the claim it is the other half of. */
   unavailable: UnavailableCapability[];
+  /** What it offers only in part, and how (defect 139). The same claim, so the same lifetime. */
+  limited: LimitedCapability[];
 }
 
 /** A session's worth of state, blanked. The only way the link should clear it. */
 export function clearedSession(): SessionScoped {
-  return { sessionToken: null, capabilities: [], unavailable: [] };
+  return { sessionToken: null, capabilities: [], unavailable: [], limited: [] };
 }

@@ -14,6 +14,10 @@ import '../renderer/photos';
  */
 const labels = (globalThis as Record<string, unknown>).__photoLabels as {
   partialNotice(advertised: boolean): { headline: string; detail: string } | null;
+  accessNotice(
+    advertised: boolean,
+    limitedReason: string | null,
+  ): { kind: 'partial'; headline: string; detail: string } | null;
   albumCount(count: number): string;
   itemSummary(item: {
     kind: 'image' | 'video';
@@ -410,4 +414,27 @@ test('the stage takes the photo’s real shape: decoded, then the rotated previe
   assert.deepEqual(shape({ listed, preview: { w: 288, h: 512 }, decoded: { w: 2252, h: 4000 } }), { w: 2252, h: 4000 });
   assert.equal(shape({ listed: null, preview: null, decoded: null }), null);
   assert.deepEqual(shape({ listed: { w: 0, h: 0 }, preview: null, decoded: { w: 3, h: 4 } }), { w: 3, h: 4 });
+});
+
+// ---- defect 139: the phone's three photo states, drawn as the phone's checklist words them ------
+
+const PHONE_REASON =
+  'Some photos allowed — only the photos and videos chosen on the phone are shared. ' +
+  'Change the selection on the phone, in Set up Sidekick.';
+
+test('selected-only access: advertised with a limited reason draws "Some photos allowed" and the phone\'s sentence', () => {
+  const notice = labels.accessNotice(true, PHONE_REASON);
+  assert.ok(notice, 'a limited capability must say so');
+  assert.equal(notice.headline, 'Some photos allowed');
+  assert.equal(notice.detail, PHONE_REASON, 'the phone\'s sentence, verbatim, never a Mac paraphrase');
+});
+
+test('full access: advertised with no limited reason draws no notice', () => {
+  assert.equal(labels.accessNotice(true, null), null);
+  assert.equal(labels.accessNotice(true, '   '), null);
+});
+
+test('no access: not advertised keeps the thumbnails-only notice, whatever limited says', () => {
+  assert.deepEqual(labels.accessNotice(false, null), { kind: 'partial', ...labels.partialNotice(false)! });
+  assert.match(labels.accessNotice(false, PHONE_REASON)!.headline, /thumbnails/i);
 });
