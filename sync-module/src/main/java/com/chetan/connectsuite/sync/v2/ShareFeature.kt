@@ -15,6 +15,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -37,9 +41,11 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * **The phone advertises `share.file` 1** ([Extensions.PHONE]). A transfer needs 2 on both sides, so
  * in any live pairing `accept` is refused and no pull is ever authorised; the version-2 code below is
- * reached only by tests until the Mac half (slice 3d) lands. **Nothing in the product makes an offer**:
- * the one caller of [offerStaged] is the debug-only, `DUMP`-gated `ShareOfferProbeActivity`. An
- * ordinary share still stops at *Ready* with Send disabled.
+ * reached only by tests until the Mac half (slice 3d) lands. **Two callers make offers**: the
+ * debug-only, `DUMP`-gated `ShareOfferProbeActivity` (synthetic bytes, `requireAsk = false`), and the
+ * share sheet's `ShareToMacModel` (an ordinary file, `requireAsk = true`). The second offers only on a
+ * session that negotiated `share.file` 2 **and** `share.ask` — and no Mac build promises `share.ask`
+ * yet, so in every live pairing an ordinary share still stops at *Ready* with Send disabled.
  *
  * ### What it will not do
  *
@@ -68,6 +74,22 @@ object ShareFeature {
     @Volatile private var cacheDir: File? = null
     @Volatile private var debuggable = false
     @Volatile private var installed = false
+
+    /**
+     * The last known form of each recent offer, **including ended ones**, for the share sheet to draw.
+     * [liveOffer] forgets an offer the moment it ends, which is right for answer-once and wrong for a
+     * screen that has to say how it ended. Memory only, the newest [VIEWS_KEPT].
+     */
+    private val _views = MutableStateFlow<Map<String, ShareOffer.Offer>>(emptyMap())
+    val views: StateFlow<Map<String, ShareOffer.Offer>> = _views.asStateFlow()
+    private const val VIEWS_KEPT = 16
+
+    private fun publish(o: ShareOffer.Offer) {
+        _views.update { m -> (m - o.offerId + (o.offerId to o)).entries.toList().takeLast(VIEWS_KEPT).associate { it.key to it.value } }
+    }
+
+    /** Offers still live, whose staged copies this object owns — the staging sweeps must skip them. */
+    fun liveOfferIds(): Set<String> = synchronized(lock) { offers.keys.toSet() }
 
     private val offered = AtomicInteger()
     private val declined = AtomicInteger()
@@ -104,7 +126,15 @@ object ShareFeature {
      * so the staged file and the offer cannot be mismatched). The caller keeps ownership of the staged
      * copy when the outcome is not [OfferOutcome.Offered]; after that, this object deletes it.
      */
-    fun offerStaged(offerId: String, bytes: Long, sha256: String, name: String, mime: String, ttlMs: Long = ShareOffer.TTL_MS): OfferOutcome {
+    fun offerStaged(
+        offerId: String, bytes: Long, sha256: String, name: String, mime: String, ttlMs: Long = ShareOffer.TTL_MS,
+        /**
+         * An **ordinary** share — one a person chose in the share sheet — must be offered only where
+         * [Extensions.ordinarySend] holds (`share.file` ≥ 2 and `share.ask`). The debug synthetic probe
+         * passes false: it is not an ordinary share, and it exists to reach the synthetic-only Mac.
+         */
+        requireAsk: Boolean = false,
+    ): OfferOutcome {
         val server = link ?: return OfferOutcome.NoSession
         if (!ShareStaging.isAttemptId(offerId)) return OfferOutcome.Invalid("offer id is not an attempt id")
         if (bytes < 0 || !sha256.matches(Regex("^[0-9a-f]{64}$"))) return OfferOutcome.Invalid("size or digest out of rule")
@@ -119,6 +149,11 @@ object ShareFeature {
             LinkLog.i("share", "offer $offerId not made: ${session.peerName} did not negotiate ${Extensions.SHARE_FILE} — nothing sent, nothing awaited")
             return OfferOutcome.NotNegotiated(session.peerName)
         }
+        if (requireAsk && !Extensions.ordinarySend(session.negotiated)) {
+            LinkLog.i("share", "offer $offerId not made: an ordinary share needs share.file 2 and share.ask, and " +
+                "${session.peerName} negotiated ${session.negotiated} — nothing sent, nothing awaited")
+            return OfferOutcome.NotNegotiated(session.peerName)
+        }
         val key = session.token ?: return OfferOutcome.NoSession
         val now = System.currentTimeMillis()
         val offer = ShareOffer.Offer(offerId, key, bytes, sha256, now, now + ttlMs, name = name, mime = mime)
@@ -129,6 +164,7 @@ object ShareFeature {
             }
             offers[offerId] = offer
             sessions[offerId] = session
+            publish(offer)
         }
         session.event(MessageType.SHARE_OFFER) {
             put("offerId", offerId)
@@ -294,6 +330,7 @@ object ShareFeature {
     /** Under [lock]: a live offer stays in the map; an ended one leaves it (answer-once). */
     private fun store(r: ShareOffer.Result) {
         val o = r.offer ?: return
+        publish(o)
         if (ShareOffer.isLive(o.state)) offers[o.offerId] = o else offers.remove(o.offerId)
     }
 

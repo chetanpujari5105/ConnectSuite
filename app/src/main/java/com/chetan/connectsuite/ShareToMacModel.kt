@@ -10,6 +10,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.chetan.connectsuite.core.link.LinkController
 import com.chetan.connectsuite.core.link.LinkLog
+import com.chetan.connectsuite.sync.v2.ShareFeature
 import com.chetan.connectsuite.sync.v2.ShareIntake
 import com.chetan.connectsuite.sync.v2.ShareNames
 import com.chetan.connectsuite.sync.v2.ShareStaging
@@ -18,6 +19,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -42,6 +46,17 @@ import java.util.concurrent.atomic.AtomicInteger
  * one reading on one phone, so it is re-checked rather than assumed: a recreated activity re-opens
  * the URI while a copy is running, and if that fails the copy is cancelled and the sheet says so.
  *
+ * ### Send, and who owns the staged copy after it
+ *
+ * Send is enabled only when the connected Mac negotiated `share.file` 2 **and** `share.ask`
+ * ([ShareIntake.availability]) — a Mac that promised to ask a person. No Mac build makes that promise
+ * yet, so in every live pairing Send stays disabled. [send] offers through
+ * `ShareFeature.offerStaged(requireAsk = true)`, which re-checks the same rule on the session it
+ * actually uses. **On `Offered` the staged copy changes hands** — under [lock], in one step — from
+ * this model to `ShareFeature`, whose every end deletes it; from then on [discard] deletes nothing
+ * and leaving the screen does not cancel the offer ([onLeave]). The sheet then follows
+ * `ShareFeature.views` through [reduce]; only the Mac's verified verdict makes it say Saved.
+ *
  * ### What reaches `link.log`
  *
  * The attempt id, byte counts, the MIME type's top-level type, the outcome and an exception's
@@ -59,6 +74,11 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
     private var uri: Uri? = null
     @Volatile private var attemptId: String? = null
     @Volatile private var staged = false
+    /** The staged copy's digest, from the copy itself. The offer names it; nothing else does. */
+    @Volatile private var stagedSha256: String? = null
+    /** Set once, when an offer is made. From then on `ShareFeature` owns the staged copy. */
+    @Volatile private var offeredId: String? = null
+    private var follow: Job? = null
     @Volatile private var accessLost = false
     private val cancelled = AtomicBoolean(false)
     /** Guards the hand-off between the copy finishing and a discard: exactly one of them owns the staged file. */
@@ -89,7 +109,7 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
         // Ready's availability line follows the link: a Mac connecting or dropping changes the sentence.
         viewModelScope.launch {
             LinkController.get(app).state.collect {
-                _state.update { s -> if (s is ShareSheetState.Ready) s.copy(availability = ShareIntake.availability(connectedMacName())) else s }
+                _state.update { s -> if (s is ShareSheetState.Ready) s.copy(availability = currentAvailability()) else s }
             }
         }
     }
@@ -111,6 +131,54 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
                 LinkLog.i("share", "attempt=${attemptId ?: "none"} access re-check after recreation: ok")
             }
         }
+    }
+
+    /**
+     * Offer the prepared file to the connected Mac. Only from [ShareSheetState.Ready] with
+     * [ShareIntake.Availability.Available]; `ShareFeature` re-checks `share.file` 2 + `share.ask` on the
+     * session it actually uses, so a Mac that dropped or changed since the sheet drew makes no offer.
+     */
+    fun send() {
+        val ready = _state.value as? ShareSheetState.Ready ?: return
+        if (ready.availability !is ShareIntake.Availability.Available) return
+        val outcome = synchronized(lock) {
+            val id = attemptId
+            val sha = stagedSha256
+            if (cancelled.get() || !staged || id == null || sha == null || offeredId != null) return
+            val o = ShareFeature.offerStaged(id, ready.bytes, sha, ready.name, ready.mime, requireAsk = true)
+            if (o is ShareFeature.OfferOutcome.Offered) {
+                // The hand-off: from here ShareFeature's ends delete the copy, and this model never does.
+                staged = false
+                offeredId = id
+                live.remove(id)
+            }
+            o
+        }
+        val mac = connectedMacName() ?: ready.availability.macName
+        when (outcome) {
+            is ShareFeature.OfferOutcome.Offered -> {
+                LinkLog.i("share", "attempt=${outcome.offerId} offered from the sheet; ShareFeature owns the staged copy now")
+                _state.value = ShareSheetState.WaitingForMac(ready.name, ready.bytes, mac)
+                follow = viewModelScope.launch {
+                    ShareFeature.views.mapNotNull { it[outcome.offerId]?.state }.distinctUntilChanged().collect { st ->
+                        _state.update { prev -> reduce(prev, ready.name, ready.bytes, mac, st) }
+                    }
+                }
+            }
+            ShareFeature.OfferOutcome.NoSession, is ShareFeature.OfferOutcome.NotNegotiated ->
+                _state.value = ready.copy(availability = currentAvailability(), notOffered = null)
+            ShareFeature.OfferOutcome.Busy -> _state.value = ready.copy(notOffered = ShareSheetState.NotOffered.MAC_BUSY)
+            is ShareFeature.OfferOutcome.Invalid -> {
+                LinkLog.w("share", "attempt=${attemptId ?: "none"} not offered: ${outcome.why}")
+                _state.value = ready.copy(notOffered = ShareSheetState.NotOffered.OUT_OF_RULE)
+            }
+        }
+    }
+
+    /** Withdraw a live offer (`share.cancel{user}`). `ShareFeature` deletes the staged copy. */
+    fun withdraw() {
+        if (!canWithdraw(_state.value)) return
+        offeredId?.let { ShareFeature.cancel(it, "user") }
     }
 
     /** Cancel a running copy and delete what was staged. Idempotent; safe from any state. */
@@ -146,7 +214,8 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
             fail(name, null, ShareSheetState.Failure.StagingUnavailable, "staging directory unusable")
             return
         }
-        ShareStaging.sweep(dir, live.toSet(), System.currentTimeMillis(), ShareStaging.BACKSTOP_AGE_MS).let {
+        // Live offers own their staged copies; the backstop must never reach one, however old.
+        ShareStaging.sweep(dir, live.toSet() + ShareFeature.liveOfferIds(), System.currentTimeMillis(), ShareStaging.BACKSTOP_AGE_MS).let {
             if (it.deleted > 0 || it.leftUnrecognised > 0 || it.refusedDir) LinkLog.i("share", "backstop ${ShareStaging.sweepLine(it)}")
         }
         val free = dir.usableSpace
@@ -195,7 +264,8 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
                 val n = stagedCount.incrementAndGet()
                 LinkLog.i("share", "attempt=$id staged bytes=${outcome.bytes} type=${topLevel(mime)} — " +
                     "$n staged / ${failedCount.get()} failed since start")
-                _state.value = ShareSheetState.Ready(name, mime, outcome.bytes, ShareIntake.availability(connectedMacName()))
+                stagedSha256 = outcome.sha256
+                _state.value = ShareSheetState.Ready(name, mime, outcome.bytes, currentAvailability())
             }
             is ShareStaging.Outcome.Cancelled ->
                 if (accessLost) fail(name, id, ShareSheetState.Failure.AccessLostOnRecreate, "cancelled: access lost after recreation")
@@ -234,6 +304,11 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun connectedMacName(): String? = LinkController.get(app).anyLiveSession()?.peerName
+
+    private fun currentAvailability(): ShareIntake.Availability {
+        val session = LinkController.get(app).anyLiveSession()
+        return ShareIntake.availability(session?.peerName, session?.negotiated)
+    }
 
     private fun topLevel(mime: String) = mime.substringBefore('/') + "/*"
 

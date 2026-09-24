@@ -25,25 +25,29 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chetan.connectsuite.core.ui.ConnectSuiteTheme
+import com.chetan.connectsuite.sync.v2.ShareIntake
 
 /**
  * **Send to Mac** for one file from any app's share sheet — slice 1 of `docs/phase-7-share-plan.md`.
  *
- * In this slice it **only prepares**: the file is copied privately while this activity holds the
- * share grant, and the sheet says plainly that nothing was sent. There is no offer, no socket and no
- * Mac message. Send is shown disabled with the reason, because a Send button that did something
- * would be a lie until slice 2.
+ * The file is copied privately while this activity holds the share grant. **Send is enabled only
+ * against a Mac that negotiated `share.file` 2 and `share.ask`** — one that promised to ask a person —
+ * and no Mac build makes that promise yet, so in every live pairing Send is shown disabled with the
+ * reason. After an offer the sheet follows it to its end: waiting, sending, and *Saved* only on the
+ * Mac's verified verdict (`ShareToMacModel`, `reduce`).
  *
  * Plain-text shares never reach this activity: its filter claims no `text` type at all, and
  * `SendSelectionActivity` keeps `SEND text/plain` → `clip.push` exactly as before
  * (`ShareManifestTest`).
  *
- * ### Leaving the screen discards
+ * ### Leaving the screen ([onLeave])
  *
  * Home, another app, or the screen switching off (`onStop` without a configuration change) cancels
- * a copy and deletes a prepared one. In slice 1 nothing can happen to a prepared copy, and this
- * activity is excluded from Recents, so a copy kept after leaving could never be reached again.
- * A rotation is not leaving: the copy is held by [ShareToMacModel] across it.
+ * a copy and deletes a prepared one **that has not been offered** — this activity is excluded from
+ * Recents, so a copy kept after leaving could never be reached again. **An offered one is not
+ * touched**: `ShareFeature` owns it and deletes it at the offer's own end, and the offer is not
+ * withdrawn — a person walking to the Mac to press Accept will often let the phone's screen switch
+ * off first. A rotation is not leaving: the model holds everything across it.
  */
 class ShareToMacActivity : ComponentActivity() {
 
@@ -59,6 +63,11 @@ class ShareToMacActivity : ComponentActivity() {
                 val state by model.state.collectAsStateWithLifecycle()
                 ShareSheet(
                     state = state,
+                    onSend = { model.send() },
+                    onWithdraw = {
+                        model.withdraw()
+                        Toast.makeText(this, ShareToMacCopy.WITHDRAWN, Toast.LENGTH_SHORT).show()
+                    },
                     onCancel = {
                         model.discard("cancelled")
                         Toast.makeText(this, ShareToMacCopy.CANCELLED, Toast.LENGTH_SHORT).show()
@@ -76,16 +85,27 @@ class ShareToMacActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (!isChangingConfigurations && !isFinishing) {
-            val hadWork = model.state.value is ShareSheetState.Preparing || model.state.value is ShareSheetState.Ready
-            model.discard("left the screen")
-            if (hadWork) Toast.makeText(applicationContext, ShareToMacCopy.DISCARDED, Toast.LENGTH_SHORT).show()
+            val state = model.state.value
+            // After an offer, discard() deletes nothing (the model gave the copy away), so calling it
+            // is harmless; the toast is what must not claim a discard that did not happen.
+            if (onLeave(state) == SheetExit.DISCARD_STAGED) {
+                val hadWork = state is ShareSheetState.Preparing || state is ShareSheetState.Ready
+                model.discard("left the screen")
+                if (hadWork) Toast.makeText(applicationContext, ShareToMacCopy.DISCARDED, Toast.LENGTH_SHORT).show()
+            }
             finish()
         }
     }
 }
 
 @Composable
-private fun ShareSheet(state: ShareSheetState, onCancel: () -> Unit, onClose: () -> Unit) {
+private fun ShareSheet(
+    state: ShareSheetState,
+    onSend: () -> Unit,
+    onWithdraw: () -> Unit,
+    onCancel: () -> Unit,
+    onClose: () -> Unit,
+) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 48.dp),
@@ -108,23 +128,34 @@ private fun ShareSheet(state: ShareSheetState, onCancel: () -> Unit, onClose: ()
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
+            if (state is ShareSheetState.Sending) {
+                // No byte count on the phone side: the sheet does not claim a progress it cannot read.
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
             if (state is ShareSheetState.Ready) {
                 Text(ShareToMacCopy.availability(state.availability), style = MaterialTheme.typography.bodyMedium)
+                state.notOffered?.let { Text(ShareToMacCopy.notOffered(it), style = MaterialTheme.typography.bodyMedium) }
             }
-            if (state is ShareSheetState.Preparing || state is ShareSheetState.Ready) {
-                Text(ShareToMacCopy.LEAVING, style = MaterialTheme.typography.bodySmall)
+            when (onLeave(state)) {
+                SheetExit.DISCARD_STAGED -> if (state !is ShareSheetState.Starting) Text(ShareToMacCopy.LEAVING, style = MaterialTheme.typography.bodySmall)
+                SheetExit.LEAVE_TO_OFFER -> offeredMac(state)?.let { Text(ShareToMacCopy.leavingOffered(it), style = MaterialTheme.typography.bodySmall) }
+                SheetExit.NOTHING -> Unit
             }
 
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (state is ShareSheetState.Preparing || state is ShareSheetState.Starting) {
-                    OutlinedButton(onClick = onCancel) { Text(ShareToMacCopy.CANCEL_BUTTON) }
-                } else {
-                    OutlinedButton(onClick = onClose) { Text(ShareToMacCopy.CLOSE_BUTTON) }
+                when {
+                    state is ShareSheetState.Preparing || state is ShareSheetState.Starting ->
+                        OutlinedButton(onClick = onCancel) { Text(ShareToMacCopy.CANCEL_BUTTON) }
+                    canWithdraw(state) -> OutlinedButton(onClick = onWithdraw) { Text(ShareToMacCopy.CANCEL_BUTTON) }
+                    else -> OutlinedButton(onClick = onClose) { Text(ShareToMacCopy.CLOSE_BUTTON) }
                 }
                 if (state is ShareSheetState.Ready) {
-                    // Disabled in slice 1, with the reason directly above it. Slice 2 gives it an offer.
-                    Button(onClick = {}, enabled = false) { Text(ShareToMacCopy.SEND_BUTTON) }
+                    // Enabled only against a Mac that negotiated share.file 2 and share.ask; the reason
+                    // is directly above it otherwise.
+                    Button(onClick = onSend, enabled = state.availability is ShareIntake.Availability.Available) {
+                        Text(ShareToMacCopy.SEND_BUTTON)
+                    }
                 }
             }
         }
@@ -135,5 +166,18 @@ private fun fileLine(state: ShareSheetState): String? = when (state) {
     is ShareSheetState.Preparing -> state.name
     is ShareSheetState.Ready -> "${state.name} · ${state.mime}"
     is ShareSheetState.Failed -> state.name
+    is ShareSheetState.WaitingForMac -> state.name
+    is ShareSheetState.Sending -> state.name
+    is ShareSheetState.Saved -> state.name
+    is ShareSheetState.Unconfirmed -> state.name
+    is ShareSheetState.SendFailed -> state.name
+    is ShareSheetState.Stopped -> state.name
+    else -> null
+}
+
+private fun offeredMac(state: ShareSheetState): String? = when (state) {
+    is ShareSheetState.WaitingForMac -> state.mac
+    is ShareSheetState.Sending -> state.mac
+    is ShareSheetState.SendFailed -> state.mac
     else -> null
 }

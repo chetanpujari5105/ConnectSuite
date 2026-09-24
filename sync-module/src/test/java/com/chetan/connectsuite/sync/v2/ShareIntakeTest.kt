@@ -1,5 +1,6 @@
 package com.chetan.connectsuite.sync.v2
 
+import com.chetan.connectsuite.core.link.Extensions
 import com.chetan.connectsuite.sync.v2.ShareIntake.Availability
 import com.chetan.connectsuite.sync.v2.ShareIntake.Decision
 import com.chetan.connectsuite.sync.v2.ShareIntake.Refusal
@@ -51,5 +52,17 @@ class ShareIntakeTest {
         assertEquals(Availability.NotConnected, ShareIntake.availability(null))
         assertEquals(Availability.NotConnected, ShareIntake.availability(""))
         assertEquals(Availability.NotSupported("Chetan's MacBook Pro"), ShareIntake.availability("Chetan's MacBook Pro"))
+    }
+
+    @Test fun `Send is available only against a Mac that negotiated share-file 2 and share-ask - the shared fixture`() {
+        val mac = "Chetan's MacBook Pro"
+        val v1 = mapOf(Extensions.SHARE_FILE to 1)
+        val synthetic = mapOf(Extensions.SHARE_FILE to 2)
+        val production = mapOf(Extensions.SHARE_FILE to 2, Extensions.SHARE_ASK to 1)
+        assertEquals(Availability.NotConnected, ShareIntake.availability(null, production))
+        assertEquals("old Mac", Availability.NotSupported(mac), ShareIntake.availability(mac, emptyMap()))
+        assertEquals("version 1", Availability.NotSupported(mac), ShareIntake.availability(mac, v1))
+        assertEquals("the synthetic-only development Mac", Availability.NotSupported(mac), ShareIntake.availability(mac, synthetic))
+        assertEquals("control: the production pairing", Availability.Available(mac), ShareIntake.availability(mac, production))
     }
 }

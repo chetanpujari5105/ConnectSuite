@@ -1,5 +1,7 @@
 package com.chetan.connectsuite.sync.v2
 
+import com.chetan.connectsuite.core.link.Extensions
+
 /**
  * Whether a share intent can be taken, and whether the Mac could receive it — slice 1 of
  * `docs/phase-7-share-plan.md`. Pure: the activity reads the intent and passes plain values, so a
@@ -45,16 +47,25 @@ object ShareIntake {
         }
 
     /**
-     * Whether the file could be sent now. **Slice 1 has no offer and no `share.file` negotiation**, so
-     * no Mac can advertise support and there is deliberately no `Available` member. Slice 2 adds the
-     * negotiated flag as a parameter and `Available` together; adding either alone would be a Send
-     * button with nothing behind it.
+     * Whether the prepared file can be sent now — docs/protocol.md → Extensions → the `share.ask`
+     * extension. [Availability.Available] only when a Mac is connected **and** its session negotiated
+     * `share.file` ≥ 2 with `share.ask` ([Extensions.ordinarySend]): a Mac that promised to hold the
+     * offer for a person's Accept. **No Mac build makes that promise yet**, so in every live pairing
+     * this returns [Availability.NotConnected] or [Availability.NotSupported] and Send stays disabled.
+     *
+     * The synthetic-only development Mac (`share.file` 2 without `share.ask`) is deliberately
+     * [Availability.NotSupported]: it would decline an ordinary file `not-available` at once.
      */
     sealed interface Availability {
         data object NotConnected : Availability
         data class NotSupported(val macName: String) : Availability
+        data class Available(val macName: String) : Availability
     }
 
-    fun availability(connectedMacName: String?): Availability =
-        if (connectedMacName.isNullOrBlank()) Availability.NotConnected else Availability.NotSupported(connectedMacName)
+    /** @param negotiated the live session's negotiated extensions; ignored when no Mac is connected. */
+    fun availability(connectedMacName: String?, negotiated: Map<String, Int>? = null): Availability = when {
+        connectedMacName.isNullOrBlank() -> Availability.NotConnected
+        Extensions.ordinarySend(negotiated) -> Availability.Available(connectedMacName)
+        else -> Availability.NotSupported(connectedMacName)
+    }
 }

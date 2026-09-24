@@ -7,15 +7,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The sheet's sentences, read from the one list the sheet draws from. Slice 1 sends nothing, so no
- * sentence may say a file was sent or saved, and "Ready" must say it was not.
+ * The sheet's sentences, read from the one enumeration the sheet draws from. Each claim is about a
+ * **state's type**, not about two sentences being unlike each other (CLAUDE.md, the fourth variety):
+ * the Saved wording appears exactly on [ShareSheetState.Saved], the declined wording exactly on a
+ * stop reason whose `byPerson` is true, and so on.
  */
 class ShareToMacCopyTest {
 
+    private val states = ShareToMacCopy.everyState()
     private val all = ShareToMacCopy.everySentence().filter { it.isNotBlank() }
 
     @Test fun `the enumeration reaches every state (control)`() {
-        assertTrue(all.size >= 30)
+        assertTrue(all.size >= 60)
+        // One of each class, so a new state that is never enumerated fails here rather than going unread.
+        val kinds = states.map { it::class }.toSet()
+        assertEquals(11, kinds.size)
     }
 
     @Test fun `Ready says the file is prepared on this phone and not sent`() {
@@ -25,25 +31,69 @@ class ShareToMacCopyTest {
         assertEquals("Ready on this phone", ShareToMacCopy.headline(ShareSheetState.Ready("a", "b/c", 0, Availability.NotConnected)))
     }
 
-    @Test fun `every sentence that mentions sending says nothing was sent`() {
-        all.filter { Regex("\\bsent\\b", RegexOption.IGNORE_CASE).containsMatchIn(it) }.forEach {
-            assertTrue(it, it.contains("has not been sent") || it.contains("Nothing was sent"))
+    @Test fun `the Saved wording appears on the Saved state and on no other`() {
+        for (s in states) {
+            val saidSaved = ShareToMacCopy.headline(s).startsWith("Saved") || ShareToMacCopy.detail(s).contains("saved it as")
+            assertEquals("$s", s is ShareSheetState.Saved, saidSaved)
         }
     }
 
-    @Test fun `no sentence claims anything was saved`() {
-        all.forEach { assertFalse(it, Regex("\\bsaved\\b", RegexOption.IGNORE_CASE).containsMatchIn(it)) }
+    @Test fun `a state before any offer never places anything on the Mac`() {
+        val before = states.filter {
+            it is ShareSheetState.Starting || it is ShareSheetState.Refused || it is ShareSheetState.Preparing ||
+                it is ShareSheetState.Ready || it is ShareSheetState.Failed
+        }
+        assertTrue("control: the pre-offer states were found", before.size >= 15)
+        for (s in before) {
+            val text = ShareToMacCopy.headline(s) + " " + ShareToMacCopy.detail(s)
+            assertFalse(text, Regex("\\b(saved|accepted|offered)\\b", RegexOption.IGNORE_CASE).containsMatchIn(text))
+        }
     }
 
-    @Test fun `the only sentence placing something on the Mac denies it`() {
-        all.filter { it.contains("on your Mac") }.forEach { assertTrue(it, it.contains("nothing is on your Mac")) }
+    @Test fun `only a decline or cancel a person made is worded as one - not-available never is`() {
+        for (why in ShareSheetState.StopReason.values()) {
+            val text = ShareToMacCopy.detail(ShareSheetState.Stopped("a.bin", "Mac", why))
+            val saysPerson = Regex("\\b(declined it|Someone)\\b").containsMatchIn(text) || text.startsWith("Withdrawn") ||
+                text.contains("stopped on")
+            assertEquals("$why: $text", why.byPerson, saysPerson)
+        }
     }
 
-    @Test fun `a disconnected Mac and an unsupported one get different sentences, both saying why`() {
+    @Test fun `an expiry is never called a decline`() {
+        val s = ShareSheetState.Stopped("a.bin", "Mac", ShareSheetState.StopReason.EXPIRED)
+        assertEquals("Expired", ShareToMacCopy.headline(s))
+        assertFalse(ShareToMacCopy.detail(s).contains("declin", ignoreCase = true))
+    }
+
+    @Test fun `unconfirmed says the Mac may have it, and never that it was saved or not saved`() {
+        val s = ShareSheetState.Unconfirmed("a.bin", "Mac")
+        val text = ShareToMacCopy.headline(s) + " " + ShareToMacCopy.detail(s)
+        assertTrue(text, text.contains("may or may not be there"))
+        assertFalse(text, text.contains("Nothing was saved"))
+        assertFalse(text, text.contains("Nothing was sent"))
+    }
+
+    @Test fun `a Mac that ran out of space is named as the cause, distinct from the phone's own space failure`() {
+        val mac = ShareToMacCopy.detail(ShareSheetState.Stopped("a.bin", "Mac", ShareSheetState.StopReason.DECLINED_NO_SPACE_ON_MAC))
+        val phone = ShareToMacCopy.detail(ShareSheetState.Failed("a.bin", ShareSheetState.Failure.NoSpace(10, 1)))
+        assertTrue(mac, mac.startsWith("Mac doesn’t have enough free space"))
+        assertTrue(phone, phone.startsWith("Not enough space on this phone"))
+    }
+
+    @Test fun `a duplicate saved under another name reports the Mac's name for it`() {
+        val s = ShareSheetState.Saved("IMG_1.jpg", "Mac", "IMG_1 (2).jpg")
+        val text = ShareToMacCopy.detail(s)
+        assertTrue(text, text.contains("“IMG_1 (2).jpg”"))
+        assertFalse("does not guess why the name differs", text.contains("because"))
+    }
+
+    @Test fun `no Mac, an old or synthetic-only Mac, and a Mac that asks each get their own sentence`() {
         val off = ShareToMacCopy.availability(Availability.NotConnected)
-        val on = ShareToMacCopy.availability(Availability.NotSupported("Chetan’s MacBook Pro"))
+        val old = ShareToMacCopy.availability(Availability.NotSupported("Chetan’s MacBook Pro"))
+        val ok = ShareToMacCopy.availability(Availability.Available("Chetan’s MacBook Pro"))
         assertTrue(off, off.contains("isn’t connected"))
-        assertTrue(on, on.contains("Chetan’s MacBook Pro") && on.contains("isn’t available"))
+        assertTrue(old, old.contains("Chetan’s MacBook Pro") && old.contains("can’t receive files"))
+        assertTrue(ok, ok.contains("will ask you to accept it"))
     }
 
     @Test fun `no sentence carries a package id`() {

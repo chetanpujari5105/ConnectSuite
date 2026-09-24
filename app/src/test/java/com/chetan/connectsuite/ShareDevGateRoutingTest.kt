@@ -60,11 +60,25 @@ class ShareDevGateRoutingTest {
         assertEquals(emptyList<File>(), writers)
     }
 
-    @Test fun `an ordinary share still cannot make an offer — Send is disabled and nothing in main offers`() {
+    /*
+     * Was: "no main source calls offerStaged; Send is drawn disabled with no action". That guarded the
+     * premise *ordinary Send does not exist*, which the share.ask commit deliberately ended. It is not
+     * loosened to "at most one caller" (a raised count guards nothing); it is replaced by the two
+     * questions the new premise rests on, each asserted by name:
+     *  1. the one main caller makes an ORDINARY offer, so it must pass requireAsk = true;
+     *  2. the sheet's Send is enabled only by Availability.Available, which only share.ask produces.
+     */
+    @Test fun `the one ordinary offer in main requires share-ask, and Send is enabled only by Available`() {
         val sources = mainSources()
         val offering = sources.filter { Regex("\\.offerStaged\\(").containsMatchIn(code(it)) }
-        assertEquals("the only caller is the debug probe", emptyList<File>(), offering)
+        assertEquals("one main caller: the share sheet's model", listOf("ShareToMacModel.kt"), offering.map { it.name })
+        val call = Regex("\\.offerStaged\\(([^)]*)\\)").findAll(code(offering.single())).map { it.groupValues[1] }.toList()
+        assertEquals("called once", 1, call.size)
+        assertTrue("an ordinary offer must require share.ask: ${call.single()}", call.single().contains("requireAsk = true"))
         val sheet = code(File(root(), "app/src/main/java/com/chetan/connectsuite/ShareToMacActivity.kt"))
-        assertTrue("Send is drawn disabled, with no action", sheet.contains("Button(onClick = {}, enabled = false) { Text(ShareToMacCopy.SEND_BUTTON) }"))
+        assertTrue(
+            "Send is enabled only by Availability.Available",
+            sheet.contains("Button(onClick = onSend, enabled = state.availability is ShareIntake.Availability.Available)"),
+        )
     }
 }

@@ -2,21 +2,48 @@ package com.chetan.connectsuite
 
 import com.chetan.connectsuite.sync.v2.ShareIntake.Availability
 import com.chetan.connectsuite.sync.v2.ShareIntake.Refusal
+import com.chetan.connectsuite.sync.v2.ShareOffer
 import java.util.Locale
 
 /**
  * The state of the "Send to Mac" sheet, with nothing Android in it, so a JVM test can enumerate
  * every state and read the sentence each one shows.
  *
- * **Slice 1 has no offer.** `Ready` means *privately staged on this phone* and nothing more: not
- * sent, not saved, not on the Mac. There is no state in this slice that could mean any of those.
+ * **Before an offer** the file is only prepared: [Ready] means *privately staged on this phone* and
+ * nothing more. **After an offer** the sheet follows the phone's offer state machine
+ * ([ShareOffer.State]) through [reduce], and exactly one rule is load-bearing: **only [Saved] says
+ * the file is on the Mac, and only the Mac's verified `share.saved {ok:true}` produces it.** The phone
+ * finishing its own send is [Sending] with `allSent`, never saved; a verdict that never comes is
+ * [Unconfirmed], which says the Mac *may* have kept it.
  */
 sealed interface ShareSheetState {
     data object Starting : ShareSheetState
     data class Refused(val reason: Refusal) : ShareSheetState
     data class Preparing(val name: String, val copied: Long, val expected: Long?) : ShareSheetState
-    data class Ready(val name: String, val mime: String, val bytes: Long, val availability: Availability) : ShareSheetState
+    data class Ready(
+        val name: String,
+        val mime: String,
+        val bytes: Long,
+        val availability: Availability,
+        /** Why the last Send did not make an offer, when it did not. Cleared by the next try. */
+        val notOffered: NotOffered? = null,
+    ) : ShareSheetState
     data class Failed(val name: String, val failure: Failure) : ShareSheetState
+
+    // ---- after an offer: every one of these carries the Mac it was offered to ---------------------
+
+    /** Offered; the Mac holds it on its card until a person answers or it expires. */
+    data class WaitingForMac(val name: String, val bytes: Long, val mac: String) : ShareSheetState
+    /** Accepted and streaming, or — [allSent] — every byte sent and the Mac's verdict not yet in. */
+    data class Sending(val name: String, val bytes: Long, val mac: String, val allSent: Boolean) : ShareSheetState
+    /** The Mac verified and published it. [savedAs] is the Mac's name for it, which may differ. */
+    data class Saved(val name: String, val mac: String, val savedAs: String) : ShareSheetState
+    /** Every byte sent; the Mac's verdict never arrived. It may or may not be on the Mac. */
+    data class Unconfirmed(val name: String, val mac: String) : ShareSheetState
+    /** The Mac reported it could not save this attempt; a person on the Mac may Retry. */
+    data class SendFailed(val name: String, val mac: String, val reason: String) : ShareSheetState
+    /** Ended with nothing saved on the Mac, for [why]. */
+    data class Stopped(val name: String, val mac: String, val why: StopReason) : ShareSheetState
 
     sealed interface Failure {
         data class NoSpace(val needed: Long, val free: Long) : Failure
@@ -27,7 +54,103 @@ sealed interface ShareSheetState {
         data object AccessLostOnRecreate : Failure
         data object StagingUnavailable : Failure
     }
+
+    /** Why Send made no offer. The prepared copy is still this sheet's; nothing reached the Mac. */
+    enum class NotOffered { MAC_BUSY, OUT_OF_RULE }
+
+    /**
+     * Why an offer ended with nothing saved. [byPerson] is the fact the copy must respect: a
+     * `not-available` decline is a protocol stub and **never** a person's decision (docs/protocol.md →
+     * Share), so only `user` is worded as someone declining.
+     */
+    enum class StopReason(val byPerson: Boolean) {
+        DECLINED_BY_PERSON(true),
+        DECLINED_NO_SPACE_ON_MAC(false),
+        DECLINED_FOLDER_UNAVAILABLE(false),
+        DECLINED_UNSUPPORTED_DESTINATION(false),
+        DECLINED_NOT_AVAILABLE(false),
+        DECLINED_BUSY(false),
+        DECLINED_UNREADABLE(false),
+        EXPIRED(false),
+        CANCELLED_HERE(true),
+        CANCELLED_ON_MAC(true),
+        DISCONNECTED(false),
+        DISCONNECTED_MID_TRANSFER(false),
+        STAGING_LOST(false),
+    }
 }
+
+/**
+ * The sheet's state after an offer, from the phone's own offer state — pure, so a test reaches every
+ * pair. [prev] matters in two places, both about not rounding an unknown into a known:
+ *
+ * - once [ShareSheetState.Unconfirmed], only a later [ShareOffer.State.Saved] (a Mac Retry that
+ *   succeeded) changes it. The Retry window then closing is an `Expired` to the state machine, and
+ *   "nothing was saved" would be false: the Mac may have kept the file.
+ * - the session ending after every byte was sent is [ShareSheetState.Unconfirmed] — the contract's
+ *   *"or the session ends first"* — not a plain disconnect.
+ */
+fun reduce(prev: ShareSheetState, name: String, bytes: Long, mac: String, s: ShareOffer.State): ShareSheetState {
+    if (prev is ShareSheetState.Saved) return prev
+    if (prev is ShareSheetState.Unconfirmed && s !is ShareOffer.State.Saved && !ShareOffer.isLive(s)) return prev
+    val allSentBefore = (prev is ShareSheetState.Sending && prev.allSent) || prev is ShareSheetState.Unconfirmed
+    fun stop(why: ShareSheetState.StopReason) = ShareSheetState.Stopped(name, mac, why)
+    return when (s) {
+        ShareOffer.State.Offered -> ShareSheetState.WaitingForMac(name, bytes, mac)
+        ShareOffer.State.Accepted, ShareOffer.State.Sending -> ShareSheetState.Sending(name, bytes, mac, allSent = false)
+        ShareOffer.State.AwaitingVerdict -> ShareSheetState.Sending(name, bytes, mac, allSent = true)
+        is ShareOffer.State.Saved -> ShareSheetState.Saved(name, mac, s.savedAs)
+        is ShareOffer.State.Failed ->
+            if (s.reason == ShareOffer.UNCONFIRMED) ShareSheetState.Unconfirmed(name, mac) else ShareSheetState.SendFailed(name, mac, s.reason)
+        is ShareOffer.State.Declined -> stop(
+            when (s.reason) {
+                "user" -> ShareSheetState.StopReason.DECLINED_BY_PERSON
+                "insufficient-space" -> ShareSheetState.StopReason.DECLINED_NO_SPACE_ON_MAC
+                "folder-unavailable" -> ShareSheetState.StopReason.DECLINED_FOLDER_UNAVAILABLE
+                "unsupported-destination" -> ShareSheetState.StopReason.DECLINED_UNSUPPORTED_DESTINATION
+                "busy" -> ShareSheetState.StopReason.DECLINED_BUSY
+                "not-available" -> ShareSheetState.StopReason.DECLINED_NOT_AVAILABLE
+                else -> ShareSheetState.StopReason.DECLINED_UNREADABLE
+            },
+        )
+        ShareOffer.State.Expired -> stop(ShareSheetState.StopReason.EXPIRED)
+        is ShareOffer.State.Cancelled -> when {
+            s.by == ShareOffer.Side.MAC -> stop(ShareSheetState.StopReason.CANCELLED_ON_MAC)
+            s.reason == "staging-lost" -> stop(ShareSheetState.StopReason.STAGING_LOST)
+            else -> stop(ShareSheetState.StopReason.CANCELLED_HERE)
+        }
+        ShareOffer.State.SessionEnded -> when {
+            allSentBefore -> ShareSheetState.Unconfirmed(name, mac)
+            prev is ShareSheetState.Sending -> stop(ShareSheetState.StopReason.DISCONNECTED_MID_TRANSFER)
+            else -> stop(ShareSheetState.StopReason.DISCONNECTED)
+        }
+    }
+}
+
+/**
+ * **Who owns the staged copy when the person leaves the screen** — the one cleanup decision this
+ * sheet makes. Before an offer the sheet owns it, and leaving deletes it (slice 1, unchanged). From
+ * the moment an offer is made, `ShareFeature` owns it: every end of the offer — answered, expired,
+ * cancelled, the session ending — deletes it there (`ShareOffer`: *every transition into an end
+ * carries DeleteStaged*). So leaving an offered sheet neither deletes the copy under a live offer nor
+ * cancels an offer the Mac may be about to accept; the offer runs to its own bounded end.
+ */
+enum class SheetExit { DISCARD_STAGED, LEAVE_TO_OFFER, NOTHING }
+
+fun onLeave(state: ShareSheetState): SheetExit = when (state) {
+    ShareSheetState.Starting, is ShareSheetState.Preparing, is ShareSheetState.Ready -> SheetExit.DISCARD_STAGED
+    is ShareSheetState.WaitingForMac, is ShareSheetState.Sending, is ShareSheetState.SendFailed -> SheetExit.LEAVE_TO_OFFER
+    is ShareSheetState.Refused, is ShareSheetState.Failed, is ShareSheetState.Saved,
+    is ShareSheetState.Unconfirmed, is ShareSheetState.Stopped -> SheetExit.NOTHING
+}
+
+/**
+ * Whether the sheet offers **Cancel** (withdraw the offer) rather than Close. Not once every byte is
+ * sent: a cancel then cannot unpublish anything the Mac saved, and the sheet would say "Cancelled"
+ * over a file that may be on the Mac.
+ */
+fun canWithdraw(state: ShareSheetState): Boolean =
+    state is ShareSheetState.WaitingForMac || (state is ShareSheetState.Sending && !state.allSent)
 
 /** Every sentence the sheet can show. The sentences live here so the test reads what the user reads. */
 object ShareToMacCopy {
@@ -36,6 +159,7 @@ object ShareToMacCopy {
     const val LEAVING = "Leaving this screen discards the prepared copy."
     const val CANCELLED = "Cancelled. Nothing was sent, and the prepared copy was deleted."
     const val DISCARDED = "Closed. Nothing was sent, and the prepared copy was deleted."
+    const val WITHDRAWN = "Withdrawn. Nothing was saved on your Mac, and the prepared copy was deleted."
     const val SEND_BUTTON = "Send"
     const val CANCEL_BUTTON = "Cancel"
     const val CLOSE_BUTTON = "Close"
@@ -46,6 +170,12 @@ object ShareToMacCopy {
         is ShareSheetState.Preparing -> "Preparing…"
         is ShareSheetState.Ready -> "Ready on this phone"
         is ShareSheetState.Failed -> "Couldn’t prepare this file"
+        is ShareSheetState.WaitingForMac -> "Waiting for you to accept on ${state.mac}"
+        is ShareSheetState.Sending -> if (state.allSent) "Sent — waiting for ${state.mac} to confirm" else "Sending to ${state.mac}…"
+        is ShareSheetState.Saved -> "Saved on ${state.mac}"
+        is ShareSheetState.Unconfirmed -> "Not confirmed by ${state.mac}"
+        is ShareSheetState.SendFailed -> "${state.mac} couldn’t save it"
+        is ShareSheetState.Stopped -> stoppedHeadline(state.why, state.mac)
     }
 
     fun detail(state: ShareSheetState): String = when (state) {
@@ -56,14 +186,76 @@ object ShareToMacCopy {
         is ShareSheetState.Ready ->
             "Prepared privately on this phone (${bytes(state.bytes)}). It has not been sent, and nothing is on your Mac."
         is ShareSheetState.Failed -> failure(state.failure)
+        is ShareSheetState.WaitingForMac ->
+            "Offered to ${state.mac} (${bytes(state.bytes)}). Nothing moves until someone accepts it there; " +
+                "if nobody does, the offer expires in 10 minutes."
+        is ShareSheetState.Sending -> if (state.allSent) {
+            "All ${bytes(state.bytes)} have left this phone. It is saved only when ${state.mac} has checked it and says so."
+        } else {
+            "Accepted on ${state.mac}. Sending ${bytes(state.bytes)}; it is not saved until ${state.mac} has checked it."
+        }
+        is ShareSheetState.Saved ->
+            if (state.savedAs == state.name) "${state.mac} checked every byte and saved it as “${state.savedAs}”."
+            // Not "because a file of that name was there": the Mac also sanitises names, so a different
+            // name is a fact about the result and not evidence of a collision.
+            else "${state.mac} checked every byte and saved it as “${state.savedAs}” — that is its name on the Mac."
+        is ShareSheetState.Unconfirmed ->
+            "Every byte was sent, but ${state.mac} never confirmed it. It may or may not be there — check your Mac before sending it again."
+        is ShareSheetState.SendFailed -> "${saveFailure(state.reason)} Nothing was saved. Someone on ${state.mac} can retry for up to 5 minutes."
+        is ShareSheetState.Stopped -> stoppedDetail(state.why, state.mac)
     }
 
-    /** Only for [ShareSheetState.Ready]: why Send is not available. Slice 1 always has a reason. */
+    /** Only for [ShareSheetState.Ready]: whether Send works, and why not when it does not. */
     fun availability(a: Availability): String = when (a) {
-        Availability.NotConnected ->
-            "Your Mac isn’t connected, and sending files to a Mac isn’t available in this version of Sidekick yet."
-        is Availability.NotSupported ->
-            "Sending files to ${a.macName} isn’t available in this version of Sidekick yet."
+        Availability.NotConnected -> "Your Mac isn’t connected. Connect it to send this file."
+        is Availability.NotSupported -> "${a.macName} can’t receive files from this phone yet. Update Sidekick on your Mac."
+        is Availability.Available -> "Sends to ${a.macName}, which will ask you to accept it before anything moves."
+    }
+
+    fun notOffered(n: ShareSheetState.NotOffered): String = when (n) {
+        ShareSheetState.NotOffered.MAC_BUSY -> "Your Mac is already waiting on another file from this phone. Finish that one first."
+        ShareSheetState.NotOffered.OUT_OF_RULE -> "This file’s name or type can’t be sent as it is. Nothing was sent."
+    }
+
+    /** For an offered sheet: what leaving does. It does not discard — the offer owns the copy now. */
+    fun leavingOffered(mac: String): String =
+        "You can leave this screen. The offer stays open on $mac until it’s answered or expires; Cancel withdraws it."
+
+    private fun stoppedHeadline(why: ShareSheetState.StopReason, mac: String): String = when (why) {
+        ShareSheetState.StopReason.DECLINED_BY_PERSON -> "Declined on $mac"
+        ShareSheetState.StopReason.EXPIRED -> "Expired"
+        ShareSheetState.StopReason.CANCELLED_HERE -> "Cancelled"
+        ShareSheetState.StopReason.CANCELLED_ON_MAC -> "Stopped on $mac"
+        ShareSheetState.StopReason.DISCONNECTED, ShareSheetState.StopReason.DISCONNECTED_MID_TRANSFER -> "$mac disconnected"
+        ShareSheetState.StopReason.STAGING_LOST -> "The prepared copy was lost"
+        else -> "$mac couldn’t take it"
+    }
+
+    private fun stoppedDetail(why: ShareSheetState.StopReason, mac: String): String = when (why) {
+        ShareSheetState.StopReason.DECLINED_BY_PERSON -> "Someone on $mac declined it. Nothing was sent."
+        ShareSheetState.StopReason.DECLINED_NO_SPACE_ON_MAC -> "$mac doesn’t have enough free space for it. Nothing was sent."
+        ShareSheetState.StopReason.DECLINED_FOLDER_UNAVAILABLE -> "$mac’s receive folder isn’t available. Nothing was sent."
+        ShareSheetState.StopReason.DECLINED_UNSUPPORTED_DESTINATION ->
+            "$mac’s receive folder can’t save files safely (for example, an exFAT drive). Nothing was sent."
+        ShareSheetState.StopReason.DECLINED_NOT_AVAILABLE -> "$mac can’t receive files from this phone right now. Nothing was sent."
+        ShareSheetState.StopReason.DECLINED_BUSY -> "$mac is already handling another file from this phone. Nothing was sent."
+        ShareSheetState.StopReason.DECLINED_UNREADABLE -> "$mac couldn’t read the offer. Nothing was sent."
+        ShareSheetState.StopReason.EXPIRED -> "The offer to $mac ran out of time. Nothing was saved there."
+        ShareSheetState.StopReason.CANCELLED_HERE -> WITHDRAWN
+        ShareSheetState.StopReason.CANCELLED_ON_MAC -> "It was stopped on $mac. Nothing was saved there."
+        ShareSheetState.StopReason.DISCONNECTED -> "The connection to $mac ended before anyone accepted it. Nothing was sent."
+        ShareSheetState.StopReason.DISCONNECTED_MID_TRANSFER ->
+            "The connection to $mac dropped during the transfer, so it was not confirmed. Check your Mac before sending it again."
+        ShareSheetState.StopReason.STAGING_LOST -> "The copy prepared on this phone changed or disappeared. Share the file again."
+    }
+
+    private fun saveFailure(reason: String): String = when (reason) {
+        "checksum" -> "What arrived didn’t match what this phone sent."
+        "truncated" -> "Fewer bytes arrived than were sent."
+        "interrupted" -> "The transfer stalled."
+        "insufficient-space" -> "The Mac ran out of space."
+        "unsupported-destination" -> "The Mac’s receive folder can’t save files safely."
+        else -> "The Mac couldn’t write it."
     }
 
     fun refusal(r: Refusal): String = when (r) {
@@ -99,23 +291,35 @@ object ShareToMacCopy {
         return "$exact ($human)"
     }
 
-    /** Every sentence a user can be shown, for the test. Parameterised ones with representative values. */
-    fun everySentence(): List<String> {
-        val states = buildList<ShareSheetState> {
-            add(ShareSheetState.Starting)
-            Refusal.values().forEach { add(ShareSheetState.Refused(it)) }
-            add(ShareSheetState.Preparing("a.bin", 4096, 100_000))
-            add(ShareSheetState.Preparing("a.bin", 4096, null))
-            add(ShareSheetState.Ready("a.bin", "application/octet-stream", 100_000, Availability.NotConnected))
-            add(ShareSheetState.Ready("a.bin", "application/octet-stream", 0, Availability.NotSupported("Mac")))
-            listOf(
-                ShareSheetState.Failure.NoSpace(1, 0), ShareSheetState.Failure.OverLimit(1),
-                ShareSheetState.Failure.ReadFailed, ShareSheetState.Failure.WriteFailed,
-                ShareSheetState.Failure.AccessLostOnRecreate, ShareSheetState.Failure.StagingUnavailable,
-            ).forEach { add(ShareSheetState.Failed("a.bin", it)) }
-        }
-        return states.flatMap { listOf(headline(it), detail(it)) } +
-            listOf(availability(Availability.NotConnected), availability(Availability.NotSupported("Mac"))) +
-            listOf(TITLE, LEAVING, CANCELLED, DISCARDED, SEND_BUTTON, CANCEL_BUTTON, CLOSE_BUTTON)
+    /** Every state the sheet can be in, with representative values — the test's enumeration. */
+    fun everyState(): List<ShareSheetState> = buildList {
+        add(ShareSheetState.Starting)
+        Refusal.values().forEach { add(ShareSheetState.Refused(it)) }
+        add(ShareSheetState.Preparing("a.bin", 4096, 100_000))
+        add(ShareSheetState.Preparing("a.bin", 4096, null))
+        add(ShareSheetState.Ready("a.bin", "application/octet-stream", 100_000, Availability.NotConnected))
+        add(ShareSheetState.Ready("a.bin", "application/octet-stream", 0, Availability.NotSupported("Mac")))
+        add(ShareSheetState.Ready("a.bin", "application/octet-stream", 0, Availability.Available("Mac")))
+        ShareSheetState.NotOffered.values().forEach { add(ShareSheetState.Ready("a.bin", "b/c", 0, Availability.Available("Mac"), it)) }
+        listOf(
+            ShareSheetState.Failure.NoSpace(1, 0), ShareSheetState.Failure.OverLimit(1),
+            ShareSheetState.Failure.ReadFailed, ShareSheetState.Failure.WriteFailed,
+            ShareSheetState.Failure.AccessLostOnRecreate, ShareSheetState.Failure.StagingUnavailable,
+        ).forEach { add(ShareSheetState.Failed("a.bin", it)) }
+        add(ShareSheetState.WaitingForMac("a.bin", 100_000, "Mac"))
+        add(ShareSheetState.Sending("a.bin", 100_000, "Mac", allSent = false))
+        add(ShareSheetState.Sending("a.bin", 100_000, "Mac", allSent = true))
+        add(ShareSheetState.Saved("a.bin", "Mac", "a.bin"))
+        add(ShareSheetState.Saved("a.bin", "Mac", "a (2).bin"))
+        add(ShareSheetState.Unconfirmed("a.bin", "Mac"))
+        ShareOffer.SAVE_FAILURE_REASONS.forEach { add(ShareSheetState.SendFailed("a.bin", "Mac", it)) }
+        ShareSheetState.StopReason.values().forEach { add(ShareSheetState.Stopped("a.bin", "Mac", it)) }
     }
+
+    /** Every sentence a user can be shown, for the test. */
+    fun everySentence(): List<String> =
+        everyState().flatMap { listOf(headline(it), detail(it)) } +
+            listOf(Availability.NotConnected, Availability.NotSupported("Mac"), Availability.Available("Mac")).map(::availability) +
+            ShareSheetState.NotOffered.values().map(::notOffered) +
+            listOf(leavingOffered("Mac"), TITLE, LEAVING, CANCELLED, DISCARDED, WITHDRAWN, SEND_BUTTON, CANCEL_BUTTON, CLOSE_BUTTON)
 }
