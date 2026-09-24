@@ -24499,3 +24499,116 @@ failures, gradle exit 0, every result file written by this run.
 **Not reached:** `ControlSession.onHello` itself (sockets, `Context`); the two source reads stand in
 for it and would pass a consume routed through a helper. The merged **release** manifest was not built
 (no packaging); the routing test reads source sets, not the merged output. The activity has never run.
+
+## Feature A overnight, 2026-09-25 — typecheck, `share.ask`, the phone's Send sheet, the card review
+
+**Code, documentation and automated tests only.** No `adb`, no device, no emulator, no install, no
+offer, no bytes moved; the running Mac app (pid 82426) was not quit, relaunched or read. The candidate
+APK of runbook §0 was not rebuilt: `app/build/outputs/apk/debug/app-debug.apk` is still 95,011,036
+bytes, SHA-256 `0afc695f…` (only `testDebugUnitTest` tasks were run). Free space stayed above 2.6 GiB.
+
+| Commit | What | Proven by |
+|---|---|---|
+| `015b210` | the 7 test-config typecheck errors | `tsc -p tsconfig.test.json` 7 → 0; app config 0 |
+| `7520e8f` | **`share.ask`**: a separate extension telling a production Mac from the synthetic-only one | 8 Mac + 5 phone tests over one shared fixture; 5 mutations red |
+| `0f2de7e` | the phone's Send to Mac sheet after *Ready*, gated on `share.ask` | 25 phone tests; 4 mutations red |
+| `de9db75` | the Mac card: P1, P2, and a newest-offer-hidden defect found by the readings | 6 Mac tests; 4 mutations red; harness readings below |
+
+**Final numbers:** Mac `npm test` **1109/1109**; `tsc --noEmit` and `tsc --noEmit -p tsconfig.test.json`
+both clean; phone `./gradlew testDebugUnitTest` **763 tests, 0 failures** (core 207, app 87, sync 357,
+input 52, mirror 60), gradle exit 0 with result files seconds old; all 15 commit-guard checkers exit 0.
+
+### Task 1 — the typecheck (`015b210`)
+
+Six errors were `ActivityEvent`/`ActivityCategory` unresolved in `activityLine.ts` and
+`legacyData.ts`: both types live in the renderer classic script `src/shared/activity.ts`, which cannot
+`export` (defect 94), so they are ambient. The app config includes all of `src/`; the test config
+includes only `*.testkit.ts` and reaches those files by import, which never pulls in an ambient script.
+Each file now declares its dependency with `/// <reference path>`. The seventh was `data[i] ^= 0xff`
+under `noUncheckedIndexedAccess` in the fake phone, rewritten with `readUInt8`/`writeUInt8` (throws on a
+bad index rather than asserting it away). No suppression; tsconfig unchanged.
+
+### Task 2 — can the capability scheme tell debug v2 from production? It could not.
+
+`share.file: 2` names the wire messages. The only Mac that has ever advertised 2 is the synthetic-only
+development receiver, which declines every ordinary offer `not-available`. A phone reading 2 therefore
+could not tell *"this Mac asks a person"* from *"this Mac is a test rig"*. The distinction was designed
+first, as the task required: **`share.ask`** (docs/protocol.md → Extensions), its own ext key; ordinary
+Send is enabled exactly when `share.file` ≥ 2 **and** `share.ask` ≥ 1 are negotiated.
+`docs/fixtures/share-ordinary-send.json` holds the table; both sides' tests read it.
+
+**No Mac build can advertise it.** `shareAskActivation` is closed whenever the development gate is
+open, and otherwise needs `SHARE_PRODUCTION_READINESS` — `syntheticRunPassed` (3e) and
+`receiveFolderCleanupScoped` (runbook §11) — **both false and pinned by a test**. There is no switch.
+The phone advertises `share.ask: 1` always and logs it on a **second** line; the `share.file` line the
+3e runbook quotes is byte-identical (pinned), and runbook §4.8 now says what the second line must read.
+
+End-to-end over the real negotiation functions, (Mac, phone) → ordinary Send:
+
+| Mac | phone at 1 | phone at 2 (armed debug) |
+|---|---|---|
+| version 1 | off | off |
+| synthetic-only development | off | off |
+| production (not buildable) | off | **on** |
+
+**The sheet (`0f2de7e`).** States after Send come from the phone's own `ShareOffer` states through a
+pure `reduce`: *Waiting for you to accept on <Mac>* → *Sending* → *Sent — waiting for <Mac> to confirm*
+→ **Saved** (only `ShareOffer.State.Saved`, i.e. the Mac's verified verdict, under the Mac's name) |
+*Not confirmed* | *couldn't save* (Mac Retry open) | *Stopped* with one of 13 reasons. Tests driven by
+the real `ShareOffer` transitions cover, as asked: disconnected Mac (while waiting → nothing sent;
+mid-transfer → not confirmed; after all bytes → **Unconfirmed**), old peer (`{}`, v1, synthetic-only →
+`NotSupported`), expiry (never a decline), decline (each contract reason; only `user` is a person's —
+`StopReason.byPerson`), cancel (here vs on the Mac), insufficient space (Mac's vs the phone's own, told
+apart), duplicate file (Saved reports the Mac's `savedAs`), lost confirmation (Unconfirmed survives the
+Retry window closing — which the state machine calls *Expired* — and only a later Saved changes it),
+and staging cleanup (below). The Mac's side of the same list already had tests in production Ask mode
+(`share.test.ts`, 40+); none were weakened.
+
+**Staging ownership, a decision taken and recorded.** Before an offer the sheet owns the copy and
+leaving deletes it (unchanged). On `Offered` it changes hands to `ShareFeature` under the model's lock;
+every end of an offer deletes it there (asserted against the real transitions). **Leaving an offered
+sheet does not withdraw the offer** — a person walking to the Mac to Accept will often let the screen
+switch off, and `onStop` fires then. Cancel withdraws only while nothing may have reached the Mac. The
+15-minute staging backstop now also skips `ShareFeature`'s live offers. *If the owner prefers leaving to
+withdraw, it is one line in `onLeave` and one test.*
+
+**A guard replaced, not loosened.** `ShareDevGateRoutingTest` asserted *nothing in main calls
+offerStaged*: the premise this work ended. It now asserts the one main caller passes
+`requireAsk = true` and Send is enabled only by `Availability.Available`.
+
+**Not reached by any JVM test:** the `requireAsk` branch inside `ShareFeature.offerStaged` (needs a
+`LinkServer` session; the rule it calls is tested), and the Compose screen.
+
+**Stopped, and why — production enablement.** It needs (1) slice 3e passed on hardware and (2) the
+§11 parent-identity cleanup scope. §11 is a *proposed* design the owner has not approved, and it
+decides what may be deleted in a person's own folder — so it was documented, not built.
+
+### Task 3 — the card, in an isolated synthetic harness (`de9db75`)
+
+A static page loading the real `tokens.css`, `shell.css`, `styles.css`, the card code compiled to
+scratch (`?v=before|after`), synthetic snapshots by URL hash; one headless Chrome per scenario on
+:9333 with a throwaway profile; reads through `scripts/probe.mjs`, control = the card count equals the
+scenario's expected count; reads settle on zero running animations. Viewport 1100 × 760, reported in
+every reading.
+
+| Card | before | after |
+|---|---|---|
+| saved (name kept) | 242 px, 4 rows, name said 3× | 198 px, 2 rows, 2× (title + row) |
+| saved, unacknowledged, renamed | 370 px, saved name said **3×** | 286 px, **1×** (the row) |
+| expired / failed | 242 / 266 px | 176 / 200 px |
+| three cards | 852 px of content in 712 | 724 in 712 — **still scrolls ~12 px** |
+| **arrival:** 3 finished, then a new offer | new offer is the **bottom** card, `reachable` — off screen | new offer on **top**, `visible` |
+
+The last row is a defect the §10 preview did not find: the tray appended in arrival order and scrolled
+from the top, so the one card that needs a person was the one out of view. Screenshots:
+`docs/evidence/feature-a-card-2026-09-25/arrival-{before,after}.png`, `unack-renamed-{before,after}.png`.
+
+**Two instrument faults, caught before they became findings.** A lone card first read `reachable`: the
+6 px arrival animation mid-flight (fixed by settling on no running animation). Then `stranded`:
+headless Chrome's viewport was **673** px, not the 760 asked for, so the frame's bottom was off screen
+(fixed by sizing the frame to the viewport and reporting it).
+
+**Limits:** not the app. Classic scrollbars in headless Chrome take width that macOS overlay scrollbars
+do not (the unacknowledged card read 350 px alone and 370 px beside a scrollbar). **P3 — what the
+tray covers in the real window — is still unmeasured.** VoiceOver, Electron focus and the real
+`data-theme` source are not covered.

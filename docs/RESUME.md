@@ -1,62 +1,84 @@
-# Resume here — written 2026-09-23: the Sidekick feature pass (A–F)
+# Resume here — written 2026-09-25 (overnight): Feature A, up to the live-device gate
 
-> A state report for whoever picks this up. The full record is `docs/sidekick-feature-pass.md`.
+> A state report for whoever picks this up. Evidence: `docs/testing.md` → *Feature A overnight,
+> 2026-09-25*. Contract: `docs/protocol.md` → Extensions (`share.ask`) and Share. Live run:
+> `docs/phase-7-share-3e-runbook.md`.
 
 ## 0 · State
 
-Six feature groups audited, five built, one stopped at a protocol decision. **Seven local commits,
-nothing pushed.** Mac `npm test` 952/952, phone 540 debug tests 0 failures, typecheck and every
-commit hook green. The real Mac↔SM-S938B link was kept: never unpaired, reset or re-networked, and it
-reconnected by itself after each Mac relaunch. **The phone was not reinstalled** (it was locked; an
-install restarts the link service) — so the phone-side parts of B, E and F are not on it yet.
+**Four local commits on `clipboard-watcher-and-phase-5-close`, nothing pushed.** Code, docs and
+automated tests only. No `adb`, no device or emulator touched, nothing installed, no offer sent, no
+bytes moved. The running Mac app (pid 82426, started 2026-09-24 18:37) was not quit, relaunched or read.
 
 | Commit | What |
 |---|---|
-| `d18ef15` | **B** Mac → phone: Send to phone…, confirmation, phone-reported progress, collision rename, Stop/resume; receive-folder setting; defects 132, 133 |
-| `049d9dd` | **C** Photos: 512 preview, originals via a private `sidekick-media://` cache, native video player |
-| `5be1f5e` | **D** Files: List/Grid, sort, filter over loaded entries |
-| `0d2d038` | **E** Set up Sidekick; defect 134 |
-| `d9e681e` | **F** mirror request card, notification action, OEM-neutral consent copy |
-| `accb386` | motion: three bridges, one audit fix |
+| `015b210` | test-config typecheck: 7 errors → 0 (ambient renderer types; one index access) |
+| `7520e8f` | **`share.ask`** — a separate ext key that tells a production Mac (asks a person) from the synthetic-only development Mac. No Mac build can advertise it |
+| `0f2de7e` | the phone's Send to Mac sheet after *Ready*: Waiting → Sending → Saved only on the Mac's verified verdict, Unconfirmed, Stopped with a reason; Send enabled only by `share.ask` |
+| `de9db75` | the Mac card: saved name said once, compact finished cards, newest offer on top (it was being hidden below finished cards) |
 
-## 1 · The decision waiting on you
+Tests: Mac **1109/1109**; both `tsc` configs clean; phone **763 / 0 failures**; all commit guards green.
+Candidate APK unchanged: 95,011,036 bytes, SHA-256 `0afc695f…` (built from `65b66a0`, **not installed**).
+Mac free space at the end: ~2.6 GiB.
 
-**A — Android Sharesheet → Mac** needs a phone-initiated `share.offer` event (the phone can only
-answer transfers today). The proposal, including the consent question (auto-pull vs an Accept card
-on the Mac), is in `docs/sidekick-feature-pass.md` §A. `docs/protocol.md` was **not** changed for it.
+## 1 · What is still blocked, and on what
 
-## 2 · Morning — the manual steps, in order
+- **Ordinary Android Send is still disabled in every live pairing**, by construction: the phone enables
+  it only when `share.ask` is negotiated, and `SHARE_PRODUCTION_READINESS` pins both Mac facts false.
+- **Production enablement needs two things, and only the first is a run:**
+  1. **3e passed on hardware** — the runbook, needing your approval (§3 below).
+  2. **Temporary-file cleanup scoped to the receive folder** (runbook §11). This is a *proposed* design
+     you have not approved; it decides what may be deleted in a person's own folder, so it was **not
+     built**. It needs your decision before anyone writes it.
+- **A decision I took that you may want to reverse:** leaving the phone's sheet *after* an offer does
+  not withdraw it (a person walking to the Mac often lets the screen switch off). The staged copy is
+  still always deleted when the offer ends. Reversing it is one line in `onLeave` plus one test.
+- **Unmeasured:** P3 (what the card tray covers in the real window); the Compose sheet itself; the
+  `requireAsk` branch inside `ShareFeature.offerStaged` (needs a live session).
+- Still open from before: defects 30 (no-thread half), 51; 17/33/38 deferred.
 
-1. **Install the phone build on the SM-S938B while it is unlocked** (it was locked overnight, and an
-   install restarts the link service): `adb -s "$(scripts/target-device.sh samsung)" install -r
-   app/build/outputs/apk/debug/app-debug.apk`, then `adb -s "$(scripts/target-device.sh samsung)"
-   shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity`, then
-   `scripts/link-up.sh` must print three OKs. Pairing and grants survive `-r`.
-2. **F, live:** with Sidekick in the background on the phone, press **Start mirroring** on the Mac.
-   Expect a heads-up *"<Mac> wants to see this phone's screen"* with **Approve screen sharing**; tap
-   it; read the request card; **Continue**; Android shows its own prompt (on this Samsung *Next*, then
-   *Share screen*). Also try **Decline** once — the Mac should say *"Screen sharing was declined on
-   the phone."* And let one request time out (30 s) to see the notification disappear with it.
-3. **B, phone half:** send a file from the Mac (Files → **Send to phone…**) and look for *"<name>
-   arrived from <Mac>"* on the phone; tap it — it should open Transfers.
-4. **E on the real phone:** open Sync settings → **Set up Sidekick**. Most rows will read **On**
-   already, because Texts, Calls and Contacts were granted by `adb` during earlier testing.
-5. **A needs your decision** — the `share.offer` proposal in §A (and whether the Mac pulls
-   automatically or shows an Accept card). Nothing of A is built.
-6. **Run `/review-animations`** over this pass (not invoked by me, as asked).
-7. **Optional clean-up** of test files — on the phone in *Received files* (`Download/ConnectSuite`):
-   `sidekick-pass-*` (≈550 MB, including two 200 MB samples); on the Mac in `~/Downloads/Sidekick`:
-   `sidekick-pass-portrait-3000x4000.jpg` (saved on purpose) and `sidekick-pass-stop-200mb.bin`,
-   `inbox-probe.bin`, `nogrant-probe.bin` (pulled by the Files pane's selection prefetch while the app
-   was being used at 01:03–01:04 — not by this pass's probes). Nothing was deleted by this pass.
-8. Nothing is pushed.
+## 2 · For the 3e run, three things changed tonight — read before starting
 
-## 3 · Things a reader should know
+- **Mac:** `npm start` (runbook §4.6) rebuilds from HEAD, so the Mac will now also log
+  `share.ask not advertised — the phone's ordinary Send stays disabled: <3 blockers>`. Expected; the
+  first blocker names the open development gate. **`share.ask ADVERTISED` would be a STOP.**
+- **Phone:** the verified candidate APK predates tonight, so it writes **no** `ext: share.ask …` line —
+  expected (runbook §4.8 note). A build from HEAD would write it, and it must say `disabled`.
+- **Card:** new offers now appear on top and finished cards are shorter; §7's `onScreen` read should
+  come back `visible`.
 
-- **Someone used the Mac app at 01:03–01:04** while probes ran (rows selected in Received files,
-  every root opened, Photos opened). The readings select their own items by byte size and are not
-  affected; the pulls it caused are listed in step 7.
-- **The emulator (`emulator-5554`) was cleared and reinstalled** several times for E — by design; it
-  holds no real data. The Samsung's app data was never cleared.
-- **Two Mac sentences still say "Open ConnectSuite on the phone"** — left for the deferred Mac rename
-  (Appendix B of `docs/sidekick-android-redesign-plan.md`).
+## 3 · Morning checklist — the supervised Samsung → Mac synthetic transfer (runbook 3e)
+
+Run with you present and the phone unlocked. Every step is the runbook's; this is the order.
+
+1. **Approve**, in words, before step 3: *"Run 3e: install the verified candidate APK on the SM-S938B,
+   relaunch the Mac app with the three development switches, arm `share.file 2` once, send the 0-byte
+   and 4,096-byte synthetic probes into the scratch folder, and run N1."* Also say which APK: the
+   **verified candidate `0afc695f…`** (my recommendation — already checked against §4.3, and Send is
+   disabled in it anyway) or a fresh build of HEAD (then §4.3 must be re-run on the new file).
+2. Free space: `df -m /System/Volumes/Data` ≥ 1024 MiB (was ~2.6 GiB); `cd desktop && npm test` green.
+3. §4.1 `scripts/target-device.sh samsung` → `OK target RZCY12330DT (SM-S938B, sdk 36)`.
+4. §4.3 re-check the APK you chose (package, certificate `d3a505d2…7d26`, `ShareDevV2Activity` + DUMP).
+5. §4.4 baseline (user-0 grant **names**, listener, accessibility, pairing, `link-up.sh` with
+   `ANDROID_SERIAL=RZCY12330DT`) → §4.5 install `-r`, restart `MainActivity` by name, same readings again.
+6. §4.6 quit the Mac app (⌘Q), confirm 0 sessions, relaunch with the switches and the two digests.
+   Expect `ADVERTISED (development, synthetic-only, scratch folder only)`, the new `share.ask not
+   advertised` line, and a first handshake negotiating **1**.
+7. §4.7 inventory `~/Downloads/Sidekick` and the configured folder; no `dev-share-receive` yet.
+8. §4.8 Disconnect → 0 sessions → arm once → no handshake → Connect once → both sides negotiated **2**,
+   exactly one `ext: phone advertises` line since the arm.
+9. §5.1 0 bytes, then §5.2 4,096 bytes — every pass line, digests `e3b0…b855` and `1506…80d6`,
+   `share-temporary-files.json` = `[]`, inventory unchanged.
+10. §6 N1 (100,000 bytes, unlisted) → declined `not-available`, no card, no file.
+11. §7 read the card through `probe.mjs`. §8's stop table applies throughout.
+12. Afterwards: disarm, quit the Mac app so the next launch is without switches. Delete nothing.
+
+If 3e passes, flipping `syntheticRunPassed` is a separate reviewed commit that records the evidence;
+it does **not** enable Send on its own — §11 still blocks it.
+
+## 4 · Things a reader should know
+
+- The harness for the card review is in the session scratchpad and is not committed; its readings and
+  screenshots are (`docs/evidence/feature-a-card-2026-09-25/`). Two of its first readings were
+  instrument faults (animation mid-flight; a 673 px headless viewport) and are recorded as such.
+- `PRODUCT.md`, `skills-lock.json` and the untracked design files were not touched or committed.
