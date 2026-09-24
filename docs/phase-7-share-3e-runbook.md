@@ -9,16 +9,30 @@ the SM-S938B into the Mac's scratch folder, verified end to end, and refuse ever
 not a test of the card with real files, not a test of ordinary Android Send (still disabled), and it
 never touches the configured receive folder or Downloads.
 
-## 0 · Facts this runbook depends on, measured on 2026-09-24
+## 0 · Facts this runbook depends on — read-only preflight, 2026-09-24 22:59
+
+**Every row here is a reading at one moment, not a precondition.** §4 re-takes each one at execution
+time; where §4 and this table disagree, §4's fresh reading wins and this table is stale.
 
 | Fact | How it was established |
 |---|---|
-| The Mac's app-data folder in a development run is **`~/Library/Application Support/sidekick-desktop`** — not `…/Sidekick` | `app.setName('Sidekick')` does not move `userData`; it defaults from `package.json`'s `name`. Read from disk: `…/sidekick-desktop/logs/sidekick.log` was written at 17:07 today; `…/Sidekick/` does not exist |
-| **A Mac app is running now**, started 10:40 (its `DevToolsActivePort`), i.e. **before** `827ec99`. It runs pre-gate code | read only; it was not touched |
-| `dev-share-receive/` and `share-temporary-files.json` **do not exist** under that folder | `ls`, read only |
-| The phone advertises `share.file: 1` from `Extensions.PHONE`, used at `ControlSession.kt:292-293` (negotiation) and `:313` (`hello.ack`) | source |
-| The probe's bytes are `kotlin.random.Random(seed).nextBytes(size)` (`ShareOfferProbeActivity.kt:52`) | source |
-| The Mac card's layout, keyboard, labels and reduced motion | §9, from a synthetic harness in a separate headless Chrome — **not** from the app |
+| Two devices are attached: **`RZCY12330DT`** (SM-S938B, sdk 36) and `emulator-5554` | `adb devices -l`; `scripts/target-device.sh samsung` → `OK target RZCY12330DT (SM-S938B, sdk 36)` |
+| The Mac's app-data folder in a development run is **`~/Library/Application Support/sidekick-desktop`** — not `…/Sidekick` | `app.setName('Sidekick')` does not move `userData`; it defaults from `package.json`'s `name`. The live log is `…/sidekick-desktop/logs/sidekick.log`; `…/Sidekick/` does not exist |
+| At the preflight the Mac app was **pid 82426**, started 18:37:18 by `npm start` (so `dist/` rebuilt at 18:37:19 from `65b66a0`: the gate, the card, no notification code), **without** `--remote-debugging-port` or `--force-renderer-accessibility`, and with **no** `CONNECTSUITE_*` variable in its environment (`ps -E`, control: `HOME`/`PATH` visible) and no `DEBUG SWITCHES` line in its log | `ps`, `ps -E`, `ls -T dist/`, the log. **The pid is not a precondition** — §4.6 finds the process afresh |
+| Both peers negotiated **`share.file` 1** at 22:58:15 — Mac `ext: phone advertises {"share.file":1}; negotiated {"share.file":1}`, phone `ext: Mac advertises {share.file=1}; negotiated {share.file=1}` | both logs, read only |
+| The phone has **one** peer in today's logs: `Chetans-MacBook-Pro` at 10.36.14.246, 44 handshakes — i.e. it reconnects often, which is why §4's arming order matters | phone `link.log` + `link.log.1` |
+| The **installed** phone app (`com.chetan.connectsuite.debug`, versionName 2.0.0, versionCode 1, `DEBUGGABLE`, lastUpdateTime 10:35:59) **predates slice 3c** — no `ShareRoot`, no `ShareDevGate`, no `ShareDevV2Activity` | the installed APK pulled to scratch; class descriptors counted in its dex, control `ShareOfferProbeActivity` = found |
+| The **local** APK of 12:18:52 has 3c but **not the gate**. **A fresh debug build of `65b66a0` or later is required**; neither existing APK can run 3e | the same count on `app/build/outputs/apk/debug/app-debug.apk` |
+| Installed and local APKs and `~/.android/debug.keystore` share one certificate, `CN=Android Debug`, SHA-256 `d3a505d22aeef38861db11683afc6b39ef37b8290c1cc188c8dc3fe5cc107d26`, so `install -r` keeps the signature and the grants | `apksigner verify --print-certs`; `keytool -list -v` |
+| User 0 holds **14 of 14** runtime grants. The app is also installed for **user 95** (0 of 14) and not for user 150 — `dumpsys package` prints a block per user, so an unscoped grep mixes them | `dumpsys package`, per `User N:` block |
+| Listener `…debug/…sync.notifications.NotificationMirrorService` bound; accessibility `…debug/…input.ConnectSuiteInputService` enabled; `link-up.sh` three OKs (with `ANDROID_SERIAL`) | `settings get secure …`; `scripts/link-up.sh` |
+| `dev-share-receive/`, `share-temporary-files.json` and its `.tmp` **do not exist** | `ls`, read only |
+| The configured receive folder is `null` → the default `~/Downloads/Sidekick` (`downloads.ts:32`). With `shareDevReceive` on, `main.ts:987-993` returns the scratch folder or a refusal and never reaches `ensureReceiveFolder()` at `:994` | `sidekick.json`; source |
+| The probe's bytes are `kotlin.random.Random(seed).nextBytes(size)` (`ShareOfferProbeActivity.kt:52`), Kotlin 2.2.20 (`libs.versions.toml`) | source |
+| The phone's **serve** wiring for a share pull is reached by no test; zero-byte **staging** is (`ShareStagingTest`). §5.1 is the serve path's first execution | source, tests |
+| The Mac card's layout, keyboard, labels and reduced motion | §10, a synthetic harness in a separate headless Chrome — **not** the app |
+| **A candidate APK was built at 23:18:47** from `65b66a0` (every file under the Android modules and `gradle/` equal to HEAD, no untracked files; the build reads no git metadata, so the commit is established by the tree, not stamped in the APK): `app/build/outputs/apk/debug/app-debug.apk`, 95,011,036 bytes, SHA-256 `0afc695fba1590032e324d9cf84de97f47d51ae1b55a9a76ff00e9da6fca11b0`; `com.chetan.connectsuite.debug` 2.0.0 (versionCode 1), debuggable, target 36; v2-signed, one signer, certificate **DER-identical** to the installed app's and to `~/.android/debug.keystore`'s (`d3a505d2…7d26`); manifest carries `probe.ShareDevV2Activity`, exported, `android.permission.DUMP`; dex carries `ShareDevGate`, `ShareDevV2Activity`, `ShareRoot` (installed app: none of the three; control `ShareOfferProbeActivity` in both). **Not installed.** Any later rebuild replaces this file, so §4.3's checks are re-run on whatever is installed, not trusted from this row | `aapt2 dump badging/xmltree`, `apksigner --print-certs(-pem)` + `openssl x509 -outform DER`, dex class descriptors |
+| **The Mac's data volume was full: 217–219 MiB free (100%).** The destination check requires `size + max(256 MiB, ⌈size/10⌉)` free, so it would **decline every offer `insufficient-space`** — and it made 30 of the Mac's 1,098 tests fail, every one through that check (no Mac code changed since they last passed) | `df -m /System/Volumes/Data`; `npm test` |
 
 ## 1 · The phone change 3e needs first — **built 2026-09-24, not installed**
 
@@ -39,16 +53,20 @@ change, mirroring the Mac's gate and failing closed the same way:
 - **`core/.../link/ShareDevGate.kt`** — `object ShareDevGate { @Volatile var armed = false }`.
   **In memory only**: a process restart, a reinstall or a reboot returns the phone to 1. Nothing
   persists it.
-- **`ControlSession.kt:292, 293, 313`** — use `Extensions.advertised(debuggable, ShareDevGate.armed)`
+- **`ControlSession.onHello`** (was `:292, 293, 313`) — use `Extensions.advertised(debuggable, ShareDevGate.armed)`
   in place of `PHONE`, read **once per session** at `hello` so the value negotiated and the value
   sent in `hello.ack` cannot differ within a session. `debuggable` is `FLAG_DEBUGGABLE`, which
   `ShareFeature` already reads.
 - **`app/src/debug/.../probe/ShareDevV2Activity.kt`** — the only writer of `armed`: exported,
   **`android:permission="android.permission.DUMP"`** (so only `adb shell am start` reaches it, as for
   `ShareOfferProbeActivity`), in the debug source set (never merged into a release manifest). Extra
-  `on=true|false`; it logs `[share] dev v2 armed=<b> (debuggable=<b>) — takes effect at the next hello`.
+  `on=true|false`. *(Sketch. The committed line is `[share] debug share.file 2 ARMED for the next
+  trusted handshake only (debuggable build: true) — reconnect the Mac for it to take effect`, or
+  `… disarmed (debuggable build: <b>); the phone advertises share.file 1`.)*
 - **One log line per session**, written where `ControlSession` negotiates:
-  `[link] ext: advertised {"share.file":<n>} (devV2Armed=<b>); Mac advertises <json>; negotiated <json>`.
+  *(Sketch. The committed line, tag `[control]`, is
+  `ext: phone advertises share.file <n> (debug share.file 2 armed for this handshake: <b>; debuggable build: <b>); Mac advertises share.file <n>; negotiated share.file <n>`
+  — `no share.file` in place of a version when there is none.)*
   Today the phone logs only its build constant (`ShareFeature.kt:97`), which cannot show what a
   session actually negotiated — the reading §4.8 needs. The criterion below is written against this
   line, so it must be derived from the code that lands, not retyped from here.
@@ -109,48 +127,107 @@ on it (it is the negative test's probe-shaped, unlisted offer — §6).
 
 ## 4 · Preflight — before any offer
 
-Every write to the phone goes through `scripts/adb-pinned.sh samsung …` (the serial never passes
-through a shell variable).
+**Writes** to the phone go only through `scripts/adb-pinned.sh samsung …`. **Reads** name the serial:
+`adb -s RZCY12330DT …`, and `scripts/link-up.sh` — which calls bare `adb` — is run as
+`ANDROID_SERIAL=RZCY12330DT scripts/link-up.sh` for as long as `emulator-5554` is attached (bare `adb`
+refuses with two devices, and a refusal must not be read as a dead link).
 
-1. **Identity of the target.** `scripts/target-device.sh samsung` → `OK target … SM-S938B`. If it
-   names anything else, stop.
-2. **Owner present, phone unlocked** (an install restarts the link service; step 71's lesson).
-3. **Build and test the phone change (§1)**, phone suites green; `assembleDebug` only after that.
-4. **Install:** `scripts/adb-pinned.sh samsung install -r app/build/outputs/apk/debug/app-debug.apk`,
-   then `scripts/adb-pinned.sh samsung shell am start -n
-   com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity`.
-5. **After the install, verify all of these** (reads, which may stay loose):
-   - **link:** `scripts/link-up.sh` → three OKs (never a grep for `Listening on`, which is absent by
-     design on a running service);
-   - **runtime grants:** `adb shell dumpsys package com.chetan.connectsuite.debug | grep 'granted=true'`
-     — the matched lines, compared by name with the pre-install list taken in the same way (the
-     2026-08-31 reading was 11 of 11);
-   - **notification listener:** `adb shell settings get secure enabled_notification_listeners` contains
-     `com.chetan.connectsuite.debug/…`;
-   - **accessibility:** `adb shell settings get secure enabled_accessibility_services` contains it;
-   - **pairing:** the phone's Devices screen still lists this Mac, and the Mac's status reads the
-     phone's name (no re-pair, no `pair.rejected`).
-6. **Quit the running Mac app** (the 10:40 one — it runs pre-gate code). Then launch the development
-   build with exactly:
-   ```
-   cd desktop && CONNECTSUITE_DEBUG_SWITCHES=shareV2,shareAcceptProbe,shareDevReceive \
-     CONNECTSUITE_SHARE_ACCEPT_SHA256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,150668349dc0526d188ecee19c207e5d58be767f6ba198c8533f91d44a4080d6 \
-     npm start -- --force-renderer-accessibility --remote-debugging-port=9222
-   ```
-   and read, in the Mac log, **all four**:
-   `DEBUG SWITCHES ON: shareAcceptProbe, shareDevReceive, shareV2`;
-   `shareAcceptProbe: 2 synthetic probe digest(s) may be accepted`;
-   `share.file 2 ADVERTISED (development, synthetic-only, scratch folder only)`;
-   and no `startup ledger sweep LEFT` line (the ledger does not exist yet).
-7. **Arm the phone:** `scripts/adb-pinned.sh samsung shell am start -n
-   com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ShareDevV2Activity --ez on true`,
-   then force a **new session** (the gate is read at `hello`): Disconnect → Connect on the Mac.
-8. **The scratch destination is active before any offer** — both of:
-   - Mac log: `ext: phone advertises {"share.file":2}; negotiated {"share.file":2}`;
-   - phone `link.log`: the §1 per-session line reading `advertised {"share.file":2} (devV2Armed=true)`
-     and `negotiated {"share.file":2}`.
-   `dev-share-receive/` **still does not exist** at this point (it is created by the first offer). If
-   either line says 1, stop — nothing below is meaningful.
+Below, **P** = the phone's `link.log`, read with
+`adb -s RZCY12330DT shell run-as com.chetan.connectsuite.debug cat files/logs/link.log`, and
+**M** = `~/Library/Application Support/sidekick-desktop/logs/sidekick.log`.
+
+**4.1 Target.** `scripts/target-device.sh samsung` → `OK target RZCY12330DT (SM-S938B, sdk 36)`.
+Anything else: stop before any write.
+
+**4.2 The owner is present and the phone is unlocked** (an install restarts the link service).
+
+**4.2a Free space on the Mac.** `df -m /System/Volumes/Data` must show **at least 1024 MiB free**
+(the destination check needs 256 MiB of headroom beyond the file; 1 GiB leaves room for logs and the
+build). At the preflight it was 217 MiB, which fails this. Making room is the owner's decision — this
+runbook deletes nothing. And `cd desktop && npm test` must be green **after** space is made: the
+destination tests use the real disk and go red on a full one.
+
+**4.3 A fresh debug build is required.** Neither the installed app (pre-3c) nor the 12:18 APK (no
+gate) can run 3e. `./gradlew :app:assembleDebug` at `65b66a0` or later, phone suites green, and then,
+on the **built** APK, before it goes anywhere:
+- `aapt2 dump badging` → `package: name='com.chetan.connectsuite.debug'`;
+- `apksigner verify --print-certs` → SHA-256 `d3a505d22aeef38861db11683afc6b39ef37b8290c1cc188c8dc3fe5cc107d26`,
+  the installed app's certificate (re-read it from the device the same day);
+- `aapt2 dump xmltree --file AndroidManifest.xml` lists `probe.ShareDevV2Activity` with
+  `android.permission.DUMP`; the dex carries `Lcom/chetan/connectsuite/core/link/ShareDevGate;`,
+  `…/probe/ShareDevV2Activity;` and `…/sync/v2/ShareRoot;` (control: `…/probe/ShareOfferProbeActivity;`).
+**Any mismatch: stop; do not install.**
+
+**4.4 Baseline, before the install** (so §4.5 has something to compare with):
+- `ANDROID_SERIAL=RZCY12330DT scripts/link-up.sh` → three OKs;
+- **user 0 only** — the grant lines inside the `User 0:` block:
+  `adb -s RZCY12330DT shell dumpsys package com.chetan.connectsuite.debug | awk '/^ *User [0-9]+:/{u=$2} u=="0:" && /granted=true/'`
+  — record the **names**, not just the count (14 at the preflight);
+- `adb -s RZCY12330DT shell settings get secure enabled_notification_listeners` and
+  `… enabled_accessibility_services` — record the `com.chetan.connectsuite.debug/…` entries;
+- the Mac's pairing: `sidekick.json` has a `paired` record, and **P**'s last `Handshake complete with`
+  names this Mac.
+
+**4.5 Install, then the same four readings again.**
+`scripts/adb-pinned.sh samsung install -r <the verified APK>`, then
+`scripts/adb-pinned.sh samsung shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.MainActivity`.
+Every §4.4 reading must match its baseline — the same grant **names** on user 0, the same listener
+and accessibility entries, three OKs, and a new `Handshake complete with` this Mac in **P** (the
+running Mac reconnects by itself; that handshake negotiates `share.file 1` — the arm cannot exist
+yet, and an install kills any arm). **Do not arm before the install**: the install restarts the
+phone's process, and the arm is in memory.
+
+**4.6 Find the Mac process afresh, then relaunch it with the switches.** Take `ps -axo pid,lstart,command
+| grep 'Electron.app/Contents/MacOS/Electron \.'` now — **not** the pid in §0 — and quit that app
+(⌘Q in its window). Confirm with the same `ps` that no Sidekick Electron remains, and with
+`ANDROID_SERIAL=RZCY12330DT scripts/link-up.sh` that reading 3 now shows **0** sessions (the other two
+still OK). Then:
+```
+cd desktop && CONNECTSUITE_DEBUG_SWITCHES=shareV2,shareAcceptProbe,shareDevReceive \
+  CONNECTSUITE_SHARE_ACCEPT_SHA256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,150668349dc0526d188ecee19c207e5d58be767f6ba198c8533f91d44a4080d6 \
+  npm start -- --force-renderer-accessibility --remote-debugging-port=9222
+```
+In **M**, after the new `Sidekick 2.0.0 starting` line, **all** of:
+`DEBUG SWITCHES ON: shareAcceptProbe, shareDevReceive, shareV2 — guards are weakened, this is not a normal run`;
+`shareAcceptProbe: 2 synthetic probe digest(s) may be accepted; nothing else can be`;
+`share.file 2 ADVERTISED (development, synthetic-only, scratch folder only) — this is not a normal run`;
+no `share.file 2 NOT advertised` and no `startup ledger sweep LEFT`. And `ps -E -p <new pid>` shows
+both `CONNECTSUITE_` variables. The app connects at once (auto-connect) and, because the phone is
+**not armed**, that handshake must read `negotiated {"share.file":1}` in **M** and
+`… armed for this handshake: false; debuggable build: true); Mac advertises share.file 2; negotiated share.file 1`
+in **P**. A `2` here means something armed the phone that this runbook did not: stop.
+
+**4.7 The destination is the scratch folder — established before any offer, and how.** No log line
+names the share destination before an offer: the receive folder is resolved when an offer arrives.
+So the pre-offer proof is, all at once: the `ADVERTISED (…scratch folder only)` line, which is written
+only when `shareActivation.ts` passed with `shareDevReceive` on; `shareDevReceive` in the process's
+environment; and the code path — with `shareDevReceive` on, `main.ts:987-993` returns
+`<userData>/dev-share-receive` or a refusal and cannot reach `ensureReceiveFolder()` (`:994`), the only
+route to the configured folder. **Plus an inventory, taken now and compared after every transfer:**
+`ls -la ~/Downloads/Sidekick` and the configured folder (`receiveFolder` in `sidekick.json`; `null`
+means `~/Downloads/Sidekick`) — names, sizes and mtimes — and `ls ~/Library/Application\ Support/sidekick-desktop/`
+showing **no** `dev-share-receive`. After §5.1 the scratch folder must exist holding exactly the
+received file, and the inventory must be unchanged. The Mac's other features (Files, Photos) also
+write to `~/Downloads/Sidekick`, so **nobody uses them during the run**, or the comparison means
+nothing.
+
+**4.8 One-shot arming — exactly this order.**
+1. **Disconnect** in the Mac's window (or the menu-bar item). `LinkClient.stop` sets `running = false`;
+   the wake, unlock and network-change retries all go through `retryNow`, which does nothing while
+   stopped, and auto-connect runs only at launch — so nothing reconnects by itself.
+2. `ANDROID_SERIAL=RZCY12330DT scripts/link-up.sh` → reading 3 shows **0** sessions. Note the time.
+3. **Arm:** `scripts/adb-pinned.sh samsung shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ShareDevV2Activity --ez on true`.
+   **P** must show `[share] debug share.file 2 ARMED for the next trusted handshake only (debuggable build: true) — reconnect the Mac for it to take effect`.
+4. **Before pressing anything:** **P** must show **no** `ext: phone advertises` line after the arm.
+   **If any handshake appears between the arm and step 5, the arm has been consumed by something
+   other than the intended Mac handshake: STOP.** Do not re-arm to continue; that is a finding.
+5. **Connect**, once, in the Mac's window.
+6. **Both** peers, for that one handshake:
+   - **M**: `ext: phone advertises {"share.file":2}; negotiated {"share.file":2}`
+   - **P**: `ext: phone advertises share.file 2 (debug share.file 2 armed for this handshake: true; debuggable build: true); Mac advertises share.file 2; negotiated share.file 2`
+   and exactly **one** `ext: phone advertises` line in **P** since the arm. Anything else: STOP.
+7. From here, **any** reconnect is back at `share.file 1` (the arm is spent). A session that drops
+   before §5 finishes is a STOP, not a re-arm.
 
 ## 5 · The transfers, smallest first
 
@@ -202,6 +279,11 @@ receive → saved sequence.
 | **Wrong device** | `target-device.sh` names anything but the SM-S938B | stop before any write |
 | **Wrong destination** | any file written outside `…/sidekick-desktop/dev-share-receive/`; a `receiveFolder` log naming another path; the scratch path a symlink (`resolveScratchFolder` refusal) | quit the Mac app; list what was written, delete nothing |
 | **Version not as intended** | negotiated ≠ 2 at §4.8, or the Mac log lacks `ADVERTISED` | stop; nothing moved |
+| **The arm consumed by the wrong handshake** | any `ext: phone advertises` line in **P** between the arm and the one Connect; more than one such line since the arm; a `2` at §4.6 before any arm | stop; do not re-arm to continue |
+| **Wrong build on the phone** | §4.3's package, certificate or class checks fail on the built APK, or the installed app still lacks `ShareDevV2Activity` | stop before (or instead of) installing |
+| **State changed by the install** | a §4.5 reading differs from its §4.4 baseline (a grant name, the listener, accessibility, pairing) | stop; do not repair by hand without the owner |
+| **Not enough space** | §4.2a under 1024 MiB free, or any `insufficient-space` in **M** | stop before any offer |
+| **Inventory changed** | anything new or changed in `~/Downloads/Sidekick` or the configured folder after a transfer | stop; quit the Mac app; delete nothing |
 | **Digest disagreement** | the phone's logged `sha256` ≠ §3's table, or the received file's `shasum` ≠ both | stop; keep the file for inspection |
 | **Byte-count mismatch** | `stat` size ≠ offered bytes, or `truncated` / `checksum` in the log | stop |
 | **Unexpected acceptance** | anything accepted that is not an allow-listed digest; a card for N1; any file for N1 | stop at once; quit the Mac app |
