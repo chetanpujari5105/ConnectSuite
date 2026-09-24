@@ -62,9 +62,12 @@ const SHARE_RECV_FAILURE_COPY: Record<string, string> = {
 
 function shareReceiveStatus(f: ShareRecvFacts): ShareRecvStatus {
   const none = { savedOnMac: false, confirmedByPhone: false };
+  // The file's names are in the card's title (what was offered) and its "Saved as" row (where it is).
+  // The detail says what happened and names neither: saying the saved name here too made a finished
+  // card name the same file three times (docs/testing.md → the share card review, P1).
   const renamed = (): string[] =>
     f.savedAs !== null && f.savedAs !== f.wantedName
-      ? [`A file named ${f.wantedName} was already there, so this one was saved as ${f.savedAs}. Nothing was replaced.`]
+      ? ['A file with that name was already there, so this one was given a new name. Nothing was replaced.']
       : [];
   const prior = (): string[] =>
     f.priorCopy
@@ -84,7 +87,7 @@ function shareReceiveStatus(f: ShareRecvFacts): ShareRecvStatus {
     case 'saved':
       return {
         headline: 'Saved on this Mac',
-        detail: [`Saved as ${f.savedAs ?? f.wantedName}. The phone confirmed it.`, ...renamed()],
+        detail: ['Complete and checked. The phone confirmed it.', ...renamed()],
         tone: 'success',
         savedOnMac: true,
         confirmedByPhone: true,
@@ -93,7 +96,7 @@ function shareReceiveStatus(f: ShareRecvFacts): ShareRecvStatus {
       return {
         headline: 'Saved on this Mac; confirmation to phone unknown',
         detail: [
-          `Saved as ${f.savedAs ?? f.wantedName}, complete and checked. The phone did not answer, so it may say the file was not confirmed.`,
+          'Complete and checked. The phone did not answer, so it may say the file was not confirmed.',
           'Sending it again would save a second copy.',
           ...renamed(),
         ],

@@ -47,9 +47,21 @@ test('expired is expired — never worded as declined', () => {
   assert.doesNotMatch([s.headline, ...s.detail].join(' '), /declin/i);
 });
 
-test('a collision rename is stated, and says nothing was replaced', () => {
+test('a collision rename is stated, and says nothing was replaced — the name itself is the card row’s job', () => {
   const s = shareReceiveStatus(facts('saved-unacknowledged', { savedAs: 'IMG_2041 (2).jpg' }));
-  assert.ok(s.detail.some((d) => d.includes('saved as IMG_2041 (2).jpg') && d.includes('Nothing was replaced')));
+  assert.ok(s.detail.some((d) => d.includes('given a new name') && d.includes('Nothing was replaced')));
+  const plain = shareReceiveStatus(facts('saved-unacknowledged', { savedAs: 'IMG_2041.jpg' }));
+  assert.ok(!plain.detail.some((d) => d.includes('new name')), 'control: no rename sentence when the name was kept');
+});
+
+test('the status lines of a published file name no file — the title and the Saved-as row carry the names (P1)', () => {
+  for (const state of ['saved', 'saved-unacknowledged'] as const) {
+    for (const savedAs of ['IMG_2041.jpg', 'IMG_2041 (2).jpg']) {
+      const s = shareReceiveStatus(facts(state, { savedAs }));
+      assert.ok(s.detail.length > 0, `control: ${state} has detail lines to read`);
+      for (const d of s.detail) assert.ok(!d.includes('IMG_2041'), `${state}/${savedAs}: ${d}`);
+    }
+  }
 });
 
 test('an offer carrying bytes already saved this run is shown as a possible second copy, before Accept', () => {

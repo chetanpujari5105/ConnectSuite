@@ -158,3 +158,56 @@ test('a card whose offer is gone from the snapshot is removed', () => {
   assert.equal(t.root.children.length, 0);
   assert.equal(t.root.hidden, true);
 });
+
+// ---- the card review (docs/testing.md → Feature A card review, P1 and P2) -----------------------
+
+const rowsOf = (card: FakeElement): string[] =>
+  card.descendants().filter((e) => e.tagName?.toLowerCase() === 'dt').map((e) => e.textContent);
+
+test('a waiting card keeps every row the decision needs; a finished one keeps who and, if saved, where', () => {
+  const t = setup();
+  t.tray.update([data()]);
+  assert.deepEqual(rowsOf(t.card()), ['From', 'Type', 'Size', 'Save to']);
+  for (const [state, want] of [
+    ['receiving', ['From', 'Type', 'Size', 'Save to']],
+    ['saved', ['From', 'Saved as']],
+    ['saved-unacknowledged', ['From', 'Saved as']],
+    ['expired', ['From']],
+    ['failed', ['From']],
+    ['declined', ['From']],
+  ] as const) {
+    t.tray.update([data({ state, savedAs: state.startsWith('saved') ? 'IMG_2041 (2).jpg' : null, reason: 'checksum' })]);
+    assert.deepEqual(rowsOf(t.card()), want, state);
+  }
+});
+
+test('a saved-but-unacknowledged, renamed card says the saved name once — in its row (P1)', () => {
+  const t = setup();
+  t.tray.update([data({ state: 'saved-unacknowledged', savedAs: 'IMG_2041 (2).jpg' })]);
+  const text = t.card().textContent;
+  assert.equal(text.split('IMG_2041 (2).jpg').length - 1, 1, text);
+  assert.ok(text.includes('~/Downloads/Sidekick/IMG_2041 (2).jpg'), 'control: the row says where it is');
+});
+
+test('a new offer is drawn above earlier finished cards, and the tray is scrolled to it', () => {
+  const t = setup();
+  const older = 's-OLDoLDoLDoLDoLDoLDoLDo';
+  t.tray.update([data({ offerId: older, state: 'saved', savedAs: 'IMG_2041.jpg' })]);
+  t.root.scrollTop = 400; // as if the person had scrolled the tray
+  t.tray.update([data(), data({ offerId: older, state: 'saved', savedAs: 'IMG_2041.jpg' })]);
+  assert.equal(t.root.children.length, 2, 'control: both cards are drawn');
+  assert.deepEqual(t.root.children.map((c) => c.dataset.state), ['awaiting-decision', 'saved']);
+  assert.equal(t.root.scrollTop, 0);
+});
+
+test('one update carrying several new cards (a reload) draws them newest first', () => {
+  const t = setup();
+  const ids = ['s-NEWnEWnEWnEWnEWnEWnEWn', 's-MIDmIDmIDmIDmIDmIDmIDm', 's-OLDoLDoLDoLDoLDoLDoLDo'];
+  t.tray.update([
+    data({ offerId: ids[0] }),
+    data({ offerId: ids[1], state: 'saved', savedAs: 'IMG_2041.jpg' }),
+    data({ offerId: ids[2], state: 'expired' }),
+  ]);
+  assert.deepEqual(t.root.children.map((c) => c.dataset.offerId), ids);
+});
+

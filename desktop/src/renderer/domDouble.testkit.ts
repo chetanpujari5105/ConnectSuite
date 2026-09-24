@@ -254,6 +254,14 @@ export class FakeElement {
     return kid;
   }
 
+  /** Inserts before the first child, as `Element.prepend()` does for one node. Added for the share tray. */
+  prepend(kid: FakeElement): void {
+    this.absorbOwnText();
+    kid.remove();
+    kid.parent = this;
+    this.children.unshift(kid);
+  }
+
   /** Detaches this element from its parent, as `Element.remove()` does. Added for the share tray. */
   remove(): void {
     const p = this.parent;

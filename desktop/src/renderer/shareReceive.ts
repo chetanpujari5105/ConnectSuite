@@ -77,14 +77,22 @@ function shareCardModel(d: ShareCardData): ShareCardModel {
     priorCopy: d.priorCopy,
   });
   const published = d.state === 'saved' || d.state === 'saved-unacknowledged';
-  const rows = [
-    { label: 'From', value: d.from },
-    { label: 'Type', value: d.mime },
-    { label: 'Size', value: shareExactBytes(d.bytes) },
-    published && d.savedAs !== null
-      ? { label: 'Saved as', value: `${d.folder}/${d.savedAs}` }
-      : { label: 'Save to', value: d.folder },
-  ];
+  // A card still in play shows everything the decision needs (the contract's list: who, type, exact
+  // bytes, where). A finished one shows who and, if published, where the file is — nothing a person
+  // can still act on, so it stays compact (P2: 242–370 px became 176–286 px in the synthetic harness;
+  // three cards still overflow a 760 px window by about 12 px, so the tray can still scroll).
+  const live = d.state === 'awaiting-decision' || d.state === 'accepting' || d.state === 'receiving';
+  const rows = live
+    ? [
+        { label: 'From', value: d.from },
+        { label: 'Type', value: d.mime },
+        { label: 'Size', value: shareExactBytes(d.bytes) },
+        { label: 'Save to', value: d.folder },
+      ]
+    : [
+        { label: 'From', value: d.from },
+        ...(published && d.savedAs !== null ? [{ label: 'Saved as', value: `${d.folder}/${d.savedAs}` }] : []),
+      ];
   return {
     offerId: d.offerId,
     title: d.name,
@@ -129,6 +137,7 @@ class ShareReceiveTray {
 
   update(list: ShareCardData[]): void {
     const seen = new Set<string>();
+    const fresh: HTMLElement[] = [];
     for (const d of list) {
       if (this.dismissed.has(d.offerId)) continue;
       seen.add(d.offerId);
@@ -137,7 +146,7 @@ class ShareReceiveTray {
       if (!card) {
         card = { nodes: this.build(model.offerId), model, pending: false };
         this.cards.set(d.offerId, card);
-        this.root.appendChild(card.nodes.root);
+        fresh.push(card.nodes.root);
       }
       card.model = model;
       if (!model.canDecide) card.pending = false;
@@ -147,6 +156,13 @@ class ShareReceiveTray {
         this.live.textContent = model.announcement;
       }
     }
+    // Newest on top, and the tray scrolled to it: a new card is an offer waiting for a person, and
+    // appended below earlier finished cards it was the one pushed out of view. The list is newest
+    // first, so new cards go in from the oldest up — one update carrying several (a reload) keeps
+    // the newest on top. Existing cards are never moved: moving a node takes focus from someone
+    // tabbing through it.
+    for (let i = fresh.length - 1; i >= 0; i -= 1) this.root.prepend(fresh[i]!);
+    if (fresh.length > 0) this.root.scrollTop = 0;
     for (const [id, card] of this.cards) {
       if (!seen.has(id)) {
         card.nodes.root.remove();
