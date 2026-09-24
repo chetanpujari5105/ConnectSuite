@@ -82,7 +82,9 @@ export async function startFakePhone(behaviour: PhoneBehaviour): Promise<FakePho
 
 async function serve(socket: Socket, b: PhoneBehaviour): Promise<void> {
   let data = Buffer.from(b.bytes);
-  if (b.corruptAt !== undefined && b.corruptAt < data.length) data[b.corruptAt] ^= 0xff;
+  if (b.corruptAt !== undefined && b.corruptAt < data.length) {
+    data.writeUInt8(data.readUInt8(b.corruptAt) ^ 0xff, b.corruptAt);
+  }
   if (b.extra) data = Buffer.concat([data, randomBytes(b.extra)]);
   const limit = b.truncateTo ?? b.stallAfter ?? data.length;
   const chunk = b.chunkSize ?? 256 * 1024;

@@ -1,3 +1,9 @@
+/// <reference path="../shared/activity.ts" />
+// `ActivityEvent` and `ActivityCategory` are declared in a renderer classic script, which cannot
+// `export` (defect 94), so they are ambient. The app config sees them only because it includes all of
+// `src/`; this reference makes the dependency the file's own, so a config that reaches this file by
+// import — `tsconfig.test.json`, via `legacyData.ts` — resolves them too.
+
 /**
  * Parses one stored Activity line, returning `null` for anything that is not a complete event.
  *

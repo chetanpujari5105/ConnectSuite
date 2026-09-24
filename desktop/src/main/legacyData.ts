@@ -1,3 +1,6 @@
+/// <reference path="../shared/activity.ts" />
+// `ActivityEvent` is ambient; see the note at the top of `activityLine.ts`.
+
 /**
  * What the ConnectSuite → Sidekick rename left behind on this Mac, and the copy-only compatibility
  * that reads it.
