@@ -4,6 +4,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -48,8 +49,20 @@ class ExtensionsTest {
         }
     }
 
-    @Test fun `this phone advertises share file version 1, and hello ack carries it as an object`() {
-        assertEquals(mapOf(Extensions.SHARE_FILE to 1), Extensions.PHONE)
-        assertEquals("""{"share.file":1}""", Extensions.toJson(Extensions.PHONE).toString())
+    @Test fun `this phone advertises share file version 1 and share ask, and hello ack carries them as an object`() {
+        assertEquals(mapOf(Extensions.SHARE_FILE to 1, Extensions.SHARE_ASK to 1), Extensions.PHONE)
+        assertEquals("""{"share.file":1,"share.ask":1}""", Extensions.toJson(Extensions.PHONE).toString())
+    }
+
+    @Test fun `ordinary Send follows the shared fixture, which the Mac reads too`() {
+        val root = Json.parseToJsonElement(
+            listOf("../docs/fixtures/share-ordinary-send.json", "docs/fixtures/share-ordinary-send.json").map(::File).first { it.isFile }.readText(),
+        ).jsonObject
+        val cases = root["cases"]!!.jsonArray.map { it.jsonObject }
+        assertTrue("control: the fixture holds both answers", cases.any { it["send"]!!.jsonPrimitive.boolean } && cases.any { !it["send"]!!.jsonPrimitive.boolean })
+        for (c in cases) {
+            val n = c["negotiated"]!!.let { if (it is JsonNull) null else it.jsonObject.mapValues { (_, v) -> v.jsonPrimitive.int } }
+            assertEquals(c["why"]!!.jsonPrimitive.content, c["send"]!!.jsonPrimitive.boolean, Extensions.ordinarySend(n))
+        }
     }
 }

@@ -94,7 +94,14 @@ import { debugSwitches } from './debugSwitches';
 import { ShareReceiver } from './share';
 import { checkDestination, publishExclusive, realFs } from './shareDestination';
 import { FileShareLedger, ledgerFile, sweepLedger } from './shareLedger';
-import { advertisedExt, resolveScratchFolder, scratchFolderPath, shareV2Activation } from './shareActivation';
+import {
+  advertisedExt,
+  resolveScratchFolder,
+  scratchFolderPath,
+  SHARE_PRODUCTION_READINESS,
+  shareAskActivation,
+  shareV2Activation,
+} from './shareActivation';
 import { forRenderer, handleShareDecision, type WindowFacts } from './shareDecision';
 import { settingsMigration, store } from './store';
 import {
@@ -971,9 +978,18 @@ app.whenReady().then(() => {
   } else if (devSwitches.v2) {
     log.warn('share', `share.file 2 NOT advertised: ${shareV2.why}`);
   }
+  // Whether this Mac may promise `share.ask` — hold every ordinary offer for a person's Accept. It
+  // cannot open in this build: both readiness facts are recorded false, and it is closed whenever the
+  // development gate is open. Logged once either way, with every blocker (the denominator rule).
+  const shareAsk = shareAskActivation({ development: shareV2, readiness: SHARE_PRODUCTION_READINESS });
+  if (shareAsk.active) {
+    log.warn('share', 'share.ask ADVERTISED with share.file 2: ordinary offers are held for a person on the card');
+  } else {
+    log.info('share', `share.ask not advertised — the phone's ordinary Send stays disabled: ${shareAsk.blockers.join('; ')}`);
+  }
   const userData = app.getPath('userData');
 
-  link = new LinkClient(identity, () => rePairPending, () => advertisedExt(shareV2));
+  link = new LinkClient(identity, () => rePairPending, () => advertisedExt(shareV2, shareAsk));
   video = new VideoClient(identity);
   bulk = new BulkClient(identity);
 
@@ -1003,7 +1019,13 @@ app.whenReady().then(() => {
     publish: (part, folder, name) => publishExclusive(part, folder, name),
     ledger: shareLedger,
     switches: { silent: devSwitches.silent, acceptProbeDigests },
-    version2: shareV2.active ? { allowed: true, syntheticOnly: true } : { allowed: false, syntheticOnly: true },
+    // Synthetic-only while the development gate is open; Ask for every ordinary offer once `share.ask`
+    // is (never both — `shareAskActivation` is closed while the development gate is open); else version 1.
+    version2: shareV2.active
+      ? { allowed: true, syntheticOnly: true }
+      : shareAsk.active
+        ? { allowed: true, syntheticOnly: false }
+        : { allowed: false, syntheticOnly: true },
   });
   let shareSessionKey: string | null = null;
 
@@ -1039,6 +1061,9 @@ app.whenReady().then(() => {
   // only inside the scratch folder, and only where every identity check passes. Outside a version-2
   // development run its scope is empty and it deletes nothing. It lists no folder, so it can never
   // find — or delete — anything by its name; what it cannot prove, it leaves and reports.
+  // A production (`share.ask`) run would create partials in the person's receive folder, and this scope
+  // deliberately does not reach it: widening it is `receiveFolderCleanupScoped`, which is unbuilt, and
+  // that is exactly why `shareAskActivation` cannot open in this build.
   void sweepLedger(shareLedger, { allowedParents: shareV2.active ? [scratchFolderPath(userData)] : [] }).then((r) => {
     if (r.deleted > 0 || r.gone > 0 || r.left.length > 0) {
       log.info('share', `startup ledger sweep: deleted ${r.deleted}, ${r.gone} already gone, left ${r.left.length} untouched (${r.kept} kept for a later run)`);

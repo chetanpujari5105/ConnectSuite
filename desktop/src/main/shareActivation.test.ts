@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { MAC_EXT } from '../shared/extensions';
-import { advertisedExt, resolveScratchFolder, scratchFolderPath, shareV2Activation, type ShareV2Inputs } from './shareActivation';
+import { MAC_EXT, negotiateAll, ordinarySendNegotiated } from '../shared/extensions';
+import {
+  advertisedExt,
+  resolveScratchFolder,
+  scratchFolderPath,
+  SHARE_PRODUCTION_READINESS,
+  shareAskActivation,
+  shareV2Activation,
+  type ShareV2Inputs,
+} from './shareActivation';
 
 /**
  * The pre-live gate. The property worth pinning is that version 2 is advertised **only** with every
@@ -94,4 +102,75 @@ test('an existing real scratch folder is accepted as is', async () => {
   const u = userData();
   mkdirSync(scratchFolderPath(u));
   assert.deepEqual(await resolveScratchFolder(u, false), { ok: true, folder: scratchFolderPath(u) });
+});
+
+// ---- the production promise: share.ask (docs/protocol.md → Extensions) ---------------------------
+
+const closedDev = shareV2Activation({ ...all, shareV2: false });
+const openDev = shareV2Activation(all);
+const ready = { syntheticRunPassed: true, receiveFolderCleanupScoped: true };
+
+test('this build: both readiness facts are false, so no Mac can promise share.ask — pinned', () => {
+  // Flipping either is a statement that evidence exists (runbook §5 passed; §11 built). It belongs in
+  // the commit that records that evidence, and this test is what makes it a visible change.
+  assert.deepEqual({ ...SHARE_PRODUCTION_READINESS }, { syntheticRunPassed: false, receiveFolderCleanupScoped: false });
+  const a = shareAskActivation({ development: closedDev, readiness: SHARE_PRODUCTION_READINESS });
+  assert.equal(a.active, false);
+  assert.equal(a.active === false && a.blockers.length, 2, 'both blockers are named, not only the first');
+  assert.deepEqual(advertisedExt(closedDev, a), { 'share.file': 1 });
+  assert.deepEqual(advertisedExt(openDev, a), { 'share.file': 2 }, 'the development gate never carries share.ask');
+});
+
+test('control: both facts recorded and the development gate closed opens share.ask with share.file 2', () => {
+  const a = shareAskActivation({ development: closedDev, readiness: ready });
+  assert.deepEqual(a, { active: true, syntheticOnly: false });
+  assert.deepEqual(advertisedExt(closedDev, a), { 'share.file': 2, 'share.ask': 1 });
+});
+
+test('either readiness fact missing keeps share.ask closed, and names that fact', () => {
+  for (const [label, readiness, word] of [
+    ['no 3e', { ...ready, syntheticRunPassed: false }, 'slice 3e'],
+    ['no scoped cleanup', { ...ready, receiveFolderCleanupScoped: false }, '§11'],
+  ] as const) {
+    const a = shareAskActivation({ development: closedDev, readiness });
+    assert.equal(a.active, false, label);
+    assert.ok(a.active === false && a.blockers.length === 1 && a.blockers[0]!.includes(word), label);
+    assert.deepEqual(advertisedExt(closedDev, a), { 'share.file': 1 }, label);
+  }
+});
+
+test('the development gate open closes share.ask even with every fact recorded — the promises are opposite', () => {
+  const a = shareAskActivation({ development: openDev, readiness: ready });
+  assert.equal(a.active, false);
+  // Even handed an open ask (a caller bug), the development advertisement carries no share.ask.
+  assert.deepEqual(advertisedExt(openDev, { active: true, syntheticOnly: false }), { 'share.file': 2 });
+});
+
+interface OrdinaryCase { why: string; negotiated: Record<string, number> | null; send: boolean }
+const ordinary = JSON.parse(
+  readFileSync(join(__dirname, '../../../docs/fixtures/share-ordinary-send.json'), 'utf8'),
+) as { cases: OrdinaryCase[] };
+
+test('the shared fixture: ordinary Send only with share.file ≥ 2 and share.ask ≥ 1', () => {
+  // Control: the fixture has both answers, so agreeing with it is not agreeing with a constant.
+  assert.ok(ordinary.cases.some((c) => c.send) && ordinary.cases.some((c) => !c.send));
+  for (const c of ordinary.cases) assert.equal(ordinarySendNegotiated(c.negotiated), c.send, c.why);
+});
+
+test('end to end over negotiation: only a production Mac enables the phone’s ordinary Send', () => {
+  // What a current phone advertises: share.ask always; share.file 1, or 2 for one armed debug handshake.
+  const phones = [{ 'share.file': 1, 'share.ask': 1 }, { 'share.file': 2, 'share.ask': 1 }];
+  const production = shareAskActivation({ development: closedDev, readiness: ready });
+  const today = shareAskActivation({ development: closedDev, readiness: SHARE_PRODUCTION_READINESS });
+  const macs: [string, Readonly<Record<string, number>>][] = [
+    ['version 1 Mac', advertisedExt(closedDev, today)],
+    ['synthetic-only development Mac', advertisedExt(openDev, today)],
+    ['production Mac (not buildable yet)', advertisedExt(closedDev, production)],
+  ];
+  const got = macs.map(([label, mac]) => [label, phones.map((p) => ordinarySendNegotiated(negotiateAll(mac, p)))]);
+  assert.deepEqual(got, [
+    ['version 1 Mac', [false, false]],
+    ['synthetic-only development Mac', [false, false]],
+    ['production Mac (not buildable yet)', [false, true]],
+  ]);
 });

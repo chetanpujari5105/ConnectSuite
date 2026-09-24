@@ -6,6 +6,25 @@
 
 export const SHARE_FILE = 'share.file';
 
+/**
+ * The production promise, separate from the wire version (docs/protocol.md → Extensions → the
+ * `share.ask` extension). On `hello`: every ordinary version-2 offer is held for a person's Accept,
+ * into a checked receive folder this build can clean up. **Not in [MAC_EXT]**: no build advertises it
+ * until `shareAskActivation` opens, and nothing opens it yet.
+ */
+export const SHARE_ASK = 'share.ask';
+
+/**
+ * Whether the phone may make an **ordinary** share offer on a session with these negotiated
+ * extensions: `share.file` ≥ 2 **and** `share.ask` ≥ 1. The phone's `ShareIntake.ordinarySend` is the
+ * rule that acts; this is the Mac's statement of it, and both are held to
+ * `docs/fixtures/share-ordinary-send.json`. `null` is no live session.
+ */
+export function ordinarySendNegotiated(negotiated: Readonly<Record<string, number>> | null): boolean {
+  if (negotiated === null) return false;
+  return (negotiated[SHARE_FILE] ?? 0) >= 2 && (negotiated[SHARE_ASK] ?? 0) >= 1;
+}
+
 /** What this Mac build implements: it can receive and answer a one-file share offer, version 1. */
 export const MAC_EXT: Readonly<Record<string, number>> = Object.freeze({ [SHARE_FILE]: 1 });
 

@@ -20,6 +20,14 @@ object Extensions {
     const val SHARE_FILE = "share.file"
 
     /**
+     * The production promise, separate from the wire version (docs/protocol.md → Extensions → the
+     * `share.ask` extension). The phone advertises it **unconditionally**: on `hello.ack` it means
+     * *this phone makes an ordinary share offer only where it is negotiated*, which is a promise about
+     * what the phone will not do. Whether a Mac promises it is the Mac's gate, and none does yet.
+     */
+    const val SHARE_ASK = "share.ask"
+
+    /**
      * What this phone build **advertises**: `share.file` 1 — offer and decline only.
      *
      * The phone half of version 2 (the transfer) is built (slice 3c) but deliberately not advertised:
@@ -29,7 +37,7 @@ object Extensions {
      * pins the value. **It is not raised to reach version 2**: the only route is [advertised], per
      * handshake, in a debuggable build with the development gate armed ([ShareDevGate]).
      */
-    val PHONE: Map<String, Int> = mapOf(SHARE_FILE to 1)
+    val PHONE: Map<String, Int> = mapOf(SHARE_FILE to 1, SHARE_ASK to 1)
 
     /**
      * What this phone advertises **in one handshake**. [PHONE] (`share.file` 1) unless the build is
@@ -41,7 +49,16 @@ object Extensions {
         if (debuggable && devV2Armed) PHONE + (SHARE_FILE to 2) else PHONE
 
     /** One handshake's two facts, decided together so `hello.ack` and negotiation cannot disagree. */
-    data class Handshake(val advertised: Map<String, Int>, val negotiated: Map<String, Int>, val logLine: String)
+    data class Handshake(
+        val advertised: Map<String, Int>,
+        val negotiated: Map<String, Int>,
+        val logLine: String,
+        /**
+         * The `share.ask` line, logged beside [logLine]. A second line rather than a longer first one:
+         * the 3e runbook's pass criteria quote [logLine] byte for byte.
+         */
+        val askLine: String,
+    )
 
     /**
      * The whole `ext` decision for one `hello`: what to advertise, what that negotiates against the
@@ -55,8 +72,20 @@ object Extensions {
             "(debug share.file 2 armed for this handshake: $devV2Armed; debuggable build: $debuggable); " +
             "Mac advertises ${macExt[SHARE_FILE]?.let { "share.file $it" } ?: "no share.file"}; " +
             "negotiated ${negotiated[SHARE_FILE]?.let { "share.file $it" } ?: "no share.file"}"
-        return Handshake(mine, negotiated, line)
+        val ask = "ext: share.ask — phone advertises ${mine[SHARE_ASK] ?: "none"}, Mac advertises ${macExt[SHARE_ASK] ?: "none"}, " +
+            "negotiated ${negotiated[SHARE_ASK] ?: "none"}; ordinary Send on this session: " +
+            if (ordinarySend(negotiated)) "enabled (the Mac asks a person)" else "disabled"
+        return Handshake(mine, negotiated, line, ask)
     }
+
+    /**
+     * Whether an **ordinary** share offer — one a person chose in the share sheet — may be made on a
+     * session with these negotiated extensions: `share.file` ≥ 2 **and** `share.ask` ≥ 1. `null` is no
+     * live session. Held to `docs/fixtures/share-ordinary-send.json`, which the Mac's
+     * `ordinarySendNegotiated` reads too. The debug synthetic probe does not go through this.
+     */
+    fun ordinarySend(negotiated: Map<String, Int>?): Boolean =
+        negotiated != null && (negotiated[SHARE_FILE] ?: 0) >= 2 && (negotiated[SHARE_ASK] ?: 0) >= 1
 
     /** Rules 1–3: anything but an object is `{}`; a value that is not an integer ≥ 1 drops that key only. */
     fun parse(raw: JsonElement?): Map<String, Int> {

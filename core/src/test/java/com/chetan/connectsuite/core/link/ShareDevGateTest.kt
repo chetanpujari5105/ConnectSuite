@@ -15,13 +15,16 @@ class ShareDevGateTest {
 
     private val one = mapOf(Extensions.SHARE_FILE to 1)
     private val two = mapOf(Extensions.SHARE_FILE to 2)
+    /** What the phone advertises: `share.ask` 1 always (docs/protocol.md → the `share.ask` extension). */
+    private val phoneOne = one + (Extensions.SHARE_ASK to 1)
+    private val phoneTwo = two + (Extensions.SHARE_ASK to 1)
 
     @Test fun `advertised is share-file 1 in every combination but debuggable AND armed`() {
-        assertEquals(one, Extensions.advertised(debuggable = false, devV2Armed = false))
-        assertEquals(one, Extensions.advertised(debuggable = false, devV2Armed = true))
-        assertEquals(one, Extensions.advertised(debuggable = true, devV2Armed = false))
-        assertEquals("the control: the one combination that advertises 2", two, Extensions.advertised(debuggable = true, devV2Armed = true))
-        assertEquals("the build constant itself is unchanged", one, Extensions.PHONE)
+        assertEquals(phoneOne, Extensions.advertised(debuggable = false, devV2Armed = false))
+        assertEquals(phoneOne, Extensions.advertised(debuggable = false, devV2Armed = true))
+        assertEquals(phoneOne, Extensions.advertised(debuggable = true, devV2Armed = false))
+        assertEquals("the control: the one combination that advertises 2", phoneTwo, Extensions.advertised(debuggable = true, devV2Armed = true))
+        assertEquals("the build constant itself is unchanged", phoneOne, Extensions.PHONE)
     }
 
     @Test fun `negotiated is 2 only for a debuggable armed phone facing a Mac that advertises 2`() {
@@ -95,5 +98,44 @@ class ShareDevGateTest {
         assertEquals("consumed in one place only", 1, Regex("consumeForHandshake\\(").findAll(src).count())
         assertFalse("negotiation must not read the build constant directly", src.contains("Extensions.PHONE"))
         assertTrue("hello.ack carries the handshake's own value", src.contains("Extensions.toJson(handshake.advertised)"))
+    }
+
+    // ---- share.ask (docs/protocol.md → Extensions → the share.ask extension) ---------------------
+
+    @Test fun `the share-file log line is unchanged by share-ask - the runbook quotes it byte for byte`() {
+        val h = Extensions.handshake(debuggable = true, devV2Armed = true, macExt = two + (Extensions.SHARE_ASK to 1))
+        assertEquals(
+            "ext: phone advertises share.file 2 (debug share.file 2 armed for this handshake: true; debuggable build: true); " +
+                "Mac advertises share.file 2; negotiated share.file 2",
+            h.logLine,
+        )
+    }
+
+    @Test fun `ordinary Send is negotiated only against a Mac that promises share-ask at share-file 2`() {
+        val macs = mapOf(
+            "old Mac (no ext)" to emptyMap(),
+            "Mac at 1" to one,
+            "synthetic-only development Mac" to two,
+            "production Mac" to two + (Extensions.SHARE_ASK to 1),
+        )
+        val got = macs.mapValues { (_, mac) ->
+            listOf(false, true).map { armed -> Extensions.ordinarySend(Extensions.handshake(debuggable = true, devV2Armed = armed, macExt = mac).negotiated) }
+        }
+        assertEquals(
+            mapOf(
+                "old Mac (no ext)" to listOf(false, false),
+                "Mac at 1" to listOf(false, false),
+                "synthetic-only development Mac" to listOf(false, false),
+                "production Mac" to listOf(false, true),
+            ),
+            got,
+        )
+    }
+
+    @Test fun `the ask line names both sides, the negotiated value and the verdict, and nothing else`() {
+        val off = Extensions.handshake(debuggable = true, devV2Armed = true, macExt = two)
+        assertEquals("ext: share.ask — phone advertises 1, Mac advertises none, negotiated none; ordinary Send on this session: disabled", off.askLine)
+        val on = Extensions.handshake(debuggable = true, devV2Armed = true, macExt = two + (Extensions.SHARE_ASK to 1))
+        assertTrue(on.askLine, on.askLine.endsWith("negotiated 1; ordinary Send on this session: enabled (the Mac asks a person)"))
     }
 }

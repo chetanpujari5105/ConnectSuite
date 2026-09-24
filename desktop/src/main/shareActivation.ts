@@ -1,6 +1,6 @@
 import { promises as fsp } from 'node:fs';
 import { join } from 'node:path';
-import { SHARE_FILE, MAC_EXT } from '../shared/extensions';
+import { SHARE_ASK, SHARE_FILE, MAC_EXT } from '../shared/extensions';
 
 /**
  * **Whether this Mac may advertise `share.file: 2`, decided in one place and failing closed.**
@@ -46,8 +46,59 @@ export function shareV2Activation(i: ShareV2Inputs): ShareV2Activation {
   return { active: true, syntheticOnly: true, scratchOnly: true };
 }
 
-/** What this Mac puts in `hello.ext`. Version 1 unless [activation] is active. */
-export function advertisedExt(activation: ShareV2Activation): Readonly<Record<string, number>> {
+/**
+ * **The two facts production sharing waits on, as this build records them.** Each is a statement
+ * about evidence that exists outside the code, so each flips only in the commit that records that
+ * evidence — and `shareActivation.test.ts` pins both, so flipping one is a visible, reviewed change
+ * rather than a default someone edits in passing.
+ *
+ * - `syntheticRunPassed` — Feature A slice 3e (`docs/phase-7-share-3e-runbook.md`) has moved synthetic
+ *   bytes from the SM-S938B into the scratch folder, verified, on hardware. **Not run.**
+ * - `receiveFolderCleanupScoped` — the ownership ledger's sweep can be scoped to the person's receive
+ *   folder by the folder identity each entry proves (runbook §11). **Not built.** Without it, a
+ *   production transfer would leave partials in the person's folder that no sweep may delete.
+ */
+export const SHARE_PRODUCTION_READINESS: Readonly<{ syntheticRunPassed: boolean; receiveFolderCleanupScoped: boolean }> =
+  Object.freeze({ syntheticRunPassed: false, receiveFolderCleanupScoped: false });
+
+export interface ShareAskInputs {
+  /** The development activation above. Open means synthetic-only, and the two never coexist. */
+  development: ShareV2Activation;
+  readiness: { syntheticRunPassed: boolean; receiveFolderCleanupScoped: boolean };
+}
+
+export type ShareAskActivation =
+  | { active: true; syntheticOnly: false }
+  | { active: false; blockers: string[] };
+
+/**
+ * **Whether this Mac may promise `share.ask`** — hold every ordinary version-2 offer for a person's
+ * Accept, into the configured receive folder. Fails closed and names every blocker, not the first:
+ * a reader deciding what is left needs the whole list. Closed whenever the development gate is open,
+ * because that gate's promise is the opposite one (decline everything ordinary). There is no switch
+ * that forces it open; the only inputs are the readiness facts.
+ */
+export function shareAskActivation(i: ShareAskInputs): ShareAskActivation {
+  const blockers: string[] = [];
+  if (i.development.active) blockers.push('the synthetic-only development gate is open, and its promise is the opposite one');
+  if (!i.readiness.syntheticRunPassed) blockers.push('the synthetic end-to-end run (slice 3e) has not passed on hardware');
+  if (!i.readiness.receiveFolderCleanupScoped) {
+    blockers.push('temporary-file cleanup is not scoped to the receive folder (runbook §11, not built)');
+  }
+  return blockers.length === 0 ? { active: true, syntheticOnly: false } : { active: false, blockers };
+}
+
+/**
+ * What this Mac puts in `hello.ext`. Version 1 unless one of the two gates is open: the development
+ * gate adds `share.file: 2` alone (synthetic-only — **never** `share.ask`), and the production gate adds
+ * `share.file: 2` with `share.ask: 1`. `shareAskActivation` cannot be open while the development gate
+ * is, so the two additions never meet.
+ */
+export function advertisedExt(
+  activation: ShareV2Activation,
+  ask: ShareAskActivation = { active: false, blockers: ['not evaluated'] },
+): Readonly<Record<string, number>> {
+  if (ask.active && !activation.active) return Object.freeze({ ...MAC_EXT, [SHARE_FILE]: 2, [SHARE_ASK]: 1 });
   return activation.active ? Object.freeze({ ...MAC_EXT, [SHARE_FILE]: 2 }) : MAC_EXT;
 }
 

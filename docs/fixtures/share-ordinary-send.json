@@ -1,0 +1,13 @@
+{
+  "about": "docs/protocol.md -> Extensions -> the share.ask extension. Whether the phone may make an ORDINARY share offer (one a person chose in the Android share sheet), given the extensions negotiated on the live session. Read by the phone's ShareIntakeTest and the Mac's shareActivation.test.ts. `negotiated` null means no live session. `send` is true only when share.file is negotiated at 2 or more AND share.ask at 1 or more.",
+  "cases": [
+    { "why": "no session", "negotiated": null, "send": false },
+    { "why": "old Mac: nothing negotiated", "negotiated": {}, "send": false },
+    { "why": "version 1: offer and decline only", "negotiated": { "share.file": 1 }, "send": false },
+    { "why": "version 1 with ask: ask means nothing without the transfer", "negotiated": { "share.file": 1, "share.ask": 1 }, "send": false },
+    { "why": "version 2 without ask: the synthetic-only development receiver", "negotiated": { "share.file": 2 }, "send": false },
+    { "why": "ask without share.file", "negotiated": { "share.ask": 1 }, "send": false },
+    { "why": "version 2 and ask: the production pairing (no Mac build advertises it yet)", "negotiated": { "share.file": 2, "share.ask": 1 }, "send": true },
+    { "why": "a future version above both still sends", "negotiated": { "share.file": 3, "share.ask": 2 }, "send": true }
+  ]
+}

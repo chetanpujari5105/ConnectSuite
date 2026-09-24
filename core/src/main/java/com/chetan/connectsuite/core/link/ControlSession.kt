@@ -295,6 +295,7 @@ class ControlSession(
         val handshake = Extensions.handshake(server.debuggable, ShareDevGate.process.consumeForHandshake(), macExt)
         negotiated = handshake.negotiated
         LinkLog.i("control", handshake.logLine)
+        LinkLog.i("control", handshake.askLine)
         isHandshakeComplete = true
 
         send(

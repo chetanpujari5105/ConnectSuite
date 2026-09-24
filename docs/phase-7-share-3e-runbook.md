@@ -226,6 +226,12 @@ nothing.
    - **M**: `ext: phone advertises {"share.file":2}; negotiated {"share.file":2}`
    - **P**: `ext: phone advertises share.file 2 (debug share.file 2 armed for this handshake: true; debuggable build: true); Mac advertises share.file 2; negotiated share.file 2`
    and exactly **one** `ext: phone advertises` line in **P** since the arm. Anything else: STOP.
+   *(Added 2026-09-25, after the `share.ask` extension landed.)* A phone built from that commit or
+   later writes a **second** line straight after it, which the counts above do not match:
+   `ext: share.ask — phone advertises 1, Mac advertises none, negotiated none; ordinary Send on this session: disabled`.
+   During 3e it must say **`disabled`** and `Mac advertises none` — the development Mac never promises
+   `share.ask`. `enabled` here is a STOP. (The candidate APK of §0 predates this and writes no such
+   line; its absence on that build is expected, not a failure.)
 7. From here, **any** reconnect is back at `share.file 1` (the arm is spent). A session that drops
    before §5 finishes is a STOP, not a re-arm.
 

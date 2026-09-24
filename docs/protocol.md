@@ -2478,6 +2478,39 @@ peers advertise `2`. Parsing is identical on both sides:
 The cases are `docs/fixtures/ext-negotiation.json`, read by both sides' tests, so the two parsers
 cannot drift apart unnoticed.
 
+### The production promise: the `share.ask` extension, separate from the wire version
+
+The `share.file` key says which **messages** a peer implements. It cannot say whether a Mac that implements
+version 2 will receive an **ordinary** file, because the only Mac that has ever advertised 2 is the
+synthetic-only development receiver, which declines every ordinary offer `not-available` at once. A
+phone reading `share.file: 2` therefore cannot tell *"this Mac will ask a person"* from *"this Mac is
+a test rig"*. `share.ask` is that distinction, and it is its own key so the answer never has to be
+inferred from a version number.
+
+| Side | `share.ask: 1` means |
+|---|---|
+| `hello` (Mac) | **every** ordinary version-2 offer on this session is held on the card for a person's Accept; nothing accepts it automatically; it is received into the configured receive folder only after the destination check; and this build can clean up its own temporary files in that folder (parent-identity-scoped ledger). A synthetic-only development Mac **never** advertises it |
+| `hello.ack` (phone) | this phone makes an **ordinary** share offer — one a person chose in the Android share sheet — **only** on a session where `share.ask` is negotiated and `share.file` is negotiated at 2 |
+
+Negotiation is rule 4, unchanged: present only when both sides advertise it. **The phone's ordinary
+Send is enabled exactly when `share.file` = 2 and `share.ask` ≥ 1 are both negotiated on the live
+session.** Every other combination — no session, no `ext`, `share.file` 1, `share.file` 2 without
+`share.ask`, `share.ask` without `share.file` 2 — leaves Send disabled with a reason, and no offer is
+made. The debug synthetic probe does not need `share.ask`; it is not an ordinary share.
+
+**No Mac build advertises `share.ask` yet** (2026-09-25). The Mac's gate (`shareActivation.ts`,
+`shareAskActivation`) requires two recorded readiness facts, both **false** in this build, and it is
+closed whenever the development gate is open (the two are mutually exclusive):
+
+1. **the synthetic end-to-end run (slice 3e) has passed on hardware**;
+2. **temporary-file cleanup is scoped to the receive folder by parent identity** — the design in
+   `docs/phase-7-share-3e-runbook.md` §11, not yet built. Without it a production transfer would create
+   partials in the person's folder that no sweep may delete.
+
+Each flips only in the commit that records its evidence. The phone advertises `share.ask: 1`
+unconditionally: the promise is about what the phone will *not* do, so making it costs nothing.
+The cases are `docs/fixtures/share-ordinary-send.json`, read by both sides' tests.
+
 ## Share (42501)
 
 One file from the phone's share sheet to the Mac. The phone offers; the Mac answers; nothing moves
@@ -2573,6 +2606,9 @@ An offer does not survive its session: on a disconnect both sides drop it withou
 | Both at version 1 (implemented) | `share.file` = 1: offer, `not-available` decline, cancel. No transfer |
 | One at 1, one at 2 | negotiated `1`. The version-2 peer behaves as version 1: the Mac never sends `accept` and the phone refuses one. **No transfer starts** |
 | Both at 2 (specified, not implemented) | negotiated `2`: the transfer below |
+| Both at 2, Mac without `share.ask` (the synthetic-only development receiver) | the phone's **ordinary** Send stays disabled — it would be declined `not-available` at once. Only the debug synthetic probe offers |
+| Both at 2 and both advertise `share.ask` (no Mac build does yet) | ordinary Send enabled; every ordinary offer waits for a person's Accept on the Mac's card |
+| A phone with no `share.ask` (older build), Mac with it | not negotiated: that phone makes no ordinary offer. The Mac would ask a person regardless — its promise does not depend on the phone's |
 | Both new, and the Mac never answers | the phone's offer expires at `expiresAtMs`: it sends `share.cancel{expired}` and deletes the staged copy. Nothing waits indefinitely |
 
 ### Version 2 — the transfer (specified, not implemented)
