@@ -2625,9 +2625,10 @@ MIME type, the exact byte count and the destination folder, with **Decline** and
 page may send back only an `offerId` and `accept` | `decline`; any other field refuses the request
 whole, and the folder, the checks and the session are looked up in the main process. An Accept is
 honoured only while the window is visible, not minimised and focused — otherwise it is refused and
-the offer keeps waiting; Decline is always honoured. A hidden window gets a native banner that only
-brings the window forward and carries no Accept. The card says "Saved" only after the Mac published
-a verified file, and "Expired" never reads as declined.
+the offer keeps waiting; Decline is always honoured. **The card is the only decision surface**: no
+macOS notification, no window raising, no Dock bounce. An offer that arrives while the window is
+hidden stays pending on the card until it expires, and the card then says "Expired". The card says
+"Saved" only after the Mac published a verified file, and "Expired" never reads as declined.
 
 **The destination check, before any byte moves.** When the offer arrives, and again at Accept, the
 Mac establishes that its receive folder can make the exclusive save described below. It creates a

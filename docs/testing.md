@@ -24434,3 +24434,29 @@ attempt shows *Not saved* with no way to retry from the card yet). The emitted `
 and `shareReceive.js` were compiled to a scratch folder and carry no `exports` (control:
 `sendBatch.js`, same shape); `dist/` was not rebuilt, so `check-renderer-scripts`' built reading has
 not seen them.
+
+## Feature A pre-live C, corrected — no macOS notification for an incoming share (2026-09-24)
+
+Task C (`5564469`) added a native banner for an offer arriving while the window was hidden, whose
+click restored, showed and focused the window. **That contradicted the owner's v1 decision**: no
+macOS notification, no window raising, no Dock bounce — the in-window card is the only decision
+surface. Removed: the banner, its click handler, `shouldNotifyNewOffer`, and `Notification` from
+`main.ts`'s electron import. The share change handler now only forwards snapshots. A hidden window
+leaves the offer pending until it expires, and the card then says *Expired* (already tested:
+`card expiry` in `share.test.ts`, and the tray's Expired test).
+
+**The guard** (`shareDecision.test.ts`, *no macOS notification, window raising or Dock bounce*):
+`main.ts` needs Electron, so the test reads its **code** with comments stripped — the comment that
+records the decision names the very calls it forbids — and asserts no `Notification` in the electron
+import, no `app.dock` / `.bounce(` anywhere, and nothing in the `shareReceiver.onChange` body but the
+forward (no `Notification`, `.show(`, `.focus(`, `.restore(`, `moveTop`, `setAlwaysOnTop`,
+`flashFrame`). Controls in the same test: the electron import was read (`BrowserWindow` found), and
+the handler body was found (`send('share-offers'` in it).
+
+**Red-first against the verbatim case:** `main.ts` at `5564469` (the banner) → red, *"main.ts imports
+Notification"*. Two further mutations → red: `window?.show()` in the handler; `app.dock?.bounce()`
+in the handler. `main.ts` restored and confirmed byte-identical.
+
+**The limit of this guard, stated:** it reads source text, so a raise routed through a helper
+function defined elsewhere would pass it. It pins the decision where it was broken; it is not a
+proof about runtime behaviour, which needs the app on a screen.

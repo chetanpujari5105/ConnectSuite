@@ -1,6 +1,5 @@
 import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, powerMonitor, Tray, Menu,
   dialog, shell, screen,
-  Notification,
 } from 'electron';
 import { homedir, networkInterfaces, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -96,7 +95,7 @@ import { ShareReceiver } from './share';
 import { checkDestination, publishExclusive, realFs } from './shareDestination';
 import { FileShareLedger, ledgerFile, sweepLedger } from './shareLedger';
 import { advertisedExt, resolveScratchFolder, scratchFolderPath, shareV2Activation } from './shareActivation';
-import { forRenderer, handleShareDecision, shouldNotifyNewOffer, type WindowFacts } from './shareDecision';
+import { forRenderer, handleShareDecision, type WindowFacts } from './shareDecision';
 import { settingsMigration, store } from './store';
 import {
   clearRePairPending,
@@ -1020,31 +1019,12 @@ app.whenReady().then(() => {
     minimized: window?.isMinimized() ?? false,
     focused: window?.isFocused() ?? false,
   });
-  const shareBanners = new Map<string, Notification>();
+  // The card is the only decision surface (owner decision, v1): **no macOS notification, no
+  // window raising, no Dock bounce**. An offer that arrives while the window is hidden stays pending
+  // on the card and, if nobody opens the window, expires honestly as "Expired". This handler only
+  // forwards snapshots; `shareDecision.test.ts` holds it to that.
   shareReceiver.onChange(() => {
-    const snaps = shareReceiver.snapshots();
-    send('share-offers', forRenderer(snaps, homedir()));
-    for (const s of snaps) {
-      const waiting = s.state === 'awaiting-decision';
-      if (waiting && !shareBanners.has(s.offerId) && shouldNotifyNewOffer(shareWindowFacts()) && Notification.isSupported()) {
-        // A banner that only brings the window forward. It carries no Accept: the decision is made
-        // on the card, in front of the person, never from a notification.
-        const banner = new Notification({ title: `${s.from} wants to send a file`, body: `${s.name} · Open Sidekick to accept or decline.` });
-        banner.on('click', () => {
-          if (window && !window.isDestroyed()) {
-            if (window.isMinimized()) window.restore();
-            window.show();
-            window.focus();
-          }
-        });
-        banner.show();
-        shareBanners.set(s.offerId, banner);
-      }
-      if (!waiting && shareBanners.has(s.offerId)) {
-        shareBanners.get(s.offerId)?.close();
-        shareBanners.delete(s.offerId);
-      }
-    }
+    send('share-offers', forRenderer(shareReceiver.snapshots(), homedir()));
   });
   ipcMain.handle('share-offers', () => forRenderer(shareReceiver.snapshots(), homedir()));
   ipcMain.handle('share-decide', async (event, raw: unknown) => {

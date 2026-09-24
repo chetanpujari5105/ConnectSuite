@@ -13,6 +13,10 @@ import type { ReceiveState, ShareCardSnapshot } from './share';
  * **Accept needs the window in front of a person.** A hidden, minimised or unfocused window cannot
  * have been clicked by someone looking at the card, so an Accept from it is refused and the offer
  * keeps waiting. Decline is always honoured: it is the safe direction.
+ *
+ * **The card is the only place an offer is presented** (owner decision, v1). There is no macOS
+ * notification, no window raising and no Dock bounce: a hidden window leaves the offer pending until
+ * it expires, and the card then says "Expired".
  */
 
 const OFFER_ID = /^s-[A-Za-z0-9_-]{22}$/;
@@ -44,11 +48,6 @@ export function acceptAllowed(w: WindowFacts): { ok: true } | { ok: false; why: 
   if (!w.exists || !w.visible || w.minimized) return { ok: false, why: 'the window is hidden' };
   if (!w.focused) return { ok: false, why: 'the window is not in front' };
   return { ok: true };
-}
-
-/** A new offer needs a native banner when nobody can be looking at the card. */
-export function shouldNotifyNewOffer(w: WindowFacts): boolean {
-  return acceptAllowed(w).ok === false;
 }
 
 export type DecisionResult = { ok: true; state: ReceiveState | undefined } | { ok: false; reason: string };

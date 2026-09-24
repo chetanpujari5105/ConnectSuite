@@ -26,8 +26,9 @@
  * - **Motion**: the card arrives with a keyframed fade (`share-card-in`, `--dur-float`); the global
  *   reduced-motion block in `tokens.css` collapses every animation to an instant, and nothing here
  *   waits for the animation — the buttons work from the first frame.
- * - **Hidden window**: the main process posts a banner that only brings the window forward; this
- *   card is where the decision is made.
+ * - **Hidden window**: nothing reaches for the person — no macOS notification, no window raising, no
+ *   Dock bounce (owner decision, v1). The offer stays pending on this card, and if nobody opens the
+ *   window it expires and the card says "Expired". An Accept from a hidden window is refused.
  *
  * Plain script: no `export`; the pure half and the class are hung on `globalThis` at the foot.
  */
