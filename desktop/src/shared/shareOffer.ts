@@ -20,7 +20,8 @@ export type DeclineReason =
   | 'busy'
   | 'user'
   | 'folder-unavailable'
-  | 'insufficient-space';
+  | 'insufficient-space'
+  | 'unsupported-destination';
 
 export interface ShareItem {
   itemId: '0';

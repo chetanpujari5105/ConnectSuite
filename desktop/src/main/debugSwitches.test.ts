@@ -36,6 +36,11 @@ test('the known switches are exactly these, and every one defaults to off', () =
       'forceRecipientMismatch',
       // Added 2026-09-24 for Feature A slice 2, both off by default (asserted below): an old-peer
       // `hello` with no `ext`, and an offer held unanswered so the phone's expiry can be watched.
+      // Added 2026-09-24 for Feature A slice 3d, both off by default (asserted below) and forced off
+      // in a packaged build by main.ts: accept synthetic probe offers only; receive into the dev
+      // scratch folder instead of the configured one.
+      'shareAcceptProbe',
+      'shareDevReceive',
       'shareOmitExt',
       'shareSilent',
       'stallCallEnded',

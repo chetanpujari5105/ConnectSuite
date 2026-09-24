@@ -24090,3 +24090,213 @@ and all compiled:**
 **Files and Photos:** unchanged in behaviour. Their related defects are already registered (148
 session binding and predictable ids, 149 the `photos` tag, 150 rename-over, 151 stranger `.part`
 deletion) and are not fixed here.
+
+## Feature A slice 3d — the Mac half of version 2, built and not advertised (2026-09-24)
+
+`docs/protocol.md` → Share → Version 2, Mac side, as code and automated tests only. **Nothing was
+installed, launched or relaunched; no adb; no device; no pairing change. The dev scratch folder was
+not created, and nothing was written to the configured receive folder or any personal folder.** The
+tests write only to fresh `os.tmpdir()` folders.
+
+**Both ends still advertise `share.file: 1`.** The Mac's `MAC_EXT` is unchanged and the phone's is
+pinned at 1, so every live pairing negotiates 1. A version-2 offer path cannot be entered live, and a
+version-1 offer is declined `not-available` exactly as in slice 2. The tests pin this explicitly: at
+version 1, even with the probe switch on, an offer gets one `decline not-available` and nothing else.
+
+**What was built** (`desktop/src/main` unless noted):
+- `shareDestination.ts`:
+  - `checkDestination`: the folder is usable; it has room for `size + max(256 MiB, ⌈size/10⌉)`; and a
+    Sidekick-owned probe file can be hard-linked there and removed. Only a completed link counts as
+    support. `EXDEV`/`ENOTSUP`/`EPERM`/`ENOSYS` give `unsupported-destination`; anything
+    inconclusive, including a probe that cannot be cleaned up, gives `folder-unavailable`.
+  - `publishExclusive`: `link()` to the first free name, `EEXIST` moving on to the next (at most 20),
+    and a refusal where hard links are unsupported. Never `rename`.
+  - `sharePartPath`: `.<offerId>.sidekick-share.part`.
+  - ~~`sweepShareLeftovers`: regular share partials and empty link-probe files, by name.~~ **Removed
+    in the review below: a name is not proof of ownership.** Replaced by the ownership ledger
+    (`shareLedger.ts`).
+- `bulk.ts` → `pullShareWith` / `BulkClient.pullShare`, **a new path beside `pull`, which is
+  untouched**:
+  - the owned partial is created exclusively, and anything non-regular at its name refuses the pull;
+  - the header asks for offset 0, and a 30 s idle timer runs;
+  - the length and SHA-256 must equal the offer's;
+  - publication goes only through `publishExclusive`;
+  - the own partial is deleted on every failure, and there is no `.failed` sidecar.
+- `share.ts` → `ShareReceiver`:
+  - Version 1 is unchanged.
+  - Version 2: the destination is checked at the offer, and the offer is then **held for a
+    decision** (Ask). `decide()` is the slice-4 card's entry point. The only non-human accept is the
+    development switch `shareAcceptProbe`, for `sidekick-offer-probe-<n>.bin` /
+    `application/octet-stream` only.
+  - At Accept the destination is re-checked, failing closed; then `share.respond accept`; then the
+    token must be unchanged; then `fs.transfer.begin`, whose ack must match the offer (a `ts-` id,
+    offset 0, size, digest) or the Mac cancels.
+  - Then the pull, and `share.saved`. `ok:true` goes only after a verified, published file, and an
+    unacknowledged verdict is recorded as `saved-unacknowledged`, not as confirmed.
+  - Retry from byte 0 within `min(+5 min, expiry)`. A phone cancel or session end aborts a live pull.
+- `shareNames.ts` (shared): the Mac's sanitiser, tested against `docs/fixtures/share-names.json`,
+  the same cases the phone reads (plan G7).
+- `main.ts`:
+  - Wiring, with `shareAcceptProbe`, `shareDevReceive` and `shareSilent` **forced off when
+    `app.isPackaged`**.
+  - The dev folder `<userData>/dev-share-receive/` is used, and created, only when `shareDevReceive`
+    is on. It was not created here.
+  - The startup sweep reads **only the ledger**; it lists no folder at all (see the review below).
+- `SHARE_SAVED` in `protocol.ts`; `share.saved` leaves `check-protocol-spec`'s phone-only list.
+
+**Automated, as first written** (superseded by the review below): Mac 1025/1025. New:
+- `shareDestination.test.ts` (13, on real temp folders): space, each no-hard-link code, every
+  inconclusive case failing closed, an uncleanable probe named, publish as `(2)` beside an existing
+  file, **the final-name race** (a file created after the name was chosen survives and the share
+  lands as `(2)`), a refused link overwriting nothing, 20 names exhausted, and the startup sweep.
+  The sweep leaves `IMG.jpg.part`, `IMG.jpg`, a non-empty probe-named file, a symlink named like a
+  share part (its target outside the folder survives) and a directory named like one; it deletes the
+  three owned files; and a missing folder is not created.
+- `bulkShare.test.ts` (11, over a **real local TCP socket** to a fake phone that speaks the bulk
+  framing):
+  - 100 KB (the header seen is `{transferId, offset: 0}`, with the session token), zero bytes, and
+    5 MB;
+  - truncation, over-send, corruption (no sidecar), a stall bounded by the idle timer, cancel, and
+    publication refused;
+  - an unrelated `.part` and a person's file untouched by a failing pull;
+  - ~~a stale own partial replaced~~ (**wrong, and removed in the review**: it deleted a file because
+    of its name), and a symlink at the partial's name refused without following it.
+- `share.test.ts` (20, the receiver **wired as `main.ts` wires it**: the real destination check,
+  exclusive publish and socket pull; only the control link is a double):
+  - the version-1 gate, not-negotiated, and `shareSilent`;
+  - Ask: an ordinary offer is never auto-accepted even with the switch on, and a probe offer is not
+    accepted with the switch off; only the probe name and MIME count as a probe;
+  - end to end (`respond:accept → fs.transfer.begin → saved:true`, the file byte-identical, nothing
+    else in the folder), a person's accept, a person's decline, and the Mac re-sanitising a name;
+  - destination failures at the offer, the re-check failing closed at Accept, and a throwing check;
+  - a pull ack that disagrees with the offer, and the session changing after accept;
+  - corruption and then Retry from byte 0 with a fresh id, then saved; Retry after the window;
+    `saved-unacknowledged`; a phone cancel mid-pull; a replay; and an expiry counted once.
+- `shareNames.test.ts` (3, including the shared fixture).
+
+Every socket-driven test has a 10 s timeout, so a mutation that removes the idle timer shows up as a
+red test rather than a hang.
+
+**What the tests do not reach:** TLS (plain TCP stands in for it); `main.ts`'s wiring lines
+themselves (the receiver is constructed the same way in the tests, but the file is not loaded); the
+real phone; and an exFAT or network destination (hard-link refusal is injected, not produced by a
+real filesystem). All of that is 3e, with the scratch folder, on the owner's approval.
+
+### Slice 3d — the owner's review before commit (2026-09-24)
+
+Four checks were asked for before committing, and three found real gaps.
+
+**The mutation run was stopped, and its restoration verified.** The first run hung at D5 (the idle
+timer removed): the stall test's 10 s timeout failed the test, but the fake phone's open socket kept
+the test process alive, so the run could never report. A `kill` of the hung test processes was
+refused by the tool classifier. The background task was stopped with the harness's own `TaskStop`,
+which left D5 applied; that one line was restored by hand. All twelve mutations' original lines were
+then confirmed present, with no mutated line left. (D5's and D11's mutated text also occurs in
+legitimate code, once each; exact counts confirmed 1 and 1.) **Fix for the hang:** the socket tests
+now have a 4 s watchdog that closes the fake phone, so a missing idle timer ends as a red
+`truncated` rather than a silent hang.
+
+**1. Ownership: a name is not proof.** Two places deleted by name:
+- `pullShareWith` unlinked an existing regular file at its partial path;
+- `sweepShareLeftovers` deleted by name pattern, and its test asserted that as correct.
+
+Both are gone:
+- **Partial names carry a fresh 128-bit nonce per attempt**
+  (`.<offerId>.<nonce>.sidekick-share.part`), and anything already at the path, a regular file
+  included, **refuses the pull and is left untouched**.
+- **A private ownership ledger** (`shareLedger.ts`, a JSON file in the app's own data folder)
+  records each temporary file (partials and destination-probe files) *before* it is created, then
+  its **device and inode** after an exclusive create.
+- The startup sweep reads **only the ledger** and deletes only a regular file whose device and
+  inode still match. An entry with no identity (a crash before creation), a replaced file, a
+  symlink or a folder is forgotten and nothing is deleted. It lists no folder, so a lookalike name
+  is invisible to it.
+- Tests: the requested one (an unrelated regular file at the candidate partial path is refused,
+  and is **byte-identical after the pull and after the startup sweep**), a lookalike never recorded,
+  a replaced inode, a symlink, an identity-less entry, and a probe left behind recoverably and then
+  swept.
+
+**2. Writing and completion.** Gaps found:
+- **write errors were unhandled** (an `'error'` event on the write stream with no listener);
+- **the socket was never paused on backpressure**;
+- **nothing checked that the disk held what arrived**;
+- **nothing re-checked a cancel between the flush and the publication**.
+
+Now `complete()` does these in order, and nothing is published until all pass:
+- awaits the flush, and a write error there is `write-failed`;
+- `stat`s the partial, and its on-disk length must equal the bytes received;
+- then the length against the offer, then the SHA-256;
+- then **checks for a cancel**;
+- then publishes exclusively.
+
+Backpressure pauses the socket, and the idle timer is suspended during our own pause.
+- **The close racing completion:** `complete()` claims `settled` before its first `await`, so the
+  last frame and the close cannot both complete. A close with every byte completes (the zero-byte
+  path); a close short of it is `truncated`.
+- **A cancel racing publication:** before `complete()` claims the pull, the abort wins (`cancelled`,
+  nothing published). While it flushes or verifies, the pre-publication check stops it. During
+  publication, the link cannot be undone, so the receiver records **`saved-unacknowledged`** and
+  sends **no** `share.saved` for an offer the phone cancelled.
+- Tests: backpressure through a slow 1 KB-buffered writer (exact file, and no false idle stall),
+  a write error (`write-failed`, nothing published, no crash), bytes lost between socket and disk
+  (caught by the on-disk length, never published), a cancel racing the last byte, a cancel during
+  a slow flush, a cancel during publication (pull level and receiver level), and zero bytes.
+
+**3. The debug accept gate: name and MIME were not enough.** Both are chosen by the sender, so any
+phone could have shared a file named `sidekick-offer-probe-100000.bin`. `isAcceptableProbe` now
+requires the offer's **SHA-256 to be on an allowlist the tester supplies**
+(`CONNECTSUITE_SHARE_ACCEPT_SHA256`, read only in a development build with `shareAcceptProbe` on),
+as well as the name and MIME. The probe's bytes are seeded, so their digest is known in advance. An
+ordinary file can pass only by being byte-identical to a known synthetic probe, and then only those
+known bytes are saved. An empty list accepts nothing. Tests: a sender with the probe name and MIME
+but an unlisted digest is held, not accepted; the switch on with an empty list accepts nothing; and
+each of the three conditions is necessary.
+
+**4. Unchanged:** both ends advertise `share.file: 1`; no dev folder was created; nothing was
+launched, installed or run on a device.
+
+**Final readings (same sitting).** Mac **1040/1040**, green on three consecutive full runs of the
+final tree, each written by its own run; `tsc` clean; every guard passes. **Seventeen mutations,
+every one red on fresh results.** Each file was restored and confirmed byte-identical to a copy saved
+before the run:
+- D1 publish by rename-over
+- D2, D3 a refused or inconclusive link probe counted as support
+- D4 digest unchecked
+- D5 no idle timer, now red, not a hang
+- D6 a failed pull keeping its partial
+- D7 version 1 allowed to transfer
+- D8 the probe gate ignoring the digest allowlist
+- D9 no re-check at Accept
+- D10 a pull ack trusted without comparing it to the offer
+- D11 an unacknowledged verdict recorded as saved
+- D12 the ledger sweep deleting without an identity match
+- D13 the pull deleting a pre-existing file at its partial path
+- D14 the write-error listener deleted
+- D15 no on-disk length check
+- D16 no cancel check before publication
+- D17 a cancel during publication reported as a normal save
+
+**Two faults in this sitting's own tests, both found by mutation:**
+- **The flush-window cancel test was flaky.** A 5 ms abort raced a 3 ms flush, so it went red
+  under six unrelated mutations and left D16 unproven. It now holds the flush open for a fixed
+  300 ms and aborts 40 ms after the last byte: green 10/10 unmutated, and D16 red 3/3 on exactly
+  that test.
+- **The write-error test never reached a write**, twice over. First, its writer created no file,
+  so the pull failed at the ledger's identity step. Then, once it did write, all 100 KB arrived in
+  one socket read, so `complete()` attached its own error listener in the same tick and hid a
+  deleted listener. Node crashes on an unhandled stream `'error'` (checked directly: "Unhandled
+  'error' event", exit 1), so a deleted listener would have taken down the Mac process on any
+  multi-read transfer. The test now creates the file exclusively and sends 10 KB frames across
+  ticks, and D14 is red.
+
+**Unresolved, and stated rather than implied:**
+- TLS and the real phone are not in these tests (plain TCP stands in).
+- The ledger's device and inode check cannot tell a file this app created from one another process
+  swaps in with the *same* inode on the same device: inode reuse needs our file gone first, and
+  then the sweep would delete a stranger's file that took its inode. The window is a crash, then
+  the file deleted by someone else, then a new file created at the exact nonce path and landing on
+  the same inode. Recorded, not closed. The mitigations are the nonce path and the regular-file
+  check.
+- A receive folder that is a symlink to elsewhere is followed by design: it is the folder the person
+  chose.
+- `main.ts`'s wiring lines are not loaded by any test.

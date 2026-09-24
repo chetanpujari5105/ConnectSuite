@@ -312,6 +312,11 @@ export const MessageType = {
   SHARE_RESPOND: 'share.respond',
   /** Event phone → Mac (`user` / `expired` / `staging-lost`); request Mac → phone (`user`). */
   SHARE_CANCEL: 'share.cancel',
+  /**
+   * Request, Mac → phone, version 2: the receiver's verdict — sent `ok:true` only after a verified,
+   * exclusively published file. Built in slice 3d; unreachable live while both ends advertise 1.
+   */
+  SHARE_SAVED: 'share.saved',
 } as const;
 
 export const ErrorCode = {

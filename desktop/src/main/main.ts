@@ -92,6 +92,8 @@ import { initLogger, log, tailLog } from './logger';
 import { KeyframeTrace } from '../shared/keyframeTrace';
 import { debugSwitches } from './debugSwitches';
 import { ShareReceiver } from './share';
+import { checkDestination, publishExclusive, realFs } from './shareDestination';
+import { FileShareLedger, ledgerFile, sweepLedger } from './shareLedger';
 import { settingsMigration, store } from './store';
 import {
   clearRePairPending,
@@ -935,11 +937,65 @@ app.whenReady().then(() => {
   video = new VideoClient(identity);
   bulk = new BulkClient(identity);
 
-  // Feature A, slice 2 (docs/protocol.md → Share): validate every share.offer and decline it with
-  // the `not-available` stub. No card, no Accept, nothing saved. `shareSilent` (development builds
-  // only) holds a valid offer unanswered so the phone's expiry can be watched.
-  const shareReceiver = new ShareReceiver(link, !app.isPackaged && debugSwitches().shareSilent);
+  // Feature A (docs/protocol.md → Share). Version 1 — every live pairing, because both ends advertise
+  // share.file 1 — validates each offer and declines it `not-available`. Version 2 (slice 3d) is wired
+  // but unreachable live: it holds an offer for a person's decision (Ask; the card is slice 4).
+  // The development switches are forced OFF in a packaged build, here, whatever the environment says.
+  const devSwitches = app.isPackaged
+    ? { silent: false, acceptProbe: false, devReceive: false }
+    : {
+        silent: debugSwitches().shareSilent,
+        acceptProbe: debugSwitches().shareAcceptProbe,
+        devReceive: debugSwitches().shareDevReceive,
+      };
+  // The digests the development accept switch may accept: 64-hex SHA-256s of synthetic probe bytes,
+  // supplied by the tester. Read only when the switch is on in a development build; otherwise empty,
+  // and an empty list accepts nothing.
+  const acceptProbeDigests = new Set<string>(
+    devSwitches.acceptProbe
+      ? (process.env.CONNECTSUITE_SHARE_ACCEPT_SHA256 ?? '').split(',').map((d) => d.trim()).filter((d) => /^[0-9a-f]{64}$/.test(d))
+      : [],
+  );
+  if (devSwitches.acceptProbe) {
+    log.warn('share', `shareAcceptProbe: ${acceptProbeDigests.size} synthetic probe digest(s) may be accepted; nothing else can be`);
+  }
+  // The private ownership record for share temporary files, in this app's own data folder.
+  const shareLedger = new FileShareLedger(ledgerFile(app.getPath('userData')));
+  const liveLink = link;
+  const liveBulk = bulk;
+  const shareReceiver = new ShareReceiver({
+    link: liveLink,
+    receiveFolder: async () => {
+      if (devSwitches.devReceive) {
+        // Development only: the scratch folder, never the configured receive folder or Downloads.
+        // Created here, at the first share that uses it, and nowhere else.
+        const dev = join(app.getPath('userData'), 'dev-share-receive');
+        await fsp.mkdir(dev, { recursive: true });
+        return { ok: true as const, folder: dev };
+      }
+      const ready = await ensureReceiveFolder();
+      return ready.ok ? { ok: true as const, folder: ready.folder } : { ok: false as const, reason: ready.reason };
+    },
+    checkDestination: (folder, size) => checkDestination(folder, size, realFs, shareLedger),
+    pull: (options) => {
+      const host = liveLink.status().address;
+      if (!host) return Promise.resolve({ ok: false as const, reason: 'interrupted' as const, detail: 'no phone address', bytes: 0 });
+      return liveBulk.pullShare({ ...options, host });
+    },
+    publish: (part, folder, name) => publishExclusive(part, folder, name),
+    ledger: shareLedger,
+    switches: { silent: devSwitches.silent, acceptProbeDigests },
+  });
   let shareSessionKey: string | null = null;
+
+  // Startup sweep of share temporary files: ONLY what the private ledger recorded this app creating,
+  // and only where the file's device and inode still match. It lists no folder, so it can never find
+  // — or delete — anything by its name.
+  void sweepLedger(shareLedger).then((r) => {
+    if (r.deleted > 0 || r.forgotten > 0) {
+      log.info('share', `startup ledger sweep: deleted ${r.deleted} recorded temporary file(s), forgot ${r.forgotten} entr(ies) without deleting`);
+    }
+  });
 
   /*
    * The detached mirror window.
@@ -1320,7 +1376,7 @@ app.whenReady().then(() => {
   link.on('message', (envelope: unknown) => {
     const message = envelope as { type?: string; payload?: Record<string, unknown> };
     // Feature A, slice 2. Handled first and by type only: the receiver validates the payload itself.
-    if (message?.type === MessageType.SHARE_OFFER) shareReceiver.onOffer(message.payload);
+    if (message?.type === MessageType.SHARE_OFFER) void shareReceiver.onOffer(message.payload);
     if (message?.type === MessageType.SHARE_CANCEL) shareReceiver.onCancel(message.payload);
     // Phase 4 events. The phone pushes these; nothing here ever requests them, which is why they
     // are handled beside the mirror's events rather than inside a client that owns a request.

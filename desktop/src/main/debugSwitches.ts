@@ -97,6 +97,18 @@ export interface DebugSwitches {
    * the `not-available` stub, so an offer never lives long enough to expire. With this on, it does.
    */
   shareSilent: boolean;
+  /**
+   * Accept **synthetic probe offers only** — the debug `ShareOfferProbeActivity`'s
+   * `sidekick-offer-probe-<n>.bin`, `application/octet-stream` — once the destination checks pass.
+   * Feature A slice 3d, for slice 3e. It never accepts an ordinary share-sheet offer, whatever this
+   * says, and `main.ts` forces it off in a packaged build. There is no production auto-accept.
+   */
+  shareAcceptProbe: boolean;
+  /**
+   * Receive shares into the development scratch folder (`<userData>/dev-share-receive/`) instead of
+   * the configured receive folder, which is left untouched. Forced off in a packaged build.
+   */
+  shareDevReceive: boolean;
 }
 
 const NAMES: readonly (keyof DebugSwitches)[] = [
@@ -108,6 +120,8 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'delayFloatListeners',
   'shareOmitExt',
   'shareSilent',
+  'shareAcceptProbe',
+  'shareDevReceive',
 ];
 
 function read(): DebugSwitches {
@@ -120,6 +134,8 @@ function read(): DebugSwitches {
     delayFloatListeners: false,
     shareOmitExt: false,
     shareSilent: false,
+    shareAcceptProbe: false,
+    shareDevReceive: false,
   };
   // `app.isPackaged` is not consulted here because this module must stay importable by tests with
   // no Electron present; main.ts guards the startup read instead.

@@ -117,7 +117,7 @@ Apps: `apps.list`, `apps.icon`, `apps.open.ask` — see [Apps](#apps-42501). The
 Media remote: `remote.state`, `remote.command`, `remote.artwork`
 Microphone: `mic.start`, `mic.stop`, `mic.state` — see [Microphone](#microphone-42501-with-audio-on-42504)
 Share: `share.offer`, `share.respond`, `share.cancel`, `share.saved` — see [Share](#share-42501);
-`share.saved` belongs to version 2, handled by the phone and not yet sent by any Mac
+`share.saved` belongs to version 2, built on both sides and unreachable while both advertise 1
 Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`, `pair.rejected`
 System: `ping`, `pong`, `capabilities.changed`, `battery.state`, `storage.state`, `net.state`
 
@@ -2577,11 +2577,23 @@ An offer does not survive its session: on a disconnect both sides drop it withou
 
 ### Version 2 — the transfer (specified, not implemented)
 
-Everything in this section applies only when `share.file` is negotiated at **2**. **The phone's half
-is built (slice 3c) and the Mac's is not (3d)**, so no end advertises 2 yet: the phone advertises
+Everything in this section applies only when `share.file` is negotiated at **2**. **Both halves are
+built (the phone in slice 3c, the Mac in 3d) and neither is advertised**: both ends still advertise
 `share.file: 1`, the negotiated version is `min(mine, theirs)`, and so in any live pairing the phone
-refuses `accept` and authorises no pull. The phone raises its advertised version in the commit that
-lands the Mac half. It was written from a read of the committed code (the slice 3 review), and three of
+refuses `accept`, the Mac declines every offer `not-available`, and no pull is authorised. The
+version-2 code has run only in automated tests (the Mac's against a fake phone on a local socket).
+Both ends raise their advertised version only after the synthetic end-to-end run (slice 3e) has been
+approved and passed.
+
+**Ask by default, on the Mac.** A valid version-2 offer is held for a person's decision; nothing
+accepts an ordinary offer. The one non-human accept is the development switch `shareAcceptProbe`. It
+accepts an offer only if its **SHA-256 is on an allowlist the tester supplies**
+(`CONNECTSUITE_SHARE_ACCEPT_SHA256`, the digests of the probe's seeded synthetic bytes) **and** it
+carries the probe's name (`sidekick-offer-probe-<n>.bin`) and type (`application/octet-stream`). The
+name and type are chosen by the sender and prove nothing on their own. An empty list accepts nothing.
+The switch defaults off and is forced off in a packaged build. For synthetic tests the development switch
+`shareDevReceive` receives into `<userData>/dev-share-receive/` instead of the configured folder; it
+too is forced off in a packaged build. It was written from a read of the committed code (the slice 3 review), and three of
 that review's findings are facts about the *existing* bulk path that this contract must not inherit
 (F1, F3, F4 below).
 
@@ -2671,9 +2683,27 @@ existing Files and Photos pulls publish with `rename`, which replaces a file tha
 name was chosen (review F3; defect 150). Share does not.
 
 On any failure the Mac deletes its partial. **Share writes no `.failed` sidecar** (review F5); the
-failure is reported in `share.saved` and on the Mac's own screen. At startup the Mac deletes partials
-that match `.<offerId>.sidekick-share.part` exactly, are regular files (never a symlink) and sit
-directly in the receive folder; anything else there is never touched.
+failure is reported in `share.saved` and on the Mac's own screen.
+
+**A file name is never proof of ownership.** Each attempt's partial is
+`.<offerId>.<nonce>.sidekick-share.part`, with a fresh 128-bit nonce, and it is created exclusively:
+if **anything** already exists at that path, the pull is refused and that file is left untouched. The
+Mac keeps a private **ownership ledger** in its own data folder, which records each temporary file it
+creates (partials and destination-probe files) before creation, and then the file's device and
+inode. The startup sweep lists no folder: for each ledger entry, it deletes the file only if it is a
+regular file whose device and inode still match, and otherwise deletes nothing and forgets the entry.
+A lookalike name, a replaced file, a symlink or a folder is never deleted.
+
+**Nothing is saved before it is on disk and checked.** The partial is flushed (a write error is a
+failed save), its on-disk length must equal the bytes received, the length must equal the offer's
+size, the SHA-256 must equal the offer's digest, and a cancel that arrived while flushing or
+verifying stops it — all before the exclusive publication. A cancel that arrives *during* publication
+cannot unpublish the file: the Mac records it as saved but unacknowledged and sends no verdict for an
+offer the phone has cancelled.
+
+If the phone does not acknowledge a `share.saved {ok:true}`, the file is still on the Mac, verified and
+published; the Mac records the offer as saved **but unacknowledged** and does not present it as
+confirmed by the phone.
 
 #### `share.saved` — request, Mac → phone
 

@@ -133,10 +133,6 @@ export const TWIN_EXEMPT = {
   'mirror.screenoff':
     'Not implemented anywhere. The phone keeps the constant so MirrorContractTest can assert it is ' +
     'never registered; the Mac has no such test and no reason to name it.',
-  'share.saved':
-    'Feature A version 2. The phone handles it from slice 3c; the Mac half that sends it is owed by ' +
-    'slice 3d, a separate approval. The phone advertises share.file 1 until then, so no Mac can be ' +
-    'asked for it. Remove this entry in the commit that adds SHARE_SAVED to desktop/src/shared/protocol.ts.',
 };
 
 /** Types deliberately absent from the document's own inventory list, with the reason it gives. */

@@ -1,5 +1,9 @@
+import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, promises as fs } from 'node:fs';
+import type { Duplex, Writable } from 'node:stream';
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
+import type { PublishResult } from './shareDestination';
+import { recordCreatedFrom, type ShareLedger } from './shareLedger';
 import { CANDIDATE_TIMEOUT_MS } from './discovery';
 import { FrameReader, writeFrame } from './framing';
 import type { Identity } from './identity';
@@ -54,6 +58,28 @@ export interface BulkResult {
 
 export class BulkClient {
   constructor(private readonly identity: Identity) {}
+
+  /** A share pull over TLS to the phone's bulk port. See [pullShareWith] for every rule it holds. */
+  pullShare(options: Parameters<typeof pullShareWith>[0] & { host: string }): Promise<SharePullResult> {
+    return pullShareWith(options, () => {
+      const socket = tlsConnect({
+        host: options.host,
+        port: PORT_BULK,
+        cert: this.identity.certPem,
+        key: this.identity.keyPem,
+        minVersion: 'TLSv1.3',
+        // Same as `pull`: pinning is the control channel's; there is no CA in this system.
+        rejectUnauthorized: false,
+        timeout: CANDIDATE_TIMEOUT_MS,
+      });
+      socket.setTimeout(CANDIDATE_TIMEOUT_MS, () => socket.destroy(new Error('the phone did not answer on the file port')));
+      socket.once('secureConnect', () => {
+        socket.setTimeout(0);
+        socket.setNoDelay(true);
+      });
+      return { socket, readyEvent: 'secureConnect' };
+    });
+  }
 
   private transfers = 0;
   private bytesMoved = 0;
@@ -502,6 +528,238 @@ export class BulkClient {
     });
   }
 }
+
+/** How a share pull ended. `reason` values are docs/protocol.md → `share.saved` reasons, plus `cancelled`. */
+export type SharePullResult =
+  | { ok: true; savedAs: string; path: string; bytes: number; sha256: string }
+  | {
+      ok: false;
+      reason: 'truncated' | 'checksum' | 'interrupted' | 'write-failed' | 'unsupported-destination' | 'cancelled';
+      detail: string;
+      bytes: number;
+    };
+
+/** A connected stream to the phone's bulk port. Injectable so tests can serve it from a local socket. */
+export interface ShareConnection {
+  socket: Duplex & { destroy(error?: Error): void };
+  /** The event after which the socket may be written: `secureConnect` for TLS, `connect` for TCP. */
+  readyEvent: string;
+}
+
+/**
+ * **The share pull (docs/protocol.md → Share → Version 2), separate from [BulkClient.pull] so Files
+ * and Photos keep exactly their behaviour** — resume, the kept `.part`, the `.failed` sidecar and
+ * `rename` (defects 150, 151 are theirs and are not touched here).
+ *
+ * What differs, and why each is a rule of the share contract:
+ * - the partial is [part], carrying a fresh per-attempt nonce, recorded in the ownership ledger
+ *   before it exists and created exclusively. **Anything already at that path refuses the pull and is
+ *   left untouched** — a matching name is not proof of ownership, so nothing here deletes a file it
+ *   did not create in this attempt;
+ * - offset is always 0 — there is no resume;
+ * - an **idle timer** ([idleTimeoutMs], reset on every chunk) ends a stalled pull as `interrupted`;
+ * - the length must equal the offer's size and the SHA-256 must equal the offer's digest;
+ * - it is saved **only** through [publish] (the exclusive hard-link publication) and never renamed;
+ * - on **every** failure — length, digest, stall, socket error, cancel, publish — its own partial is
+ *   deleted, and no sidecar is written.
+ */
+async function pullShareWith(
+  options: {
+    token: string;
+    transferId: string;
+    /** A fresh `sharePartPath(folder, offerId, newPartNonce())` for this attempt. */
+    part: string;
+    expectedBytes: number;
+    expectedSha256: string;
+    idleTimeoutMs: number;
+    publish: (part: string) => Promise<PublishResult>;
+    signal?: AbortSignal;
+    /** The private ownership record. Null only in tests that do not exercise the sweep. */
+    ledger?: ShareLedger | null;
+    /** Test seam: how the partial is opened. Default: `createWriteStream(part, { flags: 'wx' })`. */
+    openPart?: (path: string) => Writable;
+  },
+  open: () => ShareConnection,
+): Promise<SharePullResult> {
+  const { token, transferId, part, expectedBytes, expectedSha256, idleTimeoutMs } = options;
+  const ledger = options.ledger ?? null;
+  // **A name is not ownership.** Anything already at this path — a regular file included — is not
+  // ours: refuse, and never delete it. (The name carries a fresh 128-bit nonce, so this is a lookalike
+  // or an attack, never an earlier attempt of ours.)
+  const existing = await fs.lstat(part).catch(() => null);
+  if (existing) {
+    return { ok: false, reason: 'write-failed', detail: 'something already exists at the partial path; it was left untouched', bytes: 0 };
+  }
+
+  return new Promise<SharePullResult>((resolve) => {
+    let settled = false;
+    let received = 0;
+    let created = false;
+    let idle: ReturnType<typeof setTimeout> | null = null;
+    const digest = createHash('sha256');
+    const tally = new FrameTally('bulk');
+    let file: Writable | null = null;
+    let socket: ShareConnection['socket'] | null = null;
+
+    const stopIdle = (): void => {
+      if (idle) clearTimeout(idle);
+      idle = null;
+    };
+    const armIdle = (): void => {
+      stopIdle();
+      idle = setTimeout(() => fail('interrupted', `no bytes for ${idleTimeoutMs} ms`), idleTimeoutMs);
+    };
+    /** Resolves when every byte is flushed; rejects on a write error — never resolves early. */
+    const closeFile = (): Promise<void> =>
+      new Promise<void>((done, reject) => {
+        const f = file;
+        if (!f || f.writableFinished || f.destroyed) return done();
+        f.once('error', reject);
+        f.end(() => done());
+      });
+    /** Deletes the partial only if THIS attempt created it, and drops it from the ledger. */
+    const discardOwn = async (): Promise<void> => {
+      if (created) await fs.unlink(part).catch(() => undefined);
+      await ledger?.forget(part).catch(() => undefined);
+    };
+
+    const fail = (reason: Exclude<SharePullResult, { ok: true }>['reason'], detail: string): void => {
+      if (settled) return;
+      settled = true;
+      stopIdle();
+      socket?.destroy();
+      options.signal?.removeEventListener('abort', onAbort);
+      void closeFile()
+        .catch(() => undefined)
+        .then(() => discardOwn())
+        .then(() => {
+          log.warn('bulk', `share ${transferId} failed (${reason}: ${detail}) after ${received} of ${expectedBytes} bytes; its own partial was deleted`);
+          resolve({ ok: false, reason, detail, bytes: received });
+        });
+    };
+    const onAbort = (): void => fail('cancelled', 'cancelled');
+
+    const complete = async (): Promise<void> => {
+      if (settled) return;
+      settled = true;
+      stopIdle();
+      socket?.destroy();
+      const settle = async (reason: Exclude<SharePullResult, { ok: true }>['reason'], detail: string): Promise<void> => {
+        options.signal?.removeEventListener('abort', onAbort);
+        await discardOwn();
+        log.warn('bulk', `share ${transferId} ${reason}: ${detail}; its own partial was deleted, no sidecar`);
+        resolve({ ok: false, reason, detail, bytes: received });
+      };
+      // 1. Every byte flushed to disk — a write error here is a failed save, not a saved file.
+      try {
+        await closeFile();
+      } catch (error) {
+        return settle('write-failed', `writing the partial failed: ${(error as Error).message}`);
+      }
+      // 2. What is on disk is what arrived.
+      const onDisk = await fs.stat(part).then((st) => st.size, () => -1);
+      if (onDisk !== received) return settle('write-failed', `${onDisk} bytes on disk for ${received} received`);
+      // 3. What arrived is what was offered.
+      if (received !== expectedBytes) return settle('truncated', `received ${received} of ${expectedBytes}`);
+      const sha256 = digest.digest('hex');
+      if (sha256 !== expectedSha256) return settle('checksum', `expected ${expectedSha256.slice(0, 12)}… got ${sha256.slice(0, 12)}…`);
+      // 4. Cancelled while flushing or verifying: nothing is published.
+      if (options.signal?.aborted) return settle('cancelled', 'cancelled before publication');
+      options.signal?.removeEventListener('abort', onAbort);
+      // 5. Exclusive publication — the only way a partial becomes a file.
+      const published = await options.publish(part).catch((error: Error) => ({ ok: false as const, reason: 'write-failed' as const, detail: error.message }));
+      if (!published.ok) return settle(published.reason, published.detail);
+      // Published: the partial name was unlinked by the publisher; if it could not be, the ledger keeps
+      // it (identity-matched) for the startup sweep rather than deleting a published file's second name.
+      const leftover = await fs.lstat(part).then(() => true, () => false);
+      if (!leftover) await ledger?.forget(part).catch(() => undefined);
+      log.info('bulk', `share ${transferId} received ${received} bytes, flushed, verified, published exclusively as ${published.savedAs}`);
+      resolve({ ok: true, savedAs: published.savedAs, path: published.path, bytes: received, sha256 });
+    };
+
+    const begin = async (): Promise<void> => {
+      // Recorded before it exists, created exclusively, identified after — see shareLedger.ts.
+      try {
+        await ledger?.recordIntent(part);
+      } catch (error) {
+        return fail('write-failed', `the ownership record could not be written: ${(error as Error).message}`);
+      }
+      const out = options.openPart ? options.openPart(part) : createWriteStream(part, { flags: 'wx' });
+      file = out;
+      out.on('error', (error: Error) => fail('write-failed', `the partial could not be written: ${error.message}`));
+      const opened = await new Promise<boolean>((ok) => {
+        if (options.openPart) return ok(true);
+        out.once('open', () => ok(true));
+        out.once('error', () => ok(false));
+      });
+      if (!opened || settled) return;
+      created = true;
+      if (ledger) {
+        try {
+          await recordCreatedFrom(ledger, part);
+        } catch (error) {
+          return fail('write-failed', `the partial's identity could not be recorded: ${(error as Error).message}`);
+        }
+      }
+      if (options.signal?.aborted) return fail('cancelled', 'cancelled before it began');
+      options.signal?.addEventListener('abort', onAbort);
+
+      const conn = open();
+      socket = conn.socket;
+      const reader = new FrameReader(
+        (frame) => {
+          if (settled) return;
+          armIdle();
+          received += frame.length;
+          if (received > expectedBytes) {
+            fail('truncated', `the phone sent more than the ${expectedBytes} bytes offered`);
+            return;
+          }
+          digest.update(frame);
+          if (!out.write(frame)) {
+            // Backpressure: stop reading until the disk catches up, and do not count our own pause
+            // as the phone going quiet.
+            conn.socket.pause();
+            stopIdle();
+            out.once('drain', () => {
+              if (settled) return;
+              conn.socket.resume();
+              armIdle();
+            });
+          }
+          if (received === expectedBytes && expectedBytes > 0) void complete();
+        },
+        (message) => {
+          log.error('bulk', `share ${transferId}: ${message}`);
+          fail('interrupted', 'the transfer desynchronised and was stopped');
+        },
+        MAX_BULK_HEADER_FRAME,
+        tally,
+        'Bulk header',
+      );
+      conn.socket.once('error', (error: Error) => fail('interrupted', error.message));
+      conn.socket.once(conn.readyEvent, () => {
+        writeFrame(conn.socket, Buffer.from(token, 'utf8'));
+        writeFrame(conn.socket, Buffer.from(JSON.stringify({ transferId, offset: 0 }), 'utf8'), MAX_BULK_HEADER_FRAME, tally, 'Bulk header');
+        reader.setMaxLength(MAX_BULK_FRAME, 'Bulk chunk');
+        armIdle();
+        log.info('bulk', `share ${transferId} claimed, offset 0, expecting ${expectedBytes} bytes`);
+      });
+      conn.socket.on('data', (chunk: Buffer) => reader.push(chunk));
+      conn.socket.on('close', () => {
+        if (settled) return;
+        // The close only completes a transfer that already has every byte (a zero-byte file, or the
+        // last frame racing the close); otherwise it is a truncation. `complete` claims `settled`
+        // before any await, so the last frame and the close cannot both complete it.
+        if (received === expectedBytes) void complete();
+        else fail('truncated', `the phone closed after ${received} of ${expectedBytes} bytes`);
+      });
+    };
+    void begin();
+  });
+}
+
+export { pullShareWith };
 
 function rateOf(bytes: number, elapsedMs: number): string {
   if (elapsedMs <= 0) return 'instant';
