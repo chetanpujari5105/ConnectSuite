@@ -23686,3 +23686,104 @@ deleted without asking.
 
 No build, install, device command, protocol change or `docs/protocol.md` change was made for this
 entry.
+
+## Feature A — private-staging proof on the SM-S938B (2026-09-24, 09:12–09:33)
+
+The debug-only staging proof, commit `b3eca15` (`ShareStaging`, `ShareStagingProbeActivity`,
+`ShareStagingSweepProvider`). It is not Feature A: no offer, no socket, no Mac, no protocol change.
+It copies one shared file into `cacheDir/share-staging/` while the receiving activity still holds the
+grant, hashing as it writes. `docs/phase-7-share-proposal.md` rev 2 §5.
+
+**Device and install.** The SM-S938B (`RZCY12330DT`), with every device write through
+`scripts/adb-pinned.sh samsung`. The Pixel 10 emulator was attached as well and was not touched. The
+built APK and the installed one had the same package id, the same `versionCode`/`versionName`, and
+the same signing certificate (SHA-256 `d3a505d2…7d26`, read from the installed `base.apk` with
+`apksigner`). After `install -r`, 28 of 28 runtime grants were intact, as were the
+notification-listener and accessibility bindings. `LinkService` was started again by name
+(`am start -n …/MainActivity`, no `-S`), and the Mac reconnected: 3 ports listening, 1 connection
+established on 42501. At the end the same state was measured again, with auto-rotate still `0`.
+
+**Stimuli: synthetic files only**, generated on the Mac and pushed, then left in place:
+
+| Path | Bytes | SHA-256 |
+|---|---|---|
+| `/sdcard/Pictures/SidekickShareTest/sidekick-share-test-image.png` | 230,778 | `1afc71b6e565b83262b3d50089f28e053eca14d3e351c4fe8b771590ff65c84c` |
+| `/sdcard/Documents/SidekickShareTest/sidekick-share-test-file.bin` | 100,000 | `b5f989fe09daf7ab2d2f5af458812cd7e417624d40325f6f3d0502c6bb2b6e4d` |
+
+The hashes were computed on the Mac before the push, and again on the phone after it. Gallery was
+opened on the image's own MediaStore row (`Filmstrip 1 of 1`), and My Files was opened on the folder
+itself (one row). No other media was listed or read.
+
+### Samsung Gallery — authority `media` (a MediaStore URI), provider size not reported
+
+| Stage | Result | Reading |
+|---|---|---|
+| Control read inside the activity | **pass** | the source re-read after the copy: `sourceRereadMatch=true` |
+| Copy, count and digest | **pass** | `staged bytes=230778`, the SHA-256 equals the Mac-side hash, `readBackMatch=true`; `run-as sha256sum` on the staged file gives the same digest |
+| Preflight with an unknown size | **pass** | `expected=unknown`, `limit=23673573003` (bounded by free space) |
+| Staged copy readable after Finish | **pass** | `after-finish +2000ms staged=ok bytes=230778 match=true`, activity records = 0 |
+| Source read fails after 32 KiB | **pass** | `SourceReadFailed`, `files left for this attempt: none` |
+| Simulated low space | **pass** | refused before any copy: needed 268,435,457 bytes, 134,217,728 free, `limit now 0` |
+| Cancel mid-copy | **pass** (third attempt) | control: a 36,864-byte `.part` existed mid-copy; `Cancelled(bytesWritten=40960)`, `filesLeft=none` |
+| Recreate mid-copy | **pass for the copy** | recreated 1.5 s into an 8.6 s copy; the copy completed with every digest matching |
+
+**The limit on the Gallery rows:** after Finish the source was **still readable** (`source=ok`). That
+is **confounded, not a finding about the grant.** Sidekick holds `READ_MEDIA_IMAGES`
+(`granted=true`, user 0) for the Photos feature, so it can open a `content://media/…` URI with no
+share grant at all. For the same reason, the successful re-open after recreation says nothing about
+whether the grant survives recreation. Gallery does not answer the grant-lifetime question on this
+phone unless that permission is revoked, and it was not.
+
+### Samsung My Files — authority `com.sec.android.app.myfiles.FileProvider`, size 100,000 reported
+
+| Stage | Result | Reading |
+|---|---|---|
+| Control read inside the activity | **pass** | `sourceRereadMatch=true` |
+| Copy, count and digest | **pass** | `staged bytes=100000`, the SHA-256 equals the Mac-side hash, `readBackMatch=true`; the same via `run-as sha256sum` |
+| Preflight with a known size | **pass** | `expected=100000`, `limit=23674574661` |
+| Staged copy readable after Finish | **pass** | `after-finish +2000ms staged=ok bytes=100000 match=true` **while the source failed**: `source=failed exception=java.lang.SecurityException` |
+| Source read fails after 32 KiB | **pass** | `SourceReadFailed`, nothing left for the attempt |
+| Simulated low space | **pass** | refused: needed 268,535,456 (= 100,000 + 256 MiB), 134,317,728 free |
+| Cancel mid-copy | **pass** | control: a 36,864-byte `.part`; `Cancelled(bytesWritten=45056)`, `filesLeft=none` |
+| Recreate mid-copy | **pass: the grant survived recreation** | `recreation=1 … reopen ok=true bytes=100000`, with the matching digest; the copy completed (`staged` 2.3 s later) |
+
+My Files is the source that separates the grant from Sidekick's own permissions: Sidekick has no other
+access to that provider. **Its source read after Finish failed with `SecurityException` while the
+staged copy read fine.** That is the rev 2 premise, seen on the Samsung. It is **one reading at
++2 s**, not the full §4 instrument (+1 s/+30 s/+120 s). The recreation re-open succeeding is a real
+reading that the grant survives an activity recreation on this phone.
+
+### What was not tested, stated rather than implied
+
+- **Physical rotation was not tested.** Auto-rotate is off on this phone (`accelerometer_rotation=0`)
+  and changing it was out of scope. Recreation was driven by the probe's Recreate button
+  (`Activity.recreate()`), which relaunches through the same path a configuration change uses.
+- **Process-death cleanup is JVM-tested only.** Killing Sidekick was out of scope, so
+  `ShareStagingSweepProvider`'s startup sweep never ran on the device against a real orphan. The
+  sweep's rules are covered by `ShareStagingTest` (orphans, symlinks, a symlinked directory,
+  live/young/unrecognised entries) with seven mutations each red.
+- **Zero-byte and space-dropping-mid-copy are JVM-tested only.** There was no zero-byte synthetic
+  file on the phone, and the synthetic files are smaller than the 8 MiB re-check interval.
+
+### Instrument faults, recorded so the next run does not repeat them
+
+- **The first two Gallery cancel attempts held no reading.** `uiautomator dump` waits for the UI to go
+  idle, and the probe redraws every 150 ms during a slow copy, so the dump before the Cancel tap
+  blocked until the copy had finished (measured at **10.68 s** during a copy, against 2.3 s idle).
+  Cancel then arrived at a finished copy and correctly did nothing. The passing runs tapped Cancel at
+  bounds resolved from a dump taken just before Start, and a `.part` listed mid-copy is the control
+  showing the copy was running when Cancel landed.
+- **Swipes on Samsung's share sheet closed it**, and the later swipes paged the owner's home screen
+  (swipes only, no taps, nothing opened). The owner picked the target by hand once; after that,
+  Samsung listed a grouped **"Sidekick"** entry, whose sub-menu names both debug activities, so later
+  picks were made by exact label.
+- **The probe's 10-minute expiry deleted the first staged Gallery copy** during the run
+  (`expired after 600000ms deletedFiles=2`, 09:28:01). That is the bounded-retention rule working as
+  designed; its log lines and `sha256sum` had already been captured.
+
+### `scripts/link-up.sh` is unsafe with two devices attached
+
+It calls `adb` without a serial. With the Samsung and the emulator both attached it failed with
+*"cannot read …'s uid (device offline, or not debuggable)"*. That is a false failure: the same three
+reads run through `scripts/adb-pinned.sh samsung` showed the link up. **Do not use it unqualified
+while two devices are attached.** The script is unchanged; fixing it is a separate task.
