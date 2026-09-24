@@ -23787,3 +23787,64 @@ It calls `adb` without a serial. With the Samsung and the emulator both attached
 *"cannot read …'s uid (device offline, or not debuggable)"*. That is a false failure: the same three
 reads run through `scripts/adb-pinned.sh samsung` showed the link up. **Do not use it unqualified
 while two devices are attached.** The script is unchanged; fixing it is a separate task.
+
+## Feature A slice 1 — Send to Mac stages one file and sends nothing (2026-09-24, 09:56–09:59)
+
+Commit `912f0da`, `docs/phase-7-share-plan.md` slice 1. `ShareToMacActivity` takes one `ACTION_SEND`
+file and copies it into `cache/share-staging/` while it holds the grant. It sends nothing: Send is
+shown disabled, with the reason directly above it.
+
+**Automated.** Phone suite **662/662**, results written by this run (Gradle exit 0). New tests:
+`ShareManifestTest` (routing, read from the manifests themselves), `ShareToMacCopyTest` (every
+sentence; no sentence claims a send or a save), `ShareIntakeTest` (one per refusal), and
+`ShareNamesTest` (reads `docs/fixtures/share-names.json`). `ShareStagingTest` moved with the code and
+gained the `stagingDir` symlink refusal. Nine mutations: eight red on fresh results. The ninth (only
+the explicit symlink check removed) stays green by design, because the no-follow `isDirectory` check
+refuses the same case; removing both goes red. Mutation also showed that a manifest-only edit re-ran
+nothing and kept the old green, so `app/build.gradle.kts` now declares both manifests as test inputs.
+
+**SM-S938B, pinned, synthetic files only.** Same signer (`d3a505d2…7d26`) and package; after
+`install -r`, 28/28 grants, the notification listener and accessibility intact, auto-rotate still `0`;
+`LinkService` started by name, and the Mac reconnected (3 listening, 1 established).
+
+| Check | Reading |
+|---|---|
+| Routing, from `cmd package query-activities` | `SEND text/plain` → **`SendSelectionActivity` only**; `image/png`, `application/octet-stream`, `application/pdf`, `video/mp4` → `ShareToMacActivity` (the two debug probes also take the two synthetic types); `SEND_MULTIPLE image/png` → none of ours. Control: 146 resolver rows in the same query |
+| Startup sweep | `startup staging sweep deleted=0 … leftUnrecognised=0` at 09:56:49.554, one second after the install; the folder was already empty |
+| **Samsung Gallery** → Send to Mac | **Staged.** *Ready on this phone*, 230,778 bytes; the staged SHA-256 equals the generated file's (`1afc71b6…`). The screen reads *"It has not been sent, and nothing is on your Mac"* and, with the Mac connected, *"Sending files to Chetans-MacBook-Pro isn’t available in this version of Sidekick yet."* Send is disabled |
+| Gallery: **Close** | activity records 0, **staging empty**, `discarded (closed): 2 file(s) deleted` |
+| **Samsung My Files** → Send to Mac | **Staged.** *Ready*, 100,000 bytes, SHA-256 equals the generated file's (`b5f989fe…`) |
+| My Files: **Home** | launcher resumed, activity records 0, **staging empty**, `discarded (left the screen): 2 file(s) deleted` |
+| Log content | lines carry the attempt id, byte count, `image/*` / `application/*`, and a `staged / failed` tally; no URI, name or path |
+
+**Not observed in production on the Samsung:**
+- **Cancel during copy.** The synthetic files stage faster than a tap can land, and production has no
+  fault injection. Covered by `ShareStagingTest` and, on this phone, by the debug probe (`b3eca15`).
+- **A source-read failure or no space in production.** The same coverage as cancel.
+- **The disconnected-Mac sentence.** The Mac stayed connected throughout, and the link was not
+  touched; covered by `ShareToMacCopyTest` and `ShareIntakeTest`.
+- **A real process death.** Per decision G15, Sidekick was not killed. The startup sweep ran only
+  against an empty folder, and its orphan behaviour stays JVM-tested.
+
+The two synthetic source files are unchanged and left in place.
+
+### Defect 147 — check-suites-run blocks non-commit commands while staged sources are stale
+
+The hook is registered `"if": "Bash(git commit *)"`. During slice 1 (2026-09-24, around 09:40–09:55),
+with the slice's `git mv` staged and the phone results older than it, the hook denied these commands.
+**None of them was a commit:**
+
+| Command shape | Outcome |
+|---|---|
+| `python3 - <<'EOF' … EOF` editing a source file | denied |
+| the same shape, a second time | denied |
+| `t0=$(date +%s) && ./gradlew -q testDebugUnitTest … ${pipestatus[1]} … python3 - <<EOF` | denied |
+| `t0=$(date +%s) && ./gradlew … ; python3 script.py $t0` (no heredoc) | denied |
+| `date +%s > file && JAVA_HOME=… ./gradlew -q testDebugUnitTest > out 2>&1; echo "gradle exit $?"` | **ran** |
+| `for c in …; do … $c …; done` with a stale/red result present | denied |
+
+Every denied command contained `$(…)`, `${…}`, a heredoc or a loop variable, and the plain one ran.
+That is a **correlation from about six sightings, not a reading of the harness**: how the `if`
+treats a command it cannot fully parse was not examined. The effect was a deadlock: the hook's own
+message asks for `./gradlew testDebugUnitTest`, and that command, written with substitutions, was
+itself denied. Open, and not fixed in slice 1 or 2 by instruction; fix direction in the register.

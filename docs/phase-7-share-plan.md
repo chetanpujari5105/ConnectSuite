@@ -37,6 +37,17 @@ resolution is in the slice named). **D** = needs your decision before that slice
 | G16 | **`scripts/link-up.sh` fails with two devices attached** | flag | Not in Feature A's scope. Slices 1 and 5 use the pinned reads recorded in `docs/testing.md` instead. A one-line fix is a separate task |
 | G17 | **A share while another is live.** The proposal refuses it | R | Kept. Slice 1 enforces it on the phone (one staging entry at a time). Slice 2's offer validation keeps it on the Mac (one live offer per session; a second one is declined `busy`), a reason added to the enum in slice 2 |
 
+### Decisions taken (2026-09-24, by the owner)
+
+These replace the **D** rows above. Where a row and this block differ, this block wins.
+
+| # | Decision |
+|---|---|
+| **G6** | **The offer card is shown inside the app window only, in v1.** No macOS notification, and no window-raising or dock bounce. An offer nobody saw **expires honestly**: the state and every sentence say *expired*, and nothing implies the user declined it |
+| **G11** | **A narrowly scoped `docs/protocol.md` edit is permitted with slice 2's separate approval**, and not in slice 1 |
+| **G12** | **Rebuilding and relaunching the development Mac app is permitted when an approved slice needs it**, provided pairing and trust are preserved. No reinstall and no reset of the packaged Mac app. Slice 1 needed none |
+| **G15** | **Sidekick is not killed or force-stopped on the Samsung.** Process-death cleanup stays JVM-tested for now; an emulator-only live test may be considered later. Slice 5 records this row as *not observed on hardware*, with the reason |
+
 ## Slice 1 — phone: production one-file intake, private staging, cleanup
 
 **Scope.** `ShareToMacActivity` receives `ACTION_SEND` with one `EXTRA_STREAM`, and stages the file
@@ -216,7 +227,11 @@ its reason. Nothing is released, packaged or pushed.
 
 ## Approvals needed, in order
 
-1. **Slice 1** (phone only).
-2. Decisions **G6** (offer visibility) and **G12** (dev Mac rebuild/relaunch) before slice 2, and
-   **G11** (`docs/protocol.md` edit) as part of approving it.
-3. Decision **G15** (process-death observation) before slice 5.
+1. **Slice 1**: approved and done, `912f0da` (evidence in `docs/testing.md` → *Feature A slice 1*).
+2. **G6, G11, G12, G15**: decided, see *Decisions taken* above.
+3. **Slice 2**: approved 2026-09-24, with conditions beyond this plan's slice-2 text. **Offers only
+   from a clearly marked debug trigger** with a synthetic staged file, never from an ordinary user
+   share. **The Mac returns an explicit "not available in this version" decline**, a protocol stub
+   rather than user approval, with no Accept card of any kind. **Send stays disabled**, and nothing
+   claims a send or a save.
+4. Slices 3–5: each is a separate approval.
