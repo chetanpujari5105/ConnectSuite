@@ -338,7 +338,11 @@ object CapabilityContract {
         // Being "on" promises only that these two answer; whether an offer can be made at all is the
         // `share.file` negotiation, which a Mac without it never has.
         Capability.SHARE to Contract(
-            requests = setOf(MessageType.SHARE_RESPOND, MessageType.SHARE_CANCEL),
+            // Version 2 (slice 3c): `share.saved`, and the bulk channel the one pull streams over.
+            // "On" still promises only that these answer; whether a transfer can happen at all is the
+            // negotiated `share.file` version, which stays 1 until the Mac half lands.
+            requests = setOf(MessageType.SHARE_RESPOND, MessageType.SHARE_CANCEL, MessageType.SHARE_SAVED),
+            needsBulkChannel = true,
         ),
     )
 

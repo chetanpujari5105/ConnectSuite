@@ -415,8 +415,8 @@ test('the tree as it stands: every spec-only name is allowlisted, and mic.* is w
     typescript: readFileSync(join(ROOT, 'desktop/src/shared/protocol.ts'), 'utf8'),
   });
   assert.deepEqual(r.findings, []);
-  // share.saved joined 2026-09-24: Feature A version 2 is specified ahead of slices 3c/3d.
-  assert.deepEqual(r.specNotWire, ['apps.launch', 'mic.start', 'mic.state', 'mic.stop', 'share.saved']);
+  // share.saved was here for slice 3a; slice 3c put it in MessageType, so it moved to TWIN_EXEMPT.
+  assert.deepEqual(r.specNotWire, ['apps.launch', 'mic.start', 'mic.state', 'mic.stop']);
 });
 
 test('red-first — the real tree with the allowlist emptied reports mic.* and nothing else new', () => {
@@ -427,9 +427,9 @@ test('red-first — the real tree with the allowlist emptied reports mic.* and n
     typescript: readFileSync(join(ROOT, 'desktop/src/shared/protocol.ts'), 'utf8'),
     specifiedNotOnTheWire: {},
   });
-  assert.equal(r.findings.length, 5);
+  assert.equal(r.findings.length, 4);
   const named = r.findings.map((f) => f.split(' ')[0]).sort();
-  assert.deepEqual(named, ['apps.launch', 'mic.start', 'mic.state', 'mic.stop', 'share.saved']);
+  assert.deepEqual(named, ['apps.launch', 'mic.start', 'mic.state', 'mic.stop']);
 });
 
 test('the allowlist carries a reason per entry, not a bare name', () => {

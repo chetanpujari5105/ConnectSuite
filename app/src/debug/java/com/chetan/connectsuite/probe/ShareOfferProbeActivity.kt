@@ -35,16 +35,18 @@ class ShareOfferProbeActivity : Activity() {
         val bytes = intent.getIntExtra(EXTRA_BYTES, 100_000).coerceIn(0, 8 * 1024 * 1024)
         val seed = intent.getIntExtra(EXTRA_SEED, 7)
         val ttlMs = (intent.getLongExtra(EXTRA_TTL_SEC, ShareOffer.TTL_MS / 1000) * 1000).coerceIn(1_000, ShareOffer.TTL_MS)
+        // Off unless asked for: -1 (the default) arms nothing.
+        val corruptAt = intent.getLongExtra(EXTRA_CORRUPT_AT_BYTE, -1L)
         val cache = applicationContext.cacheDir
         Thread {
-            val line = run(cache, bytes, seed, ttlMs)
+            val line = run(cache, bytes, seed, ttlMs, corruptAt)
             Log.i(TAG, line)
             LinkLog.i("share", "debug probe: $line")
         }.start()
         finish()
     }
 
-    private fun run(cache: java.io.File, size: Int, seed: Int, ttlMs: Long): String {
+    private fun run(cache: java.io.File, size: Int, seed: Int, ttlMs: Long, corruptAt: Long): String {
         val dir = ShareStaging.stagingDir(cache) ?: return "refused: staging directory unusable"
         val id = ShareStaging.newAttemptId()
         val data = Random(seed).nextBytes(size)
@@ -61,7 +63,10 @@ class ShareOfferProbeActivity : Activity() {
             // Not offered, so the staged copy is still ours: delete it rather than leave it for the sweep.
             ShareStaging.discard(dir, id)
         }
-        return "synthetic bytes=$size seed=$seed sha256=${staged.sha256} ttl=${ttlMs / 1000}s → $outcome"
+        // Scoped to THIS synthetic offer's next pull; ShareFeature refuses it in a non-debuggable build.
+        val armed = outcome is ShareFeature.OfferOutcome.Offered && corruptAt >= 0 && ShareFeature.debugArmCorruption(id, corruptAt)
+        return "synthetic bytes=$size seed=$seed sha256=${staged.sha256} ttl=${ttlMs / 1000}s " +
+            "corruptAt=${if (armed) corruptAt else "off"} → $outcome"
     }
 
     companion object {
@@ -69,5 +74,7 @@ class ShareOfferProbeActivity : Activity() {
         const val EXTRA_BYTES = "bytes"
         const val EXTRA_SEED = "seed"
         const val EXTRA_TTL_SEC = "ttlSec"
+        /** Slice 3c: flip this byte of this offer's next pull (debug builds only). Absent or -1: off. */
+        const val EXTRA_CORRUPT_AT_BYTE = "corruptAtByte"
     }
 }

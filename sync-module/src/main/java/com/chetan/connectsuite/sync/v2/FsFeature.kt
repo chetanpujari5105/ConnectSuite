@@ -95,7 +95,32 @@ object FsFeature {
         link.refreshCapabilities()
     }
 
-    private fun handlerFor(type: String, context: Context): MessageHandler = when (type) {
+    /**
+     * Every `fs.*` handler is wrapped by the share-root intercept, so no verb can reach Files code with
+     * a `share:` root — including one added later. `FsRoots` never learns a share root exists. The rule
+     * is [ShareRoot.route]; this is the one place it is applied. Non-share requests are untouched.
+     */
+    private fun handlerFor(type: String, context: Context): MessageHandler {
+        val files = filesHandlerFor(type, context)
+        return MessageHandler { session, request ->
+            if (type == MessageType.FS_TRANSFER_CANCEL && ShareRoot.isShareTransfer(request.str("transferId"))) {
+                ShareFeature.onPullCancel(session, request)
+                return@MessageHandler
+            }
+            when (val route = ShareRoot.route(type, request.str("rootId"), request.str("direction"))) {
+                ShareRoot.Route.NotShare -> files.handle(session, request)
+                is ShareRoot.Route.SharePull -> ShareFeature.onBeginPull(session, request, route.offerId)
+                ShareRoot.Route.Refuse -> {
+                    LinkLog.w("fs", "${request.type} on a share root refused — a share root permits one pull only")
+                    session.sendError(request.id, com.chetan.connectsuite.core.protocol.ErrorCode.NOT_FOUND,
+                        "Nothing here: a shared file can only be fetched once, by the Mac it was offered to.",
+                        feature = Capability.SHARE)
+                }
+            }
+        }
+    }
+
+    private fun filesHandlerFor(type: String, context: Context): MessageHandler = when (type) {
         MessageType.FS_LIST -> MessageHandler { session, request -> onList(session, request, context) }
         MessageType.FS_STAT -> MessageHandler { session, request -> onStat(session, request, context) }
         MessageType.FS_THUMB -> MessageHandler { session, request -> onThumb(session, request, context) }

@@ -88,6 +88,22 @@ object BulkTransfers {
          * `MediaStore`. One streaming path, two ways of naming a source.
          */
         val open: () -> InputStream?,
+        /**
+         * Share pulls only (docs/protocol.md → Share → Version 2): the session token that began it.
+         * A claim from any other session is refused **without consuming** this entry. Null for every
+         * Files and Photos pull, which keep today's unbound behaviour — that gap is defect 148.
+         */
+        val boundSessionToken: String? = null,
+        /** Share pulls only: there is no resume, so a bulk header asking for any offset but 0 is refused. */
+        val requireOffsetZero: Boolean = false,
+        /**
+         * Share pulls only, debug builds only: flip this absolute byte after the digest has taken it.
+         * Scoped to one transfer, unlike the global [debugCorruptAtByte]. Set only by
+         * `ShareFeature.debugArmCorruption`, which refuses in a non-debuggable build.
+         */
+        val debugCorruptAtByte: Long? = null,
+        /** Share pulls only: told how the phone's own stream ended. That is never a save. */
+        val onEnded: ((ShareOffer.PullEnd) -> Unit)? = null,
     )
 
     private val pending = ConcurrentHashMap<String, Pending>()
@@ -247,6 +263,31 @@ object BulkTransfers {
     }
 
     /**
+     * Registers a **share** pull (docs/protocol.md → Share → Version 2): the staged private copy only,
+     * bound to the session that began it, from byte 0, with the offer's digest agreed in advance.
+     */
+    fun registerSharePull(
+        transferId: String,
+        name: String,
+        mime: String,
+        size: Long,
+        sha256: String,
+        sessionToken: String,
+        open: () -> InputStream?,
+        debugCorruptAtByte: Long?,
+        onEnded: (ShareOffer.PullEnd) -> Unit,
+    ): Pending {
+        val entry = Pending(
+            transferId = transferId, name = name, mime = mime, size = size, sessionId = sessionToken,
+            sha256 = sha256, open = open, boundSessionToken = sessionToken, requireOffsetZero = true,
+            debugCorruptAtByte = debugCorruptAtByte, onEnded = onEnded,
+        )
+        pending[transferId] = entry
+        LinkLog.i("bulk", "share pull registered $transferId: $size bytes, bound to its session, offset 0 only; ${pending.size} pending")
+        return entry
+    }
+
+    /**
      * The whole-file digest, or null when the file is too big to hash inside an ack.
      *
      * Both outcomes are logged at the same volume with the size and the elapsed time beside them,
@@ -403,7 +444,26 @@ object BulkTransfers {
             return
         }
 
-        val entry = transferId?.let { pending.remove(it) }
+        // Look before taking: a share pull refuses a claim from the wrong session or at the wrong
+        // offset WITHOUT consuming the entry, so a bad claim cannot take the rightful one's transfer.
+        // An unbound entry (every Files and Photos pull) is claimed exactly as before.
+        val candidate = transferId?.let { pending[it] }
+        when (BulkClaim.decide(candidate != null, candidate?.boundSessionToken, candidate?.requireOffsetZero ?: false, channel.session.token, offset)) {
+            BulkClaim.Decision.WrongSession -> {
+                failed.incrementAndGet()
+                LinkLog.w("bulk", "share pull $transferId claimed by a DIFFERENT session — refused and closed, entry kept. ${tally()}")
+                channel.close()
+                return
+            }
+            BulkClaim.Decision.WrongOffset -> {
+                failed.incrementAndGet()
+                LinkLog.w("bulk", "share pull $transferId asked for offset $offset — share has no resume; refused and closed, entry kept. ${tally()}")
+                channel.close()
+                return
+            }
+            BulkClaim.Decision.Claim, BulkClaim.Decision.Unknown -> Unit
+        }
+        val entry = transferId?.let { id -> candidate?.takeIf { pending.remove(id, it) } }
         if (entry == null) {
             failed.incrementAndGet()
             LinkLog.w(
@@ -873,6 +933,8 @@ object BulkTransfers {
         var sent = 0L
         var lastReport = 0L
         val digest = MessageDigest.getInstance("SHA-256")
+        // How the stream ended, for a share pull's `onEnded`. FAILED unless a branch below says otherwise.
+        var end = ShareOffer.PullEnd.FAILED
 
         try {
             entry.open().use { input ->
@@ -930,6 +992,7 @@ object BulkTransfers {
             // corruption on a perfect file and then deletes it.
             val expected = entry.sha256
             if (expected != null && expected != sha) {
+                end = ShareOffer.PullEnd.SOURCE_CHANGED
                 failed.incrementAndGet()
                 LinkLog.e(
                     "bulk",
@@ -959,6 +1022,7 @@ object BulkTransfers {
                 return
             }
             completed.incrementAndGet()
+            end = ShareOffer.PullEnd.SENT
 
             // The final progress event is never throttled. Most transfers on a LAN finish inside one
             // 250 ms window, so the common case is a transfer with no intermediate progress at all —
@@ -1021,6 +1085,10 @@ object BulkTransfers {
             }
         } finally {
             channel.close()
+            // Share pulls only. Guarded: a failing listener must not turn a finished stream into a crash.
+            entry.onEnded?.let { listener ->
+                runCatching { listener(end) }.onFailure { LinkLog.w("bulk", "${entry.transferId} onEnded failed: ${it.message}") }
+            }
         }
     }
 
@@ -1051,12 +1119,14 @@ object BulkTransfers {
      * asked for it.
      */
     private fun corruptIfArmed(entry: Pending, chunk: ByteArray, absoluteStart: Long) {
-        val at = debugCorruptAtByte ?: return
+        // A share pull's own byte first (scoped to that one transfer), then the global hook.
+        val scoped = entry.debugCorruptAtByte
+        val at = scoped ?: debugCorruptAtByte ?: return
         if (at < absoluteStart || at >= absoluteStart + chunk.size) return
         val index = (at - absoluteStart).toInt()
         val was = chunk[index]
         chunk[index] = (was.toInt() xor 0xFF).toByte()
-        debugCorruptAtByte = null
+        if (scoped == null) debugCorruptAtByte = null
         LinkLog.e(
             "bulk",
             "PROBE: ${entry.transferId} byte $at deliberately flipped from $was to ${chunk[index]} " +

@@ -19,7 +19,15 @@ object Extensions {
 
     const val SHARE_FILE = "share.file"
 
-    /** What this phone build implements: it can make a one-file share offer, version 1. */
+    /**
+     * What this phone build **advertises**: `share.file` 1 — offer and decline only.
+     *
+     * The phone half of version 2 (the transfer) is built (slice 3c) but deliberately not advertised:
+     * the Mac half does not exist yet, and advertising 2 is a promise both ends must keep. Because the
+     * negotiated version is `min(mine, theirs)`, keeping this at 1 makes every version-2 path
+     * unreachable in a live pairing — `accept` is refused and no pull is authorised. Raise it in the
+     * commit that lands the Mac half, not before. `ExtensionsTest` pins the value.
+     */
     val PHONE: Map<String, Int> = mapOf(SHARE_FILE to 1)
 
     /** Rules 1–3: anything but an object is `{}`; a value that is not an integer ≥ 1 drops that key only. */

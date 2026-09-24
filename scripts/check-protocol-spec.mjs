@@ -121,10 +121,6 @@ export const SPECIFIED_NOT_ON_THE_WIRE = {
     'the signing test is taken. Do not start it to clear this entry.',
   'mic.stop': 'See `mic.start` — same feature, same gate.',
   'mic.state': 'See `mic.start` — same feature, same gate.',
-  'share.saved':
-    'Feature A version 2 (the transfer), specified from the slice 3 review and not yet built; it is ' +
-    'owed by slices 3c (phone) and 3d (Mac), each a separate approval. No peer advertises share.file 2 until both ' +
-    'land. Remove this entry in the commit that adds MessageType.SHARE_SAVED.',
 };
 
 /**
@@ -137,6 +133,10 @@ export const TWIN_EXEMPT = {
   'mirror.screenoff':
     'Not implemented anywhere. The phone keeps the constant so MirrorContractTest can assert it is ' +
     'never registered; the Mac has no such test and no reason to name it.',
+  'share.saved':
+    'Feature A version 2. The phone handles it from slice 3c; the Mac half that sends it is owed by ' +
+    'slice 3d, a separate approval. The phone advertises share.file 1 until then, so no Mac can be ' +
+    'asked for it. Remove this entry in the commit that adds SHARE_SAVED to desktop/src/shared/protocol.ts.',
 };
 
 /** Types deliberately absent from the document's own inventory list, with the reason it gives. */

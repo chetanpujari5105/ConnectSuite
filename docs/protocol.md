@@ -116,8 +116,8 @@ Apps: `apps.list`, `apps.icon`, `apps.open.ask` — see [Apps](#apps-42501). The
 `apps.launch`; the measurement that removed it, and the guard that keeps it removed, are in that section
 Media remote: `remote.state`, `remote.command`, `remote.artwork`
 Microphone: `mic.start`, `mic.stop`, `mic.state` — see [Microphone](#microphone-42501-with-audio-on-42504)
-Share: `share.offer`, `share.respond`, `share.cancel` — see [Share](#share-42501); `share.saved`
-belongs to version 2, specified and not implemented
+Share: `share.offer`, `share.respond`, `share.cancel`, `share.saved` — see [Share](#share-42501);
+`share.saved` belongs to version 2, handled by the phone and not yet sent by any Mac
 Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`, `pair.rejected`
 System: `ping`, `pong`, `capabilities.changed`, `battery.state`, `storage.state`, `net.state`
 
@@ -2532,8 +2532,8 @@ ack      {"offerId":"s-…","state":"declined"}
 ```
 
 `reason` is one of `not-available`, `not-negotiated`, `malformed-offer`, `busy`, `user`,
-`folder-unavailable`, `insufficient-space`. A Mac of this revision sends only the first four; the
-last three are reserved for the revision that adds a person's decision. **There is no `expired`
+`folder-unavailable`, `insufficient-space`, `unsupported-destination`. A version-1 Mac sends only the
+first four; the rest belong to version 2 (a person's decision, and the destination checks). **There is no `expired`
 decline**: an offer nobody answered *expires* (`share.cancel`), and is never shown as declined.
 
 `decision: "accept"` is valid only when `share.file` is negotiated at **2**. At version 1 a phone
@@ -2577,8 +2577,11 @@ An offer does not survive its session: on a disconnect both sides drop it withou
 
 ### Version 2 — the transfer (specified, not implemented)
 
-Everything in this section applies only when `share.file` is negotiated at **2**, and none of it is
-implemented yet. It was written from a read of the committed code (the slice 3 review), and three of
+Everything in this section applies only when `share.file` is negotiated at **2**. **The phone's half
+is built (slice 3c) and the Mac's is not (3d)**, so no end advertises 2 yet: the phone advertises
+`share.file: 1`, the negotiated version is `min(mine, theirs)`, and so in any live pairing the phone
+refuses `accept` and authorises no pull. The phone raises its advertised version in the commit that
+lands the Mac half. It was written from a read of the committed code (the slice 3 review), and three of
 that review's findings are facts about the *existing* bulk path that this contract must not inherit
 (F1, F3, F4 below).
 
@@ -2595,6 +2598,23 @@ offers only**; it defaults off and is ignored by packaged builds. Before sending
 checks that its receive folder is available and that its free space is at least
 `size + max(256 MiB, ⌈size / 10⌉)`. If not, it declines with `folder-unavailable` or
 `insufficient-space` instead, and it makes the same check when the offer arrives.
+
+**The destination check, before any byte moves.** When the offer arrives, and again at Accept, the
+Mac establishes that its receive folder can make the exclusive save described below. It creates a
+uniquely named, Sidekick-owned empty file (`.sidekick-link-probe-<random>`) directly in the folder,
+hard-links it to a second unique name, then deletes both, and **only a completed link counts as
+support**:
+
+| What happened | Answer |
+|---|---|
+| the link succeeded, and both probe files were deleted | supported: the offer may proceed |
+| the link failed with `EXDEV`, `ENOTSUP`, `EPERM` or `ENOSYS` | decline `unsupported-destination` |
+| the probe file could not be created, or the result was anything else (`EACCES`, `ENOSPC`, a timeout, an unexpected error) | decline `folder-unavailable` — **the check could not establish support, so it fails safe** and says so in the Mac's log with the error |
+| a probe file could not be deleted afterwards | decline `folder-unavailable`, and log the probe's name so the person can remove it; the leftover is an empty file with Sidekick's prefix |
+
+**The check is not a substitute for the exclusive save.** A folder can change between the check and
+the save (a drive swapped, permissions changed), so the save itself still publishes by hard link and
+still refuses with `unsupported-destination` if the link fails there.
 
 #### The share root
 
@@ -2614,7 +2634,10 @@ always carries `"offset": 0`. Every other use answers `NOT_FOUND` with `feature:
 
 For a share pull, the phone refuses — closing the socket with a logged reason — a bulk connection
 whose token resolves to **a different session** from the one that began the pull, and a header whose
-`offset` is not `0`. The share `transferId` is 128 random bits. **The existing Files and Photos pulls
+`offset` is not `0` — in both cases **without consuming the pending pull**, so a wrong claim cannot
+take the rightful session's transfer away. The share `transferId` is `ts-` + 22 base64url
+characters (128 random bits); a `fs.transfer.cancel` naming one is answered by Share, and only for
+its own session. **The existing Files and Photos pulls
 do not bind the session and use predictable ids** (review F1, F2; defect 148). The share pull adds
 the binding itself rather than relying on a rule the code does not have.
 

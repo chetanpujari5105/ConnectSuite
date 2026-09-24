@@ -1,6 +1,7 @@
 package com.chetan.connectsuite.sync.v2
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import com.chetan.connectsuite.core.link.ControlSession
 import com.chetan.connectsuite.core.link.Extensions
 import com.chetan.connectsuite.core.link.LinkLog
@@ -8,33 +9,43 @@ import com.chetan.connectsuite.core.link.LinkServer
 import com.chetan.connectsuite.core.link.MessageHandler
 import com.chetan.connectsuite.core.protocol.Capability
 import com.chetan.connectsuite.core.protocol.Envelope
+import com.chetan.connectsuite.core.protocol.ErrorCode
 import com.chetan.connectsuite.core.protocol.MessageType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import java.io.File
+import java.io.FileInputStream
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Feature A's offer, on the phone — slice 2 of `docs/phase-7-share-plan.md`, docs/protocol.md →
- * Share. It owns the live offers, answers `share.respond` and `share.cancel`, expires offers nobody
- * answered, and deletes each offer's staged copy when the offer ends, whatever ended it.
+ * Feature A's offer and transfer, on the phone — docs/protocol.md → Share. It owns the live offers,
+ * answers `share.respond`, `share.cancel` and `share.saved`, serves the one pull a `share:` root
+ * permits (routed here by `FsFeature` through [ShareRoot]), runs the expiry, verdict and Retry
+ * timers, and deletes each offer's staged copy when the offer ends, whatever ended it.
  *
- * **In slice 2 nothing in the product calls [offerStaged].** The one caller is the debug-only
- * `ShareOfferProbeActivity`, with a synthetic staged file. An ordinary share still stops at *Ready*
- * with Send disabled; wiring Send to this is a later, separately approved step.
+ * ### What is live and what is not (slice 3c)
+ *
+ * **The phone advertises `share.file` 1** ([Extensions.PHONE]). A transfer needs 2 on both sides, so
+ * in any live pairing `accept` is refused and no pull is ever authorised; the version-2 code below is
+ * reached only by tests until the Mac half (slice 3d) lands. **Nothing in the product makes an offer**:
+ * the one caller of [offerStaged] is the debug-only, `DUMP`-gated `ShareOfferProbeActivity`. An
+ * ordinary share still stops at *Ready* with Send disabled.
  *
  * ### What it will not do
  *
- * It never offers on a session that did not negotiate `share.file` — an old Mac never receives an
- * event it would drop, and the phone never waits for an answer that cannot come. It keeps at most
- * one live offer per session. It logs the offer id, byte count, reasons and a running tally; never
- * the file's name, a path or a URI.
+ * Offer on a session that did not negotiate `share.file`; keep more than one live offer per session;
+ * stream anything but the staged private copy; call anything "saved" but a `share.saved {ok:true}`
+ * from the Mac; log a file name, a path or a URI.
  */
 object ShareFeature {
 
@@ -46,28 +57,35 @@ object ShareFeature {
         data class Invalid(val why: String) : OfferOutcome
     }
 
-    private val handledTypes = listOf(MessageType.SHARE_RESPOND, MessageType.SHARE_CANCEL)
+    private val handledTypes = listOf(MessageType.SHARE_RESPOND, MessageType.SHARE_CANCEL, MessageType.SHARE_SAVED)
     private val lock = Any()
     private val offers = HashMap<String, ShareOffer.Offer>()
     private val sessions = HashMap<String, ControlSession>()
+    /** Debug only: a corruption byte armed for the next pull of one offer. */
+    private val armedCorruption = ConcurrentHashMap<String, Long>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     @Volatile private var link: LinkServer? = null
     @Volatile private var cacheDir: File? = null
+    @Volatile private var debuggable = false
     @Volatile private var installed = false
 
     private val offered = AtomicInteger()
     private val declined = AtomicInteger()
+    private val saved = AtomicInteger()
+    private val failed = AtomicInteger()
     private val expired = AtomicInteger()
     private val cancelled = AtomicInteger()
     private val sessionEnded = AtomicInteger()
-    private fun tally() = "${offered.get()} offered / ${declined.get()} declined / ${expired.get()} expired / " +
-        "${cancelled.get()} cancelled / ${sessionEnded.get()} ended with the session"
+    private fun tally() = "${offered.get()} offered / ${saved.get()} saved / ${declined.get()} declined / " +
+        "${failed.get()} failed attempts / ${expired.get()} expired / ${cancelled.get()} cancelled / " +
+        "${sessionEnded.get()} ended with the session"
 
     fun install(context: Context, server: LinkServer) {
         if (installed) return
         installed = true
         link = server
         cacheDir = context.applicationContext.cacheDir
+        debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
         handledTypes.forEach { type -> server.register(type, handlerFor(type)) }
         val previous = server.sessionEndedSink
         server.sessionEndedSink = { session ->
@@ -75,8 +93,11 @@ object ShareFeature {
             onSessionEnded(session)
         }
         server.refreshCapabilities()
-        LinkLog.i("share", "Share feature installed (${handledTypes.size} verbs); capabilities now: ${server.capabilities.current().sorted()}")
+        LinkLog.i("share", "Share feature installed (${handledTypes.size} verbs, advertising share.file " +
+            "${Extensions.PHONE[Extensions.SHARE_FILE]}); capabilities now: ${server.capabilities.current().sorted()}")
     }
+
+    // ---- making an offer (debug probe only in this slice) -------------------------------------------
 
     /**
      * Offer a file that is **already staged** under [offerId] (the staging attempt id is the offer id,
@@ -100,7 +121,7 @@ object ShareFeature {
         }
         val key = session.token ?: return OfferOutcome.NoSession
         val now = System.currentTimeMillis()
-        val offer = ShareOffer.Offer(offerId, key, bytes, sha256, now, now + ttlMs)
+        val offer = ShareOffer.Offer(offerId, key, bytes, sha256, now, now + ttlMs, name = name, mime = mime)
         synchronized(lock) {
             if (offers.values.any { it.sessionKey == key }) {
                 LinkLog.i("share", "offer $offerId not made: another offer is live on this session")
@@ -111,7 +132,7 @@ object ShareFeature {
         }
         session.event(MessageType.SHARE_OFFER) {
             put("offerId", offerId)
-            put("rootId", "share:$offerId")
+            put("rootId", ShareRoot.PREFIX + offerId)
             put("from", server.identity.deviceName.take(128))
             putJsonObject("item") {
                 put("itemId", "0")
@@ -123,7 +144,8 @@ object ShareFeature {
             put("expiresAtMs", offer.expiresAtMs)
         }
         offered.incrementAndGet()
-        LinkLog.i("share", "offered $offerId to ${session.peerName}: $bytes bytes, expires in ${ttlMs / 1000}s — ${tally()}")
+        LinkLog.i("share", "offered $offerId to ${session.peerName}: $bytes bytes, expires in ${ttlMs / 1000}s, " +
+            "negotiated share.file ${session.negotiated[Extensions.SHARE_FILE]} — ${tally()}")
         scope.launch {
             delay(ttlMs)
             transition(offerId) { ShareOffer.expire(it, System.currentTimeMillis()) }
@@ -136,32 +158,108 @@ object ShareFeature {
         transition(offerId) { ShareOffer.cancelFromPhone(it, reason) }
     }
 
-    /** For the debug probe and tests: the state of an offer this object still holds, or null once ended. */
+    /**
+     * **Debug builds only.** Flip byte [atByte] of the next pull of [offerId], after the phone's digest
+     * has taken the true value, so the Mac's checksum branch can be reached with synthetic bytes. It
+     * refuses in a non-debuggable build, applies to that one offer's next pull only, and writes an `E`
+     * line whenever it is armed. Its one caller is the `DUMP`-gated debug `ShareOfferProbeActivity`.
+     */
+    fun debugArmCorruption(offerId: String, atByte: Long): Boolean {
+        if (!debuggable) {
+            LinkLog.w("share", "debug corruption refused for $offerId: this build is not debuggable")
+            return false
+        }
+        if (atByte < 0) {
+            armedCorruption.remove(offerId)
+            return false
+        }
+        armedCorruption[offerId] = atByte
+        LinkLog.e("share", "PROBE: byte $atByte of the next pull of $offerId will be flipped AFTER the phone's digest " +
+            "takes it. The Mac must report checksum and publish nothing. Debug build only.")
+        return true
+    }
+
+    /** For the probe and tests: an offer this object still holds, or null once it has ended. */
     fun liveOffer(offerId: String): ShareOffer.Offer? = synchronized(lock) { offers[offerId] }
+
+    // ---- requests ------------------------------------------------------------------------------
 
     private fun handlerFor(type: String) = MessageHandler { session, request -> handle(type, session, request) }
 
     private fun handle(type: String, session: ControlSession, request: Envelope) {
         val p = request.payload
         fun str(k: String) = (p[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        fun bool(k: String) = (p[k] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull
+        fun long(k: String) = (p[k] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull
         val offerId = str("offerId")
         val key = session.token ?: ""
         val now = System.currentTimeMillis()
+        val version = session.negotiated[Extensions.SHARE_FILE] ?: 0
         val result = synchronized(lock) {
             val current = offerId?.let { offers[it] }
             val r = when (type) {
-                MessageType.SHARE_RESPOND -> ShareOffer.respond(current, key, offerId, str("decision"), str("reason"), now)
+                MessageType.SHARE_RESPOND -> ShareOffer.respond(current, key, offerId, str("decision"), str("reason"), now, version)
+                MessageType.SHARE_SAVED -> ShareOffer.saved(current, key, offerId, bool("ok"), long("bytes"), bool("verified"), str("savedAs"), str("reason"), now)
                 else -> ShareOffer.cancelFromMac(current, key, offerId, str("reason"), now)
             }
             store(r)
             r
         }
-        when (val reply = result.reply) {
+        reply(session, request, result.reply)
+        LinkLog.i("share", "$type ${offerId ?: "(no id)"} from ${session.peerName}: ${describeReply(result.reply)}")
+        apply(result)
+    }
+
+    /**
+     * `fs.transfer.begin` on a share root, handed over by `FsFeature` after [ShareRoot.route]. The
+     * staged copy is checked first: gone or the wrong length means the offer ends as `staging-lost`.
+     */
+    fun onBeginPull(session: ControlSession, request: Envelope, offerId: String) {
+        val itemId = (request.payload["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        val key = session.token ?: ""
+        val now = System.currentTimeMillis()
+        val transferId = ShareRoot.newTransferId()
+        val result = synchronized(lock) {
+            val current = offers[offerId]
+            val candidate = current?.takeIf { it.sessionKey == key && it.offerId == offerId }
+            val r = if (candidate != null && ShareOffer.isLive(candidate.state) && !stagedIntact(candidate)) {
+                ShareOffer.cancelFromPhone(candidate, "staging-lost").copy(
+                    reply = ShareOffer.Reply.Error(ErrorCode.NOT_FOUND, "The prepared copy is no longer on this phone"),
+                )
+            } else {
+                ShareOffer.beginPull(current, key, offerId, itemId, transferId, now, BulkTransfers.chunkMax())
+            }
+            store(r)
+            r
+        }
+        reply(session, request, result.reply)
+        LinkLog.i("share", "fs.transfer.begin share:$offerId item=${itemId ?: "(none)"} from ${session.peerName}: ${describeReply(result.reply)}")
+        apply(result)
+    }
+
+    /** `fs.transfer.cancel` naming a share transfer (`ts-…`): only its own session may stop it. */
+    fun onPullCancel(session: ControlSession, request: Envelope) {
+        val transferId = (request.payload["transferId"] as? JsonPrimitive)?.content ?: ""
+        val key = session.token ?: ""
+        val result = synchronized(lock) {
+            val current = offers.values.firstOrNull { it.transferId == transferId }
+            ShareOffer.cancelPull(current, key, transferId).also { store(it) }
+        }
+        reply(session, request, result.reply)
+        LinkLog.i("share", "fs.transfer.cancel $transferId from ${session.peerName}: ${describeReply(result.reply)}")
+        apply(result)
+    }
+
+    private fun reply(session: ControlSession, request: Envelope, reply: ShareOffer.Reply?) {
+        when (reply) {
             is ShareOffer.Reply.Ack -> session.ack(request) {
                 reply.fields.forEach { (k, v) ->
                     when (v) {
+                        null -> put(k, JsonNull)
                         is String -> put(k, v)
                         is Boolean -> put(k, v)
+                        is Int -> put(k, v)
+                        is Long -> put(k, v)
                         else -> put(k, v.toString())
                     }
                 }
@@ -169,14 +267,15 @@ object ShareFeature {
             is ShareOffer.Reply.Error -> session.sendError(request.id, reply.code, reply.message, feature = Capability.SHARE)
             null -> Unit
         }
-        LinkLog.i("share", "$type ${offerId ?: "(no id)"} from ${session.peerName}: " +
-            when (val r = result.reply) {
-                is ShareOffer.Reply.Ack -> "ack ${r.fields}"
-                is ShareOffer.Reply.Error -> "${r.code} — ${r.message}"
-                null -> "no reply"
-            })
-        apply(result)
     }
+
+    private fun describeReply(r: ShareOffer.Reply?) = when (r) {
+        is ShareOffer.Reply.Ack -> "ack ${r.fields.filterKeys { it != "name" }}"
+        is ShareOffer.Reply.Error -> "${r.code} — ${r.message}"
+        null -> "no reply"
+    }
+
+    // ---- transitions and their effects --------------------------------------------------------
 
     private fun onSessionEnded(session: ControlSession) {
         val key = session.token ?: return
@@ -195,21 +294,26 @@ object ShareFeature {
     /** Under [lock]: a live offer stays in the map; an ended one leaves it (answer-once). */
     private fun store(r: ShareOffer.Result) {
         val o = r.offer ?: return
-        if (o.state == ShareOffer.State.Offered) offers[o.offerId] = o else offers.remove(o.offerId)
+        if (ShareOffer.isLive(o.state)) offers[o.offerId] = o else offers.remove(o.offerId)
     }
 
-    /** Outside the lock: the effects of an ending, in the order the protocol names them. */
+    /** Outside the lock: the effects, in the order the transition names them. */
     private fun apply(r: ShareOffer.Result) {
         val o = r.offer ?: return
         if (r.effects.isEmpty()) return
-        val session = synchronized(lock) { if (o.state == ShareOffer.State.Offered) sessions[o.offerId] else sessions.remove(o.offerId) }
+        val session = synchronized(lock) { if (ShareOffer.isLive(o.state)) sessions[o.offerId] else sessions.remove(o.offerId) }
         r.effects.forEach { effect ->
             when (effect) {
                 is ShareOffer.Effect.SendCancel -> session?.event(MessageType.SHARE_CANCEL) {
                     put("offerId", o.offerId)
                     put("reason", effect.reason)
                 }
+                is ShareOffer.Effect.CancelPull -> BulkTransfers.cancel(effect.transferId, "share offer ended")
+                is ShareOffer.Effect.RegisterPull -> registerPull(o, effect.transferId)
+                is ShareOffer.Effect.ScheduleVerdictDeadline -> schedule(o.offerId, effect.atMs) { ShareOffer.verdictDeadline(it, System.currentTimeMillis()) }
+                is ShareOffer.Effect.ScheduleRetryClose -> schedule(o.offerId, effect.atMs) { ShareOffer.retryWindowClosed(it, System.currentTimeMillis()) }
                 ShareOffer.Effect.DeleteStaged -> {
+                    armedCorruption.remove(o.offerId)
                     val dir = cacheDir?.let { ShareStaging.stagingDir(it) }
                     val removed = if (dir != null) ShareStaging.discard(dir, o.offerId) else 0
                     LinkLog.i("share", "offer ${o.offerId} ended (${describe(o.state)}): staged copy deleted, $removed file(s)")
@@ -218,16 +322,48 @@ object ShareFeature {
         }
         when (o.state) {
             is ShareOffer.State.Declined -> declined.incrementAndGet()
+            is ShareOffer.State.Saved -> saved.incrementAndGet()
+            is ShareOffer.State.Failed -> failed.incrementAndGet()
             ShareOffer.State.Expired -> expired.incrementAndGet()
             is ShareOffer.State.Cancelled -> cancelled.incrementAndGet()
             ShareOffer.State.SessionEnded -> sessionEnded.incrementAndGet()
-            ShareOffer.State.Offered -> Unit
+            else -> Unit
         }
-        if (o.state != ShareOffer.State.Offered) LinkLog.i("share", "offer ${o.offerId} is ${describe(o.state)} — ${tally()}")
+        LinkLog.i("share", "offer ${o.offerId} is ${describe(o.state)} — ${tally()}")
+    }
+
+    private fun registerPull(o: ShareOffer.Offer, transferId: String) {
+        val dir = cacheDir?.let { ShareStaging.stagingDir(it) } ?: return
+        val staged = File(dir, "${o.offerId}.bin")
+        BulkTransfers.registerSharePull(
+            transferId = transferId, name = o.name, mime = o.mime, size = o.bytes, sha256 = o.sha256,
+            sessionToken = o.sessionKey, open = { FileInputStream(staged) },
+            debugCorruptAtByte = armedCorruption.remove(o.offerId),
+            onEnded = { end -> transition(o.offerId) { ShareOffer.pullEnded(it, transferId, end, System.currentTimeMillis()) } },
+        )
+    }
+
+    private fun schedule(offerId: String, atMs: Long, step: (ShareOffer.Offer) -> ShareOffer.Result) {
+        scope.launch {
+            delay((atMs - System.currentTimeMillis()).coerceAtLeast(0))
+            transition(offerId, step)
+        }
+    }
+
+    /** The staged copy is still there and still the offered length (the digest is checked while streaming). */
+    private fun stagedIntact(o: ShareOffer.Offer): Boolean {
+        val dir = cacheDir?.let { ShareStaging.stagingDir(it) } ?: return false
+        val f = File(dir, "${o.offerId}.bin")
+        return f.isFile && f.length() == o.bytes
     }
 
     fun describe(state: ShareOffer.State): String = when (state) {
         ShareOffer.State.Offered -> "offered"
+        ShareOffer.State.Accepted -> "accepted"
+        ShareOffer.State.Sending -> "sending"
+        ShareOffer.State.AwaitingVerdict -> "sent; awaiting the Mac's verdict (not saved)"
+        is ShareOffer.State.Failed -> "failed (${state.reason}); Retry window open"
+        is ShareOffer.State.Saved -> "saved on the Mac"
         is ShareOffer.State.Declined -> "declined (${state.reason})"
         ShareOffer.State.Expired -> "expired"
         is ShareOffer.State.Cancelled -> "cancelled by the ${state.by.name.lowercase()} (${state.reason})"

@@ -24020,3 +24020,73 @@ contained `$?` and `;`. So the misfire is not specific to `check-suites-run`; it
 registered with `"if": "Bash(git commit *)"`. **Its finding was real, though:** two fixture suites had
 gone red because of this sitting's own edit (the spec allowlist, and a sentence the debt-claims guard
 correctly refused), and both were fixed on their merits.
+
+## Feature A slice 3c — the phone half of version 2, built and not advertised (2026-09-24)
+
+`docs/protocol.md` → Share → Version 2, phone side only. **No device command, install or Mac change
+was made.** The phone still advertises `share.file: 1` (`Extensions.PHONE`, pinned by
+`ExtensionsTest`). Negotiation is `min(mine, theirs)`, so in any live pairing, even with a
+version-2 Mac, the phone refuses `accept` and authorises no pull. A test drives exactly that path:
+a v2 Mac against this phone negotiates 1, `accept` gets `BAD_REQUEST`, and a pull on the root is
+`NOT_FOUND`. Ordinary share-sheet Send stays disabled.
+
+**What was built:**
+- `ShareOffer`: accepted → sending → awaiting verdict → saved, or failed → retry from byte 0 → expired.
+  **Only `share.saved {ok:true, verified, full size}` reaches Saved**; the phone's own finished send
+  reaches *awaiting verdict* and no further, and 60 s without a verdict becomes `failed (unconfirmed)`.
+  The Retry window is `min(failedAt + 5 min, expiresAtMs)`. Every end deletes the staged copy, and
+  a live pull is stopped first.
+- `ShareRoot`: routing. On a `share:` root only a pull `fs.transfer.begin` goes to Share; every other
+  `fs.*` verb is refused, `NOT_FOUND`, `feature: "share"`. Share transfer ids are `ts-` + 128 random bits.
+- `BulkClaim` and `BulkTransfers.serve()`: a share pull is bound to its session and to offset 0, and a
+  wrong claim is refused and the socket closed **without consuming the entry**. Unbound entries (every
+  Files and Photos pull) are claimed exactly as before (defect 148 is separate).
+- `FsFeature`: every handler is wrapped by the share-root intercept at one point. A
+  `fs.transfer.cancel` naming a `ts-` id goes to Share, which answers only the session that owns it.
+- `ShareFeature`: `share.saved`, the pull (the staged copy only; a missing or wrong-length copy
+  ends the offer as `staging-lost`), and the verdict and Retry timers.
+- The capability contract gains `share.saved` and the bulk channel. `share.saved` is in
+  `MessageType` and is on `check-protocol-spec`'s phone-only list until the Mac half.
+- **The corruption trigger** (owner ruling 1): `ShareFeature.debugArmCorruption(offerId, byte)`,
+  scoped to **one offer's next pull**. It refuses unless the build is debuggable, writes an `E` line
+  when armed, and its one caller is the `DUMP`-gated debug `ShareOfferProbeActivity` (extra
+  `corruptAtByte`, default off). `FsProbeActivity` was read first, not exposed, and is still declared
+  in no manifest. It arms a **global** one-shot corruption of the next pull of any kind, and its class
+  comment says it appears in the debug merged manifests, which it does not. Both are recorded here and
+  it was left alone.
+
+**Contract additions** (for 3d): the offer-time destination check, a Sidekick-owned probe file
+hard-linked in the receive folder at the offer and at Accept. Only a completed link counts as
+support; anything the check cannot establish declines `folder-unavailable` and fails safe. It is not
+a substitute for the exclusive save. `unsupported-destination` joins the decline reasons.
+
+**Automated.** Phone suite **725/725**, written by this run, with the debug APK building. New:
+`ShareOfferV2Test` (33 tests) and `ShareRootTest` (9: every `fs.*` verb enumerated from `MessageType`
+by reflection, one refusal per verb by name, Files roots untouched, id randomness, and the bulk-claim
+rule). Slice 2's `ShareOfferTest` passes unchanged. **Eleven mutations, all red on fresh results
+and all compiled:**
+- V1 accept at version 1
+- V2 the phone's own send counted as Saved (13 tests)
+- V3 an unverified save accepted
+- V4 a pull or verdict from any session
+- V5 any item pulled
+- V6 a bulk claim that ignores the session
+- V7 `fs.stat` reaching Files on a share root
+- V8 a Retry window running past expiry
+- V9 no verdict deadline
+- V10 predictable share ids
+- V11 an ended offer taking a verdict. This one went red through the end-deletes test; the
+  duplicate-verdict test did not go red, because a separate check on which states may take a
+  verdict also blocks it.
+
+**What the tests do not reach, stated rather than implied:**
+- The Android wiring: the `FsFeature` wrapper, `ShareFeature`'s handlers and timers, and
+  `BulkTransfers.serve()`'s use of `BulkClaim` (entry kept on a wrong claim, `onEnded` from
+  `streamTo`'s `finally`). The rules they call are tested; the calls are not. They run for the first
+  time in 3e, with the Mac half.
+- **No real transfer has run**, by instruction. The bytes path, the corruption flip reaching a Mac, and
+  the verdict round trip are 3e.
+
+**Files and Photos:** unchanged in behaviour. Their related defects are already registered (148
+session binding and predictable ids, 149 the `photos` tag, 150 rename-over, 151 stranger `.part`
+deletion) and are not fixed here.

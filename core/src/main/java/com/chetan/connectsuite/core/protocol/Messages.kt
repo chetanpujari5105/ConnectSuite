@@ -218,6 +218,12 @@ object MessageType {
 
     /** Event phone → Mac (`user`/`expired`/`staging-lost`), or request Mac → phone (`user`). */
     const val SHARE_CANCEL = "share.cancel"
+
+    /**
+     * Request, Mac → phone, version 2: the receiver's verdict on a pull — the only thing that makes the
+     * phone say "Saved". Handled by the phone from slice 3c; the Mac sends it from slice 3d.
+     */
+    const val SHARE_SAVED = "share.saved"
 }
 
 object ErrorCode {
