@@ -23960,9 +23960,57 @@ reproduction was run. Open.
 
 Read from `app/src/debug/AndroidManifest.xml` at `29d2ac4`: the adb-driven probes are
 `exported="true"` with no `<intent-filter>` and no `android:permission`, among them
-`ShareOfferProbeActivity` (offers data to the paired Mac) and `FsProbeActivity` (arms the transfer
-corruption hook). Any installed app can start an exported activity by explicit component. Open; slice
-3b is its fix.
+`ShareOfferProbeActivity` (offers data to the paired Mac). Any installed app can start an exported
+activity by explicit component.
+
+**Correction, made in slice 3b before the fix:** the 3a entry also named `FsProbeActivity` (which can
+arm the corruption hook). Enumerating the manifests found that **no manifest declares it**. The debug
+manifest declares six activities; the built debug APK lists no `FsProbeActivity`. The classes
+`FsProbeActivity`, `ClipProbeActivity` and their siblings exist in `app/src/debug/…/probe/` with no
+component, so nothing can start them, adb included. The claim was made from the class list rather
+than from the manifest; the manifest is what decides reachability.
+
+#### Defect 152 — fixed (slice 3b, 2026-09-24)
+
+**What is exposed, enumerated from the manifest:**
+
+| Activity | Exported | Filters | Now |
+|---|---|---|---|
+| `DesignPreviewActivity` | yes | 0 | `DUMP` |
+| `PhoneAddressProbe` | yes | 0 | `DUMP` |
+| `SafChildrenProbeActivity` | yes | 0 | `DUMP` |
+| `ShareOfferProbeActivity` | yes | 0 | `DUMP` |
+| `ShareGrantProbeActivity` | yes | SEND | unchanged: the share sheet must reach it; it reads only what is shared with it |
+| `ShareStagingProbeActivity` | yes | SEND | unchanged, same reason |
+
+**The gate's premise, read on both devices:** `com.android.shell` holds `android.permission.DUMP` on
+the SM-S938B (SDK 36) and on the emulator (SDK 37), and `pm list permissions -f` gives its protection
+level as `signature|privileged|development` on both. An app cannot obtain it by installing; only a
+person with adb can grant a `development` permission.
+
+**Red first.** `DebugProbeGateTest` (`app/src/test`): every exported, filter-less debug activity
+requires `DUMP`; the offer probe specifically; the two share-sheet probes keep their filter and no
+permission. Against the old manifest, the first two failed, the first naming all four activities; the
+third passed. With the gate, 3/3 pass. Phone suite **683/683**, written this run. `aapt2 dump
+xmltree` of the built debug APK shows `DUMP` on exactly the four.
+
+**The gate demonstrated in both directions, on the emulator only**, with two throwaway apps of about
+8.6 KB each, built from SDK tools in the scratchpad: `com.sidekick.gatetest.target` exports `Gated`
+(`DUMP`, no filter, the same shape as the probes) and `Open` (no permission, the control), and
+`com.sidekick.gatetest.caller` requests no permissions. The emulator was used because Samsung installs
+were not permitted and the emulator cannot fit Sidekick's 94 MB APK.
+
+| Case | Reading (logcat, tag `GateTest`, 11:15:25–28) |
+|---|---|
+| caller (uid 10240, `holds DUMP=false`) → `Gated` | **refused**: `SecurityException: Permission Denial: starting Intent { … cmp=com.sidekick.gatetest.target/.Gated } from ProcessRecord{… uid=10240} requires android.permission.DUMP` |
+| the same caller → `Open` (control) | **started** (`Open STARTED`), so the refusal is the permission, not a caller that cannot start activities |
+| `adb shell am start` → `Gated` | **started** (`Gated STARTED`): the adb path works through the gate |
+
+**What this does not prove:** it proves the platform mechanism with an identical attribute, on SDK 37.
+It does not prove Sidekick's own gated APK on the SM-S938B, where no install was permitted. That
+reading (`scripts/adb-pinned.sh samsung shell am start` of `ShareOfferProbeActivity` still works) is
+owed at the next approved install. The two test apps are still installed on the emulator: they are
+the owner's to keep or remove, and they were not removed without asking.
 
 ### Defect 147 — a second sighting, from a different hook
 

@@ -2,6 +2,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <!--
+          THE GATE (defect 152). Every exported activity here that has no intent filter is an
+          adb-driven harness, and each requires android.permission.DUMP. "Debug-only" keeps these out
+          of a release build; it does not keep them away from other apps on a phone that has a debug
+          build installed, and one of them (ShareOfferProbeActivity) makes the phone offer data to the
+          paired Mac. DUMP is held by the shell user that `adb shell am start` runs as, and its
+          protection level is signature|privileged|development, so an ordinary installed app cannot hold
+          it. DebugProbeGateTest fails if a filter-less exported activity here lacks it. The two
+          share-sheet probes below carry a SEND filter and must stay reachable from the share sheet, so
+          they are not gated.
+        -->
+        <!--
           Debug source set only. It is never merged into a release manifest, so this activity does
           not exist in a shipping build — the same containment as `ClipProbeActivity`.
 
@@ -19,6 +30,7 @@
         <activity
             android:name="com.chetan.connectsuite.designpreview.DesignPreviewActivity"
             android:exported="true"
+            android:permission="android.permission.DUMP"
             android:excludeFromRecents="true"
             android:theme="@style/Theme.ConnectSuite" />
 
@@ -31,6 +43,7 @@
         <activity
             android:name="com.chetan.connectsuite.probe.PhoneAddressProbe"
             android:exported="true"
+            android:permission="android.permission.DUMP"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.NoDisplay" />
 
@@ -43,6 +56,7 @@
         <activity
             android:name="com.chetan.connectsuite.probe.SafChildrenProbeActivity"
             android:exported="true"
+            android:permission="android.permission.DUMP"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.NoDisplay" />
         <!--
@@ -101,6 +115,7 @@
         <activity
             android:name="com.chetan.connectsuite.probe.ShareOfferProbeActivity"
             android:exported="true"
+            android:permission="android.permission.DUMP"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.NoDisplay" />
     </application>
