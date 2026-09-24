@@ -118,5 +118,18 @@
             android:permission="android.permission.DUMP"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.NoDisplay" />
+
+        <!--
+          Feature A slice 3e (docs/phase-7-share-3e-runbook.md §1): the ONLY writer of ShareDevGate —
+          arms share.file 2 for the phone's next trusted handshake, in memory, in a debuggable build.
+          Debug source set only; DUMP-gated like the offer probe; no filter, no launcher, no UI.
+          ShareDevGateRoutingTest pins this entry and its absence from the main manifest.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.ShareDevV2Activity"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay" />
     </application>
 </manifest>

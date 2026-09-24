@@ -44,6 +44,30 @@ class ShareOfferV2Test {
         assertEquals("NOT_FOUND", code(ShareOffer.beginPull(r.offer, a, id, "0", tx, t0 + 2, 1)))
     }
 
+    /**
+     * Runbook §1: every handshake the phone's gate leaves below 2 is a version-1 session, where the
+     * phone refuses `accept` and authorises no pull. Driven through the real [Extensions.handshake],
+     * not a hand-written version number, so the session fact is the one the gate produced.
+     */
+    @Test fun `every fail-closed handshake is a v1 session — accept refused, offer still live, no pull`() {
+        val macs = listOf(emptyMap(), mapOf(Extensions.SHARE_FILE to 1), mapOf(Extensions.SHARE_FILE to 2))
+        var checked = 0
+        for (debuggable in listOf(false, true)) for (armed in listOf(false, true)) for (mac in macs) {
+            if (debuggable && armed && mac == mapOf(Extensions.SHARE_FILE to 2)) continue
+            val version = Extensions.handshake(debuggable, armed, mac).negotiated[Extensions.SHARE_FILE] ?: 0
+            assertTrue("debuggable=$debuggable armed=$armed mac=$mac", version < ShareOffer.TRANSFER_VERSION)
+            val r = ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = version)
+            assertEquals("BAD_REQUEST", code(r))
+            assertEquals(State.Offered, r.offer!!.state)
+            assertEquals("NOT_FOUND", code(ShareOffer.beginPull(r.offer, a, id, "0", tx, t0 + 2, 1)))
+            checked += 1
+        }
+        assertEquals("all eleven fail-closed combinations were exercised", 11, checked)
+        // The control: the one combination that negotiates 2 does accept.
+        val v2 = Extensions.handshake(true, true, mapOf(Extensions.SHARE_FILE to 2)).negotiated[Extensions.SHARE_FILE]!!
+        assertEquals(State.Accepted, ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = v2).offer!!.state)
+    }
+
     @Test fun `accept at version 2 acks accepted and moves nothing yet`() {
         val r = ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = 2)
         assertEquals(State.Accepted, r.offer!!.state)

@@ -25,10 +25,38 @@ object Extensions {
      * The phone half of version 2 (the transfer) is built (slice 3c) but deliberately not advertised:
      * the Mac half does not exist yet, and advertising 2 is a promise both ends must keep. Because the
      * negotiated version is `min(mine, theirs)`, keeping this at 1 makes every version-2 path
-     * unreachable in a live pairing — `accept` is refused and no pull is authorised. Raise it in the
-     * commit that lands the Mac half, not before. `ExtensionsTest` pins the value.
+     * unreachable in a live pairing — `accept` is refused and no pull is authorised. `ExtensionsTest`
+     * pins the value. **It is not raised to reach version 2**: the only route is [advertised], per
+     * handshake, in a debuggable build with the development gate armed ([ShareDevGate]).
      */
     val PHONE: Map<String, Int> = mapOf(SHARE_FILE to 1)
+
+    /**
+     * What this phone advertises **in one handshake**. [PHONE] (`share.file` 1) unless the build is
+     * debuggable **and** the development gate was armed for this handshake ([ShareDevGate]) — then
+     * `share.file` 2. Every other combination is [PHONE]. A release build is not debuggable, so it
+     * can never advertise 2 whatever the flag says.
+     */
+    fun advertised(debuggable: Boolean, devV2Armed: Boolean): Map<String, Int> =
+        if (debuggable && devV2Armed) PHONE + (SHARE_FILE to 2) else PHONE
+
+    /** One handshake's two facts, decided together so `hello.ack` and negotiation cannot disagree. */
+    data class Handshake(val advertised: Map<String, Int>, val negotiated: Map<String, Int>, val logLine: String)
+
+    /**
+     * The whole `ext` decision for one `hello`: what to advertise, what that negotiates against the
+     * Mac's [macExt], and the log line saying both. The line carries version numbers and two
+     * booleans only — no token, fingerprint, name or path.
+     */
+    fun handshake(debuggable: Boolean, devV2Armed: Boolean, macExt: Map<String, Int>): Handshake {
+        val mine = advertised(debuggable, devV2Armed)
+        val negotiated = mine.keys.mapNotNull { name -> negotiate(mine, macExt, name)?.let { name to it } }.toMap()
+        val line = "ext: phone advertises ${mine[SHARE_FILE]?.let { "share.file $it" } ?: "nothing"} " +
+            "(debug share.file 2 armed for this handshake: $devV2Armed; debuggable build: $debuggable); " +
+            "Mac advertises ${macExt[SHARE_FILE]?.let { "share.file $it" } ?: "no share.file"}; " +
+            "negotiated ${negotiated[SHARE_FILE]?.let { "share.file $it" } ?: "no share.file"}"
+        return Handshake(mine, negotiated, line)
+    }
 
     /** Rules 1–3: anything but an object is `{}`; a value that is not an integer ≥ 1 drops that key only. */
     fun parse(raw: JsonElement?): Map<String, Int> {

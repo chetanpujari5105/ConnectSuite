@@ -20,7 +20,14 @@ never touches the configured receive folder or Downloads.
 | The probe's bytes are `kotlin.random.Random(seed).nextBytes(size)` (`ShareOfferProbeActivity.kt:52`) | source |
 | The Mac card's layout, keyboard, labels and reduced motion | §9, from a synthetic harness in a separate headless Chrome — **not** from the app |
 
-## 1 · The phone change 3e needs first (not built)
+## 1 · The phone change 3e needs first — **built 2026-09-24, not installed**
+
+> Built as a single local commit with its tests (see `docs/testing.md` → *Feature A pre-live — the
+> phone's share.file 2 gate*). **Two departures from the text below, both deliberate:** the arm is
+> **one-shot** (consumed by the next trusted handshake, not held until restart), and the per-session
+> line is written by `Extensions.handshake` as
+> `ext: phone advertises share.file <n> (debug share.file 2 armed for this handshake: <b>; debuggable build: <b>); Mac advertises …; negotiated …`
+> — **§4.8's criterion must be read against that exact line**, not the sketch below.
 
 The Mac cannot negotiate 2 alone: `min(mine, theirs)`, and the phone hard-codes 1. The minimal
 change, mirroring the Mac's gate and failing closed the same way:

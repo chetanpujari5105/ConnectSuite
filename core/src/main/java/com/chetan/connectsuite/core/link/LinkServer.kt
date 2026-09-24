@@ -157,6 +157,13 @@ class LinkServer(
     val appVersion: String,
 ) {
     private val appContext = context.applicationContext
+
+    /**
+     * Whether this is a debuggable build. One of the two fences on advertising `share.file` 2
+     * ([Extensions.advertised]); a release build is never debuggable.
+     */
+    val debuggable: Boolean =
+        (appContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
     val identity: DeviceIdentity = DeviceIdentity.get(appContext)
     val trustStore = TrustStore(appContext)
     val sessions = SessionRegistry()

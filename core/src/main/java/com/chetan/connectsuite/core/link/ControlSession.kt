@@ -288,14 +288,13 @@ class ControlSession(
         val sessionToken = server.sessions.issue(this)
         token = sessionToken
         // Rules 1-4, after the version and pairing checks above (rule 6). An absent `ext` is `{}`.
+        // The development arm is consumed HERE — after the Mac was accepted, so a refused Mac neither
+        // gets share.file 2 nor uses the arm up — and read once, so negotiation and hello.ack below
+        // are one decision (ShareDevGate, Extensions.handshake).
         val macExt = Extensions.parse(payload["ext"])
-        negotiated = Extensions.PHONE.keys.mapNotNull { name ->
-            Extensions.negotiate(Extensions.PHONE, macExt, name)?.let { name to it }
-        }.toMap()
-        LinkLog.i(
-            "control",
-            "ext: Mac advertises ${macExt.ifEmpty { "nothing" }}; negotiated ${negotiated.ifEmpty { "nothing" }}",
-        )
+        val handshake = Extensions.handshake(server.debuggable, ShareDevGate.process.consumeForHandshake(), macExt)
+        negotiated = handshake.negotiated
+        LinkLog.i("control", handshake.logLine)
         isHandshakeComplete = true
 
         send(
@@ -310,7 +309,7 @@ class ControlSession(
                 put("unavailable", unavailableJson())
                 put("limited", limitedJson())
                 // Optional: an old Mac reads hello.ack fields by key and never sees it.
-                put("ext", Extensions.toJson(Extensions.PHONE))
+                put("ext", Extensions.toJson(handshake.advertised))
             },
         )
         server.onSessionReady(this)

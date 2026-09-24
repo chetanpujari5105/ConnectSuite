@@ -2606,6 +2606,14 @@ version-2 offer and never before, and there is no fallback to the configured fol
 that review's findings are facts about the *existing* bulk path that this contract must not inherit
 (F1, F3, F4 below).
 
+**The phone's twin gate** (`core/.../link/ShareDevGate.kt`, `Extensions.handshake`) advertises
+`share.file: 2` only in a **debuggable** build **and** only for the one trusted handshake after the
+debug-manifest-only, `DUMP`-gated `ShareDevV2Activity` armed it. The arm is in memory, is consumed
+by that handshake (after the pairing check, so a refused Mac cannot use it), and is gone after any
+restart; every other case — including an old Mac with no `ext` — advertises 1. The phone logs, per
+session, what it advertised, whether the arm applied, what the Mac advertised and what was negotiated
+(version numbers and two booleans; no token, name or path).
+
 #### Accept
 
 ```json

@@ -24460,3 +24460,42 @@ in the handler. `main.ts` restored and confirmed byte-identical.
 **The limit of this guard, stated:** it reads source text, so a raise routed through a helper
 function defined elsewhere would pass it. It pins the decision where it was broken; it is not a
 proof about runtime behaviour, which needs the app on a screen.
+
+## Feature A pre-live — the phone's share.file 2 gate, runbook §1 (2026-09-24)
+
+Code and JVM tests only. Nothing installed; no ADB; no device or emulator; the Mac untouched. **The
+phone still advertises `share.file: 1` by default and after every process start.**
+
+**Built.** `ShareDevGate` (core): one `AtomicBoolean` in memory, `consumeForHandshake()` reads and
+clears it, so one arm applies to exactly one handshake. `Extensions.advertised(debuggable, armed)`
+returns 2 only for both; `Extensions.handshake(...)` makes the advertise and negotiate decision once
+and writes the per-session line. `ControlSession.onHello` consumes the arm **after** the pairing check
+and sends in `hello.ack` the same value it negotiated with (it no longer reads `Extensions.PHONE`,
+which stays `{share.file: 1}`). `LinkServer.debuggable` reads `FLAG_DEBUGGABLE`.
+`ShareDevV2Activity` (debug source set only, exported, `DUMP`, no filter, no UI) is the only writer;
+it also refuses to arm in a non-debuggable build.
+
+**Tests.** `ShareDevGateTest` (7): the whole debuggable × armed × Mac {no `ext`, 1, 2} table for
+advertise and negotiate, with 2 only in the one combination (control); the exact log line (numbers
+and booleans only); a fresh instance is unarmed (the restart state); one arm, one handshake; and two
+source reads (comments stripped): no persistence API in `ShareDevGate.kt`, and in `ControlSession`
+the arm consumed once, after `acceptPairToken(`, with `hello.ack` carrying `handshake.advertised`.
+`ShareOfferV2Test` (+1): all **11** fail-closed combinations, driven through `Extensions.handshake`,
+leave `accept` refused (`BAD_REQUEST`), the offer live, and a pull `NOT_FOUND`; the one v2
+combination accepts (control). `ShareDevGateRoutingTest` (4): the activity is in the debug manifest
+with `DUMP`, exported, no filter; absent from the main manifest; no `app/src/release`; its class only
+under `app/src/debug`; no `src/main` in any module calls `ShareDevGate.process.arm(`; no `src/main`
+calls `.offerStaged(`; and Send is still `Button(onClick = {}, enabled = false)`.
+
+**Mutations, 9, each red with gradle exit 1 and result files written by that run:** the debuggable
+fence dropped; the arm defaulting to true; consume not clearing; `hello.ack` back to `PHONE`;
+negotiation against `PHONE` instead of the advertised value; the arm consumed before the pairing
+check; `DUMP` removed from the manifest entry (also red in `DebugProbeGateTest`); a main-source
+`arm()`; Send enabled.
+
+**Full phone suites:** app 69, core 203, input-module 52, mirror-module 60, sync-module 356 — 0
+failures, gradle exit 0, every result file written by this run.
+
+**Not reached:** `ControlSession.onHello` itself (sockets, `Context`); the two source reads stand in
+for it and would pass a consume routed through a helper. The merged **release** manifest was not built
+(no packaging); the routing test reads source sets, not the merged output. The activity has never run.
