@@ -28,7 +28,9 @@ test('a cleared session holds no claim the connection made', () => {
  */
 test('every session-scoped field is accounted for', () => {
   const cleared = clearedSession();
-  const known = ['sessionToken', 'capabilities', 'unavailable', 'limited'];
+  // `negotiated` (Feature A slice 2): teardown replaces the session with clearedSession(), so a
+  // reconnect renegotiates `ext` rather than inheriting the last phone's answer.
+  const known = ['sessionToken', 'capabilities', 'unavailable', 'limited', 'negotiated'];
 
   assert.deepEqual(
     Object.keys(cleared).sort(),
@@ -45,4 +47,8 @@ test('each cleared session gets its own arrays', () => {
   assert.notEqual(first.capabilities, second.capabilities);
   first.capabilities.push('mirror');
   assert.deepEqual(second.capabilities, []);
+
+  assert.notEqual(first.negotiated, second.negotiated);
+  first.negotiated['share.file'] = 1;
+  assert.deepEqual(second.negotiated, {});
 });

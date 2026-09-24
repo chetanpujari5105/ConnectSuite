@@ -82,6 +82,21 @@ export interface DebugSwitches {
    * start path needs to be able to lose the race on purpose.
    */
   delayFloatListeners: boolean;
+  /**
+   * Send `hello` **without** `ext`, so this Mac is an old peer to the phone. Feature A slice 2.
+   *
+   * The compatibility case the contract promises: a new phone facing an old Mac must not offer and
+   * must not wait. An old build is the honest stimulus and is not kept around, so this reproduces
+   * the one thing about it that matters — the absent field.
+   */
+  shareOmitExt: boolean;
+  /**
+   * Validate a `share.offer` and then **never answer it**. Feature A slice 2.
+   *
+   * The only way to watch the phone's expiry path end to end: every normal run answers at once with
+   * the `not-available` stub, so an offer never lives long enough to expire. With this on, it does.
+   */
+  shareSilent: boolean;
 }
 
 const NAMES: readonly (keyof DebugSwitches)[] = [
@@ -91,6 +106,8 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'forceRecipientMismatch',
   'stallCallEnded',
   'delayFloatListeners',
+  'shareOmitExt',
+  'shareSilent',
 ];
 
 function read(): DebugSwitches {
@@ -101,6 +118,8 @@ function read(): DebugSwitches {
     forceRecipientMismatch: false,
     stallCallEnded: false,
     delayFloatListeners: false,
+    shareOmitExt: false,
+    shareSilent: false,
   };
   // `app.isPackaged` is not consulted here because this module must stay importable by tests with
   // no Electron present; main.ts guards the startup read instead.

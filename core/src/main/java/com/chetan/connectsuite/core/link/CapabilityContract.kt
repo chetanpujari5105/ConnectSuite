@@ -332,6 +332,14 @@ object CapabilityContract {
             requests = emptySet(),
             permissions = setOf("android.permission.RECORD_AUDIO"),
         ),
+        // Feature A, slice 2 (docs/protocol.md → Share): the two requests the Mac may send about an
+        // offer. No permission — the file was staged from a share grant. No bulk channel in this
+        // revision because nothing is transferred; slice 3 adds `needsBulkChannel` with the pull.
+        // Being "on" promises only that these two answer; whether an offer can be made at all is the
+        // `share.file` negotiation, which a Mac without it never has.
+        Capability.SHARE to Contract(
+            requests = setOf(MessageType.SHARE_RESPOND, MessageType.SHARE_CANCEL),
+        ),
     )
 
     /** Every capability name the protocol knows about. */

@@ -305,6 +305,13 @@ export const MessageType = {
   NET_STATE: 'net.state',
   /** Phone to Mac, unsolicited: shared-volume free and total bytes. See docs/protocol.md. */
   STORAGE_STATE: 'storage.state',
+
+  /** Feature A (docs/protocol.md → Share). Event, phone → Mac: one staged file on offer. */
+  SHARE_OFFER: 'share.offer',
+  /** Request, Mac → phone: the answer. In this revision always a decline (`not-available` stub). */
+  SHARE_RESPOND: 'share.respond',
+  /** Event phone → Mac (`user` / `expired` / `staging-lost`); request Mac → phone (`user`). */
+  SHARE_CANCEL: 'share.cancel',
 } as const;
 
 export const ErrorCode = {

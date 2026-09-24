@@ -21,8 +21,9 @@ Events are unsolicited and carry a fresh `id`.
 
 - `hello` (Mac to phone): app version, protocol version, device name, cert fingerprint
 - `hello.ack` (phone to Mac): same fields, plus session token and capability list
+- `hello` and `hello.ack` may each carry `ext` — see [Extensions](#extensions-ext)
 
-Capability list example: `["mirror","notifications","sms","calls","contacts","files","photos","clipboard","remote","apps","mic"]`
+Capability list example: `["mirror","notifications","sms","calls","contacts","files","photos","clipboard","remote","apps","mic","share"]`
 The Mac greys out any UI whose capability is absent. Capabilities are derived from granted
 permissions, checked at handshake time and re-sent as a `capabilities.changed` event whenever a
 permission changes.
@@ -115,6 +116,7 @@ Apps: `apps.list`, `apps.icon`, `apps.open.ask` — see [Apps](#apps-42501). The
 `apps.launch`; the measurement that removed it, and the guard that keeps it removed, are in that section
 Media remote: `remote.state`, `remote.command`, `remote.artwork`
 Microphone: `mic.start`, `mic.stop`, `mic.state` — see [Microphone](#microphone-42501-with-audio-on-42504)
+Share: `share.offer`, `share.respond`, `share.cancel` — see [Share](#share-42501)
 Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`, `pair.rejected`
 System: `ping`, `pong`, `capabilities.changed`, `battery.state`, `storage.state`, `net.state`
 
@@ -140,7 +142,7 @@ feature failing every request looks, on the Mac, exactly like a feature that is 
 | `clip` | `clipboard` |
 | `fs` | `files` |
 | `media` | `photos` |
-| `mirror`, `input`, `sms`, `contacts`, `remote`, `apps`, `mic` | *(same name)* |
+| `mirror`, `input`, `sms`, `contacts`, `remote`, `apps`, `mic`, `share` | *(same name)* |
 
 The mapping is `FeatureOf.of(type)` in `core/.../protocol/FeatureOf.kt`, checked exhaustively over
 `MessageType` by `ProtocolNamespaceTest`. It returns **null** for the system messages — `hello`,
@@ -2447,6 +2449,118 @@ two. Free RAM on Android is not a fact about a phone that a person can act on �
 fills it, so "1.2 GB free of 12 GB" is alarming and meaningless, and a number that looks like
 information and is not is the decoration this project rules out everywhere else. Recorded as a
 departure in `docs/design-departures.md` → O4 rather than left as an omission somebody will "fix".
+
+## Extensions (`ext`)
+
+`hello` (Mac → phone) and `hello.ack` (phone → Mac) may each carry one optional field, `ext`: an
+object mapping an extension name to the highest version of it that this peer implements.
+
+```json
+hello      {"protocolVersion":1, …every existing field…, "ext":{"share.file":1}}
+hello.ack  {"protocolVersion":1, …every existing field…, "ext":{"share.file":1}}
+```
+
+On `hello`, `share.file` means *this Mac can receive and answer a one-file share offer*; on
+`hello.ack`, *this phone can make one*. Parsing is identical on both sides:
+
+1. `ext` absent, `null`, or not a JSON object → `{}`. Not an error.
+2. A key the peer does not recognise → ignored.
+3. A value that is not an integer ≥ 1 → that key is absent; the rest of `ext` is still read.
+4. An extension is negotiated only when **both** sides advertise it, at `min(mine, theirs)`.
+5. The result is fixed for the session and is not changed by `capabilities.changed`.
+6. `protocolVersion` keeps its meaning; a major mismatch is refused with `PROTOCOL_MISMATCH` before
+   `ext` is read. `ext` never changes the major version.
+
+The cases are `docs/fixtures/ext-negotiation.json`, read by both sides' tests, so the two parsers
+cannot drift apart unnoticed.
+
+## Share (42501)
+
+One file from the phone's share sheet to the Mac. The phone offers; the Mac answers; nothing moves
+before the Mac answers. **This revision has no transfer and no accept.** A Mac of this revision
+validates each offer and declines it with `not-available`. That is a protocol stub, not a person's
+decision, and a phone must never render it as one.
+
+The capability is `share` (prefix and name agree). Its contract is the two requests the phone
+handles, `share.respond` and `share.cancel`. The design and its evidence are
+`docs/phase-7-share-proposal.md` rev 2 and `docs/phase-7-share-plan.md`.
+
+### `share.offer` — event, phone → Mac
+
+```json
+{"offerId":"s-Q3v9aP0kT7mR2xW8yB4nZc","rootId":"share:s-Q3v9aP0kT7mR2xW8yB4nZc",
+ "from":"Galaxy S25 Ultra",
+ "item":{"itemId":"0","name":"IMG_2041.jpg","mime":"image/jpeg","size":3874112,
+         "sha256":"97b1c8f2…(64 lowercase hex)"},
+ "expiresAtMs":1790000600000}
+```
+
+| Field | Rule |
+|---|---|
+| `offerId` | `s-` + 22 base64url characters (128 random bits). Never reused |
+| `rootId` | exactly `share:` + `offerId` |
+| `from` | the phone's device name, 1–128 characters |
+| `item` | one object, never an array: `itemId` is `"0"`; `name` is 1–255 UTF-8 bytes; `mime` is `type/subtype`, ≤ 127 characters; `size` is an integer 0 … 2^53−1, the exact byte count of the phone's private copy; `sha256` is 64 lowercase hex of that copy |
+| `expiresAtMs` | when the phone stops honouring the offer: sent + 10 minutes |
+
+**Only sent when `share.file` is negotiated on that session, and at most one offer per session is
+live.** The file is already staged privately on the phone; the offer never refers to anything else.
+
+**The Mac validates before anything else**, in this order, and declines with the first failure:
+`not-negotiated` (no `share.file` on this session); `malformed-offer` (any field above out of
+rule, `rootId` ≠ `share:` + `offerId`, or `expiresAtMs` not in (now, now + 15 min] by the Mac's
+clock — 10 minutes plus 5 of clock skew); `busy` (another offer from this session is still live).
+A second offer carrying an `offerId` already seen in this run of the Mac is a **replay**: it is
+logged and **not answered** — the first was answered once, and a second answer would contradict
+it. The Mac's own expiry for an offer is `min(expiresAtMs, received + 10 min)`.
+
+### `share.respond` — request, Mac → phone
+
+```json
+request  {"offerId":"s-…","decision":"decline","reason":"not-available"}
+ack      {"offerId":"s-…","state":"declined"}
+```
+
+`reason` is one of `not-available`, `not-negotiated`, `malformed-offer`, `busy`, `user`,
+`folder-unavailable`, `insufficient-space`. A Mac of this revision sends only the first four; the
+last three are reserved for the revision that adds a person's decision. **There is no `expired`
+decline**: an offer nobody answered *expires* (`share.cancel`), and is never shown as declined.
+
+`decision: "accept"` belongs to the revision that adds the transfer. A phone of this revision answers
+it with `BAD_REQUEST` (`feature: "share"`, *"this phone cannot send files yet"*), and the offer stays
+live until it is declined, cancelled or expires.
+
+Errors, all with `feature: "share"`: `NOT_FOUND` for an unknown `offerId`, an offer made on a
+different session, or one already answered, cancelled or expired — indistinguishable on purpose, so
+one session cannot probe another's offers; `BAD_REQUEST` for a missing or malformed field, an
+unknown `decision`, or an unknown `reason`. **An offer is answered once.**
+
+### `share.cancel` — either side
+
+```json
+phone → Mac, event    {"offerId":"s-…","reason":"user" | "expired" | "staging-lost"}
+Mac → phone, request  {"offerId":"s-…","reason":"user"}
+ack                   {"offerId":"s-…","stopped":true}
+```
+
+The phone sends `expired` itself at `expiresAtMs` if the offer is still live. A Mac of this revision
+never sends the request — it has no card to cancel from — but the phone handles it, with the same
+`NOT_FOUND` rules as `share.respond`.
+
+### What is left behind
+
+Every end of an offer — declined, expired, cancelled by either side, or the session ending — deletes
+the phone's staged copy. There is no retry in this revision, so nothing is retained after an offer
+ends. An offer does not survive its session: on a disconnect both sides drop it without a message.
+
+### Old peers
+
+| Pair | What happens |
+|---|---|
+| New phone, old Mac (no `ext` in `hello`) | `share.file` is not negotiated, so the phone sends no offer and says so. It never waits for an answer that cannot come |
+| Old phone, new Mac | no `ext` in `hello.ack`, so no offers arrive; an offer that did arrive would be declined `not-negotiated` |
+| New and new | `share.file` = 1 |
+| Both new, and the Mac never answers | the phone's offer expires at `expiresAtMs`: it sends `share.cancel{expired}` and deletes the staged copy. Nothing waits indefinitely |
 
 ## Discovery
 

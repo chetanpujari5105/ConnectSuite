@@ -17,6 +17,7 @@ import com.chetan.connectsuite.sync.v2.FsFeature
 import com.chetan.connectsuite.sync.v2.MediaFeature
 import com.chetan.connectsuite.sync.v2.NotificationFeature
 import com.chetan.connectsuite.sync.v2.RemoteFeature
+import com.chetan.connectsuite.sync.v2.ShareFeature
 import com.chetan.connectsuite.sync.v2.SmsFeature
 
 class ConnectSuiteApp : Application() {
@@ -105,6 +106,9 @@ class ConnectSuiteApp : Application() {
         // The capability turns on with POST_NOTIFICATIONS, because that tap is the only route there
         // is — see CapabilityContract and docs/protocol.md.
         AppsFeature.install(this, link)
+        // Feature A, slice 2: answers share.respond / share.cancel and expires offers. Nothing in
+        // the product makes an offer yet — Send stays disabled; only a debug probe calls it.
+        ShareFeature.install(this, link)
         // Last, because it reads NotificationRelay: the media remote is gated on the notification
         // listener rather than on a permission of its own. See RemoteFeature.
         RemoteFeature.install(this, link)

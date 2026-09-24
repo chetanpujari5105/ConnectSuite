@@ -184,6 +184,7 @@ class CapabilityContractTest {
             Capability.MIRROR, Capability.INPUT, Capability.NOTIFICATIONS, Capability.SMS,
             Capability.CALLS, Capability.CONTACTS, Capability.FILES, Capability.PHOTOS,
             Capability.CLIPBOARD, Capability.REMOTE, Capability.APPS, Capability.MIC,
+            Capability.SHARE,
         )
         assertEquals(
             "every Capability constant needs an entry in CapabilityContract.contracts",

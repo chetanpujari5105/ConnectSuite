@@ -206,6 +206,18 @@ object MessageType {
 
     /** Phone to Mac, unsolicited: shared-volume free and total bytes. See docs/protocol.md. */
     const val STORAGE_STATE = "storage.state"
+
+    /**
+     * Feature A (docs/protocol.md → Share). Event, phone → Mac: one staged file on offer. Sent
+     * only when `share.file` is negotiated through `ext`, and at most one live per session.
+     */
+    const val SHARE_OFFER = "share.offer"
+
+    /** Request, Mac → phone: the Mac's answer to an offer. In this revision always a decline. */
+    const val SHARE_RESPOND = "share.respond"
+
+    /** Event phone → Mac (`user`/`expired`/`staging-lost`), or request Mac → phone (`user`). */
+    const val SHARE_CANCEL = "share.cancel"
 }
 
 object ErrorCode {
@@ -397,6 +409,9 @@ object Capability {
     const val APPS = "apps"
     const val MIC = "mic"
 
+    /** Feature A: the phone can make and answer for one-file share offers (docs/protocol.md → Share). */
+    const val SHARE = "share"
+
     /**
      * Every capability name, in one place, so nothing has to hand-maintain a second list.
      *
@@ -405,7 +420,7 @@ object Capability {
      */
     val all: Set<String> = setOf(
         MIRROR, INPUT, NOTIFICATIONS, SMS, CALLS, CONTACTS,
-        FILES, PHOTOS, CLIPBOARD, REMOTE, APPS, MIC,
+        FILES, PHOTOS, CLIPBOARD, REMOTE, APPS, MIC, SHARE,
     )
 }
 

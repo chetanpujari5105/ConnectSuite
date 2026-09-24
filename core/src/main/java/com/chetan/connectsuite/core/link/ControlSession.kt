@@ -69,6 +69,14 @@ class ControlSession(
     var isHandshakeComplete: Boolean = false
         private set
 
+    /**
+     * Extensions negotiated for this session (docs/protocol.md → Extensions): name → version, for
+     * every extension both sides advertised. Fixed at `hello`; rule 5 says nothing renegotiates it.
+     * Empty for an old Mac that sends no `ext`, which is how the phone knows not to offer.
+     */
+    @Volatile var negotiated: Map<String, Int> = emptyMap()
+        private set
+
     val remoteAddress: String? get() = socket.inetAddress?.hostAddress
 
     /**
@@ -279,6 +287,15 @@ class ControlSession(
 
         val sessionToken = server.sessions.issue(this)
         token = sessionToken
+        // Rules 1-4, after the version and pairing checks above (rule 6). An absent `ext` is `{}`.
+        val macExt = Extensions.parse(payload["ext"])
+        negotiated = Extensions.PHONE.keys.mapNotNull { name ->
+            Extensions.negotiate(Extensions.PHONE, macExt, name)?.let { name to it }
+        }.toMap()
+        LinkLog.i(
+            "control",
+            "ext: Mac advertises ${macExt.ifEmpty { "nothing" }}; negotiated ${negotiated.ifEmpty { "nothing" }}",
+        )
         isHandshakeComplete = true
 
         send(
@@ -292,6 +309,8 @@ class ControlSession(
                 put("capabilities", capabilitiesJson())
                 put("unavailable", unavailableJson())
                 put("limited", limitedJson())
+                // Optional: an old Mac reads hello.ack fields by key and never sees it.
+                put("ext", Extensions.toJson(Extensions.PHONE))
             },
         )
         server.onSessionReady(this)

@@ -1,0 +1,26 @@
+{
+  "about": "docs/protocol.md -> Extensions (ext), rules 1-6. Read by the phone's ExtensionsTest and the Mac's extensions.test.ts. `parse` cases: raw payload value of `ext` (the key absent is modelled as {\"absent\": true}) -> the parsed map. `negotiate` cases: mine + theirs -> the negotiated version of share.file, or null.",
+  "parse": [
+    { "why": "absent", "raw": { "absent": true }, "out": {} },
+    { "why": "null", "raw": null, "out": {} },
+    { "why": "not an object: array", "raw": [1], "out": {} },
+    { "why": "not an object: string", "raw": "share.file", "out": {} },
+    { "why": "not an object: number", "raw": 1, "out": {} },
+    { "why": "one extension", "raw": { "share.file": 1 }, "out": { "share.file": 1 } },
+    { "why": "unknown key kept in the map, ignored by negotiation", "raw": { "share.file": 1, "future.thing": 3 }, "out": { "share.file": 1, "future.thing": 3 } },
+    { "why": "zero is not a version", "raw": { "share.file": 0 }, "out": {} },
+    { "why": "negative is not a version", "raw": { "share.file": -1 }, "out": {} },
+    { "why": "a fraction is not a version", "raw": { "share.file": 1.5 }, "out": {} },
+    { "why": "a string is not a version", "raw": { "share.file": "1" }, "out": {} },
+    { "why": "a boolean is not a version", "raw": { "share.file": true }, "out": {} },
+    { "why": "null value is absent", "raw": { "share.file": null }, "out": {} },
+    { "why": "one bad key does not spoil the rest", "raw": { "bad": "x", "share.file": 2 }, "out": { "share.file": 2 } }
+  ],
+  "negotiate": [
+    { "why": "both advertise 1", "mine": { "share.file": 1 }, "theirs": { "share.file": 1 }, "out": 1 },
+    { "why": "old peer: theirs absent", "mine": { "share.file": 1 }, "theirs": {}, "out": null },
+    { "why": "I do not advertise it", "mine": {}, "theirs": { "share.file": 1 }, "out": null },
+    { "why": "a newer peer: min", "mine": { "share.file": 1 }, "theirs": { "share.file": 2 }, "out": 1 },
+    { "why": "an older peer: min", "mine": { "share.file": 3 }, "theirs": { "share.file": 1 }, "out": 1 }
+  ]
+}

@@ -91,6 +91,7 @@ import { initLogger, log, tailLog } from './logger';
 // has one home and the two windows cannot drift.
 import { KeyframeTrace } from '../shared/keyframeTrace';
 import { debugSwitches } from './debugSwitches';
+import { ShareReceiver } from './share';
 import { settingsMigration, store } from './store';
 import {
   clearRePairPending,
@@ -934,6 +935,12 @@ app.whenReady().then(() => {
   video = new VideoClient(identity);
   bulk = new BulkClient(identity);
 
+  // Feature A, slice 2 (docs/protocol.md → Share): validate every share.offer and decline it with
+  // the `not-available` stub. No card, no Accept, nothing saved. `shareSilent` (development builds
+  // only) holds a valid offer unanswered so the phone's expiry can be watched.
+  const shareReceiver = new ShareReceiver(link, !app.isPackaged && debugSwitches().shareSilent);
+  let shareSessionKey: string | null = null;
+
   /*
    * The detached mirror window.
    *
@@ -1184,6 +1191,7 @@ app.whenReady().then(() => {
       const before = lastRecordedPhase;
       lastRecordedPhase = status.phase;
       if (status.phase === 'connected') {
+        shareSessionKey = link?.token() ?? null;
         activity.record('system', 'Connected', status.deviceName ?? status.address ?? 'phone');
         // The phone completed a handshake on the Sidekick identity, so the rename is paid for.
         if (rePairPending) {
@@ -1198,6 +1206,9 @@ app.whenReady().then(() => {
           sendAll('rename-notice', { notice: null });
         }
       } else if (before === 'connected') {
+        // An offer does not survive its session (docs/protocol.md → Share → What is left behind).
+        shareReceiver.onSessionEnded(shareSessionKey);
+        shareSessionKey = null;
         activity.record(
           'system',
           'Disconnected',
@@ -1308,6 +1319,9 @@ app.whenReady().then(() => {
   });
   link.on('message', (envelope: unknown) => {
     const message = envelope as { type?: string; payload?: Record<string, unknown> };
+    // Feature A, slice 2. Handled first and by type only: the receiver validates the payload itself.
+    if (message?.type === MessageType.SHARE_OFFER) shareReceiver.onOffer(message.payload);
+    if (message?.type === MessageType.SHARE_CANCEL) shareReceiver.onCancel(message.payload);
     // Phase 4 events. The phone pushes these; nothing here ever requests them, which is why they
     // are handled beside the mirror's events rather than inside a client that owns a request.
     if (message?.type === MessageType.NOTIF_POSTED && message.payload) {

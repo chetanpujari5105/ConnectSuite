@@ -26,9 +26,14 @@ export interface SessionScoped {
   unavailable: UnavailableCapability[];
   /** What it offers only in part, and how (defect 139). The same claim, so the same lifetime. */
   limited: LimitedCapability[];
+  /**
+   * Extensions both sides advertised at `hello` (docs/protocol.md → Extensions), name → version.
+   * Fixed for the session (rule 5) and gone with it: a reconnect renegotiates.
+   */
+  negotiated: Record<string, number>;
 }
 
 /** A session's worth of state, blanked. The only way the link should clear it. */
 export function clearedSession(): SessionScoped {
-  return { sessionToken: null, capabilities: [], unavailable: [], limited: [] };
+  return { sessionToken: null, capabilities: [], unavailable: [], limited: [], negotiated: {} };
 }

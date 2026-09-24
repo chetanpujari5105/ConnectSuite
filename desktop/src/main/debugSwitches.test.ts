@@ -34,6 +34,10 @@ test('the known switches are exactly these, and every one defaults to off', () =
       // path — it forces the float's start race to lose, which no machine tried here would do.
       'delayFloatListeners',
       'forceRecipientMismatch',
+      // Added 2026-09-24 for Feature A slice 2, both off by default (asserted below): an old-peer
+      // `hello` with no `ext`, and an offer held unanswered so the phone's expiry can be watched.
+      'shareOmitExt',
+      'shareSilent',
       'stallCallEnded',
       'stallRemoved',
     ],

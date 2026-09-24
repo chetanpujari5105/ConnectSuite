@@ -20,6 +20,8 @@ import {
 } from '../shared/protocol';
 import { classifyLinkError, pairingHealth, type LinkFailure } from '../shared/linkHealth';
 import { clearedSession, type SessionScoped } from '../shared/session';
+import { MAC_EXT, negotiateAll, parseExt } from '../shared/extensions';
+import { debugSwitches } from './debugSwitches';
 import { CANDIDATE_TIMEOUT_MS, discoverCandidates, type Candidate } from './discovery';
 import { fingerprintOfDer, type Identity } from './identity';
 import { log } from './logger';
@@ -264,6 +266,11 @@ export class LinkClient extends EventEmitter {
     return this.session.sessionToken;
   }
 
+  /** Extensions negotiated for the current session; `{}` when disconnected or with an old phone. */
+  negotiated(): Readonly<Record<string, number>> {
+    return this.session.negotiated;
+  }
+
   // ---- connection ---------------------------------------------------------------------
 
   private async attempt(): Promise<void> {
@@ -401,6 +408,9 @@ export class LinkClient extends EventEmitter {
       fingerprint: this.identity.fingerprint,
     };
     if (this.isPairingArmed()) hello.pairToken = this.armedPairing?.token;
+    // docs/protocol.md → Extensions. Optional: an old phone reads hello fields by key and never
+    // sees it. `shareOmitExt` (debug only) leaves it out so this Mac is an old peer on purpose.
+    if (!debugSwitches().shareOmitExt) hello.ext = { ...MAC_EXT };
 
     const helloId = randomUUID();
     const timer = setTimeout(() => {
@@ -543,6 +553,15 @@ export class LinkClient extends EventEmitter {
     this.session.capabilities = payload.capabilities ?? [];
     this.session.unavailable = payload.unavailable ?? [];
     this.session.limited = payload.limited ?? [];
+    // Rules 1-4: an old phone sends no `ext`, which parses to {} and negotiates nothing. What this
+    // Mac advertised is what it sent: nothing, under the debug `shareOmitExt`.
+    const advertised = debugSwitches().shareOmitExt ? {} : MAC_EXT;
+    const phoneExt = parseExt((payload as { ext?: unknown }).ext);
+    this.session.negotiated = negotiateAll(advertised, phoneExt);
+    log.info(
+      'link',
+      `ext: phone advertises ${JSON.stringify(phoneExt)}; negotiated ${JSON.stringify(this.session.negotiated)}`,
+    );
     this.missedPongs = 0;
     this.backoffMs = BACKOFF_START_MS;
     // The handshake completed, so whatever failed before it is over. See [lastFailure] for what

@@ -91,5 +91,17 @@
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>
+
+        <!--
+          Feature A slice 2: the only thing that makes a share offer. Debug source set only, started
+          by `adb shell am start` (hence exported, like the other probes here), no intent filter, no
+          launcher entry, no UI. It stages generated synthetic bytes and offers them; it reads no
+          user data. Ordinary shares never reach the offer path in this slice.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.ShareOfferProbeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay" />
     </application>
 </manifest>
