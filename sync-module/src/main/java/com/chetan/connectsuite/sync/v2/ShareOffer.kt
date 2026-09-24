@@ -39,6 +39,12 @@ object ShareOffer {
         "checksum", "truncated", "interrupted", "insufficient-space", "write-failed", "unsupported-destination",
     )
     val PHONE_CANCEL_REASONS = setOf("user", "expired", "staging-lost")
+    /**
+     * The failure reason for a send the Mac never gave a verdict on. **Ambiguous by construction**:
+     * the Mac may have saved the file and lost the acknowledgement, or may have saved nothing. It is
+     * never reported as saved and never reported as a plain failure either.
+     */
+    const val UNCONFIRMED = "unconfirmed"
     val MAC_CANCEL_REASONS = setOf("user")
 
     data class Offer(
@@ -235,7 +241,7 @@ object ShareOffer {
     fun verdictDeadline(offer: Offer, nowMs: Long): Result {
         val due = offer.verdictDueMs
         if (offer.state != State.AwaitingVerdict || due == null || nowMs < due) return Result(offer, null, emptyList())
-        return failInto(offer, "unconfirmed", nowMs, null)
+        return failInto(offer, UNCONFIRMED, nowMs, null)
     }
 
     /** The Retry window closed with no successful attempt: the offer expires and the copy goes. */
@@ -298,5 +304,32 @@ object ShareOffer {
     private fun expireInstead(live: Offer): Result {
         val (next, effects) = ended(live, State.Expired, Effect.SendCancel("expired"))
         return Result(next, Reply.Error(NOT_FOUND, NOT_FOUND_MESSAGE), effects)
+    }
+
+    // ---- what the phone says about an offer ------------------------------------------------------
+
+    /** The one question the phone's copy may ask: does this state say the file is saved? */
+    fun reportsSaved(state: State): Boolean = state is State.Saved
+
+    /**
+     * The phone's sentence for a state (the log today, a surface later). Only [State.Saved] — the
+     * Mac's `share.saved {ok:true}` — says saved. [UNCONFIRMED] says what is actually known: the
+     * bytes were sent and the Mac did not answer, so it **may** have saved them.
+     */
+    fun describe(state: State): String = when (state) {
+        State.Offered -> "offered"
+        State.Accepted -> "accepted"
+        State.Sending -> "sending"
+        State.AwaitingVerdict -> "sent; awaiting the Mac's verdict (not saved)"
+        is State.Failed -> if (state.reason == UNCONFIRMED) {
+            "sent, but the Mac did not confirm it; it may or may not have been kept there — check the Mac before sending again"
+        } else {
+            "failed (${state.reason}); Retry window open"
+        }
+        is State.Saved -> "saved on the Mac as ${state.savedAs}"
+        is State.Declined -> "declined (${state.reason})"
+        State.Expired -> "expired"
+        is State.Cancelled -> "cancelled by the ${state.by.name.lowercase()} (${state.reason})"
+        State.SessionEnded -> "ended with the session"
     }
 }

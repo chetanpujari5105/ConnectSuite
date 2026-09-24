@@ -375,6 +375,59 @@ test('a verdict the phone does not acknowledge is saved-unacknowledged, never cl
   }
 });
 
+// ---- saved on this Mac, acknowledgement lost (Task B) ---------------------------------------------
+
+test('a lost acknowledgement: the verified file is kept through the phone’s expiry, the session ending, and a Retry', { timeout: 10_000 }, async () => {
+  const data = synthetic(1000);
+  const phone = await startFakePhone({ bytes: data.bytes });
+  const link = new FakeLink(2, 1000, data.sha256);
+  link.savedReply = 'error';
+  const d = folder();
+  try {
+    const r = receiver(link, d, [phone], { switches: { acceptProbeDigests: allow(link) } });
+    await r.onOffer(offer(1000, data.sha256));
+    assert.equal(r.state(id), 'saved-unacknowledged');
+    const file = join(d, 'sidekick-offer-probe-1000.bin');
+    await r.retry(id);
+    r.onCancel({ offerId: id, reason: 'expired' }); // the phone's retry window closing
+    r.onSessionEnded('token-A');
+    assert.equal(r.state(id), 'saved-unacknowledged', 'still saved-unacknowledged — never demoted to expired or ended');
+    assert.deepEqual(readFileSync(file), data.bytes, 'the verified file is on the Mac, byte for byte');
+    assert.deepEqual(readdirSync(d), ['sidekick-offer-probe-1000.bin'], 'and nothing else: no partial, no second copy');
+    assert.equal(link.types().filter((x) => x === 'fs.transfer.begin').length, 1, 'no second pull');
+  } finally {
+    await phone.close();
+  }
+});
+
+test('the same bytes offered again after an unconfirmed save: flagged before Accept, saved under a new name, the first untouched', { timeout: 10_000 }, async () => {
+  const data = synthetic(1000);
+  const phone = await startFakePhone({ bytes: data.bytes });
+  const link = new FakeLink(2, 1000, data.sha256);
+  link.savedReply = 'error';
+  link.beginIds = [txA, txB];
+  const d = folder();
+  const second = 's-SECONDxxxxxxxxxxxxxxxx';
+  try {
+    const r = receiver(link, d, [phone, phone]);
+    await r.onOffer(offer(1000, data.sha256, { name: 'report.pdf', mime: 'application/pdf' }));
+    await r.decide(id, 'accept');
+    assert.equal(r.state(id), 'saved-unacknowledged');
+    assert.equal(r.priorCopy(id), null, 'the first offer has no earlier copy');
+
+    link.savedReply = 'ack';
+    await r.onOffer(offer(1000, data.sha256, { name: 'report.pdf', mime: 'application/pdf', offerId: second }));
+    assert.deepEqual(r.priorCopy(second), { savedAs: 'report.pdf', acknowledged: false });
+    await r.decide(second, 'accept');
+    assert.equal(r.state(second), 'saved');
+    assert.equal(r.savedAs(second), 'report (2).pdf');
+    assert.deepEqual(readdirSync(d).sort(), ['report (2).pdf', 'report.pdf']);
+    assert.deepEqual(readFileSync(join(d, 'report.pdf')), data.bytes, 'the first copy was not overwritten');
+  } finally {
+    await phone.close();
+  }
+});
+
 test('a phone cancel mid-pull stops it, deletes the partial, and sends no verdict', { timeout: 10_000 }, async () => {
   const data = synthetic(100_000);
   const phone = await startFakePhone({ bytes: data.bytes, stallAfter: 20_000, chunkSize: 10_000 });

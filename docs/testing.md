@@ -24350,3 +24350,39 @@ wide and is stated, not closed. Inode reuse is narrowed by birth time, size, nam
 excluded. The phone still hard-codes `share.file: 1`; the 3e run needs a matching phone-side change,
 which is not made here. `tsc -p tsconfig.test.json` reports 7 errors that are identical at `8dc5a61`
 (checked in a clean worktree) — pre-existing, not from this change.
+
+## Feature A pre-live B — saved on the Mac, verdict never acknowledged (2026-09-24)
+
+Code and automated tests only; no device, no ADB, no install; both ends still advertise
+`share.file: 1`. Contract: `docs/protocol.md` → Share → *Saved on the Mac, verdict not acknowledged*
+(no wire change — what each side does with the existing messages).
+
+**What it pins.** The Mac publishes a verified file and the phone never acknowledges `share.saved`:
+- **Mac:** `saved-unacknowledged`, worded *"Saved on this Mac; confirmation to phone unknown"* by the
+  new pure `src/shared/shareReceiveCopy.ts`, whose status carries `savedOnMac` and
+  `confirmedByPhone` as **two fields** — the tests assert the fields per state, not a likeness
+  between sentences. The file is kept through the phone's `share.cancel{expired}`, the session
+  ending, and a Retry; no second pull, no partial, no second copy.
+- **Retry:** a published offer is never `failed`, so it cannot be retried, and `retry()` also refuses
+  outright when `savedAs` is set. **That second guard is unreachable through the state machine and no
+  test reaches it** — it is defence in depth and is recorded as untested rather than claimed.
+- **Duplicates:** the Mac remembers, in memory, each digest it published this run. A new offer with
+  the same SHA-256 carries `priorCopy {savedAs, acknowledged}` and the status says, before Accept,
+  that accepting saves a second copy. Accepted, it lands as `report (2).pdf` with the first copy
+  byte-identical.
+- **Phone:** `ShareOffer.describe` moved out of `ShareFeature` (needs a `Context`) into the pure
+  object so a JVM test reaches it; `unconfirmed` now reads *"sent, but the Mac did not confirm it; it
+  may or may not have been kept there"* instead of *"failed (unconfirmed); Retry window open"*.
+  `reportsSaved(state)` is true for `Saved` only. A verdict after the deadline is `NOT_FOUND` and
+  leaves the offer `unconfirmed`, deleting nothing.
+
+**Tests:** Mac 1073/1073; `sync-module` 355/355 (gradle exit 0, results read the same second).
+**Mutations, 11, all red:** Mac — unacknowledged recorded as saved; the phone's expiry demoting
+it; the session end demoting it; no prior-copy memory; the copy claiming the phone confirmed; expired
+worded declined; the unacknowledged headline shortened to "Saved on this Mac"; "Receiving" worded as
+saved. Phone (each with results 0–1 s old and gradle exit 1) — `unconfirmed` reporting saved; the
+old wording restored; a late verdict accepted from `Failed`.
+
+**Not reached:** the phone has no user-facing share surface yet (the sentence reaches the log only);
+the prior-copy memory does not survive a Mac restart; a duplicate across two Mac runs is still
+collision-safe on disk but not flagged.

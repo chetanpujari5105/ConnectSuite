@@ -2738,6 +2738,34 @@ file name only, never a path. `reason` is one of `checksum`, `truncated`, `inter
 **No false "Saved":** if the phone has finished sending and no `share.saved` arrives within **60
 seconds**, or the session ends first, the offer becomes failed (`unconfirmed`) — never saved.
 
+#### Saved on the Mac, verdict not acknowledged
+
+The Mac can publish a verified file and then not hear the phone acknowledge `share.saved {ok:true}`
+(the request timed out, the phone had already passed its 60-second deadline and answered
+`NOT_FOUND`, or the link dropped). **Then the two sides hold two different, honest facts**, and
+neither may be rounded into the other:
+
+| | The Mac | The phone |
+|---|---|---|
+| state | `saved-unacknowledged` | failed (`unconfirmed`) |
+| says | *"Saved on this Mac; confirmation to phone unknown"* — never an unqualified two-sided success | that the Mac did not confirm, and **may** have kept the file — never "Saved", and never a plain send failure |
+| the file | kept. A lost acknowledgement is never a reason to delete a verified, published file | its staged copy follows the Retry window as usual |
+
+- **A verdict that arrives after the phone's deadline does not revive the offer.** It is answered
+  `NOT_FOUND`, the phone stays `unconfirmed`, and the Mac records `saved-unacknowledged`.
+- **The Mac never retries an offer it has published.** A published offer is `saved` or
+  `saved-unacknowledged`, never failed, so there is nothing to retry — and the Mac refuses a Retry
+  for it outright as well, because a second pull would write a second copy. The phone's open Retry
+  window after `unconfirmed` is therefore used only when the Mac had *not* published (its own
+  `ok:false` was the verdict that was lost).
+- **A duplicate can still arise** if the person shares the same file again as a new offer. It is
+  published under the usual collision-safe name (`name (2).ext`), never over the first copy, and the
+  Mac shows **before Accept** that a file with the same SHA-256 was already saved in this run, naming
+  it and whether the phone ever confirmed it. That memory is the Mac's, in-process only, like the
+  offers.
+
+No wire message changes: this section states what each side does with the messages above.
+
 #### Retry, and what is kept
 
 After `share.saved {ok:false}` (any reason but `staging-lost`), the phone keeps its staged copy for a

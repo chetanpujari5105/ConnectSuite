@@ -191,6 +191,43 @@ class ShareOfferV2Test {
         assertFalse(r.offer!!.state is State.Saved)
     }
 
+    // ---- saved on the Mac, verdict lost (Task B) --------------------------------------------------
+
+    /**
+     * The Mac published and its `share.saved` never arrived. The phone's state is a fact about what
+     * it was told, not what happened: it must not say saved, and its sentence must say the file
+     * *may* be on the Mac rather than that sending failed.
+     */
+    @Test fun `unconfirmed does not report saved, and says the Mac may have kept it`() {
+        val state = ShareOffer.verdictDeadline(awaiting(), awaiting().verdictDueMs!!).offer!!.state
+        assertEquals(State.Failed(ShareOffer.UNCONFIRMED), state)
+        assertFalse(ShareOffer.reportsSaved(state))
+        val words = ShareOffer.describe(state)
+        assertFalse("must not read as saved: $words", words.startsWith("saved"))
+        assertTrue("must say it may be on the Mac: $words", words.contains("may"))
+        assertFalse("must not read as a plain failure: $words", words.startsWith("failed"))
+    }
+
+    @Test fun `a verdict arriving after the deadline is NOT_FOUND and leaves the offer unconfirmed, never saved late`() {
+        val unconfirmed = ShareOffer.verdictDeadline(awaiting(), awaiting().verdictDueMs!!).offer!!
+        val late = saved(unconfirmed)
+        assertEquals("NOT_FOUND", code(late))
+        assertEquals(State.Failed(ShareOffer.UNCONFIRMED), late.offer!!.state)
+        assertFalse(late.effects.contains(Effect.DeleteStaged))
+    }
+
+    @Test fun `only the Saved state reports saved — every other state says no`() {
+        val all = listOf(
+            State.Offered, State.Accepted, State.Sending, State.AwaitingVerdict,
+            State.Failed(ShareOffer.UNCONFIRMED), State.Failed("checksum"), State.Declined("user"),
+            State.Expired, State.Cancelled(ShareOffer.Side.MAC, "user"), State.SessionEnded,
+        )
+        for (st in all) assertFalse("$st", ShareOffer.reportsSaved(st))
+        assertTrue(ShareOffer.reportsSaved(State.Saved("x.bin")))
+        // The control: Saved is reachable, and only through the Mac's verdict.
+        assertEquals(State.Saved("x.bin"), saved(awaiting()).offer!!.state)
+    }
+
     @Test fun `a retry within the window pulls again from byte 0 with a fresh id`() {
         val failed = saved(awaiting(), ok = false, reason = "checksum").offer!!
         val tx2 = "ts-CCCCCCCCCCCCCCCCCCCCCC"

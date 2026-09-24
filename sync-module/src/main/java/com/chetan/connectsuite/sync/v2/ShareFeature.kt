@@ -357,16 +357,5 @@ object ShareFeature {
         return f.isFile && f.length() == o.bytes
     }
 
-    fun describe(state: ShareOffer.State): String = when (state) {
-        ShareOffer.State.Offered -> "offered"
-        ShareOffer.State.Accepted -> "accepted"
-        ShareOffer.State.Sending -> "sending"
-        ShareOffer.State.AwaitingVerdict -> "sent; awaiting the Mac's verdict (not saved)"
-        is ShareOffer.State.Failed -> "failed (${state.reason}); Retry window open"
-        is ShareOffer.State.Saved -> "saved on the Mac"
-        is ShareOffer.State.Declined -> "declined (${state.reason})"
-        ShareOffer.State.Expired -> "expired"
-        is ShareOffer.State.Cancelled -> "cancelled by the ${state.by.name.lowercase()} (${state.reason})"
-        ShareOffer.State.SessionEnded -> "ended with the session"
-    }
+    fun describe(state: ShareOffer.State): String = ShareOffer.describe(state)
 }

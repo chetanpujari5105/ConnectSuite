@@ -75,17 +75,19 @@ export function isAcceptableProbe(offer: ShareOfferPayload, allowedDigests: Read
     PROBE_NAME.test(offer.item.name) && offer.item.mime === 'application/octet-stream';
 }
 
-export type ReceiveState =
-  | 'awaiting-decision'
-  | 'accepting'
-  | 'receiving'
-  | 'saved'
-  | 'saved-unacknowledged'
-  | 'failed'
-  | 'declined'
-  | 'expired'
-  | 'cancelled'
-  | 'ended';
+export const RECEIVE_STATES = [
+  'awaiting-decision',
+  'accepting',
+  'receiving',
+  'saved',
+  'saved-unacknowledged',
+  'failed',
+  'declined',
+  'expired',
+  'cancelled',
+  'ended',
+] as const;
+export type ReceiveState = (typeof RECEIVE_STATES)[number];
 
 interface Entry {
   offer: ShareOfferPayload;
@@ -97,6 +99,17 @@ interface Entry {
   abort: AbortController | null;
   savedAs: string | null;
   lastReason: string | null;
+  /**
+   * An earlier file **this run** published from the same SHA-256, if any — so a re-share after an
+   * unconfirmed save is shown as a possible second copy, never as the first.
+   */
+  priorCopy: PriorCopy | null;
+}
+
+/** A verified, published earlier copy of the same bytes, and whether the phone ever acknowledged it. */
+export interface PriorCopy {
+  savedAs: string;
+  acknowledged: boolean;
 }
 
 function payloadOf(ack: unknown): Record<string, unknown> {
@@ -125,6 +138,8 @@ export class ShareReceiver {
   private readonly book = new ShareOfferBook();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly entries = new Map<string, Entry>();
+  /** Every file this run published, by digest. Memory only, like the offers themselves. */
+  private readonly published = new Map<string, PriorCopy>();
   private readonly now: () => number;
   private declined = 0;
   private refused = 0;
@@ -148,6 +163,10 @@ export class ShareReceiver {
 
   savedAs(offerId: string): string | null {
     return this.entries.get(offerId)?.savedAs ?? null;
+  }
+
+  priorCopy(offerId: string): PriorCopy | null {
+    return this.entries.get(offerId)?.priorCopy ?? null;
   }
 
   counts(): { declined: number; refused: number; expired: number; saved: number; failed: number } {
@@ -279,6 +298,12 @@ export class ShareReceiver {
   async retry(offerId: string): Promise<void> {
     const entry = this.entries.get(offerId);
     if (!entry || entry.state !== 'failed' || entry.retryUntilMs === null) return;
+    if (entry.savedAs !== null) {
+      // Unreachable by the state machine (a published offer is saved or saved-unacknowledged, never
+      // failed) and refused here as well: a retry after publication would write a second copy.
+      log.error('share', `share ${offerId}: Retry refused — this offer was already published as ${entry.savedAs}`);
+      return;
+    }
     if (this.now() >= entry.retryUntilMs) {
       this.endAs(entry, 'expired');
       return;
@@ -340,6 +365,7 @@ export class ShareReceiver {
       // offer, so no share.saved is sent, and the Mac does not claim the phone confirmed it.
       entry.savedAs = result.savedAs;
       entry.state = 'saved-unacknowledged';
+      this.published.set(entry.offer.item.sha256, { savedAs: result.savedAs, acknowledged: false });
       this.book.cancelled(offerId);
       log.warn('share', `share ${offerId} was published as ${result.savedAs} while its cancel arrived; recorded saved-unacknowledged, no verdict sent`);
       return;
@@ -347,15 +373,20 @@ export class ShareReceiver {
     if (result.ok) {
       entry.savedAs = result.savedAs;
       this.saved += 1;
+      const copy: PriorCopy = { savedAs: result.savedAs, acknowledged: false };
+      this.published.set(entry.offer.item.sha256, copy);
       try {
         const ack = payloadOf(await this.deps.link.request(MessageType.SHARE_SAVED, {
           offerId, ok: true, bytes: result.bytes, verified: true, savedAs: result.savedAs,
         }));
         if (ack.state !== 'saved') throw new Error(`the phone answered ${JSON.stringify(ack)}`);
         entry.state = 'saved';
+        copy.acknowledged = true;
         log.info('share', `share ${offerId} saved as ${result.savedAs}; the phone acknowledged — ${this.tally()}`);
       } catch (error) {
         // The file IS on this Mac (verified, published). What is unknown is whether the phone heard.
+        // It is kept: a lost acknowledgement is never a reason to delete a verified file, and this
+        // offer is never retried — a Retry would write a second copy.
         entry.state = 'saved-unacknowledged';
         log.warn('share', `share ${offerId} saved as ${result.savedAs}, but the phone did not acknowledge (${(error as Error).message}) — ${this.tally()}`);
       }
@@ -423,7 +454,13 @@ export class ShareReceiver {
       this.entries.set(offerId, {
         offer, sessionKey, folder, state: 'awaiting-decision', macExpiresAtMs,
         retryUntilMs: null, abort: null, savedAs: null, lastReason: null,
+        priorCopy: this.published.get(offer.item.sha256) ?? null,
       });
+      const prior = this.published.get(offer.item.sha256);
+      if (prior) {
+        log.warn('share', `share.offer ${offerId} carries the same bytes as ${prior.savedAs}, saved earlier this run ` +
+          `(${prior.acknowledged ? 'confirmed' : 'confirmation unknown'}); accepting would save a second copy under a new name`);
+      }
     }
     const wait = Math.max(0, macExpiresAtMs - this.now());
     // Unref'd: an offer's expiry never needs to keep a process alive on its own.
