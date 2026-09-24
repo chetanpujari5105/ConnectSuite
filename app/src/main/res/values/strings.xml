@@ -6,6 +6,11 @@
       is the only thing a person choosing between Copy, Share and Translate needs.
     -->
     <string name="send_selection_label">Send to Mac</string>
+    <!--
+      The file share-sheet label (ShareToMacActivity). The same words as the selection label, and the
+      two never appear in one list: this one claims no text/*, that one claims only text/plain.
+    -->
+    <string name="share_to_mac_label">Send to Mac</string>
     <string name="tab_sync">Sync</string>
     <string name="tab_mirror">Mirror</string>
 </resources>

@@ -91,15 +91,5 @@
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>
-
-        <!--
-          The staging proof's startup sweep. A provider is created at process start, before any
-          activity, so an orphan left by a process death is removed before a new share can begin.
-          Not exported and answers nothing; it exists only for its onCreate.
-        -->
-        <provider
-            android:name="com.chetan.connectsuite.probe.ShareStagingSweepProvider"
-            android:authorities="${applicationId}.sharestagingsweep"
-            android:exported="false" />
     </application>
 </manifest>

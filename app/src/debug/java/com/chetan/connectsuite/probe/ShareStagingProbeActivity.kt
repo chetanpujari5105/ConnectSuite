@@ -1,10 +1,7 @@
 package com.chetan.connectsuite.probe
 
-import android.content.ContentProvider
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -20,6 +17,7 @@ import androidx.activity.ComponentActivity
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.chetan.connectsuite.sync.v2.ShareStaging
 import java.io.File
 import java.io.FilterInputStream
 import java.io.IOException
@@ -328,17 +326,12 @@ internal object ShareStagingHolder {
     private val live = java.util.concurrent.ConcurrentHashMap<String, Entry>()
     @Volatile private var context: Context? = null
 
-    /** A proof-slice stand-in for the offer's lifetime: an entry nobody discards is removed after this. */
-    const val PROBE_EXPIRY_MS = 10L * 60 * 1000
     const val AFTER_FINISH_READ_MS = 2_000L
 
-    fun dir(context: Context): File? {
-        val dir = File(context.cacheDir, ShareStaging.DIR_NAME)
-        val path = dir.toPath()
-        if (Files.isSymbolicLink(path)) return null
-        if (!dir.exists() && !dir.mkdirs()) return null
-        return dir.takeIf { Files.isDirectory(path, java.nio.file.LinkOption.NOFOLLOW_LINKS) }
-    }
+    // No self-expiry any more (plan G10): during the Samsung run it deleted a staged copy mid-run.
+    // What the probe stages is bounded by the production startup sweep (`ConnectSuiteApp`) and by
+    // the production sheet's 15-minute backstop sweep, both of which skip nothing of the probe's.
+    fun dir(context: Context): File? = ShareStaging.stagingDir(context.cacheDir)
 
     fun liveIds(): Set<String> = live.keys.toSet()
 
@@ -348,7 +341,6 @@ internal object ShareStagingHolder {
     fun register(context: Context, id: String, bytes: Long, sha256: String, source: Uri) {
         this.context = context.applicationContext
         live[id] = Entry(bytes, sha256, source)
-        handler.postDelayed({ expire(id) }, PROBE_EXPIRY_MS)
     }
 
     /** The receiving activity is gone. After [AFTER_FINISH_READ_MS], read every staged copy — and, as the contrast, the source. */
@@ -364,14 +356,6 @@ internal object ShareStagingHolder {
                     "source=${if (src.ok) "ok bytes=${src.bytes}" else "failed exception=${src.exceptionClass}"}")
             }
         }, AFTER_FINISH_READ_MS)
-    }
-
-    private fun expire(id: String) {
-        val ctx = context ?: return
-        val dir = dir(ctx) ?: return
-        if (live.remove(id) != null) {
-            Log.i(ShareStagingProbeActivity.TAG, "attempt=$id expired after ${PROBE_EXPIRY_MS}ms deletedFiles=${ShareStaging.discard(dir, id)}")
-        }
     }
 }
 
@@ -404,25 +388,4 @@ private class FailAfter(input: InputStream, private val after: Int) : FilterInpu
         if (n > 0) delivered += n
         return n
     }
-}
-
-/**
- * The startup sweep. A provider is created when the process starts, **before** any activity — so a
- * process started by a share intent sweeps first and cannot race the new attempt. Offers live in
- * memory only, so everything [ShareStaging.sweep] can prove is ours is an orphan here.
- */
-class ShareStagingSweepProvider : ContentProvider() {
-    override fun onCreate(): Boolean {
-        val ctx = context ?: return true
-        val dir = File(ctx.cacheDir, ShareStaging.DIR_NAME)
-        val r = ShareStaging.sweep(dir, live = emptySet(), nowMs = System.currentTimeMillis(), minAgeMs = 0)
-        Log.i(ShareStagingProbeActivity.TAG, "startup " + ShareStaging.sweepLine(r))
-        return true
-    }
-
-    override fun query(uri: Uri, p: Array<out String>?, s: String?, a: Array<out String>?, o: String?): Cursor? = null
-    override fun getType(uri: Uri): String? = null
-    override fun insert(uri: Uri, values: ContentValues?): Uri? = null
-    override fun delete(uri: Uri, s: String?, a: Array<out String>?): Int = 0
-    override fun update(uri: Uri, v: ContentValues?, s: String?, a: Array<out String>?): Int = 0
 }

@@ -1,0 +1,19 @@
+{
+  "about": "Share file-name sanitiser cases (docs/phase-7-share-plan.md G7). Read by the phone's ShareNamesTest and, from slice 4, by the Mac's test, so the two implementations share one set of cases. Each case: input -> expected. Escapes are JSON escapes.",
+  "cases": [
+    { "why": "plain name unchanged", "in": "IMG_2041.jpg", "out": "IMG_2041.jpg" },
+    { "why": "slash becomes a dash", "in": "a/b.txt", "out": "a-b.txt" },
+    { "why": "colon becomes a dash", "in": "12:30 notes.txt", "out": "12-30 notes.txt" },
+    { "why": "leading dot becomes underscore", "in": ".hidden", "out": "_hidden" },
+    { "why": "control characters dropped", "in": "a\u0000b\u0007c\u001f.bin", "out": "abc.bin" },
+    { "why": "DEL and C1 controls dropped", "in": "x\u007fy\u0085z.bin", "out": "xyz.bin" },
+    { "why": "right-to-left override dropped (spoofed extension)", "in": "report‮gnp.exe", "out": "reportgnp.exe" },
+    { "why": "zero-width joiner dropped (format character)", "in": "a‍b.txt", "out": "ab.txt" },
+    { "why": "NFC: decomposed e + combining acute becomes one code point", "in": "café.txt", "out": "café.txt" },
+    { "why": "surrounding whitespace trimmed", "in": "  spaced.txt  ", "out": "spaced.txt" },
+    { "why": "empty becomes the fallback", "in": "", "out": "Shared file" },
+    { "why": "only removed characters becomes the fallback", "in": "\u0000‮", "out": "Shared file" },
+    { "why": "a lone dot becomes an underscore", "in": ".", "out": "_" },
+    { "why": "emoji kept whole", "in": "📷 photo.png", "out": "📷 photo.png" }
+  ]
+}

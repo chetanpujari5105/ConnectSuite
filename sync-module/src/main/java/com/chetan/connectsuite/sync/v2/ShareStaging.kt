@@ -1,4 +1,4 @@
-package com.chetan.connectsuite.probe
+package com.chetan.connectsuite.sync.v2
 
 import java.io.File
 import java.io.IOException
@@ -12,15 +12,17 @@ import java.security.SecureRandom
 import java.util.Base64
 
 /**
- * Private staging for one shared file — `docs/phase-7-share-proposal.md` rev 2, §5 "Staging". This
- * is the **proof** slice: debug source set only, no offer, no socket, no Mac. Nothing Android is in
- * this file, so a JVM test reaches every rule the activity relies on.
+ * Private staging for one shared file — `docs/phase-7-share-proposal.md` rev 2, §5 "Staging", and
+ * slice 1 of `docs/phase-7-share-plan.md`. Nothing Android is in this file, so a JVM test reaches
+ * every rule the share sheet relies on. It was proven in the debug source set first (`b3eca15`, on
+ * the SM-S938B through Samsung Gallery and Samsung My Files) and moved here unchanged in its rules.
  *
  * ### Why the copy exists at all
  *
- * §4 measured that a share grant dies with the receiving activity: the same process, with the
- * foreground `LinkService` in it, got `SecurityException` at +1 s, +30 s and +120 s. So the bytes are
- * copied **while the activity still owns the grant**, and nothing afterwards touches the source.
+ * A share grant dies with the receiving activity. On the emulator, the same process with the
+ * foreground `LinkService` in it got `SecurityException` at +1 s, +30 s and +120 s; on the Samsung,
+ * My Files' provider refused at +2 s while the staged copy read fine. So the bytes are copied **while
+ * the activity still owns the grant**, and nothing afterwards touches the source.
  *
  * ### The rules this file holds, each in one place
  *
@@ -57,6 +59,19 @@ object ShareStaging {
 
     private val ATTEMPT = Regex("^s-[A-Za-z0-9_-]{22}$")
     private val ENTRY = Regex("^(s-[A-Za-z0-9_-]{22})\\.(part|bin|json)$")
+
+    /**
+     * The staging directory under [cacheDir], created if absent — or `null` when it cannot be used as
+     * one: a symlink where the directory should be (never followed, never written through), or
+     * something that is not a directory. Nothing is ever staged into a `null`.
+     */
+    fun stagingDir(cacheDir: File): File? {
+        val dir = File(cacheDir, DIR_NAME)
+        val path = dir.toPath()
+        if (Files.isSymbolicLink(path)) return null
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS) && !dir.mkdirs()) return null
+        return dir.takeIf { Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) }
+    }
 
     // ---- sizes ---------------------------------------------------------------------------------
 

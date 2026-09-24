@@ -159,3 +159,11 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }
+
+// `ShareManifestTest` reads the manifests from disk, and they are not otherwise inputs of the unit
+// test task, so a manifest-only edit left the task up to date and its old green in place. Found by
+// mutation: adding `text/*` to the file share re-ran nothing. Declaring them makes the edit re-run it.
+tasks.withType<Test>().configureEach {
+    inputs.files("src/main/AndroidManifest.xml", "src/debug/AndroidManifest.xml")
+        .withPropertyName("manifestsReadByShareManifestTest")
+}

@@ -1,7 +1,7 @@
-package com.chetan.connectsuite.probe
+package com.chetan.connectsuite.sync.v2
 
-import com.chetan.connectsuite.probe.ShareStaging.Outcome
-import com.chetan.connectsuite.probe.ShareStaging.Preflight
+import com.chetan.connectsuite.sync.v2.ShareStaging.Outcome
+import com.chetan.connectsuite.sync.v2.ShareStaging.Preflight
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -312,6 +312,21 @@ class ShareStagingTest {
         val b = staged(d)
         assertEquals(2, ShareStaging.discard(d, a))
         assertEquals(setOf("$b.bin", "$b.json"), names(d))
+    }
+
+    @Test fun `the staging directory is made under cache, and a symlink in its place is refused`() {
+        val cache = tmp.newFolder("cache")
+        assertEquals(File(cache, ShareStaging.DIR_NAME), ShareStaging.stagingDir(cache))
+        assertTrue(File(cache, ShareStaging.DIR_NAME).isDirectory)
+
+        val linked = tmp.newFolder("cache2")
+        val elsewhere = tmp.newFolder("elsewhere-dir")
+        Files.createSymbolicLink(File(linked, ShareStaging.DIR_NAME).toPath(), elsewhere.toPath())
+        assertEquals(null, ShareStaging.stagingDir(linked))
+
+        val plainFile = tmp.newFolder("cache3")
+        File(plainFile, ShareStaging.DIR_NAME).writeText("a file, not a directory")
+        assertEquals(null, ShareStaging.stagingDir(plainFile))
     }
 
     @Test fun `the sweep line carries counts only`() {

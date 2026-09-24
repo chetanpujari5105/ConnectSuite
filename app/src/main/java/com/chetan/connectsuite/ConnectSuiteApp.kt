@@ -28,6 +28,13 @@ class ConnectSuiteApp : Application() {
         // log that survives the phone being unplugged and is therefore the one worth having.
         LinkLog.init(this)
 
+        // Feature A's startup sweep, synchronously and before anything that could stage: offers and
+        // staged copies live in memory only, so after a process death every entry in
+        // cache/share-staging/ is an orphan. It deletes only entries it can prove are Sidekick's —
+        // regular files, never a symlink, named like an attempt, a finished copy only with its owner
+        // marker — and leaves and counts anything else (`ShareStagingTest`).
+        ShareToMacModel.startupSweep(cacheDir)
+
         NotificationChannels.createAll(this)
 
         // Whether a visible Activity exists decides how mirroring asks for consent on Android 16,
