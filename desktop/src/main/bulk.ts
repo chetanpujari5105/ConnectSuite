@@ -696,7 +696,7 @@ async function pullShareWith(
       created = true;
       if (ledger) {
         try {
-          await recordCreatedFrom(ledger, part);
+          await recordCreatedFrom(ledger, part, expectedBytes);
         } catch (error) {
           return fail('write-failed', `the partial's identity could not be recorded: ${(error as Error).message}`);
         }

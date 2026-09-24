@@ -133,6 +133,11 @@ export class LinkClient extends EventEmitter {
      * and a refusal after that must get the ordinary sentence.
      */
     private readonly rePairPending: () => boolean = () => false,
+    /**
+     * What this Mac advertises in `hello.ext`. `MAC_EXT` (share.file 1) unless `shareActivation.ts`
+     * has passed every condition for a development version-2 session.
+     */
+    private readonly advertised: () => Readonly<Record<string, number>> = () => MAC_EXT,
   ) {
     super();
   }
@@ -410,7 +415,7 @@ export class LinkClient extends EventEmitter {
     if (this.isPairingArmed()) hello.pairToken = this.armedPairing?.token;
     // docs/protocol.md → Extensions. Optional: an old phone reads hello fields by key and never
     // sees it. `shareOmitExt` (debug only) leaves it out so this Mac is an old peer on purpose.
-    if (!debugSwitches().shareOmitExt) hello.ext = { ...MAC_EXT };
+    if (!debugSwitches().shareOmitExt) hello.ext = { ...this.advertised() };
 
     const helloId = randomUUID();
     const timer = setTimeout(() => {
@@ -555,7 +560,7 @@ export class LinkClient extends EventEmitter {
     this.session.limited = payload.limited ?? [];
     // Rules 1-4: an old phone sends no `ext`, which parses to {} and negotiates nothing. What this
     // Mac advertised is what it sent: nothing, under the debug `shareOmitExt`.
-    const advertised = debugSwitches().shareOmitExt ? {} : MAC_EXT;
+    const advertised = debugSwitches().shareOmitExt ? {} : this.advertised();
     const phoneExt = parseExt((payload as { ext?: unknown }).ext);
     this.session.negotiated = negotiateAll(advertised, phoneExt);
     log.info(

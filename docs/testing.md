@@ -24300,3 +24300,53 @@ before the run:
 - A receive folder that is a symlink to elsewhere is followed by design: it is the folder the person
   chose.
 - `main.ts`'s wiring lines are not loaded by any test.
+
+## Feature A pre-live A — the version-2 activation gate and a scoped ledger sweep (2026-09-24)
+
+Code and automated tests only. Nothing installed, launched or run on a device; no ADB; the scratch
+folder was not created (the tests create `dev-share-receive` only inside `mkdtemp` folders standing
+in for `userData`). **Both ends still advertise `share.file: 1`**: the gate is closed by default and
+was not opened.
+
+**1. One fail-closed gate for advertising 2** (`desktop/src/main/shareActivation.ts`). Version 2 is
+advertised only with **all** of: a development build, the new `shareV2` switch, `shareAcceptProbe`
+with ≥1 allow-listed digest, and `shareDevReceive`. `LinkClient` now takes what it advertises from
+`advertisedExt(activation)`; `MAC_EXT` itself is unchanged at 1. While open the Mac is
+**synthetic-only**: a non-probe offer is declined `not-available` at once and never held. A receiver
+that finds 2 negotiated without the gate answers as version 1 (defence in depth, `version2` dep,
+absent = no). `shareDevReceive` without the gate fails closed and never falls back to the configured
+folder.
+
+**2. The scratch destination** resolves to `<userData>/dev-share-receive` only: a real directory, not
+a link or a file, whose real path is `<real userData>/dev-share-receive`; created non-recursively with
+mode 0700, and only when a version-2 offer asks for it.
+
+**3. The ledger sweep is scoped.** It takes `allowedParents` — the scratch folder while the gate is
+open, **empty otherwise, so every ordinary run deletes nothing**. Per entry, all of: clean absolute
+path (no `..`); parent exactly an allowed folder, itself a real directory with an unchanged real path;
+a Sidekick temporary name (partial or probe shape); a full recorded identity; `lstat` a regular file
+with matching device, inode **and birth time**, size ≤ the recorded bound (offer size for a partial,
+0 for a probe); and an `O_NOFOLLOW` open that still reports that device and inode. Anything else is
+**left and logged with the failed check**; out-of-scope entries stay in the ledger for a later scoped
+run. There is no delete-by-name path.
+
+**Tests** (Mac 1064/1064): the four the brief named — a crafted entry outside the scratch folder
+(with a genuine identity and our name), a replaced file, a symlink, a lookalike (unrecorded, and
+recorded under a non-Sidekick name) — each left byte-identical, beside a **positive control** that a
+genuine in-scope partial *is* deleted. Plus: `..` escape, the scope folder swapped for a symlink,
+no identity, birth-time mismatch, oversize, already gone, unscoped sweep deletes nothing; gate
+truth table (each condition missing, packaged with everything on); scratch symlink / file / missing
+`userData`; receiver gate off with 2 negotiated, synthetic-only decline with its probe control, Accept
+after version 2 withdrawn.
+
+**Mutations, 13, all red:** scope ignored; identity check; symlink check; name check; clean-path
+check; real-parent check; birth time alone; size bound; packaged check; digest count; scratch symlink
+check; receiver gate; synthetic-only decline.
+
+**Not reached by tests:** the `main.ts` wiring (that packaged builds force every switch off, that the
+sweep is given the scratch scope only when active, and that `LinkClient` gets `advertisedExt`) — it
+needs Electron. The residual race between the final `O_NOFOLLOW` check and `unlink` is one syscall
+wide and is stated, not closed. Inode reuse is narrowed by birth time, size, name and scope, not
+excluded. The phone still hard-codes `share.file: 1`; the 3e run needs a matching phone-side change,
+which is not made here. `tsc -p tsconfig.test.json` reports 7 errors that are identical at `8dc5a61`
+(checked in a clean worktree) — pre-existing, not from this change.

@@ -118,7 +118,7 @@ export async function checkDestination(
   try {
     await ledger?.recordIntent(a);
     await fs.writeFileExclusive(a);
-    if (ledger) await recordCreatedFrom(ledger, a);
+    if (ledger) await recordCreatedFrom(ledger, a, 0);
   } catch (error) {
     await ledger?.forget(a).catch(() => undefined);
     return { ok: false, reason: 'folder-unavailable', detail: `could not create a probe file (${code(error)})` };
@@ -127,7 +127,7 @@ export async function checkDestination(
   try {
     await ledger?.recordIntent(b);
     await fs.link(a, b);
-    if (ledger) await recordCreatedFrom(ledger, b);
+    if (ledger) await recordCreatedFrom(ledger, b, 0);
     verdict = { ok: true };
   } catch (error) {
     verdict = NO_HARD_LINKS.has(code(error))

@@ -43,6 +43,9 @@ test('the known switches are exactly these, and every one defaults to off', () =
       'shareDevReceive',
       'shareOmitExt',
       'shareSilent',
+      // Added 2026-09-24 for Feature A's pre-live gate, off by default (asserted below): the request
+      // to advertise share.file 2, which shareActivation.ts refuses without the other two switches.
+      'shareV2',
       'stallCallEnded',
       'stallRemoved',
     ],

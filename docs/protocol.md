@@ -2593,7 +2593,16 @@ carries the probe's name (`sidekick-offer-probe-<n>.bin`) and type (`application
 name and type are chosen by the sender and prove nothing on their own. An empty list accepts nothing.
 The switch defaults off and is forced off in a packaged build. For synthetic tests the development switch
 `shareDevReceive` receives into `<userData>/dev-share-receive/` instead of the configured folder; it
-too is forced off in a packaged build. It was written from a read of the committed code (the slice 3 review), and three of
+too is forced off in a packaged build.
+
+**The Mac advertises `share.file: 2` only through one fail-closed gate** (`shareActivation.ts`): a
+development build, the `shareV2` switch, **and** `shareAcceptProbe` with at least one allow-listed
+digest, **and** `shareDevReceive`. Any one missing — or a packaged build — leaves the advertisement
+at 1. While the gate is open the Mac is **synthetic-only**: an offer that is not an allow-listed
+probe is declined `not-available` at once and never held for a decision. A receiver that finds 2
+negotiated without the gate answers as version 1. The scratch folder must be a real directory (not a
+link) whose real path is `<real userData>/dev-share-receive`; it is created, owner-only, at the first
+version-2 offer and never before, and there is no fallback to the configured folder or Downloads. It was written from a read of the committed code (the slice 3 review), and three of
 that review's findings are facts about the *existing* bulk path that this contract must not inherit
 (F1, F3, F4 below).
 
@@ -2690,9 +2699,17 @@ failure is reported in `share.saved` and on the Mac's own screen.
 if **anything** already exists at that path, the pull is refused and that file is left untouched. The
 Mac keeps a private **ownership ledger** in its own data folder, which records each temporary file it
 creates (partials and destination-probe files) before creation, and then the file's device and
-inode. The startup sweep lists no folder: for each ledger entry, it deletes the file only if it is a
-regular file whose device and inode still match, and otherwise deletes nothing and forgets the entry.
-A lookalike name, a replaced file, a symlink or a folder is never deleted.
+inode, birth time and the most bytes it may hold. The startup sweep lists no folder, and is **scoped**:
+it may delete only in the folders it is given, which is the scratch folder while the development gate
+is open and **nothing at all** otherwise. For each ledger entry it deletes the file only if the path is
+clean (absolute, no `..`), its parent is exactly an allowed folder that is itself a real directory
+with an unchanged real path, its name is one of Sidekick's two temporary shapes, `lstat` finds a
+regular file whose device, inode and birth time match and whose size is within the recorded bound,
+and the file opened with `O_NOFOLLOW` is still that device and inode. Otherwise it deletes nothing,
+leaves the file, and logs the path and the check that failed. A lookalike name, a replaced file, a
+symlink, a folder, or anything outside the scope is never deleted. Device and inode can be reused
+after a file is deleted by someone else; birth time and size make a false match less likely and are
+not a guarantee — which is why scope and name are checked as well.
 
 **Nothing is saved before it is on disk and checked.** The partial is flushed (a write error is a
 failed save), its on-disk length must equal the bytes received, the length must equal the offer's

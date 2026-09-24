@@ -46,6 +46,12 @@ export interface ShareDeps {
    * nothing. `main.ts` forces both off in a packaged build.
    */
   switches?: { silent?: boolean; acceptProbeDigests?: ReadonlySet<string> };
+  /**
+   * Whether this run may act on a negotiated version 2 at all (`shareActivation.ts`). **Absent means
+   * no**: a session that somehow negotiated 2 without it is answered as version 1. `syntheticOnly`
+   * declines every offer that is not an allow-listed probe, rather than holding it for a person.
+   */
+  version2?: { allowed: boolean; syntheticOnly: boolean };
   idleTimeoutMs?: number;
 }
 
@@ -152,6 +158,11 @@ export class ShareReceiver {
     return this.deps.link.negotiated()[SHARE_FILE] ?? 0;
   }
 
+  /** Version 2 negotiated **and** activated on this Mac. Either missing is version 1. */
+  private transferAllowed(): boolean {
+    return this.version() >= TRANSFER_VERSION && this.deps.version2?.allowed === true;
+  }
+
   // ---- the offer --------------------------------------------------------------------------------
 
   /** Returns when the offer has been answered, held, or refused (awaitable for tests). */
@@ -181,7 +192,11 @@ export class ShareReceiver {
     log.info('share', `share.offer ${offer.offerId} valid: ${offer.item.size} bytes, ${offer.item.mime.split('/')[0]}/*, ` +
       `negotiated share.file ${this.version()}`);
 
-    if (this.version() < TRANSFER_VERSION) {
+    if (this.version() >= TRANSFER_VERSION && !this.deps.version2?.allowed) {
+      // Cannot happen while this Mac advertises 1 — and if it ever does, it fails closed to version 1.
+      log.error('share', `share.offer ${offer.offerId}: share.file ${this.version()} negotiated but version 2 is not activated on this Mac — answering as version 1`);
+    }
+    if (!this.transferAllowed()) {
       // Version 1: offer and decline only. No accept and no pull may happen with a v1 peer.
       if (this.deps.switches?.silent) {
         this.hold(offer.offerId, sessionKey, macExpiresAtMs, null, offer);
@@ -190,6 +205,15 @@ export class ShareReceiver {
       }
       this.declined += 1;
       log.info('share', `share.offer ${offer.offerId} → decline not-available (version 1: no transfer) — ${this.tally()}`);
+      await this.respondDecline(offer.offerId, 'not-available');
+      return;
+    }
+
+    // Synthetic-only (the development activation): nothing but an allow-listed probe is ever held.
+    const allowed = this.deps.switches?.acceptProbeDigests ?? new Set<string>();
+    if (this.deps.version2?.syntheticOnly && !isAcceptableProbe(offer, allowed)) {
+      this.declined += 1;
+      log.warn('share', `share.offer ${offer.offerId} is not an allow-listed synthetic probe; declined not-available (synthetic-only mode) — ${this.tally()}`);
       await this.respondDecline(offer.offerId, 'not-available');
       return;
     }
@@ -204,7 +228,6 @@ export class ShareReceiver {
     }
     this.hold(offer.offerId, sessionKey, macExpiresAtMs, dest.folder, offer);
     log.info('share', `share.offer ${offer.offerId} held for a decision (Ask). Nothing is accepted without one.`);
-    const allowed = this.deps.switches?.acceptProbeDigests ?? new Set<string>();
     if (isAcceptableProbe(offer, allowed)) {
       log.warn('share', `share.offer ${offer.offerId} is an allow-listed synthetic probe; accepting it (debug shareAcceptProbe)`);
       await this.decide(offer.offerId, 'accept');
@@ -227,7 +250,7 @@ export class ShareReceiver {
       await this.respondDecline(offerId, 'user');
       return;
     }
-    if (this.version() < TRANSFER_VERSION || this.deps.link.token() !== entry.sessionKey) {
+    if (!this.transferAllowed() || this.deps.link.token() !== entry.sessionKey) {
       log.warn('share', `share ${offerId}: accept refused on the Mac — no version-2 session, or the session changed`);
       this.endAs(entry, 'ended');
       return;
@@ -267,8 +290,8 @@ export class ShareReceiver {
 
   private async attempt(entry: Entry): Promise<void> {
     const offerId = entry.offer.offerId;
-    if (this.deps.link.token() !== entry.sessionKey) {
-      log.warn('share', `share ${offerId}: the session changed before the pull — nothing pulled`);
+    if (!this.transferAllowed() || this.deps.link.token() !== entry.sessionKey) {
+      log.warn('share', `share ${offerId}: the session changed (or version 2 is not active) before the pull — nothing pulled`);
       this.endAs(entry, 'ended');
       return;
     }

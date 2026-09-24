@@ -73,6 +73,7 @@ function receiver(link: FakeLink, folder: string, phones: FakePhone[], over: Par
     publish: (part, f, name) => publishExclusive(part, f, name),
     now: () => now,
     idleTimeoutMs: 2000,
+    version2: { allowed: true, syntheticOnly: false },
     ...over,
   });
 }
@@ -153,6 +154,58 @@ test('the probe switch on with an empty list accepts nothing', { timeout: 10_000
   const r = receiver(link, folder(), [], { switches: { acceptProbeDigests: new Set() } });
   await r.onOffer(offer(1000, 'a'.repeat(64)));
   assert.deepEqual(link.sent, []);
+});
+
+// ---- the pre-live activation gate (shareActivation.ts) ----------------------------------------
+
+test('negotiated 2 but version 2 NOT activated on this Mac: answered as version 1, nothing held, nothing pulled', { timeout: 10_000 }, async () => {
+  const data = synthetic(1000);
+  const link = new FakeLink(2, 1000, data.sha256);
+  const d = folder();
+  for (const version2 of [undefined, { allowed: false, syntheticOnly: false }]) {
+    link.sent = [];
+    const r = receiver(link, d, [], { switches: { acceptProbeDigests: allow(link) }, version2 });
+    await r.onOffer(offer(1000, data.sha256, { offerId: version2 ? 's-BBBBBBBBBBBBBBBBBBBBBB' : 's-CCCCCCCCCCCCCCCCCCCCCC' }));
+    assert.deepEqual(link.types(), ['respond:decline'], `version2 = ${JSON.stringify(version2)}`);
+    assert.equal(link.sent[0]!.payload.reason, 'not-available');
+  }
+  assert.deepEqual(readdirSync(d), [], 'not even the destination probe ran');
+});
+
+test('synthetic-only: an ordinary offer is declined not-available at once — never held, never shown for a decision', { timeout: 10_000 }, async () => {
+  const link = new FakeLink(2, 1000, 'a'.repeat(64));
+  const d = folder();
+  const r = receiver(link, d, [], { switches: { acceptProbeDigests: allow(link) }, version2: { allowed: true, syntheticOnly: true } });
+  await r.onOffer(offer(1000, 'a'.repeat(64), { name: 'holiday.jpg', mime: 'image/jpeg' }));
+  assert.deepEqual(link.types(), ['respond:decline']);
+  assert.equal(link.sent[0]!.payload.reason, 'not-available');
+  assert.equal(r.state(id), undefined);
+  assert.deepEqual(readdirSync(d), []);
+});
+
+test('synthetic-only: an allow-listed probe is still received (the control for the test above)', { timeout: 10_000 }, async () => {
+  const data = synthetic(1000);
+  const phone = await startFakePhone({ bytes: data.bytes });
+  const link = new FakeLink(2, 1000, data.sha256);
+  try {
+    const r = receiver(link, folder(), [phone], { switches: { acceptProbeDigests: allow(link) }, version2: { allowed: true, syntheticOnly: true } });
+    await r.onOffer(offer(1000, data.sha256));
+    assert.equal(r.state(id), 'saved');
+  } finally {
+    await phone.close();
+  }
+});
+
+test('Accept after version 2 is withdrawn (the session renegotiated at 1) pulls nothing', { timeout: 10_000 }, async () => {
+  let v = 2;
+  const link = new FakeLink(2, 1, 'a'.repeat(64));
+  link.negotiated = () => ({ 'share.file': v });
+  const r = receiver(link, folder(), []);
+  await r.onOffer(offer(1, 'a'.repeat(64)));
+  v = 1;
+  await r.decide(id, 'accept');
+  assert.deepEqual(link.sent, []);
+  assert.equal(r.state(id), 'ended');
 });
 
 // ---- the whole receive ------------------------------------------------------------------------

@@ -109,6 +109,12 @@ export interface DebugSwitches {
    * the configured receive folder, which is left untouched. Forced off in a packaged build.
    */
   shareDevReceive: boolean;
+  /**
+   * Ask to advertise `share.file: 2`. **Refused unless `shareAcceptProbe` (with at least one
+   * allow-listed digest) and `shareDevReceive` are also on**, and forced off in a packaged build —
+   * `shareActivation.ts` decides, and fails closed. Feature A slice 3e's gate; off by default.
+   */
+  shareV2: boolean;
 }
 
 const NAMES: readonly (keyof DebugSwitches)[] = [
@@ -122,6 +128,7 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'shareSilent',
   'shareAcceptProbe',
   'shareDevReceive',
+  'shareV2',
 ];
 
 function read(): DebugSwitches {
@@ -136,6 +143,7 @@ function read(): DebugSwitches {
     shareSilent: false,
     shareAcceptProbe: false,
     shareDevReceive: false,
+    shareV2: false,
   };
   // `app.isPackaged` is not consulted here because this module must stay importable by tests with
   // no Electron present; main.ts guards the startup read instead.

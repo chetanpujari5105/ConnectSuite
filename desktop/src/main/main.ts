@@ -94,6 +94,7 @@ import { debugSwitches } from './debugSwitches';
 import { ShareReceiver } from './share';
 import { checkDestination, publishExclusive, realFs } from './shareDestination';
 import { FileShareLedger, ledgerFile, sweepLedger } from './shareLedger';
+import { advertisedExt, resolveScratchFolder, scratchFolderPath, shareV2Activation } from './shareActivation';
 import { settingsMigration, store } from './store';
 import {
   clearRePairPending,
@@ -933,20 +934,17 @@ app.whenReady().then(() => {
   const identity = loadIdentity();
   selfName = identity.deviceName;
   selfFingerprint = identity.fingerprint;
-  link = new LinkClient(identity, () => rePairPending);
-  video = new VideoClient(identity);
-  bulk = new BulkClient(identity);
-
   // Feature A (docs/protocol.md → Share). Version 1 — every live pairing, because both ends advertise
   // share.file 1 — validates each offer and declines it `not-available`. Version 2 (slice 3d) is wired
-  // but unreachable live: it holds an offer for a person's decision (Ask; the card is slice 4).
+  // but unreachable live: it holds an offer for a person's decision (Ask).
   // The development switches are forced OFF in a packaged build, here, whatever the environment says.
   const devSwitches = app.isPackaged
-    ? { silent: false, acceptProbe: false, devReceive: false }
+    ? { silent: false, acceptProbe: false, devReceive: false, v2: false }
     : {
         silent: debugSwitches().shareSilent,
         acceptProbe: debugSwitches().shareAcceptProbe,
         devReceive: debugSwitches().shareDevReceive,
+        v2: debugSwitches().shareV2,
       };
   // The digests the development accept switch may accept: 64-hex SHA-256s of synthetic probe bytes,
   // supplied by the tester. Read only when the switch is on in a development build; otherwise empty,
@@ -959,19 +957,38 @@ app.whenReady().then(() => {
   if (devSwitches.acceptProbe) {
     log.warn('share', `shareAcceptProbe: ${acceptProbeDigests.size} synthetic probe digest(s) may be accepted; nothing else can be`);
   }
+  // Whether this Mac may advertise share.file 2 at all: every development condition at once, or no.
+  const shareV2 = shareV2Activation({
+    packaged: app.isPackaged,
+    shareV2: devSwitches.v2,
+    shareAcceptProbe: devSwitches.acceptProbe,
+    acceptProbeDigests: acceptProbeDigests.size,
+    shareDevReceive: devSwitches.devReceive,
+  });
+  if (shareV2.active) {
+    log.warn('share', 'share.file 2 ADVERTISED (development, synthetic-only, scratch folder only) — this is not a normal run');
+  } else if (devSwitches.v2) {
+    log.warn('share', `share.file 2 NOT advertised: ${shareV2.why}`);
+  }
+  const userData = app.getPath('userData');
+
+  link = new LinkClient(identity, () => rePairPending, () => advertisedExt(shareV2));
+  video = new VideoClient(identity);
+  bulk = new BulkClient(identity);
+
   // The private ownership record for share temporary files, in this app's own data folder.
-  const shareLedger = new FileShareLedger(ledgerFile(app.getPath('userData')));
+  const shareLedger = new FileShareLedger(ledgerFile(userData));
   const liveLink = link;
   const liveBulk = bulk;
   const shareReceiver = new ShareReceiver({
     link: liveLink,
     receiveFolder: async () => {
       if (devSwitches.devReceive) {
-        // Development only: the scratch folder, never the configured receive folder or Downloads.
-        // Created here, at the first share that uses it, and nowhere else.
-        const dev = join(app.getPath('userData'), 'dev-share-receive');
-        await fsp.mkdir(dev, { recursive: true });
-        return { ok: true as const, folder: dev };
+        // Development only: the scratch folder, never the configured receive folder or Downloads —
+        // and never a fallback to either. Created here, at the first version-2 offer, and nowhere else.
+        if (!shareV2.active) return { ok: false as const, reason: 'the scratch receive is on but version 2 is not activated' };
+        const scratch = await resolveScratchFolder(userData, true);
+        return scratch.ok ? { ok: true as const, folder: scratch.folder } : { ok: false as const, reason: scratch.reason };
       }
       const ready = await ensureReceiveFolder();
       return ready.ok ? { ok: true as const, folder: ready.folder } : { ok: false as const, reason: ready.reason };
@@ -985,16 +1002,19 @@ app.whenReady().then(() => {
     publish: (part, folder, name) => publishExclusive(part, folder, name),
     ledger: shareLedger,
     switches: { silent: devSwitches.silent, acceptProbeDigests },
+    version2: shareV2.active ? { allowed: true, syntheticOnly: true } : { allowed: false, syntheticOnly: true },
   });
   let shareSessionKey: string | null = null;
 
   // Startup sweep of share temporary files: ONLY what the private ledger recorded this app creating,
-  // and only where the file's device and inode still match. It lists no folder, so it can never find
-  // — or delete — anything by its name.
-  void sweepLedger(shareLedger).then((r) => {
-    if (r.deleted > 0 || r.forgotten > 0) {
-      log.info('share', `startup ledger sweep: deleted ${r.deleted} recorded temporary file(s), forgot ${r.forgotten} entr(ies) without deleting`);
+  // only inside the scratch folder, and only where every identity check passes. Outside a version-2
+  // development run its scope is empty and it deletes nothing. It lists no folder, so it can never
+  // find — or delete — anything by its name; what it cannot prove, it leaves and reports.
+  void sweepLedger(shareLedger, { allowedParents: shareV2.active ? [scratchFolderPath(userData)] : [] }).then((r) => {
+    if (r.deleted > 0 || r.gone > 0 || r.left.length > 0) {
+      log.info('share', `startup ledger sweep: deleted ${r.deleted}, ${r.gone} already gone, left ${r.left.length} untouched (${r.kept} kept for a later run)`);
     }
+    for (const f of r.left) log.warn('share', `startup ledger sweep LEFT ${f.path}: ${f.why} — not proven ours, not deleted`);
   });
 
   /*
