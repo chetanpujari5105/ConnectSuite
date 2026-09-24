@@ -2620,6 +2620,15 @@ checks that its receive folder is available and that its free space is at least
 `size + max(256 MiB, ⌈size / 10⌉)`. If not, it declines with `folder-unavailable` or
 `insufficient-space` instead, and it makes the same check when the offer arrives.
 
+**The Mac's card** (`renderer/shareReceive.ts`) shows the phone's name, the sanitised file name, the
+MIME type, the exact byte count and the destination folder, with **Decline** and **Accept**. The
+page may send back only an `offerId` and `accept` | `decline`; any other field refuses the request
+whole, and the folder, the checks and the session are looked up in the main process. An Accept is
+honoured only while the window is visible, not minimised and focused — otherwise it is refused and
+the offer keeps waiting; Decline is always honoured. A hidden window gets a native banner that only
+brings the window forward and carries no Accept. The card says "Saved" only after the Mac published
+a verified file, and "Expired" never reads as declined.
+
 **The destination check, before any byte moves.** When the offer arrives, and again at Accept, the
 Mac establishes that its receive folder can make the exclusive save described below. It creates a
 uniquely named, Sidekick-owned empty file (`.sidekick-link-probe-<random>`) directly in the folder,

@@ -394,6 +394,10 @@ interface ConnectBridge {
     }) => void,
   ): void;
   onPhoneError(callback: (payload: { code: string; message: string; fixHint?: string }) => void): void;
+  /** The receive card. Optional for the same stale-preload reason as `onAppearance`. */
+  shareOffers?(): Promise<ShareCardData[]>;
+  onShareOffers?(callback: (offers: ShareCardData[]) => void): void;
+  shareDecide?(offerId: string, decision: 'accept' | 'decline'): Promise<{ ok: boolean; reason?: string }>;
 }
 
 declare const connect: ConnectBridge;
@@ -2536,3 +2540,19 @@ void (async () => {
     if (shell.screen === 'pairing') void drawCodeState();
   }, 1_000);
 })();
+
+/*
+ * Incoming files from the phone (Feature A, version 2). Unreachable in a live pairing while both ends
+ * advertise share.file 1: the tray stays hidden because no snapshot ever arrives. See shareReceive.ts
+ * for what this page may and may not do — it draws, and sends back an offer id and a word.
+ */
+{
+  const trayEl = document.getElementById('share-tray');
+  const liveEl = document.getElementById('share-live');
+  if (trayEl && liveEl && connect.shareDecide) {
+    const decide = connect.shareDecide.bind(connect);
+    const tray = new ShareReceiveTray(trayEl, liveEl, (offerId, decision) => decide(offerId, decision));
+    connect.onShareOffers?.((offers) => tray.update(offers));
+    void connect.shareOffers?.().then((offers) => tray.update(offers));
+  }
+}

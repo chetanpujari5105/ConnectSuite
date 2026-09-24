@@ -8,6 +8,9 @@ import { pullShareWith, type SharePullResult } from './bulk';
 import { ShareReceiver, isAcceptableProbe, type ShareDeps, type ShareLink } from './share';
 import { checkDestination, publishExclusive, type DestinationVerdict } from './shareDestination';
 import { startFakePhone, synthetic, type FakePhone } from './sharePhone.testkit';
+import { handleShareDecision, type WindowFacts } from './shareDecision';
+import { sanitizeShareName } from '../shared/shareNames';
+const { shareReceiveStatus } = require('../shared/shareReceiveCopy') as { shareReceiveStatus: (f: Record<string, unknown>) => { headline: string; savedOnMac: boolean; confirmedByPhone: boolean } };
 
 /**
  * The Mac receiver wired as `main.ts` wires it — the real destination check and exclusive publish on
@@ -482,6 +485,121 @@ test('a phone cancel that lands while the file is being published: saved-unackno
     assert.equal(r.state(id), 'saved-unacknowledged');
     assert.equal(link.types().some((t) => t.startsWith('saved:')), false, 'no share.saved for a cancelled offer');
     assert.equal(existsSync(join(d, 'sidekick-offer-probe-10000.bin')), true);
+  } finally {
+    await phone.close();
+  }
+});
+
+// ---- the receive card's path: IPC boundary → decide → snapshot (Task C) ----------------------------
+
+const front: WindowFacts = { exists: true, visible: true, minimized: false, focused: true };
+const headlineOf = (r: ShareReceiver): string => {
+  const snap = r.snapshots()[0]!;
+  return shareReceiveStatus({ state: snap.state, wantedName: snap.name, savedAs: snap.savedAs, reason: snap.reason, priorCopy: snap.priorCopy }).headline;
+};
+
+test('card: the snapshot is what the card draws — sanitised name, type, exact bytes, the Mac’s own folder — and changes are announced', { timeout: 10_000 }, async () => {
+  const link = new FakeLink(2, 1234, 'a'.repeat(64));
+  const d = folder();
+  const r = receiver(link, d, []);
+  let changes = 0;
+  r.onChange(() => { changes += 1; });
+  await r.onOffer(offer(1234, 'a'.repeat(64), { name: '../../etc/passwd', mime: 'text/plain' }));
+  await new Promise((ok) => setImmediate(ok));
+  const snap = r.snapshots()[0]!;
+  assert.equal(snap.name, sanitizeShareName('../../etc/passwd'), 'the Mac’s own sanitiser, not the phone’s name');
+  assert.doesNotMatch(snap.name, /\//, 'no separator survives');
+  assert.equal(snap.mime, 'text/plain');
+  assert.equal(snap.bytes, 1234);
+  assert.equal(snap.folder, d);
+  assert.equal(snap.state, 'awaiting-decision');
+  assert.equal(headlineOf(r), 'Wants to send you a file');
+  assert.ok(changes >= 1, 'a listener heard the offer arrive');
+});
+
+test('card Accept: through the IPC boundary, the destination re-checked, pulled, verified, saved', { timeout: 10_000 }, async () => {
+  const data = synthetic(3000);
+  const phone = await startFakePhone({ bytes: data.bytes });
+  const link = new FakeLink(2, 3000, data.sha256);
+  const d = folder();
+  let checks = 0;
+  try {
+    const r = receiver(link, d, [phone], { checkDestination: (f, size) => { checks += 1; return checkDestination(f, size); } });
+    await r.onOffer(offer(3000, data.sha256, { name: 'notes.txt', mime: 'text/plain' }));
+    assert.equal(checks, 1, 'checked at the offer');
+    const res = await handleShareDecision({ offerId: id, decision: 'accept' }, front, r);
+    assert.deepEqual(res, { ok: true, state: 'saved' });
+    assert.equal(checks, 2, 'and again at Accept, before any byte moved');
+    assert.deepEqual(link.types(), ['respond:accept', 'fs.transfer.begin', 'saved:true']);
+    assert.equal(headlineOf(r), 'Saved on this Mac');
+    assert.deepEqual(readFileSync(join(d, 'notes.txt')), data.bytes);
+  } finally {
+    await phone.close();
+  }
+});
+
+test('card Decline: decline user, nothing pulled, nothing written', { timeout: 10_000 }, async () => {
+  const link = new FakeLink(2, 10, 'a'.repeat(64));
+  const d = folder();
+  const r = receiver(link, d, []);
+  await r.onOffer(offer(10, 'a'.repeat(64), { name: 'x.bin' }));
+  assert.deepEqual(await handleShareDecision({ offerId: id, decision: 'decline' }, front, r), { ok: true, state: 'declined' });
+  assert.deepEqual(link.types(), ['respond:decline']);
+  assert.equal(link.sent[0]!.payload.reason, 'user');
+  assert.deepEqual(readdirSync(d), []);
+  assert.equal(headlineOf(r), 'Declined');
+});
+
+test('card expiry: a late Accept after the Mac’s expiry is Expired — never Declined, nothing sent', { timeout: 10_000 }, async () => {
+  let t = now;
+  const link = new FakeLink(2, 10, 'a'.repeat(64));
+  const r = receiver(link, folder(), [], { now: () => t });
+  await r.onOffer(offer(10, 'a'.repeat(64), { name: 'x.bin' }));
+  t = now + 600_000;
+  await handleShareDecision({ offerId: id, decision: 'accept' }, front, r);
+  assert.equal(r.state(id), 'expired');
+  assert.deepEqual(link.sent, [], 'no accept and no decline went to the phone');
+  assert.equal(headlineOf(r), 'Expired');
+  const again = await handleShareDecision({ offerId: id, decision: 'accept' }, front, r);
+  assert.equal(again.ok, false, 'an expired card cannot be accepted');
+});
+
+test('card stale session: Accept after a reconnect pulls nothing on the new session', { timeout: 10_000 }, async () => {
+  const link = new FakeLink(2, 10, 'a'.repeat(64));
+  const r = receiver(link, folder(), []);
+  await r.onOffer(offer(10, 'a'.repeat(64), { name: 'x.bin' }));
+  link.tokenValue = 'token-B';
+  await handleShareDecision({ offerId: id, decision: 'accept' }, front, r);
+  assert.equal(r.state(id), 'ended');
+  assert.deepEqual(link.sent, []);
+  assert.equal(headlineOf(r), 'Ended with the connection');
+});
+
+test('card hidden window: an Accept is refused, nothing is sent, and the offer still waits for a person', { timeout: 10_000 }, async () => {
+  const link = new FakeLink(2, 10, 'a'.repeat(64));
+  const r = receiver(link, folder(), []);
+  await r.onOffer(offer(10, 'a'.repeat(64), { name: 'x.bin' }));
+  const res = await handleShareDecision({ offerId: id, decision: 'accept' }, { ...front, visible: false }, r);
+  assert.equal(res.ok, false);
+  assert.deepEqual(link.sent, []);
+  assert.equal(r.state(id), 'awaiting-decision');
+});
+
+test('card saved but unacknowledged: the card says so, never an unqualified success', { timeout: 10_000 }, async () => {
+  const data = synthetic(500);
+  const phone = await startFakePhone({ bytes: data.bytes });
+  const link = new FakeLink(2, 500, data.sha256);
+  link.savedReply = 'error';
+  try {
+    const r = receiver(link, folder(), [phone]);
+    await r.onOffer(offer(500, data.sha256, { name: 'a.bin' }));
+    const res = await handleShareDecision({ offerId: id, decision: 'accept' }, front, r);
+    assert.deepEqual(res, { ok: true, state: 'saved-unacknowledged' });
+    const snap = r.snapshots()[0]!;
+    const status = shareReceiveStatus({ state: snap.state, wantedName: snap.name, savedAs: snap.savedAs, reason: snap.reason, priorCopy: snap.priorCopy });
+    assert.equal(status.headline, 'Saved on this Mac; confirmation to phone unknown');
+    assert.equal(status.savedOnMac, true);
+    assert.equal(status.confirmedByPhone, false);
   } finally {
     await phone.close();
   }

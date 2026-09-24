@@ -696,6 +696,63 @@ body {
 .toast-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--live); }
 .toast-text { font-size: 12.5px; color: var(--text-primary); }
 
+/* ---- Incoming files (the receive card, renderer/shareReceive.ts) ------------------------------
+ * Bottom-right, above the toast's layer, one card per offer. Chrome, so translucent like the toast.
+ * The arrival fade is an animation, so the global reduced-motion block reduces it to an instant.
+ */
+@keyframes share-card-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.share-tray {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  z-index: 56;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, calc(100% - 48px));
+  max-height: calc(100% - 48px);
+  overflow-y: auto;
+}
+.share-tray[hidden] { display: none; }
+
+.share-card {
+  padding: 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  -webkit-backdrop-filter: blur(30px) saturate(1.4);
+  backdrop-filter: blur(30px) saturate(1.4);
+  border: 1px solid var(--hairline-hover);
+  box-shadow: var(--shadow-panel);
+  animation: share-card-in var(--dur-float) var(--ease) both;
+}
+.share-card-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.share-card-headline { margin: 0 0 6px; font-size: 12.5px; color: var(--text-primary); }
+.share-card[data-tone="warning"] .share-card-headline { color: var(--warning); }
+.share-card[data-tone="danger"] .share-card-headline { color: var(--destructive); }
+.share-card-detail p { margin: 0 0 4px; font-size: 12px; color: var(--text-body); }
+.share-card-rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+.share-card-rows dt { color: var(--text-meta); }
+.share-card-rows dd { margin: 0; color: var(--text-body); overflow-wrap: anywhere; }
+.share-card-note { margin: 8px 0 0; font-size: 12px; color: var(--warning); }
+.share-card-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.share-card-actions [hidden] { display: none; }
+
 /* ---- ⌘K palette ----------------------------------------------------------------------------------
  * Opens in one frame (FIGMA motion: "Command palette — no animation"; departure N-M8). Chrome, so
  * the panel is the one translucent overlay; rows are the list-row vocabulary.

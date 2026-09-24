@@ -106,6 +106,21 @@ interface Entry {
   priorCopy: PriorCopy | null;
 }
 
+/** One offer as the card draws it. Display data only — see [ShareReceiver.snapshots]. */
+export interface ShareCardSnapshot {
+  offerId: string;
+  from: string;
+  name: string;
+  mime: string;
+  bytes: number;
+  folder: string;
+  state: ReceiveState;
+  expiresAtMs: number;
+  savedAs: string | null;
+  reason: string | null;
+  priorCopy: PriorCopy | null;
+}
+
 /** A verified, published earlier copy of the same bytes, and whether the phone ever acknowledged it. */
 export interface PriorCopy {
   savedAs: string;
@@ -154,6 +169,60 @@ export class ShareReceiver {
   private tally(): string {
     return `${this.saved} saved / ${this.failedAttempts} failed attempts / ${this.declined} declined not-available / ` +
       `${this.refused} refused / ${this.expired} expired`;
+  }
+
+  private readonly listeners = new Set<() => void>();
+  private notifyQueued = false;
+
+  /**
+   * Called (coalesced, after the current turn) whenever any held offer changes — for the card.
+   * Returns the unsubscribe.
+   */
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private setState(entry: Entry, state: ReceiveState): void {
+    entry.state = state;
+    this.changed();
+  }
+
+  private changed(): void {
+    if (this.notifyQueued) return;
+    this.notifyQueued = true;
+    queueMicrotask(() => {
+      this.notifyQueued = false;
+      for (const l of this.listeners) {
+        try {
+          l();
+        } catch (error) {
+          log.warn('share', `a share change listener threw: ${(error as Error).message}`);
+        }
+      }
+    });
+  }
+
+  /**
+   * Every version-2 offer this run has held, newest first, as **data for display only**. Every
+   * string in it is either the Mac's own (the folder, the state) or re-sanitised here (the name);
+   * nothing in it authorises anything — a decision names an `offerId`, and [decide] looks the rest
+   * up itself.
+   */
+  snapshots(): ShareCardSnapshot[] {
+    return [...this.entries.values()].reverse().map((e) => ({
+      offerId: e.offer.offerId,
+      from: e.offer.from,
+      name: sanitizeShareName(e.offer.item.name),
+      mime: e.offer.item.mime,
+      bytes: e.offer.item.size,
+      folder: e.folder,
+      state: e.state,
+      expiresAtMs: e.macExpiresAtMs,
+      savedAs: e.savedAs,
+      reason: e.lastReason,
+      priorCopy: e.priorCopy ? { ...e.priorCopy } : null,
+    }));
   }
 
   /** For tests and the future card: an offer's receive state, or undefined if never held. */
@@ -282,7 +351,7 @@ export class ShareReceiver {
       await this.respondDecline(offerId, reason);
       return;
     }
-    entry.state = 'accepting';
+    this.setState(entry, 'accepting');
     try {
       const ack = payloadOf(await this.deps.link.request(MessageType.SHARE_RESPOND, { offerId, decision: 'accept' }));
       if (ack.state !== 'accepted') throw new Error(`the phone answered ${JSON.stringify(ack)}`);
@@ -320,7 +389,7 @@ export class ShareReceiver {
       this.endAs(entry, 'ended');
       return;
     }
-    entry.state = 'receiving';
+    this.setState(entry, 'receiving');
     let begin: Record<string, unknown>;
     try {
       begin = payloadOf(await this.deps.link.request(MessageType.FS_TRANSFER_BEGIN, {
@@ -364,7 +433,7 @@ export class ShareReceiver {
       // publication won the race. The file is on this Mac, verified; the phone has already ended the
       // offer, so no share.saved is sent, and the Mac does not claim the phone confirmed it.
       entry.savedAs = result.savedAs;
-      entry.state = 'saved-unacknowledged';
+      this.setState(entry, 'saved-unacknowledged');
       this.published.set(entry.offer.item.sha256, { savedAs: result.savedAs, acknowledged: false });
       this.book.cancelled(offerId);
       log.warn('share', `share ${offerId} was published as ${result.savedAs} while its cancel arrived; recorded saved-unacknowledged, no verdict sent`);
@@ -380,14 +449,14 @@ export class ShareReceiver {
           offerId, ok: true, bytes: result.bytes, verified: true, savedAs: result.savedAs,
         }));
         if (ack.state !== 'saved') throw new Error(`the phone answered ${JSON.stringify(ack)}`);
-        entry.state = 'saved';
+        this.setState(entry, 'saved');
         copy.acknowledged = true;
         log.info('share', `share ${offerId} saved as ${result.savedAs}; the phone acknowledged — ${this.tally()}`);
       } catch (error) {
         // The file IS on this Mac (verified, published). What is unknown is whether the phone heard.
         // It is kept: a lost acknowledgement is never a reason to delete a verified file, and this
         // offer is never retried — a Retry would write a second copy.
-        entry.state = 'saved-unacknowledged';
+        this.setState(entry, 'saved-unacknowledged');
         log.warn('share', `share ${offerId} saved as ${result.savedAs}, but the phone did not acknowledge (${(error as Error).message}) — ${this.tally()}`);
       }
       // The offer is over on this side either way: release it, or the session would read as busy.
@@ -404,7 +473,7 @@ export class ShareReceiver {
 
   private fail(entry: Entry, reason: string, detail: string, tellPhone: boolean): void {
     this.failedAttempts += 1;
-    entry.state = 'failed';
+    this.setState(entry, 'failed');
     entry.lastReason = reason;
     entry.retryUntilMs = Math.min(this.now() + RETRY_WINDOW_MS, entry.macExpiresAtMs);
     log.warn('share', `share ${entry.offer.offerId} attempt failed: ${reason} (${detail}); Retry until ${entry.retryUntilMs} — ${this.tally()}`);
@@ -444,7 +513,7 @@ export class ShareReceiver {
     for (const entry of this.entries.values()) {
       if (entry.sessionKey !== sessionKey) continue;
       entry.abort?.abort();
-      if (['awaiting-decision', 'accepting', 'receiving', 'failed'].includes(entry.state)) entry.state = 'ended';
+      if (['awaiting-decision', 'accepting', 'receiving', 'failed'].includes(entry.state)) this.setState(entry, 'ended');
     }
   }
 
@@ -456,6 +525,7 @@ export class ShareReceiver {
         retryUntilMs: null, abort: null, savedAs: null, lastReason: null,
         priorCopy: this.published.get(offer.item.sha256) ?? null,
       });
+      this.changed();
       const prior = this.published.get(offer.item.sha256);
       if (prior) {
         log.warn('share', `share.offer ${offerId} carries the same bytes as ${prior.savedAs}, saved earlier this run ` +
@@ -481,7 +551,7 @@ export class ShareReceiver {
   }
 
   private endAs(entry: Entry, state: ReceiveState, release = true): void {
-    entry.state = state;
+    this.setState(entry, state);
     entry.abort?.abort();
     if (release) this.book.cancelled(entry.offer.offerId);
     this.clearTimer(entry.offer.offerId);

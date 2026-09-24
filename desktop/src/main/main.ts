@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, powerMonitor, Tray, Menu,
   dialog, shell, screen,
+  Notification,
 } from 'electron';
 import { homedir, networkInterfaces, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -95,6 +96,7 @@ import { ShareReceiver } from './share';
 import { checkDestination, publishExclusive, realFs } from './shareDestination';
 import { FileShareLedger, ledgerFile, sweepLedger } from './shareLedger';
 import { advertisedExt, resolveScratchFolder, scratchFolderPath, shareV2Activation } from './shareActivation';
+import { forRenderer, handleShareDecision, shouldNotifyNewOffer, type WindowFacts } from './shareDecision';
 import { settingsMigration, store } from './store';
 import {
   clearRePairPending,
@@ -1005,6 +1007,53 @@ app.whenReady().then(() => {
     version2: shareV2.active ? { allowed: true, syntheticOnly: true } : { allowed: false, syntheticOnly: true },
   });
   let shareSessionKey: string | null = null;
+
+  /*
+   * The receive card (docs/protocol.md → Share → Version 2). The renderer draws snapshots and sends
+   * back an `offerId` and a word; `shareDecision.ts` refuses anything else, refuses an Accept from a
+   * window nobody can be looking at, and `decide` re-checks the destination, the version and the
+   * session before a byte moves. Unreachable in a live pairing while both ends advertise 1.
+   */
+  const shareWindowFacts = (): WindowFacts => ({
+    exists: window !== null && !window.isDestroyed(),
+    visible: window?.isVisible() ?? false,
+    minimized: window?.isMinimized() ?? false,
+    focused: window?.isFocused() ?? false,
+  });
+  const shareBanners = new Map<string, Notification>();
+  shareReceiver.onChange(() => {
+    const snaps = shareReceiver.snapshots();
+    send('share-offers', forRenderer(snaps, homedir()));
+    for (const s of snaps) {
+      const waiting = s.state === 'awaiting-decision';
+      if (waiting && !shareBanners.has(s.offerId) && shouldNotifyNewOffer(shareWindowFacts()) && Notification.isSupported()) {
+        // A banner that only brings the window forward. It carries no Accept: the decision is made
+        // on the card, in front of the person, never from a notification.
+        const banner = new Notification({ title: `${s.from} wants to send a file`, body: `${s.name} · Open Sidekick to accept or decline.` });
+        banner.on('click', () => {
+          if (window && !window.isDestroyed()) {
+            if (window.isMinimized()) window.restore();
+            window.show();
+            window.focus();
+          }
+        });
+        banner.show();
+        shareBanners.set(s.offerId, banner);
+      }
+      if (!waiting && shareBanners.has(s.offerId)) {
+        shareBanners.get(s.offerId)?.close();
+        shareBanners.delete(s.offerId);
+      }
+    }
+  });
+  ipcMain.handle('share-offers', () => forRenderer(shareReceiver.snapshots(), homedir()));
+  ipcMain.handle('share-decide', async (event, raw: unknown) => {
+    // Only the main window's page may decide; the float window has no card.
+    if (!window || window.isDestroyed() || event.sender !== window.webContents) return { ok: false, reason: 'refused: not the main window' };
+    const result = await handleShareDecision(raw, shareWindowFacts(), shareReceiver);
+    log.info('share', `card decision ${JSON.stringify(raw)?.slice(0, 120)} → ${JSON.stringify(result)}`);
+    return result;
+  });
 
   // Startup sweep of share temporary files: ONLY what the private ledger recorded this app creating,
   // only inside the scratch folder, and only where every identity check passes. Outside a version-2

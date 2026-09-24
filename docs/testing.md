@@ -24386,3 +24386,51 @@ old wording restored; a late verdict accepted from `Failed`.
 **Not reached:** the phone has no user-facing share surface yet (the sentence reaches the log only);
 the prior-copy memory does not survive a Mac restart; a duplicate across two Mac runs is still
 collision-safe on disk but not flagged.
+
+## Feature A pre-live C — the Mac's receive card, Ask/Decline (2026-09-24)
+
+Code and automated tests only. **The app was not launched and not rebuilt into `dist/`**: nothing
+here has been seen on a screen. Unreachable in a live pairing — both ends advertise `share.file: 1`,
+so no snapshot is ever sent and the tray stays hidden. Ordinary Android Send is not wired.
+
+**Built.** `renderer/shareReceive.ts` (`ShareReceiveTray`, frame-level, bottom-right, one card per
+offer): the phone's name, the sanitised name, MIME, exact bytes (`3,874,112 bytes`), the destination
+(`~/…`), Decline then Accept. `main/shareDecision.ts`: the IPC boundary and the window gate.
+`ShareReceiver` gained a coalesced `onChange` and `snapshots()` (display data only). `main.ts`:
+`share-offers`, `share-decide` (main window's page only), and a banner for a hidden window.
+
+**Decisions, stated.** Ask only, no auto-accept for ordinary shares. Focus is **not** moved on
+arrival (a keystroke meant elsewhere must not land on Accept); a polite live region announces it.
+Escape in a waiting card declines, in a finished one dismisses; a live transfer cannot be dismissed.
+An Accept from a hidden, minimised or unfocused window is refused and the offer keeps waiting; the
+refusal is shown on the card. Accept re-checks destination, space, hard links, negotiated version
+and session in `decide` before a byte moves. The renderer sends an `offerId` and a word; an extra
+field (a path, a folder, a payload) refuses the request whole. Every phone string is `textContent`.
+Motion is one keyframed fade, reduced to an instant by the global reduced-motion block.
+
+**Tests** (Mac 1097/1097): the boundary (extra fields, malformed input, hidden/minimised/unfocused
+window for Accept with Decline still honoured, non-waiting states refused before `decide`); the real
+receiver through the boundary — Accept (the destination checked twice, pulled, verified, saved),
+Decline (`user`, nothing written), expiry (Accept after the Mac's expiry → Expired, nothing sent),
+stale session (→ ended, nothing sent), hidden window (nothing sent, still waiting),
+saved-unacknowledged; and the real tray over the DOM double — contents and tab order, no focus
+steal, pending lock, Escape, a refused Accept shown, Expired, saved-unacknowledged, no "Saved" while
+receiving, markup in the phone name drawn as text.
+
+**Two faults in this sitting's own tests, both caught before commit:** a test double whose default
+parameter turned `new FakeDecider(undefined)` into a waiting offer (red for the wrong reason); and a
+tray test that searched the whole card's text for "Declin" and matched **the hidden Decline button's
+own label** — the lookalike rule in `CLAUDE.md`. It now reads only the headline and detail elements,
+with a positive control that they were read.
+
+**Mutations, 10, all red:** extra IPC fields allowed; the window gate removed; the waiting check
+removed; Escape accepting; focus stolen on arrival; a live transfer dismissable; no destination
+re-check at Accept; no pending lock; Accept before Decline; the raw phone name in the snapshot.
+
+**Not reached by tests:** layout, the cascade, real focus and the reduced-motion query (the DOM
+double has none of them — a `scripts/probe.mjs` read of the real page is owed once the app runs);
+the `main.ts` wiring, the banner and `event.sender` check (Electron); no Retry button (a failed
+attempt shows *Not saved* with no way to retry from the card yet). The emitted `shareReceiveCopy.js`
+and `shareReceive.js` were compiled to a scratch folder and carry no `exports` (control:
+`sendBatch.js`, same shape); `dist/` was not rebuilt, so `check-renderer-scripts`' built reading has
+not seen them.

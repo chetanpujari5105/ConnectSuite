@@ -21,6 +21,7 @@ import type {
 } from './shared/protocol';
 import type { PullOutcome, PushOutcome } from './main/files';
 import type { FloatState } from './main/float';
+import type { ShareCardSnapshot } from './main/share';
 
 /**
  * The only bridge between the renderer and the sockets. Everything here is an intent — the
@@ -41,6 +42,15 @@ contextBridge.exposeInMainWorld('connect', {
   /** A menu item was chosen. `__palette__` is the ⌘K item; everything else is a screen id. */
   onMenuRoute: (callback: (id: string) => void) =>
     ipcRenderer.on('menu-route', (_event, payload: { id: string }) => callback(payload.id)),
+  /**
+   * Incoming shares (the receive card). Snapshots are display data; a decision is an `offerId` and a
+   * word, and the main process looks up everything else itself — see main/shareDecision.ts.
+   */
+  shareOffers: (): Promise<ShareCardSnapshot[]> => ipcRenderer.invoke('share-offers'),
+  onShareOffers: (callback: (offers: ShareCardSnapshot[]) => void) =>
+    ipcRenderer.on('share-offers', (_event, offers: ShareCardSnapshot[]) => callback(offers)),
+  shareDecide: (offerId: string, decision: 'accept' | 'decline'): Promise<{ ok: boolean; reason?: string }> =>
+    ipcRenderer.invoke('share-decide', { offerId, decision }),
   connect: () => ipcRenderer.invoke('connect'),
   disconnect: () => ipcRenderer.invoke('disconnect'),
   retryNow: () => ipcRenderer.invoke('retry-now'),

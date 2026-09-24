@@ -254,6 +254,15 @@ export class FakeElement {
     return kid;
   }
 
+  /** Detaches this element from its parent, as `Element.remove()` does. Added for the share tray. */
+  remove(): void {
+    const p = this.parent;
+    if (!p) return;
+    const i = p.children.indexOf(this);
+    if (i >= 0) p.children.splice(i, 1);
+    this.parent = null;
+  }
+
   replaceChildren(...kids: FakeElement[]): void {
     for (const gone of this.children) gone.parent = null;
     this.children.length = 0;

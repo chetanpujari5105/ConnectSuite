@@ -863,6 +863,14 @@
       </div>
 
       <!--
+        Incoming files from the phone: the receive card (renderer/shareReceive.ts). Frame-level, over
+        every pane, because an offer waits for a person wherever they are. Focus is never moved into
+        it; arrival is announced by the polite region below and the cards are reached by Tab.
+      -->
+      <div class="share-tray" id="share-tray" role="region" aria-label="Incoming files" hidden></div>
+      <div class="visually-hidden" id="share-live" aria-live="polite"></div>
+
+      <!--
         ⌘K. Commands rank above navigation — the handoff's one explicit instruction about this
         control, and `navModel.test.ts` asserts it, because a palette that lists eleven screens
         before "Stop mirroring" makes the fastest way to stop a live capture slower than the
@@ -936,6 +944,8 @@
     <!-- The four controls a Settings pane is built out of. Before shell.js, which draws the rail. -->
     <script src="settingsControls.js"></script>
     <script src="shell.js"></script>
+    <script src="../shared/shareReceiveCopy.js"></script>
+    <script src="shareReceive.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>
