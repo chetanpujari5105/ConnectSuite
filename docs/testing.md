@@ -23891,3 +23891,84 @@ The run ends with the Mac relaunched **with no switches**, `share.file` negotiat
   revision sends them. They are covered by `ShareOfferTest`, `shareOffer.test.ts` and `share.test.ts`.
 - **An offer from a real user share.** Not wired, by instruction.
 - **A process death with an offer live.** Not produced (G15); the startup sweep covers the staged copy.
+
+## Feature A slice 3 review — a read of the committed code before the transfer (2026-09-24)
+
+A read-only review of `29d2ac4`: no edit, build, device command or relaunch. It was made to specify
+version 2 (the transfer) from the code rather than from the proposal, and it found that the proposal
+had described one rule that does not exist.
+
+| # | Finding | Where | Now |
+|---|---|---|---|
+| F1 | A bulk pull is claimed by `transferId` alone; `Pending.sessionId` is read only by `forgetSession`. **The proposal's §8 said a claim from another session is refused "by the existing `Pending.sessionId` rule". There is no such rule.** | `BulkTransfers.kt:339-345`, `serve()` `:380-422` | defect 148; proposal §8 and plan slice 3 corrected in place; the share pull binds the session itself (contract) |
+| F2 | `transferId` = `t-<counter>-<millis mod 100000>`, predictable | `BulkTransfers.kt:195` | defect 148; share ids are 128-bit random (contract) |
+| F3 | The Mac publishes with `fs.rename` after choosing the name with `freeName`, so a file that appears meanwhile is replaced | `bulk.ts` commit; `files.ts:333`, `photos.ts:269` | defect 150; share publishes exclusively (contract) |
+| F4 | `bulk.pull` removes an unrecorded `<name>.part` before a fresh pull, which may be another app's | `bulk.ts` start of pull; `transferFiles.ts:40` | defect 151; share uses `.<offerId>.sidekick-share.part` (contract) |
+| F5 | A failed pull keeps its `.part` for resume, and a checksum failure writes a `.failed` sidecar | `bulk.ts` | share deletes its partial on every failure and writes no sidecar (contract) |
+| F6 | No idle timeout after the bulk connects (`setTimeout(0)`), and no free-space check on the Mac's receive side | `bulk.ts:151-157` | share: 30 s idle, free space ≥ `size + max(256 MiB, ⌈size/10⌉)` (contract) |
+| F7 | A `share:` root on any `fs.*` verb falls through to `ROOT_NOT_GRANTED`, `feature: "files"` | `FsFeature.kt` each `FsRoots.find` | contract: `NOT_FOUND`, `feature: "share"`, one test per verb (3c) |
+| F8 | `fs.transfer.cancel` is keyed by `transferId` alone, and a claim for an unknown id is tagged `feature: "photos"` | `FsFeature.onCancel`; `BulkTransfers.kt` `serve()` | defects 148 and 149 |
+| F9 | `ShareOfferProbeActivity` and the other adb-driven probes are exported with no permission | `app/src/debug/AndroidManifest.xml` | defect 152; slice 3b |
+| F10 | A version-1 phone answers `accept` with `BAD_REQUEST`, so a transfer-capable Mac must know before accepting | contract | `share.file` 2 means both can transfer; a version-1 peer stays offer/decline-only |
+
+**The owner's decisions (2026-09-24):**
+1. **Where hard links are unsupported, the save is refused** (`unsupported-destination`). No
+   placeholder-then-rename, no overwrite.
+2. **Synthetic transfer tests write only to a dedicated development-only receive folder.** It is
+   ignored by packaged builds, never changes the configured receive folder, and is never Downloads or
+   any personal folder. Its exact path is shown before the first file is written there.
+3. **`share.file` 2 means both peers can transfer.** A version-1 peer stays offer/decline-only, and no
+   transfer may start with it.
+4. **Test acceptance only through a development-build switch** that accepts identified synthetic probe
+   offers. It defaults off, never accepts an ordinary share-sheet offer, and never works in a packaged
+   build. No production auto-accept.
+
+`docs/protocol.md` → Share now separates **version 1 (implemented)** from **version 2 (specified, not
+implemented)**. `share.saved` is on `check-protocol-spec`'s specified-not-on-the-wire list, with its
+reason, until the commit that adds it to `MessageType`.
+
+### Defect 148 — a bulk pull is not bound to its session, and its id is guessable
+
+Read from `BulkTransfers.kt` at `29d2ac4`. `serve()` parses the header and calls
+`pending.remove(transferId)` with no reference to `channel.session`. The only reads of
+`Pending.sessionId` are in `forgetSession`, which drops a dead session's pulls. `nextId()` is
+`"t-${counter.incrementAndGet()}-${System.currentTimeMillis() % 100000}"`. `FsFeature.onCancel`
+forwards any `transferId` to `BulkTransfers.cancel`. No device reading; the defect is in the code's
+absence of a check, and the review is the record. Only paired, pinned Macs hold a session token, which
+bounds the exposure. Open; not fixed in Feature A beyond the share path.
+
+### Defect 149 — a bulk claim for an unknown transfer is always tagged photos
+
+Read from `BulkTransfers.kt` at `29d2ac4`: the unknown-`transferId` branch of `serve()` sends
+`NOT_FOUND` with `feature = "photos"`, whatever the pull was for. No device reading. Open.
+
+### Defect 150 — the Mac's Files and Photos pulls can replace a file at the final name
+
+Read from `desktop/src/main` at `29d2ac4`: `files.ts:333` and `photos.ts:269` choose the destination
+with `freeName` (an `access()` probe), `bulk.pull` streams into `<destination>.part`, and publishes
+with `fs.rename(part, destination)`. `rename(2)` replaces an existing file. No reproduction was run.
+Open; Feature A's share path publishes exclusively instead (`docs/protocol.md` → Share → Version 2).
+
+### Defect 151 — the Mac's pull deletes a .part it has no record of
+
+Read from `desktop/src/main/bulk.ts` and `shared/transferFiles.ts` at `29d2ac4`: `partPathFor(d)` is
+`d + ".part"`. When `isResumable` says the partial is not ours to resume, `fs.rm(part, {force:true})`
+removes it. A `.part` with no record belongs, by the code's own comment, to "another app". No
+reproduction was run. Open.
+
+### Defect 152 — debug probes are exported with no permission
+
+Read from `app/src/debug/AndroidManifest.xml` at `29d2ac4`: the adb-driven probes are
+`exported="true"` with no `<intent-filter>` and no `android:permission`, among them
+`ShareOfferProbeActivity` (offers data to the paired Mac) and `FsProbeActivity` (arms the transfer
+corruption hook). Any installed app can start an exported activity by explicit component. Open; slice
+3b is its fix.
+
+### Defect 147 — a second sighting, from a different hook
+
+During slice 3a (2026-09-24), `check-script-fixtures` (also registered for `git commit`) denied a
+non-commit command: `node scripts/check-protocol-spec.mjs … ; echo $?; node --test …`. The command
+contained `$?` and `;`. So the misfire is not specific to `check-suites-run`; it looks like any hook
+registered with `"if": "Bash(git commit *)"`. **Its finding was real, though:** two fixture suites had
+gone red because of this sitting's own edit (the spec allowlist, and a sentence the debt-claims guard
+correctly refused), and both were fixed on their merits.

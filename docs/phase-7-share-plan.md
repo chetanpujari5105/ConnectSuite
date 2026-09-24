@@ -151,9 +151,12 @@ phone streams **only the staged file**. The Mac verifies the length and SHA-256,
 
 **Tests.** `FsFeature`: a `share:` root refused for `fs.list`, `fs.stat`, `fs.thumb`, `fs.mkdir`,
 `fs.delete`, a push begin, a pull with `id` ≠ `"0"`, a begin before Accept, a begin after expiry, and
-a non-zero offset (**one test per verb**). A begin from another session is refused (the
-`Pending.sessionId` rule). The phone digest mismatch gives `staging-lost`; a Mac checksum mismatch
-gives `.failed`, `ok:false checksum`, Retry allowed, and the staged copy kept. The idle timer fires at
+a non-zero offset (**one test per verb**). A begin from another session is refused. **Corrected
+2026-09-24:** this said "(the `Pending.sessionId` rule)", and no such rule exists (review finding F1,
+defect 148). The share pull adds the session binding itself, in `BulkTransfers.serve()`. The phone
+digest mismatch gives `staging-lost`; a Mac checksum mismatch gives `ok:false checksum`, Retry
+allowed, and the staged copy kept. **No `.failed` sidecar for share** (review finding F5;
+`docs/protocol.md` wins). The idle timer fires at
 30 s and not at 29 s. **Saved only on receipt of `share.saved`**: a test where the phone finishes
 writing bytes and no `share.saved` arrives, asserting the phone state is still `sending`, not `saved`.
 

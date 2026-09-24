@@ -121,6 +121,10 @@ export const SPECIFIED_NOT_ON_THE_WIRE = {
     'the signing test is taken. Do not start it to clear this entry.',
   'mic.stop': 'See `mic.start` — same feature, same gate.',
   'mic.state': 'See `mic.start` — same feature, same gate.',
+  'share.saved':
+    'Feature A version 2 (the transfer), specified from the slice 3 review and not yet built; it is ' +
+    'owed by slices 3c (phone) and 3d (Mac), each a separate approval. No peer advertises share.file 2 until both ' +
+    'land. Remove this entry in the commit that adds MessageType.SHARE_SAVED.',
 };
 
 /**

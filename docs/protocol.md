@@ -116,7 +116,8 @@ Apps: `apps.list`, `apps.icon`, `apps.open.ask` — see [Apps](#apps-42501). The
 `apps.launch`; the measurement that removed it, and the guard that keeps it removed, are in that section
 Media remote: `remote.state`, `remote.command`, `remote.artwork`
 Microphone: `mic.start`, `mic.stop`, `mic.state` — see [Microphone](#microphone-42501-with-audio-on-42504)
-Share: `share.offer`, `share.respond`, `share.cancel` — see [Share](#share-42501)
+Share: `share.offer`, `share.respond`, `share.cancel` — see [Share](#share-42501); `share.saved`
+belongs to version 2, specified and not implemented
 Envelope and handshake: `hello`, `hello.ack`, `ack`, `error`, `pair.rejected`
 System: `ping`, `pong`, `capabilities.changed`, `battery.state`, `storage.state`, `net.state`
 
@@ -2461,7 +2462,10 @@ hello.ack  {"protocolVersion":1, …every existing field…, "ext":{"share.file"
 ```
 
 On `hello`, `share.file` means *this Mac can receive and answer a one-file share offer*; on
-`hello.ack`, *this phone can make one*. Parsing is identical on both sides:
+`hello.ack`, *this phone can make one*. **The version says how far:** `1` is offer and decline only;
+`2` is the one-file transfer as well (see [Share → Version 2](#version-2--the-transfer-specified-not-implemented)).
+Because the negotiated version is `min(mine, theirs)`, a transfer can start only when **both**
+peers advertise `2`. Parsing is identical on both sides:
 
 1. `ext` absent, `null`, or not a JSON object → `{}`. Not an error.
 2. A key the peer does not recognise → ignored.
@@ -2477,13 +2481,19 @@ cannot drift apart unnoticed.
 ## Share (42501)
 
 One file from the phone's share sheet to the Mac. The phone offers; the Mac answers; nothing moves
-before the Mac answers. **This revision has no transfer and no accept.** A Mac of this revision
-validates each offer and declines it with `not-available`. That is a protocol stub, not a person's
-decision, and a phone must never render it as one.
+before the Mac answers.
 
-The capability is `share` (prefix and name agree). Its contract is the two requests the phone
-handles, `share.respond` and `share.cancel`. The design and its evidence are
-`docs/phase-7-share-proposal.md` rev 2 and `docs/phase-7-share-plan.md`.
+**What is implemented is version 1: offer, decline and cancel, with no transfer.** A Mac of version 1
+validates each offer and declines it with `not-available`. That is a protocol stub, not a person's
+decision, and a phone must never render it as one. **Version 2, the transfer, is specified below and
+is not implemented on either side** (Feature A slices 3c–3d). Until it is, no peer may advertise
+`share.file: 2`.
+
+The capability is `share` (prefix and name agree). At version 1 its contract is the two requests the
+phone handles, `share.respond` and `share.cancel`; version 2 adds `share.saved` and a served bulk
+channel. The design and its evidence are `docs/phase-7-share-proposal.md` rev 2 and
+`docs/phase-7-share-plan.md`, and the slice 3 review findings F1–F10 are recorded in
+`docs/testing.md` → *Feature A slice 3 review*.
 
 ### `share.offer` — event, phone → Mac
 
@@ -2526,9 +2536,10 @@ ack      {"offerId":"s-…","state":"declined"}
 last three are reserved for the revision that adds a person's decision. **There is no `expired`
 decline**: an offer nobody answered *expires* (`share.cancel`), and is never shown as declined.
 
-`decision: "accept"` belongs to the revision that adds the transfer. A phone of this revision answers
-it with `BAD_REQUEST` (`feature: "share"`, *"this phone cannot send files yet"*), and the offer stays
-live until it is declined, cancelled or expires.
+`decision: "accept"` is valid only when `share.file` is negotiated at **2**. At version 1 a phone
+answers it with `BAD_REQUEST` (`feature: "share"`, *"this phone cannot send files yet"*), and the offer
+stays live until it is declined, cancelled or expires; a Mac must not send it at version 1. The
+version-2 accept is described under [Version 2](#version-2--the-transfer-specified-not-implemented).
 
 Errors, all with `feature: "share"`: `NOT_FOUND` for an unknown `offerId`, an offer made on a
 different session, or one already answered, cancelled or expired — indistinguishable on purpose, so
@@ -2550,8 +2561,8 @@ never sends the request — it has no card to cancel from — but the phone hand
 ### What is left behind
 
 Every end of an offer — declined, expired, cancelled by either side, or the session ending — deletes
-the phone's staged copy. There is no retry in this revision, so nothing is retained after an offer
-ends. An offer does not survive its session: on a disconnect both sides drop it without a message.
+the phone's staged copy. At version 1 there is no retry, so nothing is retained after an offer ends.
+An offer does not survive its session: on a disconnect both sides drop it without a message.
 
 ### Old peers
 
@@ -2559,8 +2570,117 @@ ends. An offer does not survive its session: on a disconnect both sides drop it 
 |---|---|
 | New phone, old Mac (no `ext` in `hello`) | `share.file` is not negotiated, so the phone sends no offer and says so. It never waits for an answer that cannot come |
 | Old phone, new Mac | no `ext` in `hello.ack`, so no offers arrive; an offer that did arrive would be declined `not-negotiated` |
-| New and new | `share.file` = 1 |
+| Both at version 1 (implemented) | `share.file` = 1: offer, `not-available` decline, cancel. No transfer |
+| One at 1, one at 2 | negotiated `1`. The version-2 peer behaves as version 1: the Mac never sends `accept` and the phone refuses one. **No transfer starts** |
+| Both at 2 (specified, not implemented) | negotiated `2`: the transfer below |
 | Both new, and the Mac never answers | the phone's offer expires at `expiresAtMs`: it sends `share.cancel{expired}` and deletes the staged copy. Nothing waits indefinitely |
+
+### Version 2 — the transfer (specified, not implemented)
+
+Everything in this section applies only when `share.file` is negotiated at **2**, and none of it is
+implemented yet. It was written from a read of the committed code (the slice 3 review), and three of
+that review's findings are facts about the *existing* bulk path that this contract must not inherit
+(F1, F3, F4 below).
+
+#### Accept
+
+```json
+request  {"offerId":"s-…","decision":"accept"}
+ack      {"offerId":"s-…","state":"accepted"}
+```
+
+**Accept is a person's decision on the Mac.** There is no automatic acceptance in any build that ships.
+The only non-human accept permitted is a development-build switch that accepts **synthetic probe
+offers only**; it defaults off and is ignored by packaged builds. Before sending `accept`, the Mac
+checks that its receive folder is available and that its free space is at least
+`size + max(256 MiB, ⌈size / 10⌉)`. If not, it declines with `folder-unavailable` or
+`insufficient-space` instead, and it makes the same check when the offer arrives.
+
+#### The share root
+
+A `share:<offerId>` root permits **exactly one operation**: `fs.transfer.begin` with
+`direction: "pull"`, `rootId` = `share:<offerId>`, and `id: "0"`, on **the session the offer was made
+on**, while the offer is `accepted` (or failed with its retry window open) and not expired. The ack
+always carries `"offset": 0`. Every other use answers `NOT_FOUND` with `feature: "share"`, never
+`ROOT_NOT_GRANTED` (review F7):
+
+- `fs.list`, `fs.stat`, `fs.thumb`, `fs.mkdir`, `fs.delete`, and a push `fs.transfer.begin`;
+- a pull with any `id` other than `"0"`;
+- a pull before `accept`, after a decline, expiry or cancel, or while another pull of it is live;
+- any request about the root from a session other than the offer's;
+- `fs.transfer.cancel` for a share transfer from a session other than its own.
+
+#### The bulk socket is bound to the session
+
+For a share pull, the phone refuses — closing the socket with a logged reason — a bulk connection
+whose token resolves to **a different session** from the one that began the pull, and a header whose
+`offset` is not `0`. The share `transferId` is 128 random bits. **The existing Files and Photos pulls
+do not bind the session and use predictable ids** (review F1, F2; defect 148). The share pull adds
+the binding itself rather than relying on a rule the code does not have.
+
+#### What the phone streams, and what its `done` means
+
+The phone streams **the staged private copy only** — never the shared URI. It digests while it sends;
+if that digest differs from the offer's `sha256`, the copy changed after it was offered: the phone
+sends `fs.transfer.done {ok:false, code:"CHECKSUM_MISMATCH"}` and `share.cancel{staging-lost}`, and
+deletes it.
+
+**The phone's `fs.transfer.done {ok:true}` is the sender's verdict only** — every byte was read and
+sent. It is not a save, and nothing may present it as one.
+
+#### The Mac's receive
+
+The Mac writes to **its own partial**, `.<offerId>.sidekick-share.part`, in the receive folder. Share
+never uses `<name>.part`, because the existing pull deletes an unrecorded `<name>.part` it does not
+own (review F4; defect 151). It then checks, in order:
+
+1. no 30 seconds pass without a byte (else `interrupted`);
+2. `received === size` (else `truncated`);
+3. the SHA-256 of what arrived equals the offer's `sha256` (else `checksum`).
+
+**Publication is exclusive at the moment of saving.** The final name is chosen with the usual
+`name (2).ext` rule, and the partial is published with a **hard link** to that name, which fails if
+anything already exists there, and then the partial is unlinked. On `EEXIST` the Mac chooses the next
+free name and tries again, at most 20 times. **If the receive folder's filesystem cannot make a hard
+link** (`EXDEV`, `ENOTSUP`, `EPERM` — an exFAT drive, some network shares), **the save is refused**
+with `unsupported-destination`. There is no placeholder-then-rename fallback and no overwrite. The
+existing Files and Photos pulls publish with `rename`, which replaces a file that appeared after the
+name was chosen (review F3; defect 150). Share does not.
+
+On any failure the Mac deletes its partial. **Share writes no `.failed` sidecar** (review F5); the
+failure is reported in `share.saved` and on the Mac's own screen. At startup the Mac deletes partials
+that match `.<offerId>.sidekick-share.part` exactly, are regular files (never a symlink) and sit
+directly in the receive folder; anything else there is never touched.
+
+#### `share.saved` — request, Mac → phone
+
+```json
+request  {"offerId":"s-…","ok":true,"bytes":3874112,"verified":true,"savedAs":"IMG_2041 (2).jpg"}
+request  {"offerId":"s-…","ok":false,"reason":"checksum"}
+ack      {"offerId":"s-…","state":"saved"}          // or "failed"
+```
+
+This is **the receiver's verdict, and the only thing that makes the phone say "Saved"**. `savedAs` is a
+file name only, never a path. `reason` is one of `checksum`, `truncated`, `interrupted`,
+`insufficient-space`, `write-failed`, `unsupported-destination`. Errors follow `share.respond`'s rules
+(`NOT_FOUND` and `BAD_REQUEST`, `feature: "share"`), and it is answered once per attempt.
+
+**No false "Saved":** if the phone has finished sending and no `share.saved` arrives within **60
+seconds**, or the session ends first, the offer becomes failed (`unconfirmed`) — never saved.
+
+#### Retry, and what is kept
+
+After `share.saved {ok:false}` (any reason but `staging-lost`), the phone keeps its staged copy for a
+**Retry window** of `min(failedAt + 5 min, expiresAtMs)`. During it the Mac may send a new
+`fs.transfer.begin` for the same root, which starts again **from byte 0**; there is no resume. When
+the window closes the offer expires: `share.cancel{expired}`, and the staged copy is deleted. `saved`,
+a decline, an expiry, a cancel from either side, a closed window, and the session ending each delete
+the staged copy. A Retry in a shipping build is a person's action on the Mac.
+
+#### Cancel during a transfer
+
+`share.cancel` from either side stops a live pull: the phone stops streaming and deletes the staged
+copy, and the Mac deletes its partial. Neither side reports `saved`.
 
 ## Discovery
 

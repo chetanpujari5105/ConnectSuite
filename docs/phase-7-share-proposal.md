@@ -528,9 +528,14 @@ A **new** `ShareToMacActivity`, **not built yet**:
   authorised by the control session's token. There is no new port, listener, discovery path, cloud
   service or relay. The Mac still connects out.
 - **Who may be offered to:** only a handshaken session with `share.file` negotiated. A share root is
-  tied to **that session's token** and to its 128-bit `offerId`. A bulk header claiming the root's
-  `transferId` from another session is refused, which is the existing `Pending.sessionId` rule.
-  `forgetSession` drops the offer.
+  tied to **that session's token** and to its 128-bit `offerId`. ~~A bulk header claiming the root's
+  `transferId` from another session is refused, which is the existing `Pending.sessionId` rule.~~
+  **Corrected 2026-09-24 (slice 3 review, finding F1): there is no such rule.** `BulkTransfers.serve()`
+  finds a pending pull by `transferId` alone, and `Pending.sessionId` is read only by
+  `forgetSession`. So a bulk socket authenticated by *any* trusted session can claim *any* pending
+  pull, and `transferId`s are predictable (F2). The share pull must add the binding itself (slice
+  3c, `docs/protocol.md` → Share → *The share root*). The same gap in Files and Photos pulls is
+  defect 148. `forgetSession` drops the offer.
 - **What a share root permits:** exactly **`fs.transfer.begin` with `direction: "pull"`, `id: "0"`,
   after `share.respond accept`, while the offer is valid**. Every other verb is refused with
   `NOT_FOUND`, `feature: "share"`: `fs.list`, `fs.stat`, `fs.thumb`, `fs.mkdir`, `fs.delete`, `push`,
