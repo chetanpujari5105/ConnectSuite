@@ -111,15 +111,26 @@ const closedDev = shareV2Activation({ ...all, shareV2: false });
 const openDev = shareV2Activation(all);
 const ready = { syntheticRunPassed: true, receiveFolderCleanupScoped: true };
 
-test('this build: both readiness facts are false, so no Mac can promise share.ask — pinned', () => {
-  // Flipping either is a statement that evidence exists (runbook §5 passed; §11 built). It belongs in
-  // the commit that records that evidence, and this test is what makes it a visible change.
-  assert.deepEqual({ ...SHARE_PRODUCTION_READINESS }, { syntheticRunPassed: false, receiveFolderCleanupScoped: false });
+const notReady = { syntheticRunPassed: false, receiveFolderCleanupScoped: false };
+
+test('this build: both readiness facts are recorded (3e passed 2026-09-25; §11 in 5e20963) — pinned', () => {
+  // Recorded in the reviewed activation commit with its evidence (docs/testing.md → slice 3e, §11).
+  // Turning either back to false is the way to close production sharing again.
+  assert.deepEqual({ ...SHARE_PRODUCTION_READINESS }, { syntheticRunPassed: true, receiveFolderCleanupScoped: true });
   const a = shareAskActivation({ development: closedDev, readiness: SHARE_PRODUCTION_READINESS });
+  assert.deepEqual(a, { active: true, syntheticOnly: false });
+  assert.deepEqual(advertisedExt(closedDev, a), { 'share.file': 2, 'share.ask': 1 });
+  // With the development switches all on, it is still synthetic-only and never share.ask.
+  const withDev = shareAskActivation({ development: openDev, readiness: SHARE_PRODUCTION_READINESS });
+  assert.equal(withDev.active, false);
+  assert.deepEqual(advertisedExt(openDev, withDev), { 'share.file': 2 });
+});
+
+test('not ready: both facts false keeps share.ask closed and names both blockers', () => {
+  const a = shareAskActivation({ development: closedDev, readiness: notReady });
   assert.equal(a.active, false);
-  assert.equal(a.active === false && a.blockers.length, 2, 'both blockers are named, not only the first');
+  assert.equal(a.active === false && a.blockers.length, 2);
   assert.deepEqual(advertisedExt(closedDev, a), { 'share.file': 1 });
-  assert.deepEqual(advertisedExt(openDev, a), { 'share.file': 2 }, 'the development gate never carries share.ask');
 });
 
 test('control: both facts recorded and the development gate closed opens share.ask with share.file 2', () => {
@@ -162,7 +173,7 @@ test('end to end over negotiation: only a production Mac enables the phone’s o
   // What a current phone advertises: share.ask always; share.file 1, or 2 for one armed debug handshake.
   const phones = [{ 'share.file': 1, 'share.ask': 1 }, { 'share.file': 2, 'share.ask': 1 }];
   const production = shareAskActivation({ development: closedDev, readiness: ready });
-  const today = shareAskActivation({ development: closedDev, readiness: SHARE_PRODUCTION_READINESS });
+  const today = shareAskActivation({ development: closedDev, readiness: notReady });
   const macs: [string, Readonly<Record<string, number>>][] = [
     ['version 1 Mac', advertisedExt(closedDev, today)],
     ['synthetic-only development Mac', advertisedExt(openDev, today)],
@@ -181,7 +192,7 @@ test('end to end over negotiation: only a production Mac enables the phone’s o
 test('receiverMode: the allowlist reaches the receiver only while the synthetic-only development gate is open', () => {
   const digests = new Set(['e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855']);
   const production = shareAskActivation({ development: closedDev, readiness: ready });
-  const closed = shareAskActivation({ development: closedDev, readiness: SHARE_PRODUCTION_READINESS });
+  const closed = shareAskActivation({ development: closedDev, readiness: notReady });
   const dev = receiverMode(openDev, closed, digests);
   assert.deepEqual(dev.version2, { allowed: true, syntheticOnly: true });
   assert.equal(dev.acceptProbeDigests.size, 1, 'control: the development gate does carry the allowlist');

@@ -52,15 +52,15 @@ export function shareV2Activation(i: ShareV2Inputs): ShareV2Activation {
  * evidence — and `shareActivation.test.ts` pins both, so flipping one is a visible, reviewed change
  * rather than a default someone edits in passing.
  *
- * - `syntheticRunPassed` — Feature A slice 3e (`docs/phase-7-share-3e-runbook.md`) has moved synthetic
- *   bytes from the SM-S938B into the scratch folder, verified, on hardware. **Not run.**
- * - `receiveFolderCleanupScoped` — the ownership ledger's sweep can be scoped to the person's receive
- *   folder by the folder identity each entry proves (runbook §11). **Built (`byRecordedParent`, with
- *   `shareLedgerParent.test.ts`), not yet reviewed against this gate**, so still false. Without it, a
- *   production transfer would leave partials in the person's folder that no sweep may delete.
+ * - `syntheticRunPassed` — Feature A slice 3e (`docs/phase-7-share-3e-runbook.md`) moved synthetic
+ *   bytes from the SM-S938B into the scratch folder, verified, on hardware: **passed 2026-09-25** (0 B,
+ *   4 KiB, the unlisted 100 KB refused) — `docs/testing.md` → slice 3e.
+ * - `receiveFolderCleanupScoped` — the ownership ledger's sweep is scoped to the person's receive
+ *   folder by the folder identity each entry proves (runbook §11): **built in `5e20963`**, 13
+ *   adversarial tests, reviewed 2026-09-25.
  */
 export const SHARE_PRODUCTION_READINESS: Readonly<{ syntheticRunPassed: boolean; receiveFolderCleanupScoped: boolean }> =
-  Object.freeze({ syntheticRunPassed: false, receiveFolderCleanupScoped: false });
+  Object.freeze({ syntheticRunPassed: true, receiveFolderCleanupScoped: true });
 
 export interface ShareAskInputs {
   /** The development activation above. Open means synthetic-only, and the two never coexist. */
