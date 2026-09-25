@@ -35,6 +35,12 @@
         </div>
       </div>
 
+      <!-- Receiver-measured: what has arrived on this Mac. Never 100% before the file is checked. -->
+      <div class="sw-progress" id="sw-progress" role="progressbar" aria-valuemin="0" aria-labelledby="sw-progress-label" hidden>
+        <div class="sw-track"><div class="sw-fill" id="sw-fill"></div></div>
+        <p class="sw-progress-label" id="sw-progress-label"></p>
+      </div>
+
       <dl class="sw-place" id="sw-place" hidden>
         <dt id="sw-place-label"></dt>
         <dd id="sw-place-value"></dd>

@@ -10,6 +10,8 @@ export interface SharePagePayload {
   offers: ShareCardSnapshot[];
   /** The paired phone's name from this Mac's own record — the name the window uses for the sender. */
   phone: string | null;
+  /** A thumbnail of the subject's **published, verified** file (a data URL), or null. */
+  thumb: string | null;
 }
 
 /**

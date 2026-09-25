@@ -28,14 +28,19 @@ interface ShareWinPayload {
   subject: string | null;
   offers: ShareWinOffer[];
   phone: string | null;
+  /** A thumbnail of the **published, verified** file, rendered by the main process; else null. */
+  thumb?: string | null;
 }
+
+type ShareWinReply = Promise<{ ok: boolean; reason?: string }>;
 
 interface ShareWinBridge {
   shareWindowState?(): Promise<ShareWinPayload | null>;
   onShareWindow?(callback: (state: ShareWinPayload) => void): void;
   shareWindowClose?(): void;
   shareWindowHeight?(height: number): void;
-  shareDecide?(offerId: string, decision: 'accept' | 'decline'): Promise<{ ok: boolean; reason?: string }>;
+  shareDecide?(offerId: string, decision: 'accept' | 'decline'): ShareWinReply;
+  shareAct?(action: 'cancel' | 'retry' | 'open' | 'reveal', offerId: string): ShareWinReply;
   appearanceGet?(): Promise<{ ok: boolean; data: { theme: string } }>;
   onAppearance?(callback: (state: { theme: string }) => void): void;
 }
@@ -54,6 +59,9 @@ interface ShareWinNodes {
   note: HTMLElement;
   actions: HTMLElement;
   live: HTMLElement;
+  progress: HTMLElement;
+  fill: HTMLElement;
+  progressLabel: HTMLElement;
 }
 
 /** How long a finished, unsaved offer stays up on its own. */
@@ -65,6 +73,7 @@ class ShareWindowView {
   private announced = new Set<string>();
   private lingerTimer: number | null = null;
   private hovered = false;
+  private thumb: string | null = null;
 
   constructor(
     private readonly n: ShareWinNodes,
@@ -97,6 +106,8 @@ class ShareWindowView {
     const before = this.model;
     const m = shareWindowModel(offer, p.phone);
     this.model = m;
+    // A picture only of a file this Mac published and verified; before that, a type glyph.
+    this.thumb = (m.state === 'saved' || m.state === 'saved-unacknowledged') && typeof p.thumb === 'string' ? p.thumb : null;
     if (before?.offerId !== m.offerId || before.state !== m.state) {
       this.pending = false;
       this.n.note.hidden = true;
@@ -113,14 +124,35 @@ class ShareWindowView {
     const n = this.n;
     n.root.dataset.state = m.state;
     n.root.dataset.tone = m.tone;
-    if (n.tile.dataset.glyph !== m.glyph) {
-      n.tile.dataset.glyph = m.glyph;
-      n.tile.replaceChildren(iconSvg(m.glyph, 26));
+    const tileKey = this.thumb ? `thumb:${m.offerId}` : m.glyph;
+    if (n.tile.dataset.glyph !== tileKey) {
+      n.tile.dataset.glyph = tileKey;
+      if (this.thumb) {
+        const img = document.createElement('img') as HTMLImageElement;
+        img.className = 'sw-thumb';
+        img.alt = '';
+        img.src = this.thumb;
+        n.tile.replaceChildren(img);
+      } else {
+        n.tile.replaceChildren(iconSvg(m.glyph, 26));
+      }
     }
     n.eyebrow.textContent = m.eyebrow;
     n.title.textContent = m.title;
     n.title.setAttribute('title', m.title);
     n.meta.textContent = m.meta;
+    const pr = m.progress;
+    n.progress.hidden = pr === null;
+    if (pr) {
+      n.progress.dataset.checking = String(pr.checking);
+      n.progress.dataset.indeterminate = String(pr.fraction === null);
+      n.fill.style.transform = `scaleX(${pr.fraction ?? 0})`;
+      n.progressLabel.textContent = pr.label;
+      n.progress.setAttribute('aria-valuemax', String(pr.total));
+      if (pr.fraction === null) n.progress.removeAttribute('aria-valuenow');
+      else n.progress.setAttribute('aria-valuenow', String(pr.received));
+      n.progress.setAttribute('aria-valuetext', pr.label);
+    }
     n.place.hidden = m.place === null;
     n.placeLabel.textContent = m.place?.label ?? '';
     n.placeValue.textContent = m.place?.value ?? '';
@@ -167,7 +199,29 @@ class ShareWindowView {
 
   private act(id: ShareWinActionId): void {
     if (id === 'close') this.close();
-    else void this.send(id);
+    else if (id === 'accept' || id === 'decline') void this.send(id);
+    else void this.run(id);
+  }
+
+  /** Cancel, Try again, Open, Show in Finder: an `offerId` and a word; the main process does the rest. */
+  private async run(action: 'cancel' | 'retry' | 'open' | 'reveal'): Promise<void> {
+    const m = this.model;
+    if (!m || this.pending || !this.bridge.shareAct) return;
+    this.pending = true;
+    this.n.note.hidden = true;
+    this.draw(m);
+    let result: { ok: boolean; reason?: string };
+    try {
+      result = await this.bridge.shareAct(action, m.offerId);
+    } catch (error) {
+      result = { ok: false, reason: (error as Error).message };
+    }
+    this.pending = false;
+    if (!result.ok) {
+      this.n.note.textContent = result.reason ?? 'That did not go through.';
+      this.n.note.hidden = false;
+    }
+    if (this.model) this.draw(this.model);
   }
 
   private async send(decision: 'accept' | 'decline'): Promise<void> {
@@ -233,6 +287,9 @@ if (typeof document !== 'undefined' && typeof document.getElementById === 'funct
       note: byId('sw-note'),
       actions: byId('sw-actions'),
       live: byId('sw-live'),
+      progress: byId('sw-progress'),
+      fill: byId('sw-fill'),
+      progressLabel: byId('sw-progress-label'),
     },
     bridge,
   );

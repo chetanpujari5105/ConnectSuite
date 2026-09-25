@@ -578,6 +578,12 @@ async function pullShareWith(
     ledger?: ShareLedger | null;
     /** Test seam: how the partial is opened. Default: `createWriteStream(part, { flags: 'wx' })`. */
     openPart?: (path: string) => Writable;
+    /**
+     * Receiver-measured progress: the running count of bytes that arrived and were handed to the
+     * partial, after each frame. It is **this Mac's** count, never the phone's claim, and it says
+     * nothing about verification — a caller must not read `received === size` as saved.
+     */
+    onProgress?: (received: number) => void;
   },
   open: () => ShareConnection,
 ): Promise<SharePullResult> {
@@ -716,7 +722,13 @@ async function pullShareWith(
             return;
           }
           digest.update(frame);
-          if (!out.write(frame)) {
+          const accepted = out.write(frame);
+          try {
+            options.onProgress?.(received);
+          } catch {
+            // A display callback cannot be allowed to break a transfer.
+          }
+          if (!accepted) {
             // Backpressure: stop reading until the disk catches up, and do not count our own pause
             // as the phone going quiet.
             conn.socket.pause();

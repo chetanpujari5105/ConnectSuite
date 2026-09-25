@@ -2592,9 +2592,10 @@ Mac → phone, request  {"offerId":"s-…","reason":"user"}
 ack                   {"offerId":"s-…","stopped":true}
 ```
 
-The phone sends `expired` itself at `expiresAtMs` if the offer is still live. A Mac of this revision
-never sends the request — it has no card to cancel from — but the phone handles it, with the same
-`NOT_FOUND` rules as `share.respond`.
+The phone sends `expired` itself at `expiresAtMs` if the offer is still live. The Mac sends the
+request when a person presses **Cancel** (a starting or running transfer) or **Give up** (a failed
+attempt waiting for a Retry) in the receive window (since 2026-09-25); the phone handles it in every
+live state, with the same `NOT_FOUND` rules as `share.respond`. A published offer is never cancelled.
 
 ### What is left behind
 
@@ -2755,6 +2756,14 @@ link** (`EXDEV`, `ENOTSUP`, `EPERM` — an exFAT drive, some network shares), **
 with `unsupported-destination`. There is no placeholder-then-rename fallback and no overwrite. The
 existing Files and Photos pulls publish with `rename`, which replaces a file that appeared after the
 name was chosen (review F3; defect 150). Share does not.
+
+**Progress is the receiver's own count.** The receive window shows the bytes this Mac has received
+and handed to its partial (no wire message carries progress, and none is needed). It never reads 100%
+before the file is saved: all bytes in reads *checking before saving*, and "Saved" waits for the
+length, the digest and the exclusive publication. A thumbnail is drawn only of the published file,
+made on the Mac by QuickLook from the local file; **Open** and **Show in Finder** act only on the
+path the Mac recorded at publication, after re-checking it is still that file (same device, inode and
+size, not a link). The page never sends or receives a path.
 
 On any failure the Mac deletes its partial. **Share writes no `.failed` sidecar** (review F5); the
 failure is reported in `share.saved` and on the Mac's own screen.

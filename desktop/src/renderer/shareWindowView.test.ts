@@ -28,9 +28,9 @@ const offer = (over: Record<string, unknown> = {}) => ({
 });
 
 function setup(answer: { ok: boolean; reason?: string } = { ok: true }) {
-  const names = ['root', 'close', 'tile', 'eyebrow', 'title', 'meta', 'place', 'placeLabel', 'placeValue', 'detail', 'note', 'actions', 'live'];
+  const names = ['root', 'close', 'tile', 'eyebrow', 'title', 'meta', 'place', 'placeLabel', 'placeValue', 'detail', 'note', 'actions', 'live', 'progress', 'fill', 'progressLabel'];
   const n = Object.fromEntries(names.map((k) => [k, new FakeElement(k === 'close' ? 'button' : 'div')])) as Record<string, FakeElement>;
-  n.root!.append(n.close!, n.tile!, n.eyebrow!, n.title!, n.meta!, n.place!, n.detail!, n.note!, n.actions!);
+  n.root!.append(n.close!, n.tile!, n.eyebrow!, n.title!, n.meta!, n.progress!, n.place!, n.detail!, n.note!, n.actions!);
   const calls: string[] = [];
   let release: () => void = () => undefined;
   const bridge = {
@@ -39,10 +39,14 @@ function setup(answer: { ok: boolean; reason?: string } = { ok: true }) {
       return new Promise((ok) => { release = () => ok(answer); });
     },
     shareWindowClose: () => calls.push('close'),
+    shareAct: (action: string, offerId: string) => {
+      calls.push(`${action}:${offerId}`);
+      return new Promise((ok) => { release = () => ok(answer); });
+    },
   };
   const view = new ShareWindowView(n, bridge);
-  const draw = (over: Record<string, unknown> = {}, phone: string | null = 'Galaxy S25 Ultra') =>
-    view.update({ subject: id, offers: [offer(over)], phone });
+  const draw = (over: Record<string, unknown> = {}, phone: string | null = 'Galaxy S25 Ultra', thumb: string | null = null) =>
+    view.update({ subject: id, offers: [offer(over)], phone, thumb });
   const button = (action: string) => n.actions!.queryAll('button').find((b) => b.dataset.action === action);
   return { n, calls, draw, button, release: () => release() };
 }
@@ -106,12 +110,53 @@ test('Escape declines a waiting offer and closes a finished one', () => {
   assert.deepEqual(b.calls, ['close']);
 });
 
-test('while receiving there is nothing to press, and nothing says Saved', () => {
+test('while receiving: the Mac’s own count, a Cancel, and nothing that says Saved', () => {
   const t = setup();
-  t.draw({ state: 'receiving' });
-  assert.equal(t.n.actions!.hidden, true);
+  t.draw({ state: 'receiving', receivedBytes: 1937056 });
   assert.equal(t.n.eyebrow!.textContent, 'Receiving from Galaxy S25 Ultra…');
+  assert.equal(t.n.progress!.hidden, false);
+  assert.equal(t.n.progressLabel!.textContent, '1.9 MB of 3.9 MB · 50%');
+  assert.equal(t.n.fill!.style.transform, 'scaleX(0.5)');
+  assert.equal(t.n.progress!.getAttribute('aria-valuenow'), '1937056');
+  assert.equal(t.n.progress!.getAttribute('aria-valuemax'), '3874112');
+  assert.deepEqual(t.n.actions!.queryAll('button').map((b) => b.dataset.action), ['cancel']);
   assert.doesNotMatch(`${t.n.eyebrow!.textContent} ${t.n.detail!.textContent}`, /\bSaved\b/);
+});
+
+test('before the phone starts there is no fill and no aria value — nothing is guessed', () => {
+  const t = setup();
+  t.draw({ state: 'accepting' });
+  assert.equal(t.n.progress!.dataset.indeterminate, 'true');
+  assert.equal(t.n.progress!.getAttribute('aria-valuenow'), null);
+});
+
+test('Cancel sends the offer id and a word; a refusal is stated', async () => {
+  const t = setup({ ok: false, reason: 'There is nothing running to cancel.' });
+  t.draw({ state: 'receiving', receivedBytes: 10 });
+  t.button('cancel')!.click();
+  assert.deepEqual(t.calls, [`cancel:${id}`]);
+  t.release();
+  await settle();
+  assert.equal(t.n.note!.hidden, false);
+  assert.match(t.n.note!.textContent, /nothing running/);
+});
+
+test('a saved file: Show in Finder, Open — and the picture only of the verified file', () => {
+  const t = setup();
+  t.draw({ state: 'saved', savedAs: 'IMG_2041.jpg' }, 'Galaxy S25 Ultra', 'data:image/png;base64,AAAA');
+  assert.deepEqual(t.n.actions!.queryAll('button').map((b) => b.dataset.action), ['reveal', 'open']);
+  assert.equal(t.n.progress!.hidden, true);
+  const img = t.n.tile!.queryAll('img');
+  assert.equal(img.length, 1);
+  t.button('open')!.click();
+  assert.deepEqual(t.calls, [`open:${id}`]);
+});
+
+test('a thumbnail sent for a file that is not saved is not drawn', () => {
+  const t = setup();
+  t.draw({ state: 'receiving', receivedBytes: 1 }, 'Galaxy S25 Ultra', 'data:image/png;base64,AAAA');
+  assert.equal(t.n.tile!.queryAll('img').length, 0);
+  assert.equal(t.n.tile!.dataset.glyph, 'photos');
 });
 
 test('a finished, unsaved offer closes itself after 8 s — unless the pointer is on it', () => {

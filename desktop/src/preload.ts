@@ -64,6 +64,9 @@ contextBridge.exposeInMainWorld('connect', {
   shareWindowHeight: (height: number): void => ipcRenderer.send('share-window-height', height),
   shareWindowShow: (offerId: string): Promise<{ ok: boolean; reason?: string }> =>
     ipcRenderer.invoke('share-window-show', { offerId }),
+  /** Cancel, Try again, Open, Show in Finder — from the receive window only; the path stays in main. */
+  shareAct: (action: 'cancel' | 'retry' | 'open' | 'reveal', offerId: string): Promise<{ ok: boolean; reason?: string }> =>
+    ipcRenderer.invoke(`share-${action}`, { offerId }),
   connect: () => ipcRenderer.invoke('connect'),
   disconnect: () => ipcRenderer.invoke('disconnect'),
   retryNow: () => ipcRenderer.invoke('retry-now'),

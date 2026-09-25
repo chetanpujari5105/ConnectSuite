@@ -134,6 +134,50 @@ html,
   font-variant-numeric: tabular-nums;
 }
 
+/* A picture of the saved, verified file — only ever that. */
+.sw-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-media);
+}
+
+/*
+ * Receiver-measured progress. Lime is allowed on a healthy transfer fill (handoff §2). The fill moves
+ * by `transform: scaleX` (handoff §8), linear, because it is a measured value and not an arrival; the
+ * reduced-motion block in tokens.css makes it jump to the value.
+ */
+.sw-progress {
+  margin-top: var(--space-5);
+}
+
+.sw-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--control);
+  overflow: hidden;
+}
+
+.sw-fill {
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform var(--dur-state) linear;
+}
+
+/* Before the phone starts there is no measured value, so there is no fill at all — not a guess. */
+.sw-progress[data-indeterminate='true'] .sw-fill {
+  visibility: hidden;
+}
+
+.sw-progress-label {
+  margin: var(--space-2) 0 0;
+  font: var(--text-caption);
+  color: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
 .sw-place {
   display: flex;
   gap: var(--space-3);

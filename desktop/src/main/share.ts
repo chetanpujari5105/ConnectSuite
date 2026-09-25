@@ -1,3 +1,4 @@
+import { lstat } from 'node:fs/promises';
 import { MessageType } from '../shared/protocol';
 import { SHARE_FILE } from '../shared/extensions';
 import { ShareOfferBook, type DeclineReason, type ShareOfferPayload } from '../shared/shareOffer';
@@ -34,6 +35,7 @@ export interface ShareDeps {
     publish: (part: string) => Promise<PublishResult>;
     signal: AbortSignal;
     ledger: ShareLedger | null;
+    onProgress?: (received: number) => void;
   }): Promise<SharePullResult>;
   publish(part: string, folder: string, name: string): Promise<PublishResult>;
   now?: () => number;
@@ -106,7 +108,25 @@ interface Entry {
    * unconfirmed save is shown as a possible second copy, never as the first.
    */
   priorCopy: PriorCopy | null;
+  /** Bytes this Mac received in the current (or last) attempt; null before any pull began. */
+  receivedBytes: number | null;
+  /**
+   * What was published, identified at the moment of publication. Main-process only — never in a
+   * snapshot — and the only thing Open and Reveal may act on, after [publishedFile] re-checks it.
+   */
+  publication: Publication | null;
 }
+
+/** A published file as it was the moment it was saved: where, and which file that was. */
+interface Publication {
+  path: string;
+  dev: number;
+  ino: number;
+  size: number;
+}
+
+/** How often, at most, a byte count alone republishes the snapshot. Display only. */
+const PROGRESS_NOTIFY_MS = 120;
 
 /** One offer as the card draws it. Display data only — see [ShareReceiver.snapshots]. */
 export interface ShareCardSnapshot {
@@ -121,6 +141,10 @@ export interface ShareCardSnapshot {
   savedAs: string | null;
   reason: string | null;
   priorCopy: PriorCopy | null;
+  /** Receiver-measured bytes of the current or last attempt; null before a pull began. */
+  receivedBytes: number | null;
+  /** A failed attempt that a person may retry now (inside the window, never after publication). */
+  canRetry: boolean;
 }
 
 /** A verified, published earlier copy of the same bytes, and whether the phone ever acknowledged it. */
@@ -224,7 +248,27 @@ export class ShareReceiver {
       savedAs: e.savedAs,
       reason: e.lastReason,
       priorCopy: e.priorCopy ? { ...e.priorCopy } : null,
+      receivedBytes: e.receivedBytes,
+      canRetry: e.state === 'failed' && e.savedAs === null && e.retryUntilMs !== null && this.now() < e.retryUntilMs,
     }));
+  }
+
+  /**
+   * The saved file for [offerId] — **only** if it is still the very file this Mac published: a
+   * regular file (not a link) at the recorded path with the recorded device, inode and size.
+   * Anything else (moved, replaced, renamed over, grown, a symlink planted at the name) is null, and
+   * Open / Reveal do nothing. The path never leaves the main process.
+   */
+  async publishedFile(offerId: string): Promise<{ ok: true; path: string } | { ok: false; why: string }> {
+    const e = this.entries.get(offerId);
+    const pub = e?.publication ?? null;
+    if (!e || !pub || (e.state !== 'saved' && e.state !== 'saved-unacknowledged')) return { ok: false, why: 'nothing was saved for that offer' };
+    const st = await lstat(pub.path).catch(() => null);
+    if (!st) return { ok: false, why: 'the saved file is no longer where it was saved' };
+    if (st.isSymbolicLink() || !st.isFile() || st.dev !== pub.dev || st.ino !== pub.ino || st.size !== pub.size) {
+      return { ok: false, why: 'the file at that name has changed since it was saved' };
+    }
+    return { ok: true, path: pub.path };
   }
 
   /** For tests and the future card: an offer's receive state, or undefined if never held. */
@@ -364,9 +408,11 @@ export class ShareReceiver {
       if (ack.state !== 'accepted') throw new Error(`the phone answered ${JSON.stringify(ack)}`);
     } catch (error) {
       log.warn('share', `share ${offerId}: accept was not acknowledged (${(error as Error).message}) — nothing will be pulled`);
-      this.endAs(entry, 'ended');
+      if (now(entry) === 'accepting') this.endAs(entry, 'ended');
       return;
     }
+    // Cancelled (by the person, or the phone) while the accept was in flight: nothing is pulled.
+    if (now(entry) !== 'accepting') return;
     await this.attempt(entry);
   }
 
@@ -396,6 +442,7 @@ export class ShareReceiver {
       this.endAs(entry, 'ended');
       return;
     }
+    entry.receivedBytes = 0;
     this.setState(entry, 'receiving');
     let begin: Record<string, unknown>;
     try {
@@ -403,10 +450,12 @@ export class ShareReceiver {
         direction: 'pull', rootId: `share:${offerId}`, id: '0',
       }));
     } catch (error) {
+      if (now(entry) !== 'receiving') return; // cancelled while the begin was in flight
       log.warn('share', `share ${offerId}: the phone refused the pull (${(error as Error).message})`);
       this.fail(entry, 'interrupted', 'the pull was refused', false);
       return;
     }
+    if (now(entry) !== 'receiving') return; // cancelled while the begin was in flight: no bytes pulled
     // The ack must agree with the offer, or the bytes would be judged against the wrong thing.
     const transferId = begin.transferId;
     if (typeof transferId !== 'string' || !SHARE_TRANSFER.test(transferId) || begin.offset !== 0 ||
@@ -422,6 +471,7 @@ export class ShareReceiver {
     }
     entry.abort = new AbortController();
     const folder = entry.folder;
+    let lastNotify = 0;
     const name = sanitizeShareName(entry.offer.item.name);
     const result = await this.deps.pull({
       token: entry.sessionKey,
@@ -433,8 +483,19 @@ export class ShareReceiver {
       publish: (part) => this.deps.publish(part, folder, name),
       signal: entry.abort.signal,
       ledger: this.deps.ledger ?? null,
+      // Receiver-measured: what arrived here. Coalesced on the wall clock, because it is display only
+      // and a 1 GB file would otherwise republish the snapshot tens of thousands of times.
+      onProgress: (received) => {
+        entry.receivedBytes = received;
+        const t = Date.now();
+        if (t - lastNotify >= PROGRESS_NOTIFY_MS || received === entry.offer.item.size) {
+          lastNotify = t;
+          this.changed();
+        }
+      },
     });
     entry.abort = null;
+    if (result.ok) entry.publication = await identify(result.path, result.bytes);
     if (result.ok && entry.state !== 'receiving') {
       // The phone cancelled (or the session ended) while the file was being published, and the
       // publication won the race. The file is on this Mac, verified; the phone has already ended the
@@ -494,6 +555,27 @@ export class ShareReceiver {
 
   // ---- ends -------------------------------------------------------------------------------------
 
+  /**
+   * A person's Cancel on the receive window: stop a starting or running transfer, or give up a failed
+   * one that is waiting for a Retry. The phone is told (`share.cancel {user}`, which it handles in every
+   * live state and which stops its stream); the pull's own partial is deleted by the pull. **A
+   * published offer cannot be cancelled** — there is nothing to stop, and a verified file is kept.
+   */
+  async cancel(offerId: string): Promise<boolean> {
+    const entry = this.entries.get(offerId);
+    if (!entry || !['accepting', 'receiving', 'failed'].includes(entry.state)) return false;
+    const was = entry.state;
+    this.endAs(entry, 'cancelled');
+    log.info('share', `share ${offerId} cancelled on this Mac while ${was} (${entry.receivedBytes ?? 0} of ${entry.offer.item.size} bytes received)`);
+    try {
+      const ack = await this.deps.link.request(MessageType.SHARE_CANCEL, { offerId, reason: 'user' });
+      log.info('share', `share.cancel ${offerId} user → ${JSON.stringify(payloadOf(ack))}`);
+    } catch (error) {
+      log.warn('share', `share.cancel ${offerId} user was not acknowledged: ${(error as Error).message}`);
+    }
+    return true;
+  }
+
   /** `share.cancel` from the phone: `user`, `expired` or `staging-lost`. A live pull is stopped. */
   onCancel(payload: unknown): void {
     const p = (payload ?? {}) as { offerId?: unknown; reason?: unknown };
@@ -531,6 +613,7 @@ export class ShareReceiver {
         offer, sessionKey, folder, state: 'awaiting-decision', macExpiresAtMs,
         retryUntilMs: null, abort: null, savedAs: null, lastReason: null,
         priorCopy: this.published.get(offer.item.sha256) ?? null,
+        receivedBytes: null, publication: null,
       });
       this.changed();
       const prior = this.published.get(offer.item.sha256);
@@ -550,6 +633,7 @@ export class ShareReceiver {
     this.entries.set(offer.offerId, {
       offer, sessionKey, folder: '', state: 'refused', macExpiresAtMs,
       retryUntilMs: null, abort: null, savedAs: null, lastReason: reason, priorCopy: null,
+      receivedBytes: null, publication: null,
     });
     this.changed();
   }
@@ -597,4 +681,22 @@ export class ShareReceiver {
       log.warn('share', `share.respond ${offerId} ${reason} failed: ${(error as Error).message}`);
     }
   }
+}
+
+/**
+ * An entry's state **as it is now**, read through a call so the compiler does not carry a narrowing
+ * across an `await` — during which a cancel from the phone or the person may have moved it.
+ */
+function now(entry: Entry): ReceiveState {
+  return entry.state;
+}
+
+/** Identify a just-published file, so a later Open can prove it is still that file. */
+async function identify(path: string, bytes: number): Promise<Publication | null> {
+  const st = await lstat(path).catch(() => null);
+  if (!st || !st.isFile() || st.size !== bytes) {
+    log.warn('share', 'a published file could not be identified right after publication; Open and Reveal will refuse it');
+    return null;
+  }
+  return { path, dev: st.dev, ino: st.ino, size: st.size };
 }

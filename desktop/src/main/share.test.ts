@@ -611,3 +611,139 @@ test('card saved but unacknowledged: the card says so, never an unqualified succ
     await phone.close();
   }
 });
+
+// ---- the receive window: progress, Cancel, and the publication record (step 4) ------------------
+
+test('progress is what this Mac received: rising, never past the size, and the size before any Saved', { timeout: 10_000 }, async () => {
+  const data = synthetic(300_000);
+  const phone = await startFakePhone({ bytes: data.bytes, chunkSize: 10_000 });
+  const link = new FakeLink(2, 300_000, data.sha256);
+  try {
+    const r = receiver(link, folder(), [phone]);
+    const seen: { state: string; received: number | null }[] = [];
+    r.onChange(() => {
+      const s = r.snapshots()[0]!;
+      seen.push({ state: s.state, received: s.receivedBytes });
+    });
+    await r.onOffer(offer(300_000, data.sha256, { name: 'clip.bin' }));
+    assert.equal(r.snapshots()[0]!.receivedBytes, null, 'no count before a pull');
+    await r.decide(id, 'accept');
+    await new Promise((ok) => setImmediate(ok));
+    const receiving = seen.filter((x) => x.state === 'receiving').map((x) => x.received ?? -1);
+    assert.ok(receiving.length >= 2, `control: progress was published while receiving (${receiving.join(',')})`);
+    for (let i = 1; i < receiving.length; i += 1) assert.ok(receiving[i]! >= receiving[i - 1]!, 'never goes backwards');
+    assert.ok(receiving.every((n) => n >= 0 && n <= 300_000));
+    assert.equal(r.state(id), 'saved');
+    assert.equal(r.snapshots()[0]!.receivedBytes, 300_000);
+  } finally {
+    await phone.close();
+  }
+});
+
+test('Mac Cancel mid-pull: share.cancel user is sent, the partial is deleted, no verdict, nothing kept', { timeout: 10_000 }, async () => {
+  const data = synthetic(100_000);
+  const phone = await startFakePhone({ bytes: data.bytes, stallAfter: 20_000, chunkSize: 10_000 });
+  const link = new FakeLink(2, 100_000, data.sha256);
+  const d = folder();
+  try {
+    const r = receiver(link, d, [phone]);
+    await r.onOffer(offer(100_000, data.sha256, { name: 'a.bin' }));
+    const running = r.decide(id, 'accept');
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(r.state(id), 'receiving', 'control: it was mid-pull');
+    assert.equal(await r.cancel(id), true);
+    await running;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(r.state(id), 'cancelled');
+    assert.deepEqual(link.sent.filter((s) => s.type === 'share.cancel').map((s) => s.payload), [{ offerId: id, reason: 'user' }]);
+    assert.equal(link.types().some((t) => t.startsWith('saved:')), false);
+    assert.deepEqual(readdirSync(d), []);
+  } finally {
+    await phone.close();
+  }
+});
+
+test('Cancel while the accept is in flight pulls nothing', { timeout: 10_000 }, async () => {
+  const data = synthetic(1000);
+  const phone = await startFakePhone({ bytes: data.bytes });
+  const link = new FakeLink(2, 1000, data.sha256);
+  const d = folder();
+  try {
+    const r = receiver(link, d, [phone]);
+    await r.onOffer(offer(1000, data.sha256, { name: 'a.bin' }));
+    link.onRequest = (s) => {
+      if (s.type === 'share.respond' && s.payload.decision === 'accept') void r.cancel(id);
+    };
+    await r.decide(id, 'accept');
+    assert.equal(r.state(id), 'cancelled');
+    assert.equal(link.types().includes('fs.transfer.begin'), false);
+    assert.equal(phone.seen.length, 0, 'the bulk port was never opened');
+    assert.deepEqual(readdirSync(d), []);
+  } finally {
+    await phone.close();
+  }
+});
+
+test('a published offer cannot be cancelled; Open resolves only the very file that was saved', { timeout: 10_000 }, async () => {
+  const data = synthetic(4096);
+  const phone = await startFakePhone({ bytes: data.bytes });
+  const link = new FakeLink(2, 4096, data.sha256);
+  const d = folder();
+  try {
+    const r = receiver(link, d, [phone]);
+    await r.onOffer(offer(4096, data.sha256, { name: 'photo.jpg', mime: 'image/jpeg' }));
+    assert.deepEqual(await r.publishedFile(id), { ok: false, why: 'nothing was saved for that offer' });
+    await r.decide(id, 'accept');
+    assert.equal(r.state(id), 'saved');
+    assert.equal(await r.cancel(id), false);
+    assert.deepEqual(await r.publishedFile(id), { ok: true, path: join(d, 'photo.jpg') });
+    assert.equal(await r.publishedFile('s-AAAAAAAAAAAAAAAAAAAAAA').then((x) => x.ok), false, 'an unknown id');
+  } finally {
+    await phone.close();
+  }
+});
+
+test('Open refuses a saved file that was replaced, grown, or swapped for a symlink since it was saved', { timeout: 10_000 }, async () => {
+  const { writeFileSync, unlinkSync, symlinkSync, appendFileSync } = await import('node:fs');
+  for (const tamper of ['replace', 'grow', 'symlink', 'delete'] as const) {
+    const data = synthetic(2048);
+    const phone = await startFakePhone({ bytes: data.bytes });
+    const link = new FakeLink(2, 2048, data.sha256);
+    const d = folder();
+    try {
+      const r = receiver(link, d, [phone]);
+      await r.onOffer(offer(2048, data.sha256, { name: 'x.bin' }));
+      await r.decide(id, 'accept');
+      const path = join(d, 'x.bin');
+      assert.equal((await r.publishedFile(id)).ok, true, `control (${tamper})`);
+      if (tamper === 'replace') { unlinkSync(path); writeFileSync(path, data.bytes); }
+      if (tamper === 'grow') appendFileSync(path, 'x');
+      if (tamper === 'symlink') { unlinkSync(path); writeFileSync(join(d, 'other'), data.bytes); symlinkSync(join(d, 'other'), path); }
+      if (tamper === 'delete') unlinkSync(path);
+      assert.equal((await r.publishedFile(id)).ok, false, tamper);
+    } finally {
+      await phone.close();
+    }
+  }
+});
+
+test('a failed attempt inside its window can be retried — and Cancel then gives it up and tells the phone', { timeout: 10_000 }, async () => {
+  const data = synthetic(50_000);
+  const bad = await startFakePhone({ bytes: data.bytes, corruptAt: 10 });
+  const link = new FakeLink(2, 50_000, data.sha256);
+  const d = folder();
+  try {
+    const r = receiver(link, d, [bad]);
+    await r.onOffer(offer(50_000, data.sha256, { name: 'a.bin' }));
+    await r.decide(id, 'accept');
+    assert.equal(r.state(id), 'failed');
+    assert.equal(r.snapshots()[0]!.canRetry, true);
+    assert.equal(await r.cancel(id), true);
+    assert.equal(r.state(id), 'cancelled');
+    assert.equal(r.snapshots()[0]!.canRetry, false);
+    assert.ok(link.types().includes('share.cancel'));
+    assert.deepEqual(readdirSync(d), []);
+  } finally {
+    await bad.close();
+  }
+});

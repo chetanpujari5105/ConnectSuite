@@ -103,7 +103,7 @@ import {
   shareAskActivation,
   shareV2Activation,
 } from './shareActivation';
-import { forRenderer, handleShareDecision } from './shareDecision';
+import { acceptAllowed, forRenderer, handleShareDecision } from './shareDecision';
 import { ShareReceiveWindow } from './shareWindow';
 import { newlyNeedingAttention, parseOfferRequest } from './shareWindowRules';
 import { settingsMigration, store } from './store';
@@ -1056,17 +1056,49 @@ app.whenReady().then(() => {
       subject,
       offers: forRenderer(shareReceiver.snapshots(), homedir()),
       phone: store.get('paired')?.deviceName ?? null,
+      thumb: subject ? (shareThumbs.get(subject) ?? null) : null,
     }),
     // Transparent: the window's material is AppKit's vibrancy, and the page paints the chrome token.
     () => '#00000000',
   );
   shareWindow = receiveWindow;
   const attentionSeen = new Set<string>();
+  /*
+   * Thumbnails, **only of a file this Mac published and verified**, and only images and video: made by
+   * QuickLook (`createThumbnailFromPath`) from the local file — bounded by the OS and by a timeout
+   * here — and never from anything the phone sent about it. One attempt per offer; a failure leaves
+   * the type glyph. Memory only, like the offers.
+   */
+  const shareThumbs = new Map<string, string | null>();
+  const makeThumb = async (offerId: string, mime: string): Promise<void> => {
+    if (shareThumbs.has(offerId)) return;
+    shareThumbs.set(offerId, null);
+    const top = mime.split('/')[0];
+    if (top !== 'image' && top !== 'video') return;
+    const file = await shareReceiver.publishedFile(offerId);
+    if (!file.ok) return;
+    const started = Date.now();
+    try {
+      const image = await Promise.race([
+        nativeImage.createThumbnailFromPath(file.path, { width: 224, height: 224 }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timed out after 4000 ms')), 4000)),
+      ]);
+      if (image.isEmpty()) throw new Error('QuickLook returned an empty image');
+      shareThumbs.set(offerId, image.toDataURL());
+      log.info('share', `thumbnail for ${offerId} (${top}) in ${Date.now() - started} ms`);
+      receiveWindow.push();
+    } catch (error) {
+      log.info('share', `no thumbnail for ${offerId} (${top}): ${(error as Error).message} — the type glyph stays`);
+    }
+  };
   shareReceiver.onChange(() => {
     const snaps = shareReceiver.snapshots();
     send('share-offers', forRenderer(snaps, homedir()));
     receiveWindow.push();
     for (const offerId of newlyNeedingAttention(attentionSeen, snaps)) receiveWindow.presentInactive(offerId);
+    for (const s of snaps) {
+      if ((s.state === 'saved' || s.state === 'saved-unacknowledged') && !shareThumbs.has(s.offerId)) void makeThumb(s.offerId, s.mime);
+    }
   });
   ipcMain.handle('share-offers', () => forRenderer(shareReceiver.snapshots(), homedir()));
   ipcMain.handle('share-window-state', (event) => {
@@ -1088,6 +1120,56 @@ app.whenReady().then(() => {
     if (!parsed.ok) return { ok: false, reason: `refused: ${parsed.why}` };
     if (shareReceiver.state(parsed.offerId) === undefined) return { ok: false, reason: 'no such offer' };
     receiveWindow.openFromUser(parsed.offerId);
+    return { ok: true };
+  });
+  /*
+   * The receive window's four actions. Each takes `{offerId}` and nothing else, only from the receive
+   * window. Open and Reveal act on `publishedFile`, which re-proves the saved file is still the very
+   * file this Mac published — no path ever crosses IPC. Try again starts a pull, so it is gated like
+   * Accept: a visible, focused window.
+   */
+  const fromReceiveWindow = (event: Electron.IpcMainInvokeEvent, raw: unknown): { ok: true; offerId: string } | { ok: false; reason: string } => {
+    if (event.sender !== receiveWindow.webContents()) return { ok: false, reason: 'refused: not the receive window' };
+    const parsed = parseOfferRequest(raw);
+    return parsed.ok ? parsed : { ok: false, reason: `refused: ${parsed.why}` };
+  };
+  ipcMain.handle('share-cancel', async (event, raw: unknown) => {
+    const r = fromReceiveWindow(event, raw);
+    if (!r.ok) return r;
+    return (await shareReceiver.cancel(r.offerId)) ? { ok: true } : { ok: false, reason: 'There is nothing running to cancel.' };
+  });
+  ipcMain.handle('share-retry', async (event, raw: unknown) => {
+    const r = fromReceiveWindow(event, raw);
+    if (!r.ok) return r;
+    const gate = acceptAllowed(receiveWindow.facts());
+    if (!gate.ok) return { ok: false, reason: `not retried: ${gate.why}` };
+    const snap = shareReceiver.snapshots().find((s) => s.offerId === r.offerId);
+    if (!snap?.canRetry) return { ok: false, reason: 'It can no longer be tried again.' };
+    void shareReceiver.retry(r.offerId);
+    return { ok: true };
+  });
+  ipcMain.handle('share-open', async (event, raw: unknown) => {
+    const r = fromReceiveWindow(event, raw);
+    if (!r.ok) return r;
+    const file = await shareReceiver.publishedFile(r.offerId);
+    if (!file.ok) {
+      log.warn('share', `Open refused for ${r.offerId}: ${file.why}`);
+      return { ok: false, reason: `Not opened: ${file.why}.` };
+    }
+    const error = await shell.openPath(file.path);
+    log.info('share', `Open ${r.offerId} → ${error === '' ? 'opened' : `failed: ${error}`}`);
+    return error === '' ? { ok: true } : { ok: false, reason: `macOS could not open it: ${error}` };
+  });
+  ipcMain.handle('share-reveal', async (event, raw: unknown) => {
+    const r = fromReceiveWindow(event, raw);
+    if (!r.ok) return r;
+    const file = await shareReceiver.publishedFile(r.offerId);
+    if (!file.ok) {
+      log.warn('share', `Show in Finder refused for ${r.offerId}: ${file.why}`);
+      return { ok: false, reason: `Not shown: ${file.why}.` };
+    }
+    shell.showItemInFolder(file.path);
+    log.info('share', `Show in Finder ${r.offerId}`);
     return { ok: true };
   });
   ipcMain.on('share-window-close', (event) => {

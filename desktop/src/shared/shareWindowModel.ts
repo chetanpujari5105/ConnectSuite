@@ -32,9 +32,26 @@ interface ShareWinOffer {
   savedAs: string | null;
   reason: string | null;
   priorCopy: { savedAs: string; acknowledged: boolean } | null;
+  /** Bytes this Mac received (receiver-measured); null before a pull began. */
+  receivedBytes?: number | null;
+  /** A failed attempt a person may retry now. */
+  canRetry?: boolean;
 }
 
-type ShareWinActionId = 'decline' | 'accept' | 'close';
+type ShareWinActionId = 'decline' | 'accept' | 'close' | 'cancel' | 'retry' | 'open' | 'reveal';
+
+/**
+ * Progress as measured on this Mac. `fraction` is null when there is nothing honest to draw as a bar
+ * (before the phone starts, or a zero-byte file). **It never reads 100%**: all bytes in is shown as
+ * *checking*, because the file is not saved until its length, digest and publication have succeeded.
+ */
+interface ShareWinProgress {
+  fraction: number | null;
+  label: string;
+  checking: boolean;
+  received: number;
+  total: number;
+}
 
 interface ShareWinAction {
   id: ShareWinActionId;
@@ -61,6 +78,7 @@ interface ShareWinModel {
   /** The offer's own `from`, when it differs from the paired phone's name. */
   senderNote: string | null;
   actions: ShareWinAction[];
+  progress: ShareWinProgress | null;
   /** For the page's polite live region, when this offer first needs attention. */
   announcement: string;
   /** A finished offer that is not a saved file closes itself after a while; a saved one waits. */
@@ -123,6 +141,20 @@ function shareWinApproxBytes(n: number): string {
   return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
 }
 
+function shareWinProgress(o: ShareWinOffer): ShareWinProgress | null {
+  if (o.state !== 'accepting' && o.state !== 'receiving') return null;
+  const total = o.bytes;
+  const received = Math.max(0, Math.min(total, o.receivedBytes ?? 0));
+  if (o.state === 'accepting' || o.receivedBytes === null || o.receivedBytes === undefined) {
+    return { fraction: null, label: 'Waiting for the phone to start…', checking: false, received: 0, total };
+  }
+  if (total === 0) return { fraction: null, label: 'An empty file — checking before saving…', checking: true, received: 0, total };
+  if (received >= total) return { fraction: 1, label: 'All bytes received — checking before saving…', checking: true, received, total };
+  // Floor, and at most 99: a percentage that rounds up to 100 would be the one lie this bar can tell.
+  const pct = Math.min(99, Math.floor((received / total) * 100));
+  return { fraction: received / total, label: `${shareWinApproxBytes(received)} of ${shareWinApproxBytes(total)} · ${pct}%`, checking: false, received, total };
+}
+
 function shareWinMeta(mime: string, bytes: number): string {
   const exact = shareWinExactBytes(bytes);
   return bytes < 1000 ? `${shareWinTypeLabel(mime)} · ${exact}` : `${shareWinTypeLabel(mime)} · ${shareWinApproxBytes(bytes)} (${exact})`;
@@ -158,30 +190,42 @@ function shareWindowModel(o: ShareWinOffer, phone: string | null): ShareWinModel
   const close: ShareWinAction = waiting
     ? { id: 'close', label: 'Hide', aria: 'Hide this window. The request keeps waiting until it expires.', primary: false }
     : { id: 'close', label: 'Close', aria: `Close — ${status.headline}`, primary: false };
+  const shown = published && o.savedAs !== null ? o.savedAs : o.name;
   const actions: ShareWinAction[] = waiting
     ? [
         { id: 'decline', label: 'Decline', aria: `Decline ${o.name} from ${who}`, primary: false },
         { id: 'accept', label: 'Accept', aria: `Accept ${o.name} from ${who} and save it to ${o.folder}`, primary: true },
       ]
     : o.state === 'accepting' || o.state === 'receiving'
-      ? []
-      : [close];
+      ? [{ id: 'cancel', label: 'Cancel', aria: `Stop receiving ${o.name}. Nothing will be kept.`, primary: false }]
+      : published
+        ? [
+            { id: 'reveal', label: 'Show in Finder', aria: `Show ${shown} in Finder`, primary: false },
+            { id: 'open', label: 'Open', aria: `Open ${shown}`, primary: true },
+          ]
+        : o.state === 'failed' && o.canRetry === true
+          ? [
+              { id: 'cancel', label: 'Give up', aria: `Give up on ${o.name}. Nothing was kept.`, primary: false },
+              { id: 'retry', label: 'Try again', aria: `Try receiving ${o.name} again from the start`, primary: true },
+            ]
+          : [close];
   return {
     offerId: o.offerId,
     state: o.state,
     tone: status.tone,
     glyph: shareWinGlyph(o.mime),
     eyebrow,
-    title: published && o.savedAs !== null ? o.savedAs : o.name,
+    title: shown,
     meta: shareWinMeta(o.mime, o.bytes),
     place,
     detail: status.detail,
     senderNote: phone !== null && o.from !== phone ? `The phone calls itself “${o.from}”.` : null,
     actions,
+    progress: shareWinProgress(o),
     announcement: waiting
       ? `${who} wants to send ${o.name}, ${shareWinExactBytes(o.bytes)}. Accept or decline.`
       : `${status.headline}: ${o.name}.`,
-    closesItself: !published && !waiting && o.state !== 'accepting' && o.state !== 'receiving',
+    closesItself: !published && !waiting && o.state !== 'accepting' && o.state !== 'receiving' && !(o.state === 'failed' && o.canRetry === true),
   };
 }
 

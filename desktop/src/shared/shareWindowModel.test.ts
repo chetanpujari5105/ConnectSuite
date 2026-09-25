@@ -7,6 +7,7 @@ const { shareWindowModel, shareWinTypeLabel, shareWinApproxBytes, SHARE_WIN_ICON
     eyebrow: string; title: string; meta: string; place: { label: string; value: string } | null; detail: string[];
     senderNote: string | null; actions: { id: string; label: string; aria: string; primary: boolean }[];
     glyph: string; tone: string; closesItself: boolean; announcement: string;
+    progress: { fraction: number | null; label: string; checking: boolean } | null;
   };
   shareWinTypeLabel: (m: string) => string;
   shareWinApproxBytes: (n: number) => string;
@@ -77,13 +78,47 @@ test('a published file is titled by its saved name and placed "Saved in"; it wai
   assert.equal(m.closesItself, false);
 });
 
-test('nothing reads Saved before publication, and receiving offers no action a person could mistake', () => {
+test('nothing reads Saved before publication; a running transfer offers Cancel and nothing else', () => {
   for (const state of ['accepting', 'receiving']) {
-    const m = shareWindowModel(offer({ state }), 'P');
-    assert.doesNotMatch(`${m.eyebrow} ${m.detail.join(' ')}`, /\bSaved\b/);
-    assert.deepEqual(m.actions, []);
+    const m = shareWindowModel(offer({ state, receivedBytes: 3874112 }), 'P');
+    assert.doesNotMatch(`${m.eyebrow} ${m.detail.join(' ')} ${m.progress?.label}`, /\bSaved\b|100%/);
+    assert.deepEqual(m.actions.map((a) => a.id), ['cancel']);
+    assert.match(m.actions[0]!.aria, /Nothing will be kept/);
     assert.equal(m.closesItself, false);
   }
+});
+
+test('progress is the Mac’s own count: floor percent, never 100%; all bytes in reads as checking', () => {
+  const at = (receivedBytes: number | null, bytes = 3874112, state = 'receiving') =>
+    shareWindowModel(offer({ state, receivedBytes, bytes }), 'P').progress!;
+  assert.deepEqual(at(null, 3874112, 'accepting'), { fraction: null, label: 'Waiting for the phone to start…', checking: false, received: 0, total: 3874112 });
+  assert.equal(at(0).label, '0 bytes of 3.9 MB · 0%');
+  assert.equal(at(1937056).label, '1.9 MB of 3.9 MB · 50%');
+  assert.equal(at(3874111).label, '3.9 MB of 3.9 MB · 99%', 'one byte short is 99, not a rounded 100');
+  const done = at(3874112);
+  assert.equal(done.checking, true);
+  assert.equal(done.label, 'All bytes received — checking before saving…');
+  assert.equal(at(99_999_999).fraction, 1, 'a count past the size is clamped, never drawn past full');
+  const empty = at(0, 0);
+  assert.equal(empty.fraction, null, 'a zero-byte file draws no bar');
+  assert.match(empty.label, /empty file/);
+  assert.equal(shareWindowModel(offer({ state: 'saved', savedAs: 'a.jpg' }), 'P').progress, null);
+});
+
+test('a saved file offers Show in Finder and Open; a failed one inside its window offers Try again', () => {
+  const saved = shareWindowModel(offer({ state: 'saved', savedAs: 'IMG (2).jpg' }), 'P');
+  assert.deepEqual(saved.actions.map((a) => a.id), ['reveal', 'open']);
+  assert.equal(saved.actions.find((a) => a.primary)?.id, 'open');
+  assert.equal(saved.actions[1]!.aria, 'Open IMG (2).jpg', 'names the file actually saved');
+  const unack = shareWindowModel(offer({ state: 'saved-unacknowledged', savedAs: 'a.jpg' }), 'P');
+  assert.deepEqual(unack.actions.map((a) => a.id), ['reveal', 'open'], 'saved on this Mac is saved, whatever the phone heard');
+  const retry = shareWindowModel(offer({ state: 'failed', reason: 'checksum', canRetry: true }), 'P');
+  assert.deepEqual(retry.actions.map((a) => a.id), ['cancel', 'retry']);
+  assert.equal(retry.closesItself, false, 'a retry that is still possible does not vanish');
+  const over = shareWindowModel(offer({ state: 'failed', reason: 'checksum', canRetry: false }), 'P');
+  assert.deepEqual(over.actions.map((a) => a.id), ['close']);
+  assert.ok(!['declined', 'expired', 'cancelled', 'ended', 'refused'].some((state) =>
+    shareWindowModel(offer({ state }), 'P').actions.some((a) => a.id === 'open' || a.id === 'reveal')), 'Open only for a published file');
 });
 
 test('a destination refusal says why and names no destination; it never reads Declined', () => {

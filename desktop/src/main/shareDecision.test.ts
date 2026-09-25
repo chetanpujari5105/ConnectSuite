@@ -146,3 +146,23 @@ test('the folder is shown with ~ for the home folder, and only for a real prefix
   assert.equal(displayFolder('/Users/ab/Downloads', '/Users/a'), '/Users/ab/Downloads');
   assert.equal(displayFolder('/Volumes/X', '/Users/a'), '/Volumes/X');
 });
+
+test('Open, Show in Finder, Cancel and Try again: receive window only, {offerId} only, the path looked up in main', () => {
+  const code = codeOf(readFileSync(join(__dirname, 'main.ts'), 'utf8'));
+  // Sliced between two markers: `bodyAfter` would take the arrow's return *type* as its body.
+  const gate = code.slice(code.indexOf('const fromReceiveWindow = ('), code.indexOf("ipcMain.handle('share-cancel'"));
+  assert.ok(gate.length > 60 && gate.length < 800, `control: the gate was read (${gate.length} chars)`);
+  assert.match(gate, /event\.sender !== receiveWindow\.webContents\(\)/);
+  assert.match(gate, /parseOfferRequest\(raw\)/);
+  for (const channel of ['share-cancel', 'share-retry', 'share-open', 'share-reveal']) {
+    const body = bodyAfter(code, `ipcMain.handle('${channel}'`);
+    assert.match(body, /fromReceiveWindow\(event, raw\)/, channel);
+    assert.doesNotMatch(body, /raw\s*\.|raw\[|as \{ path/, `${channel} reads nothing else from the page`);
+  }
+  for (const channel of ['share-open', 'share-reveal']) {
+    const body = bodyAfter(code, `ipcMain.handle('${channel}'`);
+    assert.match(body, /shareReceiver\.publishedFile\(r\.offerId\)/, `${channel} acts only on the re-verified publication`);
+    assert.match(body, /if \(!file\.ok\)/, `${channel} refuses when the file changed`);
+  }
+  assert.match(bodyAfter(code, "ipcMain.handle('share-retry'"), /acceptAllowed\(receiveWindow\.facts\(\)\)/, 'a retry pulls, so it is gated like Accept');
+});
