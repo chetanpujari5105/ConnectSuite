@@ -24823,3 +24823,36 @@ all identical); a `strings` count returned blanks including its positive control
 be given, and several non-synthetic images were sent and saved (names seen in logs only; contents never
 read). A second Send while one offer waited was silently refused by the one-live-offer rule — the fix is
 `02d95b3`, uninstalled.
+
+## The silent-Send fix on hardware (`02d95b3`), 2026-09-25 13:36–13:50, owner present
+
+**Install.** Pinned RZCY12330DT. Debug APK from the committed tree, SHA-256 `0e93391a…e25b`, 95,015,708
+bytes; its dex carries the fix's copy (*"Another file is waiting for approval on your Mac"* 1,
+*"Withdraw that file"* 2) and the previously installed APK did not (0); controls 57 / 0. Package
+`com.chetan.connectsuite.debug` v1 and certificate `d3a505d2…7d26` identical to the installed app.
+`install -r` → Success at 13:36:55; `LinkService` returned by itself; no MainActivity restart, no
+force-stop. **Before/after readings identical** (user-0 grants 14/14, accessibility, listener,
+link-up 3/3, Mac pairing record); the link dropped once at the install and renegotiated
+`share.file 2` + `share.ask 1` 1.1 s later, debug arm not applied.
+
+**Busy, observed.** First offer `s-o_ZB…` (`sidekick-share-test-001.png`, 100,718 B) waiting on the Mac.
+The second sheet's Send (13:41:08) was refused by the rule and **drawn**: headline *"Another file is
+waiting for approval on your Mac"*, the waiting file named, *"This file is still prepared here and was
+not sent"*; the UI dump's clickable nodes: **Send `enabled=false`**, *Withdraw that file* `enabled=true`,
+Close `enabled=true`. No pull on either side, no partial; phone staging held **both** copies.
+
+**Deviation:** the second file was not synthetic — a personal screenshot (1,320,558 B; name seen in the
+sheet only, contents never read). The owner chose to continue: it was never offered (`offered s-T31…`
+lines **0**, control for the first offer **1**; the Mac never logged its id).
+
+**After the Decline (13:44:54):** the phone deleted the first offer's staged copy (2 files) and the
+sheet's watcher logged *"the offer in the way … ended (declined (user)); Send works again"* in the same
+millisecond. **The re-enabled button itself was not observed** — the owner closed the sheet 3.5 s later
+(13:44:58, *"discarded (closed): 2 file(s) deleted"*), before a dump; what is proven is the transition
+that drives `canSend`, plus the unit tests. Phone staging then **empty**; Mac ledger `[]`. The Gallery
+original was not examined or touched.
+
+**Receive-folder changes during this window that are not share transfers** (no `share.offer` for any):
+`download.jpg` (10,402 B, 13:42:09) and `l1I0k-Axckq5Kes_ypu2ERit.jpg` (571,941 B, 13:42:35 — the size of
+the phone screenshot the Photos pane previewed at 13:42:04) appeared, and the 13:30:58 copy of
+`sidekick-share-test-001.png` left the folder. Sidekick logged no delete. Not attributed here.
