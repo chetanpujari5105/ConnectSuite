@@ -1,3 +1,23 @@
+# Resume here — written 2026-09-25 (13:40): receive window passed live; silent-Send fix built, not installed
+
+> Supersedes the entries below for Feature A. Nothing pushed. Evidence: `docs/testing.md` → *the
+> supervised live run* and *The silent second Send*.
+
+1. **Built and proven:** the Mac receive window, live on the SM-S938B — a 100,718-byte synthetic image
+   saved with its SHA-256 equal to the phone's, arrival without focus, nothing moved before Accept,
+   collision-safe naming, one decision surface. The phone's silent-Send fix (`02d95b3`) is proven by
+   tests and mutations only.
+2. **Committed:** `f9e86c9` `7fdce44` `5046017` `b047f10` (window), `02d95b3` (phone fix),
+   `f6e4ea2` (multi-offer proposal), and this record. Phone 776/0, Mac 1168/0, guards 0.
+3. **Half-built:** nothing. **Not built:** automatic acceptance (waits on the §4.1 contract decision),
+   sounds (cannot honour Focus), multi-offer (proposal only).
+4. **Needs the owner:** approve installing `02d95b3` on the Samsung and a supervised re-test of the
+   busy sheet; decide §4.1; decide sounds.
+5. **Next:** install and test `02d95b3`, because the silent Send is the one user-visible defect found live.
+6. **Left on devices:** Mac dev app running this build, connected. Receive folder: 24 entries, including
+   files the owner sent and accepted during the run; two gradient copies moved to the Trash **by the
+   owner**. Nothing deleted, opened or moved by me. Phone unchanged (11:44 build), staging empty.
+
 # Resume here — written 2026-09-25 (afternoon): the Mac receive window; automatic acceptance waits on one approval
 
 > **Supersedes the two reports below for anything about the Mac's receiving experience.** Nothing is

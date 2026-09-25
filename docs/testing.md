@@ -24787,3 +24787,39 @@ re-pointed at `canSend`, not loosened, and an `||` bypass of Available turns it 
 **did not compile** and its run read the previous results file (`fail=0`, 1 s old, exit 1) — the
 stale-artifact row, caught by the exit code. Phone **776 / 0** re-executed; Mac 1168 / 1168; guards 0.
 **Not installed on the phone** — the Samsung still runs the 11:44 build.
+
+## Feature A receive window — the supervised live run on the SM-S938B (2026-09-25, owner present)
+
+The Mac ran this build (`dist` = committed source, no `CONNECTSUITE_DEBUG_SWITCHES`), negotiating
+`{"share.file":2,"share.ask":1}` with the SM-S938B. Phone baseline, read-only: user 0 **14/14** runtime
+grants, accessibility service and our notification listener enabled, `link-up.sh` 3/3, staging empty.
+The phone ran the 11:44 build — **not** the silent-Send fix (`02d95b3`), which was never installed.
+
+**The passing transfer:** offer `s-9AWk…`, `sidekick-share-test-001.png` (the owner's chosen synthetic
+gradient image), accepted by the owner at 13:30:58: **100,718 bytes, SHA-256 `d5cfb8a3…c9ff` on the
+Mac equal to the phone's source**, a new inode, thumbnail in 27 ms, `share.saved` acknowledged. Mac
+ledger `[]`, no partial left; phone staging empty after the offer ended.
+
+| Claim | Reading |
+|---|---|
+| appears without taking focus | across 11 offers the window arrived `focus:false` with another app frontmost (Finder, VS Code, Brave); it gained focus only in samples where Sidekick had become frontmost, i.e. after a click |
+| nothing moves before Accept | no `fs.transfer.begin`, no `claimed`, no partial before any Accept; one sample during a transfer saw one partial, gone at the next |
+| duplicate warned before Accept | *"The same file was saved here earlier as … Accepting saves a second copy under a new name"* on every repeat |
+| collision-safe | an accept while the original existed published `sidekick-share-test-001 (2).png`; nothing replaced |
+| one decision surface | main-window cards: waiting offers show `show` only; no `accept`/`decline` in any card |
+| existing files unaltered | the 21 files of the first baseline identical in dev, inode, size, mtime, ctime and birth time |
+
+**Two gradient copies left the receive folder between 13:29:10 and 13:30:34** — the original
+`sidekick-share-test-001.png` and the `(2)` copy. **The owner moved them to the Trash in Finder**
+(owner's statement). It is **not** a Sidekick deletion: Sidekick's log shows no delete, no ledger sweep
+ran, and its only delete paths are its own temporary files. The Trash was not read (macOS refused access)
+and was left untouched.
+
+**Instrument faults of mine in this run, none recorded as findings:** a `comm` over name-sorted input
+and a `join` over names containing spaces each reported unchanged files as changed (redone field-wise:
+all identical); a `strings` count returned blanks including its positive control (redone with `grep -a`).
+
+**What went differently from the plan:** several offers were accepted before a pre-Accept report could
+be given, and several non-synthetic images were sent and saved (names seen in logs only; contents never
+read). A second Send while one offer waited was silently refused by the one-live-offer rule — the fix is
+`02d95b3`, uninstalled.
