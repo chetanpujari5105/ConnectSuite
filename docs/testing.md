@@ -24856,3 +24856,9 @@ original was not examined or touched.
 `download.jpg` (10,402 B, 13:42:09) and `l1I0k-Axckq5Kes_ypu2ERit.jpg` (571,941 B, 13:42:35 — the size of
 the phone screenshot the Photos pane previewed at 13:42:04) appeared, and the 13:30:58 copy of
 `sidekick-share-test-001.png` left the folder. Sidekick logged no delete. Not attributed here.
+
+**Verdict (owner, 2026-09-25): the Busy test PASSED**, with one limitation — **Send's re-enablement after
+the Decline was logged (`… ended (declined (user)); Send works again`) but not visually observed**; the
+sheet was closed before a UI dump. `download.jpg` and `l1I0k-Axckq5Kes_ypu2ERit.jpg` were **added by the
+owner** during testing and need no investigation. The 13:30:58 `sidekick-share-test-001.png` leaving the
+folder remains recorded as observed and unattributed; nothing was examined further.
