@@ -55,6 +55,7 @@ export const SHEETS = [
   'desktop/src/renderer/shell.css',
   'desktop/src/renderer/styles.css',
   'desktop/src/renderer/float.css',
+  'desktop/src/renderer/share-window.css',
 ];
 /** Where a motion token may be *read* from. The renderer's TS sets some transitions inline. */
 export const READERS = [...SHEETS, 'desktop/src/renderer'];

@@ -143,6 +143,17 @@ sends the request — it has no card to cancel from"*; that sentence changes wit
 Cancel is refused once publication has begun (the receiver's existing rule: a cancel during
 publication cannot unpublish).
 
+## 5 · Status, 2026-09-25
+
+| Step | State |
+|---|---|
+| 1 map | this file, `f9e86c9` |
+| 2 receive window | **built**, `7fdce44` |
+| 3 automatic acceptance | **not built — waiting for the owner to approve §4.1's contract wording** |
+| 4 progress and completion | **built**, `5046017` |
+| 5 sound | **not built** — §6: it cannot honour Focus / Do Not Disturb, which the brief requires |
+| 6 verification | automated + harness, `docs/testing.md` → *Feature A receive window*; no hardware transfer yet |
+
 ## 5 · The build order that follows from this
 
 1. **This map** (this commit).

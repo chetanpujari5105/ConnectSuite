@@ -84,6 +84,8 @@ function check({ tokens = TOKENS_BASE, shell = '', styles = '', float = '', repl
     w('shell.css', replace ? shell : SHELL_BASE + shell);
     w('styles.css', replace ? styles : STYLES_BASE + styles);
     w('float.css', replace ? float : FLOAT_BASE + float);
+    // The receive window's sheet: present and inert, so every existing case reads as it did.
+    w('share-window.css', '.sw { color: inherit; }\n');
     return run(root);
   } finally {
     rmSync(root, { recursive: true, force: true });

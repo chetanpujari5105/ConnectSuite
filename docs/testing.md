@@ -24696,3 +24696,59 @@ build is the candidate, whose sheet never enables Send.
 Mac 1122/1122; phone 765, 0 failures; both `tsc` configs; all guards. Card visual check at HEAD in
 the isolated harness, dark and light: `docs/evidence/feature-a-card-2026-09-25/arrival-head-{dark,light}.png`
 — new offer on top, `visible`, 216 px; finished cards 176–286 px.
+
+## Feature A receive window, 2026-09-25 — steps 1, 2 and 4 built; 3 and 5 not
+
+Brief: the owner's receive-window brief (compact Mac window, per-device automatic acceptance, real
+progress, optional sound). Map and argument: `docs/feature-a-receive-window.md`. **No live transfer
+was run and no offer was sent**; every reading below is automated, or a harness driving the
+**compiled** `ShareReceiveWindow` class with **synthetic** snapshots and synthetic media (a generated
+JPEG and a 2 s ffmpeg `testsrc` MP4). No personal media was read.
+
+| Commit | What |
+|---|---|
+| `f9e86c9` | the safety map; §4.1 records that automatic acceptance contradicts `share.ask` and proposes wording — **not applied** |
+| `7fdce44` | the receive window: shown without focus, the one decision surface; the card gets *Show*; `refused` state for destination refusals |
+| `5046017` | receiver-measured progress, Cancel / Give up / Try again, Open and Show in Finder on the re-verified publication, QuickLook thumbnails of the saved file |
+
+### Readings, each with what it is about
+
+| Claim | Reading | Control |
+|---|---|---|
+| An arriving offer does not take focus | frontmost app `Finder` before **and** after `presentInactive`; window facts `visible:true, focused:false` | the same facts read `visible:true` — the window was on screen, so the negative is about focus, not absence |
+| Placement | 360 × 184 at (3056, 46): top right of the work area of the display under the pointer, 16 px inset | `shareWindowRules.test.ts`: two displays, a too-small work area |
+| Accessibility | CDP `getFullAXTree`: region named by the eyebrow, heading = file name, buttons *Hide … keeps waiting*, *Decline …*, *Accept … save it to ~/Downloads/Sidekick*; tab order close → decline → accept; `activeElement` = `BODY` | live region text read in the same call; `innerWidth` = `outerWidth` = 360 (zoom 1) |
+| Thumbnails are bounded and real | QuickLook 224 × 224, non-empty, **38 ms** (JPEG) and **39 ms** (MP4) | a thumbnail sent for a non-saved state is not drawn (view test) |
+| Progress never claims 100% | model: 3,874,111 of 3,874,112 → *99%*; all bytes → *checking before saving* | receiver test: counts rise, never pass the size, and reach it only before `saved` |
+| Closing ≠ declining | view test, then **mutation**: making close decline turns exactly that test red | — |
+| Arrival cannot focus | source guard over `presentInactive`; **mutation** adding `w.focus()` turns it red | the guard's own control reads `showInactive()` in the body |
+| Open acts only on the saved file | replaced / grown / symlinked / deleted → refused (receiver test); **mutations** dropping the inode check, and trusting a page path in `share-open`, each turn exactly their test red | control: the untouched file resolves |
+| Cancel during the accept pulls nothing | the bulk port is never opened (`phone.seen.length === 0`); **mutation** removing the in-flight guard turns it red | — |
+
+Screenshots: `docs/evidence/feature-a-receive-window-2026-09-25/` — waiting (dark, light), a 1.8 GB
+video with a long name and a differing `from`, refused (space), saved-unacknowledged (dark, light),
+receiving 50% (dark, light), checking, saved with a real thumbnail (JPEG, MP4), failed with Try again.
+
+### Two instrument faults of mine, caught before they were recorded
+
+- **The motion guard passed by not reading the new sheet.** `check-motion-tokens` printed `OK` with
+  78 declarations; `share-window.css` was not in its list. Added, it read 83 and found a hand-written
+  `linear` in the progress fill. Fixed to `var(--ease)`. The colour guard had the same gap and was
+  extended before its first run.
+- **`./gradlew testDebugUnitTest` exited 0 over a 52-minute-old results file** — up to date, not
+  re-executed, because no Kotlin changed. `--rerun` then executed **766 tests, 0 failing**, results
+  10 s old.
+- And one **unexplained event**: during the harness run the page sent a `reveal` request I did not
+  script (07:01:48Z, saved-video state on screen). The harness only logs; nothing was opened. Most
+  likely a real click on the window, which sat on the display under the pointer — not established.
+
+### What is not proven
+
+- **No hardware transfer through the new window.** The Mac app was relaunched on this build and
+  reconnected to the SM-S938B negotiating `share.file 2` + `share.ask 1`; no offer was sent.
+- VoiceOver was not run; the AX tree was read instead. Reduced motion and reduced transparency are the
+  global token blocks, not measured in this window.
+- The first-click behaviour (`acceptFirstMouse: false`) is set, not observed.
+
+Suites: Mac **1168 / 1168**, both `tsc` configs clean; phone **766 / 0** (re-executed); every
+`scripts/check-*.mjs` exits 0, fixtures 20 / 20.

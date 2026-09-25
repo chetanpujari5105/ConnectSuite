@@ -1,3 +1,31 @@
+# Resume here — written 2026-09-25 (afternoon): the Mac receive window; automatic acceptance waits on one approval
+
+> **Supersedes the two reports below for anything about the Mac's receiving experience.** Nothing is
+> pushed. Map: `docs/feature-a-receive-window.md`. Evidence: `docs/testing.md` → *Feature A receive
+> window*.
+
+1. **Built and proven (automated + a harness driving the compiled window with synthetic data):** the
+   receive window (`7fdce44`) — appears without focus (Finder stayed frontmost), the one decision
+   surface, closing ≠ declining; receiver-measured progress, Cancel / Give up / Try again, Open and
+   Show in Finder on the re-verified publication, QuickLook thumbnails of the saved file (`5046017`).
+2. **Committed:** `f9e86c9` map · `7fdce44` window · `5046017` progress/completion · plus the guard and
+   docs commit after it. Mac 1168/1168, phone 766/0 (re-executed), both `tsc` clean, all guards 0.
+3. **Half-built:** nothing. **Not built:** automatic acceptance (step 3) and sounds (step 5).
+4. **Needs the owner:** (a) approve or reject the contract wording in the map's §4.1 — automatic
+   acceptance makes `share.ask`'s promise to the phone false unless the contract is reworded; (b) a
+   supervised live send from the Samsung through the new window (steps below); (c) a decision on
+   sounds, which cannot respect Focus / Do Not Disturb.
+5. **Next:** the live run in (b), because nothing in the new window has seen a real phone. Then step 3
+   if (a) is approved.
+6. **Left changed on devices:** the Mac dev app was relaunched on this build (no switches) and
+   reconnected to the SM-S938B at `share.file 2` + `share.ask 1`. Nothing sent, installed or touched
+   on the phone. The scratch harness is stopped.
+
+**Demo, when approved:** unlock the phone → Gallery → share a photo → Sidekick → Send to Mac. The Mac
+shows the small window top-right without taking focus → click it once to focus, then Accept → watch
+the progress → *Saved on this Mac* with a thumbnail → Open / Show in Finder. Then send one more and
+press Hide: the offer keeps waiting, and the main window's card has **Show**.
+
 # Resume here — written 2026-09-25 (late morning): 3e passed; production Send waits on one approval
 
 > **Current state, supersedes the overnight report below.** Slice 3e passed on the SM-S938B (0 B,
