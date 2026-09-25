@@ -24752,3 +24752,38 @@ receiving 50% (dark, light), checking, saved with a real thumbnail (JPEG, MP4), 
 
 Suites: Mac **1168 / 1168**, both `tsc` configs clean; phone **766 / 0** (re-executed); every
 `scripts/check-*.mjs` exits 0, fixtures 20 / 20.
+
+## The silent second Send (2026-09-25) — diagnosis and the immediate fix
+
+**Reported:** while one file waited for approval on the Mac, a second image's Send "did nothing".
+**Read from the phone's log** (names omitted; no photo contents read), `s-RN95…` (44,526 B):
+
+- staged successfully at 12:51:06 — **not** a staging conflict;
+- seven Send taps, 12:51:07–12:51:11, each reached `ShareFeature.offerStaged` and each returned
+  `Busy`: *"offer … not made: another offer is live on this session"* — **the one-live-offer rule**
+  (contract: at most one offer per session is live). **Not** a disabled button: Send stayed enabled;
+- the installed APK (lastUpdateTime 11:44:02) **does** carry the busy sentence — control counts in its
+  dex: busy copy **1**, `ConnectSuite` **57**, *"Copied on your Commodore"* **0**. A first count
+  through `strings` returned blanks for all four including the positive control: no reading, redone
+  with `grep -a` per dex;
+- so the sheet did react once — `notOffered = MAC_BUSY`, one body-text line under the availability
+  line — with the **headline unchanged, Send still enabled, and six later taps drawing an identical
+  screen**. It could not say which file was in the way, nor withdraw it: that offer belonged to a sheet
+  already left. What was literally on screen at the time was not captured;
+- the first offer was accepted at 12:51:15; the next tap, 12:51:17, offered the second file.
+
+**The fix (phone only; no wire change):** `ShareOffer.busyWith` is the rule `offerStaged` runs, and
+`Busy` now carries the blocking offer. On Busy the sheet's headline becomes *"Another file is waiting
+for approval on your Mac"* (or *"…being sent…"*), the text names that file and says this one is still
+prepared and was not sent, **Send is disabled** (`canSend`) rather than a dead tap, and **Withdraw that
+file** appears only while the other still waits for an answer. The sheet watches that offer and Send
+returns by itself when it ends. Neither file is discarded without a tap.
+
+Tests: `ShareOfferBusyTest` (3) and `ShareToMacBusyTest` (6), two synthetic offers driven through the
+real `ShareOffer` transitions. **Mutations**, each red with results under 1 s old and a failing exit:
+Send left enabled while busy; the headline left unchanged; the rule ignoring the session. The
+`ShareDevGateRoutingTest` guard (*Send is enabled only by Available*) pinned the old button text; it was
+re-pointed at `canSend`, not loosened, and an `||` bypass of Available turns it red. A first mutation
+**did not compile** and its run read the previous results file (`fail=0`, 1 s old, exit 1) — the
+stale-artifact row, caught by the exit code. Phone **776 / 0** re-executed; Mac 1168 / 1168; guards 0.
+**Not installed on the phone** — the Samsung still runs the 11:44 build.

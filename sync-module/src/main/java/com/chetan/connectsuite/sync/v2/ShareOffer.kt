@@ -87,6 +87,19 @@ object ShareOffer {
         else -> false
     }
 
+    /**
+     * **The one-live-offer rule** (docs/protocol.md → Share → `share.offer`: *at most one offer per
+     * session is live*), as a pure function so the sheet's Busy path and its tests run the rule
+     * `ShareFeature.offerStaged` runs. Returns the offer that blocks a new one on [sessionKey], or null.
+     * Every entry in [held] is live by construction (`ShareFeature` drops an offer when it ends), and
+     * [isLive] is checked anyway so a stale entry can never block.
+     */
+    fun busyWith(held: Collection<Offer>, sessionKey: String): Offer? =
+        held.firstOrNull { it.sessionKey == sessionKey && isLive(it.state) }
+
+    /** Whether a live offer is still waiting for the Mac's answer — the only time withdrawing it stops nothing mid-flight. */
+    fun awaitingAnswer(state: State): Boolean = state == State.Offered
+
     sealed interface Effect {
         data object DeleteStaged : Effect
         /** `share.cancel` event, phone → Mac. */

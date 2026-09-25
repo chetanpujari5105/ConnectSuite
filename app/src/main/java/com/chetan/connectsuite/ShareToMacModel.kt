@@ -13,12 +13,14 @@ import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.sync.v2.ShareFeature
 import com.chetan.connectsuite.sync.v2.ShareIntake
 import com.chetan.connectsuite.sync.v2.ShareNames
+import com.chetan.connectsuite.sync.v2.ShareOffer
 import com.chetan.connectsuite.sync.v2.ShareStaging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.Job
@@ -167,12 +169,50 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
             }
             ShareFeature.OfferOutcome.NoSession, is ShareFeature.OfferOutcome.NotNegotiated ->
                 _state.value = ready.copy(availability = currentAvailability(), notOffered = null)
-            ShareFeature.OfferOutcome.Busy -> _state.value = ready.copy(notOffered = ShareSheetState.NotOffered.MAC_BUSY)
+            is ShareFeature.OfferOutcome.Busy -> {
+                // Never a silent no-op: the sheet names the waiting file, keeps this one prepared, and
+                // watches the other offer so Send works again the moment it ends.
+                LinkLog.i("share", "attempt=${attemptId ?: "none"} Send while ${outcome.other.offerId} is live: shown as busy; " +
+                    "this copy stays prepared (${ready.bytes} bytes), the other offer is untouched")
+                _state.value = onBusy(ready, outcome.other)
+                watchOther(outcome.other.offerId)
+            }
             is ShareFeature.OfferOutcome.Invalid -> {
                 LinkLog.w("share", "attempt=${attemptId ?: "none"} not offered: ${outcome.why}")
                 _state.value = ready.copy(notOffered = ShareSheetState.NotOffered.OUT_OF_RULE)
             }
         }
+    }
+
+    private var otherWatch: Job? = null
+
+    /** Follows the offer that made Send busy, until it is no longer live; see [afterOtherChanged]. */
+    private fun watchOther(otherId: String) {
+        otherWatch?.cancel()
+        otherWatch = viewModelScope.launch {
+            ShareFeature.views.map { it[otherId]?.state }.distinctUntilChanged().collect { st ->
+                _state.update { afterOtherChanged(it, st) }
+                if (st == null || !ShareOffer.isLive(st)) {
+                    LinkLog.i("share", "attempt=${attemptId ?: "none"} the offer in the way ($otherId) ended " +
+                        "(${st?.let(ShareOffer::describe) ?: "no longer held"}); Send works again")
+                    otherWatch?.cancel()
+                }
+            }
+        }
+    }
+
+    /**
+     * Withdraw **the other** file's offer — a person's explicit tap, only while it still waits for an
+     * answer ([canWithdrawOther]). `ShareFeature` sends `share.cancel{user}` and deletes that file's staged
+     * copy; this sheet's own prepared copy is untouched. Returns the withdrawn file's name, or null.
+     */
+    fun withdrawOther(): String? {
+        val state = _state.value
+        if (!canWithdrawOther(state)) return null
+        val other = (state as ShareSheetState.Ready).waitingOther ?: return null
+        LinkLog.i("share", "attempt=${attemptId ?: "none"} withdrawing the other offer ${other.offerId} at the person's request")
+        ShareFeature.cancel(other.offerId, "user")
+        return other.name
     }
 
     /** Withdraw a live offer (`share.cancel{user}`). `ShareFeature` deletes the staged copy. */

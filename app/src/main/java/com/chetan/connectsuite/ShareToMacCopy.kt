@@ -27,7 +27,15 @@ sealed interface ShareSheetState {
         val availability: Availability,
         /** Why the last Send did not make an offer, when it did not. Cleared by the next try. */
         val notOffered: NotOffered? = null,
+        /**
+         * With [NotOffered.MAC_BUSY]: the offer already live on this session, as it stands — so the sheet
+         * names the waiting file and offers to withdraw it. Cleared when that offer ends.
+         */
+        val waitingOther: OtherOffer? = null,
     ) : ShareSheetState
+
+    /** Another file's live offer, from the phone's own record of it. */
+    data class OtherOffer(val offerId: String, val name: String, val awaitingAnswer: Boolean)
     data class Failed(val name: String, val failure: Failure) : ShareSheetState
 
     // ---- after an offer: every one of these carries the Mac it was offered to ---------------------
@@ -135,6 +143,39 @@ fun reduce(prev: ShareSheetState, name: String, bytes: Long, mac: String, s: Sha
  * carries DeleteStaged*). So leaving an offered sheet neither deletes the copy under a live offer nor
  * cancels an offer the Mac may be about to accept; the offer runs to its own bounded end.
  */
+/**
+ * Send made no offer because [other] is live on this session (`ShareOffer.busyWith`). The sheet stays
+ * [ShareSheetState.Ready] — **this** file stays prepared and owned by the sheet — and says which file is
+ * in the way. Nothing about either file changes here.
+ */
+fun onBusy(ready: ShareSheetState.Ready, other: ShareOffer.Offer): ShareSheetState.Ready =
+    ready.copy(
+        notOffered = ShareSheetState.NotOffered.MAC_BUSY,
+        waitingOther = ShareSheetState.OtherOffer(other.offerId, other.name, ShareOffer.awaitingAnswer(other.state)),
+    )
+
+/**
+ * The blocking offer moved to [otherState] (null: the phone no longer holds it). When it is no longer
+ * live the busy note clears and Send works again; while live, whether it can still be withdrawn is kept
+ * current. Anything that is not a busy [ShareSheetState.Ready] is returned unchanged.
+ */
+fun afterOtherChanged(state: ShareSheetState, otherState: ShareOffer.State?): ShareSheetState {
+    if (state !is ShareSheetState.Ready || state.notOffered != ShareSheetState.NotOffered.MAC_BUSY) return state
+    val other = state.waitingOther ?: return state
+    if (otherState == null || !ShareOffer.isLive(otherState)) return state.copy(notOffered = null, waitingOther = null)
+    return state.copy(waitingOther = other.copy(awaitingAnswer = ShareOffer.awaitingAnswer(otherState)))
+}
+
+/** Send is offered only when it can make an offer: prepared, a Mac that asks, and no other file in the way. */
+fun canSend(state: ShareSheetState): Boolean =
+    state is ShareSheetState.Ready && state.availability is Availability.Available &&
+        state.notOffered != ShareSheetState.NotOffered.MAC_BUSY
+
+/** The other file may be withdrawn only while it waits for an answer — never mid-transfer. */
+fun canWithdrawOther(state: ShareSheetState): Boolean =
+    state is ShareSheetState.Ready && state.notOffered == ShareSheetState.NotOffered.MAC_BUSY &&
+        state.waitingOther?.awaitingAnswer == true
+
 enum class SheetExit { DISCARD_STAGED, LEAVE_TO_OFFER, NOTHING }
 
 fun onLeave(state: ShareSheetState): SheetExit = when (state) {
@@ -168,7 +209,11 @@ object ShareToMacCopy {
         ShareSheetState.Starting -> "Opening the file…"
         is ShareSheetState.Refused -> "Sidekick can’t use this share"
         is ShareSheetState.Preparing -> "Preparing…"
-        is ShareSheetState.Ready -> "Ready on this phone"
+        is ShareSheetState.Ready -> when {
+            state.notOffered != ShareSheetState.NotOffered.MAC_BUSY -> "Ready on this phone"
+            state.waitingOther?.awaitingAnswer == false -> "Another file is being sent to your Mac"
+            else -> "Another file is waiting for approval on your Mac"
+        }
         is ShareSheetState.Failed -> "Couldn’t prepare this file"
         is ShareSheetState.WaitingForMac -> "Waiting for you to accept on ${state.mac}"
         is ShareSheetState.Sending -> if (state.allSent) "Sent — waiting for ${state.mac} to confirm" else "Sending to ${state.mac}…"
@@ -216,6 +261,25 @@ object ShareToMacCopy {
         ShareSheetState.NotOffered.MAC_BUSY -> "Your Mac is already waiting on another file from this phone. Finish that one first."
         ShareSheetState.NotOffered.OUT_OF_RULE -> "This file’s name or type can’t be sent as it is. Nothing was sent."
     }
+
+    const val WITHDRAW_OTHER_BUTTON = "Withdraw that file"
+
+    /**
+     * The busy sentence for a sheet that knows which file is in the way. Says what happened to **both**
+     * files — this one is still prepared and was not sent; the other is untouched — and the two ways out.
+     */
+    fun busy(other: ShareSheetState.OtherOffer?): String = when {
+        other == null -> notOffered(ShareSheetState.NotOffered.MAC_BUSY) + " This file is still prepared here; nothing was sent."
+        other.awaitingAnswer ->
+            "“${other.name}” is waiting for approval on your Mac. This file is still prepared here and was not sent. " +
+                "Withdraw that file to send this one instead, or wait: Send works again as soon as your Mac answers."
+        else ->
+            "“${other.name}” is being sent to your Mac right now. This file is still prepared here and was not sent. " +
+                "Send works again as soon as that one finishes."
+    }
+
+    fun withdrewOther(name: String): String =
+        "Withdrew “$name”. Nothing of it was saved on your Mac. This file is still ready to send."
 
     /** For an offered sheet: what leaving does. It does not discard — the offer owns the copy now. */
     fun leavingOffered(mac: String): String =
@@ -301,6 +365,8 @@ object ShareToMacCopy {
         add(ShareSheetState.Ready("a.bin", "application/octet-stream", 0, Availability.NotSupported("Mac")))
         add(ShareSheetState.Ready("a.bin", "application/octet-stream", 0, Availability.Available("Mac")))
         ShareSheetState.NotOffered.values().forEach { add(ShareSheetState.Ready("a.bin", "b/c", 0, Availability.Available("Mac"), it)) }
+        add(ShareSheetState.Ready("a.bin", "b/c", 0, Availability.Available("Mac"), ShareSheetState.NotOffered.MAC_BUSY, ShareSheetState.OtherOffer("s-x", "b.jpg", true)))
+        add(ShareSheetState.Ready("a.bin", "b/c", 0, Availability.Available("Mac"), ShareSheetState.NotOffered.MAC_BUSY, ShareSheetState.OtherOffer("s-x", "b.jpg", false)))
         listOf(
             ShareSheetState.Failure.NoSpace(1, 0), ShareSheetState.Failure.OverLimit(1),
             ShareSheetState.Failure.ReadFailed, ShareSheetState.Failure.WriteFailed,
@@ -321,5 +387,7 @@ object ShareToMacCopy {
         everyState().flatMap { listOf(headline(it), detail(it)) } +
             listOf(Availability.NotConnected, Availability.NotSupported("Mac"), Availability.Available("Mac")).map(::availability) +
             ShareSheetState.NotOffered.values().map(::notOffered) +
+            listOf(null, ShareSheetState.OtherOffer("s-x", "b.jpg", true), ShareSheetState.OtherOffer("s-x", "b.jpg", false)).map(::busy) +
+            listOf(WITHDRAW_OTHER_BUTTON, withdrewOther("b.jpg")) +
             listOf(leavingOffered("Mac"), TITLE, LEAVING, CANCELLED, DISCARDED, WITHDRAWN, SEND_BUTTON, CANCEL_BUTTON, CLOSE_BUTTON)
 }

@@ -5,6 +5,7 @@ import com.chetan.connectsuite.sync.v2.ShareOffer
 import com.chetan.connectsuite.sync.v2.ShareOffer.State
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -172,5 +173,70 @@ class ShareToMacFlowTest {
         assertFalse(canWithdraw(ShareSheetState.Sending(name, bytes, mac, allSent = true)))
         assertFalse(canWithdraw(ShareSheetState.Unconfirmed(name, mac)))
         assertFalse(canWithdraw(ShareSheetState.Ready(name, "b/c", bytes, Availability.Available(mac))))
+    }
+}
+
+/**
+ * The silent Send (2026-09-25): a second file's Send while the first waits on the Mac. Two synthetic
+ * files; the second sheet's transitions are driven from the **real** `ShareOffer` states of the first,
+ * and the rule deciding Busy is `ShareOffer.busyWith`, which `ShareFeature` calls.
+ */
+class ShareToMacBusyTest {
+
+    private val t0 = 1_000_000L
+    private val firstOffer = ShareOffer.Offer("s-AAAAAAAAAAAAAAAAAAAAAA", "token-A", 230_778, "1".repeat(64), t0, t0 + ShareOffer.TTL_MS, name = "synthetic-1.png")
+    private val second = ShareSheetState.Ready("synthetic-2.png", "image/png", 100_718, Availability.Available("Chetan’s MacBook Pro"))
+
+    private fun busy(): ShareSheetState.Ready = onBusy(second, ShareOffer.busyWith(listOf(firstOffer), "token-A")!!)
+
+    @Test fun `a busy Send is never silent - the headline changes and names the waiting file`() {
+        val s = busy()
+        assertEquals("Another file is waiting for approval on your Mac", ShareToMacCopy.headline(s))
+        val words = ShareToMacCopy.busy(s.waitingOther)
+        assertTrue(words, words.contains("“synthetic-1.png” is waiting for approval"))
+        assertTrue(words, words.contains("still prepared here and was not sent"))
+        assertTrue(ShareToMacCopy.headline(second) != ShareToMacCopy.headline(s))
+    }
+
+    @Test fun `busy - Send is disabled rather than a dead tap, and the other file can be withdrawn`() {
+        assertTrue("control: the ready sheet can send", canSend(second))
+        val s = busy()
+        assertFalse(canSend(s))
+        assertTrue(canWithdrawOther(s))
+    }
+
+    @Test fun `neither file is discarded - this one stays the sheet's, the first stays as it was`() {
+        val s = busy()
+        assertEquals(SheetExit.DISCARD_STAGED, onLeave(s)) // still this sheet's prepared copy, not given away
+        assertEquals(100_718L, s.bytes)
+        assertEquals("synthetic-2.png", s.name)
+        assertEquals(State.Offered, firstOffer.state)
+    }
+
+    @Test fun `when the first is declined, cancelled, expired or saved, the note clears and Send works again`() {
+        val ended = listOf(
+            ShareOffer.respond(firstOffer, "token-A", firstOffer.offerId, "decline", "user", t0 + 1, negotiatedVersion = 2).offer!!.state,
+            ShareOffer.cancelFromPhone(firstOffer, "user").offer!!.state,
+            State.Expired,
+            State.Saved("synthetic-1.png"),
+            null, // no longer held at all
+        )
+        for (st in ended) {
+            val after = afterOtherChanged(busy(), st)
+            assertTrue("$st", canSend(after))
+            assertEquals("$st", "Ready on this phone", ShareToMacCopy.headline(after))
+        }
+    }
+
+    @Test fun `once the first is accepted it cannot be withdrawn from here, and the sheet says it is being sent`() {
+        val accepted = ShareOffer.respond(firstOffer, "token-A", firstOffer.offerId, "accept", null, t0 + 1, negotiatedVersion = 2).offer!!
+        val after = afterOtherChanged(busy(), accepted.state)
+        assertFalse(canWithdrawOther(after))
+        assertFalse(canSend(after))
+        assertEquals("Another file is being sent to your Mac", ShareToMacCopy.headline(after))
+    }
+
+    @Test fun `a sheet that is not busy is not touched by the other offer's changes`() {
+        assertSame(second, afterOtherChanged(second, State.Expired))
     }
 }

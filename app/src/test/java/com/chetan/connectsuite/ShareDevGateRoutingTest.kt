@@ -1,5 +1,6 @@
 package com.chetan.connectsuite
 
+import com.chetan.connectsuite.sync.v2.ShareIntake
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -75,10 +76,23 @@ class ShareDevGateRoutingTest {
         val call = Regex("\\.offerStaged\\(([^)]*)\\)").findAll(code(offering.single())).map { it.groupValues[1] }.toList()
         assertEquals("called once", 1, call.size)
         assertTrue("an ordinary offer must require share.ask: ${call.single()}", call.single().contains("requireAsk = true"))
+        // The Button now reads `canSend(state)` (the silent-Send fix, 2026-09-25), so the question moved with
+        // it rather than being loosened: the button's only enabling expression is canSend, and canSend's
+        // body *requires* Available — conjoined, never or-ed. Its behaviour is asserted below as well.
         val sheet = code(File(root(), "app/src/main/java/com/chetan/connectsuite/ShareToMacActivity.kt"))
-        assertTrue(
-            "Send is enabled only by Availability.Available",
-            sheet.contains("Button(onClick = onSend, enabled = state.availability is ShareIntake.Availability.Available)"),
-        )
+        assertTrue("Send is enabled only through canSend", sheet.contains("Button(onClick = onSend, enabled = canSend(state))"))
+        val copy = code(File(root(), "app/src/main/java/com/chetan/connectsuite/ShareToMacCopy.kt"))
+        val body = Regex("fun canSend\\(state: ShareSheetState\\): Boolean =([^\\n]*\\n[^\\n]*)").find(copy)?.groupValues?.get(1)
+        assertTrue("control: canSend's body was found", body != null)
+        assertTrue("canSend requires Availability.Available: $body", body!!.contains("state.availability is Availability.Available &&"))
+        assertFalse("canSend never or-s another way in: $body", body.contains("||"))
+    }
+
+    @Test fun `canSend is false for every availability but Available, busy or not`() {
+        for (a in listOf(ShareIntake.Availability.NotConnected, ShareIntake.Availability.NotSupported("Mac"))) {
+            assertFalse("$a", canSend(ShareSheetState.Ready("a.bin", "b/c", 1, a)))
+            assertFalse("$a", canSend(ShareSheetState.Ready("a.bin", "b/c", 1, a, ShareSheetState.NotOffered.OUT_OF_RULE)))
+        }
+        assertTrue("control", canSend(ShareSheetState.Ready("a.bin", "b/c", 1, ShareIntake.Availability.Available("Mac"))))
     }
 }

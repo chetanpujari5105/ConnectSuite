@@ -58,7 +58,11 @@ object ShareFeature {
         data class Offered(val offerId: String, val expiresAtMs: Long) : OfferOutcome
         data object NoSession : OfferOutcome
         data class NotNegotiated(val macName: String) : OfferOutcome
-        data object Busy : OfferOutcome
+        /**
+         * Another offer is live on this session, so none was made. [other] is that offer as it stands, so
+         * the sheet can say *which* file is waiting and offer to withdraw it — never a silent no-op.
+         */
+        data class Busy(val other: ShareOffer.Offer) : OfferOutcome
         data class Invalid(val why: String) : OfferOutcome
     }
 
@@ -158,9 +162,10 @@ object ShareFeature {
         val now = System.currentTimeMillis()
         val offer = ShareOffer.Offer(offerId, key, bytes, sha256, now, now + ttlMs, name = name, mime = mime)
         synchronized(lock) {
-            if (offers.values.any { it.sessionKey == key }) {
-                LinkLog.i("share", "offer $offerId not made: another offer is live on this session")
-                return OfferOutcome.Busy
+            ShareOffer.busyWith(offers.values, key)?.let { other ->
+                LinkLog.i("share", "offer $offerId not made: another offer is live on this session " +
+                    "(${other.offerId}, ${ShareOffer.describe(other.state)}); this file stays prepared and the sheet says so")
+                return OfferOutcome.Busy(other)
             }
             offers[offerId] = offer
             sessions[offerId] = session

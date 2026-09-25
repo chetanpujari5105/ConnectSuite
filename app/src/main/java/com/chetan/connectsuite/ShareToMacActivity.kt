@@ -21,6 +21,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -64,6 +67,9 @@ class ShareToMacActivity : ComponentActivity() {
                 ShareSheet(
                     state = state,
                     onSend = { model.send() },
+                    onWithdrawOther = {
+                        model.withdrawOther()?.let { Toast.makeText(this, ShareToMacCopy.withdrewOther(it), Toast.LENGTH_LONG).show() }
+                    },
                     onWithdraw = {
                         model.withdraw()
                         Toast.makeText(this, ShareToMacCopy.WITHDRAWN, Toast.LENGTH_SHORT).show()
@@ -102,6 +108,7 @@ class ShareToMacActivity : ComponentActivity() {
 private fun ShareSheet(
     state: ShareSheetState,
     onSend: () -> Unit,
+    onWithdrawOther: () -> Unit,
     onWithdraw: () -> Unit,
     onCancel: () -> Unit,
     onClose: () -> Unit,
@@ -134,7 +141,18 @@ private fun ShareSheet(
             }
             if (state is ShareSheetState.Ready) {
                 Text(ShareToMacCopy.availability(state.availability), style = MaterialTheme.typography.bodyMedium)
-                state.notOffered?.let { Text(ShareToMacCopy.notOffered(it), style = MaterialTheme.typography.bodyMedium) }
+                when (val n = state.notOffered) {
+                    null -> Unit
+                    // Busy is a state of its own, not a footnote: the headline above already changed, and
+                    // this says which file is in the way and what happened to both. Announced politely.
+                    ShareSheetState.NotOffered.MAC_BUSY -> Text(
+                        ShareToMacCopy.busy(state.waitingOther),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                    else -> Text(ShareToMacCopy.notOffered(n), style = MaterialTheme.typography.bodyMedium)
+                }
             }
             when (onLeave(state)) {
                 SheetExit.DISCARD_STAGED -> if (state !is ShareSheetState.Starting) Text(ShareToMacCopy.LEAVING, style = MaterialTheme.typography.bodySmall)
@@ -143,6 +161,10 @@ private fun ShareSheet(
             }
 
             Spacer(Modifier.height(8.dp))
+            // Its own line: an explicit, separate tap that ends the *other* file's offer, never this one's.
+            if (canWithdrawOther(state)) {
+                OutlinedButton(onClick = onWithdrawOther) { Text(ShareToMacCopy.WITHDRAW_OTHER_BUTTON) }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 when {
                     state is ShareSheetState.Preparing || state is ShareSheetState.Starting ->
@@ -151,9 +173,9 @@ private fun ShareSheet(
                     else -> OutlinedButton(onClick = onClose) { Text(ShareToMacCopy.CLOSE_BUTTON) }
                 }
                 if (state is ShareSheetState.Ready) {
-                    // Enabled only against a Mac that negotiated share.file 2 and share.ask; the reason
-                    // is directly above it otherwise.
-                    Button(onClick = onSend, enabled = state.availability is ShareIntake.Availability.Available) {
+                    // Enabled only when a tap can make an offer (canSend): a Mac that negotiated share.file 2
+                    // and share.ask, and no other file in the way. The reason is directly above it otherwise.
+                    Button(onClick = onSend, enabled = canSend(state)) {
                         Text(ShareToMacCopy.SEND_BUTTON)
                     }
                 }
