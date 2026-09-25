@@ -2463,7 +2463,7 @@ hello.ack  {"protocolVersion":1, …every existing field…, "ext":{"share.file"
 
 On `hello`, `share.file` means *this Mac can receive and answer a one-file share offer*; on
 `hello.ack`, *this phone can make one*. **The version says how far:** `1` is offer and decline only;
-`2` is the one-file transfer as well (see [Share → Version 2](#version-2--the-transfer-specified-not-implemented)).
+`2` is the one-file transfer as well (see [Share → Version 2](#version-2--the-transfer)).
 Because the negotiated version is `min(mine, theirs)`, a transfer can start only when **both**
 peers advertise `2`. Parsing is identical on both sides:
 
@@ -2498,20 +2498,21 @@ session.** Every other combination — no session, no `ext`, `share.file` 1, `sh
 `share.ask`, `share.ask` without `share.file` 2 — leaves Send disabled with a reason, and no offer is
 made. The debug synthetic probe does not need `share.ask`; it is not an ordinary share.
 
-**No Mac build advertises `share.ask` yet** (2026-09-25). The Mac's gate (`shareActivation.ts`,
-`shareAskActivation`) requires two recorded readiness facts, both **false** in this build, and it is
-closed whenever the development gate is open (the two are mutually exclusive):
+**Active since `cb7e982` (Mac) and `cd9d95d` (phone), 2026-09-25.** The Mac's gate
+(`shareActivation.ts`, `shareAskActivation`) requires two recorded readiness facts, both now **true**,
+and it is closed whenever the development gate is open (the two are mutually exclusive). With
+`share.ask` open the receiver's allowlist is **empty** whatever the environment says (`receiverMode`,
+`f39f3bd`): every offer waits for a person's click.
 
 1. **the synthetic end-to-end run (slice 3e) has passed on hardware**;
 2. **temporary-file cleanup is scoped to the receive folder by parent identity** — the design in
-   `docs/phase-7-share-3e-runbook.md` §11, **built 2026-09-25 and not yet recorded as reviewed**. Without
+   `docs/phase-7-share-3e-runbook.md` §11, **built in `5e20963` and reviewed 2026-09-25**. Without
    it a production transfer would create partials in the person's folder that no sweep may delete.
 
 Each flips only in the commit that records its evidence. **The phone has a twin fact,**
 `Extensions.PRODUCTION_TRANSFER` — whether it advertises `share.file: 2` to every trusted Mac rather
 than only to one armed debug handshake. Without it a production Mac still negotiates `min(1, 2) = 1`
-and ordinary Send cannot enable. It is **false** in this build, pinned by a test, and flips with the
-Mac's facts. The phone advertises `share.ask: 1`
+and ordinary Send cannot enable. It is **true** since `cd9d95d`, pinned by a test. The phone advertises `share.ask: 1`
 unconditionally: the promise is about what the phone will *not* do, so making it costs nothing.
 The cases are `docs/fixtures/share-ordinary-send.json`, read by both sides' tests.
 
@@ -2520,11 +2521,11 @@ The cases are `docs/fixtures/share-ordinary-send.json`, read by both sides' test
 One file from the phone's share sheet to the Mac. The phone offers; the Mac answers; nothing moves
 before the Mac answers.
 
-**What is implemented is version 1: offer, decline and cancel, with no transfer.** A Mac of version 1
-validates each offer and declines it with `not-available`. That is a protocol stub, not a person's
-decision, and a phone must never render it as one. **Version 2, the transfer, is specified below and
-is not implemented on either side** (Feature A slices 3c–3d). Until it is, no peer may advertise
-`share.file: 2`.
+**Both versions are implemented.** Version 1 is offer, decline and cancel, with no transfer: a Mac of
+version 1 validates each offer and declines it with `not-available` — a protocol stub, not a person's
+decision, and a phone must never render it as one. **Version 2, the transfer, is implemented on both
+sides and advertised by both** (phone `cd9d95d`, Mac `cb7e982`), after the synthetic end-to-end run
+passed on hardware (`docs/testing.md` → slice 3e).
 
 The capability is `share` (prefix and name agree). At version 1 its contract is the two requests the
 phone handles, `share.respond` and `share.cancel`; version 2 adds `share.saved` and a served bulk
@@ -2576,7 +2577,7 @@ decline**: an offer nobody answered *expires* (`share.cancel`), and is never sho
 `decision: "accept"` is valid only when `share.file` is negotiated at **2**. At version 1 a phone
 answers it with `BAD_REQUEST` (`feature: "share"`, *"this phone cannot send files yet"*), and the offer
 stays live until it is declined, cancelled or expires; a Mac must not send it at version 1. The
-version-2 accept is described under [Version 2](#version-2--the-transfer-specified-not-implemented).
+version-2 accept is described under [Version 2](#version-2--the-transfer).
 
 Errors, all with `feature: "share"`: `NOT_FOUND` for an unknown `offerId`, an offer made on a
 different session, or one already answered, cancelled or expired — indistinguishable on purpose, so
@@ -2609,21 +2610,19 @@ An offer does not survive its session: on a disconnect both sides drop it withou
 | Old phone, new Mac | no `ext` in `hello.ack`, so no offers arrive; an offer that did arrive would be declined `not-negotiated` |
 | Both at version 1 (implemented) | `share.file` = 1: offer, `not-available` decline, cancel. No transfer |
 | One at 1, one at 2 | negotiated `1`. The version-2 peer behaves as version 1: the Mac never sends `accept` and the phone refuses one. **No transfer starts** |
-| Both at 2 (specified, not implemented) | negotiated `2`: the transfer below |
+| Both at 2 | negotiated `2`: the transfer below |
 | Both at 2, Mac without `share.ask` (the synthetic-only development receiver) | the phone's **ordinary** Send stays disabled — it would be declined `not-available` at once. Only the debug synthetic probe offers |
-| Both at 2 and both advertise `share.ask` (no Mac build does yet) | ordinary Send enabled; every ordinary offer waits for a person's Accept on the Mac's card |
+| Both at 2 and both advertise `share.ask` (this build, both sides) | ordinary Send enabled; every ordinary offer waits for a person's Accept on the Mac's card |
 | A phone with no `share.ask` (older build), Mac with it | not negotiated: that phone makes no ordinary offer. The Mac would ask a person regardless — its promise does not depend on the phone's |
 | Both new, and the Mac never answers | the phone's offer expires at `expiresAtMs`: it sends `share.cancel{expired}` and deletes the staged copy. Nothing waits indefinitely |
 
-### Version 2 — the transfer (specified, not implemented)
+### Version 2 — the transfer
 
-Everything in this section applies only when `share.file` is negotiated at **2**. **Both halves are
-built (the phone in slice 3c, the Mac in 3d) and neither is advertised**: both ends still advertise
-`share.file: 1`, the negotiated version is `min(mine, theirs)`, and so in any live pairing the phone
-refuses `accept`, the Mac declines every offer `not-available`, and no pull is authorised. The
-version-2 code has run only in automated tests (the Mac's against a fake phone on a local socket).
-Both ends raise their advertised version only after the synthetic end-to-end run (slice 3e) has been
-approved and passed.
+Everything in this section applies only when `share.file` is negotiated at **2**. Both halves are
+built (the phone in slice 3c, the Mac in 3d), the synthetic end-to-end run passed on the SM-S938B on
+2026-09-25 (0 B and 4 KiB saved and verified, an unlisted 100 KB offer refused), and **both ends
+advertise 2** — the phone to every trusted Mac, the Mac with `share.ask` (production, Ask) or, in a
+development run with all three switches, synthetic-only.
 
 **Ask by default, on the Mac.** A valid version-2 offer is held for a person's decision; nothing
 accepts an ordinary offer. The one non-human accept is the development switch `shareAcceptProbe`. It
