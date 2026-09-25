@@ -1,215 +1,243 @@
-# Feature A — several pending files: one receive window with a queue (proposal rev 2, for review)
+# Feature A — several pending files: one receive window with a queue (proposal rev 3, for review)
 
-Rev 2, 2026-09-25. Replaces rev 1 (`f6e4ea2`). **Nothing here is built.** The contract text this
-proposes is in `docs/protocol.md` → *Share → Version 3 (proposed)*, marked as not implemented; nothing
-advertises `share.file 3`.
+**Rev 3, 2026-09-25.** Replaces rev 2 (`46bd6d1`). **Nothing is built.** The contract text is
+`docs/protocol.md` → *Share → Version 3 (PROPOSED)*. Large files are a **separate** design:
+`docs/feature-a-large-file-proposal.md` (Path L). This file is Path S, small files copied privately
+before they are offered.
 
-**Owner decisions already taken (2026-09-25):**
-- **One receive window** with a visible queue: a card per file, each with its own Accept and Decline.
-  **No additional popup windows.**
-- **Build order:** stage A, *send another while one waits*; then stage B, Gallery multi-select.
-- **Accept all / Decline all are deferred** until the per-file flow is proven on hardware.
-- A **proposed** limit of 10 pending files, and a byte cap that is justified here before it is locked.
+**Approved direction (owner, 2026-09-25):**
+- **One receive window**, with a card per file and **individual Accept and Decline**. No extra popups.
+- **Stage A** (send another while one waits) comes **before** Gallery multi-select.
+- **No group actions** yet.
+- **Not approved:** implementation, and the 4 GiB figure.
 
----
+**What rev 3 corrects in rev 2 and in the committed contract text:**
 
-## 1 · Today, measured from the code (why both are blocked)
-
-| Question | Answer | Where |
+| # | Was | Is |
 |---|---|---|
-| Several images in one Gallery share | **No.** The manifest registers only `SEND`; a `SEND` carrying more than one item is refused `MORE_THAN_ONE`; the offer holds one `item`, "never an array" | `AndroidManifest.xml`, `ShareIntake.decide`, `docs/protocol.md` |
-| Another image while one waits | **No.** One live offer per session, on the phone (`ShareOffer.busyWith`) and on the Mac (`ShareOfferBook` → `busy`); since `02d95b3` the refusal is visible | `ShareFeature.offerStaged`, `shared/shareOffer.ts` |
+| R1 | *"a queued offer ends only through the transfer ahead of it … or a cancel"* | a queued offer **does not expire while queued**; it ends only by a cancel from either side, the session ending, or the phone's 60-minute backstop |
+| R2 | phone admits while `Σ(staged) + margin(Σ) ≤ free` | **double-counted**: bytes already staged are already missing from `free`. The check is made **once per file, before its copy starts** (§4) |
+| R3 | "staged bytes per session ≤ 4 GiB" read as a file limit | a **concurrency cap on Path S private copies only**. A file alone keeps the v2 free-space rule, however large; above what can be copied, the file goes to Path L. **The value is not proposed for locking** (§4) |
+| R4 | queued card: *"starts after IMG_1.jpg"* | files are pulled in **Accept order**, so the card names its position: *"Accepted — 2nd in line"* (§5) |
+| R5 | Mac reservation: *"sizes accepted and not finished"* | defined precisely, including when each reservation is released (§4) |
 
 ---
 
-## 2 · Stage A — send another while one waits
+## 1 · Today (measured from the code): both are blocked
 
-**Person-visible behaviour**
-- **On the phone:** each file keeps its own *Send to Mac* sheet and its own offer. A second Send
-  makes a second offer; it is refused only at the limits in §4, with the numbers.
-- **On the Mac:** the receive window lists one card per offer, in the order the offers arrived. Each
-  card has:
-  - name, type, exact size and destination, and a type glyph — no preview before Accept;
-  - its own Accept and Decline, then its own truthful state (below).
-- **One transfer at a time.** Accepted files transfer one after another, in the order they were
-  accepted.
-- **Window behaviour is unchanged:** it appears without focus when a card needs attention, never
-  above a full-screen Space, never through Notification Center.
-- **Accessibility:** Escape declines only the focused card's waiting offer; the tab order runs card
-  by card, Decline before Accept.
+- **Multi-select:** `SEND_MULTIPLE` is not registered, a multi-item `SEND` is refused, and the offer's
+  `item` is one object.
+- **Another while one waits:** one live offer per session on both sides, visible since `02d95b3`
+  (passed on the SM-S938B, 2026-09-25).
 
-**States a card can show**, each a fact rather than a guess:
+---
 
-| State | Words (Mac) | What exists where |
+## 2 · Stage A — what a person sees
+
+- **On the phone:** each file keeps its own sheet and its own offer. A second Send makes a second offer
+  unless a §4 limit applies, in which case the sheet says which one, with the numbers.
+- **On the Mac:** one window, one card per offer, **in the order the offers arrived**.
+  - Each card shows the name, type, exact size, destination and a type glyph — no preview before Accept.
+  - Each has its own **Accept** and **Decline**.
+  - **Pulls run one at a time, in the order the files were accepted.**
+- **Unchanged:** the window never takes focus on arrival, never covers a full-screen Space, and never
+  uses Notification Center. Escape declines only the focused card's waiting offer.
+
+| Card state | Words on the Mac | What exists where |
 |---|---|---|
-| waiting | *Galaxy wants to send a file* | phone: private copy. Mac: nothing |
-| queued | *Accepted — starts after "IMG_1.jpg"* | phone: private copy. Mac: nothing yet |
-| receiving | *n of N · p%* (never 100%) | phone: private copy. Mac: its own nonce'd partial |
-| checking | *All bytes received — checking before saving* | Mac: partial being verified |
-| saved | *Saved on this Mac* · *the phone confirmed it* **or** *confirmation to phone unknown* | Mac: published file. Phone: copy deleted |
-| not saved | the reason; *Try again* while its window is open | Mac: nothing kept. Phone: copy kept for the retry window |
-| declined / expired / withdrawn / cancelled / ended with the connection / refused | its own word, never "Declined" for anything a person did not decline | nothing kept on either side |
+| waiting | *Samsung SM-S938B wants to send a file* | phone: private copy · Mac: nothing |
+| queued | *Accepted — 2nd in line. It starts on its own when the file ahead finishes.* | phone: private copy · Mac: nothing |
+| receiving | *n of N · p%* (never 100%) | Mac: its own nonce'd partial |
+| checking | *All bytes received — checking before saving* | Mac: the partial, being verified |
+| saved | *Saved on this Mac* · *the phone confirmed it* / *confirmation to phone unknown* | Mac: the published file · phone: copy deleted |
+| not saved | the reason, and *Try again* while its window is open | Mac: nothing · phone: copy kept for the window |
+| declined · expired · withdrawn · cancelled · ended with the connection · refused | each its own word | nothing kept on either side |
 
 ---
 
-## 3 · Stage B — Gallery multi-select (after A is proven)
+## 3 · Stage B — Gallery multi-select (after Stage A is proven on hardware)
 
-- **Registration:** the phone also registers `SEND_MULTIPLE`, and the sheet lists every selected
-  file with its size and the batch total.
-- **Offers:** each file is staged privately, **one at a time in selection order**, and offered as
-  soon as it is staged. The first card can be decided while later files are still being copied.
-- **Every file is its own offer,** with its own Accept and Decline. The offer carries an optional
-  `group` so the Mac can show "3 of 5 from one share" — **display only, never an authority**: no
-  decision is ever made per group in this stage.
-- **Over the per-batch limit** (§4) the sheet refuses the whole selection and states the limit.
-  Android cannot deselect inside a share, so the person re-shares fewer files. A batch is never
-  silently truncated.
+- The phone registers `SEND_MULTIPLE`. The sheet lists the files and their total.
+- Files are copied privately **one at a time, in selection order**, and each is offered as soon as it
+  is copied. Every file is its own offer, with its own Accept and Decline.
+- `group {id, index, count}` is **display only**.
+- A selection over a §4 limit is refused **as a whole**, with the limit stated; it is never silently
+  truncated.
+- A file in the selection too large for Path S makes the sheet send the person to Path L for that
+  file; the others proceed.
 
 ---
 
-## 4 · Limits — the proposal, and what each is for
+## 4 · Limits and exact byte accounting
 
-| Limit | Proposed value | Why this and not another |
+| Limit | Proposed | Status |
 |---|---|---|
-| Pending offers per session | **10** | owner's figure. It bounds the Mac window (10 cards scroll inside the 560 px cap), the phone's live-offer map and the number of private copies |
-| Files per batch (stage B) | **10** | = the pending limit. Picking one file past what the Mac can hold would be a guaranteed refusal |
-| Bytes per file | **unchanged from v2**: `s + max(256 MiB, ⌈s/10⌉) ≤ free` on the phone (`ShareStaging.limit`), and `size + max(256 MiB, ⌈size/10⌉)` free on the Mac at the offer and at Accept | already proven on hardware; it guarantees the copy never fills the phone or the Mac |
-| Staged bytes per session (the batch cap), phone | **the same formula over the sum:** `Σs + max(256 MiB, ⌈Σs/10⌉) ≤ free`, **and** at most **4 GiB** | see below |
-| Reserved bytes, Mac | every accepted-not-finished size is reserved: Accept needs `free ≥ reserved + spaceNeeded(size)` | two files that each fit alone must not both be accepted into a disk that holds one |
+| Live offers per session | **10** | proposed (owner's figure) |
+| Files per selection (Stage B) | **10** | proposed; equal to the live limit |
+| One file, alone | the v2 rule, unchanged: `s + max(256 MiB, ⌈s/10⌉) ≤ free`, read immediately before its copy starts | proven on hardware; **no fixed size** |
+| Private copies held at once (phone, Path S) | a cap `C` on `Σ` of live copies | **value open** — see below |
+| Mac reservations | as defined below | proposed |
 
-**Why a batch cap at all, and why 4 GiB is proposed rather than locked:**
-- **The copies are real.** Each staged file is a full private copy, so a batch **doubles its
-  footprint on the phone** until each file ends. Applying the proven per-file formula to the sum
-  keeps the existing guarantee — the phone is never filled — for a batch as for one file.
-- **The copies live in the app's cache directory.** Android may delete cache files under storage
-  pressure, apps over `StorageManager.getCacheQuotaBytes` first. A copy deleted that way is handled
-  (`staging-lost`, the offer ends, nothing is saved), but a batch that exceeds the quota invites
-  exactly that failure part-way through.
-  - **That quota has never been read on the SM-S938B**, so 4 GiB is a placeholder, not a
-    measurement.
-  - The lock is `min(4 GiB, measured cache quota, the free-space formula)`, and the 4 GiB survives
-    only if the quota is larger.
-- **Throughput is deliberately not the justification.** This repo has no sustained multi-GB
-  reading — small files measured 70–904 Mbit/s, and 39.4 Mbit/s for a 571 KB preview today. The
-  expiry rules in §6 therefore do not depend on file sizes, so the cap need not either.
+**Phone accounting (Path S).**
+- A file is admitted **when its copy is about to start**, not when it is offered, because the copy is
+  what consumes space.
+- With `Σ` the total of copies that already exist for live offers (already on disk, so already out of
+  `free`), a new file of `s` bytes starts only if **both**:
+  1. `s + max(256 MiB, ⌈(Σ + s)/10⌉) ≤ free` — the proven margin, taken over everything held;
+  2. `Σ + s ≤ C` **or** `Σ = 0` — a file alone is never refused by `C`, so the cap limits how much is
+     held at once, never how large one file may be.
+- **A copy stops counting in `Σ` the moment its offer ends** — saved, declined, withdrawn, expired,
+  cancelled or ended with the connection — because every one of those ends deletes it (unchanged).
+- One copy runs at a time (the existing `ANOTHER_IN_PROGRESS` rule), so two copies cannot race for
+  the same space.
 
-**Before the limits are locked into the contract**, two readings, both read-only or synthetic:
-1. `getCacheQuotaBytes` for our package on the SM-S938B — a debug-only probe line; the phone is not
-   otherwise touched.
-2. One sustained synthetic transfer of ≥ 1 GiB, generated bytes only, for a denominator on the time
-   a full queue takes. It informs the copy, not the cap.
+**Why `C` exists, and why no value is proposed for locking.**
+- Copies live in the app's **cache directory**, which Android may clear under storage pressure; a
+  copy cleared that way ends its offer as `staging-lost`.
+- **The SM-S938B is already below Samsung's caution line** (22.6 GB usable; caution 27.5 GB, warning
+  13.7 GB; `dumpsys devicestoragemonitor`, 2026-09-25).
+- The per-app cache quota could not be read without a build: `cachequota.xml` is `system`-only, and
+  `dumpsys storagestats` prints nothing.
+- **Candidate rule, for your decision:** `C = max(0, usable − warningThreshold − 1 GiB)`. That would
+  be **≈ 7.8 GB** on this phone today, and it never stages the phone into its own warning state.
+  - The warning threshold is Samsung-specific. Where it cannot be read, fall back to 10% of total
+    storage.
+  - Or lock `min(C, getCacheQuotaBytes)` after the quota reading, which needs a debug build.
 
----
-
-## 5 · Accepted-but-queued: what a person is agreeing to, and what is exposed
-
-- **An Accept is consent to that file's transfer whenever its turn comes.** A queued file starts on
-  its own, even if the window was closed or nobody is at the Mac. That is what the Accept meant, and
-  the card says *Accepted — starts after "IMG_1.jpg"* with **Cancel** beside it, so the consent is
-  visible and revocable until it starts.
-- **Nothing of a queued file is on the Mac.** No bytes, no preview, no partial — only the name, type
-  and size the offer already showed. The phone holds its private copy.
-- **Names are visible on the Mac's screen** to anyone looking at it, as they are for one file today.
-  - The window does not appear over a full-screen or presentation Space, and never goes to
-    Notification Center, so a screen being shared in a meeting does not show the queue.
-  - It is still visible on the desktop. A *hide file names in the receive window* setting is a
-    possible later addition and is not proposed here.
-- **Logs:** the phone logs no file names (unchanged); the Mac logs a name only for a published file
-  (unchanged); no log line carries file contents.
-- **Thumbnails** only after verified publication, images and video only (unchanged).
+**Mac accounting.**
+- **At the offer and again at Accept:** `free ≥ R + size + margin(size)`, where `R` is the sum of
+  reservations and margin is the Path S margin `max(256 MiB, ⌈size/10⌉)`.
+- **Reservations, per offer:**
+  - **queued:** reserves its full `size`, from Accept until it ends or starts receiving;
+  - **receiving:** reserves `size − bytes already written to its partial`;
+  - **released at once** on saved, saved-unacknowledged (the bytes are now a real file), not saved,
+    cancelled, declined, expired or ended.
+- **A Retry re-reserves** through the same Accept check. It does not hold space during its window.
 
 ---
 
-## 6 · Expiry — per file, and independent of how big the queue is
+## 5 · Accepted and queued: consent, privacy, and the window
+
+**Consent wording**, because an Accept now authorises a transfer that may start later, with nobody
+watching:
+- On a waiting card **while another file is ahead**, the button reads **Accept** and the line above
+  it reads *"If you accept, it transfers on its own after the 1 file ahead of it."* The accessible
+  name says the same.
+- After Accept the card reads *"Accepted — 2nd in line. It starts on its own when the file ahead
+  finishes."* with **Cancel**.
+
+**Privacy of a queued file:**
+- Nothing of it is on the Mac — no bytes, no partial, no preview — only the name, type and size the
+  offer already showed.
+- The phone keeps its private copy. The phone logs no file name; the Mac logs a name only once saved.
+
+**Closing and reopening the window:**
+- **Closing hides the window. It cancels nothing and declines nothing.** Queued files keep their
+  place and start when their turn comes; the receiving file continues.
+- The main window's card list shows every offer's current state, with **Show**.
+- **Reopening** (Show, or a new offer arriving) draws every card in its current state. Nothing is
+  replayed or re-asked.
+- **The window re-presents itself — inactive, never taking focus — only when a card newly needs a
+  person:** a new waiting offer, a refusal, or a queued file that became *not saved* (it can be tried
+  again).
+  - A queued file starting, progressing or being saved does **not** re-present the window.
+  - It updates its card and the main window's card only.
+
+---
+
+## 6 · Expiry, per file
 
 | State | Ends when | Words |
 |---|---|---|
-| waiting | 10 minutes after the phone offered it (the phone's `expiresAtMs`; on the Mac, `min(expiresAtMs, received + 10 min)`) — **unchanged** | *Expired — nobody answered in time* |
-| queued | **does not expire while the queue moves.** It ends only if the transfer ahead of it stops making progress: that one is ended by the existing 30-second idle rule, and the queue moves on | — |
-| queued, backstop | the phone ends an accepted offer whose pull has not begun **60 minutes** after its Accept (`share.cancel{expired}`) — so no private copy is ever held indefinitely | *Expired before it started* |
-| receiving | 30 s with no byte (unchanged) | *The transfer stopped* |
-| checking → verdict | the phone treats no `share.saved` within 60 s of its last byte as `unconfirmed` (unchanged) | phone: *Not confirmed*; Mac: whatever it knows |
-| not saved | its 5-minute Retry window (unchanged); a Retry joins the **back** of the queue | *Expired* when the window closes |
-
-The TTL of an accepted offer is the one real protocol change here. Today every live offer expires 10
-minutes after it was offered, whatever its state. A file accepted at minute 9, behind a large one,
-would then expire mid-queue — the queue would destroy consent the person had given.
+| waiting | 10 min after the phone offered it — **unchanged** | *Expired — nobody answered in time* |
+| queued | **does not expire while queued.** Ends by a cancel from either side, the session ending, or the backstop | — |
+| queued, backstop | the phone ends an accepted offer whose pull has not begun **60 min** after Accept (`share.cancel{expired}`) | *Expired before it started* |
+| receiving | 30 s with no byte — unchanged | *The transfer stopped* |
+| checking → verdict | no `share.saved` within 60 s of the last byte — the phone reads `unconfirmed`, unchanged | phone: *Not confirmed* |
+| not saved | its 5-min Retry window, unchanged; a Retry goes to the **back** of the queue | *Expired* when the window closes |
 
 ---
 
 ## 7 · Cancellation — per file, never collateral
 
-- **Mac:** Decline (waiting); Cancel (queued or receiving); Give up (not saved, in its window).
-  Each sends `share.cancel{user}` or `share.respond decline` for **that offer only**.
-- **Phone:** Withdraw on that file's sheet, in any live state — including queued and receiving; a
-  receiving file's partial is deleted on the Mac.
-- **A saved file cannot be cancelled** on either side.
-- **No action ends another file.** Cancelling the receiving file lets the next queued one start;
-  declining one waiting file changes no other card.
-- Group actions (*Decline all*, *Withdraw all*) are **deferred**, like *Accept all*.
+- **Mac:** Decline while waiting; Cancel while queued or receiving; Give up when not saved.
+- **Phone:** Withdraw on that file's sheet, in any live state.
+- **A saved file cannot be cancelled.** No action ends another file. Cancelling the receiving file
+  lets the next queued file start. Group actions are deferred.
 
 ---
 
-## 8 · Disconnect and restart
+## 8 · Disconnect and restart (Path S) — cleanup, and how each side confirms it
 
-| Event | Waiting / queued offers | The receiving file | Published files |
+| Event | Every live Path S offer | The receiving file | Published files |
 |---|---|---|---|
-| **Link drops** (Wi-Fi, sleep, out of range) | end on both sides without a message; the phone deletes every private copy; cards read *Ended with the connection — nothing saved* | the pull is aborted; the Mac deletes its own partial | kept. One mid-publication is `saved-unacknowledged`, as today |
-| **Mac app quits or crashes** | offers are memory only, so they are gone; the phone sees the session end and deletes every copy | the startup ledger sweep removes the partial, by identity | kept |
-| **Phone app restarts or is killed** | the Mac sees the session end, as above; the phone's startup staging sweep deletes every copy no live offer owns (unchanged) | as above | kept |
-| **Reconnect** | **nothing resumes or re-offers.** The phone's sheet, if still open, reads *Ended with the connection*, and the person sends again. An offer never survives its session | — | — |
+| Link drops | ends on both sides without a message (unchanged) | the pull is aborted; the Mac deletes its own partial and forgets it in the ledger | kept; a mid-publication one is `saved-unacknowledged` |
+| Mac app quits or crashes | gone (memory only); the phone sees the session end | the next launch's ledger sweep deletes the partial, by identity | kept |
+| Phone app restarts or is killed | the Mac sees the session end | as above | kept |
+| Reconnect | **nothing resumes or re-offers**; the person sends again | — | — |
+
+**How each side confirms the cleanup:**
+- **Phone:** one line per ended offer — *"offer … ended (session ended): staged copy deleted, N
+  file(s)"* (it writes this today) — and each open sheet reads *Ended with the connection*.
+- **Mac:** every affected card reads *Ended with the connection — nothing saved*. The ledger line
+  reports the partials deleted, and whatever it could not prove it left and names.
+- **Nothing** here deletes a published file.
+
+(Path L pauses rather than ends; see `docs/feature-a-large-file-proposal.md` §5.)
 
 ---
 
-## 9 · "Saved" — the exact meaning, per file
+## 9 · "Saved" — exact, per file
 
-- **The Mac's card says *Saved on this Mac* only when all of these hold,** in this order:
-  1. every byte of **that** offer arrived;
+- **Mac: *Saved on this Mac*** only after, for **that** offer:
+  1. every byte arrived;
   2. the partial was flushed;
   3. its on-disk length equals the bytes received and the offer's size;
-  4. its SHA-256 equals the offer's digest;
-  5. it was published by exclusive hard link under a free name.
-
-  Then, separately: *the phone confirmed it* when the phone acknowledged `share.saved {ok:true}`;
+  4. SHA-256 equals the offer's digest;
+  5. it was exclusively published.
+- **Then, separately:** *the phone confirmed it* when `share.saved {ok:true}` was acknowledged;
   otherwise *confirmation to phone unknown*.
-- **The phone's sheet says *Saved* only on that acknowledged verdict.**
-- **No batch or window summary may round these up.** A summary counts facts — *3 saved · 1 declined ·
-  1 not confirmed* — and never says *all saved* unless every file is saved and confirmed.
-- A file saved while other files failed is saved; a failed file is never *Saved*.
+- **Phone: *Saved*** only on that acknowledged verdict.
+- **Summaries** count facts — *3 saved · 1 declined · 1 not confirmed* — and never say *all saved*
+  unless every file is saved **and** confirmed.
 
 ---
 
-## 10 · Protocol and state-machine changes (exact) — contract text proposed in `docs/protocol.md`
+## 10 · Stage A test plan — bounded, for approval
 
-1. **`share.file: 3`**, negotiated by the existing rule `min(mine, theirs)`: 3 + 3 → 3, 3 + 2 → 2. A
-   version-2 peer keeps exactly today's behaviour; `share.ask` is unchanged and still required.
-2. **The live-offer limit** at 3 is 10 per session, enforced by both sides. `busy` means *at the
-   limit*.
-3. **`share.offer`** may carry `group: {id, index, count}` at 3 (stage B) — optional, display only.
-   `item` stays one object.
-4. **Accepted offers leave the 10-minute TTL** (§6), with the phone's 60-minute backstop.
-5. **The Mac serialises pulls:** one share pull per session at a time. The phone refuses a second
-   concurrent share pull with `BAD_REQUEST`, as defence.
-6. **Mac receiver** gains `queued` and a single pull slot, plus space reservation at Accept.
-7. **Phone** replaces `busyWith` with `admit(held, session, version, sizes, free)`: *Admit*, or *Busy*
-   with the reason and the numbers. At version 2, `admit` **is** `busyWith`.
-8. **Unchanged:** `share.respond`, `share.cancel`, `share.saved`, the share root, the session-bound
-   bulk socket, the nonce'd partial and ownership ledger, exclusive publication, Saved only on the
-   receiver's verdict, and the `saved-unacknowledged` rules — all already keyed per offer.
+**Automated (no device):**
+- negotiation fixtures 3+3 and 3+2, both sides;
+- admission at 1, 10 and 11 offers, the first-file-alone exemption from `C`, and the per-file margin
+  over `Σ + s`;
+- two accepted offers pulled strictly in Accept order, each with its own partial and ledger entry;
+- reservations: the second of two files that fit alone refused; release on each end state;
+- queued → cancelled, ended by disconnect, and expired by the backstop, each deleting its copy;
+- the window drawing three cards in three states without moving focus, and **not** re-presenting on a
+  queued file's save;
+- each named rule shown red under mutation.
 
----
+**Hardware — one supervised run, synthetic files only:**
 
-## 11 · How stage A would be proven, before stage B starts
+| Bound | Value |
+|---|---|
+| Files | the two generated images in `SidekickShareTest` only (100,718 and 230,778 bytes) |
+| Install | one `install -r` of the Stage A build, same readings before and after; Mac relaunched without switches |
+| Duration | ≤ 30 minutes, three sequences, then stop |
+| Destructive actions | none — no deletion, no personal media, no Accept by the harness |
 
-- **Automated:**
-  - negotiation fixtures on both sides;
-  - `admit` at 1, 10 and 11 offers and at the byte cap;
-  - two accepted offers pulled strictly in sequence, each with its own partial and ledger entry;
-  - space reservation refusing the second of two files that each fit alone;
-  - a queued file cancelled, ended by disconnect, and expired by the backstop — each deleting its
-    copy;
-  - the window drawing three cards in three states without moving focus.
-- **Hardware, synthetic files only:**
-  - three generated files from the SidekickShareTest album: one declined, one cancelled while
-    queued, one saved;
-  - then a disconnect with two waiting.
+1. **Two waiting, then out of order.** Send both. Both cards show; Accept the **second**, then the
+   first. It transfers first; the other reads *2nd in line*, then saves.
+   - **Pass:** both SHA-256 equal the phone's; collision-safe names; exactly one partial at any sample.
+2. **Queue cancel.** Send both again; Accept both; Cancel the queued one before it starts.
+   - **Pass:** it never pulls (no `fs.transfer.begin` for it), its phone copy is deleted, and the
+     other saves.
+3. **Disconnect with two waiting.** Send both; press **Disconnect** on the Mac, a Mac-side action with
+   no phone settings touched.
+   - **Pass:** both cards *Ended with the connection*; phone staging empty; Mac ledger `[]`; nothing
+     published.
+
+**Stop conditions:**
+- any offer whose name or size is not one of the two files;
+- any pull before an Accept;
+- any change to a pre-existing file;
+- any device reading differing after the install.

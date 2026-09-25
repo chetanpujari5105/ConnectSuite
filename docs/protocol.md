@@ -2463,7 +2463,7 @@ hello.ack  {"protocolVersion":1, …every existing field…, "ext":{"share.file"
 
 On `hello`, `share.file` means *this Mac can receive and answer a one-file share offer*; on
 `hello.ack`, *this phone can make one*. **The version says how far:** `1` is offer and decline only;
-`2` is the one-file transfer as well (see [Share → Version 2](#version-2--the-transfer)). `3`, several pending offers, is **proposed and not implemented** (see [Version 3](#version-3--several-pending-offers-proposed-2026-09-25--not-implemented)).
+`2` is the one-file transfer as well (see [Share → Version 2](#version-2--the-transfer)). `3`, several pending offers, and the separate `share.stream` for large files are **proposed and not implemented** (see [Version 3](#version-3--several-pending-offers-proposed-2026-09-25--not-implemented)).
 Because the negotiated version is `min(mine, theirs)`, a transfer can start only when **both**
 peers advertise `2`. Parsing is identical on both sides:
 
@@ -2861,44 +2861,92 @@ copy, and the Mac deletes its partial. Neither side reports `saved`.
 
 ### Version 3 — several pending offers (PROPOSED 2026-09-25 — not implemented)
 
-> **Not implemented, and nothing advertises `share.file 3`.** This section is the proposed contract
-> for review. The argument, the state tables and the open measurements are
-> `docs/feature-a-multi-offer-proposal.md` (rev 2). Until it is approved and built, version 2 above is
-> the whole contract, and both builds advertise 2.
+> **Not implemented, and nothing advertises `share.file 3`.** Proposed contract for review; the argument
+> is `docs/feature-a-multi-offer-proposal.md` (rev 3). Until it is approved and built, version 2 above is
+> the whole contract, and both builds advertise 2. This section is **Path S** — files copied privately
+> before they are offered. Large files are **Path L**, below.
 
-**Negotiation.** `share.file: 3` by the existing rule `min(mine, theirs)`: 3 + 3 → 3, 3 + 2 → 2, and a
+**Negotiation.** `share.file: 3` by the existing rule `min(mine, theirs)`: 3 + 3 → 3, 3 + 2 → 2; a
 version-2 peer keeps version 2 exactly. `share.ask` is unchanged and still required for ordinary Send.
-Every rule of version 2 holds at 3 except the four below.
+Every version-2 rule holds at 3 except these.
 
-**1 · Several live offers.** At most **10** live offers per session (proposed), enforced by both sides.
-`busy` means *the session already holds 10*. Each offer is independent: its own `offerId`, card, answer,
-expiry and end. `item` stays **one object**.
+**1 · Several live offers.** At most **10** live offers per session (proposed), enforced by both sides;
+`busy` means *the session already holds 10*. Each offer is independent: its own `offerId`, answer, expiry
+and end. `item` stays **one object**.
 
-**2 · One pull at a time.** The Mac pulls one share at a time per session, in the order its offers were
-accepted; an accepted offer waiting its turn is **queued** on the Mac and `accepted` on the phone. A
-second concurrent share pull on one session is refused by the phone (`BAD_REQUEST`, `feature: "share"`).
+**2 · One pull at a time, in Accept order.** The Mac pulls one share per session at a time, in the order
+its offers were **accepted**. An accepted offer waiting its turn is **queued** on the Mac and `accepted` on
+the phone. A second concurrent share pull on one session is refused by the phone (`BAD_REQUEST`,
+`feature: "share"`).
 
-**3 · Accepted offers leave the 10-minute TTL.** An offer that is still waiting expires at `expiresAtMs`
-as in version 2. Once accepted it does not: a queued offer ends only through the transfer ahead of it
-(the 30-second idle rule) or a cancel, and the phone ends any accepted offer whose pull has not begun
-**60 minutes** after the Accept, with `share.cancel{expired}`. A Retry joins the back of the queue.
+**3 · Accepted offers leave the 10-minute TTL.** A waiting offer expires at `expiresAtMs` exactly as in
+version 2. **A queued offer does not expire while queued**: it ends only by `share.cancel` from either
+side, the session ending, or the phone's backstop — an accepted offer whose pull has not begun **60
+minutes** after the Accept is ended by the phone with `share.cancel{expired}`. A Retry is queued at the back.
 
-**4 · Space is reserved.** At every Accept the Mac requires
-`free ≥ Σ(sizes accepted and not finished) + size + max(256 MiB, ⌈size/10⌉)`; otherwise it declines
-`insufficient-space`. The phone admits a new offer only while
-`Σ(live staged sizes) + max(256 MiB, ⌈Σ/10⌉) ≤ free` **and** `Σ ≤ min(4 GiB, cache quota)`. **These byte
-values are proposed and not locked**: the cache quota has never been read on the SM-S938B (proposal §4).
+**4 · Space.** *Phone:* a file is admitted when its private copy is about to start — not when it is
+offered — if `s + max(256 MiB, ⌈(Σ + s)/10⌉) ≤ free` and (`Σ + s ≤ C` or `Σ = 0`), where `Σ` is the total
+of copies already held for live offers (already absent from `free`) and `C` is a cap on copies held at
+once. **`C` has no value in this contract yet** (proposal §4); a file alone is never refused by it. A copy
+leaves `Σ` when its offer ends. *Mac:* at the offer and at Accept, `free ≥ R + size + max(256 MiB,
+⌈size/10⌉)`, where `R` sums the reservations: a queued offer reserves `size`; the receiving offer reserves
+`size − bytes written`; every reservation is released when its offer ends in any state, including saved
+(its bytes are then a real file). A Retry re-reserves through the Accept check.
 
-**Optional, stage B only:** `share.offer` may carry `group: {"id": "g-<22 base64url>", "index": 1…count,
-"count": 1…10}` for files shared together. It is display only and authorises nothing; a Mac of version 2
-never receives it.
+**Optional, Stage B only:** `share.offer` may carry `group: {"id": "g-<22 base64url>", "index": 1…count,
+"count": 1…10}` for files shared together — display only, authorising nothing, never sent to a version-2 Mac.
 
-**Unchanged at 3, stated so nobody infers otherwise:** "Saved" on the Mac only after that offer's bytes are
-flushed, length- and SHA-256-verified and exclusively published, and on the phone only on an acknowledged
-`share.saved {ok:true}`; `saved-unacknowledged`; the share root and its session binding; the nonce'd
-partial and the ownership ledger; offers never surviving their session — a disconnect or a restart of
-either app ends every live offer and deletes every staged copy and partial, and nothing re-offers on
-reconnect.
+**Unchanged at 3:** Saved on the Mac only after that offer's bytes are flushed, length- and SHA-256-verified
+and exclusively published, and on the phone only on an acknowledged `share.saved {ok:true}`;
+`saved-unacknowledged`; the share root and its session binding; the nonce'd partial and ownership ledger.
+**A Path S offer never survives its session**: a disconnect or a restart of either app ends every live
+offer, deletes every private copy and partial, and nothing re-offers on reconnect.
+
+### Large files — resumable streaming, `share.stream` (PROPOSED 2026-09-25 — research, not implemented)
+
+> **Not implemented; no value here is locked; no large transfer has been run.** The argument, the
+> Gallery-versus-picker guarantees and the readings still owed are `docs/feature-a-large-file-proposal.md`.
+> **There is no file-size limit of its own**; 4 GiB appears only as the FAT32 filesystem limit.
+
+**Negotiation.** A separate extension, `share.stream: 1`, negotiated only together with `share.file ≥ 3`
+and `share.ask`. It is separate because it changes a security property: a paused stream **outlives its
+session** and is bound to the **paired identity** (pinned certificate and `deviceId`) as well as to each
+new session's token.
+
+**Source.** Only a document whose grant the phone **persisted** (`ACTION_OPEN_DOCUMENT` with
+`takePersistableUriPermission`, or a file inside an already-persisted `fs.*` tree). A Gallery share
+(`ACTION_SEND`) is never streamed: its grant does not outlive the receiving activity (measured on the
+emulator; unmeasured on Samsung).
+
+**Offer.** `share.offer` as at version 3, with `item.sha256` **absent** and
+`item.digest: {"kind": "chunked-sha256", "chunk": 67108864}` (chunk size proposed), plus
+`item.resumable: true | false` — false when the phone could not obtain a seekable descriptor; such a
+stream runs as one attempt and cannot pause.
+
+**Integrity.** As each chunk's bytes leave, the phone sends `share.chunk {offerId, index, sha256}`
+(event, phone → Mac). The Mac hashes what arrived and, on a mismatch, re-pulls that chunk by offset, at
+most twice, then fails `checksum`. After the last byte the phone sends `share.chunk {offerId, index:
+"root", sha256, chunk, length}` — the root is SHA-256 over the ordered chunk digests — and the Mac saves
+only if the root, the length and every chunk agree, then publishes exclusively.
+
+**Resume.** `fs.transfer.begin` on a `share:` root may carry a non-zero offset **only** under
+`share.stream`, and only on a chunk boundary the Mac has verified; the Mac truncates its partial to that
+boundary first. After a disconnect or restart the phone sends `share.resume {offerId, identity,
+verifiedThrough}` (event, phone → Mac) on the new session; the Mac resumes only when the peer's pinned
+certificate and `deviceId` equal those of the Accept, the record is under 24 hours old (proposed), the
+partial and the destination folder pass their identity checks, and the phone reports the source identity
+(size, last-modified, and for media `GENERATION_MODIFIED`) unchanged. **No second Accept is asked; a
+resume is always shown and always cancellable.** Re-pairing or forgetting the phone discards every paused
+record.
+
+**Change detection.** The source identity is re-checked before every attempt, every 1 GiB, and after the
+last byte; any difference ends the stream with the new reason `source-changed`. **An in-place change that
+alters no recorded field cannot be detected**, and this contract does not claim otherwise.
+
+**Space.** Margin `max(256 MiB, min(⌈size/10⌉, 8 GiB))` (proposed). Free space is re-read every 1 GiB; if
+it falls below the remaining bytes + 1 GiB the stream **pauses** with `destination-full` rather than
+failing a publish. Publication is exclusive: a hard link, or `renamex_np(RENAME_EXCL)` where the volume
+supports it (**unmeasured on exFAT**); neither → `unsupported-destination` before Accept.
 
 ## Discovery
 
