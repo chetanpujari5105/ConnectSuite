@@ -24863,10 +24863,11 @@ sheet was closed before a UI dump. `download.jpg` and `l1I0k-Axckq5Kes_ypu2ERit.
 owner** during testing and need no investigation. The 13:30:58 `sidekick-share-test-001.png` leaving the
 folder remains recorded as observed and unattributed; nothing was examined further.
 
-## S2 — the share receiver's partial, its name, and what it may delete (2026-09-25) — synthetic only
+## S2 — the share receiver's partial, its name, and what it may delete (2026-09-25) — synthetic, plus one live normal-path transfer
 
-Everything here ran on generated data in `mkdtemp` folders under the OS temp folder. No phone, no live
-transfer, no receive folder, no pairing change. The threat model was set by the owner before the fix:
+The fix and every test of it ran on generated data in `mkdtemp` folders under the OS temp folder, with
+no phone, no receive folder and no pairing change. One supervised live transfer of the **normal path**
+followed; it is recorded at the end of Defect 153 and covers nothing else. The threat model was set by the owner before the fix:
 protect normal transfers and accidental interference as far as filesystem checks allow; **accept** the
 check-to-delete window against a deliberate process running as the same macOS user; never delete a
 *known* replacement, never overwrite a final name, never report unverified bytes as Saved, and never
@@ -24874,7 +24875,9 @@ leave a hidden full-size second link after a normal success.
 
 ### Defect 153 — the share pull deleted, or published as Saved, whatever was at its partial's name
 
-**Status: fixed — by synthetic tests only** (generated data, temp folders, no phone, no live transfer).
+**Status: fixed.** Every swap, race and failure path is proven **by synthetic tests only** (generated
+data, temp folders). The **normal path** also passed **one supervised live transfer** on the SM-S938B
+(below).
 The check-to-delete race against a deliberate process running as the same user is **residual — detected,
 not prevented**. Localhost speed impact is **inconclusive**. Cancellation during a write that never settles
 is an **open limitation**.
@@ -24986,6 +24989,44 @@ and the check-to-link window,
 which produces `unexpected-file`, not a false Saved. It can also rewrite the saved file's contents
 after verification; nothing on this platform prevents that. A partial moved away by someone else keeps
 its bytes at a location Sidekick does not know and does not clean up.
+
+#### The normal path on hardware — one supervised live transfer (2026-09-25 23:09–23:16, owner present)
+
+**Build.** The Mac ran `983a55b`: `npm run build` wrote `dist/` at 23:04:36; the previous process
+(started 12:34:05, `dist` without `handleWriter` or `unexpected-file`) was stopped by PID and the app
+relaunched at 23:05:01 as PID 5645. The live page's `shareReceiveStatus` returned the new
+`unexpected-file` headline, control `Saved on this Mac` true. The main process is identified by its start
+time and, decisively, by the success line below, which only this build writes. The phone kept its
+13:36:55 build (`02d95b3`); S2 changes only the Mac. Reconnect 170 ms after launch, negotiated
+`{"share.file":2,"share.ask":1}`; `link-up.sh` 3/3.
+
+**Before the share.** Receive folder `~/Downloads/Sidekick` (the default; setting unset), 25 entries
+recorded by device, inode, size, mtime, ctime, birth time and name; no `sidekick-share-test-001*` copy;
+no Sidekick temporary file; ledger `[]`; phone `cache/share-staging` empty.
+
+**The share.** Owner: Gallery → `sidekick-share-test-001.png` → Share → Sidekick. Offer
+`s-fkaY8SdnHiCyWHyzwRTuRg` arrived 23:09:38, held for a decision, window presented without focus.
+Pre-Accept, read and reported before the owner clicked: the phone's offer record, its staged copy and the
+source all **100,718 bytes, SHA-256 `d5cfb8a312227ec44664d00782fac7fd7a8f9fa0e9c24e4689ebe46752eec9ff`**;
+the window showed Decline / Accept, *Save to: ~/Downloads/Sidekick*, no duplicate warning; no transfer
+line, no partial, ledger `[]`, the 25 entries unchanged. Owner clicked **Accept** at 23:16:22.
+
+| Check | Reading |
+|---|---|
+| the new build published it | `received 100718 bytes, flushed, verified, published exclusively as sidekick-share-test-001.png, and the published name confirmed as this attempt's file` |
+| phone acknowledged Saved | Mac: `saved as sidekick-share-test-001.png; the phone acknowledged`; phone: `share.saved … ack {state=saved}`, `ended (saved on the Mac …): staged copy deleted, 2 file(s)` |
+| the file | 100,718 bytes, SHA-256 equal to the source's, a regular file born 23:16:22 |
+| **one file, one link** | `links=1` — no hidden second name holding the space |
+| nothing left behind | 0 partials or probe files in the folder; ledger `[]`; phone staging empty |
+| the other entries | 25 / 25 identical in every recorded field; the only new entry is `sidekick-share-test-001.png` |
+| Mac window after | *Saved on this Mac* · *Complete and checked. The phone confirmed it.* · Show in Finder / Open; never focused |
+| source on the phone | unchanged: same SHA-256, size, and mtime 11:46:39 |
+| errors / warnings | none, Mac side, from the offer to the save |
+
+**What this run did not test, and nothing above is evidence for:** the `unexpected-file` state and
+screen; the deliberate swap and race cases (check-to-link, check-to-delete, the link-count report);
+the pending-write hang; the collision rename; large files; multi-file sharing. Those remain as recorded
+above — synthetic tests only, or open. The saved test file was left in place.
 
 ### Defect 154 — the destination check's probe files are deleted by name with no identity check
 
