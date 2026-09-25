@@ -369,5 +369,11 @@ them as `outside-scope`.
    receive folder changed between runs; a folder replaced at the same path; a remounted volume with a
    different device; a parent swapped for a symlink — each left untouched beside a positive control.
 
+> **Built 2026-09-25** — `ParentIdentity`, `recordIntentFrom`, `SweepScope.byRecordedParent` in
+> `desktop/src/main/shareLedger.ts`, adversarial tests in `shareLedgerParent.test.ts` (folder replaced,
+> parent and file swapped for symlinks, inode reuse, a changed setting with a forged entry, a remounted
+> device, interrupted saves, pre-§11 entries). It is wired to `share.ask` only, which stays closed until
+> `receiveFolderCleanupScoped` is recorded after the owner's review.
+
 Until that slice exists, **production version 2 must not ship**, because it would create orphans it
 cannot clean. That belongs on the release checklist, not only in this file.

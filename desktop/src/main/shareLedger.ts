@@ -35,12 +35,28 @@ export interface LedgerIdentity {
   maxBytes: number;
 }
 
+/**
+ * **The folder a temporary file was created in, as it was then** — runbook §11. Recorded at
+ * [ShareLedger.recordIntent], before the file exists, from an `lstat` of the parent (which must be a
+ * real folder, not a link) and its real path. A later sweep may use this to prove "this is still the
+ * folder the entry was made in" — never "this is the folder the setting names now".
+ */
+export interface ParentIdentity {
+  /** `realpath` of the parent at record time. The entry's own parent path must still resolve here. */
+  real: string;
+  dev: number;
+  ino: number;
+  birthtimeMs: number;
+}
+
 export interface LedgerEntry extends Partial<LedgerIdentity> {
   path: string;
+  /** Absent for entries written before §11, or when the parent could not be proven a real folder. */
+  parent?: ParentIdentity;
 }
 
 export interface ShareLedger {
-  recordIntent(path: string): Promise<void>;
+  recordIntent(path: string, parent?: ParentIdentity): Promise<void>;
   recordCreated(path: string, identity: LedgerIdentity): Promise<void>;
   forget(path: string): Promise<void>;
   entries(): Promise<LedgerEntry[]>;
@@ -74,12 +90,16 @@ export class FileShareLedger implements ShareLedger {
     return next;
   }
 
-  recordIntent(path: string): Promise<void> {
-    return this.update((es) => [...es.filter((e) => e.path !== path), { path }]);
+  recordIntent(path: string, parent?: ParentIdentity): Promise<void> {
+    return this.update((es) => [...es.filter((e) => e.path !== path), parent ? { path, parent } : { path }]);
   }
 
   recordCreated(path: string, identity: LedgerIdentity): Promise<void> {
-    return this.update((es) => [...es.filter((e) => e.path !== path), { path, ...identity }]);
+    // The parent identity recorded at intent is kept: it describes the folder before the file existed.
+    return this.update((es) => {
+      const parent = es.find((e) => e.path === path)?.parent;
+      return [...es.filter((e) => e.path !== path), parent ? { path, parent, ...identity } : { path, ...identity }];
+    });
   }
 
   forget(path: string): Promise<void> {
@@ -94,6 +114,25 @@ export class FileShareLedger implements ShareLedger {
 
 export function ledgerFile(userData: string): string {
   return join(userData, 'share-temporary-files.json');
+}
+
+/** The parent's identity now, or null when it is not a real folder (a link, a file, absent). */
+export async function parentIdentityOf(folder: string): Promise<ParentIdentity | null> {
+  const st = await fsp.lstat(folder).catch(() => null);
+  if (!st || !st.isDirectory() || st.isSymbolicLink()) return null;
+  const real = await fsp.realpath(folder).catch(() => null);
+  if (real === null) return null;
+  return { real, dev: st.dev, ino: st.ino, birthtimeMs: st.birthtimeMs };
+}
+
+/**
+ * Step 1 of the write order, with the parent's identity (§11). A parent that is not a real folder is
+ * recorded as no parent at all: that entry can then only ever be swept by an explicit
+ * [SweepScope.allowedParents], never proven by itself.
+ */
+export async function recordIntentFrom(ledger: ShareLedger, path: string): Promise<void> {
+  const parent = await parentIdentityOf(dirname(path));
+  await ledger.recordIntent(path, parent ?? undefined);
 }
 
 /**
@@ -126,7 +165,8 @@ export type LeftReason =
   | 'identity-mismatch'
   | 'larger-than-recorded'
   | 'changed-while-checking'
-  | 'unreadable';
+  | 'unreadable'
+  | 'parent-not-proven';
 
 export interface LeftFile {
   path: string;
@@ -150,6 +190,22 @@ export interface SweepScope {
    * active — means the sweep deletes nothing at all.
    */
   allowedParents: readonly string[];
+  /**
+   * §11, **production only**: also allow an entry's own parent when the entry *proves* it — a
+   * recorded [ParentIdentity] whose folder is still a real folder (not a link) at the same path, with
+   * the same device, inode and birth time, and the same real path. This never consults the receive
+   * folder setting, so changing the setting, or mounting a new folder at the old path, widens
+   * nothing. `main.ts` sets it only when `share.ask` is active; the development gate never does.
+   */
+  byRecordedParent?: boolean;
+}
+
+/** The recorded parent is provably the folder at the entry's parent path now. */
+async function parentProven(entryParent: string, recorded: ParentIdentity | undefined): Promise<boolean> {
+  if (!recorded) return false;
+  const now = await parentIdentityOf(entryParent);
+  return now !== null && now.real === recorded.real && now.dev === recorded.dev && now.ino === recorded.ino &&
+    now.birthtimeMs === recorded.birthtimeMs;
 }
 
 async function realFolder(path: string): Promise<string | null> {
@@ -202,13 +258,23 @@ export async function sweepLedger(ledger: ShareLedger, scope: SweepScope = { all
       continue;
     }
     const parent = dirname(path);
-    if (!parents.has(parent)) {
+    if (parents.has(parent)) {
+      const realParent = parents.get(parent) ?? null;
+      if (realParent === null || (await realFolder(parent)) !== realParent) {
+        await leave(e, 'parent-not-a-real-folder', true);
+        continue;
+      }
+      // An explicit scope folder that the entry recorded differently (replaced since) is not proven.
+      if (e.parent && !(await parentProven(parent, e.parent))) {
+        await leave(e, 'parent-not-proven', true);
+        continue;
+      }
+    } else if (!scope.byRecordedParent) {
       await leave(e, 'outside-scope', true);
       continue;
-    }
-    const realParent = parents.get(parent) ?? null;
-    if (realParent === null || (await realFolder(parent)) !== realParent) {
-      await leave(e, 'parent-not-a-real-folder', true);
+    } else if (!(await parentProven(parent, e.parent))) {
+      // Kept, not forgotten: an unmounted drive or a moved folder may prove itself on a later run.
+      await leave(e, 'parent-not-proven', true);
       continue;
     }
     if (!isSidekickTemporaryName(basename(path))) {

@@ -1061,10 +1061,14 @@ app.whenReady().then(() => {
   // only inside the scratch folder, and only where every identity check passes. Outside a version-2
   // development run its scope is empty and it deletes nothing. It lists no folder, so it can never
   // find — or delete — anything by its name; what it cannot prove, it leaves and reports.
-  // A production (`share.ask`) run would create partials in the person's receive folder, and this scope
-  // deliberately does not reach it: widening it is `receiveFolderCleanupScoped`, which is unbuilt, and
-  // that is exactly why `shareAskActivation` cannot open in this build.
-  void sweepLedger(shareLedger, { allowedParents: shareV2.active ? [scratchFolderPath(userData)] : [] }).then((r) => {
+  // A production (`share.ask`) run creates partials in the person's receive folder. Those are swept
+  // only by the folder each entry *proves* it was made in (runbook §11, `byRecordedParent`) — never by
+  // the receive-folder setting. The development gate never turns this on, and `share.ask` itself stays
+  // closed until `receiveFolderCleanupScoped` is recorded after review.
+  void sweepLedger(shareLedger, {
+    allowedParents: shareV2.active ? [scratchFolderPath(userData)] : [],
+    byRecordedParent: shareAsk.active,
+  }).then((r) => {
     if (r.deleted > 0 || r.gone > 0 || r.left.length > 0) {
       log.info('share', `startup ledger sweep: deleted ${r.deleted}, ${r.gone} already gone, left ${r.left.length} untouched (${r.kept} kept for a later run)`);
     }

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { constants, promises as fsp } from 'node:fs';
 import { join } from 'node:path';
 import { candidateName } from '../shared/shareNames';
-import { recordCreatedFrom, type ShareLedger } from './shareLedger';
+import { recordCreatedFrom, recordIntentFrom, type ShareLedger } from './shareLedger';
 
 /**
  * Where a shared file lands on the Mac, and how — docs/protocol.md → Share → Version 2. Four
@@ -116,7 +116,7 @@ export async function checkDestination(
   // Each probe file is recorded before it exists and identified after, so a crash mid-check leaves
   // something the startup sweep can prove is ours — and nothing it cannot.
   try {
-    await ledger?.recordIntent(a);
+    if (ledger) await recordIntentFrom(ledger, a);
     await fs.writeFileExclusive(a);
     if (ledger) await recordCreatedFrom(ledger, a, 0);
   } catch (error) {
@@ -125,7 +125,7 @@ export async function checkDestination(
   }
   let verdict: DestinationVerdict;
   try {
-    await ledger?.recordIntent(b);
+    if (ledger) await recordIntentFrom(ledger, b);
     await fs.link(a, b);
     if (ledger) await recordCreatedFrom(ledger, b, 0);
     verdict = { ok: true };

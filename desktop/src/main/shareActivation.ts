@@ -55,7 +55,8 @@ export function shareV2Activation(i: ShareV2Inputs): ShareV2Activation {
  * - `syntheticRunPassed` — Feature A slice 3e (`docs/phase-7-share-3e-runbook.md`) has moved synthetic
  *   bytes from the SM-S938B into the scratch folder, verified, on hardware. **Not run.**
  * - `receiveFolderCleanupScoped` — the ownership ledger's sweep can be scoped to the person's receive
- *   folder by the folder identity each entry proves (runbook §11). **Not built.** Without it, a
+ *   folder by the folder identity each entry proves (runbook §11). **Built (`byRecordedParent`, with
+ *   `shareLedgerParent.test.ts`), not yet reviewed against this gate**, so still false. Without it, a
  *   production transfer would leave partials in the person's folder that no sweep may delete.
  */
 export const SHARE_PRODUCTION_READINESS: Readonly<{ syntheticRunPassed: boolean; receiveFolderCleanupScoped: boolean }> =
@@ -83,7 +84,7 @@ export function shareAskActivation(i: ShareAskInputs): ShareAskActivation {
   if (i.development.active) blockers.push('the synthetic-only development gate is open, and its promise is the opposite one');
   if (!i.readiness.syntheticRunPassed) blockers.push('the synthetic end-to-end run (slice 3e) has not passed on hardware');
   if (!i.readiness.receiveFolderCleanupScoped) {
-    blockers.push('temporary-file cleanup is not scoped to the receive folder (runbook §11, not built)');
+    blockers.push('receive-folder cleanup scoping (runbook §11) is not yet recorded as reviewed');
   }
   return blockers.length === 0 ? { active: true, syntheticOnly: false } : { active: false, blockers };
 }

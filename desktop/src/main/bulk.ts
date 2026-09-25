@@ -3,7 +3,7 @@ import { createReadStream, createWriteStream, promises as fs } from 'node:fs';
 import type { Duplex, Writable } from 'node:stream';
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
 import type { PublishResult } from './shareDestination';
-import { recordCreatedFrom, type ShareLedger } from './shareLedger';
+import { recordCreatedFrom, recordIntentFrom, type ShareLedger } from './shareLedger';
 import { CANDIDATE_TIMEOUT_MS } from './discovery';
 import { FrameReader, writeFrame } from './framing';
 import type { Identity } from './identity';
@@ -680,7 +680,7 @@ async function pullShareWith(
     const begin = async (): Promise<void> => {
       // Recorded before it exists, created exclusively, identified after — see shareLedger.ts.
       try {
-        await ledger?.recordIntent(part);
+        if (ledger) await recordIntentFrom(ledger, part);
       } catch (error) {
         return fail('write-failed', `the ownership record could not be written: ${(error as Error).message}`);
       }

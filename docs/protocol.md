@@ -2504,8 +2504,8 @@ closed whenever the development gate is open (the two are mutually exclusive):
 
 1. **the synthetic end-to-end run (slice 3e) has passed on hardware**;
 2. **temporary-file cleanup is scoped to the receive folder by parent identity** — the design in
-   `docs/phase-7-share-3e-runbook.md` §11, not yet built. Without it a production transfer would create
-   partials in the person's folder that no sweep may delete.
+   `docs/phase-7-share-3e-runbook.md` §11, **built 2026-09-25 and not yet recorded as reviewed**. Without
+   it a production transfer would create partials in the person's folder that no sweep may delete.
 
 Each flips only in the commit that records its evidence. The phone advertises `share.ask: 1`
 unconditionally: the promise is about what the phone will *not* do, so making it costs nothing.
@@ -2753,9 +2753,14 @@ failure is reported in `share.saved` and on the Mac's own screen.
 if **anything** already exists at that path, the pull is refused and that file is left untouched. The
 Mac keeps a private **ownership ledger** in its own data folder, which records each temporary file it
 creates (partials and destination-probe files) before creation, and then the file's device and
-inode, birth time and the most bytes it may hold. The startup sweep lists no folder, and is **scoped**:
-it may delete only in the folders it is given, which is the scratch folder while the development gate
-is open and **nothing at all** otherwise. For each ledger entry it deletes the file only if the path is
+inode, birth time and the most bytes it may hold — and, recorded before the file is created, its
+**parent folder's identity** (real path, device, inode, birth time; a parent that is a symlink records
+none). The startup sweep lists no folder, and is **scoped**: it may delete only in the folders it is
+given, which is the scratch folder while the development gate is open and **nothing at all** otherwise
+— and, **only when `share.ask` is active**, in a folder an entry *proves*: its parent path is still a
+real folder (not a link) with the recorded real path, device, inode and birth time. The receive-folder
+setting is never consulted, so changing it, replacing the folder, or mounting another volume at the
+same path widens nothing; a folder that cannot be proven is kept in the ledger and reported. For each ledger entry it deletes the file only if the path is
 clean (absolute, no `..`), its parent is exactly an allowed folder that is itself a real directory
 with an unchanged real path, its name is one of Sidekick's two temporary shapes, `lstat` finds a
 regular file whose device, inode and birth time match and whose size is within the recorded bound,
