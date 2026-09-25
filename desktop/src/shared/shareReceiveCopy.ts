@@ -22,6 +22,7 @@ type ShareRecvState =
   | 'saved'
   | 'saved-unacknowledged'
   | 'failed'
+  | 'unexpected-file'
   | 'declined'
   | 'expired'
   | 'cancelled'
@@ -38,6 +39,9 @@ interface ShareRecvFacts {
   reason: string | null;
   /** An earlier file this run published from the same bytes. */
   priorCopy: { savedAs: string; acknowledged: boolean } | null;
+  /** In `unexpected-file`: the name that now holds a different file, and the folder it is in. */
+  unexpectedName?: string | null;
+  folder?: string;
 }
 
 type ShareRecvTone = 'neutral' | 'progress' | 'success' | 'warning' | 'danger';
@@ -119,6 +123,18 @@ function shareReceiveStatus(f: ShareRecvFacts): ShareRecvStatus {
       return {
         headline: 'Not saved',
         detail: [SHARE_RECV_FAILURE_COPY[f.reason ?? ''] ?? 'The file could not be saved.', 'Nothing was kept on this Mac.'],
+        tone: 'danger',
+        ...none,
+      };
+    case 'unexpected-file':
+      // Not "Nothing was kept on this Mac" — a file does sit at that name now; it just is not the
+      // phone's. Named exactly, so a person can find it; never opened, never offered to open.
+      return {
+        headline: 'Not saved — a different file appeared',
+        detail: [
+          `Your phone’s file was not saved. While Sidekick was saving, a different file took the name “${f.unexpectedName ?? f.wantedName}” in ${f.folder ?? 'the receive folder'}.`,
+          'It did not come from your phone. Sidekick left it untouched and did not open it.',
+        ],
         tone: 'danger',
         ...none,
       };

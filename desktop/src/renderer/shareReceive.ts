@@ -42,6 +42,8 @@ interface ShareCardData {
   savedAs: string | null;
   reason: string | null;
   priorCopy: { savedAs: string; acknowledged: boolean } | null;
+  /** In `unexpected-file`: the name in [folder] that holds a different file. */
+  unexpectedName?: string | null;
 }
 
 interface ShareCardModel {
@@ -72,6 +74,8 @@ function shareCardModel(d: ShareCardData): ShareCardModel {
     savedAs: d.savedAs,
     reason: d.reason,
     priorCopy: d.priorCopy,
+    unexpectedName: d.unexpectedName ?? null,
+    folder: d.folder,
   });
   const published = d.state === 'saved' || d.state === 'saved-unacknowledged';
   // A card still in play shows everything the decision needs (the contract's list: who, type, exact
@@ -89,6 +93,7 @@ function shareCardModel(d: ShareCardData): ShareCardModel {
     : [
         { label: 'From', value: d.from },
         ...(published && d.savedAs !== null ? [{ label: 'Saved as', value: `${d.folder}/${d.savedAs}` }] : []),
+        ...(d.state === 'unexpected-file' && d.unexpectedName ? [{ label: 'Different file', value: `${d.folder}/${d.unexpectedName}` }] : []),
       ];
   return {
     offerId: d.offerId,

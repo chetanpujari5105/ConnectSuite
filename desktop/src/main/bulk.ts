@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, promises as fs } from 'node:fs';
-import type { Duplex, Writable } from 'node:stream';
+import type { FileHandle } from 'node:fs/promises';
+import { Writable, type Duplex } from 'node:stream';
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
 import type { PublishResult } from './shareDestination';
-import { recordCreatedFrom, recordIntentFrom, type ShareLedger } from './shareLedger';
+import { recordIntentFrom, type ShareLedger } from './shareLedger';
 import { CANDIDATE_TIMEOUT_MS } from './discovery';
 import { FrameReader, writeFrame } from './framing';
 import type { Identity } from './identity';
@@ -531,12 +532,30 @@ export class BulkClient {
 
 /** How a share pull ended. `reason` values are docs/protocol.md → `share.saved` reasons, plus `cancelled`. */
 export type SharePullResult =
-  | { ok: true; savedAs: string; path: string; bytes: number; sha256: string }
+  | {
+      ok: true;
+      savedAs: string;
+      path: string;
+      bytes: number;
+      sha256: string;
+      /**
+       * The saved file's identity, from the handle this pull created it with and confirmed at [path]
+       * after publication — so the receiver records *this* file for Open and Reveal, without looking
+       * the name up again.
+       */
+      identity: { dev: number; ino: number; size: number };
+    }
   | {
       ok: false;
       reason: 'truncated' | 'checksum' | 'interrupted' | 'write-failed' | 'unsupported-destination' | 'cancelled';
       detail: string;
       bytes: number;
+      /**
+       * Set only when publication linked a name and that name was then found to hold **a different
+       * file** — not this attempt's verified bytes. The name is left in place (it may be somebody
+       * else's file) and nothing was saved. The wire reason stays `write-failed`.
+       */
+      unexpectedFile?: { savedAs: string; path: string };
     };
 
 /** A connected stream to the phone's bulk port. Injectable so tests can serve it from a local socket. */
@@ -544,6 +563,57 @@ export interface ShareConnection {
   socket: Duplex & { destroy(error?: Error): void };
   /** The event after which the socket may be written: `secureConnect` for TLS, `connect` for TCP. */
   readyEvent: string;
+}
+
+/** A file's identity on this Mac: device and inode. */
+interface FileId {
+  dev: number;
+  ino: number;
+}
+
+/**
+ * What [path] refers to now, compared with [own] — by `lstat`, which never follows a link. `ours` is
+ * a regular file with our device and inode; `absent` is nothing at all; `other` is anything else (a
+ * different file, a link, a folder, or a path that could not be read), with what it is — and `known`
+ * false only for the unreadable case, where what is there has not been established.
+ */
+async function whoIsAt(
+  path: string,
+  own: FileId,
+): Promise<{ at: 'ours'; size: number } | { at: 'absent' } | { at: 'other'; what: string; known: boolean }> {
+  let st: Awaited<ReturnType<typeof fs.lstat>>;
+  try {
+    st = await fs.lstat(path);
+  } catch (error) {
+    const c = (error as NodeJS.ErrnoException).code;
+    return c === 'ENOENT' ? { at: 'absent' } : { at: 'other', what: `a path that could not be read (${c ?? 'unknown'})`, known: false };
+  }
+  if (st.isSymbolicLink()) return { at: 'other', what: 'a symbolic link', known: true };
+  if (!st.isFile()) return { at: 'other', what: 'something that is not a regular file', known: true };
+  if (st.dev !== own.dev || st.ino !== own.ino) return { at: 'other', what: 'a different file', known: true };
+  return { at: 'ours', size: st.size };
+}
+
+/**
+ * Writes to [handle] in order and **never closes it** — the pull holds the handle as its reference to
+ * the file it created, and closes it itself once cleanup is done. Not a `WriteStream` on the handle's
+ * descriptor: measured on Node 24, `FileHandle.createWriteStream({ autoClose: false })` holds a
+ * reference that makes `handle.close()` wait forever, and an fd-based `WriteStream` closes the
+ * descriptor on `destroy()` even with `autoClose: false` — after which the number can be reused by
+ * an unrelated open, and the "reference" would describe somebody else's file.
+ */
+export function handleWriter(handle: FileHandle): Writable {
+  return new Writable({
+    write(chunk: Buffer, _encoding, done) {
+      void (async () => {
+        for (let at = 0; at < chunk.length; ) {
+          const { bytesWritten } = await handle.write(chunk, at, chunk.length - at);
+          if (bytesWritten <= 0) throw new Error('the partial accepted no bytes');
+          at += bytesWritten;
+        }
+      })().then(() => done(), (error: Error) => done(error));
+    },
+  });
 }
 
 /**
@@ -556,12 +626,23 @@ export interface ShareConnection {
  *   before it exists and created exclusively. **Anything already at that path refuses the pull and is
  *   left untouched** — a matching name is not proof of ownership, so nothing here deletes a file it
  *   did not create in this attempt;
+ * - **this attempt's file is identified from its open handle, never by looking the name up again**,
+ *   and the handle is held until the pull ends. The name is only ever acted on after `lstat` shows
+ *   it still refers to that file: a partial path that now holds something else is never deleted, and
+ *   is never published as this attempt's bytes;
  * - offset is always 0 — there is no resume;
  * - an **idle timer** ([idleTimeoutMs], reset on every chunk) ends a stalled pull as `interrupted`;
  * - the length must equal the offer's size and the SHA-256 must equal the offer's digest;
- * - it is saved **only** through [publish] (the exclusive hard-link publication) and never renamed;
+ * - it is saved **only** through [publish] (the exclusive hard link), and reported saved only when
+ *   the published name is found to be this attempt's file;
  * - on **every** failure — length, digest, stall, socket error, cancel, publish — its own partial is
- *   deleted, and no sidecar is written.
+ *   deleted if its name still refers to it, and no sidecar is written.
+ *
+ * **Not race-free, and not claimed to be.** Every check here is a look at a name followed by an
+ * action on that name, and POSIX gives no way to make the two one step. Between the last `lstat` and
+ * the `link` a swap can still put another file under the published name (caught afterwards: it is
+ * not reported saved, and the name is left in place); between the last `lstat` and an `unlink` a
+ * swap can still cost the newcomer its name at the partial path. Each window is one syscall wide.
  */
 async function pullShareWith(
   options: {
@@ -572,12 +653,22 @@ async function pullShareWith(
     expectedBytes: number;
     expectedSha256: string;
     idleTimeoutMs: number;
+    /** Links [part] under a free final name. It must not remove [part]: that is decided here, by identity. */
     publish: (part: string) => Promise<PublishResult>;
     signal?: AbortSignal;
     /** The private ownership record. Null only in tests that do not exercise the sweep. */
     ledger?: ShareLedger | null;
-    /** Test seam: how the partial is opened. Default: `createWriteStream(part, { flags: 'wx' })`. */
-    openPart?: (path: string) => Writable;
+    /**
+     * Test seam: how bytes are written to the partial, given the descriptor this pull created it
+     * with. It must not close the descriptor — the pull owns it. Default: [handleWriter].
+     */
+    openPart?: (fd: number) => Writable;
+    /**
+     * Test seam: how the partial is created. It must create [path] **exclusively** and return the
+     * handle; the pull identifies, writes through ([handleWriter]) and closes it. Default:
+     * `fs.open(path, 'wx')`. Tests wrap the real handle to delay, hold or fail its writes.
+     */
+    openHandle?: (path: string) => Promise<FileHandle>;
     /**
      * Receiver-measured progress: the running count of bytes that arrived and were handed to the
      * partial, after each frame. It is **this Mac's** count, never the phone's claim, and it says
@@ -600,7 +691,10 @@ async function pullShareWith(
   return new Promise<SharePullResult>((resolve) => {
     let settled = false;
     let received = 0;
-    let created = false;
+    /** The partial, open since the exclusive create. Closed by [release] on every exit path. */
+    let handle: FileHandle | null = null;
+    /** This attempt's file, identified from [handle] — never from the name. Null until created. */
+    let own: FileId | null = null;
     let idle: ReturnType<typeof setTimeout> | null = null;
     const digest = createHash('sha256');
     const tally = new FrameTally('bulk');
@@ -623,11 +717,64 @@ async function pullShareWith(
         f.once('error', reject);
         f.end(() => done());
       });
-    /** Deletes the partial only if THIS attempt created it, and drops it from the ledger. */
-    const discardOwn = async (): Promise<void> => {
-      if (created) await fs.unlink(part).catch(() => undefined);
-      await ledger?.forget(part).catch(() => undefined);
+    const release = async (): Promise<void> => {
+      const h = handle;
+      handle = null;
+      await h?.close().catch(() => undefined);
     };
+    /**
+     * Removes the partial's name **only while it still refers to this attempt's file**. Anything else
+     * there is left untouched and the ledger entry is kept — it records our identity, so the startup
+     * sweep cannot delete the newcomer either. `clean` is false whenever something was left behind;
+     * `note` says what, for the log and the result.
+     */
+    const discardOwn = async (): Promise<{ clean: boolean; note: string }> => {
+      if (!own) {
+        await ledger?.forget(part).catch(() => undefined);
+        return { clean: true, note: 'no partial was created' };
+      }
+      const now = await whoIsAt(part, own);
+      if (now.at === 'absent') {
+        await ledger?.forget(part).catch(() => undefined);
+        return { clean: true, note: 'nothing was left at the partial path' };
+      }
+      if (now.at === 'other') {
+        return {
+          clean: false,
+          note: `the partial path now holds ${now.what}, which was left untouched; this attempt's own partial is no longer at that path and was not deleted`,
+        };
+      }
+      // **Accepted residual race — not prevented.** The name can be swapped between the lstat above and
+      // this unlink, and macOS has no call that removes a name only if it still refers to a given
+      // file. A file swapped in inside that one-syscall window loses its name at this path. The owner
+      // accepted this against a deliberate process running as the same user; an accidental one would
+      // have to create a file at a fresh 128-bit random name inside that window.
+      //
+      // What is done instead is **detection**: this attempt's file loses exactly one link when its
+      // own name is removed. If the count does not drop by one, the name removed was not ours, and
+      // that is reported rather than passed off as a clean delete. A process that also changes this
+      // file's links at the same moment can defeat the count; it is a report, not a guard.
+      const links = async (): Promise<number | null> => (handle ? handle.stat().then((st) => st.nlink, () => null) : null);
+      const linksBefore = await links();
+      try {
+        await fs.unlink(part);
+      } catch (error) {
+        return { clean: false, note: `this attempt's own partial could not be deleted (${(error as NodeJS.ErrnoException).code ?? 'unknown'}); the ledger keeps it for the startup sweep` };
+      }
+      const linksAfter = await links();
+      if (linksBefore !== null && linksAfter !== null && linksAfter !== linksBefore - 1) {
+        log.error('bulk', `share ${transferId}: a name was removed at the partial path, but this attempt's file went from ${linksBefore} to ${linksAfter} links — the name removed was not this attempt's file`);
+        return {
+          clean: false,
+          note: `a file that replaced the partial between the check and the delete lost its name at the partial path (this attempt's file went from ${linksBefore} to ${linksAfter} links); the ledger keeps the entry`,
+        };
+      }
+      await ledger?.forget(part).catch(() => undefined);
+      return { clean: true, note: 'its own partial was deleted' };
+    };
+    type Failure = Extract<SharePullResult, { ok: false }>;
+    const failure = (reason: Failure['reason'], detail: string, cleanup: { clean: boolean; note: string }, unexpectedFile?: Failure['unexpectedFile']): SharePullResult =>
+      ({ ok: false, reason, detail: cleanup.clean ? detail : `${detail}; ${cleanup.note}`, bytes: received, ...(unexpectedFile ? { unexpectedFile } : {}) });
 
     const fail = (reason: Exclude<SharePullResult, { ok: true }>['reason'], detail: string): void => {
       if (settled) return;
@@ -638,9 +785,10 @@ async function pullShareWith(
       void closeFile()
         .catch(() => undefined)
         .then(() => discardOwn())
-        .then(() => {
-          log.warn('bulk', `share ${transferId} failed (${reason}: ${detail}) after ${received} of ${expectedBytes} bytes; its own partial was deleted`);
-          resolve({ ok: false, reason, detail, bytes: received });
+        .then(async (cleanup) => {
+          await release();
+          log.warn('bulk', `share ${transferId} failed (${reason}: ${detail}) after ${received} of ${expectedBytes} bytes; ${cleanup.note}`);
+          resolve(failure(reason, detail, cleanup));
         });
     };
     const onAbort = (): void => fail('cancelled', 'cancelled');
@@ -650,11 +798,12 @@ async function pullShareWith(
       settled = true;
       stopIdle();
       socket?.destroy();
-      const settle = async (reason: Exclude<SharePullResult, { ok: true }>['reason'], detail: string): Promise<void> => {
+      const settle = async (reason: Failure['reason'], detail: string, unexpectedFile?: Failure['unexpectedFile']): Promise<void> => {
         options.signal?.removeEventListener('abort', onAbort);
-        await discardOwn();
-        log.warn('bulk', `share ${transferId} ${reason}: ${detail}; its own partial was deleted, no sidecar`);
-        resolve({ ok: false, reason, detail, bytes: received });
+        const cleanup = await discardOwn();
+        await release();
+        log.warn('bulk', `share ${transferId} ${reason}: ${detail}; ${cleanup.note}, no sidecar`);
+        resolve(failure(reason, detail, cleanup, unexpectedFile));
       };
       // 1. Every byte flushed to disk — a write error here is a failed save, not a saved file.
       try {
@@ -662,8 +811,9 @@ async function pullShareWith(
       } catch (error) {
         return settle('write-failed', `writing the partial failed: ${(error as Error).message}`);
       }
-      // 2. What is on disk is what arrived.
-      const onDisk = await fs.stat(part).then((st) => st.size, () => -1);
+      // 2. What is on disk is what arrived — read through the handle, so it is this attempt's file
+      //    whatever its name refers to now.
+      const onDisk = handle ? await handle.stat().then((st) => st.size, () => -1) : -1;
       if (onDisk !== received) return settle('write-failed', `${onDisk} bytes on disk for ${received} received`);
       // 3. What arrived is what was offered.
       if (received !== expectedBytes) return settle('truncated', `received ${received} of ${expectedBytes}`);
@@ -671,42 +821,68 @@ async function pullShareWith(
       if (sha256 !== expectedSha256) return settle('checksum', `expected ${expectedSha256.slice(0, 12)}… got ${sha256.slice(0, 12)}…`);
       // 4. Cancelled while flushing or verifying: nothing is published.
       if (options.signal?.aborted) return settle('cancelled', 'cancelled before publication');
+      // 5. The last look before publication: the partial's name still refers to this attempt's file,
+      //    a regular file of the offered size. The digest above is over the bytes that arrived; this
+      //    is what ties that digest to the name about to be linked.
+      const before = await whoIsAt(part, own!);
+      if (before.at !== 'ours') {
+        return settle('write-failed', `the partial path no longer holds this attempt's file (${before.at === 'absent' ? 'nothing is there' : before.what}); nothing was published`);
+      }
+      if (before.size !== expectedBytes) return settle('write-failed', `the partial holds ${before.size} bytes for ${expectedBytes} offered; nothing was published`);
       options.signal?.removeEventListener('abort', onAbort);
-      // 5. Exclusive publication — the only way a partial becomes a file.
+      // 6. Exclusive publication — the only way a partial becomes a file. (Residual race: a swap
+      //    between step 5 and the link publishes the newcomer; step 7 catches it.)
       const published = await options.publish(part).catch((error: Error) => ({ ok: false as const, reason: 'write-failed' as const, detail: error.message }));
       if (!published.ok) return settle(published.reason, published.detail);
-      // Published: the partial name was unlinked by the publisher; if it could not be, the ledger keeps
-      // it (identity-matched) for the startup sweep rather than deleting a published file's second name.
-      const leftover = await fs.lstat(part).then(() => true, () => false);
-      if (!leftover) await ledger?.forget(part).catch(() => undefined);
-      log.info('bulk', `share ${transferId} received ${received} bytes, flushed, verified, published exclusively as ${published.savedAs}`);
-      resolve({ ok: true, savedAs: published.savedAs, path: published.path, bytes: received, sha256 });
+      // 7. The published name is this attempt's file, or it is not saved. On a mismatch the name is
+      //    left in place: this pull created it, but after the link it can be swapped too, so what is
+      //    there now may be somebody else's file and is not deleted by name.
+      const landed = await whoIsAt(published.path, own!);
+      if (landed.at !== 'ours') {
+        const what = landed.at === 'absent' ? 'nothing is there now' : `it holds ${landed.what}`;
+        log.error('bulk', `share ${transferId}: published as ${published.savedAs}, but ${what} — not reported saved; ${published.savedAs} left in place`);
+        // Only a file positively seen to be different is reported as one. An empty or unreadable
+        // name is an ordinary write failure: nothing there has been shown to be somebody else's.
+        const unexpected = landed.at === 'other' && landed.known ? { savedAs: published.savedAs, path: published.path } : undefined;
+        return settle('write-failed', `the published name ${published.savedAs} does not refer to this attempt's verified file (${what}); it was left in place and nothing was saved`, unexpected);
+      }
+      // 8. The partial's name is now a second name for the published file: removed only while it
+      //    still is. If it is not — swapped since the link, or not removable — it is left, and the
+      //    ledger keeps it (identity-matched) for the startup sweep.
+      const partial = await discardOwn();
+      await release();
+      if (!partial.clean) log.warn('bulk', `share ${transferId}: published, but ${partial.note}`);
+      log.info('bulk', `share ${transferId} received ${received} bytes, flushed, verified, published exclusively as ${published.savedAs}, and the published name confirmed as this attempt's file`);
+      resolve({
+        ok: true, savedAs: published.savedAs, path: published.path, bytes: received, sha256,
+        identity: { dev: own!.dev, ino: own!.ino, size: landed.size },
+      });
     };
 
     const begin = async (): Promise<void> => {
-      // Recorded before it exists, created exclusively, identified after — see shareLedger.ts.
+      // Recorded before it exists, created exclusively, identified from the open handle — see shareLedger.ts.
       try {
         if (ledger) await recordIntentFrom(ledger, part);
       } catch (error) {
         return fail('write-failed', `the ownership record could not be written: ${(error as Error).message}`);
       }
-      const out = options.openPart ? options.openPart(part) : createWriteStream(part, { flags: 'wx' });
+      // `wx` is O_CREAT|O_EXCL: it refuses any existing name, a symbolic link included.
+      try {
+        handle = await (options.openHandle ?? ((p: string) => fs.open(p, 'wx')))(part);
+      } catch (error) {
+        return fail('write-failed', `the partial could not be created: ${(error as Error).message}`);
+      }
+      try {
+        const st = await handle.stat();
+        own = { dev: st.dev, ino: st.ino };
+        if (ledger) await ledger.recordCreated(part, { dev: st.dev, ino: st.ino, birthtimeMs: st.birthtimeMs, maxBytes: expectedBytes });
+      } catch (error) {
+        return fail('write-failed', `the partial's identity could not be recorded: ${(error as Error).message}`);
+      }
+      if (settled) return;
+      const out = options.openPart ? options.openPart(handle.fd) : handleWriter(handle);
       file = out;
       out.on('error', (error: Error) => fail('write-failed', `the partial could not be written: ${error.message}`));
-      const opened = await new Promise<boolean>((ok) => {
-        if (options.openPart) return ok(true);
-        out.once('open', () => ok(true));
-        out.once('error', () => ok(false));
-      });
-      if (!opened || settled) return;
-      created = true;
-      if (ledger) {
-        try {
-          await recordCreatedFrom(ledger, part, expectedBytes);
-        } catch (error) {
-          return fail('write-failed', `the partial's identity could not be recorded: ${(error as Error).message}`);
-        }
-      }
       if (options.signal?.aborted) return fail('cancelled', 'cancelled before it began');
       options.signal?.addEventListener('abort', onAbort);
 

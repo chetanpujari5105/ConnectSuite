@@ -84,6 +84,14 @@ export const RECEIVE_STATES = [
   'saved',
   'saved-unacknowledged',
   'failed',
+  /**
+   * **Not saved, and a different file now has the name.** Publication linked a name, and that name
+   * was then found to hold a file that is not this offer's verified bytes (it was swapped in around
+   * the link). Terminal: no Retry — a second attempt would save beside it under a new name, with no
+   * way to tell the two apart — and the name is left untouched, never opened, never deleted. The
+   * phone is told `write-failed`, the protocol's existing reason.
+   */
+  'unexpected-file',
   'declined',
   'expired',
   'cancelled',
@@ -103,6 +111,8 @@ interface Entry {
   abort: AbortController | null;
   savedAs: string | null;
   lastReason: string | null;
+  /** In `unexpected-file`: the name that now holds a different file, in [folder]. Null otherwise. */
+  unexpectedName: string | null;
   /**
    * An earlier file **this run** published from the same SHA-256, if any — so a re-share after an
    * unconfirmed save is shown as a possible second copy, never as the first.
@@ -145,6 +155,8 @@ export interface ShareCardSnapshot {
   receivedBytes: number | null;
   /** A failed attempt that a person may retry now (inside the window, never after publication). */
   canRetry: boolean;
+  /** In `unexpected-file`: the name in [folder] that holds a different file. Display only. */
+  unexpectedName: string | null;
 }
 
 /** A verified, published earlier copy of the same bytes, and whether the phone ever acknowledged it. */
@@ -250,6 +262,7 @@ export class ShareReceiver {
       priorCopy: e.priorCopy ? { ...e.priorCopy } : null,
       receivedBytes: e.receivedBytes,
       canRetry: e.state === 'failed' && e.savedAs === null && e.retryUntilMs !== null && this.now() < e.retryUntilMs,
+      unexpectedName: e.unexpectedName,
     }));
   }
 
@@ -495,7 +508,12 @@ export class ShareReceiver {
       },
     });
     entry.abort = null;
-    if (result.ok) entry.publication = await identify(result.path, result.bytes);
+    // The file this Mac created, confirmed at the saved name by the pull — not a second lookup here.
+    if (result.ok) entry.publication = { path: result.path, ...result.identity };
+    if (!result.ok && result.unexpectedFile) {
+      this.unexpectedFile(entry, result.unexpectedFile.savedAs, result.detail);
+      return;
+    }
     if (result.ok && entry.state !== 'receiving') {
       // The phone cancelled (or the session ended) while the file was being published, and the
       // publication won the race. The file is on this Mac, verified; the phone has already ended the
@@ -537,6 +555,25 @@ export class ShareReceiver {
       return;
     }
     this.fail(entry, result.reason, result.detail, true);
+  }
+
+  /**
+   * The pull linked a name and found a different file there: `unexpected-file`. It is an end, not a
+   * failed attempt waiting for Retry — so no retry window, the offer is released, and the phone is
+   * told once, with the protocol's existing `write-failed`.
+   */
+  private unexpectedFile(entry: Entry, savedAs: string, detail: string): void {
+    const offerId = entry.offer.offerId;
+    this.failedAttempts += 1;
+    entry.unexpectedName = savedAs;
+    entry.lastReason = 'write-failed';
+    entry.retryUntilMs = null;
+    this.endAs(entry, 'unexpected-file');
+    log.error('share', `share ${offerId} not saved: a different file now has the name ${savedAs} in the receive folder; it was left untouched and not opened; no Retry (${detail}) — ${this.tally()}`);
+    void this.deps.link
+      .request(MessageType.SHARE_SAVED, { offerId, ok: false, reason: 'write-failed' })
+      .then((ack) => log.info('share', `share.saved ${offerId} ok:false write-failed (unexpected file) → ${JSON.stringify(payloadOf(ack))}`))
+      .catch((error: Error) => log.warn('share', `share.saved ${offerId} ok:false write-failed (unexpected file) failed: ${error.message}`));
   }
 
   private fail(entry: Entry, reason: string, detail: string, tellPhone: boolean): void {
@@ -585,7 +622,8 @@ export class ShareReceiver {
     const entry = this.entries.get(offerId);
     if (entry) {
       entry.abort?.abort();
-      if (!['saved', 'saved-unacknowledged'].includes(entry.state)) this.endAs(entry, reason === 'expired' ? 'expired' : 'cancelled', false);
+      // An end the phone cannot rewrite: a saved file, or a different file found at the saved name.
+      if (!['saved', 'saved-unacknowledged', 'unexpected-file'].includes(entry.state)) this.endAs(entry, reason === 'expired' ? 'expired' : 'cancelled', false);
     }
     this.clearTimer(offerId);
     // Counted only if this Mac was still holding it: its own expiry and the phone's cancel are one end.
@@ -611,7 +649,7 @@ export class ShareReceiver {
     if (folder !== null) {
       this.entries.set(offerId, {
         offer, sessionKey, folder, state: 'awaiting-decision', macExpiresAtMs,
-        retryUntilMs: null, abort: null, savedAs: null, lastReason: null,
+        retryUntilMs: null, abort: null, savedAs: null, lastReason: null, unexpectedName: null,
         priorCopy: this.published.get(offer.item.sha256) ?? null,
         receivedBytes: null, publication: null,
       });
@@ -632,7 +670,7 @@ export class ShareReceiver {
   private recordRefusal(offer: ShareOfferPayload, sessionKey: string, macExpiresAtMs: number, reason: DeclineReason): void {
     this.entries.set(offer.offerId, {
       offer, sessionKey, folder: '', state: 'refused', macExpiresAtMs,
-      retryUntilMs: null, abort: null, savedAs: null, lastReason: reason, priorCopy: null,
+      retryUntilMs: null, abort: null, savedAs: null, lastReason: reason, unexpectedName: null, priorCopy: null,
       receivedBytes: null, publication: null,
     });
     this.changed();
@@ -689,14 +727,4 @@ export class ShareReceiver {
  */
 function now(entry: Entry): ReceiveState {
   return entry.state;
-}
-
-/** Identify a just-published file, so a later Open can prove it is still that file. */
-async function identify(path: string, bytes: number): Promise<Publication | null> {
-  const st = await lstat(path).catch(() => null);
-  if (!st || !st.isFile() || st.size !== bytes) {
-    log.warn('share', 'a published file could not be identified right after publication; Open and Reveal will refuse it');
-    return null;
-  }
-  return { path, dev: st.dev, ino: st.ino, size: st.size };
 }

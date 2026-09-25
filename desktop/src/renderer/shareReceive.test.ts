@@ -64,7 +64,7 @@ test('a waiting card shows who, what, the exact bytes and where — and points a
 
 test('one decision surface: the card has no Accept or Decline in any state', () => {
   const t = setup();
-  for (const state of ['awaiting-decision', 'accepting', 'receiving', 'saved', 'saved-unacknowledged', 'failed', 'declined', 'expired', 'cancelled', 'ended', 'refused']) {
+  for (const state of ['awaiting-decision', 'accepting', 'receiving', 'saved', 'saved-unacknowledged', 'failed', 'unexpected-file', 'declined', 'expired', 'cancelled', 'ended', 'refused']) {
     t.tray.update([data({ state, savedAs: state.startsWith('saved') ? 'IMG_2041.jpg' : null })]);
     const actions = t.card().queryAll('button').map((b) => b.dataset.action);
     assert.ok(actions.length > 0, `control: the card's buttons were read (${state})`);
@@ -213,3 +213,13 @@ test('one update carrying several new cards (a reload) draws them newest first',
   assert.deepEqual(t.root.children.map((c) => c.dataset.offerId), ids);
 });
 
+
+test('unexpected-file card: Dismiss only (no Show), and a row naming the different file with its folder', () => {
+  const t = setup();
+  t.tray.update([data({ state: 'unexpected-file', reason: 'write-failed', unexpectedName: 'IMG_2041 (2).jpg' })]);
+  assert.deepEqual(rowsOf(t.card()), ['From', 'Different file']);
+  const visible = t.card().queryAll('button').filter((b) => !b.hidden).map((b) => b.dataset.action);
+  assert.ok(visible.length > 0, 'control: the card’s buttons were read');
+  assert.ok(!visible.includes('show'), visible.join(','));
+  assert.ok(t.card().textContent.includes('~/Downloads/Sidekick/IMG_2041 (2).jpg'), 'the row carries folder and name');
+});

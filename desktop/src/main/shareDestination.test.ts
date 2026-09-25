@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -74,12 +74,27 @@ function partWith(d: string, content: string): string {
   return p;
 }
 
-test('publishes by link under the wanted name and removes the partial', async () => {
+test('publishes by link under the wanted name, and leaves the partial for the caller to remove by identity', async () => {
   const d = dir();
-  const r = await publishExclusive(partWith(d, 'hello'), d, 'x.bin');
+  const part = partWith(d, 'hello');
+  const r = await publishExclusive(part, d, 'x.bin');
   assert.deepEqual(r.ok && r.savedAs, 'x.bin');
   assert.equal(readFileSync(join(d, 'x.bin'), 'utf8'), 'hello');
-  assert.equal(existsSync(sharePartPath(d, id, nonce)), false);
+  assert.equal(lstatSync(part).ino, lstatSync(join(d, 'x.bin')).ino, 'the partial is a second name for the published file');
+});
+
+test('a file swapped in at the partial path after the link is not removed by the publisher', async () => {
+  const d = dir();
+  const part = partWith(d, 'shared');
+  const r = await publishExclusive(part, d, 'x.bin', withFs({
+    link: async (a, b) => {
+      await realFs.link(a, b);
+      renameSync(a, join(d, 'moved-aside'));
+      writeFileSync(a, 'somebody else’s file', { flag: 'wx' }); // swapped in right after the link
+    },
+  }));
+  assert.equal(r.ok, true);
+  assert.equal(readFileSync(part, 'utf8'), 'somebody else’s file');
 });
 
 test('an existing file is never replaced: the share lands as (2)', async () => {

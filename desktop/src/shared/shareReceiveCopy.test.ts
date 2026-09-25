@@ -72,3 +72,15 @@ test('an offer carrying bytes already saved this run is shown as a possible seco
 test('every receive state has a status (the two lists cannot drift)', () => {
   for (const state of RECEIVE_STATES) assert.ok(shareReceiveStatus(facts(state)).headline.length > 0, state);
 });
+
+test('unexpected-file: not saved, never confirmed, and it names the exact file and folder (two different cases)', () => {
+  for (const [name, folder] of [['Budget (2).xlsx', '~/Downloads/Sidekick'], ['IMG_9 (3).heic', '/Volumes/Archive/Inbox']] as const) {
+    const s = shareReceiveStatus(facts('unexpected-file', { reason: 'write-failed', unexpectedName: name, folder }));
+    assert.equal(s.savedOnMac, false);
+    assert.equal(s.confirmedByPhone, false);
+    assert.equal(s.tone, 'danger');
+    assert.equal(s.headline, 'Not saved — a different file appeared');
+    assert.ok(s.detail[0]!.includes(`“${name}” in ${folder}.`), s.detail[0]);
+    assert.ok(s.detail.some((d) => d.includes('did not open it')), s.detail.join(' | '));
+  }
+});

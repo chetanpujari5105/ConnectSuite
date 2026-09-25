@@ -24862,3 +24862,134 @@ the Decline was logged (`… ended (declined (user)); Send works again`) but not
 sheet was closed before a UI dump. `download.jpg` and `l1I0k-Axckq5Kes_ypu2ERit.jpg` were **added by the
 owner** during testing and need no investigation. The 13:30:58 `sidekick-share-test-001.png` leaving the
 folder remains recorded as observed and unattributed; nothing was examined further.
+
+## S2 — the share receiver's partial, its name, and what it may delete (2026-09-25) — synthetic only
+
+Everything here ran on generated data in `mkdtemp` folders under the OS temp folder. No phone, no live
+transfer, no receive folder, no pairing change. The threat model was set by the owner before the fix:
+protect normal transfers and accidental interference as far as filesystem checks allow; **accept** the
+check-to-delete window against a deliberate process running as the same macOS user; never delete a
+*known* replacement, never overwrite a final name, never report unverified bytes as Saved, and never
+leave a hidden full-size second link after a normal success.
+
+### Defect 153 — the share pull deleted, or published as Saved, whatever was at its partial's name
+
+**Status: fixed — by synthetic tests only** (generated data, temp folders, no phone, no live transfer).
+The check-to-delete race against a deliberate process running as the same user is **residual — detected,
+not prevented**. Localhost speed impact is **inconclusive**. Cancellation during a write that never settles
+is an **open limitation**.
+
+**Red before, on the verbatim defect** (HEAD `21cb34f`, the tests written first):
+
+| Test | HEAD | After |
+|---|---|---|
+| control — same harness, swap never armed | ✔ saved | ✔ |
+| S2-A, truncated pull — a replacement at the partial path survives cleanup | ✖ `ENOENT`: deleted | ✔ |
+| S2-A, checksum failure — the same | ✖ `ENOENT`: deleted | ✔ |
+| S2-B — a same-size replacement is not published or reported Saved | ✖ *"reported Saved as x.bin"* with the phone's digest over the replacement's bytes | ✔ |
+
+Each swap test proves the swap happened (the original inode is found at the moved-aside name, the
+replacement's inode differs) before asserting anything about the pull.
+
+**What was built** (`desktop/src/main/bulk.ts`, `shareDestination.ts`, `share.ts`, the share copy and
+both windows):
+
+- The partial is created by `fs.open(part, 'wx')` and identified by `fstat` of **that handle**, which is
+  held until the pull ends and closed on every exit path. Bytes go through `handleWriter`, which writes
+  with `handle.write` and never closes the handle. (Measured on Node 24 before choosing it:
+  `FileHandle.createWriteStream({autoClose:false})` makes `handle.close()` wait forever, and an
+  fd-based `WriteStream` closes the descriptor on `destroy()` despite `autoClose:false`.)
+- Before publication the partial's name must be that file (`lstat`: regular, same device and inode) at
+  exactly the offered size. After the exclusive link, the saved name must be that file, or nothing is
+  Saved. `publishExclusive` now only links; it deletes nothing.
+- A name is deleted only after `lstat` shows it is this attempt's file; anything else at the path is
+  left and reported, and its ledger entry kept (it records our identity, so the sweep cannot delete
+  the newcomer either).
+- **The accepted window, detected rather than prevented.** A replacement swapped in between that
+  `lstat` and the `unlink` loses its name — macOS has no call that removes a name only if it still
+  refers to a given file. The pull compares the file's link count through its handle before and after;
+  if it did not drop by one, the name removed was not ours, and the result and an `E` line say so.
+- A different file found at the saved name ends the offer in a new Mac state, **`unexpected-file`**:
+  headline *"Not saved — a different file appeared"*, the file's exact name and folder, *"Sidekick left it
+  untouched and did not open it"*; Close only (no Open, no Show in Finder — selecting it would make
+  Finder draw a Quick Look thumbnail of unknown content); it does not close itself; no Retry; a later
+  phone `share.cancel` or session end cannot rewrite it. The phone is sent the existing
+  `share.saved {ok:false, reason:"write-failed"}` — no protocol change. An *empty* or *unreadable* saved
+  name is an ordinary `write-failed`, not this state: nothing there was shown to be anyone's file.
+- The receiver records the saved file for Open and Reveal from the pull's handle identity instead of a
+  second `lstat` of the name.
+
+**Tests and mutations.** 11 new tests (7 in `bulkShare.test.ts`, 1 each in `share.test.ts`,
+`shareReceiveCopy.test.ts`, `shareWindowModel.test.ts`, `shareReceive.test.ts`), on top of the 9 from the
+first half of this work (4 red-first, 4 swap-timing, 1 destination). Fifteen mutations, each applied, run against the six
+focused files, and restored byte-identical; every one went red on the test named for it:
+
+| Mutation | Red |
+|---|---|
+| race detection off | the accepted-race test |
+| `unexpectedFile` never set | 3 — both post-link swaps and the receiver test |
+| an empty/unreadable name treated as a different file | the emptied-name test |
+| a phone cancel rewrites `unexpected-file` | the receiver test |
+| `unexpected-file` left retryable | the receiver test |
+| the window closes itself | the window-model test |
+| the window offers Open / Show in Finder | the window-model test |
+| the copy names the offered name instead of the file there | 2 |
+| the card drops its *Different file* row | the card test |
+| `handleWriter` swallows write errors | both write-error tests |
+| `handleWriter` never signals backpressure | the backpressure test |
+| the idle timer runs during our own pause | the backpressure test |
+| `fail()` never closes the handle | 3 |
+| `fail()` does not wait for the pending write | the cancel-while-pending test |
+| a normal success leaves the partial (a hidden full-size second link) | 5 |
+
+Of the handleWriter tests: a **real** kernel `EBADF` (a handle opened read-only) surfaces as the stream's
+error and leaves the handle open for the pull to close; a third-write `ENOSPC` fails the pull as
+`write-failed` with one close; 120 ms writes against an 80 ms idle timeout complete with every frame
+paused (the count is printed beside the frame count); a cancel landing on a held write does not resolve
+or close until that write settles — **the test releases the write itself; it does not show that a cancel
+ever completes on its own** — and seven exit paths each close the handle exactly once, the real
+handle's `fd` reading `-1` after.
+
+**Open limitation — not a cancellation guarantee.** A write that *never* settles holds the pull open
+forever, cancel or not: `closeFile` waits for pending writes with no deadline, so the partial is not
+cleaned up and the handle is not closed until the disk answers. It predates this change (the old
+`WriteStream` path had it too). It is open, not fixed, and not covered by any test here.
+
+**Suites.** The six focused share files 129 / 129; the whole Mac suite **1188 / 1188**
+(`desktop/.test-run.json`, 2026-09-25T12:20:39Z); `tsc` clean for both `tsconfig.json` and
+`tsconfig.test.json`. The phone suite was not run; no Kotlin changed.
+
+**Speed** — `desktop/scripts/share-pull-bench.ts`, this tree against HEAD `21cb34f` extracted with
+`git archive` into a scratch folder, 512 MiB of random bytes per run over the localhost fake phone at
+production frame size, trees alternating, each run checked (`ok`, digest, bytes on disk) before it
+counts. Bounds printed with every run: plain TCP, no TLS, both ends in one process, warm page cache, no
+fsync. Pass criterion fixed beforehand: this tree's median within 5% of HEAD's.
+
+| Pass | HEAD median | this tree median | ratio |
+|---|---|---|---|
+| 1 (5 runs) | 654 MiB/s | 632 MiB/s | 96.8% — within 5% |
+| 2 (5 runs) | 744 MiB/s | 699 MiB/s | **94.1% — missed the 5% criterion** |
+| 3 (15 runs, added after pass 2 missed) | 692 MiB/s | 689 MiB/s | 99.6% — within 5% |
+
+**Result: the localhost speed impact is INCONCLUSIVE.** One of three passes missed the pre-set 5%
+criterion, and the third pass, added after that miss, does not overrule it. Single runs ranged from 267
+to 784 MiB/s, with stalls of over a second at unchanged CPU on both trees (the disk was 99% full) — a
+spread larger than the differences being measured. One narrower reading: `handleWriter` against HEAD's
+`WriteStream`, measured alone (2,048 × 256 KiB from memory, nine alternating rounds), took 357 ms against
+369 ms. Median CPU in pass 3 was 935 ms against 922 ms (+1.4%). **Not claimed:** that there is no
+regression, or anything about share speed over Wi-Fi.
+
+**Residual risk, stated plainly.** Not race-free. A deliberate process running as the same user can
+still win the check-to-delete window at three sites (failure cleanup, the post-save partial, the
+unchanged startup sweep) — accepted by the owner as residual; detected by link count, **not prevented** —
+and the check-to-link window,
+which produces `unexpected-file`, not a false Saved. It can also rewrite the saved file's contents
+after verification; nothing on this platform prevents that. A partial moved away by someone else keeps
+its bytes at a location Sidekick does not know and does not clean up.
+
+### Defect 154 — the destination check's probe files are deleted by name with no identity check
+
+Found by reading `shareDestination.ts` (`checkDestination`, the `for (const p of [b, a])` loop) while
+fixing 153. The probe files are recorded in the ledger with their identity and then removed with
+`unlink` by name, with no comparison. **Not reproduced**, and kept out of 153's patch on the owner's
+instruction. Open: first a swap test between the link and the delete, then identity-checked deletes.

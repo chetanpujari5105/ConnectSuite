@@ -148,3 +148,14 @@ test('every glyph the window can draw resolves in icons.ts — and the enumerati
     assert.ok(SHARE_WIN_ICON_NAMES.includes(shareWindowModel(offer({ mime }), 'P').glyph), mime);
   }
 });
+
+test('unexpected-file: Close only — no Open, no Show in Finder, no Try again — and it does not close itself', () => {
+  for (const canRetry of [false, true]) {
+    const m = shareWindowModel(offer({ state: 'unexpected-file', reason: 'write-failed', unexpectedName: 'IMG_2041 (2).jpg', canRetry }), 'P');
+    assert.deepEqual(m.actions.map((a) => a.id), ['close'], `canRetry=${canRetry}`);
+    assert.equal(m.closesItself, false);
+    assert.deepEqual(m.place, { label: 'Folder', value: '~/Downloads/Sidekick' });
+    assert.equal(m.eyebrow, 'Not saved — a different file appeared');
+    assert.ok(m.detail[0]!.includes('“IMG_2041 (2).jpg” in ~/Downloads/Sidekick.'), m.detail[0]);
+  }
+});

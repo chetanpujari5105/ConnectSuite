@@ -153,9 +153,14 @@ export async function checkDestination(
 export type PublishResult = { ok: true; path: string; savedAs: string } | { ok: false; reason: PublishFailure; detail: string };
 
 /**
- * Publishes [part] as the first free name of [wantedName] in [folder], **by hard link**, then unlinks
- * the partial. `link()` fails with `EEXIST` if anything exists at that name, so the check and the
- * save are one step. [beforeLink] is a test seam for the final-name race.
+ * Publishes [part] as the first free name of [wantedName] in [folder], **by hard link**. `link()`
+ * fails with `EEXIST` if anything exists at that name, so the check and the save are one step.
+ * [beforeLink] is a test seam for the final-name race.
+ *
+ * **It does not remove [part].** Removing a name is only safe while that name still refers to the
+ * caller's file, and only the caller holds that file's identity (the share pull, from its open
+ * handle). A partial swapped between the link and an unlink here would have cost somebody else's file
+ * its name; the pull removes the partial itself, after confirming both names are its own file.
  */
 export async function publishExclusive(
   part: string,
@@ -178,8 +183,7 @@ export async function publishExclusive(
       if (NO_HARD_LINKS.has(c)) return { ok: false, reason: 'unsupported-destination', detail: `hard links refused (${c})` };
       return { ok: false, reason: 'write-failed', detail: `link failed (${c})` };
     }
-    // Published. The partial is now a second name for the same bytes; removing it cannot touch them.
-    await fs.unlink(part).catch(() => undefined);
+    // Linked. The partial is left for the caller, which removes it by identity.
     return { ok: true, path, savedAs };
   }
   return { ok: false, reason: 'write-failed', detail: `no free name after ${MAX_NAME_ATTEMPTS} attempts` };

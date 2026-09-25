@@ -36,6 +36,8 @@ interface ShareWinOffer {
   receivedBytes?: number | null;
   /** A failed attempt a person may retry now. */
   canRetry?: boolean;
+  /** In `unexpected-file`: the name in [folder] that holds a different file. */
+  unexpectedName?: string | null;
 }
 
 type ShareWinActionId = 'decline' | 'accept' | 'close' | 'cancel' | 'retry' | 'open' | 'reveal';
@@ -172,6 +174,8 @@ function shareWindowModel(o: ShareWinOffer, phone: string | null): ShareWinModel
     savedAs: o.savedAs,
     reason: o.reason,
     priorCopy: o.priorCopy,
+    unexpectedName: o.unexpectedName ?? null,
+    folder: o.folder,
   });
   const waiting = o.state === 'awaiting-decision';
   const published = o.state === 'saved' || o.state === 'saved-unacknowledged';
@@ -186,7 +190,9 @@ function shareWindowModel(o: ShareWinOffer, phone: string | null): ShareWinModel
     ? null
     : published
       ? { label: 'Saved in', value: o.folder }
-      : { label: 'Save to', value: o.folder };
+      : o.state === 'unexpected-file'
+        ? { label: 'Folder', value: o.folder }
+        : { label: 'Save to', value: o.folder };
   const close: ShareWinAction = waiting
     ? { id: 'close', label: 'Hide', aria: 'Hide this window. The request keeps waiting until it expires.', primary: false }
     : { id: 'close', label: 'Close', aria: `Close — ${status.headline}`, primary: false };
@@ -225,7 +231,9 @@ function shareWindowModel(o: ShareWinOffer, phone: string | null): ShareWinModel
     announcement: waiting
       ? `${who} wants to send ${o.name}, ${shareWinExactBytes(o.bytes)}. Accept or decline.`
       : `${status.headline}: ${o.name}.`,
-    closesItself: !published && !waiting && o.state !== 'accepting' && o.state !== 'receiving' && !(o.state === 'failed' && o.canRetry === true),
+    // An unexpected file stays until a person closes it: it names a file they may need to find.
+    closesItself: !published && !waiting && o.state !== 'accepting' && o.state !== 'receiving' &&
+      o.state !== 'unexpected-file' && !(o.state === 'failed' && o.canRetry === true),
   };
 }
 

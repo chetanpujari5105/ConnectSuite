@@ -16,7 +16,7 @@ import { basename, dirname, isAbsolute, join, normalize } from 'node:path';
  * Order of writes, which is what makes a crash safe:
  * 1. `recordIntent(path)` — before the file is created;
  * 2. create it exclusively (`wx`) — refusing if anything is already there;
- * 3. `recordCreated(path, identity)` — from the file just created;
+ * 3. `recordCreated(path, identity)` — from the file just created (a partial: from its open handle);
  * 4. `forget(path)` — after it is deleted or published.
  * A crash after 1 leaves an entry with no identity: the sweep deletes nothing for it.
  *
@@ -29,7 +29,10 @@ import { basename, dirname, isAbsolute, join, normalize } from 'node:path';
 export interface LedgerIdentity {
   dev: number;
   ino: number;
-  /** `birthtimeMs` from the `lstat` taken right after the exclusive create. */
+  /**
+   * `birthtimeMs` of the file just created exclusively: for a partial, from `fstat` of the handle the
+   * share pull created it with (never a second lookup of the name); for a probe file, from an `lstat`.
+   */
   birthtimeMs: number;
   /** The most bytes this file may legitimately hold: the offer's size for a partial, 0 for a probe. */
   maxBytes: number;

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -745,5 +746,57 @@ test('a failed attempt inside its window can be retried — and Cancel then give
     assert.deepEqual(readdirSync(d), []);
   } finally {
     await bad.close();
+  }
+});
+
+// ---- a different file at the saved name (S2) ------------------------------------------------------
+
+test('unexpected-file: a file swapped in just before publication ends the offer — not Saved, no Retry, phone told write-failed, the file untouched', { timeout: 10_000 }, async () => {
+  const data = synthetic(100_000);
+  const phone = await startFakePhone({ bytes: data.bytes });
+  const second = await startFakePhone({ bytes: data.bytes });
+  const link = new FakeLink(2, 100_000, data.sha256);
+  const d = folder();
+  assert.ok(d.startsWith(tmpdir()), 'confined to the OS temp folder');
+  const foreign = randomBytes(100_000);
+  const name = 'sidekick-offer-probe-100000.bin';
+  let partPath = '';
+  try {
+    const r = receiver(link, d, [phone, second], {
+      switches: { acceptProbeDigests: allow(link) },
+      // The swap lands after the pull's last look and before the link: the one window it cannot close.
+      publish: async (part, f, n) => {
+        partPath = part;
+        renameSync(part, join(f, 'moved-aside.bin'));
+        writeFileSync(part, foreign, { flag: 'wx' });
+        return publishExclusive(part, f, n);
+      },
+    });
+    await r.onOffer(offer(100_000, data.sha256));
+    assert.equal(lstatSync(join(d, 'moved-aside.bin')).size, 100_000, 'control: the swap happened');
+
+    assert.equal(r.state(id), 'unexpected-file');
+    assert.deepEqual(link.types(), ['respond:accept', 'fs.transfer.begin', 'saved:false']);
+    assert.deepEqual(link.sent[2]!.payload, { offerId: id, ok: false, reason: 'write-failed' }, 'the existing reason, no savedAs');
+    const snap = r.snapshots().find((x) => x.offerId === id)!;
+    assert.equal(snap.canRetry, false);
+    assert.equal(snap.unexpectedName, name);
+    assert.equal(snap.savedAs, null);
+    assert.equal((await r.publishedFile(id)).ok, false, 'Open and Show in Finder refuse it');
+
+    await r.retry(id);
+    assert.equal(second.seen.length, 0, 'Retry started no second pull');
+    r.onCancel({ offerId: id, reason: 'expired' });
+    r.onSessionEnded('token-A');
+    assert.equal(r.state(id), 'unexpected-file', 'a later phone cancel or session end does not rewrite it');
+    assert.deepEqual(link.types(), ['respond:accept', 'fs.transfer.begin', 'saved:false'], 'nothing else was sent');
+
+    assert.deepEqual(readFileSync(join(d, name)), foreign, 'the different file at the saved name is untouched');
+    assert.deepEqual(readFileSync(partPath), foreign, 'and keeps its own name');
+    const status = shareReceiveStatus({ state: snap.state, wantedName: snap.name, savedAs: snap.savedAs, reason: snap.reason, priorCopy: null, unexpectedName: snap.unexpectedName, folder: snap.folder });
+    assert.equal(status.savedOnMac, false);
+  } finally {
+    await phone.close();
+    await second.close();
   }
 });
