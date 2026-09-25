@@ -34,8 +34,8 @@ object Extensions {
      * the Mac half does not exist yet, and advertising 2 is a promise both ends must keep. Because the
      * negotiated version is `min(mine, theirs)`, keeping this at 1 makes every version-2 path
      * unreachable in a live pairing — `accept` is refused and no pull is authorised. `ExtensionsTest`
-     * pins the value. **It is not raised to reach version 2**: the only route is [advertised], per
-     * handshake, in a debuggable build with the development gate armed ([ShareDevGate]).
+     * pins the value. **It is not raised to reach version 2**: the routes are [advertised] — every
+     * handshake when [PRODUCTION_TRANSFER] is on, or one armed debug handshake ([ShareDevGate]).
      */
     val PHONE: Map<String, Int> = mapOf(SHARE_FILE to 1, SHARE_ASK to 1)
 
@@ -43,12 +43,12 @@ object Extensions {
      * **Whether this phone build offers the version-2 transfer to every trusted Mac**, not only to one
      * armed debug handshake. The phone's twin of the Mac's `SHARE_PRODUCTION_READINESS`: without it a
      * production Mac advertising `share.file` 2 and `share.ask` still negotiates `min(1, 2) = 1`, and
-     * ordinary Send can never enable. **False in this build and pinned by `ShareDevGateTest`**; it flips
-     * only in a reviewed commit that records the evidence (slice 3e on hardware, 2026-09-25, and the
-     * §11 cleanup), together with the Mac's readiness. Opening it cannot enable Send by itself: ordinary
-     * Send also needs `share.ask` negotiated, which only a production Mac advertises.
+     * ordinary Send can never enable. **On in this build and pinned by `ShareDevGateTest`** — recorded
+     * with the Mac's readiness after slice 3e passed on hardware (2026-09-25) and the §11 cleanup
+     * (`5e20963`). It cannot enable Send by itself: ordinary Send also needs `share.ask` negotiated,
+     * which only a production Mac advertises.
      */
-    const val PRODUCTION_TRANSFER: Boolean = false
+    const val PRODUCTION_TRANSFER: Boolean = true
 
     /**
      * What this phone advertises **in one handshake**. [PHONE] (`share.file` 1) unless either

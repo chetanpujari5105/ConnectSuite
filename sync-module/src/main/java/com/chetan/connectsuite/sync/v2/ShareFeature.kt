@@ -37,15 +37,14 @@ import java.util.concurrent.atomic.AtomicInteger
  * permits (routed here by `FsFeature` through [ShareRoot]), runs the expiry, verdict and Retry
  * timers, and deletes each offer's staged copy when the offer ends, whatever ended it.
  *
- * ### What is live and what is not (slice 3c)
+ * ### What is live
  *
- * **The phone advertises `share.file` 1** ([Extensions.PHONE]). A transfer needs 2 on both sides, so
- * in any live pairing `accept` is refused and no pull is ever authorised; the version-2 code below is
- * reached only by tests until the Mac half (slice 3d) lands. **Two callers make offers**: the
- * debug-only, `DUMP`-gated `ShareOfferProbeActivity` (synthetic bytes, `requireAsk = false`), and the
- * share sheet's `ShareToMacModel` (an ordinary file, `requireAsk = true`). The second offers only on a
- * session that negotiated `share.file` 2 **and** `share.ask` — and no Mac build promises `share.ask`
- * yet, so in every live pairing an ordinary share still stops at *Ready* with Send disabled.
+ * **The phone advertises `share.file` 2** to every trusted Mac ([Extensions.PRODUCTION_TRANSFER], on
+ * since slice 3e passed on hardware). A transfer runs only where the Mac advertises 2 as well. **Two
+ * callers make offers**: the debug-only, `DUMP`-gated `ShareOfferProbeActivity` (synthetic bytes,
+ * `requireAsk = false`), and the share sheet's `ShareToMacModel` (an ordinary file,
+ * `requireAsk = true`), which offers only on a session that also negotiated `share.ask` — a Mac that
+ * holds every offer for a person's Accept.
  *
  * ### What it will not do
  *
@@ -116,7 +115,8 @@ object ShareFeature {
         }
         server.refreshCapabilities()
         LinkLog.i("share", "Share feature installed (${handledTypes.size} verbs, advertising share.file " +
-            "${Extensions.PHONE[Extensions.SHARE_FILE]}); capabilities now: ${server.capabilities.current().sorted()}")
+            "${Extensions.advertised(debuggable, devV2Armed = false)[Extensions.SHARE_FILE]} unarmed, production transfer " +
+            "${Extensions.PRODUCTION_TRANSFER}); capabilities now: ${server.capabilities.current().sorted()}")
     }
 
     // ---- making an offer (debug probe only in this slice) -------------------------------------------

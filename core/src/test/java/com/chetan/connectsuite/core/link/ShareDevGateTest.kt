@@ -20,29 +20,29 @@ class ShareDevGateTest {
     private val phoneTwo = two + (Extensions.SHARE_ASK to 1)
 
     @Test fun `advertised is share-file 1 in every combination but debuggable AND armed`() {
-        assertEquals(phoneOne, Extensions.advertised(debuggable = false, devV2Armed = false))
-        assertEquals(phoneOne, Extensions.advertised(debuggable = false, devV2Armed = true))
-        assertEquals(phoneOne, Extensions.advertised(debuggable = true, devV2Armed = false))
-        assertEquals("the control: the one combination that advertises 2", phoneTwo, Extensions.advertised(debuggable = true, devV2Armed = true))
+        assertEquals(phoneOne, Extensions.advertised(debuggable = false, devV2Armed = false, productionTransfer = false))
+        assertEquals(phoneOne, Extensions.advertised(debuggable = false, devV2Armed = true, productionTransfer = false))
+        assertEquals(phoneOne, Extensions.advertised(debuggable = true, devV2Armed = false, productionTransfer = false))
+        assertEquals("the control: the one combination that advertises 2", phoneTwo, Extensions.advertised(debuggable = true, devV2Armed = true, productionTransfer = false))
         assertEquals("the build constant itself is unchanged", phoneOne, Extensions.PHONE)
     }
 
     @Test fun `negotiated is 2 only for a debuggable armed phone facing a Mac that advertises 2`() {
         val macs = mapOf("old Mac (no ext)" to emptyMap(), "Mac at 1" to one, "Mac at 2" to two)
         for (debuggable in listOf(false, true)) for (armed in listOf(false, true)) for ((label, mac) in macs) {
-            val h = Extensions.handshake(debuggable, armed, mac)
+            val h = Extensions.handshake(debuggable, armed, mac, productionTransfer = false)
             val expected = when {
                 mac.isEmpty() -> emptyMap()
                 debuggable && armed && mac == two -> two
                 else -> one
             }
             assertEquals("debuggable=$debuggable armed=$armed $label", expected, h.negotiated)
-            assertEquals("hello.ack and negotiation are one decision", Extensions.advertised(debuggable, armed), h.advertised)
+            assertEquals("hello.ack and negotiation are one decision", Extensions.advertised(debuggable, armed, productionTransfer = false), h.advertised)
         }
     }
 
     @Test fun `the per-session log line says what was advertised and negotiated, and nothing else`() {
-        val h = Extensions.handshake(debuggable = true, devV2Armed = false, macExt = two)
+        val h = Extensions.handshake(debuggable = true, devV2Armed = false, macExt = two, productionTransfer = false)
         assertEquals(
             "ext: phone advertises share.file 1 (debug share.file 2 armed for this handshake: false; debuggable build: true); " +
                 "Mac advertises share.file 2; negotiated share.file 1",
@@ -119,7 +119,7 @@ class ShareDevGateTest {
             "production Mac" to two + (Extensions.SHARE_ASK to 1),
         )
         val got = macs.mapValues { (_, mac) ->
-            listOf(false, true).map { armed -> Extensions.ordinarySend(Extensions.handshake(debuggable = true, devV2Armed = armed, macExt = mac).negotiated) }
+            listOf(false, true).map { armed -> Extensions.ordinarySend(Extensions.handshake(debuggable = true, devV2Armed = armed, macExt = mac, productionTransfer = false).negotiated) }
         }
         assertEquals(
             mapOf(
@@ -141,11 +141,28 @@ class ShareDevGateTest {
 
     // ---- the phone's production transfer fact ---------------------------------------------------
 
-    @Test fun `this build does not offer the transfer outside an armed debug handshake - pinned`() {
-        // Flipping it is a production gate change: it belongs in the reviewed commit that records 3e
-        // and the §11 cleanup, with the Mac's readiness. This test is what makes that a visible change.
-        assertFalse(Extensions.PRODUCTION_TRANSFER)
-        assertEquals(phoneOne, Extensions.advertised(debuggable = false, devV2Armed = false))
+    @Test fun `this build offers the transfer to every trusted Mac - pinned`() {
+        // Recorded with the Mac's readiness (slice 3e passed 2026-09-25; §11 in 5e20963). Setting it back
+        // to false is how the phone stops advertising share.file 2 outside an armed debug handshake.
+        assertTrue(Extensions.PRODUCTION_TRANSFER)
+        assertEquals(phoneTwo, Extensions.advertised(debuggable = false, devV2Armed = false))
+        assertEquals(phoneTwo, Extensions.advertised(debuggable = true, devV2Armed = false))
+    }
+
+    @Test fun `this build - ordinary Send against each Mac, and the per-session lines`() {
+        val production = two + (Extensions.SHARE_ASK to 1)
+        fun send(mac: Map<String, Int>) = Extensions.ordinarySend(Extensions.handshake(false, false, mac).negotiated)
+        assertTrue("control: the production Mac", send(production))
+        assertFalse("the synthetic-only development Mac: 2 negotiated, no share.ask", send(two))
+        assertFalse("a version-1 Mac", send(one))
+        assertFalse("an old Mac", send(emptyMap()))
+        val h = Extensions.handshake(debuggable = true, devV2Armed = false, macExt = production)
+        assertEquals(
+            "ext: phone advertises share.file 2 (debug share.file 2 armed for this handshake: false; debuggable build: true); " +
+                "Mac advertises share.file 2; negotiated share.file 2",
+            h.logLine,
+        )
+        assertTrue(h.askLine, h.askLine.endsWith("negotiated 1; ordinary Send on this session: enabled (the Mac asks a person)"))
     }
 
     @Test fun `with production transfer on, a release build advertises 2 and Send enables only against share-ask`() {

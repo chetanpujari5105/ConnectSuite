@@ -54,7 +54,7 @@ class ShareOfferV2Test {
         var checked = 0
         for (debuggable in listOf(false, true)) for (armed in listOf(false, true)) for (mac in macs) {
             if (debuggable && armed && mac == mapOf(Extensions.SHARE_FILE to 2)) continue
-            val version = Extensions.handshake(debuggable, armed, mac).negotiated[Extensions.SHARE_FILE] ?: 0
+            val version = Extensions.handshake(debuggable, armed, mac, productionTransfer = false).negotiated[Extensions.SHARE_FILE] ?: 0
             assertTrue("debuggable=$debuggable armed=$armed mac=$mac", version < ShareOffer.TRANSFER_VERSION)
             val r = ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = version)
             assertEquals("BAD_REQUEST", code(r))
