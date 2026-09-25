@@ -2463,7 +2463,7 @@ hello.ack  {"protocolVersion":1, …every existing field…, "ext":{"share.file"
 
 On `hello`, `share.file` means *this Mac can receive and answer a one-file share offer*; on
 `hello.ack`, *this phone can make one*. **The version says how far:** `1` is offer and decline only;
-`2` is the one-file transfer as well (see [Share → Version 2](#version-2--the-transfer)).
+`2` is the one-file transfer as well (see [Share → Version 2](#version-2--the-transfer)). `3`, several pending offers, is **proposed and not implemented** (see [Version 3](#version-3--several-pending-offers-proposed-2026-09-25--not-implemented)).
 Because the negotiated version is `min(mine, theirs)`, a transfer can start only when **both**
 peers advertise `2`. Parsing is identical on both sides:
 
@@ -2552,7 +2552,7 @@ channel. The design and its evidence are `docs/phase-7-share-proposal.md` rev 2 
 | `expiresAtMs` | when the phone stops honouring the offer: sent + 10 minutes |
 
 **Only sent when `share.file` is negotiated on that session, and at most one offer per session is
-live.** The file is already staged privately on the phone; the offer never refers to anything else.
+live.** (At the proposed version 3, at most 10 — see Version 3; not implemented.) The file is already staged privately on the phone; the offer never refers to anything else.
 
 **The Mac validates before anything else**, in this order, and declines with the first failure:
 `not-negotiated` (no `share.file` on this session); `malformed-offer` (any field above out of
@@ -2858,6 +2858,47 @@ the staged copy. A Retry in a shipping build is a person's action on the Mac.
 
 `share.cancel` from either side stops a live pull: the phone stops streaming and deletes the staged
 copy, and the Mac deletes its partial. Neither side reports `saved`.
+
+### Version 3 — several pending offers (PROPOSED 2026-09-25 — not implemented)
+
+> **Not implemented, and nothing advertises `share.file 3`.** This section is the proposed contract
+> for review. The argument, the state tables and the open measurements are
+> `docs/feature-a-multi-offer-proposal.md` (rev 2). Until it is approved and built, version 2 above is
+> the whole contract, and both builds advertise 2.
+
+**Negotiation.** `share.file: 3` by the existing rule `min(mine, theirs)`: 3 + 3 → 3, 3 + 2 → 2, and a
+version-2 peer keeps version 2 exactly. `share.ask` is unchanged and still required for ordinary Send.
+Every rule of version 2 holds at 3 except the four below.
+
+**1 · Several live offers.** At most **10** live offers per session (proposed), enforced by both sides.
+`busy` means *the session already holds 10*. Each offer is independent: its own `offerId`, card, answer,
+expiry and end. `item` stays **one object**.
+
+**2 · One pull at a time.** The Mac pulls one share at a time per session, in the order its offers were
+accepted; an accepted offer waiting its turn is **queued** on the Mac and `accepted` on the phone. A
+second concurrent share pull on one session is refused by the phone (`BAD_REQUEST`, `feature: "share"`).
+
+**3 · Accepted offers leave the 10-minute TTL.** An offer that is still waiting expires at `expiresAtMs`
+as in version 2. Once accepted it does not: a queued offer ends only through the transfer ahead of it
+(the 30-second idle rule) or a cancel, and the phone ends any accepted offer whose pull has not begun
+**60 minutes** after the Accept, with `share.cancel{expired}`. A Retry joins the back of the queue.
+
+**4 · Space is reserved.** At every Accept the Mac requires
+`free ≥ Σ(sizes accepted and not finished) + size + max(256 MiB, ⌈size/10⌉)`; otherwise it declines
+`insufficient-space`. The phone admits a new offer only while
+`Σ(live staged sizes) + max(256 MiB, ⌈Σ/10⌉) ≤ free` **and** `Σ ≤ min(4 GiB, cache quota)`. **These byte
+values are proposed and not locked**: the cache quota has never been read on the SM-S938B (proposal §4).
+
+**Optional, stage B only:** `share.offer` may carry `group: {"id": "g-<22 base64url>", "index": 1…count,
+"count": 1…10}` for files shared together. It is display only and authorises nothing; a Mac of version 2
+never receives it.
+
+**Unchanged at 3, stated so nobody infers otherwise:** "Saved" on the Mac only after that offer's bytes are
+flushed, length- and SHA-256-verified and exclusively published, and on the phone only on an acknowledged
+`share.saved {ok:true}`; `saved-unacknowledged`; the share root and its session binding; the nonce'd
+partial and the ownership ledger; offers never surviving their session — a disconnect or a restart of
+either app ends every live offer and deletes every staged copy and partial, and nothing re-offers on
+reconnect.
 
 ## Discovery
 
