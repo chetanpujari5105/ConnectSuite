@@ -271,6 +271,10 @@ test('an unusable destination at the offer declines with its reason before anyth
     await r.onOffer(offer(1, 'a'.repeat(64)));
     assert.deepEqual(link.types(), ['respond:decline'], reason);
     assert.equal(link.sent[0]!.payload.reason, reason);
+    // The Mac's own screen says why: a `refused` record carrying the reason — never `declined`,
+    // which is a person's word, and never nothing, which left the phone's refusal unexplained here.
+    assert.equal(r.state(id), 'refused', reason);
+    assert.equal(r.snapshots()[0]!.reason, reason);
   }
 });
 
@@ -285,6 +289,9 @@ test('the re-check at Accept fails closed: declines, no accept is sent, nothing 
   await r.onOffer(offer(1, 'a'.repeat(64)));
   assert.deepEqual(link.types(), ['respond:decline']);
   assert.equal(link.sent[0]!.payload.reason, 'insufficient-space');
+  // The person clicked Accept (here, the probe switch did); the check said no. That is not a Decline.
+  assert.equal(r.state(id), 'refused');
+  assert.equal(r.snapshots()[0]!.reason, 'insufficient-space');
 });
 
 test('a destination check that throws is inconclusive and fails closed as folder-unavailable', { timeout: 10_000 }, async () => {

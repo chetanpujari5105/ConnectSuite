@@ -86,6 +86,8 @@ export const RECEIVE_STATES = [
   'expired',
   'cancelled',
   'ended',
+  /** The destination checks refused it, at the offer or at Accept — not a person's Decline. */
+  'refused',
 ] as const;
 export type ReceiveState = (typeof RECEIVE_STATES)[number];
 
@@ -311,6 +313,9 @@ export class ShareReceiver {
     if (!dest.ok) {
       this.refused += 1;
       log.info('share', `share.offer ${offer.offerId} refused at the offer: ${dest.reason} (${dest.detail}) — ${this.tally()}`);
+      // Recorded, not held: the phone is told at once, and the Mac's own screen says why rather than
+      // leaving a person to wonder why their phone reported a refusal nobody on this Mac saw.
+      this.recordRefusal(offer, sessionKey, macExpiresAtMs, dest.reason);
       await this.respondDecline(offer.offerId, dest.reason);
       return;
     }
@@ -347,7 +352,9 @@ export class ShareReceiver {
     if (!dest.ok || dest.folder !== entry.folder) {
       const reason: DeclineReason = dest.ok ? 'folder-unavailable' : dest.reason;
       log.info('share', `share ${offerId}: the destination failed its re-check at Accept (${dest.ok ? 'the folder changed' : dest.detail}) — declining ${reason}`);
-      this.endAs(entry, 'declined');
+      // `refused`, never `declined`: the person clicked Accept, and the Mac's check said no.
+      entry.lastReason = reason;
+      this.endAs(entry, 'refused');
       await this.respondDecline(offerId, reason);
       return;
     }
@@ -537,6 +544,14 @@ export class ShareReceiver {
     const timer = setTimeout(() => this.onMacExpiry(offerId), wait);
     timer.unref?.();
     this.timers.set(offerId, timer);
+  }
+
+  private recordRefusal(offer: ShareOfferPayload, sessionKey: string, macExpiresAtMs: number, reason: DeclineReason): void {
+    this.entries.set(offer.offerId, {
+      offer, sessionKey, folder: '', state: 'refused', macExpiresAtMs,
+      retryUntilMs: null, abort: null, savedAs: null, lastReason: reason, priorCopy: null,
+    });
+    this.changed();
   }
 
   private onMacExpiry(offerId: string): void {

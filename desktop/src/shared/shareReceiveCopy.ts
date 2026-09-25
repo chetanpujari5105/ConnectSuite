@@ -25,7 +25,8 @@ type ShareRecvState =
   | 'declined'
   | 'expired'
   | 'cancelled'
-  | 'ended';
+  | 'ended'
+  | 'refused';
 
 interface ShareRecvFacts {
   state: ShareRecvState;
@@ -57,6 +58,16 @@ const SHARE_RECV_FAILURE_COPY: Record<string, string> = {
   interrupted: 'The transfer stopped before the file arrived.',
   'insufficient-space': 'There is not enough free space in the receive folder.',
   'write-failed': 'The file could not be written to the receive folder.',
+  'unsupported-destination': 'The receive folder’s drive cannot save files safely (it cannot make hard links).',
+};
+
+/**
+ * Why the Mac refused an offer **without asking anyone** — the destination checks, at the offer or at
+ * Accept. Not a person's Decline, so it never reads "Declined": the person may have clicked Accept.
+ */
+const SHARE_RECV_REFUSAL_COPY: Record<string, string> = {
+  'folder-unavailable': 'The receive folder is not available.',
+  'insufficient-space': 'There is not enough free space in the receive folder.',
   'unsupported-destination': 'The receive folder’s drive cannot save files safely (it cannot make hard links).',
 };
 
@@ -119,6 +130,13 @@ function shareReceiveStatus(f: ShareRecvFacts): ShareRecvStatus {
       return { headline: 'Cancelled', detail: ['Nothing was saved.'], tone: 'neutral', ...none };
     case 'ended':
       return { headline: 'Ended with the connection', detail: ['Nothing was saved.'], tone: 'neutral', ...none };
+    case 'refused':
+      return {
+        headline: 'Not received',
+        detail: [SHARE_RECV_REFUSAL_COPY[f.reason ?? ''] ?? 'The receive folder could not take this file.', 'The phone was told why. Nothing was saved.'],
+        tone: 'warning',
+        ...none,
+      };
   }
 }
 

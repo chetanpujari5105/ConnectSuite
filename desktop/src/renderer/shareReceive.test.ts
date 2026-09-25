@@ -14,7 +14,7 @@ import './shareReceive';
  */
 
 const g = globalThis as Record<string, any>;
-const Tray = g.ShareReceiveTray as new (root: FakeElement, live: FakeElement, decide: (id: string, d: string) => Promise<{ ok: boolean; reason?: string }>) => {
+const Tray = g.ShareReceiveTray as new (root: FakeElement, live: FakeElement, show: (id: string) => Promise<{ ok: boolean; reason?: string }>) => {
   update(list: unknown[]): void;
 };
 
@@ -30,8 +30,8 @@ function setup(answer: { ok: boolean; reason?: string } = { ok: true }) {
   const live = new FakeElement('div');
   const calls: string[] = [];
   let release: () => void = () => undefined;
-  const tray = new Tray(root, live, (offerId, decision) => {
-    calls.push(`${offerId}:${decision}`);
+  const tray = new Tray(root, live, (offerId) => {
+    calls.push(offerId);
     return new Promise((ok) => { release = () => ok(answer); });
   });
   const card = () => root.children[0]!;
@@ -48,18 +48,28 @@ const settle = () => new Promise((ok) => setImmediate(ok));
 const statusOf = (card: FakeElement): string =>
   card.descendants().filter((e) => e.className === 'share-card-headline' || e.className === 'share-card-detail').map((e) => e.textContent).join(' ');
 
-test('a waiting card shows who, what, the exact bytes and where — and offers Decline then Accept', () => {
+test('a waiting card shows who, what, the exact bytes and where — and points at the receive window', () => {
   const t = setup();
   t.tray.update([data()]);
   assert.equal(t.root.hidden, false);
   const text = t.card().textContent;
-  for (const want of ['IMG_2041.jpg', 'Galaxy S25 Ultra', 'image/jpeg', '3,874,112 bytes', '~/Downloads/Sidekick', 'Wants to send you a file']) {
+  for (const want of ['IMG_2041.jpg', 'Galaxy S25 Ultra', 'image/jpeg', '3,874,112 bytes', '~/Downloads/Sidekick', 'Wants to send you a file', 'Incoming file window']) {
     assert.ok(text.includes(want), want);
   }
   const visible = t.card().queryAll('button').filter((b) => !b.hidden).map((b) => b.dataset.action);
-  assert.deepEqual(visible, ['decline', 'accept'], 'Decline first in the tab order; no Dismiss while waiting');
-  assert.equal(t.button('accept').getAttribute('aria-label'), 'Accept IMG_2041.jpg from Galaxy S25 Ultra and save it to ~/Downloads/Sidekick');
+  assert.deepEqual(visible, ['show'], 'Show only; no Dismiss while waiting');
+  assert.equal(t.button('show').getAttribute('aria-label'), 'Show IMG_2041.jpg in the Incoming file window');
   assert.equal(t.card().getAttribute('role'), 'group');
+});
+
+test('one decision surface: the card has no Accept or Decline in any state', () => {
+  const t = setup();
+  for (const state of ['awaiting-decision', 'accepting', 'receiving', 'saved', 'saved-unacknowledged', 'failed', 'declined', 'expired', 'cancelled', 'ended', 'refused']) {
+    t.tray.update([data({ state, savedAs: state.startsWith('saved') ? 'IMG_2041.jpg' : null })]);
+    const actions = t.card().queryAll('button').map((b) => b.dataset.action);
+    assert.ok(actions.length > 0, `control: the card's buttons were read (${state})`);
+    assert.ok(!actions.includes('accept') && !actions.includes('decline'), `${state}: ${actions.join(',')}`);
+  }
 });
 
 test('arrival is announced politely and focus is not moved', () => {
@@ -69,47 +79,39 @@ test('arrival is announced politely and focus is not moved', () => {
   for (const b of t.card().queryAll('button')) assert.equal(b.focusCount, 0);
 });
 
-test('Accept sends the offer id and a word — nothing else — and disables both buttons while pending', async () => {
+test('Show sends the offer id and nothing else, and is disabled while pending', async () => {
   const t = setup();
   t.tray.update([data()]);
-  t.button('accept').click();
-  assert.deepEqual(t.calls, [`${id}:accept`]);
-  assert.equal(t.button('accept').disabled, true);
-  assert.equal(t.button('decline').disabled, true);
-  t.button('accept').click();
+  t.button('show').click();
+  assert.deepEqual(t.calls, [id]);
+  assert.equal(t.button('show').disabled, true);
+  t.button('show').click();
   assert.equal(t.calls.length, 1, 'a second click while pending sends nothing');
   t.release();
   await settle();
   t.tray.update([data({ state: 'receiving' })]);
-  assert.equal(t.button('accept').hidden, true);
+  assert.equal(t.button('show').hidden, false, 'a live transfer can still be shown');
   assert.equal(t.button('dismiss').hidden, true, 'a live transfer cannot be dismissed');
 });
 
-test('Decline, and Escape inside a waiting card, both decline', () => {
-  const a = setup();
-  a.tray.update([data()]);
-  a.button('decline').click();
-  assert.deepEqual(a.calls, [`${id}:decline`]);
-
-  const b = setup();
-  b.tray.update([data()]);
-  b.card().dispatch('keydown', { key: 'Escape' });
-  assert.deepEqual(b.calls, [`${id}:decline`]);
-  b.card().dispatch('keydown', { key: 'Enter' });
-  assert.equal(b.calls.length, 1, 'only Escape is bound');
+test('Escape does nothing to a waiting card — there is nothing to dismiss and it cannot decline', () => {
+  const t = setup();
+  t.tray.update([data()]);
+  t.card().dispatch('keydown', { key: 'Escape' });
+  assert.deepEqual(t.calls, []);
+  assert.equal(t.root.children.length, 1);
 });
 
-test('a refused Accept (hidden window) is shown on the card and the card keeps waiting', async () => {
-  const t = setup({ ok: false, reason: 'not accepted: the window is hidden; the offer is still waiting' });
+test('a refused Show is stated on the card', async () => {
+  const t = setup({ ok: false, reason: 'no such offer' });
   t.tray.update([data()]);
-  t.button('accept').click();
+  t.button('show').click();
   t.release();
   await settle();
   const note = t.card().queryAll('p').find((p) => p.className === 'share-card-note')!;
   assert.equal(note.hidden, false);
-  assert.match(note.textContent, /still waiting/);
-  assert.equal(t.button('accept').disabled, false);
-  assert.equal(t.button('accept').hidden, false);
+  assert.match(note.textContent, /no such offer/);
+  assert.equal(t.button('show').disabled, false);
 });
 
 test('expired reads Expired, never Declined, and can be dismissed; Escape dismisses a finished card', () => {
@@ -118,7 +120,7 @@ test('expired reads Expired, never Declined, and can be dismissed; Escape dismis
   const words = statusOf(t.card());
   assert.ok(words.includes('Expired'), words);
   assert.doesNotMatch(words, /Declin/);
-  assert.equal(t.button('accept').hidden, true);
+  assert.equal(t.button('show').hidden, true);
   assert.equal(t.button('dismiss').hidden, false);
   t.card().dispatch('keydown', { key: 'Escape' });
   assert.equal(t.root.children.length, 0);

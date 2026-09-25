@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- The same CSP as the main page and the float window: a third entry point must not be a laxer
+         one. `data:` images are the post-publication thumbnail, which the main process renders. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'" />
+    <title>Incoming file</title>
+    <!-- tokens.css first: this window is one more view of the same design system, with the same
+         reduced-motion and reduced-transparency blocks. Both sheets are in copy-assets.mjs. -->
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="share-window.css" />
+  </head>
+  <body class="sw-body">
+    <!--
+      docs/feature-a-receive-window.md. One incoming file at a time: who, what, how big, where it
+      will go — and, only while it waits, Decline and Accept. Everything here is drawn from the main
+      process's snapshot as text; nothing on this page can authorise a save, it can only ask.
+
+      The region is labelled but not a dialog: this window does not take focus when it appears, and
+      role="alertdialog" would claim it had. Arrival is announced through the polite live region.
+    -->
+    <main class="sw" id="sw" role="region" aria-labelledby="sw-eyebrow" data-state="none">
+      <header class="sw-head">
+        <span class="sw-app">Sidekick</span>
+        <button type="button" class="sw-close" id="sw-close" data-action="close" aria-label="Close" title="Close"></button>
+      </header>
+
+      <div class="sw-file">
+        <div class="sw-tile" id="sw-tile" aria-hidden="true"></div>
+        <div class="sw-text">
+          <p class="sw-eyebrow" id="sw-eyebrow"></p>
+          <h1 class="sw-title" id="sw-title"></h1>
+          <p class="sw-meta" id="sw-meta"></p>
+        </div>
+      </div>
+
+      <dl class="sw-place" id="sw-place" hidden>
+        <dt id="sw-place-label"></dt>
+        <dd id="sw-place-value"></dd>
+      </dl>
+
+      <div class="sw-detail" id="sw-detail"></div>
+      <p class="sw-note" id="sw-note" role="alert" hidden></p>
+
+      <div class="sw-actions" id="sw-actions"></div>
+    </main>
+    <div class="sw-live" id="sw-live" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="icons.js"></script>
+    <script src="../shared/shareReceiveCopy.js"></script>
+    <script src="../shared/shareWindowModel.js"></script>
+    <script src="shareWindow.js"></script>
+  </body>
+</html>

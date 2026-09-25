@@ -397,7 +397,7 @@ interface ConnectBridge {
   /** The receive card. Optional for the same stale-preload reason as `onAppearance`. */
   shareOffers?(): Promise<ShareCardData[]>;
   onShareOffers?(callback: (offers: ShareCardData[]) => void): void;
-  shareDecide?(offerId: string, decision: 'accept' | 'decline'): Promise<{ ok: boolean; reason?: string }>;
+  shareWindowShow?(offerId: string): Promise<{ ok: boolean; reason?: string }>;
 }
 
 declare const connect: ConnectBridge;
@@ -2542,16 +2542,17 @@ void (async () => {
 })();
 
 /*
- * Incoming files from the phone (Feature A, version 2). Unreachable in a live pairing while both ends
- * advertise share.file 1: the tray stays hidden because no snapshot ever arrives. See shareReceive.ts
- * for what this page may and may not do — it draws, and sends back an offer id and a word.
+ * Incoming files from the phone (Feature A, version 2 — live on both sides since `cb7e982`/`cd9d95d`).
+ * The tray stays hidden until an offer arrives. See shareReceive.ts
+ * for what this page may and may not do — it draws, and asks for the receive window to be shown.
  */
 {
   const trayEl = document.getElementById('share-tray');
   const liveEl = document.getElementById('share-live');
-  if (trayEl && liveEl && connect.shareDecide) {
-    const decide = connect.shareDecide.bind(connect);
-    const tray = new ShareReceiveTray(trayEl, liveEl, (offerId, decision) => decide(offerId, decision));
+  if (trayEl && liveEl && connect.shareWindowShow) {
+    // The card cannot decide; it can only bring the receive window back (docs/feature-a-receive-window.md).
+    const show = connect.shareWindowShow.bind(connect);
+    const tray = new ShareReceiveTray(trayEl, liveEl, (offerId) => show(offerId));
     connect.onShareOffers?.((offers) => tray.update(offers));
     void connect.shareOffers?.().then((offers) => tray.update(offers));
   }

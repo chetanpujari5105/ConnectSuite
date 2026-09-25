@@ -2667,15 +2667,23 @@ checks that its receive folder is available and that its free space is at least
 `size + max(256 MiB, ⌈size / 10⌉)`. If not, it declines with `folder-unavailable` or
 `insufficient-space` instead, and it makes the same check when the offer arrives.
 
-**The Mac's card** (`renderer/shareReceive.ts`) shows the phone's name, the sanitised file name, the
-MIME type, the exact byte count and the destination folder, with **Decline** and **Accept**. The
-page may send back only an `offerId` and `accept` | `decline`; any other field refuses the request
-whole, and the folder, the checks and the session are looked up in the main process. An Accept is
-honoured only while the window is visible, not minimised and focused — otherwise it is refused and
-the offer keeps waiting; Decline is always honoured. **The card is the only decision surface**: no
-macOS notification, no window raising, no Dock bounce. An offer that arrives while the window is
-hidden stays pending on the card until it expires, and the card then says "Expired". The card says
-"Saved" only after the Mac published a verified file, and "Expired" never reads as declined.
+**The Mac's receive window** (`main/shareWindow.ts`, `renderer/shareWindow.ts`; revised 2026-09-25,
+`docs/feature-a-receive-window.md`) is a small Sidekick-owned utility window that appears **without
+taking focus** (`showInactive`, normal window level, never on all Spaces) when an offer arrives,
+whether or not the main window is open. It shows the paired phone's name **from the Mac's pairing
+record** (the offer's `from` only as a note when it differs), the sanitised file name, the type, the
+exact byte count and the destination folder, with **Decline** and **Accept** — and a type glyph, never
+a preview, because nothing of the file exists on the Mac before Accept. The page may send back only
+an `offerId` and `accept` | `decline`; any other field refuses the request whole, and the folder, the
+checks and the session are looked up in the main process. An Accept is honoured only from that
+window, only while it is visible, not minimised and focused (a first click on the inactive window
+only focuses it) — otherwise it is refused and the offer keeps waiting; Decline is always honoured.
+**It is the only decision surface**: the main window's card shows status and a *Show* button, and
+`share-decide` from any other page is refused. **Closing the window is not declining** — the offer
+keeps waiting and expires honestly. There is still no macOS notification and no Dock bounce. A
+refusal by the destination checks is recorded as `refused` with its reason and shown, never as
+declined. The window says "Saved" only after the Mac published a verified file, and "Expired" never
+reads as declined.
 
 **The destination check, before any byte moves.** When the offer arrives, and again at Accept, the
 Mac establishes that its receive folder can make the exclusive save described below. It creates a

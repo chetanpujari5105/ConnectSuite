@@ -79,11 +79,11 @@ test('the Accept gate: only a visible, unminimised, focused window', () => {
 });
 
 /**
- * Owner decision (v1): the card is the only decision surface — no macOS notification, no window
- * raising, no Dock bounce. That lives in `main.ts`, which needs Electron and no test can load, so this
- * reads its **code** (comments stripped: the comment explaining the decision names the very calls it
- * forbids) and pins two things: `main.ts` imports no `Notification` and touches no Dock; and the
- * share change handler's body does nothing but forward snapshots.
+ * Owner decisions: no macOS notification and no Dock bounce for an incoming share (v1, restated in
+ * the receive-window brief), and **one decision surface** — the receive window, which appears without
+ * focus (docs/feature-a-receive-window.md §4.2). Both live in files that need Electron and no test can
+ * load, so these read their **code** (comments stripped: the comments explaining the decisions name
+ * the very calls they forbid).
  */
 function codeOf(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
@@ -108,7 +108,37 @@ test('no macOS notification, window raising or Dock bounce for an incoming share
   assert.doesNotMatch(code, /\bapp\.dock\b|\.bounce\(/, 'a Dock bounce');
   const handler = bodyAfter(code, 'shareReceiver.onChange(');
   assert.ok(handler.includes("send('share-offers'"), 'control: the handler body was found');
-  assert.doesNotMatch(handler, /Notification|\.show\(|\.focus\(|\.restore\(|moveTop|setAlwaysOnTop|flashFrame/);
+  // An arriving offer may do exactly one thing to a window: present the receive window inactive.
+  assert.ok(handler.includes('receiveWindow.presentInactive('), 'control: the arrival path was found');
+  assert.doesNotMatch(handler, /Notification|\.show\(|\.focus\(|\.restore\(|moveTop|setAlwaysOnTop|flashFrame|openFromUser/);
+});
+
+test('the receive window appears without focus, at the normal level — only a person’s Show may focus it', () => {
+  const code = codeOf(readFileSync(join(__dirname, 'shareWindow.ts'), 'utf8'));
+  const present = bodyAfter(code, 'presentInactive(offerId: string): void');
+  assert.ok(present.includes('showInactive()'), 'control: the arrival path was read');
+  assert.doesNotMatch(present, /\.show\(|\.focus\(|moveTop|setAlwaysOnTop|flashFrame|'active'/);
+  // The one path that may show-and-focus is the person's Show; the 'active' reveal is set nowhere else.
+  const open = bodyAfter(code, 'openFromUser(offerId: string): void');
+  assert.ok(open.includes("ensure('active')"), 'control: the Show path was read');
+  assert.equal(code.split("ensure('active')").length - 1, 1);
+  assert.equal(code.split("this.reveal = 'active'").length - 1, 1);
+  // Not above other apps, not on every Space, and a first click only focuses.
+  assert.match(code, /alwaysOnTop: false/);
+  assert.match(code, /acceptFirstMouse: false/);
+  assert.doesNotMatch(code, /setAlwaysOnTop|VisibleOnAllWorkspaces|Notification|app\.dock|\.bounce\(/);
+});
+
+test('only the receive window may decide; the main window may only ask to Show', () => {
+  const code = codeOf(readFileSync(join(__dirname, 'main.ts'), 'utf8'));
+  const decide = bodyAfter(code, "ipcMain.handle('share-decide'");
+  assert.ok(decide.includes('handleShareDecision('), 'control: the decide handler was read');
+  assert.match(decide, /event\.sender !== receiveWindow\.webContents\(\)/);
+  assert.match(decide, /receiveWindow\.facts\(\)/, 'the Accept gate reads the window that was clicked');
+  const show = bodyAfter(code, "ipcMain.handle('share-window-show'");
+  assert.ok(show.includes('parseOfferRequest('), 'control: the Show handler was read');
+  assert.match(show, /event\.sender !== window\.webContents/);
+  assert.doesNotMatch(show, /decide\(/);
 });
 
 test('the folder is shown with ~ for the home folder, and only for a real prefix', () => {

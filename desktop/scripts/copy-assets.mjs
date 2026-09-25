@@ -10,7 +10,8 @@ await mkdir(resolve(root, 'dist/renderer'), { recursive: true });
 // array builds clean, typechecks clean, and ships an unstyled — or missing — window. float.html and
 // float.css are the detached mirror window's page and its own sheet; it deliberately does not load
 // styles.css, which is the main window's component layer for panes it does not have.
-for (const asset of ['index.html', 'tokens.css', 'shell.css', 'styles.css', 'float.html', 'float.css']) {
+// share-window.html and share-window.css are the receive window's (docs/feature-a-receive-window.md).
+for (const asset of ['index.html', 'tokens.css', 'shell.css', 'styles.css', 'float.html', 'float.css', 'share-window.html', 'share-window.css']) {
   await cp(resolve(root, 'src/renderer', asset), resolve(root, 'dist/renderer', asset));
 }
 // The Sidekick brand art, derived from `LOGOS/` at 2x and 3x (the originals are never loaded at

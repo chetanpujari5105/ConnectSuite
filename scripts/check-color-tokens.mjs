@@ -35,7 +35,7 @@
  * ### What it checks
  *
  *  1. No raw colour literal in a colour-valued declaration outside tokens.css.
- *  2. No colour literal in renderer or shared TypeScript, or in the two HTML files.
+ *  2. No colour literal in renderer or shared TypeScript, or in the three HTML files.
  *  3. **Every colour token declared for dark has a light counterpart**, or an allowlist entry with
  *     a reason. This is the check that actually keeps light mode alive: adding a dark token and
  *     forgetting the light one is silent, renders fine in the theme you are looking at, and is
@@ -59,12 +59,13 @@ const SHEETS = [
   'desktop/src/renderer/shell.css',
   'desktop/src/renderer/styles.css',
   'desktop/src/renderer/float.css',
+  'desktop/src/renderer/share-window.css',
 ];
 const SOURCES = [
   'desktop/src/renderer',
   'desktop/src/shared',
 ];
-const HTML = ['desktop/src/renderer/index.html', 'desktop/src/renderer/float.html'];
+const HTML = ['desktop/src/renderer/index.html', 'desktop/src/renderer/float.html', 'desktop/src/renderer/share-window.html'];
 
 /*
  * Tokens that are deliberately the SAME in both themes, each with the reason.

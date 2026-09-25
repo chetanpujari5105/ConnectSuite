@@ -149,6 +149,9 @@ const ICON_GEOMETRY: Record<string, string> = {
     '<path d="M5.4 6.1v11.8L13.8 12z"/>' +
     '<rect x="16.1" y="5.8" width="2.5" height="12.4" rx="1.25"/>',
   /** The art slot's fallback, for a session with neither artwork nor a launcher icon. */
+  // The receive window's video placeholder (docs/feature-a-receive-window.md). Figma draws no video
+  // mark; a frame with a play wedge, on the 24 grid like the other hand-drawn marks, stroked.
+  video: '<rect x="3.4" y="5.6" width="17.2" height="12.8" rx="2.6"/><path d="M10.3 9.5v5l4.3-2.5z"/>',
   music: '<path d="M9 17.4V6.2l9.5-1.9v11.2"/><circle cx="6.5" cy="17.6" r="2.6"/>' +
     '<circle cx="15.9" cy="15.5" r="2.6"/>',
 

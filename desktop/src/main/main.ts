@@ -103,7 +103,9 @@ import {
   shareAskActivation,
   shareV2Activation,
 } from './shareActivation';
-import { forRenderer, handleShareDecision, type WindowFacts } from './shareDecision';
+import { forRenderer, handleShareDecision } from './shareDecision';
+import { ShareReceiveWindow } from './shareWindow';
+import { newlyNeedingAttention, parseOfferRequest } from './shareWindowRules';
 import { settingsMigration, store } from './store';
 import {
   clearRePairPending,
@@ -128,6 +130,8 @@ let window: BrowserWindow | null = null;
  * `screen` module that does not exist before then.
  */
 let float: FloatMirrorWindow | null = null;
+/** The receive window (docs/feature-a-receive-window.md). Built beside the receiver, in `whenReady`. */
+let shareWindow: ShareReceiveWindow | null = null;
 let tray: Tray | null = null;
 /**
  * Edge detector for the native notifier's replay cutoff.
@@ -768,6 +772,9 @@ function sendAll(channel: string, payload: unknown = null): void {
   send(channel, payload);
   const detached = float?.webContents();
   if (detached && !detached.isDestroyed()) detached.webContents.send(channel, payload);
+  // The receive window listens only for `appearance`; any other channel is ignored by its page.
+  const receive = shareWindow?.webContents();
+  if (receive && !receive.isDestroyed()) receive.send(channel, payload);
 }
 
 /**
@@ -1032,31 +1039,62 @@ app.whenReady().then(() => {
   let shareSessionKey: string | null = null;
 
   /*
-   * The receive card (docs/protocol.md → Share → Version 2). The renderer draws snapshots and sends
-   * back an `offerId` and a word; `shareDecision.ts` refuses anything else, refuses an Accept from a
-   * window nobody can be looking at, and `decide` re-checks the destination, the version and the
-   * session before a byte moves. Unreachable in a live pairing while both ends advertise 1.
+   * The receive window and the card (docs/feature-a-receive-window.md §4.2). **The receive window is
+   * the one decision surface**: it appears without focus when an offer needs attention, and Accept /
+   * Decline exist only there. The main window's card draws status and a *Show* button. A page sends
+   * back an `offerId` and a word; `shareDecision.ts` refuses anything else and refuses an Accept from
+   * a window that is not visible and focused, and `decide` re-checks destination, version and session.
+   *
+   * **No macOS notification and no Dock bounce** — the owner's decision, restated in the brief.
+   * `presentInactive` is the only thing an arriving offer can do to a window; `shareDecision.test.ts`
+   * reads this handler and that method and fails on anything that raises, focuses or notifies.
    */
-  const shareWindowFacts = (): WindowFacts => ({
-    exists: window !== null && !window.isDestroyed(),
-    visible: window?.isVisible() ?? false,
-    minimized: window?.isMinimized() ?? false,
-    focused: window?.isFocused() ?? false,
-  });
-  // The card is the only decision surface (owner decision, v1): **no macOS notification, no
-  // window raising, no Dock bounce**. An offer that arrives while the window is hidden stays pending
-  // on the card and, if nobody opens the window, expires honestly as "Expired". This handler only
-  // forwards snapshots; `shareDecision.test.ts` holds it to that.
+  const receiveWindow = new ShareReceiveWindow(
+    join(__dirname, '..', 'preload.js'),
+    join(__dirname, '..', 'renderer', 'share-window.html'),
+    (subject) => ({
+      subject,
+      offers: forRenderer(shareReceiver.snapshots(), homedir()),
+      phone: store.get('paired')?.deviceName ?? null,
+    }),
+    // Transparent: the window's material is AppKit's vibrancy, and the page paints the chrome token.
+    () => '#00000000',
+  );
+  shareWindow = receiveWindow;
+  const attentionSeen = new Set<string>();
   shareReceiver.onChange(() => {
-    send('share-offers', forRenderer(shareReceiver.snapshots(), homedir()));
+    const snaps = shareReceiver.snapshots();
+    send('share-offers', forRenderer(snaps, homedir()));
+    receiveWindow.push();
+    for (const offerId of newlyNeedingAttention(attentionSeen, snaps)) receiveWindow.presentInactive(offerId);
   });
   ipcMain.handle('share-offers', () => forRenderer(shareReceiver.snapshots(), homedir()));
+  ipcMain.handle('share-window-state', (event) => {
+    if (event.sender !== receiveWindow.webContents()) return null;
+    return receiveWindow.state();
+  });
   ipcMain.handle('share-decide', async (event, raw: unknown) => {
-    // Only the main window's page may decide; the float window has no card.
-    if (!window || window.isDestroyed() || event.sender !== window.webContents) return { ok: false, reason: 'refused: not the main window' };
-    const result = await handleShareDecision(raw, shareWindowFacts(), shareReceiver);
-    log.info('share', `card decision ${JSON.stringify(raw)?.slice(0, 120)} → ${JSON.stringify(result)}`);
+    // Only the receive window decides. The main window's card has no Accept to send, and a page
+    // that sends one anyway is refused here rather than trusted to have drawn the right thing.
+    if (event.sender !== receiveWindow.webContents()) return { ok: false, reason: 'refused: only the receive window decides' };
+    const result = await handleShareDecision(raw, receiveWindow.facts(), shareReceiver);
+    log.info('share', `receive window decision ${JSON.stringify(raw)?.slice(0, 120)} → ${JSON.stringify(result)}`);
     return result;
+  });
+  ipcMain.handle('share-window-show', (event, raw: unknown) => {
+    // A person pressed Show on the main window's card — the one path that may focus the window.
+    if (!window || window.isDestroyed() || event.sender !== window.webContents) return { ok: false, reason: 'refused: not the main window' };
+    const parsed = parseOfferRequest(raw);
+    if (!parsed.ok) return { ok: false, reason: `refused: ${parsed.why}` };
+    if (shareReceiver.state(parsed.offerId) === undefined) return { ok: false, reason: 'no such offer' };
+    receiveWindow.openFromUser(parsed.offerId);
+    return { ok: true };
+  });
+  ipcMain.on('share-window-close', (event) => {
+    if (event.sender === receiveWindow.webContents()) receiveWindow.close();
+  });
+  ipcMain.on('share-window-height', (event, height: unknown) => {
+    if (event.sender === receiveWindow.webContents()) receiveWindow.setContentHeight(height);
   });
 
   // Startup sweep of share temporary files: ONLY what the private ledger recorded this app creating,

@@ -22,6 +22,7 @@ import type {
 import type { PullOutcome, PushOutcome } from './main/files';
 import type { FloatState } from './main/float';
 import type { ShareCardSnapshot } from './main/share';
+import type { SharePagePayload } from './main/shareWindow';
 
 /**
  * The only bridge between the renderer and the sockets. Everything here is an intent — the
@@ -51,6 +52,18 @@ contextBridge.exposeInMainWorld('connect', {
     ipcRenderer.on('share-offers', (_event, offers: ShareCardSnapshot[]) => callback(offers)),
   shareDecide: (offerId: string, decision: 'accept' | 'decline'): Promise<{ ok: boolean; reason?: string }> =>
     ipcRenderer.invoke('share-decide', { offerId, decision }),
+  /**
+   * The receive window (docs/feature-a-receive-window.md). Its page reads its state and reports its
+   * height; the main window's card may only ask for it to be shown. Every request is an `offerId` at
+   * most — the main process refuses these from any page but the one each belongs to.
+   */
+  shareWindowState: (): Promise<SharePagePayload | null> => ipcRenderer.invoke('share-window-state'),
+  onShareWindow: (callback: (state: SharePagePayload) => void) =>
+    ipcRenderer.on('share-window', (_event, state: SharePagePayload) => callback(state)),
+  shareWindowClose: (): void => ipcRenderer.send('share-window-close'),
+  shareWindowHeight: (height: number): void => ipcRenderer.send('share-window-height', height),
+  shareWindowShow: (offerId: string): Promise<{ ok: boolean; reason?: string }> =>
+    ipcRenderer.invoke('share-window-show', { offerId }),
   connect: () => ipcRenderer.invoke('connect'),
   disconnect: () => ipcRenderer.invoke('disconnect'),
   retryNow: () => ipcRenderer.invoke('retry-now'),

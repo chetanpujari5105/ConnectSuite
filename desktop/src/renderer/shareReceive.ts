@@ -1,23 +1,21 @@
 /**
- * The Mac's receive card — a file the phone wants to send, and the person's Accept or Decline.
- * docs/protocol.md → Share → Version 2.
+ * The main window's receive card — the status of a file the phone is sending, and a way back to the
+ * receive window. docs/protocol.md → Share → Version 2; docs/feature-a-receive-window.md §4.2.
  *
  * ### What this view may and may not do
  *
- * It **draws** snapshots the main process sends and **sends back an `offerId` and a word**. It never
- * sends a path, a name, or anything from the offer: `main/shareDecision.ts` refuses any other field,
- * refuses an Accept from a window nobody can be looking at, and `ShareReceiver.decide` re-checks the
- * destination, free space, hard-link support, the negotiated version and the session before a byte
- * moves. So nothing on this page can authorise a save; the most it can do is ask.
+ * It **draws** snapshots the main process sends and may ask for one thing: **Show** the receive
+ * window for an `offerId`. **It cannot Accept or Decline.** The receive window is the one decision
+ * surface for an offer — two surfaces for one decision is two places a person can press Accept, and
+ * `share-decide` from this page is refused in the main process whatever it carries.
  *
  * ### Decisions, stated rather than implied
  *
- * - **Ask is the only mode.** There is no auto-accept here; the card waits.
- * - **Focus is not moved when a card arrives.** A person typing elsewhere would otherwise send an
- *   Enter or a Space into Accept. Arrival is announced through a polite live region instead, and the
- *   card is reached by Tab. Decline comes before Accept in the tab order.
- * - **Escape inside a waiting card declines** (the safe direction); inside a finished card it
- *   dismisses it. Nothing else on the page is affected.
+ * - **A waiting card says where the decision is** and offers *Show*, because a person can close the
+ *   receive window and closing it is not declining — the offer keeps waiting, and this is how to get
+ *   back to it.
+ * - **Focus is not moved when a card arrives.** Arrival is announced through a polite live region.
+ * - **Escape inside a finished card dismisses it.** A waiting card has nothing to dismiss.
  * - **Every string from the phone is set as text**, never as markup: the name is re-sanitised in the
  *   main process and the phone's device name is only ever `textContent`.
  * - **"Saved" only after the Mac published a verified file** — the words come from
@@ -26,9 +24,8 @@
  * - **Motion**: the card arrives with a keyframed fade (`share-card-in`, `--dur-float`); the global
  *   reduced-motion block in `tokens.css` collapses every animation to an instant, and nothing here
  *   waits for the animation — the buttons work from the first frame.
- * - **Hidden window**: nothing reaches for the person — no macOS notification, no window raising, no
- *   Dock bounce (owner decision, v1). The offer stays pending on this card, and if nobody opens the
- *   window it expires and the card says "Expired". An Accept from a hidden window is refused.
+ * - **No macOS notification and no Dock bounce.** The receive window appears without focus; this
+ *   card is its status mirror in the main window.
  *
  * Plain script: no `export`; the pure half and the class are hung on `globalThis` at the foot.
  */
@@ -56,9 +53,9 @@ interface ShareCardModel {
   detail: string[];
   tone: ShareRecvTone;
   state: ShareRecvState;
-  canDecide: boolean;
-  acceptAria: string;
-  declineAria: string;
+  /** The offer is still in play (waiting, starting, receiving) or saved: *Show* reopens the window. */
+  canShow: boolean;
+  showAria: string;
   /** For the live region, on a card's first appearance while it waits. */
   announcement: string;
 }
@@ -99,17 +96,16 @@ function shareCardModel(d: ShareCardData): ShareCardModel {
     from: d.from,
     rows,
     headline: status.headline,
-    detail: status.detail,
+    detail: d.state === 'awaiting-decision' ? ['Accept or decline it in the Incoming file window.', ...status.detail] : status.detail,
     tone: status.tone,
     state: d.state,
-    canDecide: d.state === 'awaiting-decision',
-    acceptAria: `Accept ${d.name} from ${d.from} and save it to ${d.folder}`,
-    declineAria: `Decline ${d.name} from ${d.from}`,
-    announcement: `${d.from} wants to send ${d.name}, ${shareExactBytes(d.bytes)}. Accept or decline it in the incoming file card.`,
+    canShow: live || published,
+    showAria: `Show ${d.name} in the Incoming file window`,
+    announcement: `${d.from} wants to send ${d.name}, ${shareExactBytes(d.bytes)}. Accept or decline it in the Incoming file window.`,
   };
 }
 
-type ShareDecide = (offerId: string, decision: 'accept' | 'decline') => Promise<{ ok: boolean; reason?: string }>;
+type ShareShow = (offerId: string) => Promise<{ ok: boolean; reason?: string }>;
 
 interface ShareCardNodes {
   root: HTMLElement;
@@ -119,8 +115,7 @@ interface ShareCardNodes {
   rows: HTMLElement;
   note: HTMLElement;
   actions: HTMLElement;
-  decline: HTMLButtonElement;
-  accept: HTMLButtonElement;
+  show: HTMLButtonElement;
   dismiss: HTMLButtonElement;
 }
 
@@ -132,7 +127,7 @@ class ShareReceiveTray {
   constructor(
     private readonly root: HTMLElement,
     private readonly live: HTMLElement,
-    private readonly decide: ShareDecide,
+    private readonly show: ShareShow,
   ) {}
 
   update(list: ShareCardData[]): void {
@@ -149,9 +144,8 @@ class ShareReceiveTray {
         fresh.push(card.nodes.root);
       }
       card.model = model;
-      if (!model.canDecide) card.pending = false;
       this.draw(card.nodes, model, card.pending);
-      if (model.canDecide && !this.announced.has(d.offerId)) {
+      if (model.state === 'awaiting-decision' && !this.announced.has(d.offerId)) {
         this.announced.add(d.offerId);
         this.live.textContent = model.announcement;
       }
@@ -196,39 +190,33 @@ class ShareReceiveTray {
 
     const actions = document.createElement('div');
     actions.className = 'share-card-actions';
-    const decline = document.createElement('button') as HTMLButtonElement;
-    decline.type = 'button';
-    decline.className = 'button';
-    decline.dataset.action = 'decline';
-    decline.textContent = 'Decline';
-    const accept = document.createElement('button') as HTMLButtonElement;
-    accept.type = 'button';
-    accept.className = 'button primary-action';
-    accept.dataset.action = 'accept';
-    accept.textContent = 'Accept';
+    const show = document.createElement('button') as HTMLButtonElement;
+    show.type = 'button';
+    show.className = 'button';
+    show.dataset.action = 'show';
+    show.textContent = 'Show';
     const dismiss = document.createElement('button') as HTMLButtonElement;
     dismiss.type = 'button';
     dismiss.className = 'button';
     dismiss.dataset.action = 'dismiss';
     dismiss.textContent = 'Dismiss';
-    actions.append(decline, accept, dismiss);
+    actions.append(show, dismiss);
 
     root.append(title, headline, detail, rows, note, actions);
 
-    decline.addEventListener('click', () => void this.send(offerId, 'decline'));
-    accept.addEventListener('click', () => void this.send(offerId, 'accept'));
+    show.addEventListener('click', () => void this.send(offerId));
     dismiss.addEventListener('click', () => this.dismiss(offerId));
     root.addEventListener('keydown', (event: Event) => {
       const key = (event as KeyboardEvent).key;
       if (key !== 'Escape') return;
       const card = this.cards.get(offerId);
       if (!card) return;
+      if (!this.dismissable(card.model)) return;
       event.preventDefault();
       event.stopPropagation();
-      if (card.model.canDecide) void this.send(offerId, 'decline');
-      else this.dismiss(offerId);
+      this.dismiss(offerId);
     });
-    return { root, title, headline, detail, rows, note, actions, decline, accept, dismiss };
+    return { root, title, headline, detail, rows, note, actions, show, dismiss };
   }
 
   private draw(n: ShareCardNodes, m: ShareCardModel, pending: boolean): void {
@@ -252,26 +240,27 @@ class ShareReceiveTray {
         return [dt, dd];
       }),
     );
-    n.decline.hidden = !m.canDecide;
-    n.accept.hidden = !m.canDecide;
-    n.dismiss.hidden = m.canDecide || m.state === 'accepting' || m.state === 'receiving';
-    n.decline.disabled = pending;
-    n.accept.disabled = pending;
-    n.accept.setAttribute('aria-label', m.acceptAria);
-    n.decline.setAttribute('aria-label', m.declineAria);
+    n.show.hidden = !m.canShow;
+    n.show.disabled = pending;
+    n.show.setAttribute('aria-label', m.showAria);
+    n.dismiss.hidden = !this.dismissable(m);
     n.dismiss.setAttribute('aria-label', `Dismiss ${m.title}`);
-    if (!m.canDecide) n.note.hidden = true;
   }
 
-  private async send(offerId: string, decision: 'accept' | 'decline'): Promise<void> {
+  /** Only an offer nobody can act on any more may leave the tray. */
+  private dismissable(m: ShareCardModel): boolean {
+    return m.state !== 'awaiting-decision' && m.state !== 'accepting' && m.state !== 'receiving';
+  }
+
+  private async send(offerId: string): Promise<void> {
     const card = this.cards.get(offerId);
-    if (!card || !card.model.canDecide || card.pending) return;
+    if (!card || !card.model.canShow || card.pending) return;
     card.pending = true;
     card.nodes.note.hidden = true;
     this.draw(card.nodes, card.model, true);
     let result: { ok: boolean; reason?: string };
     try {
-      result = await this.decide(offerId, decision);
+      result = await this.show(offerId);
     } catch (error) {
       result = { ok: false, reason: (error as Error).message };
     }
@@ -287,7 +276,7 @@ class ShareReceiveTray {
 
   private dismiss(offerId: string): void {
     const card = this.cards.get(offerId);
-    if (!card || card.model.canDecide || card.model.state === 'accepting' || card.model.state === 'receiving') return;
+    if (!card || !this.dismissable(card.model)) return;
     this.dismissed.add(offerId);
     card.nodes.root.remove();
     this.cards.delete(offerId);
