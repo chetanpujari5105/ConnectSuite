@@ -24612,3 +24612,87 @@ headless Chrome's viewport was **673** px, not the 760 asked for, so the frame's
 do not (the unacknowledged card read 350 px alone and 370 px beside a scrollbar). **P3 — what the
 tray covers in the real window — is still unmeasured.** VoiceOver, Electron focus and the real
 `data-theme` source are not covered.
+
+## Feature A slice 3e — the synthetic live transfer, on the SM-S938B (2026-09-25, owner present)
+
+**Passed: 0 bytes, 4,096 bytes, and N1 refused.** Owner-approved, in two sittings (10:56–11:02 the
+zero-byte transfer; 11:12–11:16 the 4 KiB probe, N1 and the wind-down). Runbook
+`docs/phase-7-share-3e-runbook.md`; every write through `scripts/adb-pinned.sh samsung`.
+
+**Preflight.** `target-device.sh samsung` → `OK target RZCY12330DT (SM-S938B, sdk 36)`; only that
+device was on the bus (the emulator was **not** attached, contrary to the brief). Mac free space
+2,735 → 2,657 MiB over the run. Mac `npm test` 1109/1109, both `tsc` configs clean, all guards green.
+Candidate APK re-verified immediately before install: SHA-256
+`0afc695fba1590032e324d9cf84de97f47d51ae1b55a9a76ff00e9da6fca11b0`, `com.chetan.connectsuite.debug`
+2.0.0/1, certificate `d3a505d2…7d26` equal to the installed app's (pulled and read), manifest
+`probe.ShareDevV2Activity` exported with `android.permission.DUMP`; dex class descriptors
+`ShareDevGate` 4, `ShareDevV2Activity` 2, `ShareRoot` 2 in the candidate and 0 in the installed app,
+**control** `ShareOfferProbeActivity` 2 in both. (A first count returned 0 for all four, control
+included — a broken loop, not a finding; redone.)
+
+**Install, `-r` only.** Before/after, compared by name: 14 user-0 grants identical; notification
+listener and accessibility entries identical; `link-up.sh` three OKs (service 12 s old); the phone
+handshook with this Mac at 10:57:29 negotiating `share.file 1`, unarmed.
+
+**Mac relaunch.** The dev app was quit by a normal `quit` to the exact dev bundle path after
+confirming it was the only `Electron` process; 0 sessions confirmed. Relaunched with
+`shareV2,shareAcceptProbe,shareDevReceive` and an allowlist of **only** `e3b0…b855` (first sitting),
+then **only** `e3b0…b855` + `1506…80d6` (second — the allowlist is read once at launch, so adding the
+4 KiB digest meant a relaunch). Each time: `DEBUG SWITCHES ON`, `N synthetic probe digest(s)`,
+`share.file 2 ADVERTISED (development, synthetic-only, scratch folder only)`, `share.ask not
+advertised`, no sweep `LEFT`, and a first reconnection at `share.file 1`.
+
+**One-shot arm, twice.** Disconnect → 0 sessions → arm (`ARMED for the next trusted handshake only`)
+→ 0 handshakes since the arm → Connect once → exactly 1 `ext: phone advertises` line since the arm,
+both sides `negotiated share.file 2`.
+
+| Probe | Digest (independent · phone · file) | Mac | Phone | File |
+|---|---|---|---|---|
+| 0 B | `e3b0…b855` ×3 | valid → allow-listed → `received 0 bytes, flushed, verified, published exclusively` → `the phone acknowledged` | offered → accepted → sending → *awaiting the Mac's verdict (not saved)* → `share.saved` → **saved on the Mac**; staged copy deleted | `dev-share-receive/sidekick-offer-probe-0.bin`, 0 bytes |
+| 4 KiB | `1506…80d6` ×3 | the same, 4,096 bytes | the same | `…/sidekick-offer-probe-4096.bin`, 4,096 bytes |
+| N1, 100 KB | `2253…a275` (independent · phone) | `not an allow-listed synthetic probe; declined not-available (synthetic-only mode)`, no `[bulk]` line | `declined (not-available)`; staged copy deleted | **none** |
+
+Independent digests: Kotlin 2.2.20's own `Random(7).nextBytes(n)` from the Gradle cache, run with
+`java -cp kotlin-stdlib-2.2.20.jar`, no project code (same values as runbook §3). After every
+probe: `share-temporary-files.json` = `[]`, phone `cache/share-staging` empty, `dev-share-receive/`
+(mode 0700) held exactly the saved probe files. N1's "no card": the real tray read through
+`probe.mjs` before and after N1 — `["saved:<4 KiB offer>"]` both times (the control: the known card is
+counted).
+
+**Destination and side effects.** `receiveFolder` stayed `null`; `~/Downloads/Sidekick` (21 entries)
+and `~/Downloads` (1,578 entries) unchanged, compared field-by-field. **Two instrument faults of
+mine, recorded:** (1) the 4 KiB offer was sent by a command whose inventory check printed a
+difference and did not gate the send — the difference was the `..` line (the home folder's mtime,
+changed when the app quit), every Downloads entry was unchanged, and the inventory now compares
+entries only, with a control proving it can see a change; (2) the Connect/Disconnect helper first
+read a `state` field that `ConnectionStatus` does not have (it is `phase`), so its `landed` meant
+nothing; the logs and the phone's session count were the evidence, and the helper was fixed before
+the second sitting (`connected` → `idle` → `connected`).
+
+**Wind-down.** Phone disarmed (`disarmed … the phone advertises share.file 1`); Disconnect; dev app
+quit; relaunched with no `CONNECTSUITE_` variable: no `DEBUG SWITCHES`, no `ADVERTISED`, `share.ask not
+advertised` (the two readiness blockers), and **both sides `share.file 1`**. The phone's installed
+build is the candidate, whose sheet never enables Send.
+
+**No transfer defect was found.** The three test files remain: `sidekick-offer-probe-0.bin`,
+`sidekick-offer-probe-4096.bin` in `~/Library/Application Support/sidekick-desktop/dev-share-receive/`.
+
+## Feature A §11 and the phone's production fact (2026-09-25) — built, gates still closed
+
+- `5e20963` — receive-folder cleanup scoped by the parent each ledger entry **proves** (real path,
+  device, inode, birth time recorded from an `lstat` before the file exists; a symlinked parent
+  records nothing). Never the setting. 13 adversarial tests with real files: folder replaced with a
+  lookalike at the recorded name; parent swapped for a symlink; file swapped for a symlink to a
+  personal file; inode reuse with the new file's own dev+ino forged into the entry; a changed
+  setting with a forged entry carrying the old folder's identity; remounted device; interrupted saves
+  (before create / mid-write / grown past bound); pre-§11 entries; replaced scratch folder; a
+  symlinked parent has no identity. Red-first: 4 mutations — one (reading the parent with `stat`,
+  following links) **first survived**, because the real-path comparison independently rejects a
+  symlinked parent; a direct test of the rule was added and it then failed as it should.
+- `9153fe1` — `Extensions.PRODUCTION_TRANSFER` (false, pinned): without it the phone offers
+  `share.file 2` only to an armed debug handshake, so a production Mac would still negotiate 1 and
+  ordinary Send could never enable. Found while preparing Phase 3.
+
+Mac 1122/1122; phone 765, 0 failures; both `tsc` configs; all guards. Card visual check at HEAD in
+the isolated harness, dark and light: `docs/evidence/feature-a-card-2026-09-25/arrival-head-{dark,light}.png`
+— new offer on top, `visible`, 216 px; finished cards 176–286 px.

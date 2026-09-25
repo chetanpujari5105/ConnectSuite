@@ -1,3 +1,13 @@
+# Resume here — written 2026-09-25 (late morning): 3e passed; production Send waits on one approval
+
+> **Current state, supersedes the overnight report below.** Slice 3e passed on the SM-S938B (0 B,
+> 4 KiB, N1 refused) — `docs/testing.md` → *Feature A slice 3e*. §11 cleanup is built (`5e20963`) and
+> the phone's production fact added closed (`9153fe1`). **Every production gate is still closed**:
+> `SHARE_PRODUCTION_READINESS` both false, `Extensions.PRODUCTION_TRANSFER` false. Live state: the
+> phone runs the candidate APK `0afc695f…` (disarmed); the Mac dev app runs with **no** switches;
+> both sides negotiate `share.file 1`; ordinary Send disabled. The proposed flip and the
+> Gallery/My Files steps are in the report of this sitting and wait for the owner.
+
 # Resume here — written 2026-09-25 (overnight): Feature A, up to the live-device gate
 
 > A state report for whoever picks this up. Evidence: `docs/testing.md` → *Feature A overnight,
