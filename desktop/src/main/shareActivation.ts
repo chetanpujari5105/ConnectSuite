@@ -103,6 +103,32 @@ export function advertisedExt(
   return activation.active ? Object.freeze({ ...MAC_EXT, [SHARE_FILE]: 2 }) : MAC_EXT;
 }
 
+/**
+ * **How the receiver behaves, decided in one place from the two gates** — and the only route by which
+ * the development allowlist reaches it.
+ *
+ * - development gate open → version 2, synthetic-only, and the tester's allowlist (auto-accept of an
+ *   allow-listed synthetic probe, and nothing else);
+ * - `share.ask` open → version 2, **Ask for every offer, and an empty allowlist** whatever the
+ *   environment says: in production nothing is accepted without a person's click;
+ * - neither → version 1, empty allowlist.
+ *
+ * The `packaged` guard alone did not give this: a development build run with `shareAcceptProbe` and
+ * digests but without `shareV2` has the development gate closed, so with `share.ask` open the receiver
+ * would have held offers for a person **and** auto-accepted any allow-listed probe. Found in the
+ * production-readiness review, 2026-09-25, before `share.ask` was ever opened.
+ */
+export interface ReceiverMode {
+  version2: { allowed: boolean; syntheticOnly: boolean };
+  acceptProbeDigests: ReadonlySet<string>;
+}
+
+export function receiverMode(dev: ShareV2Activation, ask: ShareAskActivation, digests: ReadonlySet<string>): ReceiverMode {
+  if (dev.active) return { version2: { allowed: true, syntheticOnly: true }, acceptProbeDigests: digests };
+  if (ask.active) return { version2: { allowed: true, syntheticOnly: false }, acceptProbeDigests: new Set() };
+  return { version2: { allowed: false, syntheticOnly: true }, acceptProbeDigests: new Set() };
+}
+
 export const SCRATCH_FOLDER_NAME = 'dev-share-receive';
 
 /** The one development destination: `<userData>/dev-share-receive`, and no other path. */

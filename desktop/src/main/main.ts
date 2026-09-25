@@ -96,6 +96,7 @@ import { checkDestination, publishExclusive, realFs } from './shareDestination';
 import { FileShareLedger, ledgerFile, sweepLedger } from './shareLedger';
 import {
   advertisedExt,
+  receiverMode,
   resolveScratchFolder,
   scratchFolderPath,
   SHARE_PRODUCTION_READINESS,
@@ -997,6 +998,10 @@ app.whenReady().then(() => {
   const shareLedger = new FileShareLedger(ledgerFile(userData));
   const liveLink = link;
   const liveBulk = bulk;
+  const shareMode = receiverMode(shareV2, shareAsk, acceptProbeDigests);
+  if (!shareV2.active && acceptProbeDigests.size > 0) {
+    log.warn('share', `shareAcceptProbe digests IGNORED: the synthetic-only development gate is not open, so nothing is auto-accepted`);
+  }
   const shareReceiver = new ShareReceiver({
     link: liveLink,
     receiveFolder: async () => {
@@ -1018,14 +1023,11 @@ app.whenReady().then(() => {
     },
     publish: (part, folder, name) => publishExclusive(part, folder, name),
     ledger: shareLedger,
-    switches: { silent: devSwitches.silent, acceptProbeDigests },
-    // Synthetic-only while the development gate is open; Ask for every ordinary offer once `share.ask`
-    // is (never both — `shareAskActivation` is closed while the development gate is open); else version 1.
-    version2: shareV2.active
-      ? { allowed: true, syntheticOnly: true }
-      : shareAsk.active
-        ? { allowed: true, syntheticOnly: false }
-        : { allowed: false, syntheticOnly: true },
+    // `receiverMode` is the one place the two gates become the receiver's behaviour, and the only route
+    // by which the development allowlist reaches it: with `share.ask` open it is empty, whatever the
+    // environment says, so nothing is accepted without a person's click.
+    switches: { silent: devSwitches.silent, acceptProbeDigests: shareMode.acceptProbeDigests },
+    version2: shareMode.version2,
   });
   let shareSessionKey: string | null = null;
 

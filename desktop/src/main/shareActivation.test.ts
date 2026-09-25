@@ -7,6 +7,7 @@ import test from 'node:test';
 import { MAC_EXT, negotiateAll, ordinarySendNegotiated } from '../shared/extensions';
 import {
   advertisedExt,
+  receiverMode,
   resolveScratchFolder,
   scratchFolderPath,
   SHARE_PRODUCTION_READINESS,
@@ -173,4 +174,22 @@ test('end to end over negotiation: only a production Mac enables the phone’s o
     ['synthetic-only development Mac', [false, false]],
     ['production Mac (not buildable yet)', [false, true]],
   ]);
+});
+
+// ---- the receiver's mode: no allowlist and no auto-accept outside the synthetic-only gate --------
+
+test('receiverMode: the allowlist reaches the receiver only while the synthetic-only development gate is open', () => {
+  const digests = new Set(['e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855']);
+  const production = shareAskActivation({ development: closedDev, readiness: ready });
+  const closed = shareAskActivation({ development: closedDev, readiness: SHARE_PRODUCTION_READINESS });
+  const dev = receiverMode(openDev, closed, digests);
+  assert.deepEqual(dev.version2, { allowed: true, syntheticOnly: true });
+  assert.equal(dev.acceptProbeDigests.size, 1, 'control: the development gate does carry the allowlist');
+  // The hole this exists for: shareAcceptProbe + digests set, shareV2 not, share.ask open.
+  const prod = receiverMode(closedDev, production, digests);
+  assert.deepEqual(prod.version2, { allowed: true, syntheticOnly: false });
+  assert.equal(prod.acceptProbeDigests.size, 0, 'Ask mode never auto-accepts, whatever the environment says');
+  const v1 = receiverMode(closedDev, closed, digests);
+  assert.deepEqual(v1.version2, { allowed: false, syntheticOnly: true });
+  assert.equal(v1.acceptProbeDigests.size, 0);
 });
