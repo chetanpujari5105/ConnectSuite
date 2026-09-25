@@ -1124,13 +1124,26 @@ the `media.original` and `fs.transfer.begin` acks so the number is negotiated ra
 to agree about silently. (This sentence used to read "raw chunks of 256 KB", which the first short
 final chunk would have violated — open question 4 in `docs/RESUME.md`, now closed.)
 
-**Resume: the header may carry a non-zero `offset`.** The sender seeks there to *send* from, and its
-digest still covers the whole file, from byte 0 — those are two different positions and conflating
+**Resume: the header may carry a non-zero `offset`.** The sender starts *sending* at that offset, and
+its digest still covers the whole file, from byte 0 — those are two different positions and conflating
 them makes every resumed transfer report `CHECKSUM_MISMATCH` on a file that is perfectly correct.
 The receiver has the mirror obligation: read its own partial back through the digest before appending.
-**Resume was observed on 2026-09-01** — a 52 MB video interrupted at 26,476,544 bytes, resumed from
-exactly that offset, with three independently computed whole-file digests agreeing. See
-`docs/testing.md` → Slice 4.
+
+**How the phone reaches the offset, as built (corrected 2026-09-25):** it does **not** seek. It opens
+the source as an `InputStream`, and `BulkTransfers.digestSkipped` **reads and hashes every byte before
+the offset** before sending the first new one. So a resume costs a full re-read of the prefix on the
+phone — no network, but proportional to the offset, and for a provider that fetches remotely it means
+fetching the prefix again. If the source is shorter than the offset, that loop stops early without an
+error; the receiver's length check is what catches it.
+
+**Where resume exists today, and where it does not** (corrected 2026-09-25):
+
+| Transfer | Resume | Status |
+|---|---|---|
+| `media.original` pull, driven by the Mac's **debug** resume probe | yes | **Observed 2026-09-01** — a 52 MB video interrupted at 26,476,544 bytes, resumed from exactly that offset, three independently computed whole-file digests agreeing (`docs/testing.md` → Slice 4). Below the 64 MB pre-hash ceiling, so digest-checked |
+| `fs.transfer.begin` **pull** from the Mac's Files pane (the product path) | **no** | `FilesClient.pull` never passes a transfer record to `BulkClient.pull`, so `isResumable` always refuses, the pull starts at 0, and any existing `<name>.part` is deleted first (defect 151) |
+| `fs.transfer.begin` **push** to the phone | implemented (the phone chooses the offset from its Room record) | not re-measured for this correction |
+| Share (`share:` roots) | **no** — offset 0 only, enforced by `BulkClaim` | as built |
 
 ### Frame caps
 
@@ -1502,6 +1515,12 @@ ack      {"transferId":"t-8f21","stopped":true}
 the same file resumes from it. That is the opposite policy from a checksum mismatch, and the
 difference is the point: an interrupted partial is a resumable artifact, a checksum-failed partial is
 corrupt. Two states that both look like half a file on disk and want opposite treatment.
+
+> **As built (corrected 2026-09-25): this paragraph and the *Resumable* row below describe the design,
+> and on the Mac they hold only for the debug resume probe.** When the phone receives a push, it keeps a
+> record and resumes. When the Mac receives a pull from its Files pane, it passes no record, so its
+> `<name>.part` is deleted and the next pull starts from byte 0 (see *Resume* under the bulk channel,
+> and defect 151).
 
 A cancelled `transferId` can no longer be claimed by a bulk socket.
 
@@ -2797,6 +2816,25 @@ verifying stops it — all before the exclusive publication. A cancel that arriv
 cannot unpublish the file: the Mac records it as saved but unacknowledged and sends no verdict for an
 offer the phone has cancelled.
 
+**What those words mean, exactly, as built (stated 2026-09-25; nothing about the behaviour changed):**
+
+- **"Flushed"** means the partial's Node write stream finished — `Writable.end()` returned with no
+  error — so every byte had been handed to the operating system. **No `fsync` is called anywhere on
+  this path.** "On disk" in the sentence above therefore means *in the operating system's file cache*,
+  and the save is **not proven to survive a power loss or a kernel panic**.
+- **"The SHA-256 must equal the offer's digest"** is computed over the bytes **as they arrived** from
+  the socket, before they were written. What was written is checked by **length only** (`stat` equals
+  bytes received). The file is not read back from disk.
+- **"Exclusive publication"** is a hard link to a name that did not exist (`link` refuses an existing
+  name), then removal of the partial's name.
+- **Therefore `share.saved {ok:true}` from a Mac of this build promises:** every offered byte arrived,
+  their SHA-256 matched the offer, the file's length on disk matched, and the file became visible under
+  a name that replaced nothing. **It does not promise the file will survive a power loss.**
+
+Any later strengthening of this promise (for example `fsync` before the link) is a change to the
+Mac's preconditions, not to the message. It has to be written here with its date. A phone cannot tell
+which promise a given Mac build made, so the phone's copy must never claim more than the weakest one.
+
 If the phone does not acknowledge a `share.saved {ok:true}`, the file is still on the Mac, verified and
 published; the Mac records the offer as saved **but unacknowledged** and does not present it as
 confirmed by the phone.
@@ -2907,6 +2945,13 @@ offer, deletes every private copy and partial, and nothing re-offers on reconnec
 > **Not implemented; no value here is locked; no large transfer has been run.** The argument, the
 > Gallery-versus-picker guarantees and the readings still owed are `docs/feature-a-large-file-proposal.md`.
 > **There is no file-size limit of its own**; 4 GiB appears only as the FAT32 filesystem limit.
+>
+> **Revised 2026-09-25 after a code review; still not approved.** The section heading's word
+> *resumable* is **not yet a promise** — see *Resume* and *Change detection* below for what continuing
+> after an interruption can and cannot guarantee. **Unknown-length sources are outside this section
+> entirely**: they stay on the private-copy path (version 2 / 3), which already bounds them by the
+> phone's free space, until space limits, bounded writes, failure handling and truthful progress are
+> defined for them.
 
 **Negotiation.** A separate extension, `share.stream: 1`, negotiated only together with `share.file ≥ 3`
 and `share.ask`. It is separate because it changes a security property: a paused stream **outlives its
@@ -2914,14 +2959,34 @@ session** and is bound to the **paired identity** (pinned certificate and `devic
 new session's token.
 
 **Source.** Only a document whose grant the phone **persisted** (`ACTION_OPEN_DOCUMENT` with
-`takePersistableUriPermission`, or a file inside an already-persisted `fs.*` tree). A Gallery share
-(`ACTION_SEND`) is never streamed: its grant does not outlive the receiving activity (measured on the
-emulator; unmeasured on Samsung).
+`takePersistableUriPermission`, or a file inside an already-persisted `fs.*` tree). **A persisted grant
+proves access only.** It proves nothing about whether the bytes are stable, whether the descriptor can
+seek, whether the length is known, or whether the document is a real file rather than a cloud, pipe or
+virtual one. Each of those is established when the file is opened, never inferred from the grant.
+**`ACTION_OPEN_DOCUMENT` is not called anywhere in the current code**, and no picker document has been
+probed on the SM-S938B.
+
+**Gallery shares (`ACTION_SEND`), stated precisely.** Access comes from a grant tied to the receiving
+activity, and it holds **while that activity exists** — which is how the private-copy path reads it
+today.
+
+- **Measured:** after the activity was destroyed, reads failed with `SecurityException` at +1 s,
+  +30 s and +120 s on the Pixel 10 emulator, and at +2 s for Samsung **My Files** on the SM-S938B.
+- **Not settled:** Samsung **Gallery** stayed readable after Finish. That reading is **confounded**,
+  because Sidekick's own `READ_MEDIA_IMAGES` opens `content://media` URIs with no grant at all.
+- **Not measured:** a stopped-but-not-destroyed activity held open for hours; the activity being
+  destroyed under memory pressure.
+
+So a Gallery file **could** be streamed while its sheet stays alive. This section does **not** propose
+that as resumable. If it is ever built, it is *one attempt; share again after any interruption*.
 
 **Offer.** `share.offer` as at version 3, with `item.sha256` **absent** and
-`item.digest: {"kind": "chunked-sha256", "chunk": 67108864}` (chunk size proposed), plus
-`item.resumable: true | false` — false when the phone could not obtain a seekable descriptor; such a
-stream runs as one attempt and cannot pause.
+`item.digest: {"kind": "chunked-sha256", "chunk": <bytes>}`. **The chunk size is unlocked.** 64 MiB was
+a placeholder; see *Durability checkpoints* below for what has to be measured first. The offer also
+carries `item.resumable: true | false`. `true` requires that, at open time, the descriptor
+`fstat`s as a regular file with a non-negative size **and** `lseek` succeeds. Otherwise it is `false`,
+and such a stream runs as one attempt and cannot pause. `item.size` is required: a source whose length
+is not known when opened is not offered on this path.
 
 **Integrity.** As each chunk's bytes leave, the phone sends `share.chunk {offerId, index, sha256}`
 (event, phone → Mac). The Mac hashes what arrived and, on a mismatch, re-pulls that chunk by offset, at
@@ -2937,11 +3002,45 @@ certificate and `deviceId` equal those of the Accept, the record is under 24 hou
 partial and the destination folder pass their identity checks, and the phone reports the source identity
 (size, last-modified, and for media `GENERATION_MODIFIED`) unchanged. **No second Accept is asked; a
 resume is always shown and always cancellable.** Re-pairing or forgetting the phone discards every paused
-record.
+record. The phone reaches the offset by **seeking** a descriptor proven seekable at open. It never
+re-reads the prefix, as the bulk channel does today (see *Resume* under the bulk channel).
 
-**Change detection.** The source identity is re-checked before every attempt, every 1 GiB, and after the
-last byte; any difference ends the stream with the new reason `source-changed`. **An in-place change that
-alters no recorded field cannot be detected**, and this contract does not claim otherwise.
+**Change detection, and what a continued transfer can promise.** The source identity is re-checked
+before every attempt, every 1 GiB, and after the last byte; any difference ends the stream with the new
+reason `source-changed`.
+
+**Metadata does not prove the bytes are unchanged.** An in-place change that keeps the same size and
+moves no recorded field cannot be detected by these checks. That includes a change inside chunks
+**already sent** before an interruption. So a transfer that continued after an interruption promises
+only this: *the saved file is exactly the bytes the phone read, chunk by chunk, across its attempts*.
+It does **not** promise that they are one consistent version of the source.
+
+Two stronger checks are proposed. Neither is decided:
+
+- **Re-verify on continue.** Before sending past the offset, the phone re-reads every chunk already
+  sent and compares each digest with the Mac's recorded one. This catches any change to the sent part
+  that persists at the moment of continuing. It costs a full read of the prefix on the phone (no
+  network). It is only allowed for local, seekable sources.
+- **Verify after save.** After the last chunk, the phone re-reads the whole source and compares its
+  root with the Mac's. This catches any change during the transfer that persists at the end. It costs
+  one full read on the phone.
+
+Neither catches a change that was made and then reverted, or one made after the final read. **The
+word *resumable* may appear in anything a person reads only once one of these checks is chosen and
+built.** Until then the card says *continued from where it stopped*, and the Saved detail says *saved
+as read from the phone*.
+
+**Durability checkpoints.** A record saying *verified through chunk N* may be written only after
+chunks 0…N are on disk. Otherwise a crash leaves a record that claims bytes the disk never kept. There
+are two ways to guarantee that:
+
+- **`fsync` at a checkpoint** before the record advances;
+- **re-hash from disk on continue**: the Mac re-reads its partial from the last trusted checkpoint and
+  truncates at the first chunk that does not match.
+
+How often to checkpoint is separate from the chunk size, and **neither is locked**. On this Mac, the
+cost of `fsync` against its own disk and against an external drive has not been measured, and
+`F_FULLFSYNC` (the only call that asks the drive to empty its own cache) is not reachable from Node.
 
 **Space.** Margin `max(256 MiB, min(⌈size/10⌉, 8 GiB))` (proposed). Free space is re-read every 1 GiB; if
 it falls below the remaining bytes + 1 GiB the stream **pauses** with `destination-full` rather than
