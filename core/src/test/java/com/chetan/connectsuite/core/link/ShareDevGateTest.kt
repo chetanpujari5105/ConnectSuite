@@ -138,4 +138,25 @@ class ShareDevGateTest {
         val on = Extensions.handshake(debuggable = true, devV2Armed = true, macExt = two + (Extensions.SHARE_ASK to 1))
         assertTrue(on.askLine, on.askLine.endsWith("negotiated 1; ordinary Send on this session: enabled (the Mac asks a person)"))
     }
+
+    // ---- the phone's production transfer fact ---------------------------------------------------
+
+    @Test fun `this build does not offer the transfer outside an armed debug handshake - pinned`() {
+        // Flipping it is a production gate change: it belongs in the reviewed commit that records 3e
+        // and the §11 cleanup, with the Mac's readiness. This test is what makes that a visible change.
+        assertFalse(Extensions.PRODUCTION_TRANSFER)
+        assertEquals(phoneOne, Extensions.advertised(debuggable = false, devV2Armed = false))
+    }
+
+    @Test fun `with production transfer on, a release build advertises 2 and Send enables only against share-ask`() {
+        assertEquals(phoneTwo, Extensions.advertised(debuggable = false, devV2Armed = false, productionTransfer = true))
+        val production = two + (Extensions.SHARE_ASK to 1)
+        fun send(mac: Map<String, Int>) =
+            Extensions.ordinarySend(Extensions.handshake(false, false, mac, productionTransfer = true).negotiated)
+        assertTrue("control: the production pairing", send(production))
+        assertFalse("the synthetic-only development Mac", send(two))
+        assertFalse("a version-1 Mac", send(one))
+        assertFalse("an old Mac with no ext", send(emptyMap()))
+    }
 }
+

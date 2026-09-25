@@ -40,13 +40,24 @@ object Extensions {
     val PHONE: Map<String, Int> = mapOf(SHARE_FILE to 1, SHARE_ASK to 1)
 
     /**
-     * What this phone advertises **in one handshake**. [PHONE] (`share.file` 1) unless the build is
-     * debuggable **and** the development gate was armed for this handshake ([ShareDevGate]) — then
-     * `share.file` 2. Every other combination is [PHONE]. A release build is not debuggable, so it
-     * can never advertise 2 whatever the flag says.
+     * **Whether this phone build offers the version-2 transfer to every trusted Mac**, not only to one
+     * armed debug handshake. The phone's twin of the Mac's `SHARE_PRODUCTION_READINESS`: without it a
+     * production Mac advertising `share.file` 2 and `share.ask` still negotiates `min(1, 2) = 1`, and
+     * ordinary Send can never enable. **False in this build and pinned by `ShareDevGateTest`**; it flips
+     * only in a reviewed commit that records the evidence (slice 3e on hardware, 2026-09-25, and the
+     * §11 cleanup), together with the Mac's readiness. Opening it cannot enable Send by itself: ordinary
+     * Send also needs `share.ask` negotiated, which only a production Mac advertises.
      */
-    fun advertised(debuggable: Boolean, devV2Armed: Boolean): Map<String, Int> =
-        if (debuggable && devV2Armed) PHONE + (SHARE_FILE to 2) else PHONE
+    const val PRODUCTION_TRANSFER: Boolean = false
+
+    /**
+     * What this phone advertises **in one handshake**. [PHONE] (`share.file` 1) unless either
+     * [productionTransfer] is on, or the build is debuggable **and** the development gate was armed for
+     * this handshake ([ShareDevGate]) — then `share.file` 2. A release build is not debuggable, so it
+     * advertises 2 only through [productionTransfer].
+     */
+    fun advertised(debuggable: Boolean, devV2Armed: Boolean, productionTransfer: Boolean = PRODUCTION_TRANSFER): Map<String, Int> =
+        if (productionTransfer || (debuggable && devV2Armed)) PHONE + (SHARE_FILE to 2) else PHONE
 
     /** One handshake's two facts, decided together so `hello.ack` and negotiation cannot disagree. */
     data class Handshake(
@@ -65,8 +76,11 @@ object Extensions {
      * Mac's [macExt], and the log line saying both. The line carries version numbers and two
      * booleans only — no token, fingerprint, name or path.
      */
-    fun handshake(debuggable: Boolean, devV2Armed: Boolean, macExt: Map<String, Int>): Handshake {
-        val mine = advertised(debuggable, devV2Armed)
+    fun handshake(
+        debuggable: Boolean, devV2Armed: Boolean, macExt: Map<String, Int>,
+        productionTransfer: Boolean = PRODUCTION_TRANSFER,
+    ): Handshake {
+        val mine = advertised(debuggable, devV2Armed, productionTransfer)
         val negotiated = mine.keys.mapNotNull { name -> negotiate(mine, macExt, name)?.let { name to it } }.toMap()
         val line = "ext: phone advertises ${mine[SHARE_FILE]?.let { "share.file $it" } ?: "nothing"} " +
             "(debug share.file 2 armed for this handshake: $devV2Armed; debuggable build: $debuggable); " +

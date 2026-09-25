@@ -2507,7 +2507,11 @@ closed whenever the development gate is open (the two are mutually exclusive):
    `docs/phase-7-share-3e-runbook.md` §11, **built 2026-09-25 and not yet recorded as reviewed**. Without
    it a production transfer would create partials in the person's folder that no sweep may delete.
 
-Each flips only in the commit that records its evidence. The phone advertises `share.ask: 1`
+Each flips only in the commit that records its evidence. **The phone has a twin fact,**
+`Extensions.PRODUCTION_TRANSFER` — whether it advertises `share.file: 2` to every trusted Mac rather
+than only to one armed debug handshake. Without it a production Mac still negotiates `min(1, 2) = 1`
+and ordinary Send cannot enable. It is **false** in this build, pinned by a test, and flips with the
+Mac's facts. The phone advertises `share.ask: 1`
 unconditionally: the promise is about what the phone will *not* do, so making it costs nothing.
 The cases are `docs/fixtures/share-ordinary-send.json`, read by both sides' tests.
 
