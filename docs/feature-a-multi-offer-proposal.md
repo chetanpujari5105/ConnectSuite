@@ -76,6 +76,10 @@ in a pairing. Evidence: `docs/testing.md` → *Version 3 queue, Stage A*.
 
 ## 3 · Stage B — Gallery multi-select (after Stage A is proven on hardware)
 
+> **Groundwork built 2026-09-26, not wired, not registered** (`ShareSelection.kt`; `docs/testing.md` →
+> *Stage B groundwork*): parsing, whole-selection refusal, and one-at-a-time staging with per-file
+> cleanup. With no approved cap it refuses every selection of more than one file.
+
 - The phone registers `SEND_MULTIPLE`. The sheet lists the files and their total.
 - Files are copied privately **one at a time, in selection order**, and each is offered as soon as it
   is copied. Every file is its own offer, with its own Accept and Decline.
