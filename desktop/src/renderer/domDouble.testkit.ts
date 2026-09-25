@@ -240,15 +240,23 @@ export class FakeElement {
   /** Set by every insertion, so [closest] has a chain to walk. */
   parent: FakeElement | null = null;
 
+  /**
+   * As `Element.append()` does, an element already in a tree is **moved**, not copied — so a view that
+   * re-appends its cards to put them in order leaves one of each (added for the share queue list).
+   */
   append(...kids: FakeElement[]): void {
     this.absorbOwnText();
-    for (const kid of kids) kid.parent = this;
+    for (const kid of kids) {
+      kid.remove();
+      kid.parent = this;
+    }
     this.children.push(...kids);
   }
 
   /** The single-child form. Real elements have both and views use whichever reads better. */
   appendChild(kid: FakeElement): FakeElement {
     this.absorbOwnText();
+    kid.remove();
     kid.parent = this;
     this.children.push(kid);
     return kid;

@@ -25034,3 +25034,98 @@ Found by reading `shareDestination.ts` (`checkDestination`, the `for (const p of
 fixing 153. The probe files are recorded in the ledger with their identity and then removed with
 `unlink` by name, with no comparison. **Not reproduced**, and kept out of 153's patch on the owner's
 instruction. Open: first a swap test between the link and the delete, then identity-checked deletes.
+
+## Version 3 queue, Stage A — built inert and hardened offline (2026-09-26, overnight, no device)
+
+**Nothing here ran on a device, and nothing here can run in a live pairing.** Both sides still
+advertise `share.file` 2 (fixtures on both sides read every gate combination: 8 on the phone, 4 on the
+Mac), so every version-3 path is unreachable until someone deliberately advertises 3. `docs/protocol.md`
+→ Version 3 stays **PROPOSED**. No `adb`, no install, no relaunch, no transfer, no Accept.
+
+**Disabled by design and left that way:** the phone's cap on private copies held at once is
+`ShareAdmission.APPROVED_CAP = null`, so at version 3 a **second concurrent copy is refused before a
+byte is read** (`Failure.HoldingAnother`) — multi-offer admission is off until a measured rule is
+approved. The 60-minute queue lifetime is `QUEUE_LIFETIME_CANDIDATE_MS` on both sides, named a
+candidate in code. No 4 GiB or 8.13 GB figure appears anywhere as a limit.
+
+### What was built on top of the uncommitted foundation
+
+| Side | Built |
+|---|---|
+| Mac receiver | fixes below; an offer's mode is fixed when it arrives; a late failure's Retry window is bounded by the accepted lifetime and closes itself |
+| Mac window | `ShareQueueView`: one card per offer in **arrival** order, every action carrying its own card's `offerId`, pending per card, Escape declines only the focused card's waiting offer, header close hides, a card's Close dismisses that card, finished cards linger 8 s, a reopened window does not replay the run. At version 2 it never activates and `ShareWindowView` is the whole window |
+| Mac main | `failedAfterQueue`: the window is re-presented (without focus) only when a queued file ends *not saved* with a Retry open |
+| Mac tray | a queued card is live: it can be shown and cannot be dismissed (it could be, before — red first) |
+| Phone | `ShareAdmission.forCopy`, the sheet's one admission call: **below version 3, or with nothing held, exactly the version-2 preflight** (fixture over 675 combinations); at 3 with copies held, refused while no cap is approved |
+
+### Defects found in the uncommitted queue code, each red before its fix
+
+| Test | Before | After |
+|---|---|---|
+| a Decline while the Accept is still checking the destination wins (v2 **and** v3) | *actual `saved`, expected `declined`* — **Defect 155** | green |
+| the same Accept clicked twice sends one `share.respond` (v2 and v3) | two accepts, two pulls, two published copies — **Defect 155** | green |
+| v3: two Accepts clicked together each count the other | second check saw `reserved: 0`, expected 40,000 | green |
+| v3: a queued file failing after the 10-minute offer TTL keeps a Retry window, and it closes | `canRetry: false` (bounded by the expired TTL); nothing would ever close it | green |
+| v3: an offer keeps the mode it arrived in | the session ending turned every card back into version 2 | green |
+| v3 tray: a queued card cannot be dismissed | dismissable | green |
+| DOM double: `append` moves an element, as the DOM does | appended a second copy — the double, not the product | fixed in the double |
+
+Coverage tests that were green on first run (they guard, and were not red-first): one file accepted
+never saves the other, and an Accept after its TTL ends it unpulled; two same-named files saved under
+distinct names, each verified, each with its own `share.saved`; phone: an unaccepted offer is never
+pulled while another sends, a verdict for one offer cannot touch the other, declining one deletes only
+its own copy, an ended offer refuses its own session's pull, version 2 never queues, ten live copies
+survive the backstop and a process death's startup sweep removes all ten.
+
+### Mutations — each rule shown red on its own test
+
+**Mac (17 + 1):** M1 no re-check after the Accept's await · M3 a mid-Accept offer reserves nothing ·
+M4 late Retry bounded by the TTL · M5 no Retry-close timer · M6 mode read live · M7 queue in arrival
+order · M9 two writers · M10/M11 re-present rules · M12 action acts on the first card · M13 Escape with
+nothing focused declines · M14 snapshot order · M15 finished cards replayed · M16 v2 enters list mode ·
+M17 pending shared across cards — **all RED**. M2 (in-flight guard) **survived** at first, because M1's
+re-check also stops the second pull; the only effect left was the queue position, so a test for that
+was added (*a double-clicked Accept keeps its first place in line*) and M2 is now RED.
+
+**Survivor, reported rather than papered over:** M8 — removing the session check in `pump` stays green,
+because `attempt` checks the same thing before its first request. Removing **both** is RED on *a queued
+file never starts in a later session*. So the rule is held by **two guards covered by one test**; either
+alone can be deleted without a red.
+
+**Phone (11 + 1):** K1 version split ignored · K2 first file refused by the cap · K3′ unset cap read as
+unlimited · K4 a cap value shipped (4 GiB) · K5 unknown size not bounded by the cap · K6 margin over `s`
+not `Σ+s` · K7 accepted v3 offer keeps the TTL · K8 version 2 queues · K9 a pull blocks itself · K10
+busy counts every session · K11 late Retry bounded by the TTL — **all RED**, each with its results file
+written in the same run and a failing count read from it. K3 as first written **did not compile**
+(recorded as *no reading*, not as a pass) and was rewritten.
+
+### Suites, at the end of the sitting
+
+Mac **1245 / 1245**; `tsc` clean on both configs. Phone: app 94/0, sync-module 390/0 (results seconds
+old), core 212/0, input 52/0, mirror 60/0 (up to date — no source changed in those modules). Guards: all
+12 `check-*.mjs`, `check-defects.sh`, orphan tests and the force-stop fixtures green. The renderer-script
+guard's built-output reading is of `desktop/dist`, which is deliberately **HEAD's** build (below), so the
+working tree's emitted `shareWindowModel.js`, `shareReceiveCopy.js` and `shareWindow.js` were built in a
+scratch copy and read there: no `exports` in any.
+
+**An instrument fault of mine, recorded:** one `npm run build` in `desktop/` overwrote `desktop/dist`,
+which the **running** Mac app loads its receive window from. It was restored within minutes to a
+byte-identical build of HEAD (`diff -rq` against a scratch build: identical), which is the code the
+running app was started on (23:05; HEAD's last code commit is 18:03). Between 00:15:02 and the restore a
+newly opened receive window would have loaded the new renderer; nobody was using the app. Typechecks
+since then are `--noEmit`.
+
+**Not measured:** the list's layout and scrolling in a real window (the DOM double has no layout),
+`:has()` on the window's max height, and anything on a device.
+
+### Defect 155 — `ShareReceiver.decide` trusted its caller to send one decision at a time
+
+`decide(accept)` awaited the destination check and then set `accepting` without re-reading the state.
+Red before, at both versions: a Decline sent while the check was held open ended **saved**; two
+Accepts for one offer produced two `share.respond` accepts, two `fs.transfer.begin`, and — against the
+fake phone — two published files, `same-name.png` and `same-name (2).png`, with the offer
+`saved-unacknowledged`. **What a real phone does with the second pull is not measured**; at version 2 it
+refuses a pull of a `Sending` offer, so the likely outcome is one saved file and a failed second attempt
+on the same entry, not two files. **The shipped window cannot produce either**: it disables Decline and
+Accept while a decision is pending (tested before this sitting), and its Escape goes through the same
+pending check. Fixed in the working tree only; the running Mac app does not have it.

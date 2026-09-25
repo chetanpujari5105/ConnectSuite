@@ -59,7 +59,7 @@ object ShareFeature {
         data object NoSession : OfferOutcome
         data class NotNegotiated(val macName: String) : OfferOutcome
         /**
-         * Another offer is live on this session, so none was made. [other] is that offer as it stands, so
+         * The session already holds its limit of live offers (1 at version 2), so none was made. [other] is that offer as it stands, so
          * the sheet can say *which* file is waiting and offer to withdraw it — never a silent no-op.
          */
         data class Busy(val other: ShareOffer.Offer) : OfferOutcome
@@ -93,6 +93,17 @@ object ShareFeature {
 
     /** Offers still live, whose staged copies this object owns — the staging sweeps must skip them. */
     fun liveOfferIds(): Set<String> = synchronized(lock) { offers.keys.toSet() }
+
+    /**
+     * What the sheet's admission ([ShareAdmission.forCopy]) needs, read together: the `share.file`
+     * negotiated on the live session (0 with none), and `Σ`, the bytes of every staged copy this object
+     * owns for a live offer. With no session there is no live offer (they end with it), so `Σ` is 0.
+     */
+    fun stagingContext(): Pair<Int, Long> {
+        val version = link?.anyLiveSession()?.negotiated?.get(Extensions.SHARE_FILE) ?: 0
+        val held = synchronized(lock) { offers.values.sumOf { it.bytes } }
+        return version to held
+    }
 
     private val offered = AtomicInteger()
     private val declined = AtomicInteger()
@@ -162,9 +173,10 @@ object ShareFeature {
         val now = System.currentTimeMillis()
         val offer = ShareOffer.Offer(offerId, key, bytes, sha256, now, now + ttlMs, name = name, mime = mime)
         synchronized(lock) {
-            ShareOffer.busyWith(offers.values, key)?.let { other ->
-                LinkLog.i("share", "offer $offerId not made: another offer is live on this session " +
-                    "(${other.offerId}, ${ShareOffer.describe(other.state)}); this file stays prepared and the sheet says so")
+            val maxLive = if ((session.negotiated[Extensions.SHARE_FILE] ?: 0) >= ShareOffer.QUEUE_VERSION) ShareOffer.MAX_LIVE_OFFERS_V3 else 1
+            ShareOffer.busyWith(offers.values, key, maxLive)?.let { other ->
+                LinkLog.i("share", "offer $offerId not made: this session holds its limit of $maxLive live offer(s) " +
+                    "(the oldest ${other.offerId}, ${ShareOffer.describe(other.state)}); this file stays prepared and the sheet says so")
                 return OfferOutcome.Busy(other)
             }
             offers[offerId] = offer
@@ -263,7 +275,11 @@ object ShareFeature {
         val result = synchronized(lock) {
             val current = offers[offerId]
             val candidate = current?.takeIf { it.sessionKey == key && it.offerId == offerId }
-            val r = if (candidate != null && ShareOffer.isLive(candidate.state) && !stagedIntact(candidate)) {
+            val other = ShareOffer.pullInFlight(offers.values, key, offerId)
+            val r = if (other != null) {
+                // Version 3 rule 2: one share pull per session at a time. Unreachable at version 2.
+                ShareOffer.Result(current, ShareOffer.Reply.Error(ErrorCode.BAD_REQUEST, "Another share pull is live on this session"), emptyList())
+            } else if (candidate != null && ShareOffer.isLive(candidate.state) && !stagedIntact(candidate)) {
                 ShareOffer.cancelFromPhone(candidate, "staging-lost").copy(
                     reply = ShareOffer.Reply.Error(ErrorCode.NOT_FOUND, "The prepared copy is no longer on this phone"),
                 )
@@ -354,6 +370,7 @@ object ShareFeature {
                 is ShareOffer.Effect.RegisterPull -> registerPull(o, effect.transferId)
                 is ShareOffer.Effect.ScheduleVerdictDeadline -> schedule(o.offerId, effect.atMs) { ShareOffer.verdictDeadline(it, System.currentTimeMillis()) }
                 is ShareOffer.Effect.ScheduleRetryClose -> schedule(o.offerId, effect.atMs) { ShareOffer.retryWindowClosed(it, System.currentTimeMillis()) }
+                is ShareOffer.Effect.ScheduleQueueEnd -> schedule(o.offerId, effect.atMs) { ShareOffer.expire(it, System.currentTimeMillis()) }
                 ShareOffer.Effect.DeleteStaged -> {
                     armedCorruption.remove(o.offerId)
                     val dir = cacheDir?.let { ShareStaging.stagingDir(it) }

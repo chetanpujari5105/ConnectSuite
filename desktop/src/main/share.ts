@@ -3,6 +3,7 @@ import { MessageType } from '../shared/protocol';
 import { SHARE_FILE } from '../shared/extensions';
 import { ShareOfferBook, type DeclineReason, type ShareOfferPayload } from '../shared/shareOffer';
 import { sanitizeShareName } from '../shared/shareNames';
+import { reservedBytes } from '../shared/shareReservations';
 import type { SharePullResult } from './bulk';
 import type { DestinationVerdict, PublishResult } from './shareDestination';
 import { newPartNonce, sharePartPath } from './shareDestination';
@@ -24,7 +25,8 @@ export interface ShareDeps {
   link: ShareLink;
   /** The receive folder, ready to write into, or why not. Called at the offer and again at Accept. */
   receiveFolder(): Promise<{ ok: true; folder: string } | { ok: false; reason: string }>;
-  checkDestination(folder: string, size: number): Promise<DestinationVerdict>;
+  /** [reserved]: bytes other accepted or receiving offers hold back (version 3); 0 at version 2. */
+  checkDestination(folder: string, size: number, reserved: number): Promise<DestinationVerdict>;
   pull(options: {
     token: string;
     transferId: string;
@@ -55,11 +57,30 @@ export interface ShareDeps {
    */
   version2?: { allowed: boolean; syntheticOnly: boolean };
   idleTimeoutMs?: number;
+  /**
+   * Version 3 only: how long an accepted offer may wait its turn before it ends, from its Accept.
+   * Default [QUEUE_LIFETIME_CANDIDATE_MS] — a **candidate, not an approved value**.
+   */
+  queueLifetimeMs?: number;
 }
 
 export const IDLE_TIMEOUT_MS = 30_000;
 export const RETRY_WINDOW_MS = 5 * 60 * 1000;
 export const TRANSFER_VERSION = 2;
+/**
+ * The negotiated `share.file` at which several offers may be live and accepted ones wait their turn
+ * (docs/protocol.md → Share → Version 3, PROPOSED). **Neither side advertises it**, so every path
+ * gated on it is unreachable in a live pairing; below it the Mac holds one offer, exactly as at 2.
+ */
+export const QUEUE_VERSION = 3;
+/** Live offers per trusted session at version 3 — the owner's figure (2026-09-25). */
+export const MAX_LIVE_OFFERS_V3 = 10;
+/**
+ * How long an accepted offer may wait its turn — **a candidate, not approved**. Both sides hold the
+ * same bound from the Accept: the phone ends its side with `share.cancel {expired}`, and the Mac ends
+ * its own **without a message** (a Mac may only cancel with `user`, which would misreport it).
+ */
+export const QUEUE_LIFETIME_CANDIDATE_MS = 60 * 60 * 1000;
 const SHARE_TRANSFER = /^ts-[A-Za-z0-9_-]{22}$/;
 const PROBE_NAME = /^sidekick-offer-probe-\d+\.bin$/;
 
@@ -80,6 +101,12 @@ export function isAcceptableProbe(offer: ShareOfferPayload, allowedDigests: Read
 export const RECEIVE_STATES = [
   'awaiting-decision',
   'accepting',
+  /**
+   * Version 3 only: accepted, waiting its turn behind the transfer that is writing. Nothing of it is on
+   * this Mac. It starts without another tap when its turn comes — **only** on the session it was
+   * accepted on, and only before its lifetime ends; otherwise it ends and never starts.
+   */
+  'queued',
   'receiving',
   'saved',
   'saved-unacknowledged',
@@ -113,6 +140,21 @@ interface Entry {
   lastReason: string | null;
   /** In `unexpected-file`: the name that now holds a different file, in [folder]. Null otherwise. */
   unexpectedName: string | null;
+  /** When this Mac received the offer, and its place in this run's arrivals (1, 2, …). */
+  arrivedAtMs: number;
+  arrivalSeq: number;
+  /** Version 3: the order of Accept clicks (a Retry takes a new, later one). Null until accepted. */
+  acceptOrder: number | null;
+  /** Version 3: while queued, the moment it ends if its turn has not come. */
+  queueUntilMs: number | null;
+  /**
+   * Version 3: the end of the lifetime its first Accept gave it — what bounds a later failure's Retry
+   * window in place of the 10-minute offer TTL, which an accepted offer has left (the phone bounds its
+   * own Retry window by the same lifetime). Null at version 2, where the offer TTL still bounds it.
+   */
+  acceptedUntilMs: number | null;
+  /** Whether version 3 was live for its session when it arrived. Fixed then, so a card keeps its mode. */
+  queueMode: boolean;
   /**
    * An earlier file **this run** published from the same SHA-256, if any — so a re-share after an
    * unconfirmed save is shown as a possible second copy, never as the first.
@@ -157,6 +199,13 @@ export interface ShareCardSnapshot {
   canRetry: boolean;
   /** In `unexpected-file`: the name in [folder] that holds a different file. Display only. */
   unexpectedName: string | null;
+  /** When it arrived, and its place in this run's arrivals — what tells two same-named files apart. */
+  arrivedAtMs: number;
+  arrivalSeq: number;
+  /** Version 3 was negotiated for its session: say, before Accept, that it may wait its turn. */
+  queueMode: boolean;
+  /** In `queued`: how many transfers are ahead of it (the one writing, and queued ones accepted earlier). */
+  filesAhead: number | null;
 }
 
 /** A verified, published earlier copy of the same bytes, and whether the phone ever acknowledged it. */
@@ -199,6 +248,10 @@ export class ShareReceiver {
   private expired = 0;
   private saved = 0;
   private failedAttempts = 0;
+  private arrivals = 0;
+  private accepts = 0;
+  /** Version 3: the one offer whose transfer may write now. Null when none is running. */
+  private writer: string | null = null;
 
   constructor(private readonly deps: ShareDeps) {
     this.now = deps.now ?? Date.now;
@@ -263,6 +316,10 @@ export class ShareReceiver {
       receivedBytes: e.receivedBytes,
       canRetry: e.state === 'failed' && e.savedAs === null && e.retryUntilMs !== null && this.now() < e.retryUntilMs,
       unexpectedName: e.unexpectedName,
+      arrivedAtMs: e.arrivedAtMs,
+      arrivalSeq: e.arrivalSeq,
+      queueMode: e.queueMode,
+      filesAhead: e.state === 'queued' ? this.filesAhead(e) : null,
     }));
   }
 
@@ -319,6 +376,7 @@ export class ShareReceiver {
       negotiated: this.version() > 0,
       sessionKey,
       nowMs: this.now(),
+      maxLiveOffers: this.queueing() ? MAX_LIVE_OFFERS_V3 : 1,
     });
     switch (verdict.kind) {
       case 'unanswerable':
@@ -400,12 +458,29 @@ export class ShareReceiver {
       await this.respondDecline(offerId, 'user');
       return;
     }
+    // An Accept already in flight for this offer (a double click, two IPC calls): one is enough.
+    if (entry.acceptOrder !== null) return;
     if (!this.transferAllowed() || this.deps.link.token() !== entry.sessionKey) {
       log.warn('share', `share ${offerId}: accept refused on the Mac — no version-2 session, or the session changed`);
       this.endAs(entry, 'ended');
       return;
     }
-    const dest = await this.destination(entry.offer.item.size);
+    // The order of the click, taken before any await: the queue runs in the order people accepted.
+    // It also marks the Accept as in flight, so [destination] counts this file as reserved while its
+    // own check runs — two Accepts clicked together each see the other.
+    entry.acceptOrder = ++this.accepts;
+    const dest = await this.destination(entry.offer.item.size, offerId);
+    // A Decline, an expiry or the session ending while the check ran: that end stands. Nothing is
+    // accepted and nothing is pulled — the person's later click is never overwritten by an earlier one.
+    if (now(entry) !== 'awaiting-decision') {
+      log.info('share', `share ${offerId}: ended as ${entry.state} while its Accept was checking the destination — not accepted`);
+      return;
+    }
+    if (this.deps.link.token() !== entry.sessionKey) {
+      log.warn('share', `share ${offerId}: the session changed while its Accept was checking the destination — nothing accepted`);
+      this.endAs(entry, 'ended');
+      return;
+    }
     if (!dest.ok || dest.folder !== entry.folder) {
       const reason: DeclineReason = dest.ok ? 'folder-unavailable' : dest.reason;
       log.info('share', `share ${offerId}: the destination failed its re-check at Accept (${dest.ok ? 'the folder changed' : dest.detail}) — declining ${reason}`);
@@ -426,6 +501,11 @@ export class ShareReceiver {
     }
     // Cancelled (by the person, or the phone) while the accept was in flight: nothing is pulled.
     if (now(entry) !== 'accepting') return;
+    if (this.queueing()) {
+      entry.acceptedUntilMs = this.now() + (this.deps.queueLifetimeMs ?? QUEUE_LIFETIME_CANDIDATE_MS);
+      this.enqueue(entry, entry.acceptedUntilMs);
+      return;
+    }
     await this.attempt(entry);
   }
 
@@ -441,6 +521,13 @@ export class ShareReceiver {
     }
     if (this.now() >= entry.retryUntilMs) {
       this.endAs(entry, 'expired');
+      return;
+    }
+    if (this.queueing()) {
+      // A Retry joins the back of the line, bounded by its own Retry window (the phone refuses a pull
+      // of a failed offer after that window, so waiting past it would only fail later).
+      entry.acceptOrder = ++this.accepts;
+      this.enqueue(entry, entry.retryUntilMs);
       return;
     }
     await this.attempt(entry);
@@ -580,8 +667,17 @@ export class ShareReceiver {
     this.failedAttempts += 1;
     this.setState(entry, 'failed');
     entry.lastReason = reason;
-    entry.retryUntilMs = Math.min(this.now() + RETRY_WINDOW_MS, entry.macExpiresAtMs);
+    entry.retryUntilMs = Math.min(this.now() + RETRY_WINDOW_MS, entry.acceptedUntilMs ?? entry.macExpiresAtMs);
     log.warn('share', `share ${entry.offer.offerId} attempt failed: ${reason} (${detail}); Retry until ${entry.retryUntilMs} — ${this.tally()}`);
+    if (entry.acceptedUntilMs !== null) {
+      // Version 3: the offer timer was replaced by the queue's, so nothing else would close this
+      // window. At version 2 the offer timer still runs and closes it (retryUntilMs ≤ macExpiresAtMs).
+      const offerId = entry.offer.offerId;
+      this.clearTimer(offerId);
+      const timer = setTimeout(() => this.onRetryWindowClosed(offerId), Math.max(0, entry.retryUntilMs - this.now()));
+      timer.unref?.();
+      this.timers.set(offerId, timer);
+    }
     if (tellPhone) {
       void this.deps.link
         .request(MessageType.SHARE_SAVED, { offerId: entry.offer.offerId, ok: false, reason })
@@ -600,7 +696,7 @@ export class ShareReceiver {
    */
   async cancel(offerId: string): Promise<boolean> {
     const entry = this.entries.get(offerId);
-    if (!entry || !['accepting', 'receiving', 'failed'].includes(entry.state)) return false;
+    if (!entry || !['accepting', 'queued', 'receiving', 'failed'].includes(entry.state)) return false;
     const was = entry.state;
     this.endAs(entry, 'cancelled');
     log.info('share', `share ${offerId} cancelled on this Mac while ${was} (${entry.receivedBytes ?? 0} of ${entry.offer.item.size} bytes received)`);
@@ -640,7 +736,7 @@ export class ShareReceiver {
     for (const entry of this.entries.values()) {
       if (entry.sessionKey !== sessionKey) continue;
       entry.abort?.abort();
-      if (['awaiting-decision', 'accepting', 'receiving', 'failed'].includes(entry.state)) this.setState(entry, 'ended');
+      if (['awaiting-decision', 'accepting', 'queued', 'receiving', 'failed'].includes(entry.state)) this.setState(entry, 'ended');
     }
   }
 
@@ -650,6 +746,7 @@ export class ShareReceiver {
       this.entries.set(offerId, {
         offer, sessionKey, folder, state: 'awaiting-decision', macExpiresAtMs,
         retryUntilMs: null, abort: null, savedAs: null, lastReason: null, unexpectedName: null,
+        arrivedAtMs: this.now(), arrivalSeq: ++this.arrivals, acceptOrder: null, queueUntilMs: null, acceptedUntilMs: null, queueMode: this.queueing(),
         priorCopy: this.published.get(offer.item.sha256) ?? null,
         receivedBytes: null, publication: null,
       });
@@ -671,6 +768,7 @@ export class ShareReceiver {
     this.entries.set(offer.offerId, {
       offer, sessionKey, folder: '', state: 'refused', macExpiresAtMs,
       retryUntilMs: null, abort: null, savedAs: null, lastReason: reason, unexpectedName: null, priorCopy: null,
+      arrivedAtMs: this.now(), arrivalSeq: ++this.arrivals, acceptOrder: null, queueUntilMs: null, acceptedUntilMs: null, queueMode: this.queueing(),
       receivedBytes: null, publication: null,
     });
     this.changed();
@@ -687,6 +785,92 @@ export class ShareReceiver {
     }
   }
 
+  // ---- version 3: the queue ------------------------------------------------------------------------
+
+  /** Version 3 negotiated on the live session, and transfers allowed on this Mac. */
+  private queueing(): boolean {
+    return this.version() >= QUEUE_VERSION && this.transferAllowed();
+  }
+
+  private filesAhead(entry: Entry): number {
+    let ahead = this.writer !== null && this.writer !== entry.offer.offerId ? 1 : 0;
+    for (const e of this.entries.values()) {
+      if (e.state === 'queued' && (e.acceptOrder ?? 0) < (entry.acceptOrder ?? 0)) ahead += 1;
+    }
+    return ahead;
+  }
+
+  /**
+   * Accepted: wait for a turn. The live-offer count keeps it (the book's expiry moves to [untilMs]),
+   * the 10-minute offer timer is replaced by the queue lifetime, and nothing of it is pulled until
+   * [pump] gives it the one writer.
+   */
+  private enqueue(entry: Entry, untilMs: number): void {
+    const offerId = entry.offer.offerId;
+    entry.queueUntilMs = untilMs;
+    this.book.extend(offerId, untilMs);
+    this.clearTimer(offerId);
+    const timer = setTimeout(() => this.onQueueLifetime(offerId), Math.max(0, untilMs - this.now()));
+    timer.unref?.();
+    this.timers.set(offerId, timer);
+    this.setState(entry, 'queued');
+    log.info('share', `share ${offerId} accepted and queued (accept #${entry.acceptOrder}, ${this.filesAhead(entry)} ahead); nothing of it is on this Mac yet`);
+    this.pump();
+  }
+
+  /**
+   * **At most one transfer writes at a time**, and queued offers start in Accept order. Before one
+   * starts, it must still be on the live session it was accepted on and inside its lifetime; if not,
+   * it ends here and is never pulled — so an Accept can never start a file in a later session.
+   */
+  private pump(): void {
+    if (this.writer !== null) return;
+    const queued = [...this.entries.values()]
+      .filter((e) => e.state === 'queued')
+      .sort((a, b) => (a.acceptOrder ?? 0) - (b.acceptOrder ?? 0));
+    for (const entry of queued) {
+      const offerId = entry.offer.offerId;
+      if (this.deps.link.token() !== entry.sessionKey || !this.queueing()) {
+        log.warn('share', `share ${offerId}: its session is gone or no longer version 3 — ended, never started`);
+        this.endAs(entry, 'ended');
+        continue;
+      }
+      if (entry.queueUntilMs !== null && this.now() >= entry.queueUntilMs) {
+        this.expireQueued(entry);
+        continue;
+      }
+      this.writer = offerId;
+      log.info('share', `share ${offerId}: its turn — starting (accept #${entry.acceptOrder})`);
+      void this.attempt(entry).finally(() => {
+        if (this.writer === offerId) this.writer = null;
+        this.pump();
+      });
+      return;
+    }
+  }
+
+  private onRetryWindowClosed(offerId: string): void {
+    this.timers.delete(offerId);
+    const entry = this.entries.get(offerId);
+    if (entry?.state !== 'failed') return;
+    this.expired += 1;
+    log.info('share', `share ${offerId}: its Retry window closed with no Retry — expired, nothing kept — ${this.tally()}`);
+    this.endAs(entry, 'expired');
+  }
+
+  private onQueueLifetime(offerId: string): void {
+    this.timers.delete(offerId);
+    const entry = this.entries.get(offerId);
+    if (entry?.state === 'queued') this.expireQueued(entry);
+  }
+
+  /** No message: the phone holds the same bound and ends its side with `share.cancel {expired}`. */
+  private expireQueued(entry: Entry): void {
+    this.expired += 1;
+    log.info('share', `share ${entry.offer.offerId}: accepted but its turn did not come within its lifetime — expired, never started, nothing kept — ${this.tally()}`);
+    this.endAs(entry, 'expired');
+  }
+
   private endAs(entry: Entry, state: ReceiveState, release = true): void {
     this.setState(entry, state);
     entry.abort?.abort();
@@ -700,12 +884,22 @@ export class ShareReceiver {
     this.timers.delete(offerId);
   }
 
-  private async destination(size: number): Promise<
+  private async destination(size: number, exceptOfferId: string | null = null): Promise<
     { ok: true; folder: string } | { ok: false; reason: 'folder-unavailable' | 'insufficient-space' | 'unsupported-destination'; detail: string }
   > {
     const ready = await this.deps.receiveFolder().catch((error: Error) => ({ ok: false as const, reason: error.message }));
     if (!ready.ok) return { ok: false, reason: 'folder-unavailable', detail: ready.reason };
-    const verdict = await this.deps.checkDestination(ready.folder, size).catch((error: Error) => ({
+    const reserved = reservedBytes(
+      [...this.entries.values()].map((e) => ({
+        offerId: e.offer.offerId,
+        // An Accept whose own check is still running holds its size too (see [decide]).
+        state: e.state === 'awaiting-decision' && e.acceptOrder !== null ? 'accepting' : e.state,
+        size: e.offer.item.size,
+        receivedBytes: e.receivedBytes,
+      })),
+      exceptOfferId,
+    );
+    const verdict = await this.deps.checkDestination(ready.folder, size, reserved).catch((error: Error) => ({
       ok: false as const, reason: 'folder-unavailable' as const, detail: `the check itself failed: ${error.message}`,
     }));
     return verdict.ok ? { ok: true, folder: ready.folder } : verdict;

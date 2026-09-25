@@ -30,6 +30,20 @@ object ShareOffer {
     const val RETRY_WINDOW_MS = 5L * 60 * 1000
     /** The negotiated `share.file` version at which a transfer exists. */
     const val TRANSFER_VERSION = 2
+    /**
+     * The negotiated `share.file` at which several offers may be live and an accepted one may wait its
+     * turn (docs/protocol.md → Share → Version 3, PROPOSED). **Neither side advertises it**; below it
+     * every rule here is exactly version 2.
+     */
+    const val QUEUE_VERSION = 3
+    /** Live offers per trusted session at version 3 — the owner's figure (2026-09-25). */
+    const val MAX_LIVE_OFFERS_V3 = 10
+    /**
+     * How long an accepted offer may wait for its pull at version 3, from the Accept — **a candidate,
+     * not an approved value.** It replaces the 10-minute offer TTL for an accepted offer only; the phone
+     * ends it with `share.cancel {expired}` and deletes the copy (the backstop).
+     */
+    const val QUEUE_LIFETIME_CANDIDATE_MS = 60L * 60 * 1000
 
     val DECLINE_REASONS = setOf(
         "not-available", "not-negotiated", "malformed-offer", "busy",
@@ -62,6 +76,8 @@ object ShareOffer {
         val transferId: String? = null,
         val verdictDueMs: Long? = null,
         val retryUntilMs: Long? = null,
+        /** Version 3: accepted and waiting for its pull — it ends at this moment if the pull has not begun. */
+        val queueUntilMs: Long? = null,
     )
 
     sealed interface State {
@@ -93,9 +109,18 @@ object ShareOffer {
      * `ShareFeature.offerStaged` runs. Returns the offer that blocks a new one on [sessionKey], or null.
      * Every entry in [held] is live by construction (`ShareFeature` drops an offer when it ends), and
      * [isLive] is checked anyway so a stale entry can never block.
+     *
+     * [maxLive] is how many live offers one session may hold. **The default, 1, is the version-2
+     * contract and the only value any caller passes today.** Version 3 (docs/protocol.md → Share →
+     * Version 3, PROPOSED, advertised by neither side) would raise it; its number is still a proposal,
+     * so it is a parameter and no value is written here. At the limit, the **oldest** live offer is
+     * returned as the one blocking.
      */
-    fun busyWith(held: Collection<Offer>, sessionKey: String): Offer? =
-        held.firstOrNull { it.sessionKey == sessionKey && isLive(it.state) }
+    fun busyWith(held: Collection<Offer>, sessionKey: String, maxLive: Int = 1): Offer? {
+        require(maxLive >= 1) { "maxLive is at least 1, got $maxLive" }
+        val live = held.filter { it.sessionKey == sessionKey && isLive(it.state) }
+        return if (live.size >= maxLive) live.minByOrNull { it.offeredAtMs } else null
+    }
 
     /** Whether a live offer is still waiting for the Mac's answer — the only time withdrawing it stops nothing mid-flight. */
     fun awaitingAnswer(state: State): Boolean = state == State.Offered
@@ -110,6 +135,8 @@ object ShareOffer {
         data class CancelPull(val transferId: String) : Effect
         data class ScheduleVerdictDeadline(val atMs: Long) : Effect
         data class ScheduleRetryClose(val atMs: Long) : Effect
+        /** Version 3: end this accepted offer at [atMs] if its pull has not begun (the backstop). */
+        data class ScheduleQueueEnd(val atMs: Long) : Effect
     }
 
     /** What a request handler sends back. `null` values are sent as JSON null. */
@@ -132,6 +159,20 @@ object ShareOffer {
 
     private fun badId(offerId: String?) = offerId == null || !ShareStaging.isAttemptId(offerId)
 
+    /**
+     * The moment a still-waiting offer ends: its offer TTL while [State.Offered], or — at version 3,
+     * once accepted — its queue bound instead. Version 2 never sets [Offer.queueUntilMs], so there an
+     * accepted offer keeps the offer TTL exactly as before.
+     */
+    private fun waitsUntil(o: Offer): Long = if (o.state == State.Accepted && o.queueUntilMs != null) o.queueUntilMs else o.expiresAtMs
+
+    /**
+     * **One share pull at a time per session** (Version 3 rule 2): another offer on [sessionKey], not
+     * [offerId], whose pull is live. At version 2 only one offer is ever live, so this is never set there.
+     */
+    fun pullInFlight(held: Collection<Offer>, sessionKey: String, offerId: String): Offer? =
+        held.firstOrNull { it.sessionKey == sessionKey && it.offerId != offerId && it.state == State.Sending }
+
     private fun same(offer: Offer?, fromSession: String, offerId: String): Offer? =
         offer?.takeIf { it.offerId == offerId && it.sessionKey == fromSession && isLive(it.state) }
 
@@ -145,7 +186,7 @@ object ShareOffer {
      */
     fun respond(
         offer: Offer?, fromSession: String, offerId: String?, decision: String?, reason: String?,
-        nowMs: Long, negotiatedVersion: Int = 1,
+        nowMs: Long, negotiatedVersion: Int = 1, queueLifetimeMs: Long = QUEUE_LIFETIME_CANDIDATE_MS,
     ): Result {
         if (badId(offerId)) return Result(offer, Reply.Error(BAD_REQUEST, "offerId is missing or malformed"), emptyList())
         when (decision) {
@@ -162,7 +203,13 @@ object ShareOffer {
             if (negotiatedVersion < TRANSFER_VERSION) {
                 return Result(live, Reply.Error(BAD_REQUEST, "This phone cannot send files yet"), emptyList())
             }
-            return Result(live.copy(state = State.Accepted), Reply.Ack(mapOf("offerId" to offerId, "state" to "accepted")), emptyList())
+            val ack = Reply.Ack(mapOf("offerId" to offerId, "state" to "accepted"))
+            if (negotiatedVersion >= QUEUE_VERSION) {
+                // It may wait behind other transfers: bounded from the Accept, not by the offer's TTL.
+                val until = nowMs + queueLifetimeMs
+                return Result(live.copy(state = State.Accepted, queueUntilMs = until), ack, listOf(Effect.ScheduleQueueEnd(until)))
+            }
+            return Result(live.copy(state = State.Accepted), ack, emptyList())
         }
         val (next, effects) = ended(live, State.Declined(reason!!))
         return Result(next, Reply.Ack(mapOf("offerId" to offerId, "state" to "declined")), effects)
@@ -180,7 +227,7 @@ object ShareOffer {
         val live = same(offer, fromSession, offerId) ?: return Result(offer, Reply.Error(NOT_FOUND, NOT_FOUND_MESSAGE), emptyList())
         if (itemId != "0") return Result(live, Reply.Error(NOT_FOUND, "A share root holds item \"0\" only"), emptyList())
         when (live.state) {
-            State.Accepted -> if (nowMs >= live.expiresAtMs) return expireInstead(live)
+            State.Accepted -> if (nowMs >= waitsUntil(live)) return expireInstead(live)
             is State.Failed -> if (nowMs >= (live.retryUntilMs ?: 0L)) return expireInstead(live)
             else -> return Result(live, Reply.Error(NOT_FOUND, "That offer is not waiting for a pull"), emptyList())
         }
@@ -265,7 +312,7 @@ object ShareOffer {
     }
 
     private fun failInto(live: Offer, reason: String, nowMs: Long, reply: Reply?): Result {
-        val until = minOf(nowMs + RETRY_WINDOW_MS, live.expiresAtMs)
+        val until = minOf(nowMs + RETRY_WINDOW_MS, live.queueUntilMs ?: live.expiresAtMs)
         val stop = if (live.state == State.Sending && live.transferId != null) listOf(Effect.CancelPull(live.transferId)) else emptyList()
         if (until <= nowMs) {
             val (next, effects) = ended(live, State.Expired, Effect.SendCancel("expired"))
@@ -282,7 +329,7 @@ object ShareOffer {
         if (badId(offerId)) return Result(offer, Reply.Error(BAD_REQUEST, "offerId is missing or malformed"), emptyList())
         if (reason == null || reason !in MAC_CANCEL_REASONS) return Result(offer, Reply.Error(BAD_REQUEST, "reason must be user"), emptyList())
         val live = same(offer, fromSession, offerId!!) ?: return Result(offer, Reply.Error(NOT_FOUND, NOT_FOUND_MESSAGE), emptyList())
-        if ((live.state == State.Offered || live.state == State.Accepted) && nowMs >= live.expiresAtMs) return expireInstead(live)
+        if ((live.state == State.Offered || live.state == State.Accepted) && nowMs >= waitsUntil(live)) return expireInstead(live)
         val (next, effects) = ended(live, State.Cancelled(Side.MAC, reason))
         return Result(next, Reply.Ack(mapOf("offerId" to offerId, "stopped" to true)), effects)
     }
@@ -301,7 +348,7 @@ object ShareOffer {
      * its Retry window (which never runs past `expiresAtMs`).
      */
     fun expire(offer: Offer, nowMs: Long): Result {
-        if ((offer.state != State.Offered && offer.state != State.Accepted) || nowMs < offer.expiresAtMs) {
+        if ((offer.state != State.Offered && offer.state != State.Accepted) || nowMs < waitsUntil(offer)) {
             return Result(offer, null, emptyList())
         }
         return expireInstead(offer).copy(reply = null)

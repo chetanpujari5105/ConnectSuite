@@ -10,6 +10,7 @@ import { ShareReceiver, isAcceptableProbe, type ShareDeps, type ShareLink } from
 import { checkDestination, publishExclusive, type DestinationVerdict } from './shareDestination';
 import { startFakePhone, synthetic, type FakePhone } from './sharePhone.testkit';
 import { handleShareDecision, type WindowFacts } from './shareDecision';
+import { isSidekickTemporaryName } from './shareLedger';
 import { sanitizeShareName } from '../shared/shareNames';
 const { shareReceiveStatus } = require('../shared/shareReceiveCopy') as { shareReceiveStatus: (f: Record<string, unknown>) => { headline: string; savedOnMac: boolean; confirmedByPhone: boolean } };
 
@@ -72,7 +73,7 @@ function receiver(link: FakeLink, folder: string, phones: FakePhone[], over: Par
   return new ShareReceiver({
     link,
     receiveFolder: async () => ({ ok: true, folder }),
-    checkDestination: (f, size) => checkDestination(f, size),
+    checkDestination: (f, size, reserved) => checkDestination(f, size, undefined, null, reserved),
     pull: (options): Promise<SharePullResult> => pullShareWith(options, phones[Math.min(attempt++, phones.length - 1)]!.open),
     publish: (part, f, name) => publishExclusive(part, f, name),
     now: () => now,
@@ -798,5 +799,405 @@ test('unexpected-file: a file swapped in just before publication ends the offer 
   } finally {
     await phone.close();
     await second.close();
+  }
+});
+
+// ---- version 3: several offers, one writer, Accept order (PROPOSED; neither side advertises 3) -----
+
+const vid = (c: string): string => `s-${c.repeat(22)}`;
+
+/** A receiver on a negotiated [version], with one fake phone per offered digest and a real destination. */
+async function queueRig(version: number, files: { id: string; size: number; behaviour?: Record<string, unknown> }[], over: Partial<ShareDeps> = {}) {
+  const d = folder();
+  assert.ok(d.startsWith(tmpdir()), 'confined to the OS temp folder');
+  const data = new Map(files.map((f) => [f.id, synthetic(f.size)]));
+  const phones = new Map<string, FakePhone>();
+  for (const f of files) phones.set(data.get(f.id)!.sha256, await startFakePhone({ bytes: data.get(f.id)!.bytes, ...(f.behaviour ?? {}) }));
+  const link = new FakeLink(version, 0, 'a'.repeat(64));
+  const begins: string[] = [];
+  link.request = async function (type: string, payload: Record<string, unknown>) {
+    this.sent.push({ type, payload });
+    if (type === 'share.respond') return { payload: { offerId: payload.offerId, state: payload.decision === 'accept' ? 'accepted' : 'declined' } };
+    if (type === 'fs.transfer.begin') {
+      const offerId = String(payload.rootId).slice('share:'.length);
+      begins.push(offerId);
+      const f = data.get(offerId)!;
+      return { payload: { transferId: `ts-${String(begins.length).padStart(22, 'T')}`, direction: 'pull', size: f.bytes.length, sha256: f.sha256, offset: 0 } };
+    }
+    if (type === 'share.saved') return { payload: { offerId: payload.offerId, state: payload.ok ? 'saved' : 'failed' } };
+    return { payload: { stopped: true } };
+  };
+  const checks: { size: number; reserved: number }[] = [];
+  const r = new ShareReceiver({
+    link,
+    receiveFolder: async () => ({ ok: true, folder: d }),
+    checkDestination: (f, size, reserved) => { checks.push({ size, reserved }); return checkDestination(f, size, undefined, null, reserved); },
+    pull: (options) => pullShareWith(options, phones.get(options.expectedSha256)!.open),
+    publish: (part, f, name) => publishExclusive(part, f, name),
+    now: () => now,
+    idleTimeoutMs: 2000,
+    version2: { allowed: true, syntheticOnly: false },
+    ...over,
+  });
+  for (const f of files) await r.onOffer(offer(f.size, data.get(f.id)!.sha256, { offerId: f.id, name: `same-name.png` }));
+  return { r, link, d, data, phones: [...phones.values()], begins, checks, close: async () => { for (const p of phones.values()) await p.close(); } };
+}
+
+async function until(what: string, pred: () => boolean, ms = 4000): Promise<void> {
+  const start = Date.now();
+  while (!pred()) {
+    if (Date.now() - start > ms) throw new Error(`timed out waiting for: ${what}`);
+    await new Promise((res) => setTimeout(res, 10));
+  }
+}
+
+test('v3 gate off — negotiated 2 (a 2+2 pair, or a 3+2 pair): one live offer, the second is busy, and nothing ever queues', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(2, [{ id: vid('A'), size: 20_000 }, { id: vid('B'), size: 30_000 }]);
+  try {
+    const seen = new Set<string>();
+    rig.r.onChange(() => { for (const s of rig.r.snapshots()) seen.add(s.state); });
+    assert.equal(rig.r.state(vid('B')), undefined, 'the second offer was never held');
+    assert.equal(rig.link.sent.find((s) => s.payload.offerId === vid('B'))?.payload.reason, 'busy');
+    await rig.r.decide(vid('A'), 'accept');
+    await until('A saved', () => rig.r.state(vid('A')) === 'saved');
+    assert.ok(!seen.has('queued'), `states seen: ${[...seen].join(',')}`);
+    assert.equal(rig.r.snapshots().find((s) => s.offerId === vid('A'))!.queueMode, false);
+    assert.deepEqual(rig.checks.map((c) => c.reserved), [0, 0], 'version 2 reserves nothing: at the offer and at Accept');
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3 (3+3): two offers wait side by side; the one accepted first transfers first, the other queues, then starts on its own', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 40_000 },
+    { id: vid('B'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+  ], { idleTimeoutMs: 400 });
+  try {
+    assert.equal(rig.r.state(vid('A')), 'awaiting-decision');
+    assert.equal(rig.r.state(vid('B')), 'awaiting-decision', 'the second offer waits beside the first');
+    const snaps = rig.r.snapshots();
+    assert.ok(snaps.every((s) => s.queueMode), 'the pre-Accept sentence applies');
+    assert.notEqual(snaps[0]!.arrivalSeq, snaps[1]!.arrivalSeq, 'same name, different arrival numbers');
+
+    await rig.r.decide(vid('B'), 'accept'); // accepted first, though it arrived second
+    await until('B writing', () => rig.r.state(vid('B')) === 'receiving');
+    await rig.r.decide(vid('A'), 'accept');
+    assert.equal(rig.r.state(vid('A')), 'queued', 'accepted behind a running transfer');
+    assert.equal(rig.r.snapshots().find((s) => s.offerId === vid('A'))!.filesAhead, 1);
+    assert.deepEqual(rig.begins, [vid('B')], 'nothing of A was pulled while B writes');
+    assert.ok(readdirSync(rig.d).filter(isSidekickTemporaryName).length <= 1, 'at most one partial (Sidekick’s own temporary names)');
+
+    await until('A saved', () => rig.r.state(vid('A')) === 'saved', 6000);
+    assert.equal(rig.r.state(vid('B')), 'failed', 'B stalled and failed on its own; A started without another tap');
+    assert.deepEqual(rig.begins, [vid('B'), vid('A')], 'pulled in Accept order, one at a time');
+    assert.deepEqual(readFileSync(join(rig.d, 'same-name.png')), rig.data.get(vid('A'))!.bytes);
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: a queued file is cancellable by its own id — the phone is told, and it is never pulled', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 40_000 },
+    { id: vid('B'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+  ], { idleTimeoutMs: 400 });
+  try {
+    await rig.r.decide(vid('B'), 'accept');
+    await until('B writing', () => rig.r.state(vid('B')) === 'receiving');
+    await rig.r.decide(vid('A'), 'accept');
+    assert.equal(await rig.r.cancel(vid('A')), true);
+    assert.equal(rig.r.state(vid('A')), 'cancelled');
+    assert.deepEqual(rig.link.sent.filter((s) => s.type === 'share.cancel').map((s) => s.payload), [{ offerId: vid('A'), reason: 'user' }]);
+    await until('B ended', () => rig.r.state(vid('B')) === 'failed');
+    await new Promise((res) => setTimeout(res, 100));
+    assert.deepEqual(rig.begins, [vid('B')], 'the cancelled file never started');
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: the session ending ends a queued file with it — never started, nothing kept', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 40_000 },
+    { id: vid('B'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+  ], { idleTimeoutMs: 5000 });
+  try {
+    await rig.r.decide(vid('B'), 'accept');
+    await until('B writing', () => rig.r.state(vid('B')) === 'receiving');
+    await rig.r.decide(vid('A'), 'accept');
+    rig.r.onSessionEnded('token-A');
+    assert.equal(rig.r.state(vid('A')), 'ended');
+    await until('B aborted', () => rig.r.state(vid('B')) === 'ended');
+    await new Promise((res) => setTimeout(res, 100));
+    assert.deepEqual(rig.begins, [vid('B')]);
+    assert.deepEqual(readdirSync(rig.d), [], 'no partial, nothing saved');
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: a queued file never starts in a later session — a new token before its turn ends it unpulled', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 40_000 },
+    { id: vid('B'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+  ], { idleTimeoutMs: 300 });
+  try {
+    await rig.r.decide(vid('B'), 'accept');
+    await until('B writing', () => rig.r.state(vid('B')) === 'receiving');
+    await rig.r.decide(vid('A'), 'accept');
+    rig.link.tokenValue = 'token-LATER'; // reconnected; no onSessionEnded reached the receiver
+    await until('A resolved', () => rig.r.state(vid('A')) !== 'queued', 4000);
+    assert.equal(rig.r.state(vid('A')), 'ended');
+    assert.deepEqual(rig.begins, [vid('B')], 'A was never pulled on the later session');
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: a queued file past its lifetime ends expired, unpulled, and the Mac sends no misleading cancel', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 40_000 },
+    { id: vid('B'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+  ], { idleTimeoutMs: 5000, queueLifetimeMs: 150 });
+  try {
+    await rig.r.decide(vid('B'), 'accept');
+    await until('B writing', () => rig.r.state(vid('B')) === 'receiving');
+    await rig.r.decide(vid('A'), 'accept');
+    assert.equal(rig.r.state(vid('A')), 'queued');
+    await until('A expired', () => rig.r.state(vid('A')) === 'expired', 2000);
+    assert.equal(rig.link.sent.filter((s) => s.type === 'share.cancel' && s.payload.offerId === vid('A')).length, 0);
+    assert.deepEqual(rig.begins, [vid('B')]);
+    await rig.r.cancel(vid('B'));
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: Accept is checked against free space minus what others reserve — the receiving file counts only its unwritten part', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 40_000 },
+    { id: vid('B'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+  ], { idleTimeoutMs: 5000 });
+  try {
+    await rig.r.decide(vid('B'), 'accept');
+    await until('B has written 20,000', () => rig.r.snapshots().find((s) => s.offerId === vid('B'))!.receivedBytes === 20_000);
+    await rig.r.decide(vid('A'), 'accept');
+    const atAcceptA = rig.checks.at(-1)!;
+    assert.deepEqual(atAcceptA, { size: 40_000, reserved: 80_000 }, 'B reserves 100,000 − 20,000 written');
+    assert.deepEqual(rig.checks.slice(0, 2).map((c) => c.reserved), [0, 0], 'at the two offers nothing was accepted yet');
+    assert.equal(rig.checks[2]!.reserved, 0, 'B’s own Accept did not count B');
+    await rig.r.cancel(vid('B'));
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: an Accept that the reserved space cannot cover is refused insufficient-space, and the running file is untouched', { timeout: 10_000 }, async () => {
+  let reserveFail = false;
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 40_000 },
+    { id: vid('B'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+  ], {
+    idleTimeoutMs: 5000,
+    checkDestination: async (_f, _size, reserved) => (reserveFail && reserved > 0
+      ? { ok: false, reason: 'insufficient-space', detail: `after ${reserved} reserved` }
+      : { ok: true }),
+  });
+  try {
+    await rig.r.decide(vid('B'), 'accept');
+    await until('B writing', () => rig.r.state(vid('B')) === 'receiving');
+    reserveFail = true;
+    await rig.r.decide(vid('A'), 'accept');
+    assert.equal(rig.r.state(vid('A')), 'refused');
+    assert.equal(rig.link.sent.find((s) => s.type === 'share.respond' && s.payload.offerId === vid('A') && s.payload.decision === 'decline')?.payload.reason, 'insufficient-space');
+    assert.equal(rig.r.state(vid('B')), 'receiving', 'the running transfer carries on');
+    await rig.r.cancel(vid('B'));
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: ten live offers per session; the eleventh is busy and alters none of the ten', { timeout: 15_000 }, async () => {
+  const ids = 'ABCDEFGHJK'.split('').map(vid);
+  const rig = await queueRig(3, ids.map((id) => ({ id, size: 1000 })));
+  try {
+    for (const id of ids) assert.equal(rig.r.state(id), 'awaiting-decision', id);
+    const extra = synthetic(1000);
+    await rig.r.onOffer(offer(1000, extra.sha256, { offerId: vid('L') }));
+    assert.equal(rig.r.state(vid('L')), undefined);
+    assert.equal(rig.link.sent.find((s) => s.payload.offerId === vid('L'))?.payload.reason, 'busy');
+    for (const id of ids) assert.equal(rig.r.state(id), 'awaiting-decision', `${id} unchanged`);
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: two queued files start in the order they were accepted, not the order they arrived', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 10_000 },
+    { id: vid('B'), size: 20_000 },
+    { id: vid('C'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+  ], { idleTimeoutMs: 400 });
+  try {
+    await rig.r.decide(vid('C'), 'accept');
+    await until('C writing', () => rig.r.state(vid('C')) === 'receiving');
+    await rig.r.decide(vid('B'), 'accept'); // arrived 2nd, accepted 2nd
+    await rig.r.decide(vid('A'), 'accept'); // arrived 1st, accepted 3rd
+    const ahead = Object.fromEntries(rig.r.snapshots().filter((s) => s.state === 'queued').map((s) => [s.offerId, s.filesAhead]));
+    assert.deepEqual(ahead, { [vid('B')]: 1, [vid('A')]: 2 });
+    await until('A and B saved', () => rig.r.state(vid('A')) === 'saved' && rig.r.state(vid('B')) === 'saved', 6000);
+    assert.deepEqual(rig.begins, [vid('C'), vid('B'), vid('A')]);
+  } finally {
+    await rig.close();
+  }
+});
+
+// ---- v3 hardening (2026-09-26): races around an Accept, a late failure's Retry window, fixed mode ---
+
+test('a Decline while the Accept is still checking the destination wins — nothing is accepted, nothing pulled (v2 and v3)', { timeout: 10_000 }, async () => {
+  for (const version of [2, 3]) {
+    let release!: () => void;
+    const gate = new Promise<void>((res) => { release = res; });
+    let calls = 0;
+    const rig = await queueRig(version, [{ id: vid('A'), size: 20_000 }], {
+      checkDestination: async (f, size, reserved) => {
+        calls += 1;
+        if (calls === 2) await gate; // the Accept's re-check, held open
+        return checkDestination(f, size, undefined, null, reserved);
+      },
+    });
+    try {
+      const accepting = rig.r.decide(vid('A'), 'accept');
+      await until('the Accept is inside its destination check', () => calls === 2);
+      await rig.r.decide(vid('A'), 'decline');
+      release();
+      await accepting;
+      assert.equal(rig.r.state(vid('A')), 'declined', `v${version}: the Decline stands`);
+      assert.deepEqual(rig.link.sent.filter((s) => s.type === 'share.respond').map((s) => s.payload.decision), ['decline'], `v${version}: no accept was ever sent`);
+      assert.deepEqual(rig.begins, [], `v${version}: nothing pulled`);
+    } finally {
+      await rig.close();
+    }
+  }
+});
+
+test('the same Accept clicked twice sends one share.respond (v2 and v3)', { timeout: 10_000 }, async () => {
+  for (const version of [2, 3]) {
+    const rig = await queueRig(version, [{ id: vid('A'), size: 20_000 }]);
+    try {
+      await Promise.all([rig.r.decide(vid('A'), 'accept'), rig.r.decide(vid('A'), 'accept')]);
+      await until('A saved', () => rig.r.state(vid('A')) === 'saved');
+      assert.equal(rig.link.sent.filter((s) => s.type === 'share.respond').length, 1, `v${version}`);
+      assert.deepEqual(rig.begins, [vid('A')], `v${version}: pulled once`);
+    } finally {
+      await rig.close();
+    }
+  }
+});
+
+test('v3: two Accepts clicked together each count the other — the second check sees the first as reserved', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 40_000, behaviour: { stallAfter: 10_000, chunkSize: 10_000 } },
+    { id: vid('B'), size: 30_000, behaviour: { stallAfter: 10_000, chunkSize: 10_000 } },
+  ], { idleTimeoutMs: 5000 });
+  try {
+    await Promise.all([rig.r.decide(vid('A'), 'accept'), rig.r.decide(vid('B'), 'accept')]);
+    const atAccept = rig.checks.slice(2);
+    assert.deepEqual(atAccept.map((c) => c.size), [40_000, 30_000]);
+    assert.equal(atAccept[1]!.reserved, 40_000, 'A was mid-Accept when B was judged, and counted');
+    await rig.r.cancel(vid('A'));
+    await rig.r.cancel(vid('B'));
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: a queued file that fails after the 10-minute offer TTL keeps a Retry window, and it closes as expired', { timeout: 10_000 }, async () => {
+  let clock = now;
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+  ], { idleTimeoutMs: 300, now: () => clock, queueLifetimeMs: 650_400 });
+  try {
+    await rig.r.decide(vid('A'), 'accept');
+    await until('A writing', () => rig.r.state(vid('A')) === 'receiving');
+    clock = now + 650_000; // long past the offer's 10-minute TTL; the file started late in its queue
+    await until('A failed', () => rig.r.state(vid('A')) === 'failed');
+    const s = rig.r.snapshots().find((x) => x.offerId === vid('A'))!;
+    assert.equal(s.canRetry, true, 'bounded by the accepted lifetime, not the expired offer TTL');
+    await until('the Retry window closed', () => rig.r.state(vid('A')) === 'expired', 3000);
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: an offer keeps the mode it arrived in — the session ending does not turn its card back into version 2', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(3, [{ id: vid('A'), size: 1000 }, { id: vid('B'), size: 1000 }]);
+  try {
+    rig.link.tokenValue = null as unknown as string;
+    rig.r.onSessionEnded('token-A');
+    for (const s of rig.r.snapshots()) {
+      assert.equal(s.state, 'ended');
+      assert.equal(s.queueMode, true, s.offerId);
+    }
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: accepting one file never saves the other — B waits for its own Accept, and after its TTL an Accept ends it unpulled', { timeout: 10_000 }, async () => {
+  let clock = now;
+  const rig = await queueRig(3, [{ id: vid('A'), size: 20_000 }, { id: vid('B'), size: 30_000 }], { now: () => clock });
+  try {
+    await rig.r.decide(vid('A'), 'accept');
+    await until('A saved', () => rig.r.state(vid('A')) === 'saved');
+    await new Promise((res) => setTimeout(res, 100));
+    assert.equal(rig.r.state(vid('B')), 'awaiting-decision');
+    assert.deepEqual(rig.begins, [vid('A')]);
+    assert.deepEqual(readdirSync(rig.d), ['same-name.png']);
+    clock = now + 600_001;
+    await rig.r.decide(vid('B'), 'accept');
+    assert.equal(rig.r.state(vid('B')), 'expired');
+    assert.deepEqual(rig.begins, [vid('A')], 'B was never pulled');
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: two files with one name are both saved under distinct names, each verified, each confirmed by its own share.saved', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(3, [{ id: vid('A'), size: 20_000 }, { id: vid('B'), size: 30_000 }]);
+  try {
+    await rig.r.decide(vid('A'), 'accept');
+    await rig.r.decide(vid('B'), 'accept');
+    await until('both saved', () => rig.r.state(vid('A')) === 'saved' && rig.r.state(vid('B')) === 'saved');
+    const a = rig.r.savedAs(vid('A'))!;
+    const b = rig.r.savedAs(vid('B'))!;
+    assert.notEqual(a, b);
+    assert.deepEqual(readFileSync(join(rig.d, a)), rig.data.get(vid('A'))!.bytes);
+    assert.deepEqual(readFileSync(join(rig.d, b)), rig.data.get(vid('B'))!.bytes);
+    const verdicts = rig.link.sent.filter((s) => s.type === 'share.saved').map((s) => [s.payload.offerId, s.payload.ok, s.payload.savedAs]);
+    assert.deepEqual(verdicts, [[vid('A'), true, a], [vid('B'), true, b]]);
+    assert.deepEqual(readdirSync(rig.d).sort(), [a, b].sort(), 'nothing else left in the folder — no partial');
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3: a double-clicked Accept keeps its first place in line', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 10_000 },
+    { id: vid('B'), size: 20_000 },
+    { id: vid('C'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+  ], { idleTimeoutMs: 400 });
+  try {
+    await rig.r.decide(vid('C'), 'accept');
+    await until('C writing', () => rig.r.state(vid('C')) === 'receiving');
+    await Promise.all([rig.r.decide(vid('A'), 'accept'), rig.r.decide(vid('B'), 'accept'), rig.r.decide(vid('A'), 'accept')]);
+    const ahead = Object.fromEntries(rig.r.snapshots().filter((s) => s.state === 'queued').map((s) => [s.offerId, s.filesAhead]));
+    assert.deepEqual(ahead, { [vid('A')]: 1, [vid('B')]: 2 });
+    await until('A and B saved', () => rig.r.state(vid('A')) === 'saved' && rig.r.state(vid('B')) === 'saved', 6000);
+    assert.deepEqual(rig.begins, [vid('C'), vid('A'), vid('B')]);
+  } finally {
+    await rig.close();
   }
 });

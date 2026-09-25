@@ -92,6 +92,11 @@ export async function checkDestination(
   size: number,
   fs: DestinationFs = realFs,
   ledger: ShareLedger | null = null,
+  /**
+   * Bytes other accepted or receiving offers hold back (`shareReservations.ts`), taken out of free
+   * space before this offer is judged. 0 — the default — is version 2, where only one offer is live.
+   */
+  reserved = 0,
 ): Promise<DestinationVerdict> {
   try {
     const info = await fs.stat(folder);
@@ -104,8 +109,13 @@ export async function checkDestination(
     const s = await fs.statfs(folder);
     const free = Number(s.bavail) * Number(s.bsize);
     if (!Number.isFinite(free)) return { ok: false, reason: 'folder-unavailable', detail: 'free space unknown' };
-    if (free < spaceNeeded(size)) {
-      return { ok: false, reason: 'insufficient-space', detail: `needs ${spaceNeeded(size)} bytes free, has ${free}` };
+    if (!Number.isSafeInteger(reserved) || reserved < 0) {
+      return { ok: false, reason: 'folder-unavailable', detail: `reserved bytes unreadable (${reserved})` };
+    }
+    if (free - reserved < spaceNeeded(size)) {
+      return reserved > 0
+        ? { ok: false, reason: 'insufficient-space', detail: `needs ${spaceNeeded(size)} bytes free after ${reserved} reserved for accepted files, has ${free}` }
+        : { ok: false, reason: 'insufficient-space', detail: `needs ${spaceNeeded(size)} bytes free, has ${free}` };
     }
   } catch (error) {
     return { ok: false, reason: 'folder-unavailable', detail: `free space could not be read (${code(error)})` };

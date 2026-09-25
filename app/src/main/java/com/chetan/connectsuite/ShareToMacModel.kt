@@ -10,6 +10,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.chetan.connectsuite.core.link.LinkController
 import com.chetan.connectsuite.core.link.LinkLog
+import com.chetan.connectsuite.sync.v2.ShareAdmission
 import com.chetan.connectsuite.sync.v2.ShareFeature
 import com.chetan.connectsuite.sync.v2.ShareIntake
 import com.chetan.connectsuite.sync.v2.ShareNames
@@ -259,12 +260,25 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
             if (it.deleted > 0 || it.leftUnrecognised > 0 || it.refusedDir) LinkLog.i("share", "backstop ${ShareStaging.sweepLine(it)}")
         }
         val free = dir.usableSpace
-        when (val pre = ShareStaging.preflight(expected, free)) {
-            is ShareStaging.Preflight.NoSpace -> {
-                fail(name, null, ShareSheetState.Failure.NoSpace(pre.needed, pre.available), "preflight refused, limit=${pre.limit}")
+        // Below version 3 — every live pairing today — this is exactly the version-2 preflight. At
+        // version 3 (PROPOSED, advertised by nothing) the copies already held for live offers count,
+        // and with no approved cap a second concurrent copy is refused before a byte is read.
+        val (version, held) = ShareFeature.stagingContext()
+        when (val pre = ShareAdmission.forCopy(version, expected, held, free, ShareAdmission.APPROVED_CAP)) {
+            is ShareAdmission.Copy.NoSpace -> {
+                fail(name, null, ShareSheetState.Failure.NoSpace(pre.needed, pre.free), "preflight refused (share.file $version, $held bytes held)")
                 return
             }
-            is ShareStaging.Preflight.Go -> copy(source, dir, name, mime, expected, pre.limit)
+            is ShareAdmission.Copy.CapNotApproved -> {
+                fail(name, null, ShareSheetState.Failure.HoldingAnother(pre.held),
+                    "not copied: $held bytes already held for live offers and no concurrent-copy cap is approved (share.file $version)")
+                return
+            }
+            is ShareAdmission.Copy.OverCap -> {
+                fail(name, null, ShareSheetState.Failure.OverHoldCap(pre.held, pre.cap), "not copied: over the concurrent-copy cap (share.file $version)")
+                return
+            }
+            is ShareAdmission.Copy.Go -> copy(source, dir, name, mime, expected, pre.limit)
         }
     }
 

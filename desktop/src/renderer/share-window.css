@@ -296,3 +296,63 @@ html,
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* The one-file layout's wrapper: the same flex column its children were in before it existed. */
+.sw-one {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * Version 3 only (PROPOSED; reachable only at a negotiated share.file 3, which nothing advertises):
+ * the same window listing one card per offer. The window's height follows its content up to the
+ * main process's 560 px clamp; past that the list scrolls inside the window rather than being cut.
+ */
+.sw:has(.sw-queue:not([hidden])) {
+  max-height: 560px;
+}
+
+.sw-queue {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.sw-card {
+  padding: var(--space-5) 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.sw-card:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.sw-card .sw-file {
+  grid-template-columns: 44px minmax(0, 1fr);
+  margin-top: 0;
+}
+
+.sw-card .sw-tile {
+  width: 44px;
+  height: 44px;
+}
+
+.sw-card .sw-actions {
+  margin-top: var(--space-4);
+}
+
+.sw-card[data-tone='warning'] .sw-eyebrow {
+  color: var(--warning);
+}
+
+.sw-card[data-tone='danger'] .sw-eyebrow {
+  color: var(--destructive);
+}
+
+.sw-card[data-tone='success'] .sw-eyebrow {
+  color: var(--text-primary);
+}

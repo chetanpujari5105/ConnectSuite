@@ -227,6 +227,18 @@ class ShareStagingTest {
         listOf(a, b, orphanPart, lonelyMarker).forEach { assertTrue(ShareStaging.isAttemptId(it)) }
     }
 
+    @Test fun `ten copies held for ten live offers survive the backstop, and a process death's startup sweep removes all ten`() {
+        val d = dir()
+        val ids = (1..10).map { staged(d) }
+        for (id in ids) for (ext in listOf("bin", "json")) Files.setLastModifiedTime(File(d, "$id.$ext").toPath(), FileTime.fromMillis(0))
+        val during = ShareStaging.sweep(d, live = ids.toSet(), nowMs = 100_000_000L, minAgeMs = ShareStaging.BACKSTOP_AGE_MS)
+        assertEquals("the backstop never reaches a live offer's copy, however old", 0, during.deleted)
+        assertEquals(20, names(d).size)
+        val afterDeath = ShareStaging.sweep(d, live = emptySet(), nowMs = 100_000_000L, minAgeMs = 0)
+        assertEquals(20, afterDeath.deleted)
+        assertEquals(emptySet<String>(), names(d))
+    }
+
     @Test fun `the sweep leaves anything it cannot prove is ours`() {
         val d = dir()
         val ours = staged(d)

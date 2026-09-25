@@ -44,6 +44,8 @@ interface ShareCardData {
   priorCopy: { savedAs: string; acknowledged: boolean } | null;
   /** In `unexpected-file`: the name in [folder] that holds a different file. */
   unexpectedName?: string | null;
+  queueMode?: boolean;
+  filesAhead?: number | null;
 }
 
 interface ShareCardModel {
@@ -76,13 +78,15 @@ function shareCardModel(d: ShareCardData): ShareCardModel {
     priorCopy: d.priorCopy,
     unexpectedName: d.unexpectedName ?? null,
     folder: d.folder,
+    queueMode: d.queueMode === true,
+    filesAhead: d.filesAhead ?? null,
   });
   const published = d.state === 'saved' || d.state === 'saved-unacknowledged';
   // A card still in play shows everything the decision needs (the contract's list: who, type, exact
   // bytes, where). A finished one shows who and, if published, where the file is — nothing a person
   // can still act on, so it stays compact (P2: 242–370 px became 176–286 px in the synthetic harness;
   // three cards still overflow a 760 px window by about 12 px, so the tray can still scroll).
-  const live = d.state === 'awaiting-decision' || d.state === 'accepting' || d.state === 'receiving';
+  const live = d.state === 'awaiting-decision' || d.state === 'accepting' || d.state === 'queued' || d.state === 'receiving';
   const rows = live
     ? [
         { label: 'From', value: d.from },
@@ -254,7 +258,7 @@ class ShareReceiveTray {
 
   /** Only an offer nobody can act on any more may leave the tray. */
   private dismissable(m: ShareCardModel): boolean {
-    return m.state !== 'awaiting-decision' && m.state !== 'accepting' && m.state !== 'receiving';
+    return m.state !== 'awaiting-decision' && m.state !== 'accepting' && m.state !== 'queued' && m.state !== 'receiving';
   }
 
   private async send(offerId: string): Promise<void> {

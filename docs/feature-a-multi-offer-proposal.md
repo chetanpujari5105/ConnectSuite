@@ -1,6 +1,6 @@
 # Feature A — several pending files: one receive window with a queue (proposal rev 3, for review)
 
-**Rev 3, 2026-09-25.** Replaces rev 2 (`46bd6d1`). **Nothing is built.** The contract text is
+**Rev 3, 2026-09-25.** Replaces rev 2 (`46bd6d1`). **Built inert since 2026-09-26 — see *Build status*; not approved, not advertised.** The contract text is
 `docs/protocol.md` → *Share → Version 3 (PROPOSED)*. Large files are a **separate** design:
 `docs/feature-a-large-file-proposal.md` (Path L). This file is Path S, small files copied privately
 before they are offered.
@@ -22,6 +22,25 @@ before they are offered.
 | R5 | Mac reservation: *"sizes accepted and not finished"* | defined precisely, including when each reservation is released (§4) |
 
 ---
+
+## Build status — 2026-09-26 (overnight, offline, **inert**)
+
+Stage A is **built behind `share.file 3`, which neither side advertises**, so none of it is reachable
+in a pairing. Evidence: `docs/testing.md` → *Version 3 queue, Stage A*.
+
+- **Built:** the Mac's ten-offer book, Accept-order queue with one writer, per-offer reservations
+  (including an Accept whose own check is still running), the queue lifetime and the late-failure Retry
+  window; the window's list of cards with per-offer Accept / Decline / Cancel; re-presenting only for a
+  queued file that ends *not saved*; the phone's ten-offer limit, one pull per session, the queue bound
+  and its backstop, and the admission call the sheet makes before a copy.
+- **Still disabled, deliberately:** `share.file 3` on both sides; **the phone's cap `C` is `null`**, so
+  at version 3 a second concurrent private copy is refused (`HoldingAnother`) — multi-offer admission
+  stays off until a measured rule is approved; Stage B (`SEND_MULTIPLE`) is not registered.
+- **Provisional, not approved:** the 60-minute queue lifetime (`QUEUE_LIFETIME_CANDIDATE_MS`, both
+  sides). No 4 GiB or 8.13 GB figure is used as a limit anywhere.
+- **Found while building it:** defect 155 (a Decline during an Accept's check could end *saved*; also
+  in version 2 — unreachable through the window, fixed in the working tree only).
+- **Unmeasured:** the list's layout and scrolling in a real window; everything on a device.
 
 ## 1 · Today (measured from the code): both are blocked
 

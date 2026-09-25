@@ -8,6 +8,7 @@ import {
   SHARE_WINDOW_MIN_HEIGHT,
   SHARE_WINDOW_WIDTH,
   clampShareWindowHeight,
+  failedAfterQueue,
   newlyNeedingAttention,
   parseOfferRequest,
   shareWindowBounds,
@@ -63,4 +64,38 @@ test('an offer request is {offerId} and nothing else', () => {
   assert.equal(parseOfferRequest([id]).ok, false);
   assert.equal(parseOfferRequest(null).ok, false);
   assert.equal(parseOfferRequest({}).ok, false);
+});
+
+// ---- version 3: re-present only when a queued file needs a person again -----------------------------
+
+const q = (offerId: string, state: ShareCardSnapshot['state'], canRetry = false): ShareCardSnapshot =>
+  ({ ...snap(offerId, state), canRetry } as ShareCardSnapshot);
+
+test('v3: a queued file that fails with a Retry open re-presents the window, once', () => {
+  const seen = new Set<string>();
+  assert.deepEqual(failedAfterQueue(seen, [q(id, 'queued')]), []);
+  assert.deepEqual(failedAfterQueue(seen, [q(id, 'receiving')]), [], 'its turn came: nothing re-presented');
+  assert.deepEqual(failedAfterQueue(seen, [q(id, 'failed', true)]), [id], 'not saved, and it can be tried again');
+  assert.deepEqual(failedAfterQueue(seen, [q(id, 'failed', true)]), [], 'the same failure is not re-presented twice');
+});
+
+test('v3: starting, progressing and being saved re-present nothing; nor does a failure with no Retry', () => {
+  const seen = new Set<string>();
+  for (const st of ['queued', 'receiving', 'saved'] as const) assert.deepEqual(failedAfterQueue(seen, [q(id, st)]), [], st);
+  const other = new Set<string>();
+  failedAfterQueue(other, [q(id2, 'queued')]);
+  assert.deepEqual(failedAfterQueue(other, [q(id2, 'failed', false)]), []);
+});
+
+test('v3: a failure of a file that was never queued (version 2, or accepted with nothing ahead) is not this rule’s', () => {
+  const seen = new Set<string>();
+  assert.deepEqual(failedAfterQueue(seen, [q(id, 'receiving'), q(id, 'failed', true)]), []);
+});
+
+test('v3: a Retry queues it again, and a second failure re-presents again', () => {
+  const seen = new Set<string>();
+  failedAfterQueue(seen, [q(id, 'queued')]);
+  assert.deepEqual(failedAfterQueue(seen, [q(id, 'failed', true)]), [id]);
+  failedAfterQueue(seen, [q(id, 'queued')]);
+  assert.deepEqual(failedAfterQueue(seen, [q(id, 'failed', true)]), [id]);
 });

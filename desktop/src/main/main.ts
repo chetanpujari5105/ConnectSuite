@@ -105,7 +105,7 @@ import {
 } from './shareActivation';
 import { acceptAllowed, forRenderer, handleShareDecision } from './shareDecision';
 import { ShareReceiveWindow } from './shareWindow';
-import { newlyNeedingAttention, parseOfferRequest } from './shareWindowRules';
+import { failedAfterQueue, newlyNeedingAttention, parseOfferRequest } from './shareWindowRules';
 import { settingsMigration, store } from './store';
 import {
   clearRePairPending,
@@ -1022,7 +1022,7 @@ app.whenReady().then(() => {
       const ready = await ensureReceiveFolder();
       return ready.ok ? { ok: true as const, folder: ready.folder } : { ok: false as const, reason: ready.reason };
     },
-    checkDestination: (folder, size) => checkDestination(folder, size, realFs, shareLedger),
+    checkDestination: (folder, size, reserved) => checkDestination(folder, size, realFs, shareLedger, reserved),
     pull: (options) => {
       const host = liveLink.status().address;
       if (!host) return Promise.resolve({ ok: false as const, reason: 'interrupted' as const, detail: 'no phone address', bytes: 0 });
@@ -1063,6 +1063,8 @@ app.whenReady().then(() => {
   );
   shareWindow = receiveWindow;
   const attentionSeen = new Set<string>();
+  /** Version 3 only: offers queued in their current attempt, for [failedAfterQueue]. */
+  const queuedSeen = new Set<string>();
   /*
    * Thumbnails, **only of a file this Mac published and verified**, and only images and video: made by
    * QuickLook (`createThumbnailFromPath`) from the local file — bounded by the OS and by a timeout
@@ -1096,6 +1098,7 @@ app.whenReady().then(() => {
     send('share-offers', forRenderer(snaps, homedir()));
     receiveWindow.push();
     for (const offerId of newlyNeedingAttention(attentionSeen, snaps)) receiveWindow.presentInactive(offerId);
+    for (const offerId of failedAfterQueue(queuedSeen, snaps)) receiveWindow.presentInactive(offerId);
     for (const s of snaps) {
       if ((s.state === 'saved' || s.state === 'saved-unacknowledged') && !shareThumbs.has(s.offerId)) void makeThumb(s.offerId, s.mime);
     }

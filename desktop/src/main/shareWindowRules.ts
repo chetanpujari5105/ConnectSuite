@@ -77,3 +77,25 @@ export function parseOfferRequest(raw: unknown): { ok: true; offerId: string } |
   if (typeof offerId !== 'string' || !OFFER_ID.test(offerId)) return { ok: false, why: 'not an offer id' };
   return { ok: true, offerId };
 }
+
+/**
+ * **Version 3 only.** A file that was accepted and **queued** — so nobody was necessarily watching when
+ * its turn came — and then ended *not saved* with a Retry open needs a person again: the window is
+ * re-presented for it, without focus (proposal rev 3 §5). A queued file starting, progressing or being
+ * saved re-presents nothing. [queued] remembers which offers were queued in their current attempt and
+ * is updated in place; each failure is returned once.
+ */
+export function failedAfterQueue(queued: Set<string>, snapshots: readonly ShareCardSnapshot[]): string[] {
+  const fresh: string[] = [];
+  for (const s of snapshots) {
+    if (s.state === 'queued') {
+      queued.add(s.offerId);
+      continue;
+    }
+    if (!queued.has(s.offerId)) continue;
+    if (s.state === 'accepting' || s.state === 'receiving') continue;
+    queued.delete(s.offerId);
+    if (s.state === 'failed' && s.canRetry) fresh.push(s.offerId);
+  }
+  return fresh;
+}

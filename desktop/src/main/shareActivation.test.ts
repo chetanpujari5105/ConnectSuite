@@ -204,3 +204,15 @@ test('receiverMode: the allowlist reaches the receiver only while the synthetic-
   assert.deepEqual(v1.version2, { allowed: false, syntheticOnly: true });
   assert.equal(v1.acceptProbeDigests.size, 0);
 });
+
+test('version 3 is not enabled: no gate combination advertises share.file above 2', () => {
+  const dev = [{ active: false as const, why: 'x' }, { active: true as const, syntheticOnly: true as const, scratchOnly: true as const }];
+  const ask = [{ active: false as const, blockers: ['x'] }, { active: true as const, syntheticOnly: false as const }];
+  let seen = 0;
+  for (const a of dev) for (const k of ask) {
+    const v = advertisedExt(a, k)['share.file'];
+    assert.ok(v === 1 || v === 2, `advertised ${v}`);
+    seen += 1;
+  }
+  assert.equal(seen, 4, 'control: every combination was read');
+});

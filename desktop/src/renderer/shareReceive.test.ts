@@ -223,3 +223,12 @@ test('unexpected-file card: Dismiss only (no Show), and a row naming the differe
   assert.ok(!visible.includes('show'), visible.join(','));
   assert.ok(t.card().textContent.includes('~/Downloads/Sidekick/IMG_2041 (2).jpg'), 'the row carries folder and name');
 });
+
+test('v3: a queued card can be shown and cannot be dismissed — it is accepted and still in play', () => {
+  const t = setup();
+  t.tray.update([data({ state: 'queued', queueMode: true, filesAhead: 1 })]);
+  assert.equal(t.button('show').hidden, false);
+  assert.equal(t.button('dismiss').hidden, true);
+  t.card().dispatch('keydown', { key: 'Escape' });
+  assert.equal(t.root.children.length, 1, 'Escape does not dismiss it either');
+});

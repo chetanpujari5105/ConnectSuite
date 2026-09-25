@@ -18,6 +18,7 @@
 type ShareRecvState =
   | 'awaiting-decision'
   | 'accepting'
+  | 'queued'
   | 'receiving'
   | 'saved'
   | 'saved-unacknowledged'
@@ -42,7 +43,14 @@ interface ShareRecvFacts {
   /** In `unexpected-file`: the name that now holds a different file, and the folder it is in. */
   unexpectedName?: string | null;
   folder?: string;
+  /** Version 3 on this offer's session: an Accept may wait its turn, so say so before it. */
+  queueMode?: boolean;
+  /** In `queued`: how many transfers are ahead of it. */
+  filesAhead?: number | null;
 }
+
+/** The sentence a waiting offer shows **before** Accept at version 3 — the owner's wording, exactly. */
+const SHARE_RECV_QUEUE_CONSENT = 'Accept this file now. If another transfer is running, this one starts when it finishes.';
 
 type ShareRecvTone = 'neutral' | 'progress' | 'success' | 'warning' | 'danger';
 
@@ -94,7 +102,24 @@ function shareReceiveStatus(f: ShareRecvFacts): ShareRecvStatus {
       : [];
   switch (f.state) {
     case 'awaiting-decision':
-      return { headline: 'Wants to send you a file', detail: prior(), tone: 'neutral', ...none };
+      return {
+        headline: 'Wants to send you a file',
+        detail: f.queueMode === true ? [SHARE_RECV_QUEUE_CONSENT, ...prior()] : prior(),
+        tone: 'neutral',
+        ...none,
+      };
+    case 'queued': {
+      const ahead = f.filesAhead ?? 0;
+      return {
+        headline: 'Accepted — waiting its turn',
+        detail: [
+          ahead === 1 ? '1 transfer is ahead of it.' : `${ahead} transfers are ahead of it.`,
+          'It starts on its own when its turn comes. Nothing of it is on this Mac yet, and it is not saved.',
+        ],
+        tone: 'progress',
+        ...none,
+      };
+    }
     case 'accepting':
       return { headline: 'Starting…', detail: [], tone: 'progress', ...none };
     case 'receiving':

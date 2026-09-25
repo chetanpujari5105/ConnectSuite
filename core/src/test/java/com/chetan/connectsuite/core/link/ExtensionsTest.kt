@@ -65,4 +65,20 @@ class ExtensionsTest {
             assertEquals(c["why"]!!.jsonPrimitive.content, c["send"]!!.jsonPrimitive.boolean, Extensions.ordinarySend(n))
         }
     }
+
+    @Test fun `share file 3 negotiates by the same min rule - fixtures only, nothing advertises 3`() {
+        assertEquals(3, Extensions.negotiate(mapOf(Extensions.SHARE_FILE to 3), mapOf(Extensions.SHARE_FILE to 3), Extensions.SHARE_FILE))
+        assertEquals(2, Extensions.negotiate(mapOf(Extensions.SHARE_FILE to 3), mapOf(Extensions.SHARE_FILE to 2), Extensions.SHARE_FILE))
+        assertEquals(2, Extensions.negotiate(mapOf(Extensions.SHARE_FILE to 2), mapOf(Extensions.SHARE_FILE to 3), Extensions.SHARE_FILE))
+    }
+
+    @Test fun `version 3 is not enabled - no build combination advertises share file above 2`() {
+        var seen = 0
+        for (debuggable in listOf(false, true)) for (armed in listOf(false, true)) for (production in listOf(false, true)) {
+            val v = Extensions.advertised(debuggable, armed, production)[Extensions.SHARE_FILE]
+            assertTrue("advertised $v", v == 1 || v == 2)
+            seen++
+        }
+        assertEquals("control: every combination was read", 8, seen)
+    }
 }

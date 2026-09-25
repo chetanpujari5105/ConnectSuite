@@ -43,4 +43,34 @@ class ShareOfferBusyTest {
         val cancelled = ShareOffer.cancelFromPhone(first, "user").offer!!
         for (o in listOf(declined, cancelled)) assertNull(o.state.toString(), ShareOffer.busyWith(listOf(o), "token-A"))
     }
+
+    // ---- Version 3 foundation (PROPOSED, not advertised): the live limit is a parameter ------------
+
+    private fun offerN(n: Int, session: String = "token-A") =
+        ShareOffer.Offer("s-" + n.toString().padStart(22, 'Q'), session, 100_718, "1".repeat(64), t0 + n, t0 + n + ShareOffer.TTL_MS, name = "synthetic-$n.png")
+
+    @Test fun `with a limit of 10, nine live offers leave room and ten block with the oldest named`() {
+        val nine = (1..9).map { offerN(it) }
+        assertNull(ShareOffer.busyWith(nine, "token-A", maxLive = 10))
+        val ten = (1..10).map { offerN(it) }
+        assertSame(ten.first(), ShareOffer.busyWith(ten.shuffled(), "token-A", maxLive = 10))
+    }
+
+    @Test fun `the limit counts only this session's live offers`() {
+        val mixed = (1..9).map { offerN(it) } + (10..20).map { offerN(it, "token-B") }
+        assertNull(ShareOffer.busyWith(mixed, "token-A", maxLive = 10))
+        val cancelled = ShareOffer.cancelFromPhone(offerN(21), "user").offer!!
+        assertNull(ShareOffer.busyWith((1..9).map { offerN(it) } + cancelled, "token-A", maxLive = 10))
+    }
+
+    @Test fun `no limit given is the version-2 contract, and a limit below 1 is refused`() {
+        assertSame(first, ShareOffer.busyWith(listOf(first), "token-A", maxLive = 1))
+        for (bad in listOf(0, -1)) {
+            try {
+                ShareOffer.busyWith(listOf(first), "token-A", maxLive = bad)
+                throw AssertionError("maxLive=$bad was accepted")
+            } catch (expected: IllegalArgumentException) {
+            }
+        }
+    }
 }

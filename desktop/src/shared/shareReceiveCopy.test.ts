@@ -84,3 +84,20 @@ test('unexpected-file: not saved, never confirmed, and it names the exact file a
     assert.ok(s.detail.some((d) => d.includes('did not open it')), s.detail.join(' | '));
   }
 });
+
+test('v3: before Accept, the owner’s exact sentence — and only at version 3', () => {
+  const sentence = 'Accept this file now. If another transfer is running, this one starts when it finishes.';
+  assert.equal(shareReceiveStatus(facts('awaiting-decision', { queueMode: true })).detail[0], sentence);
+  assert.ok(!shareReceiveStatus(facts('awaiting-decision', { queueMode: false })).detail.includes(sentence), 'version 2 unchanged');
+  assert.ok(!shareReceiveStatus(facts('awaiting-decision')).detail.includes(sentence));
+});
+
+test('v3: queued says accepted and waiting, how many are ahead, and never that anything is saved', () => {
+  for (const [ahead, line] of [[1, '1 transfer is ahead of it.'], [3, '3 transfers are ahead of it.']] as const) {
+    const s = shareReceiveStatus(facts('queued', { filesAhead: ahead }));
+    assert.equal(s.headline, 'Accepted — waiting its turn');
+    assert.equal(s.detail[0], line);
+    assert.equal(s.savedOnMac, false);
+    assert.equal(s.confirmedByPhone, false);
+  }
+});

@@ -26,6 +26,8 @@
         <button type="button" class="sw-close" id="sw-close" data-action="close" aria-label="Close" title="Close"></button>
       </header>
 
+      <!-- The one-file layout (version 2, and every window before version 3 is negotiated). -->
+      <div class="sw-one" id="sw-one">
       <div class="sw-file">
         <div class="sw-tile" id="sw-tile" aria-hidden="true"></div>
         <div class="sw-text">
@@ -50,6 +52,11 @@
       <p class="sw-note" id="sw-note" role="alert" hidden></p>
 
       <div class="sw-actions" id="sw-actions"></div>
+      </div>
+
+      <!-- Version 3 only (PROPOSED; nothing advertises it): one card per offer, in arrival order, each
+           with its own actions. Hidden unless an offer arrived at version 3. -->
+      <ol class="sw-queue" id="sw-queue" aria-label="Incoming files" hidden></ol>
     </main>
     <div class="sw-live" id="sw-live" aria-live="polite" aria-atomic="true"></div>
 

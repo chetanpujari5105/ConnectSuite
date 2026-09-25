@@ -41,3 +41,9 @@ test('this Mac advertises share.file 1, and negotiateAll keeps only what both ad
   assert.deepEqual(negotiateAll(MAC_EXT, {}), {});
   assert.deepEqual(negotiateAll({}, { 'share.file': 1 }), {});
 });
+
+test('share.file 3 negotiates by the same min rule — 3+3 is 3, 3+2 and 2+3 are 2 (fixtures only; nothing advertises 3)', () => {
+  assert.equal(negotiate({ 'share.file': 3 }, { 'share.file': 3 }, 'share.file'), 3);
+  assert.equal(negotiate({ 'share.file': 3 }, { 'share.file': 2 }, 'share.file'), 2);
+  assert.equal(negotiate({ 'share.file': 2 }, { 'share.file': 3 }, 'share.file'), 2);
+});

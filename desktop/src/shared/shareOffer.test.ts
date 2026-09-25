@@ -107,3 +107,55 @@ test('a held offer ends by cancel, by expiry, or with its session — and only t
   assert.deepEqual(book.sessionEnded('token-A'), [id]);
   assert.equal(book.isHeld(id), false);
 });
+
+// ---- Version 3 foundation (PROPOSED, not advertised): the live limit is a parameter ---------------
+
+/** A distinct valid offer id per index — `s-` + 22 base64url characters. */
+const idN = (n: number): string => `s-${String(n).padStart(22, 'Q')}`;
+
+test('v3 foundation: with a limit of 10, ten offers on one session are live and the eleventh is busy', () => {
+  const book = new ShareOfferBook();
+  const c = { ...ctx, maxLiveOffers: 10 };
+  for (let n = 1; n <= 10; n += 1) {
+    const v = book.receive(offer({ offerId: idN(n) }), c);
+    assert.equal(v.kind, 'valid', `offer ${n}`);
+    book.hold(idN(n), 'token-A', now + OFFER_TTL_MS);
+  }
+  assert.equal(declineReason(book.receive(offer({ offerId: idN(11) }), c)), 'busy');
+  assert.equal(book.receive(offer({ offerId: idN(12) }), { ...c, sessionKey: 'token-B' }).kind, 'valid', 'another session is not affected');
+});
+
+test('v3 foundation: an offer that ends frees its slot, and the first ten are untouched by the refusal', () => {
+  const book = new ShareOfferBook();
+  const c = { ...ctx, maxLiveOffers: 2 };
+  for (const n of [1, 2]) { book.receive(offer({ offerId: idN(n) }), c); book.hold(idN(n), 'token-A', now + OFFER_TTL_MS); }
+  assert.equal(declineReason(book.receive(offer({ offerId: idN(3) }), c)), 'busy');
+  assert.equal(book.isHeld(idN(1)) && book.isHeld(idN(2)), true, 'a busy refusal alters nothing held');
+  book.cancelled(idN(1));
+  assert.equal(book.receive(offer({ offerId: idN(4) }), c).kind, 'valid');
+});
+
+test('v3 foundation: no limit given is the version-2 contract — one live offer per session', () => {
+  const book = new ShareOfferBook();
+  book.receive(offer({ offerId: idN(1) }), ctx);
+  book.hold(idN(1), 'token-A', now + OFFER_TTL_MS);
+  assert.equal(declineReason(book.receive(offer({ offerId: idN(2) }), ctx)), 'busy');
+  assert.equal(declineReason(book.receive(offer({ offerId: idN(3) }), { ...ctx, maxLiveOffers: 1 })), 'busy');
+});
+
+test('v3 foundation: a limit that is not a positive integer is refused, never read as "unlimited"', () => {
+  for (const bad of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(() => new ShareOfferBook().receive(offer(), { ...ctx, maxLiveOffers: bad }), TypeError, String(bad));
+  }
+});
+
+test('v3: a queued offer extended past its offer TTL still counts toward the live limit', () => {
+  const book = new ShareOfferBook();
+  const c = { ...ctx, maxLiveOffers: 1 };
+  book.receive(offer({ offerId: idN(1) }), c);
+  book.hold(idN(1), 'token-A', now + OFFER_TTL_MS);
+  assert.equal(book.extend(idN(1), now + 60 * 60 * 1000), true);
+  const later = { ...c, nowMs: now + OFFER_TTL_MS + 1 };
+  assert.equal(declineReason(book.receive(offer({ offerId: idN(2), expiresAtMs: later.nowMs + 60_000 }), later)), 'busy');
+  assert.equal(book.extend('s-NOTHELDNOTHELDNOTHELD', now), false, 'extending nothing held changes nothing');
+});

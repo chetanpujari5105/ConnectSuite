@@ -145,3 +145,24 @@ test('sharePartPath refuses anything that is not an offer id', () => {
   assert.throws(() => sharePartPath('/tmp', id, '../x'));
   assert.equal(sharePartPath('/tmp', id, nonce), `/tmp/.${id}.${nonce}.sidekick-share.part`);
 });
+
+// ---- reservations (version 3) --------------------------------------------------------------------
+
+test('reserved bytes come out of free space before the offer is judged; 0 reserved is the version-2 rule', async () => {
+  const MiB = 1024 * 1024;
+  const size = 10 * MiB;
+  const needed = spaceNeeded(size);
+  const freeFs = (free: number) => withFs({ statfs: async () => ({ bavail: free, bsize: 1 }) });
+  assert.deepEqual(await checkDestination(dir(), size, freeFs(needed), null, 0), { ok: true }, 'exactly enough, nothing reserved');
+  const short = await checkDestination(dir(), size, freeFs(needed), null, 1);
+  assert.equal((short as { reason: string }).reason, 'insufficient-space', 'one reserved byte tips it');
+  assert.match((short as { detail: string }).detail, /after 1 reserved/);
+  assert.deepEqual(await checkDestination(dir(), size, freeFs(needed + 500), null, 500), { ok: true }, 'reserved exactly covered');
+});
+
+test('an unreadable reservation fails closed rather than being read as none', async () => {
+  for (const bad of [-1, Number.NaN, 1.5]) {
+    const v = await checkDestination(dir(), 1, realFs, null, bad);
+    assert.equal((v as { reason: string }).reason, 'folder-unavailable', String(bad));
+  }
+});

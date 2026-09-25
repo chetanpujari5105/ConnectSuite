@@ -13,6 +13,12 @@ const { shareWindowModel, shareWinTypeLabel, shareWinApproxBytes, SHARE_WIN_ICON
   shareWinApproxBytes: (n: number) => string;
   SHARE_WIN_ICON_NAMES: string[];
 };
+const { shareWindowList } = require('./shareWindowModel') as {
+  shareWindowList: (os: Record<string, unknown>[], phone: string | null) => {
+    cards: { offerId: string; actions: { id: string; aria: string }[] }[];
+    waiting: number;
+  };
+};
 const { ICON_NAMES } = require('../renderer/icons') as { ICON_NAMES: string[] };
 const { RECEIVE_STATES } = require('../main/share') as { RECEIVE_STATES: readonly string[] };
 
@@ -158,4 +164,83 @@ test('unexpected-file: Close only — no Open, no Show in Finder, no Try again �
     assert.equal(m.eyebrow, 'Not saved — a different file appeared');
     assert.ok(m.detail[0]!.includes('“IMG_2041 (2).jpg” in ~/Downloads/Sidekick.'), m.detail[0]);
   }
+});
+
+// ---- Version 3 foundation (PROPOSED, not wired): one window listing every pending offer ------------
+
+test('v3 foundation: the window lists every pending offer, in arrival order, each with its own Accept and Decline', () => {
+  const a = offer({ offerId: 's-AAAAAAAAAAAAAAAAAAAAAA', name: 'first.png' });
+  const saved = offer({ offerId: 's-SSSSSSSSSSSSSSSSSSSSSS', name: 'done.png', state: 'saved', savedAs: 'done.png' });
+  const b = offer({ offerId: 's-BBBBBBBBBBBBBBBBBBBBBB', name: 'second.png' });
+  const retry = offer({ offerId: 's-RRRRRRRRRRRRRRRRRRRRRR', name: 'retry.png', state: 'failed', reason: 'checksum', canRetry: true });
+  const declined = offer({ offerId: 's-DDDDDDDDDDDDDDDDDDDDDD', name: 'no.png', state: 'declined' });
+  const list = shareWindowList([a, saved, b, retry, declined], 'Galaxy S25 Ultra');
+  assert.deepEqual(list.cards.map((c) => c.offerId), [a.offerId, b.offerId, retry.offerId], 'pending only, arrival order kept');
+  assert.equal(list.waiting, 2);
+  for (const [card, name] of [[list.cards[0]!, 'first.png'], [list.cards[1]!, 'second.png']] as const) {
+    assert.deepEqual(card.actions.map((x) => x.id), ['decline', 'accept'], name);
+    assert.ok(card.actions.find((x) => x.id === 'accept')!.aria.includes(name), 'each Accept names its own file');
+  }
+  assert.deepEqual(list.cards[2]!.actions.map((x) => x.id), ['cancel', 'retry']);
+});
+
+test('v3 foundation: no pending offer is an empty list, not a card', () => {
+  const list = shareWindowList([offer({ state: 'saved', savedAs: 'x.png' }), offer({ state: 'expired' })], 'P');
+  assert.deepEqual(list.cards, []);
+  assert.equal(list.waiting, 0);
+});
+
+// ---- v3: queue copy, labels that tell identical names apart, and actions bound to offer ids ---------
+
+test('v3: two offers with the same name get different labels, and every action carries its own offer id', () => {
+  const t0 = new Date(2026, 8, 25, 14, 7, 9).getTime();
+  const a = offer({ offerId: 's-AAAAAAAAAAAAAAAAAAAAAA', name: 'IMG_1.jpg', queueMode: true, arrivalSeq: 3, arrivedAtMs: t0 });
+  const b = offer({ offerId: 's-BBBBBBBBBBBBBBBBBBBBBB', name: 'IMG_1.jpg', queueMode: true, arrivalSeq: 4, arrivedAtMs: t0 + 2000 });
+  const list = shareWindowList([a, b], 'P');
+  const labels = list.cards.map((c) => c.actions.find((x) => x.id === 'accept')!.aria);
+  assert.notEqual(labels[0], labels[1]);
+  assert.ok(labels[0]!.includes('IMG_1.jpg (file 3, arrived 14:07:09)'), labels[0]);
+  assert.ok(labels[1]!.includes('IMG_1.jpg (file 4, arrived 14:07:11)'), labels[1]);
+  for (const card of list.cards) {
+    for (const act of card.actions) assert.equal((act as { offerId?: string }).offerId, card.offerId, `${act.id} on ${card.offerId}`);
+  }
+});
+
+test('v3: a queued card is visible, cancellable by its own id, never closes itself, and says it is not saved', () => {
+  const q = offer({ state: 'queued', queueMode: true, filesAhead: 2, arrivalSeq: 5, arrivedAtMs: 0 });
+  const m = shareWindowModel(q, 'P') as ReturnType<typeof shareWindowModel> & { actions: { id: string; offerId: string; aria: string }[]; closesItself: boolean; detail: string[] };
+  assert.deepEqual(m.actions.map((x) => x.id), ['cancel']);
+  assert.equal(m.actions[0]!.offerId, q.offerId);
+  assert.match(m.actions[0]!.aria, /has not started/);
+  assert.equal(m.closesItself, false);
+  assert.equal(m.detail[0], '2 transfers are ahead of it.');
+  assert.deepEqual(shareWindowList([q], 'P').cards.map((c) => c.offerId), [q.offerId], 'listed as pending');
+});
+
+test('v2 labels are unchanged: no arrival number or clock without version 3', () => {
+  const m = shareWindowModel(offer({ arrivalSeq: 3, arrivedAtMs: 0 }), 'Galaxy S25 Ultra');
+  assert.equal(m.actions.find((x) => x.id === 'accept')!.aria, 'Accept IMG_2041.jpg from Galaxy S25 Ultra and save it to ~/Downloads/Sidekick');
+});
+
+// ---- v3: which cards the one window draws -------------------------------------------------------------
+
+const { shareQueueCards, shareQueueMode } = require('./shareWindowModel') as {
+  shareQueueCards: (os: Record<string, unknown>[], phone: string | null, shown: Set<string>, dismissed: Set<string>) => { offerId: string }[];
+  shareQueueMode: (os: Record<string, unknown>[]) => boolean;
+};
+
+test('v3: the list mode is decided by the offers, and a version-2 run never enters it', () => {
+  assert.equal(shareQueueMode([offer({}), offer({ offerId: 's-BBBBBBBBBBBBBBBBBBBBBB' })]), false);
+  assert.equal(shareQueueMode([offer({}), offer({ offerId: 's-BBBBBBBBBBBBBBBBBBBBBB', queueMode: true })]), true);
+  assert.equal(shareQueueMode([]), false);
+});
+
+test('v3: cards are pending or shown, never dismissed, in arrival order', () => {
+  const a = offer({ offerId: 's-AAAAAAAAAAAAAAAAAAAAAA', queueMode: true, arrivalSeq: 1 });
+  const b = offer({ offerId: 's-BBBBBBBBBBBBBBBBBBBBBB', queueMode: true, arrivalSeq: 2, state: 'saved', savedAs: 'x.png' });
+  const c = offer({ offerId: 's-CCCCCCCCCCCCCCCCCCCCCC', queueMode: true, arrivalSeq: 3, state: 'queued', filesAhead: 1 });
+  const ids = (shown: string[], dismissed: string[]) => shareQueueCards([c, b, a], 'P', new Set(shown), new Set(dismissed)).map((m) => m.offerId);
+  assert.deepEqual(ids([], []), [a.offerId, c.offerId], 'a finished card nobody showed is not replayed');
+  assert.deepEqual(ids([b.offerId], []), [a.offerId, b.offerId, c.offerId]);
+  assert.deepEqual(ids([b.offerId], [a.offerId]), [b.offerId, c.offerId], 'dismissed stays gone, even while pending');
 });

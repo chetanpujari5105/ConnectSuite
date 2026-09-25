@@ -2899,9 +2899,11 @@ copy, and the Mac deletes its partial. Neither side reports `saved`.
 
 ### Version 3 — several pending offers (PROPOSED 2026-09-25 — not implemented)
 
-> **Not implemented, and nothing advertises `share.file 3`.** Proposed contract for review; the argument
-> is `docs/feature-a-multi-offer-proposal.md` (rev 3). Until it is approved and built, version 2 above is
-> the whole contract, and both builds advertise 2. This section is **Path S** — files copied privately
+> **Not approved, and nothing advertises `share.file 3`.** Proposed contract for review; the argument
+> is `docs/feature-a-multi-offer-proposal.md` (rev 3). Until it is approved and advertised, version 2
+> above is the whole contract, and both builds advertise 2. (Since 2026-09-26 a build of rules 1–3 and
+> the Mac half of rule 4 exists behind that gate, with the phone's cap `C` unset so a second concurrent
+> copy is refused — it is unreachable in any pairing; see the proposal's *Build status*.) This section is **Path S** — files copied privately
 > before they are offered. Large files are **Path L**, below.
 
 **Negotiation.** `share.file: 3` by the existing rule `min(mine, theirs)`: 3 + 3 → 3, 3 + 2 → 2; a

@@ -61,6 +61,13 @@ sealed interface ShareSheetState {
         /** The grant did not survive the activity being recreated (a rotation). The copy is cancelled. */
         data object AccessLostOnRecreate : Failure
         data object StagingUnavailable : Failure
+        /**
+         * Version 3 only (PROPOSED): files are already prepared for live offers and no cap on copies
+         * held at once is approved, so this one was not copied. [held] is what those copies take.
+         */
+        data class HoldingAnother(val held: Long) : Failure
+        /** Version 3 only, and only once a cap is approved: this copy would pass it. */
+        data class OverHoldCap(val held: Long, val cap: Long) : Failure
     }
 
     /** Why Send made no offer. The prepared copy is still this sheet's; nothing reached the Mac. */
@@ -341,6 +348,12 @@ object ShareToMacCopy {
         ShareSheetState.Failure.AccessLostOnRecreate ->
             "Android withdrew access to the file when the screen changed. Share it again. Nothing was kept."
         ShareSheetState.Failure.StagingUnavailable -> "Sidekick’s private storage isn’t usable right now. Nothing was kept."
+        is ShareSheetState.Failure.HoldingAnother ->
+            "Another file is already prepared and waiting for your Mac (${bytes(f.held)}). For now this phone holds one at a time — " +
+                "wait for it to finish or withdraw it, then share this again. Nothing was kept."
+        is ShareSheetState.Failure.OverHoldCap ->
+            "Files waiting for your Mac already take ${bytes(f.held)}, and this one would pass the ${bytes(f.cap)} this phone holds at once. " +
+                "Wait for one to finish or withdraw one, then share this again. Nothing was kept."
     }
 
     /** `230,778 bytes (225 KB)` — the exact count first, then a human form. */
@@ -371,6 +384,7 @@ object ShareToMacCopy {
             ShareSheetState.Failure.NoSpace(1, 0), ShareSheetState.Failure.OverLimit(1),
             ShareSheetState.Failure.ReadFailed, ShareSheetState.Failure.WriteFailed,
             ShareSheetState.Failure.AccessLostOnRecreate, ShareSheetState.Failure.StagingUnavailable,
+            ShareSheetState.Failure.HoldingAnother(100_718), ShareSheetState.Failure.OverHoldCap(100_718, 1_000_000),
         ).forEach { add(ShareSheetState.Failed("a.bin", it)) }
         add(ShareSheetState.WaitingForMac("a.bin", 100_000, "Mac"))
         add(ShareSheetState.Sending("a.bin", 100_000, "Mac", allSent = false))
