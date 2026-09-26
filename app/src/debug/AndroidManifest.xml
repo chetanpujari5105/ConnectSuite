@@ -131,5 +131,19 @@
             android:permission="android.permission.DUMP"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.NoDisplay" />
+
+        <!--
+          The cache quota for the concurrent-staging rule (docs/feature-a-multi-offer-proposal.md §4):
+          no system view on the SM-S938B exposes it, so it is read by code running as this app. Debug
+          source set only; DUMP-gated like every adb harness here; no filter, no launcher, no UI. Reads
+          once, writes nothing, creates nothing; logcat carries byte counts, a timestamp and exception
+          classes only. StorageQuotaProbeManifestTest pins this entry and its absence from main.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.StorageQuotaProbeActivity"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay" />
     </application>
 </manifest>
