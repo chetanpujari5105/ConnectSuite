@@ -61,15 +61,16 @@ class StorageQuotaReadingTest {
             readAtMs = 1_790_000_000_000,
             volumeIsDefault = Value.Bytes(1),
             quotaBytes = StorageQuotaReading.read { throw IOException("/data/user/0/com.chetan.connectsuite.debug/cache") },
-            usableBytes = Value.Bytes(22_089_035_776),
+            usableBytes = Value.Bytes(22_683_615_232),
             totalBytes = Value.Bytes(489_993_273_344),
-            allocatableBytesNotFreeSpace = Value.Bytes(25_000_000_000),
+            // The SM-S938B reading of 2026-09-26: allocatable was the SMALLER one — the two are not ordered.
+            allocatableBytesNotFreeSpace = Value.Bytes(22_159_327_232),
             ownCacheBytes = Value.Bytes(634_880),
             staged = StorageQuotaReading.Staged(Staging.ABSENT, 0, 0),
         )
         assertEquals(
-            "readAtMs=1790000000000 volumeIsDefault=true quotaBytes=FAILED:java.io.IOException usableBytes=22089035776 " +
-                "totalBytes=489993273344 allocatableBytesNotFreeSpace=25000000000 ownCacheBytes=634880 " +
+            "readAtMs=1790000000000 volumeIsDefault=true quotaBytes=FAILED:java.io.IOException usableBytes=22683615232 " +
+                "totalBytes=489993273344 allocatableBytesNotFreeSpace=22159327232 ownCacheBytes=634880 " +
                 "stagingDir=ABSENT stagedBytes=0 stagedFiles=0",
             line,
         )

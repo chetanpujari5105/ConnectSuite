@@ -48,9 +48,19 @@ object StorageQuotaReading {
     }
 
     /**
-     * The one log line. `allocatableBytesNotFreeSpace` is named so nobody reads it as free space: it
-     * counts cache belonging to **other** apps that the system could clear, so it is larger than
-     * `usableBytes` whenever any app holds cache.
+     * The one log line. Two different questions, answered by two different APIs, and **neither is
+     * ordered against the other**:
+     *
+     * - `usableBytes` — `File.getUsableSpace()`: the bytes this app could write on the volume now,
+     *   without anything being deleted.
+     * - `allocatableBytesNotFreeSpace` — `StorageManager.getAllocatableBytes()`: the platform's answer
+     *   to "how much could this app be given if it asked", after it applies its own policy — what it
+     *   would be willing to clear from other apps' caches, and what it keeps in reserve. It is named so
+     *   nobody reads it as free space.
+     *
+     * Which is larger depends on the device's state and the platform's policy. On the SM-S938B on
+     * 2026-09-26 it was the **smaller** one: 22,159,327,232 allocatable against 22,683,615,232 usable,
+     * exactly 524,288,000 bytes (500 MiB, the volume's low-storage threshold that day) less.
      */
     fun line(
         readAtMs: Long,
