@@ -568,19 +568,29 @@ test('handleWriter: backpressure pauses the socket while writes are slow, and th
 test('handleWriter: a cancel while a write is pending waits for that write, then deletes the partial and closes the handle once', T, async () => {
   let release!: () => void;
   const held = new Promise<void>((r) => { release = r; });
+  const ac = new AbortController();
+  let cancelled!: () => void;
+  const cancelLanded = new Promise<void>((r) => { cancelled = r; });
   const w = openWatched({
     write: (n, go) => {
       if (n !== 2) return go();
       w.all[0]!.events.push('write-held');
+      // The cancel arrives while this write is parked — fired from the write itself, one turn later.
+      // It used to be fired from the next socket `data` event, and that event need not come: under
+      // load every byte can arrive before this write parks, and the parked write then pauses the
+      // socket, so the cancel never fired and the control below failed (3 of 5 full-suite runs).
+      setImmediate(() => { ac.abort(); cancelled(); });
       return held.then(go).then((v) => { w.all[0]!.events.push('write-settled'); return v; });
     },
   });
-  const ac = new AbortController();
   let settled = false;
-  const pending = run(100_000, { chunkSize: 10_000 }, {
-    openHandle: w.open, signal: ac.signal, idleTimeoutMs: 5000,
-    onData: () => { if (w.all[0]?.events.includes('write-held')) ac.abort(); },
-  }).then((r) => { settled = true; return r; });
+  const pending = run(100_000, { chunkSize: 10_000 }, { openHandle: w.open, signal: ac.signal, idleTimeoutMs: 5000 })
+    .then((r) => { settled = true; return r; });
+  await cancelLanded;
+  // The window in which a pull that did NOT wait for its write would settle or close the handle. It
+  // bounds only the negative checks: a slow machine can let a broken pull slip through, never fail a
+  // correct one. Keep it wide — a 20-turn window (~13 ms) was tried and stayed green with the
+  // drain-before-close guard in `bulk.ts` removed.
   await new Promise((r) => setTimeout(r, 300));
   assert.equal(ac.signal.aborted, true, 'control: the cancel landed while the write was held');
   assert.equal(settled, false, 'the pull does not report while its write is still in flight');
