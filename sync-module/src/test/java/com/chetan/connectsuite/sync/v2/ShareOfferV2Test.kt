@@ -26,7 +26,7 @@ class ShareOfferV2Test {
     private val offered = ShareOffer.Offer(id, a, size, sha, t0, t0 + ShareOffer.TTL_MS, name = "x.bin")
 
     private fun code(r: ShareOffer.Result) = (r.reply as Reply.Error).code
-    private fun accepted() = ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = 2).offer!!
+    private fun accepted() = ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = 2, stagedIntact = true).offer!!
     private fun sending() = ShareOffer.beginPull(accepted(), a, id, "0", tx, t0 + 2, 262144).offer!!
     private fun awaiting() = ShareOffer.pullEnded(sending(), tx, PullEnd.SENT, t0 + 3).offer!!
     private fun saved(o: ShareOffer.Offer?, from: String = a, ok: Boolean? = true, bytes: Long? = size, verified: Boolean? = true,
@@ -38,7 +38,7 @@ class ShareOfferV2Test {
     @Test fun `the live pairing is version 1 — the phone advertises 1, so accept is refused and nothing is pulled`() {
         val live = Extensions.negotiate(Extensions.PHONE, mapOf(Extensions.SHARE_FILE to 2), Extensions.SHARE_FILE)
         assertEquals("a v2 Mac against this phone negotiates 1", 1, live)
-        val r = ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = live!!)
+        val r = ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = live!!, stagedIntact = true)
         assertEquals("BAD_REQUEST", code(r))
         assertEquals(State.Offered, r.offer!!.state)
         assertEquals("NOT_FOUND", code(ShareOffer.beginPull(r.offer, a, id, "0", tx, t0 + 2, 1)))
@@ -56,7 +56,7 @@ class ShareOfferV2Test {
             if (debuggable && armed && mac == mapOf(Extensions.SHARE_FILE to 2)) continue
             val version = Extensions.handshake(debuggable, armed, mac, productionTransfer = false).negotiated[Extensions.SHARE_FILE] ?: 0
             assertTrue("debuggable=$debuggable armed=$armed mac=$mac", version < ShareOffer.TRANSFER_VERSION)
-            val r = ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = version)
+            val r = ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = version, stagedIntact = true)
             assertEquals("BAD_REQUEST", code(r))
             assertEquals(State.Offered, r.offer!!.state)
             assertEquals("NOT_FOUND", code(ShareOffer.beginPull(r.offer, a, id, "0", tx, t0 + 2, 1)))
@@ -65,19 +65,19 @@ class ShareOfferV2Test {
         assertEquals("all eleven fail-closed combinations were exercised", 11, checked)
         // The control: the one combination that negotiates 2 does accept.
         val v2 = Extensions.handshake(true, true, mapOf(Extensions.SHARE_FILE to 2)).negotiated[Extensions.SHARE_FILE]!!
-        assertEquals(State.Accepted, ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = v2).offer!!.state)
+        assertEquals(State.Accepted, ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = v2, stagedIntact = true).offer!!.state)
     }
 
     @Test fun `accept at version 2 acks accepted and moves nothing yet`() {
-        val r = ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = 2)
+        val r = ShareOffer.respond(offered, a, id, "accept", null, t0 + 1, negotiatedVersion = 2, stagedIntact = true)
         assertEquals(State.Accepted, r.offer!!.state)
         assertEquals(Reply.Ack(mapOf("offerId" to id, "state" to "accepted")), r.reply)
         assertTrue(r.effects.isEmpty())
     }
 
     @Test fun `accept is answered once — a second accept or a decline after it finds nothing`() {
-        assertEquals("NOT_FOUND", code(ShareOffer.respond(accepted(), a, id, "accept", null, t0 + 2, 2)))
-        assertEquals("NOT_FOUND", code(ShareOffer.respond(accepted(), a, id, "decline", "user", t0 + 2, 2)))
+        assertEquals("NOT_FOUND", code(ShareOffer.respond(accepted(), a, id, "accept", null, t0 + 2, 2, stagedIntact = true)))
+        assertEquals("NOT_FOUND", code(ShareOffer.respond(accepted(), a, id, "decline", "user", t0 + 2, 2, stagedIntact = true)))
     }
 
     // ---- the one pull ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ class ShareOfferV2Test {
     @Test fun `a pull before accept, while one is live, or after the offer ended is refused`() {
         assertEquals("before accept", "NOT_FOUND", code(ShareOffer.beginPull(offered, a, id, "0", tx, t0 + 2, 1)))
         assertEquals("second while sending", "NOT_FOUND", code(ShareOffer.beginPull(sending(), a, id, "0", "ts-BBBBBBBBBBBBBBBBBBBBBB", t0 + 3, 1)))
-        val declined = ShareOffer.respond(offered, a, id, "decline", "user", t0 + 1, 2).offer!!
+        val declined = ShareOffer.respond(offered, a, id, "decline", "user", t0 + 1, 2, stagedIntact = true).offer!!
         assertEquals("after decline", "NOT_FOUND", code(ShareOffer.beginPull(declined, a, id, "0", tx, t0 + 2, 1)))
     }
 

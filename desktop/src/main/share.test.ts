@@ -1201,3 +1201,133 @@ test('v3: a double-clicked Accept keeps its first place in line', { timeout: 10_
     await rig.close();
   }
 });
+
+// ---- the phone's prepared copy was lost (staging-lost) --------------------------------------------
+
+/** A phone whose staged copy is gone when the Accept arrives: it answers NOT_FOUND and sends share.cancel{staging-lost}. */
+class LostAtAccept extends FakeLink {
+  receiver: ShareReceiver | null = null;
+  constructor(size: number, sha256: string, private readonly cancelFirst: boolean) {
+    super(2, size, sha256);
+  }
+  override async request(type: string, payload: Record<string, unknown>): Promise<unknown> {
+    if (type === 'share.respond' && payload.decision === 'accept') {
+      this.sent.push({ type, payload });
+      const cancel = () => this.receiver!.onCancel({ offerId: payload.offerId, reason: 'staging-lost' });
+      // The two orders a phone's event and its reply can arrive in; the Mac must end the same way.
+      if (this.cancelFirst) cancel();
+      else setImmediate(cancel);
+      throw new Error('NOT_FOUND: The prepared copy is no longer on this phone');
+    }
+    return super.request(type, payload);
+  }
+}
+
+const statusOf = (r: ShareReceiver) => {
+  const s = r.snapshots().find((x) => x.offerId === id)!;
+  return { state: s.state, reason: s.reason, status: shareReceiveStatus({ state: s.state, wantedName: s.name, savedAs: s.savedAs, reason: s.reason, priorCopy: null }) };
+};
+
+for (const cancelFirst of [true, false]) {
+  test(`staging-lost at Accept (${cancelFirst ? 'cancel before the error' : 'error before the cancel'}): nothing pulled, nothing saved, and the card names the phone's lost copy`, { timeout: 10_000 }, async () => {
+    const data = synthetic(1000);
+    const link = new LostAtAccept(1000, data.sha256, cancelFirst);
+    const d = folder();
+    const r = receiver(link, d, []);
+    link.receiver = r;
+    await r.onOffer(offer(1000, data.sha256));
+    assert.equal(statusOf(r).state, 'awaiting-decision', 'control: held for a decision first');
+    await r.decide(id, 'accept');
+    await new Promise((ok) => setImmediate(ok));
+    await new Promise((ok) => setImmediate(ok));
+    const { state, reason, status } = statusOf(r);
+    assert.equal(state, 'cancelled');
+    assert.equal(reason, 'staging-lost');
+    assert.equal(status.headline, 'The phone’s copy was lost');
+    assert.equal(status.savedOnMac, false);
+    assert.ok(!link.types().includes('fs.transfer.begin'), 'no pull was started');
+    assert.deepEqual(readdirSync(d), [], 'nothing was written to the receive folder');
+  });
+}
+
+test('staging-lost while the offer is still waiting: the card names the phone’s lost copy, nothing is pulled or published', { timeout: 10_000 }, async () => {
+  const data = synthetic(1000);
+  const link = new FakeLink(2, 1000, data.sha256);
+  const d = folder();
+  const r = receiver(link, d, []);
+  await r.onOffer(offer(1000, data.sha256));
+  r.onCancel({ offerId: id, reason: 'staging-lost' });
+  const { state, reason, status } = statusOf(r);
+  assert.equal(state, 'cancelled');
+  assert.equal(reason, 'staging-lost');
+  assert.equal(status.headline, 'The phone’s copy was lost');
+  assert.equal(status.savedOnMac, false);
+  // A late Accept (a stale click) does nothing: the offer is over.
+  await r.decide(id, 'accept');
+  assert.equal(statusOf(r).state, 'cancelled');
+  assert.deepEqual(link.types(), [], 'no respond, no pull — nothing was sent for it');
+  assert.deepEqual(readdirSync(d), [], 'nothing published');
+  // Control: the phone withdrawing it (`user`) is still worded as a cancel.
+  const link2 = new FakeLink(2, 1000, data.sha256);
+  const r2 = receiver(link2, folder(), []);
+  await r2.onOffer(offer(1000, data.sha256));
+  r2.onCancel({ offerId: id, reason: 'user' });
+  assert.equal(statusOf(r2).status.headline, 'Cancelled');
+});
+
+test('positive control: with the copy intact, the same Accept pulls, verifies, publishes and reads Saved', { timeout: 10_000 }, async () => {
+  const data = synthetic(4096);
+  const phone = await startFakePhone({ bytes: data.bytes });
+  const link = new FakeLink(2, 4096, data.sha256);
+  const d = folder();
+  try {
+    const r = receiver(link, d, [phone]);
+    await r.onOffer(offer(4096, data.sha256, { name: 'synthetic-3.bin' }));
+    await r.decide(id, 'accept');
+    assert.equal(r.state(id), 'saved');
+    assert.deepEqual(link.types(), ['respond:accept', 'fs.transfer.begin', 'saved:true']);
+    assert.deepEqual(readdirSync(d), ['synthetic-3.bin']);
+    assert.deepEqual(readFileSync(join(d, 'synthetic-3.bin')), data.bytes, 'the published bytes are the offered bytes');
+    assert.notEqual(statusOf(r).status.headline, 'The phone’s copy was lost');
+  } finally {
+    await phone.close();
+  }
+});
+
+/** Today's phone: the loss is found only when the pull begins — the begin is refused NOT_FOUND and share.cancel{staging-lost} is sent. */
+class LostAtPullBegin extends FakeLink {
+  receiver: ShareReceiver | null = null;
+  constructor(size: number, sha256: string, private readonly cancelFirst: boolean) {
+    super(2, size, sha256);
+  }
+  override async request(type: string, payload: Record<string, unknown>): Promise<unknown> {
+    if (type === 'fs.transfer.begin') {
+      this.sent.push({ type, payload });
+      const cancel = () => this.receiver!.onCancel({ offerId: id, reason: 'staging-lost' });
+      if (this.cancelFirst) cancel();
+      else setImmediate(cancel);
+      throw new Error('NOT_FOUND: The prepared copy is no longer on this phone');
+    }
+    return super.request(type, payload);
+  }
+}
+
+for (const cancelFirst of [true, false]) {
+  test(`an older phone's loss at pull begin (${cancelFirst ? 'cancel first' : 'refusal first'}) ends as the phone's lost copy, not "Not saved"`, { timeout: 10_000 }, async () => {
+    const data = synthetic(1000);
+    const link = new LostAtPullBegin(1000, data.sha256, cancelFirst);
+    const d = folder();
+    const r = receiver(link, d, []);
+    link.receiver = r;
+    await r.onOffer(offer(1000, data.sha256));
+    await r.decide(id, 'accept');
+    await new Promise((ok) => setImmediate(ok));
+    await new Promise((ok) => setImmediate(ok));
+    const { state, reason, status } = statusOf(r);
+    assert.equal(state, 'cancelled');
+    assert.equal(reason, 'staging-lost');
+    assert.equal(status.headline, 'The phone’s copy was lost');
+    assert.deepEqual(readdirSync(d), [], 'nothing published');
+    assert.ok(!link.types().includes('saved:true'));
+  });
+}

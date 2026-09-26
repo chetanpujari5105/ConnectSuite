@@ -22,7 +22,7 @@ class ShareOfferTest {
 
     private fun respond(offer: ShareOffer.Offer? = live, from: String = session, offerId: String? = id,
                         decision: String? = "decline", reason: String? = "not-available", now: Long = t0 + 1) =
-        ShareOffer.respond(offer, from, offerId, decision, reason, now)
+        ShareOffer.respond(offer, from, offerId, decision, reason, now, stagedIntact = true)
 
     private fun errorCode(r: ShareOffer.Result) = (r.reply as Reply.Error).code
 

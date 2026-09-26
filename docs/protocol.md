@@ -2616,6 +2616,16 @@ request when a person presses **Cancel** (a starting or running transfer) or **G
 attempt waiting for a Retry) in the receive window (since 2026-09-25); the phone handles it in every
 live state, with the same `NOT_FOUND` rules as `share.respond`. A published offer is never cancelled.
 
+The phone sends `staging-lost` when the copy it prepared for the offer is gone or is no longer the
+offered length (Android may clear an app's cache at any time): when a pull begins (the
+`fs.transfer.begin` is answered `NOT_FOUND`), when the copy changes under the read (its digest is
+checked as it streams), **when an Accept arrives** (the `share.respond` is answered `NOT_FOUND`, never
+`accepted`, so nothing is pulled), and **while the offer waits** — offered, accepted and queued, or
+failed inside its Retry window — on a periodic look at the held copy. The event and a `NOT_FOUND`
+reply may reach the Mac in either order; the offer ends the same way. It is the phone losing its copy,
+not anyone cancelling, and a Mac says so rather than "Cancelled". A `staging-lost` offer is never
+saved: nothing can pull it, and no `share.saved` is accepted for it.
+
 ### What is left behind
 
 Every end of an offer — declined, expired, cancelled by either side, or the session ending — deletes

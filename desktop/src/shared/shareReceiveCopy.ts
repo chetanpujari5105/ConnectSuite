@@ -168,6 +168,16 @@ function shareReceiveStatus(f: ShareRecvFacts): ShareRecvStatus {
     case 'expired':
       return { headline: 'Expired', detail: ['Nobody answered in time. Nothing was saved.'], tone: 'neutral', ...none };
     case 'cancelled':
+      // The phone ended it because its prepared copy is gone (Android may clear an app's cache). Nobody
+      // cancelled anything, so this must never read as a person's cancel — on either side.
+      if (f.reason === 'staging-lost') {
+        return {
+          headline: 'The phone’s copy was lost',
+          detail: ['The copy the phone prepared for this file is no longer on the phone, so nothing was sent.', 'Nothing was saved. Share it again from the phone.'],
+          tone: 'warning',
+          ...none,
+        };
+      }
       return { headline: 'Cancelled', detail: ['Nothing was saved.'], tone: 'neutral', ...none };
     case 'ended':
       return { headline: 'Ended with the connection', detail: ['Nothing was saved.'], tone: 'neutral', ...none };

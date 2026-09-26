@@ -101,3 +101,17 @@ test('v3: queued says accepted and waiting, how many are ahead, and never that a
     assert.equal(s.confirmedByPhone, false);
   }
 });
+
+test('staging-lost is the phone losing its copy — named as that, never as a cancel and never as the person’s act', () => {
+  const s = shareReceiveStatus(facts('cancelled', { reason: 'staging-lost' }));
+  assert.equal(s.headline, 'The phone’s copy was lost');
+  assert.deepEqual(s.detail, [
+    'The copy the phone prepared for this file is no longer on the phone, so nothing was sent.',
+    'Nothing was saved. Share it again from the phone.',
+  ]);
+  assert.equal(s.tone, 'warning');
+  assert.equal(s.savedOnMac, false);
+  assert.equal(s.confirmedByPhone, false);
+  // The same end without that reason stays the plain cancel (a person, on either side).
+  assert.equal(shareReceiveStatus(facts('cancelled')).headline, 'Cancelled');
+});

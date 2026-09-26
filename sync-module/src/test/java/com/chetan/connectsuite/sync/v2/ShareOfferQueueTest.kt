@@ -24,7 +24,7 @@ class ShareOfferQueueTest {
     private val b = offer("s-BBBBBBBBBBBBBBBBBBBBBB")
 
     private fun accept(o: ShareOffer.Offer, version: Int, at: Long = t0 + 1) =
-        ShareOffer.respond(o, "token-A", o.offerId, "accept", null, at, negotiatedVersion = version, queueLifetimeMs = life)
+        ShareOffer.respond(o, "token-A", o.offerId, "accept", null, at, negotiatedVersion = version, queueLifetimeMs = life, stagedIntact = true)
 
     @Test fun `version 2 accept is unchanged - no queue bound, no backstop, and the offer TTL still ends it`() {
         val r = accept(a, 2)
@@ -125,7 +125,7 @@ class ShareOfferQueueTest {
     }
 
     @Test fun `declining one leaves the other live, and deletes only its own copy`() {
-        val declinedA = ShareOffer.respond(a, "token-A", a.offerId, "decline", "user", t0 + 1, negotiatedVersion = 3)
+        val declinedA = ShareOffer.respond(a, "token-A", a.offerId, "decline", "user", t0 + 1, negotiatedVersion = 3, stagedIntact = true)
         assertTrue(declinedA.offer!!.state is State.Declined)
         assertEquals(listOf<Effect>(Effect.DeleteStaged), declinedA.effects)
         val acceptedB = accept(b, 3)

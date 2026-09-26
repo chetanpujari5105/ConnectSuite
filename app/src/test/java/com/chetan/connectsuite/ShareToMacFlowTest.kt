@@ -33,7 +33,7 @@ class ShareToMacFlowTest {
     /** The real transitions: offered → accepted → sending → all sent. Returns every state visited. */
     private fun throughAllSent(): List<State> {
         val o0 = offer()
-        val o1 = ShareOffer.respond(o0, key, id, "accept", null, t0 + 1, negotiatedVersion = 2).offer!!
+        val o1 = ShareOffer.respond(o0, key, id, "accept", null, t0 + 1, negotiatedVersion = 2, stagedIntact = true).offer!!
         val o2 = ShareOffer.beginPull(o1, key, id, "0", "ts-AAAAAAAAAAAAAAAAAAAAAA", t0 + 2, 65536).offer!!
         val o3 = ShareOffer.pullEnded(o2, "ts-AAAAAAAAAAAAAAAAAAAAAA", ShareOffer.PullEnd.SENT, t0 + 3).offer!!
         return listOf(o0.state, o1.state, o2.state, o3.state)
@@ -116,7 +116,7 @@ class ShareToMacFlowTest {
 
     @Test fun `each Mac decline reason has its own stop reason, and only user is a person's`() {
         val got = ShareOffer.DECLINE_REASONS.associateWith { r ->
-            (sheet(ShareOffer.respond(offer(), key, id, "decline", r, t0 + 1).offer!!.state) as ShareSheetState.Stopped).why
+            (sheet(ShareOffer.respond(offer(), key, id, "decline", r, t0 + 1, stagedIntact = true).offer!!.state) as ShareSheetState.Stopped).why
         }
         assertEquals(ShareSheetState.StopReason.DECLINED_BY_PERSON, got["user"])
         assertEquals(ShareSheetState.StopReason.DECLINED_NO_SPACE_ON_MAC, got["insufficient-space"])
@@ -155,7 +155,7 @@ class ShareToMacFlowTest {
         // DeleteStaged. If a new end ever forgets it, leaving an offered sheet would leak the copy.
         val o = offer()
         val ends = listOf(
-            ShareOffer.respond(o, key, id, "decline", "user", t0 + 1),
+            ShareOffer.respond(o, key, id, "decline", "user", t0 + 1, stagedIntact = true),
             ShareOffer.expire(o, t0 + ShareOffer.TTL_MS),
             ShareOffer.cancelFromPhone(o, "user"),
             ShareOffer.cancelFromMac(o, key, id, "user", t0 + 1),
@@ -215,7 +215,7 @@ class ShareToMacBusyTest {
 
     @Test fun `when the first is declined, cancelled, expired or saved, the note clears and Send works again`() {
         val ended = listOf(
-            ShareOffer.respond(firstOffer, "token-A", firstOffer.offerId, "decline", "user", t0 + 1, negotiatedVersion = 2).offer!!.state,
+            ShareOffer.respond(firstOffer, "token-A", firstOffer.offerId, "decline", "user", t0 + 1, negotiatedVersion = 2, stagedIntact = true).offer!!.state,
             ShareOffer.cancelFromPhone(firstOffer, "user").offer!!.state,
             State.Expired,
             State.Saved("synthetic-1.png"),
@@ -229,7 +229,7 @@ class ShareToMacBusyTest {
     }
 
     @Test fun `once the first is accepted it cannot be withdrawn from here, and the sheet says it is being sent`() {
-        val accepted = ShareOffer.respond(firstOffer, "token-A", firstOffer.offerId, "accept", null, t0 + 1, negotiatedVersion = 2).offer!!
+        val accepted = ShareOffer.respond(firstOffer, "token-A", firstOffer.offerId, "accept", null, t0 + 1, negotiatedVersion = 2, stagedIntact = true).offer!!
         val after = afterOtherChanged(busy(), accepted.state)
         assertFalse(canWithdrawOther(after))
         assertFalse(canSend(after))

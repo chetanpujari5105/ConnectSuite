@@ -13,6 +13,7 @@ import com.chetan.connectsuite.core.protocol.ErrorCode
 import com.chetan.connectsuite.core.protocol.MessageType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,6 +74,10 @@ object ShareFeature {
     /** Debug only: a corruption byte armed for the next pull of one offer. */
     private val armedCorruption = ConcurrentHashMap<String, Long>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** The held-copy check's loop; started with the first live offer, and ends — under [lock] — with the last. */
+    private var heldCopyCheck: Job? = null
+    private val heldCopiesChecked = AtomicInteger()
+    private val heldCopiesLost = AtomicInteger()
     @Volatile private var link: LinkServer? = null
     @Volatile private var cacheDir: File? = null
     @Volatile private var debuggable = false
@@ -197,6 +202,7 @@ object ShareFeature {
             put("expiresAtMs", offer.expiresAtMs)
         }
         offered.incrementAndGet()
+        ensureHeldCopyCheck()
         LinkLog.i("share", "offered $offerId to ${session.peerName}: $bytes bytes, expires in ${ttlMs / 1000}s, " +
             "negotiated share.file ${session.negotiated[Extensions.SHARE_FILE]} — ${tally()}")
         scope.launch {
@@ -251,7 +257,10 @@ object ShareFeature {
         val result = synchronized(lock) {
             val current = offerId?.let { offers[it] }
             val r = when (type) {
-                MessageType.SHARE_RESPOND -> ShareOffer.respond(current, key, offerId, str("decision"), str("reason"), now, version)
+                MessageType.SHARE_RESPOND -> ShareOffer.respond(
+                    current, key, offerId, str("decision"), str("reason"), now, version,
+                    stagedIntact = str("decision") != "accept" || (current != null && stagedIntact(current)),
+                )
                 MessageType.SHARE_SAVED -> ShareOffer.saved(current, key, offerId, bool("ok"), long("bytes"), bool("verified"), str("savedAs"), str("reason"), now)
                 else -> ShareOffer.cancelFromMac(current, key, offerId, str("reason"), now)
             }
@@ -281,7 +290,7 @@ object ShareFeature {
                 ShareOffer.Result(current, ShareOffer.Reply.Error(ErrorCode.BAD_REQUEST, "Another share pull is live on this session"), emptyList())
             } else if (candidate != null && ShareOffer.isLive(candidate.state) && !stagedIntact(candidate)) {
                 ShareOffer.cancelFromPhone(candidate, "staging-lost").copy(
-                    reply = ShareOffer.Reply.Error(ErrorCode.NOT_FOUND, "The prepared copy is no longer on this phone"),
+                    reply = ShareOffer.Reply.Error(ErrorCode.NOT_FOUND, ShareOffer.STAGING_LOST_MESSAGE),
                 )
             } else {
                 ShareOffer.beginPull(current, key, offerId, itemId, transferId, now, BulkTransfers.chunkMax())
@@ -410,11 +419,45 @@ object ShareFeature {
     }
 
     /** The staged copy is still there and still the offered length (the digest is checked while streaming). */
-    private fun stagedIntact(o: ShareOffer.Offer): Boolean {
-        val dir = cacheDir?.let { ShareStaging.stagingDir(it) } ?: return false
-        val f = File(dir, "${o.offerId}.bin")
-        return f.isFile && f.length() == o.bytes
+    private fun stagedIntact(o: ShareOffer.Offer): Boolean =
+        // Looked at, never created: a missing staging folder means the copy is gone (ShareHeldCopies).
+        ShareHeldCopies.intact(cacheDir?.let { File(it, ShareStaging.DIR_NAME) }, o)
+
+    /**
+     * **The held-copy check** ([ShareOffer.stagingCheck]): every [HELD_COPY_CHECK_MS] while any offer is
+     * live, each waiting offer's staged copy is looked at; one that is gone or the wrong length ends its
+     * offer as `staging-lost` at once, and the Mac is told — instead of both sides showing a file as
+     * waiting until a pull finds it missing. Android may clear this app's cache at any time; this is how
+     * that becomes visible. Starting and stopping are decided under [lock], with the offer map, so a new
+     * offer cannot slip past a loop that is just ending.
+     */
+    private fun ensureHeldCopyCheck() {
+        synchronized(lock) {
+            if (heldCopyCheck != null) return
+            heldCopyCheck = scope.launch {
+                while (true) {
+                    delay(HELD_COPY_CHECK_MS)
+                    val ids = synchronized(lock) {
+                        if (offers.isEmpty()) { heldCopyCheck = null; null } else offers.keys.toList()
+                    } ?: break
+                    ids.forEach { id ->
+                        transition(id) { o ->
+                            val r = ShareHeldCopies.check(cacheDir?.let { File(it, ShareStaging.DIR_NAME) }, o)
+                            heldCopiesChecked.incrementAndGet()
+                            if (r.offer?.state != o.state) {
+                                LinkLog.w("share", "held-copy check: offer $id's staged copy is gone or not ${o.bytes} bytes — ending it as staging-lost " +
+                                    "(${heldCopiesLost.incrementAndGet()} lost of ${heldCopiesChecked.get()} checked this run)")
+                            }
+                            r
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fun describe(state: ShareOffer.State): String = ShareOffer.describe(state)
+
+    /** How often a waiting offer's staged copy is looked at. Not a storage value: a detection interval. */
+    private const val HELD_COPY_CHECK_MS = 30_000L
 }

@@ -719,7 +719,12 @@ export class ShareReceiver {
     if (entry) {
       entry.abort?.abort();
       // An end the phone cannot rewrite: a saved file, or a different file found at the saved name.
-      if (!['saved', 'saved-unacknowledged', 'unexpected-file'].includes(entry.state)) this.endAs(entry, reason === 'expired' ? 'expired' : 'cancelled', false);
+      if (!['saved', 'saved-unacknowledged', 'unexpected-file'].includes(entry.state)) {
+        // `staging-lost`: the phone's prepared copy is gone. Nobody cancelled anything, so the card must
+        // not say so — the reason travels to the card's words (shareReceiveCopy, `cancelled`).
+        if (reason === 'staging-lost') entry.lastReason = 'staging-lost';
+        this.endAs(entry, reason === 'expired' ? 'expired' : 'cancelled', false);
+      }
     }
     this.clearTimer(offerId);
     // Counted only if this Mac was still holding it: its own expiry and the phone's cancel are one end.

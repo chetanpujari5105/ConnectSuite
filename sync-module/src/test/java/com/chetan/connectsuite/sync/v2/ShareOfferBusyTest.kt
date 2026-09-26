@@ -33,13 +33,13 @@ class ShareOfferBusyTest {
     }
 
     @Test fun `every live state blocks and no ended state does`() {
-        val accepted = ShareOffer.respond(first, "token-A", first.offerId, "accept", null, t0 + 1, negotiatedVersion = 2).offer!!
+        val accepted = ShareOffer.respond(first, "token-A", first.offerId, "accept", null, t0 + 1, negotiatedVersion = 2, stagedIntact = true).offer!!
         val sending = ShareOffer.beginPull(accepted, "token-A", first.offerId, "0", "ts-AAAAAAAAAAAAAAAAAAAAAA", t0 + 2, 262144).offer!!
         for (o in listOf(first, accepted, sending)) assertSame(o.state.toString(), o, ShareOffer.busyWith(listOf(o), "token-A"))
         // Only Offered is withdrawable without stopping something mid-flight.
         assertFalse(ShareOffer.awaitingAnswer(accepted.state))
         assertFalse(ShareOffer.awaitingAnswer(sending.state))
-        val declined = ShareOffer.respond(first, "token-A", first.offerId, "decline", "user", t0 + 1, negotiatedVersion = 2).offer!!
+        val declined = ShareOffer.respond(first, "token-A", first.offerId, "decline", "user", t0 + 1, negotiatedVersion = 2, stagedIntact = true).offer!!
         val cancelled = ShareOffer.cancelFromPhone(first, "user").offer!!
         for (o in listOf(declined, cancelled)) assertNull(o.state.toString(), ShareOffer.busyWith(listOf(o), "token-A"))
     }

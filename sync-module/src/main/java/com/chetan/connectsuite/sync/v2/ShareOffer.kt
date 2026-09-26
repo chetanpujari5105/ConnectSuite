@@ -150,6 +150,8 @@ object ShareOffer {
     private const val BAD_REQUEST = "BAD_REQUEST"
     private const val NOT_FOUND = "NOT_FOUND"
     private const val NOT_FOUND_MESSAGE = "No live offer with that id on this session"
+    /** The answer when the phone no longer holds the prepared copy — at Accept, or when a pull begins. */
+    const val STAGING_LOST_MESSAGE = "The prepared copy is no longer on this phone"
 
     /** Into an end: whatever else it does, the staged copy goes, and a live pull is stopped first. */
     private fun ended(offer: Offer, state: State, vararg extra: Effect): Pair<Offer, List<Effect>> {
@@ -187,6 +189,8 @@ object ShareOffer {
     fun respond(
         offer: Offer?, fromSession: String, offerId: String?, decision: String?, reason: String?,
         nowMs: Long, negotiatedVersion: Int = 1, queueLifetimeMs: Long = QUEUE_LIFETIME_CANDIDATE_MS,
+        /** Whether the staged copy is still there at the offered length — the caller's file check. No default: every caller must say. */
+        stagedIntact: Boolean,
     ): Result {
         if (badId(offerId)) return Result(offer, Reply.Error(BAD_REQUEST, "offerId is missing or malformed"), emptyList())
         when (decision) {
@@ -202,6 +206,13 @@ object ShareOffer {
         if (decision == "accept") {
             if (negotiatedVersion < TRANSFER_VERSION) {
                 return Result(live, Reply.Error(BAD_REQUEST, "This phone cannot send files yet"), emptyList())
+            }
+            // The staged copy is checked BEFORE `accepted` is acknowledged: an Accept for a file this
+            // phone no longer holds ends the offer as `staging-lost` (the Mac is told) and is answered
+            // like any offer already ended — `NOT_FOUND` — so nothing is ever pulled for it.
+            if (!stagedIntact) {
+                val (next, effects) = ended(live, State.Cancelled(Side.PHONE, "staging-lost"), Effect.SendCancel("staging-lost"))
+                return Result(next, Reply.Error(NOT_FOUND, STAGING_LOST_MESSAGE), effects)
             }
             val ack = Reply.Ack(mapOf("offerId" to offerId, "state" to "accepted"))
             if (negotiatedVersion >= QUEUE_VERSION) {
@@ -332,6 +343,21 @@ object ShareOffer {
         if ((live.state == State.Offered || live.state == State.Accepted) && nowMs >= waitsUntil(live)) return expireInstead(live)
         val (next, effects) = ended(live, State.Cancelled(Side.MAC, reason))
         return Result(next, Reply.Ack(mapOf("offerId" to offerId, "stopped" to true)), effects)
+    }
+
+    /**
+     * **The held-copy check.** While an offer waits — offered, accepted and queued, or failed inside its
+     * Retry window — its staged copy is the only thing that could still be sent. If the caller's file
+     * check found it gone or the wrong length, the offer ends now as `staging-lost` and the Mac is told,
+     * rather than both sides showing a file as waiting until a pull finds it missing. A pull in flight
+     * is not judged here: the stream checks the copy's digest as it reads ([PullEnd.SOURCE_CHANGED]),
+     * and after the last byte the Mac holds what it verified.
+     */
+    fun stagingCheck(offer: Offer, stagedIntact: Boolean): Result {
+        val waiting = offer.state == State.Offered || offer.state == State.Accepted || offer.state is State.Failed
+        if (!waiting || stagedIntact) return Result(offer, null, emptyList())
+        val (next, effects) = ended(offer, State.Cancelled(Side.PHONE, "staging-lost"), Effect.SendCancel("staging-lost"))
+        return Result(next, null, effects)
     }
 
     /** The phone ends its own live offer: `user` or `staging-lost`. The Mac is told. */
