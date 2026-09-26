@@ -17,7 +17,7 @@ import './shareWindow';
  */
 
 const g = globalThis as Record<string, any>;
-const ShareQueueView = g.ShareQueueView as new (n: unknown, bridge: unknown) => { update(p: unknown): void; isActive(): boolean };
+const ShareQueueView = g.ShareQueueView as new (n: unknown, bridge: unknown) => { update(p: unknown): void; isActive(): boolean; escape(): boolean };
 const A = 's-AAAAAAAAAAAAAAAAAAAAAA';
 const B = 's-BBBBBBBBBBBBBBBBBBBBBB';
 const C = 's-CCCCCCCCCCCCCCCCCCCCCC';
@@ -187,4 +187,54 @@ test('text from the phone is text in every card', () => {
   t.draw([offer(A, 1, { name: '<img src=x onerror=alert(1)>.jpg' })]);
   assert.equal(t.card(A)!.queryAll('img').length, 0);
   assert.match(t.card(A)!.textContent, /<img src=x/);
+});
+
+test('two cards of one name have two different accessible names, and each draws which file it is', () => {
+  const t = setup();
+  const t0 = new Date(2026, 8, 26, 6, 41, 12).getTime();
+  t.draw([offer(A, 1, { arrivedAtMs: t0 }), offer(B, 2, { arrivedAtMs: t0 + 3000 }), offer(C, 3, { name: 'notes.txt', mime: 'text/plain' })]);
+  assert.equal(t.card(A)!.getAttribute('aria-label'), 'IMG_1.jpg (file 1, arrived 06:41:12)');
+  assert.equal(t.card(B)!.getAttribute('aria-label'), 'IMG_1.jpg (file 2, arrived 06:41:15)');
+  const arrival = (id: string) => t.card(id)!.queryAll('p').find((p) => p.className === 'sw-arrival')!;
+  assert.equal(arrival(A).hidden, false);
+  assert.equal(arrival(A).textContent, 'File 1 · arrived 06:41:12');
+  assert.equal(arrival(B).textContent, 'File 2 · arrived 06:41:15');
+  assert.equal(arrival(C).hidden, true, 'control: a name that appears once shows no note');
+  assert.equal(arrival(C).textContent, '');
+  assert.match(t.card(C)!.getAttribute('aria-label')!, /^notes\.txt \(file 3, arrived /, 'a unique name still says which file');
+});
+
+test('when its twin leaves the list, a card drops its arrival note', () => {
+  const t = setup();
+  t.draw([offer(A, 1), offer(B, 2)]);
+  const arrival = (id: string) => t.card(id)!.queryAll('p').find((p) => p.className === 'sw-arrival')!;
+  assert.equal(arrival(B).hidden, false, 'control: noted while both are listed');
+  t.draw([offer(A, 1, { state: 'declined' }), offer(B, 2)]);
+  t.card(A)!.queryAll('button').find((b) => b.dataset.action === 'close')?.click();
+  t.draw([offer(A, 1, { state: 'declined' }), offer(B, 2)]);
+  if (t.card(A)) return assert.fail('the declined card was expected to leave the list after its Close');
+  assert.equal(arrival(B).hidden, true);
+});
+
+test('escape() from outside the list: hides with nothing focused, and acts on nothing while the list does not own the window', () => {
+  const t = setup();
+  t.draw([offer(A, 1, { queueMode: false })]);
+  assert.equal(t.view.escape(), false, 'version 2: not the list’s to handle');
+  assert.deepEqual(t.calls, []);
+  t.draw([offer(A, 1), offer(B, 2)]);
+  focus(null);
+  assert.equal(t.view.escape(), true);
+  assert.deepEqual(t.calls, ['close-window'], 'hides; declines nothing');
+});
+
+test('the header’s Hide draws its glyph in the list view too, once, however many snapshots arrive', () => {
+  const t = setup();
+  assert.equal(t.n.close.queryAll('svg').length, 0, 'control: nothing is drawn before the list owns the window');
+  t.draw([offer(A, 1, { queueMode: false })]);
+  assert.equal(t.n.close.queryAll('svg').length, 0, 'version 2: the one-file view draws it, not the list');
+  t.draw([offer(A, 1), offer(B, 2)]);
+  t.draw([offer(A, 1), offer(B, 2), offer(C, 3)]);
+  assert.equal(t.n.close.queryAll('svg').length, 1);
+  assert.equal(t.n.close.dataset.icon, 'close');
+  assert.equal(t.n.close.getAttribute('aria-label'), 'Hide this window. Waiting files keep waiting until they expire.');
 });

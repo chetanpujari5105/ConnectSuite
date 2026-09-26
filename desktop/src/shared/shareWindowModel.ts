@@ -93,6 +93,18 @@ interface ShareWinModel {
   announcement: string;
   /** A finished offer that is not a saved file closes itself after a while; a saved one waits. */
   closesItself: boolean;
+  /**
+   * The card's accessible name. At version 3 it names *which* file — its place in this run's
+   * arrivals and its arrival time — so two cards of one name are two different names; at version 2
+   * it is the title, as before.
+   */
+  label: string;
+  /**
+   * Version 3, drawn on the card: `File 2 · arrived 14:07:09`, set by [shareQueueCards] **only when
+   * another listed card has the same file name**. Null everywhere else, so a list of distinct names
+   * reads exactly as it did.
+   */
+  arrivalNote: string | null;
 }
 
 /** Every glyph the window can draw — enumerated so a test can prove each resolves in `icons.ts`. */
@@ -260,6 +272,8 @@ function shareWindowModel(o: ShareWinOffer, phone: string | null): ShareWinModel
     // Queued stays: an accepted file waiting its turn is visible and cancellable until it starts or ends.
     closesItself: !published && !waiting && o.state !== 'accepting' && o.state !== 'receiving' && o.state !== 'queued' &&
       o.state !== 'unexpected-file' && !(o.state === 'failed' && o.canRetry === true),
+    label: ident === o.name ? shown : ident,
+    arrivalNote: null,
   };
 }
 
@@ -310,10 +324,35 @@ function shareQueueCards(
   shown: ReadonlySet<string>,
   dismissed: ReadonlySet<string>,
 ): ShareWinModel[] {
-  return offers
+  const listed = offers
     .filter((o) => (shown.has(o.offerId) || shareWinPending(o)) && !dismissed.has(o.offerId))
-    .sort((a, b) => (a.arrivalSeq ?? 0) - (b.arrivalSeq ?? 0))
-    .map((o) => shareWindowModel(o, phone));
+    .sort((a, b) => (a.arrivalSeq ?? 0) - (b.arrivalSeq ?? 0));
+  // A name counts as repeated only among the cards actually on the list: a same-named file that has
+  // left it no longer needs telling apart.
+  const uses = new Map<string, number>();
+  for (const o of listed) uses.set(o.name, (uses.get(o.name) ?? 0) + 1);
+  return listed.map((o) => {
+    const m = shareWindowModel(o, phone);
+    return (uses.get(o.name) ?? 0) > 1 ? { ...m, arrivalNote: shareWinArrivalNote(o) } : m;
+  });
+}
+
+/** `File 2 · arrived 14:07:09` — the same two facts the card's accessible name carries. */
+function shareWinArrivalNote(o: ShareWinOffer): string {
+  const clock = shareWinClock(o.arrivedAtMs ?? 0);
+  return o.arrivalSeq !== undefined ? `File ${o.arrivalSeq} · arrived ${clock}` : `Arrived ${clock}`;
+}
+
+/**
+ * The height the receive window's page asks the main process for. With the list drawn (version 3)
+ * the page is capped at the window it is in, so its drawn height cannot say it wants more; the list's
+ * hidden overflow is added back, giving the height the content would take uncapped. The main process
+ * then clamps it (120–560, and the work area). With the list hidden (version 2) it is the drawn height,
+ * exactly as before.
+ */
+function shareWinWantedHeight(rootHeight: number, listActive: boolean, listClientHeight: number, listScrollHeight: number): number {
+  if (!listActive) return Math.ceil(rootHeight);
+  return Math.ceil(rootHeight + Math.max(0, listScrollHeight - listClientHeight));
 }
 
 {
@@ -323,11 +362,12 @@ function shareQueueCards(
   g.shareQueueMode = shareQueueMode;
   g.shareQueueCards = shareQueueCards;
   g.shareWinPending = shareWinPending;
+  g.shareWinWantedHeight = shareWinWantedHeight;
   g.shareWinTypeLabel = shareWinTypeLabel;
   g.shareWinApproxBytes = shareWinApproxBytes;
   g.SHARE_WIN_ICON_NAMES = SHARE_WIN_ICON_NAMES;
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { shareWindowModel, shareWindowList, shareQueueMode, shareQueueCards, shareWinPending, shareWinTypeLabel, shareWinApproxBytes, shareWinGlyph, SHARE_WIN_ICON_NAMES };
+  module.exports = { shareWindowModel, shareWindowList, shareQueueMode, shareQueueCards, shareWinPending, shareWinWantedHeight, shareWinTypeLabel, shareWinApproxBytes, shareWinGlyph, SHARE_WIN_ICON_NAMES };
 }

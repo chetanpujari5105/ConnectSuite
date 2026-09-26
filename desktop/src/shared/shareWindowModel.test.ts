@@ -244,3 +244,59 @@ test('v3: cards are pending or shown, never dismissed, in arrival order', () => 
   assert.deepEqual(ids([b.offerId], []), [a.offerId, b.offerId, c.offerId]);
   assert.deepEqual(ids([b.offerId], [a.offerId]), [b.offerId, c.offerId], 'dismissed stays gone, even while pending');
 });
+
+const { shareWinWantedHeight } = require('./shareWindowModel') as {
+  shareWinWantedHeight: (root: number, active: boolean, client: number, scroll: number) => number;
+};
+type QueueCard = { offerId: string; title: string; label: string; arrivalNote: string | null };
+const queueCards = (os: Record<string, unknown>[], shown: string[] = [], dismissed: string[] = []) =>
+  (shareQueueCards(os, 'P', new Set(shown), new Set(dismissed)) as unknown as QueueCard[]);
+
+test('v3: a card’s own accessible name says which file — arrival number and clock — not only the name', () => {
+  const t0 = new Date(2026, 8, 26, 14, 7, 9).getTime();
+  const [a, b] = queueCards([
+    offer({ offerId: 's-AAAAAAAAAAAAAAAAAAAAAA', queueMode: true, arrivalSeq: 1, arrivedAtMs: t0 }),
+    offer({ offerId: 's-BBBBBBBBBBBBBBBBBBBBBB', queueMode: true, arrivalSeq: 2, arrivedAtMs: t0 + 2000 }),
+  ]);
+  assert.equal(a!.label, 'IMG_2041.jpg (file 1, arrived 14:07:09)');
+  assert.equal(b!.label, 'IMG_2041.jpg (file 2, arrived 14:07:11)');
+  assert.equal(a!.title, 'IMG_2041.jpg', 'the heading is still the plain name');
+});
+
+test('v2: the label is the title, exactly as before — no arrival number or clock', () => {
+  const m = shareWindowModel(offer({ arrivalSeq: 1, arrivedAtMs: 0 }), 'P') as unknown as QueueCard;
+  assert.equal(m.label, 'IMG_2041.jpg');
+  assert.equal(m.arrivalNote, null);
+  const saved = shareWindowModel(offer({ state: 'saved', savedAs: 'IMG_2041 (2).jpg' }), 'P') as unknown as QueueCard;
+  assert.equal(saved.label, 'IMG_2041 (2).jpg', 'a v2 label follows the title, which is the saved name');
+});
+
+test('v3: the arrival note is drawn only on cards whose name repeats on the list', () => {
+  const t0 = new Date(2026, 8, 26, 14, 7, 9).getTime();
+  const cards = queueCards([
+    offer({ offerId: 's-AAAAAAAAAAAAAAAAAAAAAA', queueMode: true, arrivalSeq: 1, arrivedAtMs: t0 }),
+    offer({ offerId: 's-BBBBBBBBBBBBBBBBBBBBBB', queueMode: true, arrivalSeq: 2, arrivedAtMs: t0 + 1000, name: 'notes.txt', mime: 'text/plain' }),
+    offer({ offerId: 's-CCCCCCCCCCCCCCCCCCCCCC', queueMode: true, arrivalSeq: 3, arrivedAtMs: t0 + 2000 }),
+  ]);
+  const note = (id: string) => cards.find((c) => c.offerId === id)!.arrivalNote;
+  assert.equal(note('s-AAAAAAAAAAAAAAAAAAAAAA'), 'File 1 · arrived 14:07:09');
+  assert.equal(note('s-CCCCCCCCCCCCCCCCCCCCCC'), 'File 3 · arrived 14:07:11');
+  assert.equal(note('s-BBBBBBBBBBBBBBBBBBBBBB'), null, 'control: a name that appears once gets no note');
+});
+
+test('v3: a repeat counts only while both cards are on the list — a dismissed twin leaves no note behind', () => {
+  const a = offer({ offerId: 's-AAAAAAAAAAAAAAAAAAAAAA', queueMode: true, arrivalSeq: 1, arrivedAtMs: 0 });
+  const b = offer({ offerId: 's-BBBBBBBBBBBBBBBBBBBBBB', queueMode: true, arrivalSeq: 2, arrivedAtMs: 0 });
+  assert.notEqual(queueCards([a, b]).find((c) => c.offerId === b.offerId)!.arrivalNote, null, 'control: both listed → noted');
+  const alone = queueCards([a, b], [], [a.offerId as string]);
+  assert.deepEqual(alone.map((c) => c.offerId), [b.offerId]);
+  assert.equal(alone[0]!.arrivalNote, null);
+});
+
+test('the height the page asks for: drawn height at v2; drawn height plus the list’s hidden overflow at v3', () => {
+  assert.equal(shareWinWantedHeight(401.2, false, 0, 0), 402, 'v2: the drawn height, rounded up, as before');
+  assert.equal(shareWinWantedHeight(401.2, false, 345, 900), 402, 'v2 ignores the list even if it has sizes');
+  assert.equal(shareWinWantedHeight(560, true, 504, 1841), 1897, 'v3 capped: asks for the uncapped height');
+  assert.equal(shareWinWantedHeight(401, true, 345, 345), 401, 'v3 uncapped: nothing hidden, nothing added');
+  assert.equal(shareWinWantedHeight(120, true, 64, 1841), 1897, 'from the 120 px starting window it still asks for everything');
+});

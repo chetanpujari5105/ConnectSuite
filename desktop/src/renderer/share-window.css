@@ -307,16 +307,37 @@ html,
  * Version 3 only (PROPOSED; reachable only at a negotiated share.file 3, which nothing advertises):
  * the same window listing one card per offer. The window's height follows its content up to the
  * main process's 560 px clamp; past that the list scrolls inside the window rather than being cut.
+ *
+ * `border-box`, or the padding is added on top of the cap and the page draws 24 px taller than any
+ * window it can be in. `100vh`, because on a short work area the main process makes the window
+ * shorter than 560 and the page must fit what it actually got: `body` does not scroll, so anything
+ * below the window's edge would be unreachable. The page asks for its uncapped height separately
+ * (`shareWinWantedHeight`), so capping it here never stops the window growing.
  */
 .sw:has(.sw-queue:not([hidden])) {
-  max-height: 560px;
+  box-sizing: border-box;
+  max-height: min(560px, 100vh);
 }
 
+/* Shown only when another card on the list has the same file name: which one this is. */
+.sw-card .sw-arrival {
+  margin: 2px 0 0;
+  font: var(--text-caption);
+  color: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The list's scrolling edge sits in the window's own right padding (`--space-6`, the `.sw` inset), so
+ * macOS's overlay scrollbar is drawn in that gutter — never over the right edge of a card's buttons,
+ * where it took the last 8 px of Accept's clicks. The cards keep their width: the margin and the
+ * padding cancel.
+ */
 .sw-queue {
   flex: 1 1 auto;
   min-height: 0;
-  margin: var(--space-3) 0 0;
-  padding: 0;
+  margin: var(--space-3) calc(-1 * var(--space-6)) 0 0;
+  padding: 0 var(--space-6) 0 0;
   list-style: none;
   overflow-y: auto;
 }

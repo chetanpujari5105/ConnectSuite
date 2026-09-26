@@ -287,6 +287,8 @@ interface ShareQueueCard {
   eyebrow: HTMLElement;
   title: HTMLElement;
   meta: HTMLElement;
+  /** `File 2 · arrived 14:07:09`, shown only when another listed card shares this file name. */
+  arrival: HTMLElement;
   progress: HTMLElement;
   fill: HTMLElement;
   progressLabel: HTMLElement;
@@ -332,11 +334,8 @@ class ShareQueueView {
     private readonly bridge: ShareWinBridge,
   ) {
     n.root.addEventListener('keydown', (event: Event) => {
-      if (!this.active || (event as KeyboardEvent).key !== 'Escape') return;
+      if ((event as KeyboardEvent).key !== 'Escape' || !this.escape()) return;
       event.preventDefault();
-      const card = this.focusedCard();
-      if (card?.model.state === 'awaiting-decision') void this.decide(card, 'decline');
-      else this.bridge.shareWindowClose?.();
     });
     n.root.addEventListener('pointerenter', () => {
       this.hovered = true;
@@ -344,6 +343,20 @@ class ShareQueueView {
     n.root.addEventListener('pointerleave', () => {
       this.hovered = false;
     });
+  }
+
+  /**
+   * Escape: declines only the focused card's waiting offer; with no card focused it hides the window,
+   * which declines nothing. The page also calls this for an Escape that lands **outside** the list —
+   * with nothing focused the key goes to `<body>`, never reaching the root's listener. Returns
+   * whether it acted (false while the list does not own the window).
+   */
+  escape(): boolean {
+    if (!this.active) return false;
+    const card = this.focusedCard();
+    if (card?.model.state === 'awaiting-decision') void this.decide(card, 'decline');
+    else this.bridge.shareWindowClose?.();
+    return true;
   }
 
   /** Whether this view owns the window now (the page routes every snapshot through [update]). */
@@ -399,6 +412,12 @@ class ShareQueueView {
     const hide = waiting > 0 ? 'Hide this window. Waiting files keep waiting until they expire.' : 'Close';
     this.n.close.setAttribute('aria-label', hide);
     this.n.close.setAttribute('title', waiting > 0 ? 'Hide — waiting files keep waiting' : 'Close');
+    // The glyph is drawn by whichever view first owns the window: at version 3 the one-file view never
+    // draws, so without this the header's Hide is an empty, invisible button. Same flag, so never twice.
+    if (this.n.close.dataset.icon !== 'close') {
+      this.n.close.dataset.icon = 'close';
+      this.n.close.append(iconSvg('close', 14));
+    }
   }
 
   private build(m: ShareWinModel): ShareQueueCard {
@@ -417,7 +436,9 @@ class ShareQueueView {
     const eyebrow = part('p', 'sw-eyebrow');
     const title = part('h2', 'sw-title');
     const meta = part('p', 'sw-meta');
-    text.append(eyebrow, title, meta);
+    const arrival = part('p', 'sw-arrival');
+    arrival.hidden = true;
+    text.append(eyebrow, title, meta, arrival);
     file.append(tile, text);
     const progress = part('div', 'sw-progress');
     progress.setAttribute('role', 'progressbar');
@@ -438,14 +459,15 @@ class ShareQueueView {
     note.hidden = true;
     const actions = part('div', 'sw-actions');
     el.append(file, progress, place, detail, note, actions);
-    return { el, tile, eyebrow, title, meta, progress, fill, progressLabel, place, placeLabel, placeValue, detail, note, actions, model: m, pending: false, lingerTimer: null };
+    return { el, tile, eyebrow, title, meta, arrival, progress, fill, progressLabel, place, placeLabel, placeValue, detail, note, actions, model: m, pending: false, lingerTimer: null };
   }
 
   private draw(card: ShareQueueCard, thumb: string | null): void {
     const m = card.model;
     card.el.dataset.state = m.state;
     card.el.dataset.tone = m.tone;
-    card.el.setAttribute('aria-label', m.title);
+    // Which file, not only its name: two cards of one name must not share an accessible name.
+    card.el.setAttribute('aria-label', m.label);
     const picture = (m.state === 'saved' || m.state === 'saved-unacknowledged') && thumb !== null ? thumb : null;
     const tileKey = picture ? `thumb:${m.offerId}` : m.glyph;
     if (card.tile.dataset.glyph !== tileKey) {
@@ -464,6 +486,8 @@ class ShareQueueView {
     card.title.textContent = m.title;
     card.title.setAttribute('title', m.title);
     card.meta.textContent = m.meta;
+    card.arrival.textContent = m.arrivalNote ?? '';
+    card.arrival.hidden = m.arrivalNote === null;
     const pr = m.progress;
     card.progress.hidden = pr === null;
     if (pr) {
@@ -612,13 +636,38 @@ if (typeof document !== 'undefined' && typeof document.getElementById === 'funct
   });
   // The window is sized to what it draws: the main process clamps and anchors it top-right.
   const root = byId('sw');
-  new ResizeObserver(() => bridge.shareWindowHeight?.(Math.ceil(root.getBoundingClientRect().height))).observe(root);
+  const list = byId('sw-queue');
   // Version 3 only: the list of cards. At version 2 it never becomes active and the view above is the
   // whole window, exactly as before.
   const queue = new ShareQueueView(
-    { root, one: byId('sw-one'), queue: byId('sw-queue'), close: byId('sw-close') as HTMLButtonElement, live: byId('sw-live') },
+    { root, one: byId('sw-one'), queue: list, close: byId('sw-close') as HTMLButtonElement, live: byId('sw-live') },
     bridge,
   );
+  // With the list drawn, the page is capped at the window it is in (share-window.css), so the list's
+  // overflow is added back to ask for the height the content wants; the main process clamps it. A capped
+  // page does not change size when its content does, so the page alone would never ask to grow: a card
+  // arriving or leaving is reported through the list's child changes, and a card growing in place — a
+  // refused action's note, which comes with no new snapshot — through observing each card. At version 2
+  // this reports the drawn height, as before.
+  const report = (): void => bridge.shareWindowHeight?.(
+    shareWinWantedHeight(root.getBoundingClientRect().height, queue.isActive(), list.clientHeight, list.scrollHeight),
+  );
+  const sizes = new ResizeObserver(report);
+  sizes.observe(root);
+  new MutationObserver((changes) => {
+    for (const c of changes) {
+      for (const el of Array.from(c.addedNodes)) if (el instanceof Element) sizes.observe(el);
+      for (const el of Array.from(c.removedNodes)) if (el instanceof Element) sizes.unobserve(el);
+    }
+    report();
+  }).observe(list, { childList: true });
+  // With nothing focused, a key goes to <body> and never reaches the root's listener. Only while the
+  // list owns the window is such an Escape handed to it (which then hides, declining nothing); the
+  // version-2 window keeps its own handling unchanged.
+  document.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key !== 'Escape' || root.contains(event.target as Node) || !queue.isActive()) return;
+    if (queue.escape()) event.preventDefault();
+  });
   const route = (state: ShareWinPayload): void => {
     queue.update(state);
     if (queue.isActive()) view.reset();
