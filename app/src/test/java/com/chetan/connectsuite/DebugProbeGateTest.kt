@@ -20,7 +20,8 @@ import javax.xml.parsers.DocumentBuilderFactory
  *
  * The third (2026-09-27, Stage 2, development only) is `ShareManyToMacActivity`, the several-files
  * `SEND_MULTIPLE` screen. It carries a filter for the same reason and is also `android:enabled="false"`
- * until enabled by hand — `ShareManyManifestTest` pins that.
+ * until enabled by hand — `ShareManyManifestTest` pins that. The fourth (2026-09-28) is
+ * `ShareManyGrantProbeActivity`, the §11 `SEND_MULTIPLE` grant measurement: a filter, and also disabled.
  */
 class DebugProbeGateTest {
 
@@ -58,7 +59,10 @@ class DebugProbeGateTest {
 
     @Test fun `the share-sheet probes keep their filter and carry no permission, so the share sheet can reach them`() {
         val sheet = debugActivities().filter { it.filters > 0 }
-        assertEquals(setOf("ShareGrantProbeActivity", "ShareStagingProbeActivity", "ShareManyToMacActivity"), sheet.map { it.name }.toSet())
+        assertEquals(
+            setOf("ShareGrantProbeActivity", "ShareStagingProbeActivity", "ShareManyToMacActivity", "ShareManyGrantProbeActivity"),
+            sheet.map { it.name }.toSet(),
+        )
         sheet.forEach { assertEquals(it.name, "", it.permission) }
     }
 }

@@ -178,7 +178,7 @@ internal object ShareGrantProbe {
 
     /** `getRunningServices` still answers for the caller's own services, which is all this needs. */
     @Suppress("DEPRECATION")
-    private fun linkServiceForeground(context: Context): Boolean {
+    internal fun linkServiceForeground(context: Context): Boolean {
         val am = context.getSystemService(ActivityManager::class.java) ?: return false
         return am.getRunningServices(100).any {
             it.service.className == LinkService::class.java.name &&

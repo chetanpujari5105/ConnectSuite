@@ -83,6 +83,40 @@
             </intent-filter>
         </activity>
         <!--
+          2026-09-28: turns ShareManyToMacActivity or ShareManyGrantProbeActivity on, or back to its
+          manifest default. The shell's `pm enable` was refused on the SDK 37 emulator; an app may
+          always change its own components. adb-driven harness: exported, no filter, DUMP-gated.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.ShareManyComponentsActivity"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+        <!--
+          docs/feature-a-multi-offer-proposal.md rev 4 §11, the SEND_MULTIPLE URI-grant measurement
+          (2026-09-28, development only). Debug source set only, and **disabled**: it is in no share
+          sheet until someone runs `pm enable` on this component, in a supervised run. The filter is
+          narrowed to the synthetic stimuli's types (`image/png`, `application/octet-stream`,
+          `application/pdf`) — no `text/*`, no wildcard. Not excluded from recents: its stopped phase
+          needs the owner to be able to come back to it. It reads, digests and drops; it writes nothing.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.ShareManyGrantProbeActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:taskAffinity=""
+            android:label="Sidekick multi grant probe (debug)"
+            android:theme="@android:style/Theme.DeviceDefault">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/png" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity>
+        <!--
           `docs/phase-7-share-proposal.md` rev 2 §5, the private-staging proof. Debug source set only,
           not Feature A: it copies one shared file into `cacheDir/share-staging/` while it owns the
           grant, shows counts and digests, and sends nothing anywhere. Same SEND filter as the grant
