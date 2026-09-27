@@ -138,8 +138,9 @@ internal fun ShareSheet(
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
-            if (state is ShareSheetState.Sending) {
+            if (showsTransferProgress(state)) {
                 // No byte count on the phone side: the sheet does not claim a progress it cannot read.
+                // Not while queued (version 3): nothing is moving until its turn comes.
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
             if (state is ShareSheetState.Ready) {

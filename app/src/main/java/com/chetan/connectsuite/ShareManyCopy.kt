@@ -164,7 +164,9 @@ object ShareManyCopy {
      */
     fun after(name: String, bytes: Long, mac: String, prev: ShareManyRow.After?, s: ShareOffer.State?): ShareManyRow.After? {
         s ?: return prev
-        val state = reduce(prev?.state ?: ShareSheetState.WaitingForMac(name, bytes, mac), name, bytes, mac, s)
+        // Several files are version 3 only, where every Accepted is queued until its pull begins.
+        val state = reduce(prev?.state ?: ShareSheetState.WaitingForMac(name, bytes, mac), name, bytes, mac, s,
+            queued = s == ShareOffer.State.Accepted)
         return ShareManyRow.After(name, state, queued = s == ShareOffer.State.Accepted)
     }
 }

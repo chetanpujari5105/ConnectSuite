@@ -1,3 +1,23 @@
+# Resume here — written 2026-09-28 (02:00): Run A prepared — Mac quit, dist built, phone installed; nothing armed
+
+> Supersedes the entry below for Run A. `docs/testing.md` → *Version 3 Run A — preparation* has every reading.
+
+1. **Done, each owner-approved:** M2 (⌘Q, pid 93018 exited), M1 (`dist` = `5ab8774`, `shareV3` present,
+   switch off), P1 (`install -r` of `92f503af…`, MainActivity started). All after-readings equal their
+   before-readings; `SEND_MULTIPLE` resolves to nothing of ours.
+2. **State:** the Mac app is **stopped**; the phone serves `share.file 2`, unarmed, `link-up.sh` 2/3.
+3. **Fixed 02:0x, owner-approved, committed with this entry:** a queued version-3 single-file sheet now reads
+   *"Accepted on {Mac} — waiting its turn"*, not *"Sending"*; version 2 unchanged. The runbook's
+   expected wording is corrected (Mac *"Accepted — waiting its turn"* / *"1 transfer is ahead of it."*;
+   phone A3 *"Declined on {Mac}"*), and it now says a queue may not form at all with files this small.
+   Then (same morning): a queued file draws **no transfer bar**, and a disconnect while queued says
+   *"…ended while it was waiting its turn. Nothing was sent."* — not a dropped transfer. The runbook
+   now says two small images prove two simultaneous waiting offers, and a queue **only if observed**.
+   **The phone still runs `92f503af…`, without either fix** — it needs the committed debug APK and a
+   second P1.
+4. **Next, needs the owner:** review; commit; P1 again; then P2 (arm) and M3 (launch with `shareV3`),
+   in that order, Mac still quit.
+
 # Resume here — written 2026-09-28 (overnight): Stage 2 hardened, stall clock built, runbook written; uncommitted
 
 > Supersedes the entry below. **Nothing installed, armed, enabled, relaunched, transferred, deleted or

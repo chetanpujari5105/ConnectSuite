@@ -185,4 +185,15 @@ class ShareManyCopyTest {
             assertEquals("1 not sent", ShareManyCopy.summary(listOf(row), "Studio Mac"))
         }
     }
+
+    @Test fun `several files - a queued file whose connection ends is not sent, before any transfer, never a dropped one`() {
+        val queued = after(ShareOffer.State.Accepted)
+        val ended = ShareManyCopy.after("a.jpg", 100_000, mac, queued, ShareOffer.State.SessionEnded)!!
+        assertEquals(ShareManyCopy.NOT_SENT, ShareManyCopy.label(ended, mac))
+        assertEquals("The connection to Mac ended while it was waiting its turn. Nothing was sent.", ShareManyCopy.detail(ended, mac))
+        assertEquals("1 not sent", ShareManyCopy.summary(listOf(ended), mac))
+        val pulling = ShareManyCopy.after("a.jpg", 100_000, mac, queued, ShareOffer.State.Sending)!!
+        val dropped = ShareManyCopy.after("a.jpg", 100_000, mac, pulling, ShareOffer.State.SessionEnded)!!
+        assertTrue("a pull under way still ends as dropped", ShareManyCopy.detail(dropped, mac).contains("during the transfer"))
+    }
 }

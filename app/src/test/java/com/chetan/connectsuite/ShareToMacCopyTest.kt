@@ -106,4 +106,75 @@ class ShareToMacCopyTest {
         assertEquals("100,000 bytes (97.7 KB)", ShareToMacCopy.bytes(100_000))
         assertEquals("230,778 bytes (225 KB)", ShareToMacCopy.bytes(230_778))
     }
+
+    /**
+     * Version 3: a file the Mac accepted but has not started pulling — it waits behind another — is not
+     * called sending. Version 2's Accepted (the moment before its pull) is unchanged.
+     */
+    @Test fun `a queued version-3 file says waiting its turn, not sending - version 2 is unchanged`() {
+        val offered = ShareSheetState.WaitingForMac("a.jpg", 230_778, "Mac")
+        val queued = reduce(offered, "a.jpg", 230_778, "Mac", com.chetan.connectsuite.sync.v2.ShareOffer.State.Accepted, queued = true)
+        assertEquals("Accepted on Mac — waiting its turn", ShareToMacCopy.headline(queued))
+        assertEquals("It starts on its own when the file ahead of it finishes. Nothing of it is on your Mac yet.", ShareToMacCopy.detail(queued))
+        assertFalse(ShareToMacCopy.headline(queued).startsWith("Send"))
+        val v2 = reduce(offered, "a.jpg", 230_778, "Mac", com.chetan.connectsuite.sync.v2.ShareOffer.State.Accepted)
+        assertEquals("version 2 unchanged", "Sending to Mac…", ShareToMacCopy.headline(v2))
+        val pulling = reduce(queued, "a.jpg", 230_778, "Mac", com.chetan.connectsuite.sync.v2.ShareOffer.State.Sending)
+        assertEquals("its turn came", "Sending to Mac…", ShareToMacCopy.headline(pulling))
+        assertEquals("the several-files row says the same", ShareManyCopy.detail(
+            ShareManyRow.After("a.jpg", queued, queued = true), "Mac"), ShareToMacCopy.detail(queued))
+    }
+
+    private val v3 = com.chetan.connectsuite.sync.v2.ShareOffer.State.Accepted
+    private val pulling = com.chetan.connectsuite.sync.v2.ShareOffer.State.Sending
+    private val ended = com.chetan.connectsuite.sync.v2.ShareOffer.State.SessionEnded
+    private val offered = ShareSheetState.WaitingForMac("a.jpg", 230_778, "Mac")
+    private fun queued() = reduce(offered, "a.jpg", 230_778, "Mac", v3, queued = true)
+
+    @Test fun `a queued file draws no transfer bar - a pull under way and a verdict awaited still do`() {
+        assertFalse("queued: nothing is moving", showsTransferProgress(queued()))
+        assertTrue("pulling", showsTransferProgress(ShareSheetState.Sending("a.jpg", 230_778, "Mac", allSent = false)))
+        assertTrue("every byte left, verdict awaited (unchanged)", showsTransferProgress(ShareSheetState.Sending("a.jpg", 230_778, "Mac", allSent = true)))
+        assertTrue("version 2 Accepted (unchanged)", showsTransferProgress(reduce(offered, "a.jpg", 230_778, "Mac", v3)))
+        assertFalse("not offered to anyone yet", showsTransferProgress(offered))
+    }
+
+    @Test fun `queued then its turn comes - it becomes an ordinary transfer, bar and wording`() {
+        val s = reduce(queued(), "a.jpg", 230_778, "Mac", pulling)
+        assertEquals(ShareSheetState.Sending("a.jpg", 230_778, "Mac", allSent = false), s)
+        assertTrue(showsTransferProgress(s))
+        assertEquals("Sending to Mac…", ShareToMacCopy.headline(s))
+    }
+
+    @Test fun `queued then the connection ends - a before-transfer reason, never a dropped transfer`() {
+        val s = reduce(queued(), "a.jpg", 230_778, "Mac", ended)
+        assertEquals(ShareSheetState.Stopped("a.jpg", "Mac", ShareSheetState.StopReason.DISCONNECTED_BEFORE_TRANSFER), s)
+        assertEquals("Mac disconnected", ShareToMacCopy.headline(s))
+        assertEquals("The connection to Mac ended while it was waiting its turn. Nothing was sent.", ShareToMacCopy.detail(s))
+        assertFalse("never a transfer that dropped", ShareToMacCopy.detail(s).contains("during the transfer"))
+        assertFalse(showsTransferProgress(s))
+    }
+
+    @Test fun `a transfer under way, and version 2's Accepted, still end as a dropped transfer - unchanged`() {
+        val underWay = reduce(reduce(queued(), "a.jpg", 230_778, "Mac", pulling), "a.jpg", 230_778, "Mac", ended)
+        assertEquals(ShareSheetState.StopReason.DISCONNECTED_MID_TRANSFER, (underWay as ShareSheetState.Stopped).why)
+        val v2 = reduce(reduce(offered, "a.jpg", 230_778, "Mac", v3), "a.jpg", 230_778, "Mac", ended)
+        assertEquals(ShareSheetState.StopReason.DISCONNECTED_MID_TRANSFER, (v2 as ShareSheetState.Stopped).why)
+        val allSent = reduce(ShareSheetState.Sending("a.jpg", 230_778, "Mac", allSent = true), "a.jpg", 230_778, "Mac", ended)
+        assertEquals("every byte left: not confirmed, as before", ShareSheetState.Unconfirmed("a.jpg", "Mac"), allSent)
+    }
+
+    @Test fun `Saved rules are untouched by queueing - only the Mac's verdict says saved`() {
+        val saved = reduce(queued(), "a.jpg", 230_778, "Mac", com.chetan.connectsuite.sync.v2.ShareOffer.State.Saved("a.jpg"))
+        assertEquals(ShareSheetState.Saved("a.jpg", "Mac", "a.jpg"), saved)
+        assertFalse(ShareToMacCopy.headline(queued()).contains("Saved") || ShareToMacCopy.detail(queued()).contains("saved"))
+    }
+
+    /** The sheet draws its bar only through [showsTransferProgress]; the rule above is the one on screen. */
+    @Test fun `the sheet's bar for an offered file is gated by showsTransferProgress`() {
+        val src = java.io.File("src/main/java/com/chetan/connectsuite/ShareToMacActivity.kt").readText()
+        assertTrue("control: the activity source was read", src.contains("LinearProgressIndicator"))
+        assertTrue(src.contains("if (showsTransferProgress(state))"))
+        assertFalse("no ungated Sending check left", src.contains("if (state is ShareSheetState.Sending)"))
+    }
 }

@@ -147,4 +147,13 @@ class ShareOfferTest {
         assertEquals(listOf(State.Accepted, State.Sending, State.AwaitingVerdict), all.filter(ShareOffer::inProgress))
         assertTrue("every in-progress state is live", all.filter(ShareOffer::inProgress).all(ShareOffer::isLive))
     }
+
+    /** Only a version-3 accept sets `queueUntilMs`, so version 2's momentary Accepted is never "queued". */
+    @Test fun `queued is a version-3 accept waiting its turn - never a version-2 accept, never a pull under way`() {
+        val o = ShareOffer.Offer("s-" + "A".repeat(22), "k", 1, "0".repeat(64), 0, 1, name = "x", mime = "a/b")
+        assertEquals(false, ShareOffer.isQueued(o.copy(state = State.Accepted)))
+        assertEquals(true, ShareOffer.isQueued(o.copy(state = State.Accepted, queueUntilMs = 3_600_000)))
+        assertEquals(false, ShareOffer.isQueued(o.copy(state = State.Sending, queueUntilMs = 3_600_000)))
+        assertEquals(false, ShareOffer.isQueued(o.copy(state = State.Offered, queueUntilMs = 3_600_000)))
+    }
 }

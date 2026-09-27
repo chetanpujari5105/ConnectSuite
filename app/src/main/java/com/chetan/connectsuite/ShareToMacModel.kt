@@ -168,8 +168,9 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
                 LinkLog.i("share", "attempt=${outcome.offerId} offered from the sheet; ShareFeature owns the staged copy now")
                 _state.value = ShareSheetState.WaitingForMac(ready.name, ready.bytes, mac)
                 follow = viewModelScope.launch {
-                    ShareFeature.views.mapNotNull { it[outcome.offerId]?.state }.distinctUntilChanged().collect { st ->
-                        _state.update { prev -> reduce(prev, ready.name, ready.bytes, mac, st) }
+                    ShareFeature.views.mapNotNull { it[outcome.offerId] }.map { it.state to ShareOffer.isQueued(it) }
+                        .distinctUntilChanged().collect { (st, queued) ->
+                        _state.update { prev -> reduce(prev, ready.name, ready.bytes, mac, st, queued) }
                     }
                 }
             }

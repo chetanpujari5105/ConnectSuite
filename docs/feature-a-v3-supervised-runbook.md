@@ -108,10 +108,33 @@ failure to retry.
 
 | Step | The owner does | Pass |
 |---|---|---|
-| **A1 · two waiting, answered out of order** | Share file 1, then file 2. On the Mac: **Accept file 2**, then **Accept file 1**. | Two cards, one window, focus not stolen. **No pull before an Accept.** File 2 pulls first; file 1 reads *2nd in line* (queued) and then saves. Each saved SHA-256 equals the phone's source; collision-safe names; at most one partial at any sample. Phone rows: *Accepted on {Mac} — waiting its turn* for the queued one, never *Sending*; *Saved on {Mac}* only after the acknowledged verdict |
-| **A2 · a queued file cancelled** | Share both again; Accept both; **Cancel** the queued one before it starts. | It never pulls (no `fs.transfer.begin` for its id); its phone copy is deleted; the other saves |
-| **A3 · Decline one of two** | Share both; **Decline** one, **Accept** the other. | The declined one: *Not sent* / *Declined* on both sides, its copy deleted, nothing written on the Mac; the other saves. This is the per-file decision the multi-file design depends on |
+| **A1 · two waiting, answered out of order** | Share file 1, then file 2. On the Mac: **Accept file 2**, then **Accept file 1**. | Two cards, one window, focus not stolen. **No pull before an Accept.** File 2 pulls first, then file 1; each saves. Each saved SHA-256 equals the phone's source; collision-safe names; at most one partial at any sample. *Saved on {Mac}* on the phone only after the acknowledged verdict. **If a queue forms** (file 1 accepted while file 2 is still pulling — see the note below the table), file 1's Mac card is expected to read *"Accepted — waiting its turn"* / *"1 transfer is ahead of it."* until it starts |
+| **A2 · a queued file cancelled** | Share both again; Accept file 1, then file 2 (the visible phone sheet is file 2's); **Cancel** the queued one before it starts. | **Only if a queue forms.** Expected: the Mac card *"Accepted — waiting its turn"* / *"1 transfer is ahead of it."*; the phone sheet *"Accepted on {Mac} — waiting its turn"* / *"It starts on its own when the file ahead of it finishes. Nothing of it is on your Mac yet."*, with no progress bar, never *Sending*. After Cancel it never pulls (no `fs.transfer.begin` for its id); its phone copy is deleted; the other saves. If no queue forms, record that and skip the Cancel — it is not a failure |
+| **A3 · Decline one of two** | Share both; **Decline** one, **Accept** the other. | The declined one: the phone sheet *"Declined on {Mac}"* / *"Someone on {Mac} declined it. Nothing was sent."*; the Mac card *"Declined"* / *"Nothing was saved."*; its copy deleted, nothing written on the Mac; the other saves. This is the per-file decision the multi-file design depends on |
 | **A4 · disconnect with two waiting** | Share both; press **Disconnect** on the Mac (a Mac action; no phone setting touched). | Both cards *Ended with the connection*; phone staging empty; Mac ledger `[]`; nothing published |
+
+**Expected wording, not observed.** Every quoted string above is copied from the code on 2026-09-28
+(`shareReceiveCopy.ts`, `ShareToMacCopy.kt`); none has been seen on hardware yet. The phone's queued line
+is the fix made the same day and is in the build only after it is committed, rebuilt and installed.
+
+**What two small images can prove, and what they cannot.**
+- **They can prove two simultaneous waiting offers**: both files offered before any decision — two cards
+  in one window, each with its own Accept and Decline, on a session that negotiated `share.file 3`. That
+  is the version-3 change, and it needs no timing luck.
+- **They prove an accepted-behind-active-transfer queue only if one is actually observed.** A file is
+  queued only when it is accepted while another file of the same session is still being pulled or
+  checked. With 100,718 B and 230,778 B a pull likely ends before a second click, so A1 and A2 may show
+  no queue at all. Record which happened, from the Mac log (a `queued` state, or `filesAhead`); a queue
+  that did not form is **not** a failure, and it is **not** evidence that queueing works either.
+- **Nothing is created or sent to force one.** A larger synthetic file would make the queue likely; it is
+  a separate approval (P5), and it is not part of Run A.
+
+If a queue does form, the phone sheet of the queued file shows **no progress bar** and the waiting line
+above; had the connection ended then, it would read *"{Mac} disconnected"* / *"The connection to {Mac}
+ended while it was waiting its turn. Nothing was sent."* — expected from the code, not observed.
+
+**Each phone sheet closes when you leave it** to share the next file (`onStop`), so only the most
+recently shared file's sheet is on the phone's screen; the earlier file is followed on the Mac.
 
 **Evidence per step:** each card's text **before** its decision (`scripts/probe.mjs`, read-only CDP);
 the phone lines `offered s-… to …`, `offer s-… is …`, `offer s-… ended (…)`; the Mac `[share]` and `[bulk]`

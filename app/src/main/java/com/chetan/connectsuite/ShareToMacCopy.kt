@@ -45,7 +45,8 @@ sealed interface ShareSheetState {
     /** Offered; the Mac holds it on its card until a person answers or it expires. */
     data class WaitingForMac(val name: String, val bytes: Long, val mac: String) : ShareSheetState
     /** Accepted and streaming, or — [allSent] — every byte sent and the Mac's verdict not yet in. */
-    data class Sending(val name: String, val bytes: Long, val mac: String, val allSent: Boolean) : ShareSheetState
+    /** [queued]: version 3, accepted and waiting its turn behind another pull — nothing is moving yet. */
+    data class Sending(val name: String, val bytes: Long, val mac: String, val allSent: Boolean, val queued: Boolean = false) : ShareSheetState
     /** The Mac verified and published it. [savedAs] is the Mac's name for it, which may differ. */
     data class Saved(val name: String, val mac: String, val savedAs: String) : ShareSheetState
     /** Every byte sent; the Mac's verdict never arrived. It may or may not be on the Mac. */
@@ -119,6 +120,8 @@ sealed interface ShareSheetState {
         CANCELLED_HERE(true),
         CANCELLED_ON_MAC(true),
         DISCONNECTED(false),
+        /** Version 3: accepted and queued, and the connection ended before its pull began — nothing moved. */
+        DISCONNECTED_BEFORE_TRANSFER(false),
         DISCONNECTED_MID_TRANSFER(false),
         STAGING_LOST(false),
     }
@@ -134,14 +137,16 @@ sealed interface ShareSheetState {
  * - the session ending after every byte was sent is [ShareSheetState.Unconfirmed] — the contract's
  *   *"or the session ends first"* — not a plain disconnect.
  */
-fun reduce(prev: ShareSheetState, name: String, bytes: Long, mac: String, s: ShareOffer.State): ShareSheetState {
+fun reduce(prev: ShareSheetState, name: String, bytes: Long, mac: String, s: ShareOffer.State, queued: Boolean = false): ShareSheetState {
     if (prev is ShareSheetState.Saved) return prev
     if (prev is ShareSheetState.Unconfirmed && s !is ShareOffer.State.Saved && !ShareOffer.isLive(s)) return prev
     val allSentBefore = (prev is ShareSheetState.Sending && prev.allSent) || prev is ShareSheetState.Unconfirmed
     fun stop(why: ShareSheetState.StopReason) = ShareSheetState.Stopped(name, mac, why)
     return when (s) {
         ShareOffer.State.Offered -> ShareSheetState.WaitingForMac(name, bytes, mac)
-        ShareOffer.State.Accepted, ShareOffer.State.Sending -> ShareSheetState.Sending(name, bytes, mac, allSent = false)
+        // [queued] only for a version-3 accept waiting its turn (ShareOffer.isQueued); version 2 is unchanged.
+        ShareOffer.State.Accepted -> ShareSheetState.Sending(name, bytes, mac, allSent = false, queued = queued)
+        ShareOffer.State.Sending -> ShareSheetState.Sending(name, bytes, mac, allSent = false)
         ShareOffer.State.AwaitingVerdict -> ShareSheetState.Sending(name, bytes, mac, allSent = true)
         is ShareOffer.State.Saved -> ShareSheetState.Saved(name, mac, s.savedAs)
         is ShareOffer.State.Failed ->
@@ -165,6 +170,8 @@ fun reduce(prev: ShareSheetState, name: String, bytes: Long, mac: String, s: Sha
         }
         ShareOffer.State.SessionEnded -> when {
             allSentBefore -> ShareSheetState.Unconfirmed(name, mac)
+            // Queued (version 3): accepted, but its pull never began — not a transfer that dropped.
+            prev is ShareSheetState.Sending && prev.queued -> stop(ShareSheetState.StopReason.DISCONNECTED_BEFORE_TRANSFER)
             prev is ShareSheetState.Sending -> stop(ShareSheetState.StopReason.DISCONNECTED_MID_TRANSFER)
             else -> stop(ShareSheetState.StopReason.DISCONNECTED)
         }
@@ -238,6 +245,12 @@ fun onLeave(state: ShareSheetState): SheetExit = when (state) {
 }
 
 /**
+ * Whether the sheet draws the transfer-in-progress bar: only while a pull is under way or its verdict is
+ * awaited. **Not** for a version-3 file that is accepted and queued — nothing is moving yet.
+ */
+fun showsTransferProgress(state: ShareSheetState): Boolean = state is ShareSheetState.Sending && !state.queued
+
+/**
  * Whether the sheet offers **Cancel** (withdraw the offer) rather than Close. Not once every byte is
  * sent: a cancel then cannot unpublish anything the Mac saved, and the sheet would say "Cancelled"
  * over a file that may be on the Mac.
@@ -270,7 +283,11 @@ object ShareToMacCopy {
         is ShareSheetState.Failed ->
             if (state.failure is ShareSheetState.Failure.NoRoomYet) "No room for another file yet" else "Couldn’t prepare this file"
         is ShareSheetState.WaitingForMac -> "Waiting for you to accept on ${state.mac}"
-        is ShareSheetState.Sending -> if (state.allSent) "Sent — waiting for ${state.mac} to confirm" else "Sending to ${state.mac}…"
+        is ShareSheetState.Sending -> when {
+            state.allSent -> "Sent — waiting for ${state.mac} to confirm"
+            state.queued -> "Accepted on ${state.mac} — waiting its turn"
+            else -> "Sending to ${state.mac}…"
+        }
         is ShareSheetState.Saved -> "Saved on ${state.mac}"
         is ShareSheetState.Unconfirmed -> "Not confirmed by ${state.mac}"
         is ShareSheetState.SendFailed -> "${state.mac} couldn’t save it"
@@ -290,6 +307,9 @@ object ShareToMacCopy {
                 "if nobody does, the offer expires in 10 minutes."
         is ShareSheetState.Sending -> if (state.allSent) {
             "All ${bytes(state.bytes)} have left this phone. It is saved only when ${state.mac} has checked it and says so."
+        } else if (state.queued) {
+            // The several-files row's sentence, word for word (ShareManyCopy), so one file reads the same either way.
+            "It starts on its own when the file ahead of it finishes. Nothing of it is on your Mac yet."
         } else {
             "Accepted on ${state.mac}. Sending ${bytes(state.bytes)}; it is not saved until ${state.mac} has checked it."
         }
@@ -344,7 +364,8 @@ object ShareToMacCopy {
         ShareSheetState.StopReason.EXPIRED -> "Expired"
         ShareSheetState.StopReason.CANCELLED_HERE -> "Cancelled"
         ShareSheetState.StopReason.CANCELLED_ON_MAC -> "Stopped on $mac"
-        ShareSheetState.StopReason.DISCONNECTED, ShareSheetState.StopReason.DISCONNECTED_MID_TRANSFER -> "$mac disconnected"
+        ShareSheetState.StopReason.DISCONNECTED, ShareSheetState.StopReason.DISCONNECTED_BEFORE_TRANSFER,
+        ShareSheetState.StopReason.DISCONNECTED_MID_TRANSFER -> "$mac disconnected"
         ShareSheetState.StopReason.STAGING_LOST -> "The prepared copy was lost"
         else -> "$mac couldn’t take it"
     }
@@ -362,6 +383,8 @@ object ShareToMacCopy {
         ShareSheetState.StopReason.CANCELLED_HERE -> WITHDRAWN
         ShareSheetState.StopReason.CANCELLED_ON_MAC -> "It was stopped on $mac. Nothing was saved there."
         ShareSheetState.StopReason.DISCONNECTED -> "The connection to $mac ended before anyone accepted it. Nothing was sent."
+        ShareSheetState.StopReason.DISCONNECTED_BEFORE_TRANSFER ->
+            "The connection to $mac ended while it was waiting its turn. Nothing was sent."
         ShareSheetState.StopReason.DISCONNECTED_MID_TRANSFER ->
             "The connection to $mac dropped during the transfer, so it was not confirmed. Check your Mac before sending it again."
         ShareSheetState.StopReason.STAGING_LOST -> "The copy prepared on this phone changed or disappeared. Share the file again."
@@ -471,6 +494,7 @@ object ShareToMacCopy {
         ).forEach { add(ShareSheetState.Failed("a.bin", it)) }
         add(ShareSheetState.WaitingForMac("a.bin", 100_000, "Mac"))
         add(ShareSheetState.Sending("a.bin", 100_000, "Mac", allSent = false))
+        add(ShareSheetState.Sending("a.bin", 100_000, "Mac", allSent = false, queued = true))
         add(ShareSheetState.Sending("a.bin", 100_000, "Mac", allSent = true))
         add(ShareSheetState.Saved("a.bin", "Mac", "a.bin"))
         add(ShareSheetState.Saved("a.bin", "Mac", "a (2).bin"))

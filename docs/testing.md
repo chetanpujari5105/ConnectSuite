@@ -25904,3 +25904,91 @@ absent, 0 `SEND_MULTIPLE`. Release dex 0/0 for both probe classes, control `Shar
 dex 2/2/2. Mac **1,267/0**, both `tsc --noEmit` 0, `dist` unchanged (2026-09-26 12:53:08). 14 checkers
 exit 0; `check-suites-run --worktree` GREEN both halves (phone 960 across all modules, Mac 1,267).
 Free space 25,979 → 25,848 MiB.
+
+## Version 3 Run A — preparation: M2 (quit), M1 (build), P1 (install) on hardware (2026-09-28 01:43–01:56, owner-approved one step at a time)
+
+**No arm, no launch, no share, no Accept or Decline.** Each step was approved separately and rechecked first.
+
+- **M2, 01:43:47:** ⌘Q to pid 93018, sent only after the pid was confirmed frontmost in the same script;
+  the Mac logged `Disconnected: app quit`; the phone logged the session ended by the peer. Before it:
+  the tray hidden with 0 cards (its screen-reader live region still announced the 2026-09-26 offer
+  the phone had logged **saved** — stale invisible text, not a card), no receive window, ledger `[]`.
+- **M1, 01:46:34:** `npm run build` in `desktop/` at `5ab8774` (no desktop changes; the build reads
+  `desktop/src` only). 250 of 250 files rewritten, **byte-identical** to a scratch build of the commit's
+  tree; digest `8954e4b70681e238`; `shareV3` 7× in `main.js` (was 0), switch default off.
+- **P1, 01:55:40:** `install -r` of the clean debug build of `5ab8774` (SHA-256 `92f503af…`, source
+  checked against the commit's 1,342 blobs, certificate `d3a505d2…` equal to the installed one), then
+  `am start -n …/com.chetan.connectsuite.MainActivity` (`Status: ok`, WARM).
+
+| After P1 (each against its own before-reading) | Result |
+|---|---|
+| installed `base.apk` | SHA-256 **equal** to the committed build; `lastUpdateTime` 01:55:54; `firstInstallTime` 2026-08-24 kept |
+| user-0 runtime grants | 14 of 14, identical |
+| listener, accessibility, `deviceidle` whitelist | identical (both services enabled; the package is **not** battery-exempt, before and after) |
+| trust store (db **with** `-wal`/`-shm`; `lastSeen` 00:30:40 proves the WAL was read) | 1 device, `Chetans-MacBook-Pro`, fingerprint `b59f4bba…`, identical |
+| component overrides | none, before and after |
+| `SEND_MULTIPLE` `image/png` resolvers | 43, **none ours**; control: `SEND` resolves to `ShareToMacActivity` |
+| staging | empty |
+| `link-up.sh` | 2/3 — service back via `PACKAGE_REPLACED` (listener and accessibility rebinds found it already listening); no Mac, as expected |
+| phone log since 01:55 | 93 lines, 0 W, 0 E; `advertising share.file 2 unarmed` |
+
+**Read-only review of Run A against the code (runbook §5):**
+- **A1 (Mac):** the queued card says *"Accepted — waiting its turn"* / *"1 transfer is ahead of it."* —
+  **"2nd in line" is written nowhere.** The runbook's criterion names a string the code does not write.
+- **A1/A2 (phone): a real wording defect, version 3 single-file only.** `reduce` folds `Accepted` into
+  `Sending(allSent = false)`, so a single-file sheet whose file is accepted and **queued** reads
+  *"Sending to {Mac}…"* / *"Accepted on {Mac}. Sending 230 KB…"* while nothing moves. It never says
+  *Sent*, but it is inaccurate, and in **A2** (both accepted, the visible sheet's file second) it is on
+  screen. The runbook's *"waiting its turn … never Sending"* exists only in the multi-file copy.
+  Version 2 never sets `queueUntilMs`, so `Accepted && queueUntilMs != null` discriminates exactly.
+  **A proposal, not applied:** `scratchpad/proposal-v3-queued-single-file-wording.patch` (5 files, 125
+  lines; `ShareOffer.isQueued`, a `queued` flag on `Sending`, the multi-file sentence word for word).
+  In a scratch copy of `5ab8774`: sync-module 500/0, app 133/0; Q1–Q4 red (Q1 first skipped by the
+  harness for an ambiguous pattern, then anchored and red). `git apply --check` clean. Applying it
+  needs a commit, a rebuild and a second P1.
+- **A2** Cancel on a queued card exists (*"It has not started, and nothing will be kept"*). **A3**
+  phone reads *"Declined on {Mac}"*, not *"Not sent"* (that is the multi-file label). **A4** *"Ended
+  with the connection"* is exact.
+- **Budget, predicted not measured:** own cache 11 KiB against the recorded Q 183,326,942 B → about
+  91 MB of quota budget; `/data` ~20.7 GiB free against a ~15.4 GiB floor. The second share should be
+  admitted.
+
+### The queued single-file wording, fixed (2026-09-28 ~02:05, owner-approved; automated only)
+
+The scratch proposal applied unchanged (`ShareOffer.isQueued` = `Accepted && queueUntilMs != null`; a
+`queued` flag on `ShareSheetState.Sending`; the sheet follows the whole offer, not only its state), plus
+one line: a queued sample in `ShareToMacCopy`'s every-state list, so the sweeping copy tests reach it.
+**Version 2 is unchanged** — it never sets `queueUntilMs`. **Not fixed, and not a Run A step:** a queued
+file still shows the indeterminate progress bar, and a disconnect while queued still says *"dropped
+during the transfer"* (no existing stop reason is true of an accepted file that never started).
+
+Mutations on the real tree, each red on its test: Q1 any `Accepted` queued, Q2 queued ignored (the
+committed behaviour), Q3 version 2 called queued, and Q5 a queued headline claiming *Saved* — red also
+on the existing sweep *"the Saved wording appears on the Saved state and on no other"*, which shows
+the new sample is inside it. Full run, `--rerun-tasks`, 349 executed: core **217/0**, sync-module
+**500/0**, app **133/0**. Debug APK `2a19c706d90c0def…` (certificate `d3a505d2…`, equal to the
+installed one; multi-file screen `enabled=false`); release APK `fde9c434bada07bc…`: 5 activities, no
+`SEND_MULTIPLE`, both probe classes 0 in dex (control 1); the new phrase is in release dex once, unreachable
+there because a release build cannot negotiate version 3. 14 checkers exit 0.
+
+### Queued state, the rest of it: no transfer bar, and a before-transfer disconnect (2026-09-28, owner-approved; automated only)
+
+The two claims the wording fix left: a queued file drew the **transfer-in-progress bar**, and a connection
+ending while it was queued said *"dropped during the transfer … Check your Mac"* over a file whose pull
+never began.
+
+- `showsTransferProgress(state)` — `Sending && !queued` — is the one rule, and `ShareToMacActivity` draws
+  the bar only through it. A pull under way and a verdict awaited keep the bar (unchanged).
+- A new stop reason, `DISCONNECTED_BEFORE_TRANSFER`: headline *"{Mac} disconnected"*, detail *"The
+  connection to {Mac} ended while it was waiting its turn. Nothing was sent."* Chosen only when the
+  previous state was queued. A transfer under way, version 2's momentary `Accepted`, and a file whose
+  every byte had left (→ *Not confirmed*) all end exactly as before.
+- The several-files path (debug only) tells `reduce` its `Accepted` is queued, so its rows follow the
+  same rule. No wire change; the Saved rules are untouched (a queued file's verdict still reduces to
+  *Saved* only from `share.saved`).
+
+Tests: six new (bar on/off by state; queued → sending; queued → disconnected; transfer and version 2
+unchanged; Saved untouched; the activity's bar gated by the rule, read from its source with a control)
+plus one several-files test. Mutations R1–R6 each red on the named test: R1 bar ignores queued; R2 the
+old dropped-transfer sentence restored; R3 every disconnect called before-transfer; R4 the activity's
+bar ungated; R5 the several-files path not told it is queued; R6 queued surviving its turn.

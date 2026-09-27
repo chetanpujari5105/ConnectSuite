@@ -108,6 +108,13 @@ object ShareOffer {
      * §12): accepted on the Mac — queued, receiving, or checking — each of which ends in bounded time by its
      * own rule. Not an offer nobody has answered, and not a failed pull waiting in its retry window.
      */
+    /**
+     * Accepted and **waiting its turn** behind another pull (version 3). Only a version-3 accept sets
+     * [Offer.queueUntilMs] — version 2 never does — so a version-2 `Accepted`, the moment before its pull
+     * begins, is never called queued.
+     */
+    fun isQueued(o: Offer): Boolean = o.state == State.Accepted && o.queueUntilMs != null
+
     fun inProgress(state: State): Boolean = when (state) {
         State.Accepted, State.Sending, State.AwaitingVerdict -> true
         else -> false
