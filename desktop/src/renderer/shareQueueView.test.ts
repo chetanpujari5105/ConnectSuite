@@ -238,3 +238,14 @@ test('the header’s Hide draws its glyph in the list view too, once, however ma
   assert.equal(t.n.close.dataset.icon, 'close');
   assert.equal(t.n.close.getAttribute('aria-label'), 'Hide this window. Waiting files keep waiting until they expire.');
 });
+
+test('the live region: an ended offer is not announced any more, and the one still waiting is not hidden', () => {
+  const t = setup();
+  t.draw([offer(A, 1, { name: 'first.png' })]);
+  t.draw([offer(A, 1, { name: 'first.png' }), offer(B, 2, { name: 'second.png' })]);
+  assert.match(t.n.live.textContent, /second\.png/, 'control: the newer arrival is announced');
+  t.draw([offer(A, 1, { name: 'first.png' }), offer(B, 2, { name: 'second.png', state: 'saved', savedAs: 'second.png' })]);
+  assert.match(t.n.live.textContent, /first\.png/, 'the one still waiting');
+  t.draw([offer(A, 1, { name: 'first.png', state: 'declined' }), offer(B, 2, { name: 'second.png', state: 'saved', savedAs: 'second.png' })]);
+  assert.equal(t.n.live.textContent, '');
+});

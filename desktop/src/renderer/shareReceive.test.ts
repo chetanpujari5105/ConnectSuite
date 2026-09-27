@@ -232,3 +232,54 @@ test('v3: a queued card can be shown and cannot be dismissed — it is accepted 
   t.card().dispatch('keydown', { key: 'Escape' });
   assert.equal(t.root.children.length, 1, 'Escape does not dismiss it either');
 });
+
+/*
+ * The live region after an offer ends (Run A, 2026-09-28): `#share-live` kept saying "… wants to send
+ * 20260927_152609.jpg … Accept or decline it" after the offer had ended saved. Visually hidden is not
+ * silent — a screen reader reads the region whenever a person moves through it.
+ */
+const other = 's-B0therOfferXXXXXXXXXXX';
+const second = (over: Record<string, unknown> = {}) => data({ offerId: other, name: 'IMG_2042.jpg', bytes: 230778, ...over });
+
+test('the arrival sentence is cleared once the offer is saved — the Run A reading', () => {
+  const t = setup();
+  t.tray.update([data()]);
+  assert.match(t.live.textContent, /wants to send IMG_2041\.jpg/, 'control: the arrival was announced');
+  t.tray.update([data({ state: 'saved', savedAs: 'IMG_2041.jpg' })]);
+  assert.equal(t.live.textContent, '');
+  assert.equal(t.root.children.length, 1, 'the saved card itself is still drawn — only the announcement went');
+});
+
+test('the arrival sentence is cleared when the offer leaves waiting, whatever ended it', () => {
+  for (const state of ['accepting', 'queued', 'receiving', 'declined', 'expired', 'cancelled', 'ended', 'failed', 'refused']) {
+    const t = setup();
+    t.tray.update([data()]);
+    assert.notEqual(t.live.textContent, '', `control (${state})`);
+    t.tray.update([data({ state })]);
+    assert.equal(t.live.textContent, '', state);
+  }
+  const gone = setup();
+  gone.tray.update([data()]);
+  gone.tray.update([]);
+  assert.equal(gone.live.textContent, '', 'an offer gone from the list');
+});
+
+test('a genuinely pending offer is not hidden: when the newer one is decided, the older waiting one stands', () => {
+  const t = setup();
+  t.tray.update([data()]);
+  t.tray.update([second(), data()]);
+  assert.match(t.live.textContent, /IMG_2042\.jpg/, 'the newer arrival is what the region says');
+  t.tray.update([second({ state: 'receiving' }), data()]);
+  assert.match(t.live.textContent, /wants to send IMG_2041\.jpg/, 'the one still waiting is what it says now');
+  t.tray.update([second({ state: 'saved', savedAs: 'IMG_2042.jpg' }), data({ state: 'declined' })]);
+  assert.equal(t.live.textContent, '', 'and nothing once neither waits');
+});
+
+test('an older offer ending does not rewrite a still-waiting newer announcement', () => {
+  const t = setup();
+  t.tray.update([data()]);
+  t.tray.update([second(), data()]);
+  t.live.textContent = 'sentinel';
+  t.tray.update([second(), data({ state: 'saved', savedAs: 'IMG_2041.jpg' })]);
+  assert.equal(t.live.textContent, 'sentinel', 'the chosen sentence did not change, so nothing was written — nothing re-announced');
+});

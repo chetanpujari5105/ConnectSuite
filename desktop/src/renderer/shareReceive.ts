@@ -132,6 +132,8 @@ class ShareReceiveTray {
   private readonly cards = new Map<string, { nodes: ShareCardNodes; model: ShareCardModel; pending: boolean }>();
   private readonly dismissed = new Set<string>();
   private readonly announced = new Set<string>();
+  /** The sentence this tray last wrote into the live region. */
+  private liveSaid = '';
 
   constructor(
     private readonly root: HTMLElement,
@@ -154,10 +156,7 @@ class ShareReceiveTray {
       }
       card.model = model;
       this.draw(card.nodes, model, card.pending);
-      if (model.state === 'awaiting-decision' && !this.announced.has(d.offerId)) {
-        this.announced.add(d.offerId);
-        this.live.textContent = model.announcement;
-      }
+      if (model.state === 'awaiting-decision') this.announced.add(d.offerId);
     }
     // Newest on top, and the tray scrolled to it: a new card is an offer waiting for a person, and
     // appended below earlier finished cards it was the one pushed out of view. The list is newest
@@ -173,6 +172,17 @@ class ShareReceiveTray {
       }
     }
     this.root.hidden = this.cards.size === 0;
+    // Once per update, after the cards gone from the list are removed: the arrival just added, the
+    // fall-back when the announced offer ended, or nothing (see `shareLiveText`).
+    this.announce();
+  }
+
+  /** Written only when the chosen sentence changes, so a republished snapshot is not announced again. */
+  private announce(): void {
+    const text = shareLiveText([...this.announced], [...this.cards.values()].map((c) => c.model), ['awaiting-decision']);
+    if (text === this.liveSaid) return;
+    this.liveSaid = text;
+    this.live.textContent = text;
   }
 
   private build(offerId: string): ShareCardNodes {

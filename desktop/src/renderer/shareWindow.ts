@@ -67,10 +67,16 @@ interface ShareWinNodes {
 /** How long a finished, unsaved offer stays up on its own. */
 const SHARE_WIN_LINGER_MS = 8000;
 
+
+/** The states whose arrival sentence may stay in the receive window's live region (`shareLiveText`). */
+const SHARE_WIN_LIVE_STANDING: readonly ShareRecvState[] = ['awaiting-decision', 'refused'];
+
 class ShareWindowView {
   private model: ShareWinModel | null = null;
   private pending = false;
   private announced = new Set<string>();
+  /** The sentence this view last wrote into the live region. */
+  private liveSaid = '';
   private lingerTimer: number | null = null;
   private hovered = false;
   private thumb: string | null = null;
@@ -108,6 +114,7 @@ class ShareWindowView {
       // subject was set: there is nothing true to draw, so the window says nothing and goes.
       this.model = null;
       this.n.root.dataset.state = 'none';
+      this.say('');
       return;
     }
     const before = this.model;
@@ -121,10 +128,16 @@ class ShareWindowView {
       this.scheduleLinger(m);
     }
     this.draw(m);
-    if ((m.state === 'awaiting-decision' || m.state === 'refused') && !this.announced.has(m.offerId)) {
-      this.announced.add(m.offerId);
-      this.n.live.textContent = m.announcement;
-    }
+    if (m.state === 'awaiting-decision' || m.state === 'refused') this.announced.add(m.offerId);
+    // The arrival just added, or nothing once this offer ends (`shareLiveText`).
+    this.say(shareLiveText([...this.announced], [m], SHARE_WIN_LIVE_STANDING));
+  }
+
+  /** Written only when the chosen sentence changes, so a republished snapshot is not announced again. */
+  private say(text: string): void {
+    if (text === this.liveSaid) return;
+    this.liveSaid = text;
+    this.n.live.textContent = text;
   }
 
   private draw(m: ShareWinModel): void {
@@ -324,6 +337,8 @@ class ShareQueueView {
   private readonly shown = new Set<string>();
   private readonly dismissed = new Set<string>();
   private readonly announced = new Set<string>();
+  /** The sentence this view last wrote into the live region. */
+  private liveSaid = '';
   private subject: string | null = null;
   private hovered = false;
   private active = false;
@@ -403,10 +418,14 @@ class ShareQueueView {
       }
       this.n.queue.append(card.el);
       this.draw(card, m.offerId === this.subject && typeof p.thumb === 'string' ? p.thumb : null);
-      if ((m.state === 'awaiting-decision' || m.state === 'refused') && !this.announced.has(m.offerId)) {
-        this.announced.add(m.offerId);
-        this.n.live.textContent = m.announcement;
-      }
+      if (m.state === 'awaiting-decision' || m.state === 'refused') this.announced.add(m.offerId);
+    }
+    // After every card: the arrival just added, the fall-back to another offer still waiting when the
+    // announced one ended, or nothing (`shareLiveText`).
+    const liveText = shareLiveText([...this.announced], models, SHARE_WIN_LIVE_STANDING);
+    if (liveText !== this.liveSaid) {
+      this.liveSaid = liveText;
+      this.n.live.textContent = liveText;
     }
     const waiting = models.filter((m) => m.state === 'awaiting-decision').length;
     const hide = waiting > 0 ? 'Hide this window. Waiting files keep waiting until they expire.' : 'Close';

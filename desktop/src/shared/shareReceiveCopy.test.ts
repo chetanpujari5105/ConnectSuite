@@ -115,3 +115,17 @@ test('staging-lost is the phone losing its copy — named as that, never as a ca
   // The same end without that reason stays the plain cancel (a person, on either side).
   assert.equal(shareReceiveStatus(facts('cancelled')).headline, 'Cancelled');
 });
+
+test('shareLiveText: the most recent announced offer still standing, never an unannounced or ended one', () => {
+  const { shareLiveText } = require('./shareReceiveCopy') as {
+    shareLiveText: (a: string[], now: { offerId: string; state: string; announcement: string }[], standing: string[]) => string;
+  };
+  const o = (offerId: string, state: string) => ({ offerId, state, announcement: `says ${offerId}` });
+  const standing = ['awaiting-decision'];
+  assert.equal(shareLiveText(['a', 'b'], [o('a', 'awaiting-decision'), o('b', 'awaiting-decision')], standing), 'says b');
+  assert.equal(shareLiveText(['a', 'b'], [o('a', 'awaiting-decision'), o('b', 'saved')], standing), 'says a');
+  assert.equal(shareLiveText(['a', 'b'], [o('a', 'declined'), o('b', 'saved')], standing), '');
+  assert.equal(shareLiveText(['a'], [o('a', 'awaiting-decision'), o('c', 'awaiting-decision')], standing), 'says a', 'c was never announced');
+  assert.equal(shareLiveText(['a', 'b'], [o('a', 'awaiting-decision')], standing), 'says a', 'b is gone from the list');
+  assert.equal(shareLiveText([], [], standing), '');
+});

@@ -191,11 +191,43 @@ function shareReceiveStatus(f: ShareRecvFacts): ShareRecvStatus {
   }
 }
 
+/**
+ * **What a share live region may still say** — the one rule for the main window's tray and both views
+ * of the receive window.
+ *
+ * An arrival is announced once, by writing its sentence into a polite live region. The region is
+ * visually hidden but it is **not** silent afterwards: a screen reader reads its text whenever a
+ * person moves through it. So the sentence must stand only while it is still true. It said *"… wants
+ * to send X. Accept or decline it"* for an offer that had long since been saved (Run A, 2026-09-28).
+ *
+ * - The region holds the announcement of the **most recently announced** offer ([announced] is in
+ *   announcement order) that is **still in a [standing] state now**.
+ * - When that offer ends — decided, saved, expired, gone from the list — the region falls back to the
+ *   next most recent announced offer that still stands, so a **genuinely pending offer is never
+ *   hidden**; with none, it is empty.
+ * - An offer never announced is never added here: arrival order and wording stay the callers'.
+ *
+ * Pure: it chooses the text; the caller writes it only when it differs, so an unchanged sentence is
+ * not re-announced.
+ */
+function shareLiveText(
+  announced: readonly string[],
+  now: readonly { offerId: string; state: ShareRecvState; announcement: string }[],
+  standing: readonly ShareRecvState[],
+): string {
+  for (let i = announced.length - 1; i >= 0; i -= 1) {
+    const offer = now.find((o) => o.offerId === announced[i]);
+    if (offer && standing.includes(offer.state)) return offer.announcement;
+  }
+  return '';
+}
+
 {
   const g = globalThis as Record<string, unknown>;
   g.shareReceiveStatus = shareReceiveStatus;
+  g.shareLiveText = shareLiveText;
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { shareReceiveStatus };
+  module.exports = { shareReceiveStatus, shareLiveText };
 }

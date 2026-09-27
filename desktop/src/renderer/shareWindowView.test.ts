@@ -48,7 +48,7 @@ function setup(answer: { ok: boolean; reason?: string } = { ok: true }) {
   const draw = (over: Record<string, unknown> = {}, phone: string | null = 'Galaxy S25 Ultra', thumb: string | null = null) =>
     view.update({ subject: id, offers: [offer(over)], phone, thumb });
   const button = (action: string) => n.actions!.queryAll('button').find((b) => b.dataset.action === action);
-  return { n, calls, draw, button, release: () => release() };
+  return { n, view, calls, draw, button, release: () => release() };
 }
 
 const settle = () => new Promise((ok) => setImmediate(ok));
@@ -196,4 +196,22 @@ test('the tile draws the type glyph by MIME, and nothing that looks like a previ
   t.draw({ mime: 'video/mp4', name: 'clip.jpg' });
   assert.equal(t.n.tile!.dataset.glyph, 'video');
   assert.equal(t.n.tile!.queryAll('img').length, 0);
+});
+
+test('the arrival sentence is cleared once the offer ends — and stays for a refusal, which is its own announcement', () => {
+  const t = setup();
+  t.draw();
+  assert.match(t.n.live!.textContent, /wants to send IMG_2041\.jpg/, 'control: announced');
+  t.draw({ state: 'saved', savedAs: 'IMG_2041.jpg' });
+  assert.equal(t.n.live!.textContent, '');
+  const r = setup();
+  r.draw({ state: 'refused', reason: 'no-space' });
+  const said = r.n.live!.textContent;
+  assert.notEqual(said, '', 'control: a refusal is announced');
+  r.draw({ state: 'refused', reason: 'no-space' });
+  assert.equal(r.n.live!.textContent, said);
+  const gone = setup();
+  gone.draw();
+  gone.view.update({ subject: id, offers: [], phone: 'Galaxy S25 Ultra', thumb: null });
+  assert.equal(gone.n.live!.textContent, '', 'the offer gone from the snapshot');
 });
