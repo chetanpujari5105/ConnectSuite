@@ -1,3 +1,32 @@
+# Resume here — written 2026-09-28 (03:30, overnight, unsupervised): hardening, the §11 instrument, the live-region fix — no Samsung write
+
+> Supersedes the entry below. `docs/testing.md` → *Run A after 02:31* and *overnight hardening* hold every
+> number. **Nothing was installed, enabled, armed, sent, accepted, declined or deleted on the SM-S938B or
+> the Mac; the Mac app (pid 5021) and `desktop/dist` were not touched; nothing pushed.**
+
+1. **Live state, read 03:2x (read-only):** Mac pid 5021 since 02:25:24; one handshake since then, still
+   `share.file 3` + `share.ask 1`; phone `link-up.sh` 3/3; no `[share]` line after 02:36:53; the receive folder
+   identical to the start-of-night snapshot (SHA-256 included). **Any reconnect drops the session to version 2**
+   (the arm was one-shot) — re-arm (P2) before continuing Run A if that happens.
+2. **Run A, from the log:** at 02:36 two simultaneous waiting offers — **of one file twice** — accepted in arrival
+   order, `0 ahead`, both saved equal to the source. A1 as written (two **different** files, out of order) is
+   still owed; A2–A4 not run.
+3. **Committed, local:** `881c7e2` (Mac: the stale `#share-live` announcement — one rule for the tray and both
+   window views); `8690e1f` (phone: a repeated URI refused; the selection pinned to its session so a reconnect
+   cannot carry it to another; the `onStop` rule tested); `e916f66` (phone: the §11 `SEND_MULTIPLE` grant
+   instrument, and an in-app switch for the two disabled components); a docs commit with this file.
+   **`docs/testing.md` is left uncommitted on purpose** — it holds your paused Run A notes as well as tonight's.
+4. **Verified:** phone 217/0, 505/0, 164/0, 52/0, 60/0 (`--rerun-tasks`); Mac 1,274/0; 16 checkers 0; 13
+   mutations red on named tests; release manifest and release classes free of every several-files and probe
+   class. APKs built, installed only on the emulator.
+5. **Found:** the shell's `pm enable` is **refused on the SDK 37 emulator** — the runbook's P3; not measured on
+   the Samsung; the in-app switch is the fallback. Emulator grant readings (DocumentsUI): readable while stopped
+   (+30 s) and after recreation, refused +1 s to +120 s after finish — **emulator only**.
+6. **Needs the owner:** review the three code commits and the repeat-refusal policy; decide finding F1 (an
+   unbounded main-thread wait in `ShareManyQueue.end`, `docs/feature-a-v3-production-enablement.md` §6); the
+   supervised steps in that file's companion runbook, starting with finishing Run A. **Run B needs a rebuilt
+   debug APK and a fresh P1** — the installed build predates tonight's commits.
+
 # Resume here — written 2026-09-28 (02:00): Run A prepared — Mac quit, dist built, phone installed; nothing armed
 
 > Supersedes the entry below for Run A. `docs/testing.md` → *Version 3 Run A — preparation* has every reading.

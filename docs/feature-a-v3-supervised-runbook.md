@@ -6,6 +6,24 @@
 > `docs/feature-a-multi-offer-proposal.md` rev 4 (§10, §11, §12, §19). Where this runbook and the
 > proposal disagree, the proposal wins and this file is wrong.
 
+> **Overnight update, 2026-09-28 (03:30) — read before resuming. Facts, not passes.**
+> - **Run A so far** (`docs/testing.md` → *Version 3 Run A* and *Run A after 02:31*): M3 done; two simultaneous
+>   waiting offers were seen at 02:36 — **of one file twice** (100,718 B), accepted in arrival order, `0 ahead`
+>   both times, both saved equal to the source. **A1 as written (two different files, accepted out of order)
+>   has not been run.** A2–A4 not run. The Mac still runs pid 5021 with `shareV3`; the phone is still armed-and-
+>   consumed on the 02:25 session.
+> - **The installed phone build does not have tonight's commits** (`8690e1f`, `e916f66`): no repeat refusal, no
+>   session pin, no grant probe, no component switch. Run A does not need them; **Run B does** — rebuild, then a
+>   fresh P1 before Run B.
+> - **P3 may be refused by the shell.** On the SDK 37 emulator, `pm enable` of these components failed with
+>   `SecurityException: Shell cannot change component state`. Not measured on the SM-S938B. If it is refused
+>   there, use the app's own switch (debug, DUMP-gated), which the emulator accepted:
+>   `scripts/adb-pinned.sh samsung shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ShareManyComponentsActivity --es component many --ez on true`
+>   and for P3′ the same with `--ez on false` (restores the manifest default). It logs
+>   `component many: default → enabled (asked enabled)` under tag `ShareManyComponents` and in `link.log`.
+> - **P6's instrument is built**: `ShareManyGrantProbeActivity` (component `probe` in the switch above), disabled.
+>   Procedure in §5.1 below. Emulator readings exist and are emulator evidence only.
+
 Two runs, **in two separate sittings**, in this order:
 
 - **Run A — the version-3 queue, from two separate single-file shares.** Proves several pending offers,
@@ -48,7 +66,7 @@ before either is recommended, so the installed build and the Mac's `dist` each n
 - **P4** The owner's taps in Gallery / My Files and on the phone's sheet.
 - **P5** Run A step A3 / Run B, only if the second synthetic image is not already on the phone: putting
   one generated file on it (§4, *Files*).
-- **P6** Run B, only if wanted: the §11 grant measurement (§5.1) — **its instrument is not built**.
+- **P6** Run B, only if wanted: the §11 grant measurement (§5.1) — instrument built 2026-09-28 (`e916f66`), needs the rebuilt debug APK; enabling it is a P3-type action on the `probe` component.
 
 **Not needed and not to be done:** any deletion, any `am force-stop` (the hook refuses it), any change
 to pairing or permissions, any personal media, any `pm clear`.
@@ -145,12 +163,29 @@ an Accept; any change to a pre-existing file in the receive folder; `share.file`
 side; free space below the floor; anything on either screen the steps above do not predict. On a stop:
 Decline anything pending (owner), then §6.
 
+### 5.1 · The §11 grant measurement (P6) — instrument built, never run on the SM-S938B
+
+Needs the rebuilt debug APK (P1). Synthetic files of **one type** only (a mixed selection arrives as `*/*`,
+which the probe's filter does not accept). My Files is the discriminating source; Gallery rows read
+`CONFOUNDED` while Sidekick holds a media permission (revoking one is approval §19-6, not part of this).
+
+| # | Who | Action | Reading |
+|---|---|---|---|
+| 1 | P3 | enable `probe` (`pm enable …ShareManyGrantProbeActivity`, or the switch in the note at the top) | `ShareManyComponents` line, or `enabledComponents` |
+| 2 | P4 | My Files → select the two synthetic PNGs → Share → **Sidekick multi grant probe (debug)** | `adb logcat -s ShareManyGrantProbe`: an `intake` line, two `phase=CONTROL` lines, `verdict phase=CONTROL` |
+| 3 | P4 | press **Home**; wait 35 s | `phase=STOPPED` ×4, `verdict phase=STOPPED`; the screen then finishes itself and `phase=FINISHED` runs to +120 s |
+| 4 | P4 | optional second share: rotate once, then **Finish** | `phase=RECREATED` ×2, then `phase=FINISHED` |
+| 5 | P3′ | back to the default (`pm default-state …`, or the switch with `--ez on false`) | no `enabledComponents` entry for it |
+
+Control: each control digest must equal the file's own SHA-256 (listed read-only beforehand); a control that
+fails means **no reading**, not a refusal. The probe writes nothing and sends nothing to the Mac.
+
 ### Run B — a Gallery / My Files multi-select (a later sitting)
 
 **Gate:** Run A passed **and** was restored. Proposal §19 also puts the §11 `SEND_MULTIPLE` grant
-measurement first. **Its instrument is not built**; the owner decides between building it first, or
-waiving it for this first run on the ground that the screen reads a shared URI only while it is alive
-and fails closed when it is not (§11, and the close-versus-open gate tested on 2026-09-28). Either way
+measurement first. **Its instrument exists since 2026-09-28 (§5.1)**; the owner decides between running it
+first, or waiving it for this first run on the ground that the screen reads a shared URI only while it is
+alive and fails closed when it is not (§11, and the close-versus-open gate tested on 2026-09-28). Either way
 it is recorded as a decision, not skipped silently.
 
 **Enable, only for the run (P3):**
