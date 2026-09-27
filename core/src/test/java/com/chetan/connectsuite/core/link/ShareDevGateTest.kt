@@ -52,6 +52,57 @@ class ShareDevGateTest {
         assertTrue(old.logLine, old.logLine.endsWith("Mac advertises no share.file; negotiated no share.file"))
     }
 
+    // ---- version 3: the development arm (proposal rev 4 §18, Stage 1) --------------------------------
+
+    private val three = mapOf(Extensions.SHARE_FILE to 3)
+    private val phoneThree = three + (Extensions.SHARE_ASK to 1)
+
+    @Test fun `share-file 3 is advertised only by a debuggable build whose v3 arm was consumed by this handshake`() {
+        for (debuggable in listOf(false, true)) for (v2 in listOf(false, true)) for (production in listOf(false, true)) for (v3 in listOf(false, true)) {
+            val got = Extensions.advertised(debuggable, v2, production, devV3Armed = v3)
+            val label = "debuggable=$debuggable v2=$v2 production=$production v3=$v3"
+            if (debuggable && v3) assertEquals(label, phoneThree, got)
+            else assertEquals("$label: exactly what the phone advertises without the v3 arm", Extensions.advertised(debuggable, v2, production), got)
+        }
+        assertEquals("the build constant itself is unchanged", phoneOne, Extensions.PHONE)
+        assertEquals("the default is unarmed", Extensions.advertised(true, false), Extensions.advertised(true, false, devV3Armed = false))
+    }
+
+    @Test fun `negotiation 3+3 is 3, and a version-2 Mac keeps version 2`() {
+        val macTwo = two + (Extensions.SHARE_ASK to 1)
+        val macThree = three + (Extensions.SHARE_ASK to 1)
+        assertEquals(macThree, Extensions.handshake(true, false, macThree, devV3Armed = true).negotiated)
+        assertEquals(macTwo, Extensions.handshake(true, false, macTwo, devV3Armed = true).negotiated)
+        assertEquals("unarmed phone, version-3 Mac", macTwo, Extensions.handshake(true, false, macThree, devV3Armed = false).negotiated)
+        assertEquals("release build, arm ignored", macTwo, Extensions.handshake(false, false, macThree, devV3Armed = true).negotiated)
+    }
+
+    @Test fun `the v3 line is written on every handshake and names the arm, the build and both versions`() {
+        val armed = Extensions.handshake(true, false, three + (Extensions.SHARE_ASK to 1), devV3Armed = true)
+        assertEquals(
+            "ext: share.file 3 (development) — armed for this handshake: true; debuggable build: true; " +
+                "phone advertises share.file 3; negotiated share.file 3",
+            armed.v3Line,
+        )
+        val unarmed = Extensions.handshake(true, false, two)
+        assertTrue(unarmed.v3Line, unarmed.v3Line.startsWith("ext: share.file 3 (development) — armed for this handshake: false;"))
+    }
+
+    @Test fun `the v3 arm and the v2 arm are separate instances — arming one never arms or consumes the other`() {
+        assertTrue(ShareDevGate.v3 !== ShareDevGate.process)
+    }
+
+    @Test fun `ControlSession consumes the v3 arm once per handshake, after the pairing check, and logs the v3 line`() {
+        val src = code(File(root(), "core/src/main/java/com/chetan/connectsuite/core/link/ControlSession.kt"))
+        assertEquals("one consume of the v3 arm", 1, Regex("ShareDevGate\\.v3\\.consumeForHandshake\\(\\)").findAll(src).count())
+        val consume = src.indexOf("ShareDevGate.v3.consumeForHandshake()")
+        val issue = src.indexOf("server.sessions.issue(this)")
+        assertTrue("control: both found", consume > 0 && issue > 0)
+        assertTrue("consumed only after the Mac was accepted and a session token issued", consume > issue)
+        assertTrue(src.contains("LinkLog.i(\"control\", handshake.v3Line)"))
+        assertFalse("no main source arms v3", src.contains("ShareDevGate.v3.arm("))
+    }
+
     // ---- the arm itself ---------------------------------------------------------------------------
 
     @Test fun `a new process is unarmed — the state a restart returns to`() {
@@ -95,7 +146,11 @@ class ShareDevGateTest {
         assertTrue("control: the pairing check was found", pairing >= 0)
         assertTrue("the arm is consumed in onHello", consume >= 0)
         assertTrue("after the pairing check, so a refused Mac cannot use it up", consume > pairing)
-        assertEquals("consumed in one place only", 1, Regex("consumeForHandshake\\(").findAll(src).count())
+        // Was: one `consumeForHandshake(` in total. Stage 1 adds the version-3 arm, which answers a different
+        // question, so the total is not raised — each arm is asserted by name, once each, and nothing else.
+        assertEquals("the version-2 arm consumed in one place only", 1, Regex("ShareDevGate\\.process\\.consumeForHandshake\\(").findAll(src).count())
+        assertEquals("the version-3 arm consumed in one place only", 1, Regex("ShareDevGate\\.v3\\.consumeForHandshake\\(").findAll(src).count())
+        assertEquals("no other consume", 2, Regex("consumeForHandshake\\(").findAll(src).count())
         assertFalse("negotiation must not read the build constant directly", src.contains("Extensions.PHONE"))
         assertTrue("hello.ack carries the handshake's own value", src.contains("Extensions.toJson(handshake.advertised)"))
     }

@@ -567,6 +567,9 @@ export class LinkClient extends EventEmitter {
       'link',
       `ext: phone advertises ${JSON.stringify(phoneExt)}; negotiated ${JSON.stringify(this.session.negotiated)}`,
     );
+    // A second line rather than a longer first one: the 3e runbook quotes the line above byte for byte.
+    // This one says what this Mac advertised, so a development share.file 3 is visible on every handshake.
+    log.info('link', `ext: this Mac advertised ${JSON.stringify(advertised)}`);
     this.missedPongs = 0;
     this.backoffMs = BACKOFF_START_MS;
     // The handshake completed, so whatever failed before it is over. See [lastFailure] for what

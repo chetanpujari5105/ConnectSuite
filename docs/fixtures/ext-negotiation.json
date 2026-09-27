@@ -21,6 +21,9 @@
     { "why": "old peer: theirs absent", "mine": { "share.file": 1 }, "theirs": {}, "out": null },
     { "why": "I do not advertise it", "mine": {}, "theirs": { "share.file": 1 }, "out": null },
     { "why": "a newer peer: min", "mine": { "share.file": 1 }, "theirs": { "share.file": 2 }, "out": 1 },
-    { "why": "an older peer: min", "mine": { "share.file": 3 }, "theirs": { "share.file": 1 }, "out": 1 }
+    { "why": "an older peer: min", "mine": { "share.file": 3 }, "theirs": { "share.file": 1 }, "out": 1 },
+    { "why": "version 3 on both sides (development)", "mine": { "share.file": 3 }, "theirs": { "share.file": 3 }, "out": 3 },
+    { "why": "version 3 here, a version-2 peer", "mine": { "share.file": 3 }, "theirs": { "share.file": 2 }, "out": 2 },
+    { "why": "version 2 here, a version-3 peer", "mine": { "share.file": 2 }, "theirs": { "share.file": 3 }, "out": 2 }
   ]
 }

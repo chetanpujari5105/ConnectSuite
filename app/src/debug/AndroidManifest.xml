@@ -133,6 +133,46 @@
             android:theme="@android:style/Theme.NoDisplay" />
 
         <!--
+          Feature A version 3, Stage 1 (docs/feature-a-multi-offer-proposal.md §18): the ONLY writer of
+          ShareDevGate.v3 — arms share.file 3 for the phone's next trusted handshake, in memory, in a
+          debuggable build. Debug source set only; DUMP-gated; no filter, no launcher, no UI.
+          ShareDevGateRoutingTest pins this entry and its absence from the main manifest.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.ShareDevV3Activity"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <!--
+          Feature A version 3, Stage 2 (docs/feature-a-multi-offer-proposal.md rev 4 §3, §11-§15): several
+          files from a Gallery or My Files multi-select. DEVELOPMENT ONLY. Debug source set only, and
+          android:enabled="false": a debug install does not list it in any share sheet until the component
+          is enabled by hand (a device change needing the owner's approval). Same types as the single-file
+          filter, no text, SEND_MULTIPLE only; ShareToMacActivity and its SEND filter are untouched.
+          ShareManyManifestTest pins all of this.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.ShareManyToMacActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/share_to_mac_label"
+            android:theme="@style/Theme.ConnectSuite">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/*" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="font/*" />
+                <data android:mimeType="model/*" />
+            </intent-filter>
+        </activity>
+
+        <!--
           The cache quota for the concurrent-staging rule (docs/feature-a-multi-offer-proposal.md §4):
           no system view on the SM-S938B exposes it, so it is read by code running as this app. Debug
           source set only; DUMP-gated like every adb harness here; no filter, no launcher, no UI. Reads

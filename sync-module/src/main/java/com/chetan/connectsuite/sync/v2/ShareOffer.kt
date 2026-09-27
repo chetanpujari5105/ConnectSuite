@@ -104,6 +104,16 @@ object ShareOffer {
     }
 
     /**
+     * **In progress**, in the sense of the several-files stall clock (docs/feature-a-multi-offer-proposal.md
+     * §12): accepted on the Mac — queued, receiving, or checking — each of which ends in bounded time by its
+     * own rule. Not an offer nobody has answered, and not a failed pull waiting in its retry window.
+     */
+    fun inProgress(state: State): Boolean = when (state) {
+        State.Accepted, State.Sending, State.AwaitingVerdict -> true
+        else -> false
+    }
+
+    /**
      * **The one-live-offer rule** (docs/protocol.md → Share → `share.offer`: *at most one offer per
      * session is live*), as a pure function so the sheet's Busy path and its tests run the rule
      * `ShareFeature.offerStaged` runs. Returns the offer that blocks a new one on [sessionKey], or null.

@@ -56,8 +56,16 @@ object Extensions {
      * this handshake ([ShareDevGate]) — then `share.file` 2. A release build is not debuggable, so it
      * advertises 2 only through [productionTransfer].
      */
-    fun advertised(debuggable: Boolean, devV2Armed: Boolean, productionTransfer: Boolean = PRODUCTION_TRANSFER): Map<String, Int> =
-        if (productionTransfer || (debuggable && devV2Armed)) PHONE + (SHARE_FILE to 2) else PHONE
+    fun advertised(
+        debuggable: Boolean, devV2Armed: Boolean, productionTransfer: Boolean = PRODUCTION_TRANSFER,
+        devV3Armed: Boolean = false,
+    ): Map<String, Int> = when {
+        // Version 3 (PROPOSED): a debuggable build whose version-3 arm was consumed by this handshake
+        // (ShareDevGate.v3). Nothing else — not PRODUCTION_TRANSFER, not the version-2 arm — reaches 3.
+        debuggable && devV3Armed -> PHONE + (SHARE_FILE to 3)
+        productionTransfer || (debuggable && devV2Armed) -> PHONE + (SHARE_FILE to 2)
+        else -> PHONE
+    }
 
     /** One handshake's two facts, decided together so `hello.ack` and negotiation cannot disagree. */
     data class Handshake(
@@ -69,6 +77,12 @@ object Extensions {
          * the 3e runbook's pass criteria quote [logLine] byte for byte.
          */
         val askLine: String,
+        /**
+         * The version-3 development line, logged on **every** handshake (proposal rev 4 §18), so a
+         * leaked `share.file 3` is visible in the first lines of any session. A third line, for the same
+         * reason as [askLine].
+         */
+        val v3Line: String = "",
     )
 
     /**
@@ -79,8 +93,9 @@ object Extensions {
     fun handshake(
         debuggable: Boolean, devV2Armed: Boolean, macExt: Map<String, Int>,
         productionTransfer: Boolean = PRODUCTION_TRANSFER,
+        devV3Armed: Boolean = false,
     ): Handshake {
-        val mine = advertised(debuggable, devV2Armed, productionTransfer)
+        val mine = advertised(debuggable, devV2Armed, productionTransfer, devV3Armed)
         val negotiated = mine.keys.mapNotNull { name -> negotiate(mine, macExt, name)?.let { name to it } }.toMap()
         val line = "ext: phone advertises ${mine[SHARE_FILE]?.let { "share.file $it" } ?: "nothing"} " +
             "(debug share.file 2 armed for this handshake: $devV2Armed; debuggable build: $debuggable); " +
@@ -89,7 +104,9 @@ object Extensions {
         val ask = "ext: share.ask — phone advertises ${mine[SHARE_ASK] ?: "none"}, Mac advertises ${macExt[SHARE_ASK] ?: "none"}, " +
             "negotiated ${negotiated[SHARE_ASK] ?: "none"}; ordinary Send on this session: " +
             if (ordinarySend(negotiated)) "enabled (the Mac asks a person)" else "disabled"
-        return Handshake(mine, negotiated, line, ask)
+        val v3 = "ext: share.file 3 (development) — armed for this handshake: $devV3Armed; debuggable build: $debuggable; " +
+            "phone advertises share.file ${mine[SHARE_FILE] ?: "none"}; negotiated share.file ${negotiated[SHARE_FILE] ?: "none"}"
+        return Handshake(mine, negotiated, line, ask, v3)
     }
 
     /**

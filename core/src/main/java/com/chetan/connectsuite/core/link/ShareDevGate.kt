@@ -37,5 +37,15 @@ class ShareDevGate {
     companion object {
         /** The one instance for this process. A new process is a new, unarmed instance. */
         val process = ShareDevGate()
+
+        /**
+         * **The version-3 arm** — `share.file: 3`, several pending offers (docs/protocol.md → Share →
+         * Version 3, PROPOSED; proposal rev 4 §18). Development only, and failing closed exactly like
+         * [process]: memory only, one handshake per arm, a debuggable build only
+         * ([Extensions.advertised]), and one writer — the debug-manifest-only, `DUMP`-gated
+         * `ShareDevV3Activity`. A separate instance so arming 3 never arms or consumes the version-2
+         * arm, and the other way round.
+         */
+        val v3 = ShareDevGate()
     }
 }

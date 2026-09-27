@@ -13,6 +13,7 @@ import {
   SHARE_PRODUCTION_READINESS,
   shareAskActivation,
   shareV2Activation,
+  shareV3Activation,
   type ShareV2Inputs,
 } from './shareActivation';
 
@@ -215,4 +216,64 @@ test('version 3 is not enabled: no gate combination advertises share.file above 
     seen += 1;
   }
   assert.equal(seen, 4, 'control: every combination was read');
+});
+
+// ---- version 3: the development-only gate (proposal rev 4 §18, Stage 1) --------------------------
+
+const askOpen = shareAskActivation({ development: closedDev, readiness: ready });
+const askClosed = shareAskActivation({ development: closedDev, readiness: notReady });
+const v3All = { packaged: false, shareV3: true, development: closedDev, ask: askOpen };
+
+test('control: unpackaged, shareV3, share.ask open and the synthetic gate closed advertises share.file 3 with share.ask', () => {
+  const v3 = shareV3Activation(v3All);
+  assert.deepEqual(v3, { active: true });
+  assert.deepEqual(advertisedExt(closedDev, askOpen, v3), { 'share.file': 3, 'share.ask': 1 });
+});
+
+test('each version-3 condition missing fails closed to exactly what the Mac advertises without the switch', () => {
+  for (const [label, inputs, word] of [
+    ['packaged', { ...v3All, packaged: true }, 'packaged'],
+    ['switch off', { ...v3All, shareV3: false }, 'off'],
+    ['synthetic gate open', { ...v3All, development: openDev }, 'synthetic-only'],
+    ['share.ask closed', { ...v3All, ask: askClosed }, 'share.ask'],
+  ] as const) {
+    const v3 = shareV3Activation(inputs);
+    assert.equal(v3.active, false, label);
+    assert.ok(v3.active === false && v3.why.includes(word), `${label}: ${v3.active === false ? v3.why : ''}`);
+    const without = advertisedExt(inputs.development, inputs.ask);
+    assert.deepEqual(advertisedExt(inputs.development, inputs.ask, v3), without, label);
+    assert.notEqual(advertisedExt(inputs.development, inputs.ask, v3)['share.file'], 3, label);
+  }
+});
+
+test('an open version-3 gate handed beside a closed share.ask or an open synthetic gate never reaches the wire as 3', () => {
+  // A caller bug: advertisedExt must not trust the version-3 verdict on its own.
+  const forged = { active: true } as const;
+  assert.deepEqual(advertisedExt(closedDev, askClosed, forged), { 'share.file': 1 });
+  assert.deepEqual(advertisedExt(openDev, { active: false, blockers: ['x'] }, forged), { 'share.file': 2 });
+});
+
+test('negotiation with a version-3 Mac: 3 + 3 → 3; a version-2 phone keeps version 2', () => {
+  const mac = advertisedExt(closedDev, askOpen, shareV3Activation(v3All));
+  assert.deepEqual(negotiateAll(mac, { 'share.file': 3, 'share.ask': 1 }), { 'share.file': 3, 'share.ask': 1 });
+  assert.deepEqual(negotiateAll(mac, { 'share.file': 2, 'share.ask': 1 }), { 'share.file': 2, 'share.ask': 1 });
+  // Control: without the switch the same phone negotiates 2.
+  assert.deepEqual(negotiateAll(advertisedExt(closedDev, askOpen), { 'share.file': 3, 'share.ask': 1 }), { 'share.file': 2, 'share.ask': 1 });
+});
+
+test('version 3 keeps the receiver in Ask with an empty allowlist', () => {
+  // receiverMode is decided by the two version-2 gates; version 3 is only ever on top of share.ask.
+  const mode = receiverMode(closedDev, askOpen, new Set(['a'.repeat(64)]));
+  assert.deepEqual(mode.version2, { allowed: true, syntheticOnly: false });
+  assert.equal(mode.acceptProbeDigests.size, 0);
+});
+
+test('main.ts forces shareV3 off in a packaged build and passes the version-3 gate to the advertisement', () => {
+  const main = readFileSync(join(__dirname, 'main.ts'), 'utf8');
+  assert.match(main, /\? \{ silent: false, acceptProbe: false, devReceive: false, v2: false, v3: false \}/);
+  assert.match(main, /shareV3Activation\(\{ packaged: app\.isPackaged, shareV3: devSwitches\.v3, development: shareV2, ask: shareAsk \}\)/);
+  assert.match(main, /advertisedExt\(shareV2, shareAsk, shareV3\)/);
+  // The production readiness facts are not what opens version 3 — nothing here edits them.
+  assert.deepEqual({ ...SHARE_PRODUCTION_READINESS }, { syntheticRunPassed: true, receiveFolderCleanupScoped: true });
+  assert.deepEqual(MAC_EXT, { 'share.file': 1 });
 });

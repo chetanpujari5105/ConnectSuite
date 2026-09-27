@@ -110,6 +110,16 @@ object ShareFeature {
         return version to held
     }
 
+    /**
+     * The live offers accepted on the Mac and not yet ended — queued, receiving or checking
+     * ([ShareOffer.inProgress]) — and the bytes of their staged copies, read together. Only the
+     * several-files stall clock (development only) reads it.
+     */
+    fun inProgress(): Pair<Int, Long> = synchronized(lock) {
+        val accepted = offers.values.filter { ShareOffer.inProgress(it.state) }
+        accepted.size to accepted.sumOf { it.bytes }
+    }
+
     private val offered = AtomicInteger()
     private val declined = AtomicInteger()
     private val saved = AtomicInteger()

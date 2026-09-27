@@ -292,10 +292,14 @@ class ControlSession(
         // gets share.file 2 nor uses the arm up — and read once, so negotiation and hello.ack below
         // are one decision (ShareDevGate, Extensions.handshake).
         val macExt = Extensions.parse(payload["ext"])
-        val handshake = Extensions.handshake(server.debuggable, ShareDevGate.process.consumeForHandshake(), macExt)
+        val handshake = Extensions.handshake(
+            server.debuggable, ShareDevGate.process.consumeForHandshake(), macExt,
+            devV3Armed = ShareDevGate.v3.consumeForHandshake(),
+        )
         negotiated = handshake.negotiated
         LinkLog.i("control", handshake.logLine)
         LinkLog.i("control", handshake.askLine)
+        LinkLog.i("control", handshake.v3Line)
         isHandshakeComplete = true
 
         send(

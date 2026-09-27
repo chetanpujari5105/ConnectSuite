@@ -89,17 +89,60 @@ export function shareAskActivation(i: ShareAskInputs): ShareAskActivation {
   return blockers.length === 0 ? { active: true, syntheticOnly: false } : { active: false, blockers };
 }
 
+export interface ShareV3Inputs {
+  packaged: boolean;
+  /** The `shareV3` debug switch. */
+  shareV3: boolean;
+  /** The synthetic-only development gate for version 2. Open refuses version 3. */
+  development: ShareV2Activation;
+  /** `share.ask`. Closed refuses version 3: every version-3 offer must be held for a person. */
+  ask: ShareAskActivation;
+}
+
+export type ShareV3Activation = { active: true } | { active: false; why: string };
+
 /**
- * What this Mac puts in `hello.ext`. Version 1 unless one of the two gates is open: the development
+ * **Whether this Mac may advertise `share.file: 3`** — several pending offers, one receive window,
+ * pulls in Accept order (docs/protocol.md → Share → Version 3, PROPOSED; proposal rev 4 §18).
+ * **Development only**, and every condition at once or no:
+ *
+ * | Condition | Why |
+ * |---|---|
+ * | not a packaged build | a shipped app never has a path to version 3 |
+ * | `shareV3` switch | the explicit request; nothing else implies it |
+ * | `share.ask` open | every offer is held for a person's Accept, with an empty allowlist |
+ * | the synthetic-only gate closed | that gate auto-accepts allow-listed probes; version 3 never coexists with it |
+ *
+ * Refused means version 2 (or 1) exactly as without the switch.
+ */
+export function shareV3Activation(i: ShareV3Inputs): ShareV3Activation {
+  if (i.packaged) return { active: false, why: 'a packaged build never advertises share.file 3 — the shareV3 switch is ignored' };
+  if (!i.shareV3) return { active: false, why: 'shareV3 is off (the default)' };
+  if (i.development.active) {
+    return { active: false, why: 'the synthetic-only development gate is open — refused, share.file 3 never coexists with it' };
+  }
+  if (!i.ask.active) {
+    return { active: false, why: `share.ask is not open, so offers would not all be held for a person — refused (${i.ask.blockers.join('; ')})` };
+  }
+  return { active: true };
+}
+
+/**
+ * What this Mac puts in `hello.ext`. Version 1 unless one of the gates is open: the development
  * gate adds `share.file: 2` alone (synthetic-only — **never** `share.ask`), and the production gate adds
  * `share.file: 2` with `share.ask: 1`. `shareAskActivation` cannot be open while the development gate
- * is, so the two additions never meet.
+ * is, so the two additions never meet. The version-3 development gate raises the production gate's
+ * `share.file` to 3 and is honoured only on top of it ([shareV3Activation] is re-checked here, so a
+ * caller cannot pair an open version-3 gate with a closed `share.ask`).
  */
 export function advertisedExt(
   activation: ShareV2Activation,
   ask: ShareAskActivation = { active: false, blockers: ['not evaluated'] },
+  v3: ShareV3Activation = { active: false, why: 'not evaluated' },
 ): Readonly<Record<string, number>> {
-  if (ask.active && !activation.active) return Object.freeze({ ...MAC_EXT, [SHARE_FILE]: 2, [SHARE_ASK]: 1 });
+  if (ask.active && !activation.active) {
+    return Object.freeze({ ...MAC_EXT, [SHARE_FILE]: v3.active ? 3 : 2, [SHARE_ASK]: 1 });
+  }
   return activation.active ? Object.freeze({ ...MAC_EXT, [SHARE_FILE]: 2 }) : MAC_EXT;
 }
 

@@ -137,4 +137,14 @@ class ShareOfferTest {
         assertTrue(ShareOffer.cancelFromPhone(declined, "user").effects.isEmpty())
         assertNull(ShareOffer.cancelFromPhone(declined, "user").reply)
     }
+
+    /** The several-files stall clock's "in progress": accepted, and not yet ended. Every state, both ways. */
+    @Test fun `in progress is accepted, sending or checking - never an unanswered offer or a failed pull`() {
+        val all = listOf(
+            State.Offered, State.Accepted, State.Sending, State.AwaitingVerdict, State.Failed("unconfirmed"),
+            State.Saved("a.jpg"), State.Declined("user"), State.Expired, State.Cancelled(ShareOffer.Side.MAC, "user"), State.SessionEnded,
+        )
+        assertEquals(listOf(State.Accepted, State.Sending, State.AwaitingVerdict), all.filter(ShareOffer::inProgress))
+        assertTrue("every in-progress state is live", all.filter(ShareOffer::inProgress).all(ShareOffer::isLive))
+    }
 }

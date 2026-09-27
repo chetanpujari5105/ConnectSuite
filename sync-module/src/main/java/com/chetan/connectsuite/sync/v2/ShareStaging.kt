@@ -135,6 +135,14 @@ object ShareStaging {
         data class SourceReadFailed(override val attemptId: String, val bytesWritten: Long, val exceptionClass: String) : Outcome
         data class WriteFailed(override val attemptId: String, val bytesWritten: Long, val exceptionClass: String) : Outcome
         data class Cancelled(override val attemptId: String, val bytesWritten: Long) : Outcome
+        /**
+         * Version 3 only: a concurrent copy's budget (`ShareConcurrentBudget.duringCopy`), re-read while it
+         * ran or once when it finished, no longer allowed it. [stop] is that re-check's own answer — its
+         * reason, the `Σ` it read and the measured limit — so nothing re-reads them afterwards. The partial
+         * is deleted like every other non-success. Never produced when [copy]'s `budgetStop` is left at its
+         * default.
+         */
+        data class BudgetStopped(override val attemptId: String, val bytesWritten: Long, val stop: ShareAdmission.Stop) : Outcome
     }
 
     /**
@@ -145,6 +153,10 @@ object ShareStaging {
      * @param available re-read at start and every [recheckEvery] bytes; below [FLOOR_BYTES] the copy stops.
      * @param cancelled polled once per buffer.
      * @param afterBuffer called after each buffer is written — the probe's pacing seam, and a progress hook.
+     * @param budgetStop version 3 only: asked with the bytes written at every [recheckEvery] boundary and
+     *   once more after the last byte, before the copy is kept. A non-null answer stops it as
+     *   [Outcome.BudgetStopped], carrying that answer, and deletes the partial. The default never stops
+     *   anything, so a version-2 copy is unchanged.
      */
     fun copy(
         source: InputStream,
@@ -157,6 +169,7 @@ object ShareStaging {
         bufferSize: Int = 64 * 1024,
         recheckEvery: Long = RECHECK_EVERY_BYTES,
         afterBuffer: (bytesWritten: Long) -> Unit = {},
+        budgetStop: (bytesWritten: Long) -> ShareAdmission.Stop? = { null },
     ): Outcome {
         require(isAttemptId(attemptId)) { "not an attempt id" }
         val part = File(dir, "$attemptId.part").toPath()
@@ -209,9 +222,12 @@ object ShareStaging {
                         sinceCheck = 0
                         val now = available()
                         if (now < FLOOR_BYTES) return@use Outcome.NoSpace(attemptId, written, now)
+                        budgetStop(written)?.let { return@use Outcome.BudgetStopped(attemptId, written, it) }
                     }
                     afterBuffer(written)
                 }
+                // Once when it finishes, with fresh readings, before anything is kept.
+                budgetStop(written)?.let { return@use Outcome.BudgetStopped(attemptId, written, it) }
                 null
             }
             if (result != null) {

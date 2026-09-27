@@ -1,6 +1,7 @@
 package com.chetan.connectsuite
 
 import android.app.Application
+import android.content.pm.ApplicationInfo
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -11,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import com.chetan.connectsuite.core.link.LinkController
 import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.sync.v2.ShareAdmission
+import com.chetan.connectsuite.sync.v2.ShareBudgetReadings
 import com.chetan.connectsuite.sync.v2.ShareFeature
 import com.chetan.connectsuite.sync.v2.ShareIntake
 import com.chetan.connectsuite.sync.v2.ShareNames
@@ -75,6 +77,8 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
         private set
 
     private var uri: Uri? = null
+    /** The shared file's type, kept for [tryAgain], which re-runs the whole admission and copy. */
+    private var mime: String? = null
     @Volatile private var attemptId: String? = null
     @Volatile private var staged = false
     /** The staged copy's digest, from the copy itself. The offer names it; nothing else does. */
@@ -108,6 +112,7 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
         }
         val source = stream!!
         uri = source
+        this.mime = mime
         viewModelScope.launch(Dispatchers.IO) { stage(source, mime) }
         // Ready's availability line follows the link: a Mac connecting or dropping changes the sentence.
         viewModelScope.launch {
@@ -216,6 +221,34 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
         return other.name
     }
 
+    /**
+     * **Try again** after a version-3 "no room for another file yet" refusal (owner decision B): a person's
+     * tap, never a timer. Re-runs the whole admission with fresh readings and, if it passes, the copy —
+     * which reads the shared URI, so it works only while this sheet (and its grant) is alive.
+     */
+    fun tryAgain() {
+        val state = _state.value
+        if (!canTryAgain(state)) return
+        val source = uri ?: return
+        val type = mime ?: return
+        synchronized(lock) {
+            if (cancelled.get()) return
+            attemptId = null
+        }
+        if (live.isNotEmpty()) {
+            // One copy at a time on this phone: another sheet is copying now. Not a silent no-op — the
+            // refusal says so, and Try again stays available.
+            LinkLog.i("share", "Try again while another file is being prepared: not started; the sheet says so")
+            _state.value = (state as ShareSheetState.Failed).let { f ->
+                f.copy(failure = (f.failure as ShareSheetState.Failure.NoRoomYet).copy(anotherPreparing = true))
+            }
+            return
+        }
+        LinkLog.i("share", "Try again after no room for another copy (a person's tap); re-reading the budget")
+        _state.value = ShareSheetState.Starting
+        viewModelScope.launch(Dispatchers.IO) { stage(source, type) }
+    }
+
     /** Withdraw a live offer (`share.cancel{user}`). `ShareFeature` deletes the staged copy. */
     fun withdraw() {
         if (!canWithdraw(_state.value)) return
@@ -264,7 +297,10 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
         // version 3 (PROPOSED, advertised by nothing) the copies already held for live offers count,
         // and with no approved cap a second concurrent copy is refused before a byte is read.
         val (version, held) = ShareFeature.stagingContext()
-        when (val pre = ShareAdmission.forCopy(version, expected, held, free, ShareAdmission.APPROVED_CAP)) {
+        // Stage 1 (development only): the live per-copy budget, supplied only in a debuggable build. It
+        // applies only at version 3 with copies held — reachable only through the debug version-3 arm.
+        val concurrent = if (debuggable()) ShareBudgetReadings.concurrent(app, dir) else null
+        when (val pre = ShareAdmission.forCopy(version, expected, held, free, ShareAdmission.APPROVED_CAP, concurrent)) {
             is ShareAdmission.Copy.NoSpace -> {
                 fail(name, null, ShareSheetState.Failure.NoSpace(pre.needed, pre.free), "preflight refused (share.file $version, $held bytes held)")
                 return
@@ -278,11 +314,27 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
                 fail(name, null, ShareSheetState.Failure.OverHoldCap(pre.held, pre.cap), "not copied: over the concurrent-copy cap (share.file $version)")
                 return
             }
-            is ShareAdmission.Copy.Go -> copy(source, dir, name, mime, expected, pre.limit)
+            is ShareAdmission.Copy.OverBudget -> {
+                // Decision B: refused with the measured limit and Try again — never left waiting for room.
+                fail(name, null, ShareSheetState.Failure.NoRoomYet(pre.held, pre.expected, pre.limit, why = pre.why),
+                    "not copied: the per-copy budget refused another copy (${pre.why}; measured limit ${pre.limit ?: "unmeasured"}; " +
+                        "$held bytes held; share.file $version)")
+                return
+            }
+            is ShareAdmission.Copy.Go -> copy(source, dir, name, mime, expected, pre.limit,
+                // Only a concurrent copy is re-checked against the budget while it runs; a file alone never is.
+                budget = if (version >= ShareOffer.QUEUE_VERSION && held > 0) concurrent else null, heldAtAdmission = held)
         }
     }
 
-    private fun copy(source: Uri, dir: File, name: String, mime: String, expected: Long?, limit: Long) {
+    private fun debuggable(): Boolean = (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+    private fun copy(
+        source: Uri, dir: File, name: String, mime: String, expected: Long?, limit: Long,
+        budget: ShareAdmission.Concurrent? = null,
+        /** `Σ` as the admission read it — what a stop at the admitted limit reports, never re-read. */
+        heldAtAdmission: Long = 0,
+    ) {
         val id = ShareStaging.newAttemptId()
         attemptId = id
         live.add(id)
@@ -297,6 +349,7 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
             source = input, dir = dir, attemptId = id, limit = limit,
             available = { dir.usableSpace }, cancelled = { cancelled.get() }, nowMs = System.currentTimeMillis(),
             afterBuffer = { n -> _state.update { s -> if (s is ShareSheetState.Preparing) s.copy(copied = n) else s } },
+            budgetStop = budget?.let { c -> { written -> ShareAdmission.stopCopying(c, { ShareFeature.stagingContext().second }, written) } } ?: { null },
         )
         when (outcome) {
             is ShareStaging.Outcome.Staged -> {
@@ -327,7 +380,15 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
             is ShareStaging.Outcome.NoSpace -> fail(name, id,
                 ShareSheetState.Failure.NoSpace((expected ?: outcome.bytesWritten) + ShareStaging.margin(expected ?: outcome.bytesWritten), outcome.available),
                 "space fell below the floor after ${outcome.bytesWritten} bytes")
-            is ShareStaging.Outcome.OverLimit -> fail(name, id, ShareSheetState.Failure.OverLimit(outcome.limit), "over the limit ${outcome.limit}")
+            is ShareStaging.Outcome.OverLimit ->
+                // A concurrent copy's limit is its budget: reaching it is "no room yet", with Try again.
+                if (budget != null) fail(name, id,
+                    ShareSheetState.Failure.NoRoomYet(heldAtAdmission, expected, outcome.limit, at = ShareSheetState.NoRoomAt.ReachedLimit),
+                    "concurrent copy reached its budget ${outcome.limit} ($heldAtAdmission bytes held at admission); partial deleted")
+                else fail(name, id, ShareSheetState.Failure.OverLimit(outcome.limit), "over the limit ${outcome.limit}")
+            is ShareStaging.Outcome.BudgetStopped -> fail(name, id, noRoomAfterStop(outcome, expected),
+                "concurrent copy stopped by a budget re-check after ${outcome.bytesWritten} bytes (${outcome.stop.why}; " +
+                    "measured limit ${outcome.stop.limit ?: "unmeasured"}; ${outcome.stop.held} bytes held at the re-check); partial deleted")
             is ShareStaging.Outcome.SourceReadFailed -> fail(name, id, ShareSheetState.Failure.ReadFailed,
                 "source read failed after ${outcome.bytesWritten} bytes: ${outcome.exceptionClass}")
             is ShareStaging.Outcome.WriteFailed -> fail(name, id, ShareSheetState.Failure.WriteFailed,
@@ -367,8 +428,12 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
     private fun topLevel(mime: String) = mime.substringBefore('/') + "/*"
 
     companion object {
-        /** Live attempts in this process: the backstop sweep skips them, and v1 allows one at a time. */
-        private val live: MutableSet<String> = ConcurrentHashMap.newKeySet()
+        /**
+         * Live attempts in this process: the backstop sweep skips them, and v1 allows one at a time.
+         * `internal` for the development-only several-files screen, which registers its selection here so
+         * a second share is refused while it prepares (rev 4 §12).
+         */
+        internal val live: MutableSet<String> = ConcurrentHashMap.newKeySet()
         private val stagedCount = AtomicInteger()
         private val failedCount = AtomicInteger()
 

@@ -2482,7 +2482,7 @@ hello.ack  {"protocolVersion":1, …every existing field…, "ext":{"share.file"
 
 On `hello`, `share.file` means *this Mac can receive and answer a one-file share offer*; on
 `hello.ack`, *this phone can make one*. **The version says how far:** `1` is offer and decline only;
-`2` is the one-file transfer as well (see [Share → Version 2](#version-2--the-transfer)). `3`, several pending offers, and the separate `share.stream` for large files are **proposed and not implemented** (see [Version 3](#version-3--several-pending-offers-proposed-2026-09-25--not-implemented)).
+`2` is the one-file transfer as well (see [Share → Version 2](#version-2--the-transfer)). `3`, several pending offers, is **proposed, built inert and not advertised**, and the separate `share.stream` for large files is **proposed and not implemented** (see [Version 3](#version-3--several-pending-offers-proposed-2026-09-25--built-inert-not-advertised)).
 Because the negotiated version is `min(mine, theirs)`, a transfer can start only when **both**
 peers advertise `2`. Parsing is identical on both sides:
 
@@ -2571,7 +2571,7 @@ channel. The design and its evidence are `docs/phase-7-share-proposal.md` rev 2 
 | `expiresAtMs` | when the phone stops honouring the offer: sent + 10 minutes |
 
 **Only sent when `share.file` is negotiated on that session, and at most one offer per session is
-live.** (At the proposed version 3, at most 10 — see Version 3; not implemented.) The file is already staged privately on the phone; the offer never refers to anything else.
+live.** (At the proposed version 3, at most 10 — see Version 3; built inert, not advertised.) The file is already staged privately on the phone; the offer never refers to anything else.
 
 **The Mac validates before anything else**, in this order, and declines with the first failure:
 `not-negotiated` (no `share.file` on this session); `malformed-offer` (any field above out of
@@ -2907,22 +2907,43 @@ the staged copy. A Retry in a shipping build is a person's action on the Mac.
 `share.cancel` from either side stops a live pull: the phone stops streaming and deletes the staged
 copy, and the Mac deletes its partial. Neither side reports `saved`.
 
-### Version 3 — several pending offers (PROPOSED 2026-09-25 — not implemented)
+### Version 3 — several pending offers (PROPOSED 2026-09-25 — built inert, not advertised)
 
 > **Not approved, and nothing advertises `share.file 3`.** Proposed contract for review; the argument
-> is `docs/feature-a-multi-offer-proposal.md` (rev 3). Until it is approved and advertised, version 2
-> above is the whole contract, and both builds advertise 2. (Since 2026-09-26 a build of rules 1–3 and
-> the Mac half of rule 4 exists behind that gate, with the phone's cap `C` unset so a second concurrent
-> copy is refused — it is unreachable in any pairing; see the proposal's *Build status*.) This section is **Path S** — files copied privately
-> before they are offered. Large files are **Path L**, below.
+> is `docs/feature-a-multi-offer-proposal.md` (**rev 4, 2026-09-26**). Until it is approved and
+> advertised, version 2 above is the whole contract, and both builds advertise 2. (Since 2026-09-26 a
+> build of rules 1–3 and the Mac half of rule 4 exists behind that gate. The phone's admission still
+> refuses a second concurrent copy, so it is unreachable in any pairing; see the proposal's *Build
+> status*.) **Every value marked PROVISIONAL below is a development parameter** (owner, 2026-09-26), and
+> none is approved for production. This section is **Path S** — files copied privately before they are
+> offered. Large files are **Path L**, below.
 
 **Negotiation.** `share.file: 3` by the existing rule `min(mine, theirs)`: 3 + 3 → 3, 3 + 2 → 2; a
 version-2 peer keeps version 2 exactly. `share.ask` is unchanged and still required for ordinary Send.
 Every version-2 rule holds at 3 except these.
 
+- **Several files at once need 3.** At a negotiated 2, the phone refuses a selection of more than one
+  file before reading or copying anything, and says the Mac needs updating.
+- **One file is never a selection.** A `SEND_MULTIPLE` carrying one file is a single-file share, under
+  the version-2 rules, at any version.
+- **Development advertisement (built in Stage 1, 2026-09-26; not yet used on a device).** Neither production build advertises 3.
+  - The **phone** advertises 3 only when the build is **debuggable** *and* a debug-source-set activity,
+    exported only behind `android.permission.DUMP`, armed it for **that one handshake**. The arm is in
+    memory, consumed by one trusted handshake, and cleared at every process start.
+  - The **Mac** advertises 3 only when it is **not packaged**, the `shareV3` debug switch is given (`CONNECTSUITE_DEBUG_SWITCHES=shareV3`), and
+    `share.ask` is active with the synthetic-only gate closed, so every offer is still held for a
+    person.
+  - A packaged Mac ignores the switch and logs that it did.
+  - Both sides log the advertised and negotiated `share.file` on every handshake.
+  - A hardware test arms both sides for that test only, then disarms and relaunches normally, and
+    reads back `share.file 2` negotiated on both sides.
+
 **1 · Several live offers.** At most **10** live offers per session (proposed), enforced by both sides;
-`busy` means *the session already holds 10*. Each offer is independent: its own `offerId`, answer, expiry
-and end. `item` stays **one object**.
+`busy` means *the session already holds 10*. The phone checks its own count before it offers; a `busy`
+decline of a file from a selection sends that file back to *waiting for room* (rule 5), under the same
+cap. Each offer is independent: its own `offerId`, answer, expiry and end. `item` stays **one object**.
+**Every offer is decided on its own**: there is no group Accept or Decline, and deciding one offer
+changes no other offer.
 
 **2 · One pull at a time, in Accept order.** The Mac pulls one share per session at a time, in the order
 its offers were **accepted**. An accepted offer waiting its turn is **queued** on the Mac and `accepted` on
@@ -2932,19 +2953,82 @@ the phone. A second concurrent share pull on one session is refused by the phone
 **3 · Accepted offers leave the 10-minute TTL.** A waiting offer expires at `expiresAtMs` exactly as in
 version 2. **A queued offer does not expire while queued**: it ends only by `share.cancel` from either
 side, the session ending, or the phone's backstop — an accepted offer whose pull has not begun **60
-minutes** after the Accept is ended by the phone with `share.cancel{expired}`. A Retry is queued at the back.
+minutes** (PROVISIONAL, development only; the production value is open) after the Accept is ended by
+the phone with `share.cancel{expired}`. A Retry is queued at the back.
 
-**4 · Space.** *Phone:* a file is admitted when its private copy is about to start — not when it is
-offered — if `s + max(256 MiB, ⌈(Σ + s)/10⌉) ≤ free` and (`Σ + s ≤ C` or `Σ = 0`), where `Σ` is the total
-of copies already held for live offers (already absent from `free`) and `C` is a cap on copies held at
-once. **`C` has no value in this contract yet** (proposal §4); a file alone is never refused by it. A copy
-leaves `Σ` when its offer ends. *Mac:* at the offer and at Accept, `free ≥ R + size + max(256 MiB,
-⌈size/10⌉)`, where `R` sums the reservations: a queued offer reserves `size`; the receiving offer reserves
-`size − bytes written`; every reservation is released when its offer ends in any state, including saved
-(its bytes are then a real file). A Retry re-reserves through the Accept check.
+**4 · Space.** *Phone:* a file is admitted when its private copy is **about to start**, not when it is
+offered. `Σ` is the total of copies already held for live offers; those bytes are already absent from
+`free` and are never subtracted again. A copy leaves `Σ` when its offer ends, in any state.
 
-**Optional, Stage B only:** `share.offer` may carry `group: {"id": "g-<22 base64url>", "index": 1…count,
-"count": 1…10}` for files shared together — display only, authorising nothing, never sent to a version-2 Mac.
+- **A file alone (`Σ = 0`):** the version-2 rule, **unchanged**: `s + max(256 MiB, ⌈s/10⌉) ≤ free`. No
+  reading below applies to it.
+- **An extra file (`Σ > 0`):** it may be copied only up to `min(Bq, Bs)`, from readings at most **5 s**
+  old (PROVISIONAL) taken immediately before the copy, and re-checked while it runs and when it
+  finishes:
+  - `Bq = ⌊Q · ½⌋ − N − Σ − w`, where `Q` is `StorageManager.getCacheQuotaBytes`, `N` is the rest of
+    this app's cache, and `w` is what this copy has already written;
+  - `Bs` = the largest `x` with `x + max(256 MiB, ⌈(Σ + w + x)/10⌉) ≤ usable − (⌈3% · total⌉ + 1 GiB)`.
+  - ½, 3% + 1 GiB and 5 s are **PROVISIONAL**.
+  - A missing, stale or impossible reading refuses **only the extra copy**. In a selection the file
+    waits for room (rule 5).
+- **From the single-file sheet, an extra copy is refused, never left waiting** (owner, 2026-09-26).
+  When `Σ > 0` and the budget refuses it, or a reading is missing or stale, the sheet copies and offers
+  nothing and states the refusal with the **measured** `min(Bq, Bs)` (or that no measurement was
+  possible). It offers a **Try again** that the person taps, which re-runs this rule with fresh readings
+  while the sheet is open. With `Σ = 0` the sheet is version 2, unchanged. No message is sent for a
+  refused attempt.
+- **`Q` is not a guarantee.** It is the size above which the platform clears this app's cache first —
+  read live, different per device and per day, and **not** a promise that a copy below it survives. A
+  copy the platform removes ends that offer alone, as `staging-lost` (see `share.cancel`).
+- **There is no fixed cap and no per-file size limit** in this contract.
+
+*Mac:* at the offer and at Accept, `free ≥ R + size + max(256 MiB, ⌈size/10⌉)`, where `R` sums the
+reservations: a queued offer reserves `size`; the receiving offer reserves `size − bytes written`; every
+reservation is released when its offer ends in any state, including saved (its bytes are then a real
+file). A Retry re-reserves through the Accept check.
+
+**5 · A selection (Stage B): phone behaviour; no new message.** Argued in the proposal, §11–§15.
+
+- **Before anything is read or copied**, a selection is refused whole **only** for:
+  - more than 10 files — never truncated;
+  - an item that is a folder or not a `content:` URI;
+  - another share still preparing on the phone;
+  - a negotiated version below 3 with more than one file.
+- **Size never refuses a selection.**
+- **Copies run one at a time.** Each file is offered **as soon as its copy is ready**, so a selection's
+  offers arrive over time.
+- **Waiting for room.** A file waits when its extra copy does not fit rule 4, when 10 offers are live,
+  or when it is an unknown-size file awaiting its one retry.
+  - It is re-evaluated when any live offer on the session ends, when a copy finishes or fails, and
+    every 5 s.
+  - Waiting files go **oldest first**, and a waiting file is never overtaken by another waiting file.
+  - Each file is tried at most once, twice for the unknown-size retry.
+  - A file that could not fit even with every held copy released **fails at once** instead of waiting.
+  - **Stall clock (PROPOSED for review, not approved).** A wait is bounded by *stalled* time, not
+    elapsed time. At each evaluation the clock is **paused** if the file would be admitted with every
+    **in-progress** offer's copy and slot released — in progress meaning accepted and queued,
+    receiving, or checking, each already bounded by its own rule. Otherwise it **runs**: waiting on
+    unanswered offers, on a reading the paused case does not bypass, or on space short for other
+    reasons. A pause keeps the counted time, a resume continues it, and it is never reset while the
+    file waits. It uses a monotonic clock.
+  - A file ends **not sent** after **10 minutes of running time**, or **60 minutes** after it began
+    waiting, paused or not (both PROVISIONAL, development only). It also ends not sent when the
+    phone's share screen closes or the session ends.
+- **Unknown sizes are admitted file by file.** At most **one** retry is allowed, only with `Σ = 0`, and
+  only after the first attempt's partial copy has been deleted **and its absence verified**.
+- **A file never offered produces no message at all.** A file's failure ends only that file. Leaving
+  the phone's screen never withdraws a file already offered.
+- **The phone reads a shared URI only while the screen that received it is alive.** Files already
+  offered continue from their private copies after it closes. Files not yet prepared end **not sent**.
+
+**Optional, Stage B only: `group`.** `share.offer` may carry `group: {"id": "g-<22 base64url>",
+"index": 1…count, "count": 1…10}` for files shared together.
+- It is sent only at a negotiated 3, never to a version-2 Mac.
+- A present but malformed `group` is declined `malformed-offer`.
+- **Display only, authorising nothing:**
+  - the Mac never waits for `count` offers to arrive;
+  - it never treats a missing index as an error;
+  - it shows cards sharing an `id` **without** a group header if their `count` values disagree.
 
 **Unchanged at 3:** Saved on the Mac only after that offer's bytes are flushed, length- and SHA-256-verified
 and exclusively published, and on the phone only on an acknowledged `share.saved {ok:true}`;

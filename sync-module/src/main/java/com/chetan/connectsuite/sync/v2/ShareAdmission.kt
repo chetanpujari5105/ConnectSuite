@@ -1,8 +1,10 @@
 package com.chetan.connectsuite.sync.v2
 
 /**
- * **Version 3 — PROPOSED, reachable only at a negotiated `share.file` 3, which neither side
- * advertises.** Whether one more private
+ * **Version 3 — PROPOSED, reachable only at a negotiated `share.file` 3, which only the debug-only
+ * version-3 arms advertise (Stage 1, development only).** At version 3 with copies held, a caller that
+ * supplies [Concurrent] readings gets the live per-copy budget (rev 4 §4); one that does not gets the
+ * Stage A cap path below, which refuses while no cap is approved. Whether one more private
  * copy may start while others are already held for live offers: docs/protocol.md → Share → Version 3
  * §4, argued in docs/feature-a-multi-offer-proposal.md rev 3 §4.
  *
@@ -62,6 +64,63 @@ object ShareAdmission {
         data class CapNotApproved(val held: Long) : Copy
         /** Copies held plus this one would pass the approved cap (version 3 only). */
         data class OverCap(val held: Long, val cap: Long) : Copy
+        /**
+         * Version 3 with copies held, and the per-copy budget ([ShareConcurrentBudget]) refused this one.
+         * [limit] is the **measured** `min(Bq, Bs)` of that attempt, or null when no measurement was
+         * possible ([why] says which reading failed). Never produced for a file alone.
+         */
+        data class OverBudget(val held: Long, val expected: Long?, val limit: Long?, val why: ShareConcurrentBudget.Refusal) : Copy
+    }
+
+    /**
+     * **Development only, PROVISIONAL** (owner, 2026-09-26; proposal rev 4 §4): f = ½, a floor of
+     * 3% of total + 1 GiB, readings at most 5 s old. Not a production value — production values are a
+     * separate, open decision. No figure measured on any device appears here.
+     */
+    val PROVISIONAL_DEV_CANDIDATE = ShareConcurrentBudget.Candidate(
+        quotaNumerator = 1, quotaDenominator = 2,
+        floorPerMille = 30, floorExtraBytes = 1L shl 30,
+        maxReadingAgeMs = 5_000,
+    )
+
+    /**
+     * What the per-copy budget needs, supplied by the caller. [read] takes `Σ` (bytes held for OTHER
+     * live offers) and returns fresh readings; [nowMs] is on the same clock as the readings' `readAtMs`.
+     * Replaceable, so the arithmetic's callers are testable without a device.
+     */
+    class Concurrent(
+        val read: (heldBytes: Long) -> ShareConcurrentBudget.Readings,
+        val nowMs: () -> Long,
+        val candidate: ShareConcurrentBudget.Candidate = PROVISIONAL_DEV_CANDIDATE,
+    )
+
+    /**
+     * Why a running concurrent copy was stopped by its budget re-check — **the facts of that re-check**,
+     * carried to the sheet unchanged so nothing re-reads them after the stop.
+     *
+     * - [why] is the re-check's own refusal.
+     * - [held] is `Σ` **as that re-check read it**. Reading it again later is wrong: the other offers
+     *   may have ended in between, and the sheet would say another file is held with 0 bytes.
+     * - [limit] is the measured room for this file once its partial is deleted
+     *   ([ShareConcurrentBudget.limitAfterDiscarding]) — present whenever the readings were valid, so an
+     *   over-budget stop is never worded as *couldn't measure*; null only when a reading really was
+     *   missing, stale, from the future or inconsistent.
+     */
+    data class Stop(val why: ShareConcurrentBudget.Refusal, val held: Long, val limit: Long?)
+
+    /**
+     * While a concurrent copy runs, and once when it finishes: must it stop, with [written] bytes already
+     * on disk? `null` means keep going. Re-reads through [c] every time. With nothing else held any more
+     * (`Σ = 0`) the copy is no longer concurrent and the version-2 floor, which the copy checks itself,
+     * governs — nothing is read.
+     */
+    fun stopCopying(c: Concurrent, held: () -> Long, written: Long): Stop? {
+        val h = held()
+        if (h <= 0) return null
+        val r = c.read(h)
+        val now = c.nowMs()
+        val v = ShareConcurrentBudget.duringCopy(written, r, c.candidate, now) as? ShareConcurrentBudget.Verdict.Refuse ?: return null
+        return Stop(v.why, h, ShareConcurrentBudget.limitAfterDiscarding(written, r, c.candidate, now))
     }
 
     /**
@@ -77,7 +136,7 @@ object ShareAdmission {
      *
      * [held] is `Σ`, the bytes of copies that exist for live offers — already absent from [free].
      */
-    fun forCopy(negotiatedVersion: Int, expected: Long?, held: Long, free: Long, cap: Long?): Copy {
+    fun forCopy(negotiatedVersion: Int, expected: Long?, held: Long, free: Long, cap: Long?, concurrent: Concurrent? = null): Copy {
         require(held >= 0) { "held is ≥ 0" }
         if (negotiatedVersion < ShareOffer.QUEUE_VERSION || held == 0L) {
             return when (val pre = ShareStaging.preflight(expected, free)) {
@@ -85,6 +144,9 @@ object ShareAdmission {
                 is ShareStaging.Preflight.NoSpace -> Copy.NoSpace(pre.expected, pre.available, pre.needed)
             }
         }
+        // Stage 1 (development only): the live per-copy budget replaces the cap when the caller supplies
+        // readings. Without them this is exactly the Stage A behaviour below.
+        if (concurrent != null) return byBudget(expected, held, free, concurrent)
         if (cap == null) return Copy.CapNotApproved(held)
         if (expected != null) {
             return when (val v = admit(expected, held, free, cap)) {
@@ -97,6 +159,24 @@ object ShareAdmission {
         if (held >= cap) return Copy.OverCap(held, cap)
         val limit = minOf(limitOver(held, free), cap - held)
         return if (limit > 0) Copy.Go(limit) else Copy.NoSpace(null, free, ShareStaging.margin(held) + 1)
+    }
+
+    private fun byBudget(expected: Long?, held: Long, free: Long, c: Concurrent): Copy {
+        val readings = c.read(held)
+        val now = c.nowMs()
+        return when (val v = ShareConcurrentBudget.admit(expected, readings, c.candidate, now)) {
+            // Only reachable if the readings disagree with [held] about Σ; the proven rule then decides.
+            ShareConcurrentBudget.Verdict.NotConcurrent -> forCopy(0, expected, held, free, null)
+            is ShareConcurrentBudget.Verdict.Admit -> {
+                // The version-2 margin over everything held still applies on top of the budget.
+                val limit = minOf(v.limit, limitOver(held, free))
+                if (limit <= 0 || (expected != null && expected > limit)) {
+                    Copy.OverBudget(held, expected, maxOf(0L, limit), ShareConcurrentBudget.Refusal.OVER_SPACE_BUDGET)
+                } else Copy.Go(limit)
+            }
+            is ShareConcurrentBudget.Verdict.Refuse ->
+                Copy.OverBudget(held, expected, ShareConcurrentBudget.measuredLimit(readings, c.candidate, now), v.why)
+        }
     }
 
     /** The largest `s` with `s + M(Σ + s) ≤ free` — [ShareStaging.limit] with the margin taken over everything held. */

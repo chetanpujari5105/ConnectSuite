@@ -59,6 +59,25 @@ class ShareDevGateRoutingTest {
         assertTrue("control: the main sources were read", sources.any { it.name == "ControlSession.kt" })
         val writers = sources.filter { Regex("ShareDevGate\\.process\\.arm\\(").containsMatchIn(code(it)) }
         assertEquals(emptyList<File>(), writers)
+        val v3Writers = sources.filter { Regex("ShareDevGate\\.v3\\.arm\\(").containsMatchIn(code(it)) }
+        assertEquals("no main source arms share.file 3", emptyList<File>(), v3Writers)
+    }
+
+    @Test fun `the v3 arm activity is in the debug manifest only, behind DUMP, with no filter, and is the one v3 writer`() {
+        val v3 = "com.chetan.connectsuite.probe.ShareDevV3Activity"
+        val a = activities(File(root(), "app/src/debug/AndroidManifest.xml")).single { it.getAttributeNS(androidNs, "name") == v3 }
+        assertEquals("android.permission.DUMP", a.getAttributeNS(androidNs, "permission"))
+        assertEquals("true", a.getAttributeNS(androidNs, "exported"))
+        assertEquals(0, a.getElementsByTagName("intent-filter").length)
+        val main = activities(File(root(), "app/src/main/AndroidManifest.xml"))
+        assertTrue("control: the main manifest was read", main.isNotEmpty())
+        assertTrue(main.none { it.getAttributeNS(androidNs, "name").endsWith("ShareDevV3Activity") })
+        val cls = root().walkTopDown().filter { it.isFile && it.name == "ShareDevV3Activity.kt" && !it.path.contains("/build/") }.toList()
+        assertEquals("one class, in the debug source set", listOf("app/src/debug"), cls.map { it.relativeTo(root()).path.substringBefore("/java/") })
+        val writers = root().walkTopDown()
+            .filter { it.isFile && it.extension == "kt" && !it.path.contains("/build/") && !it.path.contains("/src/test/") }
+            .filter { Regex("ShareDevGate\\.v3\\.arm\\(").containsMatchIn(code(it)) }.map { it.name }.toList()
+        assertEquals(listOf("ShareDevV3Activity.kt"), writers)
     }
 
     /*

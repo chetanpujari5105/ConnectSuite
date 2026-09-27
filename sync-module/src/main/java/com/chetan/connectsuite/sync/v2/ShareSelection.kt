@@ -43,7 +43,24 @@ object ShareSelection {
         data class Refuse(val reason: Refusal, val index: Int? = null) : Decision
     }
 
-    enum class Refusal { NOT_A_SEND_MULTIPLE, NO_FILES, TOO_MANY, NOT_CONTENT, FOLDER, ANOTHER_IN_PROGRESS }
+    enum class Refusal { NOT_A_SEND_MULTIPLE, NO_FILES, TOO_MANY, NOT_CONTENT, FOLDER, ANOTHER_IN_PROGRESS, NEEDS_VERSION_3 }
+
+    /**
+     * Rev 4 §15 / C6, at **Send N files**: several files need a session that negotiated `share.file` 3.
+     * One file is never a selection — it is a single-file share at any version, so it is never refused
+     * here. `0` (no Mac) is not a refusal either: the screen keeps Send disabled until a Mac connects.
+     */
+    fun atSend(count: Int, negotiatedVersion: Int): Refusal? =
+        if (count > 1 && negotiatedVersion in 1 until ShareOffer.QUEUE_VERSION) Refusal.NEEDS_VERSION_3 else null
+
+    /**
+     * The streams a `SEND_MULTIPLE` carries, in the sender's order: `EXTRA_STREAM` when it holds any,
+     * else the URIs of the `ClipData` items. **A missing entry stays in the list as null** — a `ClipData`
+     * item carrying text rather than a URI, or a null inside `EXTRA_STREAM` — so [decide] refuses the
+     * selection at that item's index instead of the list silently shrinking, which would send fewer
+     * files than were selected (§15: never truncated).
+     */
+    fun <T : Any> streams(extra: List<T?>?, clip: List<T?>?): List<T?> = extra?.takeIf { it.isNotEmpty() } ?: clip.orEmpty()
 
     /**
      * Whether a `SEND_MULTIPLE` can be taken. [items] are every stream, from `EXTRA_STREAM` or

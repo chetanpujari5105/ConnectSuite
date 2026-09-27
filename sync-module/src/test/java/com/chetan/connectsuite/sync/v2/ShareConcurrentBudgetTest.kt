@@ -157,7 +157,21 @@ class ShareConcurrentBudgetTest {
         assertTrue(ShareStaging.preflight(21_000_000_000L, 22_683_615_232) is ShareStaging.Preflight.NoSpace)
     }
 
-    @Test fun `unwired - no production source in any module uses the budget`() {
+    /*
+     * Was: "unwired — no production source uses the budget". Stage 1 (owner, 2026-09-26) wires it for
+     * development only. Not loosened to "at most N users": each production user is named, with the one
+     * question it answers — ShareAdmission decides with it; ShareBudgetReadings supplies its readings.
+     * A third user fails here and has to say which question it answers.
+     *
+     * The third (2026-09-26, the BudgetStopped wording fix): ShareToMacCopy.kt answers *how is the
+     * budget's refusal worded to a person?* It names the [ShareConcurrentBudget.Refusal] enum and
+     * nothing else — it may not compute a budget, so the only form it may use is `ShareConcurrentBudget.Refusal`.
+     *
+     * The fourth (2026-09-27, Stage 2, development only): ShareManyQueue.kt answers *which reason is a
+     * waiting file waiting for?* It carries the refusal [ShareAdmission.forCopy] returned into
+     * `WaitReason.NoRoom`, unchanged, and decides through ShareAdmission — so it too may only name the enum.
+     */
+    @Test fun `wired in exactly two deciding sources, plus the sheet's wording, which only names the refusal reason`() {
         val root = listOf(File("."), File("..")).first { File(it, "sync-module").isDirectory }
         val code = { f: File -> f.readText().replace(Regex("/\\*[\\s\\S]*?\\*/"), "").replace(Regex("//[^\\n]*"), "") }
         val sources = root.listFiles()!!.filter { File(it, "src").isDirectory }.flatMap { m ->
@@ -166,6 +180,11 @@ class ShareConcurrentBudgetTest {
         }
         assertTrue("control: the production sources were read", sources.any { it.name == "ShareFeature.kt" && code(it).contains("ShareOffer.respond(") })
         val users = sources.filter { it.name != "ShareConcurrentBudget.kt" && code(it).contains("ShareConcurrentBudget") }.map { it.name }
-        assertEquals("nothing calls the PROPOSED budget until its values are approved", emptyList<String>(), users)
+        assertEquals(listOf("ShareAdmission.kt", "ShareBudgetReadings.kt", "ShareManyQueue.kt", "ShareToMacCopy.kt"), users.sorted())
+        for (name in listOf("ShareToMacCopy.kt", "ShareManyQueue.kt")) {
+            val text = code(sources.single { it.name == name })
+            val uses = Regex("ShareConcurrentBudget\\.?([A-Za-z]*)").findAll(text).map { it.groupValues[1] }.toSet()
+            assertEquals("$name names the reason enum and calls nothing", setOf("Refusal"), uses - "")
+        }
     }
 }

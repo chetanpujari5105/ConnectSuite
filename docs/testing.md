@@ -25180,3 +25180,727 @@ was my own scratch build copy, since removed.
 and Path L is not approved. **Open question for the owner:** whether a selection whose sizes the
 provider does not report should be admitted file by file (as built) or refused as a whole until sizes
 are known.
+
+## Version 2 single-file regression after the lost-copy update (`acd24a4`) — 2026-09-26 14:13–14:17, SM-S938B
+
+**Result: the transfer and the collision-safe save PASSED. The planned pre-Accept readback of the Mac
+card was MISSED — that UI checkpoint is not verified.**
+
+**Builds.** Mac: development app from `f71285b` (`dist` byte-identical to an independent build of the same
+Mac code), PID 93018, launched 12:53:45. Phone: debug APK from `f71285b` (`ea1a87ac…`), installed 13:13:46
+with `install -r` via the pin; the link came back by `PACKAGE_REPLACED` in about 1 s. Negotiated
+`share.file 2` + `share.ask 1` on both sides. Nothing of Version 3 advertised or enabled.
+
+**Preflight (read-only, all matched):** Mac free space 10,384 → 10,391 MiB over 30 s; no pending offer on
+either side; share ledger `[]`; phone `cache/share-staging` empty (inode 808729); receive folder recorded as
+21 files with every size and SHA-256. Source on the phone:
+`Pictures/SidekickShareTest/sidekick-share-test-001.png`, 100,718 bytes,
+SHA-256 `d5cfb8a312227ec44664d00782fac7fd7a8f9fa0e9c24e4689ebe46752eec9ff` — byte-identical to the copy
+already in the receive folder from 2026-09-25 23:16:22, so a collision-safe new name was expected.
+
+**The share (the owner, by hand, in Gallery → Share → Sidekick → Send to Mac).** Phone: staged 100,718
+bytes at 14:13:57 (staged copy SHA-256 equal to the source), offered `s-BPlMg_4TLEwl9uRdgyve8Q` at 14:13:58.
+Mac: validated, **held for a decision (Ask)**, receive window presented without focus. Read at about
+14:14 — before the decision — **no bytes had moved**: 0 pull lines on either side, ledger `[]`, receive
+folder unchanged.
+
+**The missed checkpoint.** The owner's plan was to have the card read back (offer id, file name, size,
+paired phone, destination) and matched **before** Accept. The Accept happened at **14:15:02** — a decision
+from the receive window, which the app honours only while that window is visible and in front — before the
+readback was taken. The readback probes were created at 14:15:16 and 14:15:30 (after the decision), send
+no input, and found the window already `saved`. So the card's content before Accept was **never
+observed**; do not cite this run for it.
+
+**After Accept (all verified):**
+- Phone: `share.respond` acknowledged `accepted` (the new Accept-time staged-copy check passed on an
+  intact copy); pull registered at offset 0; 100,718 of 100,718 bytes sent, digest verified;
+  `share.saved … state=saved`; staged copy deleted (2 files); `share-staging` empty.
+- Mac: received, flushed, verified, **published exclusively as `sidekick-share-test-001 (2).png`**;
+  100,718 bytes, SHA-256 equal to the source; the phone acknowledged.
+- **Collision-safe:** the existing `sidekick-share-test-001.png` is untouched (same hash, still dated
+  09-25 23:16:22). All 21 pre-existing files are byte-identical to the before-hashes; exactly one name
+  added, none removed; no partial left; ledger `[]`.
+- Both copies are kept.
+
+**What this does and does not show about `acd24a4` on the device.** The Accept-time check passed on an
+intact copy. The 30 s held-copy check did not end the offer during its 64 s wait (no `staging-lost`) —
+consistent with it running on an intact copy, but a passing check writes no line, so this is not proof it
+ran. **A genuinely lost copy was not exercised in this run** — it was in the supervised run below.
+
+### Supervised staging-lost run — 2026-09-26 14:32–14:37, same builds, same devices
+
+**Result: the 30-second held-copy check and the Mac main-window card wording were OBSERVED on hardware.
+The receive-window wording and the Accept-time staged-copy check were NOT observed — do not cite this
+run for either.**
+
+**Stimulus.** A debug synthetic probe offered `s-wIDupaaE5H8d8gxwcZetHw` at **14:32:30.451** — 1,048,576
+bytes, seed 11, SHA-256 `58764435dee586637de261adde51f8738566a97047991c8981d696321a95542b`, TTL 600 s,
+`corruptAt=off`, negotiated `share.file 2`. The Mac validated it (14:32:30.475), **held it for a decision
+(Ask)** (14:32:30.499) and presented the receive window without focus (14:32:30.535). No decision was
+made. The staged `s-wIDupaaE5H8d8gxwcZetHw.bin` was then renamed in place to `….bin.aside`; the renamed
+file's ctime is **14:37:27.372** (its mtime is still 14:32:30.444, the staging write).
+
+**What fired.**
+- Phone, **14:37:30.476** — 3.1 s after the rename, on the check's 30 s tick:
+  `held-copy check: offer s-wIDupaaE5H8d8gxwcZetHw's staged copy is gone or not 1048576 bytes — ending
+  it as staging-lost (1 lost of 12 checked this run)`; then *ended (cancelled by the phone
+  (staging-lost)): staged copy deleted, 1 file(s)* at 14:37:30.481. The `.bin` was already renamed, so
+  that one file can only have been the `.json`; both original names are absent afterwards.
+- Mac, **14:37:30.503** (27 ms later): `share.cancel s-wIDupaaE5H8d8gxwcZetHw from the phone:
+  staging-lost`. The receive window then closed at 14:37:38.615, logged as *closing is not declining*.
+- **The Mac main-window card's wording for the lost copy was read by the owner on the device.** This is
+  the only UI reading this run supports.
+
+**What was not observed.**
+- **The receive window's staging-lost wording.** The window closed 8 s after the cancel and its text
+  was not read before that. It cannot be read again for this offer.
+- **The Accept-time staged-copy check.** No Accept was sent: there is no `share.respond` for this offer
+  on either side, so the phone's check at Accept never ran. It remains covered only by
+  `ShareOfferStagingLostTest` and `share.test.ts`.
+
+**Nothing moved (read 14:41–14:44, read-only):**
+- **No pull and no Saved:** 0 `fs.transfer.begin`, `[bulk]` or `share.saved` lines for this offer on
+  either side; the phone's last `[bulk]` line is the 14:15 transfer above.
+- **Ledger empty:** `share-temporary-files.json` = `[]`.
+- **Receive folder unchanged:** `~/Downloads/Sidekick`, 22 entries (21 files + `.DS_Store`), every
+  SHA-256 identical to the pre-run baseline taken at 14:24:57; nothing newer than 14:16, no partial, no
+  probe file. The folder's own mtime is 14:32:30 — that is `checkDestination`'s offer-time hard-link
+  probe, which creates and removes its two probe files; no entry was added or left.
+- **Phone staging:** `/data/user/0/com.chetan.connectsuite.debug/cache/share-staging` (inode 808729)
+  holds exactly one entry, `s-wIDupaaE5H8d8gxwcZetHw.bin.aside` — regular file, `u0_a1011` /
+  `u0_a1011_cache`, mode 0600, 1,048,576 bytes, SHA-256 `58764435…a95542b` (equal to the probe's).
+  `s-wIDupaaE5H8d8gxwcZetHw.bin` and `.json` are absent. (This is the state as read at 14:41–14:44;
+  the file was removed afterwards — next paragraph.)
+
+**Approved cleanup, 14:49–14:50.** Rechecked first through `scripts/adb-pinned.sh samsung` (target
+`RZCY12330DT`, SM-S938B): no share or bulk line for this ID after the 14:37:30 cancel on either side;
+staging holding exactly the one `.bin.aside`, the original `.bin` and `.json` absent; the file a
+regular file and not a symlink, resolving inside the app-private `share-staging` folder,
+`u0_a1011:u0_a1011_cache`, mode 600, 1,048,576 bytes, SHA-256 `58764435…a95542b`; Mac free space
+6,745 MiB. All passed, and only that one file was deleted, by exact name:
+`run-as com.chetan.connectsuite.debug rm -- cache/share-staging/s-wIDupaaE5H8d8gxwcZetHw.bin.aside`
+(exit 0). Afterwards: `share-staging` has **0 entries**; the ledger is still `[]`; the receive folder
+is still 22 entries, every SHA-256 identical to the 14:24:57 baseline; `scripts/link-up.sh` passed all
+three readings (service in the foreground, 42501–42503 listening, one control session established).
+The cleanup changes none of the results above. The Mac card was not dismissed.
+
+**Mac free space fell during the run; the cause is unconfirmed.** This offer saved no transfer bytes (no
+pull, no Saved, receive folder unchanged). Free space read 6,980 MiB at 14:44:49 → 6,933 MiB at
+14:45:19 (−47 MiB in 30 s), against 10,384 MiB at the 14:13 preflight.
+
+## Stage 0 corrections — 2026-09-26 (documents only; nothing run on a device)
+
+**Why this entry exists:** a status report given to the owner on 2026-09-26 said the lost-copy checks
+(`acd24a4`) were *"built and tested, not proven on hardware"*. That was wrong, and the owner corrected
+it. This entry records the correction, two records that were out of date, and one piece of platform
+evidence. No build, install, transfer, arm, deletion or device write was made for it.
+
+### 1 · What the supervised 14:32–14:37 run proved, restated
+
+From *Supervised staging-lost run* above, unchanged:
+
+| Behaviour | On the SM-S938B |
+|---|---|
+| 30-second held-copy check ending a **waiting** offer whose copy is gone | **observed** — phone line at 14:37:30.476, 3.1 s after the rename; Mac `share.cancel … staging-lost` at 14:37:30.503 |
+| Mac **main-window card** wording for a lost copy | **observed** — read by the owner on the device |
+| **Receive-window** wording for a lost copy | **not observed** — the window closed at 14:37:38.615, unread |
+| **Accept-time check on a lost copy** | **not observed** — no `share.respond` was sent for that offer. The 14:13 run's Accept-time check passed on an **intact** copy, which shows it does not block a good file, not that it catches a lost one |
+
+### 2 · The measured cache quota — one device, one moment
+
+Read once from inside the app by the debug-only, read-only `StorageQuotaProbeActivity` (`a18f45d`).
+
+| | |
+|---|---|
+| Device | SM-S938B, serial `RZCY12330DT`, sdk 36 |
+| Time | **2026-09-26 10:14:15** |
+| `getCacheQuotaBytes` (`Q`) | **183,326,942** |
+| own cache (`queryStatsForPackage`, own package) | 634,880 |
+| usable (`getUsableSpace`) | 22,683,615,232 |
+| allocatable (`getAllocatableBytes`) | 22,159,327,232 — 524,288,000 (500 MiB) **smaller** than usable |
+| total | 489,993,273,344 |
+
+- **Sources:** the commit messages of `f55e044` and `f71285b`, and the fixture in
+  `ShareConcurrentBudgetTest.kt`, which carries the same values. The raw logcat line is **not stored
+  in the repository**. This entry is the first place the reading is recorded in `docs/testing.md`.
+- **What it is:** one input for one device on one day. `Q` is the size above which the platform clears
+  this app's cache **first**. It is not capacity, not a reservation, and **not a promise** that a
+  staged copy below it survives.
+- **Worked example, not a limit:** with the PROVISIONAL budget (f = ½, floor 3% + 1 GiB) and one 1 MiB
+  copy held, the extra-copy budget was 89,980,015 bytes (quota-bound). No code or copy may carry that
+  figure as a limit (`docs/feature-a-multi-offer-proposal.md` rev 4, §4).
+
+### 3 · Defect 155's register row
+
+`docs/defects.md` said *"fixed 2026-09-26, in the working tree — not in the running Mac app"*.
+
+- The fix, `676c5f2`, is an ancestor of `f71285b` (`git merge-base --is-ancestor`, exit 0).
+- The Mac dev app has been running since **2026-09-26 12:53:45** (pid 93018), with `dist` built from
+  `f71285b` (*Version 2 single-file regression* above).
+- So the fix **is** in the running dev app. The race itself (a Decline during an Accept's check) has
+  **not been produced on hardware**. The row is corrected to say both.
+
+### 4 · `SEND_MULTIPLE` grants: platform source read, nothing measured
+
+**Read, not measured.** Source: AOSP `frameworks/base` `core/java/android/content/Intent.java`,
+`main`, fetched 2026-09-26, SHA-256 prefix `924e9760629e0558`.
+- `migrateExtraStreamToClipData(Context)`: for `ACTION_SEND_MULTIPLE` with no sender `ClipData`, it
+  builds `ClipData` from every `EXTRA_STREAM` URI and adds `FLAG_GRANT_READ_URI_PERMISSION`, the same
+  as for `ACTION_SEND`.
+- It skips migration when the sender supplied `ClipData`, when extras are parcelled, or when the
+  stream, text and HTML list lengths differ.
+- The flag's javadoc states the grant's scope (all `ClipData` URIs, top-level flags only) and **not its
+  duration**.
+- Android's *Sharing a file* guide: *"The permissions you grant are temporary and expire automatically
+  when the receiving app's task stack is finished."*
+
+**Every grant-lifetime reading in this repo is for `ACTION_SEND`** (the emulator §4 readings; `b3eca15`
+on the SM-S938B, where My Files failed +2 s after Finish and Gallery was confounded by
+`READ_MEDIA_IMAGES`). **None is for `SEND_MULTIPLE`, and none measures a stopped-but-not-finished
+activity.** The measurement owed is in the proposal's §11.
+
+### 5 · An open question above, now settled
+
+The *Stage B groundwork* entry above ends with an open question: should a selection whose sizes the
+provider does not report be admitted file by file, or refused as a whole? The owner decided it on
+2026-09-26 (proposal rev 4, D4): **file by file**, with at most one retry (§14). The entry above is left as
+written.
+
+**Mac free space while writing:** 7,670 MiB at the start of this sitting and 6,235 MiB after the documentation checks (`df -m /System/Volumes/Data`). This sitting wrote no large file (one 568 KB source download into the session scratchpad), so the ~1.4 GiB fall is **unexplained**, like the fall recorded after the 14:32 run.
+
+**Mac free space at the consistency review, 2026-09-26 (read-only `df -m /System/Volumes/Data`):**
+18:30:20 → 5,192 MiB; 18:31:35 to 18:32:48 → 6,230–6,231 MiB (six samples); 18:33:03 → 9,259; 18:33:13
+→ 9,456. **Not falling, but not stable.** It swung by about 4.2 GiB in three minutes, down then up, while
+nothing in this work wrote. **A candidate, not a cause:** macOS software-update activity. There is a
+`com.apple.os.update-MSUPrepareUpdate` local snapshot, 2.8 GB under
+`/System/Library/AssetsV2/com_apple_MobileAsset_MacSoftwareUpdate`, and that folder's catalog was
+rewritten at 18:05:44.
+
+## Version 3 Stage 1 — development switch and per-copy budget (2026-09-26, automated only)
+
+**Scope, as approved:** the §18 development-only `share.file 3` switch on both sides, and the §4 per-copy
+budget wired into the single-file sheet's admission. **Not built:** `SEND_MULTIPLE`, the review screen, the
+§12 stall clock (approved for development, belongs to Stage 2), the notification, Stop preparing. **Not
+done:** no install, no arm on either device, no Mac relaunch, no live transfer, no deletion, no commit. The
+running Mac dev app and its `desktop/dist` (dated 12:53:08) were not touched; the Mac suite runs from source
+through `tsx`.
+
+**What was built.**
+- **Phone:** `ShareDevGate.v3`, a second process-scoped arm, written only by the debug-manifest-only,
+  `DUMP`-gated `ShareDevV3Activity`. `Extensions.advertised` returns `share.file 3` only when the build is
+  debuggable **and** that arm was consumed by this handshake. `ControlSession` consumes it once, after the
+  pairing check. A third per-handshake line, `ext: share.file 3 (development) — armed for this handshake: …`,
+  is written on every handshake; the runbook's quoted line is unchanged.
+- **Mac:** the `shareV3` debug switch (`CONNECTSUITE_DEBUG_SWITCHES`), forced off in a packaged build, and
+  `shareV3Activation`: unpackaged **and** the switch **and** `share.ask` open **and** the synthetic-only gate
+  closed. `advertisedExt` raises only the `share.ask` advertisement to 3. A packaged build that is asked
+  logs the refusal. A second handshake line, `ext: this Mac advertised …`, leaves the quoted one unchanged.
+- **Budget:** `ShareAdmission.forCopy(…, concurrent)` uses `ShareConcurrentBudget` at version 3 with copies
+  held, when readings are supplied. `ShareBudgetReadings` reads quota, own cache, usable and total live on
+  every call (`elapsedRealtime` for both clocks), and logs each failed reading's exception class with a
+  tally. `ShareStaging.copy(keepGoing)` re-checks at every 8 MiB boundary and once after the last byte, and
+  stops as `BudgetStopped` with the partial deleted. Values: `PROVISIONAL_DEV_CANDIDATE` — ½, 3% + 1 GiB, 5 s.
+- **Decision B:** the single-file sheet supplies readings only in a debuggable build. A refused extra copy
+  is `Failed(NoRoomYet)`: *No room for another file yet*, the measured limit and this file's size (or
+  *couldn't measure*), *Nothing was copied or kept*, and a **Try again** button. The button re-runs the
+  admission with fresh readings and never runs on a timer. A mid-copy stop or a concurrent copy reaching its
+  budget lands in the same state. With nothing held, the sheet is the version-2 flow: `forCopy` returns
+  `ShareStaging.preflight` and never reads the budget.
+
+**Results (all green, run to completion; artifacts' ages checked):**
+
+| Suite | Tests | Failures |
+|---|---|---|
+| Mac `npm test` | 1,267 | 0 |
+| phone `core` | 217 | 0 |
+| phone `sync-module` | 453 | 0 |
+| phone `app` | 110 | 0 |
+
+`tsc --noEmit` (both configs) clean. `check-suites-run`, `check-protocol-spec`, `check-debt-claims`,
+`check-defects`, `check-orphan-tests` and `check-renderer-scripts` all exit 0. The version-2 single-file
+suites ran **unedited**: `ShareToMacFlowTest`, `ShareToMacCopyTest`, `ShareManifestTest`,
+`ShareOfferV2Test`, `ShareOfferBusyTest`, `ShareOfferStagingLostTest`, and `share.test.ts`. So did the
+Stage A queue tests (Accept order, reservations, per-offer cleanup, lost-copy checks).
+
+**New tests:**
+- `ShareAdmissionBudgetTest` (11): the fallbacks below version 3 and for a file alone, where the budget is
+  never read; the exact limit admitted and one byte more refused with the measured limit (quota-bound and
+  space-bound); `limitOver` still binds; readings exactly 5 s old used and 5,001 ms refused, unmeasured;
+  each missing reading named; fresh reads per call; the Stage A cap path when no readings are supplied;
+  `keepCopying`.
+- `ShareStagingTest` (+3): `keepGoing` at the boundaries and at the finish; nothing left on a stop.
+- `ShareDevGateTest` (+5): the whole v3 advertisement table; 3+3 → 3, 3+2 → 2; the v3 line; the consume
+  order. The old consume-count guard was **split into named per-arm assertions, not raised**.
+- `ShareDevGateRoutingTest` (+1): the v3 activity is only in the debug manifest, `DUMP`-gated, with no filter,
+  and it is the one writer.
+- `ShareToMacNoRoomTest` (7): decision B's wording and button.
+- `shareActivation.test.ts` (+6).
+- `ext-negotiation.json`: 3+3, 3+2 and 2+3, read by both sides.
+- `ShareConcurrentBudgetTest`'s "unwired" guard is replaced by one naming its **two** production users.
+
+**Red under mutation (11 of 11)**, each on the test named for it. Controls: the unmutated
+`shareActivation.test.ts` 26/26 green; phone result files 0 s old with the Gradle exit code read. Every file
+restored and checked by SHA-256.
+- Mac:
+  - M1: version 3 advertised without `share.ask`;
+  - M2: the gate drops its `share.ask` check;
+  - M3: the gate drops the packaged guard;
+  - M4: `main.ts` honours the switch when packaged.
+- Phone:
+  - P1: version 3 without `debuggable`;
+  - P2: `forCopy` ignores the budget;
+  - P3: the boundary off by one;
+  - P4: no finish-time check;
+  - P5: the sheet supplies the budget in a release build;
+  - P6: Try again removed;
+  - P7: a main source arms version 3.
+
+**My own mistake during the run, recorded:** the first `keepCopying` test gave the own-cache reading `Σ`
+but not the bytes already written, and the budget correctly refused with `OWN_CACHE_BELOW_KNOWN`. The
+fixture was wrong, not the code.
+
+**Not verified here:**
+- the merged **release** manifest is not built — the routing tests read source sets, as before;
+- `ShareBudgetReadings` on a device — `queryStatsForPackage` and `getCacheQuotaBytes` are the probe's calls
+  (`a18f45d`), unexercised through this path;
+- the receive window with several cards at a real size.
+
+Stage 1's hardware gate (§10 with decision C's arm and disarm) is **not authorised**.
+
+**Mac free space during the work** (a 20 s log in the session scratchpad): 7,477 MiB at 18:56 → about
+5,665 MiB at 19:12. That includes a **−1,028 MiB step in 20 s at 19:06:23–43, while nothing of this work
+was writing**, then +339 MiB at 19:08:24. Gradle's `build/` directories hold about 480 MB. The floor of
+3 GiB was never approached. The cause of the swings is unconfirmed (see *Stage 0 corrections*).
+
+## Version 3 Stage 1 — the stopped-copy wording fix (2026-09-26 night → 09-27, automated only, uncommitted)
+
+**The defect, found in review of Stage 1 before any commit.** A concurrent copy stopped by its budget
+re-check (`ShareStaging.Outcome.BudgetStopped`) reached the sheet as `NoRoomYet(…, limit = null)`, so it
+**always** read *"Sidekick couldn’t measure how much room this phone has"* — even when the re-check had
+measured perfectly and the room had simply fallen. Second, smaller, same path: `held` was **re-read after the
+stop** (`ShareFeature.stagingContext()`), so if the other offer ended in between the sheet would say *"still
+handling another file (0 bytes prepared for it)"*. The `OverLimit` budget branch had the same re-read. Third,
+found while fixing: after a partial copy the sheet said *"Nothing was copied or kept"*, which is false —
+bytes were copied, then deleted. None of these could make anyone think a file was sent or saved.
+
+**The fix.**
+- `ShareAdmission.stopCopying` (replaces `keepCopying: Boolean`) returns `Stop(why, held, limit)` — the
+  re-check's own reason, the `Σ` **it** read, and a measured limit — or null to keep going.
+- `ShareConcurrentBudget.limitAfterDiscarding`: the measured limit with the partial taken back out of `K`
+  and returned to `A` — what a Try again would face. Null exactly when a reading is missing, stale, from the
+  future or inconsistent, so an over-budget stop is never unmeasured.
+- `ShareStaging.copy(budgetStop = …)` (was `keepGoing`) carries that `Stop` unchanged in
+  `BudgetStopped.stop`. The default (`{ null }`) never stops anything: a version-2 copy is unchanged.
+- The sheet: `NoRoomYet` gains `why` and `at` (`BeforeCopy` / `StoppedPartway(bytes)` / `ReachedLimit`),
+  built by the pure `noRoomAfterStop`. *Couldn’t measure* still keys on `limit == null`. A stop names
+  free space or Sidekick’s temporary-storage allowance, and a partial copy says what was prepared and that
+  it was deleted. The `OverLimit` branch uses `Σ` as the admission read it.
+- **Unchanged:** `Saved` and every post-offer state, the version-2 preflight, and the single-file path
+  (`forCopy` with `Σ = 0` never reads the budget).
+
+**How it was tested, and why not with Gradle.** Mac free space was 3.8–4.2 GiB all sitting, under the
+owner's 5 GiB gate for builds, so **no Gradle task ran**. The pure files were compiled standalone with the
+project's own Kotlin 2.2.20 compiler and serialization plugin from the Gradle cache, into the session
+scratchpad (≈1 MB), and run under JUnit 4.13.2:
+
+| Run | Tests | Failures |
+|---|---|---|
+| `ShareStagingTest`, `ShareAdmissionBudgetTest`, `ShareConcurrentBudgetTest`, `ShareToMacNoRoomTest`, `ShareToMacCopyTest`, `ShareToMacFlowTest`, `ShareManifestTest`, `ShareOfferTest`, `ShareOfferV2Test`, `ShareOfferBusyTest`, `ShareOfferStagingLostTest`, `ShareHeldCopiesTest`, `ShareSelectionTest` | 193 | 0 |
+| Mac `npm test` (unchanged this sitting) | 1,267 | 0 |
+
+**What that run does not cover:** `ShareToMacModel.kt` (Android and AndroidX), which is the write site. It
+is reached two ways instead. A source guard in `ShareToMacNoRoomTest` checks that the stop and limit
+branches build their state without `stagingContext`. A scratch file compiles the model's exact
+`budgetStop = …` expression against the real types. The **full Gradle suites (core, sync-module, app)
+were not run**, and nor were the debug and release builds or the merged manifests. They are owed before a commit.
+
+**New or changed tests.**
+- `ShareAdmissionBudgetTest`:
+  - `keepCopying` replaced by `stopCopying` tests;
+  - a quota drop mid-copy → `Stop(OVER_QUOTA_BUDGET, Σ, 9 MiB)` exactly;
+  - free space falling mid-copy → `Stop(OVER_SPACE_BUDGET, Σ, 10 MiB − 1)` exactly, with a +1 byte control;
+  - stale, quota-unreadable and usable-unreadable → limit null, with a control exactly 5 s old;
+  - the `Σ` carried is the one read, asked for once;
+  - `limitAfterDiscarding`.
+- `ShareStagingTest`:
+  - the `Stop` is carried by identity;
+  - a stop mid-copy and at the finish leave nothing;
+  - **a stopped second copy deletes only its own partial**: the held copy's `.bin` and marker survive and
+    read back byte-exact.
+- `ShareToMacNoRoomTest` (+6):
+  - measured stops are never worded as unmeasured, including a measured 0;
+  - only reading refusals say *couldn’t measure*;
+  - the `Σ` shown is the re-check's (plus the write-site source guard);
+  - partial copies are never *nothing copied*;
+  - every stopped state still claims no send or save, leaves nothing to discard, and offers Try again.
+- `ShareConcurrentBudgetTest`'s wiring guard: `ShareToMacCopy.kt` is named as the **third** user, answering
+  *how is a refusal worded*. It is **not** a raised count: a second assertion requires it to use
+  `ShareConcurrentBudget.Refusal` and nothing else.
+
+**Red under mutation, 6 of 6**, each on the test named for it (then restored and checked by SHA-256):
+- M1: the original defect, where the stop's limit was dropped in `noRoomAfterStop` (2 red);
+- M2: `held` re-read at the model's write site (1);
+- M3: `stopCopying` reports no limit (2);
+- M4: the limit is not adjusted for the deleted partial (3);
+- M5: a partial is worded *nothing copied* (2);
+- M6: `Σ` is re-read inside `stopCopying` (1).
+
+**Guards:** `check-protocol-spec`, `check-debt-claims`, `check-defects`, `check-renderer-scripts` and
+`check-apps-verb` all exit 0, and so do `tsc --noEmit` (both configs). `check-suites-run` exits 0 but
+reports **NOT CHECKED** for both halves (nothing staged). `check-orphan-tests` exits 0 but reads **tracked**
+files only, so it says nothing about the untracked `ShareAdmissionBudgetTest.kt` and `ShareToMacNoRoomTest.kt`.
+The standalone run is what executed those two.
+
+**Mac free space:** 3,904 MiB at the start (23:29). The idle Gradle daemon (pid 75145, idle since 19:11:33,
+last build this project, no client, no IDE) was stopped with `./gradlew --stop` as approved; the Kotlin
+daemon named in the previous report had already exited. After the stop: 3,972 → 4,167 MiB over three
+minutes. On 09-27: 3,800–3,829 MiB over three minutes. Nothing was deleted.
+
+## Version 3 — Stage 1 verified through Gradle, and Stage 2 begun (2026-09-27, automated only, uncommitted)
+
+> Nothing installed, armed, relaunched, transferred, deleted or committed. The running Mac dev app (pid 93018)
+> and `desktop/dist` (12:53:08) were not touched: the Mac build was emitted to a scratch directory.
+
+### Free space
+
+7.24 GiB at the start, above the 5 GiB gate. A watcher logged free space every 10 s and would have stopped
+Gradle below 3 GiB. It read 7.4 GiB through Stage 1's Gradle work, then rose to **13.9 GiB at 16:40:52 and
+about 17.7 GiB later**, with nothing of this work deleting anything. The cause of the rise is unconfirmed.
+
+### Stage 1 — the owed checks
+
+- **Phone suites, `--rerun-tasks`, every result file 10–23 s old at the reading, Gradle exit 0:** core
+  **217/0**, sync-module **459/0**, app **116/0**. That includes `ShareToMacModel.kt` compiled whole for
+  the first time, `ShareToMacNoRoomTest` (13) and `ShareAdmissionBudgetTest` (16), which the earlier
+  standalone run had not reached through Gradle.
+- **Builds:** `:app:assembleDebug` and `:app:assembleRelease` both succeeded (release APK 26,877,515 bytes,
+  **not debuggable**).
+- **Merged release manifest:** `ShareDevV3Activity` **0** and `ShareDevV2Activity` **0**, 5 activities in all.
+  The debug manifest has both, 15 activities. `ShareToMacActivity` carries `ACTION_SEND` in both.
+- **A lookalike, recorded.** `grep -c SEND_MULTIPLE` on the merged manifests returned **1** (release) and
+  **3** (debug). Every match is an XML **comment saying there is no `SEND_MULTIPLE`**. The packaged APKs
+  (`aapt2 dump xmltree`, where comments are stripped) read **0** in both. The APK is the reading.
+- **Mac:** `npm run typecheck` exit 0; a scratch `tsc --outDir` exit 0; `npm test` **1,267/0**
+  (`.test-run.json` green). `desktop/dist/main/main.js` still reads 12:53:08 after all of this.
+- **Guards:** all 14 checkers exit 0. `check-suites-run --worktree`: both halves GREEN.
+  `check-orphan-tests` reads **tracked files only** (`git ls-files`), so it says nothing about untracked test
+  files. Gradle's own XML shows those ran.
+- **No Stage 1 defect was found.**
+
+### Stage 2 — built, development only
+
+**Built:**
+- `ShareManyQueue` (sync-module, pure) implements the selection rules: one copy at a time; each file offered
+  when ready; §12 waiting for its three reasons, oldest first, never overtaken by another waiting file,
+  overtaken only by a never-tried one; fail at once when `s + M(s) > free + Σ`; §14 unknown sizes, with
+  verified deletion before the one retry at `Σ = 0` and no third attempt; §15 per-file failures;
+  selection-wide ends (screen closed, session ended) that never touch an offered file; a Busy answer
+  sends the file back to waiting and ends that evaluation.
+- `ShareSelection.atSend` and `Refusal.NEEDS_VERSION_3` (C6).
+- `ShareManyCopy` (app, pure) holds §13.1's rows, §13.2's summary and §15's refusals. After an offer, a row
+  is the single-file sentence word for word, except *accepted — waiting its turn* and *Not sent*.
+- `ShareManyToMacActivity` and `ShareManyToMacModel`, **debug source set only**: review first
+  (`OpenableColumns`, content not opened), then **Send N files**, each file its own offer
+  (`requireAsk = true`). A one-file `SEND_MULTIPLE` is bound in-process to the unchanged single-file
+  model and sheet. §12's triggers are an offer on the session ending, each copy's end, and a 5 s tick.
+- A debug-manifest entry with `SEND_MULTIPLE` and the single-file types, **`android:enabled="false"`**.
+
+**Not built:**
+- **Open decisions:** the stall clock (10-minute and 60-minute values), Stop preparing, the §13.3
+  notification, keep-screen-on (option A).
+- **`group`:** not sent. The Mac-side C3 validation does not exist, and `group` is display only.
+- **Lifecycle:** leaving the screen ends unprepared files and finishes the activity. This is a fail-closed
+  placeholder matching the single-file sheet, **not** a decision on option A.
+- **Interpretation, not specified:** a *known*-size concurrent copy stopped by a budget re-check takes
+  §14's verified-delete → retry path.
+- **Wording added beyond the proposal:** four summary categories (*preparing*, *not prepared yet*,
+  *{Mac} couldn’t save*, *sent, waiting for {Mac} to confirm*) and the *not a content URI* refusal
+  sentence.
+
+**Tests:**
+- `ShareManyQueueTest`, 21. Synthetic bytes, with a fake `ShareFeature` whose `Σ` is the real sum of offered
+  copies and whose §4 readings measure the staging directory's real contents. They cover 0/1/2/10/11,
+  version 2 versus 3, waiting order, the 10-offer limit, Busy, fail-at-once, unknown size alone,
+  unknown size beside a held copy, no third attempt, under-reported size, open and read failures beside
+  successes, screen closed mid-copy, session ended, no session, and out of rule. Every scenario asserts
+  staging holds exactly the live offers' copies and never a `.part`. A 20 s per-test timeout turns a
+  looping rule into a failure.
+- `ShareManyCopyTest`, 9: Saved only on `State.Saved`; a label says Sent only when all bytes are sent;
+  queued is not *sending*; single-file wording word for word; all saved only when all are.
+- `ShareManyManifestTest`, 3: no `SEND_MULTIPLE` in main; exactly one debug claimant, disabled, with the
+  single-file types; the activity lives in debug only.
+
+**Two guards fired, and each was answered by name, not by raising a count:**
+- `ShareConcurrentBudgetTest`: `ShareManyQueue.kt` is the fourth user and may only name `Refusal`.
+  Mutated to call `measuredLimit`, it goes red with that reason.
+- `DebugProbeGateTest`: the new activity is named as the third share-sheet-reachable debug activity.
+
+**Mutations: 12 red on their named tests, then restored.**
+- Queue: M1 waiting overtaken; M2b fail-at-once never fires; M3 retry not alone; M5 end touches offered;
+  M6 Busy loops; M7 a second retry; M8 no live limit.
+- Wording and manifest: C1 all saved early; C2 queued shown as sending; C3 stopped keeps its headline;
+  C4 enabled by default.
+- The widened budget guard.
+- **One survivor, not reachable by the queue suite:** the `leftBehind` call inside the retry path.
+  `leftBehind` itself is unit-tested (a dangling link counts), but nothing produces a partial that
+  `ShareStaging.copy` failed to delete.
+
+**Three instrument faults in the mutation harness, recorded because each produced a confident line:**
+- M2's first run did not compile; its "red" line came from another run's results file.
+- M7 hung inside `evaluate`, and its printed line was a 615-second-old file.
+- A targeted mutation run left a failing XML that `check-suites-run` then reported as **RED** for the
+  restored tree, until sync-module was re-run: **937 tests, GREEN**.
+
+The harness now deletes the results file before each run and prints its age.
+
+**Final, on the restored tree:**
+- Phone, `--rerun-tasks`, Gradle exit 0: core **217/0**, sync-module **480/0**, app **128/0**.
+- Debug and release rebuilt. The release manifest, merged and packaged, has `ShareManyToMacActivity` **0**
+  and `SEND_MULTIPLE` **0**. The debug APK has `ShareManyToMacActivity` **1**.
+- All 14 checkers and `check-defects` exit 0.
+- Mac 1,267/0 (no Mac source changed in Stage 2).
+
+## Version 3 — review before hardware, and the unverified-cleanup test (2026-09-27, late; automated only, uncommitted)
+
+> Nothing installed, armed, enabled, relaunched, sent, deleted or committed. The running Mac dev app and
+> `desktop/dist` (12:53:08) were not touched. The Samsung was not addressed.
+
+**Free space**, measured on `/System/Volumes/Data` (`df -k`): **22.5 GiB** at the start (the owner saw about
+26), 24.8–25.4 GiB during the Gradle run; a 10 s watcher with a 3 GiB stop floor never fired (minimum
+24.8 GiB).
+
+**The retry path with a partial that cannot be confirmed deleted — the survivor recorded above is now
+reached.** `ShareManyQueueTest` → *a partial that cannot be confirmed deleted*. Produced for real, not
+modelled: the source's first read makes the staging directory `r-x`, so `ShareStaging.copy`'s own delete
+of the `.part` is refused by the file system; the source's `close()`, which `copy` runs after its delete,
+restores it. Synthetic bytes (3,000 / 8,000 / 100), a JUnit temporary folder, a 20 s timeout. It asserts:
+the file ends `Not sent (CleanupUnverified)`; opened once and never offered; still not retried after
+`Σ = 0`; the third file goes on; the partial is still present and byte-equal to what was read; `end()`
+deletes 0; a well-formed attempt name that is not the queue's and a stranger file are both left; the
+staging directory holds exactly those plus the live offer's copy; exactly one per-file report, for that
+file, naming the attempt.
+
+- **Source change:** `ShareManyQueue.Env.notPrepared(index, attemptId, why)`, called for a copy that did not
+  stage (a staged copy's refusal is already reported by `offer`). The run's result handling moved into
+  `settle()` unchanged. The debug model logs it at warning level with the attempt id and the tally.
+- **Wording:** §14's sentence kept word for word, one added: *"Sidekick won't try this file again from this
+  screen, and nothing of it reached {Mac}."* `ShareManyCopyTest` pins it, `Not sent`, and the summary.
+- **Mutations, each red on the new test, source restored byte-identical:** MA retry regardless of
+  `leftBehind` (`expected NotSent(CleanupUnverified) but was Waiting(RetryAlone)`); MB the queue deletes the
+  unverified partial; MC no per-file report (`List is empty`); MD the one-line sentence restored.
+- **Instrument faults, recorded:** the first mutation harness (zsh) printed *no results file* for all four
+  — a glob fault, no reading; rerun under bash. MC's first form did not compile — no reading; rewritten.
+  The first full-suite script hung for 69 minutes on an `awk` whose program lost its braces to quoting, so
+  it waited on stdin; **nothing ran** in that time. Killed (exit 143) and rerun.
+
+**Final, this tree:** Gradle `--rerun-tasks`, exit 0, every result file from this run: core **217/0**,
+sync-module **481/0**, app **129/0**. `assembleDebug` and `assembleRelease` exit 0. Mac typecheck 0,
+**1,267/0**. All 14 checkers exit 0; `check-suites-run --worktree` GREEN both halves.
+
+**Manifests and APKs** (`aapt2 dump xmltree`, comments stripped):
+
+| | activities | `ShareManyToMacActivity` | `ShareDevV3Activity` | `SEND_MULTIPLE` | debuggable |
+|---|---|---|---|---|---|
+| debug APK (22:51:48) | 16 | 1, **`enabled=false`**, exported, the six single-file types | 1 | 1 (its own filter) | yes |
+| release APK | 5 | **0** | **0** | **0** | no |
+
+The release APK reads 17:08:14, older than this run. **Not a stale reading:** release Kotlin recompiled at
+22:51:44 and R8 re-ran at 22:52:42, producing a `classes.dex` byte-identical (SHA-256 `a56f6b9e…`) to the
+one inside that APK — `ShareManyCopy` is referenced only from debug code, so R8 strips it — and Gradle
+correctly skipped repackaging. The new sentence is absent from release dex (0) beside a positive control
+(49 `Sidekick`/`Send to Mac` strings). Merged manifests agree.
+
+## Version 3 — Stage 2 hardening: close versus open, the stall clock, and a review (2026-09-28, overnight; automated only, uncommitted)
+
+Owner brief: make the multi-file path code- and test-ready without any device action. **Nothing was
+installed, armed, enabled, relaunched, transferred, deleted or committed. The SM-S938B was not addressed
+at all.** The Mac dev app (pid 93018) and `desktop/dist` (12:53:08) were not touched — `dist/main/main.js`
+mtime read before and after the Mac run, unchanged; typechecks ran with `--noEmit`.
+
+**Free space (Data volume):** 25 GiB at the start (`df -g`), 26,194 MiB before the full run, 26,125 MiB
+after both APK builds. Never near the 3 GiB floor; nothing deleted.
+
+### 1 · The close-versus-open race — fixed, and the test drives the interleaving
+
+The pre-hardware review's finding, confirmed in the source: `run()` checked `ended` under the lock,
+**released it, then called `env.open(i)`**. An `end()` landing between the two let one more shared URI be
+opened after the screen had closed.
+
+- **Fix:** one `ReentrantLock` (the *open gate*) held from the `ended` check through `Env.open`'s return.
+  `end()` sets `ended` first, then takes the gate. So an open is either wholly before the end — its stream
+  is then **closed unread** and no copy attempt starts — or never begins. `end()` waits for at most **one
+  open call already under way**; never for a read or a copy. Lock order is always gate → queue lock.
+- **Cost, stated:** `screenClosed()` runs on the main thread from `onStop`, so it can wait for one
+  `openInputStream` in flight on the queue thread. Bounded by one provider open, not measured on a device.
+- **Test, deterministic (latches and thread states, no sleep):** the open parks inside `Env.open`; `end()`
+  is started on a second thread; the test waits until that thread is either `WAITING` or `TERMINATED` and
+  asserts `WAITING`. Then: the stream is closed, **0 bytes read**, no attempt started, item 2 never
+  opened, staging empty, a later trigger opens nothing, and the end is not reported as an open failure.
+  A second test: once `end()` has returned, three triggers open nothing.
+- **Per-file `OpenFailed` log:** `Env.notPrepared(index, attemptId?, why, cause?)` now fires for an open
+  failure (attempt id null — nothing was attempted) with the exception's **class name only**. The line is
+  built by `ShareManyQueue.notPreparedLine`, which has no parameter a name, URI or path could reach. The test
+  throws a `SecurityException` whose message carries a full `content://…/DCIM/IMG_…_secret.jpg` URI and
+  asserts the line is exactly `selection item 1/2 (no copy attempted) not sent: OpenFailed
+  (java.lang.SecurityException)` and contains none of `content:`, `IMG_`, `secret`, `DCIM`,
+  `FileProvider`, `Denial`.
+
+| Mutation | Result |
+|---|---|
+| M1 `end()` does not take the gate | **red** — the close-versus-open test |
+| M2 open outside the gate (the original race) | **red** — same test |
+| M3 a stream opened before the end is used, not closed unread | **red** — same test |
+| M4 `OpenFailed` not reported per file | **red** — the per-file report test |
+| M5 the exception's `toString()` (message) reaches the report | **red** — same test |
+
+### 2 · The §12 stall clock — built as written, development only, on synthetic time
+
+No contradiction in the contract; **five readings** it needed are recorded in the proposal's §12 *build
+status* for the owner. The first changes behaviour: the `that is` formula is applied exactly — `Σ'` and
+`live'` with the **same** `free` and readings — so a file whose only obstacle is the *space* an accepted
+offer's copy occupies is **not** paused. Pinned by a test (`s + M(s)` = 300 MiB + 2,000 B, 300 MiB free,
+a 4,000 B in-progress copy → running → ends at 10:00), and the other reading is mutation M10.
+
+- `ShareManyQueue.StallClock`: pure; starts running on first entry to waiting; each evaluation sets it
+  running or paused until the next; never reset (a file's own copy attempt is neither, but counts to the
+  ceiling); 10 minutes running or 60 minutes from entry end the file as `NotSent(WaitedTooLong(byCeiling))`.
+  PROVISIONAL constants, monotonic clock only (`Env.monotonicMs` → `SystemClock.elapsedRealtime`).
+- "In progress" is `ShareOffer.inProgress` — `Accepted`, `Sending`, `AwaitingVerdict`; **not** `Offered`
+  and **not** a `Failed` pull in its retry window, although `isLive` counts both. `ShareFeature.inProgress()`
+  reads count and bytes together under its lock.
+- A timeout ends **that file only**: no offer, nothing staged (a waiting file holds nothing by
+  construction), a per-file report with no attempt id, and the other files untouched.
+- Rows: paused → *Waiting for {Mac} to finish an earlier file. Keep this screen open.*; running → the
+  existing line; reason (b) keeps its own sentence either way; no countdown (checked by a pattern that is
+  first shown to match *"Prepared in 9 min"*). Timed out → *Not sent* / *It waited too long for room on
+  this phone and was never offered to {Mac}.*
+
+Tests (synthetic time, the 5 s tick driven by hand): the pure clock's arithmetic, including one
+millisecond short of each limit and a clock stepping back; 10 minutes behind an unanswered offer (only that
+file ends, never read, never offered); paused behind an accepted one until the 60-minute ceiling; paused
+only when **every** blocking offer is accepted; a retry waiting alone paused and running; never reset
+between attempt 1 and its retry (ends at 10:00 total, not 10:00 after the retry); the formula case above;
+an impossible in-progress reading keeps it running.
+
+| Mutation | Result |
+|---|---|
+| M6 clock reset when the file re-enters waiting | **red** — never-reset test |
+| M7 paused time counted as running | **red** — 4 tests |
+| M8 never paused | **red** — 3 tests |
+| M9 no ceiling | **red** — 2 tests |
+| M10 `free` credited with the in-progress bytes (the other reading) | **red** — the formula test |
+| M11 an inconsistent reading trusted | **red** — its test |
+| M12 a timed-out file not reported | **red** — the 10-minute test |
+| M13 a file's own copy time counted as running | **red** — the clock arithmetic test |
+| M14 `Offered` counted as in progress | **red — only in `ShareOfferTest`** |
+
+**M14 is the limit worth stating:** the queue tests stand in a fake for `ShareFeature.inProgress`, so they
+do not reach the real one-line filter over `ShareOffer.inProgress`. The rule has one home and is tested
+there; the line calling it is not reached by any JVM test.
+
+### 3 · Review of the debug-only multi-file path — three defects fixed, one lifecycle gap closed
+
+Reviewed: grant handling and lifecycle, 0/1/2/10/11 selections, the version-2 fallback, per-file refusal
+and cleanup, no retry after unverified cleanup, and the offered / sent / Saved wording.
+
+| Finding | Fix | Proof |
+|---|---|---|
+| **An offered row could revert to *Waiting for you to accept*.** `ShareFeature.views` keeps the newest 16 offers; `ShareManyCopy.after` returned null for an offer no longer in it, so the row was redrawn from its pre-offer state — over a file the Mac had **saved**. Reachable only after 16 newer offers, but it is exactly the wrong word | `after` takes and returns the last **row** (`ShareManyRow.After`), so an aged-out offer keeps it, *queued* included; the model stores rows | test + C1 (the original) **red** |
+| **Items could be dropped silently.** `bind` took `EXTRA_STREAM` whenever present — an empty one hid the `ClipData` — and `mapNotNull`'d `ClipData` items, so a three-item share with one text item became two files with no word said (§15: never truncated) | `ShareSelection.streams(extra, clip)`: `EXTRA_STREAM` only when non-empty; a missing item stays null, so `decide` refuses at its index | test + S1 (empty hides ClipData), S2 (nulls dropped) **red**. The model's call site (Android) is not reached by a JVM test |
+| **Back kept the queue opening URIs until `onCleared`.** `onStop` returned early when finishing — the single-file sheet's shape, correct there (one URI, opened once) — but a finishing activity's `onDestroy` can trail `onStop` by up to the idle timeout, and the queue opens a new URI per file | the multi-file branch now ends the selection in `onStop` even when finishing; the single-file branch is byte-for-byte the old rule; `end()` in the model is idempotent (Close, `onStop`, `onCleared` all arrive) | **reasoned, not tested** — no JVM seam for the lifecycle, and a test restating two booleans would be the "model the thing" failure |
+| Wording C2/C3 (paused line; reason (b) kept) | — | red under mutation |
+
+Checked and left: the grant is read through the application's resolver (URI grants are per UID); 0 → *no
+files*, 1 → the single-file sheet in the same activity, 2 and 10 → review, 11 → refused, never truncated;
+several files at version 2 → refused at **Send** with the §15 sentence; a mid-selection reconnect to a
+version-2 Mac ends the rest; a staged copy is offered or deleted, never both; `CleanupUnverified` is
+never retried; **Saved** only from the acknowledged verdict; **Sent** only when every byte left.
+`ShareToMacActivity`, `ShareToMacModel` and every version-2 single-file suite are unchanged and green.
+
+### 4 · Instrument faults, recorded
+
+- **A stale results file beside a failed compile.** The first run of the new queue tests did not compile;
+  the harness printed the existing XML — **7,164 s old** — beside `gradle exit: 1`. Read as *no reading*.
+- **My own manifest parser.** A regex for `android:enabled` expected a typed-value form aapt2 does not
+  print, and reported the debug `ShareManyToMacActivity` as `enabled=default(true)`. The raw line reads
+  `android:enabled(0x0101000e)=false`. The same pass counted `SEND_MULTIPLE` **2** in the debug manifest:
+  one action line, matched once as the value and once as its `(Raw: …)` echo. Both corrected from the raw
+  dump before being written here.
+- **A vacuous green.** `check-suites-run.mjs` with nothing staged prints `NOT CHECKED` for both halves and
+  exits 0. `--worktree` is the real reading: phone GREEN, 956 tests, 282 s old; Mac GREEN, 1,267 tests,
+  152 s old. (956 counts every module's results; the three run tonight total 844.)
+
+### 5 · Final, this tree
+
+| | Result |
+|---|---|
+| Phone, Gradle `--rerun-tasks` (106 tasks executed, 0 up to date), every result file from this run | core **217/0**, sync-module **495/0** (+14), app **132/0** (+3) |
+| `:app:assembleDebug`, `:app:assembleRelease` | exit 0; debug SHA-256 `b017c886d09079d5…`, release `06be16a214b860e7…` |
+| Mac `npm test` (record written by the wrapper 9 s before it was read) | **1,267/0**; `tsc --noEmit` main and test configs exit 0 |
+| Commit-hook checkers, run directly | 15 of 15 exit 0 |
+| Mutations tonight | **19** (M1–M14, C1–C3, S1–S2), all red, each on the test named for it; sources restored, SHA-256 checked |
+
+**Packaged manifests** (`aapt2 dump xmltree`, raw lines read):
+
+| | activities | `ShareManyToMacActivity` | `ShareDevV3Activity` | `SEND_MULTIPLE` actions |
+|---|---|---|---|---|
+| debug APK | 16 | present, **`enabled=false`**, `SEND_MULTIPLE` only | present, `permission=DUMP` | 1 |
+| release APK | 5 | **absent** | **absent** | **0** |
+
+**Release dex:** `Lcom/chetan/connectsuite/probe/ShareManyToMacActivity;`, `…ShareManyToMacModel;` and
+`…ShareDevV3Activity;` occur **0** times; the control `Lcom/chetan/connectsuite/ShareToMacActivity;` occurs
+once. The same search finds all three in the debug dex (control that it can see them).
+
+### 6 · Not verified, and why
+
+- Nothing on hardware: the review screen has **never been drawn**; the stall clock has run only on
+  synthetic time; the §11 `SEND_MULTIPLE` grant lifetime is unmeasured and its instrument is not built.
+- The Back-in-`onStop` change, the model's `ShareSelection.streams` call site, and
+  `ShareFeature.inProgress`'s filter line are reached by no test.
+- **The running Mac cannot advertise version 3:** `shareV3` occurs 0 times in `dist/main/main.js` (control:
+  `shareV2` 11). Any version-3 hardware run needs an approved `npm run build` first.
+- The supervised plan for the first live tests is `docs/feature-a-v3-supervised-runbook.md` (not run).
+
+### 7 · Revision, same night: the pause rule credits `free'` (owner decision, 2026-09-28 01:10; automated only)
+
+**The owner's reading of §12 replaces the first build's.** The pause check is a hypothetical in which the
+`n` in-progress offers' `b` staged bytes are released: `Σ' = Σ − b` **and `free' = free + b`**, `live' = live − n`.
+`ShareManyQueue.hypothetical(live, held, free, n, bytes)` computes it and returns null — the clock runs —
+for nothing in progress, any negative input, `n > live`, `b > Σ`, or `free + b` past `Long.MAX_VALUE`.
+**Actual admission is unchanged**: `admit()` and the copy read the measured `Σ` and `free`, nothing is
+reserved. The §4 readings used when `Σ' > 0` are live measurements and are not adjusted.
+
+**No conflict with another rule was found.** The one scope limit is stated in the contract rather than
+worked around: synthesising credited quota/usable-space readings would be inventing readings.
+
+The first build's formula test (*free is not credited*, expired at 10:00) is **replaced** by:
+- the exact case — `s + M(s)` = 300 MiB + 2,000 B, 300 MiB free, an accepted 4,000 B copy: **paused at
+  15 minutes**, and **not copied** while A holds the space (only item 0 opened); A ends and its 4,000 B
+  are really free → admitted on the measured numbers and offered;
+- free space falls 3,000 B (beside an unanswered 3,000 B offer B): the credit no longer reaches, free + Σ
+  still does → **runs again** from 20:05 and ends at 30:00 (10 minutes running in all), never opened;
+- free space falls to 200 MiB: even every held copy released would not do → **fails at once** as
+  `NoSpace`, not `WaitedTooLong`;
+- a retry waiting alone at the floor: paused when A's bytes lift it above the floor, running when not;
+- `hypothetical`'s arithmetic and all five refusals, including the largest sum that fits.
+
+| Mutation | Result |
+|---|---|
+| N1 `free` not credited (the first build's reading) | **red** — 3 tests |
+| N2 the credit reaches **actual** admission | **red** — 3 tests (the exact case copies while A holds the space) |
+| N3 no overflow guard | **red** — the arithmetic test |
+| N4 `b > Σ` trusted | **red** — the arithmetic test |
+| N5 `Σ` not reduced, only `free` credited | **red** — 2 tests |
+| N6 the retry branch not credited | **survived** at first — no test reached it; the retry-alone test above added, then **red** |
+| M6, M7, M8, M9, M11′ (`n > live` trusted), M12, M13 re-run on this tree | all **red** |
+
+**Final, this tree:** Gradle `--rerun-tasks` (106 executed), every result file from this run: core
+**217/0**, sync-module **499/0**, app **132/0**. `assembleDebug` exit 0 (SHA-256 `396e9377658673b8…`,
+01:19:26); `assembleRelease` exit 0 — the APK was **not repackaged** (01:00:04, `06be16a214b860e7…`) and
+that is not a stale reading: R8 re-ran at 01:20:37 and its `classes.dex` is byte-identical (`f5196d3d…`)
+to the one in the APK. Manifests (raw aapt2 lines): debug 16 activities, `ShareManyToMacActivity`
+`enabled=false`, 1 `SEND_MULTIPLE` action, `ShareDevV3Activity` present; release 5 activities, both
+absent, 0 `SEND_MULTIPLE`. Release dex 0/0 for both probe classes, control `ShareToMacActivity` 1; debug
+dex 2/2/2. Mac **1,267/0**, both `tsc --noEmit` 0, `dist` unchanged (2026-09-26 12:53:08). 14 checkers
+exit 0; `check-suites-run --worktree` GREEN both halves (phone 960 across all modules, Mac 1,267).
+Free space 25,979 → 25,848 MiB.

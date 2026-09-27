@@ -67,6 +67,7 @@ class ShareToMacActivity : ComponentActivity() {
                 ShareSheet(
                     state = state,
                     onSend = { model.send() },
+                    onTryAgain = { model.tryAgain() },
                     onWithdrawOther = {
                         model.withdrawOther()?.let { Toast.makeText(this, ShareToMacCopy.withdrewOther(it), Toast.LENGTH_LONG).show() }
                     },
@@ -104,10 +105,12 @@ class ShareToMacActivity : ComponentActivity() {
     }
 }
 
+/** `internal`: the development-only several-files screen draws a one-file `SEND_MULTIPLE` with this sheet. */
 @Composable
-private fun ShareSheet(
+internal fun ShareSheet(
     state: ShareSheetState,
     onSend: () -> Unit,
+    onTryAgain: () -> Unit,
     onWithdrawOther: () -> Unit,
     onWithdraw: () -> Unit,
     onCancel: () -> Unit,
@@ -171,6 +174,10 @@ private fun ShareSheet(
                         OutlinedButton(onClick = onCancel) { Text(ShareToMacCopy.CANCEL_BUTTON) }
                     canWithdraw(state) -> OutlinedButton(onClick = onWithdraw) { Text(ShareToMacCopy.CANCEL_BUTTON) }
                     else -> OutlinedButton(onClick = onClose) { Text(ShareToMacCopy.CLOSE_BUTTON) }
+                }
+                if (canTryAgain(state)) {
+                    // Decision B: a refusal the person can retry by hand, never a sheet left waiting.
+                    Button(onClick = onTryAgain) { Text(ShareToMacCopy.TRY_AGAIN_BUTTON) }
                 }
                 if (state is ShareSheetState.Ready) {
                     // Enabled only when a tap can make an offer (canSend): a Mac that negotiated share.file 2

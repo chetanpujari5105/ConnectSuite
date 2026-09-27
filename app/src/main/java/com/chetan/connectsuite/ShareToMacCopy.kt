@@ -1,8 +1,10 @@
 package com.chetan.connectsuite
 
+import com.chetan.connectsuite.sync.v2.ShareConcurrentBudget
 import com.chetan.connectsuite.sync.v2.ShareIntake.Availability
 import com.chetan.connectsuite.sync.v2.ShareIntake.Refusal
 import com.chetan.connectsuite.sync.v2.ShareOffer
+import com.chetan.connectsuite.sync.v2.ShareStaging
 import java.util.Locale
 
 /**
@@ -68,6 +70,33 @@ sealed interface ShareSheetState {
         data class HoldingAnother(val held: Long) : Failure
         /** Version 3 only, and only once a cap is approved: this copy would pass it. */
         data class OverHoldCap(val held: Long, val cap: Long) : Failure
+        /**
+         * Version 3 only, development (owner decision B): another file's copy is held for a live offer
+         * ([held] bytes) and the per-copy budget refused this one. [limit] is the **measured** room for
+         * one more copy at that moment, or null when no measurement was possible; [size] is this file's
+         * reported size, or null. Nothing was copied or kept. The sheet offers **Try again**.
+         * [anotherPreparing]: a Try again found another file being prepared right now.
+         *
+         * [why] is the budget's own refusal, carried unchanged (null only for a copy that reached the
+         * limit it was admitted with). [at] says whether any of this file was copied before it stopped —
+         * the wording may say *nothing was copied* only when that is true. **[held], [limit] and [why]
+         * are the facts of the check that refused**, never re-read afterwards: see ShareAdmission.Stop.
+         */
+        data class NoRoomYet(
+            val held: Long, val size: Long?, val limit: Long?, val anotherPreparing: Boolean = false,
+            val why: ShareConcurrentBudget.Refusal? = null,
+            val at: NoRoomAt = NoRoomAt.BeforeCopy,
+        ) : Failure
+    }
+
+    /** When the no-room refusal happened, and so what the sheet may say was copied. */
+    sealed interface NoRoomAt {
+        /** Refused before a byte was read: nothing was copied. */
+        data object BeforeCopy : NoRoomAt
+        /** The budget re-check stopped the copy after [bytes] were prepared; they were deleted. */
+        data class StoppedPartway(val bytes: Long) : NoRoomAt
+        /** The copy reached the limit it was admitted with; what was prepared was deleted. */
+        data object ReachedLimit : NoRoomAt
     }
 
     /** Why Send made no offer. The prepared copy is still this sheet's; nothing reached the Mac. */
@@ -178,6 +207,22 @@ fun canSend(state: ShareSheetState): Boolean =
     state is ShareSheetState.Ready && state.availability is Availability.Available &&
         state.notOffered != ShareSheetState.NotOffered.MAC_BUSY
 
+/** **Try again** exists only after a "no room for another file yet" refusal (decision B). */
+fun canTryAgain(state: ShareSheetState): Boolean =
+    state is ShareSheetState.Failed && state.failure is ShareSheetState.Failure.NoRoomYet
+
+/**
+ * The sheet state for a concurrent copy its budget re-check stopped: **exactly the re-check's facts** —
+ * its reason, the `Σ` it read, its measured limit — and the bytes prepared before the stop. Nothing is
+ * re-read here, so the other offers ending in the meantime cannot turn the sentence into *another file
+ * … (0 bytes prepared for it)*, and a valid measurement cannot be worded as *couldn't measure*.
+ */
+fun noRoomAfterStop(stopped: ShareStaging.Outcome.BudgetStopped, size: Long?): ShareSheetState.Failure.NoRoomYet =
+    ShareSheetState.Failure.NoRoomYet(
+        held = stopped.stop.held, size = size, limit = stopped.stop.limit,
+        why = stopped.stop.why, at = ShareSheetState.NoRoomAt.StoppedPartway(stopped.bytesWritten),
+    )
+
 /** The other file may be withdrawn only while it waits for an answer — never mid-transfer. */
 fun canWithdrawOther(state: ShareSheetState): Boolean =
     state is ShareSheetState.Ready && state.notOffered == ShareSheetState.NotOffered.MAC_BUSY &&
@@ -211,6 +256,7 @@ object ShareToMacCopy {
     const val SEND_BUTTON = "Send"
     const val CANCEL_BUTTON = "Cancel"
     const val CLOSE_BUTTON = "Close"
+    const val TRY_AGAIN_BUTTON = "Try again"
 
     fun headline(state: ShareSheetState): String = when (state) {
         ShareSheetState.Starting -> "Opening the file…"
@@ -221,7 +267,8 @@ object ShareToMacCopy {
             state.waitingOther?.awaitingAnswer == false -> "Another file is being sent to your Mac"
             else -> "Another file is waiting for approval on your Mac"
         }
-        is ShareSheetState.Failed -> "Couldn’t prepare this file"
+        is ShareSheetState.Failed ->
+            if (state.failure is ShareSheetState.Failure.NoRoomYet) "No room for another file yet" else "Couldn’t prepare this file"
         is ShareSheetState.WaitingForMac -> "Waiting for you to accept on ${state.mac}"
         is ShareSheetState.Sending -> if (state.allSent) "Sent — waiting for ${state.mac} to confirm" else "Sending to ${state.mac}…"
         is ShareSheetState.Saved -> "Saved on ${state.mac}"
@@ -354,6 +401,33 @@ object ShareToMacCopy {
         is ShareSheetState.Failure.OverHoldCap ->
             "Files waiting for your Mac already take ${bytes(f.held)}, and this one would pass the ${bytes(f.cap)} this phone holds at once. " +
                 "Wait for one to finish or withdraw one, then share this again. Nothing was kept."
+        is ShareSheetState.Failure.NoRoomYet -> noRoomYet(f)
+    }
+
+    private fun noRoomYet(f: ShareSheetState.Failure.NoRoomYet): String {
+        val other = "Your Mac is still handling another file from this phone (${bytes(f.held)} prepared for it)."
+        val fell = when {
+            f.at !is ShareSheetState.NoRoomAt.StoppedPartway || f.limit == null -> ""
+            f.why == ShareConcurrentBudget.Refusal.OVER_SPACE_BUDGET -> "This phone’s free space fell while this file was being prepared. "
+            f.why == ShareConcurrentBudget.Refusal.OVER_QUOTA_BUDGET ->
+                "The storage Android lets Sidekick use for files it is preparing filled up while this one was being prepared. "
+            else -> "The room for it fell while it was being prepared. "
+        }
+        // "Couldn't measure" only when there is no measurement: the wording keys on the limit itself.
+        val room = when {
+            f.anotherPreparing -> "Another file is being prepared on this phone right now, so this one can’t start yet."
+            f.limit == null -> "Sidekick couldn’t measure how much room this phone has for another file right now."
+            f.size == null -> "${fell}With that held, this phone can prepare only ${bytes(f.limit)} more right now, and this file’s size isn’t reported."
+            else -> "${fell}With that held, this phone can prepare only ${bytes(f.limit)} more right now, and this file is ${bytes(f.size)}."
+        }
+        val kept = when (val at = f.at) {
+            ShareSheetState.NoRoomAt.BeforeCopy -> "Nothing was copied or kept."
+            is ShareSheetState.NoRoomAt.StoppedPartway ->
+                "Sidekick stopped after preparing ${bytes(at.bytes)} of it and deleted that part. Nothing was kept."
+            ShareSheetState.NoRoomAt.ReachedLimit ->
+                "Sidekick stopped when it reached that limit and deleted what it had prepared. Nothing was kept."
+        }
+        return "$other $room $kept Tap $TRY_AGAIN_BUTTON when the other file has finished — while this screen is open."
     }
 
     /** `230,778 bytes (225 KB)` — the exact count first, then a human form. */
@@ -385,6 +459,15 @@ object ShareToMacCopy {
             ShareSheetState.Failure.ReadFailed, ShareSheetState.Failure.WriteFailed,
             ShareSheetState.Failure.AccessLostOnRecreate, ShareSheetState.Failure.StagingUnavailable,
             ShareSheetState.Failure.HoldingAnother(100_718), ShareSheetState.Failure.OverHoldCap(100_718, 1_000_000),
+            ShareSheetState.Failure.NoRoomYet(100_718, 230_778, 89_000), ShareSheetState.Failure.NoRoomYet(100_718, null, 89_000),
+            ShareSheetState.Failure.NoRoomYet(100_718, 230_778, null), ShareSheetState.Failure.NoRoomYet(100_718, 230_778, 0, anotherPreparing = true),
+            ShareSheetState.Failure.NoRoomYet(100_718, 230_778, 89_000, why = ShareConcurrentBudget.Refusal.OVER_SPACE_BUDGET,
+                at = ShareSheetState.NoRoomAt.StoppedPartway(8_388_608)),
+            ShareSheetState.Failure.NoRoomYet(100_718, null, 89_000, why = ShareConcurrentBudget.Refusal.OVER_QUOTA_BUDGET,
+                at = ShareSheetState.NoRoomAt.StoppedPartway(8_388_608)),
+            ShareSheetState.Failure.NoRoomYet(100_718, 230_778, null, why = ShareConcurrentBudget.Refusal.READING_STALE,
+                at = ShareSheetState.NoRoomAt.StoppedPartway(8_388_608)),
+            ShareSheetState.Failure.NoRoomYet(100_718, null, 89_000, at = ShareSheetState.NoRoomAt.ReachedLimit),
         ).forEach { add(ShareSheetState.Failed("a.bin", it)) }
         add(ShareSheetState.WaitingForMac("a.bin", 100_000, "Mac"))
         add(ShareSheetState.Sending("a.bin", 100_000, "Mac", allSent = false))
@@ -403,5 +486,5 @@ object ShareToMacCopy {
             ShareSheetState.NotOffered.values().map(::notOffered) +
             listOf(null, ShareSheetState.OtherOffer("s-x", "b.jpg", true), ShareSheetState.OtherOffer("s-x", "b.jpg", false)).map(::busy) +
             listOf(WITHDRAW_OTHER_BUTTON, withdrewOther("b.jpg")) +
-            listOf(leavingOffered("Mac"), TITLE, LEAVING, CANCELLED, DISCARDED, WITHDRAWN, SEND_BUTTON, CANCEL_BUTTON, CLOSE_BUTTON)
+            listOf(leavingOffered("Mac"), TITLE, LEAVING, CANCELLED, DISCARDED, WITHDRAWN, SEND_BUTTON, CANCEL_BUTTON, CLOSE_BUTTON, TRY_AGAIN_BUTTON)
 }

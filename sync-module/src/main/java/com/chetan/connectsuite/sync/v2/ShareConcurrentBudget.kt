@@ -1,11 +1,12 @@
 package com.chetan.connectsuite.sync.v2
 
 /**
- * **PROPOSED, unwired, and carrying no approved value.** The budget for a *concurrent* private copy —
+ * **PROPOSED, and carrying no production value.** The budget for a *concurrent* private copy —
  * a staged file started while other staged copies are already held for live offers (version 3,
- * docs/feature-a-multi-offer-proposal.md §4). Nothing calls this yet: [ShareAdmission.APPROVED_CAP] is
- * still `null`, so a second concurrent copy is refused before this could be asked, and `share.file 3`
- * is advertised by neither side.
+ * docs/feature-a-multi-offer-proposal.md §4). **One caller: [ShareAdmission]** (Stage 1), which asks it
+ * only at a negotiated `share.file` 3 — reachable only through the debug-only version-3 arm — and only
+ * when the caller supplies readings, which the share sheet does in a debuggable build alone. The values
+ * it is given are [ShareAdmission.PROVISIONAL_DEV_CANDIDATE], approved for development only.
  *
  * ### The two rules, kept apart
  *
@@ -118,6 +119,35 @@ object ShareConcurrentBudget {
                 else if (b.space < 0) Verdict.Refuse(Refusal.OVER_SPACE_BUDGET)
                 else Verdict.Admit(written + minOf(b.quota, b.space), b.quota, b.space)
         }
+    }
+
+    /**
+     * The measured `min(Bq, Bs)` for a copy not yet started — what a refusal states as *"this phone can
+     * prepare only X more right now"*. At least 0. `null` when no measurement was possible: a missing,
+     * stale, future or inconsistent reading, an invalid candidate, an overflow, or nothing held (then
+     * this budget does not apply at all).
+     */
+    fun measuredLimit(r: Readings, c: Candidate, nowMs: Long): Long? =
+        when (val b = budgets(written = 0, r = r, c = c, nowMs = nowMs)) {
+            is Budgets.Refused -> null
+            is Budgets.Ok -> maxOf(0L, minOf(b.quota, b.space))
+        }
+
+    /**
+     * [measuredLimit] for the moment **after** a stopped copy's [written] bytes are deleted — what a
+     * *Try again* would face with these readings. Those bytes are inside `K` and out of `A` when [r] was
+     * read, so they come back out of the one and into the other; nothing else moves. `null` exactly when
+     * [measuredLimit] would be (a missing, stale, future or inconsistent reading), or when `K` is smaller
+     * than what the partial alone holds, or an overflow.
+     */
+    fun limitAfterDiscarding(written: Long, r: Readings, c: Candidate, nowMs: Long): Long? {
+        if (written < 0) return null
+        if (written == 0L) return measuredLimit(r, c, nowMs)
+        val k = r.ownCacheBytes ?: return null
+        val a = r.usableBytes ?: return null
+        if (k < written) return null
+        val freed = try { Math.addExact(a, written) } catch (_: ArithmeticException) { return null }
+        return measuredLimit(r.copy(ownCacheBytes = k - written, usableBytes = freed), c, nowMs)
     }
 
     // ---- the one place the arithmetic is done ----------------------------------------------------

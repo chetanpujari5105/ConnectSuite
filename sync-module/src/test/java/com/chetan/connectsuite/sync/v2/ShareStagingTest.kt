@@ -5,6 +5,7 @@ import com.chetan.connectsuite.sync.v2.ShareStaging.Preflight
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -168,6 +169,62 @@ class ShareStagingTest {
         assertEquals(emptySet<String>(), names(d))
         // Control: the same bytes with space that stays put stage fine.
         assertTrue(copy(d, bytes) is Outcome.Staged)
+    }
+
+    // ---- budgetStop: the version-3 budget re-check (Stage 1) -----------------------------------------
+
+    /** A re-check's answer; the copy must carry it unchanged, whatever it says. */
+    private val stop = ShareAdmission.Stop(ShareConcurrentBudget.Refusal.OVER_SPACE_BUDGET, held = 1_234, limit = 5_678)
+
+    @Test fun `budgetStop is asked at each recheck boundary and once after the last byte, with the bytes written`() {
+        val d = dir()
+        val asked = mutableListOf<Long>()
+        val bytes = Random(7).nextBytes(100_000)
+        val out = ShareStaging.copy(ByteArrayInputStream(bytes), d, ShareStaging.newAttemptId(), Long.MAX_VALUE, plenty, never,
+            nowMs = 1_000L, bufferSize = 4096, recheckEvery = 32 * 1024, budgetStop = { asked += it; null })
+        assertTrue(out is Outcome.Staged)
+        assertEquals("the last question is the whole file", 100_000L, asked.last())
+        assertTrue("asked mid-copy too: $asked", asked.size >= 3 && asked.dropLast(1).all { it in 1 until 100_000 })
+    }
+
+    @Test fun `a stop mid-copy is BudgetStopped carrying the re-check's own answer, and leaves nothing`() {
+        val d = dir()
+        val bytes = Random(8).nextBytes(100_000)
+        val source = Tracked(ByteArrayInputStream(bytes))
+        val out = ShareStaging.copy(source, d, ShareStaging.newAttemptId(), Long.MAX_VALUE, plenty, never,
+            nowMs = 1_000L, bufferSize = 4096, recheckEvery = 16 * 1024, budgetStop = { if (it < 40_000) null else stop })
+        assertTrue("$out", out is Outcome.BudgetStopped)
+        out as Outcome.BudgetStopped
+        assertTrue(out.bytesWritten in 40_000 until 100_000)
+        assertSame("the answer is carried, not rebuilt", stop, out.stop)
+        assertTrue(source.closed)
+        assertEquals(emptySet<String>(), names(d))
+    }
+
+    @Test fun `a stop only at the finish still keeps nothing - no bin, no marker, no partial`() {
+        val d = dir()
+        val bytes = Random(9).nextBytes(10_000)
+        val out = ShareStaging.copy(ByteArrayInputStream(bytes), d, ShareStaging.newAttemptId(), Long.MAX_VALUE, plenty, never,
+            nowMs = 1_000L, bufferSize = 4096, recheckEvery = ShareStaging.RECHECK_EVERY_BYTES, budgetStop = { if (it < 10_000) null else stop })
+        assertEquals(10_000L, (out as Outcome.BudgetStopped).bytesWritten)
+        assertSame(stop, out.stop)
+        assertEquals(emptySet<String>(), names(d))
+        // Control: the default budgetStop stages the same bytes — a version-2 copy is unchanged.
+        assertTrue(copy(d, bytes) is Outcome.Staged)
+    }
+
+    @Test fun `a stopped concurrent copy deletes only its own partial - the copy already held for another offer is untouched`() {
+        val d = dir()
+        val heldBytes = Random(10).nextBytes(50_000)
+        val heldId = ShareStaging.newAttemptId()
+        val held = copy(d, heldBytes, id = heldId) as Outcome.Staged
+        val before = names(d)
+        assertEquals("control: the held copy exists as .bin and marker", setOf("$heldId.bin", "$heldId.json"), before)
+        val out = ShareStaging.copy(ByteArrayInputStream(Random(11).nextBytes(100_000)), d, ShareStaging.newAttemptId(), Long.MAX_VALUE,
+            plenty, never, nowMs = 1_000L, bufferSize = 4096, recheckEvery = 16 * 1024, budgetStop = { if (it < 30_000) null else stop })
+        assertTrue("$out", out is Outcome.BudgetStopped)
+        assertEquals("only the held copy remains", before, names(d))
+        assertEquals(heldBytes.size.toLong() to held.sha256, ShareStaging.readBack(d, heldId))
     }
 
     @Test fun `a source larger than the limit is stopped at the limit and deleted`() {
