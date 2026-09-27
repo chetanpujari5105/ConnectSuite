@@ -35,15 +35,19 @@ object ShareSelection {
     /** Files per selection — the proposal's figure, equal to the live-offer limit. **Proposed, not approved.** */
     const val MAX_FILES = ShareOffer.MAX_LIVE_OFFERS_V3
 
-    /** One shared item as the activity would read it: its URI's scheme and its resolved MIME type. */
-    data class Item(val scheme: String?, val mime: String)
+    /**
+     * One shared item as the activity would read it: its URI's scheme, its resolved MIME type, and
+     * [key] — the URI's exact string, compared only for equality to find a repeat. It is never logged.
+     */
+    data class Item(val scheme: String?, val mime: String, val key: String? = null)
 
     sealed interface Decision {
         data class Take(val count: Int) : Decision
-        data class Refuse(val reason: Refusal, val index: Int? = null) : Decision
+        /** [sameAs], for [Refusal.DUPLICATE] only: the 1-based position of the item [index] repeats. */
+        data class Refuse(val reason: Refusal, val index: Int? = null, val sameAs: Int? = null) : Decision
     }
 
-    enum class Refusal { NOT_A_SEND_MULTIPLE, NO_FILES, TOO_MANY, NOT_CONTENT, FOLDER, ANOTHER_IN_PROGRESS, NEEDS_VERSION_3 }
+    enum class Refusal { NOT_A_SEND_MULTIPLE, NO_FILES, TOO_MANY, NOT_CONTENT, FOLDER, DUPLICATE, ANOTHER_IN_PROGRESS, NEEDS_VERSION_3 }
 
     /**
      * Rev 4 §15 / C6, at **Send N files**: several files need a session that negotiated `share.file` 3.
@@ -71,10 +75,15 @@ object ShareSelection {
         if (action != ACTION_SEND_MULTIPLE) return Decision.Refuse(Refusal.NOT_A_SEND_MULTIPLE)
         if (items.isEmpty()) return Decision.Refuse(Refusal.NO_FILES)
         if (items.size > MAX_FILES) return Decision.Refuse(Refusal.TOO_MANY)
+        val first = HashMap<String, Int>()
         items.forEachIndexed { i, item ->
             val scheme = item.scheme ?: return Decision.Refuse(Refusal.NOT_CONTENT, i + 1)
             if (!scheme.equals("content", ignoreCase = true)) return Decision.Refuse(Refusal.NOT_CONTENT, i + 1)
             if (ShareNames.isDirectory(item.mime)) return Decision.Refuse(Refusal.FOLDER, i + 1)
+            // The same URI twice would be copied and offered twice — two cards and two saved copies of one
+            // file on the Mac. Neither dropped silently (§15: never truncated) nor sent twice: refused, with
+            // both positions. Only an exact repeat of the URI is detected; two URIs for one file are not.
+            item.key?.let { k -> first.putIfAbsent(k, i + 1)?.let { return Decision.Refuse(Refusal.DUPLICATE, i + 1, it) } }
         }
         if (otherAttemptLive) return Decision.Refuse(Refusal.ANOTHER_IN_PROGRESS)
         return Decision.Take(items.size)

@@ -106,13 +106,17 @@ object ShareManyCopy {
 
     fun needsVersion3(mac: String) = "$mac can receive one file at a time from this phone. Update Sidekick on your Mac to send several at once."
 
-    /** A whole selection refused before anything is read (§15). [count] is how many were selected; [index] is 1-based. */
-    fun refusal(r: ShareSelection.Refusal, count: Int, index: Int?, mac: String?): String = when (r) {
+    /**
+     * A whole selection refused before anything is read (§15). [count] is how many were selected; [index]
+     * is 1-based; [sameAs] is the earlier position a [ShareSelection.Refusal.DUPLICATE] repeats.
+     */
+    fun refusal(r: ShareSelection.Refusal, count: Int, index: Int?, mac: String?, sameAs: Int? = null): String = when (r) {
         ShareSelection.Refusal.NOT_A_SEND_MULTIPLE -> ShareToMacCopy.refusal(ShareIntake.Refusal.NOT_A_SEND)
         ShareSelection.Refusal.NO_FILES -> ShareToMacCopy.refusal(ShareIntake.Refusal.NO_FILE)
         ShareSelection.Refusal.TOO_MANY -> "Sidekick sends up to ${ShareSelection.MAX_FILES} files at a time — you selected $count."
         ShareSelection.Refusal.FOLDER -> "Item ${index ?: "?"} can’t be sent (a folder)."
         ShareSelection.Refusal.NOT_CONTENT -> "Item ${index ?: "?"} can’t be sent (the app didn’t share it as a file Sidekick can read)."
+        ShareSelection.Refusal.DUPLICATE -> "Item ${index ?: "?"} is the same file as item ${sameAs ?: "?"}. Nothing was sent — share each file once."
         ShareSelection.Refusal.ANOTHER_IN_PROGRESS -> ShareToMacCopy.refusal(ShareIntake.Refusal.ANOTHER_IN_PROGRESS)
         ShareSelection.Refusal.NEEDS_VERSION_3 -> needsVersion3(mac ?: "Your Mac")
     }

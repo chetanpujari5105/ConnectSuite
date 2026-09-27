@@ -64,7 +64,7 @@ class ShareManyToMacModel(app: Application) : AndroidViewModel(app) {
 
     sealed interface Screen {
         data object Starting : Screen
-        data class Refused(val reason: ShareSelection.Refusal, val count: Int, val index: Int?, val mac: String?) : Screen
+        data class Refused(val reason: ShareSelection.Refusal, val count: Int, val index: Int?, val mac: String?, val sameAs: Int? = null) : Screen
         /** One file: the single-file sheet, at any version (§15). [intent] is the in-process `SEND` it binds. */
         data class Single(val intent: Intent) : Screen
         data class Review(val names: List<String>, val sizes: List<Long?>, val availability: ShareIntake.Availability, val notSent: String? = null) : Screen
@@ -107,10 +107,10 @@ class ShareManyToMacModel(app: Application) : AndroidViewModel(app) {
             }
             ShareNames.mimeOf(resolver, intent.type)
         }
-        val decision = ShareSelection.decide(intent.action, streams.zip(types) { u, t -> ShareSelection.Item(u?.scheme, t) }, ShareToMacModel.live.isNotEmpty())
+        val decision = ShareSelection.decide(intent.action, streams.zip(types) { u, t -> ShareSelection.Item(u?.scheme, t, u?.toString()) }, ShareToMacModel.live.isNotEmpty())
         if (decision is ShareSelection.Decision.Refuse) {
             LinkLog.i("share", "selection refused: ${decision.reason} (${streams.size} items)")
-            _screen.value = Screen.Refused(decision.reason, streams.size, decision.index, connectedMac())
+            _screen.value = Screen.Refused(decision.reason, streams.size, decision.index, connectedMac(), decision.sameAs)
             return
         }
         // Taken: every item is a content: URI, so none is null.
@@ -165,7 +165,8 @@ class ShareManyToMacModel(app: Application) : AndroidViewModel(app) {
             return
         }
         ShareToMacModel.live += selectionKey
-        val q = ShareManyQueue(dir, sizes, env(dir))
+        // The session the person pressed Send on: every file is offered on it or not at all (§8).
+        val q = ShareManyQueue(dir, sizes, env(dir, ShareFeature.liveSession()))
         queue = q
         LinkLog.i("share", "selection of ${uris.size} started at share.file $version; one copy at a time")
         publish(mac)
@@ -231,8 +232,9 @@ class ShareManyToMacModel(app: Application) : AndroidViewModel(app) {
         _screen.value = Screen.Running(rows, mac)
     }
 
-    private fun env(dir: File) = object : ShareManyQueue.Env {
+    private fun env(dir: File, sentOn: Any?) = object : ShareManyQueue.Env {
         override fun context() = ShareFeature.stagingContext()
+        override fun session() = ShareFeature.liveSession()
         override fun liveOffers() = ShareFeature.liveOfferIds().size
         override fun inProgress() = ShareFeature.inProgress()
         override fun monotonicMs() = SystemClock.elapsedRealtime()
@@ -240,7 +242,7 @@ class ShareManyToMacModel(app: Application) : AndroidViewModel(app) {
         override fun concurrent(): ShareAdmission.Concurrent? = ShareBudgetReadings.concurrent(app, dir)
         override fun open(index: Int): InputStream = app.contentResolver.openInputStream(uris[index]) ?: error("openInputStream returned null")
         override fun offer(index: Int, attemptId: String, bytes: Long, sha256: String): ShareFeature.OfferOutcome =
-            ShareFeature.offerStaged(attemptId, bytes, sha256, names[index], mimes[index], requireAsk = true).also {
+            ShareFeature.offerStaged(attemptId, bytes, sha256, names[index], mimes[index], requireAsk = true, onlyOnSession = sentOn).also {
                 if (it is ShareFeature.OfferOutcome.Offered) offeredCount.incrementAndGet() else notOfferedCount.incrementAndGet()
                 LinkLog.i("share", "selection item ${index + 1}/${uris.size} attempt=$attemptId bytes=$bytes: ${it::class.simpleName} — ${tally()}")
             }

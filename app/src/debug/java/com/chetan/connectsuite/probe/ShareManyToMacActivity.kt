@@ -93,20 +93,24 @@ class ShareManyToMacActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (isChangingConfigurations) return
         val single = single
-        if (single == null) {
+        when (ShareManyLeave.onStop(isChangingConfigurations, isFinishing, singleFile = single != null)) {
+            ShareManyLeave.Action.STAY -> Unit
             // Several files: end the selection here even when finishing (Back). Unlike the single sheet,
             // which opens its one URI once, the queue keeps opening URIs until it is ended — and a finishing
             // activity's onDestroy (hence onCleared) can come well after onStop. Idempotent after Close.
-            model.screenClosed()
-            if (!isFinishing) finish()
-            return
+            ShareManyLeave.Action.END_SELECTION -> model.screenClosed()
+            ShareManyLeave.Action.END_SELECTION_AND_FINISH -> {
+                model.screenClosed()
+                finish()
+            }
+            // One file: exactly the single-file sheet's rule (ShareToMacActivity.onStop).
+            ShareManyLeave.Action.SINGLE_FILE_RULE -> {
+                if (isFinishing || single == null) return
+                if (onLeave(single.state.value) == SheetExit.DISCARD_STAGED) single.discard("left the screen")
+                finish()
+            }
         }
-        // One file: exactly the single-file sheet's rule (ShareToMacActivity.onStop).
-        if (isFinishing) return
-        if (onLeave(single.state.value) == SheetExit.DISCARD_STAGED) single.discard("left the screen")
-        finish()
     }
 }
 
@@ -118,7 +122,7 @@ private fun Many(screen: ShareManyToMacModel.Screen, onSend: () -> Unit, onClose
             when (screen) {
                 ShareManyToMacModel.Screen.Starting, is ShareManyToMacModel.Screen.Single -> Unit
                 is ShareManyToMacModel.Screen.Refused ->
-                    Text(ShareManyCopy.refusal(screen.reason, screen.count, screen.index, screen.mac), style = MaterialTheme.typography.bodyMedium)
+                    Text(ShareManyCopy.refusal(screen.reason, screen.count, screen.index, screen.mac, screen.sameAs), style = MaterialTheme.typography.bodyMedium)
                 is ShareManyToMacModel.Screen.Review -> {
                     Text(ShareManyCopy.reviewTotal(screen.sizes), style = MaterialTheme.typography.titleMedium)
                     LazyColumn(Modifier.weight(1f, fill = false).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {

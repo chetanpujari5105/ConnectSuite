@@ -64,6 +64,9 @@ class ShareManyQueueTest {
         /** The monotonic clock the stall clock reads; the test moves it. `nowMs` stays 0 throughout. */
         var mono = 0L
 
+        /** The live session's identity (`ShareFeature.liveSession`); null supplies none, as before. */
+        var session: Any? = null
+        override fun session() = session
         override fun context() = version to live.values.sum()
         override fun liveOffers() = liveOverride ?: live.size
         override fun inProgress() = live.filterKeys { it in accepted }.let { it.size to it.values.sum() }
@@ -459,6 +462,45 @@ class ShareManyQueueTest {
         assertTrue(offered(q.states()[0]))
         assertEquals(Prep.NotSent(NotSentWhy.Disconnected), q.states()[1])
         assertEquals(listOf(0), env.opened)
+    }
+
+    @Test fun `a reconnect between evaluations is a different session - the rest is not offered there`() {
+        val dir = tmp.newFolder()
+        val a = Any()
+        val env = FakeEnv(dir = dir, sources = listOf(bytes(100, 1), bytes(9000, 2))).apply { room = 10; session = a }
+        val q = queue(dir, env)
+        q.evaluate()
+        assertTrue(offered(q.states()[0]))
+        assertTrue("control: the second file waits on the first", q.states()[1] is Prep.Waiting)
+        // The link drops and comes back before the next trigger: still version 3, and the first offer ended.
+        env.endOffer(0)
+        env.session = Any()
+        q.evaluate()
+        assertEquals(Prep.NotSent(NotSentWhy.Disconnected), q.states()[1])
+        assertEquals("nothing was opened for the new session", listOf(0), env.opened)
+        assertEquals("nothing was offered on it", 1, env.offered.size)
+        assertTrue(dir.list()!!.isEmpty())
+    }
+
+    @Test fun `a reconnect while a file is copying - that copy is deleted, never offered on the new session`() {
+        val dir = tmp.newFolder()
+        val env = FakeEnv(dir = dir, sources = listOf(bytes(100, 1), bytes(100, 2))).apply { session = Any() }
+        val sources = env.sources
+        env.opener = { i -> if (i == 1) env.session = Any(); ByteArrayInputStream(sources[i]) }
+        val q = queue(dir, env)
+        q.evaluate()
+        assertTrue(offered(q.states()[0]))
+        assertEquals(Prep.NotSent(NotSentWhy.Disconnected), q.states()[1])
+        assertEquals(listOf(0), env.offered.map { it.first })
+        assertStagingHoldsOnly(dir, env)
+    }
+
+    @Test fun `one session throughout - every file is offered (control for the two above)`() {
+        val dir = tmp.newFolder()
+        val env = FakeEnv(dir = dir, sources = listOf(bytes(100, 1), bytes(100, 2), bytes(100, 3))).apply { session = Any() }
+        val q = queue(dir, env)
+        q.evaluate()
+        assertTrue(q.states().all { offered(it) })
     }
 
     @Test fun `no session at offer time ends the selection and deletes the copy`() {

@@ -137,6 +137,10 @@ class ShareManyCopyTest {
         assertEquals("Sidekick sends up to 10 files at a time — you selected 14.", ShareManyCopy.refusal(ShareSelection.Refusal.TOO_MANY, 14, null, "Mac"))
         assertEquals("Item 3 can’t be sent (a folder).", ShareManyCopy.refusal(ShareSelection.Refusal.FOLDER, 5, 3, "Mac"))
         assertEquals(
+            "Item 3 is the same file as item 1. Nothing was sent — share each file once.",
+            ShareManyCopy.refusal(ShareSelection.Refusal.DUPLICATE, 3, 3, "Mac", sameAs = 1),
+        )
+        assertEquals(
             "Mac can receive one file at a time from this phone. Update Sidekick on your Mac to send several at once.",
             ShareManyCopy.refusal(ShareSelection.Refusal.NEEDS_VERSION_3, 2, null, "Mac"),
         )

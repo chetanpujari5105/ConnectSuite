@@ -56,6 +56,30 @@ class ShareSelectionTest {
         assertEquals(Decision.Refuse(Refusal.NOT_CONTENT, 1), ShareSelection.decide(send, noScheme, false))
     }
 
+    @Test fun `the same URI twice refuses the selection, naming both positions - never sent twice, never dropped`() {
+        fun keyed(vararg keys: String) = keys.map { Item("content", "image/png", it) }
+        val u = "content://media/external/images/media/"
+        assertEquals(Decision.Take(3), ShareSelection.decide(send, keyed(u + 1, u + 2, u + 3), false))
+        assertEquals(Decision.Refuse(Refusal.DUPLICATE, 3, 1), ShareSelection.decide(send, keyed(u + 1, u + 2, u + 1), false))
+        assertEquals(Decision.Refuse(Refusal.DUPLICATE, 2, 1), ShareSelection.decide(send, keyed(u + 7, u + 7), false))
+        // The first repeat is the one named, in selection order.
+        assertEquals(Decision.Refuse(Refusal.DUPLICATE, 4, 2), ShareSelection.decide(send, keyed(u + 1, u + 2, u + 3, u + 2, u + 1), false))
+        // An exact comparison: a different id, or the same id on another authority, is a different item.
+        assertEquals(Decision.Take(2), ShareSelection.decide(send, keyed(u + 1, u + 10), false))
+        assertEquals(Decision.Take(2), ShareSelection.decide(send, keyed(u + 1, "content://com.sec.android.app.myfiles/1"), false))
+        // Items with no key (as before this rule) are never judged repeats.
+        assertEquals(Decision.Take(2), ShareSelection.decide(send, items(2), false))
+    }
+
+    @Test fun `a repeat is judged after the item checks and before another copy running`() {
+        val u = "content://media/external/images/media/1"
+        val bad = listOf(Item("content", "image/png", u), Item("file", "image/png", u))
+        assertEquals("an unreadable item is named first", Decision.Refuse(Refusal.NOT_CONTENT, 2), ShareSelection.decide(send, bad, false))
+        val twice = listOf(Item("content", "image/png", u), Item("content", "image/png", u))
+        assertEquals(Decision.Refuse(Refusal.DUPLICATE, 2, 1), ShareSelection.decide(send, twice, true))
+        assertEquals("one file is never a repeat", Decision.Take(1), ShareSelection.decide(send, twice.take(1), false))
+    }
+
     @Test fun `not SEND_MULTIPLE, nothing in it, or another copy running are each refused`() {
         assertEquals(Decision.Refuse(Refusal.NOT_A_SEND_MULTIPLE), ShareSelection.decide(ShareIntake.ACTION_SEND, items(2), false))
         assertEquals(Decision.Refuse(Refusal.NOT_A_SEND_MULTIPLE), ShareSelection.decide(null, items(2), false))

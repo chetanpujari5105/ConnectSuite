@@ -31,7 +31,8 @@ import kotlin.concurrent.withLock
  *   copies, attempt 1 is bounded by the budget; if it reaches the bound or a re-check stops it, its
  *   partial is deleted **and its absence verified**, then it waits for the one retry, which runs only at
  *   `Σ = 0`. A known size whose concurrent copy is stopped the same way takes the same path.
- * - **Selection-wide ends** ([end]): the screen closing, the session ending. They end every file not yet
+ * - **Selection-wide ends** ([end]): the screen closing, the session ending — including a reconnect,
+ *   which is a different session ([Env.session]) and ends it the same way. They end every file not yet
  *   offered, cancel a running copy (whose partial [ShareStaging.copy] deletes), and never touch an
  *   offered file.
  * - **No shared URI is opened once [end] has taken effect** (§11). The check of [ended] and [Env.open]
@@ -62,6 +63,11 @@ class ShareManyQueue(
     interface Env {
         /** The `share.file` negotiated on the live session (0 with none) and `Σ` — `ShareFeature.stagingContext`. */
         fun context(): Pair<Int, Long>
+        /**
+         * The live session's identity, compared by reference only (`ShareFeature.liveSession`). The queue
+         * pins the one it starts on; null means no identity is supplied, and nothing is pinned.
+         */
+        fun session(): Any? = null
         /** Live offers on the session — `ShareFeature.liveOfferIds().size`. */
         fun liveOffers(): Int
         /**
@@ -196,6 +202,26 @@ class ShareManyQueue(
     @Volatile private var ended: NotSentWhy? = null
     /** Copies this queue still owns (running or staged, not handed over). */
     private val owned = LinkedHashSet<String>()
+    /**
+     * The session this selection started on (§8: the session ending ends every file not yet offered). A
+     * reconnect between two evaluations is a **different** session — possibly to a different Mac than the
+     * one the review screen named — so it ends the selection as [NotSentWhy.Disconnected] rather than
+     * offering the rest there. Set at the first evaluation that finds a session.
+     */
+    private var pinned: Any? = null
+    private var pinnedYet = false
+
+    /** Under [lock]: true when the live session is not the one this selection started on. */
+    private fun sessionChangedLocked(): Boolean {
+        val now = env.session()
+        if (!pinnedYet) {
+            pinned = now
+            pinnedYet = true
+            return false
+        }
+        return pinned != null && now !== pinned
+    }
+
     /** Per-file reports made under [lock], delivered to [Env.notPrepared] outside it. */
     private val reports = ArrayList<Triple<Int, NotSentWhy, String?>>()
 
@@ -274,7 +300,7 @@ class ShareManyQueue(
     private fun choose(): Pick? {
         while (true) {
             val (version, held) = env.context()
-            if (version == 0) {
+            if (version == 0 || sessionChangedLocked()) {
                 endLocked(NotSentWhy.Disconnected)
                 return null
             }
@@ -484,6 +510,13 @@ class ShareManyQueue(
 
     /** Under [lock]: the hand-off. Exactly one of offer and delete happens to a staged copy. */
     private fun offerLocked(i: Int, id: String, staged: ShareStaging.Outcome.Staged): Prep {
+        if (sessionChangedLocked()) {
+            // The session changed while this file was copying: not offered on the new one, and not kept.
+            ShareStaging.discard(dir, id)
+            owned -= id
+            endLocked(NotSentWhy.Disconnected)
+            return Prep.NotSent(NotSentWhy.Disconnected)
+        }
         val o = runCatching { env.offer(i, id, staged.bytes, staged.sha256) }.getOrElse { ShareFeature.OfferOutcome.Invalid(it.javaClass.name) }
         if (o is ShareFeature.OfferOutcome.Offered) {
             owned -= id

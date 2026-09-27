@@ -104,6 +104,9 @@ object ShareFeature {
      * negotiated on the live session (0 with none), and `Σ`, the bytes of every staged copy this object
      * owns for a live offer. With no session there is no live offer (they end with it), so `Σ` is 0.
      */
+    /** The live session, for [offerStaged]'s `onlyOnSession` and a caller's reference comparison — nothing else. */
+    fun liveSession(): Any? = link?.anyLiveSession()
+
     fun stagingContext(): Pair<Int, Long> {
         val version = link?.anyLiveSession()?.negotiated?.get(Extensions.SHARE_FILE) ?: 0
         val held = synchronized(lock) { offers.values.sumOf { it.bytes } }
@@ -164,6 +167,12 @@ object ShareFeature {
          * passes false: it is not an ordinary share, and it exists to reach the synthetic-only Mac.
          */
         requireAsk: Boolean = false,
+        /**
+         * Offer only on this session (compared by reference, from [liveSession]); on any other — a
+         * reconnect since the file was prepared — nothing is offered and the outcome is `NoSession`.
+         * Null (every caller before the several-files screen) offers on whichever session is live.
+         */
+        onlyOnSession: Any? = null,
     ): OfferOutcome {
         val server = link ?: return OfferOutcome.NoSession
         if (!ShareStaging.isAttemptId(offerId)) return OfferOutcome.Invalid("offer id is not an attempt id")
@@ -174,6 +183,10 @@ object ShareFeature {
 
         val session = server.anyLiveSession() ?: return OfferOutcome.NoSession.also {
             LinkLog.i("share", "offer $offerId not made: no Mac connected — ${tally()}")
+        }
+        if (onlyOnSession != null && session !== onlyOnSession) {
+            LinkLog.i("share", "offer $offerId not made: the session it was prepared for has ended and a later one is live — nothing sent")
+            return OfferOutcome.NoSession
         }
         if (session.negotiated[Extensions.SHARE_FILE] == null) {
             LinkLog.i("share", "offer $offerId not made: ${session.peerName} did not negotiate ${Extensions.SHARE_FILE} — nothing sent, nothing awaited")
