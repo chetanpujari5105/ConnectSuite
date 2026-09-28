@@ -39,6 +39,9 @@
 > **Resume only when the owner says the phone has room** — roughly 16.1 GB free is needed (the floor, plus the
 > 256 MiB margin, plus the file). Then retake this whole baseline and proceed only if the admission check
 > passes. The floor is not to be changed.
+>
+> **Superseded 2026-09-29 (owner, Option B):** the development floor is now a fixed 1 GiB reserve (`b641aca`),
+> installed on the phone at 02:26:42 (`f8dca91` build). Retake the whole A1 baseline against it before P2.
 
 > **Run A, step A1 — the exact supervised sequence (written 2026-09-28 15:3x IST). Not run, not
 > authorised: every step marked P or M is the owner's yes, at the time.**

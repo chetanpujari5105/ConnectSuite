@@ -1,3 +1,40 @@
+# Resume here — written 2026-09-29 (02:45 IST, unattended, owner-authorised): faster Mac → phone sends; Option B installed; the phone was locked all night
+
+> Supersedes the entries below. Evidence: `docs/transfer-overnight-2026-09-29.md` (outside
+> `docs/testing.md`, which still holds the owner's uncommitted Run A block).
+
+1. **Built and verified on hardware:**
+   - **Mac → phone sends, both ends.** Eight 1 MiB files, click to the last verified verdict:
+     original build 1,348–1,571 ms → **706–782 ms**.
+     - Mac side: a bounded push queue, and at most 3 files being written at once (`4ba09ed`, `aff63a9`).
+     - Phone side: a publish that looks up one row instead of listing the folder, and deletes by name
+       only when something is there (`f8dca91`).
+     - Large files gained ≈ 6% (32 MiB: 39.2 → 41.2–42.1 MB/s, interleaved A/B).
+   - **Same-name safety.** Two files that could reach one name on the phone are never in flight together.
+     A different file sent under an existing name arrived as `(2)`, and the original's hash was unchanged.
+2. **Built, tests only (the phone was locked all night):**
+   - Option B, the fixed 1 GiB reserve, development only (`b641aca`). Installed on the phone, never
+     exercised.
+   - Each offered row in the several-files screen has its own Cancel (`352f1b3`), debug-only. Never drawn.
+3. **Not measured:** phone → Mac through the share path. The product's Accept gate needs a
+   person-focused window, which automation cannot produce, and it was not worked around. The Files pull
+   (the same phone sender) was measured: 64 MiB at 330.6 Mbit/s on the wire.
+4. **Needs the owner:**
+   - Retake Run A's A1 baseline from scratch. Option B changes the floor, and the phone now runs
+     `f8dca91` (installed 02:26:42).
+   - Unlock the phone for any share-sheet flow and Run B.
+   - Decide the several-files production path (evidence file §8).
+   - Decide large-file verification (§9).
+   - Decide whether findings 1–3 get defect numbers.
+   - Review about 437 MiB of `sidekick-speed-*` synthetic files in the phone's `Download/ConnectSuite`.
+     They were left there on purpose.
+5. **Left changed:**
+   - Phone: three same-signature `install -r`; grants, bindings, trust row and settings were identical
+     before and after each.
+   - Mac: `desktop/dist` = `aff63a9` build `ffe2fceae4a128ae`; the dev app is running with no switches,
+     version 2, connected.
+   - Nothing armed, pushed, packaged or deleted.
+
 # Resume here — written 2026-09-28 (20:45 IST): Run A A1 PAUSED at the baseline — phone free space below the budget floor
 
 > Supersedes the entry below for Run A. Details are in the runbook's top banner.
