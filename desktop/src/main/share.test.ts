@@ -10,6 +10,7 @@ import { ShareReceiver, isAcceptableProbe, type ShareDeps, type ShareLink } from
 import { checkDestination, publishExclusive, realFs, spaceNeeded, type DestinationVerdict } from './shareDestination';
 import { startFakePhone, synthetic, type FakePhone } from './sharePhone.testkit';
 import { handleShareDecision, type WindowFacts } from './shareDecision';
+import { ShareWindowPresenter } from './shareWindowRules';
 import { FileShareLedger, isSidekickTemporaryName, type ShareLedger } from './shareLedger';
 import { sanitizeShareName } from '../shared/shareNames';
 const { shareReceiveStatus } = require('../shared/shareReceiveCopy') as { shareReceiveStatus: (f: Record<string, unknown>) => { headline: string; savedOnMac: boolean; confirmedByPhone: boolean } };
@@ -807,7 +808,7 @@ test('unexpected-file: a file swapped in just before publication ends the offer 
 const vid = (c: string): string => `s-${c.repeat(22)}`;
 
 /** A receiver on a negotiated [version], with one fake phone per offered digest and a real destination. */
-async function queueRig(version: number, files: { id: string; size: number; behaviour?: Record<string, unknown> }[], over: Partial<ShareDeps> = {}) {
+async function queueRig(version: number, files: { id: string; size: number; behaviour?: Record<string, unknown> }[], over: Partial<ShareDeps> = {}, beforeOffers: (r: ShareReceiver) => void = () => undefined) {
   const d = folder();
   assert.ok(d.startsWith(tmpdir()), 'confined to the OS temp folder');
   const data = new Map(files.map((f) => [f.id, synthetic(f.size)]));
@@ -839,6 +840,7 @@ async function queueRig(version: number, files: { id: string; size: number; beha
     version2: { allowed: true, syntheticOnly: false },
     ...over,
   });
+  beforeOffers(r);
   for (const f of files) await r.onOffer(offer(f.size, data.get(f.id)!.sha256, { offerId: f.id, name: `same-name.png` }));
   return { r, link, d, data, phones: [...phones.values()], begins, checks, close: async () => { for (const p of phones.values()) await p.close(); } };
 }
@@ -1437,5 +1439,43 @@ test('v3 §10: two files that each fit alone — the second Accept is refused wh
     await until('A saved', () => control.r.state(vid('A')) === 'saved');
   } finally {
     await control.close();
+  }
+});
+
+test('v3 window call site: a real receiver through main’s presenter — each arrival once, a queued failure again, nothing for a queued save or a never-queued failure', { timeout: 10_000 }, async () => {
+  // `main.ts` runs exactly this on every receiver change: presentInactive for each id toPresent returns.
+  const presenter = new ShareWindowPresenter();
+  const presented: string[] = [];
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 40_000 },
+    { id: vid('B'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+    { id: vid('C'), size: 30_000, behaviour: { corruptAt: 1_000 } },
+  ], { idleTimeoutMs: 400 }, (r) => r.onChange(() => presented.push(...presenter.toPresent(r.snapshots()))));
+  const states: string[] = [];
+  rig.r.onChange(() => states.push(rig.r.snapshots().map((s) => `${s.offerId.slice(2, 3)}:${s.state}`).join(' ')));
+  try {
+    assert.deepEqual([...presented].sort(), [vid('A'), vid('B'), vid('C')], 'each arrival presented the window once');
+    const atArrival = presented.length;
+
+    await rig.r.decide(vid('B'), 'accept');
+    await until('B writing', () => rig.r.state(vid('B')) === 'receiving');
+    await rig.r.decide(vid('A'), 'accept');
+    await rig.r.decide(vid('C'), 'accept');
+    assert.equal(rig.r.state(vid('A')), 'queued', 'control: A queued behind B');
+    assert.equal(rig.r.state(vid('C')), 'queued', 'control: C queued behind A');
+
+    await until('A saved', () => rig.r.state(vid('A')) === 'saved', 6000);
+    await until('C failed', () => rig.r.state(vid('C')) === 'failed', 6000);
+    assert.equal(rig.r.state(vid('B')), 'failed', 'control: B, never queued, failed on its own');
+    assert.equal(rig.r.snapshots().find((s) => s.offerId === vid('B'))!.canRetry, true, 'control: B could be retried — its silence is the queued rule, not a missing Retry');
+    const c = rig.r.snapshots().find((s) => s.offerId === vid('C'))!;
+    assert.equal(c.canRetry, true, 'control: C, queued then failed, can be tried again');
+    assert.ok(states.some((l) => l.includes('A:receiving')), 'control: A really started after being queued');
+
+    assert.deepEqual(presented.slice(atArrival), [vid('C')],
+      `after the arrivals, only the queued failure re-presents (queued, starting, receiving, saved and B's failure do not); changes seen: ${states.length}`);
+    assert.ok(states.length > 8, `control: the presenter was asked on every change (${states.length})`);
+  } finally {
+    await rig.close();
   }
 });

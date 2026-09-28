@@ -106,7 +106,7 @@ import {
 } from './shareActivation';
 import { acceptAllowed, forRenderer, handleShareDecision } from './shareDecision';
 import { ShareReceiveWindow } from './shareWindow';
-import { failedAfterQueue, newlyNeedingAttention, parseOfferRequest } from './shareWindowRules';
+import { ShareWindowPresenter, parseOfferRequest } from './shareWindowRules';
 import { settingsMigration, store } from './store';
 import {
   clearRePairPending,
@@ -1073,9 +1073,7 @@ app.whenReady().then(() => {
     () => '#00000000',
   );
   shareWindow = receiveWindow;
-  const attentionSeen = new Set<string>();
-  /** Version 3 only: offers queued in their current attempt, for [failedAfterQueue]. */
-  const queuedSeen = new Set<string>();
+  const presenter = new ShareWindowPresenter();
   /*
    * Thumbnails, **only of a file this Mac published and verified**, and only images and video: made by
    * QuickLook (`createThumbnailFromPath`) from the local file — bounded by the OS and by a timeout
@@ -1108,8 +1106,7 @@ app.whenReady().then(() => {
     const snaps = shareReceiver.snapshots();
     send('share-offers', forRenderer(snaps, homedir()));
     receiveWindow.push();
-    for (const offerId of newlyNeedingAttention(attentionSeen, snaps)) receiveWindow.presentInactive(offerId);
-    for (const offerId of failedAfterQueue(queuedSeen, snaps)) receiveWindow.presentInactive(offerId);
+    for (const offerId of presenter.toPresent(snaps)) receiveWindow.presentInactive(offerId);
     for (const s of snaps) {
       if ((s.state === 'saved' || s.state === 'saved-unacknowledged') && !shareThumbs.has(s.offerId)) void makeThumb(s.offerId, s.mime);
     }

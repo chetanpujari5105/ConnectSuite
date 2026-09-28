@@ -110,6 +110,9 @@ test('no macOS notification, window raising or Dock bounce for an incoming share
   assert.ok(handler.includes("send('share-offers'"), 'control: the handler body was found');
   // An arriving offer may do exactly one thing to a window: present the receive window inactive.
   assert.ok(handler.includes('receiveWindow.presentInactive('), 'control: the arrival path was found');
+  // …and it presents exactly what the presenter returns, nothing else (share.test.ts drives that rule through a real receiver).
+  assert.match(handler, /for \(const offerId of presenter\.toPresent\(snaps\)\) receiveWindow\.presentInactive\(offerId\);/);
+  assert.equal(handler.split('presentInactive(').length - 1, 1, 'one present call in the handler');
   assert.doesNotMatch(handler, /Notification|\.show\(|\.focus\(|\.restore\(|moveTop|setAlwaysOnTop|flashFrame|openFromUser/);
 });
 

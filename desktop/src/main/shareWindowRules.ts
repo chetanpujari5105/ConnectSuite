@@ -99,3 +99,19 @@ export function failedAfterQueue(queued: Set<string>, snapshots: readonly ShareC
   }
   return fresh;
 }
+
+/**
+ * **What `main.ts` presents on each receiver change**, whole: [newlyNeedingAttention], then
+ * [failedAfterQueue], over the same snapshots, with the two remembered sets it owns. Moved verbatim out
+ * of the `onChange` handler (2026-09-28) so a test can drive a real receiver through it; computing both
+ * lists before presenting is identical, because presenting changes neither the snapshots nor the sets.
+ */
+export class ShareWindowPresenter {
+  private readonly attentionSeen = new Set<string>();
+  /** Version 3 only: offers queued in their current attempt, for [failedAfterQueue]. */
+  private readonly queuedSeen = new Set<string>();
+
+  toPresent(snapshots: readonly ShareCardSnapshot[]): string[] {
+    return [...newlyNeedingAttention(this.attentionSeen, snapshots), ...failedAfterQueue(this.queuedSeen, snapshots)];
+  }
+}
