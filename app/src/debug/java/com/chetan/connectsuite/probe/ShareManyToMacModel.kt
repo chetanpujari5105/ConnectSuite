@@ -53,8 +53,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * - **§12's retry triggers:** an offer on the session ending, each copy finishing or failing (the queue's
  *   own loop), and every 5 s while any file waits. One consumer runs the queue, so copies never overlap.
  *   The §12 stall clock (PROPOSED, development only) is evaluated at each of them, on `elapsedRealtime`.
- * - [screenClosed] runs on the main thread and may wait for **one** `openInputStream` already under way
- *   on the queue's thread — never for a read or a copy — so that no URI is opened after it returns.
+ * - [screenClosed] runs on the main thread and **waits for no provider** (F1, 2026-09-28): once it has
+ *   run, no open is admitted; an `openInputStream` admitted earlier and still inside a slow provider
+ *   finishes on the queue's thread and its stream is closed unread.
  *
  * **Not built (open decisions, proposal §20):** Stop preparing, the notification, and keeping the
  * display on while preparing. What `link.log` gets: counts, versions, attempt ids, reason types,

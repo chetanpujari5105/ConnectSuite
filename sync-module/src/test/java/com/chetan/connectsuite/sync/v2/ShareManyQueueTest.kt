@@ -531,17 +531,17 @@ class ShareManyQueueTest {
      * the end is started on a second thread, and the test waits until that thread has either finished or
      * parked — then asserts which.
      */
-    @Test fun `closing while an open is under way waits for it, closes that stream unread, and opens nothing more`() {
-        val dir = tmp.newFolder()
-        val env = FakeEnv(dir = dir, sources = listOf(bytes(5000, 1), bytes(5000, 2)))
+    /** A provider whose open blocks until the test releases it — the slow provider of finding F1. */
+    private inner class SlowOpen(private val env: FakeEnv, private val slowIndex: Int, private val failAfter: Boolean = false) {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
-        var readFromIt = 0
-        var closedIt = false
-        env.opener = { i ->
-            if (i != 0) ByteArrayInputStream(env.sources[i]) else {
+        @Volatile var readFromIt = 0
+        @Volatile var closedIt = false
+        val opener: (Int) -> InputStream = { i ->
+            if (i != slowIndex) ByteArrayInputStream(env.sources[i]) else {
                 entered.countDown()
-                assertTrue(release.await(10, TimeUnit.SECONDS))
+                assertTrue("the test released the provider", release.await(15, TimeUnit.SECONDS))
+                if (failAfter) throw SecurityException("the grant ended while the provider was opening")
                 object : InputStream() {
                     override fun read(): Int { readFromIt++; return 0 }
                     override fun read(b: ByteArray, off: Int, len: Int): Int { readFromIt += len; return len }
@@ -549,20 +549,31 @@ class ShareManyQueueTest {
                 }
             }
         }
+    }
+
+    /** Runs [end] on its own thread and returns whether it finished while the provider was still held. */
+    private fun endWhileProviderHeld(q: ShareManyQueue, slow: SlowOpen): Boolean {
+        val closer = thread { q.end(NotSentWhy.ScreenClosed) }
+        closer.join(5_000)
+        val returnedWhileHeld = !closer.isAlive && slow.release.count == 1L
+        slow.release.countDown()
+        closer.join(10_000)
+        return returnedWhileHeld
+    }
+
+    @Test fun `F1 - closing during a slow provider open returns without waiting, and that stream is closed unread`() {
+        val dir = tmp.newFolder()
+        val env = FakeEnv(dir = dir, sources = listOf(bytes(5000, 1), bytes(5000, 2)))
+        val slow = SlowOpen(env, slowIndex = 0)
+        env.opener = slow.opener
         val q = queue(dir, env)
         val copier = thread { q.evaluate() }
-        assertTrue("control: the open began", entered.await(10, TimeUnit.SECONDS))
-        var endReturned = false
-        val closer = thread { q.end(NotSentWhy.ScreenClosed); endReturned = true }
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
-        while (closer.state != Thread.State.WAITING && closer.state != Thread.State.TERMINATED && System.nanoTime() < deadline) Thread.yield()
-        assertEquals("end() waits for the one open already under way instead of returning beside it", Thread.State.WAITING, closer.state)
-        release.countDown()
-        closer.join(10_000)
+        assertTrue("control: the open is inside the provider", slow.entered.await(10, TimeUnit.SECONDS))
+        assertTrue("end() returned while the provider still held the open", endWhileProviderHeld(q, slow))
         copier.join(10_000)
-        assertTrue(endReturned)
-        assertTrue("the stream whose open began before the end is closed", closedIt)
-        assertEquals("and not one byte of it is read", 0, readFromIt)
+        assertFalse(copier.isAlive)
+        assertTrue("the stream whose open was admitted before the end is closed", slow.closedIt)
+        assertEquals("and not one byte of it is read", 0, slow.readFromIt)
         assertEquals("no copy attempt was started from it", 0, env.maxRunning)
         assertEquals(List(2) { Prep.NotSent(NotSentWhy.ScreenClosed) }, q.states())
         assertEquals("the second item is never opened", listOf(0), env.opened)
@@ -571,6 +582,124 @@ class ShareManyQueueTest {
         q.evaluate()
         assertEquals("after the end, a trigger opens nothing", listOf(0), env.opened)
         assertTrue("the end is not reported as an open failure", env.notPrepared.isEmpty())
+    }
+
+    @Test fun `F1 - an already-offered file and its copy are untouched when the next file's slow open is cut off`() {
+        val dir = tmp.newFolder()
+        val env = FakeEnv(dir = dir, sources = listOf(bytes(3000, 1), bytes(3000, 2), bytes(3000, 3)))
+        val slow = SlowOpen(env, slowIndex = 1)
+        env.opener = slow.opener
+        val q = queue(dir, env)
+        val copier = thread { q.evaluate() }
+        assertTrue(slow.entered.await(10, TimeUnit.SECONDS))
+        assertTrue("control: the first file was offered before the slow open", offered(q.states()[0]))
+        val firstCopy = env.offered.single().second
+        assertTrue(endWhileProviderHeld(q, slow))
+        copier.join(10_000)
+        assertTrue("the offered file stays offered", offered(q.states()[0]))
+        assertEquals(listOf(Prep.NotSent(NotSentWhy.ScreenClosed), Prep.NotSent(NotSentWhy.ScreenClosed)), q.states().drop(1))
+        assertTrue("its private copy is still there, for its offer", File(dir, "$firstCopy.bin").isFile)
+        assertStagingHoldsOnly(dir, env)
+        assertEquals(listOf(0, 1), env.opened)
+        assertEquals(1, env.offered.size)
+        assertTrue(slow.closedIt)
+        assertEquals(0, slow.readFromIt)
+    }
+
+    @Test fun `F1 - a slow open that fails after the end is not reported as a failure of that file`() {
+        val dir = tmp.newFolder()
+        val env = FakeEnv(dir = dir, sources = listOf(bytes(100, 1), bytes(100, 2)))
+        val slow = SlowOpen(env, slowIndex = 0, failAfter = true)
+        env.opener = slow.opener
+        val q = queue(dir, env)
+        val copier = thread { q.evaluate() }
+        assertTrue(slow.entered.await(10, TimeUnit.SECONDS))
+        assertTrue(endWhileProviderHeld(q, slow))
+        copier.join(10_000)
+        assertEquals(List(2) { Prep.NotSent(NotSentWhy.ScreenClosed) }, q.states())
+        assertTrue(env.notPrepared.isEmpty())
+        assertEquals(listOf(0), env.opened)
+    }
+
+    @Test fun `F1 - an end landing inside the provider call, on the same thread, neither deadlocks nor reads`() {
+        val dir = tmp.newFolder()
+        val env = FakeEnv(dir = dir, sources = listOf(bytes(100, 1), bytes(100, 2)))
+        var read = 0
+        var closed = false
+        lateinit var q: ShareManyQueue
+        env.opener = { i ->
+            if (i == 0) q.end(NotSentWhy.ScreenClosed)
+            object : InputStream() {
+                override fun read(): Int { read++; return -1 }
+                override fun read(b: ByteArray, off: Int, len: Int): Int { read += len; return -1 }
+                override fun close() { closed = true }
+            }
+        }
+        q = queue(dir, env)
+        val copier = thread { q.evaluate() }
+        copier.join(5_000)
+        assertFalse("no deadlock", copier.isAlive)
+        assertTrue(closed)
+        assertEquals(0, read)
+        assertEquals(listOf(0), env.opened)
+        assertEquals(List(2) { Prep.NotSent(NotSentWhy.ScreenClosed) }, q.states())
+        assertTrue(dir.list()!!.isEmpty())
+    }
+
+    @Test fun `F1 - an end landing after a file is chosen and before its open admits no open`() {
+        val dir = tmp.newFolder()
+        val env = FakeEnv(dir = dir, sources = listOf(bytes(100, 1), bytes(100, 2))).apply { liveOverride = ShareOffer.MAX_LIVE_OFFERS_V3 }
+        lateinit var q: ShareManyQueue
+        var calls = 0
+        var armed = false
+        val base = env
+        // The monotonic clock is read once at the evaluation's tick and once more as a waiting file is
+        // chosen (its stall clock leaves waiting) — after the choice, before the open. The end lands there.
+        val hooked = object : ShareManyQueue.Env by base {
+            override fun monotonicMs(): Long {
+                if (armed && ++calls == 2) q.end(NotSentWhy.ScreenClosed)
+                return base.monotonicMs()
+            }
+        }
+        q = ShareManyQueue(dir, env.sources.map { it.size.toLong() }, hooked)
+        q.evaluate()
+        assertTrue("control: both wait on the live-offer limit", q.states().all { it is Prep.Waiting })
+        env.liveOverride = null
+        armed = true
+        q.evaluate()
+        assertEquals("control: the end landed at the second clock read", 2, calls)
+        assertEquals("nothing was opened after the end", emptyList<Int>(), env.opened)
+        assertEquals(List(2) { Prep.NotSent(NotSentWhy.ScreenClosed) }, q.states())
+        assertTrue(env.offered.isEmpty())
+        assertTrue(dir.list()!!.isEmpty())
+    }
+
+    @Test fun `F1 - an end landing as the copy registers reads nothing and leaves nothing`() {
+        val dir = tmp.newFolder()
+        val env = FakeEnv(dir = dir, sources = listOf(bytes(5000, 1), bytes(100, 2)))
+        var read = 0
+        env.opener = { i ->
+            val src = ByteArrayInputStream(env.sources[i])
+            object : InputStream() {
+                override fun read(): Int { read++; return src.read() }
+                override fun read(b: ByteArray, off: Int, len: Int): Int = src.read(b, off, len).also { if (it > 0) read += it }
+            }
+        }
+        lateinit var q: ShareManyQueue
+        val base = env
+        val hooked = object : ShareManyQueue.Env by base {
+            override fun attempt(attemptId: String, running: Boolean) {
+                base.attempt(attemptId, running)
+                if (running) q.end(NotSentWhy.ScreenClosed)
+            }
+        }
+        q = ShareManyQueue(dir, env.sources.map { it.size.toLong() }, hooked)
+        q.evaluate()
+        assertEquals("not one byte read after the end", 0, read)
+        assertEquals(List(2) { Prep.NotSent(NotSentWhy.ScreenClosed) }, q.states())
+        assertTrue("the partial was deleted", dir.list()!!.isEmpty())
+        assertEquals(listOf(0), env.opened)
+        assertTrue(env.offered.isEmpty())
     }
 
     @Test fun `once the end has returned nothing is opened, whatever triggers arrive`() {

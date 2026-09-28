@@ -4,8 +4,6 @@ import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 
 /**
  * **Stage 2 — several files from one `SEND_MULTIPLE`, prepared one at a time. Development only.**
@@ -35,10 +33,14 @@ import kotlin.concurrent.withLock
  *   which is a different session ([Env.session]) and ends it the same way. They end every file not yet
  *   offered, cancel a running copy (whose partial [ShareStaging.copy] deletes), and never touch an
  *   offered file.
- * - **No shared URI is opened once [end] has taken effect** (§11). The check of [ended] and [Env.open]
- *   happen under one gate that [end] also takes, so an open is either wholly before the end — and its
- *   stream is then closed unread — or never starts. [end] therefore waits for at most **one open call
- *   already under way** (not a read, not a copy). When [end] returns, no open is running and none can start.
+ * - **No shared URI open is admitted once [end] has taken effect** (§11), and **[end] never waits for a
+ *   provider.** An open is admitted under [lock] while [ended] is null, and [end] sets [ended] under the
+ *   same lock, so every open this queue ever calls was admitted before the end. An open admitted before
+ *   the end and still inside the provider when it lands is left to finish on the queue's thread; its stream
+ *   is then **closed with no byte read**, nothing is copied or offered from it, and it is not reported as a
+ *   failure. (Until 2026-09-28 [end] waited for such an open to return — on the main thread, for as long
+ *   as the provider took: finding F1, `docs/feature-a-v3-production-enablement.md` §6.) So when [end]
+ *   returns, no open can be admitted; one admitted earlier may still be running, and reads nothing.
  * - **The §12 stall clock** ([StallClock]), PROPOSED and development only: a waiting file whose wait
  *   nothing in progress explains for [StallClock.RUN_LIMIT_MS], or that has waited [StallClock.CEILING_MS]
  *   in all, ends as [NotSentWhy.WaitedTooLong] — that file only, with nothing staged and nothing offered.
@@ -193,11 +195,6 @@ class ShareManyQueue(
 
     private val files = List(expected.size) { File1() }
     private val lock = Any()
-    /**
-     * Held from the check of [ended] through [Env.open]'s return, and taken by [end] after it sets
-     * [ended]. Lock order is always this gate, then [lock].
-     */
-    private val openGate = ReentrantLock()
     /** Set once by [end]: from then on nothing is opened, copied or offered. */
     @Volatile private var ended: NotSentWhy? = null
     /** Copies this queue still owns (running or staged, not handed over). */
@@ -256,24 +253,21 @@ class ShareManyQueue(
     }
 
     /**
-     * The screen closed, or the session ended: every file not yet offered is not sent, for [why].
-     * Waits for at most one [Env.open] call already under way; see the class notes.
+     * The screen closed, or the session ended: every file not yet offered is not sent, for [why]. Takes
+     * only [lock], never a provider: it does not wait for an open, a read or a copy (see the class notes).
      */
-    fun end(why: NotSentWhy): Int {
-        synchronized(lock) { if (ended == null) ended = why }
-        return openGate.withLock {
-            synchronized(lock) {
-                for (f in files) if (f.prep !is Prep.Offered && f.prep !is Prep.NotSent) f.prep = Prep.NotSent(ended!!)
-                // A copy still being written is left to run(), which sees [ended] and deletes it on return.
-                var removed = 0
-                for (id in owned.toList()) {
-                    if (running == id) continue
-                    removed += ShareStaging.discard(dir, id)
-                    owned -= id
-                }
-                removed
-            }
+    fun end(why: NotSentWhy): Int = synchronized(lock) {
+        if (ended == null) ended = why
+        for (f in files) if (f.prep !is Prep.Offered && f.prep !is Prep.NotSent) f.prep = Prep.NotSent(ended!!)
+        // A copy still being written is left to run(), which sees [ended] and deletes it on return; an open
+        // still inside the provider is left to run() too, which closes its stream unread.
+        var removed = 0
+        for (id in owned.toList()) {
+            if (running == id) continue
+            removed += ShareStaging.discard(dir, id)
+            owned -= id
         }
+        removed
     }
 
     private data class Pick(
@@ -423,10 +417,9 @@ class ShareManyQueue(
         val i = pick.index
         val input: InputStream
         try {
-            input = openGate.withLock {
-                synchronized(lock) { if (ended != null) return; files[i].prep = Prep.Preparing(0) }
-                env.open(i)
-            }
+            // Admission: under [lock], only while [ended] is null. [end] sets [ended] under the same lock.
+            synchronized(lock) { if (ended != null) return; files[i].prep = Prep.Preparing(0) }
+            input = env.open(i)
         } catch (e: Exception) {
             val report = synchronized(lock) {
                 if (ended != null) return
@@ -437,15 +430,19 @@ class ShareManyQueue(
             if (report) env.notPrepared(i, null, NotSentWhy.OpenFailed, e.javaClass.name)
             return
         }
-        if (ended != null) {
-            // The open began before the end took effect and returned after it: closed unread (§11).
+        val id = ShareStaging.newAttemptId()
+        // One step with [end]: either the end has landed — the open was admitted before it and returned
+        // after it, so its stream is closed unread (§11) — or this copy is registered before any end can.
+        val proceed = synchronized(lock) {
+            if (ended != null) false else {
+                owned += id
+                running = id
+                true
+            }
+        }
+        if (!proceed) {
             runCatching { input.close() }
             return
-        }
-        val id = ShareStaging.newAttemptId()
-        synchronized(lock) {
-            owned += id
-            running = id
         }
         env.attempt(id, running = true)
         val outcome = try {

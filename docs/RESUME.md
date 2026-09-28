@@ -16,8 +16,8 @@
    cannot carry it to another; the `onStop` rule tested); `e916f66` (phone: the §11 `SEND_MULTIPLE` grant
    instrument, and an in-app switch for the two disabled components); a docs commit with this file.
    **`docs/testing.md` is left uncommitted on purpose** — it holds your paused Run A notes as well as tonight's.
-4. **Verified:** phone 217/0, 505/0, 164/0, 52/0, 60/0 (`--rerun-tasks`); Mac 1,274/0; 16 checkers 0; 13
-   mutations red on named tests; release manifest and release classes free of every several-files and probe
+4. **Verified:** phone 217/0, 505/0, 164/0, 52/0, 60/0 (`--rerun-tasks`); Mac 1,274/0; 16 checkers 0; 11
+   mutations red on named tests (3 Mac, 8 phone); release manifest and release classes free of every several-files and probe
    class. APKs built, installed only on the emulator.
 5. **Found:** the shell's `pm enable` is **refused on the SDK 37 emulator** — the runbook's P3; not measured on
    the Samsung; the in-app switch is the fallback. Emulator grant readings (DocumentsUI): readable while stopped

@@ -41,9 +41,8 @@ one-shot debug arm on the phone, a debug switch on an unpackaged Mac). Enabling 
    while preparing or waiting (4) — the current `onStop` rule is a fail-closed placeholder, and
    **production values** (6): the §4 budget, the 60-minute backstop, the stall clock's 10- and 60-minute
    limits (all PROVISIONAL), and `ShareSelection.MAX_FILES = 10` (*proposed, not approved*).
-4. **Finding F1 of 2026-09-28 (below)**: `ShareManyQueue.end` waits on the main thread, unbounded, for an
-   `openInputStream` already under way. A slow provider (a cloud item) could stall the UI thread. Needs a
-   decision before a public build, because the fix changes the §11 guarantee's wording.
+4. ~~**Finding F1**~~ — **resolved 2026-09-28 (morning)**: `ShareManyQueue.end` no longer waits for a provider
+   (§6).
 
 **Mac**
 5. **A production path to `share.file 3`** (today: unpackaged + `shareV3` only), and the same for
@@ -98,7 +97,16 @@ thing it gates.
 
 ## 6 · Findings from the 2026-09-28 overnight review (not fixed)
 
-- **F1 — an unbounded main-thread wait.** `ShareManyToMacActivity.onStop` → `screenClosed` →
+- **F1 — RESOLVED 2026-09-28 (morning).** `end` now takes only the queue's lock. An open is admitted only under
+  that lock while the queue has not ended, so **no open is admitted and no offer made once `end` has run**;
+  an open admitted before it and still inside a slow provider finishes on the queue's thread, its stream is
+  closed with no byte read, nothing is copied, offered or reported from it; offered files and their copies
+  are untouched. **What was given up, deliberately:** the old sentence *"when `end` returns, no open is
+  running"* — keeping it is exactly what required waiting on the provider. Six deterministic tests (a
+  latch-held provider; an end inside the provider call; an end between choosing a file and opening it; an end
+  as the copy registers), red against the pre-fix code and against both near-miss mutations. The original
+  finding, for the record:
+- **F1 (original) — an unbounded main-thread wait.** `ShareManyToMacActivity.onStop` → `screenClosed` →
   `ShareManyQueue.end`, which takes the open gate and so waits for any `Env.open` under way. That is by
   design (so no URI is opened once `end` returns), and it is tested. The wait has no bound. With the
   local providers on this phone an open is quick; with a provider that fetches on open it is not known.
