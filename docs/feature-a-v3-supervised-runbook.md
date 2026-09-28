@@ -24,6 +24,22 @@
 > - **P6's instrument is built**: `ShareManyGrantProbeActivity` (component `probe` in the switch above), disabled.
 >   Procedure in §5.1 below. Emulator readings exist and are emulator evidence only.
 
+> **PAUSED 2026-09-28 20:29 IST, at the baseline. Nothing armed, launched or offered.** Every check passed except
+> the phone's free space: **10,047,544 KiB of 478,509,056 KiB (2%)**, down from 18 GB at 15:0x.
+>
+> With a copy already held, a second copy is admitted only when usable space clears the provisional floor
+> `⌈3%·T⌉ + 1 GiB` (`ShareAdmission.PROVISIONAL_DEV_CANDIDATE`). On this phone the floor is 15,773,540,025 B.
+> Below it `A − H < 0`, so `spaceLimit` returns −1 and file 2 would be refused `OVER_SPACE_BUDGET` (measured
+> limit 0), whatever the quota. So two waiting cards cannot form and A1 cannot run.
+>
+> The drop is not Sidekick's: at 20:38 its cache was 11 KiB and staging 4 KiB (0 files), `SidekickShareTest`
+> was 332 KiB and `SidekickGrantP5` 116 KiB. **The cause is unknown** and, by the owner's instruction, not
+> investigated beyond those areas.
+>
+> **Resume only when the owner says the phone has room** — roughly 16.1 GB free is needed (the floor, plus the
+> 256 MiB margin, plus the file). Then retake this whole baseline and proceed only if the admission check
+> passes. The floor is not to be changed.
+
 > **Run A, step A1 — the exact supervised sequence (written 2026-09-28 15:3x IST). Not run, not
 > authorised: every step marked P or M is the owner's yes, at the time.**
 >

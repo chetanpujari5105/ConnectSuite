@@ -1,3 +1,22 @@
+# Resume here — written 2026-09-28 (20:45 IST): Run A A1 PAUSED at the baseline — phone free space below the budget floor
+
+> Supersedes the entry below for Run A. Details are in the runbook's top banner.
+
+1. **Built:** nothing new this sitting.
+2. **Committed:** a docs commit with this entry.
+3. **Half-built:** nothing.
+4. **Needs the owner:** free space on the SM-S938B, roughly 16.1 GB free needed.
+   - It read 10,047,544 KiB (2%) at 20:29, down from 18 GB at 15:0x.
+   - Under the provisional floor of 3%·T + 1 GiB (15,773,540,025 B here), the second concurrent copy would be
+     refused, so A1's two waiting cards cannot form.
+   - The drop is not Sidekick's (its cache, staging and both synthetic folders total about 463 KiB); the cause
+     is unknown and deliberately not investigated.
+   - Then say so, and the whole A1 baseline is retaken from scratch before P2.
+5. **Next:** A1, only after that baseline passes (runbook banner).
+6. **Left changed on devices:** nothing.
+   - Phone: not armed, no component switch, nothing written.
+   - Mac: app stopped; `desktop/dist` = `967117b` build `cb74d20d6de3172e`; ledger `[]`.
+
 # Resume here — written 2026-09-28 (15:35 IST, owner-approved Mac block): F4 built, F5 corrected, dist rebuilt — stopped at the Run A A1 gate
 
 > Supersedes the entry below. The exact A1 sequence, and restore, is the banner at the top of
