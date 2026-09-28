@@ -7,10 +7,10 @@ import test from 'node:test';
 
 import { pullShareWith, type SharePullResult } from './bulk';
 import { ShareReceiver, isAcceptableProbe, type ShareDeps, type ShareLink } from './share';
-import { checkDestination, publishExclusive, type DestinationVerdict } from './shareDestination';
+import { checkDestination, publishExclusive, realFs, spaceNeeded, type DestinationVerdict } from './shareDestination';
 import { startFakePhone, synthetic, type FakePhone } from './sharePhone.testkit';
 import { handleShareDecision, type WindowFacts } from './shareDecision';
-import { isSidekickTemporaryName } from './shareLedger';
+import { FileShareLedger, isSidekickTemporaryName, type ShareLedger } from './shareLedger';
 import { sanitizeShareName } from '../shared/shareNames';
 const { shareReceiveStatus } = require('../shared/shareReceiveCopy') as { shareReceiveStatus: (f: Record<string, unknown>) => { headline: string; savedOnMac: boolean; confirmedByPhone: boolean } };
 
@@ -1331,3 +1331,111 @@ for (const cancelFirst of [true, false]) {
     assert.ok(!link.types().includes('saved:true'));
   });
 }
+
+// ---- Stage A coverage audit (2026-09-28): §10 cases that had no test of their own ----------------
+
+/** A real ledger in a temp folder that also remembers every call, so a test can see each pull's own entry. */
+function recordingLedger(): ShareLedger & { calls: { op: string; path: string }[] } {
+  const inner = new FileShareLedger(join(mkdtempSync(join(tmpdir(), 'share-ledger-')), 'ledger.json'));
+  const calls: { op: string; path: string }[] = [];
+  return {
+    calls,
+    recordIntent: async (path, parent) => { calls.push({ op: 'intent', path }); await inner.recordIntent(path, parent); },
+    recordCreated: async (path, identity) => { calls.push({ op: 'created', path }); await inner.recordCreated(path, identity); },
+    forget: async (path) => { calls.push({ op: 'forget', path }); await inner.forget(path); },
+    entries: () => inner.entries(),
+  };
+}
+
+test('v3 §10: two files pulled in Accept order each get their own partial and their own ledger entry, each forgotten once published', { timeout: 10_000 }, async () => {
+  const ledger = recordingLedger();
+  const rig = await queueRig(3, [{ id: vid('A'), size: 10_000 }, { id: vid('B'), size: 20_000 }], { ledger });
+  try {
+    await rig.r.decide(vid('B'), 'accept'); // arrived second, accepted first
+    await rig.r.decide(vid('A'), 'accept');
+    await until('A and B saved', () => rig.r.state(vid('A')) === 'saved' && rig.r.state(vid('B')) === 'saved', 6000);
+    assert.deepEqual(rig.begins, [vid('B'), vid('A')], 'pulled in Accept order');
+    const intents = ledger.calls.filter((c) => c.op === 'intent').map((c) => c.path);
+    assert.equal(intents.length, 2, `one ledger entry per pull: ${intents.join(', ')}`);
+    assert.notEqual(intents[0], intents[1], 'two different partials');
+    assert.ok(intents[0]!.includes(vid('B')) && intents[1]!.includes(vid('A')), 'each partial is named for its own offer, in pull order');
+    for (const p of intents) {
+      assert.ok(ledger.calls.some((c) => c.op === 'created' && c.path === p), `created recorded for ${p}`);
+      assert.ok(ledger.calls.some((c) => c.op === 'forget' && c.path === p), `forgotten after publication: ${p}`);
+    }
+    assert.deepEqual(await ledger.entries(), [], 'nothing left in the ledger');
+    assert.deepEqual(readdirSync(rig.d).filter(isSidekickTemporaryName), [], 'no partial left behind');
+  } finally {
+    await rig.close();
+  }
+});
+
+test('v3 §10: a reservation is released when its offer ends — cancelled while queued, cancelled while receiving, and saved', { timeout: 10_000 }, async () => {
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 40_000 },
+    { id: vid('B'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+    { id: vid('C'), size: 30_000 },
+  ], { idleTimeoutMs: 5000 });
+  try {
+    await rig.r.decide(vid('B'), 'accept');
+    await until('B has written 20,000', () => rig.r.snapshots().find((s) => s.offerId === vid('B'))!.receivedBytes === 20_000);
+    await rig.r.decide(vid('C'), 'accept');
+    assert.equal(rig.r.state(vid('C')), 'queued');
+    assert.equal(rig.checks.at(-1)!.reserved, 80_000, 'control: while B receives, C’s Accept sees B’s unwritten 80,000');
+    assert.equal(await rig.r.cancel(vid('C')), true);
+    assert.equal(await rig.r.cancel(vid('B')), true);
+    assert.equal(rig.r.state(vid('C')), 'cancelled');
+    assert.equal(rig.r.state(vid('B')), 'cancelled');
+    await rig.r.decide(vid('A'), 'accept');
+    assert.deepEqual(rig.checks.at(-1), { size: 40_000, reserved: 0 }, 'neither the cancelled queued file nor the cancelled receiving file still reserves');
+  } finally {
+    await rig.close();
+  }
+  const saved = await queueRig(3, [{ id: vid('D'), size: 20_000 }, { id: vid('E'), size: 10_000 }]);
+  try {
+    await saved.r.decide(vid('D'), 'accept');
+    await until('D saved', () => saved.r.state(vid('D')) === 'saved');
+    await saved.r.decide(vid('E'), 'accept');
+    assert.deepEqual(saved.checks.at(-1), { size: 10_000, reserved: 0 }, 'a saved file reserves nothing: its bytes are a real file now');
+  } finally {
+    await saved.close();
+  }
+});
+
+test('v3 §10: two files that each fit alone — the second Accept is refused while the first holds its reservation, and accepted once it is released', { timeout: 10_000 }, async () => {
+  // Free space that fits the larger file alone, by the real rule, with nothing to spare.
+  const free = spaceNeeded(100_000);
+  const tight = (f: string, size: number, reserved: number) =>
+    checkDestination(f, size, { ...realFs, statfs: async () => ({ bavail: free, bsize: 1 }) }, null, reserved);
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 40_000 },
+    { id: vid('B'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+  ], { idleTimeoutMs: 5000, checkDestination: tight });
+  try {
+    assert.equal(rig.r.state(vid('A')), 'awaiting-decision', 'A fits alone: its offer-time check passed with nothing reserved');
+    assert.equal(rig.r.state(vid('B')), 'awaiting-decision', 'B fits alone too');
+    await rig.r.decide(vid('B'), 'accept');
+    await until('B writing', () => rig.r.state(vid('B')) === 'receiving');
+    await rig.r.decide(vid('A'), 'accept');
+    assert.equal(rig.r.state(vid('A')), 'refused', 'A no longer fits beside B’s reservation');
+    assert.equal(rig.link.sent.find((s) => s.type === 'share.respond' && s.payload.offerId === vid('A') && s.payload.decision === 'decline')?.payload.reason, 'insufficient-space');
+    assert.equal(rig.r.state(vid('B')), 'receiving', 'the running file is untouched');
+  } finally {
+    await rig.close();
+  }
+  // Control: the same two files and the same space, with B's reservation released before A's Accept.
+  const control = await queueRig(3, [
+    { id: vid('A'), size: 40_000 },
+    { id: vid('B'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+  ], { idleTimeoutMs: 5000, checkDestination: tight });
+  try {
+    await control.r.decide(vid('B'), 'accept');
+    await until('B writing', () => control.r.state(vid('B')) === 'receiving');
+    await control.r.cancel(vid('B'));
+    await control.r.decide(vid('A'), 'accept');
+    assert.notEqual(control.r.state(vid('A')), 'refused', 'with B released, A is accepted');
+    await until('A saved', () => control.r.state(vid('A')) === 'saved');
+  } finally {
+    await control.close();
+  }
+});

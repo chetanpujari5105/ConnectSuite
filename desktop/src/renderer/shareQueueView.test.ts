@@ -249,3 +249,20 @@ test('the live region: an ended offer is not announced any more, and the one sti
   t.draw([offer(A, 1, { name: 'first.png', state: 'declined' }), offer(B, 2, { name: 'second.png', state: 'saved', savedAs: 'second.png' })]);
   assert.equal(t.n.live.textContent, '');
 });
+
+test('§10: three cards in three states — waiting, queued, receiving — drawn together, each with its own actions, and nothing takes focus', () => {
+  const t = setup();
+  focus(null);
+  t.draw([offer(A, 1, { state: 'receiving', receivedBytes: 50_000 }), offer(B, 2, { state: 'queued', filesAhead: 1 }), offer(C, 3)]);
+  assert.deepEqual(t.cards().map((c) => c.dataset.offerId), [A, B, C], 'three cards, in arrival order');
+  assert.deepEqual(t.cards().map((c) => c.dataset.state), ['receiving', 'queued', 'awaiting-decision'], 'each card in its own state');
+  assert.deepEqual(t.card(C)!.queryAll('button').filter((b) => !b.hidden).map((b) => b.dataset.action), ['decline', 'accept'], 'the waiting card can be decided');
+  assert.deepEqual(t.card(B)!.queryAll('button').filter((b) => !b.hidden).map((b) => b.dataset.action), ['cancel'], 'the queued card can only be cancelled');
+  assert.ok(!t.card(A)!.queryAll('button').some((b) => !b.hidden && (b.dataset.action === 'accept' || b.dataset.action === 'decline')), 'the receiving card cannot be accepted or declined');
+  const buttons = t.n.root.queryAll('button');
+  assert.ok(buttons.length >= 4, `control: the window's buttons were read (${buttons.length})`);
+  for (const b of buttons) assert.equal(b.focusCount, 0, `${b.dataset.action ?? 'close'} was not focused`);
+  // A later snapshot moving the queued file on (it starts receiving) moves no focus either.
+  t.draw([offer(A, 1, { state: 'saved', savedAs: 'IMG_1.jpg' }), offer(B, 2, { state: 'receiving', receivedBytes: 1 }), offer(C, 3)]);
+  for (const b of t.n.root.queryAll('button')) assert.equal(b.focusCount, 0, `${b.dataset.action ?? 'close'} was not focused after an update`);
+});
