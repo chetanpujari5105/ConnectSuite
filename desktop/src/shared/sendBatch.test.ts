@@ -14,6 +14,7 @@ const {
   sendBatchOnStarted,
   sendNameKey,
   SEND_WINDOW,
+  SEND_AWAITING_MAX,
 } = require('./sendBatch.ts');
 
 const two = () =>
@@ -123,17 +124,31 @@ function startAll(batch: ReturnType<typeof many>): { batch: ReturnType<typeof ma
   return { batch, started };
 }
 
-test('up to SEND_WINDOW files are in flight at once, and a verdict frees a slot', () => {
+test('up to SEND_WINDOW files are written at once; a finished write frees a writing slot', () => {
   assert.equal(SEND_WINDOW, 3);
   let { batch, started } = startAll(many(['1.bin', '2.bin', '3.bin', '4.bin', '5.bin']));
   assert.deepEqual(started, ['/d0/1.bin', '/d1/2.bin', '/d2/3.bin']);
-  // The Mac finishing its write does not free a slot: the phone has not said anything yet.
+  // The Mac finishing its write frees a writing slot: the phone commits it while the next one moves.
   batch = sendBatchOnAgreed(batch, '/d0/1.bin', 't-1', '1.bin');
   batch = sendBatchOnWriteFinished(batch, '/d0/1.bin', { ok: true });
-  assert.equal(sendBatchNext(batch), null);
-  // The phone's verdict does.
-  batch = sendBatchOnDone(batch, { transferId: 't-1', ok: true, bytes: 1000, verified: true });
   assert.equal(sendBatchNext(batch).source, '/d3/4.bin');
+});
+
+test('at most SEND_AWAITING_MAX files wait for the phone’s verdict at once', () => {
+  assert.equal(SEND_AWAITING_MAX, 8);
+  let batch = many(Array.from({ length: 12 }, (_, i) => `${i}.bin`));
+  for (let i = 0; i < 12; i += 1) {
+    const next = sendBatchNext(batch);
+    if (!next) break;
+    batch = sendBatchOnStarted(batch, next.source);
+    batch = sendBatchOnAgreed(batch, next.source, `t-${i}`, next.name);
+    batch = sendBatchOnWriteFinished(batch, next.source, { ok: true });
+  }
+  const waiting = batch.items.filter((i: { phase: string }) => i.phase === 'confirming').length;
+  assert.equal(waiting, 8, 'eight written and unanswered; the ninth waits');
+  assert.equal(sendBatchNext(batch), null);
+  batch = sendBatchOnDone(batch, { transferId: 't-0', ok: true, bytes: 1000, verified: true });
+  assert.equal(sendBatchNext(batch).source, '/d8/8.bin', 'a verdict lets the next one start');
 });
 
 test('a file started but not yet agreed is never handed out twice', () => {

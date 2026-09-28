@@ -204,20 +204,26 @@ function sendBatchSettled(batch: SendBatch): boolean {
 }
 
 /**
- * How many files of one batch may be in flight at once — started and not yet answered by the phone.
- * Each keeps its own `transferId`, its own progress from the phone, its own digest and its own verdict;
- * the phone serves every bulk socket on its own coroutine.
+ * How many files of one batch this Mac writes at once. Each keeps its own `transferId`, its own
+ * progress from the phone, its own digest and its own verdict; the phone serves every bulk socket on
+ * its own coroutine.
  *
- * **What the measurement says, including what it does not** (2026-09-29, SM-S938B on its own hotspot,
- * old and new builds interleaved): eight 1 MiB files one after another took 1,571 ms to the last verdict
- * against 574 ms for the same 8 MiB as one file — the per-file cost is real. **Three in flight did not
- * reduce it**: four 1 MiB files took 813–843 ms before and 829–842 ms after. The cost that remains sits
- * after the Mac's last byte (≈160 ms per file: the phone's final hash, its MediaStore publish and its
- * record) and the phone does it one file at a time, so overlapping on this side cannot hide it. The
- * window is kept because it costs nothing measurable and pays as soon as that phone-side work is
- * shortened; it is not a speed claim today.
+ * **Measured** (2026-09-29, SM-S938B on its own hotspot, `scripts/transfer-speed-probe.mjs`): eight
+ * 1 MiB files one after another took 1,571 ms to the last verdict, against 574 ms for the same 8 MiB as
+ * one file. The phone's log places the per-file cost: ≈ 30 ms to authorise the bulk socket, ≈ 50 ms of
+ * bytes, then **≈ 165 ms after the last byte** to hash, publish into MediaStore (`IS_PENDING` 0) and
+ * record it — ≈ 80 ms each when three commit together. A first version counted files awaiting that
+ * verdict against this window, which made the fourth file wait for three commits and measured **no
+ * gain** (4 × 1 MiB, 813–843 ms before, 829–842 ms after). So a finished write frees a writing slot, and
+ * the phone's commits overlap the next file's bytes, bounded by [SEND_AWAITING_MAX].
  */
 const SEND_WINDOW = 3;
+
+/**
+ * How many written files may wait for the phone's verdict at once. A bound, so a batch of hundreds
+ * of small files cannot leave hundreds of pending items unanswered on the phone; not a tuned value.
+ */
+const SEND_AWAITING_MAX = 8;
 
 /**
  * The name a file could land under on the phone, reduced to what can collide there: case folded
@@ -234,8 +240,8 @@ function sendNameKey(name: string): string {
 /**
  * The next file that should start, or null.
  *
- * - At most [SEND_WINDOW] files are `sending` or `confirming` at once. `confirming` counts: the Mac
- *   has finished writing, but the phone is still receiving, hashing and publishing it.
+ * - At most [SEND_WINDOW] files are `sending` (being written by this Mac) at once, and at most
+ *   [SEND_AWAITING_MAX] are `sending` or `confirming` (written, not yet answered by the phone).
  * - **A file waits while any other file with its [sendNameKey] is in flight, or queued ahead of it.**
  *   The phone's Received files reuses a pending item with the same name (its resume path), so two
  *   such files in flight together could share one partial. The earlier one must have the phone's
@@ -245,7 +251,8 @@ function sendNameKey(name: string): string {
 function sendBatchNext(batch: SendBatch): SendItem | null {
   if (batch.stopped) return null;
   const inFlight = (i: SendItem) => i.phase === 'sending' || i.phase === 'confirming';
-  if (batch.items.filter(inFlight).length >= SEND_WINDOW) return null;
+  if (batch.items.filter((i) => i.phase === 'sending').length >= SEND_WINDOW) return null;
+  if (batch.items.filter(inFlight).length >= SEND_AWAITING_MAX) return null;
   for (const [index, item] of batch.items.entries()) {
     if (item.phase !== 'queued') continue;
     const key = sendNameKey(item.name);
@@ -339,6 +346,7 @@ function suffixedName(name: string, n: number): string {
   g.sendBatchOnStarted = sendBatchOnStarted;
   g.sendNameKey = sendNameKey;
   g.SEND_WINDOW = SEND_WINDOW;
+  g.SEND_AWAITING_MAX = SEND_AWAITING_MAX;
 }
 
 if (typeof module !== 'undefined') {
@@ -356,5 +364,6 @@ if (typeof module !== 'undefined') {
     sendBatchOnStarted,
     sendNameKey,
     SEND_WINDOW,
+    SEND_AWAITING_MAX,
   };
 }

@@ -581,26 +581,34 @@ test('Stop cancels every file in flight on the phone and starts nothing queued',
   }
 });
 
-test('three sends at once: a finished write keeps its slot, the phone’s verdict frees it', async () => {
+test('three sends at once: each finished write lets the next file start while the phone commits', async () => {
   const pane = mount();
   try {
     await readyToSend(pane);
-    pane.bridge.picked = [1, 2, 3, 4].map((n) => ({ source: `/m/${n}.bin`, name: `${n}.bin`, size: 10 }));
+    pane.bridge.picked = [1, 2, 3, 4, 5].map((n) => ({ source: `/m/${n}.bin`, name: `${n}.bin`, size: 10 }));
     pane.bridge.onAgreed = (source) =>
       pane.view.onPushAgreed({ source, transferId: `t-${source}`, name: source.slice(3) });
+    const releases: Array<() => void> = [];
+    const original = pane.bridge.fsSend.bind(pane.bridge);
+    pane.bridge.fsSend = async (options: { source: string }) => {
+      const result = original(options);
+      await new Promise<void>((r) => { releases.push(r); });
+      return result;
+    };
     await pane.view.pickAndOffer();
     cardButton(pane, 'Send').click();
     for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
-    assert.deepEqual(pane.bridge.sent, ['/m/1.bin', '/m/2.bin', '/m/3.bin'], 'the window, not the whole batch');
+    assert.deepEqual(pane.bridge.sent, ['/m/1.bin', '/m/2.bin', '/m/3.bin'], 'three writing, not the whole batch');
+    releases.shift()!();
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
     const phaseOf = (n: number) => pane.detail.queryAll('.files-send-item')[n]!.dataset.phase;
     assert.equal(phaseOf(0), 'confirming', 'the Mac wrote it; the phone has not answered');
-    pane.view.onTransferEvent({ type: 'fs.transfer.done', payload: { transferId: 't-/m/2.bin', ok: true, bytes: 10, verified: true } });
-    for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
-    assert.deepEqual(pane.bridge.sent, ['/m/1.bin', '/m/2.bin', '/m/3.bin', '/m/4.bin'], 'a verdict started the fourth');
-    for (const n of [1, 3, 4]) {
+    assert.deepEqual(pane.bridge.sent, ['/m/1.bin', '/m/2.bin', '/m/3.bin', '/m/4.bin'], 'its writing slot went to the fourth');
+    while (releases.length) { releases.shift()!(); for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r)); }
+    for (const n of [1, 2, 3, 4, 5]) {
       pane.view.onTransferEvent({ type: 'fs.transfer.done', payload: { transferId: `t-/m/${n}.bin`, ok: true, bytes: 10, verified: true } });
     }
-    assert.ok(pane.detail.textContent.includes('4 files arrived on Samsung SM-S938B'), pane.detail.textContent);
+    assert.ok(pane.detail.textContent.includes('5 files arrived on Samsung SM-S938B'), pane.detail.textContent);
   } finally {
     pane.restore();
   }
