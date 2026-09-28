@@ -11,6 +11,9 @@ const {
   sendBatchNext,
   sendBatchSummary,
   suffixedName,
+  sendBatchOnStarted,
+  sendNameKey,
+  SEND_WINDOW,
 } = require('./sendBatch.ts');
 
 const two = () =>
@@ -89,11 +92,11 @@ test('a failed done keeps the phone’s message', () => {
   assert.equal(batch.items[0].reason, 'a.jpg arrived damaged and was deleted.');
 });
 
-test('serial: nothing new starts while one is sending, and stop cancels only the queue', () => {
+test('stop cancels only the queue; a file already started reports for itself', () => {
   let batch = two();
   assert.equal(sendBatchNext(batch).source, '/tmp/a.jpg');
+  batch = sendBatchOnStarted(batch, '/tmp/a.jpg');
   batch = sendBatchOnAgreed(batch, '/tmp/a.jpg', 't-1', 'a.jpg');
-  assert.equal(sendBatchNext(batch), null);
   batch = sendBatchStop(batch);
   assert.equal(batch.items[0].phase, 'sending', 'the in-flight item reports for itself');
   assert.equal(batch.items[1].phase, 'cancelled');
@@ -105,6 +108,70 @@ test('serial: nothing new starts while one is sending, and stop cancels only the
   // "nothing was sent" is not.
   assert.equal(sendBatchSummary(batch).headline, 'Stopped — nothing arrived');
   assert.match(sendBatchSummary(batch).detail, /2 stopped/);
+});
+
+const many = (names: string[]) =>
+  sendBatchCreate(names.map((n, i) => ({ source: `/d${i}/${n}`, name: n, size: 1000 })), 'Samsung SM-S938B', 'Received files');
+
+/** Start whatever sendBatchNext hands out until it says wait; returns the sources started, in order. */
+function startAll(batch: ReturnType<typeof many>): { batch: ReturnType<typeof many>; started: string[] } {
+  const started: string[] = [];
+  for (let next = sendBatchNext(batch); next; next = sendBatchNext(batch)) {
+    started.push(next.source);
+    batch = sendBatchOnStarted(batch, next.source);
+  }
+  return { batch, started };
+}
+
+test('up to SEND_WINDOW files are in flight at once, and a verdict frees a slot', () => {
+  assert.equal(SEND_WINDOW, 3);
+  let { batch, started } = startAll(many(['1.bin', '2.bin', '3.bin', '4.bin', '5.bin']));
+  assert.deepEqual(started, ['/d0/1.bin', '/d1/2.bin', '/d2/3.bin']);
+  // The Mac finishing its write does not free a slot: the phone has not said anything yet.
+  batch = sendBatchOnAgreed(batch, '/d0/1.bin', 't-1', '1.bin');
+  batch = sendBatchOnWriteFinished(batch, '/d0/1.bin', { ok: true });
+  assert.equal(sendBatchNext(batch), null);
+  // The phone's verdict does.
+  batch = sendBatchOnDone(batch, { transferId: 't-1', ok: true, bytes: 1000, verified: true });
+  assert.equal(sendBatchNext(batch).source, '/d3/4.bin');
+});
+
+test('a file started but not yet agreed is never handed out twice', () => {
+  let batch = many(['1.bin', '2.bin']);
+  const first = sendBatchNext(batch);
+  batch = sendBatchOnStarted(batch, first.source);
+  assert.equal(batch.items[0].phase, 'sending');
+  assert.equal(batch.items[0].transferId, null);
+  assert.notEqual(sendBatchNext(batch)?.source, first.source);
+  // The phone's agreement lands on the started item.
+  batch = sendBatchOnAgreed(batch, first.source, 't-1', '1.bin');
+  assert.equal(batch.items[0].transferId, 't-1');
+  assert.equal(batch.items[0].sentAs, '1.bin');
+});
+
+test('a file whose name could collide on the phone waits for the earlier one’s verdict', () => {
+  // The phone's Received files reuses a pending item with the same display name (its resume path),
+  // and its names are case-insensitive, and a TARGET_STALE retry renames to "stem (n).ext". So two
+  // files that could reach the same name must never be in flight together — not even while the
+  // first is only waiting for its verdict, which is when the phone is still writing it.
+  let { batch, started } = startAll(many(['a.jpg', 'A.JPG', 'a (2).jpg', 'b.jpg']));
+  assert.deepEqual(started, ['/d0/a.jpg', '/d3/b.jpg']);
+  batch = sendBatchOnAgreed(batch, '/d0/a.jpg', 't-1', 'a.jpg');
+  batch = sendBatchOnWriteFinished(batch, '/d0/a.jpg', { ok: true });
+  assert.equal(sendBatchNext(batch), null, 'still unconfirmed by the phone: the next a.jpg waits');
+  batch = sendBatchOnDone(batch, { transferId: 't-1', ok: true, bytes: 1000, verified: true });
+  assert.equal(sendBatchNext(batch).source, '/d1/A.JPG', 'then the next one, in order');
+});
+
+test('sendNameKey folds case and the retry suffix, and nothing else', () => {
+  assert.equal(sendNameKey('IMG_1 (2).jpg'), sendNameKey('img_1.JPG'));
+  assert.equal(sendNameKey('README (3)'), sendNameKey('readme'));
+  assert.notEqual(sendNameKey('IMG_1.jpg'), sendNameKey('IMG_12.jpg'));
+  assert.notEqual(sendNameKey('a.jpg'), sendNameKey('a.jpeg'));
+  // Every name suffixedName can produce keys back to the original.
+  for (const n of ['IMG_1.jpg', 'archive.tar.gz', 'README', '.env']) {
+    for (let k = 1; k <= 12; k += 1) assert.equal(sendNameKey(suffixedName(n, k)), sendNameKey(n), `${n} #${k}`);
+  }
 });
 
 test('the headline says arrived only when every item has', () => {

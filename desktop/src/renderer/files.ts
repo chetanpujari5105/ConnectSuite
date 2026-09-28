@@ -201,10 +201,10 @@ class FilesView {
   private copying = new Set<string>();
 
   /**
-   * The name of the file being pushed right now, or null. Pushes are serial by protocol — one
-   * `transferId`, one file, one bulk connection — so one name is the whole of it.
+   * The names of the files this Mac is pushing right now — up to `SEND_WINDOW` of one batch, each its
+   * own `transferId` and its own bulk connection. Empty when none.
    */
-  private pushing: string | null = null;
+  private pushing = new Map<string, string>();
 
   /**
    * Told what this pane is doing, so the status island can say it while it is happening.
@@ -222,7 +222,7 @@ class FilesView {
    * if they ever do, the count is honest rather than the pane picking a favourite.
    */
   private reportWork(): void {
-    const total = this.copying.size + (this.pushing === null ? 0 : 1);
+    const total = this.copying.size + this.pushing.size;
     if (total === 0) {
       this.onWorkChanged?.(null);
       return;
@@ -231,8 +231,8 @@ class FilesView {
       this.onWorkChanged?.({ verb: 'Transferring', subject: `${total} files` });
       return;
     }
-    if (this.pushing !== null) {
-      this.onWorkChanged?.({ verb: 'Sending', subject: this.pushing });
+    if (this.pushing.size > 0) {
+      this.onWorkChanged?.({ verb: 'Sending', subject: [...this.pushing.values()][0]! });
       return;
     }
     this.onWorkChanged?.({ verb: 'Copying', subject: this.copyingName ?? 'a file' });
@@ -490,12 +490,15 @@ class FilesView {
   }
 
   /**
-   * Sends the confirmed files, **serially** — one `transferId`, one file, one bulk connection is the
-   * protocol, and a batch is this loop rather than a protocol feature.
+   * Sends the confirmed files — **up to `SEND_WINDOW` at once**, each one `transferId`, one file, one
+   * bulk connection, exactly as the protocol has it; a batch is this pump rather than a protocol
+   * feature.
    *
-   * The batch model decides what is next and what each item's state is; this method only drives the
-   * bridge. Progress and the verdict arrive separately, as the phone's own events, through
-   * [onPushAgreed] and [onTransferEvent].
+   * The batch model decides what may start ([sendBatchNext]: the window, and a file whose name could
+   * collide on the phone waiting for the earlier one's verdict) and what each item's state is; this
+   * method only drives the bridge. Progress and the verdict arrive separately, as the phone's own
+   * events, through [onPushAgreed] and [onTransferEvent] — and a finished write or a verdict can free
+   * a slot, so both call [pumpSend].
    */
   private async confirmSend(): Promise<void> {
     const files = this.pendingSend;
@@ -506,34 +509,46 @@ class FilesView {
     this.batchTarget = { rootId: this.selectedRoot, path: this.path };
     this.batch = sendBatchCreate(files, this.phoneName, this.crumbLabel());
     this.render();
-
-    let next = sendBatchNext(this.batch);
-    while (next && this.batch && this.batchTarget) {
-      const item = next;
-      this.pushing = item.name;
-      this.reportWork();
-      let result: { ok: boolean; reason?: string; code?: string };
-      try {
-        result = await this.bridge.fsSend({
-          rootId: this.batchTarget.rootId,
-          path: this.batchTarget.path,
-          source: item.source,
-        });
-      } catch (error) {
-        result = { ok: false, reason: String(error) };
-      } finally {
-        this.pushing = null;
-        this.reportWork();
-      }
-      this.batch = sendBatchOnWriteFinished(this.batch, item.source, result);
-      this.render();
-      // The next file waits for this one's `transferId` to leave `sending`, which the write
-      // resolving has just done — so the loop is serial without a timer.
-      next = sendBatchNext(this.batch);
-    }
+    await new Promise<void>((allStarted) => {
+      this.sendDrained = allStarted;
+      this.pumpSend();
+    });
     // Show what landed. The listing is re-read from the phone, never patched from what we sent.
     if (this.batchTarget && this.selectedRoot === this.batchTarget.rootId && this.path === this.batchTarget.path) {
       await this.openPath(this.path);
+    }
+  }
+
+  /** Resolves [confirmSend] once every file has its verdict, or Stop was pressed and nothing is writing. */
+  private sendDrained: (() => void) | null = null;
+
+  /** Starts every file the model allows now. Called after each edge that can free a slot. */
+  private pumpSend(): void {
+    const target = this.batchTarget;
+    for (let next = this.batch ? sendBatchNext(this.batch) : null; next && this.batch && target; next = sendBatchNext(this.batch)) {
+      const item = next;
+      this.batch = sendBatchOnStarted(this.batch, item.source);
+      this.pushing.set(item.source, item.name);
+      this.reportWork();
+      void this.bridge
+        .fsSend({ rootId: target.rootId, path: target.path, source: item.source })
+        .catch((error: unknown) => ({ ok: false, reason: String(error) }))
+        .then((result: { ok: boolean; reason?: string; code?: string }) => {
+          this.pushing.delete(item.source);
+          this.reportWork();
+          if (this.batch) this.batch = sendBatchOnWriteFinished(this.batch, item.source, result);
+          this.render();
+          this.pumpSend();
+        });
+    }
+    this.render();
+    const over = !this.batch || sendBatchSettled(this.batch) || (this.batch.stopped && this.pushing.size === 0);
+    if (over && this.sendDrained) {
+      // Every file has the phone's verdict (or Stop was pressed and nothing is still writing). Until
+      // then a verdict can free a slot and start the next file, through [onTransferEvent].
+      const done = this.sendDrained;
+      this.sendDrained = null;
+      done();
     }
   }
 
@@ -544,6 +559,8 @@ class FilesView {
     if (next === this.batch) return;
     this.batch = next;
     this.render();
+    // Stop was pressed while this file's agreement was in flight: it has an id now, so stop it too.
+    if (this.batch.stopped && this.bridge.fsCancel) void this.bridge.fsCancel({ transferId: agreed.transferId });
   }
 
   /**
@@ -571,21 +588,25 @@ class FilesView {
     if (next === this.batch) return;
     this.batch = next;
     this.render();
+    // A verdict frees a window slot, and releases any file waiting on this one's name.
+    if (message.type === 'fs.transfer.done') this.pumpSend();
   }
 
-  /** Stop: queued files are not started; the one in flight is cancelled on the phone. */
+  /** Stop: queued files are not started; every one in flight is cancelled on the phone. */
   private async stopBatch(): Promise<void> {
     if (!this.batch) return;
     // `sending` **or** `confirming`: the Mac's write finishes well before the phone has the bytes —
     // measured live, the item was `confirming` at 866 ms with the phone reporting 30% — so a Stop
     // that looked only for `sending` would leave the phone receiving a file the person stopped.
-    const live = this.batch.items.find(
+    // Every such file, not the first: several are in flight at once. One still waiting for its
+    // agreement has no id yet; [onPushAgreed] stops it when the id arrives.
+    const live = this.batch.items.filter(
       (i) => (i.phase === 'sending' || i.phase === 'confirming') && i.transferId,
     );
     this.batch = sendBatchStop(this.batch);
     this.render();
-    if (live?.transferId && this.bridge.fsCancel) {
-      await this.bridge.fsCancel({ transferId: live.transferId });
+    if (this.bridge.fsCancel) {
+      await Promise.all(live.map((i) => this.bridge.fsCancel!({ transferId: i.transferId! })));
     }
   }
 

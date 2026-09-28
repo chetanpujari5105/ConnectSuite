@@ -110,146 +110,38 @@ export class BulkClient {
    * before the socket opened and comparing anything else against it is the failure that reports
    * corruption on a byte-perfect file.
    */
-  async push(options: {
-    host: string;
-    token: string;
-    transferId: string;
-    source: string;
-    /** Where the phone said to start. Bytes before this are already on the phone. */
-    offset: number;
-    /** Total size of the local file, as agreed on the control channel. */
-    totalBytes: number;
-    chunkMax: number;
-    /**
-     * Cuts the socket once this many bytes have been sent. **A probe hook, and it ships disabled.**
-     *
-     * Resume cannot be exercised without an interruption, and an interruption cannot be arranged
-     * from outside a socket this class owns. The same reasoning as `pull`'s hook: a standalone
-     * script that spoke the protocol itself would be a second client, differing from the shipping
-     * one somewhere, verifying a mechanism the product does not use. The *stimulus* is injected and
-     * the *mechanism* under test stays the product's.
-     */
-    interruptAfterBytes?: number;
-  }): Promise<BulkResult> {
-    const { host, token, transferId, source, offset, totalBytes } = options;
-    const startedAt = Date.now();
-    const chunk = Math.max(1, Math.min(options.chunkMax || 262144, MAX_BULK_FRAME));
-
-    return new Promise<BulkResult>((resolve) => {
-      let settled = false;
-      let sent = 0;
-      const tally = new FrameTally('bulk');
-      let socket: TLSSocket | null = null;
-
-      const fail = (reason: string): void => {
-        if (settled) return;
-        settled = true;
-        socket?.destroy();
-        this.failures += 1;
-        // Nothing is cleaned up here. The **phone** holds the partial and the record, and it keeps
-        // both on an interruption so the next attempt resumes — deleting or resetting anything from
-        // this side would be the sender deciding what the receiver already decided.
-        log.warn(
-          'bulk',
-          `${transferId} push interrupted after ${offset + sent} of ${totalBytes} bytes: ` +
-            `${reason}; the phone keeps its partial and the next attempt resumes; ` +
-            `${tally.summary()}; ${this.tallyLine()}`,
-        );
-        resolve({
-          ok: false,
-          bytes: offset + sent,
-          elapsedMs: Date.now() - startedAt,
-          reason,
-          verified: false,
-          ...(offset > 0 ? { resumedFrom: offset } : {}),
+  async push(options: PushOptions & { host: string }): Promise<BulkResult> {
+    return pushWith(
+      options,
+      () => {
+        const socket = tlsConnect({
+          host: options.host,
+          port: PORT_BULK,
+          cert: this.identity.certPem,
+          key: this.identity.keyPem,
+          minVersion: 'TLSv1.3',
+          rejectUnauthorized: false,
+          timeout: CANDIDATE_TIMEOUT_MS,
         });
-      };
-
-      socket = tlsConnect({
-        host,
-        port: PORT_BULK,
-        cert: this.identity.certPem,
-        key: this.identity.keyPem,
-        minVersion: 'TLSv1.3',
-        rejectUnauthorized: false,
-        timeout: CANDIDATE_TIMEOUT_MS,
-      });
-
-      socket.setTimeout(CANDIDATE_TIMEOUT_MS, () =>
-        fail('the phone did not answer on the file port'),
-      );
-      socket.once('error', (error) => fail(error.message));
-
-      socket.once('secureConnect', () => {
-        socket!.setTimeout(0);
-        socket!.setNoDelay(true);
-        writeFrame(socket!, Buffer.from(token, 'utf8'));
-        writeFrame(
-          socket!,
-          Buffer.from(JSON.stringify({ transferId, offset }), 'utf8'),
-          MAX_BULK_HEADER_FRAME,
-          tally,
-          'Bulk header',
-        );
-
-        const reading = createReadStream(source, { start: offset, highWaterMark: chunk });
-        reading.on('error', (error: Error) => fail(`could not read ${source}: ${error.message}`));
-        reading.on('data', (piece: string | Buffer) => {
-          const buffer = Buffer.isBuffer(piece) ? piece : Buffer.from(piece);
-          // Every frame goes through the same writer as a pull's header, so the write-side cap is
-          // enforced here rather than trusted — a peer that has lost sync must be refused by the
-          // side that framed the bytes, not only by the side reading them.
-          writeFrame(socket!, buffer, MAX_BULK_FRAME, tally, 'Bulk chunk');
-          sent += buffer.length;
-          if (options.interruptAfterBytes !== undefined && sent >= options.interruptAfterBytes) {
-            // **Half-close, not destroy — and the first version got this wrong in a way the probe
-            // itself hid.** `socket.destroy()` discards whatever is still in the send buffer, so a
-            // run that reported 12,058,624 bytes "sent" delivered **zero**: the phone logged
-            // `stopped after 0 bytes` and had nothing to resume from. The count was bytes handed to
-            // `writeFrame`, which is not a fact about the transfer.
-            //
-            // `end()` flushes what is buffered and then closes, so the phone receives a real prefix
-            // and sees the stream end short of the agreed size — which it now treats as an
-            // interruption rather than a completion. That is the honest stimulus: the receiver
-            // takes its ordinary path, keeps the partial, and records what it actually holds.
-            log.warn('bulk', `${transferId} push interrupted deliberately at ${sent} bytes (probe)`);
-            reading.destroy();
-            socket!.end();
-            // Resolved from the close, not from here, so `bytes` is what the socket accepted rather
-            // than what was queued.
-            socket!.once('close', () => fail(`interrupted by the resume probe at ${sent} bytes`));
-            return;
+        socket.setTimeout(CANDIDATE_TIMEOUT_MS, () => socket.destroy(new Error('the phone did not answer on the file port')));
+        socket.once('secureConnect', () => {
+          socket.setTimeout(0);
+          socket.setNoDelay(true);
+        });
+        return { socket, readyEvent: 'secureConnect' };
+      },
+      {
+        tallyLine: () => this.tallyLine(),
+        onSettled: (ok, sent) => {
+          if (ok) {
+            this.transfers += 1;
+            this.bytesMoved += sent;
+          } else {
+            this.failures += 1;
           }
-        });
-        reading.on('end', () => {
-          if (settled) return;
-          settled = true;
-          const elapsedMs = Date.now() - startedAt;
-          const total = offset + sent;
-          this.transfers += 1;
-          this.bytesMoved += sent;
-          // Half-close: the phone's read loop ends when the stream does, and it then hashes what it
-          // holds and sends `fs.transfer.done`. Destroying the socket here would cut that decision
-          // off mid-answer.
-          socket!.end();
-          log.info(
-            'bulk',
-            `${transferId} pushed ${sent} bytes of ${totalBytes} in ${elapsedMs}ms ` +
-              `(${rateOf(sent, elapsedMs)})${offset > 0 ? ` from offset ${offset}` : ''}; ` +
-              'the phone reports the verdict on fs.transfer.done; ' +
-              `${tally.summary()}; ${this.tallyLine()}`,
-          );
-          resolve({
-            ok: true,
-            bytes: total,
-            elapsedMs,
-            // Never true from this side. The receiver hashes what landed, and this is the sender.
-            verified: false,
-            ...(offset > 0 ? { resumedFrom: offset } : {}),
-          });
-        });
-      });
-    });
+        },
+      },
+    );
   }
 
   /**
@@ -948,6 +840,181 @@ async function pullShareWith(
 }
 
 export { pullShareWith };
+
+/**
+ * What the Mac may hold queued for the phone and not yet taken by the socket, before it stops reading
+ * the file. **Backpressure**, and the reason it exists is a measurement: without it a 64 MiB push was
+ * entirely in this process's memory 78 ms after the socket opened (SM-S938B, 2026-09-29), the log
+ * called that *"pushed … in 78ms (6883.0 Mbit/s)"*, and a file larger than memory could not be sent.
+ * 4 MiB keeps the kernel's send buffer full on a hotspot link while bounding memory per transfer.
+ */
+export const PUSH_HIGH_WATER = 4 * 1024 * 1024;
+
+export interface PushOptions {
+  token: string;
+  transferId: string;
+  source: string;
+  /** Where the phone said to start. Bytes before this are already on the phone. */
+  offset: number;
+  /** Total size of the local file, as agreed on the control channel. */
+  totalBytes: number;
+  chunkMax: number;
+  /**
+   * Cuts the socket once this many bytes have been sent. **A probe hook, and it ships disabled.**
+   *
+   * Resume cannot be exercised without an interruption, and an interruption cannot be arranged
+   * from outside a socket this code owns. The same reasoning as `pull`'s hook: a standalone
+   * script that spoke the protocol itself would be a second client, differing from the shipping
+   * one somewhere, verifying a mechanism the product does not use. The *stimulus* is injected and
+   * the *mechanism* under test stays the product's.
+   */
+  interruptAfterBytes?: number;
+}
+
+/**
+ * Pushes one local file the phone has already agreed to receive, over the connection [open] makes.
+ *
+ * ### The verdict is not here, and that is deliberate
+ *
+ * This resolves when the bytes are flushed and the socket half-closed. **Whether they were right is
+ * the phone's to say**, on `fs.transfer.done` over the control channel, because the phone is the
+ * receiver and the receiver is the side that hashes what actually landed. A Mac that decided success
+ * here would be reporting that it finished sending, dressed as the file being on the phone — the same
+ * collapse `verified` exists to prevent on a pull.
+ *
+ * ### The digest covers the whole file even when only part of it is sent
+ *
+ * On a resume the phone starts hashing from byte 0 by reading its own partial back, so the digest
+ * agreed on the control channel is over the whole file. This side must send exactly the bytes from
+ * `offset` onward and must **not** re-derive a digest over the sent range — the number was agreed
+ * before the socket opened and comparing anything else against it is the failure that reports
+ * corruption on a byte-perfect file.
+ *
+ * ### Backpressure, and what "sent" means
+ *
+ * The file is read only while less than [PUSH_HIGH_WATER] is queued in this process; above it the
+ * read pauses until the socket drains. It resolves `ok` only on the socket's `finish` — every byte
+ * handed to the operating system — never when the last chunk was merely queued, and a close before
+ * that is a failure. So `bytes` and the logged rate are what left this process, not what was queued.
+ */
+export function pushWith(
+  options: PushOptions,
+  open: () => ShareConnection,
+  hooks: { tallyLine?: () => string; onSettled?: (ok: boolean, sent: number) => void } = {},
+): Promise<BulkResult> {
+  const { token, transferId, source, offset, totalBytes } = options;
+  const startedAt = Date.now();
+  const chunk = Math.max(1, Math.min(options.chunkMax || 262144, MAX_BULK_FRAME));
+  const tallyLine = hooks.tallyLine ?? (() => '');
+
+  return new Promise<BulkResult>((resolve) => {
+    let settled = false;
+    let sent = 0;
+    const tally = new FrameTally('bulk');
+    let socket: ShareConnection['socket'] | null = null;
+    let reading: ReturnType<typeof createReadStream> | null = null;
+
+    const fail = (reason: string): void => {
+      if (settled) return;
+      settled = true;
+      reading?.destroy();
+      socket?.destroy();
+      hooks.onSettled?.(false, sent);
+      // Nothing is cleaned up here. The **phone** holds the partial and the record, and it keeps
+      // both on an interruption so the next attempt resumes — deleting or resetting anything from
+      // this side would be the sender deciding what the receiver already decided.
+      log.warn(
+        'bulk',
+        `${transferId} push interrupted after ${offset + sent} of ${totalBytes} bytes: ` +
+          `${reason}; the phone keeps its partial and the next attempt resumes; ` +
+          `${tally.summary()}; ${tallyLine()}`,
+      );
+      resolve({
+        ok: false,
+        bytes: offset + sent,
+        elapsedMs: Date.now() - startedAt,
+        reason,
+        verified: false,
+        ...(offset > 0 ? { resumedFrom: offset } : {}),
+      });
+    };
+
+    const conn = open();
+    socket = conn.socket;
+    socket.once('error', (error: Error) => fail(error.message));
+    // A close before `finish` is the phone (or the network) ending the push early: never a success.
+    socket.once('close', () => fail(`the connection closed after ${offset + sent} of ${totalBytes} bytes`));
+
+    socket.once(conn.readyEvent, () => {
+      const s = socket!;
+      writeFrame(s, Buffer.from(token, 'utf8'));
+      writeFrame(s, Buffer.from(JSON.stringify({ transferId, offset }), 'utf8'), MAX_BULK_HEADER_FRAME, tally, 'Bulk header');
+
+      const file = createReadStream(source, { start: offset, highWaterMark: chunk });
+      reading = file;
+      file.on('error', (error: Error) => fail(`could not read ${source}: ${error.message}`));
+      file.on('data', (piece: string | Buffer) => {
+        if (settled) return;
+        const buffer = Buffer.isBuffer(piece) ? piece : Buffer.from(piece);
+        // Every frame goes through the same writer as a pull's header, so the write-side cap is
+        // enforced here rather than trusted — a peer that has lost sync must be refused by the
+        // side that framed the bytes, not only by the side reading them.
+        writeFrame(s, buffer, MAX_BULK_FRAME, tally, 'Bulk chunk');
+        sent += buffer.length;
+        if (options.interruptAfterBytes !== undefined && sent >= options.interruptAfterBytes) {
+          // **Half-close, not destroy — and the first version got this wrong in a way the probe
+          // itself hid.** `socket.destroy()` discards whatever is still in the send buffer, so a
+          // run that reported 12,058,624 bytes "sent" delivered **zero**: the phone logged
+          // `stopped after 0 bytes` and had nothing to resume from. `end()` flushes what is buffered
+          // and then closes, so the phone receives a real prefix and sees the stream end short of
+          // the agreed size — its ordinary interruption path.
+          log.warn('bulk', `${transferId} push interrupted deliberately at ${sent} bytes (probe)`);
+          file.destroy();
+          s.removeAllListeners('close');
+          // Resolved from the close, not from here, so `bytes` is what the socket accepted rather
+          // than what was queued.
+          s.once('close', () => fail(`interrupted by the resume probe at ${sent} bytes`));
+          s.end();
+          return;
+        }
+        // Backpressure: stop reading the file while too much is queued, and pick up on `drain`.
+        if (s.writableLength > PUSH_HIGH_WATER) {
+          file.pause();
+          s.once('drain', () => { if (!settled) file.resume(); });
+        }
+      });
+      file.on('end', () => {
+        if (settled) return;
+        // Half-close: the phone's read loop ends when the stream does, and it then hashes what it
+        // holds and sends `fs.transfer.done`. Destroying the socket here would cut that decision
+        // off mid-answer. Resolved on `finish` — every byte handed to the operating system.
+        s.once('finish', () => {
+          if (settled) return;
+          settled = true;
+          const elapsedMs = Date.now() - startedAt;
+          hooks.onSettled?.(true, sent);
+          log.info(
+            'bulk',
+            `${transferId} pushed ${sent} bytes of ${totalBytes} in ${elapsedMs}ms ` +
+              `(${rateOf(sent, elapsedMs)}, flushed to the OS with at most ${PUSH_HIGH_WATER} queued at a time)` +
+              `${offset > 0 ? ` from offset ${offset}` : ''}; ` +
+              'the phone reports the verdict on fs.transfer.done; ' +
+              `${tally.summary()}; ${tallyLine()}`,
+          );
+          resolve({
+            ok: true,
+            bytes: offset + sent,
+            elapsedMs,
+            // Never true from this side. The receiver hashes what landed, and this is the sender.
+            verified: false,
+            ...(offset > 0 ? { resumedFrom: offset } : {}),
+          });
+        });
+        s.end();
+      });
+    });
+  });
+}
 
 function rateOf(bytes: number, elapsedMs: number): string {
   if (elapsedMs <= 0) return 'instant';

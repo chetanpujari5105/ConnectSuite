@@ -97,6 +97,19 @@ function updateItem(
   return touched ? { ...batch, items } : batch;
 }
 
+/**
+ * This Mac has begun this file — hashing it and asking the phone — and the phone has not agreed yet.
+ * It is `sending` with no `transferId`, which draws as *Starting…*; the point is that [sendBatchNext]
+ * never hands the same file out twice while its agreement is in flight.
+ */
+function sendBatchOnStarted(batch: SendBatch, source: string): SendBatch {
+  return updateItem(
+    batch,
+    (i) => i.source === source && i.phase === 'queued',
+    (i) => ({ ...i, phase: 'sending' }),
+  );
+}
+
 /** The phone agreed a `transferId` for this file, possibly under a suffixed name. */
 function sendBatchOnAgreed(
   batch: SendBatch,
@@ -106,7 +119,7 @@ function sendBatchOnAgreed(
 ): SendBatch {
   return updateItem(
     batch,
-    (i) => i.source === source && i.phase === 'queued',
+    (i) => i.source === source && (i.phase === 'queued' || (i.phase === 'sending' && i.transferId === null)),
     (i) => ({ ...i, phase: 'sending', transferId, sentAs }),
   );
 }
@@ -190,11 +203,61 @@ function sendBatchSettled(batch: SendBatch): boolean {
   );
 }
 
-/** The next file that should start, or null. */
+/**
+ * How many files of one batch may be in flight at once — started and not yet answered by the phone.
+ * Each keeps its own `transferId`, its own progress from the phone, its own digest and its own verdict;
+ * the phone serves every bulk socket on its own coroutine.
+ *
+ * **What the measurement says, including what it does not** (2026-09-29, SM-S938B on its own hotspot,
+ * old and new builds interleaved): eight 1 MiB files one after another took 1,571 ms to the last verdict
+ * against 574 ms for the same 8 MiB as one file — the per-file cost is real. **Three in flight did not
+ * reduce it**: four 1 MiB files took 813–843 ms before and 829–842 ms after. The cost that remains sits
+ * after the Mac's last byte (≈160 ms per file: the phone's final hash, its MediaStore publish and its
+ * record) and the phone does it one file at a time, so overlapping on this side cannot hide it. The
+ * window is kept because it costs nothing measurable and pays as soon as that phone-side work is
+ * shortened; it is not a speed claim today.
+ */
+const SEND_WINDOW = 3;
+
+/**
+ * The name a file could land under on the phone, reduced to what can collide there: case folded
+ * (the phone's shared storage is case-insensitive) and a `stem (n).ext` retry suffix removed (a
+ * `TARGET_STALE` is answered by [suffixedName]). Two items with one key could reach one name.
+ */
+function sendNameKey(name: string): string {
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const extension = dot > 0 ? name.slice(dot) : '';
+  return (stem.replace(/ \(\d+\)$/, '') + extension).toLowerCase();
+}
+
+/**
+ * The next file that should start, or null.
+ *
+ * - At most [SEND_WINDOW] files are `sending` or `confirming` at once. `confirming` counts: the Mac
+ *   has finished writing, but the phone is still receiving, hashing and publishing it.
+ * - **A file waits while any other file with its [sendNameKey] is in flight, or queued ahead of it.**
+ *   The phone's Received files reuses a pending item with the same name (its resume path), so two
+ *   such files in flight together could share one partial. The earlier one must have the phone's
+ *   verdict first — after which a clash is an ordinary `TARGET_STALE` and a renamed retry. This also
+ *   holds with a window of one: the Mac finishing its write is long before the phone has the bytes.
+ */
 function sendBatchNext(batch: SendBatch): SendItem | null {
   if (batch.stopped) return null;
-  if (batch.items.some((i) => i.phase === 'sending')) return null;
-  return batch.items.find((i) => i.phase === 'queued') ?? null;
+  const inFlight = (i: SendItem) => i.phase === 'sending' || i.phase === 'confirming';
+  if (batch.items.filter(inFlight).length >= SEND_WINDOW) return null;
+  for (const [index, item] of batch.items.entries()) {
+    if (item.phase !== 'queued') continue;
+    const key = sendNameKey(item.name);
+    const blocked = batch.items.some(
+      (other, at) =>
+        other !== item &&
+        (sendNameKey(other.name) === key || (other.sentAs !== null && sendNameKey(other.sentAs) === key)) &&
+        (inFlight(other) || (other.phase === 'queued' && at < index)),
+    );
+    if (!blocked) return item;
+  }
+  return null;
 }
 
 /**
@@ -273,6 +336,9 @@ function suffixedName(name: string, n: number): string {
   g.sendBatchNext = sendBatchNext;
   g.sendBatchSummary = sendBatchSummary;
   g.suffixedName = suffixedName;
+  g.sendBatchOnStarted = sendBatchOnStarted;
+  g.sendNameKey = sendNameKey;
+  g.SEND_WINDOW = SEND_WINDOW;
 }
 
 if (typeof module !== 'undefined') {
@@ -287,5 +353,8 @@ if (typeof module !== 'undefined') {
     sendBatchNext,
     sendBatchSummary,
     suffixedName,
+    sendBatchOnStarted,
+    sendNameKey,
+    SEND_WINDOW,
   };
 }

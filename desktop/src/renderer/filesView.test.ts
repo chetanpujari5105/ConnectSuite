@@ -549,19 +549,97 @@ test('Send to phone… is drawn only where the drop tile is — push served and 
   }
 });
 
-test('Stop cancels the file in flight on the phone and starts nothing queued', async () => {
+test('Stop cancels every file in flight on the phone and starts nothing queued', async () => {
+  const pane = mount();
+  try {
+    await readyToSend(pane);
+    pane.bridge.picked = [1, 2, 3, 4, 5].map((n) => ({ source: `/m/${n}.bin`, name: `${n}.bin`, size: 10 }));
+    const releases: Array<() => void> = [];
+    pane.bridge.onAgreed = (source) =>
+      pane.view.onPushAgreed({ source, transferId: `t-${source}`, name: source.slice(3) });
+    // Hold every send open so Stop lands while they are in flight.
+    const original = pane.bridge.fsSend.bind(pane.bridge);
+    pane.bridge.fsSend = async (options: { source: string }) => {
+      const result = original(options);
+      await new Promise<void>((r) => { releases.push(r); });
+      return result;
+    };
+    await pane.view.pickAndOffer();
+    cardButton(pane, 'Send').click();
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pane.bridge.sent, ['/m/1.bin', '/m/2.bin', '/m/3.bin'], 'three in flight, two queued');
+    cardButton(pane, 'Stop').click();
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pane.bridge.cancelled, ['t-/m/1.bin', 't-/m/2.bin', 't-/m/3.bin'], 'every live transfer is cancelled by id');
+    for (const r of releases) r();
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pane.bridge.sent, ['/m/1.bin', '/m/2.bin', '/m/3.bin'], 'the queued files never started');
+    const phases = pane.detail.queryAll('.files-send-item').map((li) => li.dataset.phase);
+    assert.deepEqual(phases.slice(3), ['cancelled', 'cancelled']);
+  } finally {
+    pane.restore();
+  }
+});
+
+test('three sends at once: a finished write keeps its slot, the phone’s verdict frees it', async () => {
+  const pane = mount();
+  try {
+    await readyToSend(pane);
+    pane.bridge.picked = [1, 2, 3, 4].map((n) => ({ source: `/m/${n}.bin`, name: `${n}.bin`, size: 10 }));
+    pane.bridge.onAgreed = (source) =>
+      pane.view.onPushAgreed({ source, transferId: `t-${source}`, name: source.slice(3) });
+    await pane.view.pickAndOffer();
+    cardButton(pane, 'Send').click();
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pane.bridge.sent, ['/m/1.bin', '/m/2.bin', '/m/3.bin'], 'the window, not the whole batch');
+    const phaseOf = (n: number) => pane.detail.queryAll('.files-send-item')[n]!.dataset.phase;
+    assert.equal(phaseOf(0), 'confirming', 'the Mac wrote it; the phone has not answered');
+    pane.view.onTransferEvent({ type: 'fs.transfer.done', payload: { transferId: 't-/m/2.bin', ok: true, bytes: 10, verified: true } });
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pane.bridge.sent, ['/m/1.bin', '/m/2.bin', '/m/3.bin', '/m/4.bin'], 'a verdict started the fourth');
+    for (const n of [1, 3, 4]) {
+      pane.view.onTransferEvent({ type: 'fs.transfer.done', payload: { transferId: `t-/m/${n}.bin`, ok: true, bytes: 10, verified: true } });
+    }
+    assert.ok(pane.detail.textContent.includes('4 files arrived on Samsung SM-S938B'), pane.detail.textContent);
+  } finally {
+    pane.restore();
+  }
+});
+
+test('two files that could reach one name on the phone are never in flight together', async () => {
   const pane = mount();
   try {
     await readyToSend(pane);
     pane.bridge.picked = [
-      { source: '/m/1.bin', name: '1.bin', size: 10 },
-      { source: '/m/2.bin', name: '2.bin', size: 10 },
+      { source: '/a/x.jpg', name: 'x.jpg', size: 10 },
+      { source: '/b/X.JPG', name: 'X.JPG', size: 10 },
+      { source: '/c/y.jpg', name: 'y.jpg', size: 10 },
     ];
-    let release: (() => void) | null = null;
     pane.bridge.onAgreed = (source) =>
       pane.view.onPushAgreed({ source, transferId: `t-${source}`, name: source.slice(3) });
-    // Hold the first send open so Stop lands while it is in flight.
+    await pane.view.pickAndOffer();
+    cardButton(pane, 'Send').click();
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pane.bridge.sent, ['/a/x.jpg', '/c/y.jpg'], 'X.JPG waits: the phone reuses a pending item of that name');
+    pane.view.onTransferEvent({ type: 'fs.transfer.done', payload: { transferId: 't-/a/x.jpg', ok: true, bytes: 10, verified: true } });
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pane.bridge.sent, ['/a/x.jpg', '/c/y.jpg', '/b/X.JPG'], 'then it goes, and meets TARGET_STALE as an ordinary clash');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('Stop pressed before a file’s agreement arrives still cancels it once its id is known', async () => {
+  const pane = mount();
+  try {
+    await readyToSend(pane);
+    pane.bridge.picked = [{ source: '/m/1.bin', name: '1.bin', size: 10 }];
+    let agree: (() => void) | null = null;
+    pane.bridge.onAgreed = (source) => {
+      agree = () => pane.view.onPushAgreed({ source, transferId: 't-late', name: '1.bin' });
+    };
     const original = pane.bridge.fsSend.bind(pane.bridge);
+    let release: (() => void) | null = null;
     pane.bridge.fsSend = async (options: { source: string }) => {
       const result = original(options);
       await new Promise<void>((r) => { release = r; });
@@ -572,10 +650,11 @@ test('Stop cancels the file in flight on the phone and starts nothing queued', a
     await new Promise((r) => setImmediate(r));
     cardButton(pane, 'Stop').click();
     await new Promise((r) => setImmediate(r));
-    assert.deepEqual(pane.bridge.cancelled, ['t-/m/1.bin'], 'the live transfer is cancelled by id');
-    release!();
+    assert.deepEqual(pane.bridge.cancelled, [], 'no id yet, nothing to name');
+    agree!();
     await new Promise((r) => setImmediate(r));
-    assert.deepEqual(pane.bridge.sent, ['/m/1.bin'], 'the queued file never started');
+    assert.deepEqual(pane.bridge.cancelled, ['t-late'], 'the moment the phone names it, it is stopped');
+    release!();
   } finally {
     pane.restore();
   }
