@@ -109,7 +109,7 @@ object ShareFeature {
 
     fun stagingContext(): Pair<Int, Long> {
         val version = link?.anyLiveSession()?.negotiated?.get(Extensions.SHARE_FILE) ?: 0
-        val held = synchronized(lock) { offers.values.sumOf { it.bytes } }
+        val held = synchronized(lock) { ShareOffer.heldBytes(offers.values) }
         return version to held
     }
 
@@ -384,7 +384,7 @@ object ShareFeature {
     private fun store(r: ShareOffer.Result) {
         val o = r.offer ?: return
         publish(o)
-        if (ShareOffer.isLive(o.state)) offers[o.offerId] = o else offers.remove(o.offerId)
+        ShareOffer.storeLive(offers, o)
     }
 
     /** Outside the lock: the effects, in the order the transition names them. */

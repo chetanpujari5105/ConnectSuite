@@ -104,6 +104,19 @@ object ShareOffer {
     }
 
     /**
+     * **The answer-once rule for the phone's live offers**, moved verbatim from `ShareFeature.store`
+     * (2026-09-28) so a JVM test reaches it: a live offer stays in [live]; an ended one leaves it. `Σ`
+     * is [heldBytes] over what stays, so a copy leaves `Σ` the moment its offer ends, and only then.
+     * Callers hold their own lock; this adds none.
+     */
+    fun storeLive(live: MutableMap<String, Offer>, o: Offer) {
+        if (isLive(o.state)) live[o.offerId] = o else live.remove(o.offerId)
+    }
+
+    /** `Σ`: the bytes of every staged copy held for a live offer — `ShareFeature.stagingContext`'s sum, moved verbatim. */
+    fun heldBytes(live: Collection<Offer>): Long = live.sumOf { it.bytes }
+
+    /**
      * **In progress**, in the sense of the several-files stall clock (docs/feature-a-multi-offer-proposal.md
      * §12): accepted on the Mac — queued, receiving, or checking — each of which ends in bounded time by its
      * own rule. Not an offer nobody has answered, and not a failed pull waiting in its retry window.
