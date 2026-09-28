@@ -405,8 +405,7 @@ object ShareFeature {
                 is ShareOffer.Effect.ScheduleQueueEnd -> schedule(o.offerId, effect.atMs) { ShareOffer.expire(it, System.currentTimeMillis()) }
                 ShareOffer.Effect.DeleteStaged -> {
                     armedCorruption.remove(o.offerId)
-                    val dir = cacheDir?.let { ShareStaging.stagingDir(it) }
-                    val removed = if (dir != null) ShareStaging.discard(dir, o.offerId) else 0
+                    val removed = ShareStaging.discardStaged(cacheDir, o.offerId)
                     LinkLog.i("share", "offer ${o.offerId} ended (${describe(o.state)}): staged copy deleted, $removed file(s)")
                 }
             }

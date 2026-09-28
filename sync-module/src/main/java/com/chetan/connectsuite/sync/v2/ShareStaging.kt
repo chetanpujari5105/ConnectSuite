@@ -280,6 +280,16 @@ object ShareStaging {
         return n
     }
 
+    /**
+     * **[ShareOffer.Effect.DeleteStaged], executed** — `ShareFeature.apply`'s branch, moved verbatim
+     * (2026-09-28) so a JVM test reaches it: one offer's files under [cacheDir]'s staging directory, and
+     * 0 when there is no cache directory or it cannot be used as one.
+     */
+    fun discardStaged(cacheDir: File?, offerId: String): Int {
+        val dir = cacheDir?.let { stagingDir(it) }
+        return if (dir != null) discard(dir, offerId) else 0
+    }
+
     // ---- sweep ---------------------------------------------------------------------------------
 
     data class SweepResult(
