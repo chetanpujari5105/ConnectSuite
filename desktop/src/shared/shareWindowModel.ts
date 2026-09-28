@@ -230,7 +230,9 @@ function shareWindowModel(o: ShareWinOffer, phone: string | null): ShareWinModel
   const id = o.offerId;
   const close: ShareWinAction = waiting
     ? { id: 'close', offerId: id, label: 'Hide', aria: 'Hide this window. The request keeps waiting until it expires.', primary: false }
-    : { id: 'close', offerId: id, label: 'Close', aria: `Close — ${status.headline}`, primary: false };
+    // At version 3 a finished card's Close says which file, like every other action (a screen reader's
+    // button list shows it away from its card); at version 2 there is one card and the wording is as before.
+    : { id: 'close', offerId: id, label: 'Close', aria: o.queueMode === true ? `Close ${ident} — ${status.headline}` : `Close — ${status.headline}`, primary: false };
   const shown = published && o.savedAs !== null ? o.savedAs : o.name;
   const actions: ShareWinAction[] = waiting
     ? [

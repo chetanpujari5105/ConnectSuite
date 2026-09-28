@@ -300,3 +300,26 @@ test('the height the page asks for: drawn height at v2; drawn height plus the li
   assert.equal(shareWinWantedHeight(401, true, 345, 345), 401, 'v3 uncapped: nothing hidden, nothing added');
   assert.equal(shareWinWantedHeight(120, true, 64, 1841), 1897, 'from the 120 px starting window it still asks for everything');
 });
+
+test('v3: every action on every card names its own file — including a finished card’s Close', () => {
+  // A fact about each action, not a likeness between two: the screen reader's button list shows actions
+  // out of their cards, so an action that does not say which file it is about is ambiguous on its own.
+  const t0 = new Date(2026, 8, 26, 14, 7, 9).getTime();
+  let checked = 0;
+  for (const state of RECEIVE_STATES) {
+    for (const canRetry of [false, true]) {
+      const o = offer({ state, canRetry, queueMode: true, arrivalSeq: 3, arrivedAtMs: t0, savedAs: state.startsWith('saved') ? 'IMG_2041 (2).jpg' : null, filesAhead: 1 });
+      const ident = 'IMG_2041.jpg (file 3, arrived 14:07:09)';
+      for (const a of shareWindowModel(o, 'Galaxy S25 Ultra').actions) {
+        const names = a.aria.includes(ident) || (state.startsWith('saved') && a.aria.includes('IMG_2041 (2).jpg'));
+        assert.ok(names, `${state}${canRetry ? ' (Retry open)' : ''}: ${a.id} is “${a.aria}”`);
+        checked += 1;
+      }
+    }
+  }
+  assert.ok(checked >= 20, `control: actions were checked (${checked})`);
+});
+
+test('v2: a finished card’s Close keeps its wording exactly', () => {
+  assert.equal(shareWindowModel(offer({ state: 'declined', reason: 'user' }), 'P').actions.find((a) => a.id === 'close')!.aria, 'Close — Declined');
+});
