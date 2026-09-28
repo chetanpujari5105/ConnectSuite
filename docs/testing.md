@@ -25992,3 +25992,212 @@ unchanged; Saved untouched; the activity's bar gated by the rule, read from its 
 plus one several-files test. Mutations R1–R6 each red on the named test: R1 bar ignores queued; R2 the
 old dropped-transfer sentence restored; R3 every disconnect called before-transfer; R4 the activity's
 bar ungated; R5 the several-files path not told it is queued; R6 queued surviving its turn.
+
+## Version 3 Run A after 02:31 — the two offers of 02:36, read from the Mac log (read-only, 2026-09-28 overnight)
+
+Not observed live; read afterwards from `sidekick.log` lines 1808–1827 and the receive-folder listing.
+- **Two offers**, `s-RLvhgabu14Tos00bEK_V6A` (02:36:28) and `s-6Kgmaj600J1V_4vU3GRbqw` (02:36:37), both
+  **100,718 B `image/*`**, both on `share.file 3`, both *held for a decision (Ask)*, the window presented
+  without focus each time. **Both are the same synthetic file** — `sidekick-share-test-001.png`; the
+  230,778-byte second file was **not** used. So this proves **two simultaneous waiting offers of one file**,
+  not A1's two different files.
+- Accepted 02:36:51 and 02:36:53 (arrival order, not A1's reverse order); each `claimed, offset 0` only after
+  its own accept; **`0 ahead` both times — no queue formed.** Who clicked is not in the log.
+- Saved as `sidekick-share-test-001 (3).png` and `(4).png`, published exclusively, phone acknowledged; both
+  SHA-256 `d5cfb8a3…c9ff`, equal to the source. Preserved: not opened, moved or deleted.
+- **No `[share]` line after 02:36:53** through this overnight session.
+
+## Version 3 several files — overnight hardening, the grant instrument, and the live-region fix (2026-09-28, 02:40–03:30, unsupervised; no Samsung write)
+
+**Boundaries held:** nothing installed, enabled, armed or started on the SM-S938B; no file sent, selected,
+accepted or declined; the Mac app (pid 5021) and `desktop/dist` not touched; nothing pushed, signed for
+distribution or published. `~/Downloads/Sidekick` listed with SHA-256 at 02:4x; no end-of-night listing is recorded in this file.
+Free space 22,900 MiB at the start, 21,120 MiB at the lowest (the emulator boot and a scratch worktree), never
+under 5 GiB.
+
+**Commits (local, not pushed):** `881c7e2` (Mac), `8690e1f` and `e916f66` (phone). Docs in a fourth, below.
+
+### 1 · The stale screen-reader announcement — fixed (`881c7e2`)
+
+The defect reproduced in Run A on 2026-09-28 (02:31): `#share-live` kept *"… wants to send 20260927_152609.jpg … Accept or
+decline it"* after the offer ended saved. One pure rule, `shareLiveText` (`shared/shareReceiveCopy.ts`), for
+the main-window tray and **both** receive-window views (which had the same write-once code): the region holds
+the most recently announced offer **still waiting** (or, in the window, refused); when it ends, the region falls
+back to an older offer still waiting, else is empty; it is written only when the chosen sentence changes.
+Transfer code untouched. Tests: 7 new (tray ×4, one-file view, queue view, the pure rule). **Mutations:** the
+defect restored (standing state ignored) → 6 red; no fall-back → 3 red; the tray never clearing → 3 red.
+Mac **1,274/0**, both typechecks clean. **Not verified with a real screen reader** (VoiceOver not driven).
+
+### 2 · Selection hardening — `8690e1f`
+
+- **A repeated URI.** A `SEND_MULTIPLE` naming the same URI twice was **taken**, and would have been copied and
+  offered twice — two cards, two saved copies of one file. Now `Refusal.DUPLICATE`, naming both positions:
+  *"Item 3 is the same file as item 1. Nothing was sent — share each file once."* Exact URI equality only;
+  two different URIs for one file are not detected. **A policy choice made overnight** (refuse rather than
+  collapse); the owner may prefer listing it once with a stated note.
+- **A reconnect mid-selection.** `ShareFeature.stagingContext()` reads *whichever* session is live and
+  `offerStaged` offered on `anyLiveSession()`, so a link that dropped and came back between two evaluations
+  would have had the remaining files offered on the **new** session — possibly a different Mac than the review
+  screen named. The queue now pins its session (by reference) and ends as *Disconnected* on any other, checked
+  at `choose` and again just before the offer; `offerStaged(onlyOnSession = …)` refuses on another session
+  (default `null`: version 2 and the probes unchanged). The `offerStaged` half is **not** reached by a JVM
+  test (it needs a `LinkServer`).
+- **Back / Home / rotation.** The `onStop` rule is `ShareManyLeave.onStop`, called by the activity; recorded
+  last night as *reasoned, untested*, now 5 tests. The call site is still untested.
+- **Mutations**, each red on its named test only: D1 repeat check removed (2), L1 Back not ending (2),
+  P1 session check at choose (1), P2 at offer (1).
+
+### 3 · The §11 `SEND_MULTIPLE` grant instrument — `e916f66`
+
+`ShareManyGrantProbeActivity` + `ShareManyGrantRun` (debug only, `enabled="false"`, types `image/png`,
+`application/octet-stream`, `application/pdf`). Phases: control inside the screen; **stopped** +1 s/+30 s after
+the first non-finishing `onStop` (then it finishes itself); **recreated** once; **finished** +1/+30/+120 s with
+a foreground `LinkService` required. Missing and capped reads are `NO_READING`; a `media` item read with a media
+permission held is `CONFOUNDED`. Lines carry typed fields only. 14 tests; mutations G1 (confounding ignores the
+permission), G2 (a stopped reading owed after the screen came back), G3 (finished readings without the service)
+and M1 (the probe enabled in the manifest) each red on its named test. It uses `postDelayed`; **finding:** the
+older single-file `ShareGrantProbeActivity` uses `postAtTime(elapsedRealtime + offset)`, which counts
+`uptimeMillis`, so its readings fire late after deep sleep (its lines print the true elapsed; not changed).
+
+**A shell refusal found on the way:** on the Pixel 10 emulator (SDK 37),
+`pm enable com.chetan.connectsuite.debug/…ShareManyGrantProbeActivity` →
+`SecurityException: Shell cannot change component state … to 1`. The runbook's Run B P3 uses exactly that
+command. **The SM-S938B (SDK 36) refuses it too — measured later the same day, Run B P3, 11:41:48 (below).** Added `ShareManyComponentsActivity`
+(DUMP-gated): `--es component many|probe --ez on true|false`, the app changing its own component; `false`
+restores `COMPONENT_ENABLED_STATE_DEFAULT`; it logs before → after as the package manager reports them. 3 tests.
+
+**Emulator readings — Pixel_10, SDK 37, `com.google.android.documentsui` — emulator evidence only, not a
+Samsung reading.** Stimulus: two synthetic PNGs in `Pictures/SidekickShareTest` — the existing 139,457-byte
+`sidekick-share-test-image.png` (`898baa74…`; the runbook's *230,778 B on the emulator* is not what is there)
+and one generated tonight, `sidekick-grant-multi-2.png`, 230,778 B, `3272c834…`, pushed to the emulator only.
+Files → long-press, tap, *2 selected* → Share (`action_menu_share`, by its dumped id) → *Sidekick multi grant
+probe (debug)*. **Control for the chooser:** exactly one other Sidekick entry, *Sidekick* (the single-file
+sheet); the disabled several-files screen was not listed.
+
+| Reading | Run 1 (03:10–03:13) | Run 2 (03:14–03:16) |
+|---|---|---|
+| intake | `extraStreams=2 clipItems=2 clipUris=2 streamsAllInClip=true grantReadFlag=true mediaPermissionHeld=false`, authority `com.android.externalstorage.documents` | the same |
+| control (in the screen) | both `ok`, bytes and SHA-256 **equal to the files'** | the same |
+| stopped (Home) +1 s, +30 s | both **readable**, digests equal (elapsed 1,026–1,035 / 30,047–30,053 ms) | not run |
+| recreated (rotation) | not run | both **readable** |
+| finished +1 s, +30 s, +120 s | both `SecurityException` at every offset, `linkServiceForeground=true` → **REFUSED (3/3)** | the same |
+
+So on this emulator and this sender, the grant **outlived a stopped, unfinished screen for 30 s and a
+recreation, and did not outlive the finished screen** — the pattern §11 assumed. It says nothing about Samsung
+Gallery or My Files. **Restored:** rotation settings back to `1 0`; the probe component `enabled → default`
+(no `enabledComponents` entry after; the package dump itself read back as control); emulator shut down with
+`emu kill`. The generated PNG stays on the emulator; nothing was put on the SM-S938B.
+
+### 4 · Verification (all at the final tree = `e916f66`'s code)
+
+- Phone, `--rerun-tasks`, every result file written by that run: core **217/0**, sync-module **505/0**, app
+  **164/0**, input **52/0**, mirror **60/0**. `8690e1f`'s exact content was also built in a scratch worktree:
+  core 217/0, sync-module 505/0, app 145/0 (tests forced to run, 0 cache hits).
+- Debug APK `812a0b2a…`, release APK `ffb792a9…` — **built only, installed nowhere but the emulator (debug)**.
+- Packaged manifests (`aapt2`): **release** — `SEND_MULTIPLE` 0, `ShareMany` 0 (its one `enabled=false` element
+  is `androidx.camera`'s `MetadataHolderService`); **debug** — `SEND_MULTIPLE` 2, the claimants read by name:
+  `ShareManyGrantProbeActivity` and `ShareManyToMacActivity`, both `enabled=false`.
+- Release compile output (`kotlin-classes/release`, this run): `ShareManyGrantRun`, `…GrantProbe`, `…Leave`,
+  `…ToMacModel`, `…ToMacActivity`, `…Components`, `ShareDevV3Activity` **0**; control `ShareToMacActivity` 1.
+  Present and expected: `ShareManyCopy` / `ShareManyRow` (the wording file in `main`, committed before tonight,
+  no screen, no manifest entry).
+- Mac **1,274/0** (`npm test`), both typechecks; all 16 `scripts/check-*` exit 0.
+
+## F1 resolved — closing the several-files screen waits for no provider (2026-09-28, morning; no device touched)
+
+**The defect** (`docs/feature-a-v3-production-enablement.md` §6): `ShareManyQueue.end`, called from
+`onStop` on the main thread, took an open gate held across `Env.open`, so it waited for a provider's
+`openInputStream` for as long as the provider took. The old test asserted exactly that wait
+(`end() waits for the one open already under way`, `Thread.State.WAITING`).
+
+**The fix:** `end` takes only the queue's lock. Admission — the `ended` check and the file's move to
+*Preparing* — is under the same lock, so no open is admitted once `end` has run. After an admitted open
+returns, the `ended` check and the copy's registration are one locked step. **Held:** no open admitted and
+no offer made after the end; an in-flight open's stream closed with **0 bytes read**, no copy started, no
+per-file failure reported; offered files and their staged copies untouched; cleanup as before. **Given up:**
+*"when `end` returns, no open is running"* — the half that required waiting on the provider.
+
+**Tests (deterministic — each slow provider is held on a latch the test releases):** 6 new, replacing the
+old one. `endWhileProviderHeld` asserts `end` returned **while the latch was still held** (not a timing guess).
+1. a slow open cut off: `end` returns while held; stream closed unread; nothing else opened, copied, offered;
+   staging empty; a later trigger opens nothing; no failure reported;
+2. the first file already offered, the second's open slow: the offered file and its `.bin` stay; the rest
+   *Not sent*; staging holds only the live offer's copy;
+3. a slow open that throws after the end: not reported as that file's failure;
+4. `end` called from inside the provider call, on the same thread: no deadlock, nothing read;
+5. `end` landing after a file is chosen and before its open (hooked at the stall clock's second read): **no
+   open admitted**;
+6. `end` landing as the copy registers: 0 bytes read, the partial deleted.
+
+**Red-first:** R0 — the pre-fix `ShareManyQueue.kt` from `HEAD` (`640629a`) — tests 1, 2, 3 red. R1 — the
+admission check removed — **first survived** (no test put an end between choosing and opening); test 5 was
+written for it and is red under R1. R2 — the post-open check removed — test 1 red. Each restore
+byte-identical. `ShareManyQueueTest` 47/0.
+
+**Also corrected, in this file's overnight section and in `docs/RESUME.md`:** the grant-rule tests are 14,
+not 16; the overnight mutations were 11 (3 Mac, 8 phone), not 13.
+
+## Run B P1–P4 (2026-09-28, 11:07–11:50, owner-supervised) — P4 INVALID
+
+- **M2** 11:07:55: Mac dev app (pid 5021) quit normally; session ended on both sides. **M1**: `dist` rebuilt from
+  `491cd21`, tree digest `e604479d0c471925`, byte-identical to a scratch build of `git archive HEAD`.
+- **P1** 11:34:49: `install -r` of the debug APK `e82745df…675c` (from `491cd21`), same signing certificate as the
+  installed build; read back byte-identical. User-0 permissions, pairing, secure-settings services unchanged;
+  staging empty; no component overrides. A **user-95** process also started at 11:34:59 (no services, no sockets).
+- **P3** 11:41:48: **`pm enable --user 0` refused on the SM-S938B** — `SecurityException: Shell cannot change
+  component state` (as on the SDK 37 emulator). The in-app switch (`ShareManyComponentsActivity`) enabled the probe:
+  `component probe: default → enabled`.
+- **P4 — INVALID, closed.** Two items arrived from My Files as **MediaStore URIs** (`authority=media`) while Sidekick
+  holds `READ_MEDIA_IMAGES` in user 0, so every read is `CONFOUNDED` — no grant reading exists. Item 1 was
+  `sidekick-share-test-001.png` (control digest equal to the source). **Item 2 was not an approved synthetic
+  input — wrong input; not recorded.** The owner exited; the scheduled reads ran and all item-1 reads succeeded
+  (stopped +1/+30 s, finished +1/+30/+120 s, foreground `LinkService` at each) — permission-confounded, not a grant
+  finding. **Finding kept:** on this phone My Files shares images as MediaStore URIs, so My Files images do not
+  discriminate grant from permission. The owner declined image retries and any media-permission change.
+- **P3′** 11:50:38: `component probe: enabled → default`; no component overrides for user 0 or 95; no
+  `SEND_MULTIPLE` resolver of ours (control: 86 lines); `ShareToMacActivity` still resolves for `SEND`; staging empty.
+
+## Run B P5 — the §11 `SEND_MULTIPLE` grant lifetime, two synthetic PDFs from My Files (2026-09-28, 12:03–12:17) — a bounded measurement, NOT a supervision-compliant run
+
+**Inputs.** Two valid one-page PDFs generated on the Mac (text *"Sidekick synthetic grant test A/B … No personal
+data."*, padded to distinct sizes), verified with PDFKit (a non-PDF control was refused) and hashed with two tools;
+placed (P5, 12:07) in a new folder `Download/SidekickGrantP5/` and read back byte-identical:
+`sidekick-grant-p5-a.pdf` 40,000 B `dfe83252…c329`; `sidekick-grant-p5-b.pdf` 70,000 B `acb1c151…26a9`. MediaStore
+gained exactly three rows (the folder and the two files, `media_type=6`, owner `com.android.shell`, `_size=NULL`).
+P3 (12:11:21) enabled the probe with the in-app switch; `SEND_MULTIPLE application/pdf` then listed it and not
+`ShareManyToMacActivity`.
+
+**The run (the probe's own lines, tag `ShareManyGrantProbe`):**
+
+| | Reading |
+|---|---|
+| Intake 12:13:55 | `SEND_MULTIPLE`, `type=application/pdf`, **2 items**, `extraStreams=2 clipItems=2 clipUris=2 streamsAllInClip=true grantReadFlag=true`, `mediaPermissionHeld=true`, authority **`com.sec.android.app.myfiles.FileProvider`** for both |
+| Control (in the screen) | item 1 = `sidekick-grant-p5-b.pdf` (70,000 B, digest equal); item 2 = `sidekick-grant-p5-a.pdf` (40,000 B, digest equal) |
+| Stopped (from 12:14:15) +1 s, +30 s | **both read**, bytes and digests equal → `READABLE (2/2)` |
+| Finished (from 12:14:45, the probe's self-finish) +1 s, +30 s, +120 s | **`java.lang.SecurityException` for both, every offset**, `linkServiceForeground=true` → `REFUSED (3/3)` |
+
+**Not confounded:** the URIs are My Files' own provider, which `READ_MEDIA_*` does not open, and Sidekick holds no
+all-files access (`MANAGE_EXTERNAL_STORAGE` not declared). So on this phone, for this sender and these files, the
+share's grant **outlived a stopped, unfinished screen for at least 30 s and did not outlive the finished screen
+(refused from +1 s to +120 s).** It is the pattern §11 assumed and the emulator's DocumentsUI showed.
+
+**Deviation — recorded, not excused.** The share reached the probe at 12:13:55, **before** the harness's fresh log
+mark (12:14:20) and its go-ahead; the screen stopped at 12:14:15, **before** the harness confirmed the controls to
+the owner. The harness's watcher, started from the later mark, missed the intake and controls; they were recovered
+from a window ten minutes earlier. The recovered lines show both controls matched **before** the stop, so the
+reading is kept as **one bounded grant-lifetime measurement**; the supervision gate (*controls confirmed before
+Home*) **did not pass**. The runbook's §5.1 now orders a fresh mark and a *watcher ready* message before the share,
+and *both controls match* before Home.
+
+**A second share** arrived at 12:15:16 while readings were owed and was refused before anything was read or logged
+(`a run is still taking readings — this share is ignored`). Not investigated.
+
+**Limits.** One run; one device (SM-S938B, SDK 36); one sender (Samsung My Files) and one provider; PDFs only; the
+stopped phase sampled to +30 s only; **no rotation (recreated) test**; **no real several-files transfer** — the
+multi-file Send to Mac screen was never enabled.
+
+**After (12:16:53–12:17, read back):** P3′ `component probe: enabled → default`; no component overrides in any
+user; no Sidekick `SEND_MULTIPLE` resolver for `application/pdf` (50 lines, the pre-P3 count); `ShareManyToMacActivity`
+absent for images too; `ShareToMacActivity` still resolves for `SEND`; the probe activity gone (0 of 70 records);
+both PDFs unchanged (same SHA-256), left in place; phone staging empty; the Mac app stopped. Permissions and pairing
+were not changed (last read 11:35).

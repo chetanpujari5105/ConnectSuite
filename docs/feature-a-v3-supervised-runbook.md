@@ -15,9 +15,9 @@
 > - **The installed phone build does not have tonight's commits** (`8690e1f`, `e916f66`): no repeat refusal, no
 >   session pin, no grant probe, no component switch. Run A does not need them; **Run B does** — rebuild, then a
 >   fresh P1 before Run B.
-> - **P3 may be refused by the shell.** On the SDK 37 emulator, `pm enable` of these components failed with
->   `SecurityException: Shell cannot change component state`. Not measured on the SM-S938B. If it is refused
->   there, use the app's own switch (debug, DUMP-gated), which the emulator accepted:
+> - **P3 is refused by the shell.** `pm enable` of these components fails with `SecurityException: Shell cannot
+>   change component state` — on the SDK 37 emulator, and **measured on the SM-S938B on 2026-09-28, 11:41:48**.
+>   Use the app's own switch (debug, DUMP-gated), which both accepted:
 >   `scripts/adb-pinned.sh samsung shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ShareManyComponentsActivity --es component many --ez on true`
 >   and for P3′ the same with `--ez on false` (restores the manifest default). It logs
 >   `component many: default → enabled (asked enabled)` under tag `ShareManyComponents` and in `link.log`.
@@ -163,22 +163,34 @@ an Accept; any change to a pre-existing file in the receive folder; `share.file`
 side; free space below the floor; anything on either screen the steps above do not predict. On a stop:
 Decline anything pending (owner), then §6.
 
-### 5.1 · The §11 grant measurement (P6) — instrument built, never run on the SM-S938B
+### 5.1 · The §11 grant measurement (P6) — run once on the SM-S938B (2026-09-28, P5, two PDFs)
 
-Needs the rebuilt debug APK (P1). Synthetic files of **one type** only (a mixed selection arrives as `*/*`,
-which the probe's filter does not accept). My Files is the discriminating source; Gallery rows read
-`CONFOUNDED` while Sidekick holds a media permission (revoking one is approval §19-6, not part of this).
+Synthetic files of **one type** only. **Measured on this phone, 2026-09-28** (`docs/testing.md` → *Run B P1–P4*
+and *P5*): My Files shares **images** in `Pictures` as MediaStore URIs (`authority=media`), which read
+`CONFOUNDED` while Sidekick holds `READ_MEDIA_IMAGES`; it shares **PDFs** through its own
+`com.sec.android.app.myfiles.FileProvider`, which no Sidekick permission opens. Use the generated PDFs in
+`Download/SidekickGrantP5`. The shell's `pm enable` / `pm default-state` are **refused** on this phone
+(`Shell cannot change component state`) — use the in-app switch (`ShareManyComponentsActivity`) only.
 
-| # | Who | Action | Reading |
+**Leaving the probe screen by any route — Home, Back, Finish, the screen timing out — starts timed reads.** So the
+owner shares only after the harness says the watcher is ready, and leaves only after the harness confirms both
+controls. (On 2026-09-28 the P5 share began before the log mark and the screen stopped before the controls were
+confirmed; the reading was kept as a bounded measurement, and this order is the correction.)
+
+| # | Who | Action | Reading / gate |
 |---|---|---|---|
-| 1 | P3 | enable `probe` (`pm enable …ShareManyGrantProbeActivity`, or the switch in the note at the top) | `ShareManyComponents` line, or `enabledComponents` |
-| 2 | P4 | My Files → select the two synthetic PNGs → Share → **Sidekick multi grant probe (debug)** | `adb logcat -s ShareManyGrantProbe`: an `intake` line, two `phase=CONTROL` lines, `verdict phase=CONTROL` |
-| 3 | P4 | press **Home**; wait 35 s | `phase=STOPPED` ×4, `verdict phase=STOPPED`; the screen then finishes itself and `phase=FINISHED` runs to +120 s |
-| 4 | P4 | optional second share: rotate once, then **Finish** | `phase=RECREATED` ×2, then `phase=FINISHED` |
-| 5 | P3′ | back to the default (`pm default-state …`, or the switch with `--ez on false`) | no `enabledComponents` entry for it |
+| 1 | P3 | enable `probe` with the in-app switch (`--es component probe --ez on true`) | `component probe: default → enabled`; `query-activities -a SEND_MULTIPLE -t application/pdf` lists `ShareManyGrantProbeActivity` and **not** `ShareManyToMacActivity` |
+| 2 | harness | re-hash the files on the phone; take a **fresh log mark** from the phone's clock (`date +%s`); start the watcher; tell the owner **"watcher ready"** | the mark recorded; control: `logcat -T` on an earlier mark returns lines |
+| 3 | P4 (owner) | **only after "watcher ready":** My Files → `Download/SidekickGrantP5` → select exactly the two PDFs → Share → **Sidekick multi grant probe (debug)**. **Stay on the probe screen.** | `intake` (`items=2`, a PDF type, the authority) and two `phase=CONTROL` lines, all after the mark |
+| 4 | harness | compare each control's bytes and SHA-256 with the named files; tell the owner **"both controls match"** — or **"invalid — stop"** (then the owner leaves whenever ready, and the run is recorded as wrong input) | an explicit message; a mismatched digest is never kept |
+| 5 | P4 (owner) | **only after "both controls match":** press **Home**; wait about 3 minutes | `phase=STOPPED` ×4 and its verdict; the screen then finishes itself; `phase=FINISHED` ×6 to +120 s and its verdict |
+| 6 | P4 (owner, optional, a separate share with steps 2–4 repeated) | rotate once, then **Finish** | `phase=RECREATED` ×2, then `phase=FINISHED` |
+| 7 | P3′ | the switch with `--ez on false` | `component probe: enabled → default`; no component overrides; no Sidekick `SEND_MULTIPLE` resolver |
 
 Control: each control digest must equal the file's own SHA-256 (listed read-only beforehand); a control that
-fails means **no reading**, not a refusal. The probe writes nothing and sends nothing to the Mac.
+fails means **no reading**, not a refusal. The probe writes nothing and sends nothing to the Mac. A second share
+while a run owes readings is refused before anything is read (`a run is still taking readings — this share is
+ignored`).
 
 ### Run B — a Gallery / My Files multi-select (a later sitting)
 
@@ -188,14 +200,17 @@ first, or waiving it for this first run on the ground that the screen reads a sh
 alive and fails closed when it is not (§11, and the close-versus-open gate tested on 2026-09-28). Either way
 it is recorded as a decision, not skipped silently.
 
-**Enable, only for the run (P3):**
+**Enable, only for the run (P3)** — with the in-app switch. (This step first read `pm enable …`; the shell's
+`pm enable` is **refused on this phone**, measured 2026-09-28 11:41:48, and must not be used.)
 
 ```
-scripts/adb-pinned.sh samsung shell pm enable com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ShareManyToMacActivity
+scripts/adb-pinned.sh samsung shell am start --user 0 -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ShareManyComponentsActivity --es component many --ez on true
 ```
 
-Read back with `scripts/adb-pinned.sh samsung shell dumpsys package com.chetan.connectsuite.debug` —
-the component under `enabledComponents`; **control:** the same dump lists `ShareToMacActivity`.
+Read back: the log line `component many: default → enabled (asked enabled)`; `dumpsys package
+com.chetan.connectsuite.debug` lists only `ShareManyToMacActivity` under `enabledComponents`; and
+`cmd package query-activities --user 0 -a android.intent.action.SEND_MULTIPLE -t image/png` lists it and **not**
+`ShareManyGrantProbeActivity`. **Control:** `query-activities --user 0 -a android.intent.action.SEND -t image/png` still lists `ShareToMacActivity`.
 
 | Step | The owner does | Pass |
 |---|---|---|
@@ -217,14 +232,16 @@ opens for a single file; any `selection item` line after `selection ended`; any 
 |---|---|---|---|
 | 1 | M5 | owner quits the Mac app (⌘Q) | no Electron process of this repo |
 | 2 | P2′ | `scripts/adb-pinned.sh samsung shell am start -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ShareDevV3Activity --ez on false` | phone log `debug share.file 3 disarmed (debuggable build: true); the phone advertises its normal share.file` |
-| 3 | P3′ (Run B only) | `scripts/adb-pinned.sh samsung shell pm default-state com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ShareManyToMacActivity` | the component in **neither** `enabledComponents` nor `disabledComponents` (back to the manifest's `enabled="false"`); control as above |
+| 3 | P3′ (Run B only) | the in-app switch: `scripts/adb-pinned.sh samsung shell am start --user 0 -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ShareManyComponentsActivity --es component many --ez on false` | log `component many: enabled → default`; the component in **neither** `enabledComponents` nor `disabledComponents` (back to the manifest's `enabled="false"`); no Sidekick `SEND_MULTIPLE` resolver; control as above |
 | 4 | M5 | from `desktop/`: `nohup ./node_modules/.bin/electron . --force-renderer-accessibility --remote-debugging-port=9222 &` — **no** `CONNECTSUITE_DEBUG_SWITCHES` | Mac log has **no** `share.file 3 ADVERTISED`; `ext: this Mac advertised {…"share.file":2…}` |
 | 5 | read-only | first handshake | Phone: `ext: share.file 3 (development) — armed for this handshake: false; …; negotiated share.file 2`. Mac: `negotiated {…"share.file":2…}` |
 | 6 | read-only | final readings | staging empty, ledger `[]`, free space, receive folder listed — compared with §4's baseline |
 
-`pm default-state` and the `dumpsys` field names are standard `pm` behaviour **not yet exercised on this
-phone**; read the dump before trusting either, and if `default-state` is refused, `pm disable` of the same
-component is the fallback (it also leaves the screen unreachable, but as an explicit state — record which).
+**Historical, do not use:** this step first used `pm default-state`, with `pm disable` as its fallback. On this
+phone the shell's `pm enable` was refused on 2026-09-28 (11:41:48) inside `PackageManagerShellCommand.runSetEnabledSetting`,
+the handler `default-state` and `disable` also use — so expect the same refusal (read from that stack trace, not
+separately run). The in-app switch above restores
+`COMPONENT_ENABLED_STATE_DEFAULT` and was read back that way on 2026-09-28 (11:50:38 and 12:16:53, for the probe).
 
 **After restore, `dist` is still the version-3-capable build** (switch off). That is inert — the switch
 is read only at launch, is forced off when packaged, and needs `share.ask` open — but it is not the
