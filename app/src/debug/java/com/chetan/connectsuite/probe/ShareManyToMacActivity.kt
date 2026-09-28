@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -85,7 +86,7 @@ class ShareManyToMacActivity : ComponentActivity() {
                     )
                 } else {
                     val screen by model.screen.collectAsStateWithLifecycle()
-                    Many(screen, onSend = { model.send() }, onClose = { model.screenClosed(); finish() })
+                    Many(screen, onSend = { model.send() }, onCancelRow = { model.withdraw(it) }, onClose = { model.screenClosed(); finish() })
                 }
             }
         }
@@ -115,7 +116,7 @@ class ShareManyToMacActivity : ComponentActivity() {
 }
 
 @androidx.compose.runtime.Composable
-private fun Many(screen: ShareManyToMacModel.Screen, onSend: () -> Unit, onClose: () -> Unit) {
+private fun Many(screen: ShareManyToMacModel.Screen, onSend: () -> Unit, onCancelRow: (Int) -> Unit, onClose: () -> Unit) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 48.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(ShareToMacCopy.TITLE, style = MaterialTheme.typography.headlineSmall)
@@ -139,11 +140,18 @@ private fun Many(screen: ShareManyToMacModel.Screen, onSend: () -> Unit, onClose
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     )
                     LazyColumn(Modifier.weight(1f, fill = false).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        itemsIndexed(screen.rows) { _, row ->
+                        itemsIndexed(screen.rows) { i, row ->
                             Column {
                                 Text(row.name, style = MaterialTheme.typography.bodySmall)
                                 Text(ShareManyCopy.label(row, screen.mac), style = MaterialTheme.typography.titleSmall)
                                 ShareManyCopy.detail(row, screen.mac).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                                // §7: this file's own Cancel, for its offer only; the single-file sheet's label.
+                                if (ShareManyCopy.canCancel(row)) {
+                                    val name = ShareManyCopy.cancelRowName(row.name)
+                                    OutlinedButton(onClick = { onCancelRow(i) }, modifier = Modifier.semantics { contentDescription = name }) {
+                                        Text(ShareManyCopy.CANCEL_ROW_BUTTON)
+                                    }
+                                }
                             }
                         }
                     }

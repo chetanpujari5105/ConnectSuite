@@ -37,6 +37,24 @@ object ShareManyCopy {
 
     fun sendButton(count: Int) = "Send $count files"
 
+    /** A row's own withdraw button: the single-file sheet's label, word for word. */
+    const val CANCEL_ROW_BUTTON = ShareToMacCopy.CANCEL_BUTTON
+
+    /** Its accessible name, so a list of identical *Cancel* buttons says which file each one ends. */
+    fun cancelRowName(name: String) = "Cancel sending $name"
+
+    /**
+     * §7 and §13.1: **a file's own Cancel** — `share.cancel{user}` for that row's offer and no other,
+     * while the screen is open. Exactly the single-file sheet's rule ([canWithdraw]): while the offer
+     * waits for an answer, is accepted and waiting its turn, or is sending — never once every byte has
+     * left the phone, and never after it ended. Before a file is offered there is nothing to withdraw
+     * (*Stop preparing* is §20.3 and not built).
+     */
+    fun canCancel(row: ShareManyRow): Boolean = when (row) {
+        is ShareManyRow.Before -> row.prep is Prep.Offered
+        is ShareManyRow.After -> canWithdraw(row.state)
+    }
+
     /** The review line under the list: count and the total of the sizes that were reported. */
     fun reviewTotal(sizes: List<Long?>): String {
         val known = sizes.filterNotNull()

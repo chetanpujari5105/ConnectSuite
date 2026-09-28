@@ -200,4 +200,21 @@ class ShareManyCopyTest {
         val dropped = ShareManyCopy.after("a.jpg", 100_000, mac, pulling, ShareOffer.State.SessionEnded)!!
         assertTrue("a pull under way still ends as dropped", ShareManyCopy.detail(dropped, mac).contains("during the transfer"))
     }
+
+    @Test fun `a row offers its own Cancel exactly while its offer is live and not every byte has left the phone`() {
+        // §7 and §13.1: the single-file sheet's withdraw, per file. The table names each state's answer.
+        val live = setOf<ShareOffer.State>(ShareOffer.State.Offered, ShareOffer.State.Accepted, ShareOffer.State.Sending)
+        for (s in everyOfferState) {
+            assertEquals("after $s", s in live, ShareManyCopy.canCancel(after(s)))
+        }
+        for (p in everyPrep) {
+            // Before its offer there is nothing to withdraw (Stop preparing is §20.3, not built); an offered
+            // file whose first state has not been seen yet is waiting for an answer, so it can be withdrawn.
+            assertEquals("before $p", p is Prep.Offered, ShareManyCopy.canCancel(ShareManyRow.Before("a.jpg", p, 100_000)))
+        }
+        assertTrue("a queued file is still the person's to withdraw", ShareManyCopy.canCancel(after(ShareOffer.State.Accepted)))
+        assertFalse("once every byte has left the phone it is not", ShareManyCopy.canCancel(after(ShareOffer.State.AwaitingVerdict)))
+        assertEquals("the button reads what the single-file sheet's does", ShareToMacCopy.CANCEL_BUTTON, ShareManyCopy.CANCEL_ROW_BUTTON)
+        assertEquals("its accessible name names the file", "Cancel sending holiday.jpg", ShareManyCopy.cancelRowName("holiday.jpg"))
+    }
 }

@@ -199,6 +199,24 @@ class ShareManyToMacModel(app: Application) : AndroidViewModel(app) {
         triggers.trySend(Unit)
     }
 
+    /**
+     * A row's own **Cancel** (§7, §13.1): `share.cancel{user}` for the offer of file [index] — that offer and
+     * no other, identified by the queue's own record of what it offered for that file, never by name. Only
+     * while [ShareManyCopy.canCancel] holds for the row as drawn; anything else is refused and logged.
+     * `ShareFeature` deletes that file's staged copy; every other file is untouched.
+     */
+    fun withdraw(index: Int) {
+        val running = _screen.value as? Screen.Running ?: return
+        val row = running.rows.getOrNull(index) ?: return
+        val offerId = (queue?.states()?.getOrNull(index) as? ShareManyQueue.Prep.Offered)?.offerId
+        if (offerId == null || !ShareManyCopy.canCancel(row)) {
+            LinkLog.i("share", "selection item ${index + 1}/${uris.size}: Cancel refused — no live offer to withdraw (${row::class.simpleName})")
+            return
+        }
+        LinkLog.i("share", "selection item ${index + 1}/${uris.size}: withdrawing offer $offerId at the person's request; other files untouched")
+        ShareFeature.cancel(offerId, "user")
+    }
+
     /** The screen is going away (§11): every file not yet offered is not sent; offered ones are untouched. */
     fun screenClosed() = end(ShareManyQueue.NotSentWhy.ScreenClosed)
 
