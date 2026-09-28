@@ -78,48 +78,55 @@ class DownloadsStore(private val context: Context) : FsStore {
         return runCatching {
             context.contentResolver.query(
                 collection,
-                arrayOf(
-                    MediaStore.Downloads._ID,
-                    MediaStore.Downloads.DISPLAY_NAME,
-                    MediaStore.Downloads.SIZE,
-                    MediaStore.Downloads.DATE_MODIFIED,
-                    MediaStore.Downloads.MIME_TYPE,
-                ),
+                COLUMNS,
                 "${MediaStore.Downloads.RELATIVE_PATH}=?",
                 arrayOf(RELATIVE_PATH),
                 null,
-            )?.use { cursor ->
-                val id = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
-                val name = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME)
-                val size = cursor.getColumnIndexOrThrow(MediaStore.Downloads.SIZE)
-                val modified = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DATE_MODIFIED)
-                val mime = cursor.getColumnIndexOrThrow(MediaStore.Downloads.MIME_TYPE)
-                buildList {
-                    while (cursor.moveToNext()) {
-                        add(
-                            FsPaths.Entry(
-                                id = cursor.getLong(id).toString(),
-                                name = cursor.getString(name) ?: continue,
-                                dir = false,
-                                size = cursor.getLong(size),
-                                // DATE_MODIFIED is **seconds**. Sending it unscaled puts every file
-                                // in 1970 and makes `deleteIfUnchanged`'s mtime comparison a
-                                // guaranteed mismatch — the same units trap `media.*` carries.
-                                mtimeMs = cursor.getLong(modified) * 1_000L,
-                                mime = cursor.getString(mime) ?: "application/octet-stream",
-                            ),
-                        )
-                    }
-                }
-            } ?: emptyList()
+            )?.use { cursor -> buildList { while (cursor.moveToNext()) entryAt(cursor)?.let(::add) } } ?: emptyList()
         }.getOrElse {
             LinkLog.w("fs", "$rootId could not list $RELATIVE_PATH", it)
             null
         }
     }
 
-    override fun statById(id: String): FsPaths.Entry? =
-        listChildren(emptyList())?.firstOrNull { it.id == id }
+    /** One row of [COLUMNS] as an entry — the one place a row becomes an entry, for the listing and for [statById]. */
+    private fun entryAt(cursor: android.database.Cursor): FsPaths.Entry? {
+        val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME)) ?: return null
+        return FsPaths.Entry(
+            id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)).toString(),
+            name = name,
+            dir = false,
+            size = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads.SIZE)),
+            // DATE_MODIFIED is **seconds**. Sending it unscaled puts every file in 1970 and makes
+            // `deleteIfUnchanged`'s mtime comparison a guaranteed mismatch — the same units trap
+            // `media.*` carries.
+            mtimeMs = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads.DATE_MODIFIED)) * 1_000L,
+            mime = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.MIME_TYPE)) ?: "application/octet-stream",
+        )
+    }
+
+    /**
+     * The one row with this id **in this folder** — never a row elsewhere: `id` can come off the wire
+     * (`deleteIfUnchanged`), and the `RELATIVE_PATH` clause is what keeps it inside `Download/ConnectSuite/`.
+     *
+     * One row by id, not the whole folder searched: it used to list every entry to find one, which cost
+     * ≈ 50 ms on every push's publish at ~110 entries (2026-09-29) and grew with the folder.
+     */
+    override fun statById(id: String): FsPaths.Entry? {
+        val row = id.toLongOrNull() ?: return null
+        return runCatching {
+            context.contentResolver.query(
+                collection,
+                COLUMNS,
+                "${MediaStore.Downloads._ID}=? AND ${MediaStore.Downloads.RELATIVE_PATH}=?",
+                arrayOf(row.toString(), RELATIVE_PATH),
+                null,
+            )?.use { cursor -> if (cursor.moveToFirst()) entryAt(cursor) else null }
+        }.getOrElse {
+            LinkLog.w("fs", "$rootId could not look up id $id", it)
+            null
+        }
+    }
 
     /**
      * Always null, and the KDoc on this class says why: `MediaStore` has no empty directories.
@@ -289,10 +296,14 @@ class DownloadsStore(private val context: Context) : FsStore {
             runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
 
         override fun commit(): FsPaths.Entry? {
+            // Each provider call is timed: the publish is the whole per-file cost after the bytes
+            // (131–328 ms per file, 2026-09-29), and only the split says which call owns it.
+            val t0 = System.currentTimeMillis()
             // Overwrite. `fs.transfer.begin` has already refused this push unless the Mac asked for
             // it, so reaching here means replacing was authorised — and it is the *first* of the two
             // deletes, the one that answers "may this file the Mac was looking at be destroyed?".
-            deleteFinalNamed(name)
+            val cleared = deleteFinalNamed(name)
+            val t1 = System.currentTimeMillis()
             val values = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
             val updated = runCatching {
                 context.contentResolver.update(uri, values, null, null)
@@ -300,12 +311,16 @@ class DownloadsStore(private val context: Context) : FsStore {
                 LinkLog.e("fs", "$rootId could not publish $name", it)
                 0
             }
+            val t2 = System.currentTimeMillis()
             if (updated == 0) {
                 LinkLog.e("fs", "$rootId could not clear IS_PENDING on $name; the partial is kept")
                 return null
             }
             val id = ContentUris.parseId(uri).toString()
-            return statById(id) ?: FsPaths.Entry(
+            val seen = statById(id)
+            LinkLog.i("fs", "$rootId published $name (id $id): delete-by-name ${t1 - t0} ms ($cleared removed), " +
+                "IS_PENDING ${t2 - t1} ms, stat ${System.currentTimeMillis() - t2} ms (${if (seen != null) "found" else "not listed"})")
+            return seen ?: FsPaths.Entry(
                 id = id,
                 name = name,
                 dir = false,
@@ -353,18 +368,39 @@ class DownloadsStore(private val context: Context) : FsStore {
      * guard that names them tells you which appeared. `FsDeleteGuardTest`'s number is two because
      * there are two questions, not because two is closer to four.
      */
-    private fun deleteFinalNamed(name: String): Int = runCatching {
-        context.contentResolver.delete(
-            collection,
-            "${MediaStore.Downloads.RELATIVE_PATH}=? AND ${MediaStore.Downloads.DISPLAY_NAME}=?",
-            arrayOf(RELATIVE_PATH, name),
-        )
-    }.getOrElse {
-        LinkLog.w("fs", "$rootId could not clear a previous $name", it)
-        0
+    /**
+     * Removes a published file with this name before publishing over it. **Asked first, deleted only if
+     * something is there**: the delete is a provider write that cost 93–202 ms per push and removed 0
+     * rows every time it was measured (2026-09-29), because `fs.transfer.begin` refuses a push onto an
+     * existing name unless the Mac asked to overwrite. The count uses the delete's own selection on the
+     * same collection, so it sees exactly the rows the delete would; when the count cannot be read,
+     * the delete runs as it always did.
+     */
+    private fun deleteFinalNamed(name: String): Int {
+        val selection = "${MediaStore.Downloads.RELATIVE_PATH}=? AND ${MediaStore.Downloads.DISPLAY_NAME}=?"
+        val args = arrayOf(RELATIVE_PATH, name)
+        val present = runCatching {
+            context.contentResolver.query(collection, arrayOf(MediaStore.Downloads._ID), selection, args, null)?.use { it.count }
+        }.getOrNull()
+        if (present == 0) return 0
+        return runCatching {
+            context.contentResolver.delete(collection, selection, args)
+        }.getOrElse {
+            LinkLog.w("fs", "$rootId could not clear a previous $name", it)
+            0
+        }
     }
 
     companion object {
+        /** What a row of this folder is read as, by the listing and by [statById] alike. */
+        private val COLUMNS = arrayOf(
+            MediaStore.Downloads._ID,
+            MediaStore.Downloads.DISPLAY_NAME,
+            MediaStore.Downloads.SIZE,
+            MediaStore.Downloads.DATE_MODIFIED,
+            MediaStore.Downloads.MIME_TYPE,
+        )
+
         /**
          * The trailing slash is required. `MediaStore` normalises `RELATIVE_PATH` to end in one, so
          * a query bound with `Download/ConnectSuite` matches **nothing** while the insert that made

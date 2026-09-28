@@ -753,7 +753,11 @@ object BulkTransfers {
                 return
             }
 
+            // Where the time after the bytes goes, per file (2026-09-29): a 1 MiB push spent
+            // ≈ 50 ms on bytes and ≈ 165 ms after them, and only the split says which step owns it.
+            val lastByteAt = System.currentTimeMillis()
             val finished = entry.partial.commit()
+            val publishedAt = System.currentTimeMillis()
             if (finished == null) {
                 failed.incrementAndGet()
                 updateRecord(context, entry, total, TransferStatus.FAILED)
@@ -783,6 +787,7 @@ object BulkTransfers {
             val verified = (verdict as FsPartials.Arrival.Complete).verified
             completed.incrementAndGet()
             updateRecord(context, entry, total, TransferStatus.COMPLETED)
+            val recordedAt = System.currentTimeMillis()
             reportIncoming(channel, entry, total, startedAt)
             sendDone(channel, entry.transferId) {
                 put("ok", true)
@@ -797,6 +802,8 @@ object BulkTransfers {
                     "in ${elapsed}ms (${rateOf(received, elapsed)}), sha256=${sha.take(12)}…, " +
                     "verified=$verified " +
                     (if (verified) "(agreed in advance and matched)" else "(nothing was agreed in advance)") +
+                    "; after the bytes were closed and checked: publish ${publishedAt - lastByteAt} ms, record ${recordedAt - publishedAt} ms, " +
+                    "verdict sent at +${System.currentTimeMillis() - lastByteAt} ms" +
                     " — ${tally()}; ${framing.tally.summary()}",
             )
             // Only here, after the Complete verdict: a stopped, short, overrun or corrupt arrival
