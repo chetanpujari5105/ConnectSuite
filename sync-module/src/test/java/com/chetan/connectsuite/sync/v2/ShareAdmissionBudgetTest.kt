@@ -69,9 +69,10 @@ class ShareAdmissionBudgetTest {
     }
 
     @Test fun `the space budget binds when the floor does - one byte over it is refused with the measured limit`() {
-        // Usable = floor + margin(Σ + x) + x exactly: H = 3 GiB + 1 GiB; x = 50 MiB fits exactly under the floor.
+        // Usable = floor + margin(Σ + x) + x exactly: H = the fixed 1 GiB reserve (Option B, 2026-09-29);
+        // x = 50 MiB fits exactly under the floor.
         val x = 50 * mib
-        val usable = 3 * gib + 1 * gib + x + ShareStaging.margin(held + x)
+        val usable = 1 * gib + x + ShareStaging.margin(held + x)
         val c = concurrent({ readings(it, usable = usable) })
         assertEquals(ShareAdmission.Copy.Go(x), ShareAdmission.forCopy(3, x, held, 40 * gib, null, c))
         assertEquals(ShareAdmission.Copy.OverBudget(held, x + 1, x, Refusal.OVER_SPACE_BUDGET), ShareAdmission.forCopy(3, x + 1, held, 40 * gib, null, c))
@@ -151,11 +152,12 @@ class ShareAdmissionBudgetTest {
     }
 
     @Test fun `free space that fell mid-copy stops it with the reason and the measured room - never unmeasured`() {
-        // H = 3% of 100 GiB + 1 GiB = 4 GiB. Usable falls to H + M(Σ + w) − 1, so even x = 0 no longer fits.
+        // H = the fixed 1 GiB reserve (Option B, 2026-09-29). Usable falls to H + M(Σ + w) − 1, so even x = 0
+        // no longer fits.
         // With the partial's 10 MiB back in A the room is H + 256 MiB − 1 + 10 MiB, and the largest x with
         // x + M(Σ + x) ≤ 266 MiB − 1 is 10 MiB − 1 (the margin is its 256 MiB floor throughout).
         val w = 10 * mib
-        val floor = 4 * gib
+        val floor = 1 * gib
         val usable = floor + ShareStaging.margin(held + w) - 1
         assertEquals(256 * mib, ShareStaging.margin(held + w)) // control: the arithmetic above assumes the floor
         assertEquals(
@@ -200,7 +202,8 @@ class ShareAdmissionBudgetTest {
     @Test fun `the provisional development candidate is the owner's three values and nothing else`() {
         val c = ShareAdmission.PROVISIONAL_DEV_CANDIDATE
         assertEquals(1L, c.quotaNumerator); assertEquals(2L, c.quotaDenominator)
-        assertEquals(30L, c.floorPerMille); assertEquals(gib, c.floorExtraBytes)
+        // Option B (2026-09-29): a fixed 1 GiB reserve, no proportional part. ShareDevReserveTest has the why.
+        assertEquals(0L, c.floorPerMille); assertEquals(gib, c.floorExtraBytes)
         assertEquals(5_000L, c.maxReadingAgeMs)
         assertEquals("the Stage A cap is still unset", null, ShareAdmission.APPROVED_CAP)
     }

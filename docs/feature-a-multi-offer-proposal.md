@@ -206,6 +206,13 @@ withdrawn (R6).*
   The arithmetic is `ShareConcurrentBudget` (`f71285b`), unchanged.
 - **Status of the values:** ½, 3% + 1 GiB and 5 s are **PROVISIONAL development parameters**
   (owner, 2026-09-26). None is a production constant; production values are a separate decision.
+- **Option B, development only (owner, 2026-09-29): `H` is a fixed 1 GiB reserve** — `perMille = 0`,
+  `extra = 1 GiB` in `ShareAdmission.PROVISIONAL_DEV_CANDIDATE`. Reason: on the SM-S938B (≈ 456 GiB,
+  ≈ 10 GB free at the 2026-09-28 20:29 reading) `3%·T` alone exceeded what was free, so no second copy
+  could start however small and Run A's two waiting cards could not form. Everything else is unchanged —
+  the ½ quota share, the 256 MiB margin, the 5 s bound, the re-check during and after the copy, the
+  partial's deletion on a stop, and refusal on any missing reading (`ShareDevReserveTest`). **This is not
+  a release policy**; the production floor stays an open decision.
 - **A missing, stale or impossible reading refuses only the extra copy.** In a selection the file
   waits for room, and it is never a failure while the file could still be prepared alone (§12). From
   the single-file sheet it is a refusal with **Try again** (§2).

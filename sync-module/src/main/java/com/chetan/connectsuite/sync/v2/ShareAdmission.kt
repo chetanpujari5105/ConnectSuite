@@ -73,13 +73,20 @@ object ShareAdmission {
     }
 
     /**
-     * **Development only, PROVISIONAL** (owner, 2026-09-26; proposal rev 4 §4): f = ½, a floor of
-     * 3% of total + 1 GiB, readings at most 5 s old. Not a production value — production values are a
-     * separate, open decision. No figure measured on any device appears here.
+     * **Development only, PROVISIONAL** (owner, 2026-09-26; proposal rev 4 §4): f = ½, readings at most
+     * 5 s old, and — **Option B, owner, 2026-09-29 — a fixed 1 GiB free-space reserve** in place of the
+     * earlier `⌈3%·T⌉ + 1 GiB` floor. Not a production value — production values are a separate, open
+     * decision, and this is reachable only through the debuggable build's version-3 arm. No figure
+     * measured on any device appears here.
+     *
+     * Why the floor changed: on a large phone that is nearly full, `3%·T` alone can exceed what is free,
+     * so no second copy could start however small. The reserve is still enforced before the copy, while
+     * it runs and when it finishes, on top of the 256 MiB margin ([ShareStaging.margin]); a missing,
+     * stale or impossible reading still refuses the extra copy. `ShareDevReserveTest` holds each of these.
      */
     val PROVISIONAL_DEV_CANDIDATE = ShareConcurrentBudget.Candidate(
         quotaNumerator = 1, quotaDenominator = 2,
-        floorPerMille = 30, floorExtraBytes = 1L shl 30,
+        floorPerMille = 0, floorExtraBytes = 1L shl 30,
         maxReadingAgeMs = 5_000,
     )
 
