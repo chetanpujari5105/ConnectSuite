@@ -66,6 +66,12 @@ interface ShareWinNodes {
 
 /** How long a finished, unsaved offer stays up on its own. */
 const SHARE_WIN_LINGER_MS = 8000;
+/** The receive window's height cap with the list drawn (main's clamp, and `share-window.css`). */
+const SHARE_WIN_CAP_PX = 560;
+/** How long an arrival waits for the window to grow before it is placed anyway. */
+const SHARE_WIN_GROW_WAIT_MS = 700;
+/** Keys that scroll a focused list: a person reading it, for F4's arrival rule. */
+const SHARE_WIN_SCROLL_KEYS: ReadonlySet<string> = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 
 
 /** The states whose arrival sentence may stay in the receive window's live region (`shareLiveText`). */
@@ -291,6 +297,17 @@ interface ShareQueueNodes {
   queue: HTMLElement;
   close: HTMLButtonElement;
   live: HTMLElement;
+  /** F4: the button below the list saying a waiting file is out of view, and leading to it. */
+  more: HTMLButtonElement;
+}
+
+/** F4's seams: the clock, the layout, and the window's growth. The page uses the real ones; a test states its own. */
+interface ShareQueueEnv {
+  now(): number;
+  rectOf(el: HTMLElement): { top: number; bottom: number };
+  /** Whether the window is still below its cap with content that does not fit — so it is about to grow. */
+  mayGrow(): boolean;
+  onResize(callback: () => void): void;
 }
 
 /** One card's own elements, found once when the card is built. */
@@ -343,11 +360,44 @@ class ShareQueueView {
   private hovered = false;
   private active = false;
   private last: ShareWinPayload | null = null;
+  /** F4: the newest waiting arrival whose placement waits for the window to finish growing. */
+  private pendingArrival: string | null = null;
+  /** F4: the last scroll input a **person** gave the list (a programmatic reveal is not one). */
+  private lastScrollInput = -Infinity;
+  private readonly env: ShareQueueEnv;
 
   constructor(
     private readonly n: ShareQueueNodes,
     private readonly bridge: ShareWinBridge,
+    env: Partial<ShareQueueEnv> = {},
   ) {
+    this.env = {
+      now: env.now ?? (() => Date.now()),
+      rectOf: env.rectOf ?? ((el) => el.getBoundingClientRect()),
+      mayGrow: env.mayGrow ?? (() =>
+        window.innerHeight < Math.min(SHARE_WIN_CAP_PX, window.screen?.availHeight ?? SHARE_WIN_CAP_PX) &&
+        n.queue.scrollHeight > n.queue.clientHeight),
+      onResize: env.onResize ?? ((callback) => window.addEventListener('resize', callback)),
+    };
+    // The window grows to its content (main clamps it): an arrival judged before that would be judged
+    // against a band about to get larger.
+    this.env.onResize(() => {
+      this.drawMore(); // the slot first, so a reveal is judged against the band that will stay
+      this.settleArrival(false);
+      this.drawMore();
+    });
+    // A person's scroll input, never the `scroll` event itself: a reveal also scrolls, and must not
+    // count as someone reading the list.
+    const touched = (): void => {
+      this.lastScrollInput = this.env.now();
+    };
+    for (const type of ['wheel', 'touchmove', 'pointerdown']) n.queue.addEventListener(type, touched);
+    n.queue.addEventListener('keydown', (event: Event) => {
+      if (SHARE_WIN_SCROLL_KEYS.has((event as KeyboardEvent).key)) touched();
+    });
+    // Seen by scrolling: whatever came into view leaves the indicator.
+    n.queue.addEventListener('scroll', () => this.drawMore());
+    n.more.addEventListener('click', () => this.showUnseen());
     n.root.addEventListener('keydown', (event: Event) => {
       if ((event as KeyboardEvent).key !== 'Escape' || !this.escape()) return;
       event.preventDefault();
@@ -396,6 +446,7 @@ class ShareQueueView {
     this.n.root.dataset.state = models.length === 0 ? 'none' : 'queue';
     this.n.root.dataset.tone = 'neutral';
     const keep = new Set(models.map((m) => m.offerId));
+    const arrived: string[] = [];
     for (const [id, card] of this.cards) {
       if (keep.has(id)) continue;
       if (card.lingerTimer !== null) window.clearTimeout(card.lingerTimer);
@@ -409,6 +460,7 @@ class ShareQueueView {
       if (!card) {
         card = this.build(m);
         this.cards.set(m.offerId, card);
+        if (m.state === 'awaiting-decision') arrived.push(m.offerId);
       }
       card.model = m;
       if (before === null || before.state !== m.state) {
@@ -422,6 +474,7 @@ class ShareQueueView {
     }
     // After every card: the arrival just added, the fall-back to another offer still waiting when the
     // announced one ended, or nothing (`shareLiveText`).
+    this.placeArrivals(arrived);
     const liveText = shareLiveText([...this.announced], models, SHARE_WIN_LIVE_STANDING);
     if (liveText !== this.liveSaid) {
       this.liveSaid = liveText;
@@ -437,6 +490,88 @@ class ShareQueueView {
       this.n.close.dataset.icon = 'close';
       this.n.close.append(iconSvg('close', 14));
     }
+  }
+
+  /**
+   * F4. The newest waiting arrival is placed once the window has finished growing: already in view,
+   * nothing; nobody using the window, the list is scrolled to it (nothing focused); somebody is, the list
+   * stays still and the indicator — a projection, below — says a file is waiting out of view.
+   */
+  private placeArrivals(arrived: string[]): void {
+    const newest = arrived[arrived.length - 1];
+    if (newest !== undefined) {
+      this.pendingArrival = newest;
+      this.drawMore();
+      this.settleArrival(false);
+      // A window that never grows (main refused, or it is already as tall as it can be) still places it.
+      if (this.pendingArrival !== null) {
+        window.setTimeout(() => { this.drawMore(); this.settleArrival(true); this.drawMore(); }, SHARE_WIN_GROW_WAIT_MS);
+      }
+    }
+    this.drawMore();
+  }
+
+  private settleArrival(force: boolean): void {
+    const id = this.pendingArrival;
+    if (id === null || (!force && this.env.mayGrow())) return;
+    this.pendingArrival = null;
+    const card = this.cards.get(id);
+    if (!card || card.model.state !== 'awaiting-decision') return;
+    const move = shareWinArrivalMove({
+      inView: this.inView(id),
+      focused: document.hasFocus?.() === true,
+      hovered: this.hovered,
+      msSinceScroll: this.env.now() - this.lastScrollInput,
+    });
+    if (move === 'reveal') card.el.scrollIntoView({ block: 'nearest' });
+  }
+
+  private inView(offerId: string): boolean {
+    const card = this.cards.get(offerId);
+    return card !== undefined && shareWinFullyInView(this.env.rectOf(card.el), this.env.rectOf(this.n.queue));
+  }
+
+  /** Waiting cards not wholly in view right now, in arrival order — recomputed, never remembered. */
+  private outOfView(): string[] {
+    return [...this.cards.values()]
+      .filter((c) => c.model.state === 'awaiting-decision' && !this.inView(c.model.offerId))
+      .map((c) => c.model.offerId);
+  }
+
+  /**
+   * The indicator, projected from the list as it is: every waiting file out of view.
+   *
+   * **Its slot never moves the list.** Measured in the harness: an indicator that appeared after a reveal
+   * took 40 px from the list and pushed the revealed card back out. So while the list is capped — the
+   * window can grow no further and the list overflows — the slot is always reserved, and an empty one is
+   * `visibility: hidden` (`data-empty`), which also takes it out of the tab order and the accessibility
+   * tree. While the window can still grow there is no slot: the band is about to change.
+   */
+  private drawMore(): void {
+    const more = this.n.more;
+    const q = this.n.queue;
+    const capped = this.active && !this.env.mayGrow() && q.scrollHeight > q.clientHeight;
+    more.hidden = !capped;
+    const label = capped ? shareWinMoreLabel(this.outOfView().map((id) => this.cards.get(id)!.model.label)) : null;
+    more.dataset.empty = label === null ? 'true' : 'false';
+    if (label === null) {
+      more.textContent = '';
+      more.removeAttribute('aria-label');
+      return;
+    }
+    more.textContent = label.text;
+    more.setAttribute('aria-label', label.aria);
+  }
+
+  /** A person pressed the indicator: bring the newest waiting file out of view into view, and focus it. */
+  private showUnseen(): void {
+    const out = this.outOfView();
+    const card = this.cards.get(out[out.length - 1] ?? '');
+    if (!card) return;
+    card.el.setAttribute('tabindex', '-1');
+    card.el.scrollIntoView({ block: 'nearest' });
+    card.el.focus();
+    this.drawMore();
   }
 
   private build(m: ShareWinModel): ShareQueueCard {
@@ -659,7 +794,7 @@ if (typeof document !== 'undefined' && typeof document.getElementById === 'funct
   // Version 3 only: the list of cards. At version 2 it never becomes active and the view above is the
   // whole window, exactly as before.
   const queue = new ShareQueueView(
-    { root, one: byId('sw-one'), queue: list, close: byId('sw-close') as HTMLButtonElement, live: byId('sw-live') },
+    { root, one: byId('sw-one'), queue: list, close: byId('sw-close') as HTMLButtonElement, live: byId('sw-live'), more: byId('sw-more') as HTMLButtonElement },
     bridge,
   );
   // With the list drawn, the page is capped at the window it is in (share-window.css), so the list's

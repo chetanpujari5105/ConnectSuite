@@ -57,6 +57,9 @@
       <!-- Version 3 only (PROPOSED; nothing advertises it): one card per offer, in arrival order, each
            with its own actions. Hidden unless an offer arrived at version 3. -->
       <ol class="sw-queue" id="sw-queue" aria-label="Incoming files" hidden></ol>
+      <!-- F4: a waiting file out of view. Outside the scrolling list, so it is always on screen; a real
+           button, named by the file it leads to. Pressing it scrolls to that card and focuses it. -->
+      <button type="button" class="sw-button sw-more" id="sw-more" hidden></button>
     </main>
     <div class="sw-live" id="sw-live" aria-live="polite" aria-atomic="true"></div>
 

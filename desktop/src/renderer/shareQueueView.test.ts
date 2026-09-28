@@ -32,9 +32,9 @@ const offer = (offerId: string, seq: number, over: Record<string, unknown> = {})
 function setup(answer: { ok: boolean; reason?: string } = { ok: true }) {
   const n = {
     root: new FakeElement('main'), one: new FakeElement('div'), queue: new FakeElement('ol'),
-    close: new FakeElement('button'), live: new FakeElement('div'),
+    close: new FakeElement('button'), live: new FakeElement('div'), more: new FakeElement('button'),
   };
-  n.root.append(n.close, n.one, n.queue);
+  n.root.append(n.close, n.one, n.queue, n.more);
   const calls: string[] = [];
   const pending: (() => void)[] = [];
   const reply = () => new Promise((ok) => { pending.push(() => ok(answer)); });

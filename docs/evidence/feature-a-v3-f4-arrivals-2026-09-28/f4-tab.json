@@ -1,0 +1,72 @@
+{
+ "threeAtTop": {
+  "tab": [
+   "close",
+   "Adecline",
+   "Aaccept",
+   "Bdecline",
+   "Baccept",
+   "Cdecline",
+   "Caccept",
+   "sw-more"
+  ],
+  "more": {
+   "hidden": false,
+   "empty": "false",
+   "aria": "1 more file is waiting, out of view: synthetic-c.png (file 3, arrived 15:25:41). Show it.",
+   "visibility": "visible"
+  }
+ },
+ "fiveHovered": {
+  "tab": [
+   "close",
+   "Adecline",
+   "Aaccept",
+   "Bdecline",
+   "Baccept",
+   "Cdecline",
+   "Caccept",
+   "Ddecline",
+   "Daccept",
+   "Edecline",
+   "Eaccept",
+   "sw-more"
+  ],
+  "live": "Synthetic Phone wants to send synthetic-e.png, 100,005 bytes. Accept or decline.",
+  "more": {
+   "tag": "BUTTON",
+   "type": "button",
+   "text": "3 more files waiting",
+   "aria": "3 more files are waiting, out of view. Show the newest: synthetic-e.png (file 5, arrived 15:25:43).",
+   "empty": "false",
+   "visibility": "visible"
+  }
+ },
+ "pressed": {
+  "landed": true,
+  "active": "synthetic-e.png (file 5, arrived 15:25:43)",
+  "tabindex": "-1"
+ },
+ "cappedEmpty": {
+  "stopped": "settled",
+  "landed": true,
+  "hidden": false,
+  "empty": "true",
+  "visibility": "hidden",
+  "height": 32,
+  "aria": null,
+  "text": "",
+  "D": "visible",
+  "E": "visible",
+  "tab": [
+   "close",
+   "Aclose",
+   "Bclose",
+   "Cclose",
+   "Ddecline",
+   "Daccept",
+   "Edecline",
+   "Eaccept"
+  ]
+ }
+}

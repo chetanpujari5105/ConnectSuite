@@ -357,6 +357,52 @@ function shareWinWantedHeight(rootHeight: number, listActive: boolean, listClien
   return Math.ceil(rootHeight + Math.max(0, listScrollHeight - listClientHeight));
 }
 
+/**
+ * **F4 (2026-09-28): a waiting file that arrives out of sight.** At the window's 560 px cap the fourth
+ * and fifth arrivals were measured 0% on screen at rest while the window presented itself for them and
+ * the live region announced them.
+ *
+ * How long after a person's own scroll input — a wheel, a touch, a press on the list (a scrollbar drag),
+ * a scrolling key — the list still counts as being scrolled by them.
+ */
+const SHARE_WIN_SCROLL_QUIET_MS = 1500;
+
+type ShareWinArrivalMove = 'none' | 'reveal' | 'indicate';
+
+/**
+ * What a newly arrived waiting card gets. Already in view: nothing. Nobody is using the window —
+ * unfocused, not hovered, no scroll input within [SHARE_WIN_SCROLL_QUIET_MS]: **reveal**, a scroll of
+ * the list only (never focus, never the window). Somebody is: **indicate**, never move what they are
+ * reading or pointing at — the list stays still and a button says a file is waiting out of view.
+ */
+function shareWinArrivalMove(s: { inView: boolean; focused: boolean; hovered: boolean; msSinceScroll: number }): ShareWinArrivalMove {
+  if (s.inView) return 'none';
+  if (s.focused || s.hovered || s.msSinceScroll < SHARE_WIN_SCROLL_QUIET_MS) return 'indicate';
+  return 'reveal';
+}
+
+/** Whether a card lies wholly inside the list's visible band (client rects; half a pixel of rounding). */
+function shareWinFullyInView(card: { top: number; bottom: number }, list: { top: number; bottom: number }): boolean {
+  return card.top >= list.top - 0.5 && card.bottom <= list.bottom + 0.5;
+}
+
+/**
+ * The indicator for waiting files out of view, [labels] in arrival order (each card's own accessible
+ * label, so two files of one name are told apart). Null when there are none. It leads to the **newest**
+ * — the arrival a person was not shown.
+ */
+function shareWinMoreLabel(labels: string[]): { text: string; aria: string } | null {
+  if (labels.length === 0) return null;
+  const newest = labels[labels.length - 1];
+  if (labels.length === 1) {
+    return { text: '1 more file waiting', aria: `1 more file is waiting, out of view: ${newest}. Show it.` };
+  }
+  return {
+    text: `${labels.length} more files waiting`,
+    aria: `${labels.length} more files are waiting, out of view. Show the newest: ${newest}.`,
+  };
+}
+
 {
   const g = globalThis as Record<string, unknown>;
   g.shareWindowModel = shareWindowModel;
@@ -368,8 +414,12 @@ function shareWinWantedHeight(rootHeight: number, listActive: boolean, listClien
   g.shareWinTypeLabel = shareWinTypeLabel;
   g.shareWinApproxBytes = shareWinApproxBytes;
   g.SHARE_WIN_ICON_NAMES = SHARE_WIN_ICON_NAMES;
+  g.shareWinArrivalMove = shareWinArrivalMove;
+  g.shareWinFullyInView = shareWinFullyInView;
+  g.shareWinMoreLabel = shareWinMoreLabel;
+  g.SHARE_WIN_SCROLL_QUIET_MS = SHARE_WIN_SCROLL_QUIET_MS;
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { shareWindowModel, shareWindowList, shareQueueMode, shareQueueCards, shareWinPending, shareWinWantedHeight, shareWinTypeLabel, shareWinApproxBytes, shareWinGlyph, SHARE_WIN_ICON_NAMES };
+  module.exports = { shareWindowModel, shareWindowList, shareQueueMode, shareQueueCards, shareWinPending, shareWinWantedHeight, shareWinTypeLabel, shareWinApproxBytes, shareWinGlyph, SHARE_WIN_ICON_NAMES, shareWinArrivalMove, shareWinFullyInView, shareWinMoreLabel, SHARE_WIN_SCROLL_QUIET_MS };
 }

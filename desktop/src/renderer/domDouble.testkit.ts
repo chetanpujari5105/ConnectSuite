@@ -351,6 +351,18 @@ export class FakeElement {
     this.scrollCount += 1;
   }
 
+  /**
+   * A client rect, as **storage with no layout behind it** — all zeros unless a test sets [rect].
+   * Added for the receive window's F4 rule (is a card inside the list's visible band?). A test that
+   * sets it is stating a hypothesis about layout, exactly like `scrollTop`; the real band is a probe
+   * read against the page.
+   */
+  rect = { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
+
+  getBoundingClientRect(): { top: number; bottom: number; left: number; right: number; width: number; height: number } {
+    return { ...this.rect };
+  }
+
   /** Storage, like the layout numbers. The double has no selection model. */
   setSelectionRange(start: number, _end: number): void {
     this.selectionStart = start;

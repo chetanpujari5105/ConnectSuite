@@ -377,3 +377,15 @@ html,
 .sw-card[data-tone='success'] .sw-eyebrow {
   color: var(--text-primary);
 }
+
+/* F4: below the list, outside its scroller, so a waiting file out of view is always announced on screen. */
+.sw-more {
+  align-self: center;
+  flex: 0 0 auto;
+  margin-top: var(--space-3);
+}
+
+/* A reserved, empty slot: it keeps its height so the list never moves, and is neither seen, tabbed to nor read. */
+.sw-more[data-empty='true'] {
+  visibility: hidden;
+}

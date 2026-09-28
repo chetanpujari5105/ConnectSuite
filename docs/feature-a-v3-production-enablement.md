@@ -120,7 +120,15 @@ thing it gates.
   deep sleep. Readings can fire late; each line prints the true elapsed time, so past readings are
   mislabelled in offset, not wrong. The new `SEND_MULTIPLE` probe uses `postDelayed` from the event's own
   instant. Not changed: that probe is not tonight's scope.
-- **F4 — the newest waiting file can arrive out of sight (2026-09-28, harness, synthetic offers).**
+- **F4 — RESOLVED 2026-09-28 (afternoon), owner-approved design.** A new waiting file that arrives out of
+  view is scrolled into view — never focused — when the window is not focused, hovered or scrolled by a person
+  in the last 1.5 s, and only once the window has finished growing (700 ms fallback). Otherwise the list stays
+  still and a button below the list, outside the scroller, says *"N more files waiting"*. It is named by, and
+  leads to, the newest waiting file out of view, and pressing it moves keyboard focus onto that card. Its slot is
+  reserved whenever the list is capped, and is invisible and untabbable while empty, so it never moves the list.
+  Tests: `shareQueueArrival.test.ts` (19). Harness readings and screenshots:
+  `docs/evidence/feature-a-v3-f4-arrivals-2026-09-28/`. The original finding, for the record:
+- **F4 (original) — the newest waiting file can arrive out of sight (2026-09-28, harness, synthetic offers).**
 
   | Arrival at the 560 px cap | Newest card on screen at rest |
   |---|---|
