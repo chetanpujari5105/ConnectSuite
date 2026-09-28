@@ -24,42 +24,87 @@
 > - **P6's instrument is built**: `ShareManyGrantProbeActivity` (component `probe` in the switch above), disabled.
 >   Procedure in §5.1 below. Emulator readings exist and are emulator evidence only.
 
-> **Preflight for the first live version-3 queue test (Run A, resumed) — read 2026-09-28 15:0x IST,
-> read-only. Not run, not authorised.** Evidence: `docs/feature-a-v3-unattended-2026-09-28.md` §7.
+> **Run A, step A1 — the exact supervised sequence (written 2026-09-28 15:3x IST). Not run, not
+> authorised: every step marked P or M is the owner's yes, at the time.**
 >
-> **Builds — no M1 and no P1 are needed.**
-> - The phone runs the P1 install of `491cd21` (`lastUpdateTime 11:34:59`).
-> - `desktop/dist` is the `491cd21` build (11:13:57; `shareV3` 7 hits, control `shareV2` 12).
-> - Runtime changes since then: on the phone, verbatim moves only (`c8df24b`, `1f86ab8`). On the Mac, a
->   verbatim move (`d407dd6`) and the v3 finished-card Close accessible name (`4498d4b`). **The installed
->   pair behaves as HEAD for Run A, except that label.** If the owner wants the label under test, M1 first
->   (scratch build, then `rsync` into `dist`).
+> **Builds, as they stand:**
+> - **Mac `desktop/dist`** = a `git archive` build of **`967117b`**, tree digest **`cb74d20d6de3172e`** (method:
+>   SHA-256 over `find . -type f` sorted, first 16 hex; it reproduces the old build's `e604479d0c471925`). It
+>   carries F4 (`e19f642`), the v3 Close label (`4498d4b`) and `shareV3`. The Mac app is **stopped**.
+> - **Phone:** the P1 install of `491cd21` (`lastUpdateTime 11:34:59`). Phone runtime changes since are verbatim
+>   moves only (`c8df24b`, `1f86ab8`), so no P1 is needed.
+> - **Files:** `Pictures/SidekickShareTest/sidekick-share-test-001.png` (**file 1**, 100,718 B, `d5cfb8a3…c9ff`)
+>   and `…/sidekick-share-test-image.png` (**file 2**, 230,778 B, `1afc71b6…c84c`), both hashed on the SM-S938B.
 >
-> **Files — no P5 is needed.** Both synthetic images are on the SM-S938B, hashed 15:0x:
-> - `Pictures/SidekickShareTest/sidekick-share-test-001.png`, 100,718 B, `d5cfb8a3…c9ff`;
-> - `Pictures/SidekickShareTest/sidekick-share-test-image.png`, 230,778 B, `1afc71b6…c84c` — present on
->   the SM-S938B, previously recorded as *unknown*.
+> **0 · Baseline (read-only, the harness).** Stop here and restore (§R) on anything unexpected.
+> - `scripts/target-device.sh samsung` names `RZCY12330DT`.
+> - `scripts/link-up.sh`: checks 1–2 OK. Check 3 FAILS, as expected, with the Mac app stopped.
+> - No Electron process of this repo is running.
+> - `desktop/dist` digest is `cb74d20d6de3172e`.
+> - Mac free space is ≥ 3 GiB.
+> - Phone `cache/share-staging` is empty.
+> - Both files re-hashed on the phone.
+> - `~/Downloads/Sidekick` listed with every size and SHA-256.
 >
-> **State:**
-> - The Mac app is **stopped**, so no handshake can spend an arm.
-> - Phone link up, no Mac session.
-> - Staging empty; no component overrides; `SEND_MULTIPLE` resolves to nothing of ours (control: `SEND`
->   does).
-> - Mac free space 15,006 MiB (floor 3 GiB); phone `/data` 18 GB free.
+> **1 · P2 — arm the phone** (the Mac is quit, so no handshake can spend the arm):
+> `scripts/adb-pinned.sh samsung shell am start --user 0 -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ShareDevV3Activity --ez on true`
+> - **Pass:** phone `files/logs/link.log` has `debug share.file 3 ARMED for the next trusted handshake only
+>   (debuggable build: true) — reconnect the Mac for it to take effect`.
+> - **Fail:** go to §R, steps 2 and 6 only.
 >
-> **In the Android share sheet, pick "Send to Mac".** For `image/png` the debug build also lists
-> "Sidekick grant probe (debug)" and "Sidekick staging proof (debug)". Those are single-file debug probes
-> and are not part of Run A.
+> **2 · M3 — launch the Mac with version 3**, from `desktop/`:
+> `CONNECTSUITE_DEBUG_SWITCHES=shareV3 nohup ./node_modules/.bin/electron . --force-renderer-accessibility --remote-debugging-port=9222 &`
+> - **Pass:** `~/Library/Application Support/sidekick-desktop/logs/sidekick.log` has `share.file 3 ADVERTISED
+>   (development only; every offer held for a person) — this is not a normal run`.
 >
-> **The smallest approval for the first live queue test**, in this order and nothing else:
-> 1. **P2** — arm (§3 step 4).
-> 2. **M3** — launch with `shareV3` (§3 step 5).
-> 3. Read back §3 step 6 on both sides.
-> 4. **P4 + M4** — the owner shares the two files above, one at a time from Gallery through "Send to Mac",
->    and makes every Mac click (A1: Accept file 2, then file 1).
-> 5. **Restore** (§6 steps 1, 2, 4–6).
+> **3 · Read back the first handshake (read-only).**
+> - **Pass:** Mac `negotiated {…"share.file":3…}`; phone `armed for this handshake: true; debuggable build: true;
+>   phone advertises share.file 3; negotiated share.file 3`.
+> - **Control, before believing any zero:** grep the same logs for `ext: phone advertises`.
+> - **Fail** (`share.file` is not 3 on both sides, or `share.file 3 NOT advertised: …`): read the reason, edit
+>   nothing, and go to §R.
 >
-> No install, no component switch, no file creation, no deletion.
+> **4 · P4 — the owner shares file 1, then file 2.** Gallery → `SidekickShareTest` → the file → Share →
+> **"Send to Mac"**. Never "Sidekick grant probe (debug)" or "Sidekick staging proof (debug)". Share one file
+> at a time, leaving the first sheet to share the second.
+> - **Pass:** two cards in one receive window, and focus not taken. **No `fs.transfer.begin` before an Accept.**
+> - With two cards the window is ≈ 401 px, under its cap, so F4's reveal and indicator are not expected.
+>
+> **5 · M4 — the owner accepts file 2, then file 1.** The window opens unfocused, and its first click only
+> focuses it (`acceptFirstMouse` is off). So: click the window once, then **Accept** on file 2 (230,778 B), then
+> **Accept** on file 1.
+> - **Pass:** file 2 pulls first, then file 1.
+> - Each saved SHA-256 equals its phone source.
+> - Collision-safe names; at most one partial at any sample.
+> - The phone shows *Saved on {Mac}* only after the acknowledged verdict.
+> - If a queue forms, file 1 reads *"Accepted — waiting its turn"* / *"1 transfer is ahead of it."*; if none
+>   forms, record that — it is not a failure.
+>
+> **Stop at once** (owner declines anything pending, then §R) if any of these happen:
+> - an offer whose name or size is not file 1 or file 2;
+> - any pull before an Accept;
+> - any change to a pre-existing file in `~/Downloads/Sidekick`;
+> - `share.file` other than 3;
+> - free space below 3 GiB;
+> - anything the steps do not predict.
+>
+> **§R · Restore version 2 — always, including after a failed preflight.**
+> 1. **M5** — the owner quits the Mac app (⌘Q). Pass: no Electron process of this repo.
+> 2. **P2′** — `scripts/adb-pinned.sh samsung shell am start --user 0 -n com.chetan.connectsuite.debug/com.chetan.connectsuite.probe.ShareDevV3Activity --ez on false`.
+>    Pass: `debug share.file 3 disarmed (debuggable build: true); the phone advertises its normal share.file`.
+> 3. **M5** — relaunch without switches, from `desktop/`:
+>    `nohup ./node_modules/.bin/electron . --force-renderer-accessibility --remote-debugging-port=9222 &`.
+>    Pass: **no** `share.file 3 ADVERTISED`, and `ext: this Mac advertised {…"share.file":2…}`.
+> 4. **Read-only.** Phone: `armed for this handshake: false; …; negotiated share.file 2`. Mac:
+>    `negotiated {…"share.file":2…}`.
+> 5. **Read-only.** Staging empty; ledger `[]`; free space; `~/Downloads/Sidekick` compared with the baseline
+>    (the new saved files named, nothing pre-existing changed).
+> 6. **If step 1 failed** (the Mac was never launched): step 2 only, then `link-up.sh`. The arm is memory-only
+>    and one-shot either way.
+> 7. **If the owner wants `dist` back at `491cd21`:** `git archive 491cd21 desktop`, build in scratch, then
+>    `rsync -a --delete` into `desktop/dist`, with the Mac quit. Expected digest: `e604479d0c471925`.
+>
+> No install, component switch, file creation, deletion or force-stop at any step.
 
 Two runs, **in two separate sittings**, in this order:
 

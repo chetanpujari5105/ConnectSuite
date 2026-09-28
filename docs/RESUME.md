@@ -1,3 +1,31 @@
+# Resume here — written 2026-09-28 (15:35 IST, owner-approved Mac block): F4 built, F5 corrected, dist rebuilt — stopped at the Run A A1 gate
+
+> Supersedes the entry below. The exact A1 sequence, and restore, is the banner at the top of
+> `docs/feature-a-v3-supervised-runbook.md`.
+
+1. **Built and proven.**
+   - **F4:** a new waiting file is never left out of sight (`e19f642`). It is revealed without focus when
+     nobody is using the window. Otherwise an indicator names it and leads to it, and the indicator's slot is
+     reserved so it never moves the list.
+     - **Tests:** 19, 16 of them red against HEAD; 10 mutations, each red.
+     - **Harness at the 560 px cap:** idle, hovered, wheel and indicator-press all behave as specified; the
+       window was never focused; no decide or act was sent.
+     - Three failed designs are recorded in the commit.
+   - **F5** (`967117b`): proposal §5 now quotes the shipped consent copy verbatim, with provenance.
+2. **Committed, local, not pushed:** `e19f642`, `967117b`, plus a docs commit with this entry.
+   - Mac 1,301/0, both typechecks clean.
+   - 17 commit guards 0. `motion-sweep` unrun: it needs the main app on :9222, whose launch connects to the
+     phone.
+3. **Half-built:** nothing.
+4. **Needs the owner:**
+   - **F5's open item:** Accept's accessible name does not repeat the consent sentence, which §5 had claimed.
+   - Then Run A A1: P2 → M3 → read back → the owner's two shares → the owner's two Accepts → §R.
+5. **Next:** Run A A1 (runbook banner).
+6. **Left changed:**
+   - **`desktop/dist` rebuilt**: `git archive` of `967117b`, digest `cb74d20d6de3172e`, was `e604479d0c471925`
+     (`491cd21`), with the Mac app stopped and not relaunched.
+   - Nothing on the SM-S938B.
+
 # Resume here — written 2026-09-28 (15:10 IST, unattended): Stage A hardened, window reviewed, live preflight ready — no device write
 
 > Supersedes the entry below. Evidence: `docs/feature-a-v3-unattended-2026-09-28.md` (kept out of
