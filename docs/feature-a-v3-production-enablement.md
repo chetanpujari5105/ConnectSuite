@@ -120,6 +120,22 @@ thing it gates.
   deep sleep. Readings can fire late; each line prints the true elapsed time, so past readings are
   mislabelled in offset, not wrong. The new `SEND_MULTIPLE` probe uses `postDelayed` from the event's own
   instant. Not changed: that probe is not tonight's scope.
+- **F4 — the newest waiting file can arrive out of sight (2026-09-28, harness, synthetic offers).**
+
+  | Arrival at the 560 px cap | Newest card on screen at rest |
+  |---|---|
+  | 3rd | 89% |
+  | 4th | 0% |
+  | 5th | 0% |
+
+  The window presents itself for the file and the live region announces it, but the card is below the fold.
+  **Needs the owner:** every fix changes what a person sees before consenting. Recommended: scroll the
+  subject into view only while the window is neither hovered nor focused (the linger's condition).
+  `docs/feature-a-v3-unattended-2026-09-28.md` §5.
+- **F5 — proposal §5's consent sentence is stale** against the owner's wording in `shareReceiveCopy.ts`
+  (pinned by a test since `676c5f2`). The owner needs to confirm it and correct the proposal.
+- **F6 — the phone's `onBeginPull` glue** (second-pull refusal, staging-lost at pull start) is not
+  JVM-reachable; the rules it calls are tested. Same shape as F3.
 - **F3 — `offerStaged(onlyOnSession = …)` is reached by no JVM test directly.** The queue's session pin
   is tested (`ShareManyQueueTest`, three tests, two mutations); the matching refusal inside
   `ShareFeature.offerStaged` needs a `LinkServer` and is reached only on hardware.

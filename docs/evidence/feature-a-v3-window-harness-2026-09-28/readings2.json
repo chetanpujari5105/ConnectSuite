@@ -1,0 +1,516 @@
+{
+ "steps": {
+  "1-five-waiting": {
+   "landed": true,
+   "cards": [
+    {
+     "id": "A",
+     "state": "awaiting-decision",
+     "aria": "synthetic-a.png (file 1, arrived 14:57:10)",
+     "text": "Synthetic Phone wants to send a file synthetic-a.png PNG image · 102 KB (101,718 bytes) Save to ~/Downloads/Sidekick Accept this file now. If another transfer is running, this one starts when it finishes. Decline Accept",
+     "buttons": [
+      {
+       "label": "Decline",
+       "aria": "Decline synthetic-a.png (file 1, arrived 14:57:10) from Synthetic Phone",
+       "action": "decline",
+       "disabled": false,
+       "tab": 0
+      },
+      {
+       "label": "Accept",
+       "aria": "Accept synthetic-a.png (file 1, arrived 14:57:10) from Synthetic Phone and save it to ~/Downloads/Sidekick",
+       "action": "accept",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "B",
+     "state": "awaiting-decision",
+     "aria": "synthetic-b.pdf (file 2, arrived 14:57:11)",
+     "text": "Synthetic Phone wants to send a file synthetic-b.pdf PDF document · 103 KB (102,718 bytes) Save to ~/Downloads/Sidekick Accept this file now. If another transfer is running, this one starts when it finishes. Decline Accept",
+     "buttons": [
+      {
+       "label": "Decline",
+       "aria": "Decline synthetic-b.pdf (file 2, arrived 14:57:11) from Synthetic Phone",
+       "action": "decline",
+       "disabled": false,
+       "tab": 0
+      },
+      {
+       "label": "Accept",
+       "aria": "Accept synthetic-b.pdf (file 2, arrived 14:57:11) from Synthetic Phone and save it to ~/Downloads/Sidekick",
+       "action": "accept",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "C",
+     "state": "awaiting-decision",
+     "aria": "synthetic-c.png (file 3, arrived 14:57:12)",
+     "text": "Synthetic Phone wants to send a file synthetic-c.png PNG image · 104 KB (103,718 bytes) Save to ~/Downloads/Sidekick Accept this file now. If another transfer is running, this one starts when it finishes. Decline Accept",
+     "buttons": [
+      {
+       "label": "Decline",
+       "aria": "Decline synthetic-c.png (file 3, arrived 14:57:12) from Synthetic Phone",
+       "action": "decline",
+       "disabled": false,
+       "tab": 0
+      },
+      {
+       "label": "Accept",
+       "aria": "Accept synthetic-c.png (file 3, arrived 14:57:12) from Synthetic Phone and save it to ~/Downloads/Sidekick",
+       "action": "accept",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "D",
+     "state": "awaiting-decision",
+     "aria": "synthetic-d.jpg (file 4, arrived 14:57:13)",
+     "text": "Synthetic Phone wants to send a file synthetic-d.jpg JPEG image · 105 KB (104,718 bytes) Save to ~/Downloads/Sidekick Accept this file now. If another transfer is running, this one starts when it finishes. Decline Accept",
+     "buttons": [
+      {
+       "label": "Decline",
+       "aria": "Decline synthetic-d.jpg (file 4, arrived 14:57:13) from Synthetic Phone",
+       "action": "decline",
+       "disabled": false,
+       "tab": 0
+      },
+      {
+       "label": "Accept",
+       "aria": "Accept synthetic-d.jpg (file 4, arrived 14:57:13) from Synthetic Phone and save it to ~/Downloads/Sidekick",
+       "action": "accept",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "E",
+     "state": "awaiting-decision",
+     "aria": "synthetic-e.png (file 5, arrived 14:57:14)",
+     "text": "Synthetic Phone wants to send a file synthetic-e.png PNG image · 106 KB (105,718 bytes) Save to ~/Downloads/Sidekick Accept this file now. If another transfer is running, this one starts when it finishes. Decline Accept",
+     "buttons": [
+      {
+       "label": "Decline",
+       "aria": "Decline synthetic-e.png (file 5, arrived 14:57:14) from Synthetic Phone",
+       "action": "decline",
+       "disabled": false,
+       "tab": 0
+      },
+      {
+       "label": "Accept",
+       "aria": "Accept synthetic-e.png (file 5, arrived 14:57:14) from Synthetic Phone and save it to ~/Downloads/Sidekick",
+       "action": "accept",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    }
+   ],
+   "facts": {
+    "windowFocused": false,
+    "visible": true,
+    "height": 560,
+    "docHasFocus": false,
+    "active": "BODY",
+    "live": "Synthetic Phone wants to send synthetic-e.png, 105,718 bytes. Accept or decline.",
+    "listLabel": "Incoming files",
+    "closeLabel": "Hide this window. Waiting files keep waiting until they expire."
+   }
+  },
+  "2-receiving-queued-waiting": {
+   "landed": true,
+   "cards": [
+    {
+     "id": "A",
+     "state": "receiving",
+     "aria": "synthetic-a.png (file 1, arrived 14:57:10)",
+     "text": "Receiving from Synthetic Phone… synthetic-a.png PNG image · 102 KB (101,718 bytes) 50.0 KB of 102 KB · 49% Save to ~/Downloads/Sidekick Not saved yet: the file is checked before it is kept. Cancel",
+     "buttons": [
+      {
+       "label": "Cancel",
+       "aria": "Stop receiving synthetic-a.png (file 1, arrived 14:57:10). Nothing will be kept.",
+       "action": "cancel",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": {
+      "now": "50000",
+      "max": "101718",
+      "text": "50.0 KB of 102 KB · 49%"
+     }
+    },
+    {
+     "id": "B",
+     "state": "queued",
+     "aria": "synthetic-b.pdf (file 2, arrived 14:57:11)",
+     "text": "Accepted — waiting its turn synthetic-b.pdf PDF document · 103 KB (102,718 bytes) Save to ~/Downloads/Sidekick 1 transfer is ahead of it. It starts on its own when its turn comes. Nothing of it is on this Mac yet, and it is not saved. Cancel",
+     "buttons": [
+      {
+       "label": "Cancel",
+       "aria": "Cancel synthetic-b.pdf (file 2, arrived 14:57:11). It has not started, and nothing will be kept.",
+       "action": "cancel",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "C",
+     "state": "awaiting-decision",
+     "aria": "synthetic-c.png (file 3, arrived 14:57:12)",
+     "text": "Synthetic Phone wants to send a file synthetic-c.png PNG image · 104 KB (103,718 bytes) Save to ~/Downloads/Sidekick Accept this file now. If another transfer is running, this one starts when it finishes. Decline Accept",
+     "buttons": [
+      {
+       "label": "Decline",
+       "aria": "Decline synthetic-c.png (file 3, arrived 14:57:12) from Synthetic Phone",
+       "action": "decline",
+       "disabled": false,
+       "tab": 0
+      },
+      {
+       "label": "Accept",
+       "aria": "Accept synthetic-c.png (file 3, arrived 14:57:12) from Synthetic Phone and save it to ~/Downloads/Sidekick",
+       "action": "accept",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "D",
+     "state": "queued",
+     "aria": "synthetic-d.jpg (file 4, arrived 14:57:13)",
+     "text": "Accepted — waiting its turn synthetic-d.jpg JPEG image · 105 KB (104,718 bytes) Save to ~/Downloads/Sidekick 2 transfers are ahead of it. It starts on its own when its turn comes. Nothing of it is on this Mac yet, and it is not saved. Cancel",
+     "buttons": [
+      {
+       "label": "Cancel",
+       "aria": "Cancel synthetic-d.jpg (file 4, arrived 14:57:13). It has not started, and nothing will be kept.",
+       "action": "cancel",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "E",
+     "state": "awaiting-decision",
+     "aria": "synthetic-e.png (file 5, arrived 14:57:14)",
+     "text": "Synthetic Phone wants to send a file synthetic-e.png PNG image · 106 KB (105,718 bytes) Save to ~/Downloads/Sidekick Accept this file now. If another transfer is running, this one starts when it finishes. Decline Accept",
+     "buttons": [
+      {
+       "label": "Decline",
+       "aria": "Decline synthetic-e.png (file 5, arrived 14:57:14) from Synthetic Phone",
+       "action": "decline",
+       "disabled": false,
+       "tab": 0
+      },
+      {
+       "label": "Accept",
+       "aria": "Accept synthetic-e.png (file 5, arrived 14:57:14) from Synthetic Phone and save it to ~/Downloads/Sidekick",
+       "action": "accept",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    }
+   ],
+   "facts": {
+    "windowFocused": false,
+    "visible": true,
+    "height": 560,
+    "docHasFocus": false,
+    "active": "BODY",
+    "live": "Synthetic Phone wants to send synthetic-e.png, 105,718 bytes. Accept or decline.",
+    "listLabel": "Incoming files",
+    "closeLabel": "Hide this window. Waiting files keep waiting until they expire."
+   }
+  },
+  "3-saved-failed-receiving-queued-waiting": {
+   "landed": true,
+   "cards": [
+    {
+     "id": "A",
+     "state": "saved",
+     "aria": "synthetic-a.png (file 1, arrived 14:57:10)",
+     "text": "Saved on this Mac synthetic-a.png PNG image · 102 KB (101,718 bytes) Saved in ~/Downloads/Sidekick Complete and checked. The phone confirmed it. Show in Finder Open",
+     "buttons": [
+      {
+       "label": "Show in Finder",
+       "aria": "Show synthetic-a.png in Finder",
+       "action": "reveal",
+       "disabled": false,
+       "tab": 0
+      },
+      {
+       "label": "Open",
+       "aria": "Open synthetic-a.png",
+       "action": "open",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "B",
+     "state": "failed",
+     "aria": "synthetic-b.pdf (file 2, arrived 14:57:11)",
+     "text": "Not saved synthetic-b.pdf PDF document · 103 KB (102,718 bytes) Save to ~/Downloads/Sidekick What arrived did not match what the phone offered. Nothing was kept on this Mac. Give up Try again",
+     "buttons": [
+      {
+       "label": "Give up",
+       "aria": "Give up on synthetic-b.pdf (file 2, arrived 14:57:11). Nothing was kept.",
+       "action": "cancel",
+       "disabled": false,
+       "tab": 0
+      },
+      {
+       "label": "Try again",
+       "aria": "Try receiving synthetic-b.pdf (file 2, arrived 14:57:11) again from the start",
+       "action": "retry",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "C",
+     "state": "awaiting-decision",
+     "aria": "synthetic-c.png (file 3, arrived 14:57:12)",
+     "text": "Synthetic Phone wants to send a file synthetic-c.png PNG image · 104 KB (103,718 bytes) Save to ~/Downloads/Sidekick Accept this file now. If another transfer is running, this one starts when it finishes. Decline Accept",
+     "buttons": [
+      {
+       "label": "Decline",
+       "aria": "Decline synthetic-c.png (file 3, arrived 14:57:12) from Synthetic Phone",
+       "action": "decline",
+       "disabled": false,
+       "tab": 0
+      },
+      {
+       "label": "Accept",
+       "aria": "Accept synthetic-c.png (file 3, arrived 14:57:12) from Synthetic Phone and save it to ~/Downloads/Sidekick",
+       "action": "accept",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "D",
+     "state": "receiving",
+     "aria": "synthetic-d.jpg (file 4, arrived 14:57:13)",
+     "text": "Receiving from Synthetic Phone… synthetic-d.jpg JPEG image · 105 KB (104,718 bytes) 30.0 KB of 105 KB · 28% Save to ~/Downloads/Sidekick Not saved yet: the file is checked before it is kept. Cancel",
+     "buttons": [
+      {
+       "label": "Cancel",
+       "aria": "Stop receiving synthetic-d.jpg (file 4, arrived 14:57:13). Nothing will be kept.",
+       "action": "cancel",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": {
+      "now": "30000",
+      "max": "104718",
+      "text": "30.0 KB of 105 KB · 28%"
+     }
+    },
+    {
+     "id": "E",
+     "state": "queued",
+     "aria": "synthetic-e.png (file 5, arrived 14:57:14)",
+     "text": "Accepted — waiting its turn synthetic-e.png PNG image · 106 KB (105,718 bytes) Save to ~/Downloads/Sidekick 1 transfer is ahead of it. It starts on its own when its turn comes. Nothing of it is on this Mac yet, and it is not saved. Cancel",
+     "buttons": [
+      {
+       "label": "Cancel",
+       "aria": "Cancel synthetic-e.png (file 5, arrived 14:57:14). It has not started, and nothing will be kept.",
+       "action": "cancel",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    }
+   ],
+   "facts": {
+    "windowFocused": false,
+    "visible": true,
+    "height": 560,
+    "docHasFocus": false,
+    "active": "BODY",
+    "live": "Synthetic Phone wants to send synthetic-c.png, 103,718 bytes. Accept or decline.",
+    "listLabel": "Incoming files",
+    "closeLabel": "Hide this window. Waiting files keep waiting until they expire."
+   }
+  },
+  "4-ends": {
+   "landed": true,
+   "cards": [
+    {
+     "id": "A",
+     "state": "saved",
+     "aria": "synthetic-a.png (file 1, arrived 14:57:10)",
+     "text": "Saved on this Mac synthetic-a.png PNG image · 102 KB (101,718 bytes) Saved in ~/Downloads/Sidekick Complete and checked. The phone confirmed it. Show in Finder Open",
+     "buttons": [
+      {
+       "label": "Show in Finder",
+       "aria": "Show synthetic-a.png in Finder",
+       "action": "reveal",
+       "disabled": false,
+       "tab": 0
+      },
+      {
+       "label": "Open",
+       "aria": "Open synthetic-a.png",
+       "action": "open",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "B",
+     "state": "failed",
+     "aria": "synthetic-b.pdf (file 2, arrived 14:57:11)",
+     "text": "Not saved synthetic-b.pdf PDF document · 103 KB (102,718 bytes) Save to ~/Downloads/Sidekick What arrived did not match what the phone offered. Nothing was kept on this Mac. Close",
+     "buttons": [
+      {
+       "label": "Close",
+       "aria": "Close — Not saved",
+       "action": "close",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "C",
+     "state": "declined",
+     "aria": "synthetic-c.png (file 3, arrived 14:57:12)",
+     "text": "Declined synthetic-c.png PNG image · 104 KB (103,718 bytes) Save to ~/Downloads/Sidekick Nothing was saved. Close",
+     "buttons": [
+      {
+       "label": "Close",
+       "aria": "Close — Declined",
+       "action": "close",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "D",
+     "state": "cancelled",
+     "aria": "synthetic-d.jpg (file 4, arrived 14:57:13)",
+     "text": "Cancelled synthetic-d.jpg JPEG image · 105 KB (104,718 bytes) Save to ~/Downloads/Sidekick Nothing was saved. Close",
+     "buttons": [
+      {
+       "label": "Close",
+       "aria": "Close — Cancelled",
+       "action": "close",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    },
+    {
+     "id": "E",
+     "state": "ended",
+     "aria": "synthetic-e.png (file 5, arrived 14:57:14)",
+     "text": "Ended with the connection synthetic-e.png PNG image · 106 KB (105,718 bytes) Save to ~/Downloads/Sidekick Nothing was saved. Close",
+     "buttons": [
+      {
+       "label": "Close",
+       "aria": "Close — Ended with the connection",
+       "action": "close",
+       "disabled": false,
+       "tab": 0
+      }
+     ],
+     "progress": null
+    }
+   ],
+   "facts": {
+    "windowFocused": false,
+    "visible": true,
+    "height": 560,
+    "docHasFocus": false,
+    "active": "BODY",
+    "live": "",
+    "listLabel": "Incoming files",
+    "closeLabel": "Close"
+   }
+  }
+ },
+ "linger": {
+  "value": [
+   "A:saved",
+   "B:failed"
+  ],
+  "stopped": "settled",
+  "waitedMs": 8034
+ },
+ "calls": [
+  "height:126",
+  "pushed",
+  "height:401",
+  "height:401",
+  "height:401",
+  "pushed",
+  "height:807",
+  "height:807",
+  "height:807",
+  "pushed",
+  "height:228",
+  "height:228",
+  "pushed",
+  "height:184",
+  "pushed",
+  "height:807",
+  "height:807",
+  "height:807",
+  "height:807",
+  "height:807",
+  "pushed",
+  "height:938",
+  "height:938",
+  "pushed",
+  "height:1000",
+  "height:1000",
+  "pushed",
+  "height:972",
+  "height:972",
+  "pushed",
+  "height:888",
+  "height:888",
+  "height:723",
+  "height:723",
+  "height:558",
+  "height:393",
+  "height:393"
+ ]
+}

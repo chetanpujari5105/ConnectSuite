@@ -24,6 +24,43 @@
 > - **P6's instrument is built**: `ShareManyGrantProbeActivity` (component `probe` in the switch above), disabled.
 >   Procedure in §5.1 below. Emulator readings exist and are emulator evidence only.
 
+> **Preflight for the first live version-3 queue test (Run A, resumed) — read 2026-09-28 15:0x IST,
+> read-only. Not run, not authorised.** Evidence: `docs/feature-a-v3-unattended-2026-09-28.md` §7.
+>
+> **Builds — no M1 and no P1 are needed.**
+> - The phone runs the P1 install of `491cd21` (`lastUpdateTime 11:34:59`).
+> - `desktop/dist` is the `491cd21` build (11:13:57; `shareV3` 7 hits, control `shareV2` 12).
+> - Runtime changes since then: on the phone, verbatim moves only (`c8df24b`, `1f86ab8`). On the Mac, a
+>   verbatim move (`d407dd6`) and the v3 finished-card Close accessible name (`4498d4b`). **The installed
+>   pair behaves as HEAD for Run A, except that label.** If the owner wants the label under test, M1 first
+>   (scratch build, then `rsync` into `dist`).
+>
+> **Files — no P5 is needed.** Both synthetic images are on the SM-S938B, hashed 15:0x:
+> - `Pictures/SidekickShareTest/sidekick-share-test-001.png`, 100,718 B, `d5cfb8a3…c9ff`;
+> - `Pictures/SidekickShareTest/sidekick-share-test-image.png`, 230,778 B, `1afc71b6…c84c` — present on
+>   the SM-S938B, previously recorded as *unknown*.
+>
+> **State:**
+> - The Mac app is **stopped**, so no handshake can spend an arm.
+> - Phone link up, no Mac session.
+> - Staging empty; no component overrides; `SEND_MULTIPLE` resolves to nothing of ours (control: `SEND`
+>   does).
+> - Mac free space 15,006 MiB (floor 3 GiB); phone `/data` 18 GB free.
+>
+> **In the Android share sheet, pick "Send to Mac".** For `image/png` the debug build also lists
+> "Sidekick grant probe (debug)" and "Sidekick staging proof (debug)". Those are single-file debug probes
+> and are not part of Run A.
+>
+> **The smallest approval for the first live queue test**, in this order and nothing else:
+> 1. **P2** — arm (§3 step 4).
+> 2. **M3** — launch with `shareV3` (§3 step 5).
+> 3. Read back §3 step 6 on both sides.
+> 4. **P4 + M4** — the owner shares the two files above, one at a time from Gallery through "Send to Mac",
+>    and makes every Mac click (A1: Accept file 2, then file 1).
+> 5. **Restore** (§6 steps 1, 2, 4–6).
+>
+> No install, no component switch, no file creation, no deletion.
+
 Two runs, **in two separate sittings**, in this order:
 
 - **Run A — the version-3 queue, from two separate single-file shares.** Proves several pending offers,

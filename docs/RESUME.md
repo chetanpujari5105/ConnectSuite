@@ -1,3 +1,37 @@
+# Resume here — written 2026-09-28 (15:10 IST, unattended): Stage A hardened, window reviewed, live preflight ready — no device write
+
+> Supersedes the entry below. Evidence: `docs/feature-a-v3-unattended-2026-09-28.md` (kept out of
+> `docs/testing.md` only because that file holds the owner's uncommitted Run A block; fold it in when
+> that block is committed).
+
+1. **Built and proven.** Each item is red under its named mutations; sources restored by checksum.
+   - **Phone:** `Σ` and the disk agree per offer, under real staged files, for every end (`1f86ab8`, 11
+     tests, 5 mutations). The Σ follow-up itself is `c8df24b`, read and re-run.
+   - **Mac, the window's re-presentation call site** (`d407dd6`): driven by a real v3 receiver, 1 test plus
+     the source guard, 4 mutations.
+   - **Mac, disconnect** with waiting, queued and receiving files together: ledger `[]` and 0 reserved after
+     (`d721afd`, 3 mutations).
+   - **Mac, the finished-card Close accessible name at v3** (`4498d4b`), found in an isolated window harness.
+2. **Committed, local, not pushed:** `1f86ab8`, `d407dd6`, `d721afd`, `4498d4b`, plus a docs commit with
+   this entry.
+   - **Suites:** phone 217/528/164/52/60, 0 failures (`--rerun-tasks`); Mac 1,282/0; both typechecks clean.
+   - **Guards:** 17 commit guards 0. `motion-sweep` was not run (it needs the app).
+3. **Half-built:** nothing. The harness (`docs/evidence/feature-a-v3-window-harness-2026-09-28/`) is an
+   evidence artifact, not product code.
+4. **Needs the owner:**
+   - **F4:** the newest waiting file can arrive out of sight; the 4th and 5th arrivals are 0% on screen.
+     Every fix changes what a person sees before consenting.
+   - **F5:** proposal §5's consent sentence is stale against the owner's wording in code.
+   - Whether to M1 so the Close label is under test.
+   - Then the live test: **P2 → M3 → the owner's two shares and clicks → restore**. The runbook's new
+     preflight banner has the exact list. No install, no P5, no component switch.
+5. **Next:** Run A A1 as written, with two different files accepted out of order. It is the first proof of
+   version 3 with two different files, and every precondition was read today (runbook preflight).
+6. **Left changed on devices:** none.
+   - SM-S938B: reads only.
+   - Mac: the dev app still stopped; `desktop/dist` untouched (11:13:57). A harness Electron (CDP :9333,
+     scratchpad only) was started and then quit.
+
 # Resume here — written 2026-09-28 (03:30, overnight, unsupervised): hardening, the §11 instrument, the live-region fix — no Samsung write
 
 > Supersedes the entry below. `docs/testing.md` → *Run A after 02:31* and *overnight hardening* hold every

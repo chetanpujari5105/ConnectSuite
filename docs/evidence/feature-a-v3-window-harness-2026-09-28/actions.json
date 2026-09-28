@@ -1,0 +1,85 @@
+{
+ "tabOrder": [
+  "hdr:close",
+  "A:decline",
+  "A:accept",
+  "B:decline",
+  "B:accept",
+  "C:decline",
+  "C:accept"
+ ],
+ "focusVisibleAccept": {
+  "count": 3,
+  "matched": 3,
+  "forced": 3,
+  "stopped": "all",
+  "value": [
+   "solid 2px | none",
+   "solid 2px | none",
+   "solid 2px | none"
+  ]
+ },
+ "acceptC": {
+  "landed": true,
+  "calls": [
+   "decide:accept:s-CCCCCCCCCCCCCCCCCCCCCC"
+  ]
+ },
+ "escapeNoFocus": {
+  "landed": true,
+  "calls": [
+   "close-window"
+  ],
+  "facts": {
+   "visible": false,
+   "focused": false,
+   "bounds": {
+    "x": 1136,
+    "y": 49,
+    "width": 360,
+    "height": 560
+   }
+  }
+ },
+ "escapeQueued": {
+  "landed": true,
+  "calls": [
+   "close-window"
+  ]
+ },
+ "escapeWaiting": {
+  "landed": true,
+  "calls": [
+   "decide:decline:s-AAAAAAAAAAAAAAAAAAAAAA"
+  ]
+ },
+ "headerClose": {
+  "label": "Hide this window. Waiting files keep waiting until they expire.",
+  "landed": true,
+  "calls": [
+   "close-window"
+  ],
+  "facts": {
+   "visible": false,
+   "focused": false,
+   "bounds": {
+    "x": 1136,
+    "y": 49,
+    "width": 360,
+    "height": 560
+   }
+  }
+ },
+ "closeNames": [
+  "Close synthetic-b.pdf (file 2, arrived 15:00:43) — Declined",
+  "Close synthetic-c.png (file 3, arrived 15:00:44) — Expired"
+ ],
+ "cardClose": {
+  "landed": true,
+  "calls": [],
+  "left": [
+   "A:saved",
+   "C:expired"
+  ]
+ }
+}

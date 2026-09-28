@@ -1,0 +1,52 @@
+{
+ "A": {
+  "landed": true,
+  "height": 222,
+  "scrollTop": 0,
+  "cards": [
+   "A:{\"verdict\":\"visible\",\"atRest\":{\"top\":42,\"bottom\":208,\"height\":166,\"clipTop\":42,\"clipBottom\":208,\"fraction\":1},\"viewportH\":222,\"scrolledBy\":0,\"scroller\":null}"
+  ]
+ },
+ "B": {
+  "landed": true,
+  "height": 401,
+  "scrollTop": 0,
+  "cards": [
+   "A:{\"verdict\":\"visible\",\"atRest\":{\"top\":42,\"bottom\":208,\"height\":166,\"clipTop\":42,\"clipBottom\":387,\"fraction\":1},\"viewportH\":401,\"scrolledBy\":0,\"scroller\":null}",
+   "B:{\"verdict\":\"visible\",\"atRest\":{\"top\":208,\"bottom\":387,\"height\":179,\"clipTop\":42,\"clipBottom\":387,\"fraction\":1},\"viewportH\":401,\"scrolledBy\":0,\"scroller\":null}"
+  ]
+ },
+ "C": {
+  "landed": true,
+  "height": 560,
+  "scrollTop": 0,
+  "cards": [
+   "A:{\"verdict\":\"visible\",\"atRest\":{\"top\":42,\"bottom\":208,\"height\":166,\"clipTop\":42,\"clipBottom\":546,\"fraction\":1},\"viewportH\":560,\"scrolledBy\":0,\"scroller\":null}",
+   "B:{\"verdict\":\"visible\",\"atRest\":{\"top\":208,\"bottom\":387,\"height\":179,\"clipTop\":42,\"clipBottom\":546,\"fraction\":1},\"viewportH\":560,\"scrolledBy\":0,\"scroller\":null}",
+   "C:{\"verdict\":\"reachable\",\"atRest\":{\"top\":387,\"bottom\":566,\"height\":179,\"clipTop\":42,\"clipBottom\":546,\"fraction\":0.89},\"afterScroll\":{\"top\":366,\"bottom\":545,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":1},\"viewportH\":560,\"scrolledBy\":20,\"scroller\":\"#sw-queue\"}"
+  ]
+ },
+ "D": {
+  "landed": true,
+  "height": 560,
+  "scrollTop": 0,
+  "cards": [
+   "A:{\"verdict\":\"visible\",\"atRest\":{\"top\":41,\"bottom\":207,\"height\":166,\"clipTop\":41,\"clipBottom\":545,\"fraction\":1},\"viewportH\":560,\"scrolledBy\":0,\"scroller\":null}",
+   "B:{\"verdict\":\"visible\",\"atRest\":{\"top\":207,\"bottom\":386,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":1},\"viewportH\":560,\"scrolledBy\":0,\"scroller\":null}",
+   "C:{\"verdict\":\"reachable\",\"atRest\":{\"top\":386,\"bottom\":565,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":0.89},\"afterScroll\":{\"top\":204,\"bottom\":383,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":1},\"viewportH\":560,\"scrolledBy\":182.5,\"scroller\":\"#sw-queue\"}",
+   "D:{\"verdict\":\"reachable\",\"atRest\":{\"top\":565,\"bottom\":744,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":0},\"afterScroll\":{\"top\":366,\"bottom\":545,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":1},\"viewportH\":560,\"scrolledBy\":199,\"scroller\":\"#sw-queue\"}"
+  ]
+ },
+ "E": {
+  "landed": true,
+  "height": 560,
+  "scrollTop": 0,
+  "cards": [
+   "A:{\"verdict\":\"visible\",\"atRest\":{\"top\":41,\"bottom\":207,\"height\":166,\"clipTop\":41,\"clipBottom\":545,\"fraction\":1},\"viewportH\":560,\"scrolledBy\":0,\"scroller\":null}",
+   "B:{\"verdict\":\"visible\",\"atRest\":{\"top\":207,\"bottom\":386,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":1},\"viewportH\":560,\"scrolledBy\":0,\"scroller\":null}",
+   "C:{\"verdict\":\"reachable\",\"atRest\":{\"top\":386,\"bottom\":565,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":0.89},\"afterScroll\":{\"top\":204,\"bottom\":383,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":1},\"viewportH\":560,\"scrolledBy\":182.5,\"scroller\":\"#sw-queue\"}",
+   "D:{\"verdict\":\"reachable\",\"atRest\":{\"top\":565,\"bottom\":744,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":0},\"afterScroll\":{\"top\":204,\"bottom\":383,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":1},\"viewportH\":560,\"scrolledBy\":361.5,\"scroller\":\"#sw-queue\"}",
+   "E:{\"verdict\":\"reachable\",\"atRest\":{\"top\":744,\"bottom\":923,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":0},\"afterScroll\":{\"top\":366,\"bottom\":545,\"height\":179,\"clipTop\":41,\"clipBottom\":545,\"fraction\":1},\"viewportH\":560,\"scrolledBy\":378,\"scroller\":\"#sw-queue\"}"
+  ]
+ }
+}
