@@ -21,7 +21,7 @@ before they are offered.
 | R1 | *"a queued offer ends only through the transfer ahead of it … or a cancel"* | a queued offer **does not expire while queued**; it ends only by a cancel from either side, the session ending, or the phone's 60-minute backstop |
 | R2 | phone admits while `Σ(staged) + margin(Σ) ≤ free` | **double-counted**: bytes already staged are already missing from `free`. The check is made **once per file, before its copy starts** (§4) |
 | R3 | "staged bytes per session ≤ 4 GiB" read as a file limit | a **concurrency cap on Path S private copies only**. A file alone keeps the v2 free-space rule, however large; above what can be copied, the file goes to Path L. **The value is not proposed for locking** (§4) |
-| R4 | queued card: *"starts after IMG_1.jpg"* | files are pulled in **Accept order**, so the card names its position: *"Accepted — 2nd in line"* (§5) |
+| R4 | queued card: *"starts after IMG_1.jpg"* | files are pulled in **Accept order**, so the card names its position: *"Accepted — 2nd in line"* (§5). *Wording superseded — §5, corrected 2026-09-28: "Accepted — waiting its turn" / "1 transfer is ahead of it."* |
 | R5 | Mac reservation: *"sizes accepted and not finished"* | defined precisely, including when each reservation is released (§4) |
 
 **Owner decisions recorded in rev 4 (2026-09-26):**
@@ -248,12 +248,20 @@ withdrawn (R6).*
 ## 5 · Accepted and queued: consent, privacy, and the window
 
 **Consent wording**, because an Accept now authorises a transfer that may start later, with nobody
-watching:
-- On a waiting card **while another file is ahead**, the button reads **Accept** and the line above
-  it reads *"If you accept, it transfers on its own after the 1 file ahead of it."* The accessible
-  name says the same.
-- After Accept the card reads *"Accepted — 2nd in line. It starts on its own when the file ahead
-  finishes."* with **Cancel**.
+watching. *Corrected 2026-09-28 to the shipped, test-pinned copy (`desktop/src/shared/shareReceiveCopy.ts`,
+`shareReceiveCopy.test.ts`); this section had kept rev 3's draft sentences, which were never built.*
+- On **every** waiting card at version 3 — whether or not another file is ahead — the line above the
+  buttons reads *"Accept this file now. If another transfer is running, this one starts when it
+  finishes."* The code labels this *"the owner's wording, exactly"* (`676c5f2`, 2026-09-26); no separate
+  approval record was found in `docs/`. At version 2 the line is absent.
+  - The buttons read **Decline** and **Accept**. **Open, not built:** the accessible names do **not**
+    repeat the sentence. Accept's is *"Accept {file} (file N, arrived hh:mm:ss) from {phone} and save it
+    to {folder}"*; the sentence is read as the card's text. Whether Accept's name must carry it is the
+    owner's decision (consent wording), and is not changed here.
+- After Accept, while another transfer is ahead, the card reads *"Accepted — waiting its turn"*, then
+  *"1 transfer is ahead of it."* (or *"N transfers are ahead of it."*), then *"It starts on its own when its
+  turn comes. Nothing of it is on this Mac yet, and it is not saved."*, with **Cancel** (owner-approved and
+  committed, 2026-09-28 02:0x — `docs/RESUME.md`).
 
 **Privacy of a queued file:**
 - Nothing of it is on the Mac — no bytes, no partial, no preview — only the name, type and size the

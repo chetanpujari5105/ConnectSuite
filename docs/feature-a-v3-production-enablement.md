@@ -140,7 +140,11 @@ thing it gates.
   **Needs the owner:** every fix changes what a person sees before consenting. Recommended: scroll the
   subject into view only while the window is neither hovered nor focused (the linger's condition).
   `docs/feature-a-v3-unattended-2026-09-28.md` §5.
-- **F5 — proposal §5's consent sentence is stale** against the owner's wording in `shareReceiveCopy.ts`
+- **F5 — RESOLVED as documentation 2026-09-28 (afternoon).** Proposal §5 now carries the shipped, test-pinned
+  sentences verbatim, with their provenance. No product copy or consent behaviour changed. **Left open, for the
+  owner:** §5 had claimed Accept's accessible name *"says the same"* as the consent sentence; it does not, since
+  the sentence is read as the card's text. The original finding:
+- **F5 (original) — proposal §5's consent sentence is stale** against the owner's wording in `shareReceiveCopy.ts`
   (pinned by a test since `676c5f2`). The owner needs to confirm it and correct the proposal.
 - **F6 — the phone's `onBeginPull` glue** (second-pull refusal, staging-lost at pull start) is not
   JVM-reachable; the rules it calls are tested. Same shape as F3.
