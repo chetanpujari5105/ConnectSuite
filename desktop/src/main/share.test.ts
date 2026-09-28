@@ -1479,3 +1479,42 @@ test('v3 window call site: a real receiver through main’s presenter — each a
     await rig.close();
   }
 });
+
+test('v3 disconnect (runbook A4, and more): waiting, queued and receiving all end together — no late Accept, no partial, an empty ledger, and nothing still reserved', { timeout: 10_000 }, async () => {
+  const ledger = recordingLedger();
+  const rig = await queueRig(3, [
+    { id: vid('A'), size: 40_000 },
+    { id: vid('B'), size: 100_000, behaviour: { stallAfter: 20_000, chunkSize: 10_000 } },
+    { id: vid('C'), size: 30_000 },
+  ], { idleTimeoutMs: 5000, ledger });
+  try {
+    await rig.r.decide(vid('B'), 'accept');
+    await until('B has written 20,000', () => rig.r.snapshots().find((s) => s.offerId === vid('B'))!.receivedBytes === 20_000);
+    await rig.r.decide(vid('C'), 'accept');
+    assert.deepEqual([vid('A'), vid('B'), vid('C')].map((x) => rig.r.state(x)), ['awaiting-decision', 'receiving', 'queued'], 'control: one of each');
+    assert.equal(rig.checks.at(-1)!.reserved, 80_000, 'control: C’s Accept saw B’s unwritten part reserved');
+    assert.equal(readdirSync(rig.d).filter(isSidekickTemporaryName).length, 1, 'control: B’s partial exists before the drop');
+    const respondsBefore = rig.link.sent.filter((s) => s.type === 'share.respond').length;
+
+    rig.r.onSessionEnded('token-A');
+    assert.equal(rig.r.state(vid('A')), 'ended');
+    assert.equal(rig.r.state(vid('C')), 'ended');
+    await until('B aborted', () => rig.r.state(vid('B')) === 'ended');
+    await until('the ledger emptied', () => ledger.calls.some((c) => c.op === 'forget'), 3000);
+
+    await rig.r.decide(vid('A'), 'accept'); // a late click on the ended card
+    await new Promise((res) => setTimeout(res, 100));
+    assert.equal(rig.r.state(vid('A')), 'ended', 'an ended offer stays ended');
+    assert.equal(rig.link.sent.filter((s) => s.type === 'share.respond').length, respondsBefore, 'no share.respond after the session ended');
+    assert.deepEqual(rig.begins, [vid('B')], 'only B was ever pulled');
+    assert.deepEqual(readdirSync(rig.d), [], 'no partial, nothing published');
+    assert.deepEqual(await ledger.entries(), [], 'nothing left in the ledger');
+    assert.ok(!rig.link.sent.some((s) => s.type === 'share.saved'), 'no verdict sent for anything');
+
+    rig.link.tokenValue = 'token-B'; // the next session
+    await rig.r.onOffer(offer(5_000, 'd'.repeat(64), { offerId: vid('D') }));
+    assert.deepEqual(rig.checks.at(-1), { size: 5_000, reserved: 0 }, 'the next offer’s check sees nothing reserved by the ended three');
+  } finally {
+    await rig.close();
+  }
+});
