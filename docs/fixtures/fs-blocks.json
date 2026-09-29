@@ -1,0 +1,103 @@
+{
+  "_comment": "docs/protocol.md -> Block-verified, resumable pulls (fs.blocks). Generated 2026-09-29 by an independent Python implementation (hashlib), not by either side's code. Content bytes: byte[i] = i % 251.",
+  "blockSize": [
+    {
+      "label": "64 MiB + 1 (smallest block pull)",
+      "size": 67108865,
+      "blockSize": 131072,
+      "blockCount": 513
+    },
+    {
+      "label": "100 MiB",
+      "size": 104857600,
+      "blockSize": 131072,
+      "blockCount": 800
+    },
+    {
+      "label": "exactly 2000 x 128 KiB",
+      "size": 262144000,
+      "blockSize": 131072,
+      "blockCount": 2000
+    },
+    {
+      "label": "one byte over 2000 x 128 KiB",
+      "size": 262144001,
+      "blockSize": 262144,
+      "blockCount": 1001
+    },
+    {
+      "label": "1 GiB",
+      "size": 1073741824,
+      "blockSize": 1048576,
+      "blockCount": 1024
+    },
+    {
+      "label": "4 GiB",
+      "size": 4294967296,
+      "blockSize": 4194304,
+      "blockCount": 1024
+    },
+    {
+      "label": "just under 32000 x 16 MiB",
+      "size": 536870911995,
+      "blockSize": 16777216,
+      "blockCount": 32000
+    },
+    {
+      "label": "500 GB",
+      "size": 500000000000,
+      "blockSize": 16777216,
+      "blockCount": 29803
+    }
+  ],
+  "content": {
+    "label": "300,000 bytes of (i mod 251), hashed at an explicit 128 KiB block",
+    "length": 300000,
+    "blockSize": 131072,
+    "blocks": [
+      "feb1e4409d009e0ec502eaabe321f86b5197a881e9b765252ec8a75d6957596d",
+      "62a45e6a977d9b0e042fbc141b76b9e078eb2656bb41330111f8c54553352d1d",
+      "371e561a4a03aa7599de805ab6695e156809fcdbd2a6a404b65e0b65180239d5"
+    ],
+    "manifestRoot": "eb45d5a61acde890695c62e3ef8b4882eb6c59dd4d354543ff7625bb9be46982",
+    "prefixRoots": {
+      "1": "e8a4b6a30ace5b06c86d9dbc26a3d2778d11ef7c009fbf47c86a34e3bd8917c5",
+      "2": "2f541d961074146383b39e44d03c4875fc95f93f176f56cd5aebc67261040df6"
+    },
+    "sha256": "3c65ea93424a9c362fec0e3a69ea36031e8a358441479dd665cc6110eabe7b08"
+  },
+  "ext": [
+    {
+      "mac": {
+        "fs.blocks": 1
+      },
+      "phone": {
+        "fs.blocks": 1
+      },
+      "negotiated": 1
+    },
+    {
+      "mac": {},
+      "phone": {
+        "fs.blocks": 1
+      },
+      "negotiated": null
+    },
+    {
+      "mac": {
+        "fs.blocks": 1
+      },
+      "phone": {},
+      "negotiated": null
+    },
+    {
+      "mac": {
+        "fs.blocks": 2
+      },
+      "phone": {
+        "fs.blocks": 1
+      },
+      "negotiated": 1
+    }
+  ]
+}

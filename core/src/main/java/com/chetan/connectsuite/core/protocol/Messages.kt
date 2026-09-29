@@ -123,6 +123,8 @@ object MessageType {
     const val FS_TRANSFER_PROGRESS = "fs.transfer.progress"
     const val FS_TRANSFER_DONE = "fs.transfer.done"
     const val FS_TRANSFER_CANCEL = "fs.transfer.cancel"
+    /** Block digests of a block-verified pull, phone → Mac. Only with `fs.blocks` negotiated. */
+    const val FS_TRANSFER_BLOCKS = "fs.transfer.blocks"
 
     const val MEDIA_BUCKETS = "media.buckets"
     const val MEDIA_LIST = "media.list"
@@ -379,6 +381,13 @@ object ErrorCode {
      * different fault from bytes that never arrived.
      */
     const val CHECKSUM_MISMATCH = "CHECKSUM_MISMATCH"
+
+    /**
+     * A block pull's source changed size or last-modified while it was read, or a resumed prefix no
+     * longer hashes to the Mac's record (`fs.blocks` only). Treated like [CHECKSUM_MISMATCH]: the
+     * partial is deleted, because a torn file is worse than none.
+     */
+    const val SOURCE_CHANGED = "SOURCE_CHANGED"
 
     // ---- Phase 7, apps ---------------------------------------------------------------------------
 

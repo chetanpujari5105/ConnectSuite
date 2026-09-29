@@ -278,6 +278,8 @@ export const MessageType = {
   FS_TRANSFER_CANCEL: 'fs.transfer.cancel',
   FS_TRANSFER_PROGRESS: 'fs.transfer.progress',
   FS_TRANSFER_DONE: 'fs.transfer.done',
+  /** Block digests of a block-verified pull, phone → Mac. Only with `fs.blocks` negotiated. */
+  FS_TRANSFER_BLOCKS: 'fs.transfer.blocks',
 
   /**
    * The launcher set, one entry per package. No cursor: the phone answers from an in-memory
@@ -387,6 +389,8 @@ export const ErrorCode = {
   ROOT_NOT_GRANTED: 'ROOT_NOT_GRANTED',
   NO_SPACE: 'NO_SPACE',
   CHECKSUM_MISMATCH: 'CHECKSUM_MISMATCH',
+  /** A block pull's source changed, or a resumed prefix no longer matches (`fs.blocks` only). */
+  SOURCE_CHANGED: 'SOURCE_CHANGED',
 
   /**
    * The phone will not read its own clipboard because it is not the focused app.

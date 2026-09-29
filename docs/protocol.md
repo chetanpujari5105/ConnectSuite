@@ -107,7 +107,7 @@ SMS: `sms.threads`, `sms.messages`, `sms.send`, `sms.received`, `sms.sent`
 Calls: `call.incoming`, `call.ended`, `call.log`, `call.dial`, `call.answer`, `call.reject`
 Contacts: `contacts.list`, `contacts.get`
 Clipboard: `clip.push`, `clip.request`, `clip.history`
-Files: `fs.list`, `fs.stat`, `fs.thumb`, `fs.mkdir`, `fs.delete`, `fs.transfer.begin`, `fs.transfer.progress`, `fs.transfer.done`, `fs.transfer.cancel`
+Files: `fs.list`, `fs.stat`, `fs.thumb`, `fs.mkdir`, `fs.delete`, `fs.transfer.begin`, `fs.transfer.progress`, `fs.transfer.done`, `fs.transfer.cancel`, `fs.transfer.blocks` (only with the fs.blocks extension negotiated)
 Photos: `media.buckets`, `media.list`, `media.thumb`, `media.original`
 Mirror: `mirror.start`, `mirror.stop`, `mirror.config`, `mirror.keyframe`, `mirror.stats`, `mirror.state`, `mirror.rotate`
 Input: `input.tap`, `input.swipe`, `input.scroll`, `input.key`, `input.text`, `input.global`
@@ -1141,6 +1141,7 @@ error; the receiver's length check is what catches it.
 | Transfer | Resume | Status |
 |---|---|---|
 | `media.original` pull, driven by the Mac's **debug** resume probe | yes | **Observed 2026-09-01** — a 52 MB video interrupted at 26,476,544 bytes, resumed from exactly that offset, three independently computed whole-file digests agreeing (`docs/testing.md` → Slice 4). Below the 64 MB pre-hash ceiling, so digest-checked |
+| `fs.transfer.begin` **pull** above 64 MiB with `fs.blocks` negotiated (development builds, 2026-09-29) | **yes, block-aligned** | see [Block-verified, resumable pulls](#block-verified-resumable-pulls--the-fsblocks-extension-development-builds-only-since-2026-09-29-release-gated) — being implemented slice by slice; this row is corrected as each slice lands |
 | `fs.transfer.begin` **pull** from the Mac's Files pane (the product path) | **no** | `FilesClient.pull` never passes a transfer record to `BulkClient.pull`, so `isResumable` always refuses, the pull starts at 0, and any existing `<name>.part` is deleted first (defect 151) |
 | `fs.transfer.begin` **push** to the phone | implemented (the phone chooses the offset from its Room record) | not re-measured for this correction |
 | Share (`share:` roots) | **no** — offset 0 only, enforced by `BulkClaim` | as built |
@@ -1524,6 +1525,136 @@ corrupt. Two states that both look like half a file on disk and want opposite tr
 
 A cancelled `transferId` can no longer be claimed by a bulk socket.
 
+### Block-verified, resumable pulls — the `fs.blocks` extension (development builds only since 2026-09-29; release gated)
+
+**Approved by the owner on 2026-09-29** (`docs/large-file-l1-l2-rules-2026-09-29.md`, decisions D1–D5)
+for incremental development implementation. **It is not a 500 GB claim and not a release activation.**
+It changes one path only: an `fs.transfer.begin` **pull** of a file **larger than 64 MiB**, on a session
+where `fs.blocks` is negotiated. At or below 64 MiB the pre-hash path above is unchanged, and push,
+share and `media.original` are untouched.
+
+**Negotiation.** `fs.blocks: 1` in `hello.ext` / `hello.ack.ext`, by the six rules under
+[Extensions](#extensions-ext). Advertised by a debuggable phone and an unpackaged Mac only; a release
+build advertises it once the owner flips `Extensions.FS_BLOCKS_RELEASE` (phone) and
+`FS_BLOCKS_RELEASE` (Mac), both `false`. Absent on either side, a large pull behaves exactly as
+before: `sha256: null`, `verified: false`, no resume, and the Mac's own partial deleted before a
+restart. **Every field and event below is ignored and logged when `fs.blocks` was not negotiated.**
+
+**What it protects, and what it does not.** TLS 1.3 already rejects bytes altered on the wire. The
+blocks protect the two ends: our framing and write path (a lost, repeated or misplaced chunk; a resume
+spliced at the wrong byte), a source that changes while it is read, and a partial that changes while a
+transfer is paused. The source check is **size + last-modified**, and a writer that keeps both identical
+is not detected — stated, not hidden.
+
+#### The block size — one rule both sides compute
+
+`blockSize(size)` is the smallest power of two from **128 KiB (2^17) to 16 MiB (2^24)** for which
+`ceil(size / blockSize) ≤ 2000`, and 16 MiB when none is. `blockCount = ceil(size / blockSize)`; the
+last block is short unless `size` is a multiple. So 100 MiB → 128 KiB (800 blocks); 1 GiB → 1 MiB
+(1,024; 512 KiB would give 2,048); 500 GB → 16 MiB (29,803). Each block's digest is SHA-256 of its
+bytes. `manifestRoot` is SHA-256 over the **raw 32-byte** block digests concatenated in order;
+`prefixRoot(n)` is the same over the first `n`. The cases are `docs/fixtures/fs-blocks.json`, read by
+both sides' tests.
+
+#### The exchange
+
+```json
+fs.transfer.begin request {"direction":"pull","rootId":"saf:…","id":"…",
+                           "resume":{"size":1073741824,"mtimeMs":1759140000000,"blockSize":1048576,
+                                     "verifiedBlocks":512,"prefixRoot":"9f2c…"}}
+fs.transfer.begin ack     {"transferId":"t-…","direction":"pull","size":1073741824,"mtimeMs":1759140000000,
+                           "name":"clip.mov","mime":"video/quicktime","sha256":null,"offset":0,"chunkMax":262144,
+                           "blockSize":1048576,"blockCount":1024,
+                           "resume":{"accepted":true,"from":536870912}}
+```
+
+- `resume` in the request is present only when the Mac holds a record for this file (below). It is
+  answered in the ack: `{"accepted":true,"from":<verifiedBlocks × blockSize>}`, or
+  `{"accepted":false,"why":"source-changed"|"bad-request"}` — and a refused resume is still a valid
+  begin: the pull starts at 0 and the Mac deletes its partial and record first.
+- The phone accepts only when the source's **current** `size` and last-modified equal the request's,
+  `blockSize` equals `blockSize(size)`, and `0 < verifiedBlocks < blockCount`. **Owner decision D1:**
+  acceptance is provisional until the phone has re-read and hashed the first `verifiedBlocks` blocks of
+  the source and reproduced `prefixRoot` — done on the bulk socket's thread, before the first new byte,
+  never inside the ack (a 400 GB prefix would hold the control channel for minutes). A mismatch ends the
+  transfer with `fs.transfer.done {"ok":false,"code":"SOURCE_CHANGED","why":"prefix-mismatch"}`.
+- The bulk header's `offset` must equal the ack's `resume.from`, or 0 when no resume was accepted.
+  Anything else is refused and the socket closed, the entry kept (the claim rule under *The bulk socket
+  is bound to the session*). A resume is always a **new** `transferId` in the **current** session; no
+  earlier id is ever reactivated (defect 148).
+
+### `fs.transfer.blocks` — event, phone → Mac
+
+```json
+{"transferId":"t-…","first":512,"sha256":["ab12…","…"]}
+```
+
+The block digests of what the phone has read and sent, in order, **after** the bytes of those blocks
+have been written to the bulk socket. At most **256** digests per event; `first` is the index of the
+first one and must equal the next index the Mac expects — no gap, no repeat, no reordering. Each
+digest is 64 lowercase hex characters. On a resumed transfer the first event starts at
+`verifiedBlocks`: the prefix's digests are the Mac's own record, not re-sent. Any violation fails the
+transfer on the Mac (partial and record deleted). While the phone is re-hashing a resumed prefix it
+reports progress as `fs.transfer.progress` with `"phase":"verifying"` and `bytes` = prefix hashed so
+far; the ordinary `"phase":"sending"` follows.
+
+On `fs.transfer.done` a block pull adds three fields:
+
+```json
+{"transferId":"t-…","ok":true,"bytes":1073741824,"elapsedMs":…,"verified":true,
+ "sha256":"<whole file as the phone read it, from byte 0>","blockSize":1048576,"blockCount":1024,
+ "manifestRoot":"<sha256 over the 1024 raw digests>"}
+```
+
+**`verified: true` here means "every block the Mac wrote equals the block the phone read, and the source
+did not change size or last-modified from the first byte to the last"** — a different and weaker
+statement than the ≤ 64 MiB meaning (a digest agreed *before* the transfer). The Mac says which:
+*"checksum matched"* for the pre-hash, *"verified block by block"* for this one.
+
+**Source stability.** The phone re-reads size and last-modified before the first byte it sends and after
+the last; a change ends the transfer with `SOURCE_CHANGED` (`"why":"source-changed"`). The Mac treats
+`SOURCE_CHANGED` like `CHECKSUM_MISMATCH`: partial and record deleted, a `.failed` sidecar left — a torn
+file is worse than none.
+
+**The Mac publishes only after full agreement:** every block verified as it landed; the count equals
+`blockCount`; its own root over those digests equals `manifestRoot`; its own whole-file SHA-256 equals
+`sha256`; `bytes == size`; and `fs.transfer.done` said `ok: true`. So for a block pull the Mac **waits
+for `fs.transfer.done`** before publishing (the ≤ 64 MiB path publishes on reaching the agreed length).
+No `done` within 30 s of the last byte leaves the partial and record in place as *paused*. Publication
+stays exclusive (defect 150).
+
+#### What the Mac keeps — the resume record, and its limits
+
+- **Where.** The partial lives in the chosen destination folder as today's Sidekick-only partial
+  (defect 151; **owner decision D5**). The record lives in the Mac's **app-private** data folder
+  (`userData/pull-resume/`), never beside the file, keyed by the paired phone's pinned certificate
+  fingerprint + `rootId` + document `id`, and holds `{name, size, mtimeMs, blockSize, the verified block
+  digests, the destination folder's real path, the partial's path, device and inode}`.
+- **Identity, every time the partial is touched.** Created with exclusive-create and no-follow; appended
+  only through a no-follow open whose device and inode equal the record's; `lstat` must say a regular
+  file, never a symlink; the folder's real path must equal the recorded one. Any difference: the
+  partial is **not** touched, the record is dropped, and the pull starts over under a new name.
+- **Read back before resuming.** The Mac re-hashes the first `verifiedBlocks` blocks of its partial and
+  compares them with the record; a difference or a short partial deletes partial and record. It then
+  truncates the partial to exactly `verifiedBlocks × blockSize` — an unverified tail is never kept.
+- **Pause and Cancel (owner decision D2).** *Pause* stops the transfer (`fs.transfer.cancel` with
+  `"reason":"pause"`) and keeps the owned partial and its record. *Cancel* (`"reason":"user"`) deletes
+  **only** that transfer's owned partial — identity-checked as above — and its record; never a final
+  file, never a file it cannot prove it created. A dropped link or a sleeping phone is a pause.
+- **Limits (owner decision D3): at most 16 records and at most 7 days.** A record older than 7 days is
+  expired at the next start and before any new record is made, with its partial removed only if it
+  passes the identity check (otherwise the file is left and only the record goes, logged as such).
+  **When 16 live records exist, nothing is evicted**: a new pull that would need a record is refused
+  before the phone is asked — *"16 paused transfers are already kept on this Mac. Resume or cancel one
+  of them first."* — and a resume of an existing record is always allowed.
+- **Forget or re-pair** drops every record for that phone and removes only partials passing the identity
+  check.
+- **Space.** The up-front refusal (L3) stays. While receiving, the Mac re-reads free space every 1 GiB
+  and **pauses** when it falls below the bytes still to come + 1 GiB, saying which volume and how much
+  more is needed. It never publishes a partial file.
+- **Resume is automatic only within the same run of the Mac app and within 10 minutes** of an
+  interruption; otherwise the card shows *Paused* and nothing moves without a click on **Resume**.
+
 ### What is left on disk, on both sides
 
 | State | On disk | Means |
@@ -1555,6 +1686,7 @@ there, and it means the convention survives a Mac that has never heard of it.
 | `expectSize`/`expectMtimeMs` disagree with the file on disk | `TARGET_STALE` |
 | The receiver has no room | `NO_SPACE` |
 | Digest mismatch on arrival; the partial was deleted | `CHECKSUM_MISMATCH` |
+| A block pull's source changed size or last-modified, or its resumed prefix no longer matches (`fs.blocks` only); the partial was deleted | `SOURCE_CHANGED` |
 | The socket dropped, a read failed, a write failed | `TRANSFER_FAILED` |
 | A `..` segment, `limit` out of range, a missing required field, a `/` in a mkdir name | `BAD_REQUEST` |
 | `direction: "push"` against a phone that only pulls | `FEATURE_UNAVAILABLE` |
@@ -3216,7 +3348,7 @@ Codes: `PERMISSION_DENIED`, `FEATURE_UNAVAILABLE`, `SECURE_SURFACE`, `ENCODER_FA
 `UNSUPPORTED_KEY`, `TRANSFER_FAILED`, `PROTOCOL_MISMATCH`, `UNAUTHORIZED`, `BAD_REQUEST`,
 `NOT_FOUND`, `NO_REPLY_ACTION`, `NO_TELEPHONY`, `SEND_FAILED`, `NO_ACTIVE_CALL`,
 `NO_MEDIA_SESSION`, `TARGET_STALE`, `ROOT_NOT_GRANTED`, `NO_SPACE`, `CHECKSUM_MISMATCH`,
-`PHONE_NOT_FOREGROUND`
+`PHONE_NOT_FOREGROUND`, `SOURCE_CHANGED` (only with `fs.blocks` negotiated)
 
 `feature` is a **capability name** — see [the namespace rule](#namespace-rule) — or absent for the
 system messages, which belong to no feature.
