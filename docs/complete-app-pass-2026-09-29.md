@@ -216,3 +216,29 @@ Contract: `docs/protocol.md` → Extensions → `share.wait` (PROPOSED). Code: `
   route — `0fb0f1d`, `89f3491`.
 - **Defect 136** `media.thumb` bounded by `FsThumbs.encode` — tests only.
 - **Defect 89** trash excluded, same-named albums told apart by the shortest folder tail — tests only.
+
+## 7 · Gate run on the final tree (`42ac5e5`), 15:43–15:53
+
+- **30-minute offer** 15:11:33 → expired **15:41:33** on both ends (Mac *expired, not declined*; phone
+  *staged copy deleted*), 0 saved, ledger `[]`, staging 0; the only folder addition in the window was the
+  15:12:54 Photos test pull (`003.png`, hash = source).
+- **Install** (same package, same certificate `d3a505d2…7d26`), twice: grants `7ae20b15…` ×28, both
+  bindings, prefs `cdf01467…`, trust `1|b59f4bba…` (with WAL), link 3/3 — identical before and after each.
+- **Photos on hardware (metadata only):** thumbnails at 512 → 1200×900 gives 512×384, 640×360 video gives
+  512×288; at 256 (asked first on a fresh app) → 256×192 / 256×144. **Album labels:** first cut 3 of 11
+  repeated-name groups distinct; diagnosed by structure (five pairs share an identical path on
+  `/storage/emulated/0` and `/95`; three have a top-level member), fixed (`8f19af6`) → **11 of 11 distinct**.
+  **Trash:** 75 rows under `Android/.Trash/` today, all `media_type` 0 or NULL — already outside the visual
+  filter, so the new clause cannot be seen removing anything on today's data; it removes nothing it should
+  keep (35,651 with and without).
+- **Found while verifying:** the Mac thumbnail cache was keyed by id alone, so a second size was answered
+  from the first (`42ac5e5`).
+- **Suites, all fresh:** phone app 177, core 219, input 52, mirror 60, sync 550 (1,058) — 0 failures,
+  `--rerun-tasks`, every artifact written after the run began; Mac 1,342 / 0; both typechecks exit 0;
+  14 guards exit 0; 20 of 20 guard fixture suites pass.
+- **Release APK:** `assembleRelease` **signed the APK with the owner's release key** (a keystore is
+  configured on this Mac; `CN=Chetan, OU=ConnectSuite`, SHA-256 `40470d05…`) — not intended, not
+  installed, not distributed; left in `app/build/outputs/apk/release/` for the owner. Its manifest: the
+  several-files activity `enabled=@bool/share_many_enabled` = **false**; **0** debug probes.
+- **Mac packaging:** **not run** — electron-builder may find a signing identity in the keychain, and no
+  further signature is made without the owner.

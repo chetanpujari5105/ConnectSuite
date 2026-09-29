@@ -102,7 +102,7 @@ says so**.
 | D-1 | Android redesign (Sidekick tokens, one state vocabulary) | **RDV** slices 1–6 | `sync/ui/*`, `link/*`, `setup/*` | Android UI pass 2026-09-22 | open items carried per slice |
 | E-1 | Set up Sidekick (phone onboarding) | **RDV** | `setup/SetupScreen.kt` | Feature E review 09-23 | — |
 | G-1 | Camera (virtual webcam) | **NB — parked, by record** | `navModel.ts` `camera` `state: 'unbuilt'` | — | not in any phase; stays honest-unbuilt |
-| Z-1 | Packaging: `.dmg` / release APK | **UT, not distributable** | `desktop/electron-builder.*`; Gradle release | Phase 9 audit: ad-hoc signature (D12), unsigned APK refused (D13) | Developer ID, notarisation, release keystore — owner-only |
+| Z-1 | Packaging: `.dmg` / release APK | **not distributable; release APK now signs locally** (2026-09-29: a keystore is configured, so `assembleRelease` signs — D13's *unsigned* is out of date on this Mac) | `desktop/electron-builder.*`; Gradle release | Phase 9 audit: ad-hoc signature (D12), unsigned APK refused (D13) | Developer ID, notarisation, release keystore — owner-only |
 
 ## 3 · Large files (F-15, F-2, F-6) — the design this pass will build toward
 
@@ -123,5 +123,6 @@ the code today:
 | When | What moved |
 |---|---|
 | 2026-09-29 11:10 | opened |
+| 2026-09-29 15:53 | gate on `42ac5e5`: all suites fresh and green; 136, 89 (labels 11/11) RDV; trash clause unobservable on today's data; release APK signed unintentionally, left for the owner |
 | 2026-09-29 14:55 | F-11, F-12, F-13 RDV (owner sessions); F-17 share.wait proposed + dev-built; F-18 photos digest + L3 |
 | 2026-09-29 11:25 | F-2 RDV; F-7, F-8 fixed and RDV on the normal path; F-9 resolves on device; F-16 fixed |
