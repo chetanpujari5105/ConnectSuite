@@ -194,9 +194,9 @@ object BulkTransfers {
             mime = row.second,
             size = row.third,
             sessionId = sessionId,
-            // Deliberately null. Hashing before sending reads the file twice, and a 4 GB video
-            // would stall this ack for the length of a full read with no progress to report.
-            sha256 = null,
+            // Pre-hashed at or below the ceiling, as a Files pull is (docs/protocol.md → media.original,
+            // 2026-09-29); null above it, so a 4 GB video never stalls this ack. Was always null.
+            sha256 = prehashStream(row.first, row.third) { context.contentResolver.openInputStream(uri) },
             open = { context.contentResolver.openInputStream(uri) },
         )
         pending[transferId] = entry
@@ -304,11 +304,15 @@ object BulkTransfers {
      * per the counter rule: "12 unhashed" with no hashed count and no denominator of bytes reads as
      * whichever story the reader already believes.
      */
-    private fun prehash(store: FsStore, entry: FsPaths.Entry): String? {
-        if (entry.size > PREHASH_MAX_BYTES) {
+    private fun prehash(store: FsStore, entry: FsPaths.Entry): String? =
+        prehashStream(entry.name, entry.size) { store.openStream(entry.id) }
+
+    /** [prehash] for any source: Files entries and `MediaStore` originals share one rule and one log line. */
+    private fun prehashStream(name: String, size: Long, open: () -> InputStream?): String? {
+        if (size > PREHASH_MAX_BYTES) {
             LinkLog.i(
                 "bulk",
-                "not pre-hashing ${entry.name}: ${entry.size} bytes is over the ${PREHASH_MAX_BYTES} " +
+                "not pre-hashing $name: $size bytes is over the ${PREHASH_MAX_BYTES} " +
                     "byte ceiling, so the ack carries sha256=null and the transfer will report " +
                     "verified=false",
             )
@@ -317,7 +321,7 @@ object BulkTransfers {
         val startedAt = System.currentTimeMillis()
         val digest = MessageDigest.getInstance("SHA-256")
         val read = runCatching {
-            store.openStream(entry.id)?.use { input ->
+            open()?.use { input ->
                 val buffer = ByteArray(CHUNK)
                 var total = 0L
                 while (true) {
@@ -329,7 +333,7 @@ object BulkTransfers {
                 total
             }
         }.getOrElse {
-            LinkLog.w("bulk", "pre-hash of ${entry.name} failed; the ack will carry sha256=null", it)
+            LinkLog.w("bulk", "pre-hash of $name failed; the ack will carry sha256=null", it)
             null
         } ?: return null
 
@@ -337,7 +341,7 @@ object BulkTransfers {
         val elapsed = System.currentTimeMillis() - startedAt
         LinkLog.i(
             "bulk",
-            "pre-hashed ${entry.name}: $read bytes in ${elapsed}ms (${rateOf(read, elapsed)}), " +
+            "pre-hashed $name: $read bytes in ${elapsed}ms (${rateOf(read, elapsed)}), " +
                 "sha256=${sha.take(12)}… — this is what makes verified=true possible",
         )
         return sha

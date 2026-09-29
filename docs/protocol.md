@@ -1457,10 +1457,10 @@ from the transfer record and the partial on disk together, never from the filena
 no record of ours beside it is another app's file and the phone starts from zero rather than
 appending to it. See *What is left on disk* below.
 
-**`sha256` is non-null when the phone pre-hashed**, which it does below a 64 MB ceiling. That is what
-makes `verified: true` reachable at all — `media.original` acks `null` because hashing before sending
-reads the file twice, and a large file would hold the control channel for the length of a full read
-with no progress to report. Above the ceiling this ack also carries `null` and the transfer reports
+**`sha256` is non-null when the phone pre-hashed**, which it does at or below a 64 MiB ceiling. That is
+what makes `verified: true` reachable at all — `media.original` follows the same rule since 2026-09-29
+— because hashing before sending reads the file twice, and a large file would hold the control channel
+for the length of a full read with no progress to report. Above the ceiling this ack also carries `null` and the transfer reports
 `verified: false`, which is the honest answer rather than a silent downgrade.
 
 **`offset` is the resume point and is decided by the receiver**, the side that knows what it already
@@ -2010,8 +2010,8 @@ are true about different layers, and neither is a reason to teach this type a se
 
 ```json
 request  {"id":"1000012345"}
-ack      {"transferId":"t-9c04","size":3874112,"mime":"image/jpeg",
-          "name":"IMG_2041.jpg","sha256":null,"chunkMax":262144}
+ack      {"transferId":"tf-Q3v9aP0kT7mR2xW8yB4nZc","size":3874112,"mime":"image/jpeg",
+          "name":"IMG_2041.jpg","sha256":"9f86d08188…","chunkMax":262144}
 ```
 
 **This is not a fifth transfer mechanism.** It resolves a `MediaStore` id to a transfer and hands
@@ -2024,12 +2024,13 @@ Deliberately **not** `fs.transfer.begin` with a media id: that would give `begin
 exclusive addressing modes and an error table that has to explain which fields go together. One
 type, one addressing mode, one shared execution.
 
-**`sha256` is always `null` here, and that is a decision rather than an omission.** Hashing before
-sending means reading the file twice, and a 4 GB video would stall this ack for the length of a full
-read with nothing able to report progress. The phone digests as it streams and reports the result on
-`fs.transfer.done` with **`verified: false`**, which says plainly that nothing compared the bytes
-against a digest agreed in advance. A success nobody checked must not look like a success that was —
-`fs.transfer.begin` pre-hashes below its 64 MB ceiling and is where `verified: true` comes from.
+**`sha256` follows `fs.transfer.begin`'s rule: non-null when the phone pre-hashed, which it does at or
+below the 64 MiB ceiling** (changed 2026-09-29; until then it was always `null`). Above the ceiling it is
+`null`, because hashing before sending reads the file twice and a 4 GB video would stall this ack for a
+full read; the transfer then reports **`verified: false`**, which says plainly that nothing compared the
+bytes against a digest agreed in advance. The Mac passes a non-null value to its pull and reports
+`verified` from the comparison. **Backward-compatible both ways:** an older Mac ignores the field and an
+older phone sends `null` — either way the result is the old `verified: false`, never a false `true`.
 
 ### When a photo request cannot be answered
 

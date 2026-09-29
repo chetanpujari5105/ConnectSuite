@@ -223,7 +223,8 @@ object MediaFeature {
             put("size", pending.size)
             put("mime", pending.mime)
             put("name", pending.name)
-            put("sha256", null as String?)
+            // The digest agreed in advance at or below the pre-hash ceiling; null above it.
+            put("sha256", pending.sha256)
             put("chunkMax", BulkTransfers.chunkMax())
         }
     }

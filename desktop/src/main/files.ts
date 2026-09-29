@@ -5,6 +5,7 @@ import { MessageType, type PhoneResult } from '../shared/protocol';
 import type { BulkClient } from './bulk';
 import { ensureReceiveFolder } from './downloads';
 import { sanitizeShareName } from '../shared/shareNames';
+import { spaceNeeded } from './shareDestination';
 
 // `shared/filesRoots.ts` is a plain script, not a module — it has to be loadable by a `<script>` tag
 // in the CSP-locked renderer, so it has no top-level `export` and a `module.exports` shim instead.
@@ -305,6 +306,14 @@ export class FilesClient {
       return { ok: false, reason: ready.reason, fixHint: ready.fixHint };
     }
 
+    // Room first (large-file increment L3): a pull that cannot fit is refused before the phone is asked,
+    // with the numbers, rather than failing part-way through a multi-gigabyte file.
+    const short = await pullSpaceRefusal(ready.folder, options.size);
+    if (short) {
+      log.warn('files', `pull of ${options.name} refused on this Mac: ${short}`);
+      return { ok: false, reason: short };
+    }
+
     const agreed = await ask(
       link,
       'files',
@@ -589,6 +598,37 @@ function toEntry(row: Record<string, unknown>): FsEntryRow {
  * The same rule `PhotosClient` uses and for the same reason: two files really can share a display
  * name across folders, and replacing one someone already pulled is a decision that belongs to them.
  */
+/**
+ * Whether [folder] can take a pull of [size] bytes, by the share path's own rule (`spaceNeeded`: the
+ * size plus the larger of 256 MiB and a tenth) so both directions into this Mac judge room the same
+ * way. Returns the sentence a person reads when it cannot, or null. A free-space reading that fails is
+ * **not** a refusal: the pull proceeds and the write reports its own error, because refusing on an
+ * unreadable number would block every pull on a folder whose `statfs` is unsupported.
+ */
+export async function pullSpaceRefusal(
+  folder: string,
+  size: number,
+  statfs: (p: string) => Promise<{ bavail: number | bigint; bsize: number | bigint }> = (p) => fsp.statfs(p),
+): Promise<string | null> {
+  if (!Number.isFinite(size) || size <= 0) return null;
+  let free: number;
+  try {
+    const s = await statfs(folder);
+    free = Number(s.bavail) * Number(s.bsize);
+  } catch {
+    return null;
+  }
+  if (!Number.isFinite(free)) return null;
+  const need = spaceNeeded(size);
+  if (free >= need) return null;
+  return `There isn't room on this Mac for that file: it needs ${gib(need)} free in the receive folder and has ${gib(free)}. Nothing was copied.`;
+}
+
+/** Decimal units, as Finder counts them (and as the receive window does). */
+function gib(n: number): string {
+  return n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.ceil(n / 1e6)} MB`;
+}
+
 /**
  * Where a file the phone names is pulled to: a free name **inside** [folder].
  *

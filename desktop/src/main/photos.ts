@@ -13,7 +13,7 @@ import type { BulkClient } from './bulk';
 import { ask, rows } from './feature';
 import type { LinkClient } from './link';
 import { log } from './logger';
-import { pullDestination } from './files';
+import { pullDestination, pullSpaceRefusal } from './files';
 
 /**
  * The Mac's half of the photo browser — three verbs of four.
@@ -260,13 +260,27 @@ export class PhotosClient {
       } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string }>;
     }
 
+    // Room first (L3). The phone has already agreed this transfer, so a refusal here also cancels it
+    // there rather than leaving it waiting for a socket nobody will open.
+    await fs.mkdir(folder, { recursive: true });
+    const short = await pullSpaceRefusal(folder, ticket.data.size);
+    if (short) {
+      log.warn('photos', `media.original ${ticket.data.transferId} refused on this Mac: ${short}`);
+      await this.link()?.request(MessageType.FS_TRANSFER_CANCEL, { transferId: ticket.data.transferId, reason: 'no-space' }, 5_000).catch(() => undefined);
+      return {
+        ok: false,
+        feature: 'photos',
+        type: MessageType.MEDIA_ORIGINAL,
+        reason: short,
+      } as PhoneResult<{ path: string; bytes: number; elapsedMs: number; name: string; mime: string }>;
+    }
+
     onAgreed?.({
       transferId: ticket.data.transferId,
       size: ticket.data.size,
       name: ticket.data.name,
       mime: ticket.data.mime,
     });
-    await fs.mkdir(folder, { recursive: true });
     const destination = await pullDestination(folder, ticket.data.name);
 
     const result = await bulk.pull({
@@ -275,6 +289,9 @@ export class PhotosClient {
       transferId: ticket.data.transferId,
       destination,
       expectedBytes: ticket.data.size,
+      // The digest the phone agreed, when it sent one. It was parsed and never passed, so a photo could
+      // never be verified even from a phone that hashed it.
+      expectedSha256: ticket.data.sha256,
     });
     if (!result.ok) {
       return {
