@@ -54,21 +54,21 @@ The last three rows are a real gap in "My Files multi-select": any selection of 
 | # | Feature | Status | Code entry point | Evidence | Remaining acceptance test |
 |---|---|---|---|---|---|
 | F-1 | **Mac → phone, several files** (Files pane Send) | **RDV ≤ 64 MiB** | `renderer/files.ts` `confirmSend`/`pumpSend`; `main.ts` `fs-send`; `main/files.ts` `push`; phone `BulkTransfers.receiveFrom` | 2026-09-29 overnight: 8×1 MiB 706–782 ms, 32/64 MiB, every file *checksum matched* on the phone's own digest (`docs/transfer-overnight-2026-09-29.md` §4) | ≥ 3 files incl. one > 64 MiB, each *checksum matched* |
-| F-2 | Mac → phone **above 64 MiB** | **UT — sent unverified** | `main/files.ts` `PREHASH_CEILING` | The Mac agrees no digest above 64 MiB, so the phone reports `verified=false` (UI says *not checksummed*, honestly) | fixed in this pass → a 96 MiB push reading *checksum matched* |
+| F-2 | Mac → phone **above 64 MiB** | **RDV** (2026-09-29) | `main/files.ts` `push`, `digestOf`; `main.ts` `fs-send` | `ec71870`. 96 MiB random file 11:19: Mac hashed it in 78 ms; phone `verified=true`, sha `567befd2c824…` = source; card *Arrived · checksum matched*; 39.77 MB/s receiver-verified | a multi-GB file with the *Checking* row visible, and Stop during the hash |
 | F-3 | Mac → phone stop / resume / disconnect recovery | **RDV** | `FsPartials.resumeFrom`; `sendBatchStop` | Phase 5 slice 8; resumed push `sidekick-rc-quit-64m.bin` from 52,953,088 B in the Mac log today 10:40:05 | re-run after this pass's changes |
 | F-4 | Mac → phone same-name safety | **RDV** | `sendBatch.suffixedName`; `sendBatchNext` name rule | overnight §7.2: different file under an existing name arrived as `(2)`, original hash unchanged | — |
 | F-5 | Phone → Mac **Files pull** | **RDV ≤ 64 MiB** | `main/files.ts` `pull`; `bulk.pull`; phone `BulkTransfers.streamTo` | 64 MiB 330.6 Mbit/s, hash equal to source (overnight §5) | above 64 MiB the phone pre-hashes nothing → unverified (F-6) |
 | F-6 | Phone → Mac pull **above 64 MiB** | **UT — sent unverified** | phone `BulkTransfers.PREHASH_MAX_BYTES` | by design today; needs a digest that does not block the control channel | design + build (§3 below) |
-| F-7 | Mac pulls publish **exclusively** / own their partials | **open defects 150, 151** | `main/bulk.ts` `pull` (`rename` over the final name; deletes an unrecorded `<name>.part`) | register rows 150/151 | a test creating the destination mid-transfer; another app's `.part` survives |
-| F-8 | Bulk transfers **bound to their session**, unguessable ids | **open defect 148 (security)** | phone `BulkTransfers.serve`, `nextId`, `fs.transfer.cancel` | register row 148 | claim/cancel from another session refused |
-| F-9 | **Text files** in a share (`text/*` with a stream) | **NB** | manifest filters (above) | live resolution table above | a `.txt` + `.csv` selection from My Files lists Sidekick and arrives |
+| F-7 | Mac pulls publish **exclusively** / own their partials | **fixed, RDV normal path** (defects 150, 151; `ec71870`) | `main/bulk.ts` `pull` (`rename` over the final name; deletes an unrecorded `<name>.part`) | tests + mutations; live 11:20: a pull of a name already in the folder saved as `… (2).bin`, original untouched, no partial left, `verified=true` | the race itself is synthetic-only |
+| F-8 | Bulk transfers **bound to their session**, unguessable ids | **fixed, RDV positive path** (defects 148, 149; `7e63b81`) | phone `BulkTransfers.serve`, `nextId`, `fs.transfer.cancel` | tests + mutations; live: push `tf-gDl8…` and pull `tf-vX0E…` claimed by their own session | a second session's claim is refused — needs a second Mac (none exists); tests only |
+| F-9 | **Text files** in a share (`text/*` with a stream) | **UT — resolves on device** (`5aa1ce5`) | manifest filters; `ShareTextRoute` | after install 11:18: `SEND`/`SEND_MULTIPLE` of `text/plain`, `text/csv`, `text/*` resolve to the file paths | a `.txt` + `.csv` selection from My Files lists Sidekick and arrives |
 | F-10 | Phone share → Mac, **one file** (v2) | **RDV** | `ShareToMacActivity` / `ShareToMacModel`; Mac `share.ts` `ShareReceiver`, `shareWindow.ts` | 2026-09-25 supervised live run: 100,718 B, SHA-256 equal, no focus steal, collision-safe (`testing.md` → *the supervised live run*); silent-Send fix live 13:36 | — (regression after this pass) |
 | F-11 | Phone share → Mac, **several files, one Gallery share** (v3) | **DBG + UT** | `ShareManyToMacActivity`/`Model`, `ShareManyCopy`; Mac `ShareQueueView` | 2026-09-28 Run A: only **one** offer ever reached the Mac on v3; two-different-files-out-of-order (A1) **never run** | Gallery: 3 images selected → review screen exact → 3 cards → Accept 2 / Decline 1 out of order → 2 saved with SHA-256 equal, 1 declined, nothing moved before Accept |
 | F-12 | Phone share → Mac, **several files, one My Files share** (mixed types) | **DBG + UT** | same | Run B P5 read the grant lifetime of two PDFs only (`testing.md` → Run B P5); no transfer | My Files: pdf + jpg + txt (after F-9) → same criteria |
 | F-13 | Per-file **Cancel** on the phone's review screen | **DBG, never drawn on hardware** | `ShareManyCopy` per-row cancel (`352f1b3`) | unit test only | cancel one of three while offered; Mac card ends *withdrawn*, others unaffected |
 | F-14 | Several-files **release** | **gated — owner's decision** | `Extensions.MULTI_FILE_RELEASE`, Mac `SHARE_V3_RELEASE` | — | not mine to flip |
 | F-15 | **Very large file** share (phone → Mac beyond the phone's free space; up to 500 GB) | **NB** (Path L is a proposal) | the share stages a whole private copy (`ShareStaging`) | `docs/feature-a-large-file-proposal.md` | §3 below |
-| F-16 | Destination-check probe cleanup by identity | **open defect 154** | Mac `shareDestination.ts` `checkDestination` | register row 154 | swap test |
+| F-16 | Destination-check probe cleanup by identity | **fixed, tests only** (defect 154) | Mac `shareDestination.ts` `checkDestination` | register row 154 | swap test |
 
 ## 2 · Everything else in scope
 
@@ -121,3 +121,4 @@ the code today:
 | When | What moved |
 |---|---|
 | 2026-09-29 11:10 | opened |
+| 2026-09-29 11:25 | F-2 RDV; F-7, F-8 fixed and RDV on the normal path; F-9 resolves on device; F-16 fixed |
