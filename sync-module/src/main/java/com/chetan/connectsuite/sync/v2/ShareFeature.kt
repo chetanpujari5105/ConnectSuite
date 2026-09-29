@@ -160,7 +160,9 @@ object ShareFeature {
      * copy when the outcome is not [OfferOutcome.Offered]; after that, this object deletes it.
      */
     fun offerStaged(
-        offerId: String, bytes: Long, sha256: String, name: String, mime: String, ttlMs: Long = ShareOffer.TTL_MS,
+        offerId: String, bytes: Long, sha256: String, name: String, mime: String,
+        /** Null — every product caller — is the session's negotiated wait ([ShareOffer.ttlFor]). */
+        ttlMs: Long? = null,
         /**
          * An **ordinary** share — one a person chose in the share sheet — must be offered only where
          * [Extensions.ordinarySend] holds (`share.file` ≥ 2 and `share.ask`). The debug synthetic probe
@@ -179,7 +181,6 @@ object ShareFeature {
         if (bytes < 0 || !sha256.matches(Regex("^[0-9a-f]{64}$"))) return OfferOutcome.Invalid("size or digest out of rule")
         if (name.isEmpty() || name.toByteArray(Charsets.UTF_8).size > 255) return OfferOutcome.Invalid("name out of rule")
         if (mime.length > 127 || !mime.matches(Regex("^[^/\\s]+/[^/\\s]+$"))) return OfferOutcome.Invalid("mime out of rule")
-        require(ttlMs in 1..ShareOffer.TTL_MS) { "an offer lives at most ${ShareOffer.TTL_MS} ms" }
 
         val session = server.anyLiveSession() ?: return OfferOutcome.NoSession.also {
             LinkLog.i("share", "offer $offerId not made: no Mac connected — ${tally()}")
@@ -198,6 +199,11 @@ object ShareFeature {
             return OfferOutcome.NotNegotiated(session.peerName)
         }
         val key = session.token ?: return OfferOutcome.NoSession
+        // The wait both sides agreed (`share.wait`), 10 minutes when either is older. A caller's own
+        // value (the debug probe) may shorten it, never lengthen it past what the Mac will accept.
+        val agreedMs = ShareOffer.ttlFor(session.negotiated[Extensions.SHARE_WAIT])
+        val ttlMs = ttlMs ?: agreedMs
+        require(ttlMs in 1..agreedMs) { "an offer on this session lives at most $agreedMs ms" }
         val now = System.currentTimeMillis()
         val offer = ShareOffer.Offer(offerId, key, bytes, sha256, now, now + ttlMs, name = name, mime = mime)
         synchronized(lock) {
@@ -226,7 +232,8 @@ object ShareFeature {
         }
         offered.incrementAndGet()
         ensureHeldCopyCheck()
-        LinkLog.i("share", "offered $offerId to ${session.peerName}: $bytes bytes, expires in ${ttlMs / 1000}s, " +
+        LinkLog.i("share", "offered $offerId to ${session.peerName}: $bytes bytes, expires in ${ttlMs / 1000}s " +
+            "(share.wait ${session.negotiated[Extensions.SHARE_WAIT] ?: "not negotiated — 10 minutes"}), " +
             "negotiated share.file ${session.negotiated[Extensions.SHARE_FILE]} — ${tally()}")
         scope.launch {
             delay(ttlMs)

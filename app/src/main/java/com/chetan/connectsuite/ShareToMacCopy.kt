@@ -43,7 +43,8 @@ sealed interface ShareSheetState {
     // ---- after an offer: every one of these carries the Mac it was offered to ---------------------
 
     /** Offered; the Mac holds it on its card until a person answers or it expires. */
-    data class WaitingForMac(val name: String, val bytes: Long, val mac: String) : ShareSheetState
+    /** [untilMs]: when the offer stops waiting — its `expiresAtMs`, from the negotiated `share.wait`. */
+    data class WaitingForMac(val name: String, val bytes: Long, val mac: String, val untilMs: Long? = null) : ShareSheetState
     /** Accepted and streaming, or — [allSent] — every byte sent and the Mac's verdict not yet in. */
     /** [queued]: version 3, accepted and waiting its turn behind another pull — nothing is moving yet. */
     data class Sending(val name: String, val bytes: Long, val mac: String, val allSent: Boolean, val queued: Boolean = false) : ShareSheetState
@@ -143,7 +144,8 @@ fun reduce(prev: ShareSheetState, name: String, bytes: Long, mac: String, s: Sha
     val allSentBefore = (prev is ShareSheetState.Sending && prev.allSent) || prev is ShareSheetState.Unconfirmed
     fun stop(why: ShareSheetState.StopReason) = ShareSheetState.Stopped(name, mac, why)
     return when (s) {
-        ShareOffer.State.Offered -> ShareSheetState.WaitingForMac(name, bytes, mac)
+        // Keeps the expiry the sheet already knew; a fresh one has none until the model sets it.
+        ShareOffer.State.Offered -> (prev as? ShareSheetState.WaitingForMac) ?: ShareSheetState.WaitingForMac(name, bytes, mac)
         // [queued] only for a version-3 accept waiting its turn (ShareOffer.isQueued); version 2 is unchanged.
         ShareOffer.State.Accepted -> ShareSheetState.Sending(name, bytes, mac, allSent = false, queued = queued)
         ShareOffer.State.Sending -> ShareSheetState.Sending(name, bytes, mac, allSent = false)
@@ -304,7 +306,7 @@ object ShareToMacCopy {
         is ShareSheetState.Failed -> failure(state.failure)
         is ShareSheetState.WaitingForMac ->
             "Offered to ${state.mac} (${bytes(state.bytes)}). Nothing moves until someone accepts it there; " +
-                "if nobody does, the offer expires in 10 minutes."
+                waitsUntil(state.untilMs)
         is ShareSheetState.Sending -> if (state.allSent) {
             "All ${bytes(state.bytes)} have left this phone. It is saved only when ${state.mac} has checked it and says so."
         } else if (state.queued) {
@@ -323,6 +325,19 @@ object ShareToMacCopy {
         is ShareSheetState.SendFailed -> "${saveFailure(state.reason)} Nothing was saved. Someone on ${state.mac} can retry for up to 5 minutes."
         is ShareSheetState.Stopped -> stoppedDetail(state.why, state.mac)
     }
+
+    /**
+     * The end of the waiting sentence. A clock time when the offer's expiry is known (it depends on the
+     * negotiated `share.wait`: 10 minutes, or 30 with a Mac that agrees), and **no number** when it is
+     * not — "10 minutes" would be false at 30.
+     */
+    fun waitsUntil(untilMs: Long?, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String =
+        if (untilMs == null) "if nobody does in time, the offer expires and its prepared copy is deleted."
+        else "if nobody does by ${clock(untilMs, zone)}, the offer expires and its prepared copy is deleted."
+
+    /** `12:32`, local time. */
+    fun clock(ms: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String =
+        java.time.Instant.ofEpochMilli(ms).atZone(zone).toLocalTime().let { "%02d:%02d".format(it.hour, it.minute) }
 
     /** Only for [ShareSheetState.Ready]: whether Send works, and why not when it does not. */
     fun availability(a: Availability): String = when (a) {

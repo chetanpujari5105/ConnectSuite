@@ -63,11 +63,14 @@ class ShareDevGateTest {
                 val got = Extensions.advertised(debuggable, v2, production, holdV2 = hold, multiFileRelease = release)
                 val label = "debuggable=$debuggable v2=$v2 production=$production hold=$hold release=$release"
                 val transfer = production || (debuggable && v2)
-                val expected = when {
+                val files = when {
                     !transfer -> phoneOne
                     (debuggable || release) && !(debuggable && hold) -> phoneThree
                     else -> phoneTwo
                 }
+                // share.wait (2026-09-29): with a transfer, on a debuggable build not held as an older
+                // peer; a release build only under WAIT_RELEASE, which is off here.
+                val expected = if (transfer && debuggable && !hold) files + (Extensions.SHARE_WAIT to 30) else files
                 assertEquals(label, expected, got)
             }
         assertEquals("the build constant itself is unchanged", phoneOne, Extensions.PHONE)

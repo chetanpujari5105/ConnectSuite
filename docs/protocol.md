@@ -2535,6 +2535,43 @@ and ordinary Send cannot enable. It is **true** since `cd9d95d`, pinned by a tes
 unconditionally: the promise is about what the phone will *not* do, so making it costs nothing.
 The cases are `docs/fixtures/share-ordinary-send.json`, read by both sides' tests.
 
+### How long a waiting offer lives: the `share.wait` extension (PROPOSED 2026-09-29 — development builds only; release gated on the owner)
+
+**The value is a number of minutes, not a version.** It is the longest a peer will let one share offer
+wait for a person's Accept or Decline. Rule 4 is unchanged — negotiated only when both advertise it, at
+`min(mine, theirs)` — and for a limit, the minimum of two limits is exactly the agreement wanted.
+
+| Negotiated `share.wait` | A waiting offer lives |
+|---|---|
+| absent (either side older, or the policy off) | **10 minutes — exactly as before this key existed** |
+| any value | `clamp(value, 10, 30)` minutes: never shorter than today, **never longer than 30, never indefinite** |
+
+What changes on each side when it is negotiated at `w` minutes (`W = clamp(w, 10, 30)`):
+
+- **Phone:** `share.offer.expiresAtMs = sent + W`; its own expiry timer, `share.cancel{expired}` at that
+  moment and the deletion of the staged copy follow unchanged. A caller may shorten `W`, never lengthen it.
+- **Mac:** an offer is valid only if `expiresAtMs ∈ (now, now + W + 5 min skew]`; the Mac's own expiry is
+  `min(expiresAtMs, received + W)`. With `share.wait` absent, `W = 10`, so a 30-minute offer from a
+  mis-built phone is refused `malformed-offer` (*expiresAtMs is too far ahead*) — **it fails closed**.
+- **Both, visibly:** a waiting card says *"Waits for your answer until HH:MM. After that it expires and
+  nothing is saved."* (Mac) and *"… if nobody does by HH:MM, the offer expires and its prepared copy is
+  deleted."* (phone). A clock time, not a countdown: a card is redrawn only when its offer changes, and a
+  countdown would go stale.
+
+**What it does not change:** per-file consent; nothing moves before Accept; the phone's per-copy staging
+budget (a waiting offer still holds its staged copy for its whole wait); cleanup on expiry, decline,
+cancel, disconnect and restart; an **accepted** offer's separate queue lifetime (Version 3 §3, 60
+minutes, provisional); `share.file` negotiation. An offer already expired is never extended — the wait is
+fixed when the offer is made.
+
+**Who advertises it:** `share.wait: 30` is sent only beside a transfer — by the Mac only beside
+`share.ask` — and only by a **debuggable phone** (not while `holdV2` reproduces an older phone) or an
+**unpackaged Mac**. A release build advertises it only once the owner flips
+`Extensions.WAIT_RELEASE` (phone) and `SHARE_WAIT_RELEASE` (Mac); both are `false`.
+
+The cases are `docs/fixtures/share-wait.json`, read by both sides' tests (`ShareWaitTest`,
+`shareWait.test.ts`).
+
 ## Share (42501)
 
 One file from the phone's share sheet to the Mac. The phone offers; the Mac answers; nothing moves

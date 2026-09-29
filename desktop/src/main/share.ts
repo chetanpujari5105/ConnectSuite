@@ -1,7 +1,7 @@
 import { lstat } from 'node:fs/promises';
 import { MessageType } from '../shared/protocol';
-import { SHARE_FILE } from '../shared/extensions';
-import { ShareOfferBook, type DeclineReason, type ShareOfferPayload } from '../shared/shareOffer';
+import { SHARE_FILE, SHARE_WAIT } from '../shared/extensions';
+import { ShareOfferBook, offerWaitMs, type DeclineReason, type ShareOfferPayload } from '../shared/shareOffer';
 import { sanitizeShareName } from '../shared/shareNames';
 import { reservedBytes } from '../shared/shareReservations';
 import type { SharePullResult } from './bulk';
@@ -377,6 +377,8 @@ export class ShareReceiver {
       sessionKey,
       nowMs: this.now(),
       maxLiveOffers: this.queueing() ? MAX_LIVE_OFFERS_V3 : 1,
+      // The wait both sides agreed (`share.wait`); absent — an older phone — is 10 minutes.
+      waitMs: offerWaitMs(this.deps.link.negotiated()[SHARE_WAIT]),
     });
     switch (verdict.kind) {
       case 'unanswerable':

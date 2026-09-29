@@ -177,4 +177,15 @@ class ShareToMacCopyTest {
         assertTrue(src.contains("if (showsTransferProgress(state))"))
         assertFalse("no ungated Sending check left", src.contains("if (state is ShareSheetState.Sending)"))
     }
+
+    @Test fun `the waiting sentence names the clock time when known and never a duration it does not know`() {
+        val utc = java.time.ZoneId.of("UTC")
+        val at = java.time.ZonedDateTime.of(2026, 9, 29, 12, 32, 10, 0, utc).toInstant().toEpochMilli()
+        assertEquals("if nobody does by 12:32, the offer expires and its prepared copy is deleted.", ShareToMacCopy.waitsUntil(at, utc))
+        val unknown = ShareToMacCopy.waitsUntil(null, utc)
+        assertFalse(unknown, Regex("\\d").containsMatchIn(unknown))
+        // The sheet carries the expiry it was given through a repeat of the Offered state.
+        val waiting = ShareSheetState.WaitingForMac("a.jpg", 1, "Mac", at)
+        assertEquals(waiting, reduce(waiting, "a.jpg", 1, "Mac", com.chetan.connectsuite.sync.v2.ShareOffer.State.Offered))
+    }
 }

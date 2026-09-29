@@ -1,0 +1,12 @@
+{
+  "about": "share.wait (docs/protocol.md → Extensions → share.wait, PROPOSED): negotiated minutes → how long a waiting offer lives. Absent = either side older = 10 minutes. Clamped to [10, 30]. Both ShareOffer.ttlFor (phone) and offerWaitMs (Mac) are tested against this file.",
+  "cases": [
+    { "negotiated": null, "waitMs": 600000, "why": "either side does not advertise share.wait — exactly today's 10 minutes" },
+    { "negotiated": 1, "waitMs": 600000, "why": "a peer cannot shorten the wait below 10 minutes" },
+    { "negotiated": 10, "waitMs": 600000, "why": "the floor" },
+    { "negotiated": 20, "waitMs": 1200000, "why": "a lower limit on one side is honoured" },
+    { "negotiated": 30, "waitMs": 1800000, "why": "both sides at 30" },
+    { "negotiated": 45, "waitMs": 1800000, "why": "never longer than 30 minutes, whatever a peer advertises" },
+    { "negotiated": 2147483647, "waitMs": 1800000, "why": "never indefinite" }
+  ]
+}

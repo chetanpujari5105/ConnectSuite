@@ -15,6 +15,8 @@ import {
   shareV2Activation,
   shareV3Activation,
   SHARE_V3_RELEASE,
+  SHARE_WAIT_RELEASE,
+  shareWaitActive,
   type ShareV2Inputs,
 } from './shareActivation';
 
@@ -285,8 +287,27 @@ test('main.ts forces shareV3Off off in a packaged build and passes the version-3
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8');
   assert.match(main, /\? \{ silent: false, acceptProbe: false, devReceive: false, v2: false, v3Off: false \}/);
   assert.match(main, /shareV3Activation\(\{ packaged: app\.isPackaged, shareV3Off: devSwitches\.v3Off, development: shareV2, ask: shareAsk \}\)/);
-  assert.match(main, /advertisedExt\(shareV2, shareAsk, shareV3\)/);
+  assert.match(main, /advertisedExt\(shareV2, shareAsk, shareV3, shareWait\)/);
+  // share.wait comes only from the packaged/policy rule, never a switch.
+  assert.match(main, /const shareWait = shareWaitActive\(app\.isPackaged\);/);
   // The production readiness facts are not what opens version 3 — nothing here edits them.
   assert.deepEqual({ ...SHARE_PRODUCTION_READINESS }, { syntheticRunPassed: true, receiveFolderCleanupScoped: true });
   assert.deepEqual(MAC_EXT, { 'share.file': 1 });
+});
+
+// ---- share.wait: 30-minute waiting offers, development builds only until the owner flips the policy ----
+
+test('share.wait is advertised only beside share.ask, only when allowed, and never by a packaged build while the policy is off', () => {
+  assert.equal(SHARE_WAIT_RELEASE, false, 'the release policy is the owner decision and is off');
+  assert.equal(shareWaitActive(true), false, 'packaged, policy off: not advertised');
+  assert.equal(shareWaitActive(true, true), true, 'packaged, policy flipped');
+  assert.equal(shareWaitActive(false), true, 'development build');
+  const v3 = shareV3Activation(v3All);
+  // Control: the flag reaches the advertisement at all.
+  assert.deepEqual(advertisedExt(closedDev, askOpen, v3, true), { 'share.file': 3, 'share.ask': 1, 'share.wait': 30 });
+  assert.equal('share.wait' in advertisedExt(closedDev, askOpen, v3, false), false);
+  // Without share.ask — the synthetic development gate, or nothing open — a longer wait is never offered.
+  assert.equal('share.wait' in advertisedExt(closedDev, askClosed, v3, true), false);
+  const synthetic = { active: true as const, syntheticOnly: true as const, scratchOnly: true as const };
+  assert.equal('share.wait' in advertisedExt(synthetic, askClosed, v3, true), false);
 });

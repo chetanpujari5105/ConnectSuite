@@ -129,3 +129,16 @@ test('shareLiveText: the most recent announced offer still standing, never an un
   assert.equal(shareLiveText(['a', 'b'], [o('a', 'awaiting-decision')], standing), 'says a', 'b is gone from the list');
   assert.equal(shareLiveText([], [], standing), '');
 });
+
+test('a waiting card says until when it waits — a clock time, never a countdown — and a finished one never does', () => {
+  const until = new Date(2026, 8, 29, 12, 32, 10).getTime();
+  const waiting = shareReceiveStatus(facts('awaiting-decision', { waitsUntilMs: until })).detail;
+  assert.ok(waiting.includes('Waits for your answer until 12:32. After that it expires and nothing is saved.'), waiting.join(' | '));
+  assert.equal(waiting.filter((s) => /Waits for your answer/.test(s)).length, 1);
+  // Unknown time: no sentence rather than a guessed one.
+  assert.equal(shareReceiveStatus(facts('awaiting-decision')).detail.some((s) => /Waits for/.test(s)), false);
+  for (const state of ['queued', 'receiving', 'saved', 'declined', 'expired', 'cancelled']) {
+    const d = shareReceiveStatus(facts(state, { waitsUntilMs: until })).detail;
+    assert.equal(d.some((s) => /Waits for your answer/.test(s)), false, state);
+  }
+});

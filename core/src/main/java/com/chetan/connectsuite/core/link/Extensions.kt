@@ -60,6 +60,15 @@ object Extensions {
     const val MULTI_FILE_RELEASE: Boolean = false
 
     /**
+     * `share.wait` — how many **minutes** a waiting offer may live (docs/protocol.md → Extensions →
+     * `share.wait`, PROPOSED). Advertised as [WAIT_MINUTES] by a debuggable build, and by a release
+     * build only once the owner flips [WAIT_RELEASE]. Absent on either side, offers wait 10 minutes.
+     */
+    const val SHARE_WAIT = "share.wait"
+    const val WAIT_MINUTES = 30
+    const val WAIT_RELEASE: Boolean = false
+
+    /**
      * **The one rule for whether this build does several files per share**: a debuggable build always
      * (the builds the owner runs and tests), a release build only once [MULTI_FILE_RELEASE] is flipped.
      * Read by [advertised], by the multi-select screen's bind, and by the single-file sheet's concurrent
@@ -82,13 +91,17 @@ object Extensions {
     fun advertised(
         debuggable: Boolean, devV2Armed: Boolean, productionTransfer: Boolean = PRODUCTION_TRANSFER,
         holdV2: Boolean = false, multiFileRelease: Boolean = MULTI_FILE_RELEASE,
+        waitRelease: Boolean = WAIT_RELEASE,
     ): Map<String, Int> {
         val transfer = productionTransfer || (debuggable && devV2Armed)
-        return when {
+        val base = when {
             transfer && multiFile(debuggable, multiFileRelease) && !(debuggable && holdV2) -> PHONE + (SHARE_FILE to 3)
             transfer -> PHONE + (SHARE_FILE to 2)
             else -> PHONE
         }
+        // Only with a transfer to wait for, and only where the policy allows it (debuggable, or released).
+        // A debug hold reproduces an older phone, and an older phone never advertised share.wait.
+        return if (transfer && ((debuggable && !holdV2) || waitRelease)) base + (SHARE_WAIT to WAIT_MINUTES) else base
     }
 
     /** One handshake's two facts, decided together so `hello.ack` and negotiation cannot disagree. */

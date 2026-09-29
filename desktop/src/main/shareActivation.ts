@@ -1,6 +1,6 @@
 import { promises as fsp } from 'node:fs';
 import { join } from 'node:path';
-import { SHARE_ASK, SHARE_FILE, MAC_EXT } from '../shared/extensions';
+import { SHARE_ASK, SHARE_FILE, SHARE_WAIT, SHARE_WAIT_MINUTES, MAC_EXT } from '../shared/extensions';
 
 /**
  * **Whether this Mac may advertise `share.file: 2`, decided in one place and failing closed.**
@@ -97,6 +97,15 @@ export function shareAskActivation(i: ShareAskInputs): ShareAskActivation {
  */
 export const SHARE_V3_RELEASE = false;
 
+/**
+ * **Whether this Mac may advertise `share.wait` (30-minute waiting offers, PROPOSED).** The owner's
+ * policy decision, 2026-09-29: a development build may, a packaged build only once this is flipped.
+ */
+export const SHARE_WAIT_RELEASE = false;
+export function shareWaitActive(packaged: boolean, release: boolean = SHARE_WAIT_RELEASE): boolean {
+  return !packaged || release;
+}
+
 export interface ShareV3Inputs {
   packaged: boolean;
   /** The `shareV3Off` debug switch: hold this development Mac at `share.file` 2 (a version-2 Mac for skew tests). */
@@ -151,9 +160,14 @@ export function advertisedExt(
   activation: ShareV2Activation,
   ask: ShareAskActivation = { active: false, blockers: ['not evaluated'] },
   v3: ShareV3Activation = { active: false, why: 'not evaluated' },
+  /** `share.wait` may be advertised ([shareWaitActive]). Only ever beside `share.ask`: a longer wait is for a person. */
+  wait = false,
 ): Readonly<Record<string, number>> {
   if (ask.active && !activation.active) {
-    return Object.freeze({ ...MAC_EXT, [SHARE_FILE]: v3.active ? 3 : 2, [SHARE_ASK]: 1 });
+    return Object.freeze({
+      ...MAC_EXT, [SHARE_FILE]: v3.active ? 3 : 2, [SHARE_ASK]: 1,
+      ...(wait ? { [SHARE_WAIT]: SHARE_WAIT_MINUTES } : {}),
+    });
   }
   return activation.active ? Object.freeze({ ...MAC_EXT, [SHARE_FILE]: 2 }) : MAC_EXT;
 }

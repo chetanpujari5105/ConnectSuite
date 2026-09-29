@@ -10,6 +10,20 @@
  */
 
 export const OFFER_TTL_MS = 10 * 60 * 1000;
+
+/** The bounds on a negotiated `share.wait`, in minutes — the phone's `ShareOffer.WAIT_*_MINUTES`. */
+export const OFFER_WAIT_MIN_MINUTES = 10;
+export const OFFER_WAIT_MAX_MINUTES = 30;
+
+/**
+ * How long a waiting offer may live on this session: the negotiated `share.wait` minutes, clamped to
+ * [10, 30]; **absent means [OFFER_TTL_MS]**, so an older phone's offers are judged exactly as before.
+ * The phone's `ShareOffer.ttlFor` is the same rule; both are held to `docs/fixtures/share-wait.json`.
+ */
+export function offerWaitMs(negotiatedWaitMinutes: number | null | undefined): number {
+  const m = negotiatedWaitMinutes ?? OFFER_WAIT_MIN_MINUTES;
+  return Math.min(OFFER_WAIT_MAX_MINUTES, Math.max(OFFER_WAIT_MIN_MINUTES, m)) * 60_000;
+}
 /** Clock skew tolerated between phone and Mac when judging `expiresAtMs`. */
 export const EXPIRY_SKEW_MS = 5 * 60 * 1000;
 
@@ -58,7 +72,7 @@ function utf8Bytes(s: string): number {
 }
 
 /** Field rules from the contract's table. Returns the first broken rule, or null. */
-export function malformation(p: Record<string, unknown>, nowMs: number): string | null {
+export function malformation(p: Record<string, unknown>, nowMs: number, waitMs: number = OFFER_TTL_MS): string | null {
   const offerId = p.offerId as string;
   if (p.rootId !== `share:${offerId}`) return 'rootId is not share:<offerId>';
   if (typeof p.from !== 'string' || p.from.length < 1 || p.from.length > 128) return 'from out of rule';
@@ -73,7 +87,7 @@ export function malformation(p: Record<string, unknown>, nowMs: number): string 
   const e = p.expiresAtMs;
   if (typeof e !== 'number' || !Number.isSafeInteger(e)) return 'expiresAtMs is not an integer';
   if (e <= nowMs) return 'expiresAtMs is already past';
-  if (e > nowMs + OFFER_TTL_MS + EXPIRY_SKEW_MS) return 'expiresAtMs is too far ahead';
+  if (e > nowMs + waitMs + EXPIRY_SKEW_MS) return 'expiresAtMs is too far ahead';
   return null;
 }
 
@@ -99,8 +113,9 @@ export class ShareOfferBook {
    */
   receive(
     payload: unknown,
-    ctx: { negotiated: boolean; sessionKey: string; nowMs: number; maxLiveOffers?: number },
+    ctx: { negotiated: boolean; sessionKey: string; nowMs: number; maxLiveOffers?: number; waitMs?: number },
   ): OfferVerdict {
+    const waitMs = ctx.waitMs ?? OFFER_TTL_MS;
     const limit = ctx.maxLiveOffers ?? 1;
     if (!Number.isSafeInteger(limit) || limit < 1) {
       // A caller bug, not a peer's: refused loudly rather than read as "no limit".
@@ -120,7 +135,7 @@ export class ShareOfferBook {
     if (!ctx.negotiated) {
       return { kind: 'decline', offerId, reason: 'not-negotiated', why: 'share.file was not negotiated on this session' };
     }
-    const bad = malformation(p, ctx.nowMs);
+    const bad = malformation(p, ctx.nowMs, waitMs);
     if (bad) return { kind: 'decline', offerId, reason: 'malformed-offer', why: bad };
     this.expire(ctx.nowMs);
     let live = 0;
@@ -129,7 +144,7 @@ export class ShareOfferBook {
       const why = limit === 1 ? 'another offer from this session is live' : `this session already holds ${live} live offers (the limit is ${limit})`;
       return { kind: 'decline', offerId, reason: 'busy', why };
     }
-    const macExpiresAtMs = Math.min(p.expiresAtMs as number, ctx.nowMs + OFFER_TTL_MS);
+    const macExpiresAtMs = Math.min(p.expiresAtMs as number, ctx.nowMs + waitMs);
     return { kind: 'valid', offer: p as unknown as ShareOfferPayload, macExpiresAtMs };
   }
 

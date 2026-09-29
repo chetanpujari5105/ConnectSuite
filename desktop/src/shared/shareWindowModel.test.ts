@@ -334,3 +334,9 @@ test('the types a phone’s file manager sends read as names, Samsung’s CSV ty
   assert.equal(shareWinTypeLabel('TEXT/CSV'), 'CSV spreadsheet');
   assert.equal(shareWinTypeLabel('text/x-unheard-of'), 'text/x-unheard-of');
 });
+
+test('the receive window passes the Mac’s own expiry to the waiting card (share.wait, 2026-09-29)', () => {
+  const until = new Date(2026, 8, 29, 12, 32, 0).getTime();
+  const m = shareWindowModel(offer({ expiresAtMs: until }), 'Galaxy S25 Ultra');
+  assert.ok(m.detail.some((s) => s.startsWith('Waits for your answer until 12:32.')), m.detail.join(' | '));
+});

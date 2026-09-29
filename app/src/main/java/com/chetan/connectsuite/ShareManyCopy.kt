@@ -69,7 +69,7 @@ object ShareManyCopy {
             is Prep.Preparing -> "Preparing…"
             is Prep.Waiting -> "Waiting for room"
             // Offered with no offer state seen yet: exactly what the offer's first state says.
-            is Prep.Offered -> ShareToMacCopy.headline(ShareSheetState.WaitingForMac(row.name, p.bytes, mac))
+            is Prep.Offered -> ShareToMacCopy.headline(ShareSheetState.WaitingForMac(row.name, p.bytes, mac, p.untilMs))
             is Prep.NotSent -> NOT_SENT
         }
         is ShareManyRow.After -> when {
@@ -84,7 +84,7 @@ object ShareManyCopy {
             Prep.NotStarted -> ""
             is Prep.Preparing -> ShareToMacCopy.detail(ShareSheetState.Preparing(row.name, p.copied, row.expected))
             is Prep.Waiting -> waiting(p.reason, mac, p.paused)
-            is Prep.Offered -> ShareToMacCopy.detail(ShareSheetState.WaitingForMac(row.name, p.bytes, mac))
+            is Prep.Offered -> ShareToMacCopy.detail(ShareSheetState.WaitingForMac(row.name, p.bytes, mac, p.untilMs))
             is Prep.NotSent -> notSent(p.why, mac)
         }
         is ShareManyRow.After ->

@@ -47,6 +47,24 @@ interface ShareRecvFacts {
   queueMode?: boolean;
   /** In `queued`: how many transfers are ahead of it. */
   filesAhead?: number | null;
+  /**
+   * While waiting: the moment **this Mac** stops holding the offer (its own expiry, never later than the
+   * phone's). Shown as a clock time rather than a countdown, because a card is redrawn only when its
+   * offer changes — a countdown would go stale and lie; a time of day cannot.
+   */
+  waitsUntilMs?: number | null;
+}
+
+/** `12:32` — hours and minutes, local time. */
+function shareRecvClock(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** The waiting card's expiry sentence, or nothing when the time is not known. */
+function shareRecvWaitsUntil(ms: number | null | undefined): string[] {
+  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) return [];
+  return [`Waits for your answer until ${shareRecvClock(ms)}. After that it expires and nothing is saved.`];
 }
 
 /** The sentence a waiting offer shows **before** Accept at version 3 — the owner's wording, exactly. */
@@ -104,7 +122,11 @@ function shareReceiveStatus(f: ShareRecvFacts): ShareRecvStatus {
     case 'awaiting-decision':
       return {
         headline: 'Wants to send you a file',
-        detail: f.queueMode === true ? [SHARE_RECV_QUEUE_CONSENT, ...prior()] : prior(),
+        detail: [
+          ...(f.queueMode === true ? [SHARE_RECV_QUEUE_CONSENT] : []),
+          ...shareRecvWaitsUntil(f.waitsUntilMs),
+          ...prior(),
+        ],
         tone: 'neutral',
         ...none,
       };

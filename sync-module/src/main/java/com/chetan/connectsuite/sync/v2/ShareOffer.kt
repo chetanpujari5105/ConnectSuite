@@ -26,6 +26,19 @@ package com.chetan.connectsuite.sync.v2
 object ShareOffer {
 
     const val TTL_MS = 10L * 60 * 1000
+
+    /**
+     * How long a waiting offer lives, from the session's negotiated `share.wait` (docs/protocol.md →
+     * Extensions → `share.wait`, **PROPOSED**): the value is minutes, both sides advertise their limit,
+     * and the agreed wait is the lower. **Absent — either side older — is exactly [TTL_MS]**, so no peer
+     * is ever sent an offer it would refuse as too far ahead. Clamped to [WAIT_MIN_MINUTES],
+     * [WAIT_MAX_MINUTES]: an offer never waits indefinitely, and a peer advertising 1 cannot shorten it
+     * below today's. The accepted-queue lifetime is separate and unchanged ([QUEUE_LIFETIME_CANDIDATE_MS]).
+     */
+    const val WAIT_MIN_MINUTES = 10
+    const val WAIT_MAX_MINUTES = 30
+    fun ttlFor(negotiatedWaitMinutes: Int?): Long =
+        (negotiatedWaitMinutes ?: WAIT_MIN_MINUTES).coerceIn(WAIT_MIN_MINUTES, WAIT_MAX_MINUTES) * 60_000L
     const val VERDICT_DEADLINE_MS = 60_000L
     const val RETRY_WINDOW_MS = 5L * 60 * 1000
     /** The negotiated `share.file` version at which a transfer exists. */

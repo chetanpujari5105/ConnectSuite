@@ -80,6 +80,7 @@ function shareCardModel(d: ShareCardData): ShareCardModel {
     folder: d.folder,
     queueMode: d.queueMode === true,
     filesAhead: d.filesAhead ?? null,
+    waitsUntilMs: d.expiresAtMs,
   });
   const published = d.state === 'saved' || d.state === 'saved-unacknowledged';
   // A card still in play shows everything the decision needs (the contract's list: who, type, exact

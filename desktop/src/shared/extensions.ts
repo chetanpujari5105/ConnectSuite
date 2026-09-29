@@ -15,6 +15,14 @@ export const SHARE_FILE = 'share.file';
 export const SHARE_ASK = 'share.ask';
 
 /**
+ * `share.wait` — how many **minutes** a waiting offer may live (docs/protocol.md → Extensions →
+ * `share.wait`, PROPOSED). Both sides advertise their limit; the agreed wait is the lower. Absent on
+ * either side, an offer waits 10 minutes — exactly as before the key existed.
+ */
+export const SHARE_WAIT = 'share.wait';
+export const SHARE_WAIT_MINUTES = 30;
+
+/**
  * Whether the phone may make an **ordinary** share offer on a session with these negotiated
  * extensions: `share.file` ≥ 2 **and** `share.ask` ≥ 1. The phone's `ShareIntake.ordinarySend` is the
  * rule that acts; this is the Mac's statement of it, and both are held to

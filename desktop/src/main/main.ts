@@ -63,6 +63,7 @@ const sharedSendBatch = require('../shared/sendBatch') as {
 const sharedVitals = require('../shared/deviceVitals') as {
   humanBytes: (bytes: number) => string;
 };
+import { SHARE_WAIT_MINUTES } from '../shared/extensions';
 import { FilesClient, digestOf } from './files';
 import {
   cachedPreview,
@@ -103,6 +104,8 @@ import {
   shareAskActivation,
   shareV2Activation,
   shareV3Activation,
+  shareWaitActive,
+  SHARE_WAIT_RELEASE,
   SHARE_V3_RELEASE,
 } from './shareActivation';
 import { acceptAllowed, forRenderer, handleShareDecision } from './shareDecision';
@@ -1008,7 +1011,11 @@ app.whenReady().then(() => {
   }
   const userData = app.getPath('userData');
 
-  link = new LinkClient(identity, () => rePairPending, () => advertisedExt(shareV2, shareAsk, shareV3));
+  const shareWait = shareWaitActive(app.isPackaged);
+  log.info('share', shareWait
+    ? `share.wait ${SHARE_WAIT_MINUTES} ADVERTISED beside share.ask (offers may wait up to ${SHARE_WAIT_MINUTES} minutes when the phone agrees; packaged: ${app.isPackaged}; release policy SHARE_WAIT_RELEASE: ${SHARE_WAIT_RELEASE})`
+    : `share.wait not advertised: a packaged build waits for SHARE_WAIT_RELEASE — offers wait 10 minutes`);
+  link = new LinkClient(identity, () => rePairPending, () => advertisedExt(shareV2, shareAsk, shareV3, shareWait));
   video = new VideoClient(identity);
   bulk = new BulkClient(identity);
 

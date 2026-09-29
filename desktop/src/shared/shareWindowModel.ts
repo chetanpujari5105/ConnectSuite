@@ -223,6 +223,7 @@ function shareWindowModel(o: ShareWinOffer, phone: string | null): ShareWinModel
     folder: o.folder,
     queueMode: o.queueMode === true,
     filesAhead: o.filesAhead ?? null,
+    waitsUntilMs: o.expiresAtMs,
   });
   const waiting = o.state === 'awaiting-decision';
   // At version 3 several offers can share a name; every label then says which one, by its place in

@@ -113,7 +113,8 @@ class ShareManyQueue(
          */
         data class Waiting(val reason: WaitReason, val paused: Boolean = false) : Prep
         /** Handed to `ShareFeature`: its row follows the offer from here. */
-        data class Offered(val offerId: String, val bytes: Long) : Prep
+        /** [untilMs]: when the offer stops waiting (its `expiresAtMs`, from the negotiated `share.wait`). */
+        data class Offered(val offerId: String, val bytes: Long, val untilMs: Long? = null) : Prep
         data class NotSent(val why: NotSentWhy) : Prep
     }
 
@@ -517,7 +518,7 @@ class ShareManyQueue(
         val o = runCatching { env.offer(i, id, staged.bytes, staged.sha256) }.getOrElse { ShareFeature.OfferOutcome.Invalid(it.javaClass.name) }
         if (o is ShareFeature.OfferOutcome.Offered) {
             owned -= id
-            return Prep.Offered(o.offerId, staged.bytes)
+            return Prep.Offered(o.offerId, staged.bytes, o.expiresAtMs)
         }
         ShareStaging.discard(dir, id)
         owned -= id
