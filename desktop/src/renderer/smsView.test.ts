@@ -44,8 +44,12 @@ class FakeBridge {
   holdMessages: (() => void) | null = null;
   private received: ((e: { threadId: string; message: Message }) => void) | null = null;
 
+  /** Set to hold every `smsThreads` until it resolves, so an event can land mid-load. */
+  threadsGate: Promise<void> | null = null;
+
   async smsThreads(options: { before?: number }) {
     this.calls.push(`smsThreads:${options.before ?? 'first'}`);
+    if (this.threadsGate) await this.threadsGate;
     return { ok: true as const, data: { threads: this.threads, hasMore: this.threadsHasMore } };
   }
   async smsMessages(threadId: string, options: { before?: number }) {
@@ -427,6 +431,112 @@ test('a new conversation opens the thread the PHONE names, not one the pane assu
     pane.bridge.calls.some((c) => c.startsWith('smsMessages:t-real')),
     'the pane opened a thread other than the one the phone named',
   );
+});
+
+/**
+ * Defect 30's **no-thread** half, with fakes — no real message is sent (2026-09-29).
+ *
+ * On a number with no thread the provider creates one *after* the send, asynchronously (699 ms and
+ * 1,140 ms measured in step 71), so the phone's ack usually carries no `threadId`, and the message
+ * then arrives as `sms.sent`. Before this fix the pane said *Sent.*, refreshed the list and opened
+ * nothing — the person's new conversation was a row somewhere in the list rather than the screen
+ * they were on, unlike every other path.
+ */
+async function sendNewWithoutThread(pane: Pane, to: string, text = 'first message'): Promise<void> {
+  pane.bridge.sendNewResult = { ok: true };
+  pane.newButton.click();
+  pane.newTo.value = to;
+  pane.newTo.dispatch('input');
+  pane.newBody.value = text;
+  pane.newBody.dispatch('input');
+  pane.newSend.click();
+  await settle();
+  await settle();
+}
+
+function sentRow(id: string, threadId: string, address: string, inbound = false) {
+  return { id, threadId, address, body: `body ${id}`, dateMs: 900, inbound, read: true, kind: 'sms', hasAttachments: false } as unknown as Message;
+}
+
+test('no-thread: the first sms.sent to the number just addressed opens its new thread', async () => {
+  const pane = mount([thread('1')]);
+  pane.bridge.messages.set('t-new', [sentRow('n1', 't-new', '+919800000009')]);
+  pane.view.setAdvertised(true);
+  await settle();
+  await sendNewWithoutThread(pane, '9800000009');
+  assert.ok(pane.bridge.calls.includes('smsSendNew:9800000009:first message'), 'control: the send was made');
+  assert.ok(!pane.bridge.calls.some((c) => c.startsWith('smsMessages:')), 'control: nothing opened before the event');
+
+  // The provider stores the number in international form; the person typed it bare.
+  pane.bridge.fireReceived('t-new', sentRow('n1', 't-new', '+919800000009'));
+  await settle();
+  await settle();
+  assert.ok(
+    pane.bridge.calls.some((c) => c.startsWith('smsMessages:t-new')),
+    'the new conversation the phone created was not opened',
+  );
+});
+
+test('no-thread: a different number, an inbound message, or a second message does not steer the pane', async () => {
+  const pane = mount([thread('1')]);
+  pane.view.setAdvertised(true);
+  await settle();
+  await sendNewWithoutThread(pane, '+919800000009');
+
+  // Someone else texting in, and the handset sending to someone else, both in the same seconds.
+  pane.bridge.fireReceived('t-other', sentRow('o1', 't-other', '+919811111111'));
+  pane.bridge.fireReceived('t-in', sentRow('i1', 't-in', '+919800000009', true));
+  await settle();
+  await settle();
+  assert.ok(!pane.bridge.calls.some((c) => c.startsWith('smsMessages:')), 'a message that is not ours opened a thread');
+
+  // Ours arrives, is adopted once; a later outbound message to the same number opens nothing more.
+  pane.bridge.fireReceived('t-new', sentRow('n1', 't-new', '+919800000009'));
+  await settle();
+  await settle();
+  const opened = pane.bridge.calls.filter((c) => c.startsWith('smsMessages:')).length;
+  assert.equal(opened, 1, 'control: our own message opened exactly one thread');
+  pane.bridge.fireReceived('t-again', sentRow('n2', 't-again', '+919800000009'));
+  await settle();
+  await settle();
+  assert.equal(pane.bridge.calls.filter((c) => c.startsWith('smsMessages:')).length, opened, 'adopted twice');
+});
+
+test('no-thread: an sms.sent that lands while the list is still loading is adopted too', async () => {
+  // The provider's write and the list reload race; the marker must exist before the first await.
+  const pane = mount([thread('1')]);
+  pane.view.setAdvertised(true);
+  await settle();
+  let release: () => void = () => undefined;
+  pane.bridge.threadsGate = new Promise<void>((resolve) => (release = resolve));
+  await sendNewWithoutThread(pane, '+919800000009');
+  assert.ok(pane.bridge.calls.includes('smsSendNew:+919800000009:first message'), 'control: sent');
+  pane.bridge.fireReceived('t-new', sentRow('n1', 't-new', '+919800000009'));
+  pane.bridge.threadsGate = null;
+  release();
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.ok(
+    pane.bridge.calls.some((c) => c.startsWith('smsMessages:t-new')),
+    'the thread was missed because its message arrived during the list load',
+  );
+});
+
+test('no-thread: the matching rule, including its window and the too-short numbers it refuses', () => {
+  const rule = (globalThis as Record<string, unknown>).smsNewThreadMatches as (
+    pending: { digits: string; atMs: number } | null,
+    message: { address: string; inbound: boolean },
+    nowMs: number,
+  ) => boolean;
+  const p = { digits: '9800000009', atMs: 1_000 };
+  assert.equal(rule(p, { address: '+91 98000-00009', inbound: false }, 2_000), true, 'formatted international form');
+  assert.equal(rule(p, { address: '9800000009', inbound: false }, 31_000), true, 'at the 30 s edge');
+  assert.equal(rule(p, { address: '9800000009', inbound: false }, 31_001), false, 'past the window');
+  assert.equal(rule(p, { address: '9800000009', inbound: true }, 2_000), false, 'inbound');
+  assert.equal(rule(p, { address: '+919800000008', inbound: false }, 2_000), false, 'one digit different');
+  assert.equal(rule(null, { address: '9800000009', inbound: false }, 2_000), false, 'nothing pending');
+  // A short code is a suffix of many numbers; suffix matching needs at least 8 digits on both sides.
+  assert.equal(rule({ digits: '12345', atMs: 1_000 }, { address: '+9112345', inbound: false }, 2_000), false, 'short code by suffix');
+  assert.equal(rule({ digits: '12345', atMs: 1_000 }, { address: '12345', inbound: false }, 2_000), true, 'short code exactly');
 });
 
 test('un-advertised forgets the open thread as well as the list', () => {

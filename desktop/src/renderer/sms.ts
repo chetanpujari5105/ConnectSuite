@@ -302,6 +302,12 @@ class SmsView {
   private composingNew = false;
   private newRecipient = '';
   private newBody = '';
+  /**
+   * Defect 30's no-thread half: a new-conversation send the phone acknowledged **without** naming a
+   * thread — the provider creates one asynchronously, after the ack — waiting for the `sms.sent`
+   * that does name it. Adopted once, by [smsNewThreadMatches], and never after its window.
+   */
+  private pendingNew: SmsPendingNew | null = null;
   private loaded = false;
 
   private openThreadId: string | null = null;
@@ -337,6 +343,13 @@ class SmsView {
   ) {
     this.bindNewConversation();
     bridge.onSmsReceived((event) => {
+      // The message the person just sent to a number with no thread: open the thread the phone
+      // created for it, exactly as the explicit-address path opens the thread the ack names.
+      if (smsNewThreadMatches(this.pendingNew, event.message, Date.now())) {
+        this.pendingNew = null;
+        void this.loadThreads().then(() => this.openThread(event.threadId));
+        return;
+      }
       // A message arriving in the conversation on screen is appended; one arriving elsewhere
       // refreshes the list so its snippet and unread count move. Both, because a pane that only
       // updated the open thread would leave the list quietly wrong.
@@ -1061,8 +1074,9 @@ class SmsView {
       send.disabled = true;
       to.disabled = true;
       body.disabled = true;
+      const sentTo = to.value.trim();
       const result = await this.bridge
-        .smsSendNew([to.value.trim()], body.value)
+        .smsSendNew([sentTo], body.value)
         .catch((error): { ok: boolean; reason?: string; fixHint?: string; threadId?: string } => ({
           ok: false,
           reason: `The Mac could not reach its own SMS channel (${String(error)}).`,
@@ -1074,6 +1088,9 @@ class SmsView {
         this.showNotice(result.reason ?? 'The message was not sent.', result.fixHint);
         return;
       }
+      // Set before the first await below: the `sms.sent` naming the new thread can arrive while the
+      // list is still loading, and a marker set after that await would miss it.
+      this.pendingNew = result.threadId ? null : { digits: smsDigits(sentTo), atMs: Date.now() };
       to.value = '';
       body.value = '';
       this.composingNew = false;
@@ -1109,6 +1126,44 @@ class SmsView {
   }
 }
 
+interface SmsPendingNew {
+  /** The number as the person typed it, digits only. */
+  digits: string;
+  atMs: number;
+}
+
+/**
+ * How long after a thread-less ack the pane will adopt the thread an `sms.sent` names. Step 71
+ * measured the provider's write at 699 ms and 1,140 ms; 30 s is generous for a slow phone and short
+ * enough that a message the handset sends later to the same person cannot steer the pane.
+ */
+const SMS_NEW_THREAD_WINDOW_MS = 30_000;
+
+function smsDigits(address: string): string {
+  return address.replace(/\D/g, '');
+}
+
+/**
+ * Is [message] the one the person just sent to a number with no thread? Outbound only, within the
+ * window, and to the **same number**: equal digits, or — because the provider stores `+91…` where the
+ * person typed ten digits — one a suffix of the other when both have at least 8 digits. A short code
+ * matches only exactly, since `12345` is a suffix of a great many numbers.
+ */
+function smsNewThreadMatches(
+  pending: SmsPendingNew | null,
+  message: { address: string; inbound: boolean },
+  nowMs: number,
+): boolean {
+  if (!pending || message.inbound) return false;
+  if (nowMs < pending.atMs || nowMs - pending.atMs > SMS_NEW_THREAD_WINDOW_MS) return false;
+  const got = smsDigits(message.address ?? '');
+  const want = pending.digits;
+  if (!got || !want) return false;
+  if (got === want) return true;
+  const [short, long] = got.length < want.length ? [got, want] : [want, got];
+  return short.length >= 8 && long.endsWith(short);
+}
+
 /** Clock time for today, date for anything older. Same rule as the notification pane's. */
 function timeOfSms(whenMs: number): string {
   if (!whenMs) return '';
@@ -1127,6 +1182,8 @@ function timeOfSms(whenMs: number): string {
 // The testable seam: the pane is a plain script, so the pure rule is hung on globalThis and the
 // test runs *this* function rather than a second copy that can drift. See CLAUDE.md.
 (globalThis as unknown as { dedupeByThread: typeof dedupeByThread }).dedupeByThread = dedupeByThread;
+(globalThis as unknown as { smsNewThreadMatches: typeof smsNewThreadMatches }).smsNewThreadMatches =
+  smsNewThreadMatches;
 
 // The pane's pure rules, for `sms.test.ts`. The test runs *these* functions rather than a second
 // copy of the same idea — the rule this repo keeps paying for when it is skipped.
