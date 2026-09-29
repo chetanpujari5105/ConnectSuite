@@ -37,6 +37,45 @@ object FsBlocks {
 
     fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
 
+    /** An accepted resume: the first [verifiedBlocks] blocks are the Mac's, and must hash to [prefixRoot]. */
+    data class Resume(val verifiedBlocks: Long, val prefixRoot: String) {
+        fun from(blockSize: Int): Long = verifiedBlocks * blockSize
+    }
+
+    /** The phone's answer to a `resume` object in `fs.transfer.begin`. */
+    sealed interface ResumeAnswer {
+        data class Accepted(val resume: Resume) : ResumeAnswer
+        /** `why` is the contract's: `source-changed` or `bad-request`. */
+        data class Refused(val why: String, val detail: String) : ResumeAnswer
+    }
+
+    private val HEX64 = Regex("^[0-9a-f]{64}$")
+
+    /**
+     * Decides a resume request against the source as it is **now**. Provisional: the prefix itself is
+     * re-hashed by [BlockPullSender] before the first new byte (owner decision D1). Any field missing or
+     * of the wrong type is `bad-request`, never a guess.
+     */
+    fun decideResume(
+        reqSize: Long?, reqMtimeMs: Long?, reqBlockSize: Long?, reqVerifiedBlocks: Long?, reqPrefixRoot: String?,
+        size: Long, mtimeMs: Long,
+    ): ResumeAnswer {
+        if (reqSize == null || reqMtimeMs == null || reqBlockSize == null || reqVerifiedBlocks == null || reqPrefixRoot == null) {
+            return ResumeAnswer.Refused("bad-request", "a resume needs size, mtimeMs, blockSize, verifiedBlocks and prefixRoot")
+        }
+        if (reqSize != size || reqMtimeMs != mtimeMs) {
+            return ResumeAnswer.Refused("source-changed", "the Mac holds $reqSize bytes @ $reqMtimeMs; the file is now $size @ $mtimeMs")
+        }
+        val bs = blockSizeFor(size)
+        if (reqBlockSize != bs.toLong()) return ResumeAnswer.Refused("bad-request", "blockSize $reqBlockSize where the rule gives $bs")
+        val count = blockCountFor(size, bs)
+        if (reqVerifiedBlocks < 1 || reqVerifiedBlocks >= count) {
+            return ResumeAnswer.Refused("bad-request", "verifiedBlocks $reqVerifiedBlocks outside 1..${count - 1}")
+        }
+        if (!HEX64.matches(reqPrefixRoot)) return ResumeAnswer.Refused("bad-request", "prefixRoot is not 64 lowercase hex characters")
+        return ResumeAnswer.Accepted(Resume(reqVerifiedBlocks, reqPrefixRoot))
+    }
+
     /**
      * Hashes a stream into fixed-size blocks whatever the read boundaries, and hands each closed block's
      * digest to [onBlock] in order. [finish] closes the short last block.
