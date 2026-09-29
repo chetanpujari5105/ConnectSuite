@@ -48,6 +48,51 @@ class ShareManyCopyTest {
         ShareManyCopy.after("a.jpg", 100_000, mac, prev?.let { ShareManyRow.After("a.jpg", it, queued = false) }, s)!!
     private fun everyRow(): List<ShareManyRow> = everyPrep.map { ShareManyRow.Before("a.jpg", it, 100_000) } + everyOfferState.map { after(it) }
 
+    // ---- progress and the leaving line (2026-09-29) --------------------------------------------------
+
+    @Test fun `a row shows a known fraction only while preparing a copy of reported size`() {
+        assertEquals(ShareManyCopy.RowProgress.Known(4096f / 100_000), ShareManyCopy.progress(ShareManyRow.Before("a.jpg", Prep.Preparing(4096), 100_000)))
+        assertEquals("unknown size: movement, no invented fraction", ShareManyCopy.RowProgress.Moving,
+            ShareManyCopy.progress(ShareManyRow.Before("a.jpg", Prep.Preparing(4096), null)))
+        assertEquals("a size of 0 is not divided by", ShareManyCopy.RowProgress.Moving,
+            ShareManyCopy.progress(ShareManyRow.Before("a.jpg", Prep.Preparing(0), 0)))
+        assertEquals("never past the end", ShareManyCopy.RowProgress.Known(1f),
+            ShareManyCopy.progress(ShareManyRow.Before("a.jpg", Prep.Preparing(200_000), 100_000)))
+    }
+
+    @Test fun `a sending offer shows movement, a queued one shows nothing, and every other row shows no bar`() {
+        for (row in everyRow()) {
+            val got = ShareManyCopy.progress(row)
+            val preparing = row is ShareManyRow.Before && row.prep is Prep.Preparing
+            val sending = row is ShareManyRow.After && row.state is ShareSheetState.Sending && !row.queued
+            when {
+                preparing -> assertTrue("$row: $got", got is ShareManyCopy.RowProgress.Known)
+                sending -> assertEquals("$row", ShareManyCopy.RowProgress.Moving, got)
+                else -> assertEquals("$row", ShareManyCopy.RowProgress.None, got)
+            }
+        }
+        val queued = ShareManyRow.After("a.jpg", ShareSheetState.Sending("a.jpg", 1, mac, allSent = false, queued = true), queued = true)
+        assertEquals("queued: nothing of it moves until its turn", ShareManyCopy.RowProgress.None, ShareManyCopy.progress(queued))
+        assertTrue("control: the sweep contains a sending row", everyRow().any { it is ShareManyRow.After && it.state is ShareSheetState.Sending })
+    }
+
+    @Test fun `the review says each file is its own decision on the Mac - never that anything was sent`() {
+        val line = ShareManyCopy.sendsTo(mac)
+        assertEquals("Sends to Mac, which will ask you to accept each file before anything of it moves.", line)
+        assertFalse(line, Regex("\\b(sent|saved)\\b", RegexOption.IGNORE_CASE).containsMatchIn(line))
+    }
+
+    @Test fun `the leaving line counts only files not yet offered, and is absent when there are none`() {
+        fun b(p: Prep) = ShareManyRow.Before("a.jpg", p, 100_000)
+        assertEquals(null, ShareManyCopy.leaving(listOf(b(Prep.Offered("s-1", 1)), b(Prep.NotSent(NotSentWhy.OpenFailed)), after(ShareOffer.State.Sending)), mac))
+        assertEquals(
+            "Keep this screen open until every file is offered. Leaving it stops the file not yet offered to Mac; files already offered carry on.",
+            ShareManyCopy.leaving(listOf(b(Prep.Offered("s-1", 1)), b(Prep.NotStarted)), mac),
+        )
+        val three = ShareManyCopy.leaving(listOf(b(Prep.NotStarted), b(Prep.Preparing(1)), b(Prep.Waiting(WaitReason.LiveLimit)), b(Prep.Offered("s-2", 1))), mac)
+        assertTrue(three!!, three.contains("stops the 3 files not yet offered to Mac"))
+    }
+
     @Test fun `a row says Saved only when its offer is Saved`() {
         for (row in everyRow()) {
             val saved = row is ShareManyRow.After && row.state is ShareSheetState.Saved

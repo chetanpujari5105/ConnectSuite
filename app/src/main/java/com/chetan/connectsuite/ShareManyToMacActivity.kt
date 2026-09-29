@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -123,10 +124,16 @@ private fun Many(screen: ShareManyToMacModel.Screen, onSend: () -> Unit, onCance
                     Text(ShareManyCopy.reviewTotal(screen.sizes), style = MaterialTheme.typography.titleMedium)
                     LazyColumn(Modifier.weight(1f, fill = false).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         itemsIndexed(screen.names) { i, name ->
-                            Text("$name · ${screen.sizes[i]?.let(ShareToMacCopy::bytes) ?: ShareManyCopy.SIZE_NOT_REPORTED}", style = MaterialTheme.typography.bodyMedium)
+                            Column {
+                                Text(name, style = MaterialTheme.typography.bodyLarge)
+                                Text(screen.sizes[i]?.let(ShareToMacCopy::bytes) ?: ShareManyCopy.SIZE_NOT_REPORTED, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
                     Text(ShareToMacCopy.availability(screen.availability), style = MaterialTheme.typography.bodyMedium)
+                    (screen.availability as? ShareIntake.Availability.Available)?.let {
+                        Text(ShareManyCopy.sendsTo(it.macName), style = MaterialTheme.typography.bodySmall)
+                    }
                     screen.notSent?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
                 }
                 is ShareManyToMacModel.Screen.Running -> {
@@ -134,12 +141,19 @@ private fun Many(screen: ShareManyToMacModel.Screen, onSend: () -> Unit, onCance
                         ShareManyCopy.summary(screen.rows, screen.mac), style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     )
-                    LazyColumn(Modifier.weight(1f, fill = false).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ShareManyCopy.leaving(screen.rows, screen.mac)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    LazyColumn(Modifier.weight(1f, fill = false).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         itemsIndexed(screen.rows) { i, row ->
-                            Column {
-                                Text(row.name, style = MaterialTheme.typography.bodySmall)
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(row.name, style = MaterialTheme.typography.bodyLarge)
                                 Text(ShareManyCopy.label(row, screen.mac), style = MaterialTheme.typography.titleSmall)
                                 ShareManyCopy.detail(row, screen.mac).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                                // The single-file sheet's two progress rules, per file (ShareManyCopy.progress).
+                                when (val p = ShareManyCopy.progress(row)) {
+                                    is ShareManyCopy.RowProgress.Known -> LinearProgressIndicator(progress = { p.fraction }, modifier = Modifier.fillMaxWidth())
+                                    ShareManyCopy.RowProgress.Moving -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                    ShareManyCopy.RowProgress.None -> Unit
+                                }
                                 // §7: this file's own Cancel, for its offer only; the single-file sheet's label.
                                 if (ShareManyCopy.canCancel(row)) {
                                     val name = ShareManyCopy.cancelRowName(row.name)

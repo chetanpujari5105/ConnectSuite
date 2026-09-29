@@ -122,6 +122,48 @@ object ShareManyCopy {
         is NotSentWhy.WaitedTooLong -> "It waited too long for room on this phone and was never offered to $mac."
     }
 
+    /** What a row's progress bar shows: nothing, a known fraction, or movement with no byte count. */
+    sealed interface RowProgress {
+        data object None : RowProgress
+        data class Known(val fraction: Float) : RowProgress
+        data object Moving : RowProgress
+    }
+
+    /**
+     * **A row's progress bar — the single-file sheet's two rules, per file, and nothing more.** Preparing a
+     * copy with a reported size is a known fraction of it (unknown size: movement only); an offer that is
+     * sending is movement only, because the phone cannot read what the Mac received
+     * ([showsTransferProgress]); a queued file shows **no** bar, since nothing of it moves until its turn.
+     * Every other row — not started, waiting for room, offered, saved, ended — shows none.
+     */
+    fun progress(row: ShareManyRow): RowProgress = when (row) {
+        is ShareManyRow.Before -> when (val p = row.prep) {
+            is Prep.Preparing -> row.expected?.takeIf { it > 0 }
+                ?.let { RowProgress.Known((p.copied.toFloat() / it).coerceIn(0f, 1f)) } ?: RowProgress.Moving
+            else -> RowProgress.None
+        }
+        is ShareManyRow.After -> if (!row.queued && showsTransferProgress(row.state)) RowProgress.Moving else RowProgress.None
+    }
+
+    /**
+     * **The standing line about leaving the screen** — shown before it matters, because the rule is enforced
+     * the moment the screen stops (`ShareManyLeave`): every file not yet offered is not sent, and an offered
+     * file continues on the Mac. Null when no file is still to be offered, so it never warns about nothing.
+     */
+    fun leaving(rows: List<ShareManyRow>, mac: String): String? {
+        val pending = rows.count { it is ShareManyRow.Before && it.prep.let { p -> p is Prep.NotStarted || p is Prep.Preparing || p is Prep.Waiting } }
+        if (pending == 0) return null
+        val these = if (pending == 1) "the file" else "the $pending files"
+        return "Keep this screen open until every file is offered. Leaving it stops $these not yet offered to $mac; " +
+            "files already offered carry on."
+    }
+
+    /**
+     * Under the review list: where the files go and that each is its own decision — the single-file sheet's
+     * sentence ("Sends to {Mac}, which will ask you to accept it before anything moves."), for several.
+     */
+    fun sendsTo(mac: String) = "Sends to $mac, which will ask you to accept each file before anything of it moves."
+
     fun needsVersion3(mac: String) = "$mac can receive one file at a time from this phone. Update Sidekick on your Mac to send several at once."
 
     /**
