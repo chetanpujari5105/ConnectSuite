@@ -42,6 +42,7 @@ interface MediaBucketRow {
   coverId: string;
   packageName?: string;
   appName?: string;
+  relativePath?: string;
 }
 
 interface MediaItemRow {
@@ -500,6 +501,39 @@ function albumSource(bucket: MediaBucketRow): string {
 }
 
 /**
+ * **Defect 89's second half: albums that share a name, told apart by where they are.** For every name
+ * that appears on more than one album, each such album gets the **shortest tail of its parent folder
+ * path that no other album with that name shares** — `WhatsApp/Media` against `com.whatsapp/WhatsApp/Media`,
+ * never the whole path when a segment will do. A unique name gets nothing (the row is already clear),
+ * and an album with no path (an older phone) gets nothing rather than a guess. The two earlier attempts
+ * (the count, the latest date) are recorded above; this is the one the path makes possible.
+ */
+function albumPlaces(albums: MediaBucketRow[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const byName = new Map<string, MediaBucketRow[]>();
+  for (const a of albums) byName.set(a.bucketName, [...(byName.get(a.bucketName) ?? []), a]);
+  for (const group of byName.values()) {
+    const withPath = group.filter((a) => a.relativePath);
+    if (group.length < 2 || withPath.length < 2) continue;
+    const parents = new Map(withPath.map((a) => {
+      const segs = a.relativePath!.replace(/\/+$/, '').split('/').filter(Boolean);
+      return [a.bucketId, segs.slice(0, -1)] as const;
+    }));
+    for (const a of withPath) {
+      const mine = parents.get(a.bucketId)!;
+      let label = mine.join('/');
+      for (let k = 1; k <= mine.length; k += 1) {
+        const tail = mine.slice(-k).join('/');
+        const clash = withPath.some((o) => o !== a && parents.get(o.bucketId)!.slice(-k).join('/') === tail);
+        if (!clash) { label = tail; break; }
+      }
+      if (label) out.set(a.bucketId, label);
+    }
+  }
+  return out;
+}
+
+/**
  * The id of the synthetic first album.
  *
  * `media.list` with no `bucketId` already returns every bucket merged under one ordering, so "All
@@ -749,6 +783,7 @@ class PhotosView {
 
   private renderRail(): void {
     this.rail.textContent = '';
+    const places = albumPlaces(this.albums);
     for (const album of this.albums) {
       const row = document.createElement('button');
       row.type = 'button';
@@ -763,6 +798,12 @@ class PhotosView {
 
       const source = albumSource(album);
       if (source) row.appendChild(photoLine('photos-album-source', source));
+      const place = places.get(album.bucketId);
+      if (place) {
+        const line = photoLine('photos-album-source', place);
+        line.title = album.relativePath ?? place;
+        row.appendChild(line);
+      }
 
       row.addEventListener('click', () => {
         if (this.selectedAlbum === album.bucketId) return;
@@ -1324,6 +1365,7 @@ function photoLine(className: string, text: string): HTMLElement {
   fileSize,
   clockOf,
   albumSource,
+  albumPlaces,
   dayHeading,
   groupByDay,
   detailFacts,

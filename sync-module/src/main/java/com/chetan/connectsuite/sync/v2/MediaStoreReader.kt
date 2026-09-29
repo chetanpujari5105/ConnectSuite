@@ -62,6 +62,7 @@ object MediaStoreReader {
 
         val byBucket = LinkedHashMap<String, Aggregate>()
         var scanned = 0
+        var trashSeen = 0
 
         query(
             context,
@@ -78,6 +79,8 @@ object MediaStoreReader {
             while (cursor.moveToNext()) {
                 scanned++
                 val bucketId = cursor.stringOf(MediaPayloads.COL_BUCKET_ID) ?: continue
+                // The selection already excludes it; this is the second line, counted, not assumed.
+                if (MediaPayloads.isTrashPath(cursor.stringOf(MediaPayloads.COL_RELATIVE_PATH))) { trashSeen++; continue }
                 val existing = byBucket[bucketId]
                 if (existing == null) {
                     byBucket[bucketId] = Aggregate(
@@ -103,13 +106,14 @@ object MediaStoreReader {
                 coverId = aggregate.coverId,
                 packageName = packageName,
                 appName = packageName?.let { AppLabels.of(context, it) },
+                relativePath = aggregate.relativePath,
             )
         }
 
         LinkLog.i(
             "media",
             "media.buckets → ${buckets.size} buckets over $scanned items " +
-                "in ${System.currentTimeMillis() - startedAt}ms",
+                "in ${System.currentTimeMillis() - startedAt}ms; trash rows reaching the reader: $trashSeen (0 expected — the selection excludes them)",
         )
         return buckets
     }

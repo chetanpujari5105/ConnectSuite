@@ -438,3 +438,33 @@ test('no access: not advertised keeps the thumbnails-only notice, whatever limit
   assert.deepEqual(labels.accessNotice(false, null), { kind: 'partial', ...labels.partialNotice(false)! });
   assert.match(labels.accessNotice(false, PHONE_REASON)!.headline, /thumbnails/i);
 });
+
+// ---- defect 89: same-named albums told apart by the shortest distinguishing folder tail ----------
+
+const places = ((globalThis as Record<string, unknown>).__photoLabels as {
+  albumPlaces(albums: Array<{ bucketId: string; bucketName: string; count: number; newestMs: number; coverId: string; relativePath?: string }>): Map<string, string>;
+}).albumPlaces;
+
+const alb = (bucketId: string, bucketName: string, relativePath?: string) =>
+  ({ bucketId, bucketName, count: 1, newestMs: 0, coverId: '1', ...(relativePath ? { relativePath } : {}) });
+
+test('same-named albums get the shortest folder tail that separates them; unique names get nothing', () => {
+  // The shape measured on the SM-S938B (synthetic names here): one name in three folders.
+  const m = places([
+    alb('a', 'Pictures', 'Android/media/com.example/Example/Media/Pictures/'),
+    alb('b', 'Pictures', 'Example/Media/Pictures/'),
+    alb('c', 'Pictures', 'DCIM/Pictures/'),
+    alb('d', 'Camera', 'DCIM/Camera/'),
+  ]);
+  assert.equal(m.get('a'), 'com.example/Example/Media');
+  assert.equal(m.get('b'), 'Example/Media');
+  assert.equal(m.get('c'), 'DCIM');
+  assert.equal(m.has('d'), false, 'a unique name is already clear');
+  // Every label in a group is different from every other — the property the rail needs.
+  assert.equal(new Set(['a', 'b', 'c'].map((id) => m.get(id))).size, 3);
+});
+
+test('an older phone (no path) gets no label rather than a guess', () => {
+  const m = places([alb('a', 'Pictures'), alb('b', 'Pictures', 'DCIM/Pictures/')]);
+  assert.equal(m.size, 0);
+});

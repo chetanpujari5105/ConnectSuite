@@ -136,11 +136,29 @@ object MediaPayloads {
      * `adb shell content query` — the shell inlines its literal and would be answering a different
      * question.
      */
+    /**
+     * **Defect 89.** Samsung Gallery "deletes" a photo by moving it under `Android/.Trash/<its package>/`
+     * rather than using `MediaStore`'s own trash, so `IS_TRASHED` is empty on this handset and the
+     * person's deleted photographs appeared as an ordinary album. Excluded from every listing here.
+     */
+    const val TRASH_PATH_PREFIX = "Android/.Trash/"
+
+    fun isTrashPath(relativePath: String?): Boolean =
+        relativePath != null && relativePath.startsWith(TRASH_PATH_PREFIX, ignoreCase = true)
+
+    /**
+     * The trash exclusion as SQL. A **literal**, never a bound argument (defect 50: a provider can answer a
+     * bound argument with an empty cursor), and `IS NULL` first because `NULL NOT LIKE …` is NULL, which
+     * would silently drop every row with no relative path.
+     */
+    const val NOT_TRASH_CLAUSE = "($COL_RELATIVE_PATH IS NULL OR $COL_RELATIVE_PATH NOT LIKE 'Android/.Trash/%')"
+
     fun listSelection(bucketId: String?, beforeMs: Long?, beforeId: Long?): Selection {
         val clauses = mutableListOf<String>()
         val args = mutableListOf<String>()
 
         clauses += "$COL_MEDIA_TYPE IN (${VISUAL_MEDIA_TYPES.joinToString(",")})"
+        clauses += NOT_TRASH_CLAUSE
 
         if (bucketId != null) {
             clauses += "$COL_BUCKET_ID = ?"
@@ -276,6 +294,8 @@ object MediaPayloads {
         coverId: Long,
         packageName: String?,
         appName: String?,
+        /** The folder, as `MediaStore` names it — the only thing that tells same-named albums apart (defect 89). */
+        relativePath: String? = null,
     ): JsonObject = buildJsonObject {
         put("bucketId", bucketId)
         put("bucketName", bucketName)
@@ -286,5 +306,6 @@ object MediaPayloads {
             put("packageName", packageName)
             put("appName", appName ?: packageName)
         }
+        if (relativePath != null) put("relativePath", relativePath)
     }
 }

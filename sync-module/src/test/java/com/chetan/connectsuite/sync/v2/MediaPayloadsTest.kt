@@ -29,7 +29,7 @@ class MediaPayloadsTest {
         // return zero rows, only a selection that never ran can. It is sent before any tuning, and
         // it is what separated "the cursor is wrong" from "the selection is dead" in defect 50.
         val selection = MediaPayloads.listSelection(bucketId = null, beforeMs = null, beforeId = null)
-        assertEquals("media_type IN (1,3)", selection.where)
+        assertEquals("media_type IN (1,3) AND ${MediaPayloads.NOT_TRASH_CLAUSE}", selection.where)
         assertTrue(selection.args.isEmpty())
         assertFalse(selection.lossy)
     }
@@ -42,7 +42,7 @@ class MediaPayloadsTest {
             beforeId = 1000012345L,
         )
         assertEquals(
-            "media_type IN (1,3) AND bucket_id = ? AND " +
+            "media_type IN (1,3) AND ${MediaPayloads.NOT_TRASH_CLAUSE} AND bucket_id = ? AND " +
                 "(date_added < ? OR (date_added = ? AND _id < ?))",
             selection.where,
         )
@@ -54,7 +54,7 @@ class MediaPayloadsTest {
     @Test
     fun `a cursor with no beforeId is marked lossy rather than quietly degrading`() {
         val selection = MediaPayloads.listSelection(null, beforeMs = 1756298000_999L, beforeId = null)
-        assertEquals("media_type IN (1,3) AND date_added < ?", selection.where)
+        assertEquals("media_type IN (1,3) AND ${MediaPayloads.NOT_TRASH_CLAUSE} AND date_added < ?", selection.where)
         assertEquals(listOf("1756298000"), selection.args)
         assertTrue(
             "a bare-millisecond cursor skips the rest of its second; the caller has to be able to say so",
@@ -205,5 +205,21 @@ class MediaPayloadsTest {
             .filter { row -> MediaPayloads.isBeyond(cursor, row.dateAddedSeconds, row.id) }
             .sortedWith(compareByDescending<Row> { it.dateAddedSeconds }.thenByDescending { it.id })
             .take(limit)
+    }
+
+    /**
+     * Defect 89: Samsung Gallery's deleted photos live under `Android/.Trash/…` and showed as an album.
+     * The clause is a literal (defect 50) and keeps rows with no path (NULL NOT LIKE is NULL).
+     */
+    @Test fun `Samsung Gallery's trash is excluded, rows with no path are kept, and the path travels on the bucket`() {
+        assertEquals("(relative_path IS NULL OR relative_path NOT LIKE 'Android/.Trash/%')", MediaPayloads.NOT_TRASH_CLAUSE)
+        assertTrue(MediaPayloads.isTrashPath("Android/.Trash/com.sec.android.gallery3d/WhatsApp Images/"))
+        assertTrue(MediaPayloads.isTrashPath("android/.trash/x/"))
+        assertFalse(MediaPayloads.isTrashPath("Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/"))
+        assertFalse(MediaPayloads.isTrashPath("DCIM/.Trash-not-a-prefix/"))
+        assertFalse(MediaPayloads.isTrashPath(null))
+        val b = MediaPayloads.bucket("1", "WhatsApp Images", 3, 1, 2, null, null, relativePath = "WhatsApp/Media/WhatsApp Images/")
+        assertEquals("\"WhatsApp/Media/WhatsApp Images/\"", b["relativePath"].toString())
+        assertEquals(null, MediaPayloads.bucket("1", "a", 1, 1, 1, null, null)["relativePath"])
     }
 }

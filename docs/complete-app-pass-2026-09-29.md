@@ -215,3 +215,4 @@ Contract: `docs/protocol.md` → Extensions → `share.wait` (PROPOSED). Code: `
 - **L3** refuse a pull up front when the Mac lacks room; **L4** the too-large share names the copy-free
   route — `0fb0f1d`, `89f3491`.
 - **Defect 136** `media.thumb` bounded by `FsThumbs.encode` — tests only.
+- **Defect 89** trash excluded, same-named albums told apart by the shortest folder tail — tests only.

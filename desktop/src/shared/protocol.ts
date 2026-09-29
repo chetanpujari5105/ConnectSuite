@@ -110,6 +110,8 @@ export interface MediaBucket {
   /** Present only when the bucket's path holds an app's package id. Never sent without appName. */
   packageName?: string;
   appName?: string;
+  /** The album's folder as the phone names it (defect 89). Absent from an older phone. */
+  relativePath?: string;
 }
 
 /** One photo or video. `id` is a string because a MediaStore id outruns a JS safe integer. */

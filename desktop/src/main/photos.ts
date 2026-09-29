@@ -343,6 +343,7 @@ function toBucket(row: Record<string, unknown>): MediaBucket {
     coverId: String(row.coverId ?? ''),
     ...(row.packageName ? { packageName: String(row.packageName) } : {}),
     ...(row.appName ? { appName: String(row.appName) } : {}),
+    ...(typeof row.relativePath === 'string' && row.relativePath ? { relativePath: row.relativePath } : {}),
   };
 }
 

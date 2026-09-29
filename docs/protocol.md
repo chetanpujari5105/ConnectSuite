@@ -1895,6 +1895,17 @@ carries a package segment — `Android/media/com.whatsapp/WhatsApp Images` — `
 appears without the other, and a bucket whose path holds no package segment carries neither: a rule
 that labelled everything would be indistinguishable from one that labelled nothing.
 
+**`relativePath`** (optional, since 2026-09-29, defect 89) is the bucket's folder as `MediaStore` names it,
+e.g. `Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/`. `bucketName` is only the **leaf**
+folder, so different folders share one name; the path is the only thing that tells them apart. It is a
+handle for disambiguation and navigation, never prettified. An older phone omits it, and a Mac then
+draws the album exactly as before.
+
+**Trash is not an album.** Samsung Gallery "deletes" a photo by moving it under
+`Android/.Trash/<package>/` instead of using `MediaStore`'s trash (`IS_TRASHED` is empty on this
+handset), so those rows are excluded from `media.buckets` **and** every `media.list` — the person's
+deleted photographs are not browsable here as though they were an ordinary album.
+
 **`count` is not decoration and must be kept.** It is the denominator `media.list`'s pages have to
 sum to, and the only number on this feature that can tell a working pager from one that stalls after
 its first page.
