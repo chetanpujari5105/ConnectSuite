@@ -188,3 +188,18 @@ pdf 602 B (`application/*`), bin 100,000 B, txt 5,947 B and csv 9,939 B (both `t
    `verified=false`.
 5. The 10-minute offer lifetime expired two decisions in the first attempt — the owner asked for a
    bounded 30-minute proposal with a visible remaining time (§5, to come).
+
+## 5 · `share.wait` — 30-minute waiting offers, development builds (proposed; release is the owner's)
+
+Contract: `docs/protocol.md` → Extensions → `share.wait` (PROPOSED). Code: `c255de5`.
+
+- **Older peer, live (14:43):** the new Mac advertised `share.wait: 30`; the phone, still on the build
+  before `c255de5` (it was off USB), advertised none; negotiated `{"share.file":3,"share.ask":1}` — no
+  `share.wait`, so offers keep 10 minutes. The fallback works in the real handshake.
+- **Both new, live (15:09:50):** after one `install -r` (baseline identical before and after: grants
+  `7ae20b15…` ×28, both bindings, prefs `cdf01467…`, trust `1|b59f4bba…` read with its WAL), both sides
+  negotiated `share.wait: 30`.
+- **One synthetic offer (15:11:33)** through the production offer path (`ShareOfferProbeActivity`, 1 MiB,
+  seed 29, no `ttlSec` — the probe now defaults to the negotiated wait): phone *"expires in 1800s
+  (share.wait 30)"*; Mac *valid*, held for a decision; the card reads **"Waits for your answer until
+  15:41. After that it expires and nothing is saved."** Left untouched to observe the 30-minute expiry.

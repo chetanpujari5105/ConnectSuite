@@ -26,7 +26,8 @@ import kotlin.random.Random
  * adb logcat -s ShareOfferProbe      # and link.log, tag [share]
  * ```
  *
- * `ttlSec` shortens the offer's life (1..600) so expiry can be observed in minutes rather than ten.
+ * `ttlSec` shortens the offer's life so expiry can be observed quickly; absent, the offer gets the
+ * session's negotiated wait (`share.wait`: 30 minutes with a Mac that agrees, else 10) — the real default.
  */
 class ShareOfferProbeActivity : Activity() {
 
@@ -34,7 +35,9 @@ class ShareOfferProbeActivity : Activity() {
         super.onCreate(savedInstanceState)
         val bytes = intent.getIntExtra(EXTRA_BYTES, 100_000).coerceIn(0, 8 * 1024 * 1024)
         val seed = intent.getIntExtra(EXTRA_SEED, 7)
-        val ttlMs = (intent.getLongExtra(EXTRA_TTL_SEC, ShareOffer.TTL_MS / 1000) * 1000).coerceIn(1_000, ShareOffer.TTL_MS)
+        // Absent: the session's negotiated wait (`share.wait`), exactly what a real share gets. Present: that
+        // many seconds, which `offerStaged` accepts only if it does not exceed the agreed wait.
+        val ttlMs: Long? = if (intent.hasExtra(EXTRA_TTL_SEC)) (intent.getLongExtra(EXTRA_TTL_SEC, 600) * 1000).coerceIn(1_000, ShareOffer.WAIT_MAX_MINUTES * 60_000L) else null
         // Off unless asked for: -1 (the default) arms nothing.
         val corruptAt = intent.getLongExtra(EXTRA_CORRUPT_AT_BYTE, -1L)
         val cache = applicationContext.cacheDir
@@ -46,7 +49,7 @@ class ShareOfferProbeActivity : Activity() {
         finish()
     }
 
-    private fun run(cache: java.io.File, size: Int, seed: Int, ttlMs: Long, corruptAt: Long): String {
+    private fun run(cache: java.io.File, size: Int, seed: Int, ttlMs: Long?, corruptAt: Long): String {
         val dir = ShareStaging.stagingDir(cache) ?: return "refused: staging directory unusable"
         val id = ShareStaging.newAttemptId()
         val data = Random(seed).nextBytes(size)
@@ -65,7 +68,7 @@ class ShareOfferProbeActivity : Activity() {
         }
         // Scoped to THIS synthetic offer's next pull; ShareFeature refuses it in a non-debuggable build.
         val armed = outcome is ShareFeature.OfferOutcome.Offered && corruptAt >= 0 && ShareFeature.debugArmCorruption(id, corruptAt)
-        return "synthetic bytes=$size seed=$seed sha256=${staged.sha256} ttl=${ttlMs / 1000}s " +
+        return "synthetic bytes=$size seed=$seed sha256=${staged.sha256} ttl=${ttlMs?.let { "${it / 1000}s" } ?: "the negotiated wait"} " +
             "corruptAt=${if (armed) corruptAt else "off"} → $outcome"
     }
 
