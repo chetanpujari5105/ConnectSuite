@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { BlockPullVerifier, blockPlanFor } from '../shared/fsBlocks';
+import { pullPartPathFor } from '../shared/transferFiles';
 import { createReadStream, promises as fsp } from 'node:fs';
 import { basename, join } from 'node:path';
 import { MessageType, type PhoneResult } from '../shared/protocol';
@@ -682,11 +683,11 @@ async function freeName(folder: string, name: string): Promise<string> {
   const extension = dot > 0 ? name.slice(dot) : '';
   for (let n = 1; n < 1000; n += 1) {
     const candidate = join(folder, n === 1 ? name : `${stem} (${n})${extension}`);
-    try {
-      await fsp.access(candidate);
-    } catch {
-      return candidate;
-    }
+    // A name is free only if neither the file nor a Sidekick partial for it exists: a paused transfer's
+    // partial (`fs.blocks`) may stand where no final file is yet, and a new pull choosing that name would
+    // treat it as an unrecorded partial and delete it.
+    const taken = async (path: string): Promise<boolean> => fsp.lstat(path).then(() => true, () => false);
+    if (!(await taken(candidate)) && !(await taken(pullPartPathFor(candidate)))) return candidate;
   }
   // A thousand collisions on one name is not a case worth a cleverer scheme; the timestamp is
   // unique enough and says plainly that something unusual happened.
