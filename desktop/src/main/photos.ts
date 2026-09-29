@@ -124,7 +124,11 @@ export class PhotosClient {
    * beside it cannot tell a warm cache from one nothing consults.
    */
   async thumbsFor(ids: string[], maxEdge = 256): Promise<PhoneResult<Map<string, string>>> {
-    const wanted = ids.filter((id) => !this.thumbs.has(id) && !this.missing.has(id));
+    // Keyed by size **and** id (2026-09-29): keyed by id alone, a request at 512 after one at 256 was
+    // answered from the 256 cache — the caller's maxEdge silently ignored. A missing photo is missing at
+    // every size, so `missing` stays per id.
+    const key = (id: string) => `${maxEdge}:${id}`;
+    const wanted = ids.filter((id) => !this.thumbs.has(key(id)) && !this.missing.has(id));
     this.cacheHits += ids.length - wanted.length;
 
     for (let i = 0; i < wanted.length; i += THUMB_BATCH) {
@@ -139,7 +143,7 @@ export class PhotosClient {
       if (!result.ok) return result;
       for (const thumb of result.data) {
         if (thumb.data) {
-          this.thumbs.set(thumb.id, thumb.data);
+          this.thumbs.set(key(thumb.id), thumb.data);
           this.thumbsMade += 1;
         } else if (thumb.error === 'NO_THUMBNAIL') {
           // Defect 57. The photo is THERE and could not be rendered — it is listable, and
@@ -161,7 +165,7 @@ export class PhotosClient {
     );
     const answer = new Map<string, string>();
     for (const id of ids) {
-      const data = this.thumbs.get(id);
+      const data = this.thumbs.get(key(id));
       if (data) answer.set(id, data);
     }
     return { ok: true, data: answer };

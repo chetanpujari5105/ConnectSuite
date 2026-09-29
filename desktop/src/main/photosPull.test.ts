@@ -69,3 +69,22 @@ test('L3: a file that cannot fit is refused before any byte, and the phone’s a
   const cancel = h.requests.find((q) => q.type === 'fs.transfer.cancel');
   assert.deepEqual(cancel?.payload, { transferId: 'tf-z', reason: 'no-space' });
 });
+
+test('a thumbnail asked at another size is fetched at that size, not served from the first size’s cache', async () => {
+  const asked: number[] = [];
+  const link = {
+    isConnected: () => true,
+    request: async (type: string, payload: Record<string, unknown>) => {
+      if (type === 'media.thumb') asked.push(Number(payload.maxEdge));
+      return { type, payload: { thumbs: (payload.ids as string[]).map((id) => ({ id, mime: 'image/jpeg', width: 1, height: 1, data: `edge-${payload.maxEdge}` })) } };
+    },
+  };
+  const client = new PhotosClient(() => link as never, () => null, () => ({ host: null, token: null }));
+  const a = await client.thumbsFor(['7'], 256);
+  const b = await client.thumbsFor(['7'], 512);
+  const c = await client.thumbsFor(['7'], 256);
+  assert.deepEqual(asked, [256, 512], 'each size asked once; the repeat at 256 is a cache hit');
+  assert.equal(a.ok && a.data.get('7')?.includes('edge-256'), true);
+  assert.equal(b.ok && b.data.get('7')?.includes('edge-512'), true);
+  assert.equal(c.ok && c.data.get('7')?.includes('edge-256'), true);
+});
