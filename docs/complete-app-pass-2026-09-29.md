@@ -118,3 +118,73 @@ beating the file → red.
 
 **Owed on hardware:** the resolution table re-read after install, then a My Files selection of text
 files through to the Mac.
+
+## 4 · Android → Mac, several files, on hardware (2026-09-29, owner present)
+
+Synthetic files only: `Pictures/SidekickShareTest` and `Documents/SidekickShareTest`, generated in this
+pass (plus the 2026-09-24 `.bin`); every source hashed on the Mac and on the phone before sharing.
+Instrument: a watcher per run — Mac receive-folder snapshot (inode, size, name), the frontmost app every
+250 ms, both logs from the run's start, and the SHA-256 of every added file matched against the sources.
+
+### R1, first attempt (11:31) — **partial, not a pass**
+
+Gallery emitted `SEND_MULTIPLE`, type `*/*`, 3 content items (`dumpsys activity`), resolved to
+`ShareManyToMacActivity`; the owner confirmed the review list (002.jpg 89,457 B, 003.png 8,961 B,
+clip.mp4 66,897 B). Three cards, held for a decision, presented without focus; no pull and no folder
+change before a decision. The owner accepted `clip.mp4` at 11:40:20 — claimed after the accept, saved,
+SHA-256 `d10c4a2f…` = source. **The other two expired unanswered at 11:41:08** (Mac: *expired, not
+declined*; phone: *staged copy deleted*), so Decline and the JPEG save were **not** tested in this run.
+Cleanup read afterwards: staging empty, ledger `[]`, folder = baseline + the video.
+
+### An unmonitored run at 11:52 (commands blocked) — supporting only
+
+A second three-file share arrived while the auto-mode safety check returned no verdict; all three were
+declined from the window at 11:58:54–56, each ending *declined (user): staged copy deleted* on the phone.
+The cards were not checked before those decisions, so this run is not counted.
+
+### R1, retaken (12:02:32 → 12:05:54) — **PASS**
+
+Decisions were made through **macOS accessibility, by accessible name**, after raising the window
+(`AXRaise`) and verifying in the same script that Electron was frontmost and its focused window was
+*Incoming file*; the product's own focus gate accepted each press. No DOM click, no direct IPC.
+
+| Card | Decision | Result |
+|---|---|---|
+| clip.mp4 66,897 B | Accept 12:05:03.602 | claimed 12:05:03.653; **published exclusively as `sidekick-share-test-clip (2).mp4`**; SHA-256 = source. The 11:40 `clip.mp4` unchanged (inode 86445157, same hash) |
+| 003.png 8,961 B | Decline 12:05:31 | no claim; phone *declined (user): staged copy deleted*; no file |
+| 002.jpg 89,457 B | Accept 12:05:54.406 | claimed 12:05:54.441; published exclusively; SHA-256 `2b78667f…` = source |
+
+Focus: Code stayed frontmost from the offers' arrival (12:02:32) until the scripted focus (12:03:14);
+the window was presented without focus. Folder: exactly the two additions; ledger `[]`; staging 0.
+
+Instrument faults, caught before any wrong action: an AppleScript loop over `entire contents` by
+reference matched **no** buttons (the script refused; fixed by binding the list to a variable first);
+approval prompts in Manual mode move focus to the terminal, so focus is taken inside the pressing
+script; the watcher's partial check matched `sidekick-share` in finished names (tightened to `.part$`).
+
+### Session 2 — My Files, four mixed files, one per-file Cancel (12:10:12 → 12:17:41) — **PASS**
+
+My Files emitted `SEND_MULTIPLE`, type `*/*`, 4 items → `ShareManyToMacActivity`. (A mixed selection is
+`*/*` and resolved before `5aa1ce5`; the text-only case is verified by resolution query only.) Offers:
+pdf 602 B (`application/*`), bin 100,000 B, txt 5,947 B and csv 9,939 B (both `text/*`).
+
+- **Per-file Cancel, on the phone (owner), 12:10:30:** *withdrawing offer … at the person's request;
+  other files untouched* → *staged copy deleted*; Mac `share.cancel … from the phone: user`. No claim.
+- The owner accepted pdf, txt, csv at 12:17:32–41 (automated focus was refused twice by macOS while the
+  receive window was hidden, so the rule "ask for the click" applied). Each claimed after its accept,
+  published exclusively, SHA-256 equal to source (`8374c31a…`, `85670e10…`, `903e623d…`).
+- Folder: exactly those three added (plus the owner's own Photos pull at 12:09:06, excluded); no `.bin`;
+  no partial; ledger `[]`; staging 0.
+
+### Findings from the two sessions
+
+1. **Phone review screen repeats the consent sentence** — *"… accept it"* then *"… accept each file"*
+   (owner). Keep the per-file sentence.
+2. **Mac card shows a raw MIME type** for CSV: *"text/comma-separated-values"*, where others read
+   *"PDF document"*, *"Plain text"*.
+3. **A phone-cancelled offer is removed from the receive window** and appears only in the main window's
+   tray as *Dismiss sidekick-share-test-file.bin*. A person watching the receive window sees a card vanish.
+4. **Photos pulls are unverified** (`media.original` agrees no digest): the owner's screenshot pulls logged
+   `verified=false`.
+5. The 10-minute offer lifetime expired two decisions in the first attempt — the owner asked for a
+   bounded 30-minute proposal with a visible remaining time (§5, to come).
