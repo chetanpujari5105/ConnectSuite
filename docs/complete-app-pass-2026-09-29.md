@@ -242,3 +242,15 @@ Contract: `docs/protocol.md` → Extensions → `share.wait` (PROPOSED). Code: `
   several-files activity `enabled=@bool/share_many_enabled` = **false**; **0** debug probes.
 - **Mac packaging:** **not run** — electron-builder may find a signing identity in the keychain, and no
   further signature is made without the owner.
+
+## 8 · Text-only My Files share, on hardware (16:01–16:03), driven through the UI with synthetic files only
+
+My Files opened **directly at `Documents/SidekickShareTest`** (`LAUNCH_MY_FILES` + `START_PATH`), so no
+other folder was ever on screen; `notes.txt` and `table.csv` selected (checked boxes matched to rows by
+position); Share → **Send to Mac** listed. My Files sent `SEND_MULTIPLE` **`*/*`**, 2 items — so this
+selection would also have resolved before `5aa1ce5`; the `text/*` filter serves apps that type a
+text-only selection `text/*`, none observed on this phone. Review screen: *2 files · 15,886 bytes*, the
+consent **stated once** (`2f7786b` verified). Mac cards: *Plain text* and **CSV spreadsheet** (`2f7786b`
+verified); no pull and no folder change before a decision; Code stayed frontmost. Both accepted by
+accessible name after scripted focus: claimed after each accept, **published exclusively as
+`… (2).txt` / `… (2).csv`** (originals unchanged), SHA-256 = source; staging 0; ledger `[]`.
