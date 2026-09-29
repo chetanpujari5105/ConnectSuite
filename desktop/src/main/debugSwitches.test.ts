@@ -46,9 +46,9 @@ test('the known switches are exactly these, and every one defaults to off', () =
       // Added 2026-09-24 for Feature A's pre-live gate, off by default (asserted below): the request
       // to advertise share.file 2, which shareActivation.ts refuses without the other two switches.
       'shareV2',
-      // Added 2026-09-26 for Feature A version 3 Stage 1, off by default (asserted below): the request
-      // to advertise share.file 3, which shareV3Activation refuses unless share.ask is open.
-      'shareV3',
+      // Added 2026-09-26 as the request for share.file 3; since 2026-09-29 an unpackaged Mac advertises 3 by
+      // default and this is the opposite, off by default (asserted below): hold at share.file 2 for skew tests.
+      'shareV3Off',
       'stallCallEnded',
       'stallRemoved',
     ],

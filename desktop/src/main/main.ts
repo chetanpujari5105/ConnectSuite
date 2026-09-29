@@ -103,6 +103,7 @@ import {
   shareAskActivation,
   shareV2Activation,
   shareV3Activation,
+  SHARE_V3_RELEASE,
 } from './shareActivation';
 import { acceptAllowed, forRenderer, handleShareDecision } from './shareDecision';
 import { ShareReceiveWindow } from './shareWindow';
@@ -956,13 +957,13 @@ app.whenReady().then(() => {
   // but unreachable live: it holds an offer for a person's decision (Ask).
   // The development switches are forced OFF in a packaged build, here, whatever the environment says.
   const devSwitches = app.isPackaged
-    ? { silent: false, acceptProbe: false, devReceive: false, v2: false, v3: false }
+    ? { silent: false, acceptProbe: false, devReceive: false, v2: false, v3Off: false }
     : {
         silent: debugSwitches().shareSilent,
         acceptProbe: debugSwitches().shareAcceptProbe,
         devReceive: debugSwitches().shareDevReceive,
         v2: debugSwitches().shareV2,
-        v3: debugSwitches().shareV3,
+        v3Off: debugSwitches().shareV3Off,
       };
   // The digests the development accept switch may accept: 64-hex SHA-256s of synthetic probe bytes,
   // supplied by the tester. Read only when the switch is on in a development build; otherwise empty,
@@ -997,14 +998,13 @@ app.whenReady().then(() => {
   } else {
     log.info('share', `share.ask not advertised — the phone's ordinary Send stays disabled: ${shareAsk.blockers.join('; ')}`);
   }
-  // Version 3 (PROPOSED): development only, on top of an open share.ask and never beside the
-  // synthetic-only gate. `shareV3Activation` re-checks the packaged guard as well as the switch.
-  const shareV3 = shareV3Activation({ packaged: app.isPackaged, shareV3: devSwitches.v3, development: shareV2, ask: shareAsk });
+  // Version 3: several pending offers. On top of an open share.ask and never beside the synthetic-only
+  // gate; unpackaged builds by default, packaged only under SHARE_V3_RELEASE (off). Logged either way.
+  const shareV3 = shareV3Activation({ packaged: app.isPackaged, shareV3Off: devSwitches.v3Off, development: shareV2, ask: shareAsk });
   if (shareV3.active) {
-    log.warn('share', 'share.file 3 ADVERTISED (development only; every offer held for a person) — this is not a normal run');
-  } else if (devSwitches.v3 || (app.isPackaged && (process.env.CONNECTSUITE_DEBUG_SWITCHES ?? '').split(',').map((n) => n.trim()).includes('shareV3'))) {
-    // A packaged build forces the switch off above; it still says it refused, so a leak attempt is visible.
-    log.warn('share', `share.file 3 NOT advertised: ${shareV3.why}`);
+    log.info('share', `share.file 3 ADVERTISED (several pending offers, every one held for a person; packaged: ${app.isPackaged}; release policy SHARE_V3_RELEASE: ${SHARE_V3_RELEASE})`);
+  } else {
+    log.info('share', `share.file 3 not advertised: ${shareV3.why}`);
   }
   const userData = app.getPath('userData');
 

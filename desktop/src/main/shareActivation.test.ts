@@ -14,6 +14,7 @@ import {
   shareAskActivation,
   shareV2Activation,
   shareV3Activation,
+  SHARE_V3_RELEASE,
   type ShareV2Inputs,
 } from './shareActivation';
 
@@ -218,22 +219,33 @@ test('version 3 is not enabled: no gate combination advertises share.file above 
   assert.equal(seen, 4, 'control: every combination was read');
 });
 
-// ---- version 3: the development-only gate (proposal rev 4 §18, Stage 1) --------------------------
+// ---- version 3: development builds by default, packaged only under SHARE_V3_RELEASE ----------------
 
 const askOpen = shareAskActivation({ development: closedDev, readiness: ready });
 const askClosed = shareAskActivation({ development: closedDev, readiness: notReady });
-const v3All = { packaged: false, shareV3: true, development: closedDev, ask: askOpen };
+const v3All = { packaged: false, shareV3Off: false, development: closedDev, ask: askOpen };
 
-test('control: unpackaged, shareV3, share.ask open and the synthetic gate closed advertises share.file 3 with share.ask', () => {
+test('control: an unpackaged Mac with share.ask open and the synthetic gate closed advertises share.file 3 with share.ask — no switch needed', () => {
   const v3 = shareV3Activation(v3All);
   assert.deepEqual(v3, { active: true });
   assert.deepEqual(advertisedExt(closedDev, askOpen, v3), { 'share.file': 3, 'share.ask': 1 });
 });
 
-test('each version-3 condition missing fails closed to exactly what the Mac advertises without the switch', () => {
+test('the release policy is off, and a packaged Mac advertises 3 only once it is flipped', () => {
+  assert.equal(SHARE_V3_RELEASE, false, 'the release policy is the owner decision and is off');
+  const packaged = shareV3Activation({ ...v3All, packaged: true });
+  assert.equal(packaged.active, false);
+  assert.ok(packaged.active === false && packaged.why.includes('SHARE_V3_RELEASE'), packaged.active === false ? packaged.why : '');
+  assert.deepEqual(shareV3Activation({ ...v3All, packaged: true, release: true }), { active: true });
+  // shareV3Off is a development switch: a packaged build never reads it (main.ts forces it off), and here it
+  // does not lower a packaged release either.
+  assert.deepEqual(shareV3Activation({ ...v3All, packaged: true, release: true, shareV3Off: true }), { active: true });
+});
+
+test('each version-3 condition missing fails closed to exactly what the Mac advertises without version 3', () => {
   for (const [label, inputs, word] of [
-    ['packaged', { ...v3All, packaged: true }, 'packaged'],
-    ['switch off', { ...v3All, shareV3: false }, 'off'],
+    ['packaged, policy off', { ...v3All, packaged: true }, 'packaged'],
+    ['held at 2 by shareV3Off', { ...v3All, shareV3Off: true }, 'shareV3Off'],
     ['synthetic gate open', { ...v3All, development: openDev }, 'synthetic-only'],
     ['share.ask closed', { ...v3All, ask: askClosed }, 'share.ask'],
   ] as const) {
@@ -253,12 +265,13 @@ test('an open version-3 gate handed beside a closed share.ask or an open synthet
   assert.deepEqual(advertisedExt(openDev, { active: false, blockers: ['x'] }, forged), { 'share.file': 2 });
 });
 
-test('negotiation with a version-3 Mac: 3 + 3 → 3; a version-2 phone keeps version 2', () => {
+test('negotiation with a version-3 Mac: 3 + 3 → 3; a version-2 phone keeps version 2; a held Mac keeps 2', () => {
   const mac = advertisedExt(closedDev, askOpen, shareV3Activation(v3All));
   assert.deepEqual(negotiateAll(mac, { 'share.file': 3, 'share.ask': 1 }), { 'share.file': 3, 'share.ask': 1 });
   assert.deepEqual(negotiateAll(mac, { 'share.file': 2, 'share.ask': 1 }), { 'share.file': 2, 'share.ask': 1 });
-  // Control: without the switch the same phone negotiates 2.
-  assert.deepEqual(negotiateAll(advertisedExt(closedDev, askOpen), { 'share.file': 3, 'share.ask': 1 }), { 'share.file': 2, 'share.ask': 1 });
+  // Control: a Mac held at 2 negotiates 2 with a version-3 phone.
+  const held = advertisedExt(closedDev, askOpen, shareV3Activation({ ...v3All, shareV3Off: true }));
+  assert.deepEqual(negotiateAll(held, { 'share.file': 3, 'share.ask': 1 }), { 'share.file': 2, 'share.ask': 1 });
 });
 
 test('version 3 keeps the receiver in Ask with an empty allowlist', () => {
@@ -268,10 +281,10 @@ test('version 3 keeps the receiver in Ask with an empty allowlist', () => {
   assert.equal(mode.acceptProbeDigests.size, 0);
 });
 
-test('main.ts forces shareV3 off in a packaged build and passes the version-3 gate to the advertisement', () => {
+test('main.ts forces shareV3Off off in a packaged build and passes the version-3 gate to the advertisement', () => {
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8');
-  assert.match(main, /\? \{ silent: false, acceptProbe: false, devReceive: false, v2: false, v3: false \}/);
-  assert.match(main, /shareV3Activation\(\{ packaged: app\.isPackaged, shareV3: devSwitches\.v3, development: shareV2, ask: shareAsk \}\)/);
+  assert.match(main, /\? \{ silent: false, acceptProbe: false, devReceive: false, v2: false, v3Off: false \}/);
+  assert.match(main, /shareV3Activation\(\{ packaged: app\.isPackaged, shareV3Off: devSwitches\.v3Off, development: shareV2, ask: shareAsk \}\)/);
   assert.match(main, /advertisedExt\(shareV2, shareAsk, shareV3\)/);
   // The production readiness facts are not what opens version 3 — nothing here edits them.
   assert.deepEqual({ ...SHARE_PRODUCTION_READINESS }, { syntheticRunPassed: true, receiveFolderCleanupScoped: true });

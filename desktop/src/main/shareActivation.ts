@@ -89,35 +89,47 @@ export function shareAskActivation(i: ShareAskInputs): ShareAskActivation {
   return blockers.length === 0 ? { active: true, syntheticOnly: false } : { active: false, blockers };
 }
 
+/**
+ * **Release policy: several pending offers (`share.file` 3) in a packaged build.** `false` until the owner
+ * approves shipping it together with the PROVISIONAL values it would ship
+ * (`docs/feature-a-v3-production-enablement.md` → the decision report). The phone's twin is
+ * `Extensions.MULTI_FILE_RELEASE`; both are off, and neither may be flipped without that approval.
+ */
+export const SHARE_V3_RELEASE = false;
+
 export interface ShareV3Inputs {
   packaged: boolean;
-  /** The `shareV3` debug switch. */
-  shareV3: boolean;
+  /** The `shareV3Off` debug switch: hold this development Mac at `share.file` 2 (a version-2 Mac for skew tests). */
+  shareV3Off: boolean;
   /** The synthetic-only development gate for version 2. Open refuses version 3. */
   development: ShareV2Activation;
   /** `share.ask`. Closed refuses version 3: every version-3 offer must be held for a person. */
   ask: ShareAskActivation;
+  /** [SHARE_V3_RELEASE], injectable so the packaged branch is testable both ways. */
+  release?: boolean;
 }
 
 export type ShareV3Activation = { active: true } | { active: false; why: string };
 
 /**
  * **Whether this Mac may advertise `share.file: 3`** — several pending offers, one receive window,
- * pulls in Accept order (docs/protocol.md → Share → Version 3, PROPOSED; proposal rev 4 §18).
- * **Development only**, and every condition at once or no:
+ * pulls in Accept order (docs/protocol.md → Share → Version 3). Every condition at once, or no:
  *
  * | Condition | Why |
  * |---|---|
- * | not a packaged build | a shipped app never has a path to version 3 |
- * | `shareV3` switch | the explicit request; nothing else implies it |
+ * | unpackaged, or [SHARE_V3_RELEASE] | development builds are the builds under test; a shipped app waits for the owner |
+ * | not held by `shareV3Off` | reproduces a version-2 Mac on a development build |
  * | `share.ask` open | every offer is held for a person's Accept, with an empty allowlist |
  * | the synthetic-only gate closed | that gate auto-accepts allow-listed probes; version 3 never coexists with it |
  *
- * Refused means version 2 (or 1) exactly as without the switch.
+ * Refused means version 2 (or 1) exactly as before version 3 existed.
  */
 export function shareV3Activation(i: ShareV3Inputs): ShareV3Activation {
-  if (i.packaged) return { active: false, why: 'a packaged build never advertises share.file 3 — the shareV3 switch is ignored' };
-  if (!i.shareV3) return { active: false, why: 'shareV3 is off (the default)' };
+  const release = i.release ?? SHARE_V3_RELEASE;
+  if (i.packaged && !release) {
+    return { active: false, why: 'a packaged build advertises share.file 3 only once SHARE_V3_RELEASE is approved — it is off' };
+  }
+  if (!i.packaged && i.shareV3Off) return { active: false, why: 'shareV3Off is on — this development Mac is held at share.file 2' };
   if (i.development.active) {
     return { active: false, why: 'the synthetic-only development gate is open — refused, share.file 3 never coexists with it' };
   }

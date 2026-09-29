@@ -116,13 +116,12 @@ export interface DebugSwitches {
    */
   shareV2: boolean;
   /**
-   * Ask to advertise `share.file: 3` — several pending offers, one receive window, pulls in Accept
-   * order (docs/protocol.md → Share → Version 3, PROPOSED). **Development only.** Honoured only in an
-   * unpackaged build, only while `share.ask` is open and the synthetic-only gate is closed, so every
-   * offer is still held for a person — `shareActivation.ts` → `shareV3Activation` decides, and fails
-   * closed. Off by default.
+   * Hold this development Mac at `share.file: 2` — reproduces a **version-2 Mac** for a skew test. An
+   * unpackaged Mac advertises `share.file: 3` by default (docs/protocol.md → Share → Version 3); this can
+   * only lower that. Forced off in a packaged build, which advertises 3 only under `SHARE_V3_RELEASE`.
+   * Off by default.
    */
-  shareV3: boolean;
+  shareV3Off: boolean;
 }
 
 const NAMES: readonly (keyof DebugSwitches)[] = [
@@ -137,7 +136,7 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'shareAcceptProbe',
   'shareDevReceive',
   'shareV2',
-  'shareV3',
+  'shareV3Off',
 ];
 
 function read(): DebugSwitches {
@@ -153,7 +152,7 @@ function read(): DebugSwitches {
     shareAcceptProbe: false,
     shareDevReceive: false,
     shareV2: false,
-    shareV3: false,
+    shareV3Off: false,
   };
   // `app.isPackaged` is not consulted here because this module must stay importable by tests with
   // no Electron present; main.ts guards the startup read instead.
