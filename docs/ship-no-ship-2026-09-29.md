@@ -75,3 +75,57 @@ Do these on your own devices, with the debug phone build and the Mac dev app as 
 
 If any step does not behave as written, that is a finding — say what you saw, and I will fix it before
 anything moves toward a release.
+
+---
+
+## Release decision report — 15:55, on the final tree `42ac5e5` (+ docs)
+
+### What blocks a distributable release (none is a failing test — every suite is green)
+
+| # | Blocker | Kind | Who clears it |
+|---|---|---|---|
+| B1 | No Developer ID signature / notarisation on the Mac app (D12) | packaging | owner |
+| B2 | Android release signing identity not confirmed for distribution — a keystore *is* configured locally and `assembleRelease` signs with `CN=Chetan, OU=ConnectSuite` (`40470d05…`); whether that is the key you intend to publish under is yours to say | packaging | owner |
+| B3 | macOS notification banners refused in the unsigned dev app (`UNErrorDomain error 1`) — unverifiable until B1 | platform | after B1 |
+| B4 | Defect 30's no-thread half (sending to a number with no thread) untested | defect, open | a send to a consenting number |
+| B5 | Phone TalkBack never run; Mac VoiceOver walk never recorded; no accessibility standard chosen (`PRODUCT.md`) | accessibility | owner decision + a pass |
+| B6 | Very large files: no 500 GB support (Path L is a proposal; L3/L4 built) | scope | owner approves L1/L2 contract |
+
+Deferred by record and not blocking: 17 (second phone refused, not evicted), 38 (phone volume change not
+mirrored). Tooling-only: 147.
+
+### Release-policy values proposed for your approval (all currently OFF in release)
+
+| Switch (phone / Mac) | Proposed value | Evidence |
+|---|---|---|
+| `MULTI_FILE_RELEASE` / `SHARE_V3_RELEASE` → several files per share | **on** | R1 and Session 2 on hardware today |
+| `MAX_FILES` = `MAX_LIVE_OFFERS_V3` | **10** files per share, 10 live offers per session | tests; 4 exercised live |
+| Per-copy budget (`PROVISIONAL_DEV_CANDIDATE`) | **½ of the cache quota, a fixed 1 GiB free-space reserve, readings ≤ 5 s old**, plus the 256 MiB staging margin | tests + Option B; not yet driven to its limit on hardware |
+| Accepted-queue lifetime (`QUEUE_LIFETIME_CANDIDATE_MS`) | **60 minutes** | tests |
+| Several-files stall clock (`RUN_LIMIT_MS` / `CEILING_MS`) | **10 min running / 60 min ceiling** | tests |
+| `WAIT_RELEASE` / `SHARE_WAIT_RELEASE` → `share.wait` | **30 minutes** (contract text: `docs/protocol.md` → `share.wait`) | live: negotiated 30, *until 15:41*, expired on time with cleanup; older peer falls back to 10 |
+
+Each is one constant on each side; flipping them is a separate reviewed commit, never bundled with code.
+
+### Signing and packaging, in order (owner)
+
+1. **Android:** confirm the release keystore is the publishing key; bump `versionCode`/`versionName`
+   together with the desktop (`docs/versioning.md`, `check-versions` guard); `./gradlew :app:assembleRelease`;
+   `apksigner verify --print-certs` shows your certificate; install on the SM-S938B **as a new package**
+   (release id `com.chetan.connectsuite`, not `.debug`) and pair once.
+2. **Mac:** put the Developer ID Application certificate in the keychain; fill the blank credentials in the
+   electron-builder config; `npm run dist`; `xcrun notarytool submit … --wait`; `xcrun stapler staple`;
+   `spctl -a -vv` must say *accepted, Notarized Developer ID*; install from the `.dmg` into `/Applications`
+   with quarantine set (Phase 9 D3); confirm notification permission (B3).
+3. Flip only the release switches you approve above, each in its own commit, then rebuild both.
+
+### Bounded acceptance test for you (≈ 20 minutes, synthetic files only)
+
+The six steps above (*Acceptance walkthrough*), **plus**, on the signed builds from the steps above:
+
+7. **Release gates hold:** with no switch flipped, a multi-select share does **not** list Sidekick and a
+   single share still works (release = the single-file product). With the switches flipped, step 1 works.
+8. **Notification banner:** lock the Mac screen's focus elsewhere, send yourself a test SMS from another
+   phone → a macOS banner appears (B3).
+
+Pass = every step as written. Any deviation is a finding and blocks the release until fixed.
