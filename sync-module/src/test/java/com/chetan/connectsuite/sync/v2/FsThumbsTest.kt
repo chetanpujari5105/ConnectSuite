@@ -1,6 +1,7 @@
 package com.chetan.connectsuite.sync.v2
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -135,5 +136,19 @@ class FsThumbsTest {
         val (w, h) = FsThumbs.scaledSize(4000 / s, 3000 / s, edge)
         assertEquals(256, w)
         assertEquals(192, h)
+    }
+
+    /**
+     * Defect 136: `media.thumb` answered 640 × 480 and 453 × 806 for `maxEdge: 512`, because the photo
+     * path encoded whatever `loadThumbnail` returned. It now leaves through [FsThumbs.encode], so the
+     * provider's oversized results are bounded by this rule — the measured sizes, fitted.
+     */
+    @Test fun `the provider's oversized thumbnails from defect 136 are fitted inside maxEdge`() {
+        assertEquals(512 to 384, FsThumbs.scaledSize(640, 480, 512))
+        assertEquals(288 to 512, FsThumbs.scaledSize(453, 806, 512))
+        assertEquals("never upscaled", 300 to 200, FsThumbs.scaledSize(300, 200, 512))
+        val reader = com.chetan.connectsuite.sync.SourceTree.kotlinFiles().single { it.name == "MediaStoreReader.kt" }.readText()
+        assertTrue("media.thumb leaves by the one encoder", reader.contains("FsThumbs.encode(bitmap, edge)"))
+        assertFalse("and never compresses the provider's bitmap itself", reader.contains("bitmap.compress("))
     }
 }

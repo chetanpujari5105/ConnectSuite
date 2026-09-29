@@ -3,7 +3,6 @@ package com.chetan.connectsuite.sync.v2
 import android.content.ContentUris
 import android.content.Context
 import android.database.Cursor
-import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.MediaStore
 import android.util.Base64
@@ -12,7 +11,6 @@ import com.chetan.connectsuite.core.link.LinkLog
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import java.io.ByteArrayOutputStream
 
 /**
  * The half of `media.*` that touches the provider. Everything else is in [MediaPayloads].
@@ -254,17 +252,26 @@ object MediaStoreReader {
                     put("error", "NOT_FOUND")
                 }
             }
-            made++
-            val bytes = ByteArrayOutputStream().use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
-                out.toByteArray()
+            // **Defect 136.** `loadThumbnail(Size)` returns *at least* the size asked on some providers
+            // (640 × 480 and 453 × 806 for maxEdge 512, measured), so the bitmap is bounded here by the
+            // one rule `fs.thumb` already uses — never a second copy of it — and the produced size is
+            // what the ack reports.
+            val thumb = FsThumbs.encode(bitmap, edge)
+            if (thumb == null) {
+                unrenderable++
+                LinkLog.w("media", "media.thumb $rawId decoded but could not be encoded at maxEdge=$edge")
+                return@map buildJsonObject {
+                    put("id", rawId)
+                    put("error", "NO_THUMBNAIL")
+                }
             }
+            made++
             buildJsonObject {
                 put("id", rawId)
                 put("mime", "image/jpeg")
-                put("width", bitmap.width)
-                put("height", bitmap.height)
-                put("data", Base64.encodeToString(bytes, Base64.NO_WRAP))
+                put("width", thumb.width)
+                put("height", thumb.height)
+                put("data", Base64.encodeToString(thumb.bytes, Base64.NO_WRAP))
             }
         }
 
@@ -328,5 +335,4 @@ object MediaStoreReader {
     private fun Cursor.intOf(column: String): Int? =
         getColumnIndex(column).takeIf { it >= 0 }?.let { if (isNull(it)) null else getInt(it) }
 
-    private const val JPEG_QUALITY = 80
 }

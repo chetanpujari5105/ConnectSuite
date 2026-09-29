@@ -203,3 +203,15 @@ Contract: `docs/protocol.md` → Extensions → `share.wait` (PROPOSED). Code: `
   seed 29, no `ttlSec` — the probe now defaults to the negotiated wait): phone *"expires in 1800s
   (share.wait 30)"*; Mac *valid*, held for a decision; the card reads **"Waits for your answer until
   15:41. After that it expires and nothing is saved."** Left untouched to observe the 30-minute expiry.
+
+## 6 · Smaller fixes after the sessions (all tests + mutations; hardware where stated)
+
+- **Consent stated once** on the several-files review (owner's finding) — `2f7786b`.
+- **Document types named** on the Mac card; Samsung's `text/comma-separated-values` read raw — `2f7786b`.
+- **Light theme:** a committed rendered-contrast sweep (`scripts/theme-contrast-sweep.mjs`) — 2,880 text
+  elements, both themes, 0 below AA after `--accent-mark` replaced the fill accent on five marks — `e7f308b`.
+- **Photos checksummed** (phone pre-hash ≤ 64 MiB, Mac passes it): **on hardware** 15:12:54, synthetic
+  `003.png`, `verified=true` — `0fb0f1d`.
+- **L3** refuse a pull up front when the Mac lacks room; **L4** the too-large share names the copy-free
+  route — `0fb0f1d`, `89f3491`.
+- **Defect 136** `media.thumb` bounded by `FsThumbs.encode` — tests only.
