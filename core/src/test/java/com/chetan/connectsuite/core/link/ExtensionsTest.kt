@@ -72,11 +72,18 @@ class ExtensionsTest {
         assertEquals(2, Extensions.negotiate(mapOf(Extensions.SHARE_FILE to 2), mapOf(Extensions.SHARE_FILE to 3), Extensions.SHARE_FILE))
     }
 
-    @Test fun `version 3 is not enabled - no build combination advertises share file above 2`() {
+    @Test fun `version 3 is advertised exactly where multiFile holds - never by a release build while the policy is off`() {
         var seen = 0
         for (debuggable in listOf(false, true)) for (armed in listOf(false, true)) for (production in listOf(false, true)) {
             val v = Extensions.advertised(debuggable, armed, production)[Extensions.SHARE_FILE]
-            assertTrue("advertised $v", v == 1 || v == 2)
+            val transfer = production || (debuggable && armed)
+            val expected = when {
+                !transfer -> 1
+                Extensions.multiFile(debuggable) -> 3
+                else -> 2
+            }
+            assertEquals("debuggable=$debuggable armed=$armed production=$production", expected, v)
+            if (!debuggable) assertTrue("a release build stays at or below 2 while MULTI_FILE_RELEASE is off", v!! <= 2)
             seen++
         }
         assertEquals("control: every combination was read", 8, seen)

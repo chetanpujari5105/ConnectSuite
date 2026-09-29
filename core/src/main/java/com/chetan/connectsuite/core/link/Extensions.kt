@@ -51,20 +51,44 @@ object Extensions {
     const val PRODUCTION_TRANSFER: Boolean = true
 
     /**
-     * What this phone advertises **in one handshake**. [PHONE] (`share.file` 1) unless either
-     * [productionTransfer] is on, or the build is debuggable **and** the development gate was armed for
-     * this handshake ([ShareDevGate]) — then `share.file` 2. A release build is not debuggable, so it
-     * advertises 2 only through [productionTransfer].
+     * **Release policy: several files per share (`share.file` 3) in a release build.** `false` until the
+     * owner approves shipping it together with the provisional values it would ship
+     * (`docs/feature-a-v3-production-enablement.md` → the decision report). It must equal
+     * `@bool/share_many_enabled` in the main manifest's resources — `ShareManyManifestTest` holds the two
+     * together, so the share-sheet entry and the advertised version cannot disagree.
+     */
+    const val MULTI_FILE_RELEASE: Boolean = false
+
+    /**
+     * **The one rule for whether this build does several files per share**: a debuggable build always
+     * (the builds the owner runs and tests), a release build only once [MULTI_FILE_RELEASE] is flipped.
+     * Read by [advertised], by the multi-select screen's bind, and by the single-file sheet's concurrent
+     * budget — never re-derived.
+     */
+    fun multiFile(debuggable: Boolean, release: Boolean = MULTI_FILE_RELEASE): Boolean = debuggable || release
+
+    /**
+     * What this phone advertises **in one handshake**:
+     *
+     * - `share.file` 3 when the version-2 transfer is on (below) **and** [multiFile] — unless a debuggable
+     *   build was asked to hold at version 2 for this one handshake ([holdV2], `ShareDevGate.holdV2`), which
+     *   is how a version-2 phone is reproduced for a skew test;
+     * - `share.file` 2 when [productionTransfer] is on, or a debuggable build's version-2 arm was consumed
+     *   by this handshake ([ShareDevGate.process]);
+     * - [PHONE] (`share.file` 1) otherwise.
+     *
+     * Negotiation is `min(mine, theirs)`, so a version-2 Mac still negotiates 2 with a version-3 phone.
      */
     fun advertised(
         debuggable: Boolean, devV2Armed: Boolean, productionTransfer: Boolean = PRODUCTION_TRANSFER,
-        devV3Armed: Boolean = false,
-    ): Map<String, Int> = when {
-        // Version 3 (PROPOSED): a debuggable build whose version-3 arm was consumed by this handshake
-        // (ShareDevGate.v3). Nothing else — not PRODUCTION_TRANSFER, not the version-2 arm — reaches 3.
-        debuggable && devV3Armed -> PHONE + (SHARE_FILE to 3)
-        productionTransfer || (debuggable && devV2Armed) -> PHONE + (SHARE_FILE to 2)
-        else -> PHONE
+        holdV2: Boolean = false, multiFileRelease: Boolean = MULTI_FILE_RELEASE,
+    ): Map<String, Int> {
+        val transfer = productionTransfer || (debuggable && devV2Armed)
+        return when {
+            transfer && multiFile(debuggable, multiFileRelease) && !(debuggable && holdV2) -> PHONE + (SHARE_FILE to 3)
+            transfer -> PHONE + (SHARE_FILE to 2)
+            else -> PHONE
+        }
     }
 
     /** One handshake's two facts, decided together so `hello.ack` and negotiation cannot disagree. */
@@ -78,9 +102,9 @@ object Extensions {
          */
         val askLine: String,
         /**
-         * The version-3 development line, logged on **every** handshake (proposal rev 4 §18), so a
-         * leaked `share.file 3` is visible in the first lines of any session. A third line, for the same
-         * reason as [askLine].
+         * The version-3 line, logged on **every** handshake (proposal rev 4 §18): whether this build does
+         * several files, the release policy, and any version-2 hold — so which version a session got, and
+         * why, is in its first lines. A third line, for the same reason as [askLine].
          */
         val v3Line: String = "",
     )
@@ -93,9 +117,10 @@ object Extensions {
     fun handshake(
         debuggable: Boolean, devV2Armed: Boolean, macExt: Map<String, Int>,
         productionTransfer: Boolean = PRODUCTION_TRANSFER,
-        devV3Armed: Boolean = false,
+        holdV2: Boolean = false,
+        multiFileRelease: Boolean = MULTI_FILE_RELEASE,
     ): Handshake {
-        val mine = advertised(debuggable, devV2Armed, productionTransfer, devV3Armed)
+        val mine = advertised(debuggable, devV2Armed, productionTransfer, holdV2, multiFileRelease)
         val negotiated = mine.keys.mapNotNull { name -> negotiate(mine, macExt, name)?.let { name to it } }.toMap()
         val line = "ext: phone advertises ${mine[SHARE_FILE]?.let { "share.file $it" } ?: "nothing"} " +
             "(debug share.file 2 armed for this handshake: $devV2Armed; debuggable build: $debuggable); " +
@@ -104,7 +129,8 @@ object Extensions {
         val ask = "ext: share.ask — phone advertises ${mine[SHARE_ASK] ?: "none"}, Mac advertises ${macExt[SHARE_ASK] ?: "none"}, " +
             "negotiated ${negotiated[SHARE_ASK] ?: "none"}; ordinary Send on this session: " +
             if (ordinarySend(negotiated)) "enabled (the Mac asks a person)" else "disabled"
-        val v3 = "ext: share.file 3 (development) — armed for this handshake: $devV3Armed; debuggable build: $debuggable; " +
+        val v3 = "ext: share.file 3 — several files per share in this build: ${multiFile(debuggable, multiFileRelease)} " +
+            "(release policy: $multiFileRelease); held at version 2 for this handshake: $holdV2; debuggable build: $debuggable; " +
             "phone advertises share.file ${mine[SHARE_FILE] ?: "none"}; negotiated share.file ${negotiated[SHARE_FILE] ?: "none"}"
         return Handshake(mine, negotiated, line, ask, v3)
     }

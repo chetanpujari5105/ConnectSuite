@@ -1,4 +1,4 @@
-package com.chetan.connectsuite.probe
+package com.chetan.connectsuite
 
 import android.os.Bundle
 import android.widget.Toast
@@ -26,24 +26,19 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.chetan.connectsuite.ShareManyCopy
-import com.chetan.connectsuite.ShareSheet
-import com.chetan.connectsuite.ShareToMacCopy
-import com.chetan.connectsuite.ShareToMacModel
-import com.chetan.connectsuite.SheetExit
 import com.chetan.connectsuite.core.ui.ConnectSuiteTheme
-import com.chetan.connectsuite.onLeave
 import com.chetan.connectsuite.sync.v2.ShareIntake
 
 /**
- * **Stage 2 — Send several files to the Mac, from a Gallery or My Files multi-select. DEVELOPMENT ONLY.**
- * docs/feature-a-multi-offer-proposal.md rev 4 §3, §11–§15.
+ * **Send several files to the Mac, from one Gallery or My Files multi-select.**
+ * docs/feature-a-multi-offer-proposal.md rev 4 §3, §11–§15; docs/protocol.md → Share → Version 3.
  *
- * Fenced three ways: it is in the **debug source set only** (a release build does not contain it); its
- * manifest entry is **`android:enabled="false"`**, so even a debug install does not list it in any share
- * sheet until someone enables the component by hand; and [ShareManyToMacModel.bind] refuses outside a
- * debuggable build. Several files also need a session that negotiated `share.file` 3, which only the
- * debug version-3 arms advertise. `ShareManyManifestTest` pins the first two.
+ * In the main source set. Whether a build lists it in the share sheet is one release-policy decision:
+ * the manifest entry's `android:enabled="@bool/share_many_enabled"` (true in debuggable builds; in main,
+ * equal to `Extensions.MULTI_FILE_RELEASE`, which is off until the owner approves), and
+ * [ShareManyToMacModel.bind] refuses when `Extensions.multiFile` is false. Several files also need a
+ * session that negotiated `share.file` 3, which the same rule advertises; a version-2 Mac negotiates 2,
+ * and the screen then says to update the Mac. `ShareManyManifestTest` pins the manifest half.
  *
  * - **One file** is the single-file sheet, unchanged, bound in this activity (§15).
  * - **Several:** the review list, then **Send N files**; each file is its own offer with its own Accept

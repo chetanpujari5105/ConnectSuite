@@ -9,6 +9,7 @@ import android.webkit.MimeTypeMap
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.chetan.connectsuite.core.link.Extensions
 import com.chetan.connectsuite.core.link.LinkController
 import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.sync.v2.ShareAdmission
@@ -294,13 +295,13 @@ class ShareToMacModel(app: Application) : AndroidViewModel(app) {
             if (it.deleted > 0 || it.leftUnrecognised > 0 || it.refusedDir) LinkLog.i("share", "backstop ${ShareStaging.sweepLine(it)}")
         }
         val free = dir.usableSpace
-        // Below version 3 — every live pairing today — this is exactly the version-2 preflight. At
-        // version 3 (PROPOSED, advertised by nothing) the copies already held for live offers count,
+        // Below version 3 (a version-2 peer, or a build without several files) this is exactly the version-2 preflight. At
+        // version 3 the copies already held for live offers count,
         // and with no approved cap a second concurrent copy is refused before a byte is read.
         val (version, held) = ShareFeature.stagingContext()
-        // Stage 1 (development only): the live per-copy budget, supplied only in a debuggable build. It
-        // applies only at version 3 with copies held — reachable only through the debug version-3 arm.
-        val concurrent = if (debuggable()) ShareBudgetReadings.concurrent(app, dir) else null
+        // The live per-copy budget (PROVISIONAL values, ShareAdmission.PROVISIONAL_DEV_CANDIDATE), supplied wherever
+        // several files are on (Extensions.multiFile). It applies only at version 3 with copies held.
+        val concurrent = if (Extensions.multiFile(debuggable())) ShareBudgetReadings.concurrent(app, dir) else null
         when (val pre = ShareAdmission.forCopy(version, expected, held, free, ShareAdmission.APPROVED_CAP, concurrent)) {
             is ShareAdmission.Copy.NoSpace -> {
                 fail(name, null, ShareSheetState.Failure.NoSpace(pre.needed, pre.free), "preflight refused (share.file $version, $held bytes held)")

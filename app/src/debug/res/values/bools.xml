@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Debuggable builds: several files per share are on (Extensions.multiFile(debuggable = true)). -->
+    <bool name="share_many_enabled">true</bool>
+</resources>

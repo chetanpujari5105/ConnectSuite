@@ -1,4 +1,4 @@
-package com.chetan.connectsuite.probe
+package com.chetan.connectsuite
 
 import android.app.Application
 import android.content.Intent
@@ -10,9 +10,7 @@ import android.webkit.MimeTypeMap
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.chetan.connectsuite.ShareManyCopy
-import com.chetan.connectsuite.ShareManyRow
-import com.chetan.connectsuite.ShareToMacModel
+import com.chetan.connectsuite.core.link.Extensions
 import com.chetan.connectsuite.core.link.LinkController
 import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.sync.v2.ShareAdmission
@@ -42,7 +40,9 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * **Stage 2 — the several-files review screen's state. Debug source set only; development only.**
+ * **The several-files review screen's state** — one Gallery or My Files multi-select, each file its own offer.
+ * On in debuggable builds; in a release build only once the owner flips `Extensions.MULTI_FILE_RELEASE`
+ * ([Extensions.multiFile]), which also enables the component (`@bool/share_many_enabled`).
  * docs/feature-a-multi-offer-proposal.md rev 4 §3, §11–§15. The rules live in [ShareManyQueue] (sync-module)
  * and [ShareManyCopy]; this class only connects them to the URIs, the session and `ShareFeature`.
  *
@@ -91,8 +91,10 @@ class ShareManyToMacModel(app: Application) : AndroidViewModel(app) {
 
     fun bind(intent: Intent) {
         bound = true
-        if ((app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
-            // Two fences: this class is in the debug source set only, and it refuses outside a debuggable build.
+        if (!Extensions.multiFile(debuggable = (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0)) {
+            // The release policy (Extensions.MULTI_FILE_RELEASE, @bool/share_many_enabled) is off in this build:
+            // the component is disabled, so this is reached only if something enabled it by hand. Refuse.
+            LinkLog.w("share", "selection refused: several files per share are not enabled in this build (release policy off)")
             _screen.value = Screen.Refused(ShareSelection.Refusal.NOT_A_SEND_MULTIPLE, 0, null, null)
             return
         }

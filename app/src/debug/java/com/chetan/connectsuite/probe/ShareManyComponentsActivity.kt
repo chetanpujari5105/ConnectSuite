@@ -64,7 +64,7 @@ internal object ShareManyComponents {
 
     /** The only components this harness may touch. */
     val ALLOWED = mapOf(
-        "many" to "com.chetan.connectsuite.probe.ShareManyToMacActivity",
+        "many" to "com.chetan.connectsuite.ShareManyToMacActivity",
         "probe" to "com.chetan.connectsuite.probe.ShareManyGrantProbeActivity",
     )
 

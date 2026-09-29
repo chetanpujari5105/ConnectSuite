@@ -20,87 +20,107 @@ class ShareDevGateTest {
     private val phoneTwo = two + (Extensions.SHARE_ASK to 1)
 
     @Test fun `advertised is share-file 1 in every combination but debuggable AND armed`() {
-        assertEquals(phoneOne, Extensions.advertised(debuggable = false, devV2Armed = false, productionTransfer = false))
-        assertEquals(phoneOne, Extensions.advertised(debuggable = false, devV2Armed = true, productionTransfer = false))
-        assertEquals(phoneOne, Extensions.advertised(debuggable = true, devV2Armed = false, productionTransfer = false))
-        assertEquals("the control: the one combination that advertises 2", phoneTwo, Extensions.advertised(debuggable = true, devV2Armed = true, productionTransfer = false))
+        assertEquals(phoneOne, Extensions.advertised(debuggable = false, devV2Armed = false, productionTransfer = false, holdV2 = true))
+        assertEquals(phoneOne, Extensions.advertised(debuggable = false, devV2Armed = true, productionTransfer = false, holdV2 = true))
+        assertEquals(phoneOne, Extensions.advertised(debuggable = true, devV2Armed = false, productionTransfer = false, holdV2 = true))
+        assertEquals("the control: the one combination that advertises 2", phoneTwo, Extensions.advertised(debuggable = true, devV2Armed = true, productionTransfer = false, holdV2 = true))
         assertEquals("the build constant itself is unchanged", phoneOne, Extensions.PHONE)
     }
 
     @Test fun `negotiated is 2 only for a debuggable armed phone facing a Mac that advertises 2`() {
         val macs = mapOf("old Mac (no ext)" to emptyMap(), "Mac at 1" to one, "Mac at 2" to two)
         for (debuggable in listOf(false, true)) for (armed in listOf(false, true)) for ((label, mac) in macs) {
-            val h = Extensions.handshake(debuggable, armed, mac, productionTransfer = false)
+            val h = Extensions.handshake(debuggable, armed, mac, productionTransfer = false, holdV2 = true)
             val expected = when {
                 mac.isEmpty() -> emptyMap()
                 debuggable && armed && mac == two -> two
                 else -> one
             }
             assertEquals("debuggable=$debuggable armed=$armed $label", expected, h.negotiated)
-            assertEquals("hello.ack and negotiation are one decision", Extensions.advertised(debuggable, armed, productionTransfer = false), h.advertised)
+            assertEquals("hello.ack and negotiation are one decision", Extensions.advertised(debuggable, armed, productionTransfer = false, holdV2 = true), h.advertised)
         }
     }
 
     @Test fun `the per-session log line says what was advertised and negotiated, and nothing else`() {
-        val h = Extensions.handshake(debuggable = true, devV2Armed = false, macExt = two, productionTransfer = false)
+        val h = Extensions.handshake(debuggable = true, devV2Armed = false, macExt = two, productionTransfer = false, holdV2 = true)
         assertEquals(
             "ext: phone advertises share.file 1 (debug share.file 2 armed for this handshake: false; debuggable build: true); " +
                 "Mac advertises share.file 2; negotiated share.file 1",
             h.logLine,
         )
-        val old = Extensions.handshake(debuggable = true, devV2Armed = true, macExt = emptyMap())
+        val old = Extensions.handshake(debuggable = true, devV2Armed = true, macExt = emptyMap(), holdV2 = true)
         assertTrue(old.logLine, old.logLine.endsWith("Mac advertises no share.file; negotiated no share.file"))
     }
 
-    // ---- version 3: the development arm (proposal rev 4 §18, Stage 1) --------------------------------
+    // ---- version 3: several files per share (Extensions.multiFile, MULTI_FILE_RELEASE) ----------------
 
     private val three = mapOf(Extensions.SHARE_FILE to 3)
     private val phoneThree = three + (Extensions.SHARE_ASK to 1)
 
-    @Test fun `share-file 3 is advertised only by a debuggable build whose v3 arm was consumed by this handshake`() {
-        for (debuggable in listOf(false, true)) for (v2 in listOf(false, true)) for (production in listOf(false, true)) for (v3 in listOf(false, true)) {
-            val got = Extensions.advertised(debuggable, v2, production, devV3Armed = v3)
-            val label = "debuggable=$debuggable v2=$v2 production=$production v3=$v3"
-            if (debuggable && v3) assertEquals(label, phoneThree, got)
-            else assertEquals("$label: exactly what the phone advertises without the v3 arm", Extensions.advertised(debuggable, v2, production), got)
-        }
+    @Test fun `share-file 3 needs the transfer and multiFile, and a hold lowers only a debuggable build to 2`() {
+        for (debuggable in listOf(false, true)) for (v2 in listOf(false, true)) for (production in listOf(false, true))
+            for (hold in listOf(false, true)) for (release in listOf(false, true)) {
+                val got = Extensions.advertised(debuggable, v2, production, holdV2 = hold, multiFileRelease = release)
+                val label = "debuggable=$debuggable v2=$v2 production=$production hold=$hold release=$release"
+                val transfer = production || (debuggable && v2)
+                val expected = when {
+                    !transfer -> phoneOne
+                    (debuggable || release) && !(debuggable && hold) -> phoneThree
+                    else -> phoneTwo
+                }
+                assertEquals(label, expected, got)
+            }
         assertEquals("the build constant itself is unchanged", phoneOne, Extensions.PHONE)
-        assertEquals("the default is unarmed", Extensions.advertised(true, false), Extensions.advertised(true, false, devV3Armed = false))
     }
 
-    @Test fun `negotiation 3+3 is 3, and a version-2 Mac keeps version 2`() {
+    @Test fun `a release build advertises 2 while the release policy is off, and 3 only once it is flipped`() {
+        assertFalse("the release policy is the owner's decision and is off", Extensions.MULTI_FILE_RELEASE)
+        assertEquals(phoneTwo, Extensions.advertised(debuggable = false, devV2Armed = false))
+        assertEquals(phoneThree, Extensions.advertised(debuggable = false, devV2Armed = false, multiFileRelease = true))
+        assertTrue("a debuggable build does several files", Extensions.multiFile(debuggable = true))
+        assertFalse("a release build does not, until the policy is flipped", Extensions.multiFile(debuggable = false))
+    }
+
+    @Test fun `a hold can only lower the version - a release build ignores it`() {
+        assertEquals(phoneThree, Extensions.advertised(false, false, holdV2 = true, multiFileRelease = true))
+        assertEquals(phoneTwo, Extensions.advertised(false, false, holdV2 = true))
+    }
+
+    @Test fun `negotiation 3+3 is 3, and a version-2 peer on either side keeps version 2`() {
         val macTwo = two + (Extensions.SHARE_ASK to 1)
         val macThree = three + (Extensions.SHARE_ASK to 1)
-        assertEquals(macThree, Extensions.handshake(true, false, macThree, devV3Armed = true).negotiated)
-        assertEquals(macTwo, Extensions.handshake(true, false, macTwo, devV3Armed = true).negotiated)
-        assertEquals("unarmed phone, version-3 Mac", macTwo, Extensions.handshake(true, false, macThree, devV3Armed = false).negotiated)
-        assertEquals("release build, arm ignored", macTwo, Extensions.handshake(false, false, macThree, devV3Armed = true).negotiated)
+        assertEquals(macThree, Extensions.handshake(true, false, macThree).negotiated)
+        assertEquals("version-3 phone, version-2 Mac", macTwo, Extensions.handshake(true, false, macTwo).negotiated)
+        assertEquals("held phone, version-3 Mac", macTwo, Extensions.handshake(true, false, macThree, holdV2 = true).negotiated)
+        assertEquals("release build, policy off, version-3 Mac", macTwo, Extensions.handshake(false, false, macThree).negotiated)
     }
 
-    @Test fun `the v3 line is written on every handshake and names the arm, the build and both versions`() {
-        val armed = Extensions.handshake(true, false, three + (Extensions.SHARE_ASK to 1), devV3Armed = true)
+    @Test fun `the v3 line is written on every handshake and names the policy, the hold, the build and both versions`() {
+        val h = Extensions.handshake(true, false, three + (Extensions.SHARE_ASK to 1))
         assertEquals(
-            "ext: share.file 3 (development) — armed for this handshake: true; debuggable build: true; " +
+            "ext: share.file 3 — several files per share in this build: true (release policy: false); " +
+                "held at version 2 for this handshake: false; debuggable build: true; " +
                 "phone advertises share.file 3; negotiated share.file 3",
-            armed.v3Line,
+            h.v3Line,
         )
-        val unarmed = Extensions.handshake(true, false, two)
-        assertTrue(unarmed.v3Line, unarmed.v3Line.startsWith("ext: share.file 3 (development) — armed for this handshake: false;"))
+        val held = Extensions.handshake(true, false, two, holdV2 = true)
+        assertTrue(held.v3Line, held.v3Line.contains("held at version 2 for this handshake: true;"))
+        assertTrue(held.v3Line, held.v3Line.endsWith("phone advertises share.file 2; negotiated share.file 2"))
     }
 
-    @Test fun `the v3 arm and the v2 arm are separate instances — arming one never arms or consumes the other`() {
-        assertTrue(ShareDevGate.v3 !== ShareDevGate.process)
+    @Test fun `the hold and the v2 arm are separate instances — arming one never arms or consumes the other`() {
+        assertTrue(ShareDevGate.holdV2 !== ShareDevGate.process)
     }
 
-    @Test fun `ControlSession consumes the v3 arm once per handshake, after the pairing check, and logs the v3 line`() {
+    @Test fun `ControlSession consumes the hold once per handshake, after the pairing check, and logs the v3 line`() {
         val src = code(File(root(), "core/src/main/java/com/chetan/connectsuite/core/link/ControlSession.kt"))
-        assertEquals("one consume of the v3 arm", 1, Regex("ShareDevGate\\.v3\\.consumeForHandshake\\(\\)").findAll(src).count())
-        val consume = src.indexOf("ShareDevGate.v3.consumeForHandshake()")
+        assertEquals("one consume of the hold", 1, Regex("ShareDevGate\\.holdV2\\.consumeForHandshake\\(\\)").findAll(src).count())
+        val consume = src.indexOf("ShareDevGate.holdV2.consumeForHandshake()")
         val issue = src.indexOf("server.sessions.issue(this)")
         assertTrue("control: both found", consume > 0 && issue > 0)
         assertTrue("consumed only after the Mac was accepted and a session token issued", consume > issue)
         assertTrue(src.contains("LinkLog.i(\"control\", handshake.v3Line)"))
-        assertFalse("no main source arms v3", src.contains("ShareDevGate.v3.arm("))
+        assertFalse("no main source arms the hold", src.contains("ShareDevGate.holdV2.arm("))
     }
 
     // ---- the arm itself ---------------------------------------------------------------------------
@@ -146,10 +166,10 @@ class ShareDevGateTest {
         assertTrue("control: the pairing check was found", pairing >= 0)
         assertTrue("the arm is consumed in onHello", consume >= 0)
         assertTrue("after the pairing check, so a refused Mac cannot use it up", consume > pairing)
-        // Was: one `consumeForHandshake(` in total. Stage 1 adds the version-3 arm, which answers a different
+        // Was: one `consumeForHandshake(` in total. The version-2 hold (was the version-3 arm) answers a different
         // question, so the total is not raised — each arm is asserted by name, once each, and nothing else.
         assertEquals("the version-2 arm consumed in one place only", 1, Regex("ShareDevGate\\.process\\.consumeForHandshake\\(").findAll(src).count())
-        assertEquals("the version-3 arm consumed in one place only", 1, Regex("ShareDevGate\\.v3\\.consumeForHandshake\\(").findAll(src).count())
+        assertEquals("the version-2 hold consumed in one place only", 1, Regex("ShareDevGate\\.holdV2\\.consumeForHandshake\\(").findAll(src).count())
         assertEquals("no other consume", 2, Regex("consumeForHandshake\\(").findAll(src).count())
         assertFalse("negotiation must not read the build constant directly", src.contains("Extensions.PHONE"))
         assertTrue("hello.ack carries the handshake's own value", src.contains("Extensions.toJson(handshake.advertised)"))
@@ -158,7 +178,7 @@ class ShareDevGateTest {
     // ---- share.ask (docs/protocol.md → Extensions → the share.ask extension) ---------------------
 
     @Test fun `the share-file log line is unchanged by share-ask - the runbook quotes it byte for byte`() {
-        val h = Extensions.handshake(debuggable = true, devV2Armed = true, macExt = two + (Extensions.SHARE_ASK to 1))
+        val h = Extensions.handshake(debuggable = true, devV2Armed = true, macExt = two + (Extensions.SHARE_ASK to 1), holdV2 = true)
         assertEquals(
             "ext: phone advertises share.file 2 (debug share.file 2 armed for this handshake: true; debuggable build: true); " +
                 "Mac advertises share.file 2; negotiated share.file 2",
@@ -174,7 +194,7 @@ class ShareDevGateTest {
             "production Mac" to two + (Extensions.SHARE_ASK to 1),
         )
         val got = macs.mapValues { (_, mac) ->
-            listOf(false, true).map { armed -> Extensions.ordinarySend(Extensions.handshake(debuggable = true, devV2Armed = armed, macExt = mac, productionTransfer = false).negotiated) }
+            listOf(false, true).map { armed -> Extensions.ordinarySend(Extensions.handshake(debuggable = true, devV2Armed = armed, macExt = mac, productionTransfer = false, holdV2 = true).negotiated) }
         }
         assertEquals(
             mapOf(
@@ -188,9 +208,9 @@ class ShareDevGateTest {
     }
 
     @Test fun `the ask line names both sides, the negotiated value and the verdict, and nothing else`() {
-        val off = Extensions.handshake(debuggable = true, devV2Armed = true, macExt = two)
+        val off = Extensions.handshake(debuggable = true, devV2Armed = true, macExt = two, holdV2 = true)
         assertEquals("ext: share.ask — phone advertises 1, Mac advertises none, negotiated none; ordinary Send on this session: disabled", off.askLine)
-        val on = Extensions.handshake(debuggable = true, devV2Armed = true, macExt = two + (Extensions.SHARE_ASK to 1))
+        val on = Extensions.handshake(debuggable = true, devV2Armed = true, macExt = two + (Extensions.SHARE_ASK to 1), holdV2 = true)
         assertTrue(on.askLine, on.askLine.endsWith("negotiated 1; ordinary Send on this session: enabled (the Mac asks a person)"))
     }
 
@@ -200,18 +220,18 @@ class ShareDevGateTest {
         // Recorded with the Mac's readiness (slice 3e passed 2026-09-25; §11 in 5e20963). Setting it back
         // to false is how the phone stops advertising share.file 2 outside an armed debug handshake.
         assertTrue(Extensions.PRODUCTION_TRANSFER)
-        assertEquals(phoneTwo, Extensions.advertised(debuggable = false, devV2Armed = false))
-        assertEquals(phoneTwo, Extensions.advertised(debuggable = true, devV2Armed = false))
+        assertEquals(phoneTwo, Extensions.advertised(debuggable = false, devV2Armed = false, holdV2 = true))
+        assertEquals(phoneTwo, Extensions.advertised(debuggable = true, devV2Armed = false, holdV2 = true))
     }
 
     @Test fun `this build - ordinary Send against each Mac, and the per-session lines`() {
         val production = two + (Extensions.SHARE_ASK to 1)
-        fun send(mac: Map<String, Int>) = Extensions.ordinarySend(Extensions.handshake(false, false, mac).negotiated)
+        fun send(mac: Map<String, Int>) = Extensions.ordinarySend(Extensions.handshake(false, false, mac, holdV2 = true).negotiated)
         assertTrue("control: the production Mac", send(production))
         assertFalse("the synthetic-only development Mac: 2 negotiated, no share.ask", send(two))
         assertFalse("a version-1 Mac", send(one))
         assertFalse("an old Mac", send(emptyMap()))
-        val h = Extensions.handshake(debuggable = true, devV2Armed = false, macExt = production)
+        val h = Extensions.handshake(debuggable = true, devV2Armed = false, macExt = production, holdV2 = true)
         assertEquals(
             "ext: phone advertises share.file 2 (debug share.file 2 armed for this handshake: false; debuggable build: true); " +
                 "Mac advertises share.file 2; negotiated share.file 2",
@@ -221,10 +241,10 @@ class ShareDevGateTest {
     }
 
     @Test fun `with production transfer on, a release build advertises 2 and Send enables only against share-ask`() {
-        assertEquals(phoneTwo, Extensions.advertised(debuggable = false, devV2Armed = false, productionTransfer = true))
+        assertEquals(phoneTwo, Extensions.advertised(debuggable = false, devV2Armed = false, productionTransfer = true, holdV2 = true))
         val production = two + (Extensions.SHARE_ASK to 1)
         fun send(mac: Map<String, Int>) =
-            Extensions.ordinarySend(Extensions.handshake(false, false, mac, productionTransfer = true).negotiated)
+            Extensions.ordinarySend(Extensions.handshake(false, false, mac, productionTransfer = true, holdV2 = true).negotiated)
         assertTrue("control: the production pairing", send(production))
         assertFalse("the synthetic-only development Mac", send(two))
         assertFalse("a version-1 Mac", send(one))

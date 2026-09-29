@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Whether Sidekick appears in the share sheet for a multi-select (ShareManyToMacActivity).
+      A RELEASE-POLICY DECISION, not a feature flag: false until the owner approves shipping several files
+      per share with the values listed in docs/feature-a-v3-production-enablement.md. Must equal
+      Extensions.MULTI_FILE_RELEASE — ShareManyManifestTest fails if they differ.
+    -->
+    <bool name="share_many_enabled">false</bool>
+</resources>

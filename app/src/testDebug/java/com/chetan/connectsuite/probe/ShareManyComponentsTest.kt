@@ -12,7 +12,7 @@ class ShareManyComponentsTest {
     @Test fun `on enables, off restores the manifest default - never an explicit disable`() {
         assertEquals(Plan.Set("probe", "com.chetan.connectsuite.probe.ShareManyGrantProbeActivity", ShareManyComponents.ENABLED),
             ShareManyComponents.plan(true, "probe", true))
-        assertEquals(Plan.Set("many", "com.chetan.connectsuite.probe.ShareManyToMacActivity", ShareManyComponents.DEFAULT),
+        assertEquals(Plan.Set("many", "com.chetan.connectsuite.ShareManyToMacActivity", ShareManyComponents.DEFAULT),
             ShareManyComponents.plan(true, "many", false))
     }
 

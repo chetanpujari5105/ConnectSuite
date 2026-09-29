@@ -1,6 +1,6 @@
-package com.chetan.connectsuite.probe
+package com.chetan.connectsuite
 
-import com.chetan.connectsuite.probe.ShareManyLeave.Action
+import com.chetan.connectsuite.ShareManyLeave.Action
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

@@ -59,11 +59,11 @@ class ShareDevGateRoutingTest {
         assertTrue("control: the main sources were read", sources.any { it.name == "ControlSession.kt" })
         val writers = sources.filter { Regex("ShareDevGate\\.process\\.arm\\(").containsMatchIn(code(it)) }
         assertEquals(emptyList<File>(), writers)
-        val v3Writers = sources.filter { Regex("ShareDevGate\\.v3\\.arm\\(").containsMatchIn(code(it)) }
-        assertEquals("no main source arms share.file 3", emptyList<File>(), v3Writers)
+        val v3Writers = sources.filter { Regex("ShareDevGate\\.holdV2\\.arm\\(").containsMatchIn(code(it)) }
+        assertEquals("no main source holds the phone at version 2", emptyList<File>(), v3Writers)
     }
 
-    @Test fun `the v3 arm activity is in the debug manifest only, behind DUMP, with no filter, and is the one v3 writer`() {
+    @Test fun `the version-2 hold activity is in the debug manifest only, behind DUMP, with no filter, and is the one hold writer`() {
         val v3 = "com.chetan.connectsuite.probe.ShareDevV3Activity"
         val a = activities(File(root(), "app/src/debug/AndroidManifest.xml")).single { it.getAttributeNS(androidNs, "name") == v3 }
         assertEquals("android.permission.DUMP", a.getAttributeNS(androidNs, "permission"))
@@ -76,7 +76,7 @@ class ShareDevGateRoutingTest {
         assertEquals("one class, in the debug source set", listOf("app/src/debug"), cls.map { it.relativeTo(root()).path.substringBefore("/java/") })
         val writers = root().walkTopDown()
             .filter { it.isFile && it.extension == "kt" && !it.path.contains("/build/") && !it.path.contains("/src/test/") }
-            .filter { Regex("ShareDevGate\\.v3\\.arm\\(").containsMatchIn(code(it)) }.map { it.name }.toList()
+            .filter { Regex("ShareDevGate\\.holdV2\\.arm\\(").containsMatchIn(code(it)) }.map { it.name }.toList()
         assertEquals(listOf("ShareDevV3Activity.kt"), writers)
     }
 
@@ -91,10 +91,23 @@ class ShareDevGateRoutingTest {
     @Test fun `the one ordinary offer in main requires share-ask, and Send is enabled only by Available`() {
         val sources = mainSources()
         val offering = sources.filter { Regex("\\.offerStaged\\(").containsMatchIn(code(it)) }
-        assertEquals("one main caller: the share sheet's model", listOf("ShareToMacModel.kt"), offering.map { it.name })
-        val call = Regex("\\.offerStaged\\(([^)]*)\\)").findAll(code(offering.single())).map { it.groupValues[1] }.toList()
-        assertEquals("called once", 1, call.size)
-        assertTrue("an ordinary offer must require share.ask: ${call.single()}", call.single().contains("requireAsk = true"))
+        // Two callers since 2026-09-29, each asserted by name — never a raised count: the single-file sheet's
+        // model, and the several-files screen's model (moved from the debug source set). Each is an ordinary
+        // offer a person chose in the share sheet, so each must require share.ask.
+        assertEquals(
+            "the two main callers: the single-file sheet and the several-files screen",
+            setOf("ShareToMacModel.kt", "ShareManyToMacModel.kt"), offering.map { it.name }.toSet(),
+        )
+        for (f in offering) {
+            val call = Regex("\\.offerStaged\\(([^)]*)\\)").findAll(code(f)).map { it.groupValues[1] }.toList()
+            assertEquals("${f.name}: called once", 1, call.size)
+            assertTrue("${f.name}: an ordinary offer must require share.ask: ${call.single()}", call.single().contains("requireAsk = true"))
+        }
+        val many = code(File(root(), "app/src/main/java/com/chetan/connectsuite/ShareManyToMacActivity.kt"))
+        assertTrue(
+            "the several-files Send is enabled only by Available",
+            many.contains("Button(onClick = onSend, enabled = screen.availability is ShareIntake.Availability.Available)"),
+        )
         // The Button now reads `canSend(state)` (the silent-Send fix, 2026-09-25), so the question moved with
         // it rather than being loosened: the button's only enabling expression is canSend, and canSend's
         // body *requires* Available — conjoined, never or-ed. Its behaviour is asserted below as well.

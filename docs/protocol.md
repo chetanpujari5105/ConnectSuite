@@ -2482,7 +2482,7 @@ hello.ack  {"protocolVersion":1, …every existing field…, "ext":{"share.file"
 
 On `hello`, `share.file` means *this Mac can receive and answer a one-file share offer*; on
 `hello.ack`, *this phone can make one*. **The version says how far:** `1` is offer and decline only;
-`2` is the one-file transfer as well (see [Share → Version 2](#version-2--the-transfer)). `3`, several pending offers, is **proposed, built inert and not advertised**, and the separate `share.stream` for large files is **proposed and not implemented** (see [Version 3](#version-3--several-pending-offers-proposed-2026-09-25--built-inert-not-advertised)).
+`2` is the one-file transfer as well (see [Share → Version 2](#version-2--the-transfer)). `3`, several pending offers, is **advertised by development builds (the debuggable phone and the unpackaged Mac) and by no release build** until the owner approves it, and the separate `share.stream` for large files is **proposed and not implemented** (see [Version 3](#version-3--several-pending-offers-development-builds-since-2026-09-29-release-gated-on-the-owner)).
 Because the negotiated version is `min(mine, theirs)`, a transfer can start only when **both**
 peers advertise `2`. Parsing is identical on both sides:
 
@@ -2571,7 +2571,7 @@ channel. The design and its evidence are `docs/phase-7-share-proposal.md` rev 2 
 | `expiresAtMs` | when the phone stops honouring the offer: sent + 10 minutes |
 
 **Only sent when `share.file` is negotiated on that session, and at most one offer per session is
-live.** (At the proposed version 3, at most 10 — see Version 3; built inert, not advertised.) The file is already staged privately on the phone; the offer never refers to anything else.
+live.** (At version 3, at most 10 — PROVISIONAL; see Version 3.) The file is already staged privately on the phone; the offer never refers to anything else.
 
 **The Mac validates before anything else**, in this order, and declines with the first failure:
 `not-negotiated` (no `share.file` on this session); `malformed-offer` (any field above out of
@@ -2907,15 +2907,14 @@ the staged copy. A Retry in a shipping build is a person's action on the Mac.
 `share.cancel` from either side stops a live pull: the phone stops streaming and deletes the staged
 copy, and the Mac deletes its partial. Neither side reports `saved`.
 
-### Version 3 — several pending offers (PROPOSED 2026-09-25 — built inert, not advertised)
+### Version 3 — several pending offers (development builds since 2026-09-29; release gated on the owner)
 
-> **Not approved, and nothing advertises `share.file 3`.** Proposed contract for review; the argument
-> is `docs/feature-a-multi-offer-proposal.md` (**rev 4, 2026-09-26**). Until it is approved and
-> advertised, version 2 above is the whole contract, and both builds advertise 2. (Since 2026-09-26 a
-> build of rules 1–3 and the Mac half of rule 4 exists behind that gate. The phone's admission still
-> refuses a second concurrent copy, so it is unreachable in any pairing; see the proposal's *Build
-> status*.) **Every value marked PROVISIONAL below is a development parameter** (owner, 2026-09-26), and
-> none is approved for production. This section is **Path S** — files copied privately before they are
+> **Advertised by development builds; not approved for release.** The argument is
+> `docs/feature-a-multi-offer-proposal.md` (**rev 4, 2026-09-26**). Since 2026-09-29 the debuggable phone and
+> the unpackaged Mac advertise `share.file 3` on every handshake (below), so the builds the owner runs are
+> the builds under test. **A release phone and a packaged Mac advertise 2** until the owner flips one
+> release-policy switch on each side, and with them approves the values marked **PROVISIONAL** below —
+> none of which is approved for production (owner, 2026-09-26). This section is **Path S** — files copied privately before they are
 > offered. Large files are **Path L**, below.
 
 **Negotiation.** `share.file: 3` by the existing rule `min(mine, theirs)`: 3 + 3 → 3, 3 + 2 → 2; a
@@ -2926,17 +2925,19 @@ Every version-2 rule holds at 3 except these.
   file before reading or copying anything, and says the Mac needs updating.
 - **One file is never a selection.** A `SEND_MULTIPLE` carrying one file is a single-file share, under
   the version-2 rules, at any version.
-- **Development advertisement (built in Stage 1, 2026-09-26; not yet used on a device).** Neither production build advertises 3.
-  - The **phone** advertises 3 only when the build is **debuggable** *and* a debug-source-set activity,
-    exported only behind `android.permission.DUMP`, armed it for **that one handshake**. The arm is in
-    memory, consumed by one trusted handshake, and cleared at every process start.
-  - The **Mac** advertises 3 only when it is **not packaged**, the `shareV3` debug switch is given (`CONNECTSUITE_DEBUG_SWITCHES=shareV3`), and
-    `share.ask` is active with the synthetic-only gate closed, so every offer is still held for a
-    person.
-  - A packaged Mac ignores the switch and logs that it did.
-  - Both sides log the advertised and negotiated `share.file` on every handshake.
-  - A hardware test arms both sides for that test only, then disarms and relaunches normally, and
-    reads back `share.file 2` negotiated on both sides.
+- **Who advertises 3 (since 2026-09-29).** One rule per side, each with one release-policy switch that is
+  **off**:
+  - The **phone** advertises 3 when the version-2 transfer is on **and** `Extensions.multiFile(debuggable)`
+    holds — every debuggable build, and a release build only once `Extensions.MULTI_FILE_RELEASE` is
+    flipped. The same switch is the manifest's `@bool/share_many_enabled`, which lists the multi-select
+    screen in the share sheet; a test holds the two equal. A debuggable phone can be **held at 2** for one
+    handshake (a debug-source-set activity behind `android.permission.DUMP`, in memory, consumed by that
+    handshake) to reproduce a version-2 phone; the hold can only lower the version.
+  - The **Mac** advertises 3 when `share.ask` is active with the synthetic-only gate closed — so every
+    offer is still held for a person — **and** it is not packaged, or `SHARE_V3_RELEASE` is flipped. An
+    unpackaged Mac can be held at 2 with the `shareV3Off` debug switch
+    (`CONNECTSUITE_DEBUG_SWITCHES=shareV3Off`) to reproduce a version-2 Mac.
+  - Both sides log the advertised and negotiated `share.file` on every handshake, and why.
 
 **1 · Several live offers.** At most **10** live offers per session (proposed), enforced by both sides;
 `busy` means *the session already holds 10*. The phone checks its own count before it offers; a `busy`

@@ -39,13 +39,13 @@ class ShareDevGate {
         val process = ShareDevGate()
 
         /**
-         * **The version-3 arm** — `share.file: 3`, several pending offers (docs/protocol.md → Share →
-         * Version 3, PROPOSED; proposal rev 4 §18). Development only, and failing closed exactly like
-         * [process]: memory only, one handshake per arm, a debuggable build only
-         * ([Extensions.advertised]), and one writer — the debug-manifest-only, `DUMP`-gated
-         * `ShareDevV3Activity`. A separate instance so arming 3 never arms or consumes the version-2
-         * arm, and the other way round.
+         * **Hold at version 2 for one handshake** — a debuggable build reproducing a version-2 phone for a
+         * skew test, now that debuggable builds advertise `share.file` 3 by default
+         * ([Extensions.multiFile]). Failing closed exactly like [process]: memory only, one handshake per
+         * arm, honoured only in a debuggable build ([Extensions.advertised]), and one writer — the
+         * debug-manifest-only, `DUMP`-gated `ShareDevV3Activity`. It can only lower the version, never
+         * raise it. A separate instance so it never arms or consumes the version-2 arm.
          */
-        val v3 = ShareDevGate()
+        val holdV2 = ShareDevGate()
     }
 }

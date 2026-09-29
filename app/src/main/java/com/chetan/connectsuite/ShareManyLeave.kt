@@ -1,4 +1,4 @@
-package com.chetan.connectsuite.probe
+package com.chetan.connectsuite
 
 /**
  * **What `ShareManyToMacActivity.onStop` does — the rule, with nothing Android in it.** Development only,

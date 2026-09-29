@@ -142,11 +142,11 @@ class ShareToMacNoRoomTest {
         }
     }
 
-    @Test fun `the sheet supplies the budget only in a debuggable build, and Try again is a button a person taps`() {
+    @Test fun `the sheet supplies the budget only where several files are on, and Try again is a button a person taps`() {
         val root = listOf(File("."), File("..")).first { File(it, "app/src/main").isDirectory }
         val code = { f: File -> f.readText().replace(Regex("/\\*[\\s\\S]*?\\*/"), "").replace(Regex("//[^\\n]*"), "") }
         val model = code(File(root, "app/src/main/java/com/chetan/connectsuite/ShareToMacModel.kt"))
-        assertTrue(model.contains("val concurrent = if (debuggable()) ShareBudgetReadings.concurrent(app, dir) else null"))
+        assertTrue(model.contains("val concurrent = if (Extensions.multiFile(debuggable())) ShareBudgetReadings.concurrent(app, dir) else null"))
         assertEquals("one place builds readings", 1, Regex("ShareBudgetReadings\\.concurrent\\(").findAll(model).count())
         assertTrue("refused, never waiting", model.contains("is ShareAdmission.Copy.OverBudget ->") && !model.contains("WaitingForRoom"))
         assertFalse("no timer retries", Regex("delay\\(|postDelayed|Timer\\(").containsMatchIn(model))

@@ -196,6 +196,33 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Several files from one Gallery or My Files multi-select (docs/protocol.md → Share → Version 3;
+          docs/feature-a-multi-offer-proposal.md rev 4 §3, §11-§15). Same types as the single-file filter
+          above, no text, SEND_MULTIPLE only; one file selected is handled as the single-file sheet.
+          Enabled by @bool/share_many_enabled: true in debuggable builds, and in release only once the
+          owner flips Extensions.MULTI_FILE_RELEASE (the two are held equal by ShareManyManifestTest).
+        -->
+        <activity
+            android:name=".ShareManyToMacActivity"
+            android:enabled="@bool/share_many_enabled"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:label="@string/share_to_mac_label"
+            android:theme="@style/Theme.ConnectSuite">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/*" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="font/*" />
+                <data android:mimeType="model/*" />
+            </intent-filter>
+        </activity>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

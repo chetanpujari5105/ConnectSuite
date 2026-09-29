@@ -1,5 +1,6 @@
 package com.chetan.connectsuite
 
+import com.chetan.connectsuite.core.link.Extensions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -9,25 +10,33 @@ import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
- * Stage 2's fences, read from the manifests themselves (docs/feature-a-multi-offer-proposal.md rev 4 §3, §18):
- * `SEND_MULTIPLE` is claimed by exactly one activity, in the **debug** source set only, **disabled** by
- * default, with the single-file sheet's types and no text — and the main manifest (what a release build
- * merges) claims no `SEND_MULTIPLE` at all. The single-file `SEND` filter is `ShareManifestTest`'s.
+ * Several files per share, read from the manifests and resources themselves (docs/feature-a-multi-offer-proposal.md
+ * rev 4 §3, §18; docs/feature-a-v3-production-enablement.md):
+ *
+ * - `SEND_MULTIPLE` is claimed in the **main** manifest by exactly one activity, `ShareManyToMacActivity`, with
+ *   the single-file sheet's types and no text;
+ * - its `android:enabled` is the release-policy resource `@bool/share_many_enabled`, which is **true** in the
+ *   debug source set and, in main, **equal to [Extensions.MULTI_FILE_RELEASE]** — so the share-sheet entry
+ *   and the advertised `share.file` 3 are one decision and cannot drift apart;
+ * - the grant probe stays in the debug manifest only, disabled.
+ *
+ * The single-file `SEND` filter is `ShareManifestTest`'s.
  */
 class ShareManyManifestTest {
 
     private val androidNs = "http://schemas.android.com/apk/res/android"
     private val sendMultiple = "android.intent.action.SEND_MULTIPLE"
-    private val many = "com.chetan.connectsuite.probe.ShareManyToMacActivity"
+    private val many = ".ShareManyToMacActivity"
     private val probe = "com.chetan.connectsuite.probe.ShareManyGrantProbeActivity"
 
-    private fun manifest(sourceSet: String): File =
-        listOf("src/$sourceSet/AndroidManifest.xml", "app/src/$sourceSet/AndroidManifest.xml").map(::File).first { it.isFile }
+    private fun file(path: String): File = listOf(path, "app/$path").map(::File).first { it.isFile }
+    private fun exists(path: String) = listOf(path, "app/$path").any { File(it).isFile }
+    private fun parse(path: String) = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }.newDocumentBuilder().parse(file(path))
 
-    private data class Claim(val activity: String, val enabled: String, val actions: Set<String>, val mimes: Set<String>)
+    private data class Claim(val activity: String, val enabled: String, val affinity: String?, val actions: Set<String>, val mimes: Set<String>)
 
     private fun claims(sourceSet: String): List<Claim> {
-        val doc = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }.newDocumentBuilder().parse(manifest(sourceSet))
+        val doc = parse("src/$sourceSet/AndroidManifest.xml")
         val activities = doc.getElementsByTagName("activity")
         return (0 until activities.length).flatMap { i ->
             val a = activities.item(i) as Element
@@ -38,47 +47,64 @@ class ShareManyManifestTest {
                     val n = f.getElementsByTagName(tag)
                     return (0 until n.length).map { (n.item(it) as Element).getAttributeNS(androidNs, attr) }.toSet()
                 }
-                Claim(a.getAttributeNS(androidNs, "name"), a.getAttributeNS(androidNs, "enabled"), attrs("action", "name"), attrs("data", "mimeType"))
+                Claim(
+                    a.getAttributeNS(androidNs, "name"), a.getAttributeNS(androidNs, "enabled"),
+                    a.getAttributeNodeNS(androidNs, "taskAffinity")?.value, attrs("action", "name"), attrs("data", "mimeType"),
+                )
             }
         }
     }
 
-    @Test fun `the main manifest claims no SEND_MULTIPLE - a release build cannot receive several files`() {
+    /** The value of `<bool name="share_many_enabled">` in [sourceSet]'s `res/values/bools.xml`. */
+    private fun policyBool(sourceSet: String): Boolean {
+        val bools = parse("src/$sourceSet/res/values/bools.xml").getElementsByTagName("bool")
+        val hit = (0 until bools.length).map { bools.item(it) as Element }.single { it.getAttribute("name") == "share_many_enabled" }
+        return when (val v = hit.textContent.trim()) {
+            "true" -> true
+            "false" -> false
+            else -> error("share_many_enabled is not a literal boolean: $v")
+        }
+    }
+
+    @Test fun `the main manifest claims SEND_MULTIPLE exactly once - the several-files screen - enabled by the policy resource`() {
         val main = claims("main")
         assertTrue("the manifest was read (control)", main.size > 3)
-        assertTrue(main.none { sendMultiple in it.actions })
+        val multi = main.filter { sendMultiple in it.actions }
+        assertEquals(listOf(many), multi.map { it.activity })
+        assertEquals("enabled only by the release-policy resource", "@bool/share_many_enabled", multi.single().enabled)
     }
 
-    @Test fun `exactly two debug activities claim SEND_MULTIPLE - the screen and the grant probe - both disabled`() {
-        val debug = claims("debug").filter { sendMultiple in it.actions }
-        assertEquals(setOf(many, probe), debug.map { it.activity }.toSet())
-        assertEquals(2, debug.size)
-        debug.forEach { assertEquals("${it.activity} is disabled until enabled by hand", "false", it.enabled) }
+    @Test fun `the release-policy resource equals MULTI_FILE_RELEASE in main, and is on in debuggable builds`() {
+        assertEquals(
+            "@bool/share_many_enabled (main) and Extensions.MULTI_FILE_RELEASE are one decision",
+            Extensions.MULTI_FILE_RELEASE, policyBool("main"),
+        )
+        assertTrue("debuggable builds do several files (Extensions.multiFile(true))", policyBool("debug"))
+        assertTrue("and the rule agrees", Extensions.multiFile(debuggable = true))
     }
 
-    @Test fun `the grant probe's filter is the synthetic stimuli's types only - no text, no wildcard, no SEND`() {
-        val p = claims("debug").filter { it.activity == probe }
-        assertEquals("one filter", 1, p.size)
-        assertEquals(setOf(sendMultiple), p.single().actions)
-        assertEquals(setOf("image/png", "application/octet-stream", "application/pdf"), p.single().mimes)
-    }
-
-    @Test fun `the several-files screen claims SEND_MULTIPLE disabled, with the single-file types and no text`() {
-        val c = claims("debug").single { sendMultiple in it.actions && it.activity == many }
-        assertEquals("disabled until enabled by hand", "false", c.enabled)
+    @Test fun `the several-files screen has the single-file types, its task affinity, SEND_MULTIPLE only, and no text`() {
+        val c = claims("main").single { sendMultiple in it.actions }
         assertEquals(setOf(sendMultiple), c.actions)
         val single = claims("main").single { it.activity == ".ShareToMacActivity" }
         assertEquals("the same types as the single-file sheet", single.mimes, c.mimes)
+        assertEquals("the same task affinity as the single-file sheet", single.affinity, c.affinity)
         assertFalse(c.mimes.any { it.startsWith("text/") || it == "*/*" })
     }
 
-    @Test fun `the activity and its model live in the debug source set only`() {
-        fun exists(path: String) = listOf(path, "app/$path").any { File(it).isFile }
-        assertTrue("control", exists("src/debug/java/com/chetan/connectsuite/probe/ShareManyToMacActivity.kt"))
-        assertTrue("control", exists("src/debug/java/com/chetan/connectsuite/probe/ShareManyToMacModel.kt"))
+    @Test fun `the debug manifest claims SEND_MULTIPLE only for the grant probe - disabled, synthetic types only`() {
+        val debug = claims("debug").filter { sendMultiple in it.actions }
+        assertEquals(listOf(probe), debug.map { it.activity })
+        assertEquals("disabled until enabled by hand", "false", debug.single().enabled)
+        assertEquals(setOf("image/png", "application/octet-stream", "application/pdf"), debug.single().mimes)
+    }
+
+    @Test fun `the activity and its model live in the main source set, and the grant probe in debug only`() {
+        assertTrue("control", exists("src/main/java/com/chetan/connectsuite/ShareManyToMacActivity.kt"))
+        assertTrue("control", exists("src/main/java/com/chetan/connectsuite/ShareManyToMacModel.kt"))
+        assertFalse(exists("src/debug/java/com/chetan/connectsuite/probe/ShareManyToMacActivity.kt"))
+        assertFalse(exists("src/debug/java/com/chetan/connectsuite/probe/ShareManyToMacModel.kt"))
         assertTrue("control", exists("src/debug/java/com/chetan/connectsuite/probe/ShareManyGrantProbeActivity.kt"))
         assertFalse(exists("src/main/java/com/chetan/connectsuite/probe/ShareManyGrantProbeActivity.kt"))
-        assertFalse(exists("src/main/java/com/chetan/connectsuite/probe/ShareManyToMacActivity.kt"))
-        assertFalse(exists("src/main/java/com/chetan/connectsuite/ShareManyToMacActivity.kt"))
     }
 }
