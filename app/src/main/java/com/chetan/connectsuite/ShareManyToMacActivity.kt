@@ -130,10 +130,7 @@ private fun Many(screen: ShareManyToMacModel.Screen, onSend: () -> Unit, onCance
                             }
                         }
                     }
-                    Text(ShareToMacCopy.availability(screen.availability), style = MaterialTheme.typography.bodyMedium)
-                    (screen.availability as? ShareIntake.Availability.Available)?.let {
-                        Text(ShareManyCopy.sendsTo(it.macName), style = MaterialTheme.typography.bodySmall)
-                    }
+                    Text(ShareManyCopy.reviewAvailability(screen.availability), style = MaterialTheme.typography.bodyMedium)
                     screen.notSent?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
                 }
                 is ShareManyToMacModel.Screen.Running -> {

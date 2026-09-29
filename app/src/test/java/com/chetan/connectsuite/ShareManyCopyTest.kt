@@ -82,6 +82,29 @@ class ShareManyCopyTest {
         assertFalse(line, Regex("\\b(sent|saved)\\b", RegexOption.IGNORE_CASE).containsMatchIn(line))
     }
 
+    /**
+     * Owner, 2026-09-29, on hardware: the review screen said the consent twice — *"… accept it …"* (the
+     * single-file line) and then *"… accept each file …"*. The screen draws [ShareManyCopy.reviewAvailability]
+     * once; this asserts that one line is the per-file sentence alone, and the source guard below that
+     * the screen no longer draws the single-file line beside it.
+     */
+    @Test fun `the review states consent once, per file, and never as accept it`() {
+        val line = ShareManyCopy.reviewAvailability(com.chetan.connectsuite.sync.v2.ShareIntake.Availability.Available(mac))
+        assertEquals(ShareManyCopy.sendsTo(mac), line)
+        assertFalse(line, line.contains("accept it"))
+        assertEquals(1, Regex("accept").findAll(line).count())
+        // Not available: the single-file refusal, which is the same whatever the count.
+        assertEquals(
+            ShareToMacCopy.availability(com.chetan.connectsuite.sync.v2.ShareIntake.Availability.NotConnected),
+            ShareManyCopy.reviewAvailability(com.chetan.connectsuite.sync.v2.ShareIntake.Availability.NotConnected),
+        )
+        val screen = listOf("src/main/java/com/chetan/connectsuite/ShareManyToMacActivity.kt", "app/src/main/java/com/chetan/connectsuite/ShareManyToMacActivity.kt")
+            .map { java.io.File(it) }.first { it.isFile }.readText()
+        assertTrue("control: the screen draws the review line", screen.contains("ShareManyCopy.reviewAvailability(screen.availability)"))
+        assertFalse("the single-file consent line is not drawn on the review", screen.contains("ShareToMacCopy.availability("))
+        assertFalse("sendsTo is not drawn a second time", screen.contains("ShareManyCopy.sendsTo("))
+    }
+
     @Test fun `the leaving line counts only files not yet offered, and is absent when there are none`() {
         fun b(p: Prep) = ShareManyRow.Before("a.jpg", p, 100_000)
         assertEquals(null, ShareManyCopy.leaving(listOf(b(Prep.Offered("s-1", 1)), b(Prep.NotSent(NotSentWhy.OpenFailed)), after(ShareOffer.State.Sending)), mac))

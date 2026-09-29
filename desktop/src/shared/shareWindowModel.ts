@@ -134,6 +134,24 @@ const SHARE_WIN_TYPE_NAMES: Record<string, string> = {
   'application/pdf': 'PDF document',
   'application/zip': 'ZIP archive',
   'text/plain': 'Plain text',
+  // Documents a phone's file manager sends. Samsung My Files types a .csv as
+  // `text/comma-separated-values` (measured 2026-09-29), which the card drew verbatim.
+  'text/csv': 'CSV spreadsheet',
+  'text/comma-separated-values': 'CSV spreadsheet',
+  'text/markdown': 'Markdown text',
+  'text/html': 'HTML document',
+  'text/x-vcard': 'Contact card',
+  'text/vcard': 'Contact card',
+  'text/calendar': 'Calendar event',
+  'application/json': 'JSON file',
+  'application/msword': 'Word document',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word document',
+  'application/vnd.ms-excel': 'Excel spreadsheet',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Excel spreadsheet',
+  'application/vnd.ms-powerpoint': 'PowerPoint presentation',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PowerPoint presentation',
+  'application/vnd.android.package-archive': 'Android app package',
+  'application/octet-stream': 'File',
 };
 
 /**

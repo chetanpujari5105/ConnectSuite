@@ -323,3 +323,14 @@ test('v3: every action on every card names its own file — including a finished
 test('v2: a finished card’s Close keeps its wording exactly', () => {
   assert.equal(shareWindowModel(offer({ state: 'declined', reason: 'user' }), 'P').actions.find((a) => a.id === 'close')!.aria, 'Close — Declined');
 });
+
+test('the types a phone’s file manager sends read as names, Samsung’s CSV type included (2026-09-29)', () => {
+  // Measured on the SM-S938B: My Files types a .csv as text/comma-separated-values, and the card drew it raw.
+  assert.equal(shareWinTypeLabel('text/comma-separated-values'), 'CSV spreadsheet');
+  assert.equal(shareWinTypeLabel('text/csv'), 'CSV spreadsheet');
+  assert.equal(shareWinTypeLabel('application/vnd.openxmlformats-officedocument.wordprocessingml.document'), 'Word document');
+  assert.equal(shareWinTypeLabel('application/json'), 'JSON file');
+  // Case-insensitive, and still never a guess: an unknown type is shown as itself.
+  assert.equal(shareWinTypeLabel('TEXT/CSV'), 'CSV spreadsheet');
+  assert.equal(shareWinTypeLabel('text/x-unheard-of'), 'text/x-unheard-of');
+});

@@ -164,6 +164,17 @@ object ShareManyCopy {
      */
     fun sendsTo(mac: String) = "Sends to $mac, which will ask you to accept each file before anything of it moves."
 
+    /**
+     * The review screen's one availability line. When the Mac can receive, it is the per-file consent
+     * sentence ([sendsTo]) **and nothing else** — the single-file sheet's *"… accept it …"* was drawn
+     * above it too, so the screen said the consent twice, once in the wrong number (owner, 2026-09-29).
+     * Otherwise it is the single-file sheet's refusal, which is the same whatever the count.
+     */
+    fun reviewAvailability(a: ShareIntake.Availability): String = when (a) {
+        is ShareIntake.Availability.Available -> sendsTo(a.macName)
+        else -> ShareToMacCopy.availability(a)
+    }
+
     fun needsVersion3(mac: String) = "$mac can receive one file at a time from this phone. Update Sidekick on your Mac to send several at once."
 
     /**
