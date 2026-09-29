@@ -77,4 +77,38 @@ object BulkClaim {
             requireOffsetZero && offset != 0L -> Decision.WrongOffset
             else -> Decision.Claim
         }
+
+    /**
+     * The token a pending pull is bound to (defect 148). A share pull carries its own
+     * [BulkTransfers.Pending.boundSessionToken]; **every other pull — Files and Photos — is bound to
+     * the session that agreed it**, which until 2026-09-29 it was not: `serve()` took any pending
+     * pull by id alone, so a bulk socket from another trusted session could claim it.
+     */
+    fun claimToken(boundSessionToken: String?, sessionId: String): String = boundSessionToken ?: sessionId
+
+    /** A push is claimed only by the session that agreed it; anything else is refused, entry kept. */
+    fun decidePush(exists: Boolean, ownerToken: String?, claimantToken: String?): Decision = when {
+        !exists -> Decision.Unknown
+        ownerToken == null || ownerToken != claimantToken -> Decision.WrongSession
+        else -> Decision.Claim
+    }
+
+    /**
+     * Whether `fs.transfer.cancel` from [claimantToken] may stop this transfer: only the session that
+     * owns it. An id nobody owns (never agreed, already finished, forgotten with its session) is
+     * answered `stopped: false` and flagged nowhere — a cancel must not poison an id for later.
+     */
+    fun mayCancel(ownerToken: String?, claimantToken: String?): Boolean =
+        ownerToken != null && claimantToken != null && ownerToken == claimantToken
+
+    private val random = java.security.SecureRandom()
+    private val FILES_TRANSFER = Regex("^tf-[A-Za-z0-9_-]{22}$")
+
+    /** `tf-` + 128 random bits, base64url — a Files or Photos transfer id nobody can predict (defect 148). */
+    fun newFilesTransferId(): String {
+        val bytes = ByteArray(16).also { random.nextBytes(it) }
+        return "tf-" + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    }
+
+    fun isFilesTransferId(id: String): Boolean = FILES_TRANSFER.matches(id)
 }

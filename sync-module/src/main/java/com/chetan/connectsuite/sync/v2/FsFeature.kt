@@ -653,7 +653,8 @@ object FsFeature {
         val transferId = request.str("transferId")
             ?: return refuse(session, request, FsFailure.BadRequest("transferId is required"))
         val reason = request.str("reason") ?: "unspecified"
-        val stopped = BulkTransfers.cancel(transferId, reason)
+        // Only this session's own transfers (defect 148); another session's id answers stopped=false.
+        val stopped = BulkTransfers.cancelFor(session.token, transferId, reason)
         delivered.incrementAndGet()
         LinkLog.i("fs", "fs.transfer.cancel $transferId (reason=$reason) — ${tally()}")
         session.ack(request) {

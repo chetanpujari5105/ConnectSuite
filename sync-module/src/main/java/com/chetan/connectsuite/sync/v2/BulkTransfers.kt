@@ -200,6 +200,7 @@ object BulkTransfers {
             open = { context.contentResolver.openInputStream(uri) },
         )
         pending[transferId] = entry
+        owners[transferId] = entry.sessionId
         LinkLog.i(
             "bulk",
             "media.original registered $transferId → ${row.first}, ${row.third} bytes, ${row.second}; " +
@@ -208,8 +209,15 @@ object BulkTransfers {
         return entry
     }
 
-    private fun nextId(): String =
-        "t-${counter.incrementAndGet()}-${System.currentTimeMillis() % 100000}"
+    /** 128 random bits, never a counter and a clock (defect 148: `t-<n>-<millis mod 100000>` was guessable). */
+    private fun nextId(): String = BulkClaim.newFilesTransferId().also { counter.incrementAndGet() }
+
+    /**
+     * The session token that agreed each transfer, kept from registration until its socket is done —
+     * **including while it is live**, when it is in neither [pending] nor [incoming]. It is what
+     * `fs.transfer.cancel` is checked against ([cancelFor]).
+     */
+    private val owners = ConcurrentHashMap<String, String>()
 
     /**
      * The largest file this will digest before answering `fs.transfer.begin`.
@@ -254,6 +262,7 @@ object BulkTransfers {
             open = { store.openStream(entry.id) },
         )
         pending[transferId] = pendingEntry
+        owners[transferId] = sessionId
         LinkLog.i(
             "bulk",
             "fs.transfer.begin registered $transferId → ${entry.name}, ${entry.size} bytes, " +
@@ -283,6 +292,7 @@ object BulkTransfers {
             debugCorruptAtByte = debugCorruptAtByte, onEnded = onEnded,
         )
         pending[transferId] = entry
+        owners[transferId] = entry.sessionId
         LinkLog.i("bulk", "share pull registered $transferId: $size bytes, bound to its session, offset 0 only; ${pending.size} pending")
         return entry
     }
@@ -362,6 +372,25 @@ object BulkTransfers {
      * `stopped: true` for the first and forgetting the second would leave a cancelled transfer
      * still sending.
      */
+    /**
+     * `fs.transfer.cancel` from a Mac: honoured **only for the session's own transfers** (defect 148).
+     * Another session's id, an id nobody owns, or a finished one is answered `stopped: false` and
+     * nothing is flagged.
+     */
+    fun cancelFor(claimantToken: String?, transferId: String, reason: String): Boolean {
+        val owner = owners[transferId]
+        if (!BulkClaim.mayCancel(owner, claimantToken)) {
+            LinkLog.w(
+                "bulk",
+                "fs.transfer.cancel $transferId (reason=$reason) refused: " +
+                    (if (owner == null) "no such transfer is live or waiting" else "it belongs to a different session"),
+            )
+            return false
+        }
+        return cancel(transferId, reason)
+    }
+
+    /** Internal stop, for owners that already hold the transfer (Share's own offer ending). */
     fun cancel(transferId: String, reason: String): Boolean {
         val wasPending = pending.remove(transferId) != null
         cancelled.add(transferId)
@@ -379,12 +408,12 @@ object BulkTransfers {
     /** Drops everything a dead session authorised. See [Pending]. */
     fun forgetSession(sessionId: String) {
         val dropped = pending.entries.filter { it.value.sessionId == sessionId }
-        dropped.forEach { pending.remove(it.key) }
+        dropped.forEach { pending.remove(it.key); owners.remove(it.key) }
         // An unclaimed push is dropped too, and its partial is **kept**: the bytes on disk are a
         // resumable artifact and the record beside them is what a later attempt looks up. Deleting
         // here would turn every dropped session into a restart from zero.
         val abandoned = incoming.entries.filter { it.value.sessionId == sessionId }
-        abandoned.forEach { incoming.remove(it.key)?.partial?.keep() }
+        abandoned.forEach { incoming.remove(it.key)?.partial?.keep(); owners.remove(it.key) }
         if (dropped.isNotEmpty() || abandoned.isNotEmpty()) {
             LinkLog.i(
                 "bulk",
@@ -438,20 +467,37 @@ object BulkTransfers {
             (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull()
         } ?: 0L
 
-        val arriving = transferId?.let { incoming.remove(it) }
-        if (arriving != null) {
-            receiveFrom(channel, framing, arriving)
-            return
+        // A push is claimed only by the session that agreed it (defect 148). Looked at before it is
+        // taken, so a claim from another session cannot consume the rightful one's entry.
+        val arrivingCandidate = transferId?.let { incoming[it] }
+        if (arrivingCandidate != null) {
+            if (BulkClaim.decidePush(true, arrivingCandidate.sessionId, channel.session.token) != BulkClaim.Decision.Claim) {
+                failed.incrementAndGet()
+                LinkLog.w("bulk", "push $transferId claimed by a DIFFERENT session — refused and closed, entry kept. ${tally()}")
+                channel.close()
+                return
+            }
+            val arriving = incoming.remove(transferId)
+            if (arriving != null) {
+                try {
+                    receiveFrom(channel, framing, arriving)
+                } finally {
+                    owners.remove(transferId)
+                }
+                return
+            }
         }
 
-        // Look before taking: a share pull refuses a claim from the wrong session or at the wrong
-        // offset WITHOUT consuming the entry, so a bad claim cannot take the rightful one's transfer.
-        // An unbound entry (every Files and Photos pull) is claimed exactly as before.
+        // Look before taking: a pull refuses a claim from the wrong session or at the wrong offset
+        // WITHOUT consuming the entry, so a bad claim cannot take the rightful one's transfer. Every
+        // pull is bound — a share pull to its own token, a Files or Photos pull to the session that
+        // agreed it (defect 148; until 2026-09-29 those were claimable from any trusted session).
         val candidate = transferId?.let { pending[it] }
-        when (BulkClaim.decide(candidate != null, candidate?.boundSessionToken, candidate?.requireOffsetZero ?: false, channel.session.token, offset)) {
+        val claimToken = candidate?.let { BulkClaim.claimToken(it.boundSessionToken, it.sessionId) }
+        when (BulkClaim.decide(candidate != null, claimToken, candidate?.requireOffsetZero ?: false, channel.session.token, offset)) {
             BulkClaim.Decision.WrongSession -> {
                 failed.incrementAndGet()
-                LinkLog.w("bulk", "share pull $transferId claimed by a DIFFERENT session — refused and closed, entry kept. ${tally()}")
+                LinkLog.w("bulk", "pull $transferId claimed by a DIFFERENT session — refused and closed, entry kept. ${tally()}")
                 channel.close()
                 return
             }
@@ -474,13 +520,19 @@ object BulkTransfers {
                 requestId = java.util.UUID.randomUUID().toString(),
                 code = ErrorCode.NOT_FOUND,
                 message = "That transfer is not waiting on this phone.",
-                feature = "photos",
+                // No `feature` (defect 149): the id names no transfer, so which feature it was is
+                // unknown — it was hard-coded "photos" whatever the Mac had asked for.
+                feature = null,
             )
             channel.close()
             return
         }
 
-        streamTo(channel, framing, entry, offset)
+        try {
+            streamTo(channel, framing, entry, offset)
+        } finally {
+            owners.remove(entry.transferId)
+        }
     }
 
     /**
@@ -577,6 +629,7 @@ object BulkTransfers {
             context = context.applicationContext,
         )
         incoming[transferId] = entry
+        owners[transferId] = sessionId
         return entry
     }
 
