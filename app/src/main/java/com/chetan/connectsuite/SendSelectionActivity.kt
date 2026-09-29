@@ -2,8 +2,10 @@ package com.chetan.connectsuite
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
+import androidx.core.content.IntentCompat
 import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.sync.v2.ClipFeature
 import com.chetan.connectsuite.sync.v2.SelectionSend
@@ -50,6 +52,22 @@ class SendSelectionActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // A text **file** (My Files `.txt`, `.csv`…) carries a stream: it is a file share, and goes to
+        // the file sheet with its read grant passed on. Only text without a stream is a selection.
+        val stream = intent?.let { IntentCompat.getParcelableExtra(it, Intent.EXTRA_STREAM, Uri::class.java) }
+        val hasText = intent?.getStringExtra(Intent.EXTRA_TEXT) != null ||
+            intent?.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT) != null
+        if (ShareTextRoute.of(intent?.action, stream != null, hasText) == ShareTextRoute.Route.FILE) {
+            LinkLog.i("share", "text-typed SEND carries a stream (type=${intent?.type}); handed to the file sheet")
+            startActivity(
+                Intent(intent)
+                    .setClass(this, ShareToMacActivity::class.java)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+            )
+            finish()
+            return
+        }
 
         val text = when (intent?.action) {
             Intent.ACTION_PROCESS_TEXT -> intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()

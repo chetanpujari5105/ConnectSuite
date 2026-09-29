@@ -158,10 +158,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <!--
+              `text/*`, not only `text/plain`: a text **file** shared from My Files (`.txt`, `.csv`,
+              `.json`, `.md`, `.vcf`…) arrives as SEND with its own text type and an EXTRA_STREAM. The
+              activity forwards anything carrying a stream to ShareToMacActivity (ShareTextRoute), so
+              a file is sent as a file and a selection of text still goes to clip.push.
+            -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
+                <data android:mimeType="text/*" />
             </intent-filter>
         </activity>
 
@@ -214,6 +220,12 @@
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <!--
+                  `text/*` too (2026-09-29): a My Files selection of .txt/.csv/.json files is sent as
+                  text/plain or text/*, and without this Sidekick was not in the share sheet at all.
+                  Plain text is never a SEND_MULTIPLE, so this takes nothing from clip.push.
+                -->
+                <data android:mimeType="text/*" />
                 <data android:mimeType="application/*" />
                 <data android:mimeType="image/*" />
                 <data android:mimeType="video/*" />

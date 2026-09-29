@@ -8,9 +8,10 @@ import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
- * Intent routing, read from the manifests themselves: a plain-text share must keep going to
- * `SendSelectionActivity` → `clip.push`, and the file share must claim no text, no wildcard and no
- * multiple send. A later edit to either filter goes red here rather than on somebody's phone.
+ * Intent routing, read from the manifests themselves: a text share goes to `SendSelectionActivity`
+ * (which forwards a text *file* to the file sheet, `ShareTextRoute`), the single-file share claims no
+ * text, no wildcard and no multiple send, and only the several-files screen takes a multiple send of
+ * text files. A later edit to any filter goes red here rather than on somebody's phone.
  */
 class ShareManifestTest {
 
@@ -47,14 +48,18 @@ class ShareManifestTest {
     @Test fun `plain-text SEND still goes to SendSelectionActivity`() {
         val main = filters("main")
         assertTrue("the manifest was read (control)", main.size > 3)
-        assertTrue(main.any { it.activity == ".SendSelectionActivity" && send in it.actions && "text/plain" in it.mimes })
+        assertTrue(main.any { it.activity == ".SendSelectionActivity" && send in it.actions && "text/*" in it.mimes })
     }
 
     @Test fun `no other activity in any source set claims a text or wildcard SEND`() {
-        val claimants = (filters("main") + filters("debug"))
-            .filter { (send in it.actions || sendMultiple in it.actions) && it.mimes.any(::claimsText) }
-            .map { it.activity }.toSet()
-        assertEquals(setOf(".SendSelectionActivity"), claimants)
+        val all = filters("main") + filters("debug")
+        val sendText = all.filter { send in it.actions && it.mimes.any(::claimsText) }.map { it.activity }.toSet()
+        assertEquals(setOf(".SendSelectionActivity"), sendText)
+        // A multiple send of text files (My Files, 2026-09-29) goes to the several-files screen only.
+        val multipleText = all.filter { sendMultiple in it.actions && it.mimes.any(::claimsText) }.map { it.activity }.toSet()
+        assertEquals(setOf(".ShareManyToMacActivity"), multipleText)
+        // And nobody claims the wildcard: `*/*` would list Sidekick for things it cannot send.
+        assertTrue(all.none { f -> f.mimes.any { it == "*/*" || it == "*" } })
     }
 
     @Test fun `the file share takes exactly the proposal's types, one file only`() {

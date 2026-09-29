@@ -83,13 +83,15 @@ class ShareManyManifestTest {
         assertTrue("and the rule agrees", Extensions.multiFile(debuggable = true))
     }
 
-    @Test fun `the several-files screen has the single-file types, its task affinity, SEND_MULTIPLE only, and no text`() {
+    @Test fun `the several-files screen has the single-file types plus text files, its task affinity, SEND_MULTIPLE only`() {
         val c = claims("main").single { sendMultiple in it.actions }
         assertEquals(setOf(sendMultiple), c.actions)
         val single = claims("main").single { it.activity == ".ShareToMacActivity" }
-        assertEquals("the same types as the single-file sheet", single.mimes, c.mimes)
+        // The single-file sheet's types, plus `text/*`: a My Files selection of .txt/.csv files is a
+        // text-typed SEND_MULTIPLE, which listed no Sidekick at all before (2026-09-29).
+        assertEquals("the single-file types plus text/*", single.mimes + "text/*", c.mimes)
         assertEquals("the same task affinity as the single-file sheet", single.affinity, c.affinity)
-        assertFalse(c.mimes.any { it.startsWith("text/") || it == "*/*" })
+        assertFalse(c.mimes.any { it == "*/*" })
     }
 
     @Test fun `the debug manifest claims SEND_MULTIPLE only for the grant probe - disabled, synthetic types only`() {
