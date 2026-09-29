@@ -1,3 +1,45 @@
+# Resume here — written 2026-09-29 (16:10 IST): the complete-app pass, day one — file sharing verified on hardware, release gated on the owner
+
+> Supersedes the entries below. Evidence: `docs/complete-app-pass-2026-09-29.md` §1–§8. Status of every
+> feature: `docs/release-inventory.md`. Release decision: `docs/ship-no-ship-2026-09-29.md`.
+
+1. **Built and proven on hardware today (SM-S938B + this Mac, synthetic files only):**
+   - Android → Mac several files: Gallery R1 (Accept, Decline, Accept out of order), My Files with a
+     per-file Cancel, a text-only My Files selection. Every save hash-equal; exclusive `(2)` names; nothing
+     before Accept; no focus stolen.
+   - Mac → phone above 64 MiB checksummed (96 MiB *checksum matched*).
+   - `share.wait` (PROPOSED): 30-minute offers negotiated, visible *until HH:MM*, expired on time with
+     cleanup; an older peer falls back to 10.
+   - Photos checksummed; thumbnails bounded (defect 136); album labels 11 of 11 distinct (defect 89,
+     including a second Android profile `/storage/emulated/95`).
+   - Light theme: committed rendered sweep, 2,880 text elements, 0 below AA.
+2. **Committed, local, not pushed:** `ec71870` … `d5ad38a` (see `git log 3af33a2..HEAD`).
+   Final code tree `42ac5e5`: phone 1,058 / 0 and Mac 1,342 / 0, all fresh; 14 guards and 20 fixture suites pass.
+3. **Tests only, owed a hardware reading:** defect 148's *refusal* (needs a second Mac); 150/154 races;
+   L3 on a genuinely full disk; L4's copy on a too-large share; the **single `.txt` share hop**
+   (`SendSelectionActivity` → file sheet, grant forwarded) — attempted 16:04, aborted before any offer
+   when the owner took the phone. The Samsung trash clause is not observable on today's data.
+4. **Needs the owner:**
+   - The release decision (`docs/ship-no-ship-2026-09-29.md`): signing (B1/B2), the proposed policy
+     values (several files, `MAX_FILES` 10, ½ quota + 1 GiB reserve + 5 s, 60-minute queue, 10/60 stall
+     clock, `share.wait` 30), and the bounded acceptance test.
+   - **`assembleRelease` signed an APK with your release key unintentionally** (a keystore is
+     configured on this Mac). It sits in `app/build/outputs/apk/release/`, not installed or shared —
+     delete or keep, your call.
+   - Approve the L1/L2 contract work (`docs/large-file-strategy-2026-09-29.md`) before any large-file
+     protocol change; 500 GB is **not** supported.
+5. **Next, in order:** the single `.txt` hop on hardware (My Files opened directly at the synthetic
+   folder, as §8); L1/L2 once approved; defect 30's no-thread half (needs a consenting number); TalkBack
+   and VoiceOver passes.
+6. **Left changed on devices:**
+   - Phone: three same-certificate `install -r` of the debug build (last 15:48, containing `8f19af6`);
+     grants, bindings, settings, pairing and link identical before and after each.
+     Synthetic files added to `Pictures/` and `Documents/SidekickShareTest` (six, 11:20).
+   - Mac: `dist` rebuilt from the committed tree and the dev app relaunched (15:48); `~/Downloads/Sidekick`
+     gained only synthetic test files (clip (2).mp4, 002.jpg, doc.pdf, notes/table and their `(2)` copies,
+     003.png, the 1 MiB pull `(2)`), plus the owner's own two screenshot pulls. Nothing deleted.
+   - Your `PRODUCT.md`, `skills-lock.json` and `docs/testing.md` block: untouched, uncommitted.
+
 # Resume here — written 2026-09-29 (02:45 IST, unattended, owner-authorised): faster Mac → phone sends; Option B installed; the phone was locked all night
 
 > Supersedes the entries below. Evidence: `docs/transfer-overnight-2026-09-29.md` (outside
