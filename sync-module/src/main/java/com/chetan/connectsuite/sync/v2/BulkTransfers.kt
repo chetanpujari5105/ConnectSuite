@@ -104,6 +104,20 @@ object BulkTransfers {
         val debugCorruptAtByte: Long? = null,
         /** Share pulls only: told how the phone's own stream ended. That is never a save. */
         val onEnded: ((ShareOffer.PullEnd) -> Unit)? = null,
+        /**
+         * Files pulls above 64 MiB on a session that negotiated `fs.blocks` (docs/protocol.md →
+         * Block-verified, resumable pulls): streamed by [BlockPullSender], claimable only at the offset
+         * the ack agreed. Null for every other pull, which keeps its old path exactly.
+         */
+        val blocks: BlockPlan? = null,
+    )
+
+    /** How one block pull is sent: its block size, the agreed last-modified, an accepted resume, and a re-stat. */
+    data class BlockPlan(
+        val blockSize: Int,
+        val mtimeMs: Long,
+        val resume: FsBlocks.Resume?,
+        val stat: () -> Pair<Long, Long>?,
     )
 
     private val pending = ConcurrentHashMap<String, Pending>()
@@ -267,6 +281,40 @@ object BulkTransfers {
             "bulk",
             "fs.transfer.begin registered $transferId → ${entry.name}, ${entry.size} bytes, " +
                 "sha256=${sha?.take(12)?.plus("…") ?: "null (not pre-hashed)"}; ${pending.size} pending",
+        )
+        return pendingEntry
+    }
+
+    /**
+     * Registers an `fs.blocks` pull: no pre-hash (the blocks are the verification), a re-stat of the
+     * source for [BlockPullSender]'s stability check, and the accepted resume if there is one.
+     */
+    fun registerBlockPull(
+        store: FsStore,
+        entry: FsPaths.Entry,
+        sessionId: String,
+        blockSize: Int,
+        resume: FsBlocks.Resume?,
+    ): Pending {
+        val transferId = nextId()
+        val pendingEntry = Pending(
+            transferId = transferId,
+            name = entry.name,
+            mime = entry.mime,
+            size = entry.size,
+            sessionId = sessionId,
+            sha256 = null,
+            open = { store.openStream(entry.id) },
+            blocks = BlockPlan(blockSize, entry.mtimeMs, resume) { store.statById(entry.id)?.let { it.size to it.mtimeMs } },
+        )
+        pending[transferId] = pendingEntry
+        owners[transferId] = sessionId
+        LinkLog.i(
+            "bulk",
+            "fs.transfer.begin registered $transferId → ${entry.name}, ${entry.size} bytes, block-verified " +
+                "(blockSize=$blockSize, ${FsBlocks.blockCountFor(entry.size, blockSize)} blocks" +
+                (resume?.let { ", resuming at block ${it.verifiedBlocks} = byte ${it.from(blockSize)}" } ?: ", from byte 0") +
+                "); ${pending.size} pending",
         )
         return pendingEntry
     }
@@ -498,7 +546,8 @@ object BulkTransfers {
         // agreed it (defect 148; until 2026-09-29 those were claimable from any trusted session).
         val candidate = transferId?.let { pending[it] }
         val claimToken = candidate?.let { BulkClaim.claimToken(it.boundSessionToken, it.sessionId) }
-        when (BulkClaim.decide(candidate != null, claimToken, candidate?.requireOffsetZero ?: false, channel.session.token, offset)) {
+        val requiredOffset = candidate?.blocks?.let { FsBlocks.requiredOffset(it.resume, it.blockSize) }
+        when (BulkClaim.decide(candidate != null, claimToken, candidate?.requireOffsetZero ?: false, channel.session.token, offset, requiredOffset)) {
             BulkClaim.Decision.WrongSession -> {
                 failed.incrementAndGet()
                 LinkLog.w("bulk", "pull $transferId claimed by a DIFFERENT session — refused and closed, entry kept. ${tally()}")
@@ -507,7 +556,14 @@ object BulkTransfers {
             }
             BulkClaim.Decision.WrongOffset -> {
                 failed.incrementAndGet()
-                LinkLog.w("bulk", "share pull $transferId asked for offset $offset — share has no resume; refused and closed, entry kept. ${tally()}")
+                LinkLog.w(
+                    "bulk",
+                    if (requiredOffset != null) {
+                        "block pull $transferId asked for offset $offset where its ack agreed $requiredOffset; refused and closed, entry kept. ${tally()}"
+                    } else {
+                        "share pull $transferId asked for offset $offset — share has no resume; refused and closed, entry kept. ${tally()}"
+                    },
+                )
                 channel.close()
                 return
             }
@@ -993,6 +1049,7 @@ object BulkTransfers {
         entry: Pending,
         offset: Long,
     ) {
+        entry.blocks?.let { return streamBlocks(channel, framing, entry, it) }
         val startedAt = System.currentTimeMillis()
         var sent = 0L
         var lastReport = 0L
@@ -1153,6 +1210,88 @@ object BulkTransfers {
             entry.onEnded?.let { listener ->
                 runCatching { listener(end) }.onFailure { LinkLog.w("bulk", "${entry.transferId} onEnded failed: ${it.message}") }
             }
+        }
+    }
+
+    /**
+     * The `fs.blocks` path: [BlockPullSender] does the reading, hashing and source checks; this only
+     * connects it to the socket and the control channel. The debug corruption probe still flips a byte
+     * **after** the sender hashed it, so the Mac's block check is what must catch it.
+     */
+    private fun streamBlocks(channel: AuthenticatedChannel, framing: BulkFraming, entry: Pending, plan: BlockPlan) {
+        val startedAt = System.currentTimeMillis()
+        val from = FsBlocks.requiredOffset(plan.resume, plan.blockSize)
+        try {
+            val outcome = (entry.open() ?: throw IllegalStateException("the file could not be opened")).use { input ->
+                BlockPullSender(entry.size, plan.mtimeMs, plan.blockSize, plan.resume, chunk = CHUNK).run(
+                    input,
+                    plan.stat,
+                    { cancelled.remove(entry.transferId) },
+                    object : BlockPullSender.Sink {
+                        override fun chunk(buffer: ByteArray, length: Int, absoluteStart: Long) {
+                            val out = if (length == buffer.size) buffer else buffer.copyOf(length)
+                            corruptIfArmed(entry, out, absoluteStart)
+                            framing.writeChunk(out)
+                        }
+                        override fun blocks(first: Long, digests: List<String>) {
+                            channel.session.send(Envelope(type = MessageType.FS_TRANSFER_BLOCKS, payload = FsBlocks.blocksPayload(entry.transferId, first, digests)))
+                        }
+                        override fun progress(phase: String, bytes: Long) {
+                            val elapsed = maxOf(1L, System.currentTimeMillis() - startedAt)
+                            channel.session.send(
+                                Envelope(
+                                    type = MessageType.FS_TRANSFER_PROGRESS,
+                                    payload = buildJsonObject {
+                                        put("transferId", entry.transferId)
+                                        put("bytes", bytes)
+                                        put("total", entry.size)
+                                        put("bytesPerSecond", maxOf(0L, bytes - from) * 1000 / elapsed)
+                                        put("phase", phase)
+                                    },
+                                ),
+                            )
+                        }
+                    },
+                )
+            }
+            val elapsed = System.currentTimeMillis() - startedAt
+            if (outcome is BlockPullSender.Outcome.Sent) completed.incrementAndGet() else failed.incrementAndGet()
+            channel.session.send(
+                Envelope(
+                    type = MessageType.FS_TRANSFER_DONE,
+                    payload = FsBlocks.donePayload(entry.transferId, entry.name, outcome, entry.size, plan.blockSize, plan.resume, elapsed),
+                ),
+            )
+            val line = "${entry.transferId} block pull ${outcome.javaClass.simpleName}: ${from + outcome.bytesSent} of ${entry.size} bytes " +
+                "(${outcome.bytesSent} sent this time${if (from > 0) ", resumed at $from" else ""}) in ${elapsed}ms " +
+                "(${rateOf(outcome.bytesSent, elapsed)})" +
+                when (outcome) {
+                    is BlockPullSender.Outcome.Sent -> ", ${outcome.blockCount} blocks, manifest ${outcome.manifestRoot.take(12)}…"
+                    is BlockPullSender.Outcome.SourceChanged -> " — ${outcome.why}: ${outcome.detail}"
+                    is BlockPullSender.Outcome.Cancelled -> " — cancelled by the Mac"
+                } + " — ${tally()}; ${framing.tally.summary()}"
+            if (outcome is BlockPullSender.Outcome.Sent) LinkLog.i("bulk", line) else LinkLog.w("bulk", line)
+        } catch (e: Exception) {
+            failed.incrementAndGet()
+            val elapsed = System.currentTimeMillis() - startedAt
+            LinkLog.e("bulk", "${entry.transferId} block pull failed in ${elapsed}ms — ${tally()}; ${framing.tally.summary()}", e)
+            runCatching {
+                channel.session.send(
+                    Envelope(
+                        type = MessageType.FS_TRANSFER_DONE,
+                        payload = buildJsonObject {
+                            put("transferId", entry.transferId)
+                            put("ok", false)
+                            put("code", ErrorCode.TRANSFER_FAILED)
+                            put("message", "${entry.name} stopped.")
+                            put("elapsedMs", elapsed)
+                            put("verified", false)
+                        },
+                    ),
+                )
+            }
+        } finally {
+            channel.close()
         }
     }
 

@@ -69,6 +69,20 @@ object Extensions {
     const val WAIT_RELEASE: Boolean = false
 
     /**
+     * `fs.blocks` — block-verified, resumable Files pulls above 64 MiB (docs/protocol.md → Block-verified,
+     * resumable pulls). Approved by the owner on 2026-09-29 for **development builds only**: advertised
+     * by a debuggable build, and by a release build only once the owner flips [FS_BLOCKS_RELEASE].
+     * Decided apart from the share keys ([filesAdvertised]) and merged in [handshake], so the share
+     * gating and its tests are untouched by it.
+     */
+    const val FS_BLOCKS = "fs.blocks"
+    const val FS_BLOCKS_RELEASE: Boolean = false
+
+    /** What this phone advertises for Files: `fs.blocks` 1 in a debuggable build or once released, else nothing. */
+    fun filesAdvertised(debuggable: Boolean, release: Boolean = FS_BLOCKS_RELEASE): Map<String, Int> =
+        if (debuggable || release) mapOf(FS_BLOCKS to 1) else emptyMap()
+
+    /**
      * **The one rule for whether this build does several files per share**: a debuggable build always
      * (the builds the owner runs and tests), a release build only once [MULTI_FILE_RELEASE] is flipped.
      * Read by [advertised], by the multi-select screen's bind, and by the single-file sheet's concurrent
@@ -120,6 +134,8 @@ object Extensions {
          * why, is in its first lines. A third line, for the same reason as [askLine].
          */
         val v3Line: String = "",
+        /** The `fs.blocks` line: advertised on each side, negotiated, and the release policy. */
+        val filesLine: String = "",
     )
 
     /**
@@ -132,8 +148,10 @@ object Extensions {
         productionTransfer: Boolean = PRODUCTION_TRANSFER,
         holdV2: Boolean = false,
         multiFileRelease: Boolean = MULTI_FILE_RELEASE,
+        fsBlocksRelease: Boolean = FS_BLOCKS_RELEASE,
     ): Handshake {
-        val mine = advertised(debuggable, devV2Armed, productionTransfer, holdV2, multiFileRelease)
+        val mine = advertised(debuggable, devV2Armed, productionTransfer, holdV2, multiFileRelease) +
+            filesAdvertised(debuggable, fsBlocksRelease)
         val negotiated = mine.keys.mapNotNull { name -> negotiate(mine, macExt, name)?.let { name to it } }.toMap()
         val line = "ext: phone advertises ${mine[SHARE_FILE]?.let { "share.file $it" } ?: "nothing"} " +
             "(debug share.file 2 armed for this handshake: $devV2Armed; debuggable build: $debuggable); " +
@@ -145,7 +163,11 @@ object Extensions {
         val v3 = "ext: share.file 3 — several files per share in this build: ${multiFile(debuggable, multiFileRelease)} " +
             "(release policy: $multiFileRelease); held at version 2 for this handshake: $holdV2; debuggable build: $debuggable; " +
             "phone advertises share.file ${mine[SHARE_FILE] ?: "none"}; negotiated share.file ${negotiated[SHARE_FILE] ?: "none"}"
-        return Handshake(mine, negotiated, line, ask, v3)
+        val files = "ext: fs.blocks — phone advertises ${mine[FS_BLOCKS] ?: "none"} (debuggable build: $debuggable; " +
+            "release policy: $fsBlocksRelease), Mac advertises ${macExt[FS_BLOCKS] ?: "none"}, negotiated " +
+            "${negotiated[FS_BLOCKS] ?: "none"} — pulls above 64 MiB are " +
+            if ((negotiated[FS_BLOCKS] ?: 0) >= 1) "block-verified and resumable" else "unverified and not resumable, as before"
+        return Handshake(mine, negotiated, line, ask, v3, files)
     }
 
     /**

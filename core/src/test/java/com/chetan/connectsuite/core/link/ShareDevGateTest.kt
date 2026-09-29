@@ -37,7 +37,11 @@ class ShareDevGateTest {
                 else -> one
             }
             assertEquals("debuggable=$debuggable armed=$armed $label", expected, h.negotiated)
-            assertEquals("hello.ack and negotiation are one decision", Extensions.advertised(debuggable, armed, productionTransfer = false, holdV2 = true), h.advertised)
+            assertEquals(
+                "hello.ack and negotiation are one decision",
+                Extensions.advertised(debuggable, armed, productionTransfer = false, holdV2 = true) + Extensions.filesAdvertised(debuggable),
+                h.advertised,
+            )
         }
     }
 

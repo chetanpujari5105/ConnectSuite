@@ -70,11 +70,19 @@ object BulkClaim {
         data object WrongOffset : Decision
     }
 
-    fun decide(exists: Boolean, boundSessionToken: String?, requireOffsetZero: Boolean, claimantToken: String?, offset: Long): Decision =
+    /**
+     * @param requiredOffset a block pull (`fs.blocks`) may be claimed only at exactly the offset its ack
+     *   agreed — `resume.from`, or 0 when no resume was accepted. Null for every other pull.
+     */
+    fun decide(
+        exists: Boolean, boundSessionToken: String?, requireOffsetZero: Boolean, claimantToken: String?, offset: Long,
+        requiredOffset: Long? = null,
+    ): Decision =
         when {
             !exists -> Decision.Unknown
             boundSessionToken != null && boundSessionToken != claimantToken -> Decision.WrongSession
             requireOffsetZero && offset != 0L -> Decision.WrongOffset
+            requiredOffset != null && offset != requiredOffset -> Decision.WrongOffset
             else -> Decision.Claim
         }
 

@@ -300,6 +300,7 @@ class ControlSession(
         LinkLog.i("control", handshake.logLine)
         LinkLog.i("control", handshake.askLine)
         LinkLog.i("control", handshake.v3Line)
+        LinkLog.i("control", handshake.filesLine)
         isHandshakeComplete = true
 
         send(

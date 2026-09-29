@@ -3,6 +3,7 @@ package com.chetan.connectsuite.sync.v2
 import android.content.Context
 import android.util.Base64
 import com.chetan.connectsuite.core.link.ControlSession
+import com.chetan.connectsuite.core.link.Extensions
 import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.core.link.LinkServer
 import com.chetan.connectsuite.core.link.MessageHandler
@@ -527,6 +528,20 @@ object FsFeature {
             return refuse(session, request, FsFailure.BadRequest("that is a directory, not a file"))
         }
 
+        // docs/protocol.md → Block-verified, resumable pulls. Only when both sides negotiated `fs.blocks`
+        // and only above the pre-hash ceiling; everything else keeps the path below, byte for byte.
+        val blocksNegotiated = (session.negotiated[Extensions.FS_BLOCKS] ?: 0) >= 1
+        if (FsBlocks.appliesTo(session.negotiated, entry.size)) {
+            return onBeginBlockPull(session, request, store, rootId, entry, sessionId)
+        }
+        if (request.payload["resume"] != null) {
+            LinkLog.w(
+                "fs",
+                "fs.transfer.begin for ${entry.name} carried a resume, ignored: " +
+                    if (!blocksNegotiated) "fs.blocks was not negotiated on this session" else "${entry.size} bytes is at or below the block-pull size",
+            )
+        }
+
         val pendingTransfer = BulkTransfers.registerFsPull(store, entry, sessionId)
             ?: return refuse(session, request, FsFailure.NoSuchEntry)
 
@@ -548,6 +563,43 @@ object FsFeature {
             put("sha256", pendingTransfer.sha256)
             put("offset", 0L)
             put("chunkMax", BulkTransfers.chunkMax())
+        }
+    }
+
+    /**
+     * An `fs.blocks` pull: no pre-hash, the block size by the shared rule, and a resume answered against
+     * the source as it is now. A refused resume is still a valid begin — the Mac starts from 0.
+     */
+    private fun onBeginBlockPull(
+        session: ControlSession, request: Envelope, store: FsStore, rootId: String, entry: FsPaths.Entry, sessionId: String,
+    ) {
+        val blockSize = FsBlocks.blockSizeFor(entry.size)
+        val answer = FsBlocks.parseResume(request.payload["resume"], entry.size, entry.mtimeMs)
+        val resume = (answer as? FsBlocks.ResumeAnswer.Accepted)?.resume
+        val pendingTransfer = BulkTransfers.registerBlockPull(store, entry, sessionId, blockSize, resume)
+        delivered.incrementAndGet()
+        LinkLog.i(
+            "fs",
+            "fs.transfer.begin pull $rootId/${entry.name} → ${pendingTransfer.transferId}, ${entry.size} bytes, block-verified; " +
+                when (answer) {
+                    null -> "no resume asked"
+                    is FsBlocks.ResumeAnswer.Accepted -> "resume accepted provisionally at block ${answer.resume.verifiedBlocks} (prefix is re-hashed before sending)"
+                    is FsBlocks.ResumeAnswer.Refused -> "resume refused (${answer.why}: ${answer.detail}); starting from 0"
+                } + " — ${tally()}",
+        )
+        session.ack(request) {
+            put("transferId", pendingTransfer.transferId)
+            put("direction", "pull")
+            put("size", entry.size)
+            put("mtimeMs", entry.mtimeMs)
+            put("name", entry.name)
+            put("mime", entry.mime)
+            put("sha256", null as String?)
+            put("offset", 0L)
+            put("chunkMax", BulkTransfers.chunkMax())
+            put("blockSize", blockSize)
+            put("blockCount", FsBlocks.blockCountFor(entry.size, blockSize))
+            FsBlocks.resumeAck(answer, blockSize)?.let { put("resume", it) }
         }
     }
 

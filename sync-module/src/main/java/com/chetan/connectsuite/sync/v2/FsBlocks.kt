@@ -1,5 +1,14 @@
 package com.chetan.connectsuite.sync.v2
 
+import com.chetan.connectsuite.core.protocol.ErrorCode
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.add
 import java.security.MessageDigest
 
 /**
@@ -74,6 +83,91 @@ object FsBlocks {
         }
         if (!HEX64.matches(reqPrefixRoot)) return ResumeAnswer.Refused("bad-request", "prefixRoot is not 64 lowercase hex characters")
         return ResumeAnswer.Accepted(Resume(reqVerifiedBlocks, reqPrefixRoot))
+    }
+
+    /**
+     * Reads the `resume` object of an `fs.transfer.begin` request. Null when there is none; a present
+     * value that is not an object, or fields of the wrong JSON type, reach [decideResume] as null and
+     * are refused `bad-request` there — never coerced (`"512"` is not 512).
+     */
+    fun parseResume(raw: JsonElement?, size: Long, mtimeMs: Long): ResumeAnswer? {
+        if (raw == null || raw is kotlinx.serialization.json.JsonNull) return null
+        val o = raw as? JsonObject ?: return ResumeAnswer.Refused("bad-request", "resume is not an object")
+        fun long(k: String): Long? = (o[k] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull
+        val root = (o["prefixRoot"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        return decideResume(long("size"), long("mtimeMs"), long("blockSize"), long("verifiedBlocks"), root, size, mtimeMs)
+    }
+
+    /** The ack's `resume` field: `{accepted:true, from}` or `{accepted:false, why}`; null when none was asked. */
+    fun resumeAck(answer: ResumeAnswer?, blockSize: Int): JsonObject? = when (answer) {
+        null -> null
+        is ResumeAnswer.Accepted -> buildJsonObject { put("accepted", true); put("from", answer.resume.from(blockSize)) }
+        is ResumeAnswer.Refused -> buildJsonObject { put("accepted", false); put("why", answer.why) }
+    }
+
+    /**
+     * Whether a pull takes the block path: `fs.blocks` negotiated on this session **and** the file above
+     * the 64 MiB pre-hash ceiling. Everything else — an older Mac, a release build, a small file — keeps
+     * the old path exactly.
+     */
+    fun appliesTo(negotiated: Map<String, Int>, size: Long): Boolean =
+        (negotiated[com.chetan.connectsuite.core.link.Extensions.FS_BLOCKS] ?: 0) >= 1 && size > BLOCK_PULL_ABOVE_BYTES
+
+    /** The offset a bulk claim must carry for this pull: the accepted resume's start, else 0. */
+    fun requiredOffset(resume: Resume?, blockSize: Int): Long = resume?.from(blockSize) ?: 0L
+
+    /** One `fs.transfer.blocks` payload. */
+    fun blocksPayload(transferId: String, first: Long, digests: List<String>): JsonObject = buildJsonObject {
+        put("transferId", transferId)
+        put("first", first)
+        putJsonArray("sha256") { digests.forEach { add(it) } }
+    }
+
+    /**
+     * `fs.transfer.done` for a block pull, from how [BlockPullSender] ended. `bytes` is the file's
+     * position reached — the whole size on success, whatever a resume started from included.
+     */
+    fun donePayload(
+        transferId: String, name: String, outcome: BlockPullSender.Outcome, size: Long, blockSize: Int,
+        resume: Resume?, elapsedMs: Long,
+    ): JsonObject {
+        val reached = requiredOffset(resume, blockSize) + outcome.bytesSent
+        return buildJsonObject {
+            put("transferId", transferId)
+            put("elapsedMs", elapsedMs)
+            when (outcome) {
+                is BlockPullSender.Outcome.Sent -> {
+                    put("ok", true)
+                    put("bytes", reached)
+                    // The sender's word: every block was read and hashed and the source held still. The
+                    // Mac decides whether what it wrote matches.
+                    put("verified", true)
+                    put("sha256", outcome.sha256)
+                    put("blockSize", blockSize)
+                    put("blockCount", outcome.blockCount)
+                    put("manifestRoot", outcome.manifestRoot)
+                }
+                is BlockPullSender.Outcome.SourceChanged -> {
+                    put("ok", false)
+                    put("code", ErrorCode.SOURCE_CHANGED)
+                    put("why", outcome.why)
+                    put("message", if (outcome.why == "prefix-mismatch") {
+                        "$name changed on the phone since the transfer paused, so it has to start again."
+                    } else {
+                        "$name changed on the phone while it was being sent, so it was not saved."
+                    })
+                    put("bytes", reached)
+                    put("verified", false)
+                }
+                is BlockPullSender.Outcome.Cancelled -> {
+                    put("ok", false)
+                    put("code", ErrorCode.TRANSFER_FAILED)
+                    put("message", "$name stopped after $reached bytes.")
+                    put("bytes", reached)
+                    put("verified", false)
+                }
+            }
+        }
     }
 
     /**
