@@ -853,7 +853,7 @@ body {
   align-items: center;
   justify-content: center;
 }
-.palette-row[aria-selected='true'] .palette-tile { color: var(--accent); }
+.palette-row[aria-selected='true'] .palette-tile { color: var(--accent-mark); }
 
 .palette-label { flex: 1; min-width: 0; }
 .palette-group { font-size: 11.5px; color: var(--text-meta); }
@@ -1125,7 +1125,7 @@ body {
   font-weight: 600;
   cursor: pointer;
 }
-.recent-all:hover { color: var(--accent); }
+.recent-all:hover { color: var(--accent-mark); }
 /* The chevron is an <svg> appended in renderer.ts, like every glyph in this app; this only places
    it. Drawing it in CSS would be geometry `icons.test.ts` cannot see. */
 .recent-all svg { flex: none; }
@@ -1228,7 +1228,7 @@ body {
   box-shadow: inset 0 0 0 1px var(--hairline);
   color: var(--text-body);
 }
-.recent-tile[data-tone='connected'] { color: var(--accent); }
+.recent-tile[data-tone='connected'] { color: var(--accent-mark); }
 .recent-tile[data-tone='warning'] { color: var(--warning); }
 .recent-tile[data-tone='failure'] { color: var(--destructive); }
 

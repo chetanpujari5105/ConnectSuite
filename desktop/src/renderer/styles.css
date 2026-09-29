@@ -4353,7 +4353,7 @@ input.files-search {
   border-color: var(--hairline);
 }
 .clip-phone-state[data-tone='ready'] .clip-phone-icon,
-.clip-phone-state[data-tone='done'] .clip-phone-icon { color: var(--accent); }
+.clip-phone-state[data-tone='done'] .clip-phone-icon { color: var(--accent-mark); }
 .clip-phone-state[data-tone='warning'] {
   background: var(--warning-fill);
   border-color: var(--warning-border);
@@ -5360,7 +5360,7 @@ input.files-search {
   border: 1px solid var(--hairline);
 }
 .device-cap-glyph { display: inline-flex; color: var(--text-meta); margin-top: 1px; }
-.device-cap[data-tone='ok'] .device-cap-glyph { color: var(--accent); }
+.device-cap[data-tone='ok'] .device-cap-glyph { color: var(--accent-mark); }
 .device-cap[data-tone='warning'] .device-cap-glyph { color: var(--warning); }
 
 .device-cap-lines { min-width: 0; }

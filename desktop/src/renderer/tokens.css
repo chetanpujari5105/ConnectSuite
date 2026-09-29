@@ -132,6 +132,7 @@
    */
   --accent: #c6ff33;                         /* selected state, primary action fill */
   --accent-text: #d8ff70;                    /* accent text and icons — lighter, for contrast */
+  --accent-mark: #c6ff33;                    /* an accent-coloured icon or dot on a surface — the accent itself in dark */
   --accent-tint: rgba(198, 255, 51, 0.12);   /* FIGMA — status pill fill */
   /*
    * The fill behind *the thing you are currently on* — nav pill, Settings rail tab, notification
@@ -747,6 +748,7 @@
    */
   --accent: #9ed600;                            /* DERIVED — a fill, not text; dark text sits on it */
   --accent-text: #4f5e00;                       /* DERIVED — 7.16:1 on white, same hue as --accent */
+  --accent-mark: #4f5e00;                       /* DERIVED — an icon or dot on a light surface: --accent is a fill and reads 1.51:1 on the well (2026-09-29 sweep) */
   --accent-tint: rgba(158, 214, 0, 0.12);
   --accent-tint-selected: rgba(158, 214, 0, 0.12);
   --accent-border: rgba(158, 214, 0, 0.32);
