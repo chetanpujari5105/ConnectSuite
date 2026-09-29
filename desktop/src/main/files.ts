@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
-import { BlockPullVerifier, blockPlanFor } from '../shared/fsBlocks';
+import { BLOCK_PULL_ABOVE_BYTES, BlockPullVerifier, blockCountFor, blockPlanFor, rootOf } from '../shared/fsBlocks';
+import { FS_BLOCKS } from '../shared/extensions';
+import { TransferDigest } from '../shared/transferDigest';
+import { createPartialExclusive, deleteOwnedPartial, openOwnedPartial, ownedPartial, PullResumeStore, verifyAndTrimPrefix, type ResumeRecord } from './pullResume';
+import type { FileHandle } from 'node:fs/promises';
 import { pullPartPathFor } from '../shared/transferFiles';
 import { createReadStream, promises as fsp } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -32,7 +36,25 @@ export interface PullOutcome {
   reason?: string;
   fixHint?: string;
   code?: string;
+  /** A block pull that stopped with its owned partial and record kept — it can be resumed. */
+  paused?: boolean;
+  /** Paused because this Mac's destination ran low on space. */
+  noSpace?: boolean;
+  /** The person cancelled; the owned partial and record are gone. */
+  cancelled?: boolean;
+  /** The phone's file changed; nothing was saved and the partial is gone. */
+  sourceChanged?: boolean;
+  /** Where a resumed pull started. */
+  resumedFrom?: number;
 }
+
+/** How often an in-flight block pull saves its verified count. */
+export const RECORD_SAVE_EVERY_MS = 2_000;
+/** A pull interrupted less than this long ago resumes on reconnect without a click (same run only). */
+export const AUTO_RESUME_WINDOW_MS = 10 * 60 * 1000;
+
+interface PreparedResume { record: ResumeRecord; handle: FileHandle; digest: TransferDigest; from: number }
+interface OwnedPull { record: ResumeRecord; handle: FileHandle; digest: TransferDigest; from: number }
 
 /** What a push attempt reports back to the renderer. The phone's verdict arrives separately. */
 export interface PushOutcome {
@@ -81,7 +103,28 @@ export class FilesClient {
     private readonly link: () => LinkClient | null,
     private readonly bulk: () => BulkClient | null,
     private readonly session: () => { host: string | null; token: string | null },
+    private readonly extra: {
+      /** `fs.blocks` resume: the record store, and the paired phone's pinned fingerprint that keys it. */
+      resume?: { store: () => PullResumeStore | null; phone: () => string | null };
+      now?: () => number;
+      /** Tests only: where pulls land. The product uses the configured receive folder. */
+      receiveFolder?: typeof ensureReceiveFolder;
+    } = {},
   ) {}
+
+  private get resume() {
+    return this.extra.resume;
+  }
+
+  private now(): number {
+    return (this.extra.now ?? Date.now)();
+  }
+
+  /** Block pulls in flight, for Pause and Cancel. */
+  private readonly active = new Map<string, { abort: AbortController; name: string; record: ResumeRecord | null }>();
+  private readonly cancelled = new Set<string>();
+  /** Pulls interrupted in this run, for the 10-minute automatic resume on reconnect. */
+  private readonly interrupted = new Map<string, { options: { rootId: string; id: string; name: string; size: number }; atMs: number }>();
 
   /** Whether the phone said it will receive files. Absent in the roots ack means **no**. */
   private pushServed = false;
@@ -304,7 +347,7 @@ export class FilesClient {
 
     // Settled before the phone is asked, so an unavailable receive folder refuses here rather than
     // leaving the phone holding an agreed transfer nobody claims.
-    const ready = await ensureReceiveFolder();
+    const ready = await (this.extra.receiveFolder ?? ensureReceiveFolder)();
     if (!ready.ok) {
       log.warn('files', `pull of ${options.name} refused on this Mac: receive folder unavailable`);
       return { ok: false, reason: ready.reason, fixHint: ready.fixHint };
@@ -318,21 +361,54 @@ export class FilesClient {
       return { ok: false, reason: short };
     }
 
+    // `fs.blocks` (docs/protocol.md → Block-verified, resumable pulls): decided before the phone is asked,
+    // because a resume is part of the request. Only on a negotiated session, above 64 MiB, with a store.
+    const phone = this.resume?.phone() ?? null;
+    const blocksExpected = (link.negotiated()[FS_BLOCKS] ?? 0) >= 1 && options.size > BLOCK_PULL_ABOVE_BYTES && !!this.resume && !!phone;
+    const store = this.resume?.store();
+    let prepared: PreparedResume | null = null;
+    if (blocksExpected && store && phone) {
+      await store.sweep(this.now());
+      const record = await store.find(phone, options.rootId, options.id);
+      if (record) prepared = await this.prepareResume(store, record);
+      if (!prepared) {
+        const room = await store.reserve(this.now());
+        if (!room.ok) {
+          log.warn('files', `pull of ${options.name} refused on this Mac: ${room.why}`);
+          return { ok: false, reason: room.why };
+        }
+      }
+    }
+    const resumeRequest = prepared
+      ? {
+          resume: {
+            size: prepared.record.size,
+            mtimeMs: prepared.record.mtimeMs,
+            blockSize: prepared.record.blockSize,
+            verifiedBlocks: prepared.record.digests.length,
+            prefixRoot: rootOf(prepared.record.digests),
+          },
+        }
+      : {};
+
     const agreed = await ask(
       link,
       'files',
       MessageType.FS_TRANSFER_BEGIN,
-      { direction: 'pull', rootId: options.rootId, id: options.id },
+      { direction: 'pull', rootId: options.rootId, id: options.id, ...resumeRequest },
       (payload) => ({
         transferId: String(payload.transferId ?? ''),
         size: typeof payload.size === 'number' ? payload.size : options.size,
+        mtimeMs: typeof payload.mtimeMs === 'number' ? payload.mtimeMs : null,
         sha256: payload.sha256 == null ? null : String(payload.sha256),
         blockSize: typeof payload.blockSize === 'number' ? payload.blockSize : null,
         blockCount: typeof payload.blockCount === 'number' ? payload.blockCount : null,
+        resume: (payload.resume && typeof payload.resume === 'object' ? payload.resume : null) as { accepted?: unknown; from?: unknown; why?: unknown } | null,
       }),
     );
     if (!agreed.ok) {
       this.failures += 1;
+      await prepared?.handle.close().catch(() => undefined);
       log.warn('files', `pull of ${options.name} refused: ${agreed.reason}`);
       return {
         ok: false,
@@ -342,21 +418,46 @@ export class FilesClient {
       };
     }
 
-    // `fs.blocks` (docs/protocol.md → Block-verified, resumable pulls): only on a session that
-    // negotiated it, and only with block fields that match the shared rule exactly. Block fields from a
-    // session that did not negotiate it are ignored and logged (rule S1).
+    // Only on a session that negotiated it, and only with block fields that match the shared rule
+    // exactly. Block fields from a session that did not negotiate it are ignored and logged (rule S1).
     const blocksPlan = blockPlanFor(link.negotiated(), agreed.data);
     if (blocksPlan.kind === 'refused') {
       this.failures += 1;
+      await prepared?.handle.close().catch(() => undefined);
       log.warn('files', `pull of ${options.name} refused on this Mac: ${blocksPlan.why}`);
       await link.request(MessageType.FS_TRANSFER_CANCEL, { transferId: agreed.data.transferId, reason: 'bad-request' }, 5_000).catch(() => undefined);
       return { ok: false, reason: 'The phone described the file in a way this Mac cannot check, so nothing was fetched.' };
     }
     if (blocksPlan.kind === 'ignored') log.warn('files', `pull of ${options.name}: ${blocksPlan.why}`);
-    const verifier = blocksPlan.kind === 'blocks'
-      ? new BlockPullVerifier(agreed.data.size, blocksPlan.blockSize, blocksPlan.blockCount)
-      : undefined;
     const transferId = agreed.data.transferId;
+
+    // The owned partial and its record: the prepared resume if the phone accepted exactly it, else a
+    // fresh exclusive partial under a free name (the refused one is discarded only if it is ours).
+    let owned: OwnedPull | null = null;
+    if (blocksPlan.kind === 'blocks' && store && phone) {
+      const r = agreed.data.resume;
+      const acceptedHere = prepared !== null && r?.accepted === true && r.from === prepared.from &&
+        agreed.data.size === prepared.record.size && agreed.data.mtimeMs === prepared.record.mtimeMs &&
+        blocksPlan.blockSize === prepared.record.blockSize;
+      if (prepared && acceptedHere) {
+        owned = { record: prepared.record, handle: prepared.handle, digest: prepared.digest, from: prepared.from };
+        log.info('files', `pull of ${options.name} resumes at ${prepared.from} of ${agreed.data.size} bytes (${prepared.record.digests.length} blocks verified on this Mac and re-hashed by the phone)`);
+      } else {
+        if (prepared) {
+          await prepared.handle.close().catch(() => undefined);
+          const partial = await store.discard(prepared.record, true);
+          log.info('files', `pull of ${options.name}: the phone ${r?.accepted === false ? `refused the resume (${String(r.why)})` : 'did not accept the resume as asked'}; starting again from 0; old ${partial}`);
+        }
+        owned = await this.freshOwned(store, phone, options, ready.folder, agreed.data, blocksPlan.blockSize);
+      }
+    } else if (prepared) {
+      await prepared.handle.close().catch(() => undefined);
+      log.info('files', `pull of ${options.name}: the phone did not take the block path this time; the paused record is kept`);
+    }
+
+    const verifier = blocksPlan.kind === 'blocks'
+      ? new BlockPullVerifier(agreed.data.size, blocksPlan.blockSize, blocksPlan.blockCount, owned?.record.digests ?? [])
+      : undefined;
     const onMessage = (envelope: unknown): void => {
       const m = envelope as { type?: string; payload?: Record<string, unknown> };
       if (!verifier || m?.payload?.transferId !== transferId) return;
@@ -365,7 +466,17 @@ export class FilesClient {
     };
     if (verifier) link.on('message', onMessage);
 
-    const destination = await pullDestination(ready.folder, options.name);
+    const destination = owned ? owned.record.destination : await pullDestination(ready.folder, options.name);
+    const abort = new AbortController();
+    this.active.set(transferId, { abort, name: options.name, record: owned?.record ?? null });
+    // The record follows the verified count, so an interruption loses at most a few seconds of blocks.
+    const persist = async (): Promise<void> => {
+      if (!owned || !verifier || !store) return;
+      owned.record.digests = verifier.verifiedDigests();
+      owned.record.updatedAtMs = this.now();
+      await store.save(owned.record).catch((e: unknown) => log.warn('files', `resume record for ${options.name} not saved: ${String(e)}`));
+    };
+    const timer = owned ? setInterval(() => void persist(), RECORD_SAVE_EVERY_MS) : null;
 
     const result = await bulk
       .pull({
@@ -376,15 +487,50 @@ export class FilesClient {
         expectedBytes: agreed.data.size,
         expectedSha256: agreed.data.sha256,
         ...(verifier ? { blocks: verifier } : {}),
+        signal: abort.signal,
+        spaceCheck: (remaining) => pullSpaceRefusal(ready.folder, remaining),
+        ...(owned
+          ? {
+              owned: {
+                handle: owned.handle,
+                offset: owned.from,
+                digest: owned.digest,
+                deleteOwned: () => deleteOwnedPartial(owned!.record),
+              },
+            }
+          : {}),
       })
       .finally(() => {
         if (verifier) link.off('message', onMessage);
+        if (timer) clearInterval(timer);
+        this.active.delete(transferId);
       });
+
+    if (owned && store) {
+      if (result.ok || result.discarded) {
+        await store.discard(owned.record, result.discarded === true);
+      } else if (this.cancelled.delete(transferId)) {
+        const partial = await store.discard(owned.record, true);
+        log.info('files', `pull of ${options.name} cancelled; ${partial}; nothing of it is kept`);
+        return { ok: false, reason: 'Cancelled. Nothing was saved.', cancelled: true };
+      } else {
+        await persist();
+        log.info('files', `pull of ${options.name} paused at ${owned.record.digests.length} verified blocks of ${blocksPlan.kind === 'blocks' ? blocksPlan.blockCount : '?'}; the partial and record are kept`);
+        this.interrupted.set(`${options.rootId}\u0000${options.id}`, { options, atMs: this.now() });
+        return {
+          ok: false,
+          reason: result.reason ?? 'The transfer paused.',
+          paused: true,
+          ...(result.noSpace ? { noSpace: true } : {}),
+        };
+      }
+    }
     if (!result.ok) {
       this.failures += 1;
       log.warn('files', `pull of ${options.name} did not finish: ${result.reason}`);
-      return { ok: false, reason: result.reason ?? 'The transfer did not finish.' };
+      return { ok: false, reason: result.reason ?? 'The transfer did not finish.', ...(result.sourceChanged ? { sourceChanged: true } : {}) };
     }
+    this.interrupted.delete(`${options.rootId}\u0000${options.id}`);
     const verified = result.verified;
     log.info(
       'files',
@@ -392,7 +538,8 @@ export class FilesClient {
         `verified=${verified} ` +
         (result.verifiedBy === 'blocks'
           ? '(block by block: every block matched what the phone read)'
-          : verified ? '(agreed in advance and matched)' : '(no digest was agreed in advance)'),
+          : verified ? '(agreed in advance and matched)' : '(no digest was agreed in advance)') +
+        (result.resumedFrom ? `, resumed from ${result.resumedFrom}` : ''),
     );
     return {
       ok: true,
@@ -401,7 +548,117 @@ export class FilesClient {
       elapsedMs: result.elapsedMs,
       verified,
       ...(result.verifiedBy ? { verifiedBy: result.verifiedBy } : {}),
+      ...(result.resumedFrom ? { resumedFrom: result.resumedFrom } : {}),
     };
+  }
+
+  /** Pause (keeps the owned partial and record) or Cancel (deletes only that transfer's owned partial). */
+  async stopPull(transferId: string, how: 'pause' | 'cancel'): Promise<{ stopped: boolean }> {
+    const running = this.active.get(transferId);
+    if (!running) return { stopped: false };
+    if (how === 'cancel') this.cancelled.add(transferId);
+    await this.link()?.request(MessageType.FS_TRANSFER_CANCEL, { transferId, reason: how === 'cancel' ? 'user' : 'pause' }, 5_000).catch(() => undefined);
+    running.abort.abort(how === 'cancel' ? 'Cancelled.' : 'Paused.');
+    log.info('files', `pull ${transferId} (${running.name}) ${how === 'cancel' ? 'cancelled' : 'paused'} by the person`);
+    return { stopped: true };
+  }
+
+  /** The paused block pulls this Mac holds for the paired phone (for the Files pane). */
+  async pausedPulls(): Promise<Array<{ rootId: string; id: string; name: string; size: number; verifiedBytes: number; updatedAtMs: number }>> {
+    const store = this.resume?.store();
+    const phone = this.resume?.phone();
+    if (!store || !phone) return [];
+    await store.sweep(this.now());
+    return (await store.all())
+      .filter((r) => r.phone === phone)
+      .map((r) => ({ rootId: r.rootId, id: r.id, name: r.name, size: r.size, verifiedBytes: r.digests.length * r.blockSize, updatedAtMs: r.updatedAtMs }));
+  }
+
+  /** Cancel a paused pull that is not running: its record goes, and its partial only if owned. */
+  async cancelPaused(rootId: string, id: string): Promise<{ removed: boolean; partial?: string }> {
+    const store = this.resume?.store();
+    const phone = this.resume?.phone();
+    if (!store || !phone) return { removed: false };
+    const record = await store.find(phone, rootId, id);
+    if (!record) return { removed: false };
+    const partial = await store.discard(record, true);
+    this.interrupted.delete(`${rootId}\u0000${id}`);
+    log.info('files', `paused pull of ${record.name} cancelled; ${partial}`);
+    return { removed: true, partial };
+  }
+
+  /**
+   * Pulls interrupted in this run within the last 10 minutes — the only ones a reconnect may resume
+   * without a click (docs/protocol.md). Returned and forgotten; the caller restarts each.
+   */
+  takeAutoResumable(): Array<{ rootId: string; id: string; name: string; size: number }> {
+    const out: Array<{ rootId: string; id: string; name: string; size: number }> = [];
+    for (const [key, v] of this.interrupted) {
+      if (this.now() - v.atMs <= AUTO_RESUME_WINDOW_MS) out.push(v.options);
+      this.interrupted.delete(key);
+    }
+    return out;
+  }
+
+  /** At start: expire records older than 7 days (owned partials only). */
+  async sweepResumeRecords(): Promise<number> {
+    const store = this.resume?.store();
+    return store ? (await store.sweep(this.now())).length : 0;
+  }
+
+  private async prepareResume(store: PullResumeStore, record: ResumeRecord): Promise<PreparedResume | null> {
+    const count = blockCountFor(record.size, record.blockSize);
+    // A resume must leave at least one block to send; a record verified to the end keeps all but the last.
+    if (record.digests.length >= count) record.digests = record.digests.slice(0, count - 1);
+    if (record.digests.length === 0) {
+      const partial = await store.discard(record, true);
+      log.info('files', `resume record for ${record.name} had no verified block; starting again; ${partial}`);
+      return null;
+    }
+    const own = await ownedPartial(record);
+    if (!own.owned) {
+      await store.discard(record, false);
+      log.warn('files', `resume record for ${record.name} dropped: ${own.why}; the file at that path was not touched`);
+      return null;
+    }
+    let handle: FileHandle | null = null;
+    try {
+      handle = await openOwnedPartial(record);
+      const digest = new TransferDigest();
+      const v = await verifyAndTrimPrefix(handle, record, digest);
+      if (!v.ok) {
+        await handle.close();
+        const partial = await store.discard(record, true);
+        log.warn('files', `resume of ${record.name} refused on this Mac: ${v.why}; ${partial}`);
+        return null;
+      }
+      return { record, handle, digest, from: v.from };
+    } catch (e) {
+      await handle?.close().catch(() => undefined);
+      await store.discard(record, false);
+      log.warn('files', `resume record for ${record.name} dropped: ${String(e)}; the file at that path was not touched`);
+      return null;
+    }
+  }
+
+  private async freshOwned(
+    store: PullResumeStore,
+    phone: string,
+    options: { rootId: string; id: string; name: string },
+    folder: string,
+    ack: { size: number; mtimeMs: number | null },
+    blockSize: number,
+  ): Promise<OwnedPull> {
+    const destination = await pullDestination(folder, options.name);
+    const { handle, dev, ino } = await createPartialExclusive(pullPartPathFor(destination));
+    const now = this.now();
+    const record: ResumeRecord = {
+      v: 1, phone, rootId: options.rootId, id: options.id, name: basename(destination), size: ack.size,
+      mtimeMs: ack.mtimeMs ?? 0, blockSize, digests: [], destination, folderReal: await fsp.realpath(folder),
+      partDev: dev, partIno: ino, createdAtMs: now, updatedAtMs: now,
+    };
+    await store.save(record);
+    return { record, handle, digest: new TransferDigest(), from: 0 };
   }
 
   /**

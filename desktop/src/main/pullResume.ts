@@ -18,6 +18,8 @@
 import { createHash } from 'node:crypto';
 import { constants, promises as fs } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { BlockHasher } from '../shared/fsBlocks';
+import type { TransferDigest } from '../shared/transferDigest';
 import { pullPartPathFor } from '../shared/transferFiles';
 
 export const MAX_RESUME_RECORDS = 16;
@@ -198,4 +200,39 @@ export async function openOwnedPartial(record: ResumeRecord): Promise<fs.FileHan
     throw new Error('the partial is not the one this record created');
   }
   return handle;
+}
+
+/**
+ * Before a resume (rule S5): reads the first `record.digests.length` blocks back from the owned
+ * partial **through its identity-checked handle**, hashes them, and requires every one to equal the
+ * record; primes [digest] with the same bytes in the same pass. Then truncates the partial to exactly
+ * the verified length — an unverified tail is never kept. Any difference refuses the resume.
+ */
+export async function verifyAndTrimPrefix(
+  handle: fs.FileHandle,
+  record: ResumeRecord,
+  digest: TransferDigest,
+): Promise<{ ok: true; from: number } | { ok: false; why: string }> {
+  const n = record.digests.length;
+  const from = n * record.blockSize;
+  const st = await handle.stat();
+  if (st.size < from) return { ok: false, why: `the partial holds ${st.size} bytes, fewer than the ${from} its record verified` };
+  const hasher = new BlockHasher(record.blockSize);
+  const buffer = Buffer.alloc(Math.min(record.blockSize, 1 << 20));
+  let at = 0;
+  while (at < from) {
+    const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, from - at), at);
+    if (bytesRead <= 0) return { ok: false, why: `the partial ended at ${at} while reading back ${from} bytes` };
+    const piece = buffer.subarray(0, bytesRead);
+    hasher.update(piece);
+    digest.primeChunk(piece);
+    at += bytesRead;
+  }
+  const mine = hasher.finish();
+  for (let i = 0; i < n; i += 1) {
+    if (mine[i] !== record.digests[i]) return { ok: false, why: `block ${i} of the partial changed since it was verified` };
+  }
+  digest.finishPriming(from);
+  if (st.size > from) await handle.truncate(from);
+  return { ok: true, from };
 }

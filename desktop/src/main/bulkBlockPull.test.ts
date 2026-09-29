@@ -52,7 +52,7 @@ function source(n = 10 * BS + 123): { bytes: Buffer; digests: string[]; done: Re
   return { bytes, digests, count, done: { ok: true, bytes: n, sha256: sha(bytes), blockSize: BS, blockCount: count, manifestRoot: rootOf(digests) } };
 }
 
-async function pull(served: Buffer, size: number, verifier: BlockPullVerifier, folder: string, name = 'clip.bin', waitMs = 2000) {
+async function pull(served: Buffer, size: number, verifier: BlockPullVerifier, folder: string, name = 'clip.bin', waitMs = 2000, extra: Record<string, unknown> = {}) {
   const p = await phone(served);
   try {
     return await new BulkClient({} as never).pull({
@@ -64,6 +64,7 @@ async function pull(served: Buffer, size: number, verifier: BlockPullVerifier, f
       expectedSha256: null,
       blocks: verifier,
       blockDoneWaitMs: waitMs,
+      ...extra,
       connect: () => ({ socket: createConnection({ host: '127.0.0.1', port: p.port }) as unknown as TLSSocket, readyEvent: 'connect' }),
     });
   } finally {
@@ -163,4 +164,23 @@ test('control: without a verifier the pull keeps the old path — saved on lengt
   } finally {
     await p.close();
   }
+});
+
+test('low space during the pull pauses it with the sentence, keeps the partial, and publishes nothing', T, async () => {
+  const s = source(40 * BS);
+  const dir = folder();
+  const v = new BlockPullVerifier(s.bytes.length, BS, s.count);
+  v.onBlocks({ first: 0, sha256: s.digests });
+  v.onDone(s.done);
+  const asked: number[] = [];
+  const r = await pull(s.bytes, s.bytes.length, v, dir, 'clip.bin', 2000, {
+    spaceCheckEveryBytes: 8 * BS,
+    spaceCheck: async (remaining: number) => { asked.push(remaining); return asked.length >= 2 ? 'Not enough space left on "Test": 1 GB more is needed.' : null; },
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.noSpace, true, JSON.stringify(r));
+  assert.match(r.reason ?? '', /Not enough space/);
+  assert.ok(asked.length >= 2 && asked[0]! > asked[1]!, `checked with the bytes still to come: ${asked.join(', ')}`);
+  assert.equal(existsSync(join(dir, 'clip.bin')), false, 'nothing published');
+  assert.ok(existsSync(pullPartPathFor(join(dir, 'clip.bin'))), 'the partial is kept for a resume');
 });

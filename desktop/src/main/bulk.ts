@@ -69,7 +69,16 @@ export interface BulkResult {
   sourceChanged?: boolean;
   /** No verdict from the phone within the wait: the partial is kept, nothing was published. */
   noVerdict?: boolean;
+  /** The partial was deleted (corrupt, or the source changed): nothing of this transfer is left to resume. */
+  discarded?: boolean;
+  /** Stopped by [signal] (Pause / Cancel), partial kept. */
+  aborted?: boolean;
+  /** Paused because the destination ran low on space, partial kept. */
+  noSpace?: boolean;
 }
+
+/** How often a pull with a [spaceCheck] re-reads free space. */
+export const SPACE_CHECK_EVERY_BYTES = 1024 * 1024 * 1024;
 
 /** How long a block pull waits after its last byte for the phone's `fs.transfer.done` (docs/protocol.md). */
 export const BLOCK_DONE_WAIT_MS = 30_000;
@@ -207,6 +216,26 @@ export class BulkClient {
     /** Tests only: how long to wait for that verdict. */
     blockDoneWaitMs?: number;
     /**
+     * An owned partial for an `fs.blocks` pull: the handle to write through (created exclusively, or
+     * reopened no-follow and identity-checked), where writing starts, a whole-file digest already
+     * primed over the verified prefix, and the only way this transfer may delete its partial.
+     */
+    /** Pause or Cancel: aborting stops the socket and keeps the partial (the caller decides its fate). */
+    signal?: AbortSignal;
+    /**
+     * Re-read free space every [SPACE_CHECK_EVERY_BYTES] received: a non-null answer pauses the pull with
+     * that sentence, keeping the partial, rather than failing at 90 % (docs/protocol.md, S10).
+     */
+    spaceCheck?: (remainingBytes: number) => Promise<string | null>;
+    /** Tests only: re-check free space this often instead of every GiB. */
+    spaceCheckEveryBytes?: number;
+    owned?: {
+      handle: import('node:fs').promises.FileHandle;
+      offset: number;
+      digest: TransferDigest;
+      deleteOwned: () => Promise<unknown>;
+    };
+    /**
      * Tests only: open the connection another way (plain TCP to a fake phone), as `pushWith` and
      * `pullShareWith` allow. The product always passes nothing and gets TLS.
      */
@@ -226,24 +255,33 @@ export class BulkClient {
     // no record of is another app's file: DCIM and Documents are shared with every downloader on
     // the phone, and appending to a stranger's partial is the failure the convention's third row
     // says nothing can prevent from the outside.
-    const partBytes = await fs.stat(part).then((s) => s.size).catch(() => null);
-    const verdict = isResumable({
-      partBytes,
-      recordedBytes: options.recordedBytes ?? null,
-      totalBytes: expectedBytes,
-    });
-    const offset = verdict.resume ? verdict.offset : 0;
-    if (partBytes !== null && !verdict.resume) {
-      // Only ever a Sidekick partial: [pullPartPathFor]'s suffix is ours alone (defect 151).
-      log.info('bulk', `${transferId} starting from zero: ${verdict.reason}`);
-      await fs.rm(part, { force: true }).catch(() => undefined);
+    // `fs.blocks` pulls arrive with their partial already owned: created exclusively, or reopened and
+    // identity-checked, read back and trimmed by the caller (pullResume.ts). Nothing here re-decides
+    // resume from the filename or deletes by path for them.
+    const owned = options.owned;
+    let offset = 0;
+    if (owned) {
+      offset = owned.offset;
+    } else {
+      const partBytes = await fs.stat(part).then((s) => s.size).catch(() => null);
+      const verdict = isResumable({
+        partBytes,
+        recordedBytes: options.recordedBytes ?? null,
+        totalBytes: expectedBytes,
+      });
+      offset = verdict.resume ? verdict.offset : 0;
+      if (partBytes !== null && !verdict.resume) {
+        // Only ever a Sidekick partial: [pullPartPathFor]'s suffix is ours alone (defect 151).
+        log.info('bulk', `${transferId} starting from zero: ${verdict.reason}`);
+        await fs.rm(part, { force: true }).catch(() => undefined);
+      }
     }
 
     // The digest covers the **whole file**, including the part that was never sent this time. Doing
     // this before a byte arrives is the point: a digest started at the offset reports
     // CHECKSUM_MISMATCH on a perfectly correct file and the deletion rule then destroys it.
-    const digest = new TransferDigest();
-    if (offset > 0) {
+    const digest = owned ? owned.digest : new TransferDigest();
+    if (offset > 0 && !owned) {
       await digest.primeFrom(part, offset);
       log.info(
         'bulk',
@@ -256,7 +294,9 @@ export class BulkClient {
       let settled = false;
       let received = 0;
       const tally = new FrameTally('bulk');
-      const file = createWriteStream(part, offset > 0 ? { flags: 'a' } : {});
+      const file = owned
+        ? createWriteStream(part, { fd: owned.handle, start: offset, autoClose: true })
+        : createWriteStream(part, offset > 0 ? { flags: 'a' } : {});
       let socket: TLSSocket | null = null;
 
       // One resolution path each way, and `settled` guards both: a socket error arriving after the
@@ -293,6 +333,8 @@ export class BulkClient {
             reason,
             verified: false,
             ...(offset > 0 ? { resumedFrom: offset } : {}),
+            ...(options.blocks ? { verifiedBlocks: options.blocks.verified } : {}),
+            ...stopFlag,
           });
         });
       };
@@ -304,7 +346,8 @@ export class BulkClient {
        */
       const discard = async (reason: string, sha256: string, total: number, elapsedMs: number, extra: Partial<BulkResult> = {}): Promise<void> => {
         this.failures += 1;
-        await fs.rm(part, { force: true }).catch(() => undefined);
+        if (owned) await owned.deleteOwned().catch(() => undefined);
+        else await fs.rm(part, { force: true }).catch(() => undefined);
         await fs
           .writeFile(
             failedPathFor(destination),
@@ -319,8 +362,22 @@ export class BulkClient {
           )
           .catch(() => undefined);
         log.error('bulk', `${transferId} not saved after ${total} bytes: ${reason}; the partial was deleted and a .failed sidecar left beside it; ${this.tallyLine()}`);
-        resolve({ ok: false, bytes: total, elapsedMs, sha256, verified: false, reason, ...extra });
+        resolve({ ok: false, bytes: total, elapsedMs, sha256, verified: false, reason, discarded: true, ...extra });
       };
+
+      let stopFlag: Partial<BulkResult> = {};
+      const stop = (reason: string, flag: Partial<BulkResult>): void => {
+        if (settled) return;
+        stopFlag = flag;
+        fail(reason);
+      };
+      if (options.signal) {
+        if (options.signal.aborted) queueMicrotask(() => stop(String(options.signal!.reason ?? 'stopped'), { aborted: true }));
+        else options.signal.addEventListener('abort', () => stop(String(options.signal!.reason ?? 'stopped'), { aborted: true }), { once: true });
+      }
+      const spaceEvery = options.spaceCheckEveryBytes ?? SPACE_CHECK_EVERY_BYTES;
+      let nextSpaceCheckAt = spaceEvery;
+      let spaceChecking = false;
 
       const blockFailed = async (): Promise<void> => {
         const failure = options.blocks?.failure;
@@ -349,6 +406,14 @@ export class BulkClient {
               void blockFailed();
               return;
             }
+          }
+          if (options.spaceCheck && !spaceChecking && received >= nextSpaceCheckAt) {
+            nextSpaceCheckAt += spaceEvery;
+            spaceChecking = true;
+            void options.spaceCheck(expectedBytes - offset - received).then((short) => {
+              spaceChecking = false;
+              if (short) stop(short, { noSpace: true });
+            }, () => { spaceChecking = false; });
           }
           if (options.interruptAfterBytes !== undefined && received >= options.interruptAfterBytes) {
             // Destroy the socket rather than resolving: the receiver must go through its ordinary

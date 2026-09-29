@@ -73,6 +73,24 @@ export class TransferDigest {
     this.primed = true;
   }
 
+  /**
+   * Primes from bytes the caller has already read — for a block-pull resume, which reads its owned
+   * partial once through the file handle it identity-checked, hashing the blocks and priming this in
+   * the same pass. [finishPriming] must then confirm the count, exactly as [primeFrom] does.
+   */
+  primeChunk(chunk: Uint8Array): void {
+    if (this.appendedBytes > 0) throw new Error('priming must happen before any chunk is appended');
+    this.hash.update(chunk);
+    this.primedBytes += chunk.length;
+  }
+
+  finishPriming(bytes: number): void {
+    if (this.primedBytes !== bytes) {
+      throw new Error(`the partial held ${this.primedBytes} bytes where ${bytes} were expected, so a resumed digest would not cover the file`);
+    }
+    this.primed = true;
+  }
+
   /** Adds bytes that have just arrived. */
   update(chunk: Buffer): void {
     this.appendedBytes += chunk.length;

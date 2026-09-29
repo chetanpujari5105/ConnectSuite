@@ -64,6 +64,7 @@ const sharedVitals = require('../shared/deviceVitals') as {
   humanBytes: (bytes: number) => string;
 };
 import { FS_BLOCKS, FS_BLOCKS_RELEASE, SHARE_WAIT_MINUTES, filesExt } from '../shared/extensions';
+import { PullResumeStore } from './pullResume';
 import { FilesClient, digestOf } from './files';
 import {
   cachedPreview,
@@ -283,10 +284,21 @@ const apps = new AppsClient(() => link);
  * `FEATURE_UNAVAILABLE` and `docs/protocol.md` forbids the affordance, so the decision lives in the
  * client rather than in the renderer where the canvas's drop tile would find it.
  */
+/**
+ * `fs.blocks` resume records, in this app's private data folder (docs/protocol.md → What the Mac
+ * keeps). Created on first use, after `app` can answer `userData`.
+ */
+let pullResumeStore: PullResumeStore | null = null;
 const files = new FilesClient(
   () => link,
   () => bulk,
   () => ({ host: link?.status().address ?? null, token: link?.token() ?? null }),
+  {
+    resume: {
+      store: () => (pullResumeStore ??= new PullResumeStore(join(app.getPath('userData'), 'pull-resume'), (line) => log.info('files', line))),
+      phone: () => store.get('paired')?.fingerprint ?? null,
+    },
+  },
 );
 
 /**
