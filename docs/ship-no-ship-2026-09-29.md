@@ -125,7 +125,7 @@ The six steps above (*Acceptance walkthrough*), **plus**, on the signed builds f
 
 7. **Release gates hold:** with no switch flipped, a multi-select share does **not** list Sidekick and a
    single share still works (release = the single-file product). With the switches flipped, step 1 works.
-8. **Notification banner:** lock the Mac screen's focus elsewhere, send yourself a test SMS from another
+8. **Notification banner:** with another Mac app in front, send yourself a test SMS from another
    phone → a macOS banner appears (B3).
 
 Pass = every step as written. Any deviation is a finding and blocks the release until fixed.
