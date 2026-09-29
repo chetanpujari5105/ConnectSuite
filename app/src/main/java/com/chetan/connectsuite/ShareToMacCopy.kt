@@ -423,11 +423,21 @@ object ShareToMacCopy {
         Refusal.ANOTHER_IN_PROGRESS -> "Another file is already being prepared. Finish or cancel that one first."
     }
 
+    /**
+     * Large-file increment L4 (docs/large-file-strategy-2026-09-29.md): a file too large to copy is not a
+     * dead end. A Files pull from a folder the person shared streams from the phone with **no copy**,
+     * bounded only by the Mac's room — so the refusal names that route, and the one place Android refuses
+     * it (a file directly in `Download` cannot be shared; CLAUDE.md → Platform walls).
+     */
+    const val WITHOUT_A_COPY =
+        "To send it without a copy, add its folder in Sidekick → Folders on this phone, then save it from Files on your Mac. " +
+            "A file directly in Download can’t be reached that way — Android doesn’t allow it."
+
     fun failure(f: ShareSheetState.Failure): String = when (f) {
         is ShareSheetState.Failure.NoSpace ->
-            "Not enough space on this phone to prepare it: it needs ${bytes(f.needed)} free and ${bytes(f.free)} is. Nothing was kept."
+            "Not enough space on this phone to prepare it: it needs ${bytes(f.needed)} free and ${bytes(f.free)} is. Nothing was kept. $WITHOUT_A_COPY"
         is ShareSheetState.Failure.OverLimit ->
-            "It’s larger than this phone has room to prepare right now (up to ${bytes(f.limit)}). Nothing was kept."
+            "It’s larger than this phone has room to prepare right now (up to ${bytes(f.limit)}). Nothing was kept. $WITHOUT_A_COPY"
         ShareSheetState.Failure.ReadFailed -> "The file stopped being readable partway through. Nothing was kept."
         ShareSheetState.Failure.WriteFailed -> "Sidekick couldn’t write its private copy. Nothing was kept."
         ShareSheetState.Failure.AccessLostOnRecreate ->

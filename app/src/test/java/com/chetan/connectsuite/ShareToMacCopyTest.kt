@@ -188,4 +188,16 @@ class ShareToMacCopyTest {
         val waiting = ShareSheetState.WaitingForMac("a.jpg", 1, "Mac", at)
         assertEquals(waiting, reduce(waiting, "a.jpg", 1, "Mac", com.chetan.connectsuite.sync.v2.ShareOffer.State.Offered))
     }
+
+    @Test fun `a file too large to copy names the copy-free route, and only those two refusals do`() {
+        val noSpace = ShareToMacCopy.failure(ShareSheetState.Failure.NoSpace(needed = 50_000_000_000, free = 9_000_000_000))
+        val overLimit = ShareToMacCopy.failure(ShareSheetState.Failure.OverLimit(limit = 20_000_000_000))
+        for (s in listOf(noSpace, overLimit)) {
+            assertTrue(s, s.endsWith(ShareToMacCopy.WITHOUT_A_COPY))
+            assertTrue(s, s.contains("Nothing was kept."))
+        }
+        // A read or write failure is not about size: the route would be advice for the wrong problem.
+        assertFalse(ShareToMacCopy.failure(ShareSheetState.Failure.ReadFailed).contains("without a copy"))
+        assertFalse(ShareToMacCopy.failure(ShareSheetState.Failure.WriteFailed).contains("without a copy"))
+    }
 }
