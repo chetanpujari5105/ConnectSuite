@@ -58,6 +58,7 @@ object MediaStoreReader {
             val newestSeconds: Long,
             val coverId: Long,
             val relativePath: String?,
+            val profileUserId: Int?,
         )
 
         val byBucket = LinkedHashMap<String, Aggregate>()
@@ -72,6 +73,7 @@ object MediaStoreReader {
                 MediaPayloads.COL_BUCKET_NAME,
                 MediaPayloads.COL_DATE_ADDED,
                 MediaPayloads.COL_RELATIVE_PATH,
+                MediaPayloads.COL_DATA,
             ),
             selection = selection,
             sortOrder = MediaPayloads.ORDER_BY,
@@ -89,6 +91,7 @@ object MediaStoreReader {
                         newestSeconds = cursor.longOf(MediaPayloads.COL_DATE_ADDED) ?: 0L,
                         coverId = cursor.longOf(MediaPayloads.COL_ID) ?: 0L,
                         relativePath = cursor.stringOf(MediaPayloads.COL_RELATIVE_PATH),
+                        profileUserId = MediaPayloads.profileUserOf(cursor.stringOf(MediaPayloads.COL_DATA)),
                     )
                 } else {
                     existing.count++
@@ -107,6 +110,7 @@ object MediaStoreReader {
                 packageName = packageName,
                 appName = packageName?.let { AppLabels.of(context, it) },
                 relativePath = aggregate.relativePath,
+                profileUserId = aggregate.profileUserId,
             )
         }
 

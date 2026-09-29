@@ -222,4 +222,14 @@ class MediaPayloadsTest {
         assertEquals("\"WhatsApp/Media/WhatsApp Images/\"", b["relativePath"].toString())
         assertEquals(null, MediaPayloads.bucket("1", "a", 1, 1, 1, null, null)["relativePath"])
     }
+
+    /** Defect 89, second measured cause: identical paths on two Android users (0 and 95). */
+    @Test fun `the profile is read from the storage prefix and sent only when it is not the main user`() {
+        assertEquals(95, MediaPayloads.profileUserOf("/storage/emulated/95/Android/media/x/Media/Pics/a.jpg"))
+        assertEquals(0, MediaPayloads.profileUserOf("/storage/emulated/0/DCIM/Camera/a.jpg"))
+        assertEquals(null, MediaPayloads.profileUserOf("/storage/1234-5678/DCIM/a.jpg"))
+        assertEquals(null, MediaPayloads.profileUserOf(null))
+        assertEquals("95", MediaPayloads.bucket("1", "a", 1, 1, 1, null, null, "P/", profileUserId = 95)["profileUserId"].toString())
+        assertEquals(null, MediaPayloads.bucket("1", "a", 1, 1, 1, null, null, "P/", profileUserId = 0)["profileUserId"])
+    }
 }

@@ -1901,6 +1901,12 @@ folder, so different folders share one name; the path is the only thing that tel
 handle for disambiguation and navigation, never prettified. An older phone omits it, and a Mac then
 draws the album exactly as before.
 
+**`profileUserId`** (optional, since 2026-09-29) is the Android user whose storage holds the album, sent
+**only when it is not the main user 0**. Measured on the SM-S938B: five pairs of albums share an
+identical `relativePath` and differ only as `/storage/emulated/0` against `/storage/emulated/95` — a second
+profile, such as the one Samsung creates for Dual Messenger. The path cannot separate them; this does. The
+Mac says *Main profile* / *Other profile* and does not guess which app the profile belongs to.
+
 **Trash is not an album.** Samsung Gallery "deletes" a photo by moving it under
 `Android/.Trash/<package>/` instead of using `MediaStore`'s trash (`IS_TRASHED` is empty on this
 handset), so those rows are excluded from `media.buckets` **and** every `media.list` — the person's

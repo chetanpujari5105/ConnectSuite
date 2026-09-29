@@ -151,6 +151,19 @@ object MediaPayloads {
      * bound argument with an empty cursor), and `IS NULL` first because `NULL NOT LIKE …` is NULL, which
      * would silently drop every row with no relative path.
      */
+    /** `MediaStore.MediaColumns.DATA` — read only to learn which Android user's storage a bucket is on. */
+    const val COL_DATA = "_data"
+
+    /**
+     * The Android user whose storage holds this file, from `/storage/emulated/<n>/…`, or null when the
+     * path says nothing (another volume, a missing column). Measured 2026-09-29: five pairs of albums on
+     * this handset share an identical `relativePath` and differ only as `/storage/emulated/0` against
+     * `/storage/emulated/95` — a second profile (Samsung creates one for Dual Messenger). The path alone
+     * cannot tell them apart, so `media.buckets` carries this beside it.
+     */
+    fun profileUserOf(data: String?): Int? =
+        data?.let { Regex("^/storage/emulated/(\\d+)/").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+
     const val NOT_TRASH_CLAUSE = "($COL_RELATIVE_PATH IS NULL OR $COL_RELATIVE_PATH NOT LIKE 'Android/.Trash/%')"
 
     fun listSelection(bucketId: String?, beforeMs: Long?, beforeId: Long?): Selection {
@@ -296,6 +309,8 @@ object MediaPayloads {
         appName: String?,
         /** The folder, as `MediaStore` names it — the only thing that tells same-named albums apart (defect 89). */
         relativePath: String? = null,
+        /** The Android user whose storage it is, sent only when it is not the main user 0 ([profileUserOf]). */
+        profileUserId: Int? = null,
     ): JsonObject = buildJsonObject {
         put("bucketId", bucketId)
         put("bucketName", bucketName)
@@ -307,5 +322,6 @@ object MediaPayloads {
             put("appName", appName ?: packageName)
         }
         if (relativePath != null) put("relativePath", relativePath)
+        if (profileUserId != null && profileUserId != 0) put("profileUserId", profileUserId)
     }
 }

@@ -442,11 +442,11 @@ test('no access: not advertised keeps the thumbnails-only notice, whatever limit
 // ---- defect 89: same-named albums told apart by the shortest distinguishing folder tail ----------
 
 const places = ((globalThis as Record<string, unknown>).__photoLabels as {
-  albumPlaces(albums: Array<{ bucketId: string; bucketName: string; count: number; newestMs: number; coverId: string; relativePath?: string }>): Map<string, string>;
+  albumPlaces(albums: Array<{ bucketId: string; bucketName: string; count: number; newestMs: number; coverId: string; relativePath?: string; profileUserId?: number }>): Map<string, string>;
 }).albumPlaces;
 
-const alb = (bucketId: string, bucketName: string, relativePath?: string) =>
-  ({ bucketId, bucketName, count: 1, newestMs: 0, coverId: '1', ...(relativePath ? { relativePath } : {}) });
+const alb = (bucketId: string, bucketName: string, relativePath?: string, profileUserId?: number) =>
+  ({ bucketId, bucketName, count: 1, newestMs: 0, coverId: '1', ...(relativePath ? { relativePath } : {}), ...(profileUserId ? { profileUserId } : {}) });
 
 test('same-named albums get the shortest folder tail that separates them; unique names get nothing', () => {
   // The shape measured on the SM-S938B (synthetic names here): one name in three folders.
@@ -467,4 +467,26 @@ test('same-named albums get the shortest folder tail that separates them; unique
 test('an older phone (no path) gets no label rather than a guess', () => {
   const m = places([alb('a', 'Pictures'), alb('b', 'Pictures', 'DCIM/Pictures/')]);
   assert.equal(m.size, 0);
+});
+
+test('the two causes measured on hardware: an identical path on another profile, and an album at the top of storage', () => {
+  // Five pairs on the SM-S938B: the same relativePath on /storage/emulated/0 and /95.
+  const m = places([
+    alb('a', 'Pictures', 'Android/media/com.example/Example/Media/Pictures/'),
+    alb('b', 'Pictures', 'Android/media/com.example/Example/Media/Pictures/', 95),
+    alb('c', 'Pictures', 'Example/Media/Pictures/'),
+    // Three groups: one member at depth 1.
+    alb('d', 'Screenshots', 'Screenshots/'),
+    alb('e', 'Screenshots', 'DCIM/Screenshots/'),
+  ]);
+  assert.equal(m.get('a'), 'com.example/Example/Media · Main profile');
+  assert.equal(m.get('b'), 'com.example/Example/Media · Other profile');
+  assert.equal(m.get('c'), 'Example/Media');
+  assert.equal(m.get('d'), 'Top of storage');
+  assert.equal(m.get('e'), 'DCIM');
+  for (const group of [['a', 'b', 'c'], ['d', 'e']]) {
+    const labels = group.map((id) => m.get(id));
+    assert.equal(new Set(labels).size, labels.length, `distinct: ${labels.join(' | ')}`);
+    assert.ok(labels.every(Boolean));
+  }
 });

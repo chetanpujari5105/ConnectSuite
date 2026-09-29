@@ -43,6 +43,7 @@ interface MediaBucketRow {
   packageName?: string;
   appName?: string;
   relativePath?: string;
+  profileUserId?: number;
 }
 
 interface MediaItemRow {
@@ -521,13 +522,19 @@ function albumPlaces(albums: MediaBucketRow[]): Map<string, string> {
     }));
     for (const a of withPath) {
       const mine = parents.get(a.bucketId)!;
-      let label = mine.join('/');
+      // At the top of storage (`Pictures/`) there is no parent to name — measured, three groups.
+      let label = mine.length === 0 ? 'Top of storage' : mine.join('/');
       for (let k = 1; k <= mine.length; k += 1) {
         const tail = mine.slice(-k).join('/');
-        const clash = withPath.some((o) => o !== a && parents.get(o.bucketId)!.slice(-k).join('/') === tail);
+        // Only albums on a different path compete for the tail; a same-path sibling is told apart by its profile below.
+        const clash = withPath.some((o) => o.relativePath !== a.relativePath && parents.get(o.bucketId)!.slice(-k).join('/') === tail);
         if (!clash) { label = tail; break; }
       }
-      if (label) out.set(a.bucketId, label);
+      // An identical path on two Android users (measured: /storage/emulated/0 and /95, five pairs) is
+      // separated by the profile, the one thing that differs. No app name is guessed for the profile.
+      const samePath = withPath.some((o) => o !== a && o.relativePath === a.relativePath);
+      if (samePath) label = `${label} · ${a.profileUserId ? 'Other profile' : 'Main profile'}`;
+      out.set(a.bucketId, label);
     }
   }
   return out;

@@ -112,6 +112,8 @@ export interface MediaBucket {
   appName?: string;
   /** The album's folder as the phone names it (defect 89). Absent from an older phone. */
   relativePath?: string;
+  /** The Android user whose storage it is, when not the main user (a second profile). */
+  profileUserId?: number;
 }
 
 /** One photo or video. `id` is a string because a MediaStore id outruns a JS safe integer. */
