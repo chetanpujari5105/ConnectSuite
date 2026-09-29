@@ -63,7 +63,7 @@ const sharedSendBatch = require('../shared/sendBatch') as {
 const sharedVitals = require('../shared/deviceVitals') as {
   humanBytes: (bytes: number) => string;
 };
-import { SHARE_WAIT_MINUTES } from '../shared/extensions';
+import { FS_BLOCKS, FS_BLOCKS_RELEASE, SHARE_WAIT_MINUTES, filesExt } from '../shared/extensions';
 import { FilesClient, digestOf } from './files';
 import {
   cachedPreview,
@@ -1015,7 +1015,12 @@ app.whenReady().then(() => {
   log.info('share', shareWait
     ? `share.wait ${SHARE_WAIT_MINUTES} ADVERTISED beside share.ask (offers may wait up to ${SHARE_WAIT_MINUTES} minutes when the phone agrees; packaged: ${app.isPackaged}; release policy SHARE_WAIT_RELEASE: ${SHARE_WAIT_RELEASE})`
     : `share.wait not advertised: a packaged build waits for SHARE_WAIT_RELEASE — offers wait 10 minutes`);
-  link = new LinkClient(identity, () => rePairPending, () => advertisedExt(shareV2, shareAsk, shareV3, shareWait));
+  // `fs.blocks` (block-verified, resumable Files pulls): development builds only until FS_BLOCKS_RELEASE.
+  const files = filesExt(app.isPackaged);
+  log.info('files', files[FS_BLOCKS]
+    ? `fs.blocks 1 ADVERTISED (pulls above 64 MiB are block-verified when the phone agrees; packaged: ${app.isPackaged}; release policy FS_BLOCKS_RELEASE: ${FS_BLOCKS_RELEASE})`
+    : 'fs.blocks not advertised: a packaged build waits for FS_BLOCKS_RELEASE — pulls above 64 MiB stay unverified');
+  link = new LinkClient(identity, () => rePairPending, () => ({ ...advertisedExt(shareV2, shareAsk, shareV3, shareWait), ...files }));
   video = new VideoClient(identity);
   bulk = new BulkClient(identity);
 

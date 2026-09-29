@@ -906,3 +906,13 @@ test('Space selects, like a click; keys the rows do not use change nothing', asy
     pane.restore();
   }
 });
+
+test('a finished pull says how it was checked: block by block, agreed in advance, or not at all', () => {
+  const say = (globalThis as Record<string, unknown>).pullCheckSentence as (r: { verified?: boolean; verifiedBy?: string }) => string;
+  assert.match(say({ verified: true, verifiedBy: 'blocks' }), /block by block/);
+  assert.doesNotMatch(say({ verified: true, verifiedBy: 'blocks' }), /agreed before/, 'nothing was agreed before a block pull');
+  assert.match(say({ verified: true, verifiedBy: 'prehash' }), /agreed before the copy/);
+  assert.match(say({ verified: true }), /agreed before the copy/, 'an older Mac main process without verifiedBy');
+  assert.match(say({ verified: false, verifiedBy: 'blocks' }), /nothing compared/, 'never upgraded when not verified');
+  assert.match(say({}), /nothing compared/);
+});

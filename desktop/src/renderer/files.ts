@@ -74,6 +74,7 @@ interface FilesBridge {
     path?: string;
     bytes?: number;
     verified?: boolean;
+    verifiedBy?: 'prehash' | 'blocks';
     reason?: string;
     fixHint?: string;
   }>;
@@ -845,11 +846,7 @@ class FilesView {
           // `verified` is the phone's word and is repeated rather than upgraded: above the 64 MB
           // pre-hash ceiling nothing agreed a digest, and saying "verified" there would be defect
           // 56's mistake pointed the other way.
-          text:
-            `${entry.name} is on this Mac — drag it to Finder from here.` +
-            (result.verified === true
-              ? ' Its checksum matched the one agreed before the copy.'
-              : ' No checksum was agreed in advance, so nothing compared the bytes.'),
+          text: `${entry.name} is on this Mac — drag it to Finder from here. ${pullCheckSentence(result)}`,
         };
       } else {
         // The fix hint travels with the reason: an unavailable receive folder says *which* folder
@@ -2022,6 +2019,20 @@ function createFilesView(bridge: FilesBridge): FilesView | null {
     bridge, banner, rail, hint, wall, crumbs, state, table, footer, drop, detail, tools,
   );
 }
+
+/**
+ * What a finished pull says about how it was checked — three different facts, three sentences. A
+ * block-verified pull (`fs.blocks`) had no digest agreed *before* the copy, so it must not borrow the
+ * pre-hash sentence; and an unverified pull must never be dressed as either (defect 56 in reverse).
+ */
+function pullCheckSentence(result: { verified?: boolean; verifiedBy?: 'prehash' | 'blocks' }): string {
+  if (result.verified === true && result.verifiedBy === 'blocks') {
+    return 'Verified block by block: every part matched what the phone read, and the file did not change while it was copied.';
+  }
+  if (result.verified === true) return 'Its checksum matched the one agreed before the copy.';
+  return 'No checksum was agreed in advance, so nothing compared the bytes.';
+}
+(globalThis as Record<string, unknown>).pullCheckSentence = pullCheckSentence;
 
 (globalThis as Record<string, unknown>).createFilesView = createFilesView;
 // The view class itself, so `filesView.test.ts` drives the real one rather than a paraphrase. It is

@@ -23,6 +23,20 @@ export const SHARE_WAIT = 'share.wait';
 export const SHARE_WAIT_MINUTES = 30;
 
 /**
+ * `fs.blocks` — block-verified, resumable Files pulls above 64 MiB (docs/protocol.md → Block-verified,
+ * resumable pulls). Approved by the owner 2026-09-29 for **development builds only**: an unpackaged Mac
+ * advertises it, a packaged one only once [FS_BLOCKS_RELEASE] is flipped. The phone's twin is
+ * `Extensions.FS_BLOCKS_RELEASE`; both are `false`.
+ */
+export const FS_BLOCKS = 'fs.blocks';
+export const FS_BLOCKS_RELEASE = false;
+
+/** What this Mac advertises for Files, merged beside the share keys. */
+export function filesExt(packaged: boolean, release: boolean = FS_BLOCKS_RELEASE): Readonly<Record<string, number>> {
+  return !packaged || release ? { [FS_BLOCKS]: 1 } : {};
+}
+
+/**
  * Whether the phone may make an **ordinary** share offer on a session with these negotiated
  * extensions: `share.file` ≥ 2 **and** `share.ask` ≥ 1. The phone's `ShareIntake.ordinarySend` is the
  * rule that acts; this is the Mac's statement of it, and both are held to

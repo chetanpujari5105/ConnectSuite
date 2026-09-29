@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { BlockPullVerifier, blockPlanFor } from '../shared/fsBlocks';
 import { createReadStream, promises as fsp } from 'node:fs';
 import { basename, join } from 'node:path';
 import { MessageType, type PhoneResult } from '../shared/protocol';
@@ -25,6 +26,8 @@ export interface PullOutcome {
   elapsedMs?: number;
   /** Whether a digest agreed in advance actually matched. `false` means nobody checked. */
   verified?: boolean;
+  /** How it was verified: a digest agreed before (`prehash`), or block by block (`blocks`, `fs.blocks`). */
+  verifiedBy?: 'prehash' | 'blocks';
   reason?: string;
   fixHint?: string;
   code?: string;
@@ -323,6 +326,8 @@ export class FilesClient {
         transferId: String(payload.transferId ?? ''),
         size: typeof payload.size === 'number' ? payload.size : options.size,
         sha256: payload.sha256 == null ? null : String(payload.sha256),
+        blockSize: typeof payload.blockSize === 'number' ? payload.blockSize : null,
+        blockCount: typeof payload.blockCount === 'number' ? payload.blockCount : null,
       }),
     );
     if (!agreed.ok) {
@@ -336,27 +341,57 @@ export class FilesClient {
       };
     }
 
+    // `fs.blocks` (docs/protocol.md → Block-verified, resumable pulls): only on a session that
+    // negotiated it, and only with block fields that match the shared rule exactly. Block fields from a
+    // session that did not negotiate it are ignored and logged (rule S1).
+    const blocksPlan = blockPlanFor(link.negotiated(), agreed.data);
+    if (blocksPlan.kind === 'refused') {
+      this.failures += 1;
+      log.warn('files', `pull of ${options.name} refused on this Mac: ${blocksPlan.why}`);
+      await link.request(MessageType.FS_TRANSFER_CANCEL, { transferId: agreed.data.transferId, reason: 'bad-request' }, 5_000).catch(() => undefined);
+      return { ok: false, reason: 'The phone described the file in a way this Mac cannot check, so nothing was fetched.' };
+    }
+    if (blocksPlan.kind === 'ignored') log.warn('files', `pull of ${options.name}: ${blocksPlan.why}`);
+    const verifier = blocksPlan.kind === 'blocks'
+      ? new BlockPullVerifier(agreed.data.size, blocksPlan.blockSize, blocksPlan.blockCount)
+      : undefined;
+    const transferId = agreed.data.transferId;
+    const onMessage = (envelope: unknown): void => {
+      const m = envelope as { type?: string; payload?: Record<string, unknown> };
+      if (!verifier || m?.payload?.transferId !== transferId) return;
+      if (m.type === MessageType.FS_TRANSFER_BLOCKS) verifier.onBlocks(m.payload);
+      if (m.type === MessageType.FS_TRANSFER_DONE) verifier.onDone(m.payload);
+    };
+    if (verifier) link.on('message', onMessage);
+
     const destination = await pullDestination(ready.folder, options.name);
 
-    const result = await bulk.pull({
-      host,
-      token,
-      transferId: agreed.data.transferId,
-      destination,
-      expectedBytes: agreed.data.size,
-      expectedSha256: agreed.data.sha256,
-    });
+    const result = await bulk
+      .pull({
+        host,
+        token,
+        transferId,
+        destination,
+        expectedBytes: agreed.data.size,
+        expectedSha256: agreed.data.sha256,
+        ...(verifier ? { blocks: verifier } : {}),
+      })
+      .finally(() => {
+        if (verifier) link.off('message', onMessage);
+      });
     if (!result.ok) {
       this.failures += 1;
       log.warn('files', `pull of ${options.name} did not finish: ${result.reason}`);
       return { ok: false, reason: result.reason ?? 'The transfer did not finish.' };
     }
-    const verified = agreed.data.sha256 !== null;
+    const verified = result.verified;
     log.info(
       'files',
       `pulled ${options.name} (${result.bytes} bytes) to ${result.path}, ` +
         `verified=${verified} ` +
-        (verified ? '(agreed in advance and matched)' : '(no digest was agreed in advance)'),
+        (result.verifiedBy === 'blocks'
+          ? '(block by block: every block matched what the phone read)'
+          : verified ? '(agreed in advance and matched)' : '(no digest was agreed in advance)'),
     );
     return {
       ok: true,
@@ -364,6 +399,7 @@ export class FilesClient {
       bytes: result.bytes,
       elapsedMs: result.elapsedMs,
       verified,
+      ...(result.verifiedBy ? { verifiedBy: result.verifiedBy } : {}),
     };
   }
 
@@ -656,3 +692,4 @@ async function freeName(folder: string, name: string): Promise<string> {
   // unique enough and says plainly that something unusual happened.
   return join(folder, `${stem} (${Date.now()})${extension}`);
 }
+

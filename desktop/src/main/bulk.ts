@@ -14,6 +14,7 @@ import { log } from './logger';
 import { MAX_BULK_FRAME, MAX_BULK_HEADER_FRAME, PORT_BULK } from '../shared/protocol';
 import { FrameTally } from '../shared/frameTally';
 import { TransferDigest } from '../shared/transferDigest';
+import { BlockPullVerifier } from '../shared/fsBlocks';
 import { failedPathFor, isResumable, pullPartPathFor, sidecarText } from '../shared/transferFiles';
 
 /**
@@ -57,7 +58,21 @@ export interface BulkResult {
   verified: boolean;
   /** Where a resumed transfer started, so the log can say so and a caller can tell. */
   resumedFrom?: number;
+  /**
+   * `fs.blocks` pulls only: how the file was verified (`prehash` — a digest agreed before; `blocks` —
+   * every block matched what the phone read), how many leading blocks were verified when it stopped
+   * (what a resume record may keep), and why it did not finish.
+   */
+  verifiedBy?: 'prehash' | 'blocks';
+  verifiedBlocks?: number;
+  /** The phone's file changed (SOURCE_CHANGED): the partial was deleted, like a checksum mismatch. */
+  sourceChanged?: boolean;
+  /** No verdict from the phone within the wait: the partial is kept, nothing was published. */
+  noVerdict?: boolean;
 }
+
+/** How long a block pull waits after its last byte for the phone's `fs.transfer.done` (docs/protocol.md). */
+export const BLOCK_DONE_WAIT_MS = 30_000;
 
 export class BulkClient {
   constructor(private readonly identity: Identity) {}
@@ -183,6 +198,19 @@ export class BulkClient {
      * when the build is not packaged, beside `debugSwitches`.
      */
     interruptAfterBytes?: number;
+    /**
+     * An `fs.blocks` pull: every chunk is fed to this verifier as it lands, a failed block ends the
+     * transfer where it is, and nothing is published until [BlockPullVerifier.conclude] says
+     * `verified` — which needs the phone's `fs.transfer.done`, fed to it by the caller.
+     */
+    blocks?: BlockPullVerifier;
+    /** Tests only: how long to wait for that verdict. */
+    blockDoneWaitMs?: number;
+    /**
+     * Tests only: open the connection another way (plain TCP to a fake phone), as `pushWith` and
+     * `pullShareWith` allow. The product always passes nothing and gets TLS.
+     */
+    connect?: () => { socket: TLSSocket; readyEvent: string };
   }): Promise<BulkResult> {
     const { host, token, transferId, destination, expectedBytes } = options;
     const expectedSha256 = options.expectedSha256 ?? null;
@@ -269,11 +297,59 @@ export class BulkClient {
         });
       };
 
+      /**
+       * The corruption end, shared by a digest mismatch and a failed block: the bytes were wrong or the
+       * source changed under the read, so they go — a corrupt file is worse than a missing one — and a
+       * sidecar keeps the fact without the bytes.
+       */
+      const discard = async (reason: string, sha256: string, total: number, elapsedMs: number, extra: Partial<BulkResult> = {}): Promise<void> => {
+        this.failures += 1;
+        await fs.rm(part, { force: true }).catch(() => undefined);
+        await fs
+          .writeFile(
+            failedPathFor(destination),
+            sidecarText({
+              name: destination.split('/').pop() ?? destination,
+              whenIso: new Date().toISOString(),
+              bytes: total,
+              expected: expectedSha256 ?? `(block-verified) ${reason}`,
+              actual: sha256,
+            }),
+            { flag: 'wx' },
+          )
+          .catch(() => undefined);
+        log.error('bulk', `${transferId} not saved after ${total} bytes: ${reason}; the partial was deleted and a .failed sidecar left beside it; ${this.tallyLine()}`);
+        resolve({ ok: false, bytes: total, elapsedMs, sha256, verified: false, reason, ...extra });
+      };
+
+      const blockFailed = async (): Promise<void> => {
+        const failure = options.blocks?.failure;
+        if (settled || !failure) return;
+        settled = true;
+        socket?.destroy();
+        await new Promise<void>((done) => file.end(() => done()));
+        const why = failure.kind === 'corrupt' || failure.kind === 'failed' || failure.kind === 'source-changed' ? failure.why : 'failed';
+        await discard(
+          `The file arrived damaged (${why}), so the partial was deleted.`,
+          '', offset + received, Date.now() - startedAt, { verifiedBlocks: options.blocks?.verified ?? 0 },
+        );
+      };
+
       const reader = new FrameReader(
         (frame) => {
+          // Frames already buffered in the reader keep arriving after the transfer has ended — a failed
+          // block closes the file mid-stream, and writing after that is an unhandled stream error.
+          if (settled) return;
           received += frame.length;
           digest.update(frame);
           file.write(frame);
+          if (options.blocks) {
+            options.blocks.onBytes(frame);
+            if (options.blocks.failure) {
+              void blockFailed();
+              return;
+            }
+          }
           if (options.interruptAfterBytes !== undefined && received >= options.interruptAfterBytes) {
             // Destroy the socket rather than resolving: the receiver must go through its ordinary
             // interruption path, keeping the `.part`, or this proves nothing about resume.
@@ -317,6 +393,33 @@ export class BulkClient {
         socket?.destroy();
         const sha256 = digest.digest(offset);
         const total = offset + received;
+
+        // `fs.blocks`: nothing is published until the phone's `done` has arrived and every check passed.
+        if (options.blocks) {
+          const waited = await options.blocks.settled(options.blockDoneWaitMs ?? BLOCK_DONE_WAIT_MS);
+          const verdict = options.blocks.conclude(sha256, total);
+          const verifiedBlocks = options.blocks.verified;
+          if (verdict.kind === 'corrupt') {
+            await discard(`The file arrived damaged (${verdict.why}), so the partial was deleted.`, sha256, total, elapsedMs, { verifiedBlocks });
+            return;
+          }
+          if (verdict.kind === 'source-changed') {
+            await discard(verdict.message, sha256, total, elapsedMs, { sourceChanged: true, verifiedBlocks });
+            return;
+          }
+          if (verdict.kind === 'failed') {
+            this.failures += 1;
+            const noVerdict = waited === 'timeout';
+            log.warn('bulk', `${transferId} not saved: ${verdict.why}${noVerdict ? ` (no fs.transfer.done within ${options.blockDoneWaitMs ?? BLOCK_DONE_WAIT_MS} ms)` : ''}; the partial is kept at ${part}; ${verifiedBlocks} blocks verified; ${this.tallyLine()}`);
+            resolve({
+              ok: false, bytes: total, elapsedMs, sha256, verified: false, verifiedBlocks,
+              reason: noVerdict ? 'The phone did not confirm the file in time, so it was not saved. The part received is kept.' : `The phone ended the transfer: ${verdict.why}`,
+              ...(noVerdict ? { noVerdict: true } : {}),
+            });
+            return;
+          }
+          // verified: fall through to the exclusive publish below, marked as block-verified.
+        }
 
         // The digest verdict decides which of the three on-disk states this transfer leaves.
         if (expectedSha256 !== null && sha256 !== expectedSha256) {
@@ -376,12 +479,13 @@ export class BulkClient {
         await removeStaleSidecar(published.path);
         this.transfers += 1;
         this.bytesMoved += total;
-        const verified = expectedSha256 !== null;
+        const verifiedBy = options.blocks ? 'blocks' : expectedSha256 !== null ? 'prehash' : undefined;
+        const verified = verifiedBy !== undefined;
         log.info(
           'bulk',
           `${transferId} pulled ${total} bytes in ${elapsedMs}ms (${rateOf(total, elapsedMs)}) → ` +
             `${published.path}${offset > 0 ? ` (resumed from ${offset})` : ''}; ` +
-            `sha256=${sha256.slice(0, 12)}…, verified=${verified}; ` +
+            `sha256=${sha256.slice(0, 12)}…, verified=${verified}${verifiedBy ? ` (${verifiedBy === 'blocks' ? `every one of ${options.blocks!.blockCount} blocks matched` : 'agreed in advance'})` : ''}; ` +
             `${tally.summary()}; ${this.tallyLine()}`,
         );
         resolve({
@@ -391,27 +495,35 @@ export class BulkClient {
           elapsedMs,
           sha256,
           verified,
+          ...(verifiedBy ? { verifiedBy } : {}),
+          ...(options.blocks ? { verifiedBlocks: options.blocks.verified } : {}),
           ...(offset > 0 ? { resumedFrom: offset } : {}),
         });
       };
 
-      socket = tlsConnect({
-        host,
-        port: PORT_BULK,
-        cert: this.identity.certPem,
-        key: this.identity.keyPem,
-        minVersion: 'TLSv1.3',
-        // Same as the control and video channels: pinning is ours, there is no CA in this system.
-        rejectUnauthorized: false,
-        timeout: CANDIDATE_TIMEOUT_MS,
-      });
+      const connection = options.connect
+        ? options.connect()
+        : {
+            socket: tlsConnect({
+              host,
+              port: PORT_BULK,
+              cert: this.identity.certPem,
+              key: this.identity.keyPem,
+              minVersion: 'TLSv1.3',
+              // Same as the control and video channels: pinning is ours, there is no CA in this system.
+              rejectUnauthorized: false,
+              timeout: CANDIDATE_TIMEOUT_MS,
+            }),
+            readyEvent: 'secureConnect',
+          };
+      socket = connection.socket;
 
       socket.setTimeout(CANDIDATE_TIMEOUT_MS, () =>
         fail('the phone did not answer on the file port'),
       );
       socket.once('error', (error) => fail(error.message));
 
-      socket.once('secureConnect', () => {
+      socket.once(connection.readyEvent, () => {
         socket!.setTimeout(0);
         socket!.setNoDelay(true);
         // The token proves this socket belongs to a live control session; the phone drops it after

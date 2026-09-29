@@ -5,6 +5,7 @@
  * independent implementation so neither side grades itself.
  */
 import { createHash } from 'node:crypto';
+import { FS_BLOCKS } from './extensions';
 
 /** Pulls at or below this keep the pre-hash path; blocks apply only above it. */
 export const BLOCK_PULL_ABOVE_BYTES = 64 * 1024 * 1024;
@@ -60,11 +61,14 @@ export function acceptBlocksEvent(
  * last block.
  */
 export class BlockHasher {
-  readonly digests: string[] = [];
+  readonly digests: string[];
   private current = createHash('sha256');
   private filled = 0;
 
-  constructor(readonly blockSize: number) {}
+  /** [prefix]: the digests of blocks already held (a resume); hashing continues at the next block. */
+  constructor(readonly blockSize: number, prefix: readonly string[] = []) {
+    this.digests = [...prefix];
+  }
 
   update(chunk: Uint8Array): void {
     let at = 0;
@@ -88,4 +92,177 @@ export class BlockHasher {
     this.current = createHash('sha256');
     this.filled = 0;
   }
+}
+
+/** What `fs.transfer.done` said about a block pull; every field is checked, none is trusted by type. */
+export interface BlockDone {
+  ok?: unknown;
+  code?: unknown;
+  why?: unknown;
+  message?: unknown;
+  bytes?: unknown;
+  sha256?: unknown;
+  blockSize?: unknown;
+  blockCount?: unknown;
+  manifestRoot?: unknown;
+}
+
+export type BlockVerdict =
+  | { kind: 'verified' }
+  /** What the Mac wrote is not what the phone read — a corrupt partial, deleted with a sidecar. */
+  | { kind: 'corrupt'; why: string; block?: number }
+  /** `SOURCE_CHANGED`: the phone's file changed during the read, or since the pause. */
+  | { kind: 'source-changed'; why: string; message: string }
+  /** The phone ended the transfer some other way (cancelled, a read failed), or never said. */
+  | { kind: 'failed'; why: string };
+
+/**
+ * The Mac's half of a block-verified pull (docs/protocol.md → Block-verified, resumable pulls), with no
+ * socket and no file in it: `BulkClient.pull` feeds it the bytes as they land, and `FilesClient` feeds it
+ * the phone's `fs.transfer.blocks` and `fs.transfer.done`. Each block is compared the moment both halves
+ * of it exist, so a corrupt block stops the transfer where it is rather than at the end.
+ *
+ * Publication is decided by [conclude] alone: every block matched, the count, the manifest root, the
+ * whole-file SHA-256 and the length all agree, and the phone said `ok`.
+ */
+export class BlockPullVerifier {
+  private readonly hasher: BlockHasher;
+  private readonly theirs: string[];
+  private problem: BlockVerdict | null = null;
+  private done: BlockDone | null = null;
+  private wake: Array<() => void> = [];
+  /** Blocks whose digests agree, counted from 0 without a gap — what a resume record may keep. */
+  verified: number;
+
+  constructor(
+    readonly size: number,
+    readonly blockSize: number,
+    readonly blockCount: number,
+    /** A resume's already-verified digests (the Mac's own record). */
+    prefix: readonly string[] = [],
+  ) {
+    this.hasher = new BlockHasher(blockSize, prefix);
+    this.theirs = [...prefix];
+    this.verified = prefix.length;
+  }
+
+  /** The verified digests so far, in order — what a resume record stores. */
+  verifiedDigests(): string[] {
+    return this.hasher.digests.slice(0, this.verified);
+  }
+
+  get failure(): BlockVerdict | null {
+    return this.problem;
+  }
+
+  onBytes(chunk: Uint8Array): void {
+    if (this.problem) return;
+    this.hasher.update(chunk);
+    this.compare();
+  }
+
+  onBlocks(event: { first?: unknown; sha256?: unknown }): void {
+    if (this.problem) return;
+    const accepted = acceptBlocksEvent(this.theirs.length, this.blockCount, event);
+    if (!accepted.ok) return this.fail({ kind: 'failed', why: `fs.transfer.blocks refused: ${accepted.why}` });
+    this.theirs.push(...accepted.digests);
+    this.compare();
+  }
+
+  onDone(payload: BlockDone): void {
+    if (this.done) return;
+    this.done = payload;
+    this.notify();
+  }
+
+  /** Resolves when `done` arrives or a block fails; `timeout` after [ms] with neither. */
+  settled(ms: number): Promise<'settled' | 'timeout'> {
+    if (this.done || this.problem) return Promise.resolve('settled');
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve('timeout'), ms);
+      this.wake.push(() => {
+        clearTimeout(timer);
+        resolve('settled');
+      });
+    });
+  }
+
+  /** The verdict, given the Mac's own whole-file SHA-256 and the bytes it wrote in all. */
+  conclude(macSha256: string, bytes: number): BlockVerdict {
+    if (this.problem) return this.problem;
+    const d = this.done;
+    if (!d) return { kind: 'failed', why: 'the phone never said how the transfer ended' };
+    if (d.ok !== true) {
+      if (d.code === 'SOURCE_CHANGED') {
+        return { kind: 'source-changed', why: String(d.why ?? 'source-changed'), message: String(d.message ?? 'The file changed on the phone.') };
+      }
+      return { kind: 'failed', why: String(d.message ?? d.code ?? 'the phone ended the transfer') };
+    }
+    this.hasher.finish();
+    this.compare();
+    if (this.problem) return this.problem;
+    const mine = this.hasher.digests;
+    const corrupt = (why: string): BlockVerdict => ({ kind: 'corrupt', why });
+    if (bytes !== this.size) return corrupt(`${bytes} bytes written where ${this.size} were agreed`);
+    if (d.bytes !== this.size) return corrupt(`the phone reports ${String(d.bytes)} bytes where ${this.size} were agreed`);
+    if (d.blockSize !== this.blockSize || d.blockCount !== this.blockCount) {
+      return corrupt(`the phone reports ${String(d.blockCount)} blocks of ${String(d.blockSize)} where ${this.blockCount} of ${this.blockSize} were agreed`);
+    }
+    // One check, because it implies the other two: `verified` never exceeds either side's count, so
+    // every block written and every digest sent must exist for it to reach `blockCount` (a separate
+    // check on each count was measured unreachable — mutation V4 survived it).
+    if (this.verified !== this.blockCount) {
+      return corrupt(`${this.verified} of ${this.blockCount} blocks verified (${mine.length} written, ${this.theirs.length} digests from the phone)`);
+    }
+    if (typeof d.manifestRoot !== 'string' || rootOf(mine) !== d.manifestRoot) return corrupt('the manifest root does not match the blocks received');
+    if (typeof d.sha256 !== 'string' || d.sha256 !== macSha256) return corrupt('the whole-file SHA-256 does not match');
+    return { kind: 'verified' };
+  }
+
+  private compare(): void {
+    const mine = this.hasher.digests;
+    const upTo = Math.min(mine.length, this.theirs.length);
+    while (this.verified < upTo) {
+      if (mine[this.verified] !== this.theirs[this.verified]) {
+        return this.fail({ kind: 'corrupt', why: `block ${this.verified} does not match what the phone read`, block: this.verified });
+      }
+      this.verified += 1;
+    }
+  }
+
+  private fail(verdict: BlockVerdict): void {
+    if (!this.problem) this.problem = verdict;
+    this.notify();
+  }
+
+  private notify(): void {
+    const w = this.wake;
+    this.wake = [];
+    for (const f of w) f();
+  }
+}
+
+/**
+ * Whether a pull's ack puts it on the `fs.blocks` path, decided from the session's negotiated
+ * extensions and the ack alone. Pure, so the old-peer fallback and the refusals are testable.
+ */
+export function blockPlanFor(
+  negotiated: Readonly<Record<string, number>>,
+  ack: { size: number; blockSize: number | null; blockCount: number | null },
+):
+  | { kind: 'none' }
+  | { kind: 'ignored'; why: string }
+  | { kind: 'refused'; why: string }
+  | { kind: 'blocks'; blockSize: number; blockCount: number } {
+  const offered = ack.blockSize !== null || ack.blockCount !== null;
+  if ((negotiated[FS_BLOCKS] ?? 0) < 1) {
+    return offered ? { kind: 'ignored', why: 'the ack carried block fields but fs.blocks was not negotiated; ignored' } : { kind: 'none' };
+  }
+  if (!offered) return { kind: 'none' };
+  const want = blockSizeFor(ack.size);
+  if (ack.size <= BLOCK_PULL_ABOVE_BYTES) return { kind: 'refused', why: `block fields on a ${ack.size}-byte file, at or below the block-pull size` };
+  if (ack.blockSize !== want) return { kind: 'refused', why: `blockSize ${String(ack.blockSize)} where the rule gives ${want}` };
+  const count = blockCountFor(ack.size, want);
+  if (ack.blockCount !== count) return { kind: 'refused', why: `blockCount ${String(ack.blockCount)} where the rule gives ${count}` };
+  return { kind: 'blocks', blockSize: want, blockCount: count };
 }
