@@ -159,9 +159,15 @@ than silently shipping a debug-signed APK.
 
 ### 3. Build
 
+Signing is **opt-in on the command line** — the flag below, typed by you, is the only thing that
+makes the build read a keystore. No properties file, `gradle.properties` entry or environment
+variable can turn it on (2026-09-29: an `assembleRelease` run only to inspect a manifest signed an APK
+with the publishing key because the keystore was merely reachable). Without the flag the release build
+is `app-release-unsigned.apk`; with the flag and no keystore the build fails.
+
 ```bash
-./gradlew :app:assembleRelease          # APK
-./gradlew :app:bundleRelease            # AAB, for Play
+./gradlew -Pconnectsuite.signRelease=true :app:assembleRelease   # signed APK
+./gradlew -Pconnectsuite.signRelease=true :app:bundleRelease     # signed AAB, for Play
 ```
 
 Verify before shipping:

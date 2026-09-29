@@ -75,6 +75,8 @@ All four come from the two strings in §1. None is typed a second time.
 3. Bump `versionCode` by one. Never reuse, never lower.
 4. `cd desktop && npm run dist` → `desktop/release/`. Unsigned until there is an account; see
    `electron-builder.yml`'s header for exactly what changes on the day there is one.
-5. `./gradlew :app:assembleRelease` → unsigned unless `keystore.properties` exists, which is
-   deliberate: a missing keystore fails at install time rather than shipping a debug-signed APK.
+5. `./gradlew -Pconnectsuite.signRelease=true :app:assembleRelease` → signed with the keystore that
+   `app/build.gradle.kts` resolves. **Without that flag the build is always unsigned**, whatever keystore
+   is on the machine (2026-09-29); with it and no keystore, the build fails. An agent's shell is refused
+   the flag by `scripts/hooks/no-release-signing.sh` — signing is typed by the owner.
 6. Tag. Nothing publishes on a tag — `publish: null` is set explicitly for that reason.

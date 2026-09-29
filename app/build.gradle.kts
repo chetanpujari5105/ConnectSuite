@@ -30,8 +30,26 @@ plugins {
  * Without any of the three the release build still assembles, **unsigned** — a clear failure at
  * install time (`INSTALL_PARSE_FAILED_NO_CERTIFICATES`, measured on hardware 2026-09-02) rather than
  * a silently debug-signed APK shipped to users.
+ *
+ * **Signing is opt-in per invocation, and nothing on disk can opt in (2026-09-29).** The order above
+ * is only consulted when the command line itself carries `-Pconnectsuite.signRelease=true`. Before
+ * this, rule 2 was a file that existed, so *every* `assembleRelease` on this Mac signed with the
+ * publishing key — including one run only to check what a release manifest contains, which produced
+ * `app-release.apk` (SHA-256 `9ccf7b63…`, cert `40470d05…`) that nobody asked for. A key that signs
+ * whenever it is reachable is a key whose signatures mean nothing about intent.
+ *
+ * Read from `gradle.startParameter.projectProperties` — the `-P` flags of this invocation — and
+ * deliberately **not** from `providers.gradleProperty`, which also answers from `gradle.properties`
+ * in the repo or `~/.gradle`, and from `ORG_GRADLE_PROJECT_*`. Any of those would make the opt-in
+ * persistent again, which is the defect wearing a new name. `scripts/hooks/no-release-signing.sh`
+ * refuses the flag from an agent's shell, so the only way to sign is a person typing it.
+ *
+ * Asked for and not available is an error, not a quiet unsigned APK: whoever typed the flag meant it.
  */
-val keystorePropertiesFile: File? = listOfNotNull(
+val signReleaseRequested =
+    gradle.startParameter.projectProperties["connectsuite.signRelease"] == "true"
+
+val keystorePropertiesFile: File? = if (!signReleaseRequested) null else listOfNotNull(
     System.getenv("CONNECTSUITE_KEYSTORE_PROPERTIES")?.let(::File),
     File(System.getProperty("user.home"), ".android-keystores/connectsuite.properties"),
     rootProject.file("keystore.properties"),
@@ -42,8 +60,15 @@ val keystoreProperties = Properties().apply {
 }
 val hasReleaseKeystore = keystoreProperties.getProperty("storeFile") != null
 
+if (signReleaseRequested && !hasReleaseKeystore) {
+    throw GradleException(
+        "-Pconnectsuite.signRelease=true was given but no keystore properties file was found " +
+            "(\$CONNECTSUITE_KEYSTORE_PROPERTIES, ~/.android-keystores/connectsuite.properties, " +
+            "<repo>/keystore.properties). Refusing to build an unsigned APK that was asked to be signed.",
+    )
+}
 if (hasReleaseKeystore) {
-    logger.lifecycle("Release signing config: $keystorePropertiesFile")
+    logger.lifecycle("Release signing config (requested with -Pconnectsuite.signRelease): $keystorePropertiesFile")
 }
 
 android {
@@ -112,9 +137,9 @@ android {
             if (hasReleaseKeystore) {
                 signingConfig = signingConfigs.getByName("release")
             } else {
-                logger.warn(
-                    "No keystore.properties found - the release build will be unsigned. " +
-                        "See README.md for how to create one.",
+                logger.info(
+                    "Release build is unsigned: signing needs -Pconnectsuite.signRelease=true on " +
+                        "the command line, typed by a person. See the comment at the top of this file.",
                 )
             }
         }
