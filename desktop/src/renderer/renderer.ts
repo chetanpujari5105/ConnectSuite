@@ -275,6 +275,8 @@ interface ConnectBridge {
     | { ok: false; reason?: string }
   >;
   fsCancel(options: { transferId: string }): Promise<{ ok: boolean; reason?: string }>;
+  fsSendAbort(options: { source: string }): Promise<{ aborted: boolean }>;
+  onPushChecking(callback: (checking: { source: string; hashed: number }) => void): void;
   onPushAgreed(callback: (agreed: { source: string; transferId: string; name: string }) => void): void;
   /** Defect 132: `File.path` does not exist in Electron ≥ 32. */
   pathForFile(file: File): string;
@@ -1152,6 +1154,7 @@ const files = createFilesView({
   fsSend: (options) => connect.fsSend(options),
   fsPickSend: () => connect.fsPickSend(),
   fsCancel: (options) => connect.fsCancel(options),
+  fsSendAbort: (options) => connect.fsSendAbort(options),
   pathForFile: (file) => connect.pathForFile(file),
   fsPull: (options) => connect.fsPull(options),
   fsDrag: (paths) => connect.fsDrag(paths),
@@ -1174,6 +1177,7 @@ if (files) files.onWorkChanged = (work) => shell.setWork(work);
 // does not hold, so a pull or a photo passing through changes nothing.
 if (files) {
   connect.onPushAgreed((agreed) => files.onPushAgreed(agreed));
+  connect.onPushChecking((checking) => files.onPushChecking(checking));
   connect.onMessage((envelope) => files.onTransferEvent(envelope));
   connect.onStatus((status) => files.setPhoneName(status.deviceName));
 }

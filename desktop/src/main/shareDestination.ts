@@ -35,7 +35,7 @@ export interface DestinationFs {
   writeFileExclusive(path: string): Promise<void>;
   link(existing: string, created: string): Promise<void>;
   unlink(path: string): Promise<void>;
-  lstat(path: string): Promise<{ isFile(): boolean; isSymbolicLink(): boolean; size: number }>;
+  lstat(path: string): Promise<{ isFile(): boolean; isSymbolicLink(): boolean; size: number; dev: number; ino: number }>;
 }
 
 export const realFs: DestinationFs = {
@@ -125,9 +125,13 @@ export async function checkDestination(
   const b = `${a}-2`;
   // Each probe file is recorded before it exists and identified after, so a crash mid-check leaves
   // something the startup sweep can prove is ours — and nothing it cannot.
+  /** The probe's own file, identified right after its exclusive create — never looked up by name again. */
+  let own: { dev: number; ino: number };
   try {
     if (ledger) await recordIntentFrom(ledger, a);
     await fs.writeFileExclusive(a);
+    const made = await fs.lstat(a);
+    own = { dev: made.dev, ino: made.ino };
     if (ledger) await recordCreatedFrom(ledger, a, 0);
   } catch (error) {
     await ledger?.forget(a).catch(() => undefined);
@@ -144,8 +148,24 @@ export async function checkDestination(
       ? { ok: false, reason: 'unsupported-destination', detail: `hard links refused (${code(error)})` }
       : { ok: false, reason: 'folder-unavailable', detail: `the link probe failed unexpectedly (${code(error)})` };
   }
+  // **Deleted by identity, never by name alone (defect 154).** `b` is a hard link of `a`, so both
+  // names must still refer to the file created above. Anything else at either name — a file swapped in
+  // between the link and here — is left untouched and reported. One `lstat` → `unlink` window remains,
+  // one syscall wide, the same residual the share pull documents.
   const leftovers: string[] = [];
   for (const p of [b, a]) {
+    let at: { dev: number; ino: number } | null;
+    try {
+      at = await fs.lstat(p);
+    } catch (error) {
+      if (code(error) === 'ENOENT') await ledger?.forget(p).catch(() => undefined);
+      else leftovers.push(p);
+      continue;
+    }
+    if (at.dev !== own.dev || at.ino !== own.ino) {
+      leftovers.push(`${p} (now another file, left untouched)`);
+      continue;
+    }
     try {
       await fs.unlink(p);
       await ledger?.forget(p);

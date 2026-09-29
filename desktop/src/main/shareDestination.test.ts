@@ -28,6 +28,26 @@ test('a real writable folder with room passes, and the probe files are gone afte
   assert.deepEqual(readdirSync(d), []);
 });
 
+test('154: a probe name swapped for another file between the link and the delete is left untouched and reported', async () => {
+  const d = dir();
+  let swapped = '';
+  const v = await checkDestination(d, 1, withFs({
+    link: async (a, b) => {
+      await realFs.link(a, b);
+      // Something else takes the second probe's name before the cleanup runs.
+      renameSync(b, `${b}.moved-aside`);
+      writeFileSync(b, 'not the probe');
+      swapped = b;
+    },
+  }));
+  assert.ok(swapped, 'control: the swap happened');
+  assert.equal(readFileSync(swapped, 'utf8'), 'not the probe', 'the replacement survives the cleanup');
+  assert.equal(v.ok, false);
+  assert.match((v as { detail: string }).detail, /now another file, left untouched/);
+  // The probe's own first name was still its own and is removed; its moved-aside link is the probe too.
+  assert.equal(existsSync(swapped.replace(/-2$/, '')), false);
+});
+
 test('not enough space is insufficient-space, with the numbers', async () => {
   const d = dir();
   const v = await checkDestination(d, 100_000, withFs({ statfs: async () => ({ bavail: 1, bsize: 4096 }) }));

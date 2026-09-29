@@ -39,7 +39,7 @@ import { ContactsClient } from './contacts';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, promises as fsp } from 'node:fs';
 import { BulkClient } from './bulk';
-import { partPathFor } from '../shared/transferFiles';
+import { pullPartPathFor } from '../shared/transferFiles';
 import { activity } from './activity';
 // `shared/activity.ts` is a plain script, not a module — it has to be loadable by a `<script>` tag
 // in the CSP-locked renderer, so it has no top-level `export`. Its declarations are global to this
@@ -63,7 +63,7 @@ const sharedSendBatch = require('../shared/sendBatch') as {
 const sharedVitals = require('../shared/deviceVitals') as {
   humanBytes: (bytes: number) => string;
 };
-import { FilesClient } from './files';
+import { FilesClient, digestOf } from './files';
 import {
   cachedPreview,
   clearPreviews,
@@ -2280,10 +2280,36 @@ ipcMain.handle('fs-pick-send', async () => {
  * match the phone's own `fs.transfer.progress` and `fs.transfer.done` to this file.
  */
 const SEND_COLLISION_LIMIT = 50;
+/**
+ * The hash of each file being sent, by source path, so Stop can end it (`fs-send-abort`). A file is
+ * hashed **once** per send, before its first attempt, not once per collision retry: every size carries
+ * a digest now (`FilesClient.push`), and re-reading a 20 GB file for each `name (n)` would be the cost
+ * the old 64 MiB ceiling was guarding against.
+ */
+const sendHashes = new Map<string, AbortController>();
 ipcMain.handle(
   'fs-send',
   async (_event, options: { rootId: string; path: string; source: string }) => {
     const original = basename(options.source ?? '');
+    const abort = new AbortController();
+    sendHashes.set(options.source, abort);
+    const hashStarted = Date.now();
+    const digest = await digestOf(options.source, {
+      signal: abort.signal,
+      onProgress: (hashed) => sendAll('fs-push-checking', { source: options.source, hashed }),
+    }).finally(() => {
+      if (sendHashes.get(options.source) === abort) sendHashes.delete(options.source);
+    });
+    if (digest.aborted) {
+      log.info('files', `${original}: stopped while checking it (${digest.bytes} bytes hashed) — nothing was sent`);
+      return { ok: false, reason: 'Stopped before it started — nothing was sent.', sentAs: original };
+    }
+    log.info(
+      'files',
+      digest.sha256
+        ? `${original}: hashed ${digest.bytes} bytes in ${Date.now() - hashStarted} ms before sending`
+        : `${original}: could not be read to hash it (${digest.error ?? 'unknown'}); it will be sent unverified`,
+    );
     let last: Awaited<ReturnType<typeof files.push>> | null = null;
     for (let n = 1; n <= SEND_COLLISION_LIMIT; n += 1) {
       const name = sharedSendBatch.suffixedName(original, n);
@@ -2292,6 +2318,7 @@ ipcMain.handle(
         path: options.path,
         source: options.source,
         name,
+        sha256: digest.sha256,
         onAgreed: (transferId, agreedName) =>
           sendAll('fs-push-agreed', { source: options.source, transferId, name: agreedName }),
       });
@@ -2317,6 +2344,13 @@ ipcMain.handle(
     };
   },
 );
+
+/** Stop a send that is still being hashed — it has no `transferId` yet, so `fs-cancel` cannot reach it. */
+ipcMain.handle('fs-send-abort', (_event, options: { source: string }) => {
+  const abort = sendHashes.get(options?.source ?? '');
+  abort?.abort();
+  return { aborted: abort !== undefined };
+});
 
 /** Stop a send in flight. The phone keeps the partial as `.part`, resumable by sending it again. */
 ipcMain.handle('fs-cancel', async (_event, options: { transferId: string }) => {
@@ -2669,7 +2703,7 @@ if (!app.isPackaged) {
       interruptAfterBytes: Math.floor(size / 2),
     });
 
-    const part = partPathFor(destination);
+    const part = pullPartPathFor(destination);
     const partBytes = await fsp.stat(part).then((s) => s.size).catch(() => null);
 
     // The second half needs its own ticket: one transferId, one bulk connection, and the first was
@@ -2923,7 +2957,7 @@ if (!app.isPackaged) {
       .readFile(destination)
       .then((buffer) => createHash('sha256').update(buffer).digest('hex'))
       .catch(() => null);
-    const partBytes = await fsp.stat(partPathFor(destination)).then((s) => s.size).catch(() => null);
+    const partBytes = await fsp.stat(pullPartPathFor(destination)).then((s) => s.size).catch(() => null);
     const failed = await fsp.readFile(`${destination}.failed`, 'utf8').catch(() => null);
 
     return {

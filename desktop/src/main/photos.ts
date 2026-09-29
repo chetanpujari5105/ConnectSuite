@@ -13,6 +13,7 @@ import type { BulkClient } from './bulk';
 import { ask, rows } from './feature';
 import type { LinkClient } from './link';
 import { log } from './logger';
+import { pullDestination } from './files';
 
 /**
  * The Mac's half of the photo browser — three verbs of four.
@@ -266,7 +267,7 @@ export class PhotosClient {
       mime: ticket.data.mime,
     });
     await fs.mkdir(folder, { recursive: true });
-    const destination = await freeName(folder, ticket.data.name);
+    const destination = await pullDestination(folder, ticket.data.name);
 
     const result = await bulk.pull({
       host,
@@ -315,28 +316,6 @@ export class PhotosClient {
 
 /** The phone's own cap on `ids`, mirrored so a batch is never refused as BAD_REQUEST. */
 const THUMB_BATCH = 32;
-
-/**
- * `name`, or `name (2)`, `name (3)` — the first that does not exist.
- *
- * Overwriting would be simpler and is wrong: two photos can share a display name across buckets,
- * and replacing a file someone already pulled to avoid asking them is a decision that belongs to
- * them.
- */
-async function freeName(folder: string, name: string): Promise<string> {
-  const dot = name.lastIndexOf('.');
-  const stem = dot > 0 ? name.slice(0, dot) : name;
-  const extension = dot > 0 ? name.slice(dot) : '';
-  for (let n = 1; n < 1000; n += 1) {
-    const candidate = join(folder, n === 1 ? name : `${stem} (${n})${extension}`);
-    try {
-      await fs.access(candidate);
-    } catch {
-      return candidate;
-    }
-  }
-  return join(folder, `${stem}-${Date.now()}${extension}`);
-}
 
 function toBucket(row: Record<string, unknown>): MediaBucket {
   return {

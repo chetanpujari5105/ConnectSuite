@@ -439,6 +439,12 @@ contextBridge.exposeInMainWorld('connect', {
   > => ipcRenderer.invoke('fs-pick-send'),
   fsCancel: (options: { transferId: string }): Promise<PhoneResult<{ stopped: boolean }>> =>
     ipcRenderer.invoke('fs-cancel', options),
+  /** Stop a send that is still being hashed on this Mac (it has no `transferId` yet). */
+  fsSendAbort: (options: { source: string }): Promise<{ aborted: boolean }> =>
+    ipcRenderer.invoke('fs-send-abort', options),
+  /** Bytes of a file this Mac has hashed before sending it — every size is checksummed now. */
+  onPushChecking: (callback: (checking: { source: string; hashed: number }) => void) =>
+    ipcRenderer.on('fs-push-checking', (_event, checking) => callback(checking)),
   /** The phone acked a send: from here its `fs.transfer.progress`/`done` carry this id. */
   onPushAgreed: (
     callback: (agreed: { source: string; transferId: string; name: string }) => void,

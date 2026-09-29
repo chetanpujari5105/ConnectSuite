@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, promises as fs } from 'node:fs';
+import { constants as fsConstants, createReadStream, createWriteStream, promises as fs } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import type { FileHandle } from 'node:fs/promises';
 import { Writable, type Duplex } from 'node:stream';
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
-import type { PublishResult } from './shareDestination';
+import { publishExclusive, realFs, type PublishResult } from './shareDestination';
+import { candidateName } from '../shared/shareNames';
 import { recordIntentFrom, type ShareLedger } from './shareLedger';
 import { CANDIDATE_TIMEOUT_MS } from './discovery';
 import { FrameReader, writeFrame } from './framing';
@@ -12,7 +14,7 @@ import { log } from './logger';
 import { MAX_BULK_FRAME, MAX_BULK_HEADER_FRAME, PORT_BULK } from '../shared/protocol';
 import { FrameTally } from '../shared/frameTally';
 import { TransferDigest } from '../shared/transferDigest';
-import { failedPathFor, isResumable, partPathFor, sidecarText } from '../shared/transferFiles';
+import { failedPathFor, isResumable, pullPartPathFor, sidecarText } from '../shared/transferFiles';
 
 /**
  * The Mac's half of the bulk channel — the first thing on this side to open port 42503.
@@ -190,7 +192,7 @@ export class BulkClient {
     // "a corrupt file is worse than a missing one" is enforced for the checksum case and quietly
     // broken for every interruption — a truncated file sitting at the final name looks complete to
     // everything that opens it.
-    const part = partPathFor(destination);
+    const part = pullPartPathFor(destination);
 
     // Whether to resume is decided from our **record**, never from the filename. A `.part` we have
     // no record of is another app's file: DCIM and Documents are shared with every downloader on
@@ -204,6 +206,7 @@ export class BulkClient {
     });
     const offset = verdict.resume ? verdict.offset : 0;
     if (partBytes !== null && !verdict.resume) {
+      // Only ever a Sidekick partial: [pullPartPathFor]'s suffix is ours alone (defect 151).
       log.info('bulk', `${transferId} starting from zero: ${verdict.reason}`);
       await fs.rm(part, { force: true }).catch(() => undefined);
     }
@@ -333,6 +336,8 @@ export class BulkClient {
                 expected: expectedSha256,
                 actual: sha256,
               }),
+              // Exclusive: a file of the user's that happens to carry this name is not ours to replace.
+              { flag: 'wx' },
             )
             .catch(() => undefined);
           log.error(
@@ -355,21 +360,33 @@ export class BulkClient {
         // Verified, or completed with nothing to verify against. Either way the bytes are whole, so
         // the partial becomes the file — and any stale sidecar for this name goes with it, or the
         // folder accumulates gravestones for files that are now fine.
-        await fs.rename(part, destination);
-        await fs.rm(failedPathFor(destination), { force: true }).catch(() => undefined);
+        // **Published exclusively (defect 150).** `rename` replaces whatever appeared at the final
+        // name during the transfer — a file the person saved or another app downloaded there after
+        // `freeName` looked. A hard link fails with EEXIST instead, and the next free name is taken.
+        const published = await publishPulled(part, destination);
+        if (!published.ok) {
+          this.failures += 1;
+          log.error('bulk', `${transferId} could not be saved: ${published.detail}; the partial is kept at ${part}`);
+          resolve({ ok: false, bytes: total, elapsedMs, sha256, verified: false, reason: `The file arrived but could not be saved: ${published.detail}.` });
+          return;
+        }
+        if (published.path !== destination) {
+          log.info('bulk', `${transferId}: ${basename(destination)} appeared in the folder during the transfer; saved as ${basename(published.path)} instead`);
+        }
+        await removeStaleSidecar(published.path);
         this.transfers += 1;
         this.bytesMoved += total;
         const verified = expectedSha256 !== null;
         log.info(
           'bulk',
           `${transferId} pulled ${total} bytes in ${elapsedMs}ms (${rateOf(total, elapsedMs)}) → ` +
-            `${destination}${offset > 0 ? ` (resumed from ${offset})` : ''}; ` +
+            `${published.path}${offset > 0 ? ` (resumed from ${offset})` : ''}; ` +
             `sha256=${sha256.slice(0, 12)}…, verified=${verified}; ` +
             `${tally.summary()}; ${this.tallyLine()}`,
         );
         resolve({
           ok: true,
-          path: destination,
+          path: published.path,
           bytes: total,
           elapsedMs,
           sha256,
@@ -509,9 +526,54 @@ export function handleWriter(handle: FileHandle): Writable {
 }
 
 /**
- * **The share pull (docs/protocol.md → Share → Version 2), separate from [BulkClient.pull] so Files
- * and Photos keep exactly their behaviour** — resume, the kept `.part`, the `.failed` sidecar and
- * `rename` (defects 150, 151 are theirs and are not touched here).
+ * Publishes a finished Files or Photos pull **without replacing anything** (defect 150).
+ *
+ * The share contract's exclusive hard link ([publishExclusive]) — a name that appeared since the
+ * caller chose it fails with EEXIST and the next free name is taken. On a filesystem with no hard
+ * links (an exFAT or SMB receive folder), where the share path refuses, a pull falls back to an
+ * **exclusive copy** (`COPYFILE_EXCL`, which also fails rather than replaces): Files and Photos worked
+ * there before, and exclusivity does not need a link, only a create that refuses an existing name.
+ * The partial is removed once the final name holds the bytes.
+ */
+export async function publishPulled(
+  part: string,
+  destination: string,
+  io: { link: (a: string, b: string) => Promise<void>; copyFile: (a: string, b: string, mode: number) => Promise<void> } = fs,
+): Promise<{ ok: true; path: string } | { ok: false; detail: string }> {
+  const folder = dirname(destination);
+  const wanted = basename(destination);
+  const linked = await publishExclusive(part, folder, wanted, { ...realFs, link: io.link });
+  if (linked.ok) {
+    await fs.unlink(part).catch(() => undefined);
+    return { ok: true, path: linked.path };
+  }
+  if (linked.reason !== 'unsupported-destination') return { ok: false, detail: linked.detail };
+  for (let n = 1; n <= 20; n += 1) {
+    const path = join(folder, candidateName(wanted, n));
+    try {
+      await io.copyFile(part, path, fsConstants.COPYFILE_EXCL);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') continue;
+      return { ok: false, detail: `copy failed (${(error as NodeJS.ErrnoException).code ?? 'unknown'})` };
+    }
+    await fs.unlink(part).catch(() => undefined);
+    return { ok: true, path };
+  }
+  return { ok: false, detail: 'no free name after 20 attempts' };
+}
+
+/** A `.failed` sidecar left by an earlier attempt at this name — removed only if it is one of ours. */
+async function removeStaleSidecar(published: string): Promise<void> {
+  const sidecar = failedPathFor(published);
+  const text = await fs.readFile(sidecar, 'utf8').catch(() => null);
+  if (text?.startsWith('Sidekick transfer failed')) await fs.rm(sidecar, { force: true }).catch(() => undefined);
+}
+
+/**
+ * **The share pull (docs/protocol.md → Share → Version 2), separate from [BulkClient.pull]** —
+ * Files and Photos keep resume, the kept partial and the `.failed` sidecar, and since 2026-09-29 they
+ * share this path's exclusive publication ([publishPulled], defect 150) and own their partial's name
+ * ([pullPartPathFor], defect 151).
  *
  * What differs, and why each is a rule of the share contract:
  * - the partial is [part], carrying a fresh per-attempt nonce, recorded in the ownership ledger

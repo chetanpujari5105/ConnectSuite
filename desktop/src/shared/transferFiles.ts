@@ -41,6 +41,23 @@ export function partPathFor(destination: string): string {
   return `${destination}${PART_SUFFIX}`;
 }
 
+/**
+ * The partial of a Files or Photos **pull** into a Mac folder (defect 151).
+ *
+ * It is `.<name>.sidekick-pull.part`, not `<name>.part`, because the receive folder is shared with
+ * every other downloader on the Mac: a browser downloading `IMG.jpg` writes `IMG.jpg.part` (or
+ * similar) there, and a pull that picked the free name `IMG.jpg` used to delete that file as "a
+ * partial we have no record of". **The name is the ownership claim**: nothing but Sidekick writes
+ * this suffix, so a partial at this name is Sidekick's own and may be replaced; a partial at any
+ * other name is never touched. The leading dot keeps it out of Finder while it grows.
+ */
+export function pullPartPathFor(destination: string): string {
+  const slash = destination.lastIndexOf('/');
+  const folder = slash >= 0 ? destination.slice(0, slash + 1) : '';
+  const name = slash >= 0 ? destination.slice(slash + 1) : destination;
+  return `${folder}.${name}.sidekick-pull${PART_SUFFIX}`;
+}
+
 export function failedPathFor(destination: string): string {
   return `${destination}${FAILED_SUFFIX}`;
 }

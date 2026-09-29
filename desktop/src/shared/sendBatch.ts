@@ -44,6 +44,11 @@ interface SendItem {
   transferId: string | null;
   /** Bytes the **phone** reports as landed. Never the Mac's write count. */
   delivered: number;
+  /**
+   * Bytes **this Mac** has hashed before sending — every file carries a digest the phone checks.
+   * Drawn only before the phone agrees; it is never a count of anything sent.
+   */
+  checked: number;
   /** The phone's word, from `fs.transfer.done`. `null` until it has spoken. */
   verified: boolean | null;
   reason: string | null;
@@ -76,6 +81,7 @@ function sendBatchCreate(
       phase: 'queued',
       transferId: null,
       delivered: 0,
+      checked: 0,
       verified: null,
       reason: null,
       code: null,
@@ -107,6 +113,15 @@ function sendBatchOnStarted(batch: SendBatch, source: string): SendBatch {
     batch,
     (i) => i.source === source && i.phase === 'queued',
     (i) => ({ ...i, phase: 'sending' }),
+  );
+}
+
+/** This Mac has hashed `hashed` bytes of a file it has begun and not yet had agreed. */
+function sendBatchOnChecking(batch: SendBatch, source: string, hashed: number): SendBatch {
+  return updateItem(
+    batch,
+    (i) => i.source === source && i.phase === 'sending' && i.transferId === null,
+    (i) => ({ ...i, checked: Math.max(i.checked, Math.min(hashed, i.size)) }),
   );
 }
 
@@ -335,6 +350,7 @@ function suffixedName(name: string, n: number): string {
   const g = globalThis as Record<string, unknown>;
   g.sendBatchCreate = sendBatchCreate;
   g.sendBatchOnAgreed = sendBatchOnAgreed;
+  g.sendBatchOnChecking = sendBatchOnChecking;
   g.sendBatchOnProgress = sendBatchOnProgress;
   g.sendBatchOnWriteFinished = sendBatchOnWriteFinished;
   g.sendBatchOnDone = sendBatchOnDone;
@@ -353,6 +369,7 @@ if (typeof module !== 'undefined') {
   module.exports = {
     sendBatchCreate,
     sendBatchOnAgreed,
+    sendBatchOnChecking,
     sendBatchOnProgress,
     sendBatchOnWriteFinished,
     sendBatchOnDone,

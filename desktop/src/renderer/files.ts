@@ -60,6 +60,8 @@ interface FilesBridge {
     | { ok: false; reason?: string }
   >;
   fsCancel?(options: { transferId: string }): Promise<{ ok: boolean; reason?: string }>;
+  /** Stop a file this Mac is still hashing before its first byte. Optional for doubles. */
+  fsSendAbort?(options: { source: string }): Promise<{ aborted: boolean }>;
   /** Defect 132 — the supported way to get a dropped file's path. */
   pathForFile?(file: File): string;
   fsPull(options: {
@@ -552,6 +554,15 @@ class FilesView {
     }
   }
 
+  /** This Mac has hashed `hashed` bytes of a file it is about to send. Called by the renderer. */
+  onPushChecking(checking: { source: string; hashed: number }): void {
+    if (!this.batch) return;
+    const next = sendBatchOnChecking(this.batch, checking.source, checking.hashed);
+    if (next === this.batch) return;
+    this.batch = next;
+    this.render();
+  }
+
   /** The phone acked a send; from here its events carry this id. Called by the renderer. */
   onPushAgreed(agreed: { source: string; transferId: string; name: string }): void {
     if (!this.batch) return;
@@ -603,8 +614,14 @@ class FilesView {
     const live = this.batch.items.filter(
       (i) => (i.phase === 'sending' || i.phase === 'confirming') && i.transferId,
     );
+    // Still being hashed on this Mac: no id, no bytes sent. Ending the hash ends the send, and
+    // its IPC resolves as "stopped before it started".
+    const hashing = this.batch.items.filter((i) => i.phase === 'sending' && !i.transferId);
     this.batch = sendBatchStop(this.batch);
     this.render();
+    if (this.bridge.fsSendAbort) {
+      await Promise.all(hashing.map((i) => this.bridge.fsSendAbort!({ source: i.source })));
+    }
     if (this.bridge.fsCancel) {
       await Promise.all(live.map((i) => this.bridge.fsCancel!({ transferId: i.transferId! })));
     }
@@ -1918,6 +1935,11 @@ function sendItemStatus(item: SendItem): { text: string; tone: 'neutral' | 'live
       // counting, the count is what is true; once it has all of them, the verdict is what is owed.
       if (item.delivered > 0 && item.delivered < item.size) {
         return { text: `${fileBytes(item.delivered)} of ${fileBytes(item.size)} on the phone`, tone: 'live' };
+      }
+      // Every size is hashed before its first byte, so the phone can check what lands. A large
+      // file spends visible seconds here; say what is happening rather than "Starting…".
+      if (item.phase === 'sending' && !item.transferId && item.checked > 0 && item.checked < item.size) {
+        return { text: `Checking ${fileBytes(item.checked)} of ${fileBytes(item.size)} before sending`, tone: 'live' };
       }
       return {
         text: item.phase === 'sending' ? 'Starting…' : 'Waiting for the phone to confirm',

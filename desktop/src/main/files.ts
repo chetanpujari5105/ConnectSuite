@@ -4,6 +4,7 @@ import { basename, join } from 'node:path';
 import { MessageType, type PhoneResult } from '../shared/protocol';
 import type { BulkClient } from './bulk';
 import { ensureReceiveFolder } from './downloads';
+import { sanitizeShareName } from '../shared/shareNames';
 
 // `shared/filesRoots.ts` is a plain script, not a module — it has to be loadable by a `<script>` tag
 // in the CSP-locked renderer, so it has no top-level `export` and a `module.exports` shim instead.
@@ -41,14 +42,10 @@ export interface PushOutcome {
 }
 
 /**
- * The ceiling above which a file is sent without a digest agreed in advance.
- *
- * The same number the phone uses on a pull, for the same reason: hashing first means reading the
- * file twice, and a 4 GB video would hold the control channel for the length of a full read with no
- * progress to report. Above it the transfer is honest about being unverified rather than silently
- * downgraded.
+ * Read size for hashing a file before a push. 1 MiB reads hash at ≈ 1.7 GB/s on this Mac against
+ * ≈ 0.95 GB/s with the stream default of 64 KiB (measured 2026-09-29, 256 MiB and 1 GiB files).
  */
-const PREHASH_CEILING = 64 * 1024 * 1024;
+const DIGEST_READ_BYTES = 1024 * 1024;
 
 /** The phone's batch cap, from `docs/protocol.md`. Asking for more is refused, not truncated. */
 const FS_THUMB_BATCH = 32;
@@ -330,7 +327,7 @@ export class FilesClient {
       };
     }
 
-    const destination = await freeName(ready.folder, options.name);
+    const destination = await pullDestination(ready.folder, options.name);
 
     const result = await bulk.pull({
       host,
@@ -375,8 +372,14 @@ export class FilesClient {
    * ### The digest is computed before anything is agreed
    *
    * The phone compares what lands against this number, so it must be over the whole file and must
-   * exist before `fs.transfer.begin`. Above [PREHASH_CEILING] it is skipped, the phone is told
-   * nothing, and `fs.transfer.done` reports `verified: false`.
+   * exist before `fs.transfer.begin`. **It is computed for every size.** Until 2026-09-29 files above
+   * 64 MiB were sent with no digest and arrived `verified: false`, on the reasoning that hashing
+   * first reads the file twice. Measured, that second read is ≈ 2% of the transfer: this Mac hashes at
+   * ≈ 1.7 GB/s and the wire moves ≈ 40 MB/s — a 4 GB video costs ≈ 2.5 s of hashing against ≈ 100 s of
+   * sending. An unverified file is not worth 2%.
+   *
+   * A caller that retries under another name passes [sha256] so the file is read once, not once per
+   * attempt; `null` there means the caller's own hash failed and the push goes unverified, logged.
    *
    * ### `overwrite` is not sent unless the caller asked for it
    *
@@ -402,6 +405,11 @@ export class FilesClient {
      * left to draw would be this Mac's own write count, which is bytes queued, not bytes delivered.
      */
     onAgreed?: (transferId: string, name: string) => void;
+    /**
+     * The file's digest, when the caller already computed it ([digestOf]). Absent: computed here.
+     * `null`: the caller tried and could not read it — sent unverified, and said so in the log.
+     */
+    sha256?: string | null;
   }): Promise<PushOutcome> {
     const link = this.link();
     if (!link?.isConnected()) return { ok: false, reason: 'The phone is not connected.' };
@@ -419,12 +427,12 @@ export class FilesClient {
       return { ok: false, reason: `Could not read ${name}: ${(error as Error).message}` };
     }
 
-    const sha256 = size <= PREHASH_CEILING ? await digestOf(options.source) : null;
+    const sha256 = options.sha256 !== undefined ? options.sha256 : (await digestOf(options.source)).sha256;
     if (sha256 === null) {
-      log.info(
+      log.warn(
         'files',
-        `${name} is ${size} bytes; no digest was agreed in advance, so this transfer will report ` +
-          'verified=false',
+        `${name} (${size} bytes) could not be read to hash it, so no digest was agreed and this ` +
+          'transfer will report verified=false',
       );
     }
 
@@ -490,13 +498,60 @@ export class FilesClient {
   }
 }
 
-async function digestOf(path: string): Promise<string | null> {
+/** What hashing a file produced: the digest, or why there is none. */
+export interface DigestResult {
+  sha256: string | null;
+  /** Bytes read — the denominator for a digest that stopped early. */
+  bytes: number;
+  aborted: boolean;
+  error?: string;
+}
+
+/**
+ * SHA-256 of a whole file, read [DIGEST_READ_BYTES] at a time.
+ *
+ * `onProgress` is called with the bytes hashed so far, at most every `progressEveryMs`, so a multi-
+ * gigabyte file shows movement rather than a silent pause before its first byte is sent. `signal`
+ * stops the read: a person who presses Stop on a 100 GB file should not wait a minute for a hash of
+ * a file they no longer want sent.
+ */
+export async function digestOf(
+  path: string,
+  options: { onProgress?: (bytes: number) => void; signal?: AbortSignal; progressEveryMs?: number } = {},
+): Promise<DigestResult> {
+  const every = options.progressEveryMs ?? 250;
   return new Promise((resolve) => {
+    let bytes = 0;
+    let settled = false;
+    const finish = (result: DigestResult) => {
+      if (settled) return;
+      settled = true;
+      options.signal?.removeEventListener('abort', onAbort);
+      resolve(result);
+    };
+    if (options.signal?.aborted) {
+      finish({ sha256: null, bytes: 0, aborted: true });
+      return;
+    }
     const hash = createHash('sha256');
-    const stream = createReadStream(path);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('end', () => resolve(hash.digest('hex')));
-    stream.on('error', () => resolve(null));
+    const stream = createReadStream(path, { highWaterMark: DIGEST_READ_BYTES });
+    const onAbort = () => {
+      stream.destroy();
+      finish({ sha256: null, bytes, aborted: true });
+    };
+    options.signal?.addEventListener('abort', onAbort);
+    let lastReport = Date.now();
+    stream.on('data', (chunk) => {
+      hash.update(chunk);
+      bytes += chunk.length;
+      const now = Date.now();
+      if (options.onProgress && now - lastReport >= every) {
+        lastReport = now;
+        options.onProgress(bytes);
+      }
+    });
+    stream.on('end', () => finish({ sha256: hash.digest('hex'), bytes, aborted: false }));
+    stream.on('error', (error) => finish({ sha256: null, bytes, aborted: false, error: error.message }));
   });
 }
 
@@ -534,6 +589,17 @@ function toEntry(row: Record<string, unknown>): FsEntryRow {
  * The same rule `PhotosClient` uses and for the same reason: two files really can share a display
  * name across folders, and replacing one someone already pulled is a decision that belongs to them.
  */
+/**
+ * Where a file the phone names is pulled to: a free name **inside** [folder].
+ *
+ * The name is the phone's, and `join(folder, '../x')` leaves the folder — so it is re-sanitised with
+ * the share path's rules (`/` and `:` become `-`, a leading `.` becomes `_`, control and bidi
+ * characters dropped) before a free name is chosen. Files and Photos both come through here.
+ */
+export async function pullDestination(folder: string, phoneName: string): Promise<string> {
+  return freeName(folder, sanitizeShareName(phoneName));
+}
+
 async function freeName(folder: string, name: string): Promise<string> {
   const dot = name.lastIndexOf('.');
   const stem = dot > 0 ? name.slice(0, dot) : name;

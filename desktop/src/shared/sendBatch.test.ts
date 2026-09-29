@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 const {
   sendBatchCreate,
   sendBatchOnAgreed,
+  sendBatchOnChecking,
   sendBatchOnProgress,
   sendBatchOnWriteFinished,
   sendBatchOnDone,
@@ -207,4 +208,34 @@ test('suffixedName is the pull rule: stem (n).ext, dotfiles and extensionless ke
   assert.equal(suffixedName('archive.tar.gz', 3), 'archive.tar (3).gz');
   assert.equal(suffixedName('README', 2), 'README (2)');
   assert.equal(suffixedName('.env', 2), '.env (2)');
+});
+
+test('checking counts this Mac’s hash only before the phone agrees, and is never delivered bytes', () => {
+  let batch = two();
+  batch = sendBatchOnStarted(batch, '/tmp/b.pdf');
+  batch = sendBatchOnChecking(batch, '/tmp/b.pdf', 1200);
+  assert.equal(batch.items[1].checked, 1200);
+  assert.equal(batch.items[1].delivered, 0, 'hashing is not delivery');
+  assert.equal(sendBatchSummary(batch).fraction, 0, 'the bar is the phone’s bytes only');
+  // Never backwards, never past the size.
+  batch = sendBatchOnChecking(batch, '/tmp/b.pdf', 900);
+  assert.equal(batch.items[1].checked, 1200);
+  batch = sendBatchOnChecking(batch, '/tmp/b.pdf', 99_999);
+  assert.equal(batch.items[1].checked, 3000);
+  // Once agreed, a late checking event changes nothing.
+  batch = sendBatchOnAgreed(batch, '/tmp/b.pdf', 't-9', 'b.pdf');
+  const agreed = batch;
+  assert.equal(sendBatchOnChecking(agreed, '/tmp/b.pdf', 1), agreed);
+  // A queued file (not begun) is not checking either.
+  assert.equal(sendBatchOnChecking(agreed, '/tmp/a.jpg', 10), agreed);
+});
+
+test('Stop during the hash: the send resolves stopped-before-it-started and reads cancelled', () => {
+  let batch = sendBatchOnStarted(two(), '/tmp/a.jpg');
+  batch = sendBatchOnChecking(batch, '/tmp/a.jpg', 500);
+  batch = sendBatchStop(batch);
+  batch = sendBatchOnWriteFinished(batch, '/tmp/a.jpg', { ok: false, reason: 'Stopped before it started — nothing was sent.' });
+  assert.equal(batch.items[0].phase, 'cancelled');
+  assert.equal(batch.items[1].phase, 'cancelled');
+  assert.equal(sendBatchSettled(batch), true);
 });
