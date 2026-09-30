@@ -2093,6 +2093,74 @@ function createFilesView(bridge: FilesBridge): FilesView | null {
 }
 
 /**
+ * The page's `window.connect`, as far as the Files pane reaches it: the preload's calls under their
+ * own names, and the event subscriptions the pane consumes. Every call here is always exposed by the
+ * preload, so none is optional on this side — only the view's bridge treats some as optional, for
+ * doubles.
+ */
+interface FilesConnect {
+  fsRoots: FilesBridge['fsRoots'];
+  fsList: FilesBridge['fsList'];
+  fsSend: FilesBridge['fsSend'];
+  fsPickSend: NonNullable<FilesBridge['fsPickSend']>;
+  fsCancel: NonNullable<FilesBridge['fsCancel']>;
+  fsSendAbort: NonNullable<FilesBridge['fsSendAbort']>;
+  pathForFile: NonNullable<FilesBridge['pathForFile']>;
+  fsPull: FilesBridge['fsPull'];
+  fsPullStop: NonNullable<FilesBridge['fsPullStop']>;
+  fsPausedPulls: NonNullable<FilesBridge['fsPausedPulls']>;
+  fsCancelPaused: NonNullable<FilesBridge['fsCancelPaused']>;
+  fsDrag: FilesBridge['fsDrag'];
+  fsThumbs: FilesBridge['fsThumbs'];
+  onPushAgreed(callback: (agreed: Parameters<FilesView['onPushAgreed']>[0]) => void): void;
+  onPushChecking(callback: (checking: Parameters<FilesView['onPushChecking']>[0]) => void): void;
+  onPullAgreed(callback: (info: Parameters<FilesView['onPullAgreed']>[0]) => void): void;
+  onPullFinished(callback: (info: Parameters<FilesView['onPullFinished']>[0]) => void): void;
+  onMessage(callback: (envelope: unknown) => void): void;
+  onStatus(callback: (status: { deviceName?: string | null }) => void): void;
+}
+
+/**
+ * The Files pane's bridge, built from the page's `connect` — **the one the running app uses**.
+ *
+ * It lives here rather than as an object literal in `renderer.ts` so a test can call it: that literal
+ * was top-level code no test could reach, and it omitted Pause, Resume and Cancel's three calls while
+ * every Files-pane test passed, because each test built its own bridge that had them (defect 156).
+ */
+function filesBridgeFrom(connect: FilesConnect): FilesBridge {
+  return {
+    fsRoots: () => connect.fsRoots(),
+    fsList: (options) => connect.fsList(options),
+    fsSend: (options) => connect.fsSend(options),
+    fsPickSend: () => connect.fsPickSend(),
+    fsCancel: (options) => connect.fsCancel(options),
+    fsSendAbort: (options) => connect.fsSendAbort(options),
+    pathForFile: (file) => connect.pathForFile(file),
+    fsPull: (options) => connect.fsPull(options),
+    fsPullStop: (options) => connect.fsPullStop(options),
+    fsPausedPulls: () => connect.fsPausedPulls(),
+    fsCancelPaused: (options) => connect.fsCancelPaused(options),
+    fsDrag: (paths) => connect.fsDrag(paths),
+    fsThumbs: (options) => connect.fsThumbs(options),
+  };
+}
+
+/**
+ * The Files pane's event subscriptions, on the view the page built. A send is drawn from the phone's
+ * own events: the id arrives the moment the phone acks, then every `fs.transfer.progress`/`done` for
+ * it is routed here; the pane ignores ids it does not hold, so a pull or a photo passing through
+ * changes nothing. A block pull's agreement is what lets Pause and Cancel name it.
+ */
+function wireFilesEvents(connect: FilesConnect, view: FilesView): void {
+  connect.onPushAgreed((agreed) => view.onPushAgreed(agreed));
+  connect.onPushChecking((checking) => view.onPushChecking(checking));
+  connect.onPullAgreed((info) => view.onPullAgreed(info));
+  connect.onPullFinished((info) => view.onPullFinished(info));
+  connect.onMessage((envelope) => view.onTransferEvent(envelope));
+  connect.onStatus((status) => view.setPhoneName(status.deviceName));
+}
+
+/**
  * What a finished pull says about how it was checked — three different facts, three sentences. A
  * block-verified pull (`fs.blocks`) had no digest agreed *before* the copy, so it must not borrow the
  * pre-hash sentence; and an unverified pull must never be dressed as either (defect 56 in reverse).
@@ -2136,6 +2204,8 @@ function pullOutcomeText(name: string, result: PullResult): string {
 (globalThis as Record<string, unknown>).pullOutcomeText = pullOutcomeText;
 
 (globalThis as Record<string, unknown>).createFilesView = createFilesView;
+(globalThis as Record<string, unknown>).filesBridgeFrom = filesBridgeFrom;
+(globalThis as Record<string, unknown>).wireFilesEvents = wireFilesEvents;
 // The view class itself, so `filesView.test.ts` drives the real one rather than a paraphrase. It is
 // the first entry on `scripts/check-renderer-views.mjs`'s debt list, and it is there because the
 // `Download` wall's two homes broke twice — in opposite directions — with a green suite each time.

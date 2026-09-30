@@ -26201,3 +26201,68 @@ user; no Sidekick `SEND_MULTIPLE` resolver for `application/pdf` (50 lines, the 
 absent for images too; `ShareToMacActivity` still resolves for `SEND`; the probe activity gone (0 of 70 records);
 both PDFs unchanged (same SHA-256), left in place; phone staging empty; the Mac app stopped. Permissions and pairing
 were not changed (last read 11:35).
+
+### Defect 156 — the running Mac app's Files pane had no Pause, Resume or Cancel for a block pull
+
+**Found on hardware, 2026-09-30, in L1/L2 T2.** T2 is recorded as *attempted; Pause/Resume not
+exercised because Pause was unreachable* — **not passed.**
+
+- **Setup:** one pull of `Download/ConnectSuite/sidekick-pass-stop-200mb.bin` (MediaStore `_id=1000308768`,
+  209,715,200 B, SHA-256 `bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9`), started at
+  13:55:55 by the Files pane's own row click. `fs.blocks: 1` was negotiated.
+- **The Pause instrument** (owner's choice, because the pane draws no percentage for a pull): a one-shot
+  in-page watcher on the phone's own `fs.transfer.progress`, which would press the real `#files-pull-pause`
+  once on a `sending` report between 40% and 60%.
+- **What it saw:** at 89,128,960 B (42.5%) there were **0** Pause buttons in the page, with the right row
+  selected and copying. It refused and clicked nothing.
+- **What followed:** the pull completed. The phone sent 209,715,200 B in 3,981 ms as 1,600 blocks of
+  128 KiB (manifest `89d45891d883…`); the Mac published after all 1,600 matched, in 4,123 ms, as
+  `~/Downloads/Sidekick/sidekick-pass-stop-200mb (3).bin` (SHA-256 equal to the source; kept).
+- **The cause, read from the live page:** `window.connect` had `fsPullStop`, `fsPausedPulls` and
+  `onPullAgreed`, but the pane's bridge had only `fsPull`. `renderer.ts` built that bridge as an inline
+  literal without the three calls. The event half was already correct: the watcher found the transfer id
+  in `files.pullIds`, which only `onPullAgreed` fills.
+
+**Why the suite missed it:** every Files-pane test built its own bridge. `filesView.test.ts`'s
+`withPullControls` adds the three calls to its double, so the tests were right about the view and never
+reached the literal that ships.
+
+**Fix:**
+- The literal and the six Files subscriptions moved, verbatim, into `filesBridgeFrom(connect)` and
+  `wireFilesEvents(connect, view)` in `files.ts`. `renderer.ts` now calls
+  `createFilesView(filesBridgeFrom(connect))` and `wireFilesEvents(connect, files)`.
+- The three calls are passed through.
+- `ConnectBridge` declares them required, since the preload always exposes them.
+
+**Tests (`filesWiring.test.ts`, 3).** The only double is `connect`, standing in for the preload.
+1. The bridge's required calls are **derived from the view's own `this.bridge.*` uses** (12 names). The
+   test asserts each is present on `filesBridgeFrom(connect)`, forwards once under the same name, and is
+   exposed by the preload. Controls: the known names are found, and the preload matcher separates present
+   from absent.
+2. It drives the **real `FilesView`** through the real builder and subscriptions, and checks:
+   - agreement arrives via `connect.onPullAgreed` and Pause is drawn;
+   - Pause reaches `connect.fsPullStop(tf-1, pause)`;
+   - the paused list is read, *"Paused: … of … is on this Mac, checked block by block."* is shown, the
+     button reads **Resume**, and the paused copy has its own Cancel;
+   - a result via `connect.onPullFinished` reaches the view.
+3. `renderer.ts` builds the pane only through the two functions (comments stripped; with a matcher
+   control).
+
+**Red before the fix**, against the moved-verbatim literal:
+- *"the page's bridge lacks calls the view makes: fsCancelPaused, fsPausedPulls, fsPullStop"*;
+- *"Pause is drawn for a block pull in flight — actual 0, expected 1"*.
+
+Test 3 was green, as it should be for a pure move.
+
+**Mutations**, each restored by checksum, each red on the named test:
+- M0, all three removed (the defect verbatim): tests 1 and 2;
+- M1–M3, each call removed alone: tests 1 and 2;
+- M4, Pause wired to `how: 'cancel'`: tests 1 and 2;
+- M5, `onPullAgreed` not subscribed: test 2;
+- M6, `onPullFinished` not subscribed: test 2;
+- M7, `renderer.ts` back to an inline bridge: test 3.
+
+**Suites:** Mac 1,402 / 0 (1,399 + 3); both typechecks exit 0.
+
+**Hardware:** unproven at commit. The stimulus is T2's retry — the real Pause pressed once at 40–60%,
+then Resume once.

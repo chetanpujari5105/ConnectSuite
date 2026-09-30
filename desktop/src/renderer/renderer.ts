@@ -301,9 +301,9 @@ interface ConnectBridge {
     sourceChanged?: boolean;
     resumedFrom?: number;
   }>;
-  fsPullStop?(options: { transferId: string; how: 'pause' | 'cancel' }): Promise<{ stopped: boolean }>;
-  fsPausedPulls?(): Promise<Array<{ rootId: string; id: string; name: string; size: number; verifiedBytes: number; updatedAtMs: number }>>;
-  fsCancelPaused?(options: { rootId: string; id: string }): Promise<{ removed: boolean; partial?: string }>;
+  fsPullStop(options: { transferId: string; how: 'pause' | 'cancel' }): Promise<{ stopped: boolean }>;
+  fsPausedPulls(): Promise<Array<{ rootId: string; id: string; name: string; size: number; verifiedBytes: number; updatedAtMs: number }>>;
+  fsCancelPaused(options: { rootId: string; id: string }): Promise<{ removed: boolean; partial?: string }>;
   onPullAgreed(callback: (info: { transferId: string; rootId: string; id: string; name: string; resumedFrom: number; blocks: boolean }) => void): void;
   onPullFinished(callback: (info: { rootId: string; id: string; name: string; result: PullResult }) => void): void;
   /** Fire-and-forget by necessity: `startDrag` cannot survive an awaited round trip. */
@@ -1159,18 +1159,9 @@ shell.onRoute((id) => {
 // Unlike Photos, this pane **does** consult the capability: `files` is advertised (all six verbs
 // answer; `push` degrades), so an absent capability here means the phone genuinely is not offering
 // the feature, and the honest drawing is the phone's own sentence rather than an empty rail.
-const files = createFilesView({
-  fsRoots: () => connect.fsRoots(),
-  fsList: (options) => connect.fsList(options),
-  fsSend: (options) => connect.fsSend(options),
-  fsPickSend: () => connect.fsPickSend(),
-  fsCancel: (options) => connect.fsCancel(options),
-  fsSendAbort: (options) => connect.fsSendAbort(options),
-  pathForFile: (file) => connect.pathForFile(file),
-  fsPull: (options) => connect.fsPull(options),
-  fsDrag: (paths) => connect.fsDrag(paths),
-  fsThumbs: (options) => connect.fsThumbs(options),
-});
+// The bridge and the event subscriptions are built by files.ts, where a test can call the same
+// functions this page does (defect 156: an inline literal here dropped Pause, Resume and Cancel).
+const files = createFilesView(filesBridgeFrom(connect));
 shell.onRoute((id) => {
   if (id === 'files') void files?.refresh();
 });
@@ -1183,17 +1174,8 @@ shell.onRoute((id) => {
  * recorded in Activity and acknowledged by the toast, which is what a moment gets.
  */
 if (files) files.onWorkChanged = (work) => shell.setWork(work);
-// Feature B (2026-09-23): a send is drawn from the phone's own events. The id arrives the moment the
-// phone acks, then every `fs.transfer.progress`/`done` for it is routed here; the pane ignores ids it
-// does not hold, so a pull or a photo passing through changes nothing.
-if (files) {
-  connect.onPushAgreed((agreed) => files.onPushAgreed(agreed));
-  connect.onPushChecking((checking) => files.onPushChecking(checking));
-  connect.onPullAgreed((info) => files.onPullAgreed(info));
-  connect.onPullFinished((info) => files.onPullFinished(info));
-  connect.onMessage((envelope) => files.onTransferEvent(envelope));
-  connect.onStatus((status) => files.setPhoneName(status.deviceName));
-}
+// Feature B (2026-09-23) and fs.blocks: the pane's event subscriptions — see wireFilesEvents.
+if (files) wireFilesEvents(connect, files);
 
 
 // Clipboard. Built on all three verbs, and it does not gate itself on the capability for a reason
