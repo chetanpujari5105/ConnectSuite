@@ -26266,3 +26266,78 @@ Test 3 was green, as it should be for a pure move.
 
 **Hardware:** unproven at commit. The stimulus is T2's retry — the real Pause pressed once at 40–60%,
 then Resume once.
+
+#### Defect 156 — verified on hardware: L1/L2 T2 retry, Pause → Resume (2026-09-30 15:20–15:22) — PASS
+
+**Setup.**
+- Mac development app pid 76120, `dist` built from `01ebf3b` (254 files, digest `29acb87b…`), no switches.
+  Relaunched 14:08:52; negotiated `fs.blocks: 1` with the SM-S938B (RZCY12330DT) at 14:08:53. Phone
+  debug build installed 12:01:35.
+- The live page, before the run: the Files pane's bridge had `fsPullStop`, `fsPausedPulls` and
+  `fsCancelPaused`; `window.__t2` (the first attempt's watcher) was gone.
+
+**Preflight (15:18).**
+- Source `Download/ConnectSuite/sidekick-pass-stop-200mb.bin`: MediaStore `_id=1000308768`,
+  209,715,200 B, `date_modified=1790104839`, SHA-256
+  `bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9`. It is a synthetic sample from
+  `docs/sidekick-feature-pass.md`.
+- Link: link-up 3/3; the phone's own line reads `fs.blocks … negotiated 1`.
+- Mac: 27,906 MiB free; ledger `[]`; `pull-resume/` empty; no partials. `~/Downloads/Sidekick` held
+  48 files, hashed, including three existing 200 MiB copies.
+
+**Pause.**
+- One-shot in-page watcher on the phone's `fs.transfer.progress` (the pane draws no percentage for a
+  pull). It pressed the real `#files-pull-pause` once at a `sending` report of 96,206,848 B (45.88%).
+  Before the click it checked:
+  - the button's accessible name, *"Pause copying sidekick-pass-stop-200mb.bin; what has arrived is
+    kept"*;
+  - the selected row;
+  - the transfer id in `files.pullIds`.
+- Phone: `fs.transfer.cancel (reason=pause)`, then `block pull Cancelled: 99876864 of 209715200 bytes …
+  cancelled by the Mac`.
+- Mac: `interrupted after 98304000 of 209715200 bytes: Paused.`, then *"paused by the person at 750
+  verified blocks of 1600; the partial and record are kept; it resumes only on Resume"*. The bytes sent
+  past the last whole verified block were not kept.
+- On disk:
+  - one partial, `.sidekick-pass-stop-200mb (4).bin.sidekick-pull.part`, 98,304,000 B, inode 86957531;
+  - one resume record: 750 digests, `blockSize` 131072, `partIno` 86957531, keyed to this phone's
+    fingerprint;
+  - **no final file**; all 48 pre-existing files had the same SHA-256; ledger `[]`.
+- Pane:
+  - *"sidekick-pass-stop-200mb.bin paused — Paused. What had arrived is kept; Resume continues from
+    there."*
+  - *"Paused: 94 MB of 200 MB is on this Mac, checked block by block. Resume continues from there."*
+  - the button **Resume** (aria *"Resume copying sidekick-pass-stop-200mb.bin to this Mac"*), and the
+    paused copy's own Cancel.
+
+**No automatic resume after an explicit Pause (15:20:09 → 15:21:52).**
+- A probe polled the pane 61 times over 60 s: no copying, no transfer id, no new progress. Its
+  instrument stopped at its deadline, which it reports as an absence, not a reading.
+- Both logs held exactly one `fs.transfer.begin`, the original.
+- The partial's size and mtime were unchanged.
+
+**Resume**, pressed once through the real `#files-copy-to-mac`, at 15:22:01.
+- Mac: *"resumes at 98304000 of 209715200 bytes (750 blocks verified on this Mac and re-hashed by the
+  phone)"*, after reading its partial back against the record. Then `claimed … offset 98304000`.
+- Phone: `resuming at block 750 = byte 98304000`, and *"resume accepted provisionally at block 750
+  (prefix is re-hashed before sending)"*.
+- The phone's progress: `verifying` 262,144 → 98,304,000, then `sending` 100,663,296 → 209,715,200.
+- Phone: `Sent: 209715200 of 209715200 bytes (111411200 sent this time, resumed at 98304000)`.
+  111,411,200 is exactly the remaining payload. Manifest `89d45891d883…`, identical to the
+  uninterrupted pull of the same file at 13:56.
+- Mac: `pulled 209715200 bytes in 1869ms … (resumed from 98304000); sha256=bf375859eeb4…,
+  verified=true (every one of 1600 blocks matched)`.
+- Pane: *"sidekick-pass-stop-200mb.bin is on this Mac — drag it to Finder from here. Verified block by
+  block: every part matched what the phone read, and the file did not change while it was copied. It
+  continued from where it had paused."*
+
+**Result.**
+- `~/Downloads/Sidekick/sidekick-pass-stop-200mb (4).bin`: 209,715,200 B, SHA-256 `bf375859…cbbec9`,
+  equal to the source; published under the next free name. Kept for review.
+- The partial and the record are gone; `pull-resume/` empty; ledger `[]`; no `.part` or `.failed`.
+- The receive folder changed by that one file only; all 48 pre-existing files have the same SHA-256.
+- The phone's source is unchanged (hash, size, `date_modified`).
+
+**Earlier attempt, for the record:** 13:55:55, the build before `01ebf3b`. *Attempted; Pause/Resume not
+exercised because Pause was unreachable.* The pull completed as `sidekick-pass-stop-200mb (3).bin`
+(SHA-256 equal to the source; kept).
