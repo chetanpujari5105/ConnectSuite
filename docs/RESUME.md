@@ -1,3 +1,278 @@
+# Resume here — written 2026-09-30 (18:25 IST): T3 retry PASSED — defect 157 VERIFIED ON HARDWARE (all bounds met); T4–T5 NOT approved
+
+- **Devices now run `4095665`:**
+  - Phone: `install -r` 18:16:01, APK `4b7041cd…`, same signer; every reading unchanged except the trust
+    row's last-seen time.
+  - Mac: development app pid 99261, `dist` digest `4c50a4d2…`, no switches.
+  - `fs.blocks: 1` negotiated; release flags false.
+- **Owner action to know about:** the app was **force-stopped from the phone's Settings at 18:12:51**
+  (before any of this), which turned its **accessibility service off**. It was left off. Turn it on again
+  in Settings → Accessibility for remote input.
+- **T3 retry (bounds fixed at 18:19:59, before the run):**
+  - Disconnect at 83,886,080 B (40.00%). Pull stopped 1 ms after the click, settled at 12 ms (bound
+    2,000; was 32,804). 0 B of partial growth (bound 16 MiB; was 125.6 MB).
+  - The phone's stream ended 3 ms after its session (bound 1,000; was 2,571), counted `failed`, not
+    `completed`.
+  - One owned partial and one record (640 blocks, 0 B unverified tail); no final file.
+  - Connect once: automatic resume at block 640. The phone re-hashed the prefix and sent 125,829,120 B, the
+    remainder.
+  - `sidekick-pass-stop-200mb (6).bin` SHA-256 equals the source. Partial and record gone, ledger `[]`,
+    50 pre-existing files unchanged, source unchanged.
+- **Committed** in the documentation-only commit after `4095665` (owner-approved):
+  - `docs/defects.md`: the 157 row and heading say fixed in `4095665`, verified on hardware 2026-09-30.
+  - `docs/testing.md`: only the `#### Defect 157 — verified on hardware` section. The owner's block stays
+    uncommitted and unchanged.
+  - This file.
+- **Findings, not fixed:**
+  1. the phone logs *"stopping 1 live stream(s)"* twice (two `forgetSession` callers);
+  2. the paused sentence after an interruption repeats *"What had arrived is kept"* and gives two
+     instructions ("continues when the phone is back" and "Resume continues").
+- **Kept for review:** `(4)`, `(5)` and `(6)` copies in `~/Downloads/Sidekick`. Nothing deleted.
+
+# (earlier) 2026-09-30 (18:15 IST): defect 157 fixed, TESTS ONLY (`4095665`); nothing installed; T4–T5 not approved
+
+- **Committed `4095665`**, 11 files:
+  - Mac: `link.ts`, `files.ts`, `shared/session.ts`, plus `filesResume.test.ts` +4 and
+    `linkSessionEnded.test.ts`.
+  - Phone: `BulkStops.kt` (new), `BulkTransfers.kt`, `ControlSession.kt`, `BulkStopsTest.kt`.
+  - Docs: `docs/defects.md` row and section 157; `docs/testing.md` → Defect 157 (only Claude's section;
+    the owner's block is unstaged and unchanged).
+- **What it does:**
+  - A session ending, by user Disconnect or by the phone closing the link, stops the bulk pull that
+    session owns, as an interruption: partial and record kept, reconnect auto-resume unchanged.
+  - The phone stops that session's live streams before their next chunk.
+  - A block pull counts as completed on the phone only when its verdict was queued.
+  - Pause is still manual; Cancel is unchanged; a replacement session is untouched.
+- **Evidence:**
+  - Red before the fix: 32,131 ms to settle; no event; the stream ran to `Sent`. Mutations MM1–6 and
+    PM1–7 each red.
+  - Measured stop: Mac 3 ms, phone 0 bytes after the flag.
+  - Mac 1,409/0, phone 1,094/0, typechecks 0, guards 0.
+- **Not proven on hardware.** The running Mac app (pid 76120) is `01ebf3b` and the phone is the 12:01:35
+  install; neither has this fix.
+- **Proposed single hardware retry (needs approval):** rebuild and install both, then one T3 exactly as
+  before: Disconnect once at 40–60% receiver-confirmed, Connect once. Expected:
+  - the partial stops growing within about one chunk;
+  - the Mac logs *"stopped: the session it ran on ended"* at once, not after 30 s;
+  - the phone logs *"stopping 1 live stream(s) it agreed"* and no `completed`;
+  - the reconnect resumes from the verified boundary to a matching SHA-256.
+
+# (earlier) 2026-09-30 (15:40 IST): L1/L2 T3 PASSED (Disconnect → Connect → automatic resume); T4–T5 not run
+
+- **Docs commit `ab93925`:** defect 156 verified on hardware (T2 retry). Only Claude's `testing.md` section
+  is in it; the owner's block is still unstaged.
+- **T3, 15:34–15:36.** Source `sidekick-pass-stop-200mb.bin` (`_id=1000308768`, `bf375859…`). Mac
+  pid 76120 on `01ebf3b`, `fs.blocks: 1`. The full preflight was retaken at 15:32.
+  - **Started with the pane's "Copy again"** (the source was already local from T2, so a row click pulls
+    nothing). The first driver run refused at its gate with *pane busy*; nothing was clicked.
+  - **Disconnect** (Settings → Connection) pressed once, when the Mac's own partial held 84,148,224 B
+    (40.13%). Mac logged `Disconnected: user disconnected`; the phone logged `Session … ended: peer
+    closed the connection`.
+- **What Disconnect did not stop (finding, not numbered):**
+  - The phone **kept streaming over the bulk socket to 209,715,200 B**, logging it as `Sent` and
+    `completed`.
+  - It **dropped every block digest and the `done`** (*"Dropped fs.transfer.blocks: the session is
+    closing"*).
+  - The Mac then waited 30 s: *"not saved: the phone never said how the transfer ended … 640 blocks
+    verified"*, then *"interrupted at 640 verified blocks of 1600; the partial and record are kept"*.
+  - At rest: a full-length 209,715,200 B partial, one record (640 digests = 83,886,080 B), and no
+    `(5)` file.
+  - Cost: about 125.8 MB sent and discarded, and a 30 s wait before the pull counts as interrupted.
+    The phone's "completed" tally counts a transfer the Mac did not save.
+- **Connect** pressed once at 15:36:10, after the Mac's "interrupted" line.
+  - Mac: *"resuming sidekick-pass-stop-200mb.bin automatically: interrupted less than 10 minutes ago in
+    this run"*; *"resumes at 83886080 … (640 blocks verified on this Mac and re-hashed by the phone)"*;
+    claimed at offset 83886080, so the unverified tail was cut off.
+  - Phone: *"resuming at block 640 = byte 83886080"*, then `verifying` to 83,886,080, then `Sent … (125829120
+    sent this time, resumed at 83886080)`, manifest `89d45891d883…`.
+  - Mac: *"every one of 1600 blocks matched"*.
+- **Result:**
+  - `~/Downloads/Sidekick/sidekick-pass-stop-200mb (5).bin`, 209,715,200 B, SHA-256 equal to the source.
+  - Partial and record gone; ledger `[]`. Only that file was added; all 49 pre-existing files have the
+    same SHA-256.
+  - The source is unchanged; the link is up.
+- **Needs the owner:** whether the Disconnect finding gets a defect number. The likely fix direction
+  is that the phone ends a session's live bulk streams when its control session ends, or the Mac aborts
+  its active pulls on a user Disconnect. Also: T4/T5 approval.
+
+# (earlier) 2026-09-30 (15:25 IST): L1/L2 T2 retry PASSED on hardware (Pause → Resume); T3–T5 not run
+
+**T2 retry, 15:20–15:22. Source:** `sidekick-pass-stop-200mb.bin`, `_id=1000308768`, 209,715,200 B,
+`bf375859…cbbec9`, re-hashed on the phone before and after. Mac pid 76120 on `01ebf3b`, `fs.blocks: 1`.
+
+- **Pause:** the real `#files-pull-pause`, pressed once by the one-shot watcher at a phone `sending`
+  report of 96,206,848 B (45.88%).
+  - Phone: `fs.transfer.cancel (reason=pause)`, then `Cancelled: 99,876,864 of 209,715,200 bytes`.
+  - Mac: `interrupted after 98304000`; *"paused by the person at 750 verified blocks of 1600 … it resumes
+    only on Resume"*.
+  - Disk: only `.sidekick-pass-stop-200mb (4).bin.sidekick-pull.part` (98,304,000 B, inode 86957531) and
+    one record (750 digests, the same inode). No final file; ledger `[]`.
+  - UI: *"sidekick-pass-stop-200mb.bin paused — Paused. What had arrived is kept; Resume continues from
+    there."* / *"Paused: 94 MB of 200 MB is on this Mac, checked block by block. Resume continues from
+    there."* / **Resume**.
+- **No automatic resume, 15:20:09 → 15:21:52:**
+  - 61 polls with no copying and no new transfer (the probe ended at its 60 s deadline, which it
+    reports as an absence, not a reading);
+  - 1 `fs.transfer.begin` on each side, the original;
+  - the partial's size and mtime unchanged.
+- **Resume, pressed once at 15:22:01:**
+  - Mac: *"resumes at 98304000 of 209715200 bytes (750 blocks verified on this Mac and re-hashed by the
+    phone)"*; `claimed … offset 98304000`.
+  - Phone: *"resuming at block 750 = byte 98304000"*; *"resume accepted provisionally at block 750
+    (prefix is re-hashed before sending)"*; `verifying` progress 262,144 → 98,304,000, then `sending`
+    98,304,000 → 209,715,200.
+  - Phone `Sent: 209715200 of 209715200 bytes (111411200 sent this time, resumed at 98304000)`, manifest
+    `89d45891d883…`, the same as the full pull at 13:56.
+  - Mac *"every one of 1600 blocks matched"*, in 1,869 ms.
+- **Result:** `~/Downloads/Sidekick/sidekick-pass-stop-200mb (4).bin`, 209,715,200 B, SHA-256 equal to the
+  source; the partial and the record are gone; `pull-resume/` is empty; ledger `[]`. The receive folder
+  changed only by that file, and all 48 pre-existing files have the same SHA-256.
+- **Defect 156 is now proven on hardware.** That note is not yet committed to `docs/defects.md` or
+  `docs/testing.md`.
+
+# (earlier) 2026-09-30 (14:12 IST): defect 156 fixed (`01ebf3b`) and live in the Mac dev app; T2 retry waiting for the phone's USB cable
+
+- **Committed `01ebf3b`:** the Files pane's bridge and subscriptions are built by
+  `filesBridgeFrom` / `wireFilesEvents` (`files.ts`), with Pause, paused-list and Cancel-paused passed
+  through.
+  - `filesWiring.test.ts` (3 tests): red against the moved-verbatim literal; mutations M0–M7 red.
+  - Mac 1,402/0, both typechecks 0, 13 guards 0.
+  - Defect 156 row and section in `docs/defects.md`. Evidence in `docs/testing.md`, which records T2 as
+    *attempted; Pause/Resume not exercised because Pause was unreachable*.
+  - Only that section of `testing.md` was committed; the owner's block is unstaged and byte-identical.
+- **Mac, relaunched 14:08:52 (pid 76120):**
+  - `dist` built from `01ebf3b`: 254 files, digest `29acb87b…`, all fresh; no switches.
+  - Negotiated `fs.blocks: 1` with Samsung SM-S938B at 14:08:53. `FS_BLOCKS_RELEASE` false; 0 records
+    at start.
+  - The live page: the old watcher is gone, and `files.bridge` has `fsPullStop`, `fsPausedPulls` and
+    `fsCancelPaused`.
+- **T2 retry not started:** the SM-S938B left USB between 13:56 and 14:08 (`adb devices` is empty).
+  The preflight's pinned-device, source-hash and phone-log readings need it.
+- **Receive folder at 14:08:** 48 entries, unchanged since the T2 attempt; `pull-resume/` empty; ledger
+  `[]`; no partials.
+
+# (earlier) 2026-09-30 (14:00 IST): L1/L2 T1 PASSED; T2 NOT RUN — the Files pane has no Pause in the real app
+
+> Supersedes the entries below for L1/L2. T1 passed. T2 was approved and attempted once; it stopped at
+> its Pause and was not retried. T3–T5 have not been run and are not approved. Nothing was paused,
+> cancelled, disconnected on purpose, corrupted, fixed or deleted.
+
+**T2, 13:55:55: the Pause control does not exist in the running app. This is a wiring defect; no
+defect number has been assigned (the owner's decision).**
+- **The defect:** `desktop/src/renderer/renderer.ts:1162-1173` builds the Files pane's bridge with
+  `fsPull` but without `fsPullStop`, `fsPausedPulls` or `fsCancelPaused`. The preload exposes all
+  three on `window.connect`, and a live-page read confirmed them there.
+- **Effect in the running build:**
+  - `#files-pull-pause` and `#files-pull-cancel` are never drawn, because `files.ts:1755` requires
+    `bridge.fsPullStop`.
+  - `refreshPaused` returns at once, so a paused pull never shows **Resume**, its paused sentence, or
+    its own Cancel.
+  - The main-process side (stop, the records, automatic resume) is unaffected.
+- **Why the suite passed:** `filesView.test.ts:929` gives the pane a bridge double that has the
+  methods, so the test is right about the pane and never reaches the wiring.
+- **Suggested fix, not made:** pass the three methods through in `renderer.ts`. Add a guard test that
+  every optional `FilesBridge` method the preload exposes is passed through, shown red on today's tree.
+- **Timing method (owner's choice, 13:5x):** the pane draws no percentage for a pull, so a one-shot
+  in-page watcher on the phone's own `fs.transfer.progress` would press the real Pause once at 40–60%.
+- **What happened:**
+  - At 89,128,960 B (42.5%, a `sending` report) the watcher found 0 Pause buttons, with the right row
+    selected and copying. It refused and clicked nothing.
+  - The pull completed: the phone sent 209,715,200 B in 3,981 ms as 1,600 blocks of 128 KiB (manifest
+    `89d45891d883…`); the Mac published after all 1,600 matched, 4,123 ms.
+- **Source:** `Download/ConnectSuite/sidekick-pass-stop-200mb.bin`, `_id=1000308768`, 209,715,200 B,
+  SHA-256 `bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9`. It is a synthetic sample
+  from the Sidekick feature pass (`docs/sidekick-feature-pass.md`).
+- **Left on the Mac, kept for review:**
+  - `~/Downloads/Sidekick/sidekick-pass-stop-200mb (3).bin` (inode 86936039, SHA-256 equal to the
+    source). It is the only receive-folder change.
+  - No partial, no `.failed`, `pull-resume/` empty, ledger `[]`.
+  - The page still holds the disarmed watcher (`window.__t2` plus one `onMessage` listener that only
+    records events). It goes away when the app is relaunched.
+- **To run T2 as written:** fix the wiring (a code change, needing approval), rebuild and relaunch, then
+  take T2's preflight again. The new file will be saved as `(4)`.
+
+**T1: one 96 MiB phone → Mac Files pull over `fs.blocks: 1`. PASS.**
+- **Source:** `Download/ConnectSuite/sidekick-rc-96m-checksum.bin`, MediaStore `_id=1000312207`, owner
+  `com.chetan.connectsuite.debug`, 100,663,296 B, `date_modified=1790660974`, SHA-256
+  `567befd2c82465bac100becd3289dbeedb4e725586bf3e443044b8fe79dac80d`. It is the random file the Mac
+  generated and pushed on 2026-09-29 11:19 (`docs/release-inventory.md` F-2), so it contains no personal
+  data. Its hash, size and `date_modified` were unchanged after the pull.
+- **How it was started:** the Files pane's own row click on root `downloads:connectsuite` ("Received
+  files"), which selects the row and starts the pane's copy. The row was found by `data-id`, with the
+  identity gate re-checked in the same expression that clicked. Scripts:
+  `scratchpad/preflight/t1-a-locate.mjs` and `t1-b-pull.mjs`, both through `scripts/probe.mjs`.
+- **Receiver-confirmed readings:**
+  - Phone: registered `blockSize=131072, 768 blocks, from byte 0`, and `block pull Sent: 100663296 of
+    100663296 bytes in 1588ms (507.1 Mbit/s), 768 blocks, manifest 31b63fab07a3…`.
+  - Mac: `claimed … offset 0` at 12:11:43.272, then `pulled 100663296 bytes in 1732ms (465.0 Mbit/s) …
+    verified=true (every one of 768 blocks matched); 385 frames … 0 rejected`, published 12:11:44.972.
+  - Pane: click to outcome 2,089 ms; the block pull was agreed 337 ms after the click. Its text:
+    *"Verified block by block: every part matched what the phone read, and the file did not change
+    while it was copied."*
+- **Saved file:** `~/Downloads/Sidekick/sidekick-rc-96m-checksum.bin`, inode 86920500, 100,663,296 B,
+  SHA-256 equal to the source.
+- **Receive folder:** only that one file was added; the other 46 entries have the same inode, size and
+  mtime.
+- **Leftovers:** no `.sidekick-pull.part`, `.part` or `.failed`. `userData/pull-resume/` was created by
+  this pull (0700) and is empty; the record was dropped on success. Ledger `[]`; phone staging 0.
+- **Free space and link:** Mac 28,280 → 28,175 MiB; link-up 3/3 after.
+
+## Preflight, 12:05 IST
+
+1. **Built and installed:**
+   - **Phone:** debug `app-debug.apk`, built 11:57:27 from a clean `15e8243` tree, 96,746,572 B, SHA-256
+     `bfe233d8…6aad97`. It replaced `939979ce…a4a022` (installed 2026-09-29 15:48:46) with `install -r` at
+     12:01:21–36 on RZCY12330DT (SM-S938B) only.
+     - Signer: both APKs `CN=Android Debug`, SHA-256 `d3a505d2…7d26`. Package `com.chetan.connectsuite.debug`,
+       versionCode 1, versionName 2.0.0, debuggable.
+     - Dex: `fs.blocks` ×4, `FsBlocks` ×2, `BlockPullSender` ×2 in the new APK and 0 in the old one. The
+       controls (`ShareStaging` ×4, `LinkService` ×5) appear in both.
+   - **Mac:** `desktop/dist` rebuilt from `15e8243` (`npm run build`, exit 0). It now holds 254 files, all
+     written by this build, digest `ad109637…` (SHA-256 over the sorted per-file list). Before: 250 files,
+     `7a7ff788…`, from 2026-09-29 15:48.
+     - The old app (pid 17113) was quit with SIGTERM at 12:02:11. The new one was relaunched at 12:02:44 as
+       pid 43238, with `--force-renderer-accessibility --remote-debugging-port=9222` and no
+       `CONNECTSUITE_*` variables.
+2. **Negotiation, read on both sides:**
+   - **New phone, old Mac** (12:01:41): the phone advertised `fs.blocks 1`, the Mac advertised none,
+     negotiated none — *"pulls above 64 MiB are unverified and not resumable, as before"*.
+   - **Both new** (12:02:46): negotiated
+     `{"share.file":3,"share.ask":1,"share.wait":30,"fs.blocks":1}`. The phone says *"block-verified and
+     resumable"*. The Mac says `fs.blocks 1 ADVERTISED (packaged: false; FS_BLOCKS_RELEASE: false)`.
+   - The share keys are identical to the 10:11 run. `FS_BLOCKS_RELEASE = false` in `Extensions.kt:79`,
+     in `extensions.ts:32`, and in the emitted `dist/shared/extensions.js`.
+3. **Device state, before (11:56 and 12:01) against after (12:03). All equal:**
+   - grants: 28 `granted=true` / 18 false;
+   - app ops: 60;
+   - notification listener and accessibility bindings (full strings);
+   - `accessibility_enabled=1`;
+   - prefs: 5 files, every file's md5;
+   - trust: 1 row, `b59f4bba…`, read with its WAL. Only `lastSeenAtMillis` moved, to the 12:02:46
+     handshake;
+   - staging: 0 entries (the startup sweep logged `deleted=0`);
+   - `Download/ConnectSuite`: 207 lines, no `.part` or `.failed`;
+   - link: `link-up.sh` 3/3.
+4. **Stores a sweep could touch, all empty before and after:**
+   - Mac `userData/pull-resume/` does not exist (logged *"0 expired at start"*);
+   - ledger `[]`;
+   - `~/Downloads/Sidekick`: 46 entries, identical inode, size, mtime and SHA-256, with no partial or
+     sidecar.
+   - Release APK folder: identical hashes and inodes (`app-release.apk` `9ccf7b63…`, 2026-09-29 15:52:38).
+5. **Tests, fresh:** Mac 1,399/0. Phone 1,087/0 (app 177, core 219, sync 579, input 52, mirror 60), every
+   XML written after the run began.
+6. **Free space:**
+   - Mac 28,917 → 28,299 MiB.
+   - Phone 6,308,384 → 6,187,952 KiB (99% used). The phone was falling about 28 MB per 5 minutes
+     before the install; the cause is not ours and was not investigated.
+7. **Found, not acted on:**
+   - After `install -r` the phone was **not** serverless: LinkService restarted by LISTENER_REBIND,
+     PACKAGE_REPLACED and ACCESSIBILITY_BIND within 1.6 s. This contradicts the `CLAUDE.md` banner.
+     `am start` was sent anyway.
+   - The owner pushed three screenshots Mac → phone at 11:56:02 (completed and verified) before the
+     install.
+8. **Next, needs the owner:** decide on the Pause wiring fix (see T2 above), then T2–T5. The phone still has 5.9 GiB free, and the Mac's receive
+   folder is the default `~/Downloads/Sidekick`.
+
 # Resume here — written 2026-09-29 (16:10 IST): the complete-app pass, day one — file sharing verified on hardware, release gated on the owner
 
 > Supersedes the entries below. Evidence: `docs/complete-app-pass-2026-09-29.md` §1–§8. Status of every

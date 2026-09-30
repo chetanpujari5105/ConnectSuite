@@ -26474,3 +26474,77 @@ preflight, Disconnect once at 40–60% receiver-confirmed, then Connect once. Ex
 - the reconnect resumes from the verified boundary, and the saved file's SHA-256 equals the source.
 
 It needs both apps rebuilt and installed.
+
+#### Defect 157 — verified on hardware: one T3 retry, 2026-09-30 18:20–18:21 — PASS
+
+**Builds, both from `4095665`, both development-only.**
+- **Phone:** `install -r` of the debug APK (`4b7041cd…`, 96,753,600 B, signer `d3a505d2…7d26`, contains
+  `BulkStops` and `LiveStops`) on RZCY12330DT at 18:16:01. Grants, denials, app ops, both binding strings,
+  all 5 prefs files, staging and `Download/ConnectSuite` were identical before and after. The trust row
+  differed only in `lastSeenAtMillis`.
+- **Mac:** `dist` rebuilt (254 files, digest `4c50a4d2…`); the development app relaunched as pid 99261 with
+  no switches. `fs.blocks: 1` negotiated on both sides; `FS_BLOCKS_RELEASE` false.
+- **Found before building, not caused by this work:** at 18:12:51 the app had been **force-stopped from the
+  phone's Settings app** (`ApplicationExitInfo`: USER REQUESTED / FORCE STOP, from `com.android.settings`).
+  That turned off its accessibility service (`accessibility_enabled=0`). It was left off; re-enabling it is
+  the owner's.
+
+**Acceptance bounds**, fixed at 18:19:59 before the run: A1 ≤ 500 ms, A2 ≤ 500 ms, A3 ≤ 2,000 ms,
+A4a ≤ 16 MiB, A4b 0 B, A5a ≤ 1,000 ms, A5b not counted completed. Each is justified against the pre-fix
+readings.
+
+**Run.**
+- Source `sidekick-pass-stop-200mb.bin` (`_id=1000308768`, `bf375859…cbbec9`).
+- Started by the Files-pane row click. After the relaunch the pane held no local copy, so **Copy again did
+  not exist**; the row click calls the same `copyToMac`.
+- Disconnect (Settings → Connection) pressed once when the Mac's own partial held **83,886,080 B
+  (40.00%)**.
+
+| # | Measured | Bound |
+|---|---|---|
+| A1 | click 18:20:32.673 → `Disconnected: user disconnected` 32.676: **3 ms** | ≤ 500 ms |
+| A2 | → `pull … stopped: the session it ran on ended (user disconnected)` 32.674: **1 ms** | ≤ 500 ms |
+| A3 | → `interrupted at 640 verified blocks of 1600` 32.685: **12 ms** (was 32,804 ms) | ≤ 2,000 ms |
+| A4a | partial at click 83,886,080 → at settle 83,886,080: **0 B** (was 125,566,976 B) | ≤ 16 MiB |
+| A4b | 7 s window after the click: **0 B**; still 83,886,080 B, mtime 18:20:32, at 18:21:20 | 0 B |
+| A5a | phone `Session … ended` 32.691 → `block pull failed … ConnectionResetException` 32.694: **3 ms** (was 2,571 ms) | ≤ 1,000 ms |
+| A5b | `0 completed / 1 failed`; one `Dropped fs.transfer.done` (was ~70 dropped frames and `completed`) | not completed |
+
+- **How the stream ended:** the Mac destroyed the bulk socket 17 ms before the phone saw its control
+  session end, so the stream ended on the reset. The phone's own teardown flag — *"stopping 1 live
+  stream(s) it agreed"*, at 32.691 — was set too.
+- **In-flight bytes:** the phone had handed 90,701,877 B to its socket against 83,886,080 B the Mac
+  accepted. The 6.8 MB in flight was discarded on the reset and never reached the partial.
+- **At rest:**
+  - one owned partial, `.sidekick-pass-stop-200mb (6).bin.sidekick-pull.part` (inode 88153143 = the
+    record's `partIno`, 83,886,080 B);
+  - one record, 640 digests = 83,886,080 B verified, so an **unverified tail of 0 B**;
+  - no `(6)` final file, ledger `[]`, all 50 pre-existing files at the same SHA-256;
+  - the Mac did not reconnect by itself;
+  - pane: *"sidekick-pass-stop-200mb.bin paused — The connection to the phone ended. What had arrived is
+    kept, and it continues when the phone is back. What had arrived is kept; Resume continues from
+    there."*
+- **Connect**, pressed once at 18:21:37; the link was up in 55 ms.
+  - Mac: *"resuming sidekick-pass-stop-200mb.bin automatically: interrupted less than 10 minutes ago in this
+    run"*; *"resumes at 83886080 of 209715200 bytes (640 blocks verified on this Mac and re-hashed by the
+    phone)"*; claimed at offset 83886080.
+  - Phone: *"resuming at block 640 = byte 83886080"*; *"resume accepted provisionally at block 640 (prefix is
+    re-hashed before sending)"*; `verifying` 262,144 → 83,886,080, then `sending` to 209,715,200.
+  - Phone: `Sent: 209715200 of 209715200 bytes (125829120 sent this time, resumed at 83886080)`. Exactly
+    the remainder; manifest `89d45891d883…`; `1 completed / 1 failed`.
+  - Mac: `pulled … (resumed from 83886080); sha256=bf375859eeb4…, verified=true (every one of 1600 blocks
+    matched)`.
+- **Result:**
+  - `~/Downloads/Sidekick/sidekick-pass-stop-200mb (6).bin`: 209,715,200 B, SHA-256
+    `bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9`, equal to the source. Kept.
+  - Partial and record gone; ledger `[]`. The folder changed by that one file only.
+  - The source is unchanged: hash, size, `date_modified` 1790104839.
+  - The owner's uncommitted work is byte-identical; the signed release APK folder is unchanged.
+
+**Findings, not fixed:**
+1. **The phone logs its session-ended line twice** (*"stopping 1 live stream(s) it agreed"* ×2 at
+   32.691). `FsFeature` and `MediaFeature` both call `forgetSession`, so the count is logged per caller.
+   The flag is `putIfAbsent`, so nothing is stopped twice, but the doubled count misreads as two streams.
+2. **The paused sentence after an interruption repeats itself and gives two instructions.** It says *"it
+   continues when the phone is back"* (the automatic resume) and then *"Resume continues from there"*
+   (the manual button), with *"What had arrived is kept"* twice.
