@@ -94,7 +94,12 @@ class ControlSession(
      *
      * Safe to call from any thread, including the main one — that is the whole point of it.
      */
-    fun send(envelope: Envelope) {
+    /**
+     * Returns whether the frame was **queued** — `false` when the session is already shutting down and
+     * the frame was dropped. Queued is not delivered: a frame queued just before the socket fails can
+     * still be lost. Callers that must not overclaim (defect 157: a pull's verdict) read it.
+     */
+    fun send(envelope: Envelope): Boolean {
         // Encoding stays on the caller's thread: it is pure CPU, and it keeps a payload stamped at
         // the moment of the call rather than whenever the queue happens to drain. The pong's
         // monotonic clock reading is the one that would go wrong if this moved.
@@ -123,9 +128,11 @@ class ControlSession(
                     runCatching { socket.close() }
                 }
             }
+            return true
         } catch (e: RejectedExecutionException) {
             // The session is already shutting down. Saying so beats a frame vanishing quietly.
             LinkLog.w("control", "Dropped $type: the session is closing")
+            return false
         }
     }
 
@@ -135,7 +142,9 @@ class ControlSession(
         message: String,
         feature: String? = null,
         fixHint: String? = null,
-    ) = send(Envelope.error(requestId, code, feature, message, fixHint))
+    ) {
+        send(Envelope.error(requestId, code, feature, message, fixHint))
+    }
 
     /** Blocking read loop. Returns when the peer disconnects or violates the protocol. */
     fun run() {

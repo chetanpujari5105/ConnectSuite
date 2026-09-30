@@ -22,6 +22,7 @@ const sharedRoots = require('../shared/filesRoots') as {
 import { ask, rows, FS_LIST_TIMEOUT_MS } from './feature';
 import type { LinkClient } from './link';
 import { log } from './logger';
+import { SESSION_ENDED_EVENT, type SessionEnded } from '../shared/session';
 
 /** Where a pulled file landed on this Mac, and what it cost to get here. */
 export interface PullOutcome {
@@ -50,6 +51,9 @@ export interface PullOutcome {
 
 /** How often an in-flight block pull saves its verified count. */
 export const RECORD_SAVE_EVERY_MS = 2_000;
+/** Why a pull stopped when its session ended (defect 157). An interruption: kept, and resumable. */
+export const SESSION_ENDED_REASON = 'The connection to the phone ended. What had arrived is kept, and it continues when the phone is back.';
+
 /** A pull interrupted less than this long ago resumes on reconnect without a click (same run only). */
 export const AUTO_RESUME_WINDOW_MS = 10 * 60 * 1000;
 
@@ -474,6 +478,20 @@ export class FilesClient {
     this.extra.onPullAgreed?.({ transferId, rootId: options.rootId, id: options.id, name: options.name, resumedFrom: owned?.from ?? 0, blocks: verifier !== undefined });
     const abort = new AbortController();
     this.active.set(transferId, { abort, name: options.name, record: owned?.record ?? null });
+    // The pull is bound to the session its socket claims with. When that session ends — a user
+    // Disconnect, the phone closing the link — the pull stops here at once, as an **interruption**:
+    // not the person's Pause (manual resume only) and not Cancel (which deletes), so the owned partial
+    // and its record are kept and a reconnect within 10 minutes resumes it. Without this the phone
+    // streamed on and the Mac waited 30 s for a verdict the dead session could never carry (defect
+    // 157). A replacement session has a different token and is left alone.
+    const onSessionEnded = (ended: SessionEnded): void => {
+      if (ended.token !== token || abort.signal.aborted) return;
+      log.info('files', `pull ${transferId} (${options.name}) stopped: the session it ran on ended (${ended.reason}); what has arrived is kept`);
+      abort.abort(SESSION_ENDED_REASON);
+    };
+    link.on(SESSION_ENDED_EVENT, onSessionEnded);
+    // The session may already have ended while this pull was being agreed, before anything listened.
+    if (link.token() !== token) onSessionEnded({ token, reason: 'it ended while the pull was being agreed' });
     // The record follows the verified count, so an interruption loses at most a few seconds of blocks.
     const persist = async (): Promise<void> => {
       if (!owned || !verifier || !store) return;
@@ -507,6 +525,7 @@ export class FilesClient {
       })
       .finally(() => {
         if (verifier) link.off('message', onMessage);
+        link.off(SESSION_ENDED_EVENT, onSessionEnded);
         if (timer) clearInterval(timer);
         this.active.delete(transferId);
       });

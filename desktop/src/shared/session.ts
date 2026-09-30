@@ -37,3 +37,19 @@ export interface SessionScoped {
 export function clearedSession(): SessionScoped {
   return { sessionToken: null, capabilities: [], unavailable: [], limited: [], negotiated: {} };
 }
+
+/**
+ * Emitted by `LinkClient` when a session that had a token ends — a user Disconnect, the phone closing
+ * the connection, a protocol error — carrying **that** session's token (defect 157). Work bound to the
+ * session (a bulk pull claims with its token) listens for it and stops; work bound to a replacement
+ * session carries a different token and is left alone. One name, so the emitter and the listeners
+ * cannot drift apart.
+ */
+export const SESSION_ENDED_EVENT = 'session-ended';
+
+export interface SessionEnded {
+  /** The token of the session that ended — never the replacement's. */
+  token: string;
+  /** Why it ended, as `teardown` was told. */
+  reason: string;
+}

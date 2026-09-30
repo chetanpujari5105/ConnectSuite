@@ -13,6 +13,7 @@ import { FilesClient } from './files';
 import { PullResumeStore, MAX_RESUME_RECORDS, STORE_FULL_SENTENCE } from './pullResume';
 import { blockCountFor, blockSizeFor, rootOf } from '../shared/fsBlocks';
 import { pullPartPathFor } from '../shared/transferFiles';
+import { SESSION_ENDED_EVENT } from '../shared/session';
 
 /**
  * L2 on the Mac, end to end through the product's `FilesClient.pull` and `BulkClient.pull` over a real
@@ -46,6 +47,8 @@ interface Scenario {
   dropAfter?: number;
   /** The phone ends with this `fs.transfer.done` instead of a success. */
   done?: Record<string, unknown>;
+  /** Wait this long after each 256 KiB chunk, so a transfer is still moving when a test acts on it. */
+  paceMs?: number;
 }
 
 function harness(scenario: Scenario = {}) {
@@ -61,6 +64,7 @@ function harness(scenario: Scenario = {}) {
   let n = 0;
   const pending = new Map<string, { from: number }>();
   link.isConnected = () => true;
+  link.token = () => sessionRef.token;
   link.negotiated = () => scenario.negotiated ?? { 'fs.blocks': 1 };
   link.request = async (type: string, payload: Record<string, unknown>) => {
     if (type === 'fs.transfer.cancel') { cancels.push(payload); return { type, payload: { stopped: true } }; }
@@ -71,7 +75,15 @@ function harness(scenario: Scenario = {}) {
     pending.set(transferId, { from: answer?.accepted === true ? Number(answer.from) : 0 });
     return { type, payload: { transferId, direction: 'pull', size: SIZE, mtimeMs: MTIME, name: 'clip.bin', mime: 'application/octet-stream', sha256: null, offset: 0, chunkMax: 262144, blockSize: BS, blockCount: COUNT, ...(answer ? { resume: answer } : {}) } };
   };
-  const emit = (type: string, payload: Record<string, unknown>) => link.emit('message', { type, payload });
+  // The control channel: once a session has ended, nothing the phone says on it reaches the Mac —
+  // the block digests and the verdict are dropped, as the phone logged on hardware (defect 157).
+  const control = { down: false };
+  const sessionRef = { token: 'tok' };
+  const emit = (type: string, payload: Record<string, unknown>) => { if (!control.down) link.emit('message', { type, payload }); };
+  /** The session [token] ends, the way `LinkClient.teardown` reports it. The fake phone keeps streaming. */
+  const endSession = (token: string, reason = 'user disconnected') => { control.down = true; link.emit(SESSION_ENDED_EVENT, { token, reason }); };
+  /** A new session is up under [token]. */
+  const reconnect = (token: string) => { control.down = false; sessionRef.token = token; };
 
   // The fake phone's bulk port: reads the token and header, serves from the claimed offset.
   const server: Server = createServer((socket: Socket) => {
@@ -96,10 +108,12 @@ function harness(scenario: Scenario = {}) {
     const until = cut ?? (scenario.stallAfter !== undefined && n === 1 ? from + scenario.stallAfter : SIZE);
     let sentBlock = Math.floor(from / BS);
     for (let at = from; at < until; at += 256 * 1024) {
+      if (socket.destroyed) return; // the Mac hung up: a real phone's next write would fail here
       const piece = bytes.subarray(at, Math.min(until, at + 256 * 1024));
       const len = Buffer.alloc(4);
       len.writeUInt32BE(piece.length);
       if (!socket.write(Buffer.concat([len, piece]))) await new Promise((r) => socket.once('drain', r));
+      if (scenario.paceMs) await new Promise((r) => setTimeout(r, scenario.paceMs));
       const complete = Math.floor(Math.min(until, at + 256 * 1024) / BS);
       if (complete > sentBlock) {
         emit('fs.transfer.blocks', { transferId: header.transferId, first: sentBlock, sha256: DIGESTS.slice(sentBlock, complete) });
@@ -123,7 +137,7 @@ function harness(scenario: Scenario = {}) {
   const client = new FilesClient(
     () => link as never,
     () => bulk as never,
-    () => ({ host: '127.0.0.1', token: 'tok' }),
+    () => ({ host: '127.0.0.1', token: sessionRef.token }),
     {
       resume: { store: () => resumeStore, phone: () => PHONE_FP },
       receiveFolder: async () => ({ ok: true, folder }),
@@ -133,7 +147,7 @@ function harness(scenario: Scenario = {}) {
   );
   const pull = () => client.pull({ rootId: 'saf:primary', id: 'doc-1', name: 'clip.bin', size: SIZE });
   const done = () => { server.close(); rmSync(root, { recursive: true, force: true }); };
-  return { client, pull, begins, cancels, folder, resumeStore, scenario, done, clock, agreed };
+  return { client, pull, begins, cancels, folder, resumeStore, scenario, done, clock, agreed, endSession, reconnect, link };
 }
 
 /** Waits until the transfer is in flight (its first bytes written), then acts. */
@@ -351,5 +365,98 @@ test('SOURCE_CHANGED from the phone: nothing saved, the partial and the record a
     assert.equal(existsSync(pullPartPathFor(join(h.folder, 'clip.bin'))), false);
     assert.deepEqual(await h.resumeStore.all(), []);
     assert.deepEqual(h.client.takeAutoResumable(), [], 'a changed file is not resumed');
+  } finally { h.done(); }
+});
+
+// ---- defect 157: a session ending stops the pull it owns, keeps what is resumable ----------------
+//
+// Hardware (L1/L2 T3, 2026-09-30): after the Mac's Disconnect at 40%, the phone streamed on over the
+// bulk socket, the digests and verdict were dropped with the control session, and the Mac waited its
+// full 30 s for a `done` that could never come before it called the pull interrupted. The fake phone
+// here streams on exactly like that — the Mac must stop by itself, on the session's end.
+
+/** How long a stop may take from the session's end to the pull settling: the socket is destroyed in the
+ * same tick, then the bytes already accepted are flushed and the record saved. Before the fix: 30 s. */
+const STOP_BOUND_MS = 2_000;
+const partialSize = (h: ReturnType<typeof harness>): number => {
+  const p = pullPartPathFor(join(h.folder, 'clip.bin'));
+  return existsSync(p) ? readFileSync(p).length : -1;
+};
+
+test('157: a session ending mid-pull stops that pull at once — owned partial and record kept, nothing published — and a reconnect resumes it', T, async (t) => {
+  const h = harness({ paceMs: 8 });
+  try {
+    const first = h.pull();
+    await whenReceiving(h, 10 * MiB);
+    const t0 = Date.now();
+    h.endSession('tok');
+    const r = await first;
+    const stopMs = Date.now() - t0;
+    assert.ok(stopMs < STOP_BOUND_MS, `settled ${stopMs} ms after the session ended (bound ${STOP_BOUND_MS} ms; it waited 30 s for a verdict before)`);
+    assert.equal(r.ok, false);
+    assert.equal(r.paused, true, `kept as paused (resumable): ${r.reason}`);
+    assert.notEqual(r.cancelled, true, 'a session ending is not a Cancel');
+    assert.ok(!readdirSync(h.folder).includes('clip.bin'), 'nothing is published');
+    const held = partialSize(h);
+    assert.ok(held > 0 && held < SIZE, `the owned partial is kept, short of the file (${held} of ${SIZE})`);
+    t.diagnostic(`stop latency: ${stopMs} ms from the session ending to the pull settled (bound ${STOP_BOUND_MS} ms); partial held ${held} of ${SIZE} bytes`);
+    await new Promise((res) => setTimeout(res, 400));
+    assert.equal(partialSize(h), held, 'no byte reaches the partial after the stop, though the phone streams on');
+    const [record] = await h.resumeStore.all();
+    assert.ok(record, 'the resume record is kept');
+    assert.deepEqual(record!.digests, DIGESTS.slice(0, record!.digests.length), 'only true, verified blocks are recorded');
+    const auto = h.client.takeAutoResumable();
+    assert.equal(auto.length, 1, 'an interruption is offered to the reconnect for automatic resume');
+
+    h.reconnect('tok-2');
+    const r2 = await h.client.pull(auto[0]!); // what main.ts does on the reconnect edge
+    assert.equal(r2.ok, true, r2.reason);
+    assert.equal(r2.resumedFrom, record!.digests.length * BS, 'resumed from the verified block boundary');
+    assert.equal(sha(readFileSync(join(h.folder, 'clip.bin'))), sha(SOURCE), 'the resumed file is the source');
+    assert.deepEqual(await h.resumeStore.all(), []);
+    assert.deepEqual(readdirSync(h.folder), ['clip.bin'], 'partial gone once published');
+  } finally { h.done(); }
+});
+
+test('157: an old session ending does not stop a replacement session\'s pull', T, async () => {
+  const h = harness({ paceMs: 8 });
+  try {
+    h.reconnect('tok-new');
+    const first = h.pull();
+    await whenReceiving(h, 10 * MiB);
+    h.link.emit(SESSION_ENDED_EVENT, { token: 'tok-old', reason: 'phone closed the connection' }); // a late teardown of the session it replaced
+    const r = await first;
+    assert.equal(r.ok, true, r.reason);
+    assert.equal(sha(readFileSync(join(h.folder, 'clip.bin'))), sha(SOURCE));
+    assert.deepEqual(h.client.takeAutoResumable(), []);
+  } finally { h.done(); }
+});
+
+test('157: a Pause the person chose stays manual when the session then ends', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB });
+  try {
+    const first = h.pull();
+    await whenReceiving(h, 10 * MiB);
+    await h.client.stopPull('t-1', 'pause');
+    h.endSession('tok');
+    const r = await first;
+    assert.equal(r.paused, true);
+    assert.deepEqual(h.client.takeAutoResumable(), [], 'never resumed by a reconnect');
+    assert.equal((await h.client.pausedPulls()).length, 1, 'still listed as paused, waiting for Resume');
+  } finally { h.done(); }
+});
+
+test('157: Cancel is unchanged when the session then ends — its partial and record go', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB });
+  try {
+    const first = h.pull();
+    await whenReceiving(h, 10 * MiB);
+    await h.client.stopPull('t-1', 'cancel');
+    h.endSession('tok');
+    const r = await first;
+    assert.equal(r.cancelled, true);
+    assert.deepEqual(await h.resumeStore.all(), []);
+    assert.deepEqual(readdirSync(h.folder), [], 'no partial left');
+    assert.deepEqual(h.client.takeAutoResumable(), []);
   } finally { h.done(); }
 });

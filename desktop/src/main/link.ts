@@ -19,7 +19,7 @@ import {
   type PairRejected,
 } from '../shared/protocol';
 import { classifyLinkError, pairingHealth, type LinkFailure } from '../shared/linkHealth';
-import { clearedSession, type SessionScoped } from '../shared/session';
+import { clearedSession, SESSION_ENDED_EVENT, type SessionEnded, type SessionScoped } from '../shared/session';
 import { MAC_EXT, negotiateAll, parseExt } from '../shared/extensions';
 import { debugSwitches } from './debugSwitches';
 import { CANDIDATE_TIMEOUT_MS, discoverCandidates, type Candidate } from './discovery';
@@ -681,6 +681,9 @@ export class LinkClient extends EventEmitter {
       pending.reject(new Error(reason));
     }
     this.pending.clear();
+    // Which session is ending, read before it is cleared: work that claimed a socket with this token
+    // (a bulk pull) stops on it, and a replacement session's work carries a different token (defect 157).
+    const endedToken = this.session.sessionToken;
     // One assignment, so a session-scoped fact added later cannot be left behind the way the
     // capability list was (defect 25) — the claim must not outlive the connection that made it.
     this.session = clearedSession();
@@ -691,6 +694,7 @@ export class LinkClient extends EventEmitter {
       socket.removeAllListeners('close');
       socket.destroy();
     }
+    if (endedToken) this.emit(SESSION_ENDED_EVENT, { token: endedToken, reason } satisfies SessionEnded);
     if (this.phase === 'connected' || this.phase === 'handshaking') {
       log.info('link', `Disconnected: ${reason}`);
       this.failed(reason);

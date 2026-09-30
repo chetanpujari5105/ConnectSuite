@@ -1,0 +1,85 @@
+package com.chetan.connectsuite.sync.v2
+
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * Stopping live bulk streams, and what a control session ending does to the transfers it agreed
+ * (defect 157).
+ *
+ * A bulk stream runs on its own socket, so the control session that agreed it can end while bytes are
+ * still moving. Every block digest and the final verdict travel on that control session, so once it is
+ * gone the Mac can never confirm the file: a stream that keeps sending is spending the link on bytes
+ * the Mac will throw away. Found on hardware (L1/L2 T3, 2026-09-30): after the Mac's Disconnect at
+ * 40%, this phone sent the remaining 125.8 MB, dropped every digest and the `done`, and counted the
+ * transfer as completed.
+ *
+ * Kept pure so a JVM test runs these rules against the real [BlockPullSender]; `BulkTransfers` holds
+ * the maps and the sockets and calls in here.
+ */
+object BulkStops {
+
+    /** The stop reason when the session that agreed a transfer ended. Never a request from the Mac. */
+    const val SESSION_ENDED = "session-ended"
+
+    /** What a session ending does: drop its unclaimed pulls, abandon its unclaimed pushes, stop its live streams. */
+    data class SessionEndPlan(val dropPending: Set<String>, val abandonPushes: Set<String>, val stopLive: Set<String>)
+
+    /**
+     * The plan for [endedToken] ending. [pendingOwners] and [incomingOwners] are the unclaimed transfers
+     * by the session that agreed them; [owners] holds every transfer from registration until its socket is
+     * done, so an id that is in [owners] and in neither of the other two is **live**.
+     *
+     * Ownership is by token, and a token is minted per handshake, so a replacement session's transfers
+     * are never in the plan of the session it replaced.
+     */
+    fun sessionEndPlan(
+        pendingOwners: Map<String, String>,
+        incomingOwners: Map<String, String>,
+        owners: Map<String, String>,
+        endedToken: String,
+    ): SessionEndPlan = SessionEndPlan(
+        dropPending = pendingOwners.filterValues { it == endedToken }.keys,
+        abandonPushes = incomingOwners.filterValues { it == endedToken }.keys,
+        stopLive = owners.filter { (id, owner) -> owner == endedToken && id !in pendingOwners && id !in incomingOwners }.keys,
+    )
+
+    /** How a stop is worded in the log: a session ending is not something the Mac asked for. */
+    fun describe(reason: String): String =
+        if (reason == SESSION_ENDED) {
+            "stopped: the session that agreed it ended, so the Mac could no longer confirm it"
+        } else {
+            "cancelled by the Mac (reason=$reason)"
+        }
+
+    /**
+     * Whether a pull counts as **sent in full**. The phone never learns whether the Mac saved it — the
+     * Mac checks and saves — so the most it can claim is that every byte went out and its verdict was
+     * handed to a session that could still send it.
+     */
+    fun sentInFull(allBytesSent: Boolean, verdictQueued: Boolean): Boolean = allBytesSent && verdictQueued
+}
+
+/** The live streams asked to stop, each with its reason. A stream polls [take] between chunks. */
+class LiveStops {
+    private val reasons = ConcurrentHashMap<String, String>()
+
+    /** A stop asked for by the Mac (`fs.transfer.cancel`). */
+    fun flag(transferId: String, reason: String) {
+        reasons[transferId] = reason
+    }
+
+    /** A stop from a session ending. Does not overwrite a stop the Mac already asked for (its reason is the truer one). */
+    fun flagIfAbsent(transferId: String, reason: String) {
+        reasons.putIfAbsent(transferId, reason)
+    }
+
+    /** The reason [transferId] was asked to stop, consumed; null when nobody asked. */
+    fun take(transferId: String): String? = reasons.remove(transferId)
+
+    /** Forgets any stop left for a transfer whose socket is done. */
+    fun forget(transferId: String) {
+        reasons.remove(transferId)
+    }
+
+    fun isFlagged(transferId: String): Boolean = reasons.containsKey(transferId)
+}

@@ -162,7 +162,7 @@ object BulkTransfers {
      * artifact, a checksum-failed partial is corrupt. Two states that both look like half a file on
      * disk and want opposite treatment.
      */
-    private val cancelled = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+    private val cancelled = LiveStops()
     private val counter = AtomicLong(0)
 
     private val completed = AtomicLong(0)
@@ -445,7 +445,7 @@ object BulkTransfers {
     /** Internal stop, for owners that already hold the transfer (Share's own offer ending). */
     fun cancel(transferId: String, reason: String): Boolean {
         val wasPending = pending.remove(transferId) != null
-        cancelled.add(transferId)
+        cancelled.flag(transferId, reason)
         LinkLog.i(
             "bulk",
             "fs.transfer.cancel $transferId (reason=$reason): " +
@@ -459,18 +459,27 @@ object BulkTransfers {
 
     /** Drops everything a dead session authorised. See [Pending]. */
     fun forgetSession(sessionId: String) {
-        val dropped = pending.entries.filter { it.value.sessionId == sessionId }
-        dropped.forEach { pending.remove(it.key); owners.remove(it.key) }
+        val plan = BulkStops.sessionEndPlan(
+            pendingOwners = pending.mapValues { it.value.sessionId },
+            incomingOwners = incoming.mapValues { it.value.sessionId },
+            owners = HashMap(owners),
+            endedToken = sessionId,
+        )
+        plan.dropPending.forEach { pending.remove(it); owners.remove(it) }
         // An unclaimed push is dropped too, and its partial is **kept**: the bytes on disk are a
         // resumable artifact and the record beside them is what a later attempt looks up. Deleting
         // here would turn every dropped session into a restart from zero.
-        val abandoned = incoming.entries.filter { it.value.sessionId == sessionId }
-        abandoned.forEach { incoming.remove(it.key)?.partial?.keep(); owners.remove(it.key) }
-        if (dropped.isNotEmpty() || abandoned.isNotEmpty()) {
+        plan.abandonPushes.forEach { incoming.remove(it)?.partial?.keep(); owners.remove(it) }
+        // A live stream the ended session agreed is stopped before its next chunk (defect 157): its
+        // digests and verdict could only have reached the Mac over that session. A push stopped this
+        // way keeps its partial, exactly as a Mac's cancel does.
+        plan.stopLive.forEach { cancelled.flagIfAbsent(it, BulkStops.SESSION_ENDED) }
+        if (plan.dropPending.isNotEmpty() || plan.abandonPushes.isNotEmpty() || plan.stopLive.isNotEmpty()) {
             LinkLog.i(
                 "bulk",
-                "session ended: dropped ${dropped.size} unclaimed pull(s) and " +
-                    "${abandoned.size} unclaimed push(es); partials kept",
+                "session ended: dropped ${plan.dropPending.size} unclaimed pull(s) and " +
+                    "${plan.abandonPushes.size} unclaimed push(es); partials kept; " +
+                    "stopping ${plan.stopLive.size} live stream(s) it agreed",
             )
         }
     }
@@ -535,6 +544,7 @@ object BulkTransfers {
                     receiveFrom(channel, framing, arriving)
                 } finally {
                     owners.remove(transferId)
+                    cancelled.forget(transferId)
                 }
                 return
             }
@@ -592,6 +602,7 @@ object BulkTransfers {
             streamTo(channel, framing, entry, offset)
         } finally {
             owners.remove(entry.transferId)
+            cancelled.forget(entry.transferId)
         }
     }
 
@@ -724,11 +735,8 @@ object BulkTransfers {
                 ?: throw IllegalStateException("the partial could not be opened for append")
             out.use { sink ->
                 while (true) {
-                    if (entry.transferId in cancelled) {
-                        cancelled.remove(entry.transferId)
-                        throw java.io.InterruptedIOException(
-                            "cancelled by the Mac after $received bytes",
-                        )
+                    cancelled.take(entry.transferId)?.let { why ->
+                        throw java.io.InterruptedIOException("${BulkStops.describe(why)} after $received bytes")
                     }
                     val chunk = framing.readChunk() ?: break
                     if (chunk.isEmpty()) continue
@@ -1077,11 +1085,8 @@ object BulkTransfers {
 
                 val buffer = ByteArray(CHUNK)
                 while (true) {
-                    if (entry.transferId in cancelled) {
-                        cancelled.remove(entry.transferId)
-                        throw java.io.InterruptedIOException(
-                            "cancelled by the Mac after $sent of ${entry.size} bytes",
-                        )
+                    cancelled.take(entry.transferId)?.let { why ->
+                        throw java.io.InterruptedIOException("${BulkStops.describe(why)} after $sent of ${entry.size} bytes")
                     }
                     val read = input.read(buffer)
                     if (read <= 0) break
@@ -1221,12 +1226,14 @@ object BulkTransfers {
     private fun streamBlocks(channel: AuthenticatedChannel, framing: BulkFraming, entry: Pending, plan: BlockPlan) {
         val startedAt = System.currentTimeMillis()
         val from = FsBlocks.requiredOffset(plan.resume, plan.blockSize)
+        // Why the stream was stopped, when it was: the Mac's own request, or its session ending.
+        var stopWhy: String? = null
         try {
             val outcome = (entry.open() ?: throw IllegalStateException("the file could not be opened")).use { input ->
                 BlockPullSender(entry.size, plan.mtimeMs, plan.blockSize, plan.resume, chunk = CHUNK).run(
                     input,
                     plan.stat,
-                    { cancelled.remove(entry.transferId) },
+                    { cancelled.take(entry.transferId)?.also { stopWhy = it } != null },
                     object : BlockPullSender.Sink {
                         override fun chunk(buffer: ByteArray, length: Int, absoluteStart: Long) {
                             val out = if (length == buffer.size) buffer else buffer.copyOf(length)
@@ -1255,22 +1262,26 @@ object BulkTransfers {
                 )
             }
             val elapsed = System.currentTimeMillis() - startedAt
-            if (outcome is BlockPullSender.Outcome.Sent) completed.incrementAndGet() else failed.incrementAndGet()
-            channel.session.send(
+            // The verdict first, then the count: a pull whose verdict could not be handed to a live
+            // session is not "sent in full" — the Mac cannot confirm it (defect 157).
+            val verdictQueued = channel.session.send(
                 Envelope(
                     type = MessageType.FS_TRANSFER_DONE,
                     payload = FsBlocks.donePayload(entry.transferId, entry.name, outcome, entry.size, plan.blockSize, plan.resume, elapsed),
                 ),
             )
+            val sentInFull = BulkStops.sentInFull(outcome is BlockPullSender.Outcome.Sent, verdictQueued)
+            if (sentInFull) completed.incrementAndGet() else failed.incrementAndGet()
             val line = "${entry.transferId} block pull ${outcome.javaClass.simpleName}: ${from + outcome.bytesSent} of ${entry.size} bytes " +
                 "(${outcome.bytesSent} sent this time${if (from > 0) ", resumed at $from" else ""}) in ${elapsed}ms " +
                 "(${rateOf(outcome.bytesSent, elapsed)})" +
                 when (outcome) {
-                    is BlockPullSender.Outcome.Sent -> ", ${outcome.blockCount} blocks, manifest ${outcome.manifestRoot.take(12)}…"
+                    is BlockPullSender.Outcome.Sent -> ", ${outcome.blockCount} blocks, manifest ${outcome.manifestRoot.take(12)}…" +
+                        (if (sentInFull) "" else " — every byte went out, but its verdict could not be sent: the session had ended, so the Mac cannot confirm it; not counted as completed")
                     is BlockPullSender.Outcome.SourceChanged -> " — ${outcome.why}: ${outcome.detail}"
-                    is BlockPullSender.Outcome.Cancelled -> " — cancelled by the Mac"
+                    is BlockPullSender.Outcome.Cancelled -> " — ${BulkStops.describe(stopWhy ?: "")}"
                 } + " — ${tally()}; ${framing.tally.summary()}"
-            if (outcome is BlockPullSender.Outcome.Sent) LinkLog.i("bulk", line) else LinkLog.w("bulk", line)
+            if (sentInFull) LinkLog.i("bulk", line) else LinkLog.w("bulk", line)
         } catch (e: Exception) {
             failed.incrementAndGet()
             val elapsed = System.currentTimeMillis() - startedAt

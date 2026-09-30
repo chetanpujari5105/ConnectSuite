@@ -26341,3 +26341,136 @@ then Resume once.
 **Earlier attempt, for the record:** 13:55:55, the build before `01ebf3b`. *Attempted; Pause/Resume not
 exercised because Pause was unreachable.* The pull completed as `sidekick-pass-stop-200mb (3).bin`
 (SHA-256 equal to the source; kept).
+
+### Defect 157 — a user Disconnect did not stop an active block pull, and the phone counted it completed
+
+**Hardware, L1/L2 T3, 2026-09-30 15:32–15:36 — T3's reconnect, resume and final integrity checks PASSED.**
+This defect is what else it showed.
+
+**Setup.**
+- Mac development app pid 76120 (`dist` from `01ebf3b`) and the SM-S938B, `fs.blocks: 1` negotiated.
+- Source `Download/ConnectSuite/sidekick-pass-stop-200mb.bin`: `_id=1000308768`, 209,715,200 B, SHA-256
+  `bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9`.
+- Started through the Files pane's **Copy again**; the source was already local from T2.
+
+**Disconnect.**
+- Settings → Connection → **Disconnect**, pressed once. The Mac's own partial held 84,148,224 B (40.13%,
+  receiver-confirmed) at that moment.
+- Mac: `Disconnected: user disconnected` (15:34:33.010). Phone: `Session … ended: peer closed the
+  connection`.
+
+**What did not stop.**
+- The phone kept streaming over the bulk socket. The Mac's partial grew to the full 209,715,200 B within
+  2.8 s.
+- The phone dropped every block digest and the verdict: 70-odd lines of *"Dropped fs.transfer.blocks: the
+  session is closing"*, then *"Dropped fs.transfer.done"*.
+- It logged `block pull Sent: 209715200 of 209715200 bytes … — 4 completed`, counting as **completed** a
+  transfer the Mac never saved.
+- The Mac waited its full 30 s: *"not saved: the phone never said how the transfer ended (no
+  fs.transfer.done within 30000 ms) … 640 blocks verified"* (15:35:05.806), then *"interrupted at 640
+  verified blocks of 1600; the partial and record are kept"*.
+- At rest: one owned partial (the full 209,715,200 B, of which only 83,886,080 B were verified), one record
+  (640 digests), no final file, ledger `[]`. The Mac did not reconnect by itself.
+
+**Reconnect: PASS.**
+- Connect was pressed once, at 15:36:10, after the Mac's own *interrupted* line.
+- Mac: *"resuming sidekick-pass-stop-200mb.bin automatically: interrupted less than 10 minutes ago in this
+  run"*; *"resumes at 83886080 of 209715200 bytes (640 blocks verified on this Mac and re-hashed by the
+  phone)"*; claimed at offset 83886080, so the unverified tail was cut off.
+- Phone: `verifying` to 83,886,080, then `Sent … (125829120 sent this time, resumed at 83886080)`,
+  manifest `89d45891d883…`.
+- Mac: every one of the 1,600 blocks matched.
+- `~/Downloads/Sidekick/sidekick-pass-stop-200mb (5).bin`: SHA-256 equal to the source. Partial and
+  record removed, all 49 pre-existing files unchanged, the source unchanged, ledger `[]`.
+
+**Cost:** 125,829,120 B sent twice, and a 30 s stall. No data was harmed.
+
+**Cause:** a bulk transfer runs on its own socket. On the Mac, a pull's abort fired only on Pause or Cancel,
+never on the link's teardown. On the phone, `forgetSession` dropped only *unclaimed* pulls and pushes, so a
+live stream ran to the end. And the block-pull path counted `completed` whenever every byte was sent,
+without knowing whether its `done` could still be delivered.
+
+**Fix** (tests only; not installed, not run on hardware). The target behaviour, point by point:
+1. **Mac:** `LinkClient.teardown` reads the ending session's token before clearing it and emits
+   `SESSION_ENDED_EVENT` (`shared/session.ts`) with it. `FilesClient.pull` subscribes for its own
+   duration, beside the digest listener, and stops **its** pull when the token matches the one its socket
+   claimed with. It also checks for a session that ended while the pull was being agreed.
+2. **Phone:** `forgetSession` applies `BulkStops.sessionEndPlan`, which stops the live streams that session
+   agreed as well as dropping its unclaimed ones. The stop is flagged with its reason in `LiveStops`, which
+   all three stream loops poll between chunks.
+3. **What is kept:** the Mac's stop is an *interruption*, neither the person's Pause nor Cancel. So the owned
+   verified partial and its record are kept, and `takeAutoResumable` offers it to the reconnect, exactly as
+   before. A push stopped on the phone keeps its partial, as a Mac's cancel does.
+4. **Pause and Cancel unchanged:** an explicit Pause remains manual-resume-only, even when the session then
+   ends. Cancel still deletes only its own partial and record.
+5. **Ownership:** by token on both sides, and a token is minted per handshake. A late teardown of an old
+   session leaves a replacement session's pull alone.
+6. **Truthful sender status:** the phone counts a block pull `completed` only when every byte went out
+   **and** its verdict was queued to a live session. `ControlSession.send` now returns whether it queued.
+   Otherwise the line says *"every byte went out, but its verdict could not be sent: the session had ended,
+   so the Mac cannot confirm it; not counted as completed"*. A stop is worded as the session ending, or as
+   *"cancelled by the Mac (reason=…)"*.
+7. **Bounded stop latency, measured:**
+   - Mac: the socket is destroyed in the same tick as the event, and frames arriving later are ignored. The
+     test measured **3 ms** from the session ending to the pull settled (bound 2,000 ms; 32,131 ms before
+     the fix). The partial did not change over the next 400 ms while the fake phone kept streaming.
+   - Phone: a flagged stream stops before its next read. Measured **0 bytes** handed to the socket after the
+     teardown (bound one chunk: 256 KiB in production).
+   - Bytes already in the kernel socket buffers when the stop lands are allowed and not promised away.
+
+**Tests.**
+
+| Suite | Test | What it covers |
+|---|---|---|
+| Mac, `filesResume.test.ts` (real `FilesClient` and `BulkClient` over a local socket, fake phone that keeps streaming after the session ends) | *a session ending mid-pull stops that pull at once …* | stop latency, owned partial and record kept, nothing published, no bytes after the stop, `takeAutoResumable`, reconnect resumes from the verified boundary to a matching SHA-256 |
+| | *an old session ending does not stop a replacement session's pull* | ownership by token |
+| | *a Pause … stays manual when the session then ends* | Pause unchanged |
+| | *Cancel is unchanged when the session then ends* | Cancel unchanged |
+| Mac, `linkSessionEnded.test.ts` (real `LinkClient`, Electron stubbed) | 3 tests | Disconnect and a phone close each emit exactly the ending token, once; nothing is emitted with no session |
+| Phone, `BulkStopsTest` (real `BlockPullSender` and `LiveStops`, the real plan) | 7 tests | a teardown mid-transfer stops within one chunk with the session-ended reason; a replacement session's stream runs to `Sent`; the plan (live only, own session only, never pending); a Mac's Pause reason not overwritten; the wording; `sentInFull`; and a source guard holding `BulkTransfers` to these calls and `send` to returning `Boolean` |
+
+**Red before the fix:**
+- *"settled 32131 ms after the session ended (bound 2000 ms …)"*;
+- `LinkClient` emitted nothing;
+- the live stream ran to `Sent`, the plan stopped nothing, a dropped verdict counted as sent in full, and a
+  session ending was worded *"cancelled by the Mac"*.
+
+**Mutations**, each red on the named test, sources restored by checksum; phone verdicts from result files
+0 s old:
+- **Mac:**
+  - MM1 no emit;
+  - MM2 emitting the cleared token;
+  - MM3 `FilesClient` not listening;
+  - MM4 no token check (the replacement test);
+  - MM5 treated as Pause;
+  - MM6 treated as Cancel.
+- **Phone:**
+  - PM1 live streams not stopped;
+  - PM2 ownership ignored;
+  - PM3 pending counted as live;
+  - PM4 `forgetSession` not applying the stop (the source guard);
+  - PM5 the Mac's reason overwritten;
+  - PM6 a dropped verdict counted;
+  - PM7 the wording.
+
+**Suites:** Mac 1,409 / 0 and phone 1,094 / 0 (all five modules, `--rerun`, every result file written
+after the run began). Both typechecks exit 0.
+
+**Limitations:**
+- Kernel socket buffers, as above.
+- An old-path pull stopped this way is not resumable and restarts from zero.
+- *Queued* is not *delivered*.
+- For a silently dead link, the phone's stop waits for its idle timeout.
+- The handler glue in `BulkTransfers` (sockets, `Context`) is reached only by the source guard. **Hardware
+  is the only evidence for the full path.**
+
+**The hardware retry that would prove it (not run):** one T3, as before — the same source, the same
+preflight, Disconnect once at 40–60% receiver-confirmed, then Connect once. Expected:
+- the Mac's partial stops growing within about one chunk of the click (no 2.8 s run to the end);
+- the Mac logs *"stopped: the session it ran on ended (user disconnected)"* at once, not a 30 s *no
+  verdict* line;
+- the phone logs *"stopping 1 live stream(s) it agreed"* and a `Cancelled` block pull worded as the session
+  ending, with no `completed` count;
+- the reconnect resumes from the verified boundary, and the saved file's SHA-256 equals the source.
+
+It needs both apps rebuilt and installed.

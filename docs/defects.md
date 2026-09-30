@@ -172,6 +172,7 @@ own heading there, and its own row here.
 | **154** | **The destination check's probe files are deleted by name with no identity check.** `checkDestination` creates `.sidekick-link-probe-<nonce>` and its `-2` link, records their identity in the ledger, and then deletes both with `unlink` by name without comparing that identity — the same shape as 153's failure cleanup, for files that live for milliseconds | **Fixed 2026-09-29, tests only.** The first probe's identity is read (`lstat` dev/ino) right after its exclusive create; each probe name is unlinked only while `lstat` still shows that identity, and anything else is left and reported (`… now another file, left untouched`). One `lstat` → `unlink` window remains, the same residual the share pull documents | `shareDestination.test.ts` → *154: a probe name swapped…*, red first against the old code by mutation (identity check disabled) | `docs/complete-app-pass-2026-09-29.md` §2 | `docs/testing.md` → Defect 154 |
 | **155** | **`ShareReceiver.decide` trusted its caller to send one decision at a time.** After an Accept's destination check (an `await`) it did not re-read the offer's state, and nothing marked an Accept as in flight. So a Decline arriving during that check was **overwritten**: the offer went on to `accepting`, was pulled, and ended **saved** — a person's Decline followed by a saved file. Two Accepts for one offer sent **two `share.respond` accepts and started two pulls**; against the fake phone, two copies were published (`same-name.png`, `same-name (2).png`). **Not reachable through the shipped window**, which disables Decline and Accept while a decision is pending (tested); reachable by any second caller of the main-process API | **fixed 2026-09-26 (`676c5f2`). In the Mac dev app running since 2026-09-26 12:53:45 (pid 93018, `dist` built from `f71285b`); the race has not been produced on hardware** (corrected 2026-09-26 — `docs/testing.md` → *Stage 0 corrections*) | red-before on both, at v2 and v3 (`Decline … wins`: *actual `saved`, expected `declined`*; `clicked twice`: never settled, two pulls); mutations M1 and M2 each red on their own test; 1245/1245 Mac tests | `docs/testing.md` → Defect 155 |
 | **156** | **The running Mac app's Files pane had no Pause, Resume or Cancel for a block pull.** `renderer.ts` built the pane's bridge as an inline literal that passed `fsPull` and omitted `fsPullStop`, `fsPausedPulls` and `fsCancelPaused`. The preload exposed all three and main handled them, but the pane draws Pause/Cancel only when its bridge has `fsPullStop` and reads the paused list only through `fsPausedPulls`. Found on hardware: L1/L2 T2 (2026-09-30 13:55) reached 42.5% of a 200 MiB block pull with **0** Pause buttons on screen. Every Files-pane test was green because each gave the view its own bridge double that already had the three calls | **fixed 2026-09-30 (`01ebf3b`); verified on hardware 2026-09-30 15:20–15:22** (L1/L2 T2 retry, Mac dev build of `01ebf3b`): the real Pause paused a 200 MiB block pull at 98,304,000 B = 750 of 1,600 verified blocks, nothing resumed until Resume, Resume continued from that block with the phone re-hashing the prefix, and the saved file's SHA-256 equals the source | `filesWiring.test.ts`, 3 tests, red against the moved-verbatim literal (*"lacks … fsCancelPaused, fsPausedPulls, fsPullStop"*; *"Pause is drawn: actual 0"*); mutations M0–M7 each red on the named test; Mac 1,402/0, both typechecks 0; **hardware: `docs/testing.md` → Defect 156 → verified on hardware** | `docs/testing.md` → Defect 156 |
+| **157** | **A user Disconnect did not stop an active block pull, and the phone counted it completed.** A bulk pull runs on its own socket; nothing on either side stopped it when the control session that agreed it ended. Found on hardware (L1/L2 T3, 2026-09-30 15:34): Disconnect at 84,148,224 B (40.13%) of a 200 MiB pull, and the phone streamed on to 209,715,200 B, dropped every block digest and the `done` (*"Dropped fs.transfer.blocks: the session is closing"*), and logged the send as **completed**; the Mac waited its full 30 s for a verdict before calling the pull interrupted at 640 verified blocks. **No data was harmed** — reconnect resumed at 83,886,080 B / block 640 and the saved file's SHA-256 equals the source — but 125,829,120 B were sent twice and a person who pressed Disconnect saw nothing stop | **fixed 2026-09-30, tests only — not hardware-verified.** Mac: `LinkClient.teardown` emits `session-ended` with the ending session's token; `FilesClient.pull` stops its own pull on it as an interruption (owned partial and record kept, automatic resume on reconnect unchanged; Pause stays manual; Cancel unchanged; a replacement session's pull untouched). Phone: `forgetSession` stops the live streams that session agreed before their next chunk (`BulkStops`), logs the stop as a session ending, and counts a pull as completed only when its verdict could be queued (`ControlSession.send` now says whether it queued) | `filesResume.test.ts` +4 and `linkSessionEnded.test.ts` 3 (Mac), `BulkStopsTest` 7 (phone); red before (*"settled 32131 ms after the session ended"*; LinkClient emitted nothing; the live stream ran to `Sent`); mutations MM1–MM6 and PM1–PM7 each red on the named test; measured stop: Mac 3 ms (bound 2,000 ms), phone 0 bytes after the flag (bound one chunk); Mac 1,409/0, phone 1,094/0, typechecks 0 | `docs/testing.md` → Defect 157 |
 
 ---
 
@@ -3279,3 +3280,33 @@ literal in `renderer.ts`**: it repairs today's omission and leaves the next one 
 **Verified on hardware 2026-09-30 (L1/L2 T2 retry, 15:20–15:22):** the real Pause was drawn and paused
 the pull at 750 of 1,600 verified blocks, the paused copy showed **Resume** and what it kept, and one
 Resume finished the file with its SHA-256 equal to the source (`docs/testing.md` → Defect 156).
+
+### 157 — a user Disconnect did not stop an active block pull, and the phone counted it completed · **fixed 2026-09-30, tests only**
+
+A bulk transfer runs on its own socket, bound to the control session that agreed it. When that session
+ended, neither side stopped the stream: the Mac's pull ignored the link's teardown and waited 30 s for a
+`done` the dead session could never carry, and the phone's `forgetSession` dropped only **unclaimed**
+transfers, so a live stream sent to the end and was then counted `completed` although its digests and
+verdict had been dropped. Found in L1/L2 T3 on hardware (`docs/testing.md` → Defect 157), where every
+integrity check still passed — the fault is wasted transfer, a 30 s stall, and a false count, not data.
+
+**Fix direction:** as built, and hardware-unproven.
+- The Mac: `LinkClient.teardown` emits `SESSION_ENDED_EVENT` with the **ending** session's token.
+  `FilesClient.pull` stops a pull whose socket claimed with that token as an *interruption*, which keeps
+  the owned partial and record and offers it to the reconnect.
+- The phone: `BulkStops.sessionEndPlan` adds the session's live streams to what `forgetSession` does. The
+  stop is flagged with its reason (`LiveStops`) and polled between chunks.
+
+**The wrong fixes:**
+- Reusing Cancel — it deletes the resumable partial.
+- Reusing Pause — it would make an interruption manual-resume-only.
+- Stopping by session *presence* rather than by token — a late teardown of the old session would stop
+  the replacement session's resumed pull.
+
+**Not covered:**
+- Bytes already in kernel socket buffers when the stop lands. The phone promises at most one chunk
+  (256 KiB) after its flag, and nothing about the buffers.
+- An old-path pull (≤ 64 MiB, or an older phone) stopped this way is not resumable and restarts from zero.
+- A frame queued just before the socket fails can still be lost after `send` reported it queued.
+- The phone's stop runs on `forgetSession`, which fires when the phone notices the session ended. For
+  a link that dies silently, that is the idle timeout.
