@@ -292,9 +292,20 @@ interface ConnectBridge {
     path?: string;
     bytes?: number;
     verified?: boolean;
+    verifiedBy?: 'prehash' | 'blocks';
     reason?: string;
     fixHint?: string;
+    paused?: boolean;
+    noSpace?: boolean;
+    cancelled?: boolean;
+    sourceChanged?: boolean;
+    resumedFrom?: number;
   }>;
+  fsPullStop?(options: { transferId: string; how: 'pause' | 'cancel' }): Promise<{ stopped: boolean }>;
+  fsPausedPulls?(): Promise<Array<{ rootId: string; id: string; name: string; size: number; verifiedBytes: number; updatedAtMs: number }>>;
+  fsCancelPaused?(options: { rootId: string; id: string }): Promise<{ removed: boolean; partial?: string }>;
+  onPullAgreed(callback: (info: { transferId: string; rootId: string; id: string; name: string; resumedFrom: number; blocks: boolean }) => void): void;
+  onPullFinished(callback: (info: { rootId: string; id: string; name: string; result: PullResult }) => void): void;
   /** Fire-and-forget by necessity: `startDrag` cannot survive an awaited round trip. */
   fsDrag(paths: string[]): void;
   fsThumbs(options: {
@@ -1178,6 +1189,8 @@ if (files) files.onWorkChanged = (work) => shell.setWork(work);
 if (files) {
   connect.onPushAgreed((agreed) => files.onPushAgreed(agreed));
   connect.onPushChecking((checking) => files.onPushChecking(checking));
+  connect.onPullAgreed((info) => files.onPullAgreed(info));
+  connect.onPullFinished((info) => files.onPullFinished(info));
   connect.onMessage((envelope) => files.onTransferEvent(envelope));
   connect.onStatus((status) => files.setPhoneName(status.deviceName));
 }

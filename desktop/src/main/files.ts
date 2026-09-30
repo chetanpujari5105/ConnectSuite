@@ -109,6 +109,8 @@ export class FilesClient {
       now?: () => number;
       /** Tests only: where pulls land. The product uses the configured receive folder. */
       receiveFolder?: typeof ensureReceiveFolder;
+      /** A pull was agreed: its `transferId`, so the pane can offer Pause and Cancel for it. */
+      onPullAgreed?: (info: { transferId: string; rootId: string; id: string; name: string; resumedFrom: number; blocks: boolean }) => void;
     } = {},
   ) {}
 
@@ -123,6 +125,8 @@ export class FilesClient {
   /** Block pulls in flight, for Pause and Cancel. */
   private readonly active = new Map<string, { abort: AbortController; name: string; record: ResumeRecord | null }>();
   private readonly cancelled = new Set<string>();
+  /** Paused by the person: kept, but never resumed without a click (only interruptions are). */
+  private readonly pausedByPerson = new Set<string>();
   /** Pulls interrupted in this run, for the 10-minute automatic resume on reconnect. */
   private readonly interrupted = new Map<string, { options: { rootId: string; id: string; name: string; size: number }; atMs: number }>();
 
@@ -467,6 +471,7 @@ export class FilesClient {
     if (verifier) link.on('message', onMessage);
 
     const destination = owned ? owned.record.destination : await pullDestination(ready.folder, options.name);
+    this.extra.onPullAgreed?.({ transferId, rootId: options.rootId, id: options.id, name: options.name, resumedFrom: owned?.from ?? 0, blocks: verifier !== undefined });
     const abort = new AbortController();
     this.active.set(transferId, { abort, name: options.name, record: owned?.record ?? null });
     // The record follows the verified count, so an interruption loses at most a few seconds of blocks.
@@ -515,8 +520,11 @@ export class FilesClient {
         return { ok: false, reason: 'Cancelled. Nothing was saved.', cancelled: true };
       } else {
         await persist();
-        log.info('files', `pull of ${options.name} paused at ${owned.record.digests.length} verified blocks of ${blocksPlan.kind === 'blocks' ? blocksPlan.blockCount : '?'}; the partial and record are kept`);
-        this.interrupted.set(`${options.rootId}\u0000${options.id}`, { options, atMs: this.now() });
+        const chosen = this.pausedByPerson.delete(transferId);
+        log.info('files', `pull of ${options.name} ${chosen ? 'paused by the person' : 'interrupted'} at ${owned.record.digests.length} verified blocks of ${blocksPlan.kind === 'blocks' ? blocksPlan.blockCount : '?'}; the partial and record are kept${chosen ? '; it resumes only on Resume' : ''}`);
+        // Only an interruption (link drop, sleep, no verdict, low space) may resume by itself on a
+        // reconnect; a Pause the person chose waits for their Resume.
+        if (!chosen) this.interrupted.set(`${options.rootId}\u0000${options.id}`, { options, atMs: this.now() });
         return {
           ok: false,
           reason: result.reason ?? 'The transfer paused.',
@@ -557,6 +565,7 @@ export class FilesClient {
     const running = this.active.get(transferId);
     if (!running) return { stopped: false };
     if (how === 'cancel') this.cancelled.add(transferId);
+    else this.pausedByPerson.add(transferId);
     await this.link()?.request(MessageType.FS_TRANSFER_CANCEL, { transferId, reason: how === 'cancel' ? 'user' : 'pause' }, 5_000).catch(() => undefined);
     running.abort.abort(how === 'cancel' ? 'Cancelled.' : 'Paused.');
     log.info('files', `pull ${transferId} (${running.name}) ${how === 'cancel' ? 'cancelled' : 'paused'} by the person`);
@@ -598,6 +607,13 @@ export class FilesClient {
       this.interrupted.delete(key);
     }
     return out;
+  }
+
+  /** Forget or re-pair: every record for that phone goes, each partial only if owned. */
+  async forgetPhone(fingerprint: string): Promise<number> {
+    const store = this.resume?.store();
+    this.interrupted.clear();
+    return store ? store.forgetPhone(fingerprint) : 0;
   }
 
   /** At start: expire records older than 7 days (owned partials only). */

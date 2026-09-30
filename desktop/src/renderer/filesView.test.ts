@@ -916,3 +916,151 @@ test('a finished pull says how it was checked: block by block, agreed in advance
   assert.match(say({ verified: false, verifiedBy: 'blocks' }), /nothing compared/, 'never upgraded when not verified');
   assert.match(say({}), /nothing compared/);
 });
+
+// ---- fs.blocks (L1/L2 slice 5c): Pause, Cancel, Resume and what the pane says ----------------------
+
+type PausedRow = { rootId: string; id: string; name: string; size: number; verifiedBytes: number; updatedAtMs: number };
+
+/** Adds the three `fs.blocks` bridge calls to the double, recording every call. */
+function withPullControls(pane: Pane) {
+  const b = pane.bridge as unknown as Record<string, unknown>;
+  const calls: string[] = [];
+  let paused: PausedRow[] = [];
+  b.fsPullStop = async (o: { transferId: string; how: string }) => { calls.push(`stop:${o.transferId}:${o.how}`); return { stopped: true }; };
+  b.fsPausedPulls = async () => { calls.push('paused'); return paused; };
+  b.fsCancelPaused = async (o: { rootId: string; id: string }) => { calls.push(`cancelPaused:${o.rootId}:${o.id}`); paused = []; return { removed: true, partial: 'partial deleted' }; };
+  return { calls, setPaused: (rows: PausedRow[]) => { paused = rows; } };
+}
+
+/** Starts a pull of report.pdf whose result the test decides later. */
+async function startPull(pane: Pane): Promise<(result: Record<string, unknown>) => Promise<void>> {
+  let resolve!: (r: unknown) => void;
+  pane.bridge.fsPull = (() => new Promise((r) => { resolve = r; })) as never;
+  const row = pane.table.queryAll('.files-row').find((r) => r.textContent.includes('report.pdf'))!;
+  row.dispatch('click');
+  row.dispatch('dblclick');
+  await new Promise((r) => setImmediate(r));
+  return async (result) => { resolve(result); for (let i = 0; i < 4; i += 1) await new Promise((r) => setImmediate(r)); };
+}
+
+const view5c = (pane: Pane) => pane.view as unknown as {
+  onPullAgreed(i: { transferId: string; rootId: string; id: string; name: string; resumedFrom: number; blocks: boolean }): void;
+  onPullFinished(i: { rootId: string; id: string; name: string; result: Record<string, unknown> }): void;
+};
+const one = (pane: Pane, id: string) => pane.detail.queryAll(`#${id}`);
+
+test('5c: a block pull in flight offers Pause and Cancel, and each sends that transfer and that choice', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    const { calls } = withPullControls(pane);
+    const finish = await startPull(pane);
+    assert.equal(one(pane, 'files-pull-pause').length, 0, 'control: nothing to pause before the phone agreed');
+    view5c(pane).onPullAgreed({ transferId: 't-7', rootId: TREE.rootId, id: 'f3', name: 'report.pdf', resumedFrom: 0, blocks: true });
+    const pause = one(pane, 'files-pull-pause');
+    const cancel = one(pane, 'files-pull-cancel');
+    assert.equal(pause.length, 1);
+    assert.equal(cancel.length, 1);
+    assert.match(pause[0]!.getAttribute('aria-label') ?? '', /Pause copying report\.pdf; what has arrived is kept/);
+    pause[0]!.click();
+    cancel[0]!.click();
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(calls.filter((c) => c.startsWith('stop:')), ['stop:t-7:pause', 'stop:t-7:cancel']);
+    await finish({ ok: false, cancelled: true, reason: 'Cancelled. Nothing was saved.' });
+    assert.equal(one(pane, 'files-pull-pause').length, 0, 'the controls go when the pull is over');
+    assert.match(pane.detail.textContent, /cancelled\. Nothing was saved, and the part that had arrived was deleted/);
+  } finally {
+    pane.restore();
+  }
+});
+
+test('5c: an old-path pull (no fs.blocks) never offers Pause or Cancel', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    withPullControls(pane);
+    const finish = await startPull(pane);
+    view5c(pane).onPullAgreed({ transferId: 't-8', rootId: TREE.rootId, id: 'f3', name: 'report.pdf', resumedFrom: 0, blocks: false });
+    assert.equal(one(pane, 'files-pull-pause').length, 0);
+    assert.equal(one(pane, 'files-pull-cancel').length, 0);
+    await finish({ ok: true, path: '/tmp/report.pdf', verified: false });
+    assert.match(pane.detail.textContent, /nothing compared the bytes/, 'an unverified pull is never dressed as verified');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('5c: a paused pull shows what is kept, its button reads Resume, and Cancel removes only that paused copy', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    const { calls, setPaused } = withPullControls(pane);
+    const finish = await startPull(pane);
+    view5c(pane).onPullAgreed({ transferId: 't-9', rootId: TREE.rootId, id: 'f3', name: 'report.pdf', resumedFrom: 0, blocks: true });
+    setPaused([{ rootId: TREE.rootId, id: 'f3', name: 'report.pdf', size: 256 * 1024 * 1024, verifiedBytes: 128 * 1024 * 1024, updatedAtMs: 1 }]);
+    await finish({ ok: false, paused: true, reason: 'Paused.' });
+    assert.match(pane.detail.textContent, /report\.pdf paused — Paused\. What had arrived is kept; Resume continues from there\./);
+    const note = one(pane, 'files-pull-paused');
+    assert.equal(note.length, 1);
+    assert.match(note[0]!.textContent, /^Paused: .+ of .+ is on this Mac, checked block by block\./);
+    const copy = one(pane, 'files-copy-to-mac')[0]!;
+    assert.equal(copy.textContent, 'Resume');
+    assert.equal(copy.getAttribute('aria-label'), 'Resume copying report.pdf to this Mac');
+    one(pane, 'files-pull-cancel-paused')[0]!.click();
+    for (let i = 0; i < 4; i += 1) await new Promise((r) => setImmediate(r));
+    assert.ok(calls.includes(`cancelPaused:${TREE.rootId}:f3`));
+    assert.equal(one(pane, 'files-pull-paused').length, 0, 'nothing paused is drawn once cancelled');
+    assert.equal(one(pane, 'files-copy-to-mac')[0]!.textContent, 'Copy to Mac');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('5c: Resume starts the same pull again', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    const { setPaused } = withPullControls(pane);
+    const pulls: string[] = [];
+    setPaused([{ rootId: TREE.rootId, id: 'f3', name: 'report.pdf', size: 10, verifiedBytes: 5, updatedAtMs: 1 }]);
+    pane.view.setPhoneName('Phone'); // a (re)connect refreshes the paused list
+    for (let i = 0; i < 4; i += 1) await new Promise((r) => setImmediate(r));
+    const row = pane.table.queryAll('.files-row').find((r) => r.textContent.includes('report.pdf'))!;
+    row.dispatch('click');
+    pane.bridge.fsPull = (async (o: { id: string; name: string }) => { pulls.push(`${o.id}:${o.name}`); return { ok: true, path: '/tmp/r', verified: true, verifiedBy: 'blocks', resumedFrom: 5 }; }) as never;
+    one(pane, 'files-copy-to-mac')[0]!.click();
+    for (let i = 0; i < 4; i += 1) await new Promise((r) => setImmediate(r));
+    assert.deepEqual(pulls, ['f3:report.pdf']);
+    assert.match(pane.detail.textContent, /Verified block by block.*It continued from where it had paused\./);
+  } finally {
+    pane.restore();
+  }
+});
+
+test('5c: a pull the Mac resumed by itself after a reconnect reports its result on the pane', async () => {
+  const pane = mount();
+  try {
+    await loaded(pane);
+    withPullControls(pane);
+    const row = pane.table.queryAll('.files-row').find((r) => r.textContent.includes('report.pdf'))!;
+    row.dispatch('click');
+    view5c(pane).onPullFinished({ rootId: TREE.rootId, id: 'f3', name: 'report.pdf', result: { ok: true, path: '/tmp/report.pdf', verified: true, verifiedBy: 'blocks', resumedFrom: 1024 } });
+    assert.match(pane.detail.textContent, /report\.pdf is on this Mac.*Verified block by block.*continued from where it had paused/);
+    assert.equal(one(pane, 'files-copy-to-mac')[0]!.textContent, 'Copy again', 'the local copy is known');
+  } finally {
+    pane.restore();
+  }
+});
+
+test('5c: every way a pull ends has its own truthful sentence', () => {
+  const say = (globalThis as Record<string, unknown>).pullOutcomeText as (n: string, r: Record<string, unknown>) => string;
+  const n = 'clip.mov';
+  assert.match(say(n, { ok: true, verified: true, verifiedBy: 'blocks' }), /Verified block by block/);
+  assert.doesNotMatch(say(n, { ok: true, verified: true, verifiedBy: 'blocks' }), /continued/, 'not resumed, not claimed');
+  assert.match(say(n, { ok: false, paused: true, noSpace: true, reason: 'Not enough space left on "Macintosh HD": 1 GB more is needed.' }), /Not enough space.*free some space, then choose Resume/);
+  assert.match(say(n, { ok: false, paused: true, reason: 'The phone disconnected.' }), /paused — The phone disconnected\. What had arrived is kept/);
+  assert.match(say(n, { ok: false, cancelled: true }), /cancelled\. Nothing was saved/);
+  assert.match(say(n, { ok: false, sourceChanged: true, reason: 'clip.mov changed on the phone while it was being sent, so it was not saved.' }), /changed on the phone.*Nothing was saved\./);
+  assert.doesNotMatch(say(n, { ok: false, sourceChanged: true, reason: 'x' }), /paused|Resume/, 'a changed source is not a pause');
+  assert.match(say(n, { ok: false, reason: 'The receive folder is not available.', fixHint: 'Choose another folder.' }), /not available\. Choose another folder\./);
+});

@@ -462,6 +462,19 @@ contextBridge.exposeInMainWorld('connect', {
     name: string;
     size: number;
   }): Promise<PullOutcome> => ipcRenderer.invoke('fs-pull', options),
+  /** `fs.blocks`: Pause keeps the part received and its record; Cancel deletes only those. */
+  fsPullStop: (options: { transferId: string; how: 'pause' | 'cancel' }): Promise<{ stopped: boolean }> =>
+    ipcRenderer.invoke('fs-pull-stop', options),
+  fsPausedPulls: (): Promise<Array<{ rootId: string; id: string; name: string; size: number; verifiedBytes: number; updatedAtMs: number }>> =>
+    ipcRenderer.invoke('fs-paused-pulls'),
+  fsCancelPaused: (options: { rootId: string; id: string }): Promise<{ removed: boolean; partial?: string }> =>
+    ipcRenderer.invoke('fs-cancel-paused', options),
+  /** A pull was agreed; its id is what Pause and Cancel name. */
+  onPullAgreed: (callback: (info: { transferId: string; rootId: string; id: string; name: string; resumedFrom: number; blocks: boolean }) => void) =>
+    ipcRenderer.on('fs-pull-agreed', (_event, info) => callback(info)),
+  /** A pull the Mac resumed by itself after a reconnect has ended. */
+  onPullFinished: (callback: (info: { rootId: string; id: string; name: string; result: PullOutcome }) => void) =>
+    ipcRenderer.on('fs-pull-finished', (_event, info) => callback(info)),
   /**
    * Hands one or more local files to Finder as a drag.
    *

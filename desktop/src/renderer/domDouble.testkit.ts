@@ -423,7 +423,7 @@ export class FakeElement {
   }
 
   /**
-   * A deliberately tiny selector engine: `tag`, `.class`, `tag.class`, `[attr]`, and a **descendant
+   * A deliberately tiny selector engine: `tag`, `#id`, `.class`, `tag.class`, `[attr]`, and a **descendant
    * chain** of those separated by spaces (`.notif-reply input`). Nothing else — no `>`, no
    * attribute *values*, no commas.
    *
@@ -448,16 +448,19 @@ export class FakeElement {
     }
     let scope: FakeElement[] = [this];
     for (const step of steps) {
-      const match = /^([a-z]+)?(?:\.([\w-]+))?(?:\[([\w-]+)\])?$/.exec(step);
-      if (!match || (!match[1] && !match[2] && !match[3])) {
+      // `#id` added 2026-09-30 for the Files pane's named controls (`#files-pull-pause`): a view that
+      // gives a control a stable id should be testable by that id, the name a driver would use.
+      const match = /^([a-z]+)?(?:#([\w-]+))?(?:\.([\w-]+))?(?:\[([\w-]+)\])?$/.exec(step);
+      if (!match || (!match[1] && !match[2] && !match[3] && !match[4])) {
         throw new Error(`domDouble: unsupported selector ${JSON.stringify(selector)} — extend the double rather than working around it`);
       }
-      const [, tag, className, attribute] = match;
+      const [, tag, id, className, attribute] = match;
       const next: FakeElement[] = [];
       for (const root of scope) {
         for (const el of root.descendants()) {
           if (
             (!tag || el.tagName === tag) &&
+            (!id || el.id === id) &&
             (!className || el.className.split(' ').includes(className)) &&
             (!attribute || el.getAttribute(attribute) !== null)
           ) {

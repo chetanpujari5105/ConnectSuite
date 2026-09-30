@@ -298,6 +298,7 @@ const files = new FilesClient(
       store: () => (pullResumeStore ??= new PullResumeStore(join(app.getPath('userData'), 'pull-resume'), (line) => log.info('files', line))),
       phone: () => store.get('paired')?.fingerprint ?? null,
     },
+    onPullAgreed: (info) => sendAll('fs-pull-agreed', info),
   },
 );
 
@@ -1028,11 +1029,13 @@ app.whenReady().then(() => {
     ? `share.wait ${SHARE_WAIT_MINUTES} ADVERTISED beside share.ask (offers may wait up to ${SHARE_WAIT_MINUTES} minutes when the phone agrees; packaged: ${app.isPackaged}; release policy SHARE_WAIT_RELEASE: ${SHARE_WAIT_RELEASE})`
     : `share.wait not advertised: a packaged build waits for SHARE_WAIT_RELEASE — offers wait 10 minutes`);
   // `fs.blocks` (block-verified, resumable Files pulls): development builds only until FS_BLOCKS_RELEASE.
-  const files = filesExt(app.isPackaged);
-  log.info('files', files[FS_BLOCKS]
+  const filesAdvert = filesExt(app.isPackaged);
+  log.info('files', filesAdvert[FS_BLOCKS]
     ? `fs.blocks 1 ADVERTISED (pulls above 64 MiB are block-verified when the phone agrees; packaged: ${app.isPackaged}; release policy FS_BLOCKS_RELEASE: ${FS_BLOCKS_RELEASE})`
     : 'fs.blocks not advertised: a packaged build waits for FS_BLOCKS_RELEASE — pulls above 64 MiB stay unverified');
-  link = new LinkClient(identity, () => rePairPending, () => ({ ...advertisedExt(shareV2, shareAsk, shareV3, shareWait), ...files }));
+  link = new LinkClient(identity, () => rePairPending, () => ({ ...advertisedExt(shareV2, shareAsk, shareV3, shareWait), ...filesAdvert }));
+  // Records older than 7 days go at start, each partial only if it is provably ours (D3, D5).
+  void files.sweepResumeRecords().then((n) => log.info('files', `resume records: ${n} expired at start (limit 7 days, 16 records)`));
   video = new VideoClient(identity);
   bulk = new BulkClient(identity);
 
@@ -1564,6 +1567,14 @@ app.whenReady().then(() => {
     const canRemote = status.capabilities?.includes('remote') ?? false;
     const nowConnected = status.phase === 'connected';
     if (nowConnected && canRemote && wasConnected && !couldRemote) void remote.refresh();
+    // `fs.blocks`: a pull interrupted in this run less than 10 minutes ago resumes on reconnect
+    // without a click (docs/protocol.md); anything older waits for Resume.
+    if (nowConnected && !wasConnected) {
+      for (const o of files.takeAutoResumable()) {
+        log.info('files', `resuming ${o.name} automatically: interrupted less than 10 minutes ago in this run`);
+        void files.pull(o).then((result) => sendAll('fs-pull-finished', { rootId: o.rootId, id: o.id, name: o.name, result }));
+      }
+    }
     wasConnected = nowConnected;
     couldRemote = canRemote;
     // The pair-intent watch holds a socket and is only worth anything while a code is on screen.
@@ -2375,6 +2386,15 @@ ipcMain.handle('fs-send-abort', (_event, options: { source: string }) => {
   abort?.abort();
   return { aborted: abort !== undefined };
 });
+
+/** `fs.blocks` pulls: Pause keeps the owned partial and record; Cancel deletes only those. */
+ipcMain.handle('fs-pull-stop', (_event, options: { transferId: string; how: string }) =>
+  files.stopPull(String(options?.transferId ?? ''), options?.how === 'cancel' ? 'cancel' : 'pause'),
+);
+ipcMain.handle('fs-paused-pulls', () => files.pausedPulls());
+ipcMain.handle('fs-cancel-paused', (_event, options: { rootId: string; id: string }) =>
+  files.cancelPaused(String(options?.rootId ?? ''), String(options?.id ?? '')),
+);
 
 /** Stop a send in flight. The phone keeps the partial as `.part`, resumable by sending it again. */
 ipcMain.handle('fs-cancel', async (_event, options: { transferId: string }) => {
@@ -3273,6 +3293,10 @@ ipcMain.handle('set-tailscale-address', (_event, address: string) => {
 });
 
 ipcMain.handle('forget-device', () => {
+  const forgotten = store.get('paired')?.fingerprint ?? null;
+  if (forgotten) {
+    void files.forgetPhone(forgotten).then((n) => log.info('files', `${n} paused transfer record(s) dropped with the forgotten phone`));
+  }
   store.set('paired', null);
   store.set('lastAddress', null);
   link?.stop('device forgotten');

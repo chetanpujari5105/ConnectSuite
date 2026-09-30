@@ -34,6 +34,22 @@ interface FilesBridgeResult<T> {
   code?: string;
 }
 
+/** What a pull ends with, as the main process reports it (`FilesClient.pull`). */
+type PullResult = {
+    ok: boolean;
+    path?: string;
+    bytes?: number;
+    verified?: boolean;
+    verifiedBy?: 'prehash' | 'blocks';
+    reason?: string;
+    fixHint?: string;
+    paused?: boolean;
+    noSpace?: boolean;
+    cancelled?: boolean;
+    sourceChanged?: boolean;
+    resumedFrom?: number;
+  };
+
 interface FilesBridge {
   fsRoots(): Promise<
     FilesBridgeResult<{ roots: FsRootRow[]; grantHint: string | null; push?: boolean }>
@@ -69,15 +85,10 @@ interface FilesBridge {
     id: string;
     name: string;
     size: number;
-  }): Promise<{
-    ok: boolean;
-    path?: string;
-    bytes?: number;
-    verified?: boolean;
-    verifiedBy?: 'prehash' | 'blocks';
-    reason?: string;
-    fixHint?: string;
-  }>;
+  }): Promise<PullResult>;
+  fsPullStop?(options: { transferId: string; how: 'pause' | 'cancel' }): Promise<{ stopped: boolean }>;
+  fsPausedPulls?(): Promise<Array<{ rootId: string; id: string; name: string; size: number; verifiedBytes: number; updatedAtMs: number }>>;
+  fsCancelPaused?(options: { rootId: string; id: string }): Promise<{ removed: boolean; partial?: string }>;
   /** Synchronous by necessity — see the preload comment. Nothing may be awaited before it. */
   fsDrag(paths: string[]): void;
 
@@ -436,7 +447,43 @@ class FilesView {
     const next = name && name.trim() ? name.trim() : 'your phone';
     if (next === this.phoneName) return;
     this.phoneName = next;
+    // A (re)connected phone is when a paused pull may have become resumable, or been resumed for us.
+    void this.refreshPaused();
     this.render();
+  }
+
+  /** `fs.blocks` pulls in flight on this pane, by [pullKey] → the `transferId` Pause and Cancel name. */
+  private readonly pullIds = new Map<string, string>();
+  /** Paused block pulls this Mac keeps for the paired phone, by [pullKey]. */
+  private paused = new Map<string, { name: string; size: number; verifiedBytes: number }>();
+
+  /** A block pull was agreed (main's `fs-pull-agreed`): Pause and Cancel can now name it. */
+  onPullAgreed(info: { transferId: string; rootId: string; id: string; name: string; resumedFrom: number; blocks: boolean }): void {
+    if (!info.blocks) return;
+    this.pullIds.set(pullKey(info.rootId, info.id), info.transferId);
+    this.render();
+  }
+
+  /** A pull the Mac resumed by itself after a reconnect has ended. */
+  onPullFinished(info: { rootId: string; id: string; name: string; result: PullResult }): void {
+    this.pullIds.delete(pullKey(info.rootId, info.id));
+    this.applyPullResult(info.id, info.name, info.result);
+    void this.refreshPaused();
+    this.render();
+  }
+
+  private async refreshPaused(): Promise<void> {
+    if (!this.bridge.fsPausedPulls) return;
+    const list = await this.bridge.fsPausedPulls().catch(() => null);
+    if (!list) return;
+    this.paused = new Map(list.map((p) => [pullKey(p.rootId, p.id), { name: p.name, size: p.size, verifiedBytes: p.verifiedBytes }]));
+    this.render();
+  }
+
+  /** One place a pull's outcome becomes the pane's state: the local copy, and the sentence. */
+  private applyPullResult(id: string, name: string, result: PullResult): void {
+    if (result.ok && result.path) this.localCopies.set(id, result.path);
+    this.lastPull = { ok: result.ok || result.paused === true || result.cancelled === true, text: pullOutcomeText(name, result) };
   }
 
   /** **Send to phone…** — the picker, then the same confirmation a drop gets. */
@@ -839,27 +886,13 @@ class FilesView {
         name: entry.name,
         size: entry.size,
       });
-      if (result.ok && result.path) {
-        this.localCopies.set(entry.id, result.path);
-        this.lastPull = {
-          ok: true,
-          // `verified` is the phone's word and is repeated rather than upgraded: above the 64 MB
-          // pre-hash ceiling nothing agreed a digest, and saying "verified" there would be defect
-          // 56's mistake pointed the other way.
-          text: `${entry.name} is on this Mac — drag it to Finder from here. ${pullCheckSentence(result)}`,
-        };
-      } else {
-        // The fix hint travels with the reason: an unavailable receive folder says *which* folder
-        // and *where to choose another* — the first half alone left the person knowing what broke and
-        // not what to do (found checking the renamed-folder case live).
-        this.lastPull = {
-          ok: false,
-          text:
-            `${entry.name} — ${result.reason ?? 'the copy failed.'}` +
-            (result.fixHint ? ` ${result.fixHint}` : ''),
-        };
-      }
+      // `verified` is the phone's word and is repeated rather than upgraded; the fix hint travels with
+      // the reason. Both now live in [pullOutcomeText], beside a paused, cancelled or changed pull.
+      this.applyPullResult(entry.id, entry.name, result);
     } finally {
+      const key = this.selectedRoot === null ? null : pullKey(this.selectedRoot, entry.id);
+      if (key) this.pullIds.delete(key);
+      void this.refreshPaused();
       this.copying.delete(entry.id);
       if (this.copying.size === 0) this.copyingName = null;
       // In the `finally`, so a throw cannot leave the island narrating a copy that is over. That is
@@ -1688,9 +1721,15 @@ class FilesView {
     // moving — `CLAUDE.md`'s first driving rule, met by giving the target a name rather than by
     // remembering a pixel.
     button.id = 'files-copy-to-mac';
+    const key = this.selectedRoot === null ? null : pullKey(this.selectedRoot, entry.id);
+    const paused = key ? this.paused.get(key) : undefined;
+    const running = key ? this.pullIds.get(key) : undefined;
     if (this.copying.has(entry.id)) {
       button.textContent = 'Copying…';
       button.disabled = true;
+    } else if (paused) {
+      button.textContent = 'Resume';
+      button.setAttribute('aria-label', `Resume copying ${entry.name} to this Mac`);
     } else if (local) {
       button.textContent = 'Copy again';
     } else {
@@ -1701,6 +1740,39 @@ class FilesView {
       void this.copyToMac(entry);
     });
     this.detail.append(button);
+
+    // `fs.blocks` (owner decision D2): Pause keeps what has arrived, Cancel deletes only this copy's part.
+    const control = (id: string, label: string, aria: string, act: () => void): void => {
+      const b = document.createElement('button');
+      b.className = 'files-detail-action';
+      b.type = 'button';
+      b.id = id;
+      b.textContent = label;
+      b.setAttribute('aria-label', aria);
+      b.addEventListener('click', act);
+      this.detail.append(b);
+    };
+    if (this.copying.has(entry.id) && running && this.bridge.fsPullStop) {
+      const stop = this.bridge.fsPullStop.bind(this.bridge);
+      control('files-pull-pause', 'Pause', `Pause copying ${entry.name}; what has arrived is kept`, () => void stop({ transferId: running, how: 'pause' }));
+      control('files-pull-cancel', 'Cancel', `Cancel copying ${entry.name}; the part received is deleted`, () => void stop({ transferId: running, how: 'cancel' }));
+    } else if (paused && !this.copying.has(entry.id)) {
+      const pausedNote = document.createElement('p');
+      pausedNote.className = 'files-detail-note';
+      pausedNote.id = 'files-pull-paused';
+      pausedNote.textContent = pausedSentence(paused.verifiedBytes, paused.size);
+      this.detail.append(pausedNote);
+      if (this.bridge.fsCancelPaused && this.selectedRoot !== null) {
+        const cancel = this.bridge.fsCancelPaused.bind(this.bridge);
+        const rootId = this.selectedRoot;
+        control('files-pull-cancel-paused', 'Cancel', `Cancel the paused copy of ${entry.name}; the part received is deleted`, () => {
+          void cancel({ rootId, id: entry.id }).then(() => {
+            this.lastPull = { ok: true, text: `${entry.name} — cancelled. The part that had arrived was deleted.` };
+            return this.refreshPaused();
+          });
+        });
+      }
+    }
 
     const note = document.createElement('p');
     note.className = 'files-detail-note';
@@ -2033,6 +2105,35 @@ function pullCheckSentence(result: { verified?: boolean; verifiedBy?: 'prehash' 
   return 'No checksum was agreed in advance, so nothing compared the bytes.';
 }
 (globalThis as Record<string, unknown>).pullCheckSentence = pullCheckSentence;
+
+function pullKey(rootId: string, id: string): string {
+  return `${rootId}\u0000${id}`;
+}
+
+/** What a paused block pull has kept, in the units a person reads. */
+function pausedSentence(verifiedBytes: number, size: number): string {
+  return `Paused: ${fileBytes(verifiedBytes)} of ${fileBytes(size)} is on this Mac, checked block by block. Resume continues from there.`;
+}
+
+/**
+ * The sentence for how a pull ended — one home for every outcome, so a paused, cancelled, changed or
+ * low-space pull is never worded as a failure it was not, and a success never claims a check that did
+ * not happen ([pullCheckSentence]).
+ */
+function pullOutcomeText(name: string, result: PullResult): string {
+  if (result.ok) {
+    return `${name} is on this Mac — drag it to Finder from here. ${pullCheckSentence(result)}` +
+      (result.resumedFrom ? ' It continued from where it had paused.' : '');
+  }
+  if (result.cancelled) return `${name} — cancelled. Nothing was saved, and the part that had arrived was deleted.`;
+  if (result.paused && result.noSpace) {
+    return `${name} paused — ${result.reason ?? 'this Mac is running out of space.'} What had arrived is kept; free some space, then choose Resume.`;
+  }
+  if (result.paused) return `${name} paused — ${result.reason ?? 'the copy stopped.'} What had arrived is kept; Resume continues from there.`;
+  if (result.sourceChanged) return `${name} — ${result.reason ?? 'the file changed on the phone.'} Nothing was saved.`;
+  return `${name} — ${result.reason ?? 'the copy failed.'}` + (result.fixHint ? ` ${result.fixHint}` : '');
+}
+(globalThis as Record<string, unknown>).pullOutcomeText = pullOutcomeText;
 
 (globalThis as Record<string, unknown>).createFilesView = createFilesView;
 // The view class itself, so `filesView.test.ts` drives the real one rather than a paraphrase. It is
