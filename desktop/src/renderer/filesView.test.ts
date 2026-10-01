@@ -1064,3 +1064,16 @@ test('5c: every way a pull ends has its own truthful sentence', () => {
   assert.doesNotMatch(say(n, { ok: false, sourceChanged: true, reason: 'x' }), /paused|Resume/, 'a changed source is not a pause');
   assert.match(say(n, { ok: false, reason: 'The receive folder is not available.', fixHint: 'Choose another folder.' }), /not available\. Choose another folder\./);
 });
+
+test('158: a reason with no full stop does not run into the next sentence', () => {
+  const say = (globalThis as Record<string, unknown>).pullOutcomeText as (n: string, r: Record<string, unknown>) => string;
+  const n = 'sidekick-t5-source-change-200mb.bin';
+  // The exact reason the pane showed on hardware (2026-10-01 23:40), when a refusal was still called a pause.
+  const interrupted = say(n, { ok: false, paused: true, reason: 'the phone closed after 0 of 109051904 bytes' });
+  assert.doesNotMatch(interrupted, /bytes What/, 'the run-on sentence seen on hardware');
+  assert.match(interrupted, /109051904 bytes\. What had arrived is kept; Resume continues from there\.$/);
+  assert.match(say(n, { ok: false, paused: true, reason: 'The phone disconnected.' }), /disconnected\. What/, 'control: a reason with its own stop gets no second one');
+  const rejected = say(n, { ok: false, sourceChanged: true, reason: `${n} changed on the phone since the transfer paused, so it has to start again.` });
+  assert.doesNotMatch(rejected, /^\S+ paused|Resume continues/, 'a source rejection is not worded as a pause');
+  assert.match(rejected, /Nothing was saved\.$/);
+});

@@ -449,7 +449,9 @@ export class FilesClient {
         blocksPlan.blockSize === prepared.record.blockSize;
       if (prepared && acceptedHere) {
         owned = { record: prepared.record, handle: prepared.handle, digest: prepared.digest, from: prepared.from };
-        log.info('files', `pull of ${options.name} resumes at ${prepared.from} of ${agreed.data.size} bytes (${prepared.record.digests.length} blocks verified on this Mac and re-hashed by the phone)`);
+        // Not "re-hashed by the phone": the phone's acceptance is provisional until it has re-hashed the
+        // prefix on the bulk thread, and that verdict has not arrived yet (defect 158).
+        log.info('files', `pull of ${options.name} resumes at ${prepared.from} of ${agreed.data.size} bytes (${prepared.record.digests.length} blocks verified on this Mac; the phone accepted provisionally and re-hashes them before sending)`);
       } else {
         if (prepared) {
           await prepared.handle.close().catch(() => undefined);
@@ -469,6 +471,9 @@ export class FilesClient {
     const onMessage = (envelope: unknown): void => {
       const m = envelope as { type?: string; payload?: Record<string, unknown> };
       if (!verifier || m?.payload?.transferId !== transferId) return;
+      // Only the session this pull was agreed on speaks for it: a transfer id belongs to its session, and
+      // a verdict surfacing on a replacement one is not this pull's (defect 158).
+      if (link.token() !== token) return;
       if (m.type === MessageType.FS_TRANSFER_BLOCKS) verifier.onBlocks(m.payload);
       if (m.type === MessageType.FS_TRANSFER_DONE) verifier.onDone(m.payload);
     };
@@ -493,11 +498,18 @@ export class FilesClient {
     // The session may already have ended while this pull was being agreed, before anything listened.
     if (link.token() !== token) onSessionEnded({ token, reason: 'it ended while the pull was being agreed' });
     // The record follows the verified count, so an interruption loses at most a few seconds of blocks.
+    // Saves run one at a time and are awaited before a discard, so a save started by the timer cannot
+    // land after the record was deleted and bring a rejected record back (defect 158 widened that window).
+    let saving: Promise<void> = Promise.resolve();
     const persist = async (): Promise<void> => {
       if (!owned || !verifier || !store) return;
-      owned.record.digests = verifier.verifiedDigests();
-      owned.record.updatedAtMs = this.now();
-      await store.save(owned.record).catch((e: unknown) => log.warn('files', `resume record for ${options.name} not saved: ${String(e)}`));
+      const record = owned.record;
+      saving = saving.then(async () => {
+        record.digests = verifier.verifiedDigests();
+        record.updatedAtMs = this.now();
+        await store.save(record).catch((e: unknown) => log.warn('files', `resume record for ${options.name} not saved: ${String(e)}`));
+      });
+      await saving;
     };
     const timer = owned ? setInterval(() => void persist(), RECORD_SAVE_EVERY_MS) : null;
 
@@ -531,6 +543,7 @@ export class FilesClient {
       });
 
     if (owned && store) {
+      await saving;
       if (result.ok || result.discarded) {
         await store.discard(owned.record, result.discarded === true);
       } else if (this.cancelled.delete(transferId)) {
@@ -554,6 +567,9 @@ export class FilesClient {
     }
     if (!result.ok) {
       this.failures += 1;
+      // A discarded pull (changed source, corrupt block) has nothing to resume: it must not come back on a
+      // reconnect, even if an earlier interruption of it was waiting there (defect 158).
+      if (result.discarded) this.interrupted.delete(`${options.rootId}\u0000${options.id}`);
       log.warn('files', `pull of ${options.name} did not finish: ${result.reason}`);
       return { ok: false, reason: result.reason ?? 'The transfer did not finish.', ...(result.sourceChanged ? { sourceChanged: true } : {}) };
     }

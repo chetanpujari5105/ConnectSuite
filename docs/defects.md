@@ -173,6 +173,7 @@ own heading there, and its own row here.
 | **155** | **`ShareReceiver.decide` trusted its caller to send one decision at a time.** After an Accept's destination check (an `await`) it did not re-read the offer's state, and nothing marked an Accept as in flight. So a Decline arriving during that check was **overwritten**: the offer went on to `accepting`, was pulled, and ended **saved** — a person's Decline followed by a saved file. Two Accepts for one offer sent **two `share.respond` accepts and started two pulls**; against the fake phone, two copies were published (`same-name.png`, `same-name (2).png`). **Not reachable through the shipped window**, which disables Decline and Accept while a decision is pending (tested); reachable by any second caller of the main-process API | **fixed 2026-09-26 (`676c5f2`). In the Mac dev app running since 2026-09-26 12:53:45 (pid 93018, `dist` built from `f71285b`); the race has not been produced on hardware** (corrected 2026-09-26 — `docs/testing.md` → *Stage 0 corrections*) | red-before on both, at v2 and v3 (`Decline … wins`: *actual `saved`, expected `declined`*; `clicked twice`: never settled, two pulls); mutations M1 and M2 each red on their own test; 1245/1245 Mac tests | `docs/testing.md` → Defect 155 |
 | **156** | **The running Mac app's Files pane had no Pause, Resume or Cancel for a block pull.** `renderer.ts` built the pane's bridge as an inline literal that passed `fsPull` and omitted `fsPullStop`, `fsPausedPulls` and `fsCancelPaused`. The preload exposed all three and main handled them, but the pane draws Pause/Cancel only when its bridge has `fsPullStop` and reads the paused list only through `fsPausedPulls`. Found on hardware: L1/L2 T2 (2026-09-30 13:55) reached 42.5% of a 200 MiB block pull with **0** Pause buttons on screen. Every Files-pane test was green because each gave the view its own bridge double that already had the three calls | **fixed 2026-09-30 (`01ebf3b`); verified on hardware 2026-09-30 15:20–15:22** (L1/L2 T2 retry, Mac dev build of `01ebf3b`): the real Pause paused a 200 MiB block pull at 98,304,000 B = 750 of 1,600 verified blocks, nothing resumed until Resume, Resume continued from that block with the phone re-hashing the prefix, and the saved file's SHA-256 equals the source | `filesWiring.test.ts`, 3 tests, red against the moved-verbatim literal (*"lacks … fsCancelPaused, fsPausedPulls, fsPullStop"*; *"Pause is drawn: actual 0"*); mutations M0–M7 each red on the named test; Mac 1,402/0, both typechecks 0; **hardware: `docs/testing.md` → Defect 156 → verified on hardware** | `docs/testing.md` → Defect 156 |
 | **157** | **A user Disconnect did not stop an active block pull, and the phone counted it completed.** A bulk pull runs on its own socket; nothing on either side stopped it when the control session that agreed it ended. Found on hardware (L1/L2 T3, 2026-09-30 15:34): Disconnect at 84,148,224 B (40.13%) of a 200 MiB pull, and the phone streamed on to 209,715,200 B, dropped every block digest and the `done` (*"Dropped fs.transfer.blocks: the session is closing"*), and logged the send as **completed**; the Mac waited its full 30 s for a verdict before calling the pull interrupted at 640 verified blocks. **No data was harmed** — reconnect resumed at 83,886,080 B / block 640 and the saved file's SHA-256 equals the source — but 125,829,120 B were sent twice and a person who pressed Disconnect saw nothing stop | **fixed 2026-09-30 (`4095665`); verified on hardware 2026-09-30 18:20–18:21** (T3 retry: Disconnect at 83,886,080 B stopped the pull in 12 ms with 0 B of growth; the phone's stream ended 3 ms after its session did, counted failed not completed; reconnect resumed at block 640 to a matching SHA-256). Mac: `LinkClient.teardown` emits `session-ended` with the ending session's token; `FilesClient.pull` stops its own pull on it as an interruption (owned partial and record kept, automatic resume on reconnect unchanged; Pause stays manual; Cancel unchanged; a replacement session's pull untouched). Phone: `forgetSession` stops the live streams that session agreed before their next chunk (`BulkStops`), logs the stop as a session ending, and counts a pull as completed only when its verdict could be queued (`ControlSession.send` now says whether it queued) | `filesResume.test.ts` +4 and `linkSessionEnded.test.ts` 3 (Mac), `BulkStopsTest` 7 (phone); red before (*"settled 32131 ms after the session ended"*; LinkClient emitted nothing; the live stream ran to `Sent`); mutations MM1–MM6 and PM1–PM7 each red on the named test; measured stop: Mac 3 ms (bound 2,000 ms), phone 0 bytes after the flag (bound one chunk); Mac 1,409/0, phone 1,094/0, typechecks 0 | `docs/testing.md` → Defect 157 |
+| **158** | **A resumed pull refused by the phone's prefix re-hash was kept as a resumable interruption.** The phone answered `SOURCE_CHANGED` / `prefix-mismatch` and sent **0 bytes**; the Mac's bulk-socket `close` handler called any short stream an interruption without reading the verdict, so the stale partial and its record were kept, the pane said *paused*, and the pull was offered for automatic resume — every Resume, and any reconnect within 10 minutes, would ask for the same refused prefix again. Found on hardware 2026-10-01 23:40 (*changed source with unchanged indexed metadata — resume prefix check*). **The phone's prefix-change detection PASSED and no mixed or corrupt file was published; the Mac's terminal-failure handling FAILED.** Metadata-based T5-B stays NO READING and T5-A unproven | **fixed 2026-10-02, not yet verified on hardware** — Mac only. A short close of a block pull waits, bounded (`LATE_VERDICT_WAIT_MS` 3 s), for the verdict on the control connection; a terminal `SOURCE_CHANGED` takes the established discard (owned partial and record removed, a never-overwriting `.failed`, no restart); anything else is the interruption it was. Verdicts count only from the pull's own session and transfer id; a discarded pull leaves the auto-resume map; record saves are serialised so none lands after the discard. Wording: the resume log no longer says the phone re-hashed before its verdict; the pane closes a reason as a sentence | `filesResume.test.ts` +10 and `filesView.test.ts` +1 (Mac, through the real `FilesClient`/`BulkClient` over a socket); 3 red before for the hardware's reason (*"the phone closed after 0 of … bytes", paused: true*); mutations M1–M7 each red on the named test; Mac 1,421/0, typechecks 0 | `docs/testing.md` → Defect 158 |
 
 ---
 
@@ -3312,3 +3313,43 @@ integrity check still passed — the fault is wasted transfer, a 30 s stall, and
 - A frame queued just before the socket fails can still be lost after `send` reported it queued.
 - The phone's stop runs on `forgetSession`, which fires when the phone notices the session ended. For
   a link that dies silently, that is the idle timeout.
+
+### 158 — a resumed pull refused by the phone's prefix re-hash was kept as a resumable interruption · **fixed 2026-10-02, not yet verified on hardware**
+
+A block pull's bulk socket can close **short** for two different reasons. One is a link drop: the
+verified blocks are good and the pull should resume. The other is the phone ending the transfer itself
+with a terminal verdict on the control connection. A resumed pull whose prefix no longer hashes sends
+**no byte at all** before that verdict. `BulkClient.pull`'s `close` handler treated every short close
+as the first case and never read the verdict.
+
+Found on hardware 2026-10-01 23:40 (`docs/testing.md` → *Changed source with unchanged indexed metadata
+— resume prefix check*, and → Defect 158). The source had changed in place while MediaStore still
+reported the old time, so the phone's size+mtime check accepted the resume provisionally. Its re-hash of
+the 768-block prefix then refused it. The Mac logged *"interrupted … the phone closed after 0 of
+109051904 bytes; the partial is kept"*.
+
+- **Phone prefix-change detection: PASSED.**
+- **No mixed or corrupt file was published.**
+- **Mac terminal-failure handling: FAILED.** The stale partial and record were kept, the pane said
+  *paused*, and the pull was offered for automatic resume.
+
+Metadata-based T5-B remains NO READING, and T5-A remains unproven.
+
+**Fix direction:** as built, Mac only.
+- On a short close of a block pull, wait for the verdict, bounded by `LATE_VERDICT_WAIT_MS` (3 s). The
+  verdict and the close travel on two connections, so neither order is assumed.
+- A terminal `SOURCE_CHANGED` (`BlockPullVerifier.sourceChange()`, the one home `conclude()` also uses)
+  takes the established `discard`. The owned partial and record go. A `.failed` is written exclusively,
+  never replacing one already at that name, and the log says which. No restart.
+- No verdict, a verdict later than the bound, or any other verdict: the interruption it always was. The
+  verified blocks are kept.
+- Verdicts count only for the pull's own transfer id and **session**.
+- A discarded pull leaves the auto-resume map.
+- Record saves are serialised and awaited before the discard, so none can bring a deleted record back.
+- Pause, Cancel and a session ending still settle at once through `stop`, which the wait never blocks.
+
+**The wrong fixes:**
+- Treating **every** short close as terminal. That deletes good, resumable data on each link drop.
+- An unbounded wait, which would hold a dropped pull open forever.
+- Restarting from byte 0 automatically. That is the contract's rule for a resume refused **in the ack**;
+  this verdict comes later, and a restart here is a separate decision nobody has made.

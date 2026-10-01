@@ -49,7 +49,19 @@ interface Scenario {
   done?: Record<string, unknown>;
   /** Wait this long after each 256 KiB chunk, so a transfer is still moving when a test acts on it. */
   paceMs?: number;
+  /**
+   * Defect 158: how a **resumed** transfer (claimed at an offset > 0) ends. It sends no byte — the
+   * phone's prefix re-hash refused it — then sends [done] and closes its bulk socket, in [order], [gapMs]
+   * apart. The two travel on two connections, so either may arrive first.
+   */
+  resumeEnding?: Ending;
+  /** Defect 158: the first transfer sends [bytes] and then ends this way (a short stream with a verdict). */
+  endAfter?: Ending & { bytes: number };
+  /** Passed to `BulkClient.pull` as `lateVerdictWaitMs`: how long a short close waits for the verdict. */
+  lateVerdictWaitMs?: number;
 }
+
+interface Ending { done: Record<string, unknown>; order: 'done-first' | 'close-first'; gapMs: number }
 
 function harness(scenario: Scenario = {}) {
   const root = mkdtempSync(join(tmpdir(), 'sidekick-l2-'));
@@ -101,11 +113,20 @@ function harness(scenario: Scenario = {}) {
       }
     });
   });
+  const served = new Map<string, number>();
+  const end = (socket: Socket, transferId: string, e: Ending) => {
+    const done = () => emit('fs.transfer.done', { transferId, ...e.done });
+    if (e.order === 'done-first') { done(); setTimeout(() => socket.end(), e.gapMs); }
+    else { socket.end(); setTimeout(done, e.gapMs); }
+  };
   const serve = async (socket: Socket, header: { transferId: string; offset: number }) => {
     const bytes = scenario.bytes ?? SOURCE;
     const from = header.offset;
+    served.set(header.transferId, 0);
+    if (from > 0 && scenario.resumeEnding) { end(socket, header.transferId, scenario.resumeEnding); return; }
+    const ending = n === 1 ? scenario.endAfter : undefined;
     const cut = scenario.dropAfter !== undefined && n === 1 ? from + scenario.dropAfter : undefined;
-    const until = cut ?? (scenario.stallAfter !== undefined && n === 1 ? from + scenario.stallAfter : SIZE);
+    const until = ending ? from + ending.bytes : cut ?? (scenario.stallAfter !== undefined && n === 1 ? from + scenario.stallAfter : SIZE);
     let sentBlock = Math.floor(from / BS);
     for (let at = from; at < until; at += 256 * 1024) {
       if (socket.destroyed) return; // the Mac hung up: a real phone's next write would fail here
@@ -113,6 +134,7 @@ function harness(scenario: Scenario = {}) {
       const len = Buffer.alloc(4);
       len.writeUInt32BE(piece.length);
       if (!socket.write(Buffer.concat([len, piece]))) await new Promise((r) => socket.once('drain', r));
+      served.set(header.transferId, (served.get(header.transferId) ?? 0) + piece.length);
       if (scenario.paceMs) await new Promise((r) => setTimeout(r, scenario.paceMs));
       const complete = Math.floor(Math.min(until, at + 256 * 1024) / BS);
       if (complete > sentBlock) {
@@ -120,6 +142,7 @@ function harness(scenario: Scenario = {}) {
         sentBlock = complete;
       }
     }
+    if (ending) { end(socket, header.transferId, ending); return; }
     if (cut !== undefined) { setTimeout(() => socket.destroy(), 50); return; } // the link drops
     if (until < SIZE) return; // stalled: wait for the Mac to hang up
     if (sentBlock < COUNT) emit('fs.transfer.blocks', { transferId: header.transferId, first: sentBlock, sha256: DIGESTS.slice(sentBlock) });
@@ -131,7 +154,7 @@ function harness(scenario: Scenario = {}) {
   const bulk = {
     pull: async (o: Parameters<BulkClient['pull']>[0]) => {
       const port = await listening;
-      return real.pull({ ...o, connect: () => ({ socket: createConnection({ host: '127.0.0.1', port }) as unknown as TLSSocket, readyEvent: 'connect' }) });
+      return real.pull({ ...o, ...(scenario.lateVerdictWaitMs !== undefined ? { lateVerdictWaitMs: scenario.lateVerdictWaitMs } : {}), connect: () => ({ socket: createConnection({ host: '127.0.0.1', port }) as unknown as TLSSocket, readyEvent: 'connect' }) });
     },
   };
   const client = new FilesClient(
@@ -147,7 +170,7 @@ function harness(scenario: Scenario = {}) {
   );
   const pull = () => client.pull({ rootId: 'saf:primary', id: 'doc-1', name: 'clip.bin', size: SIZE });
   const done = () => { server.close(); rmSync(root, { recursive: true, force: true }); };
-  return { client, pull, begins, cancels, folder, resumeStore, scenario, done, clock, agreed, endSession, reconnect, link };
+  return { client, pull, begins, cancels, folder, resumeStore, scenario, done, clock, agreed, endSession, reconnect, link, served };
 }
 
 /** Waits until the transfer is in flight (its first bytes written), then acts. */
@@ -509,5 +532,174 @@ test('157: Cancel is unchanged when the session then ends — its partial and re
     assert.deepEqual(await h.resumeStore.all(), []);
     assert.deepEqual(readdirSync(h.folder), [], 'no partial left');
     assert.deepEqual(h.client.takeAutoResumable(), []);
+  } finally { h.done(); }
+});
+
+// ---- defect 158: a terminal SOURCE_CHANGED on a short bulk stream is honoured, not called a pause ----
+//
+// Hardware (2026-10-01 23:40, the resume prefix check): a paused pull of the old bytes was resumed after
+// the source changed in place. The phone accepted provisionally, re-hashed the 768-block prefix, refused
+// it (`SOURCE_CHANGED` / `prefix-mismatch`), sent **0 bytes** and closed its bulk socket. The Mac's close
+// handler called the short stream an interruption without reading the verdict: the stale partial and its
+// record were kept, the pane said "paused", and the pull was offered for automatic resume — so every
+// Resume, and every reconnect within 10 minutes, would ask for the same refused prefix again.
+
+const PREFIX_MISMATCH = {
+  ok: false, code: 'SOURCE_CHANGED', why: 'prefix-mismatch',
+  message: 'clip.bin changed on the phone since the transfer paused, so it has to start again.', verified: false,
+};
+const CHANGED_WHILE_SENT = {
+  ok: false, code: 'SOURCE_CHANGED', why: 'source-changed',
+  message: 'clip.bin changed on the phone while it was being sent, so it was not saved.', verified: false,
+};
+/** The bound these tests give the late-verdict wait: short, so a test stays fast; the product's is longer. */
+const BOUND_MS = 1_500;
+
+/** A first pull paused by the person with verified blocks recorded — the state the hardware run resumed. */
+async function pausedWithRecord(h: ReturnType<typeof harness>) {
+  const first = h.pull();
+  await whenReceiving(h, 10 * MiB);
+  await new Promise((r) => setTimeout(r, 2200)); // at least one record save
+  await h.client.stopPull('t-1', 'pause');
+  assert.equal((await first).paused, true, 'control: the first pull is paused by the person');
+  const [record] = await h.resumeStore.all();
+  assert.ok(record && record.digests.length > 0, 'control: a record with verified blocks');
+  return record!;
+}
+
+/** What a refused source change must leave: nothing published, nothing resumable, one marker, no retry. */
+async function assertSourceRejected(h: ReturnType<typeof harness>, r: Awaited<ReturnType<ReturnType<typeof harness>['pull']>>, begins: number) {
+  assert.equal(r.ok, false);
+  assert.equal(r.sourceChanged, true, `reported as a changed source: ${JSON.stringify(r)}`);
+  assert.notEqual(r.paused, true, 'a source rejection is not a pause');
+  assert.notEqual(r.cancelled, true);
+  assert.equal(existsSync(join(h.folder, 'clip.bin')), false, 'nothing published');
+  assert.equal(existsSync(pullPartPathFor(join(h.folder, 'clip.bin'))), false, 'the owned partial is deleted');
+  assert.deepEqual(await h.resumeStore.all(), [], 'the rejected record is gone');
+  assert.deepEqual(readdirSync(h.folder), ['clip.bin.failed'], 'one .failed marker, nothing else');
+  assert.match(readFileSync(join(h.folder, 'clip.bin.failed'), 'utf8'), /^Sidekick transfer failed/);
+  assert.deepEqual(h.client.takeAutoResumable(), [], 'not offered for automatic resume');
+  assert.equal((await h.client.pausedPulls()).length, 0, 'not listed as paused');
+  await new Promise((res) => setTimeout(res, 300));
+  assert.equal(h.begins.length, begins, 'no automatic retry or restart');
+}
+
+test('158: prefix mismatch, verdict before the bulk socket closes — zero bytes, nothing published, partial and record gone, .failed left, nothing resumes', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: PREFIX_MISMATCH, order: 'done-first', gapMs: 50 }, lateVerdictWaitMs: BOUND_MS });
+  try {
+    const record = await pausedWithRecord(h);
+    const r = await h.pull();
+    assert.equal((h.begins[1]!.resume as Record<string, unknown>).verifiedBlocks, record.digests.length, 'control: the resume was asked for');
+    assert.equal(h.served.get('t-2'), 0, 'the phone sent zero bytes on the refused resume');
+    await assertSourceRejected(h, r, 2);
+  } finally { h.done(); }
+});
+
+test('158: prefix mismatch, bulk socket closes before the verdict arrives on the live session — the bounded wait honours it', T, async (t) => {
+  const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: PREFIX_MISMATCH, order: 'close-first', gapMs: 200 }, lateVerdictWaitMs: BOUND_MS });
+  try {
+    await pausedWithRecord(h);
+    const t0 = Date.now();
+    const r = await h.pull();
+    const ms = Date.now() - t0;
+    t.diagnostic(`settled ${ms} ms after Resume (verdict 200 ms after the close; bound ${BOUND_MS} ms)`);
+    assert.equal(h.served.get('t-2'), 0, 'zero bytes');
+    assert.ok(ms < BOUND_MS, `it settled on the verdict, not on the bound (${ms} ms)`);
+    await assertSourceRejected(h, r, 2);
+  } finally { h.done(); }
+});
+
+test('158: a short stream — some bytes, then SOURCE_CHANGED after the close — is rejected, not kept as resumable', T, async () => {
+  const h = harness({ endAfter: { bytes: 10 * MiB, done: CHANGED_WHILE_SENT, order: 'close-first', gapMs: 100 }, lateVerdictWaitMs: BOUND_MS });
+  try {
+    const r = await h.pull();
+    assert.equal(h.served.get('t-1'), 10 * MiB, 'control: bytes were sent before the verdict');
+    await assertSourceRejected(h, r, 1);
+  } finally { h.done(); }
+});
+
+test('158: a genuine disconnect with no verdict still keeps the safe resumable data, within the bound', T, async (t) => {
+  const h = harness({ dropAfter: 20 * MiB, lateVerdictWaitMs: 400 });
+  try {
+    const t0 = Date.now();
+    const r = await h.pull();
+    const ms = Date.now() - t0;
+    t.diagnostic(`a drop with no verdict settled ${ms} ms after the pull began (bound 400 ms after the close)`);
+    assert.equal(r.paused, true, `an interruption: ${r.reason}`);
+    assert.notEqual(r.sourceChanged, true);
+    const [record] = await h.resumeStore.all();
+    assert.ok(record && record.digests.length > 0, 'the record is kept');
+    assert.deepEqual(record!.digests, DIGESTS.slice(0, record!.digests.length), 'only true blocks are recorded');
+    assert.ok(existsSync(pullPartPathFor(join(h.folder, 'clip.bin'))), 'the owned partial is kept');
+    assert.equal(existsSync(join(h.folder, 'clip.bin.failed')), false, 'no .failed for an interruption');
+    assert.equal(h.client.takeAutoResumable().length, 1, 'still offered to the reconnect');
+  } finally { h.done(); }
+});
+
+test('158: a verdict later than the bound does not hold the pull open — it settles as an interruption at the bound', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: PREFIX_MISMATCH, order: 'close-first', gapMs: 2_500 }, lateVerdictWaitMs: 400 });
+  try {
+    await pausedWithRecord(h);
+    const t0 = Date.now();
+    const r = await h.pull();
+    const ms = Date.now() - t0;
+    assert.ok(ms < 2_000, `settled at the bound, not on the late verdict (${ms} ms)`);
+    assert.equal(r.paused, true, 'no verdict inside the bound: kept as an interruption, which is safe');
+    assert.equal((await h.resumeStore.all()).length, 1, 'the verified record is kept');
+  } finally { h.done(); }
+});
+
+test('158: a SOURCE_CHANGED for another transfer, during the wait, does not discard this pull', T, async () => {
+  const h = harness({ dropAfter: 20 * MiB, lateVerdictWaitMs: BOUND_MS });
+  try {
+    const p = h.pull();
+    await whenReceiving(h, 20 * MiB);
+    await new Promise((res) => setTimeout(res, 200)); // the socket has dropped; the Mac is waiting for a verdict
+    h.link.emit('message', { type: 'fs.transfer.done', payload: { transferId: 't-99', ...PREFIX_MISMATCH } });
+    const r = await p;
+    assert.equal(r.paused, true, `kept as an interruption: ${r.reason}`);
+    assert.equal((await h.resumeStore.all()).length, 1, 'its record is kept');
+    assert.ok(existsSync(pullPartPathFor(join(h.folder, 'clip.bin'))), 'its partial is kept');
+  } finally { h.done(); }
+});
+
+test('158: a SOURCE_CHANGED for this transfer arriving on a replacement session does not discard it', T, async () => {
+  const h = harness({ dropAfter: 20 * MiB, lateVerdictWaitMs: BOUND_MS });
+  try {
+    const p = h.pull();
+    await whenReceiving(h, 20 * MiB);
+    await new Promise((res) => setTimeout(res, 200));
+    h.reconnect('tok-2'); // a new session is up; t-1 belonged to the old one
+    h.link.emit('message', { type: 'fs.transfer.done', payload: { transferId: 't-1', ...PREFIX_MISMATCH } });
+    const r = await p;
+    assert.equal(r.paused, true, `a stale session's verdict is not this pull's: ${r.reason}`);
+    assert.equal((await h.resumeStore.all()).length, 1, 'its record is kept');
+  } finally { h.done(); }
+});
+
+test('158: a duplicate SOURCE_CHANGED for a finished pull affects neither it nor the next pull', T, async () => {
+  const h = harness({ paceMs: 2 });
+  try {
+    const first = await h.pull();
+    assert.equal(first.ok, true, first.reason);
+    const second = h.client.pull({ rootId: 'saf:primary', id: 'doc-2', name: 'other.bin', size: SIZE });
+    const dup = () => h.link.emit('message', { type: 'fs.transfer.done', payload: { transferId: 't-1', ...PREFIX_MISMATCH } });
+    dup(); setTimeout(dup, 100); setTimeout(dup, 400);
+    const r = await second;
+    assert.equal(r.ok, true, r.reason);
+    assert.equal(sha(readFileSync(join(h.folder, 'clip.bin'))), sha(SOURCE), 'the finished file is untouched');
+    assert.equal(sha(readFileSync(join(h.folder, 'other.bin'))), sha(SOURCE), 'the next pull is saved whole');
+    assert.deepEqual(readdirSync(h.folder).sort(), ['clip.bin', 'other.bin'], 'no .failed, no partial');
+  } finally { h.done(); }
+});
+
+test('158: a pull interrupted earlier, then rejected on a manual Resume, is no longer offered to a reconnect', T, async () => {
+  const h = harness({ dropAfter: 20 * MiB, resumeEnding: { done: PREFIX_MISMATCH, order: 'done-first', gapMs: 50 }, lateVerdictWaitMs: BOUND_MS });
+  try {
+    const first = await h.pull();
+    assert.equal(first.paused, true, 'control: the link drop is an interruption, waiting for a reconnect');
+    const r = await h.pull(); // the person presses Resume before any reconnect
+    assert.equal(h.served.get('t-2'), 0, 'zero bytes on the refused resume');
+    await assertSourceRejected(h, r, 2); // includes: takeAutoResumable() is empty
   } finally { h.done(); }
 });

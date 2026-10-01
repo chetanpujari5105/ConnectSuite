@@ -26630,3 +26630,101 @@ empty, no `sidekick-pull` partial. `link-up.sh` 3/3. The pane: nothing copying, 
 
 **Left on the devices:** the phone runs `95a8cdd` (`fa5523e7…`), probe disarmed; the Mac is unchanged; the
 `.failed` sidecar is kept for review.
+
+### Defect 158 — a resumed pull refused by the phone's prefix re-hash was kept as a resumable interruption
+
+**Found on hardware, 2026-10-01 23:40:07–23:40:08** (SM-S938B + this Mac). The full run is recorded as
+*Changed source with unchanged indexed metadata — resume prefix check*; that section was left
+uncommitted at this commit, by the owner's instruction.
+- **The state.** The phone's source had changed in place (H1, block 100), and MediaStore still reported
+  the old time (M0). The Mac held a paused pull of the old bytes (768 verified blocks).
+- **The run.** One Resume. The phone accepted provisionally, re-hashed the prefix, and answered
+  `{"ok":false,"code":"SOURCE_CHANGED","why":"prefix-mismatch","bytes":100663296,…}` with **0 bytes sent**.
+- **What the Mac did.** It logged *"interrupted after 100663296 of 209715200 bytes: the phone closed after
+  0 of 109051904 bytes; the partial is kept"*. It kept the partial and the M0 record. It showed
+  *"… paused — the phone closed after 0 of 109051904 bytes What had arrived is kept; Resume continues from
+  there."* It filed the pull as auto-resumable.
+
+The record's three distinctions:
+- **Phone prefix-change detection: PASSED.**
+- **No mixed or corrupt final file was published.** No `(2).bin` existed; the partial held only the 768
+  old blocks.
+- **Mac terminal-failure handling: FAILED.**
+
+Metadata-based T5-B remains **NO READING**, and T5-A remains **unproven**.
+
+**Cause.** `BulkClient.pull`'s socket `close` handler: `received !== expected` → `fail()`, the
+interruption path, which never consults `BlockPullVerifier`. The verdict reached `onDone` and was never
+read. Neither earlier Mac `SOURCE_CHANGED` test could see this, because both deliver **every byte**
+before the verdict, which goes through `complete()`.
+
+**Fix (Mac only; no phone change, no restart).**
+- `bulk.ts`: a short close of a block pull waits `blocks.settled(LATE_VERDICT_WAIT_MS = 3 s)`.
+  - A terminal `SOURCE_CHANGED` goes to the established `discard` (owned partial and record removed,
+    `.failed` written `wx`).
+  - Anything else goes to `fail()`, as before.
+  - `stop()` (Pause, Cancel, session end) still settles at once.
+- `fsBlocks.ts`: `sourceChange()`, the one home for the rule; `conclude()` now uses it.
+- `files.ts`:
+  - verdicts accepted only on the pull's own session token;
+  - a discarded pull deleted from the auto-resume map;
+  - record saves serialised and awaited before the discard;
+  - the resume log no longer says *"re-hashed by the phone"* at the provisional ack.
+- `bulk.ts` discard: the log says whether the `.failed` was written, or one already stood there and was
+  kept (`wx` never overwrites).
+- `renderer/files.ts`: a reason without a full stop is closed before the next sentence.
+
+**Tests — through the real `FilesClient.pull` → `BulkClient.pull` over a local socket, fake phone.**
+
+| Test (`filesResume.test.ts` unless noted) | Before the fix | After |
+|---|---|---|
+| prefix mismatch, verdict **before** the bulk close; zero bytes | **red** — `{"reason":"the phone closed after 0 of 46444544 bytes","paused":true}` | green |
+| prefix mismatch, bulk close **before** the verdict (200 ms later, live session); settles on the verdict, not the bound | **red**, same | green |
+| short stream: 10 MiB, then `SOURCE_CHANGED` after the close | **red** — `"…after 10485760 of 67416064 bytes","paused":true` | green |
+| genuine disconnect, no verdict: partial + true-digest record kept, auto-resumable | green (guard) | green |
+| a verdict later than the bound: settles at the bound as an interruption | green (guard) | green |
+| `SOURCE_CHANGED` for **another** transfer during the wait | green (guard) | green |
+| `SOURCE_CHANGED` for this transfer on a **replacement session** | green (guard) | green |
+| **duplicate** `SOURCE_CHANGED` for a finished pull; the next pull | green (guard) | green |
+| interrupted earlier, then rejected on a manual Resume: not offered to a reconnect | (written after the fix) | green |
+| `filesView.test.ts`: a reason with no full stop does not run on | (written after the fix) | green |
+
+Every rejection asserts:
+- `sourceChanged`, and not paused or cancelled;
+- nothing published;
+- partial and record gone;
+- exactly one `clip.bin.failed`;
+- `takeAutoResumable()` empty, `pausedPulls()` empty;
+- no further `fs.transfer.begin` 300 ms later.
+
+The zero-byte tests also assert the fake phone served **0** bytes.
+
+**Mutations** — each reintroduced alone, run against its named test, and every file restored
+byte-identical afterwards:
+
+| | Mutation | Red |
+|---|---|---|
+| M1 | the old close handler (no wait) | the three defect tests |
+| M2 | no session check on verdicts | replacement session |
+| M3 | no transfer-id filter on verdicts | another transfer; duplicate |
+| M4 | a missing verdict treated as a source change | genuine disconnect |
+| M5 | the bound ignored (30 s completion wait used) | later than the bound |
+| M6 | a discarded pull left in the auto-resume map | interrupted earlier, then rejected |
+| M7 | the reason not closed as a sentence | no full stop |
+
+M4's first form dereferenced `null` and **hung** the test process instead of failing (killed after 12
+min). That is not counted. It was rewritten as the semantic mutation above, which fails in 0.5 s.
+
+**Not covered by a test, said plainly:**
+- The serialised record save (no deterministic way to land the 2 s timer inside the discard window).
+- The log wording.
+- A socket `error` (rather than `close`) after a verdict still goes straight to the interruption path.
+
+**Fresh runs (2026-10-02 00:06–00:07):**
+- Mac `npm test` **1,421 / 0** (`.test-run.json` written 00:07:23).
+- `tsc --noEmit` app 0, test 0.
+- `dist/` untouched (`4c50a4d2…`, 254 files); the running app (pid 99261) not rebuilt or relaunched.
+- No phone code changed.
+
+**Not verified on hardware.** The live paused artifact from 2026-10-01 was left exactly as it was: no
+Resume, Cancel, reconnect, deletion or restoration.

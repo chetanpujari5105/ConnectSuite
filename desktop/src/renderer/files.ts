@@ -2189,16 +2189,22 @@ function pausedSentence(verifiedBytes: number, size: number): string {
  * not happen ([pullCheckSentence]).
  */
 function pullOutcomeText(name: string, result: PullResult): string {
+  // A reason is a clause from the main process ("the phone closed after 0 of 109051904 bytes") and may
+  // carry no full stop; the next sentence must not run on from it (defect 158, seen on hardware).
+  const reason = (fallback: string): string => {
+    const r = (result.reason ?? fallback).trim();
+    return /[.!?]$/.test(r) ? r : `${r}.`;
+  };
   if (result.ok) {
     return `${name} is on this Mac — drag it to Finder from here. ${pullCheckSentence(result)}` +
       (result.resumedFrom ? ' It continued from where it had paused.' : '');
   }
   if (result.cancelled) return `${name} — cancelled. Nothing was saved, and the part that had arrived was deleted.`;
   if (result.paused && result.noSpace) {
-    return `${name} paused — ${result.reason ?? 'this Mac is running out of space.'} What had arrived is kept; free some space, then choose Resume.`;
+    return `${name} paused — ${reason('this Mac is running out of space.')} What had arrived is kept; free some space, then choose Resume.`;
   }
-  if (result.paused) return `${name} paused — ${result.reason ?? 'the copy stopped.'} What had arrived is kept; Resume continues from there.`;
-  if (result.sourceChanged) return `${name} — ${result.reason ?? 'the file changed on the phone.'} Nothing was saved.`;
+  if (result.paused) return `${name} paused — ${reason('the copy stopped.')} What had arrived is kept; Resume continues from there.`;
+  if (result.sourceChanged) return `${name} — ${reason('the file changed on the phone.')} Nothing was saved.`;
   return `${name} — ${result.reason ?? 'the copy failed.'}` + (result.fixHint ? ` ${result.fixHint}` : '');
 }
 (globalThis as Record<string, unknown>).pullOutcomeText = pullOutcomeText;

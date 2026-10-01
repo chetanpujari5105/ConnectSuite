@@ -83,6 +83,15 @@ export const SPACE_CHECK_EVERY_BYTES = 1024 * 1024 * 1024;
 /** How long a block pull waits after its last byte for the phone's `fs.transfer.done` (docs/protocol.md). */
 export const BLOCK_DONE_WAIT_MS = 30_000;
 
+/**
+ * How long a block pull whose bulk socket closed **short** waits for the phone's verdict before calling
+ * it an interruption (defect 158). The verdict travels on the control connection and the close on the
+ * bulk one, so neither order is guaranteed; on hardware the two arrived within 2 ms. Bounded, because a
+ * link drop has no verdict to wait for — and a verdict later than this is treated as no verdict, which
+ * keeps the verified blocks (the safe side): the next Resume asks again and meets the same refusal.
+ */
+export const LATE_VERDICT_WAIT_MS = 3_000;
+
 export class BulkClient {
   constructor(private readonly identity: Identity) {}
 
@@ -215,6 +224,8 @@ export class BulkClient {
     blocks?: BlockPullVerifier;
     /** Tests only: how long to wait for that verdict. */
     blockDoneWaitMs?: number;
+    /** Tests only: how long a short close waits for a late verdict ([LATE_VERDICT_WAIT_MS]). */
+    lateVerdictWaitMs?: number;
     /**
      * An owned partial for an `fs.blocks` pull: the handle to write through (created exclusively, or
      * reopened no-follow and identity-checked), where writing starts, a whole-file digest already
@@ -348,7 +359,8 @@ export class BulkClient {
         this.failures += 1;
         if (owned) await owned.deleteOwned().catch(() => undefined);
         else await fs.rm(part, { force: true }).catch(() => undefined);
-        await fs
+        // `wx`: an existing marker at that name is never replaced, so the log says which happened.
+        const sidecar = await fs
           .writeFile(
             failedPathFor(destination),
             sidecarText({
@@ -360,8 +372,8 @@ export class BulkClient {
             }),
             { flag: 'wx' },
           )
-          .catch(() => undefined);
-        log.error('bulk', `${transferId} not saved after ${total} bytes: ${reason}; the partial was deleted and a .failed sidecar left beside it; ${this.tallyLine()}`);
+          .then(() => 'a .failed sidecar left beside it', (e: NodeJS.ErrnoException) => (e?.code === 'EEXIST' ? 'a .failed sidecar already stood at that name and was kept' : `no .failed sidecar written (${String(e?.code ?? e)})`));
+        log.error('bulk', `${transferId} not saved after ${total} bytes: ${reason}; the partial was deleted and ${sidecar}; ${this.tallyLine()}`);
         resolve({ ok: false, bytes: total, elapsedMs, sha256, verified: false, reason, discarded: true, ...extra });
       };
 
@@ -609,8 +621,23 @@ export class BulkClient {
       socket.on('data', (chunk: Buffer) => reader.push(chunk));
       socket.on('close', () => {
         if (settled) return;
-        if (received === expectedBytes - offset) void complete();
-        else fail(`the phone closed after ${received} of ${expectedBytes - offset} bytes`);
+        if (received === expectedBytes - offset) { void complete(); return; }
+        const short = `the phone closed after ${received} of ${expectedBytes - offset} bytes`;
+        const blocks = options.blocks;
+        if (!blocks) { fail(short); return; }
+        // Defect 158: a short close is an interruption only if the phone did not end the transfer itself.
+        // A resume whose prefix no longer hashes — or a source that changed under the read — ends with a
+        // terminal SOURCE_CHANGED and a short (often empty) stream, and the verdict may arrive on the
+        // control connection either side of this close. Wait for it, bounded; Pause, Cancel and a session
+        // ending still settle at once through `stop`, which this wait never blocks.
+        void blocks.settled(options.lateVerdictWaitMs ?? LATE_VERDICT_WAIT_MS).then(async () => {
+          if (settled) return;
+          const changed = blocks.sourceChange();
+          if (!changed) { fail(short); return; }
+          settled = true;
+          await new Promise<void>((done) => file.end(() => done()));
+          await discard(changed.message, '', offset + received, Date.now() - startedAt, { sourceChanged: true, verifiedBlocks: blocks.verified });
+        });
       });
     });
   }

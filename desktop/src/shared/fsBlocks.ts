@@ -155,6 +155,17 @@ export class BlockPullVerifier {
     return this.problem;
   }
 
+  /**
+   * The phone's terminal `SOURCE_CHANGED`, when that is how it said this transfer ended — whatever the
+   * bulk socket did. One home for the rule, read by [conclude] and by `BulkClient.pull`'s short-close
+   * path (defect 158: a refused resume sends no byte, so its verdict can only meet a short stream).
+   */
+  sourceChange(): Extract<BlockVerdict, { kind: 'source-changed' }> | null {
+    const d = this.done;
+    if (!d || d.ok === true || d.code !== 'SOURCE_CHANGED') return null;
+    return { kind: 'source-changed', why: String(d.why ?? 'source-changed'), message: String(d.message ?? 'The file changed on the phone.') };
+  }
+
   onBytes(chunk: Uint8Array): void {
     if (this.problem) return;
     this.hasher.update(chunk);
@@ -193,9 +204,8 @@ export class BlockPullVerifier {
     const d = this.done;
     if (!d) return { kind: 'failed', why: 'the phone never said how the transfer ended' };
     if (d.ok !== true) {
-      if (d.code === 'SOURCE_CHANGED') {
-        return { kind: 'source-changed', why: String(d.why ?? 'source-changed'), message: String(d.message ?? 'The file changed on the phone.') };
-      }
+      const changed = this.sourceChange();
+      if (changed) return changed;
       return { kind: 'failed', why: String(d.message ?? d.code ?? 'the phone ended the transfer') };
     }
     this.hasher.finish();
