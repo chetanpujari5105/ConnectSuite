@@ -109,8 +109,12 @@ export interface BlockDone {
 
 export type BlockVerdict =
   | { kind: 'verified' }
-  /** What the Mac wrote is not what the phone read — a corrupt partial, deleted with a sidecar. */
-  | { kind: 'corrupt'; why: string; block?: number }
+  /**
+   * What the Mac wrote is not what the phone read — a corrupt partial, deleted with a sidecar. At a block
+   * mismatch both digests of that block are known and carried, so the marker can name them; nothing here
+   * is a whole-file hash, because a transfer that stopped at a bad block has none.
+   */
+  | { kind: 'corrupt'; why: string; block?: number; phoneDigest?: string; macDigest?: string }
   /** `SOURCE_CHANGED`: the phone's file changed during the read, or since the pause. */
   | { kind: 'source-changed'; why: string; message: string }
   /** The phone ended the transfer some other way (cancelled, a read failed), or never said. */
@@ -234,7 +238,10 @@ export class BlockPullVerifier {
     const upTo = Math.min(mine.length, this.theirs.length);
     while (this.verified < upTo) {
       if (mine[this.verified] !== this.theirs[this.verified]) {
-        return this.fail({ kind: 'corrupt', why: `block ${this.verified} does not match what the phone read`, block: this.verified });
+        return this.fail({
+          kind: 'corrupt', why: `block ${this.verified} does not match what the phone read`, block: this.verified,
+          phoneDigest: this.theirs[this.verified], macDigest: mine[this.verified],
+        });
       }
       this.verified += 1;
     }

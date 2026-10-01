@@ -101,7 +101,21 @@ object FsCorruptionProbe {
 
     fun claim(candidate: Candidate, debuggable: Boolean, nowMs: Long): Long? = instance.claim(candidate, debuggable, nowMs)
 
-    /**
+        /**
+     * What the receiver must do once the byte at [at] has been flipped, worded for the pull it is in
+     * (defect 159). The probe is armed only for a block-verified pull now, and a block pull does not
+     * report `CHECKSUM_MISMATCH` — it names the first block that does not match. The whole-file wording
+     * stays for the classic path, which shares the hook.
+     */
+    fun expectation(at: Long, blockSize: Long?): String =
+        if (blockSize != null && blockSize > 0) {
+            "The receiver must name block ${at / blockSize} as not matching what the phone read, publish " +
+                "nothing, delete its partial and record, and leave a .failed marker naming that block."
+        } else {
+            "The receiver must report CHECKSUM_MISMATCH, delete its partial and write a .failed sidecar."
+        }
+
+/**
      * Flips byte [at] of [chunk] — whose first byte is at [absoluteStart] in the file — by XOR `0xFF`.
      * Returns the byte as it was, or null when [at] is not in this chunk.
      */

@@ -34,7 +34,7 @@
 /** The suffix on a partial. Declared once; see the note above about why that is checked. */
 export const PART_SUFFIX = '.part';
 
-/** The suffix on the sidecar left where a checksum failed. */
+/** The suffix on the sidecar left where a transfer failed ([FailedMarker] says why). */
 export const FAILED_SUFFIX = '.failed';
 
 export function partPathFor(destination: string): string {
@@ -111,22 +111,52 @@ export function isResumable(options: {
  * is exactly what *a corrupt file is worse than a missing one* forbids, and it leaves something a
  * hopeful user can rename back. The sidecar carries the **fact** without carrying the bytes.
  */
-export function sidecarText(options: {
-  name: string;
-  whenIso: string;
-  bytes: number;
-  expected: string;
-  actual: string;
-}): string {
-  return [
-    'Sidekick transfer failed — checksum mismatch',
-    `file      ${options.name}`,
-    `when      ${options.whenIso}`,
-    `size      ${options.bytes} bytes received`,
-    `expected  ${options.expected}`,
-    `actual    ${options.actual}`,
-    'The partial file was deleted because the bytes that arrived were wrong.',
-    'A retry starts from zero; there is nothing here to resume.',
-    '',
-  ].join('\n');
+/**
+ * The first words of every marker this app writes. **It is the ownership token**: a later successful
+ * publish at the same name removes a `.failed` only if it starts with this (`removeStaleSidecar`), so a
+ * file of the person's that merely carries the suffix is never deleted. Every kind below keeps it.
+ */
+export const FAILED_MARKER_HEADER = 'Sidekick transfer failed';
+
+/**
+ * Why a transfer left a marker. Each kind says only what was actually established (defect 159):
+ * - `checksum` — the whole file arrived and its SHA-256 differs from the one agreed in advance, so both
+ *   whole-file digests are real;
+ * - `block` — a block-verified pull stopped at the first block that did not match. The phone's and the
+ *   Mac's digests **of that block** are known; there is **no** whole-file hash, because the file never
+ *   arrived whole, and none is written;
+ * - `source-changed` — the phone ended the transfer because its file changed (`SOURCE_CHANGED`, e.g. a
+ *   resume whose prefix no longer hashes). Nothing that arrived was wrong; it was out of date;
+ * - `unverified` — the transfer finished but failed another check (a count, a length, the manifest).
+ */
+export type FailedMarker = { name: string; whenIso: string; bytes: number } & (
+  | { kind: 'checksum'; expected: string; actual: string }
+  | { kind: 'block'; block: number; phoneDigest?: string; macDigest?: string }
+  | { kind: 'source-changed'; why: string; message: string }
+  | { kind: 'unverified'; reason: string }
+);
+
+export function sidecarText(m: FailedMarker): string {
+  const head = [`file      ${m.name}`, `when      ${m.whenIso}`, `size      ${m.bytes} bytes received`];
+  const retry = 'A retry starts from zero; there is nothing here to resume.';
+  switch (m.kind) {
+    case 'checksum':
+      return [`${FAILED_MARKER_HEADER} — checksum mismatch`, ...head,
+        `expected  ${m.expected}`, `actual    ${m.actual}`,
+        'The partial file was deleted because the bytes that arrived were wrong.', retry, ''].join('\n');
+    case 'block':
+      return [`${FAILED_MARKER_HEADER} — block ${m.block} did not match what the phone read`, ...head,
+        `block     ${m.block} (blocks before it matched)`,
+        `phone     ${m.phoneDigest ?? '(not known)'}`, `this Mac  ${m.macDigest ?? '(not known)'}`,
+        'whole-file SHA-256: not computed — the transfer stopped at this block, so the file never arrived whole.',
+        'The partial file was deleted because the bytes that arrived were wrong.', retry, ''].join('\n');
+    case 'source-changed':
+      return [`${FAILED_MARKER_HEADER} — the file changed on the phone`, ...head,
+        `why       ${m.why}`, `phone     ${m.message}`,
+        'Nothing that arrived was wrong; it was out of date, so the partial file was deleted rather than finished.',
+        'Copying it again fetches the changed file from the start.', ''].join('\n');
+    case 'unverified':
+      return [`${FAILED_MARKER_HEADER} — the file did not verify`, ...head, `reason    ${m.reason}`,
+        'The partial file was deleted because it could not be shown to match what the phone read.', retry, ''].join('\n');
+  }
 }

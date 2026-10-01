@@ -145,7 +145,7 @@ class AppFilesStore(context: Context) : FsStore {
             FsPaths.joinPath(segments + FsPartials.partNameFor(name)),
         ) ?: return null
         val finalFile = resolve(FsPaths.joinPath(segments + name)) ?: return null
-        return LocalPartial(part, finalFile)
+        return LocalPartial(part, finalFile, createdNow = !part.exists())
     }
 
     /**
@@ -159,6 +159,7 @@ class AppFilesStore(context: Context) : FsStore {
     private inner class LocalPartial(
         private val part: File,
         private val finalFile: File,
+        override val createdNow: Boolean,
     ) : FsPartial {
 
         override val bytesOnDisk: Long

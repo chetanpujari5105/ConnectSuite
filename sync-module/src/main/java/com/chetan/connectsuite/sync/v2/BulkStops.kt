@@ -83,3 +83,23 @@ class LiveStops {
 
     fun isFlagged(transferId: String): Boolean = reasons.containsKey(transferId)
 }
+
+/**
+ * Which session ends have already been acted on (defect 161). `BulkTransfers.forgetSession` has two
+ * callers — the Files and the Photos features each hear the same session end — and before this the
+ * second call recomputed the plan, re-flagged the live stream the first had already stopped, and logged
+ * *"stopping 1 live stream(s)"* a second time for one stop. A token is minted per handshake, so the first
+ * end of a token is the only one with anything to do. Bounded, because tokens accumulate for the life of
+ * the process; a token old enough to fall out has no transfers left to stop.
+ */
+class EndedSessions(private val capacity: Int = 64) {
+    private val seen = LinkedHashSet<String>()
+
+    /** True the first time [token] ends, false on every repeat. */
+    @Synchronized
+    fun firstEnd(token: String): Boolean {
+        if (!seen.add(token)) return false
+        while (seen.size > capacity) seen.remove(seen.first())
+        return true
+    }
+}

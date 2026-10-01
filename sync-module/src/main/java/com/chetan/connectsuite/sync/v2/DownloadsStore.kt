@@ -222,7 +222,7 @@ class DownloadsStore(private val context: Context) : FsStore {
                 "$rootId reusing the pending item for $name (id $existing, ${lengthOf(uri)} bytes " +
                     "already staged) — this is the resume path",
             )
-            return PendingItem(uri, name)
+            return PendingItem(uri, name, createdNow = false)
         }
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, name)
@@ -234,7 +234,7 @@ class DownloadsStore(private val context: Context) : FsStore {
             null
         } ?: return null
         LinkLog.i("fs", "$rootId staged $name as a pending item at $uri")
-        return PendingItem(uri, name)
+        return PendingItem(uri, name, createdNow = true)
     }
 
     /** The id of a pending row of ours with this display name, or null. The resume lookup. */
@@ -279,6 +279,7 @@ class DownloadsStore(private val context: Context) : FsStore {
     private inner class PendingItem(
         private val uri: Uri,
         private val name: String,
+        override val createdNow: Boolean,
     ) : FsPartial {
 
         override val bytesOnDisk: Long get() = lengthOf(uri)

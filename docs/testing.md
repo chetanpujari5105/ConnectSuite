@@ -26798,3 +26798,88 @@ solved.
   **115 / 0**.
 - `tsc --noEmit`: app 0, test 0.
 - Not on hardware.
+
+### Defect 159 — failure evidence said more than was known (2026-10-02, tests only)
+
+**The finding.** It is T4-A's (hardware, 2026-10-01).
+- `sidekick-pass-stop-200mb (7).bin.failed` began *"Sidekick transfer failed — checksum mismatch"* for a
+  **block** mismatch, with an empty `actual` line.
+- The phone's probe line said *"The receiver must report CHECKSUM_MISMATCH"*.
+- After `b1f62fc`, a source-change refusal's marker was headed *"checksum mismatch"* too.
+
+**Red at `HEAD` (`264ec68`), product files swapped back, then restored with a SHA-256 check:** 5 of 8 new
+Mac tests.
+- the real-path block marker was headed *"checksum mismatch"* and had no block or digests;
+- the source rejection's marker said *"checksum mismatch"*;
+- the writer did not report its outcome;
+- the two marker-kind unit tests failed.
+
+The 3 that stayed green pin existing behaviour: exclusive writes, and owned-only removal.
+
+**Fix.**
+- `FailedMarker` (`transferFiles.ts`) has four kinds, each saying only what its verdict established:
+  - `checksum`: real whole-file expected and actual;
+  - `block`: the block index, the phone's and this Mac's digest of it, and *"whole-file SHA-256: not
+    computed"*;
+  - `source-changed`: the phone's `why` and message, and *"Nothing that arrived was wrong; it was out of
+    date"*;
+  - `unverified`: the reason.
+- Every kind keeps the header `Sidekick transfer failed`, the ownership token removal checks.
+- `BlockPullVerifier` carries both digests of the failing block.
+- `writeFailedMarker` returns `created` / `existed` / `failed`, and both failure paths log which.
+- `removeStaleSidecar` returns and logs `removed` / `not ours, kept`.
+- Phone: `FsCorruptionProbe.expectation(at, blockSize)` names block 800 for a block pull.
+
+**Real-path tests** (`filesResume.test.ts`, through `FilesClient.pull` → `BulkClient.pull`):
+- a corrupt block 300 leaves a marker naming block 300, with `DIGESTS[300]` and the SHA-256 of the bad
+  block, and no `actual` line;
+- a prefix-mismatch rejection's marker says the file changed, `why prefix-mismatch`;
+- an existing marker — the person's own file or an earlier attempt's — is left byte-for-byte;
+- a whole publish removes our marker and keeps the person's;
+- a write into a read-only folder reports `failed` / `EACCES`.
+
+**Mutations** (Mac, checksum-verified restore):
+- X1 (block → unverified) red;
+- X2 (block headed "checksum mismatch") 2 red;
+- X3 (removal without the ownership check) red;
+- X4 (`w` instead of `wx`) 3 red;
+- X5 (source-changed → unverified) red.
+
+Phone: P2's first form **did not compile** (it broke Kotlin's smart cast). The runner reported it as
+*"COMPILE ERROR — no reading"* and it is not counted. P2b, a compiling form, is red on the named test.
+
+### Defect 160 — a fresh push's own new partial was logged as another app's file (2026-10-02, tests only)
+
+**The finding:** hardware, 2026-10-01 19:59:23, row 1000313356. `DownloadsStore.openPartial` created the
+pending row; 7 ms later the push logged it as *"a partial with no transfer record of ours beside it —
+treated as another app's file"* (`docs/testing.md` → T5-B, *Investigated afterwards*).
+
+**Fix:** `FsPartial.createdNow`, true only in each store's create branch, passed to
+`FsPartials.resumeFrom(…, createdNow)`. An empty partial created now reads *"a new, empty partial created
+for this push — nothing to resume"*.
+
+**Tests** (`FsPartialsTest`, +3):
+- the hardware state (created, 0 bytes, no record) names it as new;
+- a pre-existing partial with no record keeps *"another app"* at 0 and at 4,096 bytes;
+- `createdNow` never changes a nonempty or recorded decision.
+
+**Mutation:** P1 (flag ignored) red. **Not JVM-reachable:** the stores' assignment of the flag.
+
+### Defect 161 — one session end was acted on and logged twice (2026-10-02, tests only)
+
+**The finding:** T3 on hardware (2026-09-30). The phone logged *"stopping 1 live stream(s)"* twice for one
+stop; `FsFeature` and `MediaFeature` both call `forgetSession`.
+
+**Fix:** `EndedSessions` (in `BulkStops.kt`) gates `forgetSession` to a token's first end, bounded to 64
+tokens. The repeat logs *"session end already handled for this session; nothing more to stop"*.
+
+**Tests** (`BulkStopsTest`, +2): the first end acts, a repeat does not, another token still acts; the
+memory is bounded and forgets the oldest.
+
+**Mutations:** P3 (no gate) 2 red; P4 (unbounded) red. **Not JVM-reachable:** the gate's call inside
+`forgetSession`.
+
+**Runs for 159–161 (2026-10-02 00:47–00:49):**
+- Mac `npm test` **1,440 / 0**; `tsc --noEmit` app 0, test 0.
+- `sync-module` **608 / 0**: Gradle exit 0, and all 59 result files written at 00:47:58, inside the run.
+- Not on hardware.

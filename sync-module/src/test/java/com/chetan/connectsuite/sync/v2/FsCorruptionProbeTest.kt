@@ -314,4 +314,22 @@ class FsCorruptionProbeTest {
         }
         assertFalse("no state of its own", Regex("var\\s+state").containsMatchIn(obj))
     }
+
+    // ---- defect 159: the probe states the outcome the pull it is in will actually report --------------
+
+    @Test
+    fun `159 - a block pull's expectation names the block, not CHECKSUM_MISMATCH`() {
+        val line = FsCorruptionProbe.expectation(at = 104_923_136L, blockSize = 131_072L)
+        assertTrue(line, line.contains("block 800"))
+        assertFalse(line, line.contains("CHECKSUM_MISMATCH"))
+        assertTrue(line, line.contains(".failed marker naming that block"))
+    }
+
+    @Test
+    fun `159 - the classic whole-file path keeps its CHECKSUM_MISMATCH wording`() {
+        for (bs in listOf(null, 0L)) {
+            val line = FsCorruptionProbe.expectation(at = 104_923_136L, blockSize = bs)
+            assertTrue("$bs: $line", line.contains("CHECKSUM_MISMATCH"))
+        }
+    }
 }

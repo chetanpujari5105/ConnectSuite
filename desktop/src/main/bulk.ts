@@ -14,8 +14,8 @@ import { log } from './logger';
 import { MAX_BULK_FRAME, MAX_BULK_HEADER_FRAME, PORT_BULK } from '../shared/protocol';
 import { FrameTally } from '../shared/frameTally';
 import { TransferDigest } from '../shared/transferDigest';
-import { BlockPullVerifier } from '../shared/fsBlocks';
-import { failedPathFor, isResumable, pullPartPathFor, sidecarText } from '../shared/transferFiles';
+import { BlockPullVerifier, type BlockVerdict } from '../shared/fsBlocks';
+import { FAILED_MARKER_HEADER, failedPathFor, isResumable, pullPartPathFor, sidecarText, type FailedMarker } from '../shared/transferFiles';
 
 /**
  * The Mac's half of the bulk channel — the first thing on this side to open port 42503.
@@ -360,24 +360,12 @@ export class BulkClient {
        * source changed under the read, so they go — a corrupt file is worse than a missing one — and a
        * sidecar keeps the fact without the bytes.
        */
-      const discard = async (reason: string, sha256: string, total: number, elapsedMs: number, extra: Partial<BulkResult> = {}): Promise<void> => {
+      const discard = async (reason: string, sha256: string, total: number, elapsedMs: number, extra: Partial<BulkResult>, what: MarkerWhat): Promise<void> => {
         this.failures += 1;
         if (owned) await owned.deleteOwned().catch(() => undefined);
         else await fs.rm(part, { force: true }).catch(() => undefined);
-        // `wx`: an existing marker at that name is never replaced, so the log says which happened.
-        const sidecar = await fs
-          .writeFile(
-            failedPathFor(destination),
-            sidecarText({
-              name: destination.split('/').pop() ?? destination,
-              whenIso: new Date().toISOString(),
-              bytes: total,
-              expected: expectedSha256 ?? `(block-verified) ${reason}`,
-              actual: sha256,
-            }),
-            { flag: 'wx' },
-          )
-          .then(() => 'a .failed sidecar left beside it', (e: NodeJS.ErrnoException) => (e?.code === 'EEXIST' ? 'a .failed sidecar already stood at that name and was kept' : `no .failed sidecar written (${String(e?.code ?? e)})`));
+        const written = await writeFailedMarker(destination, { name: basename(destination), whenIso: new Date().toISOString(), bytes: total, ...what });
+        const sidecar = markerSentence(written);
         log.error('bulk', `${transferId} not saved after ${total} bytes: ${reason}; the partial was deleted and ${sidecar}; ${this.tallyLine()}`);
         resolve({ ok: false, bytes: total, elapsedMs, sha256, verified: false, reason, discarded: true, ...extra });
       };
@@ -405,7 +393,7 @@ export class BulkClient {
         const why = failure.kind === 'corrupt' || failure.kind === 'failed' || failure.kind === 'source-changed' ? failure.why : 'failed';
         await discard(
           `The file arrived damaged (${why}), so the partial was deleted.`,
-          '', offset + received, Date.now() - startedAt, { verifiedBlocks: options.blocks?.verified ?? 0 },
+          '', offset + received, Date.now() - startedAt, { verifiedBlocks: options.blocks?.verified ?? 0 }, markerFor(failure),
         );
       };
 
@@ -482,11 +470,11 @@ export class BulkClient {
           const verdict = options.blocks.conclude(sha256, total);
           const verifiedBlocks = options.blocks.verified;
           if (verdict.kind === 'corrupt') {
-            await discard(`The file arrived damaged (${verdict.why}), so the partial was deleted.`, sha256, total, elapsedMs, { verifiedBlocks });
+            await discard(`The file arrived damaged (${verdict.why}), so the partial was deleted.`, sha256, total, elapsedMs, { verifiedBlocks }, markerFor(verdict));
             return;
           }
           if (verdict.kind === 'source-changed') {
-            await discard(verdict.message, sha256, total, elapsedMs, { sourceChanged: true, verifiedBlocks });
+            await discard(verdict.message, sha256, total, elapsedMs, { sourceChanged: true, verifiedBlocks }, markerFor(verdict));
             return;
           }
           if (verdict.kind === 'failed') {
@@ -511,25 +499,16 @@ export class BulkClient {
           // rename: a `holiday.mov.corrupt` keeps the corruption and can be renamed back by a
           // hopeful user.
           await fs.rm(part, { force: true }).catch(() => undefined);
-          await fs
-            .writeFile(
-              failedPathFor(destination),
-              sidecarText({
-                name: destination.split('/').pop() ?? destination,
-                whenIso: new Date().toISOString(),
-                bytes: total,
-                expected: expectedSha256,
-                actual: sha256,
-              }),
-              // Exclusive: a file of the user's that happens to carry this name is not ours to replace.
-              { flag: 'wx' },
-            )
-            .catch(() => undefined);
+          // Exclusive: a file of the user's that happens to carry this name is not ours to replace.
+          const written = await writeFailedMarker(destination, {
+            kind: 'checksum', name: basename(destination), whenIso: new Date().toISOString(), bytes: total,
+            expected: expectedSha256, actual: sha256,
+          });
           log.error(
             'bulk',
             `${transferId} CHECKSUM_MISMATCH after ${total} bytes: expected ` +
               `${expectedSha256.slice(0, 12)}… got ${sha256.slice(0, 12)}…; the partial was ` +
-              `deleted and a .failed sidecar left beside it; ${this.tallyLine()}`,
+              `deleted and ${markerSentence(written)}; ${this.tallyLine()}`,
           );
           resolve({
             ok: false,
@@ -558,7 +537,8 @@ export class BulkClient {
         if (published.path !== destination) {
           log.info('bulk', `${transferId}: ${basename(destination)} appeared in the folder during the transfer; saved as ${basename(published.path)} instead`);
         }
-        await removeStaleSidecar(published.path);
+        const stale = await removeStaleSidecar(published.path);
+        if (stale !== 'none') log.info('bulk', `${transferId}: the .failed marker at ${basename(published.path)} ${stale === 'removed' ? 'was an earlier failed attempt\'s and was removed, now that the file is whole' : 'is not one this app wrote, so it was kept'}`);
         this.transfers += 1;
         this.bytesMoved += total;
         const verifiedBy = options.blocks ? 'blocks' : expectedSha256 !== null ? 'prehash' : undefined;
@@ -621,7 +601,7 @@ export class BulkClient {
           settled = true;
           socket?.destroy();
           await new Promise<void>((done) => file.end(() => done()));
-          await discard(changed.message, '', offset + received, Date.now() - startedAt, { sourceChanged: true, verifiedBlocks: blocks.verified });
+          await discard(changed.message, '', offset + received, Date.now() - startedAt, { sourceChanged: true, verifiedBlocks: blocks.verified }, markerFor(changed));
         });
       };
 
@@ -783,10 +763,51 @@ export async function publishPulled(
 }
 
 /** A `.failed` sidecar left by an earlier attempt at this name — removed only if it is one of ours. */
-async function removeStaleSidecar(published: string): Promise<void> {
+/**
+ * **Retention, stated (defect 159):** a successful publish at a name removes the `.failed` marker an
+ * earlier failed attempt left at that same name — the file there is now whole, and the marker would
+ * describe a failure that no longer stands. Only a marker **this app wrote** goes: ownership is its
+ * first line, [FAILED_MARKER_HEADER], so a file of the person's carrying the suffix is never touched.
+ * Nothing else ever deletes a marker. Returns what happened, so the publish line can say so.
+ */
+async function removeStaleSidecar(published: string): Promise<'none' | 'removed' | 'not ours, kept'> {
   const sidecar = failedPathFor(published);
   const text = await fs.readFile(sidecar, 'utf8').catch(() => null);
-  if (text?.startsWith('Sidekick transfer failed')) await fs.rm(sidecar, { force: true }).catch(() => undefined);
+  if (text === null) return 'none';
+  if (!text.startsWith(FAILED_MARKER_HEADER)) return 'not ours, kept';
+  await fs.rm(sidecar, { force: true }).catch(() => undefined);
+  return 'removed';
+}
+
+/** A marker's fields, minus the three every kind shares. */
+type MarkerWhat = DistributiveOmit<FailedMarker, 'name' | 'whenIso' | 'bytes'>;
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+/** Which marker a verifier verdict leaves — only what that verdict established (defect 159). */
+function markerFor(v: BlockVerdict): MarkerWhat {
+  if (v.kind === 'source-changed') return { kind: 'source-changed', why: v.why, message: v.message };
+  if (v.kind === 'corrupt' && v.block !== undefined) {
+    return { kind: 'block', block: v.block, ...(v.phoneDigest ? { phoneDigest: v.phoneDigest } : {}), ...(v.macDigest ? { macDigest: v.macDigest } : {}) };
+  }
+  return { kind: 'unverified', reason: v.kind === 'verified' ? 'verified' : v.why };
+}
+
+/**
+ * Writes a marker **exclusively** (`wx`): one already at that name — an earlier attempt's, or a file of
+ * the person's — is never replaced. The outcome is returned rather than swallowed, so the log line can
+ * say which of the three happened instead of always claiming a marker was left.
+ */
+export async function writeFailedMarker(destination: string, marker: FailedMarker): Promise<{ outcome: 'created' | 'existed' | 'failed'; code?: string }> {
+  return fs.writeFile(failedPathFor(destination), sidecarText(marker), { flag: 'wx' }).then(
+    () => ({ outcome: 'created' as const }),
+    (e: NodeJS.ErrnoException) => (e?.code === 'EEXIST' ? { outcome: 'existed' as const } : { outcome: 'failed' as const, code: String(e?.code ?? e) }),
+  );
+}
+
+function markerSentence(w: { outcome: 'created' | 'existed' | 'failed'; code?: string }): string {
+  if (w.outcome === 'created') return 'a .failed marker was left beside it';
+  if (w.outcome === 'existed') return 'a .failed marker already stood at that name and was kept unchanged (no new one written)';
+  return `no .failed marker could be written (${w.code})`;
 }
 
 /**

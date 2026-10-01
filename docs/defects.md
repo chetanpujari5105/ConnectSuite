@@ -174,6 +174,9 @@ own heading there, and its own row here.
 | **156** | **The running Mac app's Files pane had no Pause, Resume or Cancel for a block pull.** `renderer.ts` built the pane's bridge as an inline literal that passed `fsPull` and omitted `fsPullStop`, `fsPausedPulls` and `fsCancelPaused`. The preload exposed all three and main handled them, but the pane draws Pause/Cancel only when its bridge has `fsPullStop` and reads the paused list only through `fsPausedPulls`. Found on hardware: L1/L2 T2 (2026-09-30 13:55) reached 42.5% of a 200 MiB block pull with **0** Pause buttons on screen. Every Files-pane test was green because each gave the view its own bridge double that already had the three calls | **fixed 2026-09-30 (`01ebf3b`); verified on hardware 2026-09-30 15:20–15:22** (L1/L2 T2 retry, Mac dev build of `01ebf3b`): the real Pause paused a 200 MiB block pull at 98,304,000 B = 750 of 1,600 verified blocks, nothing resumed until Resume, Resume continued from that block with the phone re-hashing the prefix, and the saved file's SHA-256 equals the source | `filesWiring.test.ts`, 3 tests, red against the moved-verbatim literal (*"lacks … fsCancelPaused, fsPausedPulls, fsPullStop"*; *"Pause is drawn: actual 0"*); mutations M0–M7 each red on the named test; Mac 1,402/0, both typechecks 0; **hardware: `docs/testing.md` → Defect 156 → verified on hardware** | `docs/testing.md` → Defect 156 |
 | **157** | **A user Disconnect did not stop an active block pull, and the phone counted it completed.** A bulk pull runs on its own socket; nothing on either side stopped it when the control session that agreed it ended. Found on hardware (L1/L2 T3, 2026-09-30 15:34): Disconnect at 84,148,224 B (40.13%) of a 200 MiB pull, and the phone streamed on to 209,715,200 B, dropped every block digest and the `done` (*"Dropped fs.transfer.blocks: the session is closing"*), and logged the send as **completed**; the Mac waited its full 30 s for a verdict before calling the pull interrupted at 640 verified blocks. **No data was harmed** — reconnect resumed at 83,886,080 B / block 640 and the saved file's SHA-256 equals the source — but 125,829,120 B were sent twice and a person who pressed Disconnect saw nothing stop | **fixed 2026-09-30 (`4095665`); verified on hardware 2026-09-30 18:20–18:21** (T3 retry: Disconnect at 83,886,080 B stopped the pull in 12 ms with 0 B of growth; the phone's stream ended 3 ms after its session did, counted failed not completed; reconnect resumed at block 640 to a matching SHA-256). Mac: `LinkClient.teardown` emits `session-ended` with the ending session's token; `FilesClient.pull` stops its own pull on it as an interruption (owned partial and record kept, automatic resume on reconnect unchanged; Pause stays manual; Cancel unchanged; a replacement session's pull untouched). Phone: `forgetSession` stops the live streams that session agreed before their next chunk (`BulkStops`), logs the stop as a session ending, and counts a pull as completed only when its verdict could be queued (`ControlSession.send` now says whether it queued) | `filesResume.test.ts` +4 and `linkSessionEnded.test.ts` 3 (Mac), `BulkStopsTest` 7 (phone); red before (*"settled 32131 ms after the session ended"*; LinkClient emitted nothing; the live stream ran to `Sent`); mutations MM1–MM6 and PM1–PM7 each red on the named test; measured stop: Mac 3 ms (bound 2,000 ms), phone 0 bytes after the flag (bound one chunk); Mac 1,409/0, phone 1,094/0, typechecks 0 | `docs/testing.md` → Defect 157 |
 | **158** | **A resumed pull refused by the phone's prefix re-hash was kept as a resumable interruption.** The phone answered `SOURCE_CHANGED` / `prefix-mismatch` and sent **0 bytes**; the Mac's bulk-socket `close` handler called any short stream an interruption without reading the verdict, so the stale partial and its record were kept, the pane said *paused*, and the pull was offered for automatic resume — every Resume, and any reconnect within 10 minutes, would ask for the same refused prefix again. Found on hardware 2026-10-01 23:40 (*changed source with unchanged indexed metadata — resume prefix check*). **The phone's prefix-change detection PASSED and no mixed or corrupt file was published; the Mac's terminal-failure handling FAILED.** Metadata-based T5-B stays NO READING and T5-A unproven | **fixed 2026-10-02, not yet verified on hardware** — Mac only. A short close of a block pull waits, bounded (`LATE_VERDICT_WAIT_MS` 3 s), for the verdict on the control connection; a terminal `SOURCE_CHANGED` takes the established discard (owned partial and record removed, a never-overwriting `.failed`, no restart); anything else is the interruption it was. Verdicts count only from the pull's own session and transfer id; a discarded pull leaves the auto-resume map; record saves are serialised so none lands after the discard. Wording: the resume log no longer says the phone re-hashed before its verdict; the pane closes a reason as a sentence **2026-10-02, tests only: the remaining paths** — a **reset** (`error` before `close`) was still downgraded to an interruption (3 tests red at `b1f62fc` with `"read ECONNRESET", paused: true`); `close` and `error` now share one bounded wait, entered once, after the claim only; Pause/Cancel/teardown during the wait, an in-flight record save, and a verdict beyond the bound are each pinned by a test (W1–W5) | `filesResume.test.ts` +10 and `filesView.test.ts` +1 (Mac, through the real `FilesClient`/`BulkClient` over a socket); 3 red before for the hardware's reason (*"the phone closed after 0 of … bytes", paused: true*); mutations M1–M7 each red on the named test; Mac 1,421/0, typechecks 0 | `docs/testing.md` → Defect 158 |
+| **159** | **Failure evidence said more than was known.** A block mismatch and a source-change refusal both left a `.failed` marker headed *"checksum mismatch"*, with an empty `actual` line (T4-A, 2026-10-01); the debug probe's log told the reader to expect `CHECKSUM_MISMATCH` from a block pull; and the marker log line claimed a marker was left even when the exclusive write declined | **fixed 2026-10-02, not yet verified on hardware** — Mac: four marker kinds (whole-file checksum, block, source-changed, unverified), each saying only what was established — a block marker names the block and both of its digests and says no whole-file hash was computed; one exclusive writer reports created / already existed / failed truthfully; a later whole publish removes only a marker this app wrote, and now logs it. Phone: the probe states the outcome of the pull it is in | `transferFiles.test.ts` +2, `filesResume.test.ts` +6 (Mac, real path); `FsCorruptionProbeTest` +2 (phone); 5 red at `HEAD`; mutations X1–X5, P2b red | `docs/testing.md` → Defect 159 |
+| **160** | **A fresh push's own new partial was logged as another app's file.** `FsPartials.resumeFrom` tested "no record" before "empty", so the first push of any name — whose partial `openPartial` had just created — read *"a partial with no transfer record of ours beside it — treated as another app's file"* (row 1000313356, 2026-10-01 19:59:23). Wording only; the decision was right | **fixed 2026-10-02, not yet verified on hardware** — `FsPartial.createdNow`, true only where a store created the partial in that call; an empty partial created now is named as new. A partial found already there with no record keeps the conservative reason, and every decision is unchanged | `FsPartialsTest` +3; mutation P1 red | `docs/testing.md` → Defect 160 |
+| **161** | **One session end was acted on and logged twice.** The Files and the Photos features both call `BulkTransfers.forgetSession` for the same session end; the second call re-planned, re-flagged the stream the first had stopped, and logged *"stopping 1 live stream(s)"* again (T3, 2026-09-30) | **fixed 2026-10-02, not yet verified on hardware** — `EndedSessions` (bounded, 64 tokens) lets only the first end of a token act; a repeat logs that it is a repeat | `BulkStopsTest` +2; mutations P3, P4 red | `docs/testing.md` → Defect 161 |
 
 ---
 
@@ -3353,3 +3356,67 @@ Metadata-based T5-B remains NO READING, and T5-A remains unproven.
 - An unbounded wait, which would hold a dropped pull open forever.
 - Restarting from byte 0 automatically. That is the contract's rule for a resume refused **in the ack**;
   this verdict comes later, and a restart here is a separate decision nobody has made.
+
+### 159 — failure evidence said more than was known · **fixed 2026-10-02, not yet verified on hardware**
+
+Three places reported a stronger fact than the code had established.
+- **The `.failed` marker** began *"checksum mismatch"* for a block mismatch and for a source-change refusal,
+  and carried an empty `actual` line, because the block path has no whole-file hash. Seen on hardware in
+  T4-A (2026-10-01).
+- **The debug probe's log** told the reader to expect `CHECKSUM_MISMATCH` from a block pull, which names a
+  block instead.
+- **The marker log line** said a marker was left even when the exclusive write had declined.
+
+**Fix direction:** as built.
+- `FailedMarker` has four kinds (`checksum`, `block`, `source-changed`, `unverified`). Each states only what
+  its verdict established.
+- A block marker names the block and the phone's and this Mac's digests of it, and says the whole-file
+  SHA-256 was not computed.
+- `writeFailedMarker` is exclusive and returns `created` / `existed` / `failed`.
+- `FsCorruptionProbe.expectation` words the probe's line for the pull it is in.
+
+**The wrong fix:** a whole-file hash computed over a partial so the `actual` line is never empty. It would
+be a real hash of the wrong thing.
+
+**Retention, stated (no change of policy):** a later **whole** publish at the same name removes a `.failed`
+only if its first line is `Sidekick transfer failed` (the ownership header every kind keeps), and now logs
+that it did. Nothing else ever deletes a marker. **Proposal, needing the owner's decision:** the Mac's
+free-name rule does not skip a name whose `.failed` exists. So a later, successful copy of a *different*
+attempt can land on that name and remove an older failure's marker — the T4-A marker
+`sidekick-pass-stop-200mb (7).bin.failed` is exactly that case for the next copy of that file. The options:
+- (a) keep today's rule, where a whole file at the name supersedes its marker;
+- (b) skip names whose marker exists, so markers are retained until the person removes them;
+- (c) keep (a) but rename the superseded marker to `.failed.<when>` rather than delete it.
+
+Nothing here changes it.
+
+### 160 — a fresh push's own new partial was logged as another app's file · **fixed 2026-10-02, not yet verified on hardware**
+
+`FsPartials.resumeFrom` checked "no record" before "empty". The first push of any name creates its partial
+(`openPartial`) before asking, so it always read as a stranger's file. The decision, `FromZero`, was right;
+the sentence was not.
+
+**Fix direction:** as built. `FsPartial.createdNow` is set true only in each store's create branch
+(MediaStore insert, SAF `createDocument`, a not-yet-existing app-private `.part`). An empty partial created
+in that call is named as new.
+
+**The wrong fix:** reordering the checks so "empty" wins whatever its origin. That would also relabel an
+empty `.part` someone else left as harmless, and nothing has established that.
+
+**Limit:** the stores' assignment of `createdNow` needs Android and is not reached by a JVM test; the
+decision is.
+
+### 161 — one session end was acted on and logged twice · **fixed 2026-10-02, not yet verified on hardware**
+
+`FsFeature` and `MediaFeature` each call `BulkTransfers.forgetSession` on the same session end. The second
+call recomputed the plan from `owners` — where a live stream stays until its socket is done — re-flagged a
+stream the first call had already stopped, and logged the stop again.
+
+**Fix direction:** as built. `EndedSessions` lets only a token's first end act, bounded to the last 64
+tokens. A repeat logs *"session end already handled"*.
+
+**The wrong fix:** removing one of the two listeners. Each feature hears the end for its own reasons, and
+the next feature added would bring the duplicate back.
+
+**Limit:** the gate's wiring inside `forgetSession` needs `LinkLog` (Android) and is not JVM-reachable;
+`EndedSessions` is.

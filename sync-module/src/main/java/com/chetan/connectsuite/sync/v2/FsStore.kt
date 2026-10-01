@@ -102,6 +102,14 @@ interface FsPartial {
     /** What the `.part` already holds, right now. The resume input; never the resume decision. */
     val bytesOnDisk: Long
 
+    /**
+     * True only when [FsStore.openPartial] created this partial in the same call, so nothing but this
+     * transfer can have written it. It changes the **reason** [FsPartials.resumeFrom] gives, never the
+     * decision: an empty partial starts at 0 either way. False is the conservative default — a partial
+     * found already there, with no record of ours, is still treated as someone else's (defect 160).
+     */
+    val createdNow: Boolean get() = false
+
     /** Appends to the partial. Called once; the caller closes it. */
     fun append(): OutputStream?
 

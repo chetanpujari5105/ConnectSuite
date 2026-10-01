@@ -67,9 +67,15 @@ object FsPartials {
      * @param partBytes length of the `.part` on disk, or null when there is none
      * @param recordedBytes what our own transfer record says we wrote, or null when we have no record
      * @param totalBytes the size the sender declared
+     * @param createdNow the store created this partial in the same call ([FsPartial.createdNow])
      */
-    fun resumeFrom(partBytes: Long?, recordedBytes: Long?, totalBytes: Long): Resume {
+    fun resumeFrom(partBytes: Long?, recordedBytes: Long?, totalBytes: Long, createdNow: Boolean = false): Resume {
         if (partBytes == null) return Resume.FromZero("there is no partial file")
+        // Defect 160: the first push of any name creates its partial before asking this, so "no record"
+        // used to describe a partial made a moment ago by this very push as another app's file. Only a
+        // partial this push created **and** that is still empty is named as new; anything else with no
+        // record keeps the conservative reason below, and the decision is FromZero in every case.
+        if (createdNow && partBytes == 0L) return Resume.FromZero("a new, empty partial created for this push — nothing to resume")
         if (recordedBytes == null) {
             return Resume.FromZero(
                 "a partial with no transfer record of ours beside it — treated as another app's file",

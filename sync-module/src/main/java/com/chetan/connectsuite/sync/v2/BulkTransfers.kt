@@ -445,10 +445,18 @@ object BulkTransfers {
         return true
     }
 
+    private val endedSessions = EndedSessions()
+
     fun chunkMax(): Int = CHUNK
 
-    /** Drops everything a dead session authorised. See [Pending]. */
+    /** Drops everything a dead session authorised, once per session. See [Pending]. */
     fun forgetSession(sessionId: String) {
+        // Two features hear the same session end (defect 161): only the first call acts, and the
+        // repeat says it is a repeat rather than reporting a second stop.
+        if (!endedSessions.firstEnd(sessionId)) {
+            LinkLog.i("bulk", "session end already handled for this session; nothing more to stop")
+            return
+        }
         val plan = BulkStops.sessionEndPlan(
             pendingOwners = pending.mapValues { it.value.sessionId },
             incomingOwners = incoming.mapValues { it.value.sessionId },
@@ -634,6 +642,7 @@ object BulkTransfers {
             partBytes = partial.bytesOnDisk,
             recordedBytes = recorded?.bytesTransferred,
             totalBytes = size,
+            createdNow = partial.createdNow,
         )
         val offset = when (decision) {
             is FsPartials.Resume.FromOffset -> decision.offset
@@ -1229,7 +1238,7 @@ object BulkTransfers {
                     object : BlockPullSender.Sink {
                         override fun chunk(buffer: ByteArray, length: Int, absoluteStart: Long) {
                             val out = if (length == buffer.size) buffer else buffer.copyOf(length)
-                            corruptIfArmed(entry, out, absoluteStart)
+                            corruptIfArmed(entry, out, absoluteStart, plan.blockSize.toLong())
                             framing.writeChunk(out)
                         }
                         override fun blocks(first: Long, digests: List<String>) {
@@ -1331,16 +1340,15 @@ object BulkTransfers {
      * and the offset, so a `CHECKSUM_MISMATCH` in a log can always be traced to whether somebody
      * asked for it.
      */
-    private fun corruptIfArmed(entry: Pending, chunk: ByteArray, absoluteStart: Long) {
+    private fun corruptIfArmed(entry: Pending, chunk: ByteArray, absoluteStart: Long, blockSize: Long? = null) {
         val at = entry.debugCorruptAtByte ?: return
         val was = FsCorruptionProbe.flip(chunk, absoluteStart, at) ?: return
         val index = (at - absoluteStart).toInt()
         LinkLog.e(
             "bulk",
             "PROBE: ${entry.transferId} byte $at deliberately flipped from $was to ${chunk[index]} " +
-                "AFTER the digest took the true value. The receiver must report CHECKSUM_MISMATCH, " +
-                "delete its partial and write a .failed sidecar. Nothing in a release build can " +
-                "reach this line.",
+                "AFTER the digest took the true value. ${FsCorruptionProbe.expectation(at, blockSize)} " +
+                "Nothing in a release build can reach this line.",
         )
     }
 

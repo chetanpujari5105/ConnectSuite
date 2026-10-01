@@ -420,7 +420,7 @@ class SafTreeStore(
             return null
         }
         Snapshots.invalidate(rootId)
-        return SafPartial(parentId = parent, partId = partId, partName = actual.name, finalName = name)
+        return SafPartial(parentId = parent, partId = partId, partName = actual.name, finalName = name, createdNow = existing == null)
     }
 
     /**
@@ -435,6 +435,7 @@ class SafTreeStore(
         private val partId: String,
         private val partName: String,
         private val finalName: String,
+        override val createdNow: Boolean,
     ) : FsPartial {
 
         private val encoded = FsPaths.encodeId(partId)

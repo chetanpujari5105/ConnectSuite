@@ -900,3 +900,78 @@ test('158 paths: Pause during the wait, then the verdict lands inside the bound 
     assert.equal((await h.client.pausedPulls()).length, 1, 'still waiting for Resume (which will meet the refusal)');
   } finally { h.done(); }
 });
+
+// ---- defect 159: the marker a failed pull leaves says what was established, and nothing more ----------
+
+const marker = (h: ReturnType<typeof harness>, name = 'clip.bin') => readFileSync(join(h.folder, `${name}.failed`), 'utf8');
+
+test('159: a corrupt block’s marker names that block with both of its real digests, and no whole-file hash', T, async () => {
+  const K = 300;
+  const bad = Buffer.from(SOURCE);
+  bad[K * BS + 64 * 1024] ^= 0xff;
+  const h = harness({ bytes: bad });
+  try {
+    const r = await h.pull();
+    assert.equal(r.ok, false);
+    const text = marker(h);
+    assert.match(text, new RegExp(`^Sidekick transfer failed — block ${K} did not match what the phone read`));
+    assert.match(text, new RegExp(`phone {5}${DIGESTS[K]}`), 'the phone’s digest of that block');
+    assert.match(text, new RegExp(`this Mac {2}${sha(bad.subarray(K * BS, (K + 1) * BS))}`), 'this Mac’s digest of what arrived');
+    assert.doesNotMatch(text, /checksum mismatch/);
+    assert.doesNotMatch(text, /^actual /m, 'no fabricated whole-file actual');
+  } finally { h.done(); }
+});
+
+test('159: a source rejection’s marker says the file changed on the phone, not that bytes were wrong', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: PREFIX_MISMATCH, order: 'done-first', gapMs: 50 }, lateVerdictWaitMs: BOUND_MS });
+  try {
+    await pausedWithRecord(h);
+    const r = await h.pull();
+    assert.equal(r.sourceChanged, true);
+    const text = marker(h);
+    assert.match(text, /^Sidekick transfer failed — the file changed on the phone/);
+    assert.match(text, /why {7}prefix-mismatch/);
+    assert.doesNotMatch(text, /checksum mismatch|bytes that arrived were wrong/);
+  } finally { h.done(); }
+});
+
+for (const [who, content] of [['the person’s own file', 'my notes about clip.bin\n'], ['an earlier attempt’s marker', 'Sidekick transfer failed — checksum mismatch\nfile      clip.bin\n']] as const) {
+  test(`159: a rejection where ${who} already stands at the marker name leaves it byte-for-byte`, T, async () => {
+    const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: PREFIX_MISMATCH, order: 'done-first', gapMs: 50 }, lateVerdictWaitMs: BOUND_MS });
+    try {
+      await pausedWithRecord(h);
+      writeFileSync(join(h.folder, 'clip.bin.failed'), content);
+      const r = await h.pull();
+      assert.equal(r.sourceChanged, true, 'control: the pull was rejected');
+      assert.equal(marker(h), content, 'never replaced');
+      assert.equal(existsSync(pullPartPathFor(join(h.folder, 'clip.bin'))), false, 'the owned partial still went');
+    } finally { h.done(); }
+  });
+}
+
+test('159: a later whole publish removes only a marker this app wrote; the person’s file with the suffix stays', T, async () => {
+  for (const [content, kept] of [['Sidekick transfer failed — block 3 did not match what the phone read\n', false], ['my notes\n', true]] as const) {
+    const h = harness();
+    try {
+      writeFileSync(join(h.folder, 'clip.bin.failed'), content);
+      const r = await h.pull();
+      assert.equal(r.ok, true, r.reason);
+      assert.equal(existsSync(join(h.folder, 'clip.bin.failed')), kept, kept ? 'not ours: kept' : 'ours: removed now the file is whole');
+      if (kept) assert.equal(marker(h), content);
+    } finally { h.done(); }
+  }
+});
+
+test('159: a marker that cannot be written is reported as such, not as left', async () => {
+  const { writeFailedMarker } = await import('./bulk');
+  const dir = mkdtempSync(join(tmpdir(), 'sidekick-159-'));
+  try {
+    const m = { kind: 'unverified' as const, name: 'x.bin', whenIso: 'w', bytes: 1, reason: 'r' };
+    assert.deepEqual(await writeFailedMarker(join(dir, 'x.bin'), m), { outcome: 'created' });
+    assert.deepEqual(await writeFailedMarker(join(dir, 'x.bin'), m), { outcome: 'existed' });
+    const locked = join(dir, 'locked'); mkdirSync(locked, { mode: 0o500 });
+    const w = await writeFailedMarker(join(locked, 'y.bin'), m);
+    assert.equal(w.outcome, 'failed');
+    assert.equal(w.code, 'EACCES');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

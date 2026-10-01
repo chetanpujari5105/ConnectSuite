@@ -136,4 +136,23 @@ class BulkStopsTest {
         assertEquals("both finished-socket paths forget a left-over stop", 2, Regex("""cancelled\.forget\(""").findAll(bulk).count())
         assertTrue("send says whether the frame was queued", session.contains("fun send(envelope: Envelope): Boolean"))
     }
+
+    // ---- defect 161: one session end is acted on once, however many features hear it -----------------
+
+    @Test
+    fun `161 - a session's end is acted on the first time only`() {
+        val ended = EndedSessions()
+        assertTrue("the Files feature's call acts", ended.firstEnd("tok-A"))
+        assertFalse("the Photos feature's call for the same session is a repeat", ended.firstEnd("tok-A"))
+        assertTrue("another session's end still acts", ended.firstEnd("tok-B"))
+        assertFalse(ended.firstEnd("tok-B"))
+    }
+
+    @Test
+    fun `161 - the memory of ended sessions is bounded and forgets the oldest first`() {
+        val ended = EndedSessions(capacity = 3)
+        for (t in listOf("a", "b", "c", "d")) assertTrue(t, ended.firstEnd(t))
+        assertTrue("the oldest fell out", ended.firstEnd("a"))
+        assertFalse("a recent one is still remembered", ended.firstEnd("d"))
+    }
 }

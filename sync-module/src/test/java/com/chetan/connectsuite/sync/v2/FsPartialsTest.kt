@@ -120,4 +120,40 @@ class FsPartialsTest {
         // A person opening the folder must be able to tell this note from their data.
         assertTrue(text.contains("not your data"))
     }
+
+    // ---- defect 160: a partial this push created a moment ago is not "another app's file" ------------
+
+    @Test
+    fun `160 - an empty partial this push just created is named as new, not as another app's file`() {
+        // Hardware, 2026-10-01 19:59:23: DownloadsStore created pending row 1000313356 and, 7 ms later, the
+        // push called that same row "a partial with no transfer record of ours beside it".
+        val decision = FsPartials.resumeFrom(partBytes = 0, recordedBytes = null, totalBytes = 209_715_200, createdNow = true)
+        assertTrue(decision is FsPartials.Resume.FromZero)
+        val why = (decision as FsPartials.Resume.FromZero).why
+        assertTrue(why, why.contains("new"))
+        assertTrue("never the stranger's-file reason: $why", !why.contains("another app"))
+    }
+
+    @Test
+    fun `160 - a partial that was already there, with no record, keeps the conservative reason and decision`() {
+        for (bytes in listOf(0L, 4_096L)) {
+            val decision = FsPartials.resumeFrom(partBytes = bytes, recordedBytes = null, totalBytes = 8_192, createdNow = false)
+            assertTrue(decision is FsPartials.Resume.FromZero)
+            assertTrue("$bytes: ${(decision as FsPartials.Resume.FromZero).why}", decision.why.contains("another app"))
+        }
+    }
+
+    @Test
+    fun `160 - createdNow never makes a nonempty or recorded partial resumable it was not before`() {
+        // A store cannot have created a partial that already holds bytes; if one ever claims to, the
+        // flag is ignored and the conservative rule decides.
+        val odd = FsPartials.resumeFrom(partBytes = 4_096, recordedBytes = null, totalBytes = 8_192, createdNow = true)
+        assertTrue(odd is FsPartials.Resume.FromZero)
+        assertTrue((odd as FsPartials.Resume.FromZero).why.contains("another app"))
+        // And the ordinary resume is unchanged by the flag.
+        assertEquals(
+            FsPartials.resumeFrom(partBytes = 4_096, recordedBytes = 4_096, totalBytes = 8_192),
+            FsPartials.resumeFrom(partBytes = 4_096, recordedBytes = 4_096, totalBytes = 8_192, createdNow = true),
+        )
+    }
 }

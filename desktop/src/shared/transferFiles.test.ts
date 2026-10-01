@@ -10,6 +10,7 @@ import {
   isResumable,
   partPathFor,
   sidecarText,
+  FAILED_MARKER_HEADER,
 } from './transferFiles';
 
 /**
@@ -97,6 +98,7 @@ test('a partial already the full length is not resumed', () => {
 
 test('the sidecar carries the fact and not the bytes', () => {
   const text = sidecarText({
+    kind: 'checksum',
     name: 'holiday.mov',
     whenIso: '2026-09-01T18:22:04.117+05:30',
     bytes: 214748364,
@@ -110,4 +112,37 @@ test('the sidecar carries the fact and not the bytes', () => {
   // The two sentences that tell a person what to do, which is the reason it is a text file at all.
   assert.match(text, /deleted because the bytes that arrived were wrong/);
   assert.match(text, /retry starts from zero/);
+});
+
+// ---- defect 159: a marker says only what was established -----------------------------------------
+
+test('159: every marker kind starts with the ownership header, and only a checksum marker claims whole-file digests', () => {
+  const base = { name: 'clip.bin', whenIso: '2026-10-02T01:00:00.000+05:30', bytes: 107479040 };
+  const kinds = [
+    sidecarText({ ...base, kind: 'checksum', expected: 'aa', actual: 'bb' }),
+    sidecarText({ ...base, kind: 'block', block: 800, phoneDigest: 'p800', macDigest: 'm800' }),
+    sidecarText({ ...base, kind: 'source-changed', why: 'prefix-mismatch', message: 'clip.bin changed on the phone since the transfer paused, so it has to start again.' }),
+    sidecarText({ ...base, kind: 'unverified', reason: '514 of 515 blocks verified' }),
+  ];
+  for (const t of kinds) assert.ok(t.startsWith(FAILED_MARKER_HEADER), t.split('\n')[0]);
+  const [checksum, block, changed, unverified] = kinds as [string, string, string, string];
+  assert.match(checksum, /checksum mismatch/);
+  assert.match(block, /^Sidekick transfer failed — block 800 did not match what the phone read/);
+  assert.match(block, /phone {5}p800/);
+  assert.match(block, /this Mac {2}m800/);
+  assert.match(block, /whole-file SHA-256: not computed/);
+  for (const t of [block, changed, unverified]) {
+    assert.doesNotMatch(t, /checksum mismatch/, 'only a whole-file checksum failure says so');
+    assert.doesNotMatch(t, /^actual /m, 'no whole-file "actual" line where none was computed');
+  }
+  assert.match(changed, /the file changed on the phone/);
+  assert.match(changed, /why {7}prefix-mismatch/);
+  assert.doesNotMatch(changed, /bytes that arrived were wrong/, 'a changed source is not wrong bytes');
+  assert.match(unverified, /reason {4}514 of 515 blocks verified/);
+});
+
+test('159: a block marker with a digest it does not know says so rather than leaving it blank', () => {
+  const t = sidecarText({ name: 'x', whenIso: 'w', bytes: 1, kind: 'block', block: 3 });
+  assert.match(t, /phone {5}\(not known\)/);
+  assert.match(t, /this Mac {2}\(not known\)/);
 });
