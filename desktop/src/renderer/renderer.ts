@@ -300,6 +300,8 @@ interface ConnectBridge {
     cancelled?: boolean;
     sourceChanged?: boolean;
     resumedFrom?: number;
+    stoppedBy?: 'person' | 'interruption' | 'no-space';
+    restarted?: { why: string };
   }>;
   fsPullStop(options: { transferId: string; how: 'pause' | 'cancel' }): Promise<{ stopped: boolean }>;
   fsPausedPulls(): Promise<Array<{ rootId: string; id: string; name: string; size: number; verifiedBytes: number; updatedAtMs: number }>>;

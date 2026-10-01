@@ -48,6 +48,8 @@ type PullResult = {
     cancelled?: boolean;
     sourceChanged?: boolean;
     resumedFrom?: number;
+    stoppedBy?: 'person' | 'interruption' | 'no-space';
+    restarted?: { why: string };
   };
 
 interface FilesBridge {
@@ -208,6 +210,11 @@ class FilesView {
    *
    * That is the platform's ordering rather than a limitation of this pane, and it is stated to the
    * user in one sentence instead of being hidden behind a spinner that cannot finish in time.
+   */
+  /**
+   * Local copies and pulls in flight, both by [pullKey] — root **and** id (defect 164). An id is only
+   * meaningful inside its root, and keying by id alone let a pull in one folder mark a same-id file in
+   * another as copying, and a pull finishing after navigation clear the wrong key.
    */
   private localCopies = new Map<string, string>();
 
@@ -467,7 +474,7 @@ class FilesView {
   /** A pull the Mac resumed by itself after a reconnect has ended. */
   onPullFinished(info: { rootId: string; id: string; name: string; result: PullResult }): void {
     this.pullIds.delete(pullKey(info.rootId, info.id));
-    this.applyPullResult(info.id, info.name, info.result);
+    this.applyPullResult(info.rootId, info.id, info.name, info.result);
     void this.refreshPaused();
     this.render();
   }
@@ -480,9 +487,26 @@ class FilesView {
     this.render();
   }
 
+  /** The key of [id] in the folder on screen; entries drawn are always the selected root's. */
+  private keyFor(id: string): string | null {
+    return this.selectedRoot === null ? null : pullKey(this.selectedRoot, id);
+  }
+
+  private localOf(id: string): string | undefined {
+    const key = this.keyFor(id);
+    return key === null ? undefined : this.localCopies.get(key);
+  }
+
+  private isCopying(id: string): boolean {
+    const key = this.keyFor(id);
+    return key !== null && this.copying.has(key);
+  }
+
   /** One place a pull's outcome becomes the pane's state: the local copy, and the sentence. */
-  private applyPullResult(id: string, name: string, result: PullResult): void {
-    if (result.ok && result.path) this.localCopies.set(id, result.path);
+  private applyPullResult(rootId: string, id: string, name: string, result: PullResult): void {
+    // Only a success changes the local copy: a Copy again that fails, pauses or is cancelled leaves the
+    // earlier, valid copy where it was (defect 163).
+    if (result.ok && result.path) this.localCopies.set(pullKey(rootId, id), result.path);
     this.lastPull = { ok: result.ok || result.paused === true || result.cancelled === true, text: pullOutcomeText(name, result) };
   }
 
@@ -835,8 +859,8 @@ class FilesView {
     return shouldPrefetchForDrag({
       isDir: entry.dir,
       rootSelected: this.selectedRoot !== null,
-      alreadyLocal: this.localCopies.has(entry.id),
-      alreadyCopying: this.copying.has(entry.id),
+      alreadyLocal: this.localOf(entry.id) !== undefined,
+      alreadyCopying: this.isCopying(entry.id),
     });
   }
 
@@ -871,29 +895,32 @@ class FilesView {
     }, FilesView.PREFETCH_DELAY_MS);
   }
 
-  private async copyToMac(entry: FsEntryRow): Promise<void> {
+  /** [again]: Copy again over a local copy, which is kept unless the new copy succeeds (defect 163). */
+  private async copyToMac(entry: FsEntryRow, again = false): Promise<void> {
     if (this.selectedRoot === null || entry.dir) return;
-    if (this.copying.has(entry.id) || this.localCopies.has(entry.id)) return;
-    this.copying.add(entry.id);
+    // The root is captured now: the person may open another folder before this pull ends (defect 164).
+    const rootId = this.selectedRoot;
+    const key = pullKey(rootId, entry.id);
+    if (this.copying.has(key) || (!again && this.localCopies.has(key))) return;
+    this.copying.add(key);
     this.copyingName = entry.name;
     this.reportWork();
     this.lastPull = { ok: true, text: `Copying ${entry.name} to this Mac…` };
     this.render();
     try {
       const result = await this.bridge.fsPull({
-        rootId: this.selectedRoot,
+        rootId,
         id: entry.id,
         name: entry.name,
         size: entry.size,
       });
       // `verified` is the phone's word and is repeated rather than upgraded; the fix hint travels with
       // the reason. Both now live in [pullOutcomeText], beside a paused, cancelled or changed pull.
-      this.applyPullResult(entry.id, entry.name, result);
+      this.applyPullResult(rootId, entry.id, entry.name, result);
     } finally {
-      const key = this.selectedRoot === null ? null : pullKey(this.selectedRoot, entry.id);
-      if (key) this.pullIds.delete(key);
+      this.pullIds.delete(key);
       void this.refreshPaused();
-      this.copying.delete(entry.id);
+      this.copying.delete(key);
       if (this.copying.size === 0) this.copyingName = null;
       // In the `finally`, so a throw cannot leave the island narrating a copy that is over. That is
       // the whole contract of `setWork` — nothing expires on a timer, so whoever starts the work
@@ -1544,13 +1571,13 @@ class FilesView {
     // Drag to Finder. A folder is never draggable — `fs.transfer` moves one file and a folder
     // copy is a loop the Mac would have to drive, which is a transfer queue and not this.
     if (entry.dir) return;
-    const local = this.localCopies.get(entry.id);
+    const local = this.localOf(entry.id);
     cell.draggable = true;
     if (local) cell.classList.add('is-local');
     // The wait, at the row rather than only in the detail card. A selected row whose bytes are
     // still arriving is the one state where a drag will be refused, so it is the one state that
     // has to be legible without reading the card on the other side of the pane.
-    if (this.copying.has(entry.id)) {
+    if (this.isCopying(entry.id)) {
       cell.classList.add('is-copying');
       cell.setAttribute('aria-busy', 'true');
     }
@@ -1560,7 +1587,7 @@ class FilesView {
       // quietly carrying rows the user selected somewhere further up the table.
       const dragging = this.selectedIds.has(entry.id) ? this.selectedFiles() : [entry];
 
-      const ready = dragging.filter((e) => this.localCopies.has(e.id));
+      const ready = dragging.filter((e) => this.localOf(e.id) !== undefined);
       if (ready.length !== dragging.length) {
         // **The drag is cancelled, and the copies start.** Finder needs files that exist at the
         // instant the gesture begins; awaiting them here would hand it nothing and look like a
@@ -1576,7 +1603,7 @@ class FilesView {
       // `startDrag` must be called while this handler is still on the stack — the bridge sends
       // rather than invokes, and nothing here may be awaited.
       event.preventDefault();
-      this.bridge.fsDrag(dragging.map((e) => this.localCopies.get(e.id)!));
+      this.bridge.fsDrag(dragging.map((e) => this.localOf(e.id)!));
     });
   }
 
@@ -1615,9 +1642,14 @@ class FilesView {
     if (this.batch !== null) {
       this.renderSendBatch(this.batch);
       this.markArrival('batch');
-      return;
+      // Defect 162: a send still running owns the column — its Stop is the decision on screen. A
+      // *settled* send is a result: it stays on show with its Done, but a file selected afterwards gets
+      // its own details and controls beneath it, so a pull started then can be paused or cancelled
+      // without first dismissing a card about a different transfer.
+      if (!sendBatchSettled(this.batch) || (this.selected === null && this.selectedIds.size <= 1)) return;
+    } else {
+      this.lastCard = null;
     }
-    this.lastCard = null;
 
     // More than one row selected: the card describes the *set*, because describing one of them and
     // acting on all of them is the mismatch that makes a multi-file drag feel like it misfired.
@@ -1638,7 +1670,7 @@ class FilesView {
       note.className = 'files-detail-note';
       note.textContent = summary.note;
 
-      const copied = files.filter((e) => this.localCopies.has(e.id)).length;
+      const copied = files.filter((e) => this.localOf(e.id) !== undefined).length;
       const ready = document.createElement('p');
       ready.className = 'files-detail-note';
       // The denominator, so "3 ready" cannot be read as "3 left to go".
@@ -1713,7 +1745,7 @@ class FilesView {
 
     if (entry.dir) return;
 
-    const local = this.localCopies.get(entry.id);
+    const local = this.localOf(entry.id);
     const button = document.createElement('button');
     button.className = 'files-detail-action';
     button.type = 'button';
@@ -1724,7 +1756,7 @@ class FilesView {
     const key = this.selectedRoot === null ? null : pullKey(this.selectedRoot, entry.id);
     const paused = key ? this.paused.get(key) : undefined;
     const running = key ? this.pullIds.get(key) : undefined;
-    if (this.copying.has(entry.id)) {
+    if (this.isCopying(entry.id)) {
       button.textContent = 'Copying…';
       button.disabled = true;
     } else if (paused) {
@@ -1736,8 +1768,9 @@ class FilesView {
       button.textContent = 'Copy to Mac';
     }
     button.addEventListener('click', () => {
-      if (local) this.localCopies.delete(entry.id);
-      void this.copyToMac(entry);
+      // Copy again keeps the copy it would replace until a new one has actually arrived (defect 163);
+      // deleting it first left the pane with no copy at all when the new attempt failed.
+      void this.copyToMac(entry, local !== undefined);
     });
     this.detail.append(button);
 
@@ -1752,11 +1785,11 @@ class FilesView {
       b.addEventListener('click', act);
       this.detail.append(b);
     };
-    if (this.copying.has(entry.id) && running && this.bridge.fsPullStop) {
+    if (this.isCopying(entry.id) && running && this.bridge.fsPullStop) {
       const stop = this.bridge.fsPullStop.bind(this.bridge);
       control('files-pull-pause', 'Pause', `Pause copying ${entry.name}; what has arrived is kept`, () => void stop({ transferId: running, how: 'pause' }));
       control('files-pull-cancel', 'Cancel', `Cancel copying ${entry.name}; the part received is deleted`, () => void stop({ transferId: running, how: 'cancel' }));
-    } else if (paused && !this.copying.has(entry.id)) {
+    } else if (paused && !this.isCopying(entry.id)) {
       const pausedNote = document.createElement('p');
       pausedNote.className = 'files-detail-note';
       pausedNote.id = 'files-pull-paused';
@@ -2180,7 +2213,8 @@ function pullKey(rootId: string, id: string): string {
 
 /** What a paused block pull has kept, in the units a person reads. */
 function pausedSentence(verifiedBytes: number, size: number): string {
-  return `Paused: ${fileBytes(verifiedBytes)} of ${fileBytes(size)} is on this Mac, checked block by block. Resume continues from there.`;
+  // Facts only: what to do next is said once, by the outcome line (defect 165).
+  return `Paused: ${fileBytes(verifiedBytes)} of ${fileBytes(size)} is on this Mac, checked block by block.`;
 }
 
 /**
@@ -2196,12 +2230,24 @@ function pullOutcomeText(name: string, result: PullResult): string {
     return /[.!?]$/.test(r) ? r : `${r}.`;
   };
   if (result.ok) {
+    // "Started again" only for a restart that happened: the phone refused the resume and the pull
+    // began again at byte 0 (defect 165). A resume is not a restart, and a first pull is neither.
+    const restart = result.restarted
+      ? (result.restarted.why === 'source-changed'
+        ? ' The file changed on the phone since it paused, so it started again from the beginning.'
+        : ' It started again from the beginning.')
+      : '';
     return `${name} is on this Mac — drag it to Finder from here. ${pullCheckSentence(result)}` +
-      (result.resumedFrom ? ' It continued from where it had paused.' : '');
+      (result.resumedFrom ? ' It continued from where it had paused.' : restart);
   }
   if (result.cancelled) return `${name} — cancelled. Nothing was saved, and the part that had arrived was deleted.`;
   if (result.paused && result.noSpace) {
     return `${name} paused — ${reason('this Mac is running out of space.')} What had arrived is kept; free some space, then choose Resume.`;
+  }
+  // Defect 165: each stop is worded once — who stopped it, that what arrived is kept, and how it goes on.
+  if (result.paused && result.stoppedBy === 'person') return `${name} paused. What had arrived is kept; Resume continues from there.`;
+  if (result.paused && result.stoppedBy === 'interruption') {
+    return `${name} stopped: ${reason('the copy stopped')} What had arrived is kept. It continues by itself if the phone reconnects within 10 minutes, or choose Resume.`;
   }
   if (result.paused) return `${name} paused — ${reason('the copy stopped.')} What had arrived is kept; Resume continues from there.`;
   if (result.sourceChanged) return `${name} — ${reason('the file changed on the phone.')} Nothing was saved.`;

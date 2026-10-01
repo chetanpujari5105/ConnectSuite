@@ -998,8 +998,10 @@ test('5c: a paused pull shows what is kept, its button reads Resume, and Cancel 
     const finish = await startPull(pane);
     view5c(pane).onPullAgreed({ transferId: 't-9', rootId: TREE.rootId, id: 'f3', name: 'report.pdf', resumedFrom: 0, blocks: true });
     setPaused([{ rootId: TREE.rootId, id: 'f3', name: 'report.pdf', size: 256 * 1024 * 1024, verifiedBytes: 128 * 1024 * 1024, updatedAtMs: 1 }]);
-    await finish({ ok: false, paused: true, reason: 'Paused.' });
-    assert.match(pane.detail.textContent, /report\.pdf paused — Paused\. What had arrived is kept; Resume continues from there\./);
+    // The shape FilesClient sends for a Pause the person chose (defect 165): said once, not "paused — Paused."
+    await finish({ ok: false, paused: true, stoppedBy: 'person', reason: 'Paused.' });
+    assert.match(pane.detail.textContent, /report\.pdf paused\. What had arrived is kept; Resume continues from there\./);
+    assert.doesNotMatch(pane.detail.textContent, /paused — Paused/);
     const note = one(pane, 'files-pull-paused');
     assert.equal(note.length, 1);
     assert.match(note[0]!.textContent, /^Paused: .+ of .+ is on this Mac, checked block by block\./);

@@ -483,7 +483,8 @@ export class BulkClient {
             log.warn('bulk', `${transferId} not saved: ${verdict.why}${noVerdict ? ` (no fs.transfer.done within ${options.blockDoneWaitMs ?? BLOCK_DONE_WAIT_MS} ms)` : ''}; the partial is kept at ${part}; ${verifiedBlocks} blocks verified; ${this.tallyLine()}`);
             resolve({
               ok: false, bytes: total, elapsedMs, sha256, verified: false, verifiedBlocks,
-              reason: noVerdict ? 'The phone did not confirm the file in time, so it was not saved. The part received is kept.' : `The phone ended the transfer: ${verdict.why}`,
+              // A clause: the pane says once what is kept and how it continues (defect 165).
+              reason: noVerdict ? 'the phone did not confirm the file in time, so it was not saved yet' : `the phone ended the transfer: ${verdict.why}`,
               ...(noVerdict ? { noVerdict: true } : {}),
             });
             return;

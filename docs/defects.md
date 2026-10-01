@@ -177,6 +177,10 @@ own heading there, and its own row here.
 | **159** | **Failure evidence said more than was known.** A block mismatch and a source-change refusal both left a `.failed` marker headed *"checksum mismatch"*, with an empty `actual` line (T4-A, 2026-10-01); the debug probe's log told the reader to expect `CHECKSUM_MISMATCH` from a block pull; and the marker log line claimed a marker was left even when the exclusive write declined | **fixed 2026-10-02, not yet verified on hardware** — Mac: four marker kinds (whole-file checksum, block, source-changed, unverified), each saying only what was established — a block marker names the block and both of its digests and says no whole-file hash was computed; one exclusive writer reports created / already existed / failed truthfully; a later whole publish removes only a marker this app wrote, and now logs it. Phone: the probe states the outcome of the pull it is in | `transferFiles.test.ts` +2, `filesResume.test.ts` +6 (Mac, real path); `FsCorruptionProbeTest` +2 (phone); 5 red at `HEAD`; mutations X1–X5, P2b red | `docs/testing.md` → Defect 159 |
 | **160** | **A fresh push's own new partial was logged as another app's file.** `FsPartials.resumeFrom` tested "no record" before "empty", so the first push of any name — whose partial `openPartial` had just created — read *"a partial with no transfer record of ours beside it — treated as another app's file"* (row 1000313356, 2026-10-01 19:59:23). Wording only; the decision was right | **fixed 2026-10-02, not yet verified on hardware** — `FsPartial.createdNow`, true only where a store created the partial in that call; an empty partial created now is named as new. A partial found already there with no record keeps the conservative reason, and every decision is unchanged | `FsPartialsTest` +3; mutation P1 red | `docs/testing.md` → Defect 160 |
 | **161** | **One session end was acted on and logged twice.** The Files and the Photos features both call `BulkTransfers.forgetSession` for the same session end; the second call re-planned, re-flagged the stream the first had stopped, and logged *"stopping 1 live stream(s)"* again (T3, 2026-09-30) | **fixed 2026-10-02, not yet verified on hardware** — `EndedSessions` (bounded, 64 tokens) lets only the first end of a token act; a repeat logs that it is a repeat | `BulkStopsTest` +2; mutations P3, P4 red | `docs/testing.md` → Defect 161 |
+| **162** | **A finished send card hid the next pull's Pause and Cancel.** `FilesView.renderDetail` gave the whole detail column to the send batch until its Done was pressed, settled or not, so a file copied back after a send had no Pause, Cancel or Copy on screen — T5-B's first run missed its Pause for exactly this (2026-10-01 19:59) | **fixed 2026-10-02, not yet verified on hardware** — a running send still owns the column (its Stop is the decision); a settled send stays on show with its Done, and the selected file's own details and controls are drawn beneath it | `filesWiring.test.ts` +2 through the page's bridge and events; red at `HEAD`; mutation R1 red | `docs/testing.md` → Defect 162 |
+| **163** | **Copy again forgot a valid local copy before the new attempt.** The click deleted the pane's local-copy note first; a Copy again that then failed, paused or was cancelled left no copy known at all, and the next row click started an ordinary pull by itself (T4-A finding 3, 2026-10-01) | **fixed 2026-10-02, not yet verified on hardware** — the earlier copy is kept until a new one actually arrives; only a success replaces it | `filesWiring.test.ts` +1; red at `HEAD`; mutation R2 red | `docs/testing.md` → Defect 163 |
+| **164** | **Pull state was keyed by file id alone.** `copying` and `localCopies` ignored the root, so a pull in one folder marked a same-id file in another folder as *Copying…*; and a pull finishing after the person opened another folder cleared its pull id under the wrong key, leaving a Pause bound to the finished transfer for the next copy of that file. Found by reading, 2026-10-02 | **fixed 2026-10-02, not yet verified on hardware** — both keyed by root and id; `copyToMac` captures its root when it starts | `filesWiring.test.ts` +1; red at `HEAD`; mutations R3, R4 red | `docs/testing.md` → Defect 164 |
+| **165** | **A stopped pull's sentences repeated themselves and gave conflicting instructions, and a real restart was never named.** *"paused — Paused."*; the outcome line and the paused note each said *"Resume continues from there"*; an interruption said *"What had arrived is kept"* twice with *"it continues when the phone is back"* and *"Resume continues"* (T3, 2026-09-30); and *"started again from the beginning"*, promised by the rules doc, appeared nowhere | **fixed 2026-10-02, not yet verified on hardware** — `FilesClient` reports `stoppedBy` (person, interruption, no-space) and `restarted` only when the phone refused a resume and the pull really began again at byte 0; reasons are clauses; the pane words each case once; the paused note carries facts only | `filesWiring.test.ts` +4, `filesResume.test.ts` +3, `filesView.test.ts` 5c updated to the shape the product sends; 6 red at `HEAD`; mutations R5–R9 red | `docs/testing.md` → Defect 165 |
 
 ---
 
@@ -3420,3 +3424,50 @@ the next feature added would bring the duplicate back.
 
 **Limit:** the gate's wiring inside `forgetSession` needs `LinkLog` (Android) and is not JVM-reachable;
 `EndedSessions` is.
+
+### 162 — a finished send card hid the next pull's Pause and Cancel · **fixed 2026-10-02, not yet verified on hardware**
+
+`renderDetail` returned after drawing the send batch whether or not it had settled. So until its Done was
+pressed, the selected file's details, Copy, Pause and Cancel were never drawn.
+
+**Fix direction:** as built. A running send keeps the column. A settled one stays on show, and the
+selection is drawn beneath it.
+
+**The wrong fixes:**
+- Auto-dismissing the card when a pull starts. That deletes a result the person may not have read.
+- Moving Pause into the send card. That attaches it to the wrong transfer.
+
+### 163 — Copy again forgot a valid local copy before the new attempt · **fixed 2026-10-02, not yet verified on hardware**
+
+The click handler deleted the local-copy note, then started the pull.
+
+**Fix direction:** as built. `copyToMac(entry, again)` bypasses the "already local" guard instead, and only
+a successful result writes the note.
+
+**Limit:** the pane does not re-check that the earlier file still exists on disk. It never did; this keeps
+the association it already had.
+
+### 164 — pull state was keyed by file id alone · **fixed 2026-10-02, not yet verified on hardware**
+
+An id is meaningful only inside its root. `copying` and `localCopies` are now keyed by `pullKey(root, id)`,
+and `copyToMac` captures the root when it starts, not when it ends.
+
+**Fix direction:** as built.
+
+**The wrong fix:** clearing the pane's maps on navigation. That forgets copies and pulls that are still
+true.
+
+### 165 — a stopped pull's sentences repeated themselves, and a real restart was never named · **fixed 2026-10-02, not yet verified on hardware**
+
+**Fix direction:** as built.
+- `FilesClient` sets `stoppedBy` on every paused result, and `restarted: {why}` only on a pull that started
+  again at byte 0 after the phone refused its resume.
+- `SESSION_ENDED_REASON` and the no-verdict reason are clauses.
+- `pullOutcomeText` words a person's Pause, an interruption and low space once each.
+- `pausedSentence` states facts only.
+
+**Not done, deliberately:** an automatic restart after a *prefix* mismatch (defect 158's refusal). The
+wording names a restart only where one happened.
+
+**The wrong fix:** adding *"started again"* to every changed-source outcome so the rules doc's sentence
+appears. It would be true of one path and false of the other.

@@ -26883,3 +26883,105 @@ memory is bounded and forgets the oldest.
 - Mac `npm test` **1,440 / 0**; `tsc --noEmit` app 0, test 0.
 - `sync-module` **608 / 0**: Gradle exit 0, and all 59 result files written at 00:47:58, inside the run.
 - Not on hardware.
+
+### Defect 162 — a finished send card hid the next pull's Pause and Cancel (2026-10-02, tests only)
+
+**The finding.** T5-B revision 1 (hardware, 2026-10-01 19:59): the watcher found `#files-pull-pause`
+absent twice inside 40–60 %, because the settled send card owned the detail column. The runbook's
+revision 2 worked around it by pressing **Done**, which is not a fix.
+
+**Test** (`filesWiring.test.ts`). It runs through the page's own `filesBridgeFrom` and `wireFilesEvents`;
+the only double is the preload's `connect`. The sequence: a send completes (offer → Send → `fsSend` →
+`onPushAgreed` → `fs.transfer.done`); then a click on the file starts a pull through the pane's own
+250 ms prefetch; then `onPullAgreed`.
+- **Red at `HEAD`:** *"Pause is drawn although the send card was never dismissed"* failed. The controls
+  passed: the card was on screen, and the pull began.
+- Green after: Pause and Cancel are drawn, the card's Done is still there, and the drawn Pause reached
+  `fsPullStop` for `tf-1`.
+
+A guard test pins the other half: a **running** send keeps the column. Its Stop is there, and the file's
+controls wait.
+
+**Instrument note.** The first version of the test delivered `onPushAgreed` **after** the write had
+finished, an order the running app never sees, and its own control (*"the finished send card is on
+screen"*) failed. The events now arrive in the app's order: agreement during the write, then the write's
+end, then the verdict.
+
+### Defect 163 — Copy again forgot a valid local copy before the new attempt (2026-10-02, tests only)
+
+**The finding:** T4-A finding 3 (2026-10-01).
+
+**Test:**
+1. A pull lands, so the entry reads *Copy again*.
+2. Copy again, then the new pull fails.
+3. **Red at `HEAD`:** *"the earlier copy is still known"* failed. After the fix, the drag note still
+   names the old path, and a row click starts **no** pull by itself.
+4. A successful Copy again then points at the new `(2).bin`.
+
+### Defect 164 — pull state was keyed by file id alone (2026-10-02, tests only)
+
+**Found by reading** `copyToMac`, 2026-10-02: the `finally` recomputed the key from the root on screen when
+the pull **ended**.
+
+**Test.** Two roots, each holding a different file under the same id:
+1. Start a pull in `downloads:connectsuite`, then open the other folder and select its file.
+2. **Red at `HEAD`:** *"the unrelated file is not copying"* failed.
+3. The first pull then finishes while the other folder is open; back home, it reads *Copy again*.
+4. A new Copy again shows **no Pause** until its own `onPullAgreed`.
+
+**Mutation R4 survived the first form of this test.** A stale pull id is invisible until the file is copied
+again, so step 4 was added; R4 is now red.
+
+### Defect 165 — a stopped pull's sentences repeated themselves, and a real restart was never named (2026-10-02, tests only)
+
+**The findings:**
+- *"report.pdf paused — Paused."*
+- the outcome line and the paused note both said *"Resume continues from there"*;
+- an interruption carried *"What had arrived is kept"* twice, with two instructions (T3, 2026-09-30);
+- *"started again from the beginning"* existed nowhere in the Mac's code (rules doc §4; T5-B record).
+
+**Red at `HEAD`:** 6 of 7 new tests.
+- `FilesClient` gave no `stoppedBy` and no `restarted`, and its session-end reason carried *"kept"* and
+  *"continues when the phone is back"*.
+- The pane repeated the instruction.
+- No restart was ever named.
+
+The seventh, a source rejection is never *paused*, was already green after `b1f62fc` and now guards it.
+
+**After:**
+- **The person's Pause:** *"X paused. What had arrived is kept; Resume continues from there."*
+- **An interruption:** *"X stopped: the connection to the phone ended. What had arrived is kept. It
+  continues by itself if the phone reconnects within 10 minutes, or choose Resume."*
+- **The paused note:** *"Paused: A of B is on this Mac, checked block by block."*
+- **A success after a refused resume:** *"…The file changed on the phone since it paused, so it started
+  again from the beginning."*
+- A resume reads *"continued from where it had paused"*, and never says *"started again"*.
+
+The existing view test `5c` passed a paused result **without** `stoppedBy` — a shape `FilesClient` no
+longer sends — and asserted the repeated wording. It now sends the product's shape and asserts the single
+sentence. The generic branch for an unlabelled pause is kept, as a fallback.
+
+**Mutations** (checksum-verified restore):
+
+| | Mutation | Red |
+|---|---|---|
+| R1 | any batch owns the column | the 162 test; the running-send guard stays green |
+| R2 | Copy again deletes first | the 163 test |
+| R3 | copying by id alone | the 164 test |
+| R4 | pull id cleared under the root on screen at finish | the 164 test, after its fourth step was added |
+| R5 | a Pause worded by the generic branch | 165, and the updated 5c |
+| R6 | a restart never reported | the 165 restart test |
+| R7 | the paused note repeats the instruction | the 165 count test |
+| R8 | the old session-end reason | the 165 session test |
+| R9 | no `stoppedBy` | the 165 report test |
+
+**A warning that is not a failure.** Running `filesView.test.ts` with `--test-name-pattern='^5c'` marks
+the file failed with *"generated asynchronous activity after the test ended"* (3×), while every test
+passes. `HEAD`'s own code does the same under the same filter (files swapped back, then restored with a
+SHA-256 check), and the full run shows **0** such warnings. It is a filter artifact, not counted either
+way.
+
+**Runs (2026-10-02 01:09):**
+- Mac `npm test` **1,451 / 0**.
+- `tsc --noEmit` app 0, test 0.
+- Not on hardware.

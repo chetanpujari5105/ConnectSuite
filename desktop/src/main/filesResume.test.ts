@@ -975,3 +975,60 @@ test('159: a marker that cannot be written is reported as such, not as left', as
     assert.equal(w.code, 'EACCES');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+// ---- defect 165: a stopped pull says who stopped it, and a restart is named only when it happened ----
+
+test('165: Pause is reported as the person’s; a link drop as an interruption; a low-space pause as such', T, async () => {
+  const a = harness({ stallAfter: 20 * MiB });
+  try {
+    const first = a.pull();
+    await whenReceiving(a, 5 * MiB);
+    await a.client.stopPull('t-1', 'pause');
+    const r = await first;
+    assert.equal(r.paused, true);
+    assert.equal(r.stoppedBy, 'person');
+  } finally { a.done(); }
+  const b = harness({ dropAfter: 20 * MiB });
+  try {
+    const r = await b.pull();
+    assert.equal(r.paused, true);
+    assert.equal(r.stoppedBy, 'interruption');
+    assert.doesNotMatch(r.reason ?? '', /kept|continues|Resume/, `the reason is a clause; the pane says what is kept, once: ${r.reason}`);
+  } finally { b.done(); }
+});
+
+test('165: a session ending is an interruption whose reason is a clause, not a second "kept" sentence', T, async () => {
+  const h = harness({ paceMs: 8 });
+  try {
+    const first = h.pull();
+    await whenReceiving(h, 10 * MiB);
+    h.endSession('tok');
+    const r = await first;
+    assert.equal(r.stoppedBy, 'interruption');
+    assert.doesNotMatch(r.reason ?? '', /kept|continues|Resume/, r.reason);
+  } finally { h.done(); }
+});
+
+test('165: "started again" is reported only when the phone refused a resume and the pull really restarted from 0', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB, resumeAnswer: () => ({ accepted: false, why: 'source-changed' }) });
+  try {
+    await pausedWithRecord(h);
+    const r = await h.pull();
+    assert.equal(r.ok, true, r.reason);
+    assert.equal(r.resumedFrom, undefined, 'control: it did start from 0');
+    assert.deepEqual(r.restarted, { why: 'source-changed' });
+  } finally { h.done(); }
+  const plain = harness();
+  try {
+    const r = await plain.pull();
+    assert.equal(r.ok, true);
+    assert.equal(r.restarted, undefined, 'a first pull did not restart anything');
+  } finally { plain.done(); }
+  const resumed = harness({ stallAfter: 20 * MiB });
+  try {
+    await pausedWithRecord(resumed);
+    const r = await resumed.pull();
+    assert.ok((r.resumedFrom ?? 0) > 0, 'control: an accepted resume');
+    assert.equal(r.restarted, undefined, 'an accepted resume did not restart');
+  } finally { resumed.done(); }
+});

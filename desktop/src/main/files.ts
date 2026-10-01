@@ -47,12 +47,24 @@ export interface PullOutcome {
   sourceChanged?: boolean;
   /** Where a resumed pull started. */
   resumedFrom?: number;
+  /**
+   * Who or what stopped a paused pull (defect 165): the person (it waits for Resume), an interruption
+   * (it also continues by itself on a reconnect within [AUTO_RESUME_WINDOW_MS]), or low space. The pane
+   * words each once, so a `reason` here is a clause, never a second "kept" sentence.
+   */
+  stoppedBy?: 'person' | 'interruption' | 'no-space';
+  /**
+   * The phone refused this pull's resume in its ack, the old partial was discarded, and the pull really
+   * did start again from byte 0 — the only case in which "started again from the beginning" is true.
+   * `why` is the phone's (`source-changed`), or `not-accepted-as-asked`.
+   */
+  restarted?: { why: string };
 }
 
 /** How often an in-flight block pull saves its verified count. */
 export const RECORD_SAVE_EVERY_MS = 2_000;
 /** Why a pull stopped when its session ended (defect 157). An interruption: kept, and resumable. */
-export const SESSION_ENDED_REASON = 'The connection to the phone ended. What had arrived is kept, and it continues when the phone is back.';
+export const SESSION_ENDED_REASON = 'the connection to the phone ended';
 
 /** A pull interrupted less than this long ago resumes on reconnect without a click (same run only). */
 export const AUTO_RESUME_WINDOW_MS = 10 * 60 * 1000;
@@ -442,6 +454,7 @@ export class FilesClient {
     // The owned partial and its record: the prepared resume if the phone accepted exactly it, else a
     // fresh exclusive partial under a free name (the refused one is discarded only if it is ours).
     let owned: OwnedPull | null = null;
+    let restartedWhy: string | null = null;
     if (blocksPlan.kind === 'blocks' && store && phone) {
       const r = agreed.data.resume;
       const acceptedHere = prepared !== null && r?.accepted === true && r.from === prepared.from &&
@@ -455,6 +468,7 @@ export class FilesClient {
       } else {
         if (prepared) {
           await prepared.handle.close().catch(() => undefined);
+          restartedWhy = r?.accepted === false ? String(r.why ?? 'source-changed') : 'not-accepted-as-asked';
           const partial = await store.discard(prepared.record, true);
           log.info('files', `pull of ${options.name}: the phone ${r?.accepted === false ? `refused the resume (${String(r.why)})` : 'did not accept the resume as asked'}; starting again from 0; old ${partial}`);
         }
@@ -559,8 +573,9 @@ export class FilesClient {
         if (!chosen) this.interrupted.set(`${options.rootId}\u0000${options.id}`, { options, atMs: this.now() });
         return {
           ok: false,
-          reason: result.reason ?? 'The transfer paused.',
+          reason: result.reason ?? 'the transfer stopped',
           paused: true,
+          stoppedBy: chosen ? 'person' : result.noSpace ? 'no-space' : 'interruption',
           ...(result.noSpace ? { noSpace: true } : {}),
         };
       }
@@ -592,6 +607,7 @@ export class FilesClient {
       verified,
       ...(result.verifiedBy ? { verifiedBy: result.verifiedBy } : {}),
       ...(result.resumedFrom ? { resumedFrom: result.resumedFrom } : {}),
+      ...(restartedWhy !== null ? { restarted: { why: restartedWhy } } : {}),
     };
   }
 
