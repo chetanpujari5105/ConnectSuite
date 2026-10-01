@@ -31,6 +31,7 @@ class MirrorContractTest {
             specialAccessHeld = emptySet(),
             registeredTypes = registered,
             videoServed = videoServed,
+            cameraServed = videoServed,
             bulkServed = false,
             backgroundRestricted = false,
         ).contains(Capability.MIRROR)

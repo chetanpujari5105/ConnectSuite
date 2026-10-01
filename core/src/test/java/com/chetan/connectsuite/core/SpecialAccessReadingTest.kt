@@ -67,6 +67,7 @@ class SpecialAccessReadingTest {
         specialAccessHeld = SpecialAccessReading.granted(namedInSettings, bound) intersect bound,
         registeredTypes = registered,
         videoServed = false,
+        cameraServed = false,
         bulkServed = false,
         backgroundRestricted = false,
     )

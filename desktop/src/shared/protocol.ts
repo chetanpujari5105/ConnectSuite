@@ -28,6 +28,13 @@ export const MAX_FRAME = 8 * 1024 * 1024;
 export const MAX_BULK_FRAME = 1 * 1024 * 1024;
 
 /**
+ * The camera stream's frame cap — docs/protocol.md → Camera → The camera frame. One frame is one
+ * JPEG of a 1280x720 preview, tens of kilobytes; a camera frame claiming more than this is a peer
+ * that has lost sync. Twin of Link.CAMERA_MAX_FRAME on the phone.
+ */
+export const CAMERA_MAX_FRAME = 1 * 1024 * 1024;
+
+/**
  * The bulk channel's JSON header frame, capped separately and far lower — the same pattern as the
  * 128-byte session-token frame. Reading the header under MAX_BULK_FRAME would let a malformed
  * first frame claim the whole chunk budget on a connection that has proved nothing beyond its
@@ -202,6 +209,17 @@ export const MessageType = {
   /** Phone -> Mac only. The phone turned; the new geometry follows on the video channel. */
   MIRROR_ROTATE: 'mirror.rotate',
 
+  /**
+   * Camera v1 (docs/protocol.md → Camera). `camera.request` **asks**: its ack means a request is
+   * waiting on the phone's screen, never that the camera is open — that takes the owner's tap.
+   */
+  CAMERA_REQUEST: 'camera.request',
+  CAMERA_STOP: 'camera.stop',
+  /** Changes the camera inside an approved stream; no new stream, no new approval. */
+  CAMERA_SWITCH: 'camera.switch',
+  /** Phone -> Mac, on every phase change of a camera stream. */
+  CAMERA_STATE: 'camera.state',
+
   INPUT_TAP: 'input.tap',
   INPUT_SWIPE: 'input.swipe',
   INPUT_SCROLL: 'input.scroll',
@@ -334,6 +352,13 @@ export const ErrorCode = {
    * verb of three cannot be delivered, and the pane says so above a list that is still useful.
    */
   NOTIFICATIONS_BLOCKED: 'NOTIFICATIONS_BLOCKED',
+  /**
+   * A camera request or stream is already open, or the phone is mirroring. The phone never stops
+   * one to make room for the other; its message says which.
+   */
+  CAMERA_BUSY: 'CAMERA_BUSY',
+  /** No camera on the phone, or none facing the way asked. Not a permission problem. */
+  CAMERA_UNAVAILABLE: 'CAMERA_UNAVAILABLE',
   FEATURE_UNAVAILABLE: 'FEATURE_UNAVAILABLE',
   SECURE_SURFACE: 'SECURE_SURFACE',
   ENCODER_FAILED: 'ENCODER_FAILED',
@@ -441,6 +466,8 @@ export const Capability = {
   REMOTE: 'remote',
   APPS: 'apps',
   MIC: 'mic',
+  /** Camera v1: a live preview of the phone's camera in the Camera pane (docs/protocol.md → Camera). */
+  CAMERA: 'camera',
 } as const;
 
 export interface Envelope<T = Record<string, unknown>> {

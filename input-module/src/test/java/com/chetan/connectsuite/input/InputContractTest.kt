@@ -34,6 +34,7 @@ class InputContractTest {
             specialAccessHeld = setOf(CapabilityContract.SpecialAccess.ACCESSIBILITY_SERVICE),
             registeredTypes = registered,
             videoServed = false,
+            cameraServed = false,
             bulkServed = false,
             backgroundRestricted = false,
         ).contains(capability)

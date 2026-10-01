@@ -38,6 +38,7 @@ class CapabilityContractTest {
             specialAccessHeld = allSpecialAccess,
             registeredTypes = emptySet(),
             videoServed = false,
+            cameraServed = false,
             bulkServed = false,
             backgroundRestricted = false,
         )
@@ -64,6 +65,7 @@ class CapabilityContractTest {
                         capability = capability,
                         registeredTypes = partial,
                         videoServed = true,
+                        cameraServed = true,
                         bulkServed = true,
                     ),
                 )
@@ -76,6 +78,7 @@ class CapabilityContractTest {
                     capability = capability,
                     registeredTypes = contract.requests,
                     videoServed = true,
+                    cameraServed = true,
                     bulkServed = true,
                 ),
             )
@@ -92,6 +95,7 @@ class CapabilityContractTest {
                 Capability.MIRROR,
                 registeredTypes = mirror.requests,
                 videoServed = false,
+                cameraServed = false,
                 bulkServed = true,
             ),
         )
@@ -103,9 +107,42 @@ class CapabilityContractTest {
                 Capability.FILES,
                 registeredTypes = files.requests,
                 videoServed = true,
+                cameraServed = true,
                 bulkServed = false,
             ),
         )
+    }
+
+    @Test
+    fun `camera needs its own claim served, and the mirror's sink is not it`() {
+        val camera = CapabilityContract.contracts.getValue(Capability.CAMERA)
+        // The mirror's video sink present and the camera's absent: a camera.request could be approved
+        // into a stream nothing would carry.
+        assertFalse(
+            CapabilityContract.isImplemented(
+                Capability.CAMERA,
+                registeredTypes = camera.requests,
+                videoServed = true,
+                cameraServed = false,
+                bulkServed = true,
+            ),
+        )
+        assertEquals(
+            listOf("camera channel unserved"),
+            CapabilityContract.missingFor(Capability.CAMERA, camera.requests, true, false, true),
+        )
+        assertTrue(
+            CapabilityContract.isImplemented(
+                Capability.CAMERA,
+                registeredTypes = camera.requests,
+                videoServed = false,
+                cameraServed = true,
+                bulkServed = false,
+            ),
+        )
+        // And it is not gated on CAMERA: the permission is asked per session, after the owner's tap.
+        assertTrue(camera.permissions.isEmpty())
+        assertTrue(camera.permissionAlternatives.isEmpty())
     }
 
     @Test
@@ -118,19 +155,20 @@ class CapabilityContractTest {
                 Capability.MIC,
                 registeredTypes = emptySet(),
                 videoServed = true,
+                cameraServed = true,
                 bulkServed = true,
             ),
         )
         assertEquals(
             listOf("no wire protocol defined yet"),
-            CapabilityContract.missingFor(Capability.MIC, emptySet(), true, true),
+            CapabilityContract.missingFor(Capability.MIC, emptySet(), true, true, true),
         )
     }
 
     @Test
     fun `an unknown capability is never advertised`() {
         assertFalse(
-            CapabilityContract.isImplemented("teleport", setOf("teleport.now"), true, true),
+            CapabilityContract.isImplemented("teleport", setOf("teleport.now"), true, true, true),
         )
     }
 
@@ -146,6 +184,7 @@ class CapabilityContractTest {
                 specialAccessHeld = emptySet(),
                 registeredTypes = contacts,
                 videoServed = true,
+                cameraServed = true,
                 bulkServed = true,
                 backgroundRestricted = false,
             ),
@@ -158,6 +197,7 @@ class CapabilityContractTest {
                 specialAccessHeld = emptySet(),
                 registeredTypes = emptySet(),
                 videoServed = true,
+                cameraServed = true,
                 bulkServed = true,
                 backgroundRestricted = false,
             ),
@@ -170,6 +210,7 @@ class CapabilityContractTest {
                 specialAccessHeld = emptySet(),
                 registeredTypes = contacts,
                 videoServed = true,
+                cameraServed = true,
                 bulkServed = true,
                 backgroundRestricted = false,
             ),
@@ -184,7 +225,7 @@ class CapabilityContractTest {
             Capability.MIRROR, Capability.INPUT, Capability.NOTIFICATIONS, Capability.SMS,
             Capability.CALLS, Capability.CONTACTS, Capability.FILES, Capability.PHOTOS,
             Capability.CLIPBOARD, Capability.REMOTE, Capability.APPS, Capability.MIC,
-            Capability.SHARE,
+            Capability.SHARE, Capability.CAMERA,
         )
         assertEquals(
             "every Capability constant needs an entry in CapabilityContract.contracts",

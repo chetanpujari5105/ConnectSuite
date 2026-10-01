@@ -52,6 +52,15 @@ object Link {
      */
     const val MAX_BULK_HEADER_FRAME: Int = 64 * 1024
 
+    /**
+     * The camera stream's frame cap — docs/protocol.md → Camera → The camera frame.
+     *
+     * Deliberately far under [MAX_FRAME], for the reason [MAX_BULK_FRAME] is: one camera frame is one
+     * JPEG of a 1280x720 preview, tens of kilobytes. A camera frame claiming megabytes is not a sharper
+     * picture, it is a peer that has lost sync — and 8 MB per frame is memory a camera never needs.
+     */
+    const val CAMERA_MAX_FRAME: Int = 1 * 1024 * 1024
+
     /** A video or bulk socket must present its session token this fast or it is dropped. */
     const val TOKEN_GRACE_MS: Long = 10_000
 
@@ -157,6 +166,20 @@ object MessageType {
      * hold. See docs/protocol.md.
      */
     const val MIRROR_SCREENOFF = "mirror.screenoff"
+
+    /**
+     * Camera v1 (docs/protocol.md → Camera). `camera.request` **asks**: its ack means a request is
+     * waiting on the phone's screen, never that the camera is open. The camera opens only after the
+     * phone's owner taps Start camera for that request.
+     */
+    const val CAMERA_REQUEST = "camera.request"
+    const val CAMERA_STOP = "camera.stop"
+
+    /** Changes the camera inside an approved stream; mints no new stream and asks no new approval. */
+    const val CAMERA_SWITCH = "camera.switch"
+
+    /** Event, phone → Mac, on every phase change of a camera stream. */
+    const val CAMERA_STATE = "camera.state"
 
     const val INPUT_TAP = "input.tap"
     const val INPUT_SWIPE = "input.swipe"
@@ -404,6 +427,15 @@ object ErrorCode {
      * decision table reintroduced by the Mac's own copy: a success that did not happen.
      */
     const val NOTIFICATIONS_BLOCKED = "NOTIFICATIONS_BLOCKED"
+
+    /**
+     * A camera request or stream is already open, or a mirror session is running or waiting for
+     * consent. The phone never stops one to make room for another; the message says which it was.
+     */
+    const val CAMERA_BUSY = "CAMERA_BUSY"
+
+    /** The phone has no camera, or none facing the way asked. Not a permission problem. */
+    const val CAMERA_UNAVAILABLE = "CAMERA_UNAVAILABLE"
 }
 
 /**
@@ -427,6 +459,9 @@ object Capability {
     /** Feature A: the phone can make and answer for one-file share offers (docs/protocol.md → Share). */
     const val SHARE = "share"
 
+    /** Camera v1: a live preview of the phone's camera in the Mac's Camera pane (docs/protocol.md → Camera). */
+    const val CAMERA = "camera"
+
     /**
      * Every capability name, in one place, so nothing has to hand-maintain a second list.
      *
@@ -435,7 +470,7 @@ object Capability {
      */
     val all: Set<String> = setOf(
         MIRROR, INPUT, NOTIFICATIONS, SMS, CALLS, CONTACTS,
-        FILES, PHOTOS, CLIPBOARD, REMOTE, APPS, MIC, SHARE,
+        FILES, PHOTOS, CLIPBOARD, REMOTE, APPS, MIC, SHARE, CAMERA,
     )
 }
 

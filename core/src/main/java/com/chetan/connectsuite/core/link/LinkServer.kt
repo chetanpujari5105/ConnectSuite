@@ -180,6 +180,7 @@ class LinkServer(
         context = appContext,
         registeredTypes = { handlers.keys.toSet() },
         videoChannelServed = { videoChannelSink != null },
+        cameraChannelServed = { cameraChannelSink != null },
         bulkChannelServed = { bulkChannelSink != null },
     )
     private val liveSessions = ConcurrentHashMap<ControlSession, Unit>()
@@ -213,6 +214,16 @@ class LinkServer(
     /** Set by mirror-module in phase 2; until then a video socket is refused with a reason. */
     @Volatile
     var videoChannelSink: ((AuthenticatedChannel) -> Unit)? = null
+
+    /**
+     * Set by camera-module: the consumer of a **camera claim** on the video port
+     * (docs/protocol.md → The stream claim on 42502). A separate slot from [videoChannelSink] on
+     * purpose — a token-only socket is the mirror's and must never reach the camera, and a camera
+     * claim must never reach [MirrorEngine]'s `attachVideoChannel`, which replaces whatever video
+     * socket it already holds.
+     */
+    @Volatile
+    var cameraChannelSink: ((AuthenticatedChannel, SideChannelClaim.Camera) -> Unit)? = null
 
     /** Set by the transfer code in phase 5. */
     @Volatile
@@ -530,6 +541,10 @@ class LinkServer(
                 continue
             }
             scope.launch {
+                // Set once the frame is known to be a camera claim, so a refusal is reported to the
+                // camera and never, through sideChannelRejected, to the mirror's owner as an
+                // unauthorised video socket — a sentence about the wrong feature.
+                var cameraClaim = false
                 try {
                     LinkTls.handshake(socket)
                     socket.tcpNoDelay = true
@@ -537,10 +552,30 @@ class LinkServer(
                     val input = BufferedInputStream(socket.getInputStream())
                     val tokenFrame = Framing.readFrame(input, 128)
                         ?: throw IOException("no token frame")
-                    val token = String(tokenFrame, Charsets.UTF_8).trim()
-                    val session = sessions.resolve(token)
+                    val frameText = String(tokenFrame, Charsets.UTF_8)
+                    cameraClaim = frameText.trim().contains(' ')
+                    val claim = SideChannelClaim.parse(frameText)
+                        ?: throw IOException("malformed channel claim")
+                    val session = sessions.resolve(claim.token)
                         ?: throw IOException("unknown session token")
                     socket.soTimeout = 0
+
+                    if (claim is SideChannelClaim.Camera) {
+                        // docs/protocol.md → The stream claim on 42502: the video port only. A camera
+                        // claim on the bulk port is not a camera socket and not a transfer either.
+                        if (label != "video") throw IOException("a camera claim on the $label port")
+                        val camera = cameraChannelSink
+                        if (camera == null) {
+                            LinkLog.w("server", "camera claim refused: nothing is serving it in this build")
+                            runCatching { socket.close() }
+                            return@launch
+                        }
+                        // Ownership, the stream id and the stream's phase are the camera's to judge;
+                        // this layer has proved only that the token belongs to a live session.
+                        LinkLog.i("server", "camera claim for stream ${claim.streamId.take(8)}… from ${session.peerName}")
+                        camera(AuthenticatedChannel(socket, session, input), claim)
+                        return@launch
+                    }
 
                     val consumer = sink()
                     if (consumer == null) {
@@ -559,6 +594,9 @@ class LinkServer(
                 } catch (e: Exception) {
                     LinkLog.w("server", "$label channel rejected: ${e.message}")
                     runCatching { socket.close() }
+                    // A refused camera claim is the camera's business: its owner, if any, learns of it
+                    // through the stream that never attaches (`stream-closed`), never as a mirror error.
+                    if (cameraClaim) return@launch
                     // The token did not resolve, so this socket's owner is unknown and cannot be
                     // answered on its own connection. A Mac waiting for a picture still deserves
                     // the reason rather than an idle canvas, so the feature serving this channel

@@ -43,6 +43,7 @@ class EmptyCapabilitiesTest {
             specialAccessHeld = emptySet(),
             registeredTypes = emptySet(),
             videoServed = false,
+            cameraServed = false,
             bulkServed = false,
             backgroundRestricted = false,
         )
@@ -62,6 +63,7 @@ class EmptyCapabilitiesTest {
             specialAccessHeld = emptySet(),
             registeredTypes = emptySet(),
             videoServed = false,
+            cameraServed = false,
             bulkServed = false,
             backgroundRestricted = false,
         )

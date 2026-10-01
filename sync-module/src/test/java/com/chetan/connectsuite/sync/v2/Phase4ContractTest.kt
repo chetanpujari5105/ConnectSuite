@@ -96,8 +96,8 @@ class Phase4ContractTest {
             val bulk = capability in servesBulkChannel
             assertTrue(
                 "$capability is still missing " +
-                    CapabilityContract.missingFor(capability, registered, false, bulk),
-                CapabilityContract.isImplemented(capability, registered, false, bulk),
+                    CapabilityContract.missingFor(capability, registered, false, false, bulk),
+                CapabilityContract.isImplemented(capability, registered, false, false, bulk),
             )
         }
     }

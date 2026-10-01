@@ -68,6 +68,7 @@ class RunningGateTest {
         specialAccessHeld = granted intersect running,
         registeredTypes = registered,
         videoServed = false,
+        cameraServed = false,
         bulkServed = false,
         backgroundRestricted = false,
     )

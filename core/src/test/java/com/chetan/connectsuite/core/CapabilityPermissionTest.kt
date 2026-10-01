@@ -210,16 +210,16 @@ class CapabilityPermissionTest {
         assertEquals(
             "permitted but unimplemented must stay off",
             emptySet<String>(),
-            CapabilityContract.advertisable(permission, emptySet(), emptySet(), false, false, false),
+            CapabilityContract.advertisable(permission, emptySet(), emptySet(), false, false, false, false),
         )
         assertEquals(
             "implemented but unpermitted must stay off — this is the half that was missing",
             emptySet<String>(),
-            CapabilityContract.advertisable(emptySet(), emptySet(), contract.requests, false, false, false),
+            CapabilityContract.advertisable(emptySet(), emptySet(), contract.requests, false, false, false, false),
         )
         assertEquals(
             setOf(Capability.CONTACTS),
-            CapabilityContract.advertisable(permission, emptySet(), contract.requests, false, false, false),
+            CapabilityContract.advertisable(permission, emptySet(), contract.requests, false, false, false, false),
         )
     }
 
@@ -250,6 +250,7 @@ class CapabilityPermissionTest {
                 specialAccessHeld = setOf(SpecialAccess.NOTIFICATION_LISTENER),
                 registeredTypes = notifications + remote + input,
                 videoServed = false,
+                cameraServed = false,
                 bulkServed = false,
                 backgroundRestricted = false,
             ),
@@ -269,7 +270,7 @@ class CapabilityPermissionTest {
 
         // Still never advertisable: photos has no handlers. Both halves, always.
         assertTrue(
-            CapabilityContract.advertisable(modern, emptySet(), emptySet(), false, false, false).isEmpty(),
+            CapabilityContract.advertisable(modern, emptySet(), emptySet(), false, false, false, false).isEmpty(),
         )
     }
 
@@ -311,6 +312,7 @@ class CapabilityPermissionTest {
                 Capability.PHOTOS,
                 registeredTypes = allFour,
                 videoServed = false,
+                cameraServed = false,
                 bulkServed = false,
             ),
         )
@@ -320,6 +322,7 @@ class CapabilityPermissionTest {
                 Capability.PHOTOS,
                 registeredTypes = allFour,
                 videoServed = false,
+                cameraServed = false,
                 bulkServed = true,
             ),
         )
@@ -348,19 +351,21 @@ class CapabilityPermissionTest {
                 specialAccessHeld = emptySet(),
                 registeredTypes = allFour,
                 videoServed = false,
+                cameraServed = false,
                 bulkServed = true,
                 backgroundRestricted = false,
             ),
         )
         // And neither half on its own.
         assertTrue(
-            CapabilityContract.advertisable(granted, emptySet(), allFour, false, false, false).isEmpty(),
+            CapabilityContract.advertisable(granted, emptySet(), allFour, false, false, false, false).isEmpty(),
         )
         assertTrue(
             CapabilityContract.advertisable(
                 granted,
                 emptySet(),
                 allFour - MessageType.MEDIA_ORIGINAL,
+                false,
                 false,
                 true,
                 false,
@@ -387,6 +392,7 @@ class CapabilityPermissionTest {
                 Capability.PHOTOS,
                 registeredTypes = sliceTwo,
                 videoServed = false,
+                cameraServed = false,
                 bulkServed = true,
             ),
         )
@@ -396,6 +402,7 @@ class CapabilityPermissionTest {
                 Capability.PHOTOS,
                 registeredTypes = sliceTwo,
                 videoServed = false,
+                cameraServed = false,
                 bulkServed = true,
             ),
         )

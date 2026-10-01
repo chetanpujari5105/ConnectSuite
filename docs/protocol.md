@@ -23,7 +23,7 @@ Events are unsolicited and carry a fresh `id`.
 - `hello.ack` (phone to Mac): same fields, plus session token and capability list
 - `hello` and `hello.ack` may each carry `ext` — see [Extensions](#extensions-ext)
 
-Capability list example: `["mirror","notifications","sms","calls","contacts","files","photos","clipboard","remote","apps","mic","share"]`
+Capability list example: `["mirror","notifications","sms","calls","contacts","files","photos","clipboard","remote","apps","mic","share","camera"]`
 The Mac greys out any UI whose capability is absent. Capabilities are derived from granted
 permissions, checked at handshake time and re-sent as a `capabilities.changed` event whenever a
 permission changes.
@@ -110,6 +110,7 @@ Clipboard: `clip.push`, `clip.request`, `clip.history`
 Files: `fs.list`, `fs.stat`, `fs.thumb`, `fs.mkdir`, `fs.delete`, `fs.transfer.begin`, `fs.transfer.progress`, `fs.transfer.done`, `fs.transfer.cancel`, `fs.transfer.blocks` (only with the fs.blocks extension negotiated)
 Photos: `media.buckets`, `media.list`, `media.thumb`, `media.original`
 Mirror: `mirror.start`, `mirror.stop`, `mirror.config`, `mirror.keyframe`, `mirror.stats`, `mirror.state`, `mirror.rotate`
+Camera: `camera.request`, `camera.stop`, `camera.switch`, `camera.state` — see [Camera](#camera-42501-frames-on-42502-by-claim)
 Input: `input.tap`, `input.swipe`, `input.scroll`, `input.key`, `input.text`, `input.global`
 (back/home/recents/notifications/quick-settings/lock-screen — **not** power; see [Input](#input-42501))
 Apps: `apps.list`, `apps.icon`, `apps.open.ask` — see [Apps](#apps-42501). There is deliberately **no**
@@ -143,7 +144,7 @@ feature failing every request looks, on the Mac, exactly like a feature that is 
 | `clip` | `clipboard` |
 | `fs` | `files` |
 | `media` | `photos` |
-| `mirror`, `input`, `sms`, `contacts`, `remote`, `apps`, `mic`, `share` | *(same name)* |
+| `mirror`, `input`, `sms`, `contacts`, `remote`, `apps`, `mic`, `share`, `camera` | *(same name)* |
 
 The mapping is `FeatureOf.of(type)` in `core/.../protocol/FeatureOf.kt`, checked exhaustively over
 `MessageType` by `ProtocolNamespaceTest`. It returns **null** for the system messages — `hello`,
@@ -170,6 +171,10 @@ nothing about latency.
 ## Video channel (42502)
 
 Client sends the session token as the first frame, then reads only.
+
+The token frame may instead carry a **camera claim** — the token, the word `camera` and a `streamId`;
+see [The stream claim on 42502](#the-stream-claim-on-42502). A token frame holding only the token is
+the mirror's, and its meaning is unchanged.
 
 The token frame uses the standard 4-byte length prefix. **Everything after it does not**: video
 frames carry their own 13-byte header, whose length field is the frame's only length. Writing both
@@ -431,6 +436,239 @@ keyframes under 2000 bytes as blank, and, because a blanked screen is usually a 
 feeds the encoder almost nothing, asks for a sync frame when output collapses rather than waiting
 for the encoder's own keyframe schedule. Without that the three keyframes took ~60 seconds to
 arrive on hardware.
+
+## Camera (42501, frames on 42502 by claim)
+
+Capability `camera`. **A live preview of the phone's camera inside Sidekick's Camera pane on the
+Mac** — added 2026-10-02 as Camera v1. It is **not** a macOS virtual webcam (that still needs a signed
+Camera Extension and stays out of scope), not audio, not recording, not snapshots, and not
+background capture. The design notes and the hardware-test plan are `docs/camera-v1.md`.
+
+### The rules this namespace exists to keep
+
+1. **A Mac request never opens the camera.** `camera.request` puts a request on the phone's screen.
+   The camera opens only after the phone's owner taps **Start camera** on that screen, for that
+   request. Nothing else opens it.
+2. **A granted permission is not consent.** `CAMERA` is asked through Android's own runtime dialog,
+   and only after that tap. Having it already granted skips the dialog, never the tap.
+3. **Consent is per stream and is never stored.** Every `camera.request` mints a new `streamId`;
+   once that stream ends, by any route, a new one needs a new request and a new tap. Nothing about a
+   camera session survives a disconnect, a process restart, a reboot or a reinstall.
+4. **No frame before approval, none after the end.** The phone sends frames only while the stream is
+   `running`, and only to the socket that claimed this `streamId` from the owning session.
+5. **No microphone.** This namespace carries no audio and the feature requests no audio permission.
+
+### Capability and older peers
+
+`camera` is advertised when the phone's camera feature is installed: its three requests have
+handlers and the camera stream claim has a consumer. **It is not gated on the `CAMERA` permission**,
+for the same reason `mirror` is not gated on MediaProjection consent — the permission is asked per
+session, in the flow, after the owner's tap.
+
+**Release builds do not install it.** Camera v1 is development-only: a release build leaves `camera`
+in `unavailable`, with the phone's ordinary "not built" reason, until a later phase lifts that gate
+deliberately.
+
+| Peers | What happens |
+|---|---|
+| Mac and phone both know `camera` | the flow below |
+| Mac knows it, phone is older | `camera` is in neither `capabilities` nor `unavailable`; the Mac says the phone needs an update and sends no `camera.*` |
+| Phone knows it, Mac is older | the Mac carries an unknown name and never sends `camera.request`, so the camera never opens |
+| Phone knows it and lists it in `unavailable` | the Mac shows the phone's reason and offers no request |
+
+### `camera.request`
+
+**Request, Mac → phone.**
+
+```json
+request {"facing":"back"}
+ack     {"state":"awaiting-approval","streamId":"5f0c…(32 hex)","facing":"back",
+         "expiresInMs":30000,"message":"Waiting for you to allow the camera on your phone.",
+         "fixHint":"Open the request on your phone and tap Start camera."}
+```
+
+`facing` is `"back"` or `"front"`, optional, default `"back"`. It is a starting choice: the phone's
+request screen lets the owner change it before approving.
+
+**The ack is not approval.** It acks within 2 seconds and means only that a request is waiting on the
+phone. If Sidekick is open on the phone the request screen appears over it; otherwise the phone posts
+a notification and the owner's tap opens the screen. Either way the camera stays closed until
+**Start camera** is tapped.
+
+A request nobody answers expires after **30 seconds** (`expiresInMs`) and ends as `camera.state`
+`stopped` with reason `expired`.
+
+Refusals are `error` with `feature: "camera"`:
+
+| Cause | `code` |
+|---|---|
+| A camera request or stream is already open, from this Mac or another | `CAMERA_BUSY` |
+| A mirror session is running or waiting for consent | `CAMERA_BUSY` (the message says it is the mirror) |
+| The phone has no camera | `CAMERA_UNAVAILABLE` |
+| `facing` is not `back` or `front` | `BAD_REQUEST` |
+
+The phone never stops a mirror, or anything else, to make room for a camera.
+
+### `camera.state`
+
+**Event, phone → Mac**, on every phase change of the stream, carrying `streamId` and the
+`camera.request`'s `requestId`.
+
+| `state` | Meaning | Terminal |
+|---|---|---|
+| `awaiting-approval` | the request is on the phone, nobody has answered | no |
+| `starting` | the owner tapped Start camera and `CAMERA` is granted; the camera is opening. **The Mac opens the stream socket now** | no |
+| `running` | a frame has been produced and the stream socket is attached. Carries `facing`, `width`, `height`, `frameRate` (the phone's cap, not a measurement) | no |
+| `stopped` | the stream ended; `reason`, `message`, `fixHint`, `framesSent`, `framesDropped` | yes |
+
+`running` is sent again after a successful `camera.switch`, with the new `facing`.
+
+`reason` on `stopped` is a closed set. The Mac switches on it; `message` is for a person:
+
+| `reason` | What ended it |
+|---|---|
+| `declined` | the owner tapped Decline on the phone |
+| `expired` | nobody answered within 30 seconds |
+| `permission-denied` | the owner tapped Start camera and refused Android's camera permission |
+| `camera-unavailable` | no camera of that facing, or the camera failed to open |
+| `camera-in-use` | another app holds the camera, or a policy disables it |
+| `stopped-by-mac` | `camera.stop` |
+| `stopped-on-phone` | the owner tapped Stop on the phone |
+| `left-screen` | the phone's camera screen stopped being visible — Home, another app, the screen locking or turning off |
+| `stream-closed` | the Mac's stream socket closed, or was not opened within 10 seconds of `starting` |
+| `capture-failed` | frames could not be produced or encoded |
+
+When the **owning control session ends**, the phone stops the stream at once and sends nothing —
+there is nobody left to send to. That is reason `mac-disconnected` on the phone's own screen and log;
+it never appears on the wire.
+
+`framesSent` and `framesDropped` are the denominator rule: "stopped after 0 frames" (never worked) and
+"stopped after 900 frames" (worked, then ended) must not read alike.
+
+### `camera.stop`
+
+**Request, Mac → phone.** `{"streamId":"…"}`.
+
+Acks `{"stopped":true}` when it ended a request or stream this Mac owned, and `{"stopped":false}`
+when nothing is open under that id — a repeated stop, or one that crossed a stop from the phone. It is
+idempotent: a stop that finds nothing is an answer, not an error. A `streamId` owned by **another**
+control session is refused with `UNAUTHORIZED` and changes nothing. A missing `streamId` is
+`BAD_REQUEST`.
+
+### `camera.switch`
+
+**Request, Mac → phone.** `{"streamId":"…","facing":"front"}`.
+
+Changes the camera **inside the stream the owner already approved**. It mints no new `streamId`,
+opens no new socket, and asks for no new approval; the same socket carries frames from the new camera,
+and `camera.state` `running` follows with the new `facing`. The ack `{"facing":"front"}` means the
+switch was accepted.
+
+| Cause | `code` |
+|---|---|
+| `streamId` is not open, or the stream is not `starting` or `running` | `NOT_FOUND` |
+| `streamId` belongs to another control session | `UNAUTHORIZED` |
+| `facing` invalid, or `streamId` missing | `BAD_REQUEST` |
+| no camera faces that way; the stream continues on the current one | `CAMERA_UNAVAILABLE` |
+
+### The stream claim on 42502
+
+Camera frames ride the **existing video port**. There is no new listener, no new port, and no
+unauthenticated path: the socket is TLS 1.3, pinned, and authorised by the session token exactly as
+the mirror's is.
+
+The difference is the token frame. The mirror's is the session token alone, and stays byte-for-byte
+what it was. A camera socket's is the token, the word `camera`, and the `streamId`, separated by
+single spaces:
+
+```
+<64 hex session token> camera <32 hex streamId>
+```
+
+The phone attaches the socket to the camera only when **all** of these hold, and otherwise closes it:
+
+- the token resolves to a live control session;
+- that session is the one that sent the `camera.request`;
+- the `streamId` is that request's;
+- the stream is `starting` or `running`;
+- no socket has claimed this stream yet. **A stream is claimed once**: a second claim is closed, and
+  when the attached socket closes the stream ends with `stream-closed`. A reconnect is a new request.
+
+An unknown claim word, or a malformed claim, is closed. The 128-byte cap on the token frame is
+unchanged; the camera claim is 104 bytes.
+
+### The camera frame
+
+After the claim the phone writes frames in the video channel's 13-byte frame header, and every
+payload starts with a 16-byte camera header followed by **one complete baseline JPEG**:
+
+```
+frame header (13 bytes, as the video channel)
+byte  0      flags     bit 0 = keyframe — always set: every camera frame stands alone
+bytes 1..8   PTS       microseconds, the phone's System.nanoTime()/1000 when the frame was captured
+bytes 9..12  length    payload bytes, big endian, at most 1 MiB (CAMERA_MAX_FRAME)
+
+camera header (first 16 bytes of the payload)
+byte  0      version   1
+byte  1      format    1 = JPEG
+byte  2      facing    0 = back, 1 = front, 2 = external
+byte  3      rotation  quarter turns clockwise that make the picture upright, 0..3
+byte  4      flags     bit 0 = mirror horizontally for display (the front-camera convention)
+byte  5      epoch     u8, increments with every camera switch, wraps at 256
+bytes 6..7   width     u16 BE, of the JPEG as encoded (before rotation)
+bytes 8..9   height    u16 BE
+bytes 10..13 sequence  u32 BE, per stream, +1 for every frame produced; a gap is a dropped frame
+bytes 14..15 reserved  0
+bytes 16..   JPEG      starts FF D8
+```
+
+**The orientation travels with the pixels it describes.** A switch from the back camera to the front
+changes `facing`, the mirror flag and often the rotation — and if those arrived on the control channel
+while the frames arrived here, one frame of one camera would be drawn with the other's orientation.
+In-band, a frame is always drawn by its own description.
+
+**The Mac closes the stream on any malformed frame** and shows an error rather than resyncing: a
+length over 1 MiB, a payload under 18 bytes, a version or format it does not know, a facing over 2, a
+rotation over 3, a reserved bit set, a width or height of 0 or over 4096, a JPEG not starting
+`FF D8`, or a sequence that does not increase.
+
+**Frames are dropped, never queued.** The phone captures with CameraX's keep-only-latest analysis,
+caps the rate at 15 fps, and holds at most two encoded frames for the socket, evicting the oldest —
+every camera frame is independent, so the oldest is always the cheapest to lose. The target is 1280×720
+where the camera offers it, or the closest size it does; `running` reports what was actually chosen.
+The Mac decodes one frame at a time and keeps only the newest waiting.
+
+**An old frame is never shown as live.** When no frame has arrived for 2 seconds of a `running`
+stream, the Mac hides the picture and says it is waiting for frames; when the stream stops, or the
+link drops, the picture is cleared at once rather than left standing.
+
+### Lifecycle on the phone
+
+Capture is **foreground only** in v1. The camera is bound to the phone's camera screen and to nothing
+else: no foreground service, no background start, no lock-screen capture.
+
+| Event | Phone |
+|---|---|
+| owner taps Start camera | asks for `CAMERA` if needed, then opens the camera |
+| the camera screen stops being visible | stops, `left-screen` |
+| owner taps Stop | stops, `stopped-on-phone` |
+| `camera.stop` from the owner | stops, `stopped-by-mac` |
+| the owning control session ends | stops at once, sends nothing |
+| the stream socket closes, or is not opened within 10 s of `starting` | stops, `stream-closed` |
+| the process dies | the OS releases the camera; nothing restarts it |
+
+Every way out releases the same things in the same order: frames are gated off first, then the camera
+use cases are unbound, the analysis executor shut down, the stream socket closed, the request
+notification cleared, and the `stopped` event sent.
+
+### Coexistence
+
+- **Mirror.** A camera request while a mirror session is running or waiting for consent is refused
+  with `CAMERA_BUSY`. The camera never stops a mirror. A mirror started while a camera stream is live
+  is not refused by the camera feature: the two share no encoder and no socket — the mirror's socket is
+  the token-only claim, the camera's is the camera claim.
+- **File transfers.** Untouched. They run on 42503, and nothing in this namespace changes transfer
+  integrity, partial ownership, consent or release policy.
 
 ## Input (42501)
 

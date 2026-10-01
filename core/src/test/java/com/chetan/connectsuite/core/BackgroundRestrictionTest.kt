@@ -92,6 +92,7 @@ class BackgroundRestrictionTest {
             specialAccessHeld = emptySet(),
             registeredTypes = handlers,
             videoServed = true,
+            cameraServed = true,
             bulkServed = false,
             backgroundRestricted = restricted,
         )
