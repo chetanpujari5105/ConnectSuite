@@ -1,4 +1,35 @@
-# Resume here — written 2026-10-01: T4-A prepared (scoped corruption probe, tests only); nothing installed or run; T5 NOT approved
+# Resume here — written 2026-10-01: L1/L2 T4-A PASSED on hardware — block 800 named; evidence committed (docs only); T5 NOT approved
+
+Evidence: `docs/testing.md` → *L1/L2 T4-A on hardware* (the last section). Plan: `docs/l1-l2-t4a-2026-10-01.md` §5.
+
+1. **Proven on hardware (SM-S938B + this Mac, the synthetic `sidekick-pass-stop-200mb.bin` only):**
+   - Armed once for `_id 1000308768`, ttl 300 s, on session `B5:9F:4B:BA…` (the Mac's own certificate).
+     One **Copy again** press; the phone bound `tf-O_Tk0JuVS2fRILPc5oVnHQ` and flipped byte 104,923,136 (0x00 → 0xFF)
+     after hashing it; the Mac claimed the same id at offset 0.
+   - Mac: *"block 800 does not match what the phone read"* (so 800 blocks verified), after 107,479,040 B; nothing
+     published at `sidekick-pass-stop-200mb (7).bin`; its partial and record gone; `(7).bin.failed` created
+     (430 B) and kept; no retry or resume in 62 s of 5 s samples.
+   - Source SHA-256 `bf375859…cbbec9` unchanged; all 51 pre-existing receive-folder entries unchanged (size,
+     mtime, inode, SHA-256); ledger `[]`; `pull-resume/` empty; link 3/3.
+   - Sender status recorded, not graded: `block pull failed … ConnectionResetException` after the Mac hung up.
+2. **Committed:** `95a8cdd` (the preparation: probe, tests, plan), then the documentation-only commit after it
+   (`git log -1 -- docs/l1-l2-t4a-2026-10-01.md`): the last section of `docs/testing.md`, this entry, and the
+   plan's banner now saying hardware PASSED. Not pushed. The owner's `docs/testing.md` block (~line 25,996),
+   `PRODUCT.md`, `skills-lock.json` and every untracked file were left unstaged and unchanged.
+3. **Half-built:** nothing.
+4. **Needs the owner:** whether the three findings below get defect numbers (they are recorded as
+   unresolved and unnumbered); T5's definition and approval — a read-only T5 plan was given in the session
+   reply and is not yet written into any document.
+5. **Next, if wanted:** T5 once approved; the findings — (1) the `.failed` sidecar says *"checksum mismatch"* for a block mismatch
+   and leaves `actual` empty; (2) the phone's probe log line still names `CHECKSUM_MISMATCH`; (3) after Copy
+   again the pane's local-copy note is cleared, so a click on that row now starts an ordinary pull by itself.
+6. **Left changed on devices:**
+   - Phone: `install -r` of `95a8cdd` (`fa5523e7…`, 16:44:28); every grant, binding, app op and prefs file
+     unchanged; probe disarmed (consumed); accessibility still off as the owner left it.
+   - Mac: app and build unchanged (pid 99261, `dist` `4c50a4d2…`); `~/Downloads/Sidekick/sidekick-pass-stop-200mb
+     (7).bin.failed` added and kept. Nothing deleted by hand.
+
+# (earlier) 2026-10-01: T4-A prepared (scoped corruption probe, tests only); nothing installed or run; T5 NOT approved
 
 The full record is `docs/l1-l2-t4a-2026-10-01.md`.
 

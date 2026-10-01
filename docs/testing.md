@@ -26548,3 +26548,85 @@ readings.
 2. **The paused sentence after an interruption repeats itself and gives two instructions.** It says *"it
    continues when the phone is back"* (the automatic resume) and then *"Resume continues from there"*
    (the manual button), with *"What had arrived is kept"* twice.
+
+## L1/L2 T4-A on hardware — one byte corrupted in transit, block 800 named (2026-10-01 16:44–16:53) — PASS
+
+Approved by the owner as the single run in `docs/l1-l2-t4a-2026-10-01.md` §5, on preparation commit `95a8cdd`.
+No T4-B, no T5, no personal file, no Mac rebuild or relaunch, no manual deletion.
+
+**Builds.**
+- Phone: `app-debug.apk` built from a clean `95a8cdd` tree, 96,772,424 B, SHA-256 `fa5523e7…6e5b067`;
+  `com.chetan.connectsuite.debug` 2.0.0 (1), debuggable; signer `CN=Android Debug`, `d3a505d2…7d26` (unchanged).
+  Packaged manifest: `FsProbeActivity` exported, `DUMP`, `Theme.NoDisplay` (`@0x01030055`), no intent filter.
+  Dex: `FsCorruptionProbe` ×3, `FsCorruptionArm` ×2, `PROBE ARMED (T4-A)` ×1, global setter
+  `setDebugCorruptAtByte` **0** (the replaced install, `4b7041cd…`: 0, 0, 0 and **2**).
+- `install -r` on RZCY12330DT only, 16:44:10–16:44:29. Installed `base.apk` pulled back: SHA-256 equal to the
+  build; `lastUpdateTime` 16:44:28. Grants 28/18, app ops 60, listener and accessibility strings
+  (accessibility off, as the owner left it on 2026-09-30) and all 5 prefs files' md5: identical before and after.
+  LinkService came back by itself (`Listening` 16:44:30); `link-up.sh` 3/3, one control session.
+- Mac: unchanged, pid 99261 (started 2026-09-30 18:19:05), `dist` digest `4c50a4d2…` reproduced (254 files,
+  none newer than the process). Runtime source drift `4095665`→`95a8cdd`: one comment in `main.ts`.
+  `fs.blocks` negotiated 1 on the reconnect at 16:44:34.
+
+**Preflight (16:45–16:50).**
+- Source: `_id=1000308768`, `sidekick-pass-stop-200mb.bin`, 209,715,200 B, `Download/ConnectSuite/`,
+  `date_modified=1790104839`, not pending or trashed, the only row of that name (control: T1's
+  `1000312207` found by the same query); SHA-256 `bf375859eeb4cfaf4e51cc8554d5d14a03f9eb4f6419e7b966becf2d60cbbec9`,
+  equal to the record.
+- One live session; no transfer on either side since the reconnect (the phone's only matches named
+  `fs.transfer.begin` in capability lines); ledger `[]`; `pull-resume/` empty; no partials.
+- Space: Mac 27.5 GB free; phone 3.0 GiB free on `/data` (reads only from the phone).
+- Receive folder: **51 entries, not 50** — the 51st is Finder's `.DS_Store` (2026-09-30 00:48); the 50
+  visible match T3, newest T3's `(6)`. All 51 hashed.
+- Destination resolved by the product's own `pullDestination`: **`sidekick-pass-stop-200mb (7).bin`**; final,
+  partial (`.sidekick-pass-stop-200mb (7).bin.sidekick-pull.part`) and `.failed` all absent (control: `(6)` present).
+- The pane held a local copy of the entry from T3, so a row click only selects (`shouldPrefetchForDrag`); the
+  single trigger was therefore **Copy again** (`#files-copy-to-mac`), with every gate re-checked in the
+  clicking expression.
+
+**The run.**
+- Armed 16:50:56.799: *"PROBE ARMED (T4-A): … downloads:connectsuite/1000308768 … on session B5:9F:4B:BA… will
+  have byte 104923136 (block 800) flipped…; expires in 300s"*. `B5:9F:4B:BA…` is the Mac's own certificate
+  (`identity/cert.pem`), equal to the phone's trust row.
+- Copy again pressed once (selection landed in 4 ms, the copy in 16 ms).
+- Phone: `PROBE BOUND (T4-A): tf-O_Tk0JuVS2fRILPc5oVnHQ`; registered *"block-verified (blockSize=131072, 1600
+  blocks, from byte 0)"*, *"no resume asked"*; *"byte 104923136 deliberately flipped from 0 to -1 AFTER the
+  digest took the true value"* (0x00 XOR 0xFF).
+- Mac: *"tf-O_Tk0JuVS2fRILPc5oVnHQ claimed … offset 0"*, then *"not saved after 107479040 bytes: The file arrived
+  damaged (block 800 does not match what the phone read), so the partial was deleted.; … a .failed sidecar
+  left beside it"*. The same id on both sides, and the only one in this run.
+- Pane, 1,523 ms after the click: *"The file arrived damaged (block 800 does not match what the phone read), so
+  the partial was deleted."*
+- **Blocks 0–799 verified:** the sentence is formatted from the verifier's own count at the first mismatch
+  (`fsBlocks.ts:227`, `block ${this.verified}`), so *"block 800"* is `verified = 800`. 107,479,040 B received
+  is past the end of block 800 (104,988,672).
+- **Sender status, recorded and not graded:** *"block pull failed in 1289ms — 0 completed / 1 failed since
+  start; … :: ConnectionResetException"* — the phone's next write after the Mac hung up.
+- Clocks: the phone's timestamps run ahead of the Mac's (it logs the registration at .643 after the Mac logged
+  the ack at .491), so no cross-device order is read from them.
+- Disarmed explicitly 16:51:25.940: *"(it was not armed)"* — the arm had been consumed by that transfer.
+
+**Required result.**
+
+| | Reading |
+|---|---|
+| block 800 named, 0–799 verified | Mac log and pane, above |
+| no final file | `(7).bin` absent |
+| only this pull's partial and record removed | partial absent, `pull-resume/` 0 entries, no other partial existed |
+| `.failed` created and kept | `sidekick-pass-stop-200mb (7).bin.failed`, 430 B, 16:51:17, inode 88280480 |
+| no automatic retry or resume | 16:52:24–16:53:26 sampled every 5 s: Mac 1 begin / 1 claim, phone 1 registration, 52 entries, ledger `[]` |
+
+**After.** Source SHA-256, size, mtime, inode and `date_modified` unchanged. All 51 pre-existing entries
+unchanged in size, mtime, inode and SHA-256; the only addition is the `.failed`. Ledger `[]`, `pull-resume/`
+empty, no `sidekick-pull` partial. `link-up.sh` 3/3. The pane: nothing copying, paused or pending.
+
+**Found, not changed — unresolved, and no defect numbers assigned (the owner decides):**
+1. The `.failed` sidecar's first line says *"checksum mismatch"* for a block mismatch, and its `actual` line
+   is empty (the block-failure path passes no whole-file digest).
+2. The phone's probe line still says *"The receiver must report CHECKSUM_MISMATCH"*; a block pull reports a
+   block mismatch.
+3. **Copy again** cleared the pane's in-memory local-copy note, so the detail button now reads *Copy to Mac*
+   and a click on that row would start an ordinary (uncorrupted) pull by itself.
+
+**Left on the devices:** the phone runs `95a8cdd` (`fa5523e7…`), probe disarmed; the Mac is unchanged; the
+`.failed` sidecar is kept for review.
