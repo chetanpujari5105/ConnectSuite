@@ -26985,3 +26985,71 @@ way.
 - Mac `npm test` **1,451 / 0**.
 - `tsc --noEmit` app 0, test 0.
 - Not on hardware.
+
+### Defect 166 — a block pull's size and last-modified came from the index, and the index was stale (2026-10-02, tests only)
+
+**The finding:** T5-B revision 2 (hardware, 2026-10-01 23:15).
+- The shell's `dd conv=notrunc` changed block 100 of the paused source.
+- `stat -c %Y` read **1790876712**.
+- MediaStore's `DATE_MODIFIED` and the product's `fs.stat` stayed **1790864966** (M0), checked until 140 s.
+- The resume (23:40) was accepted *"provisionally"* on that metadata, and refused only by the prefix
+  re-hash.
+
+**Fix (phone, block pulls only, no protocol message changed):**
+- `LiveStat` reads `fstat` on a provider-opened descriptor.
+- `FsStore.liveStamp` is implemented for Downloads (in its folder only, as `statById`), SAF, and
+  app-private storage.
+- `SourceStability.read` and its two entry points: `atBegin` for the ack and the resume decision,
+  `recheck` for the sender, which is handed **the stream it reads**.
+- `docs/protocol.md` now states what "size and last-modified" are on the phone.
+
+**Tests** (`SourceStabilityTest`, 16, through the real `SourceStability`, `FsBlocks.parseResume` and
+`BlockPullSender`):
+- **The measured case:** index at M0 unchanged, the file's own mtime moved, so the resume is refused
+  `source-changed`.
+- **Its control:** index-only, which is the hardware result, is accepted.
+- A size change.
+- An unchanged file is still accepted.
+- Gone by id.
+- The handle outranks a fresh look, and a different inode is a replacement.
+- A write between the ack and the first byte sends nothing.
+- An in-place write during the read is caught after the last byte.
+- A replacement during the read.
+- **A provider with no file metadata:** a change it never indexed is **not** seen by metadata, which is
+  the honest limit, asserted; the result is still one consistent file.
+- **Metadata preserved:** a change inside the retained prefix is a `prefix-mismatch` with 0 bytes sent;
+  outside it, the result is the changed file, whole.
+- The begin and recheck wiring, through a labelled provider double.
+- A source scan (comments stripped) that `FsFeature` and `BulkTransfers` call them and use the result.
+
+**Mutations** (Gradle, checksum-verified restore; each verdict printed with Gradle's exit code and the
+results file's age, and all were fresh):
+- S1 (handle branch ignored) 2 red. It does **not** reach the measured case, which goes through the by-id
+  branch.
+- **S1b** (by-id branch ignored, the hardware state) 3 red, including the measured case.
+- S2 (no identity check) 3 red.
+- S3 (gone read as unavailable) 2 red.
+- S4 (`atBegin` without the live stamp) red.
+- S5 (`recheck` without the handle) red.
+- S6 (the sender not given its stream) red, by source scan.
+- S7 (begin keeps the indexed entry) red, by source scan.
+
+**No debug hold was built.** The during-read cases are deterministic through the sender's injected check,
+so none was needed, and nothing was armed or installed.
+
+**Runs (2026-10-02 01:14):**
+- `./gradlew :app:assembleDebug testDebugUnitTest --rerun-tasks`: exit 0.
+- **Phone 1,135 / 0:** app 180, core 219, input 52, mirror 60, sync 624.
+- All 118 result files were written in that run. A run without `--rerun-tasks` had left **37** older
+  files from untouched modules, and was not counted.
+- The debug APK was rebuilt into `app/build/outputs` only; nothing was installed.
+- No manifest changed.
+
+**Not verified on hardware.** The one supervised check: install this phone build, then press **Resume**
+on the paused pull from 2026-10-01. Its record holds M0; the file's own mtime is 1790876712xxx.
+- **Pass:** the ack refuses with `source-changed`, naming both values; the pull restarts from 0; the
+  published file equals **H1**; and the pane says it *"started again from the beginning"* (with the Mac
+  at this commit).
+- **Instead of a pass:** if `fstat` on MediaProvider's descriptor reports the old time, the ack accepts
+  and the prefix re-hash refuses, as on 2026-10-01. That would be a NO READING for 166, and it would
+  mean the descriptor does not see the write either.

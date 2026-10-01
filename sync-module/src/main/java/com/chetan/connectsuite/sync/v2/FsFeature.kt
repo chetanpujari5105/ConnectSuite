@@ -573,9 +573,19 @@ object FsFeature {
      * the source as it is now. A refused resume is still a valid begin — the Mac starts from 0.
      */
     private fun onBeginBlockPull(
-        session: ControlSession, request: Envelope, store: FsStore, rootId: String, entry: FsPaths.Entry, sessionId: String,
+        session: ControlSession, request: Envelope, store: FsStore, rootId: String, indexed: FsPaths.Entry, sessionId: String,
         debuggable: Boolean,
     ) {
+        // Defect 166: the size and last-modified this pull agrees, answers a resume against and re-checks
+        // are the file's own when the provider can give them, and the index's only when it cannot.
+        // Everything below reads [entry]; the listing and the delete guard keep the indexed values.
+        val (agreed, reading) = SourceStability.atBegin(store, indexed)
+        val entry = agreed ?: return refuse(session, request, FsFailure.NoSuchEntry)
+        LinkLog.i(
+            "fs",
+            "fs.transfer.begin ${indexed.name}: source checked by ${reading.basis} — ${reading.why}" +
+                (if (entry.size != indexed.size || entry.mtimeMs != indexed.mtimeMs) "; the index said ${indexed.size} B @ ${indexed.mtimeMs}, the file says ${entry.size} B @ ${entry.mtimeMs}" else ""),
+        )
         val blockSize = FsBlocks.blockSizeFor(entry.size)
         val answer = FsBlocks.parseResume(request.payload["resume"], entry.size, entry.mtimeMs)
         val resume = (answer as? FsBlocks.ResumeAnswer.Accepted)?.resume

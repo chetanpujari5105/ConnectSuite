@@ -113,12 +113,16 @@ object BulkTransfers {
         val blocks: BlockPlan? = null,
     )
 
-    /** How one block pull is sent: its block size, the agreed last-modified, an accepted resume, and a re-stat. */
+    /**
+     * How one block pull is sent: its block size, the agreed last-modified, an accepted resume, and a re-stat.
+     * [stat] is given the stream being read, so the check reads the same descriptor the bytes come from
+     * (defect 166) and can tell an in-place write from a replacement.
+     */
     data class BlockPlan(
         val blockSize: Int,
         val mtimeMs: Long,
         val resume: FsBlocks.Resume?,
-        val stat: () -> Pair<Long, Long>?,
+        val stat: (InputStream?) -> Pair<Long, Long>?,
     )
 
     private val pending = ConcurrentHashMap<String, Pending>()
@@ -309,7 +313,8 @@ object BulkTransfers {
             sha256 = null,
             open = { store.openStream(entry.id) },
             debugCorruptAtByte = debugCorruptAtByte,
-            blocks = BlockPlan(blockSize, entry.mtimeMs, resume) { store.statById(entry.id)?.let { it.size to it.mtimeMs } },
+            // The same rule the ack used ([SourceStability]), now with the descriptor being read.
+            blocks = BlockPlan(blockSize, entry.mtimeMs, resume) { handle -> SourceStability.recheck(store, entry.id, LiveStat.ofStream(handle)) },
         )
         pending[transferId] = pendingEntry
         owners[transferId] = sessionId
@@ -1233,7 +1238,7 @@ object BulkTransfers {
             val outcome = (entry.open() ?: throw IllegalStateException("the file could not be opened")).use { input ->
                 BlockPullSender(entry.size, plan.mtimeMs, plan.blockSize, plan.resume, chunk = CHUNK).run(
                     input,
-                    plan.stat,
+                    { plan.stat(input) },
                     { cancelled.take(entry.transferId)?.also { stopWhy = it } != null },
                     object : BlockPullSender.Sink {
                         override fun chunk(buffer: ByteArray, length: Int, absoluteStart: Long) {

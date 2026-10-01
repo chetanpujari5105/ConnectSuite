@@ -351,6 +351,13 @@ class SafTreeStore(
         return FsThumbs.fromStream({ openStream(id) }, maxEdge)
     }
 
+    /** Defect 166: a local provider gives a real file; a cloud one gives a pipe, and that reads as unavailable. */
+    override fun liveStamp(id: String): SourceStability.ById {
+        val row = readRow(id) ?: return SourceStability.ById.Gone
+        if (row.dir) return SourceStability.ById.Gone
+        return LiveStat.byUri(resolver, documentUri(id))
+    }
+
     override fun openStream(id: String): InputStream? {
         val row = readRow(id) ?: return null
         if (row.dir) return null

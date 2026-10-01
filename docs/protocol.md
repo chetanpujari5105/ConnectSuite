@@ -1578,6 +1578,21 @@ fs.transfer.begin ack     {"transferId":"t-…","direction":"pull","size":107374
   the source and reproduced `prefixRoot` — done on the bulk socket's thread, before the first new byte,
   never inside the ack (a 400 GB prefix would hold the control channel for minutes). A mismatch ends the
   transfer with `fs.transfer.done {"ok":false,"code":"SOURCE_CHANGED","why":"prefix-mismatch"}`.
+- **What "size and last-modified" are, on the phone (defect 166).** For a block pull they are the
+  **file's own**, read with `fstat` from a descriptor the provider opens, whenever the provider gives a
+  regular file. They are the provider's **index** (MediaStore `SIZE` / `DATE_MODIFIED`, a document's
+  `COLUMN_SIZE` / `COLUMN_LAST_MODIFIED`) only when it does not, such as a cloud provider's pipe. The
+  index was measured stale after an in-place write (2026-10-01). The same value is used in the ack, in
+  this decision, and in the sender's checks before the first byte and after the last; the sender also
+  `fstat`s the descriptor it reads from, and a different file behind the id (a replacement) counts as
+  changed.
+  - **The Mac needs no change:** it stores the ack's `mtimeMs` and sends it back.
+  - **It is a metadata check, not a guarantee:** a same-size write that restores the mtime passes it.
+    Inside a resumed prefix, the re-hash above catches that; outside, the resumed suffix is read from
+    the file as it now is.
+  - **One consequence of upgrading:** a record made by an older phone build holds the index's
+    whole-second value, so its first resume after the upgrade is refused as `source-changed` and
+    restarts from 0. That is the safe direction.
 - The bulk header's `offset` must equal the ack's `resume.from`, or 0 when no resume was accepted.
   Anything else is refused and the socket closed, the entry kept (the claim rule under *The bulk socket
   is bound to the session*). A resume is always a **new** `transferId` in the **current** session; no

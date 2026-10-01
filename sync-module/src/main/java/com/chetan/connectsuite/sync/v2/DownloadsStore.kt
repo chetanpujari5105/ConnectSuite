@@ -191,6 +191,14 @@ class DownloadsStore(private val context: Context) : FsStore {
         return runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
     }
 
+    /** Defect 166: the file's own metadata; `DATE_MODIFIED` was measured stale after an in-place write. */
+    override fun liveStamp(id: String): SourceStability.ById {
+        // In this folder only, exactly as [statById]: an id off the wire never reaches a row elsewhere.
+        if (statById(id) == null) return SourceStability.ById.Gone
+        val uri = uriFor(id) ?: return SourceStability.ById.Gone
+        return LiveStat.byUri(context.contentResolver, uri)
+    }
+
     /**
      * Opens — or **re-opens** — the pending item this push writes into.
      *

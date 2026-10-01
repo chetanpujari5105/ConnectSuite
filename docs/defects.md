@@ -181,6 +181,7 @@ own heading there, and its own row here.
 | **163** | **Copy again forgot a valid local copy before the new attempt.** The click deleted the pane's local-copy note first; a Copy again that then failed, paused or was cancelled left no copy known at all, and the next row click started an ordinary pull by itself (T4-A finding 3, 2026-10-01) | **fixed 2026-10-02, not yet verified on hardware** — the earlier copy is kept until a new one actually arrives; only a success replaces it | `filesWiring.test.ts` +1; red at `HEAD`; mutation R2 red | `docs/testing.md` → Defect 163 |
 | **164** | **Pull state was keyed by file id alone.** `copying` and `localCopies` ignored the root, so a pull in one folder marked a same-id file in another folder as *Copying…*; and a pull finishing after the person opened another folder cleared its pull id under the wrong key, leaving a Pause bound to the finished transfer for the next copy of that file. Found by reading, 2026-10-02 | **fixed 2026-10-02, not yet verified on hardware** — both keyed by root and id; `copyToMac` captures its root when it starts | `filesWiring.test.ts` +1; red at `HEAD`; mutations R3, R4 red | `docs/testing.md` → Defect 164 |
 | **165** | **A stopped pull's sentences repeated themselves and gave conflicting instructions, and a real restart was never named.** *"paused — Paused."*; the outcome line and the paused note each said *"Resume continues from there"*; an interruption said *"What had arrived is kept"* twice with *"it continues when the phone is back"* and *"Resume continues"* (T3, 2026-09-30); and *"started again from the beginning"*, promised by the rules doc, appeared nowhere | **fixed 2026-10-02, not yet verified on hardware** — `FilesClient` reports `stoppedBy` (person, interruption, no-space) and `restarted` only when the phone refused a resume and the pull really began again at byte 0; reasons are clauses; the pane words each case once; the paused note carries facts only | `filesWiring.test.ts` +4, `filesResume.test.ts` +3, `filesView.test.ts` 5c updated to the shape the product sends; 6 red at `HEAD`; mutations R5–R9 red | `docs/testing.md` → Defect 165 |
+| **166** | **A block pull's size and last-modified came from the index, and the index was stale.** After the shell's `dd conv=notrunc` changed a paused pull's source in place, its file mtime moved and MediaStore's `DATE_MODIFIED` did not, for at least 140 s (SM-S938B, 2026-10-01 23:15) — so the product's `fs.stat`, the pull's ack and the resume check all read the old value, the resume was accepted on metadata, and only the prefix re-hash stopped it. T5-B's metadata gate was a NO READING for this reason | **fixed 2026-10-02, not yet verified on hardware** — phone only, block pulls only: `SourceStability` takes the file's own size and mtime from `fstat` on a descriptor the provider opens (`LiveStat`), and the index only when the provider gives none (a pipe), saying which; one value for the ack, the resume decision and the sender's checks, and the sender also `fstat`s the descriptor it reads, so a different file behind the id (a replacement) counts as changed. The listing and the delete guard keep the index. No protocol message changed; `docs/protocol.md` now says what the value is. **Unmeasured:** whether `fstat` on MediaProvider's descriptor sees the shell's write on this device | `SourceStabilityTest` 16 (decision, provider-double wiring, a source scan of the two call sites); mutations S1b–S7 red; phone 1,135/0 with every result file fresh | `docs/testing.md` → Defect 166 |
 
 ---
 
@@ -3471,3 +3472,34 @@ wording names a restart only where one happened.
 
 **The wrong fix:** adding *"started again"* to every changed-source outcome so the rules doc's sentence
 appears. It would be true of one path and false of the other.
+
+### 166 — a block pull's size and last-modified came from the index, and the index was stale · **fixed 2026-10-02, not yet verified on hardware**
+
+`DownloadsStore.statById` reads MediaStore `SIZE` and `DATE_MODIFIED`, and so did everything a block pull
+decided with: the ack, `FsBlocks.parseResume`, and `BlockPullSender`'s checks before the first byte and
+after the last. MediaProvider did not update the row after an in-place write through `/sdcard`.
+
+**Fix direction:** as built, scoped to block pulls.
+- `FsStore.liveStamp(id)` answers `Stamp` / `Unavailable` / `Gone` from a provider-opened descriptor.
+  There is no path, and no new permission.
+- `SourceStability.read` prefers the descriptor being read, then a fresh look by id, then the index, and
+  names its basis.
+- `atBegin` and `recheck` are the two entry points; `FsFeature` and `BulkTransfers` call them.
+
+**The wrong fixes:**
+- Triggering a media scan, or rewriting `DATE_MODIFIED`, so the index catches up. That falsifies
+  metadata, or makes a scanner the integrity mechanism.
+- Hashing the whole file before every pull. That defeats the large-file path.
+- Changing what `statById` means everywhere. The Mac's delete guard compares the listed (indexed) value
+  and would then refuse every delete.
+
+**Limits, stated:**
+- It is a metadata check. A same-size write that restores the mtime passes it. Inside a resumed prefix,
+  the re-hash catches that; outside, the suffix is fetched as it now is.
+- A concurrent same-size, metadata-preserving write *during* a read is not detected.
+- A cloud provider (a pipe) falls back to its index, and the log says so.
+- The Android half (`LiveStat`, each store's `liveStamp`) is not reachable from a JVM test.
+- **The device has not been asked whether `fstat` on MediaProvider's descriptor reports the shell's
+  write.** That is the hardware question.
+- After the upgrade, a record from an older build is refused once and restarts from 0. That is the safe
+  direction.

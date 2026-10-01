@@ -64,6 +64,13 @@ interface FsStore {
     fun openStream(id: String): InputStream?
 
     /**
+     * [id]'s own file metadata, from a descriptor the provider opens — not its index (defect 166). The
+     * default says *unavailable*, which makes a block pull fall back to [statById] and say so; a store
+     * whose provider hands out real file descriptors overrides it.
+     */
+    fun liveStamp(id: String): SourceStability.ById = SourceStability.ById.Unavailable
+
+    /**
      * A thumbnail for [id], bounded to [maxEdge], or null when this file has none.
      *
      * **Null is an ordinary answer.** Most files are not images: a `.txt`, an `.apk` and a directory

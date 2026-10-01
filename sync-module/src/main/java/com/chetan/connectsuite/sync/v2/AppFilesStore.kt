@@ -3,6 +3,7 @@ package com.chetan.connectsuite.sync.v2
 import android.content.Context
 import com.chetan.connectsuite.core.link.LinkLog
 import java.io.File
+import java.io.FileInputStream
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -127,6 +128,16 @@ class AppFilesStore(context: Context) : FsStore {
         } else {
             DeleteOutcome.Refused("the file could not be removed")
         }
+    }
+
+    /** Defect 166: app-private storage is a real file, so its own metadata is always available. */
+    override fun liveStamp(id: String): SourceStability.ById {
+        val file = fileFor(id) ?: return SourceStability.ById.Gone
+        if (!file.isFile) return SourceStability.ById.Gone
+        return runCatching { FileInputStream(file).use { LiveStat.of(it.fd) } }.fold(
+            onSuccess = { stamp -> stamp?.let { SourceStability.ById.Stamp(it) } ?: SourceStability.ById.Unavailable },
+            onFailure = { if (it is java.io.FileNotFoundException) SourceStability.ById.Gone else SourceStability.ById.Unavailable.also { _ -> LinkLog.w("fs", "$rootId could not read the metadata of ${file.name}", it) } },
+        )
     }
 
     override fun openStream(id: String): InputStream? {
