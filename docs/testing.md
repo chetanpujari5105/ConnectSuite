@@ -27053,3 +27053,43 @@ on the paused pull from 2026-10-01. Its record holds M0; the file's own mtime is
 - **Instead of a pass:** if `fstat` on MediaProvider's descriptor reports the old time, the ack accepts
   and the prefix re-hash refuses, as on 2026-10-01. That would be a NO READING for 166, and it would
   mean the descriptor does not see the write either.
+
+## Camera v1 — built and tested with generated fixtures only (2026-10-02); not run on hardware
+
+Contract `docs/protocol.md` → Camera; design, mutation table, limitations and the supervised plan in
+`docs/camera-v1.md`. Commits `09fa76c` (contract), `e9140b3` (phone), `a75b613` (Mac). **Nothing here is a
+hardware reading. Camera has not run on the SM-S938B; no latency, frame-rate or quality claim is made.**
+
+**Baseline, before any edit (on `685a8f4`):** Mac 1,451 / 0; phone 1,135 / 0 (app 180, core 219, sync 624,
+mirror 60, input 52) — the previous handoff's numbers exactly.
+
+**Fresh at the end (on `a75b613`):**
+- Mac `npm test` **1,492 / 0** (+41: `cameraFrame.test.ts` 8, `camera.test.ts` 21, `cameraView.test.ts` 12);
+  `npm run typecheck` exit 0.
+- Phone `testDebugUnitTest --rerun-tasks` **1,201 / 0**: app 180, core 224 (+5), sync 624, mirror 60, input 52,
+  camera-module 61 (new). All 124 result files rewritten by that run; the oldest was 29 s old when read;
+  Gradle exit 0.
+- Every commit guard green, including the fixture suites (21 of 21).
+
+**Controls worth recording:**
+- *Text search over a file containing its own prohibition* (the `CLAUDE.md` rule): the first version of
+  `CameraReleaseGateTest` asserted the camera module's manifest does not contain `RECORD_AUDIO` and went red
+  — on the manifest's own comment saying there is "deliberately no RECORD_AUDIO here". It now strips XML
+  comments and enumerates `<uses-permission>` elements; the list is exactly `[android.permission.CAMERA]`.
+- *The protocol-spec control fixture* reconstructs the pre-migration contract by deleting from `## Photos` to
+  `## Session tokens`; a Camera section placed there was swallowed and reported as unspecified. The section
+  now sits beside the video channel, before `## Input`; the fixture is 28 / 0.
+- *Merged debug manifest* (`app-debug.apk`, assembled into `app/build`, not installed): `CameraActivity` 1 and
+  `android.permission.CAMERA` 1 (positive controls for the search), `RECORD_AUDIO` 0.
+- *Isolated Mac build* in a scratch copy: `tsc` 0, `copy-assets` 0, 260 files; the built `renderer/camera.js`
+  contains no `exports` (a classic script, `check-renderer-scripts.mjs`'s rule). The running `dist` was not
+  rebuilt.
+
+**Mutations: 28 of 28 red, none uncounted.** 14 phone (P1–P14) and 14 Mac (M1–M14), each reinstating the
+failure its test is named for, each red on that test with a non-zero exit, each restore SHA-256-verified;
+Gradle result files were checked to be from that run (≤ 0.2 s old). The table is in `docs/camera-v1.md`.
+Red-first is by mutation: this is new code with no earlier version to be red against.
+
+**Not reached by any test:** `CameraActivity`, `CameraEngine` and the CameraX binding; `LinkServer`'s claim
+routing (its parser is tested); the Mac stream socket's TLS pin; the painter's canvas calls (its matrix is
+tested); real pane layout and visibility at rest (`card-visibility-sweep.mjs` needs the running app).
