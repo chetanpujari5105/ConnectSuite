@@ -69,7 +69,7 @@ test('the visible name and the hidden tail reassemble into the label', () => {
 test('every capability the Mac knows about has a readable name, and an unknown one falls back', () => {
   const ALL = [
     'mirror', 'input', 'notifications', 'sms', 'calls', 'contacts',
-    'files', 'photos', 'clipboard', 'remote', 'apps', 'mic',
+    'files', 'photos', 'clipboard', 'remote', 'apps', 'mic', 'camera',
   ];
   for (const capability of ALL) {
     const label = capabilityLabel(capability);

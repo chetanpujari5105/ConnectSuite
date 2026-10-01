@@ -23,6 +23,7 @@ import type { PullOutcome, PushOutcome } from './main/files';
 import type { FloatState } from './main/float';
 import type { ShareCardSnapshot } from './main/share';
 import type { SharePagePayload } from './main/shareWindow';
+import type { CameraFrameMessage, CameraPaneState, CameraResult } from './main/camera';
 
 /**
  * The only bridge between the renderer and the sockets. Everything here is an intent — the
@@ -132,6 +133,21 @@ contextBridge.exposeInMainWorld('connect', {
   inputText: (text: string, mode?: 'replace' | 'append'): Promise<InputResult> =>
     ipcRenderer.invoke('input-text', { text, mode }),
   inputGlobal: (action: string): Promise<InputResult> => ipcRenderer.invoke('input-global', action),
+
+  /*
+   * Camera v1 (docs/protocol.md → Camera). `cameraRequest` asks the phone and opens nothing — the
+   * phone's owner allows it there or not. Frames arrive one at a time: the renderer acks each one it
+   * has drawn and the main process sends the newest waiting, so a slow page costs frames, not memory.
+   */
+  cameraRequest: (facing: 'back' | 'front'): Promise<CameraResult> => ipcRenderer.invoke('camera-request', facing),
+  cameraStop: (): Promise<CameraResult> => ipcRenderer.invoke('camera-stop'),
+  cameraSwitch: (facing: 'back' | 'front'): Promise<CameraResult> => ipcRenderer.invoke('camera-switch', facing),
+  cameraCurrent: (): Promise<CameraPaneState> => ipcRenderer.invoke('camera-current'),
+  cameraFrameAck: (): void => ipcRenderer.send('camera-frame-ack'),
+  onCameraState: (callback: (state: CameraPaneState) => void) =>
+    ipcRenderer.on('camera-state', (_event, state) => callback(state)),
+  onCameraFrame: (callback: (frame: CameraFrameMessage) => void) =>
+    ipcRenderer.on('camera-frame', (_event, frame) => callback(frame)),
 
   /** Encoded H.264 access units. The renderer decodes; the main process never touches pixels. */
   onVideoFrame: (

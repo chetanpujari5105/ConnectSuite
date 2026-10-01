@@ -796,7 +796,23 @@
                 <p class="pane-foot">Sidekick asks the phone to open an app — the phone posts a notification and you tap it there. Nothing is launched from this Mac.</p>
               </div>
             </section>
-            <section class="screen" data-screen="camera" hidden></section>
+            <section class="screen" data-screen="camera" hidden>
+              <div class="pane pane-camera" id="camera-card">
+                <!--
+                  Camera v1 (docs/protocol.md → Camera). The state block and the picture are two
+                  homes for one fact, never both: the picture shows only while frames are live, and a
+                  stalled or ended stream hides it rather than leaving an old frame standing.
+                -->
+                <div id="camera-block" class="camera-block"></div>
+                <div id="camera-stage" class="camera-stage" hidden>
+                  <canvas id="camera-canvas" class="camera-canvas" role="img" aria-label="Live picture from your phone's camera"></canvas>
+                </div>
+                <p id="camera-status" class="camera-status mono" role="status" aria-live="polite" hidden></p>
+                <p id="camera-notice" class="camera-notice" role="status" hidden></p>
+                <div id="camera-controls" class="camera-controls"></div>
+                <p class="pane-foot">The picture shows only here, only after you allow it on the phone, and only while the phone's camera screen stays open. It is not a webcam other apps can use, nothing is recorded or saved, and there is no sound.</p>
+              </div>
+            </section>
             <section class="screen" data-screen="activity" hidden>
               <div id="activity-host"></div>
             </section>
@@ -926,6 +942,7 @@
     <script src="files.js"></script>
     <script src="photos.js"></script>
     <script src="apps.js"></script>
+    <script src="camera.js"></script>
     <script src="../shared/clipLink.js"></script>
     <script src="../shared/clipPhoneState.js"></script>
     <script src="../shared/deviceVitals.js"></script>

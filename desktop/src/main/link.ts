@@ -271,6 +271,18 @@ export class LinkClient extends EventEmitter {
     return this.session.sessionToken;
   }
 
+  /**
+   * The certificate fingerprint the **live** session's phone presented on the control socket, or null
+   * with no session. Camera v1 pins its stream socket to this — the same phone that holds the control
+   * session, not merely any phone that accepts the token.
+   */
+  peerFingerprint(): string | null {
+    return this.session.sessionToken ? this.sessionPeer : null;
+  }
+
+  /** Set with the session token, cleared with it. Read only through [peerFingerprint]. */
+  private sessionPeer: string | null = null;
+
   /** Extensions negotiated for the current session; `{}` when disconnected or with an old phone. */
   negotiated(): Readonly<Record<string, number>> {
     return this.session.negotiated;
@@ -554,6 +566,7 @@ export class LinkClient extends EventEmitter {
     }
 
     this.session.sessionToken = payload.sessionToken;
+    this.sessionPeer = peerFingerprint;
     this.deviceName = payload.deviceName;
     this.session.capabilities = payload.capabilities ?? [];
     this.session.unavailable = payload.unavailable ?? [];
@@ -687,6 +700,7 @@ export class LinkClient extends EventEmitter {
     // One assignment, so a session-scoped fact added later cannot be left behind the way the
     // capability list was (defect 25) — the claim must not outlive the connection that made it.
     this.session = clearedSession();
+    this.sessionPeer = null;
     this.reader?.reset();
     const socket = this.socket;
     this.socket = null;

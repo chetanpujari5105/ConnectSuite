@@ -365,6 +365,15 @@ interface ConnectBridge {
   >;
   appsOpenAsk(options: { package: string }): Promise<InputResult>;
 
+  // Camera v1 — see `camera.ts` and docs/protocol.md → Camera. `cameraRequest` asks; it opens nothing.
+  cameraRequest: CameraBridge['cameraRequest'];
+  cameraStop: CameraBridge['cameraStop'];
+  cameraSwitch: CameraBridge['cameraSwitch'];
+  cameraCurrent: CameraBridge['cameraCurrent'];
+  cameraFrameAck: CameraBridge['cameraFrameAck'];
+  onCameraState: CameraBridge['onCameraState'];
+  onCameraFrame: CameraBridge['onCameraFrame'];
+
   // Phase 4: the media remote. `RemoteStateView` comes from remote.ts, a plain script in the same
   // global scope rather than a module.
   remoteState(): Promise<RemoteStateView>;
@@ -426,7 +435,7 @@ let lastStatus: RendererStatus | null = null;
 
 const ALL_CAPABILITIES = [
   'mirror', 'input', 'notifications', 'sms', 'calls', 'contacts',
-  'files', 'photos', 'clipboard', 'remote', 'apps', 'mic',
+  'files', 'photos', 'clipboard', 'remote', 'apps', 'mic', 'camera',
 ];
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -535,6 +544,11 @@ function render(status: RendererStatus | null): void {
   // reason is passed straight through rather than paraphrased — this side cannot know which switch
   // is off, and guessing is defect 27's shape.
   apps.setAdvertised(status?.capabilities?.includes('apps') ?? false, reasons.get('apps') ?? null);
+  // Camera v1: three answers, not two. A phone that names `camera` in neither list is a build from
+  // before it existed and needs an update — a different sentence from the phone saying it is off.
+  camera?.setAvailability(
+    cameraAvailability(status?.phase === 'connected', status?.capabilities ?? [], status?.unavailable ?? []),
+  );
   // The phone's own `reason` is passed straight through — a Mac-side paraphrase would be this side
   // guessing which grant is missing, which is the thing it cannot know.
   files?.setAdvertised(
@@ -1155,6 +1169,29 @@ const apps = new AppsView(
 shell.onRoute((id) => {
   if (id === 'apps') void apps.refresh();
 });
+// Camera v1. The pane never asks the phone by itself — only its button does — and leaving it stops
+// whatever it has open (the stop policy in `camera.ts`). The painter is the one thing here that
+// touches a canvas; the view is driven by the DOM test with a recorder in its place.
+const camera = new CameraView(
+  {
+    cameraRequest: (facing) => connect.cameraRequest(facing),
+    cameraStop: () => connect.cameraStop(),
+    cameraSwitch: (facing) => connect.cameraSwitch(facing),
+    cameraCurrent: () => connect.cameraCurrent(),
+    cameraFrameAck: () => connect.cameraFrameAck(),
+    onCameraState: (callback) => connect.onCameraState(callback),
+    onCameraFrame: (callback) => connect.onCameraFrame(callback),
+  },
+  {
+    block: el('camera-block'),
+    stage: el('camera-stage'),
+    controls: el('camera-controls'),
+    status: el('camera-status'),
+    notice: el('camera-notice'),
+  },
+  new CameraCanvasPainter(el<HTMLCanvasElement>('camera-canvas'), () => connect.cameraFrameAck()),
+);
+shell.onRoute((id) => camera.routeChanged(id));
 // Files. Fetches on open, like Photos, and for the same reason — the roots are a round trip nobody
 // has asked for until the screen is looked at.
 //
@@ -1887,22 +1924,9 @@ shell.addSettingsPane(
       });
       list.appendChild(capabilityRowEl(row));
     }
-    // Camera is not a wire capability at all — it is a pane this build does not have. It is listed
-    // because a feature the user can see in the sidebar and not in this list reads as an oversight,
-    // and `unbuilt` is the state that says whose absence it is. No action, no "coming soon".
-    list.appendChild(
-      capabilityRowEl(
-        capabilityRow({
-          id: 'camera',
-          label: 'Camera',
-          unbuilt: true,
-          limitedNote: 'Not built: the virtual webcam needs a signed macOS system extension.',
-          advertised: false,
-          reason: null,
-          connected,
-        }),
-      ),
-    );
+    // Camera is a wire capability since Camera v1 (docs/protocol.md → Camera) and is drawn by the
+    // loop above from the phone's own answer. The virtual webcam is still unbuilt; the Camera pane's
+    // footer says so where somebody looking for one will read it.
     body.appendChild(list);
     return body;
   },

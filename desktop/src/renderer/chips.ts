@@ -46,6 +46,7 @@ const CAPABILITY_LABELS: Record<string, string> = {
   remote: 'Media remote',
   apps: 'Apps',
   mic: 'Microphone',
+  camera: 'Camera',
 };
 
 function capabilityLabel(capability: string): string {

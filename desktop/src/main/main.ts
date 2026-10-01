@@ -124,6 +124,8 @@ import {
   pairingRenameNotice,
 } from './legacyData';
 import { VideoClient, type VideoFrame } from './video';
+import { CameraController, openCameraSocket } from './camera';
+import { SESSION_ENDED_EVENT, type SessionEnded } from '../shared/session';
 import { FloatMirrorWindow } from './float';
 import { armPairingCode } from './pairingArm';
 import { fitWindow, DESIGN } from '../shared/windowGeometry';
@@ -158,6 +160,8 @@ let userStoppedLink = false;
  */
 let rePairPending = false;
 let video: VideoClient | null = null;
+/** Camera v1 (docs/protocol.md → Camera). Built with the link; null until then. */
+let camera: CameraController | null = null;
 /** Serialises input so two gestures never overlap on the phone. See input.ts. */
 const input = new InputClient(() => link);
 
@@ -1039,6 +1043,23 @@ app.whenReady().then(() => {
   video = new VideoClient(identity);
   bulk = new BulkClient(identity);
 
+  // Camera v1. The controller owns the requests and the stream socket; the renderer only draws the
+  // state it is sent and decodes the JPEGs it is handed. The socket is pinned to the phone that holds
+  // the control session (`peerFingerprint`), and its life is bound to that session's token.
+  const cameraLink = link;
+  camera = new CameraController({
+    link: {
+      isConnected: () => cameraLink.isConnected(),
+      token: () => cameraLink.token(),
+      address: () => cameraLink.status().address ?? null,
+      request: (type, payload, timeoutMs) => cameraLink.request(type, payload, timeoutMs),
+    },
+    openSocket: (host, claim) => openCameraSocket(identity, host, claim, cameraLink.peerFingerprint()),
+    emitState: (state) => send('camera-state', state),
+    emitFrame: (frame) => send('camera-frame', frame),
+  });
+  link.on(SESSION_ENDED_EVENT, (ended: SessionEnded) => camera?.onSessionEnded(ended.token));
+
   // The private ownership record for share temporary files, in this app's own data folder.
   const shareLedger = new FileShareLedger(ledgerFile(userData));
   const liveLink = link;
@@ -1695,6 +1716,10 @@ app.whenReady().then(() => {
     if (message?.type === MessageType.MIRROR_STATE && message.payload) {
       void onMirrorState(message.payload as MirrorStatePayload);
     }
+    // Camera v1. The controller checks the stream id and the session token itself.
+    if (message?.type === MessageType.CAMERA_STATE && message.payload) {
+      camera?.onState(message.payload);
+    }
     if (message?.type === MessageType.MIRROR_ROTATE && message.payload) {
       // Phone-to-Mac only: the phone turned. It arrives on the control channel just ahead of the
       // new SPS/PPS on the video channel, so the canvas knows the shape it is about to be handed
@@ -1998,6 +2023,22 @@ ipcMain.handle('main-window-show', () => {
   revealMainWindow('float rail');
   return { floatStillOpen: float?.state().open ?? false };
 });
+
+/*
+ * Camera v1. Each handler answers with a result rather than throwing (defect 22), and none of them
+ * can open the phone's camera: `camera-request` asks, and the phone's owner decides on the phone.
+ */
+ipcMain.handle('camera-request', async (_event, facing: unknown) => {
+  if (!camera) return { ok: false, reason: 'The camera is not ready yet' };
+  const result = await camera.request(facing);
+  if (result.ok) activity.record('system', 'Camera requested', 'waiting for approval on the phone');
+  return result;
+});
+ipcMain.handle('camera-stop', async () => (camera ? camera.stop() : { ok: true }));
+ipcMain.handle('camera-switch', async (_event, facing: unknown) =>
+  camera ? camera.switchCamera(facing) : { ok: false, reason: 'No live camera stream' });
+ipcMain.handle('camera-current', () => camera?.current() ?? { kind: 'idle' });
+ipcMain.on('camera-frame-ack', () => camera?.frameAck());
 
 ipcMain.handle('mirror-stats', () => ({
   ...(video?.stats() ?? { frames: 0, bytes: 0, kbps: 0, framesPerSecond: 0 }),

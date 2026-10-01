@@ -214,18 +214,15 @@ const SCREENS: NavScreen[] = [
     id: 'camera',
     label: 'Camera',
     title: 'Camera',
-    subtitle: 'Use your phone camera as a Mac webcam.',
-    tileCaption: 'Use as a webcam',
+    // Camera v1 (docs/protocol.md → Camera): a live preview **in this pane**, approved on the phone
+    // for each stream. Not a webcam other apps can use — that still needs a signed Camera Extension,
+    // and the pane's footer says so. The subtitle used to promise the webcam; it says what is built.
+    subtitle: "See your phone's camera live — you allow it on the phone each time.",
+    tileCaption: 'Live preview',
     icon: 'camera',
     group: 'MENU',
     shortcut: '⌘9',
-    state: 'unbuilt',
-    unbuiltReason:
-      'The virtual webcam is not in any phase yet. It needs a macOS Camera Extension, which is a ' +
-      'signed system extension and a distribution problem before it is a code problem.',
-    unbuiltHeadline: 'There is no virtual camera on this Mac',
-    unbuiltHandle: 'no wire namespace proposed · phase 8, behind signing',
-    unbuiltRoute: { label: 'Mirror the phone instead', screen: 'mirror' },
+    state: 'built',
   },
   {
     id: 'apps',
