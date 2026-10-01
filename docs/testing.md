@@ -26728,3 +26728,73 @@ min). That is not counted. It was rewritten as the semantic mutation above, whic
 
 **Not verified on hardware.** The live paused artifact from 2026-10-01 was left exactly as it was: no
 Resume, Cancel, reconnect, deletion or restoration.
+
+#### Defect 158 — the remaining paths: error/reset, the wait's window, record saves (2026-10-02, tests only)
+
+`b1f62fc` honoured a terminal verdict only when the bulk socket **closed** short. This pass covers the paths
+that commit left open. It is tests-only and not on hardware.
+
+**Found red at `b1f62fc`, for the bug.** A connection that ends with a TCP **reset** raises `error`
+before `close`. `error` still went straight to `fail()`, the interruption path, without reading the
+verdict. Three tests, each run alone against the unchanged product code, reported
+`{"ok":false,"reason":"read ECONNRESET","paused":true}`:
+- a prefix mismatch reset before its verdict;
+- a prefix mismatch with its verdict first, then a reset;
+- a 10 MiB stream reset before its `SOURCE_CHANGED`.
+
+That `read ECONNRESET` reason is also the control showing the reset reached the Mac.
+
+**The instrument had to be fixed first, and that is recorded rather than smoothed over.**
+- On loopback, a `resetAndDestroy()` issued in the same tick as the last write produced **no event at all**
+  on the receiving side (3 of 3). Issued 200 ms later, it arrived as `ECONNRESET` (3 of 3, 211 ms). The fake
+  phone therefore waits 150 ms before resetting. The first nonzero-stream reset test had hung on that
+  silence; it was killed by its 60 s limit and not counted.
+- A helper `inTheWait` was `async` and returned the pending pull, which **adopts** the promise, so Pause
+  and Cancel were sent after the pull had settled. The test's own control (`stopPull` → `{stopped:
+  true}`) failed and caught it. The helper now returns `{ p }`.
+
+**Fix (`bulk.ts`).** Both `close` and `error` go through one `endedShort(reason)`, entered once:
+- **After the claim**, a block pull waits `blocks.settled(LATE_VERDICT_WAIT_MS)`. A terminal
+  `SOURCE_CHANGED` takes the established discard; anything else is `fail()`, the interruption as before.
+- **Before the claim** there is no stream to rule on, so a connect failure fails at once.
+- `BulkClient.counts()` exposes the existing tallies read-only, so "counted once" is asserted on the
+  product's own counter.
+
+**Behaviour now defined, each by a test** (all through `FilesClient.pull` → `BulkClient.pull` over a
+local socket, against a fake phone):
+
+| Path | Result |
+|---|---|
+| verdict before close / close before verdict | rejected: partial + record gone, `.failed`, no restart, not auto-resumable (`b1f62fc`) |
+| verdict before **reset** / **reset** before verdict | rejected, the same way; **one** failure counted although `error` and `close` both fired |
+| zero-byte refusal / short nonzero stream (close or reset) | rejected |
+| reset or drop with **no** verdict | interruption: true-digest record + partial kept, auto-resumable, counted once |
+| connect refused **before** the claim | fails at once (12 ms against a 5 s bound), not waited on |
+| Pause / Cancel / session end **during** the wait | settles at once (< 2 s against a 5 s bound): Pause manual-only; Cancel deletes partial and record with no `.failed`; teardown an interruption |
+| Pause during the wait, **then** the verdict arrives inside the bound | the Pause stands: partial kept, no `.failed`, counted once |
+| a record save in flight (slowed to 400 ms) when the rejection lands | the record does not come back |
+| a verdict for another transfer, or on a replacement session, or a duplicate | no effect on any other pull (`b1f62fc`) |
+| a verdict **later than the bound** | the pull settles at the bound as an interruption; the late verdict changes nothing; the next Resume is asked again and rejected in time |
+
+**The residual limitation, stated as behaviour rather than solved.** A verdict delayed past
+`LATE_VERDICT_WAIT_MS` (3 s) is treated as no verdict. The verified partial and record stay, which is
+the safe side: nothing mixed is ever published, because a resume re-hashes the prefix on the phone
+first. But the pull is still offered to a reconnect within 10 minutes, and each Resume costs one re-hash
+of the retained prefix on the phone before it is refused again. Arbitrary delivery delays are **not**
+solved.
+
+**Mutations** (checksum-verified restoration after each; run against the named tests):
+
+| | Mutation | Result |
+|---|---|---|
+| W1 | `error` straight to `fail()` (the `b1f62fc` state) | 3 reset tests red; the no-verdict and pre-claim guards stay green |
+| W2 | no pre-claim exception | pre-claim test red (5,030 ms) |
+| W3 | no `await saving` before the discard | in-flight save test red |
+| W4a / W4b / W4c | remove the wait's `settled` check / remove the listener's `link.off` / **both** | green / green / **red**. **Two guards on one property.** Each alone is redundant, both together are caught |
+| W5 | the verdict never read | 9 tests red |
+
+**Runs:**
+- Targeted transfer suites (`filesResume`, `bulkBlockPull`, `fsBlocks`, `pullResume*`, `bulk*`):
+  **115 / 0**.
+- `tsc --noEmit`: app 0, test 0.
+- Not on hardware.

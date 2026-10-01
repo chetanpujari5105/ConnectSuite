@@ -121,6 +121,11 @@ export class BulkClient {
   private bytesMoved = 0;
   private failures = 0;
 
+  /** The same tallies, read-only: lets a test assert a transfer was settled and counted exactly once. */
+  counts(): { transfers: number; failures: number; bytesMoved: number } {
+    return { transfers: this.transfers, failures: this.failures, bytesMoved: this.bytesMoved };
+  }
+
   /** Successes beside failures, per CLAUDE.md — a failure count with no denominator is not evidence. */
   private tallyLine(): string {
     return `${this.transfers} transfers / ${this.failures} failed / ${this.bytesMoved} bytes since launch`;
@@ -595,12 +600,38 @@ export class BulkClient {
           };
       socket = connection.socket;
 
+      // Defect 158: every way a **claimed** block pull's connection ends short — a close or an error, which
+      // a reset delivers both of — goes through one bounded wait for the phone's verdict, entered once. A
+      // terminal SOURCE_CHANGED (a refused resume sends no byte; a source that changed under the read
+      // stops early) takes the established discard; no verdict inside the bound, or any other verdict, is
+      // the interruption it always was, keeping the verified blocks. Pause, Cancel and a session ending
+      // settle at once through `stop`, which this wait never blocks. Before the claim there is no stream
+      // for the phone to rule on, so a connection failure there fails at once, as before.
+      let claimed = false;
+      let endingShort = false;
+      const endedShort = (reason: string): void => {
+        if (settled || endingShort) return;
+        const blocks = options.blocks;
+        if (!blocks || !claimed) { fail(reason); return; }
+        endingShort = true;
+        void blocks.settled(options.lateVerdictWaitMs ?? LATE_VERDICT_WAIT_MS).then(async () => {
+          if (settled) return;
+          const changed = blocks.sourceChange();
+          if (!changed) { fail(reason); return; }
+          settled = true;
+          socket?.destroy();
+          await new Promise<void>((done) => file.end(() => done()));
+          await discard(changed.message, '', offset + received, Date.now() - startedAt, { sourceChanged: true, verifiedBlocks: blocks.verified });
+        });
+      };
+
       socket.setTimeout(CANDIDATE_TIMEOUT_MS, () =>
         fail('the phone did not answer on the file port'),
       );
-      socket.once('error', (error) => fail(error.message));
+      socket.once('error', (error) => endedShort(error.message));
 
       socket.once(connection.readyEvent, () => {
+        claimed = true;
         socket!.setTimeout(0);
         socket!.setNoDelay(true);
         // The token proves this socket belongs to a live control session; the phone drops it after
@@ -622,22 +653,7 @@ export class BulkClient {
       socket.on('close', () => {
         if (settled) return;
         if (received === expectedBytes - offset) { void complete(); return; }
-        const short = `the phone closed after ${received} of ${expectedBytes - offset} bytes`;
-        const blocks = options.blocks;
-        if (!blocks) { fail(short); return; }
-        // Defect 158: a short close is an interruption only if the phone did not end the transfer itself.
-        // A resume whose prefix no longer hashes — or a source that changed under the read — ends with a
-        // terminal SOURCE_CHANGED and a short (often empty) stream, and the verdict may arrive on the
-        // control connection either side of this close. Wait for it, bounded; Pause, Cancel and a session
-        // ending still settle at once through `stop`, which this wait never blocks.
-        void blocks.settled(options.lateVerdictWaitMs ?? LATE_VERDICT_WAIT_MS).then(async () => {
-          if (settled) return;
-          const changed = blocks.sourceChange();
-          if (!changed) { fail(short); return; }
-          settled = true;
-          await new Promise<void>((done) => file.end(() => done()));
-          await discard(changed.message, '', offset + received, Date.now() - startedAt, { sourceChanged: true, verifiedBlocks: blocks.verified });
-        });
+        endedShort(`the phone closed after ${received} of ${expectedBytes - offset} bytes`);
       });
     });
   }

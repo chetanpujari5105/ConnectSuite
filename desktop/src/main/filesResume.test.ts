@@ -59,9 +59,20 @@ interface Scenario {
   endAfter?: Ending & { bytes: number };
   /** Passed to `BulkClient.pull` as `lateVerdictWaitMs`: how long a short close waits for the verdict. */
   lateVerdictWaitMs?: number;
+  /** Dial this port instead of the fake phone's: nothing listens there, so the connect is refused. */
+  refusedPort?: number;
 }
 
-interface Ending { done: Record<string, unknown>; order: 'done-first' | 'close-first'; gapMs: number }
+interface Ending {
+  /** The verdict; `null` sends none at all (a drop with no verdict). */
+  done: Record<string, unknown> | null;
+  order: 'done-first' | 'close-first';
+  gapMs: number;
+  /** `reset` ends the bulk socket with a TCP RST, so the Mac sees `error` (ECONNRESET) before `close`. */
+  how?: 'close' | 'reset';
+  /** Hold the stream open this long before ending (so a record save is in flight, or a test can act). */
+  afterMs?: number;
+}
 
 function harness(scenario: Scenario = {}) {
   const root = mkdtempSync(join(tmpdir(), 'sidekick-l2-'));
@@ -115,9 +126,15 @@ function harness(scenario: Scenario = {}) {
   });
   const served = new Map<string, number>();
   const end = (socket: Socket, transferId: string, e: Ending) => {
-    const done = () => emit('fs.transfer.done', { transferId, ...e.done });
-    if (e.order === 'done-first') { done(); setTimeout(() => socket.end(), e.gapMs); }
-    else { socket.end(); setTimeout(done, e.gapMs); }
+    const done = () => { if (e.done) emit('fs.transfer.done', { transferId, ...e.done }); };
+    // A reset issued in the same tick as the last write is lost on loopback (measured: no event at all on the
+    // receiving side, 3 of 3), while one 150 ms later arrives as ECONNRESET (3 of 3). So the reset waits.
+    const close = () => { if (e.how === 'reset') setTimeout(() => socket.resetAndDestroy(), 150); else socket.end(); };
+    const go = () => {
+      if (e.order === 'done-first') { done(); setTimeout(close, e.gapMs); }
+      else { close(); setTimeout(done, e.gapMs); }
+    };
+    if (e.afterMs) setTimeout(go, e.afterMs); else go();
   };
   const serve = async (socket: Socket, header: { transferId: string; offset: number }) => {
     const bytes = scenario.bytes ?? SOURCE;
@@ -154,7 +171,7 @@ function harness(scenario: Scenario = {}) {
   const bulk = {
     pull: async (o: Parameters<BulkClient['pull']>[0]) => {
       const port = await listening;
-      return real.pull({ ...o, ...(scenario.lateVerdictWaitMs !== undefined ? { lateVerdictWaitMs: scenario.lateVerdictWaitMs } : {}), connect: () => ({ socket: createConnection({ host: '127.0.0.1', port }) as unknown as TLSSocket, readyEvent: 'connect' }) });
+      return real.pull({ ...o, ...(scenario.lateVerdictWaitMs !== undefined ? { lateVerdictWaitMs: scenario.lateVerdictWaitMs } : {}), connect: () => ({ socket: createConnection({ host: '127.0.0.1', port: scenario.refusedPort ?? port }) as unknown as TLSSocket, readyEvent: 'connect' }) });
     },
   };
   const client = new FilesClient(
@@ -170,7 +187,7 @@ function harness(scenario: Scenario = {}) {
   );
   const pull = () => client.pull({ rootId: 'saf:primary', id: 'doc-1', name: 'clip.bin', size: SIZE });
   const done = () => { server.close(); rmSync(root, { recursive: true, force: true }); };
-  return { client, pull, begins, cancels, folder, resumeStore, scenario, done, clock, agreed, endSession, reconnect, link, served };
+  return { client, pull, begins, cancels, folder, resumeStore, scenario, done, clock, agreed, endSession, reconnect, link, served, bulkClient: real };
 }
 
 /** Waits until the transfer is in flight (its first bytes written), then acts. */
@@ -701,5 +718,185 @@ test('158: a pull interrupted earlier, then rejected on a manual Resume, is no l
     const r = await h.pull(); // the person presses Resume before any reconnect
     assert.equal(h.served.get('t-2'), 0, 'zero bytes on the refused resume');
     await assertSourceRejected(h, r, 2); // includes: takeAutoResumable() is empty
+  } finally { h.done(); }
+});
+
+// ---- defect 158, the remaining paths: error/reset, Pause/Cancel/teardown during the wait, saves ------
+//
+// b1f62fc honoured a terminal verdict when the bulk socket *closed* short. A connection can also end with
+// an `error` (a TCP reset), which went straight to the interruption path; and the bounded wait it added
+// is a window in which the person, the session and the record timer can all act. Each is pinned here.
+
+/** Bulk counters, read from the real client, so "settled once" is about the product's own tally. */
+const counts = (h: ReturnType<typeof harness>) => h.bulkClient.counts();
+
+test('158 paths: prefix mismatch, then the bulk socket is RESET before the verdict — honoured, counted once', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: PREFIX_MISMATCH, order: 'close-first', how: 'reset', gapMs: 400 }, lateVerdictWaitMs: BOUND_MS });
+  try {
+    await pausedWithRecord(h);
+    const before = h.bulkClient.counts?.();
+    const r = await h.pull();
+    assert.equal(h.served.get('t-2'), 0, 'zero bytes');
+    await assertSourceRejected(h, r, 2);
+    const after = counts(h);
+    assert.equal(after.failures - before!.failures, 1, 'one failure counted for one rejected transfer, though error and close both fired');
+    assert.equal(after.transfers, before!.transfers, 'nothing counted as transferred');
+  } finally { h.done(); }
+});
+
+test('158 paths: prefix mismatch verdict first, then the bulk socket is RESET — honoured', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: PREFIX_MISMATCH, order: 'done-first', how: 'reset', gapMs: 0 }, lateVerdictWaitMs: BOUND_MS });
+  try {
+    await pausedWithRecord(h);
+    const r = await h.pull();
+    assert.equal(h.served.get('t-2'), 0, 'zero bytes');
+    await assertSourceRejected(h, r, 2);
+  } finally { h.done(); }
+});
+
+test('158 paths: a short nonzero stream RESET before its SOURCE_CHANGED — rejected, not kept', T, async () => {
+  const h = harness({ endAfter: { bytes: 10 * MiB, done: CHANGED_WHILE_SENT, order: 'close-first', how: 'reset', gapMs: 400 }, lateVerdictWaitMs: BOUND_MS });
+  try {
+    const r = await h.pull();
+    assert.equal(h.served.get('t-1'), 10 * MiB, 'control: bytes were sent before the verdict');
+    await assertSourceRejected(h, r, 1);
+  } finally { h.done(); }
+});
+
+test('158 paths: a RESET with no verdict is still an interruption that keeps the verified data', T, async () => {
+  const h = harness({ endAfter: { bytes: 20 * MiB, done: null, order: 'close-first', how: 'reset', gapMs: 0 }, lateVerdictWaitMs: 400 });
+  try {
+    const before = h.bulkClient.counts?.();
+    const r = await h.pull();
+    assert.equal(r.paused, true, `an interruption: ${r.reason}`);
+    assert.notEqual(r.sourceChanged, true);
+    const [record] = await h.resumeStore.all();
+    assert.ok(record && record.digests.length > 0, 'the record is kept');
+    assert.deepEqual(record!.digests, DIGESTS.slice(0, record!.digests.length), 'only true blocks are recorded');
+    assert.ok(existsSync(pullPartPathFor(join(h.folder, 'clip.bin'))), 'the owned partial is kept');
+    assert.equal(existsSync(join(h.folder, 'clip.bin.failed')), false, 'no .failed for an interruption');
+    assert.equal(h.client.takeAutoResumable().length, 1, 'offered to the reconnect');
+    assert.equal(counts(h).failures - before!.failures, 1, 'counted once');
+  } finally { h.done(); }
+});
+
+/** A resumed pull whose phone closes with no verdict, so the Mac sits in the bounded wait; returns the pending pull. */
+async function inTheWait(h: ReturnType<typeof harness>): Promise<{ p: ReturnType<typeof h.pull> }> {
+  await pausedWithRecord(h);
+  const p = h.pull();
+  // The fake phone closes at once with no verdict; give the close time to land and the wait to begin.
+  for (let i = 0; i < 100 && h.served.get('t-2') === undefined; i += 1) await new Promise((r) => setTimeout(r, 10));
+  await new Promise((r) => setTimeout(r, 150));
+  return { p }; // wrapped: an async function returning a promise would adopt it and wait for the pull to settle
+}
+
+test('158 paths: Pause during the verdict wait settles at once, manual-resume only', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: null, order: 'close-first', gapMs: 0 }, lateVerdictWaitMs: 5_000 });
+  try {
+    const { p } = await inTheWait(h);
+    const t0 = Date.now();
+    assert.deepEqual(await h.client.stopPull('t-2', 'pause'), { stopped: true }, 'control: the pull is still live in the wait');
+    const r = await p;
+    assert.ok(Date.now() - t0 < 2_000, 'Pause did not wait out the 5 s bound');
+    assert.equal(r.paused, true);
+    assert.deepEqual(h.client.takeAutoResumable(), [], 'a Pause is never resumed by a reconnect');
+    assert.equal((await h.client.pausedPulls()).length, 1, 'listed for Resume');
+    assert.ok(existsSync(pullPartPathFor(join(h.folder, 'clip.bin'))), 'its partial is kept');
+  } finally { h.done(); }
+});
+
+test('158 paths: Cancel during the verdict wait deletes this pull’s partial and record, with no .failed', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: null, order: 'close-first', gapMs: 0 }, lateVerdictWaitMs: 5_000 });
+  try {
+    const { p } = await inTheWait(h);
+    const t0 = Date.now();
+    await h.client.stopPull('t-2', 'cancel');
+    const r = await p;
+    assert.ok(Date.now() - t0 < 2_000, 'Cancel did not wait out the bound');
+    assert.equal(r.cancelled, true);
+    assert.deepEqual(await h.resumeStore.all(), []);
+    assert.deepEqual(readdirSync(h.folder), [], 'no partial, no .failed');
+    assert.deepEqual(h.client.takeAutoResumable(), []);
+  } finally { h.done(); }
+});
+
+test('158 paths: the session ending during the verdict wait is an interruption, settled at once', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: null, order: 'close-first', gapMs: 0 }, lateVerdictWaitMs: 5_000 });
+  try {
+    const { p } = await inTheWait(h);
+    const t0 = Date.now();
+    h.endSession('tok');
+    const r = await p;
+    assert.ok(Date.now() - t0 < 2_000, 'teardown did not wait out the bound');
+    assert.equal(r.paused, true);
+    assert.equal((await h.resumeStore.all()).length, 1, 'the verified record is kept');
+    assert.equal(h.client.takeAutoResumable().length, 1, 'offered to the reconnect');
+  } finally { h.done(); }
+});
+
+test('158 paths: a record save in flight when the rejection lands cannot bring the record back', T, async () => {
+  // The record timer saves every 2 s; the phone holds the resumed stream 2.1 s, then refuses, so the
+  // timer's save is mid-write (slowed to 400 ms here) at the moment the discard runs.
+  const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: PREFIX_MISMATCH, order: 'done-first', gapMs: 20, afterMs: 2_100 }, lateVerdictWaitMs: BOUND_MS });
+  try {
+    await pausedWithRecord(h);
+    const save = h.resumeStore.save.bind(h.resumeStore);
+    let saves = 0;
+    h.resumeStore.save = async (r) => { saves += 1; await new Promise((res) => setTimeout(res, 400)); return save(r); };
+    const r = await h.pull();
+    await new Promise((res) => setTimeout(res, 800)); // past any save that could still land
+    assert.ok(saves >= 1, `control: a save ran during the resumed pull (${saves})`);
+    await assertSourceRejected(h, r, 2);
+  } finally { h.done(); }
+});
+
+test('158 paths: a verdict later than the bound leaves the safe interruption untouched when it finally arrives', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: PREFIX_MISMATCH, order: 'close-first', gapMs: 1_200 }, lateVerdictWaitMs: 300 });
+  try {
+    await pausedWithRecord(h);
+    const r = await h.pull();
+    assert.equal(r.paused, true, 'no verdict inside the bound: an interruption');
+    const held = readFileSync(pullPartPathFor(join(h.folder, 'clip.bin'))).length;
+    await new Promise((res) => setTimeout(res, 1_500)); // the late verdict has now arrived
+    assert.equal((await h.resumeStore.all()).length, 1, 'the late verdict did not act on a settled pull');
+    assert.equal(readFileSync(pullPartPathFor(join(h.folder, 'clip.bin'))).length, held, 'the partial is untouched');
+    assert.equal(existsSync(join(h.folder, 'clip.bin.failed')), false);
+    // The residual limitation, stated as behaviour: the next Resume asks again and is refused in time.
+    h.scenario.resumeEnding = { done: PREFIX_MISMATCH, order: 'done-first', gapMs: 20 };
+    h.scenario.lateVerdictWaitMs = BOUND_MS;
+    const again = await h.pull();
+    await assertSourceRejected(h, again, 3);
+  } finally { h.done(); }
+});
+
+test('158 paths: a connection refused before the claim fails at once — there is no stream to wait for a verdict on', T, async () => {
+  const probe = createServer();
+  const closedPort = await new Promise<number>((r) => probe.listen(0, '127.0.0.1', () => r((probe.address() as { port: number }).port)));
+  await new Promise((r) => probe.close(r)); // nothing listens there now
+  const h = harness({ refusedPort: closedPort, lateVerdictWaitMs: 5_000 });
+  try {
+    const t0 = Date.now();
+    const r = await h.pull();
+    const ms = Date.now() - t0;
+    assert.equal(r.ok, false);
+    assert.match(r.reason ?? '', /ECONNREFUSED/, `control: the connect really was refused (${r.reason})`);
+    assert.ok(ms < 2_000, `failed at once, not after the 5 s verdict bound (${ms} ms)`);
+    assert.notEqual(r.sourceChanged, true);
+  } finally { h.done(); }
+});
+
+test('158 paths: Pause during the wait, then the verdict lands inside the bound — the Pause stands, settled and counted once', T, async () => {
+  const h = harness({ stallAfter: 20 * MiB, resumeEnding: { done: PREFIX_MISMATCH, order: 'close-first', gapMs: 700 }, lateVerdictWaitMs: 5_000 });
+  try {
+    const { p } = await inTheWait(h);
+    const before = counts(h);
+    await h.client.stopPull('t-2', 'pause');
+    const r = await p;
+    assert.equal(r.paused, true, 'the person’s Pause settled it first');
+    await new Promise((res) => setTimeout(res, 1_000)); // the verdict has now arrived, inside the 5 s bound
+    assert.equal(counts(h).failures - before.failures, 1, 'settled and counted once, not again when the verdict landed');
+    assert.ok(existsSync(pullPartPathFor(join(h.folder, 'clip.bin'))), 'the paused partial was not deleted afterwards');
+    assert.equal(existsSync(join(h.folder, 'clip.bin.failed')), false, 'no marker written after the Pause');
+    assert.equal((await h.client.pausedPulls()).length, 1, 'still waiting for Resume (which will meet the refusal)');
   } finally { h.done(); }
 });
