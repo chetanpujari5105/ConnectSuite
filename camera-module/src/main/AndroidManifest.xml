@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Declared here as well as in :app (where QR pairing needs it) because this module opens the
+      camera for Camera v1; a consumer that forgets the permission should fail at merge time.
+      It is asked for only through Android's own runtime dialog, and only after the owner taps
+      Start camera on the request screen — a granted permission is never treated as consent.
+      There is deliberately no RECORD_AUDIO here: Camera v1 carries no sound.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
+    <application>
+
+        <!--
+          The request screen and, once approved, the live preview. The camera is bound to THIS
+          activity's lifecycle and to nothing else, which is what makes Camera v1 foreground-only:
+          when it stops being visible (Home, another app, the screen locking) the stream stops.
+
+          configChanges is load-bearing for the same reason it is on MirrorConsentActivity: a turn
+          that recreated this activity would run onStop and end an approved stream because the
+          phone was rotated. uiMode and density are included so a theme or display-size change
+          does not either.
+
+          Not exported. The request notification reaches it through this app's own PendingIntent,
+          and nothing outside the app may open a camera screen.
+        -->
+        <activity
+            android:name=".CameraActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
+    </application>
+</manifest>

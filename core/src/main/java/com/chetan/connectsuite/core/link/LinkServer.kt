@@ -245,6 +245,22 @@ class LinkServer(
     var sessionEndedSink: ((ControlSession) -> Unit)? = null
 
     /**
+     * Further session-ended consumers — **the list the comment above asks for**, added for Camera v1
+     * rather than taking the mirror's slot. A camera stream exists to feed one Mac, exactly as a
+     * capture does, so it has the same need: when the owning session ends, nothing may keep the
+     * camera open. [sessionEndedSink] stays as it is so the mirror's wiring is untouched.
+     */
+    private val sessionEndedListeners = java.util.concurrent.CopyOnWriteArrayList<(ControlSession) -> Unit>()
+
+    fun addSessionEndedListener(listener: (ControlSession) -> Unit) {
+        sessionEndedListeners.add(listener)
+    }
+
+    fun removeSessionEndedListener(listener: (ControlSession) -> Unit) {
+        sessionEndedListeners.remove(listener)
+    }
+
+    /**
      * Called with (label, reason) when a video or bulk socket could not be authorised.
      *
      * Unlike the sinks above this is not part of any capability contract — it carries no
@@ -655,6 +671,12 @@ class LinkServer(
         sessionEndedSink?.let { sink ->
             runCatching { sink(session) }
                 .onFailure { LinkLog.w("server", "Session-ended handler failed: ${it.message}") }
+        }
+        // Each guarded on its own, like the session-ready listeners: one feature failing to tear
+        // down must not leave another feature's camera or capture running.
+        sessionEndedListeners.forEach { listener ->
+            runCatching { listener(session) }
+                .onFailure { LinkLog.w("server", "Session-ended listener failed: ${it.message}") }
         }
     }
 

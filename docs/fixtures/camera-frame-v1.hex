@@ -1,0 +1,9 @@
+# Camera v1 golden frame — docs/protocol.md → The camera frame.
+# One fixture, asserted by both ends: camera-module CameraFrameCodecTest (the phone's encoder) and
+# desktop/src/shared/cameraFrame.test.ts (the Mac's parser). Change the contract first, then this.
+#
+# PTS 0x0102030405060708 µs; facing front; rotation 3 quarter turns; mirrored; epoch 7;
+# 1280x720; sequence 0x01020304; a 4-byte stand-in JPEG FF D8 FF D9 (only its SOI is checked).
+#
+# 13-byte frame header           | 16-byte camera header                           | JPEG
+01 0102030405060708 00000014       01 01 01 03 01 07 0500 02d0 01020304 0000         ffd8ffd9

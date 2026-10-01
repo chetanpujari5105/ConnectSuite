@@ -61,6 +61,7 @@ const SEARCH = [
   { dir: 'app/src', exts: ['.kt'] },
   { dir: 'mirror-module/src', exts: ['.kt'] },
   { dir: 'input-module/src', exts: ['.kt'] },
+  { dir: 'camera-module/src', exts: ['.kt'] },
 ];
 
 /**

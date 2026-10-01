@@ -7,6 +7,8 @@ import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.core.notification.NotificationChannels
 import com.chetan.connectsuite.input.InputFeature
 import com.chetan.connectsuite.mirror.v2.MirrorEngine
+import com.chetan.connectsuite.mirror.v2.MirrorPhase
+import com.chetan.connectsuite.camera.CameraFeature
 import com.chetan.connectsuite.mirror.v2.MirrorFeature
 import com.chetan.connectsuite.sync.v2.AppsFeature
 import com.chetan.connectsuite.sync.v2.CallFeature
@@ -58,6 +60,19 @@ class ConnectSuiteApp : Application() {
         // the mirror is being handed blank frames, because a tap the user cannot see the target of
         // is not a tap they meant.
         InputFeature.install(this, link, contentBlocked = { MirrorEngine.isContentBlocked })
+
+        // Camera v1 (docs/camera-v1.md). Development builds only — CameraFeature.install returns
+        // without installing anything when the build is not debuggable, so a release build never
+        // advertises `camera`. The lambda is the second place that needs both feature modules: a
+        // camera request while the mirror is running or waiting for consent answers CAMERA_BUSY, and
+        // the mirror is never stopped to make room.
+        CameraFeature.install(this, link, mirrorBusy = {
+            MirrorEngine.isRunning || MirrorEngine.status.value.phase in setOf(
+                MirrorPhase.AWAITING_FOREGROUND,
+                MirrorPhase.REQUESTING_CONSENT,
+                MirrorPhase.STARTING,
+            )
+        })
 
         // Phase 4. Installed unconditionally like the two above, and for the same reason: a
         // registered handler can answer "here is how to turn this on", and an unregistered one can

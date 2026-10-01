@@ -63,6 +63,14 @@ object NotificationChannels {
      */
     const val APP_OPEN_REQUEST = "app_open_request"
 
+    /**
+     * "Your Mac wants to see this phone's camera" — Camera v1's route to the request screen when
+     * Sidekick is not on screen. High importance for the reason [MIRROR_REQUEST] is: somebody at a Mac
+     * is waiting on this tap, and the request expires in 30 seconds. **Tapping it opens the request
+     * screen, never the camera**: the camera opens only on Start camera, on that screen.
+     */
+    const val CAMERA_REQUEST = "camera_request"
+
     fun createAll(context: Context) {
         val manager = context.getSystemService<NotificationManager>() ?: return
         manager.createNotificationChannels(
@@ -112,6 +120,14 @@ object NotificationChannels {
                     NotificationManager.IMPORTANCE_HIGH,
                 ).apply {
                     description = "Asks you to start mirroring when your Mac requests it."
+                },
+                NotificationChannel(
+                    CAMERA_REQUEST,
+                    "Camera requests",
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    description = "Asks whether your Mac may see this phone's camera. The camera " +
+                        "stays off until you tap Start camera on the request screen."
                 },
                 NotificationChannel(
                     APP_OPEN_REQUEST,

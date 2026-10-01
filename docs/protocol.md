@@ -516,7 +516,7 @@ The phone never stops a mirror, or anything else, to make room for a camera.
 
 | `state` | Meaning | Terminal |
 |---|---|---|
-| `awaiting-approval` | the request is on the phone, nobody has answered | no |
+| `awaiting-approval` | the request is on the phone, nobody has answered. **Carried by the `camera.request` ack**, not repeated as an event | no |
 | `starting` | the owner tapped Start camera and `CAMERA` is granted; the camera is opening. **The Mac opens the stream socket now** | no |
 | `running` | a frame has been produced and the stream socket is attached. Carries `facing`, `width`, `height`, `frameRate` (the phone's cap, not a measurement) | no |
 | `stopped` | the stream ended; `reason`, `message`, `fixHint`, `framesSent`, `framesDropped` | yes |
@@ -613,7 +613,7 @@ byte  0      version   1
 byte  1      format    1 = JPEG
 byte  2      facing    0 = back, 1 = front, 2 = external
 byte  3      rotation  quarter turns clockwise that make the picture upright, 0..3
-byte  4      flags     bit 0 = mirror horizontally for display (the front-camera convention)
+byte  4      flags     bit 0 = mirror the upright picture left-to-right (front-camera convention)
 byte  5      epoch     u8, increments with every camera switch, wraps at 256
 bytes 6..7   width     u16 BE, of the JPEG as encoded (before rotation)
 bytes 8..9   height    u16 BE
@@ -621,6 +621,10 @@ bytes 10..13 sequence  u32 BE, per stream, +1 for every frame produced; a gap is
 bytes 14..15 reserved  0
 bytes 16..   JPEG      starts FF D8
 ```
+
+**Draw a frame by rotating it first, then mirroring the upright result** — the order the phone's own
+preview uses. Whether that matches the phone's screen for the front camera on real hardware is a
+supervised check in `docs/camera-v1.md`, not a measured fact.
 
 **The orientation travels with the pixels it describes.** A switch from the back camera to the front
 changes `facing`, the mirror flag and often the rotation — and if those arrived on the control channel

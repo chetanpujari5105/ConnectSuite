@@ -168,6 +168,7 @@ dependencies {
     implementation(project(":sync-module"))
     implementation(project(":mirror-module"))
     implementation(project(":input-module"))
+    implementation(project(":camera-module"))
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)

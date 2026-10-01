@@ -136,7 +136,7 @@ test('the phone reader sums across modules and names the ones with no results at
   assert.deepEqual(e.modulesSeen.sort(), ['app', 'core']);
   // The modules that contributed nothing are named rather than silently absent from the sum —
   // a module with no results is invisible in a total, which is the failure one level down.
-  assert.deepEqual(e.modulesMissing.sort(), ['input-module', 'mirror-module', 'sync-module']);
+  assert.deepEqual(e.modulesMissing.sort(), ['camera-module', 'input-module', 'mirror-module', 'sync-module']);
 });
 
 test('the phone reader returns null rather than a zero when nothing has ever run', () => {

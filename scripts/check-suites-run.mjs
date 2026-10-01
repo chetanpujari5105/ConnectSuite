@@ -47,7 +47,7 @@ import { readFileSync, statSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const GRADLE_MODULES = ['app', 'core', 'sync-module', 'mirror-module', 'input-module'];
+export const GRADLE_MODULES = ['app', 'core', 'sync-module', 'mirror-module', 'input-module', 'camera-module'];
 
 /**
  * Which half a changed path belongs to, or null for a path that neither suite covers.
