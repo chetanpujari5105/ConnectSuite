@@ -1,4 +1,40 @@
-# Resume here — written 2026-09-30 (18:25 IST): T3 retry PASSED — defect 157 VERIFIED ON HARDWARE (all bounds met); T4–T5 NOT approved
+# Resume here — written 2026-10-01: T4-A prepared (scoped corruption probe, tests only); nothing installed or run; T5 NOT approved
+
+The full record is `docs/l1-l2-t4a-2026-10-01.md`.
+
+1. **Built and proven (tests only — not on hardware):**
+   - **T4 = T4-A**, corruption in transit (rules doc §6 slice 3). T4-B (a retained partial altered while
+     paused, S5) is a separate test and is not planned here. T5 is not approved.
+   - `FsProbeActivity` is declared again, debug manifest only, `DUMP`-gated, no filter. It now arms only
+     `FsCorruptionProbe`: one fixed byte (104,923,136 = block 800 of 1,600, XOR `0xFF`) of one fresh block
+     pull of `downloads:connectsuite` / `sidekick-pass-stop-200mb.bin` / 209,715,200 B, for the one live
+     session, one-shot, expiring (default 300 s, max 600 s), cleared on disarm, on its session ending, and on
+     any near-miss request.
+   - The global `BulkTransfers.debugCorruptAtByte` switch (any pull of any kind) is **deleted**. 597cb75 had
+     dropped the activity's declaration with no stated reason; the safety intent was recorded in slice 3c
+     (*global* arm, so left undeclared), and that intent is what this keeps.
+   - Evidence: phone **1,112 / 0** (app 180, core 219, sync 601, input 52, mirror 60, every result file
+     written this run); Mac **1,411 / 0**; typecheck 0; all 14 commit checkers 0. **19 mutations, all red**
+     (14 phone, 5 Mac), each on the test named for it. Merged manifests rebuilt fresh: release
+     `FsProbeActivity` **0** (6 activities), debug **1**, exported, `DUMP`, no filter (control: 11 probe
+     components).
+   - **No production failure/recovery behaviour changed.** A new Mac test shows today's code already gives
+     T4-A's expected result: block named, nothing published, only that pull's partial and record removed,
+     a `.failed` beside the free name, no automatic retry.
+2. **Committed:** the local preparation commit containing `docs/l1-l2-t4a-2026-10-01.md` (`git log -1 --
+   docs/l1-l2-t4a-2026-10-01.md`). Not pushed. The owner's uncommitted `PRODUCT.md`, `docs/testing.md`,
+   `skills-lock.json` and untracked files were left unstaged and unchanged.
+3. **Half-built:** nothing.
+4. **Needs the owner:** approval for the single hardware run in `docs/l1-l2-t4a-2026-10-01.md` §5 (one debug
+   `install -r` on the SM-S938B, one arm, one pull; no Mac rebuild). Re-check at preflight that no
+   `sidekick-pass-stop-200mb (7).bin.failed` exists: the Mac's free-name rule does not skip a `.failed`, and
+   the exclusive write would then leave **no** marker (existing behaviour, not changed).
+5. **Next:** that run. Pass = §4's five lines plus `PROBE BOUND` naming the transfer the Mac claimed; no
+   `PROBE BOUND` = no reading.
+6. **Left changed on devices:** nothing. No device command was issued. The phone still runs the 2026-09-30
+   18:16 `4095665` install, which has the old undeclared activity and the global hook (unreachable there).
+
+# (earlier) 2026-09-30 (18:25 IST): T3 retry PASSED — defect 157 VERIFIED ON HARDWARE (all bounds met); T4–T5 NOT approved
 
 - **Devices now run `4095665`:**
   - Phone: `install -r` 18:16:01, APK `4b7041cd…`, same signer; every reading unchanged except the trust

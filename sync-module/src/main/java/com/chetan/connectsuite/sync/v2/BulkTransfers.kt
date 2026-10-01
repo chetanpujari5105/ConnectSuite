@@ -97,9 +97,10 @@ object BulkTransfers {
         /** Share pulls only: there is no resume, so a bulk header asking for any offset but 0 is refused. */
         val requireOffsetZero: Boolean = false,
         /**
-         * Share pulls only, debug builds only: flip this absolute byte after the digest has taken it.
-         * Scoped to one transfer, unlike the global [debugCorruptAtByte]. Set only by
-         * `ShareFeature.debugArmCorruption`, which refuses in a non-debuggable build.
+         * Debug builds only: flip this absolute byte after the digest has taken it. Scoped to this one
+         * transfer — there is no global switch. Set only by `ShareFeature.debugArmCorruption` (a share
+         * pull) or [FsCorruptionProbe.claim] (the one T4-A Files block pull), and both refuse in a
+         * non-debuggable build.
          */
         val debugCorruptAtByte: Long? = null,
         /** Share pulls only: told how the phone's own stream ended. That is never a save. */
@@ -295,6 +296,8 @@ object BulkTransfers {
         sessionId: String,
         blockSize: Int,
         resume: FsBlocks.Resume?,
+        /** The byte [FsCorruptionProbe.claim] bound to this one transfer, or null — always null outside T4-A. */
+        debugCorruptAtByte: Long? = null,
     ): Pending {
         val transferId = nextId()
         val pendingEntry = Pending(
@@ -305,10 +308,18 @@ object BulkTransfers {
             sessionId = sessionId,
             sha256 = null,
             open = { store.openStream(entry.id) },
+            debugCorruptAtByte = debugCorruptAtByte,
             blocks = BlockPlan(blockSize, entry.mtimeMs, resume) { store.statById(entry.id)?.let { it.size to it.mtimeMs } },
         )
         pending[transferId] = pendingEntry
         owners[transferId] = sessionId
+        if (debugCorruptAtByte != null) {
+            LinkLog.e(
+                "bulk",
+                "PROBE BOUND (T4-A): $transferId → ${entry.name} will have byte $debugCorruptAtByte flipped after the " +
+                    "phone hashes it; no other transfer carries it",
+            )
+        }
         LinkLog.i(
             "bulk",
             "fs.transfer.begin registered $transferId → ${entry.name}, ${entry.size} bytes, block-verified " +
@@ -396,27 +407,6 @@ object BulkTransfers {
     }
 
     /**
-     * Flips one byte of the outgoing stream at this absolute offset. **A probe hook, ships disarmed.**
-     *
-     * The checksum-mismatch branch has never run in this project — `media.original` acks
-     * `sha256: null`, so nothing was ever compared — and it cannot be run without corruption that
-     * the digest does **not** see. So the byte is flipped *after* the digest has taken the true
-     * bytes, which is exactly what a corrupt link does: the sender's digest is right, the receiver's
-     * is not, and the disagreement is the finding.
-     *
-     * It is here rather than in a standalone tool for the reason `BulkClient.interruptAfterBytes` is
-     * in `bulk.ts`: a second client speaking the protocol itself would differ from the shipping one
-     * somewhere, and that difference is where this class of bug lives. **The stimulus is injected;
-     * the mechanism under test stays the product's.**
-     *
-     * Nothing in `src/main` assigns it. `app/src/debug/…/FsProbeActivity` is the only writer, AGP
-     * merges that source set into debug variants only, and every arming writes an `E` line — a hook
-     * that could be on without saying so is a build that reports corruption nobody caused.
-     */
-    @Volatile
-    var debugCorruptAtByte: Long? = null
-
-    /**
      * Stops a transfer, whether it has been claimed by a socket yet or not.
      *
      * Both states have to be handled and they are genuinely different: an unclaimed transfer is a
@@ -474,6 +464,8 @@ object BulkTransfers {
         // digests and verdict could only have reached the Mac over that session. A push stopped this
         // way keeps its partial, exactly as a Mac's cancel does.
         plan.stopLive.forEach { cancelled.flagIfAbsent(it, BulkStops.SESSION_ENDED) }
+        // A T4-A arm names one session; once that session is gone nothing may use it.
+        FsCorruptionProbe.sessionEnded(sessionId)
         if (plan.dropPending.isNotEmpty() || plan.abandonPushes.isNotEmpty() || plan.stopLive.isNotEmpty()) {
             LinkLog.i(
                 "bulk",
@@ -1326,21 +1318,23 @@ object BulkTransfers {
     }
 
     /**
-     * Flips one byte if the probe hook is armed for this transfer. See [debugCorruptAtByte].
+     * Flips one byte of the outgoing stream, **only** when this transfer's own entry carries one
+     * ([Pending.debugCorruptAtByte]). There is no global hook: a transfer nobody bound is never touched.
+     *
+     * The checksum-mismatch branch cannot be run without corruption that the digest does **not** see,
+     * so the byte is flipped *after* the digest has taken the true bytes — which is what a corrupt link
+     * does: the sender's digest is right, the receiver's is not, and the disagreement is the finding.
+     * It is here rather than in a standalone tool for the reason `BulkClient.interruptAfterBytes` is in
+     * `bulk.ts`: **the stimulus is injected; the mechanism under test stays the product's.**
      *
      * Refuses silently for no offset, and shouts when it does act — an `E` line naming the transfer
      * and the offset, so a `CHECKSUM_MISMATCH` in a log can always be traced to whether somebody
      * asked for it.
      */
     private fun corruptIfArmed(entry: Pending, chunk: ByteArray, absoluteStart: Long) {
-        // A share pull's own byte first (scoped to that one transfer), then the global hook.
-        val scoped = entry.debugCorruptAtByte
-        val at = scoped ?: debugCorruptAtByte ?: return
-        if (at < absoluteStart || at >= absoluteStart + chunk.size) return
+        val at = entry.debugCorruptAtByte ?: return
+        val was = FsCorruptionProbe.flip(chunk, absoluteStart, at) ?: return
         val index = (at - absoluteStart).toInt()
-        val was = chunk[index]
-        chunk[index] = (was.toInt() xor 0xFF).toByte()
-        if (scoped == null) debugCorruptAtByte = null
         LinkLog.e(
             "bulk",
             "PROBE: ${entry.transferId} byte $at deliberately flipped from $was to ${chunk[index]} " +

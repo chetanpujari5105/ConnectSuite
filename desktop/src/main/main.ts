@@ -2944,7 +2944,9 @@ if (!app.isPackaged) {
    *
    * This is the first transfer in the project where `expectedSha256` is not null, so it is the first
    * one where `verified: true` means anything and the first where `CHECKSUM_MISMATCH` can be reached
-   * at all. Run it once clean and once with `FsProbeActivity` armed; the second run must leave a
+   * at all. Its corrupt half was run with `FsProbeActivity` arming a global byte flip; since 2026-10-01
+   * that activity arms only L1/L2 T4-A (one block pull of one approved file, above the pre-hash
+   * ceiling), so it can no longer corrupt a pull this probe makes. A corrupt run here must leave a
    * `.failed` sidecar and **no** `.part`.
    *
    * Everything it drives is the product's: `link.request` for the ticket, `BulkClient.pull` for the

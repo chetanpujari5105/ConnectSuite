@@ -368,6 +368,57 @@ test('SOURCE_CHANGED from the phone: nothing saved, the partial and the record a
   } finally { h.done(); }
 });
 
+// ---- L1/L2 T4-A: one byte corrupted in transit ---------------------------------------------------
+//
+// The phone's probe flips one byte after hashing it (FsCorruptionProbeTest), so the digests the Mac is
+// sent are of the true bytes and the bytes are not. Here the fake phone does the same: it serves a
+// copy with one byte flipped against DIGESTS of SOURCE. The expected outcome is the contract's
+// (docs/large-file-l1-l2-rules-2026-09-29.md §4 and S8), checked through the product's FilesClient.
+
+test('T4-A: a corrupt block is named, nothing is published, only its own partial and record go, a .failed is left beside a free name, and nothing retries', T, async () => {
+  const K = 300;
+  const AT = K * BS + 64 * 1024; // 64 KiB into block K, as 104,923,136 is into block 800
+  const bad = Buffer.from(SOURCE);
+  bad[AT] ^= 0xff;
+  // The first pull (another file) is paused by the person before the flipped byte, so its partial and
+  // record are what must survive the corrupt one.
+  const h = harness({ bytes: bad, stallAfter: 20 * MiB });
+  try {
+    const other = h.pull();
+    await whenReceiving(h, 5 * MiB);
+    await h.client.stopPull('t-1', 'pause');
+    assert.equal((await other).paused, true, 'control: the other pull is paused, with its record');
+    const kept = await h.resumeStore.all();
+    assert.equal(kept.length, 1);
+    const keptPart = pullPartPathFor(join(h.folder, 'clip.bin'));
+    const keptBytes = readFileSync(keptPart).length;
+    writeFileSync(join(h.folder, 'other.bin'), 'the person’s own file');
+
+    const r = await h.client.pull({ rootId: 'saf:primary', id: 'doc-2', name: 'other.bin', size: SIZE });
+
+    assert.equal(r.ok, false);
+    assert.equal(r.paused, undefined, 'not a pause: nothing of it is kept to resume');
+    assert.equal(r.sourceChanged, undefined, 'not a changed source');
+    assert.match(r.reason ?? '', new RegExp(`damaged \\(block ${K} does not match what the phone read\\)`));
+    assert.equal(existsSync(join(h.folder, 'other (2).bin')), false, 'nothing published');
+    assert.equal(existsSync(pullPartPathFor(join(h.folder, 'other (2).bin'))), false, 'its own partial is deleted');
+    const failed = join(h.folder, 'other (2).bin.failed');
+    assert.ok(existsSync(failed), `a .failed beside the free name: ${readdirSync(h.folder).join(', ')}`);
+    assert.match(readFileSync(failed, 'utf8'), /^Sidekick transfer failed/);
+    assert.equal(readFileSync(join(h.folder, 'other.bin'), 'utf8'), 'the person’s own file', 'the person’s file at the name is untouched');
+    assert.deepEqual(
+      new Set(readdirSync(h.folder)),
+      new Set(['other.bin', 'other (2).bin.failed', keptPart.split('/').pop()!]),
+      'nothing else was created or removed',
+    );
+    assert.deepEqual((await h.resumeStore.all()).map((x) => x.id), ['doc-1'], 'only the corrupt pull’s record is gone');
+    assert.equal(readFileSync(keptPart).length, keptBytes, 'the other pull’s partial is untouched');
+    assert.deepEqual(h.client.takeAutoResumable(), [], 'nothing is offered for automatic resume');
+    await new Promise((res) => setTimeout(res, 300));
+    assert.equal(h.begins.length, 2, 'no automatic retry: the phone was asked twice, once per pull');
+  } finally { h.done(); }
+});
+
 // ---- defect 157: a session ending stops the pull it owns, keeps what is resumable ----------------
 //
 // Hardware (L1/L2 T3, 2026-09-30): after the Mac's Disconnect at 40%, the phone streamed on over the

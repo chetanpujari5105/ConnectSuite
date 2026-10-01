@@ -1,6 +1,7 @@
 package com.chetan.connectsuite.sync.v2
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.util.Base64
 import com.chetan.connectsuite.core.link.ControlSession
 import com.chetan.connectsuite.core.link.Extensions
@@ -532,7 +533,8 @@ object FsFeature {
         // and only above the pre-hash ceiling; everything else keeps the path below, byte for byte.
         val blocksNegotiated = (session.negotiated[Extensions.FS_BLOCKS] ?: 0) >= 1
         if (FsBlocks.appliesTo(session.negotiated, entry.size)) {
-            return onBeginBlockPull(session, request, store, rootId, entry, sessionId)
+            val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            return onBeginBlockPull(session, request, store, rootId, entry, sessionId, debuggable)
         }
         if (request.payload["resume"] != null) {
             LinkLog.w(
@@ -572,11 +574,22 @@ object FsFeature {
      */
     private fun onBeginBlockPull(
         session: ControlSession, request: Envelope, store: FsStore, rootId: String, entry: FsPaths.Entry, sessionId: String,
+        debuggable: Boolean,
     ) {
         val blockSize = FsBlocks.blockSizeFor(entry.size)
         val answer = FsBlocks.parseResume(request.payload["resume"], entry.size, entry.mtimeMs)
         val resume = (answer as? FsBlocks.ResumeAnswer.Accepted)?.resume
-        val pendingTransfer = BulkTransfers.registerBlockPull(store, entry, sessionId, blockSize, resume)
+        // L1/L2 T4-A, debug builds only: null unless this is the one pull an armed probe names. The only
+        // place a Files pull can acquire a corruption byte — Photos, Share, pushes and small pulls never ask.
+        val corruptAt = FsCorruptionProbe.claim(
+            FsCorruptionProbe.Candidate(
+                rootId = rootId, documentId = entry.id, name = entry.name, size = entry.size, sessionToken = sessionId,
+                blockSize = blockSize, resumeAsked = request.payload["resume"] != null,
+            ),
+            debuggable = debuggable,
+            nowMs = System.currentTimeMillis(),
+        )
+        val pendingTransfer = BulkTransfers.registerBlockPull(store, entry, sessionId, blockSize, resume, debugCorruptAtByte = corruptAt)
         delivered.incrementAndGet()
         LinkLog.i(
             "fs",

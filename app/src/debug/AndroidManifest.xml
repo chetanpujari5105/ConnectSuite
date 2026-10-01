@@ -192,5 +192,19 @@
             android:permission="android.permission.DUMP"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.NoDisplay" />
+
+        <!--
+          L1/L2 T4-A (2026-10-01): the ONLY writer of FsCorruptionProbe.arm. It no longer arms a global
+          corruption of "the next pull of any kind" (why it was left undeclared after slice 3c); it arms
+          one fixed byte of one block pull of one document in downloads:connectsuite, bound to the one
+          live session, one-shot, expiring. Debug source set only; DUMP-gated; no filter, no launcher, no
+          UI. FsProbeManifestTest pins this entry and its absence from main.
+        -->
+        <activity
+            android:name="com.chetan.connectsuite.probe.FsProbeActivity"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay" />
     </application>
 </manifest>

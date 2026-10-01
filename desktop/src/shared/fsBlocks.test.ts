@@ -118,6 +118,36 @@ test('verifier: one flipped byte is caught at its own block, before the transfer
   assert.equal(v.conclude(sha(bad), bad.length).kind, 'corrupt');
 });
 
+test('verifier, at L1/L2 T4-A geometry: byte 104,923,136 of 209,715,200 flipped is named as block 800, with 800 blocks kept verified', () => {
+  // The real numbers, generated block by block rather than held: 1,600 blocks of 128 KiB.
+  const SIZE = 209_715_200;
+  const AT = 104_923_136;
+  const bs = blockSizeFor(SIZE);
+  const count = blockCountFor(SIZE, bs);
+  assert.equal(bs, 131_072);
+  assert.equal(count, 1_600);
+  const block = (i: number): Buffer => {
+    const b = Buffer.alloc(bs, (i * 7) & 0xff);
+    b.writeUInt32BE(i, 0);
+    return b;
+  };
+  const digests = Array.from({ length: count }, (_, i) => sha(block(i)));
+  assert.equal(new Set(digests).size, count, 'control: every generated block hashes differently');
+  const v = new BlockPullVerifier(SIZE, bs, count);
+  for (let first = 0; first < count; first += 256) v.onBlocks({ first, sha256: digests.slice(first, first + 256) });
+  // 256 KiB chunks, as the phone sends them, with the one byte flipped on the way.
+  for (let i = 0; i < count && v.failure === null; i += 2) {
+    const chunk = Buffer.concat([block(i), block(i + 1)]);
+    const start = i * bs;
+    if (AT >= start && AT < start + chunk.length) chunk[AT - start] ^= 0xff;
+    v.onBytes(chunk);
+  }
+  assert.equal(v.failure?.kind, 'corrupt');
+  assert.equal((v.failure as { block?: number }).block, 800);
+  assert.match((v.failure as { why: string }).why, /^block 800 does not match what the phone read$/);
+  assert.equal(v.verified, 800, 'blocks 0-799 matched before the damage was seen');
+});
+
 test('verifier: a flip in the short final block is caught at the end', () => {
   const bad = Buffer.from(SRC);
   bad[SRC.length - 1] ^= 1;
