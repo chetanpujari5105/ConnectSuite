@@ -265,11 +265,15 @@ function endedBlock(state: Extract<CamPaneState, { kind: 'ended' }>): NonNullabl
       return { kind: 'permission', headline: 'Camera permission is off on your phone', body };
     case 'camera-in-use':
       return { kind: 'permission', headline: "Your phone's camera is in use", body };
+    // No `code` line on an ending: the reason is this Mac's switch, not a sentence (defect 167 — the
+    // pane printed `stream-closed` under its own explanation of it).
     case 'camera-unavailable':
     case 'capture-failed':
+      return { kind: 'error', headline: 'The camera stopped', body };
+    // Neither side said why, so the headline claims no failure and names no cause.
     case 'stream-closed':
     case 'stream-lost':
-      return { kind: 'error', headline: 'The camera stopped', body, code: state.reason };
+      return { kind: 'error', headline: 'The camera stream ended', body };
     case 'disconnected':
       return { kind: 'blocked', headline: 'Your phone disconnected', body };
     case 'declined':

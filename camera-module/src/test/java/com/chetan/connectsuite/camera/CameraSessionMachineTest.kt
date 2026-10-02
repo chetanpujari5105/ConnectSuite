@@ -486,4 +486,88 @@ class CameraSessionMachineTest {
         val wire = CameraStopReason.entries.mapNotNull { it.wire }.toSet()
         assertEquals(contract, wire)
     }
+
+    // ---- defect 167: a Mac stop that crossed its own socket's close --------------------------------
+
+    private fun List<CameraEffect<Owner>>.releases(): List<String> =
+        map { it.javaClass.simpleName }.filter { it in setOf("CloseCamera", "CloseStream", "CancelTimers", "ClearRequest", "Stopped") }
+
+    @Test
+    fun `a stop that arrives just after its socket closed re-attributes that stream to the Mac`() {
+        val m = machine().running()
+        assertEquals(CameraStopReason.STREAM_CLOSED, m.streamClosed(streamA).stoppedReason())
+        assertEquals(CameraStopReason.STREAM_CLOSED, m.ui().lastStop)
+        val effects = m.stopFromMac(mac, "stop-1", streamA)
+        assertEquals(
+            listOf(CameraEffect.Reattributed(streamA, CameraStopReason.STREAM_CLOSED, CameraStopReason.STOPPED_BY_MAC)),
+            effects.only<CameraEffect.Reattributed>(),
+        )
+        assertEquals("nothing is released twice: $effects", emptyList<String>(), effects.releases())
+        // It ended nothing, so the ack still says so.
+        assertEquals(mapOf("stopped" to false), effects.only<CameraEffect.Ack<Owner>>().single().payload)
+        assertEquals(CameraStopReason.STOPPED_BY_MAC, m.ui().lastStop)
+        // A repeat is idempotent: no second re-attribution.
+        val again = m.stopFromMac(mac, "stop-2", streamA)
+        assertTrue(again.only<CameraEffect.Reattributed>().isEmpty())
+        assertEquals(CameraStopReason.STOPPED_BY_MAC, m.ui().lastStop)
+    }
+
+    @Test
+    fun `a stop that arrives first ends the stream as the Mac's, and the later close changes nothing`() {
+        val m = machine().running()
+        assertReleasesEverything(m.stopFromMac(mac, "stop-1", streamA), CameraStopReason.STOPPED_BY_MAC)
+        assertTrue(m.streamClosed(streamA).isEmpty())
+        assertEquals(CameraStopReason.STOPPED_BY_MAC, m.ui().lastStop)
+    }
+
+    @Test
+    fun `only the owner's stop, for that exact stream, re-attributes it`() {
+        val m = machine().running()
+        m.streamClosed(streamA)
+        assertTrue(m.stopFromMac(otherMac, "stop-x", streamA).only<CameraEffect.Reattributed>().isEmpty())
+        assertTrue(m.stopFromMac(mac, "stop-y", streamB).only<CameraEffect.Reattributed>().isEmpty())
+        assertEquals(CameraStopReason.STREAM_CLOSED, m.ui().lastStop)
+        // Control: the owner's stop for the stream does re-attribute it — the refusals above are about
+        // the owner and the id, not a machine that never re-attributes.
+        assertEquals(1, m.stopFromMac(mac, "stop-z", streamA).only<CameraEffect.Reattributed>().size)
+    }
+
+    @Test
+    fun `a stale stop for the last stream cannot touch the next one`() {
+        val m = machine().running()
+        m.streamClosed(streamA)
+        m.requestFrom(streamId = streamB)
+        val effects = m.stopFromMac(mac, "late-stop", streamA)
+        assertEquals(listOf("Ack"), effects.map { it.javaClass.simpleName })
+        assertEquals(CameraPhase.AWAITING, m.ui().phase)
+        assertEquals(streamB, m.ui().streamId)
+    }
+
+    @Test
+    fun `a reason somebody stated is never re-attributed`() {
+        val endings = listOf<Pair<CameraStopReason, (CameraSessionMachine<Owner>) -> Unit>>(
+            CameraStopReason.LEFT_SCREEN to { it.running(); it.visibilityLost() },
+            CameraStopReason.STOPPED_ON_PHONE to { it.running(); it.stopFromPhone() },
+            CameraStopReason.STREAM_NOT_OPENED to {
+                it.requestFrom(); it.approve(streamA, CameraFacing.BACK, t0 + 1_000)
+                it.timerFired(CameraTimer.START, streamA, t0 + 1_000 + CameraSessionMachine.START_TIMEOUT_MS)
+            },
+        )
+        for ((reason, end) in endings) {
+            val m = machine()
+            end(m)
+            assertEquals(reason, m.ui().lastStop)
+            assertTrue("$reason was re-attributed", m.stopFromMac(mac, "stop", streamA).only<CameraEffect.Reattributed>().isEmpty())
+            assertEquals(reason, m.ui().lastStop)
+        }
+    }
+
+    @Test
+    fun `a genuine close with no stop stays a close, and its sentence names no cause`() {
+        val m = machine().running()
+        m.streamClosed(streamA)
+        assertEquals(CameraStopReason.STREAM_CLOSED, m.ui().lastStop)
+        val sentence = "${CameraStopReason.STREAM_CLOSED.message} ${CameraStopReason.STREAM_CLOSED.fixHint}"
+        assertFalse("an unsupported diagnosis: $sentence", Regex("network|wi-?fi|router|connection", RegexOption.IGNORE_CASE).containsMatchIn(sentence))
+    }
 }

@@ -245,6 +245,27 @@ test('busy, permission and a phone with no camera are three different blocks', (
   assert.equal(denied.block.kind, 'permission');
 });
 
+test('defect 167: no ending prints its internal reason as text on the pane', () => {
+  const spec = (state: State) => rules.cameraPaneSpec(READY, state, 0);
+  const reasons = [
+    'declined', 'expired', 'permission-denied', 'camera-unavailable', 'camera-in-use', 'stopped-by-mac',
+    'stopped-on-phone', 'left-screen', 'stream-closed', 'capture-failed', 'disconnected', 'stream-lost',
+  ] as const;
+  for (const reason of reasons) {
+    const block = spec({ kind: 'ended', streamId: STREAM, reason, message: 'A sentence.', fixHint: null, framesSent: 3, framesDropped: 0, framesReceived: 3 }).block!;
+    // Control: the block was drawn and carries the sentence it was given.
+    assert.ok(block.body.includes('A sentence.'), reason);
+    assert.equal(block.code, undefined, `${reason} grew a code line`);
+    // The defect was a line that *is* the token. `expired` and `declined` are also English words in
+    // honest headlines, so only the hyphenated tokens — which no sentence contains — are searched for.
+    const texts = [block.headline, ...block.body];
+    assert.ok(!texts.includes(reason), `${reason} is a line of the pane`);
+    if (reason.includes('-')) assert.ok(!texts.some((t) => t.includes(reason)), `${reason} reached the text`);
+  }
+  // An ending nobody explained claims no failure and no cause in its headline.
+  assert.equal(spec({ kind: 'ended', streamId: STREAM, reason: 'stream-closed', message: 'm', fixHint: null, framesSent: null, framesDropped: null, framesReceived: 0 }).block!.headline, 'The camera stream ended');
+});
+
 // ---- the drawing math ----------------------------------------------------------------------------
 
 /** Applies the matrix exactly as `setTransform` does. */

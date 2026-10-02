@@ -79,9 +79,14 @@ enum class CameraStopReason(val wire: String?, val message: String, val fixHint:
         "The camera stopped because Sidekick's camera screen left the phone's display.",
         "Camera v1 only runs while the camera screen is open on the phone. Ask again and keep it open.",
     ),
+    /**
+     * The attached socket closed and nothing said why. The phone cannot tell a Mac that hung up from a
+     * network that dropped, so the sentence names neither (defect 167). A `camera.stop` that crossed
+     * the close re-attributes it to [STOPPED_BY_MAC] — [CameraSessionMachine.stopFromMac].
+     */
     STREAM_CLOSED(
         "stream-closed",
-        "The connection carrying the camera picture closed.",
+        "The camera stream to the Mac ended.",
         "Ask again from the Mac.",
     ),
     STREAM_NOT_OPENED(

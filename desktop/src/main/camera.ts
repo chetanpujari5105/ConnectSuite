@@ -142,12 +142,35 @@ const realTimers: CameraTimers = {
   clearTimeout: (h) => clearTimeout(h as NodeJS.Timeout),
 };
 
+/**
+ * Where the controller's lifecycle lines go — the rotating file in the app, a recorder in the tests.
+ * Lines carry an 8-character stream prefix, reasons and counts; never a token, a certificate or a frame.
+ */
+export interface CameraLog {
+  info(message: string): void;
+  warn(message: string): void;
+}
+
+const realLog: CameraLog = {
+  info: (message) => log.info('camera', message),
+  warn: (message) => log.warn('camera', message),
+};
+
 export interface CameraControllerDeps {
   link: CameraLinkPort;
   openSocket: CameraSocketFactory;
   emitState(state: CameraPaneState): void;
   emitFrame(frame: CameraFrameMessage): void;
   timers?: CameraTimers;
+  log?: CameraLog;
+}
+
+/** The reasons this side decides for itself and may be wrong about; a phone `stopped` replaces them. */
+const GUESSED_REASONS = new Set<CameraEndReason>(['stream-lost']);
+
+/** What the log line calls a stream: its id's first 8 characters, or what it was before it had one. */
+function streamLabel(streamId: string | null): string {
+  return streamId ? `camera stream ${streamId.slice(0, 8)}…` : 'camera request (no stream id yet)';
 }
 
 /** What an IPC call answers. Never thrown across the bridge — defect 22. */
@@ -175,14 +198,16 @@ export function endedCopy(reason: CameraEndReason): { message: string; fixHint: 
       return { message: 'The camera was stopped on your phone.', fixHint: null };
     case 'left-screen':
       return { message: "The camera stopped because Sidekick's camera screen left your phone's display.", fixHint: 'The camera only runs while that screen stays open on the phone.' };
+    // Neither side said why (defect 167). A closed socket is a Mac that hung up, a phone that hung up
+    // or a network that dropped, and nothing here can tell which — so the sentence names none of them.
     case 'stream-closed':
-      return { message: 'The connection carrying the picture closed.', fixHint: 'Ask again. If it keeps happening, check the Mac and phone are on the same network.' };
+      return { message: 'The camera stream ended.', fixHint: 'Ask again to see the camera.' };
     case 'capture-failed':
       return { message: 'Your phone could not produce camera frames.', fixHint: 'Ask again. If it keeps happening, restart the phone.' };
     case 'disconnected':
       return { message: 'Your phone disconnected, so the camera stopped.', fixHint: null };
     case 'stream-lost':
-      return { message: 'The connection carrying the picture closed.', fixHint: null };
+      return { message: 'The camera stream ended.', fixHint: 'Ask again to see the camera.' };
   }
 }
 
@@ -199,10 +224,22 @@ export class CameraController {
   private requestSeq = 0;
   private frameWithRenderer = false;
   private waitingFrame: CameraFrameMessage | null = null;
+  /** Frames that arrived and were never drawn: replaced while waiting, or waiting at the end. */
+  private framesDroppedHere = 0;
+  /** This attempt's lines that are written once: the first frame, the termination, the phone's counts. */
+  private liveLogged = false;
+  private endLogged = false;
+  private phoneCountsLogged = false;
+  /** The camera the last *frame* came from — what a switch is confirmed against, not the pane's word. */
+  private framesFacing: CameraFacing | null = null;
+  /** Since launch — the denominators beside every lifecycle line. */
+  private readonly tally = { requested: 0, live: 0, ended: 0 };
   private readonly timers: CameraTimers;
+  private readonly log: CameraLog;
 
   constructor(private readonly deps: CameraControllerDeps) {
     this.timers = deps.timers ?? realTimers;
+    this.log = deps.log ?? realLog;
   }
 
   current(): CameraPaneState {
@@ -223,6 +260,13 @@ export class CameraController {
     // replacement session's events and ends do not.
     this.sessionToken = token;
     this.framesReceived = 0;
+    this.framesDroppedHere = 0;
+    this.liveLogged = false;
+    this.endLogged = false;
+    this.phoneCountsLogged = false;
+    this.framesFacing = null;
+    this.tally.requested += 1;
+    this.log.info(`camera.request sent: ${facing} camera — ${this.tally.requested} requested since launch`);
     this.setState({ kind: 'requesting', facing, streamId: null, expiresAtMs: null, message: null, fixHint: null });
 
     let ack: { payload?: unknown };
@@ -232,10 +276,10 @@ export class CameraController {
       if (seq !== this.requestSeq) return { ok: false, reason: 'superseded' };
       const failure = error as PhoneRequestError;
       if (failure.code) {
-        log.info('camera', `camera.request refused: ${failure.code}`);
+        this.log.info(`camera.request refused: ${failure.code}`);
         this.setState({ kind: 'refused', code: failure.code, message: failure.phoneMessage ?? failure.message, fixHint: failure.fixHint ?? null });
       } else {
-        log.warn('camera', `camera.request failed: ${failure.message}`);
+        this.log.warn(`camera.request failed: ${failure.message}`);
         this.setState({ kind: 'error', code: 'REQUEST_FAILED', message: failure.message });
       }
       return { ok: false, reason: failure.message };
@@ -268,23 +312,32 @@ export class CameraController {
     // that never arrives, so a pane cannot sit on "waiting" for a request that no longer exists.
     this.expiryTimer = this.timers.setTimeout(() => {
       if (this.state.kind === 'requesting' && this.streamId === streamId) {
-        log.warn('camera', 'camera request outlived its expiry with no word from the phone; ending it here');
+        this.log.warn('camera request outlived its expiry with no word from the phone; ending it here');
         void this.sendStop(streamId);
         this.end('expired', streamId);
       }
     }, expiresInMs + CAMERA_EXPIRY_SLACK_MS);
-    log.info('camera', `camera.request acknowledged: stream ${streamId.slice(0, 8)}… awaiting approval on the phone`);
+    this.log.info(`camera.request acknowledged: stream ${streamId.slice(0, 8)}… awaiting approval on the phone`);
     return { ok: true };
   }
 
-  /** Stops whatever this Mac has open. Idempotent: a stop with nothing open is an answer. */
+  /**
+   * Stops whatever this Mac has open. Idempotent: a stop with nothing open is an answer.
+   *
+   * The `camera.stop` is **written** first and the stream torn down in the same tick, without waiting
+   * for the ack — the picture, the socket and the timers go at once whatever the phone does. Writing
+   * first gives the phone the reason before the socket's close reaches it; two connections cannot
+   * promise that order, so the phone also re-attributes a close the stop arrives just after
+   * (defect 167). This side's reason is known and is never replaced by the phone's account of it.
+   */
   async stop(): Promise<CameraResult> {
     const streamId = this.streamId;
     const active = this.isActive();
     this.requestSeq += 1;
     if (!active) return { ok: true };
+    const told = streamId ? this.sendStop(streamId) : null;
     this.end('stopped-by-mac', streamId);
-    if (streamId) await this.sendStop(streamId);
+    if (told) await told;
     return { ok: true };
   }
 
@@ -295,12 +348,17 @@ export class CameraController {
     if (!streamId || (this.state.kind !== 'live' && this.state.kind !== 'connecting')) {
       return { ok: false, reason: 'No live camera stream' };
     }
+    // Asked, accepted and confirmed are three lines: the ack says the phone took the request, and only
+    // a frame from the other camera says the picture actually changed (logged in onFrame).
+    this.log.info(`camera.switch to ${facing} requested for ${streamLabel(streamId)}`);
     try {
       await this.deps.link.request(MessageType.CAMERA_SWITCH, { streamId, facing }, REQUEST_TIMEOUT_MS);
+      this.log.info(`camera.switch to ${facing} accepted by the phone for ${streamLabel(streamId)}; waiting for its frames`);
       return { ok: true };
     } catch (error) {
       const failure = error as PhoneRequestError;
       const notice = failure.phoneMessage ?? failure.message;
+      this.log.warn(`camera.switch to ${facing} refused for ${streamLabel(streamId)}: ${failure.code ?? failure.message}`);
       if (this.state.kind === 'live' && this.streamId === streamId) this.setState({ ...this.state, notice });
       return { ok: false, reason: notice };
     }
@@ -324,16 +382,36 @@ export class CameraController {
     if (!streamId || this.deps.link.token() !== this.sessionToken) return;
 
     if (state === 'stopped') {
-      // The phone's own reason replaces a reason this side guessed — a socket closing before the
-      // phone's `stopped` arrived reads `stream-lost` until the phone says what really happened.
-      const ownsCurrent = streamId === this.streamId;
-      const refinesEnded = this.state.kind === 'ended' && this.state.streamId === streamId;
-      if (!ownsCurrent && !refinesEnded) return;
       const reason = typeof p.reason === 'string' && WIRE_REASONS.has(p.reason) ? (p.reason as CameraEndReason) : 'stream-closed';
-      this.end(reason, streamId, {
+      const counts = {
         framesSent: typeof p.framesSent === 'number' ? p.framesSent : null,
         framesDropped: typeof p.framesDropped === 'number' ? p.framesDropped : null,
-      });
+      };
+      if (streamId === this.streamId) {
+        this.end(reason, streamId, counts);
+        return;
+      }
+      // News about a stream this side has already ended — the same session, the exact stream, and
+      // nothing newer begun. The phone's counts are always taken. Its reason replaces only a reason
+      // this side guessed (`stream-lost`): a Mac Stop is known here, and a socket the stop closed must
+      // not turn it into "the connection closed" (defect 167). Repeats change nothing further.
+      if (this.state.kind !== 'ended' || this.state.streamId !== streamId) return;
+      const refined = GUESSED_REASONS.has(this.state.reason) && reason !== this.state.reason ? reason : this.state.reason;
+      const copy = refined === this.state.reason ? { message: this.state.message, fixHint: this.state.fixHint } : endedCopy(refined);
+      this.logPhoneCounts(streamId, reason, counts, this.state.reason, refined);
+      const merged = {
+        ...this.state,
+        reason: refined,
+        message: copy.message,
+        fixHint: copy.fixHint,
+        framesSent: this.state.framesSent ?? counts.framesSent,
+        framesDropped: this.state.framesDropped ?? counts.framesDropped,
+      };
+      const changed =
+        merged.reason !== this.state.reason ||
+        merged.framesSent !== this.state.framesSent ||
+        merged.framesDropped !== this.state.framesDropped;
+      if (changed) this.setState(merged);
       return;
     }
     if (streamId !== this.streamId) return;
@@ -341,6 +419,7 @@ export class CameraController {
     if (state === 'starting' && this.state.kind === 'requesting') {
       this.clearExpiry();
       const facing = p.facing === 'front' ? 'front' : 'back';
+      this.log.info(`${streamLabel(streamId)} allowed on the phone (${facing} camera); opening the stream socket`);
       this.setState({ kind: 'connecting', streamId, facing });
       this.openStream(streamId);
       return;
@@ -385,7 +464,7 @@ export class CameraController {
     try {
       socket = this.deps.openSocket(host, cameraClaim(token, streamId));
     } catch (error) {
-      log.warn('camera', `camera stream socket could not open: ${String(error)}`);
+      this.log.warn(`camera stream socket could not open: ${String(error)}`);
       void this.sendStop(streamId);
       this.end('stream-lost', streamId);
       return;
@@ -399,10 +478,12 @@ export class CameraController {
         frames = reader.push(chunk);
       } catch (error) {
         const reason = error instanceof CameraFrameError ? error.reason : String(error);
-        log.warn('camera', `camera stream closed on a malformed frame: ${reason}`);
-        this.teardownStream();
-        this.streamId = null;
+        this.log.warn(`camera stream closed on a malformed frame: ${reason}`);
         void this.sendStop(streamId);
+        this.teardownStream();
+        this.clearExpiry();
+        this.streamId = null;
+        this.logEnd(streamId, 'malformed-frame', { framesSent: null, framesDropped: null });
         this.setState({
           kind: 'error',
           code: 'MALFORMED_FRAME',
@@ -414,15 +495,17 @@ export class CameraController {
     });
     socket.onClose((reason) => {
       if (this.socket !== socket) return;
-      log.info('camera', `camera stream socket closed: ${reason}`);
+      this.log.info(`camera stream socket closed: ${reason}`);
       this.end('stream-lost', streamId);
     });
   }
 
   private onFrame(streamId: string, frame: CameraFrame): void {
     if (streamId !== this.streamId) return;
+    if (this.state.kind !== 'connecting' && this.state.kind !== 'live') return;
     this.lastFrameAt = this.timers.now();
     this.framesReceived += 1;
+    this.logFrameMilestones(streamId, frame);
     if (this.state.kind === 'connecting') {
       // Frames and `running` travel on two channels; the phone sends a frame only once it is running,
       // so the first frame is as good a signal as the event, and waiting for the event would hold a
@@ -463,8 +546,28 @@ export class CameraController {
     });
   }
 
+  /**
+   * The first frame of the stream, and the first frame from the other camera after a switch — the
+   * only per-stream frame lines there are. Every other frame is counted, never logged.
+   */
+  private logFrameMilestones(streamId: string, frame: CameraFrame): void {
+    const facing: CameraFacing = frame.facing === 'front' ? 'front' : 'back';
+    if (!this.liveLogged) {
+      this.liveLogged = true;
+      this.tally.live += 1;
+      this.log.info(
+        `${streamLabel(streamId)} live: first frame ${frame.width} × ${frame.height} from the ${facing} camera — ` +
+          `${this.tally.live} live of ${this.tally.requested} requested since launch`,
+      );
+    } else if (this.framesFacing !== null && this.framesFacing !== facing) {
+      this.log.info(`${streamLabel(streamId)} switch confirmed: frames now from the ${facing} camera, ${frame.width} × ${frame.height}`);
+    }
+    this.framesFacing = facing;
+  }
+
   private toRenderer(frame: CameraFrameMessage): void {
     if (this.frameWithRenderer) {
+      if (this.waitingFrame) this.framesDroppedHere += 1;
       this.waitingFrame = frame; // the newest replaces whatever was waiting
       return;
     }
@@ -494,6 +597,7 @@ export class CameraController {
     this.teardownStream();
     this.clearExpiry();
     this.streamId = null;
+    this.logEnd(streamId, reason, counts);
     const copy = endedCopy(reason);
     this.setState({
       kind: 'ended',
@@ -513,8 +617,46 @@ export class CameraController {
     socket?.destroy();
     if (this.stallTimer !== null) this.timers.clearInterval(this.stallTimer);
     this.stallTimer = null;
+    if (this.waitingFrame) this.framesDroppedHere += 1;
     this.waitingFrame = null;
     this.frameWithRenderer = false;
+  }
+
+  /**
+   * The one termination line per attempt, with the denominators beside it. Called from every exit;
+   * a second call for the same attempt writes nothing, so no ending is ever counted twice.
+   */
+  private logEnd(
+    streamId: string | null,
+    reason: CameraEndReason | 'malformed-frame',
+    counts: { framesSent: number | null; framesDropped: number | null },
+  ): void {
+    if (this.endLogged) return;
+    this.endLogged = true;
+    this.tally.ended += 1;
+    const phone =
+      counts.framesSent === null ? 'no phone counts yet' : `phone: ${counts.framesSent} sent / ${counts.framesDropped ?? 0} dropped there`;
+    if (counts.framesSent !== null) this.phoneCountsLogged = true;
+    this.log.info(
+      `${streamLabel(streamId)} ended: ${reason} — ${this.framesReceived} received here, ${this.framesDroppedHere} not drawn here; ` +
+        `${phone} — ${this.tally.ended} ended of ${this.tally.requested} requested since launch`,
+    );
+  }
+
+  /** The phone's own account of a stream this side already ended: once, and saying whose reason stands. */
+  private logPhoneCounts(
+    streamId: string,
+    phoneReason: CameraEndReason,
+    counts: { framesSent: number | null; framesDropped: number | null },
+    previous: CameraEndReason,
+    standing: CameraEndReason,
+  ): void {
+    if (this.phoneCountsLogged) return;
+    this.phoneCountsLogged = true;
+    const sent = counts.framesSent === null ? 'no counts' : `${counts.framesSent} sent / ${counts.framesDropped ?? 0} dropped there`;
+    const verdict =
+      standing !== previous ? `replaces this Mac's guess, ${previous}` : phoneReason === previous ? 'agreed' : `this Mac's ${previous} stands`;
+    this.log.info(`${streamLabel(streamId)} phone's account: ${phoneReason}, ${sent} (${verdict})`);
   }
 
   private clearExpiry(): void {
@@ -527,7 +669,7 @@ export class CameraController {
     try {
       await this.deps.link.request(MessageType.CAMERA_STOP, { streamId }, REQUEST_TIMEOUT_MS);
     } catch (error) {
-      log.warn('camera', `camera.stop for ${streamId.slice(0, 8)}… failed: ${String(error)}`);
+      this.log.warn(`camera.stop for ${streamId.slice(0, 8)}… failed: ${String(error)}`);
     }
   }
 

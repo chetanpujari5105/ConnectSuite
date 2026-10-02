@@ -31,6 +31,13 @@ function goldenFrame(sequence: number): Buffer {
   return bytes;
 }
 
+/** The golden frame from the named camera: the facing byte is the camera header's third. */
+function frameFrom(sequence: number, facing: 'back' | 'front'): Buffer {
+  const bytes = goldenFrame(sequence);
+  bytes[13 + 2] = facing === 'front' ? 1 : 0;
+  return bytes;
+}
+
 class FakeSocket implements CameraSocket {
   data: Array<(chunk: Buffer) => void> = [];
   closers: Array<(reason: string) => void> = [];
@@ -58,6 +65,8 @@ interface Harness {
   sockets: Array<{ host: string; claim: string; socket: FakeSocket }>;
   states: CameraPaneState[];
   frames: CameraFrameMessage[];
+  /** Every lifecycle line the production controller wrote, as `I …` / `W …`. */
+  logs: string[];
   link: { connected: boolean; token: string | null };
   clock: { now: number; intervals: Array<() => void>; timeouts: Array<{ fn: () => void; at: number }> };
   reply: (type: string, payload: Record<string, unknown>) => Promise<{ payload?: unknown }>;
@@ -71,6 +80,7 @@ function harness(): Harness {
     sockets: [],
     states: [],
     frames: [],
+    logs: [],
     link: { connected: true, token: TOKEN as string | null },
     clock: { now: 1_000_000, intervals: [], timeouts: [] },
     reply: async (type: string) =>
@@ -97,6 +107,7 @@ function harness(): Harness {
     },
     emitState: (state) => h.states.push(state),
     emitFrame: (frame) => h.frames.push(frame),
+    log: { info: (m) => h.logs.push(`I ${m}`), warn: (m) => h.logs.push(`W ${m}`) },
     timers: {
       now: () => h.clock.now,
       setInterval: (fn) => h.clock.intervals.push(fn),
@@ -405,4 +416,215 @@ test('an ack without a usable stream id is an error, not a request', async () =>
   h.reply = async () => ({ payload: { state: 'awaiting-approval', streamId: 'not-hex' } });
   await h.controller.request('back');
   assert.equal(h.last().kind, 'error');
+});
+
+// ---- defect 167: a Mac Stop keeps its own reason, whichever channel the phone hears first --------
+
+test('stop writes camera.stop while the stream socket is still open, then closes everything in the same tick', async () => {
+  const h = harness();
+  const socket = await toLive(h);
+  let socketOpenWhenStopWritten: boolean | null = null;
+  h.reply = async (type) => {
+    if (type === 'camera.stop') socketOpenWhenStopWritten = !socket.destroyed;
+    return { payload: { stopped: true } };
+  };
+  const pending = h.controller.stop();
+  // Synchronously, before any ack: the picture, the socket and the stall watch are gone.
+  assert.equal(socketOpenWhenStopWritten, true, 'the socket closed before the phone was told why');
+  assert.equal(socket.destroyed, true);
+  assert.equal(h.last().kind, 'ended');
+  assert.equal(h.clock.intervals.length, 0, 'the stall watch outlived the stop');
+  await pending;
+  // The phone heard the stop first and agrees: its counts are taken, the reason is unchanged.
+  h.controller.onState({ state: 'stopped', streamId: STREAM, reason: 'stopped-by-mac', framesSent: 40, framesDropped: 0 });
+  const state = h.last() as Extract<CameraPaneState, { kind: 'ended' }>;
+  assert.equal(state.reason, 'stopped-by-mac');
+  assert.equal(state.framesSent, 40);
+});
+
+test('a socket close the phone heard before the stop does not turn a Mac Stop into a lost connection', async () => {
+  // The hardware reading of 2026-10-02, verbatim: the phone ended the stream as stream-closed 7 ms
+  // before the stop arrived, and its `stopped` replaced this Mac's own reason.
+  const h = harness();
+  await toLive(h);
+  await h.controller.stop();
+  h.controller.onState({ state: 'stopped', streamId: STREAM, reason: 'stream-closed', framesSent: 2325, framesDropped: 0 });
+  const state = h.last() as Extract<CameraPaneState, { kind: 'ended' }>;
+  assert.equal(state.reason, 'stopped-by-mac');
+  assert.equal(state.message, 'You stopped the camera from this Mac.');
+  assert.equal(state.fixHint, null);
+  assert.equal(state.framesSent, 2325, 'the phone’s counts were lost with its reason');
+  assert.equal(state.framesReceived, 1);
+});
+
+test('a delayed or repeated terminal event changes nothing after the first', async () => {
+  const h = harness();
+  await toLive(h);
+  await h.controller.stop();
+  h.controller.onState({ state: 'stopped', streamId: STREAM, reason: 'stream-closed', framesSent: 10, framesDropped: 1 });
+  const settled = h.states.length;
+  const first = h.last();
+  h.controller.onState({ state: 'stopped', streamId: STREAM, reason: 'stream-closed', framesSent: 10, framesDropped: 1 });
+  h.controller.onState({ state: 'stopped', streamId: STREAM, reason: 'left-screen', framesSent: 99, framesDropped: 9 });
+  assert.equal(h.states.length, settled, 'a repeat was drawn again');
+  assert.deepEqual(h.controller.current(), first);
+});
+
+test('stop while requesting, starting or running ends at once as stopped-by-mac and tells the phone once', async () => {
+  for (const reach of ['requesting', 'connecting', 'live'] as const) {
+    const h = harness();
+    if (reach === 'requesting') await h.controller.request('back');
+    if (reach === 'connecting') await toStarting(h);
+    if (reach === 'live') await toLive(h);
+    assert.equal(h.last().kind, reach);
+    await h.controller.stop();
+    assert.equal((h.last() as { reason: string }).reason, 'stopped-by-mac', reach);
+    assert.deepEqual(h.sent.filter((s) => s.type === 'camera.stop'), [{ type: 'camera.stop', payload: { streamId: STREAM } }], reach);
+    // Whatever the phone then says about it, the ending is this Mac's.
+    h.controller.onState({ state: 'stopped', streamId: STREAM, reason: reach === 'requesting' ? 'stopped-by-mac' : 'stream-closed', framesSent: 0, framesDropped: 0 });
+    assert.equal((h.last() as { reason: string }).reason, 'stopped-by-mac', reach);
+    assert.equal(await h.controller.stop().then(() => h.sent.filter((s) => s.type === 'camera.stop').length), 1, `${reach}: stop is not idempotent`);
+  }
+});
+
+test('a genuine loss reads stream-lost, takes the phone’s reason when it comes, and names no cause', async () => {
+  const h = harness();
+  const socket = await toLive(h);
+  socket.hangUp();
+  const lost = h.last() as Extract<CameraPaneState, { kind: 'ended' }>;
+  assert.equal(lost.reason, 'stream-lost');
+  // Another stream's ending is not this one's account, even while this one's reason is only a guess.
+  h.controller.onState({ state: 'stopped', streamId: OTHER_STREAM, reason: 'left-screen', framesSent: 77, framesDropped: 0 });
+  assert.deepEqual(h.controller.current(), lost);
+  h.controller.onState({ state: 'stopped', streamId: STREAM, reason: 'stream-closed', framesSent: 5, framesDropped: 0 });
+  const closed = h.last() as Extract<CameraPaneState, { kind: 'ended' }>;
+  assert.equal(closed.reason, 'stream-closed', 'a guess was not replaced by the phone’s account');
+  assert.equal(closed.framesSent, 5);
+  for (const sentence of [lost.message, lost.fixHint, closed.message, closed.fixHint]) {
+    assert.doesNotMatch(sentence ?? '', /network|wi-?fi|router|same/i, `an unsupported diagnosis: ${sentence}`);
+  }
+  assert.equal(h.sent.filter((s) => s.type === 'camera.stop').length, 0, 'a loss nobody asked for sent a stop');
+});
+
+test('a stale stop or ending for an old stream, or from a replaced session, never touches the next one', async () => {
+  const h = harness();
+  await toLive(h);
+  await h.controller.stop();
+  // A new request, for a new stream, in the same session.
+  h.reply = async (type) =>
+    type === 'camera.request'
+      ? { payload: { state: 'awaiting-approval', streamId: OTHER_STREAM, expiresInMs: 30_000 } }
+      : { payload: { stopped: false } };
+  await h.controller.request('front');
+  h.controller.onState({ state: 'starting', streamId: OTHER_STREAM, facing: 'front' });
+  const next = h.sockets[1]!.socket;
+  next.feed(frameFrom(1, 'front'));
+  assert.equal(h.last().kind, 'live');
+  const before = h.states.length;
+  h.controller.onState({ state: 'stopped', streamId: STREAM, reason: 'stream-closed', framesSent: 1, framesDropped: 0 });
+  h.controller.onState({ state: 'running', streamId: STREAM, facing: 'back', width: 1, height: 1 });
+  h.link.token = OTHER_TOKEN; // and a replacement session's news about the current stream
+  h.controller.onState({ state: 'stopped', streamId: OTHER_STREAM, reason: 'declined' });
+  h.link.token = TOKEN;
+  assert.equal(h.states.length, before, 'stale news reached the live stream');
+  assert.equal(next.destroyed, false);
+  assert.equal(h.controller.current().kind, 'live');
+});
+
+test('a stop the phone never answers still ends everything at once, and frames after it are refused', async () => {
+  for (const answer of ['never', 'timeout'] as const) {
+    const h = harness();
+    const socket = await toLive(h);
+    h.reply = (type) =>
+      type !== 'camera.stop'
+        ? Promise.resolve({ payload: {} })
+        : answer === 'never'
+          ? new Promise(() => undefined)
+          : Promise.reject(new Error('camera.stop timed out after 5000ms'));
+    const pending = h.controller.stop();
+    assert.equal(socket.destroyed, true, answer);
+    assert.equal(h.last().kind, 'ended', answer);
+    const frames = h.frames.length;
+    socket.feed(goldenFrame(2));
+    assert.equal(h.frames.length, frames, `${answer}: a frame was drawn after stop`);
+    assert.equal(h.controller.current().kind, 'ended', answer);
+    if (answer === 'timeout') {
+      await pending;
+      assert.ok(h.logs.some((l) => l.startsWith('W camera.stop for 01234567… failed')), 'the failed stop went unlogged');
+    }
+  }
+});
+
+// ---- defect 168: the Mac logs the lifecycle, once per step, never per frame --------------------
+
+test('one session logs request, approval, first frame, switch asked/accepted/confirmed, and one ending with its counts', async () => {
+  const h = harness();
+  await h.controller.request('back');
+  h.controller.onState({ state: 'starting', streamId: STREAM, facing: 'back' });
+  const socket = h.sockets[0]!.socket;
+  socket.feed(frameFrom(1, 'back'));
+  for (let s = 2; s <= 60; s++) socket.feed(frameFrom(s, 'back')); // renderer never acks: 58 replaced, 1 waiting
+  await h.controller.switchCamera('front');
+  h.controller.onState({ state: 'running', streamId: STREAM, facing: 'front', width: 1280, height: 720, frameRate: 15, switched: true });
+  socket.feed(frameFrom(61, 'front'));
+  socket.feed(frameFrom(62, 'front'));
+  await h.controller.stop();
+  h.controller.onState({ state: 'stopped', streamId: STREAM, reason: 'stream-closed', framesSent: 62, framesDropped: 0 });
+  h.controller.onState({ state: 'stopped', streamId: STREAM, reason: 'stream-closed', framesSent: 62, framesDropped: 0 });
+
+  assert.deepEqual(h.logs, [
+    'I camera.request sent: back camera — 1 requested since launch',
+    'I camera.request acknowledged: stream 01234567… awaiting approval on the phone',
+    'I camera stream 01234567… allowed on the phone (back camera); opening the stream socket',
+    'I camera stream 01234567… live: first frame 1280 × 720 from the back camera — 1 live of 1 requested since launch',
+    'I camera.switch to front requested for camera stream 01234567…',
+    'I camera.switch to front accepted by the phone for camera stream 01234567…; waiting for its frames',
+    'I camera stream 01234567… switch confirmed: frames now from the front camera, 1280 × 720',
+    'I camera stream 01234567… ended: stopped-by-mac — 62 received here, 61 not drawn here; no phone counts yet — 1 ended of 1 requested since launch',
+    "I camera stream 01234567… phone's account: stream-closed, 62 sent / 0 dropped there (this Mac's stopped-by-mac stands)",
+  ]);
+});
+
+test('termination is counted and logged once, however many exits fire', async () => {
+  const h = harness();
+  const socket = await toLive(h);
+  await h.controller.stop();
+  socket.hangUp(); // a late close of the socket stop already closed
+  h.controller.onSessionEnded(TOKEN);
+  h.controller.onState({ state: 'stopped', streamId: STREAM, reason: 'stream-closed', framesSent: 3, framesDropped: 0 });
+  assert.equal(h.logs.filter((l) => / ended: /.test(l)).length, 1, h.logs.join('\n'));
+  // The tally is per launch: a second attempt is the second of each.
+  await h.controller.request('back');
+  h.controller.onState({ state: 'stopped', streamId: STREAM, reason: 'declined', framesSent: 0, framesDropped: 0 });
+  assert.equal(
+    h.logs.at(-1),
+    'I camera stream 01234567… ended: declined — 0 received here, 0 not drawn here; phone: 0 sent / 0 dropped there — 2 ended of 2 requested since launch',
+  );
+});
+
+test('a refused switch is logged as refused and never as confirmed', async () => {
+  const h = harness();
+  const socket = await toLive(h);
+  h.reply = async () => {
+    throw Object.assign(new Error('CAMERA_UNAVAILABLE'), { code: 'CAMERA_UNAVAILABLE', phoneMessage: 'No front camera.' });
+  };
+  await h.controller.switchCamera('back');
+  socket.feed(goldenFrame(2)); // still the front camera
+  assert.ok(h.logs.includes('W camera.switch to back refused for camera stream 01234567…: CAMERA_UNAVAILABLE'), h.logs.join('\n'));
+  assert.equal(h.logs.filter((l) => /accepted|confirmed/.test(l)).length, 0);
+});
+
+test('no log line carries the session token, the claim or frame bytes', async () => {
+  const h = harness();
+  const socket = await toLive(h);
+  for (let s = 2; s <= 20; s++) socket.feed(goldenFrame(s));
+  await h.controller.switchCamera('back');
+  await h.controller.stop();
+  assert.ok(h.logs.length >= 5, `control: the session was logged (${h.logs.length} lines)`);
+  for (const line of h.logs) {
+    assert.ok(!line.includes(TOKEN), `token in: ${line}`);
+    assert.ok(!line.includes(STREAM), `full stream id in: ${line}`);
+    assert.ok(!/ffd8|\bcamera [0-9a-f]{32}\b/i.test(line), `payload or claim in: ${line}`);
+  }
+  assert.equal(h.logs.filter((l) => /first frame/.test(l)).length, 1, 'frames were logged one by one');
 });

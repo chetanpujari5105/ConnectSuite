@@ -253,6 +253,11 @@ object CameraEngine {
                 lastTally = s?.let { it.framesSent() to it.framesDropped() } ?: (0L to 0L)
                 s?.let { LinkLog.i("camera", "Camera stream closed: ${it.summary()}") }
             }
+            is CameraEffect.Reattributed -> LinkLog.i(
+                "camera",
+                "Camera stream ${effect.streamId.take(8)}… had already ended as ${effect.from.name} when the Mac's stop " +
+                    "arrived; recorded as ${effect.to.name}",
+            )
             is CameraEffect.Stopped -> {
                 val (sent, dropped) = lastTally
                 LinkLog.i(
@@ -333,6 +338,7 @@ object CameraEngine {
             when (it) {
                 is CameraEffect.Refuse -> "refused ${it.code}"
                 is CameraEffect.Stopped -> "stopped ${it.reason.name}"
+                is CameraEffect.Reattributed -> "re-attributed ${it.from.name} → ${it.to.name}"
                 else -> it.javaClass.simpleName
             }
         }.ifEmpty { "no change" }

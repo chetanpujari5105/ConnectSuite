@@ -47,6 +47,13 @@ sealed interface CameraEffect<out S : Any> {
     data object CloseStream : CameraEffect<Nothing>
 
     /**
+     * A stream that had already ended as [from] is now known to have ended as [to] — the owner's
+     * `camera.stop` arrived just after its socket closed (defect 167). Nothing is released, because
+     * everything already was; the phone's own screen and log say the truer reason.
+     */
+    data class Reattributed(val streamId: String, val from: CameraStopReason, val to: CameraStopReason) : CameraEffect<Nothing>
+
+    /**
      * The stream ended. The engine fills in `framesSent`/`framesDropped` from the socket's tally and
      * sends `camera.state: stopped` — **unless [reason] has no wire value**, which is the owner
      * having disconnected, when there is nobody to send it to.
@@ -115,8 +122,12 @@ class CameraSessionMachine<S : Any>(
         val announced: Boolean = false,
     )
 
+    /** The stream that ended last: whose it was, which it was, and why — for [stopFromMac] only. */
+    private data class Ended<S : Any>(val owner: S, val streamId: String, val reason: CameraStopReason)
+
     private var live: Live<S>? = null
     private var lastStop: CameraStopReason? = null
+    private var lastEnded: Ended<S>? = null
 
     @Synchronized
     fun ui(): CameraUi {
@@ -193,6 +204,7 @@ class CameraSessionMachine<S : Any>(
         val deadline = nowMillis + requestTimeoutMs
         live = Live(owner, peerName, requestId, streamId, CameraPhase.AWAITING, facing, deadline)
         lastStop = null
+        lastEnded = null
         return listOf(
             CameraEffect.Ack(owner, requestId, CameraPayloads.awaiting(streamId, facing, requestTimeoutMs, screenShown)),
             CameraEffect.ShowRequest(streamId, peerName),
@@ -200,7 +212,17 @@ class CameraSessionMachine<S : Any>(
         )
     }
 
-    /** `camera.stop`. Idempotent for its owner; refused for anyone else. */
+    /**
+     * `camera.stop`. Idempotent for its owner; refused for anyone else.
+     *
+     * The Mac stops its picture at once and sends this on the control channel, so it and the stream
+     * socket's close race on two connections. When the close wins, the stream has already ended as
+     * [CameraStopReason.STREAM_CLOSED] — a reason that only means *nobody said why*. A stop that then
+     * arrives from the **same owner**, for **that exact stream**, with **no newer stream begun**, says
+     * why, and the ending is re-attributed to [CameraStopReason.STOPPED_BY_MAC] (defect 167). Any other
+     * ending is a reason somebody did state, and is left alone. The ack stays `stopped: false`: this
+     * stop ended nothing.
+     */
     @Synchronized
     fun stopFromMac(owner: S, requestId: String, streamId: String?): List<CameraEffect<S>> {
         if (streamId.isNullOrBlank()) {
@@ -208,6 +230,17 @@ class CameraSessionMachine<S : Any>(
         }
         val l = live
         if (l == null || l.streamId != streamId) {
+            val ended = lastEnded
+            if (l == null && ended != null && ended.streamId == streamId && ended.owner === owner &&
+                ended.reason == CameraStopReason.STREAM_CLOSED
+            ) {
+                lastEnded = ended.copy(reason = CameraStopReason.STOPPED_BY_MAC)
+                lastStop = CameraStopReason.STOPPED_BY_MAC
+                return listOf(
+                    CameraEffect.Reattributed(streamId, CameraStopReason.STREAM_CLOSED, CameraStopReason.STOPPED_BY_MAC),
+                    CameraEffect.Ack(owner, requestId, mapOf("stopped" to false)),
+                )
+            }
             return listOf(CameraEffect.Ack(owner, requestId, mapOf("stopped" to false)))
         }
         if (l.owner !== owner) {
@@ -428,6 +461,7 @@ class CameraSessionMachine<S : Any>(
         val l = live ?: return emptyList()
         live = null
         lastStop = reason
+        lastEnded = Ended(l.owner, l.streamId, reason)
         return listOf(
             CameraEffect.CancelTimers,
             CameraEffect.CloseCamera,

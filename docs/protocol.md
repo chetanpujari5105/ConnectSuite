@@ -551,7 +551,16 @@ it never appears on the wire.
 
 Acks `{"stopped":true}` when it ended a request or stream this Mac owned, and `{"stopped":false}`
 when nothing is open under that id — a repeated stop, or one that crossed a stop from the phone. It is
-idempotent: a stop that finds nothing is an answer, not an error. A `streamId` owned by **another**
+idempotent: a stop that finds nothing is an answer, not an error.
+
+**The Mac writes `camera.stop` first, then closes its stream socket in the same moment, and does not
+wait for the ack** — the picture stops whatever the phone does. The two travel on two connections, so
+the phone may still see the socket close first and end the stream as `stream-closed`. When the owner's
+`camera.stop` for **that exact stream** then arrives, with no newer request begun, the phone
+re-attributes the ending to `stopped-by-mac` on its own screen and log and acks `{"stopped":false}`;
+no second `stopped` is sent. The Mac keeps its own `stopped-by-mac` whatever `stopped` it receives: it
+replaces a reason only when that reason was its own guess (`stream-lost`). Any other ending — one
+somebody stated — is never re-attributed. A `streamId` owned by **another**
 control session is refused with `UNAUTHORIZED` and changes nothing. A missing `streamId` is
 `BAD_REQUEST`.
 

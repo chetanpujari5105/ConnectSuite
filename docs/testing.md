@@ -27208,3 +27208,97 @@ records were written; untracked set identical.
 **Untested on hardware:** the permission dialog, the 30 s expiry with the dialog open, Home/lock, leaving
 the screen, pane exit, disconnect, mirror busy, notification/background request, One UI's in-use codes, and
 any frame-rate, latency, CPU, heat or bandwidth figure.
+
+### Defect 167 — a Mac Stop was reported as a closed connection on both ends (fixed 2026-10-02, tests only)
+
+**Found** on hardware, 2026-10-02 20:02:44 (the first supervised Camera sitting, above): the Mac's
+`stop()` closed its stream socket and *then* wrote `camera.stop`. The phone saw the close first
+(`.909`, `STREAM_CLOSED`), the stop arrived at `.916` and was only acked, and the phone's
+`stopped(stream-closed)` replaced the Mac's own `stopped-by-mac` through `onState`'s refine rule — written
+for a guessed `stream-lost`, applied to everything. Both screens then blamed the connection; the Mac
+printed a raw `stream-closed` code line and advised checking the network.
+
+**Fix, Mac (`desktop/src/main/camera.ts`):**
+- `stop()` writes `camera.stop` first (the link's write is synchronous) and tears down in the same tick —
+  socket, stall watch, waiting frame, picture — and only then awaits the ack. A missing or failed ack
+  changes nothing on screen.
+- A phone `stopped` for the current stream ends it with the phone's reason, as before. For a stream this
+  side has **already** ended — same session token, exact stream id, nothing newer begun — the phone's
+  counts are taken once and its reason replaces **only** `stream-lost`, this side's guess. Repeats emit
+  nothing.
+- `stream-closed` and `stream-lost` read *"The camera stream ended."* / *"Ask again to see the camera."*
+  under the headline *"The camera stream ended"*; no ending carries a `code` line.
+- The malformed-frame exit also writes the stop before tearing down.
+
+**Fix, phone (`camera-module`):** `CameraSessionMachine` remembers the last ended stream (owner, id,
+reason). The owner's `camera.stop` for that exact stream, when it ended as `STREAM_CLOSED` and no newer
+request has begun, emits `Reattributed(STREAM_CLOSED → STOPPED_BY_MAC)`: the phone's screen and log say the
+Mac stopped it, nothing is released twice, the ack stays `{"stopped":false}`, and no second `stopped` is
+sent. Any stated reason (left-screen, stopped-on-phone, the start timeout's `STREAM_NOT_OPENED`) is never
+re-attributed. `STREAM_CLOSED`'s sentence is now *"The camera stream to the Mac ended."*
+`docs/protocol.md` → `camera.stop` carries both rules.
+
+**Tests** (each calls the production controller or machine):
+- Mac `camera.test.ts`: stop is written while the socket is open, and everything closes in the same
+  tick; the hardware order verbatim (phone `stream-closed` with 2,325 frames after a Mac Stop → reason
+  and sentence stay the Mac's, counts taken); repeated and delayed endings change nothing; stop while
+  requesting / connecting / live, once each; a genuine loss reads `stream-lost`, ignores another stream's
+  ending, then takes the phone's `stream-closed` and names no cause; stale endings and a replaced
+  session's news never touch the next stream; a stop never answered, or timing out, still ends
+  everything at once and refuses later frames.
+- Mac `cameraView.test.ts`: no ending of the twelve has a code line or prints its hyphenated token, with
+  a control that the block drew its sentence. Its first version also searched for `expired` and
+  `declined` and went red on the honest headline *"The request expired"* — the token is also an English
+  word; the assertion now checks for a line that **is** the token, and substrings only of hyphenated ones.
+- Phone `CameraSessionMachineTest`: re-attribution after the close (once, nothing released twice, ack
+  `false`); a stop that arrives first and a later close changes nothing; only the owner and only that
+  stream id (with a control that the owner's stop does re-attribute); a stale stop cannot touch a newer
+  request; stated reasons are never re-attributed; a genuine close stays a close and its sentence names
+  no cause.
+
+**Red-first, by mutation** (each restore SHA-256-verified; Gradle verdicts only from result files written
+by that run, 5 of 5 fresh, with the exit code):
+- Mac 167-A tear down before writing the stop; 167-B the phone's reason replaces any reason (**the
+  original defect**); 167-C the network sentence restored; 167-D a repeat redrawn; 167-E events not bound
+  to the session; 167-F an ended stream takes another stream's account; 167-G the reason printed as a
+  code line — **all red on their named tests.**
+- Phone P167-A no re-attribution; B any owner; D any reason; E the screen keeps the old reason; F the
+  connection sentence restored — **red on their named tests.** P167-C1 (drop the *no newer stream* check)
+  **survives**, because `request()` also clears the remembered stream — two guards on one property; with
+  both removed (C2) it is red.
+
+**Not reached:** the order the two channels actually arrive in on the device, and the phone's screen
+redraw (`CameraActivity`), which is Android-only. Unverified on hardware.
+
+### Defect 168 — the Mac logged one `[camera]` line per session (fixed 2026-10-02, tests only)
+
+**Found** in the same sitting: the Mac's log held only `camera.request acknowledged` for a session that
+was approved, went live, switched twice, stopped and received 2,325 frames.
+
+**Fix:** `CameraController` takes an injected `CameraLog` (the rotating file in the app; a recorder in the
+tests) and writes, per attempt, at most: request sent; ack; allowed on the phone / opening the socket;
+first frame with size and camera; switch **requested**, **accepted by the phone**, **confirmed** — by the
+first frame from the other camera, compared against the last *frame*'s camera, because `running` moves the
+pane's facing before the new camera's frames arrive — or **refused**; one termination line (reason,
+received here, not drawn here, the phone's counts when known); and the phone's later account once, saying
+whether this Mac's reason stands, was agreed, or was a guess it replaced. Since-launch tallies (requested,
+live, ended) ride on the lines. No per-frame line, no session token, no full stream id, no claim, no
+frame bytes. Frames replaced while the renderer was busy, and the one still waiting at the end, are
+counted as *not drawn here* — the Mac's own denominator, which did not exist before.
+
+**Tests** (Mac `camera.test.ts`): the whole session's lines, asserted exactly and in order (62 received,
+61 not drawn, *this Mac's stopped-by-mac stands*); termination counted and logged once however many exits
+fire, with the second attempt reading *2 ended of 2 requested*; a refused switch is logged as refused and
+never as accepted or confirmed; no line carries the token, the full stream id, a claim or frame bytes, and
+60 frames produce one *first frame* line.
+
+**Red-first, by mutation:** 168-B every frame logged as a first frame; C a switch confirmed against the
+pane rather than the frames; D *accepted* written before the phone answers; E replaced frames not counted;
+F endings not tallied; G the phone's account logged on every repeat — **all red on their named tests.**
+168-A (remove the once-guard) **survives alone**: no exit reaches `end()` twice today (a late close finds
+its socket detached, a session end finds nothing active, a late `stopped` takes the merge path). With a
+second exit added (`onSessionEnded` without its active check) and the guard removed (168-A2) it is red;
+with that exit and the guard kept (168-A3) it is green — the guard holds.
+
+**Not reached:** the real file logger (`logger.ts`) is not called by the tests; the default `CameraLog`
+is a two-line adapter onto it.
