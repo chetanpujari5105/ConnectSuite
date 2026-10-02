@@ -3,7 +3,9 @@
 **Status: built and tested with generated fixtures, 2026-10-02; first supervised hardware sitting the same
 evening — the two privacy checks and one approved session passed on the SM-S938B, with one wrong end reason
 on Mac Stop (see *Hardware results*). That reason (defect 167) and the Mac's missing lifecycle log
-(defect 168) are fixed in `35e1860`, tests only — not yet run on hardware. Most of the plan is still unrun. Not release-ready. Release builds do
+(defect 168) are fixed in `35e1860`, tests only. The one approved retry (21:33) expired unanswered —
+no capture. **A second session at 22:10 passed**: 168 is verified on hardware, and 167 is verified for
+the stop-first order, with the close-first re-attribution still tested only. Most of the plan is still unrun. Not release-ready. Release builds do
 not install it.** The contract is `docs/protocol.md` → Camera, and it
 wins wherever this file disagrees. This file is the arguments, the limits, and the supervised
 hardware-test plan.
@@ -300,3 +302,50 @@ was in this document's wording, which called 1280 × 720 a "target", and that is
 
 **Still outside it:** the permission dialog (needs `CAMERA` revoked, its own approval), Home/lock, pane exit,
 disconnect, mirror busy, background or notification requests.
+
+## Retry results — 2026-10-02, 21:33 IST (phone APK `1f3a0a00…` of `a76ae78`): expired, nothing verified
+
+**The one request expired unanswered.**
+- The phone had Instagram in front, so the request went out **as a notification**.
+- The owner was told to expect the request screen, and Start camera was never tapped.
+- Both ends ended it at 30.0 s as `expired`, with 0 frames. No camera client ever appeared, and the
+  request notification was removed. Nothing restarted in the 60 s observed.
+- No second request was made, as approved.
+
+**Defect 167 is unverified. Defect 168 is partly seen:** its request, ack and single termination lines
+appeared, with counts and tallies; its approval, first-frame and switch lines were not reached. Evidence:
+`docs/testing.md` → *Camera retry for defects 167 and 168*.
+
+**The driver crashed while recording the ending** (an `at` key collision in its own event recorder),
+after the request had ended. Its deadline logic was never exercised, because no attachment happened.
+
+**What the next attempt needs:**
+- **A read-only foreground check in preflight.** If Sidekick is not the resumed activity, ask the owner
+  to bring it forward, or tell them plainly that the request will arrive as a notification.
+- **The driver's recorder fixed and dry-run** through an ended request. The deadline, the switch and the
+  ceiling are unchanged.
+
+## Second retry — 2026-10-02, 22:10 IST: PASS
+
+One session, Sidekick in front, the owner's tap, and the driver's deadline armed at 22:10:56.611.
+
+- **Timing:** switch at about 5 s; the **planned Stop at 15.002 s**, inside the 20 s limit. No deadline,
+  ceiling or emergency Stop.
+- **Mac:** *"You stopped the camera from this Mac."*
+- **Phone:** *"The Mac stopped the camera."*
+- **No raw token and no network advice.**
+- **Frames:** 197 sent = 197 received = 197 drawn; **0 drawn after Stop**; nothing in flight at the Stop.
+- **No camera client** at any sample to 60 s.
+- **Mac log:** approval, first frame, switch requested / accepted / confirmed, one termination, and the
+  phone's account (*agreed*).
+
+**Not exercised:** the close-first order. This time the stop reached the phone first, so it ended as
+`STOPPED_BY_MAC` directly.
+
+**Also on record:** the owner's own 21:51 session (stopped on the phone) showed the Mac replacing its
+guess `stream-lost` with the phone's `stopped-on-phone` — 167's other path.
+
+**The driver** is now `driver-core.mjs` + `retry-driver.mjs` (session scratchpad), with 10 local tests,
+including the real 20 s deadline under failure.
+
+Evidence: `docs/testing.md` → *Camera session for defects 167 and 168*.

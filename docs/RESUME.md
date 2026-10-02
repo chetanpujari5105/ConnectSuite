@@ -1,3 +1,103 @@
+# CAMERA SESSION FOR 167/168 — 2026-10-02 (22:10 IST): PASS; nothing committed
+
+**Read this first.** HEAD is still `a76ae78`. The evidence is uncommitted:
+- `docs/testing.md` → *The owner's own camera session* and *Camera session for defects 167 and 168*;
+- `docs/camera-v1.md` → *Second retry*.
+
+The earlier unanswered attempt (21:33, expired) keeps its own record below and in `testing.md`.
+
+## What happened
+
+1. **The driver was fixed first** (the recorder's key collision) and rebuilt as a tested core: 10/10 local
+   tests including the real 20 s deadline under failure; mutations D1, D2 and D4 red, D3 paired. No phone
+   request during any of it.
+2. **Read-only preflight.** The builds were unchanged and approved (`1f3a0a00…`; Mac pid 39218 on the
+   21:28 `dist`). It found the owner's 21:51 camera session; you confirmed it. Instagram was in front;
+   you opened Sidekick. A dry run read both ends. You answered *Ready to tap Start camera*.
+3. **One request (22:10:54).** You tapped Start camera at 22:10:56.347 on the phone's clock.
+   - **Switch:** the rear → front switch was requested, accepted and confirmed by frames.
+   - **Stop:** the planned Stop was pressed 15.002 s after the anchor.
+   - **End:** Mac *"You stopped the camera from this Mac."*; phone *"The Mac stopped the camera."*
+   - **Frames:** 197 sent / 197 received / 197 drawn, 0 after Stop. No camera client and no restart for
+     60 s.
+
+## Status
+
+- **168:** verified on hardware.
+- **167:** verified for the stop-first order. **The close-first re-attribution was not exercised** — the
+  stop reached the phone first this time. The genuine-loss refinement was seen in your 21:51 session.
+
+## Left changed
+
+- **Phone:** the CAMERA app-op reflects this session and yours; `/sdcard/window_dump_cam.xml` is still
+  there.
+- **Mac:** the running app (pid 39218) carries a single paint/draw-time wrapper on its camera painter
+  until the next relaunch.
+- **Unchanged:** the paused partial, its record, the `.failed` marker, the ledger and pairing.
+- **Repo:** uncommitted appends to `docs/testing.md`, `docs/camera-v1.md` and this entry.
+
+## Needs the owner
+
+- Whether to commit the evidence.
+- Whether the close-first order needs its own reading. It cannot be forced without a stimulus nobody has
+  approved.
+- The register rows for 167 and 168 still read *"not yet verified on hardware"*. They were left alone
+  because `defects.md` is committed and this evidence is not.
+
+---
+
+# CAMERA RETRY — 2026-10-02 (21:24–21:36 IST): the one request EXPIRED unanswered; no capture; defects 167 and 168 NOT verified; nothing committed
+
+**Read this first.** One approved session, run as approved, which ended before the camera was ever
+allowed. HEAD is still `a76ae78`. Evidence: `docs/testing.md` → *Camera retry for defects 167 and 168*.
+Summary: `docs/camera-v1.md` → *Retry results*.
+
+## What happened
+
+- **Updates:**
+  - Phone: `a76ae78`'s debug APK (`1f3a0a00…`, same debug signer, installed bytes identical), then
+    `link-up.sh` 3/3.
+  - Mac: rebuilt and relaunched once (21:28:27), no debug switches, reconnected, `camera` advertised.
+- **One request at 21:33:20.** Sidekick was not in front — Instagram was, in the preflight reading, and
+  this was not acted on — so the phone **posted a notification** instead of the request screen.
+  Start camera was never tapped.
+- **Expired at 30.0 s on both ends** (phone `.462`, Mac `.561`): 0 frames. No camera client at any reading,
+  and the CAMERA app-op's last access unchanged. The request notification is in the archive, not active.
+- **60 s observation, by hand:** nothing opened or restarted.
+- **No retry,** as approved.
+- **The driver crashed while recording the ending:** its own `at` key collision. This was after the
+  request ended, with nothing open. Its deadline logic was never exercised. A paint/draw-*time* counter
+  stays wrapped round the running renderer's camera painter until the next relaunch.
+
+## Preflight differences, all explained
+
+- `sidekick.json` was rewritten with the same bytes at the Mac's 21:17 reconnect, after a 21:10 network
+  drop.
+- The empty Room lock file in the app's cache was gone, with the same process running. Probably cache
+  trimming, not proven.
+- **Your 21:30 share of three files, accepted at 21:31 — you confirmed it.** Three new files are in
+  `~/Downloads/Sidekick`.
+- The Mac's clipboard sync pushed 3,178 bytes to the phone at relaunch.
+
+## Left changed
+
+- **Phone:** the new debug APK (`lastUpdateTime` 21:28:02); `/sdcard/window_dump_cam.xml` from the first
+  sitting, still there.
+- **Mac:** `dist` rebuilt and the app relaunched (pid 39218).
+- **Unchanged:** the paused partial, its record, the one `.failed` marker, ledger `[]`, pairing,
+  permissions and preferences.
+- **Repo:** uncommitted appends to `docs/testing.md`, `docs/camera-v1.md` and this entry. Your files are
+  SHA-identical.
+
+## Needs the owner
+
+- A new approval for one session, with Sidekick in front on the phone — or the notification path stated
+  plainly to you before the request.
+- The driver's recorder fixed and dry-run through an ended request first.
+- Whether to commit this evidence.
+
+---
+
 # CAMERA FOLLOW-UP — 2026-10-02 (evening): evidence committed; defects 167 and 168 fixed (tests only); 960 × 720 explained; nothing on hardware
 
 **Read this first.** Three local commits on top of `c2913a1`, none pushed. **No install, relaunch, camera

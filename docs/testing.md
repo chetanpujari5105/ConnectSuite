@@ -27209,7 +27209,13 @@ records were written; untracked set identical.
 the screen, pane exit, disconnect, mirror busy, notification/background request, One UI's in-use codes, and
 any frame-rate, latency, CPU, heat or bandwidth figure.
 
-### Defect 167 — a Mac Stop was reported as a closed connection on both ends (fixed 2026-10-02, tests only)
+### Defect 167 — a Mac Stop was reported as a closed connection on both ends (fixed 2026-10-02; hardware-verified for stop-message-first)
+
+**Hardware status (added 2026-10-02):** verified for the **stop-message-first** order in the 22:10 session
+(*Camera session for defects 167 and 168*, below). The **close-first re-attribution remains tested only**:
+it was not the order that occurred, and no stimulus forcing it has been approved. The guess-refinement path
+was also seen, in the owner's own unscripted 21:51 session, which is recorded separately and is not a
+scripted test. The original heading said *tests only*; that was true when it was written.
 
 **Found** on hardware, 2026-10-02 20:02:44 (the first supervised Camera sitting, above): the Mac's
 `stop()` closed its stream socket and *then* wrote `camera.stop`. The phone saw the close first
@@ -27270,7 +27276,10 @@ by that run, 5 of 5 fresh, with the exit code):
 **Not reached:** the order the two channels actually arrive in on the device, and the phone's screen
 redraw (`CameraActivity`), which is Android-only. Unverified on hardware.
 
-### Defect 168 — the Mac logged one `[camera]` line per session (fixed 2026-10-02, tests only)
+### Defect 168 — the Mac logged one `[camera]` line per session (fixed 2026-10-02; hardware-verified)
+
+**Hardware status (added 2026-10-02):** verified in the 22:10 session — every lifecycle line once, with
+truthful counts. The original heading said *tests only*; that was true when it was written.
 
 **Found** in the same sitting: the Mac's log held only `camera.request acknowledged` for a session that
 was approved, went live, switched twice, stopped and received 2,325 frames.
@@ -27302,3 +27311,187 @@ with that exit and the guard kept (168-A3) it is green — the guard holds.
 
 **Not reached:** the real file logger (`logger.ts`) is not called by the tests; the default `CameraLog`
 is a two-line adapter onto it.
+
+## Camera retry for defects 167 and 168 — 2026-10-02, 21:24–21:36 IST: the one request EXPIRED unanswered; no capture; 167 and 168 NOT verified
+
+**Approved scope:** one session, following `docs/camera-v1.md` → *Bounded hardware retry plan*. Builds:
+- **Phone:** debug APK of `a76ae78`, SHA-256 `1f3a0a00…`, debug signer `d3a505d2…`; the installed
+  `base.apk` matched byte for byte. Its dex carries `had already ended as` and *"The camera stream to the
+  Mac ended."*, and not the old sentence; control `Camera bound: ` is present.
+- **Mac:** `dist` rebuilt (the new sentence 2, the old one 0, control 1) and relaunched once at 21:28:27
+  with no debug switches. It reconnected, and the phone advertised `camera`.
+
+**Result: the session ended before any capture, and the retry's purpose was not reached.**
+
+| Time | Phone (its clock) | Mac (its clock) |
+|---|---|---|
+| 21:33:20 | `.457` `camera.request from Chetans-MacBook-Pro: Ack, ShowRequest, ArmTimer` — Sidekick was **not** in front, so the request went out **as a notification** | `.536` `camera.request sent: back camera — 1 requested since launch`; `.549` `acknowledged: stream 12fb293b… awaiting approval` |
+| 21:33:50 | `.462` `stopped: EXPIRED — 0 sent / 0 dropped` (30.0 s) | `.561` `ended: expired — 0 received here, 0 not drawn here; phone: 0 sent / 0 dropped there — 1 ended of 1 requested since launch` |
+
+Each endpoint's order is its own; no cross-device order is inferred.
+
+- **Nobody tapped Start camera.** The owner had been told to tap it on the request screen. The request
+  went out as a notification instead, because Instagram was the resumed activity — **visible in the
+  preflight reading and not acted on**. A one-line note that the request would arrive as a notification
+  was given only after it was sent.
+- **The camera never opened:** `Active Camera Clients: []` at every reading; our package's camera-service
+  events unchanged at 7 (the historical count); the CAMERA app-op's last access still the first sitting's
+  (duration 1m14s).
+- **The request notification was removed at expiry.** A `camera_request` line (`id=3104`) still matched
+  in `dumpsys notification`, but it sits under `mArchive`; the active list held ids 0, 2001, 3101 and
+  1001 only.
+- **The Mac pane** read *"The request expired … 0 frames sent by the phone, 0 dropped there; 0 received
+  here."* with the canvas at 0 × 0, and the page instrument counted **0 paints and 0 draws**.
+- **No retry.** As approved, one request only.
+
+**60-second observation, by hand.** 21:34:11, then seven samples 21:34:51–21:35:56: no camera client, our
+camera events at 7, only the session's two `[camera]` phone lines, the Mac unchanged.
+
+**The driver.** It armed nothing, because no attachment ever happened.
+- The deadline (20 s from the earliest observed attachment), the planned Stop (15 s), the 5 s switch and
+  a 55 s ceiling were all in place.
+- **It then crashed while recording the ending:** `note('ENDED…', ended)` spread an object whose `at` (a
+  number) overwrote the event's ISO-string `at`, and `.slice` threw. Its 60-second observation and JSON
+  report were never produced; the observation above replaces them.
+- The crash came after the request had ended, with no camera open and no timer pending.
+- The page instrument — wrappers recording paint/draw *times* on the running renderer's camera painter —
+  stays installed until the next relaunch.
+
+**Not reached, so not verified:**
+- 167 — the stop attribution on either end;
+- 168's approval, first-frame and switch lines; its request, ack and single termination lines did appear,
+  with their counts and tallies;
+- the Stop latency and post-stop gating;
+- any frame figure.
+
+**Preflight differences, each explained before the request:**
+- **`sidekick.json`:** rewritten at 21:17:23 with identical bytes. The Mac lost the network (`ENETUNREACH`)
+  from 21:10:23 and reconnected that second.
+- **The Room lock file:** the empty `cache/connectsuite.db.lck` was gone, with the same app process
+  (PID 10710) still running. Most likely the platform trimming the app's cache — **not proven**; it held
+  no data.
+- **A share at 21:30:10** (one video, two photos) was offered from the phone. The Mac held all three for
+  a decision, and they were accepted in its receive window at 21:31:20–23. **The owner confirmed it was
+  theirs.** Three new files are in `~/Downloads/Sidekick`, their SHA-256 prefixes matching the phone's
+  offers.
+- **Clipboard:** at relaunch the Mac's clipboard watcher pushed 3,178 bytes to the phone (`clip.push`).
+  That is shipped behaviour, not a transfer.
+
+**Closing checks:**
+- **Phone:** differs from the preflight only by the install's code path, `lastUpdateTime` and ART
+  profile. Grants, the listener binding, prefs, DataStore and all receive-folder files are identical.
+- **Mac:** identical to the inventory taken after the owner's share. The paused partial (100,663,296 B,
+  inode 88373242), its record, the one `.failed` marker (`sidekick-pass-stop-200mb (7).bin.failed`, the only
+one under `~/Downloads/Sidekick`) and ledger `[]` are unchanged.
+- **Repo:** the owner's files are SHA-identical.
+
+## The owner's own camera session — 2026-10-02, 21:51:19–21:52:11 IST (not driven; recorded because the preflight found it)
+
+Found by the next preflight: the CAMERA app-op's last access had moved to about 21:51 (duration 33 s), and
+our camera-service events had gone from 7 to 11. **The owner confirmed it was theirs.**
+
+- **Mac:** the window was revealed from the Dock at 21:51:19, and a request was sent at 21:51:20.
+- **Phone:**
+  - Start camera tapped at 21:51:25.667; attached `.713`; rear camera bound `.736`.
+  - **Switched on the phone** at 21:51:37.498: front camera bound, with no `camera.switch from` line.
+  - **Stopped on the phone** at 21:52:11.253: `STOPPED_ON_PHONE — 638 sent / 0 dropped`.
+- **Mac log:**
+  - `switch confirmed: frames now from the front camera`, with **no** *requested* or *accepted* line —
+    correct for a switch the Mac did not make;
+  - `ended: stream-lost — 638 received here, 0 not drawn here`, then `phone's account: stopped-on-phone,
+    638 sent / 0 dropped there (replaces this Mac's guess, stream-lost)`.
+
+  That is defect 167's **genuine-loss refinement** working on hardware: a guessed reason replaced by the
+  phone's stated one.
+- **Afterwards:** the Mac lost its network at 21:55:38 and reconnected at 22:01:11.
+
+## Camera session for defects 167 and 168 — 2026-10-02, 22:10:54–22:12:13 IST: PASS (one stop order seen)
+
+**Approved scope:** one session, after a driver fix proven locally. Builds unchanged since 21:28 and
+verified read-only:
+- installed `base.apk` `1f3a0a00…`;
+- the Mac's pid 39218, started 21:28:27, running a `dist` built at 21:28:24 that carries the fix and the
+  new log lines;
+- source unchanged since `a76ae78`.
+
+**The driver, fixed and tested first** — no phone request during any of it.
+
+The decisions moved into a dependency-injected `driver-core.mjs`.
+- **The recorder:** caller data lives under `data`, so nothing can overwrite a timestamp. The 21:33 crash
+  was an `ended` object's numeric `at` replacing the ISO `at`.
+- **The deadline:** a timer armed at the earliest attachment observation, whose anchor only moves
+  earlier. It fires 500 ms before the 20 s limit, so its Stop lands inside the limit, and it does not run
+  through the recorder, the pane loop or the report.
+- **Stop chains:** a hung planned Stop cannot hold the deadline, because the deadline starts its own
+  chain. Every dependency call is time-bounded, with an emergency phone-side stop if no Mac Stop lands.
+- **The page instrument** deletes earlier own-property wrappers to restore the prototype's methods, then
+  wraps them once.
+
+**Local tests, 10 / 10.** Normal session; expiry; recorder collisions and failures; the anchor; the
+instrument; a hung planned Stop; no Mac Stop landing; the deadline with pane reads stuck, the recorder
+unable to print and the report unwritable, at scaled limits and **at the real 20 s** (Stop landed
+19.5–20.0 s after the anchor).
+
+Mutations: D1 the 21:33 collision restored, D2 the deadline queued behind a hung planned Stop, and D4 the
+instrument wrapping on top of earlier wrappers are **red on their named tests**. D3, a later observation
+extending the deadline, survives alone: the callers also guard. The paired runs show the test sees it —
+callers' guard removed with `arm`'s kept stays green; both removed goes red.
+
+**Preflight (read-only)** found the owner's 21:51 session above; the owner confirmed it.
+- The phone was not in front of Sidekick (Instagram). The owner opened Sidekick, and the driver itself
+  re-checked `topResumedActivity` before the request: `com.chetan.connectsuite.debug/…MainActivity`.
+- No call, camera client, projection or recording.
+- Protected Mac artifacts unchanged (only `sidekick.json`'s mtime/inode, same bytes, at a reconnect).
+- Dry run: the instrument replaced the 2 leftover wrappers with one, and both ends were read. Then the
+  owner answered *"Ready to tap Start camera"*.
+
+**The session, each endpoint's order on its own clock** — no cross-device order is inferred:
+
+| | Phone | Mac |
+|---|---|---|
+| request | 22:10:54.197 `camera.request … ShowRequest` — the request **screen** (Sidekick in front) | 22:10:54.338 `request sent`; .352 `acknowledged: stream 7c0a8542…` |
+| approval | 22:10:56.347 **`Start camera tapped`** `… OpenCamera`; .371 `bound: back, epoch 0`; .487 `attached` | 22:10:56.590 `allowed on the phone (back camera); opening the stream socket`; driver anchored the deadline at 56.611 |
+| first frame | — | 22:10:57.093 `live: first frame 960 × 720 from the back camera — 2 live of 3 requested since launch` |
+| switch | 22:11:01.981 `camera.switch from Chetans-MacBook-Pro: Ack, SwitchCamera`; 22:11:02.002 `bound: front, epoch 1` | 22:11:02.126 `switch to front requested`; .135 `accepted by the phone; waiting for its frames`; .962 `switch confirmed: frames now from the front camera` |
+| Stop | 22:11:11.470 `camera.stop … CancelTimers, CloseCamera, CloseStream, ClearRequest, stopped STOPPED_BY_MAC, Ack`; `.472 stopped: STOPPED_BY_MAC — 197 sent / 0 dropped` | Stop clicked 22:11:11.613 (**planned, 15.002 s after the anchor**); .614 `ended: stopped-by-mac — 197 received here, 0 not drawn here; no phone counts yet — 3 ended of 3 requested`; .627 `phone's account: stopped-by-mac, 197 sent / 0 dropped there (agreed)` |
+
+**Required evidence, item by item:**
+- **No capture before the tap.** The phone's first camera-service event (`CONNECT device 0`, 22:10:56)
+  and `bound: back` (.371) both follow the tap (.347). Before it: no camera client, no event.
+- **Logs:** approval, first frame, switch requested / accepted / confirmed by front-camera frames, one
+  termination with counts, and the phone's account, once each. No per-frame lines, no token, no full
+  stream id.
+- **Mac:** *"Camera off — You stopped the camera from this Mac."* No `stream-closed` token, no network
+  advice. The counts line first read *"The phone sent no counts; 197 received here"*, then took the
+  phone's 197 / 0.
+- **Phone:** the screen read *"Camera off — The Mac stopped the camera."* (uiautomator text to stdout,
+  3 s after Stop). In this run the control message arrived **before** the socket close, so the phone
+  ended it as `STOPPED_BY_MAC` directly, and its later `closed by the Mac` was a no-op. **The
+  re-attribution path (close first) was not exercised on hardware;** it remains tested only.
+- **The picture cleared at once:** canvas 0 × 0 in the same read as the click's result. The phone
+  released the front camera in the Stop's own effects (`CloseCamera`, `CloseStream`), and the camera
+  service's `DISCONNECT device 1` is stamped 22:11:11.
+- **No post-Stop frame accepted or drawn.** The page instrument counted 197 paints and 197 draws, **0
+  after the Stop click**; the last draw was 4 ms before it. The Mac received 197 and drew 197 (*0 not
+  drawn here*), and the phone sent 197, so **no frame was in flight or buffered at the Stop**. Nothing
+  arrived after it.
+- **No restart:** 22 samples from 6 s to 59.7 s after Stop — `Active Camera Clients: []` every time, our
+  camera events constant at 15, the pane's Stop button 0, the canvas 0 × 0, the instrument 197 / 197.
+  The 0–6 s window is covered by the Stop result, the screen read and the camera service's disconnect
+  stamp.
+- **Capture:** anchor to Stop 15.002 s, inside 20 s. Planned Stop only — no deadline, ceiling or
+  emergency Stop. Driver recorder failures 0; no failed dependency call.
+
+**Measured:** 960 × 720 from both cameras; 197 frames over the ~14.5 s from first frame to Stop. That is
+a count, not a frame rate; no rate or latency is claimed.
+
+**Closing checks:**
+- **Phone:** identical to the preflight except the CAMERA app-op (last access this session, last
+  continuous use 8.9 s — the front camera).
+- **Mac:** the protected inventory is identical to the preflight: the paused partial, its record, the
+  `.failed` marker, ledger `[]`, and the owner's share files.
+- **Link and repo:** link 3/3; the owner's files SHA-identical; HEAD `a76ae78`.
+
+**Status:** defect 167 is **verified on hardware for the stop-first order**, with the close-first
+re-attribution still tested only. Its genuine-loss refinement was seen in the owner's 21:51 session.
+Defect 168 is **verified on hardware**.
