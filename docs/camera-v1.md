@@ -349,3 +349,42 @@ guess `stream-lost` with the phone's `stopped-on-phone` — 167's other path.
 including the real 20 s deadline under failure.
 
 Evidence: `docs/testing.md` → *Camera session for defects 167 and 168*.
+
+## Lifecycle batch — 2026-10-02, 22:24–22:41 IST: stopped after case A (NO READING); B, C, D not run
+
+- **Case A (phone Home) is a NO READING.** The driver mistook the 22:10 session's `attached` log line,
+  still in the last 40 lines it reads, for this request's attachment. It anchored the 20 s deadline at the
+  request press, and that deadline cancelled the request before Start camera was tapped. No capture, no
+  frames, no camera event. Home and the reopen were never reached.
+- **The batch stopped there, as the approval requires on an instrument failure.**
+  - **B** (lock), **C** (pane exit) and **D** (Disconnect) were not run.
+  - The driver was not repaired. Its fix direction — count only log lines written after this request,
+    or naming its stream id — is in `docs/testing.md` → *Camera lifecycle batch*.
+- **Pre-registered and unverified:** the bounds predicted that **D would fail on wording**. The Mac's
+  `disconnected` ending says *"Your phone disconnected, so the camera stopped."* even when the Mac's own
+  Disconnect caused it.
+- **Case D's control:** the tray menu's Disconnect / Connect items, reached by name through System
+  Events. The Overview pane's Disconnect would first be a pane exit (case C).
+
+## Case A retry — 2026-10-02, 23:01 IST: NO READING (Home after the cap); close-first re-attribution observed
+
+The 22:38 batch result stands as recorded: **A NO READING; B, C and D NOT RUN**.
+
+**The retry, after a driver-only repair** (the phone log read from a recorded byte offset and inode; the
+full stream id taken from the Mac's state; phone lines matched by 8-character prefix, labelled as such;
+the cap armed only on this stream's own start):
+- One request was approved at 23:01:34, and the picture was live at 23:01:35.
+- **Home was not pressed until 23:02:00**, so the 20 s deadline pressed the real Stop at 19.5 s.
+- **Result: NO READING** — the Home stimulus never ran during capture.
+
+**Seen anyway:**
+- The instrument armed on the right event.
+- 266 frames drawn, 0 after Stop; one frame in flight at the close, discarded.
+- The camera released at 23:01:53.
+- **The phone's close-first re-attribution happened on hardware:** `STREAM_CLOSED → STOPPED_BY_MAC`, with
+  the Mac's *"You stopped the camera from this Mac."* kept. This is a log reading; the phone screen was
+  not read.
+- **No restart after the reopen at 23:03:05,** from a post-hoc read-only check rather than the planned
+  live watch.
+
+Evidence: `docs/testing.md` → *Camera case A retry*.

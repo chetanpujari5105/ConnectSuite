@@ -27209,13 +27209,19 @@ records were written; untracked set identical.
 the screen, pane exit, disconnect, mirror busy, notification/background request, One UI's in-use codes, and
 any frame-rate, latency, CPU, heat or bandwidth figure.
 
-### Defect 167 — a Mac Stop was reported as a closed connection on both ends (fixed 2026-10-02; hardware-verified for stop-message-first)
+### Defect 167 — a Mac Stop was reported as a closed connection on both ends (fixed 2026-10-02; hardware-verified for stop-message-first; close-first seen in the phone's log only)
 
-**Hardware status (added 2026-10-02):** verified for the **stop-message-first** order in the 22:10 session
-(*Camera session for defects 167 and 168*, below). The **close-first re-attribution remains tested only**:
-it was not the order that occurred, and no stimulus forcing it has been approved. The guess-refinement path
-was also seen, in the owner's own unscripted 21:51 session, which is recorded separately and is not a
-scripted test. The original heading said *tests only*; that was true when it was written.
+**Hardware status (added 2026-10-02, updated after the 23:01 case A retry):**
+- **Stop-message-first:** verified in the 22:10 session (*Camera session for defects 167 and 168*, below).
+- **Close-first re-attribution: observed in the phone's hardware log** during the 23:01 case A retry
+  (*Camera case A retry*, below — a session whose own result is NO READING; the end was a deadline Stop).
+  The phone logged `stopped: STREAM_CLOSED`, then `re-attributed STREAM_CLOSED → STOPPED_BY_MAC` when the
+  stop arrived 6 ms later; **the Mac retained `stopped-by-mac`** (*this Mac's stopped-by-mac stands*).
+  **The phone's screen redraw for that order was not observed** — the screen was not read.
+- **The guess-refinement path** was seen in the owner's own unscripted 21:51 session, which is recorded
+  separately and is not a scripted test.
+
+The original heading said *tests only*; that was true when it was written.
 
 **Found** on hardware, 2026-10-02 20:02:44 (the first supervised Camera sitting, above): the Mac's
 `stop()` closed its stream socket and *then* wrote `camera.stop`. The phone saw the close first
@@ -27495,3 +27501,182 @@ a count, not a frame rate; no rate or latency is claimed.
 **Status:** defect 167 is **verified on hardware for the stop-first order**, with the close-first
 re-attribution still tested only. Its genuine-loss refinement was seen in the owner's 21:51 session.
 Defect 168 is **verified on hardware**.
+
+## Camera lifecycle batch — 2026-10-02, 22:24–22:41 IST: A NO READING (driver fault); B, C, D NOT RUN; batch stopped
+
+**Approved scope:** four cases, at most one session each, on the running approved builds — A phone Home,
+B phone lock, C Mac pane exit, D Mac Disconnect and reconnect. Results per case:
+
+| Case | Result |
+|---|---|
+| A — phone Home | **NO READING** — the request was cancelled before approval by the driver's deadline, anchored on a stale log line. No capture |
+| B — phone lock | **NOT RUN** — the batch stopped on A's instrument failure |
+| C — Mac pane exit | **NOT RUN** |
+| D — Mac Disconnect | **NOT RUN** |
+
+**Preparation, before any request:**
+- **The driver** (`driver-core.mjs`, extended):
+  - a case action at anchor + 5 s;
+  - a return step run only after a real end, then the 60 s watch timed from the return;
+  - the real Mac Stop as the 20 s deadline fallback, and an emergency phone Home if the phone still
+    holds a camera 10 s after an end.
+- **Local tests, 14 / 14,** including the real 20 s deadline under failure and four new lifecycle tests.
+- **Mutations:** L2 (a return step after a capture the case did not end) and L3 (the watch timed from the
+  end, not the return) are red. L3 first stayed green on its named test, because the assertion was wrong —
+  it checked that the watch *started* after the return, which is always true. It was corrected to the
+  property, that the watch *lasts* the window from the return, and then went red. L1 (the action firing
+  twice) survives: the timer is one-shot and an end already blocks it, so its once-guard is unreachable
+  today.
+- **Case D's control:** the Overview pane's Disconnect could not be used, because routing there from
+  Camera is case C's pane exit and would end the camera first. The tray (menu-bar) Disconnect / Connect
+  items do not change the route, and System Events can reach them by name (`menu bar 2`, description
+  `status menu`).
+- **Acceptance bounds** (K1–K9 for every case, plus each case's expected reasons) were written to the
+  session scratchpad at 22:34:24 (SHA-256 `92b7f9b3…`), before the first request. **They predicted, from
+  the code, that D would fail on wording**: after a Mac Disconnect and reconnect, the pane's `disconnected`
+  ending reads *"Your phone disconnected, so the camera stopped."* D was not run, so that prediction is
+  **unverified**.
+
+**Preflight (read-only), all clean:**
+- **Builds:** installed APK `1f3a0a00…`; Mac pid 39218 on the 21:28 `dist`; link 3/3; HEAD `a5e4874`.
+- **Idle:** no call, camera client (our camera events at 15), projection or recording; no Mac camera,
+  link or transfer line since the 22:10 session.
+- **Unchanged:** the protected Mac inventory is identical to that session's end.
+- **Ready:** Sidekick was in front and the phone unlocked; the owner said *ready*.
+
+**Case A, as it happened.** Phone order on the phone's clock; Mac order on the Mac's.
+- **The request:** sent at 22:38:44.147 (Mac); the phone logged `camera.request … ShowRequest` at
+  22:38:43.990.
+- **The driver fault, at +0.9 s:** its phone-log poller — the last 40 lines — saw
+  `22:10:56.487 … Camera stream 7c0a8542… attached`. That is **the 22:10 session's line**, still within
+  the last 40 lines. The driver treated it as this request's attachment and anchored the deadline at the
+  request press. That is the conservative direction, so it is not a safety fault. But it turned the
+  20-second **capture** cap into a 20-second **approval** window.
+- **No tap within those ~19.5 s:** there is no `Start camera tapped` line.
+- **The deadline at 22:39:03.650 (Mac):** it found no Stop button (nothing was live) and pressed **Cancel
+  request** — the same control the pane offers for a waiting request, which calls the same stop.
+  - Mac: `ended: stopped-by-mac — 0 received here, 0 not drawn here`, then the phone's account `(agreed)`.
+  - Phone: `camera.stop … stopped STOPPED_BY_MAC — 0 sent / 0 dropped` at 22:39:03.488 (phone clock).
+  - The phone screen read *"Camera off — The Mac stopped the camera."*
+- **No capture at any point:** no camera-service event for our package after 22:11:11; the CAMERA
+  app-op's last access unchanged (8.878 s, the 22:10 session); 0 draws on the Mac.
+- **Watch, 21 samples to 80.6 s:** no camera client; our events constant at 15; Sidekick's camera screen
+  in front, unlocked; the Mac pane never live, canvas 0 × 0; one `camera.request sent` (this one); no
+  `[bulk]` or `[share]` line.
+- **Home and the reopen were never reached**, so A's checks K1–K8 have nothing to apply to. The case is a
+  NO READING, not a pass.
+
+**Why the batch stopped.** The approval says an instrument failure stops the batch, with no next case and
+no repair. The driver was **not** fixed in this sitting.
+
+**Fix direction for the driver (not applied):** a log line counts only if it was written after this
+run's request. Read from a byte or line offset taken at the request, or require the line to name the
+stream id the Mac's ack returned. Then show, with a fixture holding the previous session's `attached` line
+in the last 40, that it no longer arms. It is the stale-artifact failure in `CLAUDE.md`'s instrument table — an earlier run's
+output read as this run's — on a log rather than a results file.
+
+**Closing checks:**
+- **Phone:** identical to the preflight apart from the app-op's "ago" counter.
+- **Mac:** inventory identical; the paused partial, its record, the `.failed` marker and ledger `[]` are
+  unchanged.
+- **Link and repo:** link 3/3; the owner's files SHA-identical; status unchanged.
+
+## Camera case A retry — 2026-10-02, 22:53–23:04 IST: NO READING (Home came after the 20 s cap); the repaired driver held; close-first re-attribution seen on hardware
+
+The batch above keeps its own result (A NO READING, B, C and D NOT RUN). This is a separate, approved
+retry of case A only, after a driver-only repair. B, C and D remained unapproved and were not run.
+
+**The repair, driver only — no product code changed:**
+- the phone log is read from a byte offset taken with its inode before the request;
+- a rotation or truncation stops the attempt, with no fallback to last-N lines;
+- this attempt's **full** 32-hex stream id is taken from the Mac's own `camera.state` after the ack;
+- phone lines are matched by their 8-character prefix only, and labelled `prefix-8`;
+- the capture timer arms **only** when the Mac's state shows that exact id `connecting` or `live`
+  (minus 500 ms);
+- a fresh line for another stream, or phone capture evidence with no Mac start within 2 s, is a safe
+  shutdown;
+- approval has its own 40 s window;
+- phone and Mac timestamps are never compared.
+
+**Proof, local, no request:**
+- **16 / 16 tests,** including:
+  - the 22:10 `attached` line still in the last 40 lines;
+  - a fresh unrelated stream's attachment;
+  - delayed approval beyond the whole cap;
+  - duplicate and out-of-order events;
+  - rotation and truncation;
+  - expiry with no capture;
+  - recorder, pane and log failures during capture;
+  - the real 20 s cap.
+- **Mutations:** B0, the **22:38 fault reinstated in full** (last 40 lines, and any attached line arming
+  at the request), is **red on the STALE test** — *"the capture timer was armed with no capture"*. B1–B5
+  (freshness, stream-id check, rotation check, cap and approval merged, uncertainty tolerated) are each
+  red on their named test.
+- **Two faults in my own work, caught by its controls:**
+  - the first STALE fixture let the stale line fall out of the last 40 as soon as the request was
+    written, so B0 went red only elsewhere; the fixture now has the real log's margin, with a control
+    that the line is in the last 40 both at the mark and after the request;
+  - the report's `phoneLogStart` was the cursor's end position; it now reports both ends.
+
+**Preflight (read-only), clean:**
+- **Builds:** APK `1f3a0a00…`, Mac pid 39218, HEAD `a5e4874`; link 3/3.
+- **Idle:** no call, camera client, projection or recording; nothing on the Mac since the batch.
+- **Unchanged:** the protected Mac inventory is identical to the batch's end.
+- **Ready:** bounds `r5/acceptance-A.md` written at 22:53:45, before the request. Dry run: gates passed,
+  and the reader's control read 4 whole lines ending exactly at the file size. Then the owner answered
+  *Ready to tap Start camera*.
+
+**The session.** Phone order on the phone's clock, Mac order on the Mac's.
+
+| | Phone | Mac |
+|---|---|---|
+| request | 23:01:32.922 `camera.request … ShowRequest` | 23:01:33.095 `request sent`; .104 `acknowledged: stream cfbd3f44…`; driver read the full id `cfbd3f449c2d2948489c2724e42201a6` at 33.205 |
+| approval | 23:01:34.356 **`Start camera tapped for cfbd3f44…`**; .386 `attached`; .405 `Camera bound: back` | 23:01:34.539 `allowed on the phone`; the driver armed the cap at 34.554 on **`connecting` for this id** (anchor 34.054) |
+| live | — | 23:01:35.093 `live: first frame 960 × 720`; picture on screen 35.180 |
+| end | 23:01:53.382 `closed by the Mac`, `Camera stream closed: 267 sent / 0 dropped`, .383 `stopped: STREAM_CLOSED`; .389 `camera.stop … re-attributed STREAM_CLOSED → STOPPED_BY_MAC`; .390 `had already ended as STREAM_CLOSED … recorded as STOPPED_BY_MAC` | the **deadline** pressed the real **Stop camera** at 23:01:53.557 (19.503 s after the anchor); .559 `ended: stopped-by-mac — 266 received here, 0 not drawn here`; .568 `phone's account: stream-closed, 267 sent / 0 dropped there (this Mac's stopped-by-mac stands)` |
+
+**Home came after the cap.** The phone's activity history (`usagestats`) shows `CameraActivity` resumed
+at 23:01:32 and not paused until **23:02:00–01**, when the launcher came up — 7 s after the deadline Stop.
+The owner then reopened Sidekick from Recents at 23:03:05, onto its camera screen, and left it at
+23:03:26.
+
+**Result: NO READING.** K2 says a deadline Stop means Home did not end capture, so the case's stimulus
+was never tested.
+
+**What this session does show, each as observed:**
+- **The repaired instrument held.**
+  - The cap armed on this stream's own start, not the request: approval took 1.4 s and was not
+    counted.
+  - No fresh line for another stream; no anomaly; no safe shutdown.
+  - The deadline fired and landed inside the cap.
+- **Consent (K1):** the tap (34.356) precedes `bound` (.405) on the phone. The camera service's CONNECT
+  for our package is 23:01:34; there was none before.
+- **Release, termination, clearing, draws (K3–K7, for the deadline end):**
+  - the camera service DISCONNECTs our package at 23:01:53;
+  - the Stop result read no active camera for us and a canvas of 0 × 0;
+  - the instrument counted 266 paints and 266 draws, **0 after Stop**, the last 71 ms before it;
+  - S 267, R 266, N 266 — **one frame was in flight at the close** and was discarded with the socket;
+    nothing was drawn after it, and nothing continued.
+- **Defect 167's close-first order, on hardware for the first time.** The phone saw the socket close
+  before `camera.stop` and re-attributed the ending to `STOPPED_BY_MAC`. The Mac kept *"You stopped the
+  camera from this Mac."*, with no raw token and no network advice.
+  - This is a **log** reading: the phone's screen was not read after the Stop, because the core does not
+    read it on a deadline end.
+  - The register row and the Defect 167 section now carry this, with the same qualifications (updated in
+    the docs commit that records this section).
+- **No restart:**
+  - **The driver's watch:** 19 samples, 2.4 s to 59 s after the Stop. No camera client, our camera
+    events constant at 17, no fresh phone `[camera]` line beyond the session's 9, the pane `ended`
+    (`stopped-by-mac`) and never live, the canvas 0 × 0, one Mac request, no `[bulk]`/`[share]` line.
+  - **Post-hoc, read-only at 23:04:23, covering Home (23:02:01) and the reopen (23:03:05–26):** no camera
+    CONNECT for our package after 23:01:53; no phone `[camera]` line after the Stop (control: 9 inside the
+    session); no Mac `[camera]` line after it; no active client.
+  - This is **not** the planned live 60 s watch after the reopen. The reopen came after the driver's
+    watch had ended, because a deadline end skips the return step by design.
+- **Privacy note:** a final read-only screen dump after the run caught text from an unrelated app's
+  notification. It was not recorded anywhere.
+
+**Closing checks:**
+- **Phone:** differs from the preflight only by the CAMERA app-op (this session, 18.7 s of use).
+- **Mac:** inventory identical: the paused partial, its record, the `.failed` marker, ledger `[]`.
+- **Link and repo:** link 3/3; the owner's files SHA-identical; status unchanged.

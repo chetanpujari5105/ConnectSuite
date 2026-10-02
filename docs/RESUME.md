@@ -1,3 +1,96 @@
+# CAMERA CASE A RETRY — 2026-10-02 (22:53–23:04 IST): NO READING (Home after the 20 s cap); repaired driver held; close-first re-attribution seen; evidence uncommitted
+
+**Read this first.**
+- HEAD is still `a5e4874`; nothing was committed or pushed.
+- The 22:38 batch keeps its result: **A NO READING, B, C and D NOT RUN.** This retry is recorded
+  separately: `docs/testing.md` → *Camera case A retry*.
+
+## What happened
+
+1. **The driver was repaired (driver only)**, then proven locally:
+   - 16/16 tests, including the stale 22:10 line, rotation, delayed approval and the real 20 s cap;
+   - B0, **the 22:38 fault reinstated in full, is red on STALE**, and B1–B5 are red on their named tests;
+   - no request was made during any of it.
+2. **The read-only preflight was clean** (the approved builds), and bounds were written before the
+   request. Dry gates passed; you answered *ready*.
+3. **One request.**
+   - You tapped Start camera at 23:01:34, and the picture was live at 23:01:35.
+   - **Home came at 23:02:00**, so the deadline pressed the real Stop at 23:01:53 (19.5 s after the
+     anchor).
+   - **NO READING:** Home never ran during capture.
+4. **Seen anyway:**
+   - the cap armed on this stream's own start;
+   - 266 frames drawn, 0 after Stop; one in flight at the close, discarded;
+   - the camera released at 23:01:53;
+   - **close-first re-attribution on hardware** — the phone ended it as `STREAM_CLOSED`, then
+     re-attributed it to `STOPPED_BY_MAC` when the stop arrived 6 ms later; the Mac kept its own reason;
+   - **no restart after your reopen at 23:03:05,** from a post-hoc read-only check.
+
+## Not changed
+
+- No product code.
+- Defect 167's register row and section now say close-first was observed in the phone's hardware log, the
+  Mac retaining `stopped-by-mac`, and the phone's screen redraw not observed.
+
+## Left changed
+
+- **Phone:** the CAMERA app-op reflects this session; `/sdcard/window_dump_cam.xml` is still there.
+- **Mac:** unchanged apart from the one paint/draw-time wrapper on the running app (pid 39218).
+- **Unchanged:** the protected artifacts and your files.
+
+## Needs the owner
+
+- Whether to commit this evidence.
+- Approval for a new case A attempt. Suggestion: start counting the ~5 s for Home from the picture, and
+  say it out loud on your side.
+- B, C and D stay unapproved.
+
+---
+
+# CAMERA LIFECYCLE BATCH — 2026-10-02 (22:24–22:41 IST): case A NO READING (driver fault); B, C, D NOT RUN; evidence uncommitted
+
+**Read this first.** One commit this sitting, **`a5e4874`** (docs only, local, not pushed):
+- 168 hardware-verified;
+- 167 hardware-verified for stop-message-first, with the close-first re-attribution tests only;
+- the 21:33 expiry and your 21:51 session each recorded on their own.
+
+The lifecycle evidence is uncommitted: `docs/testing.md` → *Camera lifecycle batch*, and
+`docs/camera-v1.md` → *Lifecycle batch*.
+
+## What happened
+
+1. **Preparation.**
+   - The driver was extended with a case action, a return step and a watch timed from the return: 14/14
+     local tests including the real 20 s deadline; mutations L2 and L3 red, L1 unreachable today.
+   - Acceptance bounds were written before any request.
+   - D's Disconnect is the tray menu, so that D does not become C.
+2. **Read-only preflight was clean:** approved builds, link up, idle, protected artifacts identical.
+3. **Case A:** one request at 22:38:44.
+   - The driver's phone-log poller read **the 22:10 session's `attached` line** as this one's, and armed
+     the deadline at the request press.
+   - It fired at +19.5 s, before any `Start camera tapped`, and pressed **Cancel request**.
+   - No capture, 0 frames, no camera event. Home and the reopen were never reached.
+   - **NO READING.**
+4. **Batch stopped** on the instrument failure, as approved: **B, C and D not run**, and the driver not
+   repaired.
+
+## Closing checks
+
+- The phone and the Mac are unchanged from the preflight: the paused partial, its record, the `.failed`
+  marker, ledger `[]`, pairing and settings.
+- Link 3/3.
+- Your files are SHA-identical.
+
+## Needs the owner
+
+- Approval to fix the driver: only log lines after this request's offset, or naming its stream id, count.
+  Prove it with a fixture holding the previous session's `attached` line.
+- Approval for a new batch.
+- The pre-registered prediction that **D fails on wording** (*"Your phone disconnected"* after a Mac
+  Disconnect) is unverified, and is a likely defect for whenever D runs.
+
+---
+
 # CAMERA SESSION FOR 167/168 — 2026-10-02 (22:10 IST): PASS; nothing committed
 
 **Read this first.** HEAD is still `a76ae78`. The evidence is uncommitted:
