@@ -1,7 +1,9 @@
 # Camera v1 — a live phone-camera preview in the Mac's Camera pane
 
-**Status: built and tested with generated fixtures only, 2026-10-02. Not run on any phone. Not
-release-ready. Release builds do not install it.** The contract is `docs/protocol.md` → Camera, and it
+**Status: built and tested with generated fixtures, 2026-10-02; first supervised hardware sitting the same
+evening — the two privacy checks and one approved session passed on the SM-S938B, with one wrong end reason
+on Mac Stop (see *Hardware results*). Most of the plan is still unrun. Not release-ready. Release builds do
+not install it.** The contract is `docs/protocol.md` → Camera, and it
 wins wherever this file disagrees. This file is the arguments, the limits, and the supervised
 hardware-test plan.
 
@@ -154,7 +156,7 @@ calls (its matrix is tested); and the real pane layout (the DOM double lays noth
   claim is made. JPEG costs several Mbit/s where H.264 would cost one or two.
 - The NV21 conversion is a plain loop over chroma; its cost on the device is unmeasured.
 
-## Supervised hardware-test plan (one sitting, not approved, not run)
+## Supervised hardware-test plan (steps 1–5 and the Stop half of 7 run on 2026-10-02 in a bounded sitting; the rest not approved, not run)
 
 Preconditions: one new debug APK installed on the SM-S938B and one Mac build relaunched — **both need
 the owner's go-ahead**. Pin every `adb` write with `scripts/adb-pinned.sh`. No transfer, mirror or file
@@ -182,3 +184,43 @@ operation runs during it; the paused Files artifact is not touched.
 Readings to record, each with its control: the camera-dot state before and after every tap, the phone's
 `[camera]` log lines (`attached`, `stopped: … sent / … dropped`), and the Mac's `camera` log lines. **Do not
 claim latency or frame rate from this run** unless a measurement with a control is designed for it.
+
+## Hardware results — 2026-10-02, 19:41–20:07 IST (SM-S938B, phone APK `d0ce977f…` of `c2913a1`)
+
+Bounded and supervised: preflight, two privacy checks and **one** approved session. Every picture
+judgement is the owner's, by eye; no image, screenshot or frame was saved. Full evidence: `docs/testing.md`
+→ *Camera v1 — first supervised hardware sitting*.
+
+| Plan step | As run | Result |
+|---|---|---|
+| 1 Capability | Phone advertised `camera`; pane offered *Ask phone for camera*; arriving asked the phone nothing | **pass** |
+| 2 Request alone | **Variant:** Sidekick in the foreground, so the request screen, not a notification. Unanswered | **pass** — no camera client at any 1 s sample; `EXPIRED` at 30.0 s on both ends; 0 frames; phone left on an ended *Camera off* screen |
+| 3 Decline | Owner tapped Decline | **pass** — `DECLINED`, 0 frames, no camera event |
+| 4 Approve | Owner tapped Start camera; **no permission dialog** (`CAMERA` already granted from the QR scanner) | **pass** — the camera opened only after the tap; Mac *Live · back camera · 960 × 720*; owner: matches the phone's preview |
+| 5 Switch and rotate | rear → front → rear from the Mac; landscape and back | **pass by eye** — front mirrored like the phone's preview, no new request; upright and un-stretched in landscape. The Mac's DOM cannot see the rotation; it rests on the owner's observation |
+| 7 Mac Stop (first half) | One real Stop | **mechanics pass, wording fails** — see below |
+| 6, 7 (pane exit), 8, 9 | — | **not run** |
+
+**Procedural overrun.** The approval bounded live observation to **60 seconds**; the session ran **164.5 s**,
+because the switch and rotation steps waited on questions to the owner and no deadline was enforced. That
+is outside the approved bound and is recorded as such. **A future driver arms the capture deadline at
+`attached` and presses the real Stop when it fires**, recording that the deadline ended the session; it
+never extends the session silently.
+
+**Measured:** 960 × 720 from both cameras (not the 1280 × 720 target). 2,325 frames sent, 0 dropped, and
+2,325 received, over 164.5 s from attach to close (a mean of about 14.1 a second including two switches —
+arithmetic, not a measured frame rate). No latency figure is claimed. No restart in the 4 minutes after Stop.
+
+**Wrong end reason on Mac Stop.** `stop()` ends locally as `stopped-by-mac` and closes the stream socket
+**before** sending `camera.stop`. The phone sees the close first, stops as `STREAM_CLOSED`, and its
+`camera.state` then overrides the Mac's own reason through `onState`'s refine rule. Both screens then say the
+connection closed. The Mac adds *"check the Mac and phone are on the same network"* and a raw
+`stream-closed` token. Fix direction, unimplemented: a reason this side *knows* (`stopped-by-mac`) is never
+refined by the phone, and the copy never names the network for an end the Mac caused. The tempting wrong
+fix is to delay the socket close until the phone answers, which re-opens M6's *stop ends the stream at once*.
+
+**Mac logging gap.** The Mac writes one `[camera]` line per session (the request ack). Live, switch, stop
+and the received-frame count are not logged, against `CLAUDE.md`'s *log the success case* rule.
+
+**Newly unproven, beyond the list above:** the permission dialog and the expiry running under it; the 1280 ×
+720 target not being met (whether CameraX chose 4:3 for the analysis use case is unread).

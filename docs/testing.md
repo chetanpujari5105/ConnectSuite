@@ -27093,3 +27093,118 @@ Red-first is by mutation: this is new code with no earlier version to be red aga
 **Not reached by any test:** `CameraActivity`, `CameraEngine` and the CameraX binding; `LinkServer`'s claim
 routing (its parser is tested); the Mac stream socket's TLS pin; the painter's canvas calls (its matrix is
 tested); real pane layout and visibility at rest (`card-visibility-sweep.mjs` needs the running app).
+
+## Camera v1 — first supervised hardware sitting (2026-10-02, 19:41–20:07 IST): privacy checks and one approved session
+
+**Scope, as approved:** preflight, two privacy checks (an unanswered request, a declined request), and **one**
+approved preview session with rear → front → rear, a rotation and one real Mac Stop. **Not run:** Home/lock,
+disconnect/reconnect, mirror coexistence, notification/background, transfers, permission reset. Builds:
+phone debug APK of `c2913a1` (Gradle up to date at 05:02, exit 0, SHA-256 `d0ce977f…`, debug signer
+`d3a505d2…` — the same signer as the APK it replaced); Mac `npm run build` exit 0 and one relaunch.
+No camera image, screenshot, recording or frame payload was saved; every picture judgement below is the
+owner's, by eye.
+
+**Results, precisely:**
+- An unanswered request expired, and a declined request ended, **without capture and without frames**.
+- Explicit approval on the phone, the live preview, switching rear → front → rear and rotation **passed**.
+- Mac Stop **released the camera and cleared the picture**.
+- The Stop **reason and wording failed**: both ends said the connection closed.
+- **Untested:** the permission dialog, and every remaining lifecycle and security check — Home/lock,
+  leaving the screen, pane exit, disconnect, mirror busy, a background or notification request.
+
+**Procedural overrun — recorded as one, not rounded into the approval.** The approval allowed live
+observation **for up to 60 seconds**. The session ran **164.5 s** from attach (20:00:00.437) to close
+(20:02:44.909): the switches and the rotation were each run after a question to the owner, and nothing in
+the driver enforced the deadline. The watcher's own bound was 420 s, a sampling bound and not a capture
+limit. **Future drivers must enforce the capture deadline themselves:** arm it at `attached`, and when it
+fires press the real Stop and record that the deadline ended the session — never extend it silently, and
+never schedule steps that cannot finish inside it.
+
+**Preflight**
+
+| Check | Reading | Control |
+|---|---|---|
+| Device | pin `RZCY12330DT`, SM-S938B, sdk 36 | the phone was first absent from adb (Wi-Fi link only); the owner connected USB |
+| Installed app before | `com.chetan.connectsuite.debug` 2.0.0, `lastUpdateTime` 2026-10-01 16:44:28, signer `d3a505d2…` | debug keystore's SHA-256 is the same `D3:A5:05:D2…` |
+| Live call | `mCallState=2` on one SIM at 19:45 | the install waited until both read `0` (19:48:04) |
+| Camera open | `Active Camera Clients: []` | a first grep matched `Client package: com.samsung.android.sead` — that was the **connect history** (Environment Adaptive Display, last closed 19:30:43), not the live list |
+| Mirror / mic | `media_projection` null; no recording clients | — |
+| Transfers | none running; the paused pull untouched | Mac `resume records: 0 expired at start` after relaunch |
+| Install | `install -r` Success 19:48:33; installed `base.apk` SHA-256 = built APK | `link-up.sh` 3/3 after `am start -n …/MainActivity` |
+| Mac relaunch | 19:49:44, reconnected via last-known; `DEBUG SWITCHES` 0 lines; `CONNECTSUITE_DEBUG_SWITCHES` unset | the phone advertised `… calls, camera, clipboard …` |
+| Capability | Camera pane: *Ask phone for camera* enabled; routing to the pane wrote no phone `[camera]` line | the phone log's only `[camera]` line was the install's `Camera feature installed; capabilities now: [camera, mirror]` |
+| Nothing auto-started | Mac log since relaunch: no camera, mirror, push or pull line | 245 lines read, 6 `[link]` |
+
+Instrument faults caught on the way, none of which became a reading: zsh does not word-split `$A`, so a
+first snapshot ran nothing and printed nothing; an `-exec ls` under `run-as` failed silently (a plain
+`find` returned 4 files); `grep '\[camera\]'` through `adb shell` became a character class and counted
+1,552 lines (local `grep -F` with a `[vitals]` control: 1 and 187); a `/tmp/../private` path resolved to
+`/private/private`; `scripts/caps-reason-probe.mjs` is stale (`#caps` no longer exists).
+
+**2A — a request alone opens nothing.** Pressed once at 19:55:51. Phone: `camera.request from
+Chetans-MacBook-Pro: Ack, ShowRequest, ArmTimer`; `CameraActivity` came to the front. Sampled once a second:
+`Active Camera Clients: []` and **0** camera-service events for our package throughout; Mac canvas 0 × 0.
+Phone `stopped: EXPIRED — 0 sent / 0 dropped` at 19:56:21.553 (30.0 s); Mac *"The request expired … 0 frames
+sent by the phone, 0 dropped there; 0 received here"* at 19:56:22. The phone's screen then read *"Camera off —
+Nobody answered the camera request within 30 seconds…"* with only **Close** — an ended screen, not a
+lingering request. **PASS.**
+
+**2B — Decline.** Pressed once at 19:58:08; the owner tapped Decline. Phone `stopped: DECLINED — 0 sent / 0
+dropped` at 19:58:13.963; Mac *"Declined on your phone"*, 0 / 0 / 0; phone screen *"You declined the camera
+request on this phone."* No camera client, no camera event for our package. **PASS.**
+
+**3 — one approved session.** No permission dialog: `CAMERA` was already granted (`USER_SET`, from the QR
+scanner), so the dialog branch was **not exercised**.
+
+| Time | Phone | Mac |
+|---|---|---|
+| 19:59:58.233 | `camera.request` from Chetans-MacBook-Pro | waiting |
+| 20:00:00.386 | `Start camera tapped … OpenCamera` | — |
+| 20:00:00.437 / .503 | `attached`; `Camera bound: back, epoch 0`; Camera ID 0 held by our package | *Live · back camera · 960 × 720 · up to 15 fps*; picture 1108 × 554 CSS px |
+| 20:01:09.530 | `camera.switch` → `bound: front, epoch 1`; only Camera ID 1 held | *Live · front camera · 960 × 720* |
+| 20:01:30.163 | `bound: back, epoch 2`; only Camera ID 0 held | *Live · back camera · 960 × 720* |
+| 20:02:44.909 | `Camera stream closed: 2325 sent / 0 dropped (0 evicted, 0 oversize, 0 unencoded)`; camera released | picture cleared (0 × 0) |
+
+- **The camera opened only after the tap** (`OpenCamera` is in the tap's effects; no camera event for our
+  package before it).
+- **Owner, by eye:** rear — live, upright, same left/right as the phone's preview; front — upright and
+  mirrored the same way as the phone's preview; rear again — matched; landscape and back — the Mac's picture
+  stayed upright and un-stretched.
+- **The rotation reading is the owner's alone.** The Mac's status line and canvas box did not change during
+  the turn (the header carries the rotation and the painter applies it), so this instrument could not see it.
+- **Dimensions:** 960 × 720 for both cameras, as the Mac's status line names it — not the 1280 × 720 target.
+- **Counts:** 2,325 sent, 0 dropped on the phone; 2,325 received on the Mac. Attach to close was 164.5 s, so
+  the mean is about 14.1 frames a second across the whole session, including both switches. That is
+  arithmetic on two counts, **not** a measured frame rate. No latency is claimed.
+- **No automatic restart:** sampled to 20:06:54 (the watcher's 420 s bound) — no camera client for our
+  package, no new `[camera]` line, Mac unchanged.
+
+**Findings (not numbered — the owner's call):**
+1. **A Mac Stop ends as `STREAM_CLOSED`, and both ends then blame the network.** `CameraController.stop()`
+   (`desktop/src/main/camera.ts:281`) ends locally as `stopped-by-mac`, closing the socket at once, then
+   sends `camera.stop`. The phone saw the socket close first (`.909`) and stopped as `STREAM_CLOSED`; the
+   `camera.stop` arrived 7 ms later and was only acked. The phone's `camera.state stopped` then **replaced**
+   the Mac's own certain reason via `onState`'s refine rule (`:326-337`), meant for a guessed `stream-lost`.
+   Mac: *"The camera stopped — The connection carrying the picture closed. Ask again. If it keeps happening,
+   check the Mac and phone are on the same network."* plus a raw `stream-closed` token; phone: *"The
+   connection carrying the camera picture closed."* The mechanics passed; the words are wrong. No unit test
+   reaches this, because it is the order of two channels.
+2. **The Mac logs one `[camera]` line for a whole session** — the request ack. Nothing for live, either
+   switch, the stop or the 2,325 frames received (the same window holds 24 `[link]`/`[notif]` lines). The
+   phone's side logs every step with counts.
+3. *Instrument artifact:* one `uiautomator dump` wrote `/sdcard/window_dump_cam.xml` on the phone. It is
+   outside the receive folders, holds only the screen's text, and was not deleted (deletion was not
+   approved); later dumps went to stdout.
+
+**Closing checks.** Phone, against the post-install snapshot: identical except the CAMERA app-op's last access
+(*2m21s ago, duration 1m14s* — the final rear binding, 20:01:30 → 20:02:44). Grants, the listener binding,
+prefs, DataStore and all 188 receive-folder files unchanged; no `.failed`/`.part`/`.pending` file (the same
+query finds 176 `.bin`); no partial in app-private storage. Mac: 62 protected files identical (size, mtime,
+inode, SHA-256) except `sidekick.json`'s mtime and inode from the relaunch, same bytes. The paused partial
+(100,663,296 B, inode 88373242), its record, the `(7).bin.failed` marker and ledger `[]` are unchanged.
+`PRODUCT.md`, `RESUME.md`, `testing.md`, `skills-lock.json` and `camera-v1.md` were SHA-verified before the
+records were written; untracked set identical.
+
+**Untested on hardware:** the permission dialog, the 30 s expiry with the dialog open, Home/lock, leaving
+the screen, pane exit, disconnect, mirror busy, notification/background request, One UI's in-use codes, and
+any frame-rate, latency, CPU, heat or bandwidth figure.

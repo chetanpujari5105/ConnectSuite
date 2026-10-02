@@ -1,3 +1,76 @@
+# CAMERA V1 FIRST HARDWARE SITTING — 2026-10-02 (19:41–20:07 IST): privacy checks and one approved session PASS; Mac Stop reports the wrong reason; nothing committed
+
+**Read this first.** One bounded, supervised sitting on the SM-S938B, approved for preflight, two privacy
+checks and **one** preview session only. HEAD is still `c2913a1`; nothing was committed. Evidence:
+`docs/testing.md` → *Camera v1 — first supervised hardware sitting* (the last section). Summary and fix
+directions: `docs/camera-v1.md` → *Hardware results*.
+
+## What passed
+
+- **Preflight:**
+  - The phone was pinned once on USB. The owner connected it; it had been on the Wi-Fi link only.
+  - The install waited for a live call to end.
+  - `install -r` of `c2913a1`'s debug APK (`d0ce977f…`, the same debug signer as before), then
+    `link-up.sh` 3/3.
+  - The Mac was rebuilt and relaunched once with no debug switches, and reconnected.
+  - The phone advertises `camera`. Nothing auto-started.
+- **2A, an unanswered request:**
+  - The phone named `Chetans-MacBook-Pro`.
+  - No camera client at any one-second sample.
+  - Both ends expired it at 30.0 s, with 0 frames.
+- **2B, Decline:** `DECLINED` on both ends, 0 frames, and no camera event.
+- **3, one approved session:**
+  - The camera opened only after **Start camera**. No permission dialog appeared: `CAMERA` was already
+    granted.
+  - Rear, front and rear again were all switched from the Mac inside one stream, with no new request.
+  - The owner confirmed by eye: it matched the phone's preview, front was mirrored the same way, and it
+    stayed upright and un-stretched in landscape.
+  - 960 × 720 from both cameras.
+  - 2,325 frames sent, 0 dropped, 2,325 received.
+  - One Mac Stop released the camera and cleared the picture, with no restart over the next 4 minutes.
+
+## What failed, or was found
+
+0. **Procedural overrun.** The approval allowed up to **60 s** of live observation, but the session ran
+   **164.5 s**: the switch and rotation steps waited on questions, and the driver enforced no deadline.
+   This was outside the approved bound. Future drivers arm the deadline at `attached` and press the real
+   Stop when it fires, never extending silently.
+1. **Mac Stop ends as `STREAM_CLOSED`.** The Mac closes the socket before it sends `camera.stop`, and the
+   phone's reason then overrides the Mac's own `stopped-by-mac`. Both screens say the connection closed;
+   the Mac adds *check … the same network* and a raw `stream-closed`. Fix direction and the wrong fix:
+   `docs/camera-v1.md`.
+2. **The Mac logs one `[camera]` line per session.** That line is the request ack: no live, switch, stop
+   or received-frame lines.
+3. The capture size is 960 × 720, not the 1280 × 720 target. Why is unread.
+4. Instrument: one `uiautomator dump` wrote `/sdcard/window_dump_cam.xml` on the phone (screen text only).
+   It was not deleted.
+
+## Left changed on devices
+
+- **Phone:** the debug APK, `lastUpdateTime` 2026-10-02 19:48:33. The CAMERA app-op's last access is this
+  session. `/sdcard/window_dump_cam.xml`. Everything else is identical:
+  - grants and the listener binding;
+  - prefs and DataStore;
+  - all 188 receive files;
+  - no markers or partials.
+- **Mac:** `dist` rebuilt and the app relaunched, so pid 99261 is gone. `sidekick.json` was rewritten with
+  the same bytes. The paused pull is untouched: partial 100,663,296 B, inode 88373242, its record, the
+  `(7).bin.failed` marker, and ledger `[]`.
+- **Repo:** uncommitted additions to `docs/testing.md` (appended), `docs/camera-v1.md` and this entry. Your
+  `PRODUCT.md`, `skills-lock.json`, earlier `RESUME.md` entries, earlier `testing.md` text and untracked
+  files are unchanged, SHA-verified.
+
+## Needs the owner
+
+- Numbers for findings 1 and 2, and whether to fix them.
+- Approval for any remaining plan step: 6 (Home), 7's pane exit, 8 (disconnect), 9 (busy). Also the
+  permission dialog, which needs `CAMERA` revoked first — a permission change, so it needs its own
+  approval.
+- Whether to delete `/sdcard/window_dump_cam.xml`.
+- Whether to commit.
+
+---
+
 # Resume here — written 2026-10-01: L1/L2 T4-A PASSED on hardware — block 800 named; evidence committed (docs only); T5 NOT approved
 
 Evidence: `docs/testing.md` → *L1/L2 T4-A on hardware* (the last section). Plan: `docs/l1-l2-t4a-2026-10-01.md` §5.
