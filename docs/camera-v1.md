@@ -2,7 +2,8 @@
 
 **Status: built and tested with generated fixtures, 2026-10-02; first supervised hardware sitting the same
 evening — the two privacy checks and one approved session passed on the SM-S938B, with one wrong end reason
-on Mac Stop (see *Hardware results*). Most of the plan is still unrun. Not release-ready. Release builds do
+on Mac Stop (see *Hardware results*). That reason (defect 167) and the Mac's missing lifecycle log
+(defect 168) are fixed in `35e1860`, tests only — not yet run on hardware. Most of the plan is still unrun. Not release-ready. Release builds do
 not install it.** The contract is `docs/protocol.md` → Camera, and it
 wins wherever this file disagrees. This file is the arguments, the limits, and the supervised
 hardware-test plan.
@@ -152,7 +153,8 @@ calls (its matrix is tested); and the real pane layout (the DOM double lays noth
   recreates the activity and ends the stream as `left-screen`.
 
 **Performance**
-- 720p / 15 fps / JPEG q70 is a target, never a measurement. No latency, frame-rate, CPU, heat or bandwidth
+- 15 fps / JPEG q70 is a target, never a measurement. The size is a **bound**, not a target: 4:3 within
+  1280 × 720, which is 960 × 720 — see *Resolution: why 960 × 720*. No latency, frame-rate, CPU, heat or bandwidth
   claim is made. JPEG costs several Mbit/s where H.264 would cost one or two.
 - The NV21 conversion is a plain loop over chroma; its cost on the device is unmeasured.
 
@@ -211,7 +213,7 @@ never extends the session silently.
 2,325 received, over 164.5 s from attach to close (a mean of about 14.1 a second including two switches —
 arithmetic, not a measured frame rate). No latency figure is claimed. No restart in the 4 minutes after Stop.
 
-**Wrong end reason on Mac Stop.** `stop()` ends locally as `stopped-by-mac` and closes the stream socket
+**Wrong end reason on Mac Stop — defect 167, fixed in `35e1860` (tests only).** `stop()` ends locally as `stopped-by-mac` and closes the stream socket
 **before** sending `camera.stop`. The phone sees the close first, stops as `STREAM_CLOSED`, and its
 `camera.state` then overrides the Mac's own reason through `onState`'s refine rule. Both screens then say the
 connection closed. The Mac adds *"check the Mac and phone are on the same network"* and a raw
@@ -219,8 +221,82 @@ connection closed. The Mac adds *"check the Mac and phone are on the same networ
 refined by the phone, and the copy never names the network for an end the Mac caused. The tempting wrong
 fix is to delay the socket close until the phone answers, which re-opens M6's *stop ends the stream at once*.
 
-**Mac logging gap.** The Mac writes one `[camera]` line per session (the request ack). Live, switch, stop
+**Mac logging gap — defect 168, fixed in `35e1860` (tests only).** The Mac writes one `[camera]` line per session (the request ack). Live, switch, stop
 and the received-frame count are not logged, against `CLAUDE.md`'s *log the success case* rule.
 
 **Newly unproven, beyond the list above:** the permission dialog and the expiry running under it; the 1280 ×
 720 target not being met (whether CameraX chose 4:3 for the analysis use case is unread).
+
+## Resolution: why 960 × 720 (investigation only — nothing changed)
+
+**What the code asks for.** `ImageAnalysis` gets a `ResolutionSelector` with only a
+`ResolutionStrategy(Size(1280, 720), FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER)`. It sets **no aspect-ratio
+strategy**. `Preview` is `Preview.Builder().build()`, with no selector at all.
+
+**What CameraX does with that.** In CameraX 1.4.2, `ResolutionSelector.Builder()` initialises its aspect
+ratio to `AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY`. That was read from the library itself, not
+the documentation: `javap` on `camera-core-1.4.2.aar`'s `ResolutionSelector$Builder.<init>` shows a
+`getstatic …RATIO_4_3_FALLBACK_AUTO_STRATEGY` into `mAspectRatioStrategy`. So CameraX first prefers the
+camera's **4:3** sizes, then applies the bound inside that group: the closest size **not larger than**
+1280 × 720, else the closest larger one. The largest 4:3 size whose height fits 720 is **960 × 720**.
+A 16:9 1280 × 720 is not in the preferred group, so it is not chosen **even if the camera offers it**.
+Both cameras gave 960 × 720, which is exactly this rule's answer when the camera lists 960 × 720 YUV.
+
+**What is not known.**
+- Whether this camera lists 1280 × 720 YUV at all. No reading was taken, and none is claimed.
+- What size the on-screen `Preview` got. Its default is also 4:3, so the Mac and the phone show the
+  same field of view, which matches the owner's *"matches the phone's preview"*. Its size is not logged.
+- The reported 960 × 720 is the analysis `ImageProxy`'s size (rounded down to even). It is sent in every
+  frame header and in `running`, so the Mac's status line names what was actually encoded.
+
+**Verdict.** 960 × 720 is the configuration working as written, not a fallback or a fault. The defect
+was in this document's wording, which called 1280 × 720 a "target", and that is corrected above.
+
+**Proposals — separate, not implemented, each needing its own approval:**
+1. **Report the selected sizes (reporting only, low risk).** After `bindToLifecycle`, add
+   `imageAnalysis.resolutionInfo?.resolution` and `preview.resolutionInfo?.resolution` (with the crop
+   rect) to the phone's `Camera bound:` line. The size choice then becomes a reading on every run,
+   rather than an inference from the frame header. It changes no configuration.
+2. **A 16:9 stream, only if wanted (configuration change).** Set
+   `AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY` on **both** `ImageAnalysis` and `Preview`. On
+   one alone, the Mac would show a different field of view from the phone's own preview. Keep the
+   1280 × 720 bound and the closest-lower rule.
+   - **Before:** a read-only reading of the device's YUV stream configurations for cameras 0 and 1
+     (`dumpsys media.camera`).
+   - **Costs:** a narrower vertical field of view from a 4:3 sensor, and 921,600 pixels a frame instead
+     of 691,200 (+33 %) through the NV21 loop, the JPEG encoder and the link.
+   - **Risk:** on other devices, a combination CameraX must fall back from.
+   - **Recommendation: do not.** Keep 4:3; nothing observed calls for it.
+
+## Bounded hardware retry plan for 167 and 168 (not approved, not run)
+
+**One sitting, one approved session, a hard capture deadline.**
+- **Preconditions:** the owner's go-ahead for one `install -r` of `35e1860`'s debug APK and one Mac
+  build + relaunch.
+- **Pinning:** every `adb` write pinned; snapshots before and after as in the first sitting.
+- **Hands off:** no transfer, mirror, permission change or deletion; the paused pull is not touched.
+
+0. **Preflight**, as in the first sitting. Optionally, with its own approval, the read-only stream
+   configuration reading from proposal 2 — recorded as a reading, not acted on.
+1. **One request; the owner taps Start camera.** The driver arms a **20-second capture deadline** at the
+   phone's `attached` line, independent of any question it is waiting on.
+2. **At about 5 s, one Mac switch to the front camera.** The Mac log must show, in order: *requested*,
+   *accepted by the phone*, *switch confirmed: frames now from the front camera*.
+3. **By the deadline at the latest, one real Mac Stop.** If the deadline fires, the driver presses Stop
+   itself and records that the deadline ended the session. It never extends the session.
+4. **Pass, on both ends:**
+   - **Mac:** ended `stopped-by-mac` with *"You stopped the camera from this Mac."*; no code line, no
+     network sentence; the lifecycle lines present once each, and one termination line with
+     received / not drawn / the phone's counts.
+   - **Phone:** the screen reads *"The Mac stopped the camera."*; the log shows either `stopped:
+     STOPPED_BY_MAC`, or `STREAM_CLOSED` followed by `re-attributed STREAM_CLOSED → STOPPED_BY_MAC`.
+   - **Record which of the two orders happened.** That order is the reading this run exists to take.
+   - **Control:** both ends show 0 camera clients after Stop, and no restart within 60 s.
+5. **Stop the sitting on:**
+   - any capture before the tap;
+   - any frame after Stop;
+   - a deadline overrun;
+   - any unexplained change.
+
+**Still outside it:** the permission dialog (needs `CAMERA` revoked, its own approval), Home/lock, pane exit,
+disconnect, mirror busy, background or notification requests.

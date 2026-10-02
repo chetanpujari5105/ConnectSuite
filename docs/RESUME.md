@@ -1,3 +1,82 @@
+# CAMERA FOLLOW-UP — 2026-10-02 (evening): evidence committed; defects 167 and 168 fixed (tests only); 960 × 720 explained; nothing on hardware
+
+**Read this first.** Three local commits on top of `c2913a1`, none pushed. **No install, relaunch, camera
+request or other device action happened in this work.** The fixes are unverified on hardware.
+
+## Commits
+
+| Commit | Scope |
+|---|---|
+| `74dd2e2` | Docs: the first supervised Camera sitting — the precise results, and the **164.5 s overrun** of the approved 60 s observation, with the rule that drivers enforce the deadline |
+| `35e1860` | Defects **167** (a Mac Stop worded as a closed connection) and **168** (the Mac's camera log) — Mac and phone, tests, `docs/protocol.md` → `camera.stop`, register rows and evidence |
+| *(this commit)* | Docs: `docs/camera-v1.md` → *Resolution: why 960 × 720*, the two proposals, and the bounded retry plan; this entry |
+
+## What changed
+
+- **167:**
+  - **Mac:** `camera.stop` is written first and everything is torn down in the same tick, never waiting
+    for the ack. A phone `stopped` for an ended stream (same session, exact id) adds its counts once and
+    replaces only the Mac's guess, `stream-lost`. An unexplained end says *"The camera stream ended."*,
+    and no ending prints its reason token.
+  - **Phone:** the owner's stop for the exact stream that has just closed re-attributes it from
+    `STREAM_CLOSED` to `STOPPED_BY_MAC`; stated reasons are never touched.
+- **168:** the Mac logs:
+  - the request, the ack, approval, and the first frame with its size;
+  - the switch as requested / accepted / confirmed by frames / refused;
+  - one termination line with received, not-drawn and phone counts, and the phone's account once;
+  - since-launch tallies. No per-frame lines, tokens, claims or frame bytes.
+- **960 × 720 is the configuration working as written.** CameraX 1.4.2's `ResolutionSelector` defaults to
+  4:3-first; this was read from its bytecode. The largest 4:3 size inside the 1280 × 720 bound is
+  960 × 720. Nothing was changed. Two proposals, not implemented: log the selected sizes (low risk), and a
+  16:9 configuration (recommended against).
+
+## Evidence (fresh)
+
+- **Mac:** `npm test` **1,504 / 0** (+12); typecheck app 0, test 0.
+- **Phone:** `testDebugUnitTest --rerun-tasks` **1,207 / 0** (+6: camera-module 67). All 124 result
+  files were from that run; Gradle exit 0.
+- **Guards:**
+  - all 16 commit hooks allow;
+  - `check-defects` reports 152 rows, all with records;
+  - `check-suites-run` is GREEN on both halves.
+- **Mutations (each restore SHA-verified):**
+  - Mac 167-A…G and 168-B…G are red on their named tests.
+  - 168-A survives alone and is red with a second exit (168-A2); the guard holds in the control (A3).
+  - Phone P167-A, B, D, E, F are red; C1 survives by design and C2 is red.
+
+## Found on the way
+
+- **`defects-in-sync.sh` denied two Bash commands that were not commits.** The hook is scoped
+  `"if": "Bash(git commit *)"` in `.claude/settings.json`. It fired while the register held rows 167 and
+  168 before their `testing.md` sections existed, and denied:
+  - a Gradle run;
+  - the shell append that would have fixed the drift.
+
+  Both commands carried a heredoc; the simple commands in the same state passed. **A guess, not
+  verified:** the harness may evaluate the `if` conservatively when it cannot parse a command. The way
+  through was the Edit tool. Not changed.
+- The refused/error state blocks still show the phone's error code (`CAMERA_BUSY`, `MALFORMED_FRAME`) as
+  a code line. That is the app-wide state-block convention, not an end-reason token, and was left alone.
+
+## Protected, verified unchanged
+
+- Your `PRODUCT.md`, `skills-lock.json`, the earlier uncommitted `RESUME.md` entries and `testing.md`
+  hunks: the unstaged diff is the start-of-session 739 / 6 after every commit.
+- The running Mac app and its `dist`, which were not rebuilt.
+- The phone: no `adb` command.
+- The paused partial and its record, every `.failed` marker, and the 23 untracked files.
+
+## Needs the owner
+
+- Approval for the bounded retry in `docs/camera-v1.md` → *Bounded hardware retry plan for 167 and 168*.
+  It is one session with a 20 s capture deadline that the driver enforces.
+- Whether to take proposal 1 (log the selected sizes).
+- Whether to look at the `defects-in-sync` hook.
+- Whether to delete `/sdcard/window_dump_cam.xml`.
+- Whether to push.
+
+---
+
 # CAMERA V1 FIRST HARDWARE SITTING — 2026-10-02 (19:41–20:07 IST): privacy checks and one approved session PASS; Mac Stop reports the wrong reason; nothing committed
 
 **Read this first.** One bounded, supervised sitting on the SM-S938B, approved for preflight, two privacy
