@@ -121,6 +121,13 @@ export const SPECIFIED_NOT_ON_THE_WIRE = {
     'the signing test is taken. Do not start it to clear this entry.',
   'mic.stop': 'See `mic.start` — same feature, same gate.',
   'mic.state': 'See `mic.start` — same feature, same gate.',
+  'webcam.request':
+    'Camera v2 (Sidekick Camera), specified 2026-10-03 as phase W0 and approved with W1 only. W1 is the ' +
+    "Mac's Swift bridge and extension logic, which never touch the wire. The phone half is W2 and Electron " +
+    "main's half is W3; each needs its own approval. Do not add the constants to clear this entry.",
+  'webcam.state': 'See `webcam.request` — same feature, same gate (W2 phone, W3 Mac).',
+  'webcam.stop': 'See `webcam.request` — same feature, same gate (W2 phone, W3 Mac).',
+  'webcam.switch': 'See `webcam.request` — same feature, same gate (W2 phone, W3 Mac).',
 };
 
 /**

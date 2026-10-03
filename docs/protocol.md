@@ -111,6 +111,8 @@ Files: `fs.list`, `fs.stat`, `fs.thumb`, `fs.mkdir`, `fs.delete`, `fs.transfer.b
 Photos: `media.buckets`, `media.list`, `media.thumb`, `media.original`
 Mirror: `mirror.start`, `mirror.stop`, `mirror.config`, `mirror.keyframe`, `mirror.stats`, `mirror.state`, `mirror.rotate`
 Camera: `camera.request`, `camera.stop`, `camera.switch`, `camera.state` — see [Camera](#camera-42501-frames-on-42502-by-claim)
+Webcam: `webcam.request`, `webcam.state`, `webcam.stop`, `webcam.switch` — see [Webcam](#webcam-42501-frames-on-42502-by-claim).
+Specified 2026-10-03 and **on neither side's wire yet**
 Input: `input.tap`, `input.swipe`, `input.scroll`, `input.key`, `input.text`, `input.global`
 (back/home/recents/notifications/quick-settings/lock-screen — **not** power; see [Input](#input-42501))
 Apps: `apps.list`, `apps.icon`, `apps.open.ask` — see [Apps](#apps-42501). There is deliberately **no**
@@ -144,7 +146,7 @@ feature failing every request looks, on the Mac, exactly like a feature that is 
 | `clip` | `clipboard` |
 | `fs` | `files` |
 | `media` | `photos` |
-| `mirror`, `input`, `sms`, `contacts`, `remote`, `apps`, `mic`, `share`, `camera` | *(same name)* |
+| `mirror`, `input`, `sms`, `contacts`, `remote`, `apps`, `mic`, `share`, `camera`, `webcam` | *(same name)* |
 
 The mapping is `FeatureOf.of(type)` in `core/.../protocol/FeatureOf.kt`, checked exhaustively over
 `MessageType` by `ProtocolNamespaceTest`. It returns **null** for the system messages — `hello`,
@@ -174,7 +176,8 @@ Client sends the session token as the first frame, then reads only.
 
 The token frame may instead carry a **camera claim** — the token, the word `camera` and a `streamId`;
 see [The stream claim on 42502](#the-stream-claim-on-42502). A token frame holding only the token is
-the mirror's, and its meaning is unchanged.
+the mirror's, and its meaning is unchanged. A **webcam claim** — the word `webcam` and a `sessionId` — is
+specified under [The webcam stream claim on 42502](#the-webcam-stream-claim-on-42502).
 
 The token frame uses the standard 4-byte length prefix. **Everything after it does not**: video
 frames carry their own 13-byte header, whose length field is the frame's only length. Writing both
@@ -696,6 +699,438 @@ notification cleared, and the `stopped` event sent.
   the token-only claim, the camera's is the camera claim.
 - **File transfers.** Untouched. They run on 42503, and nothing in this namespace changes transfer
   integrity, partial ownership, consent or release policy.
+
+## Webcam (42501, frames on 42502 by claim)
+
+Capability `webcam`, version key `webcam` in [`ext`](#extensions-ext). **The phone's camera, published on
+the Mac as a selectable camera called "Sidekick Camera"** — Camera v2. Specified 2026-10-03 (phase W0 of
+`docs/camera-v2-webcam-proposal.md`). It is a separate namespace from [Camera](#camera-42501-frames-on-42502-by-claim):
+v1's `camera.*` messages, its claim word, its frame and its behaviour are unchanged by anything here, and
+a peer that knows only v1 behaves exactly as it did.
+
+**Status, stated so nothing below reads as shipped.** No `webcam.*` constant exists on either side, and
+`scripts/check-protocol-spec.mjs` lists all four messages as *specified and not on the wire*. The Mac's
+frame bridge and the Camera Extension's logic are built and tested **in-process only**
+(`desktop/native/SidekickCamera/`, phase W1). Nothing is signed, installed or activated, and no phone
+capture has run. Quality and latency figures in this section are **targets**, never measurements.
+
+### Two different things: the device and the session
+
+The single most important distinction in this namespace. Everything else enforces it.
+
+| | **Sidekick Camera, the device** | **A webcam session** |
+|---|---|---|
+| What it is | a camera the Mac's apps can list and select, published by Sidekick's Camera Extension | the phone's camera capturing for this Mac, after its owner's tap |
+| Exists when | the extension is activated, whether or not Sidekick, the phone or a meeting is running | from the phone owner's **Start camera** tap until its first ending |
+| Who controls it | macOS, and whoever activated the extension | **the phone's owner**, per session |
+| Shows | the camera-off card, unless a session is live | the camera |
+| Costs the phone | nothing | the camera, the encoder and the battery |
+
+**Enumerating the device, selecting it, opening it, starting a stream on it, or the meeting app's own
+camera permission is never consent to capture.** At most, a consumer starting the device makes the Mac
+*ask*. Only the phone owner's tap starts capture. A meeting app can hold Sidekick Camera open all day
+and receive nothing but the camera-off card.
+
+### The rules this namespace exists to keep
+
+Rules 1–5 are Camera v1's, restated for this namespace. Rules 6–8 are the owner's decisions of
+2026-10-03.
+
+1. **A Mac request never opens the camera.** `webcam.request` puts a request on the phone's screen. The
+   camera opens only when the phone's owner taps **Start camera** for that request.
+2. **A granted permission is not consent.** Android's `CAMERA` permission skips the dialog, never the
+   tap. The same holds on the Mac: a meeting app's camera permission is not phone consent.
+3. **Consent is per session and is never stored.** Every `webcam.request` mints a new `sessionId`. Once
+   that session ends, by any route, nothing about it can be resumed. Nothing survives a disconnect, a
+   restart of either side, a reboot or a reinstall.
+4. **No frame before approval, none after the end.** The phone sends access units only while the session
+   is `running`, and only to the socket that claimed it. The Mac drops anything else twice: once in the
+   bridge and again in the extension.
+5. **No microphone.** No audio is carried, no audio permission is requested, and no audio device is
+   published.
+6. **The last consumer leaving stops capture at once.** There is no linger. When the count of apps
+   streaming from Sidekick Camera reaches zero, the Mac sends `webcam.stop` with cause `no-consumers`.
+   The bridge stops feeding on the same reading, without waiting for the phone. The device stays
+   published and shows the camera-off card.
+7. **Explicit Stop, disconnect, expired consent and privacy or lifecycle shutdown stop immediately.**
+   None waits for a timer, an ack or a frame boundary.
+8. **Nothing restarts by itself.** See [Consumer episodes](#consumer-episodes-and-when-the-mac-may-ask).
+   A session that ended for any reason other than its consumers leaving does not ask again by itself,
+   and an ended session's consent is never reused.
+
+### Capability, version and older peers
+
+`webcam` is advertised when the phone's webcam feature is installed: its three requests have handlers,
+and the webcam stream claim has a consumer. Like `camera` and `mirror`, **it is not gated on the
+`CAMERA` permission**, which is asked in the flow after the tap.
+
+The version is the `ext` key `webcam`, negotiated by the ordinary `ext` rules at `min(mine, theirs)`.
+Version **1** is everything in this section. The capability says the feature is built and allowed on
+the phone. The version says which messages both ends understand. **The Mac sends `webcam.*` only when
+both hold**: `webcam` is in `capabilities` and `webcam` is negotiated at ≥ 1.
+
+| Peers | What happens |
+|---|---|
+| Both know `webcam` version 1 | the flow below |
+| The Mac knows it, the phone is older (no `webcam` capability, no `ext` key) | the Mac sends no `webcam.*`. Sidekick Camera shows the camera-off card. The Mac's Camera pane says the phone's Sidekick needs an update to be used as a webcam |
+| The phone lists `webcam` in `unavailable` | the Mac shows the phone's reason in its pane and sends no request. The device shows the camera-off card |
+| The phone knows it, the Mac is older | the Mac never sends `webcam.request`, so the camera never opens for it |
+| The phone has only v1 `camera` | **no fallback.** v1's JPEG stream is never fed into Sidekick Camera, and v1's pane keeps working exactly as before |
+
+### Development and release gates
+
+**Nothing in this namespace is in a release build of either side.**
+
+- **Phone.** The webcam feature is installed only in a debuggable build, exactly as Camera v1 is. A
+  release build lists `webcam` in `unavailable` with the phone's ordinary "not built" reason and
+  advertises no `ext.webcam`, until a release flag (`Extensions.WEBCAM_RELEASE`, `false`) is flipped
+  deliberately in a commit that records its evidence.
+- **Mac.** The Mac advertises `ext.webcam: 1` only when **both** hold:
+  - its development gate is open (an unpackaged or development build, with the webcam development
+    switch on). The release twin, `WEBCAM_RELEASE`, is `false`;
+  - the bridge helper is present beside the app.
+- **Publishing the device is a third, separate gate.** Sidekick Camera exists only after the Camera
+  Extension is activated, and that needs a Developer ID–signed Sidekick in `/Applications` and the
+  admin's approval in System Settings (blocked on the Apple Developer Program). Before that, a
+  development Mac may run a session with the bridge's decoded frames going to a development preview
+  only. **Nothing is published as a camera, and nothing claims to be.**
+
+### Consumer episodes, and when the Mac may ask
+
+A **consumer** is an app streaming from Sidekick Camera's source stream. The extension counts its source
+stream's starts and stops and publishes the count as a read-only property. The bridge reads it through
+CoreMediaIO and reports it to Electron main.
+
+- **The count is reliable at 0 versus ≥ 1, and only there.** Whether CoreMediaIO calls a source stream's
+  start once per client or once per 0→1 transition is not documented. The count is a floor at zero
+  that never goes negative, and nothing depends on its exact value above 1.
+- A **consumer episode** begins when the count goes 0 → ≥ 1 and ends when it returns to 0.
+- **Listing the device, opening it, or reading its formats is not a consumer.** Only a started source
+  stream counts.
+
+The Mac may send `webcam.request` only in these two cases:
+
+1. **A consumer episode begins**, the link is up, `webcam` is usable (above), and no request or session
+   is open. That is **at most one automatic request per episode.**
+2. **The person clicks Ask phone** in the Mac's Camera pane. This works whether or not a consumer
+   exists. With no consumer, a session approved this way is stopped `no-consumers` as soon as it goes
+   `running`, unless a consumer has arrived by then. **The pane says so before the click.**
+
+A session that ends with cause `no-consumers` ends with its episode, so the next episode may ask again.
+**A session that ends any other way spends its episode.** That covers a decline, an expiry, a phone
+Stop, a Mac Stop, a disconnect, a privacy shutdown and a capture failure. For the rest of that episode
+the Mac sends no request on its own: no retry, no re-ask after a reconnect, and no re-ask after the
+phone's screen comes back. Only a new episode or the person's click can ask again.
+
+### `webcam.request`
+
+**Request, Mac → phone.**
+
+```json
+request {"facing":"front","trigger":"consumer"}
+ack     {"state":"awaiting-approval","sessionId":"9b1e…(32 hex)","facing":"front",
+         "expiresInMs":30000,"message":"Waiting for you to allow the camera on your phone.",
+         "fixHint":"Open the request on your phone and tap Start camera."}
+```
+
+- `facing` is `"back"` or `"front"`. It is optional and defaults to `"front"`, because a webcam faces
+  its user. It is a starting choice: the phone's request screen lets the owner change it before
+  approving.
+- `trigger` is `"consumer"` (a consumer episode began) or `"person"` (Ask phone). It is required. It
+  changes only the phone's sentence. With `consumer`, the phone says an app on the Mac wants to use the
+  camera, never that the Mac's owner asked.
+
+**The ack is not approval.** Camera v1's rules apply unchanged:
+
+- the ack arrives within 2 seconds;
+- its `message` names the route the phone actually took to show the request;
+- an unanswered request expires after 30 seconds, measured on the request's own clock, and a tap at or
+  after the deadline opens nothing.
+
+Refusals are `error` with `feature: "webcam"`. The two camera codes are Camera v1's, reused because they
+describe the same physical camera:
+
+| Cause | `code` |
+|---|---|
+| A webcam request or session is already open, from this Mac or another | `CAMERA_BUSY` |
+| A Camera v1 request or stream is open | `CAMERA_BUSY` (the message says it is the Camera pane) |
+| A mirror session is running or waiting for consent | `CAMERA_BUSY` (the message says it is the mirror) |
+| The phone has no camera | `CAMERA_UNAVAILABLE` |
+| `facing` or `trigger` invalid, or `trigger` missing | `BAD_REQUEST` |
+
+The phone never stops a mirror or a Camera v1 stream to make room for a webcam session. In the other
+direction, a `camera.request` while a webcam session is open is refused by Camera v1's existing
+`CAMERA_BUSY` row ("a camera request or stream is already open"), and the `camera.*` section is not
+edited for it.
+
+### `webcam.state`
+
+**Event, phone → Mac**, on every phase change, carrying `sessionId` and the `webcam.request`'s
+`requestId`.
+
+| `state` | Meaning | Terminal |
+|---|---|---|
+| `awaiting-approval` | on the phone, unanswered. **Carried by the ack only** | no |
+| `starting` | the owner tapped Start camera and `CAMERA` is granted. **The Mac opens the stream socket now** | no |
+| `running` | the encoder has produced its first IDR and the socket is attached. Carries `facing`, `width`, `height` (the coded size, before rotation), `frameRate` (**the target, not a measurement**), `codec: "h264"` and `generation` | no |
+| `stopped` | ended. Carries `reason`, `message`, `fixHint`, `framesSent` and `framesDropped` | yes |
+
+`running` is sent again, with a higher `generation`, after every `webcam.switch` and every encoder
+reconfiguration (a size change on the quality ladder).
+
+`reason` on `stopped` is a closed set. The Mac switches on it; `message` is for a person.
+
+| `reason` | What ended it |
+|---|---|
+| `declined` | the owner tapped Decline |
+| `expired` | nobody answered within 30 seconds |
+| `permission-denied` | Android's camera permission was refused |
+| `camera-unavailable` | no camera of that facing, or it failed to open |
+| `camera-in-use` | another app holds the camera, or a policy disables it |
+| `stopped-by-mac` | `webcam.stop` with cause `person` or `shutdown` |
+| `no-consumers` | `webcam.stop` with cause `no-consumers` |
+| `stopped-on-phone` | the owner tapped Stop |
+| `left-screen` | the phone's webcam screen stopped being visible (Home, another app, lock, screen off) |
+| `stream-closed` | the stream socket closed, or was not opened within 10 seconds of `starting` |
+| `capture-failed` | the camera or the encoder failed |
+| `too-hot` | the phone's thermal status reached critical |
+
+When the owning control session ends, the phone stops at once and sends nothing (`mac-disconnected`,
+on its own screen and log only), as in Camera v1.
+
+### `webcam.stop`
+
+**Request, Mac → phone.** `{"sessionId":"…","cause":"person"}`.
+
+| `cause` | The Mac sends it when | The phone's `reason` |
+|---|---|---|
+| `person` | the person stopped it from the Mac: the Camera pane, the tray or the menu-bar item | `stopped-by-mac` |
+| `no-consumers` | the consumer count reached zero (rule 6) | `no-consumers` |
+| `shutdown` | a privacy or lifecycle event on the Mac: sleep, screen lock, a fast user switch, Sidekick quitting, or the webcam development switch turned off | `stopped-by-mac` |
+
+`cause` is required. An unknown or missing value is `BAD_REQUEST`, and the session is **still stopped**:
+a malformed stop never leaves a camera running.
+
+The ack, the idempotence and the ordering are Camera v1's:
+
+- `{"stopped":true}` or `{"stopped":false}`;
+- **the Mac writes `webcam.stop` first, then closes its stream socket in the same moment, and does not
+  wait for the ack;**
+- the phone re-attributes a `stream-closed` ending to the stop's reason when that exact session's stop
+  arrives with no newer request begun;
+- another control session's `sessionId` is `UNAUTHORIZED` and changes nothing.
+
+### `webcam.switch`
+
+**Request, Mac → phone.** `{"sessionId":"…","facing":"back"}`.
+
+Changes the camera **inside the session the owner approved**: no new `sessionId`, no new socket, no new
+approval. The phone increments `generation`, and the first access unit of the new generation is an IDR
+carrying SPS and PPS. `webcam.state` `running` follows with the new `facing` and `generation`. The
+errors are `camera.switch`'s (`NOT_FOUND`, `UNAUTHORIZED`, `BAD_REQUEST`, `CAMERA_UNAVAILABLE`), with
+`feature: "webcam"`.
+
+### The webcam stream claim on 42502
+
+The same port, TLS and session-token authorisation as the mirror and Camera v1. The token frame is the
+token, the word `webcam` and the `sessionId`:
+
+```
+<64 hex session token> webcam <32 hex sessionId>
+```
+
+That is 104 bytes, inside the unchanged 128-byte cap. The phone attaches the socket only when **all**
+of Camera v1's claim conditions hold, read for `webcam`:
+
+- the token resolves to a live control session;
+- that session sent the `webcam.request`;
+- the `sessionId` is that request's;
+- the session is `starting` or `running`;
+- **nothing has claimed it yet.** A session is claimed once, and its socket closing ends it
+  `stream-closed`.
+
+The mirror's token-only frame and Camera v1's `camera` claim are unchanged.
+
+### The webcam access unit
+
+After the claim, the phone writes one H.264 access unit per frame in the video channel's 13-byte frame
+header, with the header's own flags: bit 0 = this AU contains an IDR, bit 1 = this AU contains SPS and
+PPS, every other bit 0. Every payload starts with a 16-byte webcam header:
+
+```
+frame header (13 bytes, as the video channel)
+byte  0      flags      bit 0 = IDR in this AU, bit 1 = SPS+PPS in this AU, others 0
+bytes 1..8   PTS        µs, the phone's CLOCK_MONOTONIC at capture (the `pong` monoUs clock)
+bytes 9..12  length     payload bytes, big endian, at most 2 MiB (WEBCAM_MAX_AU)
+
+webcam header (first 16 bytes of the payload)
+byte  0      version    1
+byte  1      codec      1 = H.264, Annex B
+byte  2      facing     0 = back, 1 = front, 2 = external
+byte  3      rotation   quarter turns clockwise that make the picture upright, 0..3
+byte  4      flags      bit 0 = discontinuity (AUs were dropped before this one, or the encoder was
+                        reconfigured); bits 1..7 reserved, 0
+byte  5      reserved   0
+bytes 6..7   generation u16 BE, ≥ 1; +1 per switch and per encoder reconfiguration
+bytes 8..9   width      u16 BE, coded width before rotation, even, 16..3840
+bytes 10..11 height     u16 BE, coded height before rotation, even, 16..3840
+bytes 12..15 sequence   u32 BE, per session, +1 per AU the encoder produced; a gap is a drop
+bytes 16..   AU         H.264 Annex B, starting 00 00 01 or 00 00 00 01
+```
+
+The fixture is `docs/fixtures/webcam-au-v1.hex`. W1's Swift reader is tested against it, and both
+sides' readers will be.
+
+**The front camera is sent unmirrored** (proposal D-3). Meeting apps mirror their own self-view, so
+mirroring at the source would make text read backwards for everyone else. That is why there is no
+mirror flag. **This differs deliberately from Camera v1's pane**, which mirrors the front camera.
+
+**The Mac closes the stream on a malformed AU**, and shows an error rather than resyncing:
+
+- a length over 2 MiB;
+- a payload under 21 bytes (the header, a 4-byte start code and one NAL header byte);
+- an unknown version or codec;
+- facing over 2, or rotation over 3;
+- a reserved bit set, in either header;
+- width or height odd, under 16 or over 3840;
+- generation 0, or lower than one already seen in this session;
+- a sequence that does not increase;
+- an AU not starting with a start code;
+- flags claiming an IDR or SPS/PPS that the AU's NAL units do not contain;
+- **the first AU of a generation not being an IDR with SPS and PPS.**
+
+**A PTS that does not increase within a generation is not malformed.** That AU is dropped and counted
+`outOfOrder`. The picture's timeline is the Mac's own clock (below), so a capture-clock hiccup costs one
+frame, not the session.
+
+### What the Mac publishes: formats, orientation, timestamps
+
+- **Formats.** Sidekick Camera advertises `420v` (NV12, video range) at **1920 × 1080** and
+  **1280 × 720**, with frame durations from 1/30 s to 1/15 s. The client picks. 1080p/30 is a **target
+  with a fallback ladder** on the phone, never a promise.
+- **Scaling is labelled.** The newest decoded frame is fitted to the client's chosen format. A 720p
+  phone stream delivered as 1080p is reported as *upscaled*, never as 1080p.
+- **Orientation.** Rotation is applied on the Mac, from the header of the AU being drawn. The output is
+  always landscape 16:9.
+  - A landscape picture is fitted upright.
+  - A portrait picture is **pillarboxed**: centred, full height, black bars left and right. It is
+    **never cropped**.
+  - Aspect ratio is preserved in every case.
+- **Timestamps.** Every frame the device delivers is stamped with the **Mac's host clock at
+  delivery**, strictly increasing across every change: live to card, card to live, a generation change,
+  a session change, a producer change. The phone's PTS is never a presentation time on the Mac. It is
+  used only for staleness and, with the `pong` offset estimate, for a latency figure shown with its
+  ± RTT/2 bound.
+
+### What the picture is
+
+The device draws **exactly one of three things** on every tick of the client's frame rate:
+
+| Condition | Picture |
+|---|---|
+| A live session's newest frame arrived ≤ 1.0 s ago (host clock, measured from arrival) | that frame. Counted `fresh` when new since the last tick, `repeat` when sent again |
+| A live session, but no frame for > 1.0 s. This includes a camera switch in progress | the **video paused** card. **Never the frozen last frame** |
+| Anything else: no Sidekick, no phone, an older phone, waiting for approval, declined, any stop, no authorized producer | the **camera off** card |
+
+- The cards read "Sidekick Camera — camera off" and "Sidekick Camera — video paused". They name no
+  phone, person or network, because other people in the meeting see them.
+- The Mac's Camera pane, which only the Mac's owner sees, carries the detailed state: waiting for
+  approval, declined, the phone needs an update.
+- **A stop clears the picture.** The latest-frame slot is emptied the moment a session ends, its
+  producer leaves, or its sink stops. The next tick draws the camera-off card, and no pixel of the
+  ended session is drawn again.
+- **A stopped stream never reappears.** The bridge and the extension each remember ended `sessionId`s
+  and refuse any frame carrying one. That covers frames already in flight, frames in a queue, and a new
+  producer replaying old ones.
+
+### Bounded buffering, end to end
+
+There is no unbounded queue anywhere. Latency can fall behind only by dropping, and every drop is counted
+at the stage that made it, beside the count of what passed.
+
+| Stage | Bound | When full |
+|---|---|---|
+| Phone encoder → socket | 2 AUs in flight | drop every non-IDR AU until the next IDR, set `discontinuity`, request an IDR; `dropped_backpressure` |
+| Electron main → bridge | 4 AUs | the same keyframe rule; `dropped_bridge` |
+| Bridge decode | 4 AUs waiting, decoded **in order** | drop every non-IDR until the next IDR; `dropped_decode`. AUs are never superseded: skipping one breaks H.264's reference chain, so only **decoded** frames are replaced, at the stages below |
+| Bridge → extension (the CMIO sink queue) | 3 frames | the oldest is dequeued and released before the newest is enqueued; `superseded_sink` |
+| Extension | **one** latest-frame slot | replaced; nothing queues behind it |
+
+A slow consumer never slows the source: delivery to clients is CoreMediaIO's, and the extension's tick
+neither waits for it nor holds more than its one slot.
+
+**Recovery from a drop waits for the next IDR.** Version 1 has deliberately **no** keyframe-request
+message, because nothing has measured the need for one yet. The phone emits an IDR periodically, with a
+target interval of **2 s**, and a Mac-side drop shows the **video paused** card until the next one
+decodes. If W5 measures recoveries the 2 s interval makes visible, a `webcam.keyframe` is the addition,
+with a version bump.
+
+### The Mac's local contract: Electron main ↔ bridge ↔ extension
+
+These two hops never leave the Mac. They are specified here because they enforce the rules above, and
+because they are where an injected frame or a stale session would get in.
+
+**Electron main ↔ the bridge.** The bridge, *Sidekick Camera Bridge*, is a child process of Electron main.
+They talk over the **child's stdin and stdout**. There is no listening socket, network or filesystem, so
+there is nothing for another process to connect to.
+
+- **Framing.** A record is a 4-byte big-endian length `L`, then a 1-byte type, then `L − 1` body bytes.
+  `L` must be between 1 and 2 MiB + 64. A larger `L` is refused **before** anything is allocated: the
+  bridge reports `malformed-record` and exits.
+- **Main → bridge.**
+  - type `0x01`: a UTF-8 JSON control record;
+  - type `0x02`: the session's id as 16 raw bytes (the 32 hex digits decoded), then one access unit
+    **verbatim** from the claimed 42502 socket (frame header plus payload). The id is what lets the
+    bridge refuse a stale session's AU without trusting main's timing.
+- **Bridge → main.** Type `0x81`: a UTF-8 JSON status record.
+
+| Control `op` (main → bridge) | Meaning |
+|---|---|
+| `session-live` | `{sessionId, generation}`: the phone sent `running` for this session. **Main is the only source of liveness**; the bridge never infers it from AUs |
+| `session-ended` | `{sessionId, reason}`: drop everything for it, flush the sink queue, stop the sink, remember the id |
+| `shutdown` | end any session and exit |
+
+| Status `op` (bridge → main) | Meaning |
+|---|---|
+| `consumers` | `{count}`, on every change of the extension's consumer count |
+| `session-ended` | `{sessionId, reason:"no-consumers"}`: the bridge ended a session locally because the count reached 0. Main still sends `webcam.stop` |
+| `sink` | `{state}`: `device-not-installed`, `refused`, `idle` or `feeding` |
+| `counts` | every 5 s: every counter, each beside its denominator |
+
+The bridge accepts an AU only when all of these hold:
+
+- its `sessionId` is the live one;
+- its generation is not below the highest seen;
+- its decoder has seen an IDR since the last drop.
+
+A generation **above** the announced one is adopted rather than refused. It can arrive only on the
+session's own claimed socket, and the AU may outrun the `running` that announces it, because the two
+travel on different connections.
+
+**The bridge ↔ the extension.** The bridge is the only **producer**: it feeds the device's sink stream
+through CoreMediaIO.
+
+- **Authorization.** The extension starts its sink only for a client whose code signature satisfies a
+  requirement pinned to Sidekick's Team ID and the bridge's identifier. It checks this through
+  `SecCodeCopyGuestWithAttributes` on the client's pid, then `SecCodeCheckValidity`. **A matching
+  `signingID` alone is not enough**, because any ad-hoc binary can choose one. Until a Team ID exists,
+  the requirement can name none, so **every producer is refused**: it fails closed. The residual risk is
+  a pid-reuse race, because `CMIOExtensionClient` exposes a pid and not an audit token. It is recorded
+  as residual, not claimed closed.
+- **Frames.** A frame is accepted only when all of these hold:
+  - it comes from the authorized producer while its sink is started;
+  - it is `420v`, at one of the two published sizes;
+  - its session is not one the extension has seen end.
+
+  Each frame carries its `sessionId` and `generation` as sample-buffer attachments. **Whether those
+  survive the sink queue between processes is unread.** The design does not depend on them: the sink's
+  start and stop bound a session on their own, and the attachments are defence in depth.
+- **Producer and consumer changes.** When the producer stops or disconnects, the extension empties its
+  slot at once. A replacement producer starts with nothing shown and must carry a session the extension
+  has not seen end.
+- **No other channel.** The extension accepts nothing that changes the picture through a settable
+  property, a notification or a file. Its only settable properties are CoreMediaIO's standard format
+  and frame-rate selections. The consumer count is a read-only custom property.
 
 ## Input (42501)
 

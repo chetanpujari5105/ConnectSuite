@@ -1,0 +1,13 @@
+# Webcam v1 golden access unit — docs/protocol.md → The webcam access unit.
+# Read today by the Mac's Swift bridge (desktop/native/SidekickCamera, WebcamAUTests). The phone's
+# encoder (W2) and Electron main's socket reader (W3) must assert against the same bytes. Change the
+# contract first, then this.
+#
+# Frame header: IDR + SPS/PPS (flags 0x03); PTS 0x0102030405060708 µs; payload 40 bytes.
+# Webcam header: version 1; H.264; facing front; rotation 3 quarter turns; no discontinuity;
+# generation 7; 1920x1080; sequence 0x01020304.
+# AU: three 4-byte-start-code NAL units — SPS (type 7), PPS (type 8), IDR slice (type 5). The NAL
+# bodies are 3-byte stand-ins: the reader checks the structure and the NAL types, not decodability.
+#
+# 13-byte frame header           | 16-byte webcam header                          | Annex B AU
+03 0102030405060708 00000028       01 01 01 03 00 00 0007 0780 0438 01020304        00000001 6742001f 00000001 68ce3c80 00000001 65888400

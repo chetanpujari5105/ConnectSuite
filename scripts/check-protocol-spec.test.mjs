@@ -416,10 +416,14 @@ test('the tree as it stands: every spec-only name is allowlisted, and mic.* is w
   });
   assert.deepEqual(r.findings, []);
   // share.saved was here for slice 3a; slice 3c put it in MessageType, so it moved to TWIN_EXEMPT.
-  assert.deepEqual(r.specNotWire, ['apps.launch', 'mic.start', 'mic.state', 'mic.stop']);
+  // webcam.* joined on 2026-10-03: specified as phase W0, on neither side's wire until W2/W3.
+  assert.deepEqual(r.specNotWire, [
+    'apps.launch', 'mic.start', 'mic.state', 'mic.stop',
+    'webcam.request', 'webcam.state', 'webcam.stop', 'webcam.switch',
+  ]);
 });
 
-test('red-first — the real tree with the allowlist emptied reports mic.* and nothing else new', () => {
+test('red-first — the real tree with the allowlist emptied reports mic.*, webcam.* and nothing else new', () => {
   // The verbatim case this guard is named for, against the real contract rather than a fixture.
   const r = check({
     kotlin: readFileSync(join(ROOT, 'core/src/main/java/com/chetan/connectsuite/core/protocol/Messages.kt'), 'utf8'),
@@ -427,9 +431,12 @@ test('red-first — the real tree with the allowlist emptied reports mic.* and n
     typescript: readFileSync(join(ROOT, 'desktop/src/shared/protocol.ts'), 'utf8'),
     specifiedNotOnTheWire: {},
   });
-  assert.equal(r.findings.length, 4);
+  assert.equal(r.findings.length, 8);
   const named = r.findings.map((f) => f.split(' ')[0]).sort();
-  assert.deepEqual(named, ['apps.launch', 'mic.start', 'mic.state', 'mic.stop']);
+  assert.deepEqual(named, [
+    'apps.launch', 'mic.start', 'mic.state', 'mic.stop',
+    'webcam.request', 'webcam.state', 'webcam.stop', 'webcam.switch',
+  ]);
 });
 
 test('the allowlist carries a reason per entry, not a bare name', () => {
