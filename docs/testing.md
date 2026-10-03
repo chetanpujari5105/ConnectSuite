@@ -27957,3 +27957,53 @@ method renamed) red.
   `left-screen` (*"…left your phone's display"*, true of both); leaving the Mac pane is a Mac Stop
   (`stopped-by-mac`); a refused permission is `permission-denied` — or, after the deadline, `expired`
   (defect 170). No automatic restart exists anywhere, and `CameraHostCoreTest` now scans for one.
+
+### The Camera hardware driver, made repository tooling (2026-10-03; tests only, never run against a device)
+
+**What exists now:** `scripts/camera-driver-core.mjs` (the r6 core, pure, every device and page action
+injected), `scripts/camera-driver-core.test.mjs` (31 fixtures), `scripts/camera-driver.mjs` (the CLI) and
+`scripts/camera-driver.test.mjs` (6 fixtures). Both fixture files are discovered by
+`check-script-fixtures.mjs`. The scratch drivers that ran on 2026-10-02 are kept byte for byte under
+`docs/evidence/camera-v1-drivers/` (19 files, each `cmp`-identical to its source), with a SHA-256 manifest
+of all 65 files in that scratch directory; the raw run outputs were left in place, not copied (they hold
+device dumps beyond the camera lines, and `/tmp` is not durable — recorded in that README).
+
+**The CLI touches nothing unless asked twice.** No arguments prints help; `--plan` prints the steps and
+bounds; `--dry-run` runs read-only gates (no request, no key, no launch); `--execute` needs `--case`,
+`--report <new file>` and `--owner-present`, refuses to overwrite an existing report, and passes the
+same read-only gates before its one request. Device writes go only through `scripts/adb-pinned.sh`.
+**It has never been run against the phone or the Mac**; none of its device or page code has executed.
+
+**Changes over r6, each with a fixture:**
+
+| Brief item | What the core does now | Fixture |
+|---|---|---|
+| current full stream id | from the Mac's own state after the ack (r6, kept) | *the Mac's stream id changing…*, *no stream id from the ack…* |
+| fresh bytes, inode/rotation/truncation | reads from the offset taken before the request; a new inode or a shorter file is a safe NO READING (r6, kept) | ROTATION and TRUNCATION |
+| partial UTF-8 lines | **new**: lines are cut at the newline **byte** (`takeWholeLines`); a read ending inside the three-byte `…` carries it to the next read. r6 cut bytes in the driver and decoded per read | PARTIAL UTF-8 (every read cut one byte into the first `…`), `takeWholeLines` unit |
+| shortened ids labelled | every phone match is recorded `prefix-8`, and the report says the phone prints 8 of 32 characters | normal case, `parsePhoneLine` |
+| approval separate from capture | approval window from the request; the cap from this stream's start on the Mac (r6, kept) | delayed approval |
+| no stale last-N output | there is no last-N read anywhere | STALE (the 22:10 line inside the last 40) |
+| cap independent of reporting/read failures | the deadline is a timer outside the pane loop, the phone reader and the report (r6, kept); **new**: the report write is bounded (`REPORT_MS`) | failures during capture; HUNG REPORT; the real 20 s cap |
+| test action vs fallback Stop vs emergency | **new**: `report.actions = {test, fallbackStops, fallbackStopLanded, emergency}`; log lines say TEST ACTION / FALLBACK STOP / EMERGENCY | WRONG STREAM, HUNG ACTION, EMERGENCY |
+| observation from confirmed return | **new**: the watch starts at `afterEnd.reopenedAt` when the return was confirmed, and says *"end — the return was NOT confirmed"* when it was not | HOME (`observation.from = confirmed-return`), *a return that is not confirmed is said* |
+| late Home | **new**: a stream ended before the scripted action reports `no-reading:ended-before-action`, keeping the product's ending and still running the return and watch | LATE HOME |
+| instrument wrapping and disposal | install removes an earlier wrapper (r6); **new** `DISPOSE_INSTRUMENT`, run in the CLI's `finally` | the instrument fixture (install twice, dispose twice) |
+| fail closed, no second request | **new**: a second press is refused inside the core; every fixture asserts at most one request; the CLI never loops | every fixture via `run()`; *a request press that does not land…* |
+| hung action / read / report | **new** HUNG READ (safe shutdown, report completes), HUNG ACTION (the cap still presses Stop; FAIL), HUNG REPORT (bounded) | as named |
+| deadline races | **new**: the phone ending the stream from 25 ms before to 20 ms after the deadline, 20 runs: at most one Stop, one outcome, inside the cap, and a deadline Stop never gets the return. Both orders occurred (`ended-by-stimulus, no-reading:deadline`) — the first window tried saw only the deadline win and was widened | DEADLINE RACE |
+| timestamp-key collision | the recorder's own keys win (r2's crash) | the recorder fixture |
+| log format drift | **new**: `PHONE_LINE_CONTRACT` pins every phone line the parser reads to the exact Kotlin string that writes it, including the new milestone and release lines (defects 169, 176) | *every phone line … still written, word for word* |
+
+**What the fixtures cannot reach:** `adb`, `run-as`, `tail -c` on the real log, CDP, and the pane's DOM.
+The CLI's device functions are ports of r6's, which ran on 2026-10-02; the byte-returning `logRead` is
+new and has not run.
+
+**Mutations** (each restored and SHA-256-verified; Node's own per-test timeout so a hang is a red, not a
+stall): D-B (lines cut after decoding, not at the byte) red on PARTIAL UTF-8 and the unit; D-C (no
+`ended-before-action`) red on LATE HOME; D-D (watch always from the end) red on HOME; D-E (report write
+unbounded) red on HUNG REPORT; D-F (no rotation check) red; D-G (disposal leaves the wrappers) red; D-H —
+**the phone's source reworded** (`attached for` → `attached to` in `CameraEngine.kt`) — red on the
+line-contract fixture; D-I (a fresh line for another stream does not shut down) red on WRONG STREAM.
+**Not mutated:** the core's refusal of a second request press is unreachable through `runSession`,
+which presses once by construction; it is a belt to the braces, and every fixture asserts the braces.
