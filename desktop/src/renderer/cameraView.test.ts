@@ -39,8 +39,10 @@ class FakeBridge {
   async cameraCurrent(): Promise<State> {
     return { kind: 'idle' };
   }
-  cameraFrameAck() {
+  ackLog: Array<[string, string]> = [];
+  cameraFrameAck(streamId: string, outcome: string) {
     this.acks += 1;
+    this.ackLog.push([streamId, outcome]);
   }
   onCameraState(listener: (state: State) => void) {
     this.stateListener = listener;
@@ -201,15 +203,24 @@ test('live shows the picture, the status and both controls; frames are painted',
   assert.deepEqual(pane.bridge.calls, ['switch:front', 'stop']);
 });
 
-test('a stalled stream hides the picture and says why; its frames are acked, not painted', () => {
+/**
+ * Changed 2026-10-03 (defect 172): a stalled stream's frames are painted onto the hidden stage, because
+ * the main process shows the picture again only when the page reports a fresh frame drawn. Acking them
+ * unpainted, as the first version did, would have left a stalled stream stalled for good.
+ */
+test('a stalled stream hides the picture and says why; its frames still paint, behind the hidden stage', () => {
   const pane = mount();
   pane.view.setAvailability(READY);
   pane.view.setState({ ...LIVE, stalled: true });
   assert.equal(pane.els.stage.hidden, true);
   assert.match(pane.els.block.textContent, /never shown as live/);
   pane.bridge.frameListener!({ streamId: STREAM, sequence: 8 });
-  assert.deepEqual(pane.painter.painted, []);
-  assert.equal(pane.bridge.acks, 1);
+  assert.deepEqual(pane.painter.painted, [8]);
+  assert.equal(pane.bridge.acks, 0, 'the painter acks it, with what became of it');
+  // Control: a frame for another stream is acked unpainted, and says why.
+  pane.bridge.frameListener!({ streamId: 'f'.repeat(32), sequence: 9 });
+  assert.deepEqual(pane.painter.painted, [8]);
+  assert.deepEqual(pane.bridge.ackLog, [['f'.repeat(32), 'not-live']]);
 });
 
 test('an ended stream clears the picture, says how it ended with the counts, and offers to ask again', () => {
@@ -293,4 +304,120 @@ test('an unturned frame is letterboxed, never stretched or cropped', () => {
   assert.deepEqual([m.drawW, m.drawH], [400, 225]);
   assert.deepEqual(apply(m, 0, 0), [0, 87.5]);
   assert.deepEqual(apply(m, 1280, 720), [400, 312.5]);
+});
+
+// ---- the painter: decode, draw, and what becomes of every frame (defect 172, 2026-10-03) ---------------
+// A fake canvas and a hand-released decoder: the browser's JPEG decoder is not available here, so the
+// frames are synthetic descriptions and "decoding" is a promise the test resolves. What this cannot reach
+// is `createImageBitmap` itself.
+
+const Painter = (globalThis as Record<string, any>).CameraCanvasPainter;
+
+class FakeBitmap {
+  closes = 0;
+  constructor(readonly width: number, readonly height: number) {}
+  close() {
+    this.closes += 1;
+  }
+}
+
+function painterRig() {
+  const ops: string[] = [];
+  const context = {
+    setTransform: () => ops.push('transform'),
+    clearRect: () => ops.push('clear'),
+    drawImage: () => ops.push('draw'),
+  };
+  const canvas = { width: 0, height: 0, clientWidth: 400, clientHeight: 300, getContext: () => context };
+  const pending: Array<{ resolve: (b: FakeBitmap) => void; reject: (e: Error) => void }> = [];
+  const bitmaps: FakeBitmap[] = [];
+  const acks: Array<[string, string]> = [];
+  (globalThis as Record<string, any>).window ??= {};
+  (globalThis as Record<string, any>).window.devicePixelRatio = 2;
+  const painter = new Painter(canvas, (id: string, outcome: string) => acks.push([id, outcome]), () =>
+    new Promise<FakeBitmap>((resolve, reject) => pending.push({ resolve, reject })),
+  );
+  const decodeAs = (w: number, h: number) => {
+    const b = new FakeBitmap(w, h);
+    bitmaps.push(b);
+    pending.shift()!.resolve(b);
+  };
+  return { painter, ops, acks, pending, bitmaps, decodeAs, settle: () => new Promise((r) => setImmediate(r)) };
+}
+
+const frame = (sequence: number, extra: Record<string, unknown> = {}) => ({
+  streamId: STREAM, sequence, facing: 'back', rotation: 0, mirrored: false, width: 640, height: 480, jpeg: new Uint8Array([0xff, 0xd8]), ...extra,
+});
+
+test('painter: a frame drawn as described is acked drawn, and its bitmap closed once', async () => {
+  const r = painterRig();
+  r.painter.setStream(STREAM);
+  r.painter.paint(frame(1));
+  r.decodeAs(640, 480);
+  await r.settle();
+  assert.deepEqual(r.acks, [[STREAM, 'drawn']]);
+  assert.ok(r.ops.includes('draw'));
+  assert.deepEqual(r.bitmaps.map((b) => b.closes), [1]);
+});
+
+test('painter: pixels that are not the size the header says are not drawn, and say so', async () => {
+  const r = painterRig();
+  r.painter.setStream(STREAM);
+  r.painter.paint(frame(1));
+  r.decodeAs(480, 640);
+  await r.settle();
+  assert.deepEqual(r.acks, [[STREAM, 'size-mismatch']]);
+  assert.ok(!r.ops.includes('draw'), 'drawn with a description written for other pixels');
+  assert.deepEqual(r.bitmaps.map((b) => b.closes), [1]);
+});
+
+test('painter: an undecodable JPEG is one lost frame, acked as such, and the next one still draws', async () => {
+  const r = painterRig();
+  r.painter.setStream(STREAM);
+  r.painter.paint(frame(1));
+  r.pending.shift()!.reject(new Error('bad jpeg'));
+  await r.settle();
+  r.painter.paint(frame(2));
+  r.decodeAs(640, 480);
+  await r.settle();
+  assert.deepEqual(r.acks, [[STREAM, 'undecodable'], [STREAM, 'drawn']]);
+});
+
+test('painter: a decode that finishes after Stop draws nothing, closes its bitmap, and acks late', async () => {
+  const r = painterRig();
+  r.painter.setStream(STREAM);
+  r.painter.paint(frame(1));
+  r.painter.setStream(null); // the stream ended while decoding
+  const clearsAtStop = r.ops.filter((o) => o === 'clear').length;
+  r.decodeAs(640, 480);
+  await r.settle();
+  assert.deepEqual(r.acks, [[STREAM, 'late']]);
+  assert.ok(!r.ops.includes('draw'));
+  assert.ok(clearsAtStop >= 1, 'control: the stop cleared the canvas');
+  assert.deepEqual(r.bitmaps.map((b) => b.closes), [1]);
+});
+
+test('painter: while decoding, a newer frame replaces the waiting one, which is acked replaced — one ack per frame', async () => {
+  const r = painterRig();
+  r.painter.setStream(STREAM);
+  r.painter.paint(frame(1));
+  r.painter.paint(frame(2));
+  r.painter.paint(frame(3)); // replaces 2
+  assert.deepEqual(r.acks, [[STREAM, 'replaced']]);
+  r.decodeAs(640, 480);
+  await r.settle();
+  r.decodeAs(640, 480);
+  await r.settle();
+  assert.deepEqual(r.acks.map((a) => a[1]), ['replaced', 'drawn', 'drawn']);
+  assert.equal(r.acks.length, 3, 'three frames, three acks');
+  assert.ok(r.bitmaps.every((b) => b.closes === 1));
+});
+
+test('painter: a frame for another stream is never decoded, and is acked late', async () => {
+  const r = painterRig();
+  r.painter.setStream(STREAM);
+  r.painter.paint(frame(1, { streamId: 'e'.repeat(32) }));
+  await r.settle();
+  assert.equal(r.pending.length, 0);
+  assert.deepEqual(r.acks, [['e'.repeat(32), 'late']]);
 });

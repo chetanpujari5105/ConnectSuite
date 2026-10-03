@@ -143,7 +143,7 @@ contextBridge.exposeInMainWorld('connect', {
   cameraStop: (): Promise<CameraResult> => ipcRenderer.invoke('camera-stop'),
   cameraSwitch: (facing: 'back' | 'front'): Promise<CameraResult> => ipcRenderer.invoke('camera-switch', facing),
   cameraCurrent: (): Promise<CameraPaneState> => ipcRenderer.invoke('camera-current'),
-  cameraFrameAck: (): void => ipcRenderer.send('camera-frame-ack'),
+  cameraFrameAck: (streamId: string, outcome: string): void => ipcRenderer.send('camera-frame-ack', streamId, outcome),
   onCameraState: (callback: (state: CameraPaneState) => void) =>
     ipcRenderer.on('camera-state', (_event, state) => callback(state)),
   onCameraFrame: (callback: (frame: CameraFrameMessage) => void) =>

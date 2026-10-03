@@ -115,3 +115,81 @@ test('the claim is the token, the word, and the stream id', () => {
   assert.equal(cameraClaim('ab'.repeat(32), 'cd'.repeat(16)), `${'ab'.repeat(32)} camera ${'cd'.repeat(16)}`);
   assert.ok(Buffer.byteLength(cameraClaim('ab'.repeat(32), 'cd'.repeat(16))) <= 128);
 });
+
+// ---- fragmentation, coalescing and hostile bytes (2026-10-03) ----------------------------------------
+// Explicit bounds, set before the runs: a seeded generator, 400 split runs of a 25-frame stream, 2,000
+// random-byte inputs of at most 2 KiB each. Nothing here allocates more than the stream itself.
+
+/** A small seeded generator (mulberry32), so a failure names the seed that produced it. */
+function rng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+test('any split of a stream into chunks yields the same frames, in order (400 seeded runs)', () => {
+  const stream = Buffer.concat(Array.from({ length: 25 }, (_, i) => withSequence(i + 1)));
+  for (let seed = 1; seed <= 400; seed++) {
+    const next = rng(seed);
+    const reader = new CameraFrameReader();
+    const seen: number[] = [];
+    let at = 0;
+    while (at < stream.length) {
+      const size = 1 + Math.floor(next() * 90);
+      for (const f of reader.push(stream.subarray(at, at + size))) seen.push(f.sequence);
+      at += size;
+    }
+    assert.deepEqual(seen, Array.from({ length: 25 }, (_, i) => i + 1), `seed ${seed}`);
+  }
+});
+
+test('many frames coalesced into one chunk all come out of one push', () => {
+  const stream = Buffer.concat(Array.from({ length: 200 }, (_, i) => withSequence(i + 1)));
+  const frames = new CameraFrameReader().push(stream);
+  assert.equal(frames.length, 200);
+  assert.equal(frames.at(-1)!.sequence, 200);
+});
+
+test('a frame split inside its header or its JPEG is held until whole, then parsed once', () => {
+  const frame = golden();
+  for (const cut of [1, 12, 13, 14, 28, 29, frame.length - 1]) {
+    const reader = new CameraFrameReader();
+    assert.deepEqual(reader.push(frame.subarray(0, cut)), [], `cut ${cut}`);
+    assert.equal(reader.push(frame.subarray(cut)).length, 1, `cut ${cut}`);
+  }
+});
+
+test('the size rules hold for height too, and for the second reserved byte; an equal sequence is refused', () => {
+  const height = (h: number) => { const b = Buffer.from(golden()); b.writeUInt16BE(h, 13 + 8); return b; };
+  assert.throws(() => new CameraFrameReader().push(height(0)), CameraFrameError);
+  assert.throws(() => new CameraFrameReader().push(height(4097)), CameraFrameError);
+  assert.equal(new CameraFrameReader().push(height(4096)).length, 1, 'control: 4096 is allowed');
+  assert.throws(() => new CameraFrameReader().push(mutated(13 + 15, 1)), CameraFrameError);
+  const reader = new CameraFrameReader();
+  reader.push(withSequence(5));
+  assert.throws(() => reader.push(withSequence(5)), CameraFrameError, 'a repeated sequence is not an increase');
+});
+
+test('hostile bytes only ever produce frames or a CameraFrameError — never another exception (2,000 seeded inputs)', () => {
+  let refused = 0;
+  let accepted = 0;
+  for (let seed = 1; seed <= 2000; seed++) {
+    const next = rng(seed);
+    // Half start from a real frame with bytes flipped, half are noise; both bounded at 2 KiB.
+    const base = seed % 2 === 0 ? Buffer.from(golden()) : Buffer.alloc(1 + Math.floor(next() * 2048));
+    for (let i = 0; i < base.length; i++) if (seed % 2 === 1 || next() < 0.05) base[i] = Math.floor(next() * 256);
+    try {
+      accepted += new CameraFrameReader().push(base).length;
+    } catch (error) {
+      assert.ok(error instanceof CameraFrameError, `seed ${seed}: ${String(error)}`);
+      refused += 1;
+    }
+  }
+  assert.ok(refused > 0, 'control: hostile input was refused at least once');
+  assert.ok(accepted >= 0);
+});

@@ -27769,3 +27769,110 @@ Not Disturb. The decision is a pure function; the three Android reads that feed 
   *a close that reaches the main thread before the provider* — the pending-switch test survives it
   because the machine check also covers that case (two guards, one property); P169-C (release not
   cleared) red on both release-once tests; P170-A/B/C red; P171-A/B/C/D red.
+
+### Defect 172 — frames the Mac could not draw were invisible, and a frozen picture stayed labelled live (2026-10-03, tests only)
+
+**Found** by reading `CameraCanvasPainter` beside the controller's stall watch. The painter caught a decode
+failure as *"one lost frame"* and said nothing; it drew a bitmap whatever its size, so a frame whose
+pixels were not the header's `width × height` was drawn under a rotation and mirror written for other
+pixels; and its ack carried neither an outcome nor a stream id. The controller's stall watch measured
+from the last frame **received**. Put together: a page that could no longer draw anything, receiving
+frames at 15 fps, kept the pane `Live · back camera` over the last picture it had drawn, indefinitely —
+the one outcome *"an old frame is never shown as live"* exists to prevent. Separately, an ack arriving
+for a stream that had ended released the next stream's one frame slot, so for a moment the page held
+two frames. **Not seen on hardware**; the hardware sessions decoded every frame.
+
+**Fix:**
+- The ack is `cameraFrameAck(streamId, outcome)` through main, preload and renderer. Outcomes:
+  `drawn`, `undecodable`, `size-mismatch`, `draw-failed`, `late`, `replaced`, `not-live`. Anything else is
+  counted `unreported` and never as drawn. An ack naming another stream frees nothing.
+- The painter draws a bitmap only when its size is the header's, closes every bitmap exactly once, and
+  acks every frame it was handed exactly once — including one replaced while waiting.
+- Stall: two seconds since the newest **drawn** frame **arrived** (or since the stream went live). Only
+  a drawn ack for a frame fresher than the bound lifts it, so a slow decoder cannot present an old frame
+  as new. Arrival no longer lifts it; the view therefore paints behind the hidden stage while stalled.
+- The termination line is `N received here, D drawn, X not drawn here (cause n, …)`, causes including
+  `replaced-here`, `in-flight-at-end` and `waiting-at-end`; the ended state carries `framesDrawn`, and the
+  pane's counts line says *"… received here, D drawn."*
+- Hardening, not a defect: a frame whose camera epoch is older than the newest seen (u8, wrapping) is
+  counted `old-epoch` and neither drawn nor taken as the facing. The shipped phone cannot send one — its
+  analysis thread is single and its queue first-in-first-out — so this is a guard.
+- `docs/protocol.md` → The camera frame: *drawn*, not *arrived*, with the malformed-frame list unchanged.
+
+**Two existing tests were changed by design, each with a comment saying so:** the controller's
+*"…and the next frame shows it again"* (arrival lifted the stall — the rule that let the defect through)
+and the view's *"…its frames are acked, not painted"* (which would now leave a stalled stream stalled for
+good). Two log-line expectations gained `drawn` and the cause list; the earlier line did not count the
+frame with the page at the end, which the 23:01 hardware evidence had already named as discarded.
+
+**Tests (desktop):** controller — frames arriving and never drawn stall at 2 s; an old frame drawn late
+does not lift the stall, a fresh one does; an unknown outcome is `unreported`; every received frame is
+accounted for (`drawn + not drawn = received`); a late ack for an ended stream frees nothing; an old epoch
+is never drawn and never undoes a switch; the u8 epoch comparison round the ring; a slow page under
+10,000 frames never holds more than one frame plus one waiting. Painter (fake canvas, hand-released
+decoder) — drawn, size mismatch, undecodable then recovery, a decode finishing after Stop, replacement
+while decoding, another stream's frame never decoded; every bitmap closed once.
+
+**Red against the code before the fix** (`headrun.py`: HEAD's `main/camera.ts` and `renderer/camera.ts`
+put in place, restored by SHA-256): 59 tests, **17 failed**. The painter tests fail there partly because
+the old painter had no decoder seam; the size-mismatch and late-completion behaviours are genuine gaps.
+One new test — *a picture drawn late from an old frame* — **passes against HEAD**, because there arrival
+lifted the stall anyway; it guards the new freshness rule and is red under M172-B.
+
+**What it cannot reach:** `createImageBitmap`, a real canvas, and real JPEG bytes — the decoder is a
+promise the test resolves with a fake bitmap of chosen dimensions.
+
+### Defect 173 — with no phone identity to pin, the Mac still connected and completed a TLS handshake (2026-10-03, tests only)
+
+**Found** while writing the real-TLS tests: `openCameraSocket` with `expectedFingerprint = null` dialled
+the video port, presented this Mac's certificate, finished the handshake, and only then refused (in the
+same `||` as a mismatched certificate). The claim — which carries the session token — was never written,
+so nothing secret crossed; but there was nothing to pin against and so nothing to connect for. The same
+function's `error` handler was registered with `once`.
+
+**Fix:** no expected identity → no connection, reported as a close on the next tick so the caller's
+listeners hear it; `error` handled for the socket's life; `port`, `timeoutMs` and `log` injectable (the
+app passes none of them and gets the old values).
+
+**Tests (desktop `cameraTransport.test.ts`, 8, real TLS 1.3 on 127.0.0.1, RSA-2048 certificates minted per
+run, nothing logged):** the pinned phone receives exactly one claim, in the contract's grammar, 104 bytes,
+over mutual TLS 1.3, and sees this Mac's own certificate; an impostor certificate gets no claim and a
+`certificate mismatch` close, with no fingerprint or token in the log; **no expected identity → zero TCP
+connections** (control: the same server, asked properly, gets the claim); a FIN and an RST from the phone
+are each reported once and throw nothing; a port that accepts and never handshakes closes at the injected
+300 ms bound with nothing sent (control: the ClientHello did go out); destroyed mid-handshake → no claim,
+no close report, no stray error; and **end to end through the production controller and reader**: no
+socket before `starting`, three frames written a byte at a time then coalesced arrive whole, a frame the
+phone writes after Stop is never emitted, and a reserved byte set on the wire closes the socket with
+nothing drawn.
+
+**What plays the phone** is a Node TLS server, not `LinkServer`. It does not run the phone's claim parser
+or its authorisation (those are Kotlin: `SideChannelClaimTest`, `CameraSessionMachineTest`). This proves
+the Mac half of the handshake; the two halves have only met on hardware.
+
+### The phone's stream socket over real loopback TCP (2026-10-03, tests only; no defect)
+
+`CameraStreamSocketTest`, 6: frames cross a real socket whole and in order; the Mac's FIN ends the stream
+once; an RST ends it once even with the writer mid-write; a byte from the Mac ends it once and the Mac
+reads end-of-stream; this side's close is never reported as the Mac's and refuses frames at once; and a
+local close racing the Mac's close reports at most once, 200 times. **That last run printed
+*"reported in 0 of 200 runs"*: the local close won every time, so it shows at-most-once for that order
+only** — the FIN and RST tests are what cover the Mac-wins order. Plain TCP, not TLS: the phone's TLS is
+the Keystore identity under `LinkServer`, which a JVM test cannot build. Mutations PS-A (report every
+end) and PS-B (accept frames after close) red. The reader on the Mac had no defect either: 400 seeded
+splits of a 25-frame stream, 200 frames coalesced, cuts inside the header and the JPEG, height and the
+second reserved byte, an equal sequence, and 2,000 seeded hostile inputs (≤ 2 KiB) that only ever produce
+frames or a `CameraFrameError`.
+
+### Task 2 evidence
+
+- Mutations, each restored and SHA-256-verified, verdicts from fresh output only. **Run under the
+  provisional numbers 173 and 174 before the register was made contiguous**, so the scratch log names
+  them M173-A…H and M174-A; they are M172-A…H and M173-A here. M172-A (arrival lifts the stall) red on
+  2; B (no freshness check) red; C (ack's stream not checked) red; D (`unreported` as drawn) red;
+  E (no epoch guard) red; F (no size check) red; G (no late check) red; H (view skips painting while
+  stalled) red. M173-A (connect with no identity) red on exactly its own test. **A first run of it also
+  reddened the end-to-end test, and that was first written down here as "the mutant's throw landing on the
+  next test". It was not:** the transport harness still called the old one-argument `frameAck('drawn')`,
+  which the new controller correctly ignores, so only one frame passed. The full `npm test` exposed it;
+  the harness was fixed and M173-A re-run red on its own test only.

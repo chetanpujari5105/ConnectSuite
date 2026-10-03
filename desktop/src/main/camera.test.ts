@@ -224,20 +224,28 @@ test('frames reach the renderer one at a time; a slow page gets the newest, neve
   assert.equal(h.frames.length, 1);
   for (let s = 2; s <= 6; s++) socket.feed(goldenFrame(s));
   assert.equal(h.frames.length, 1, 'frames were sent while the renderer still held one');
-  h.controller.frameAck();
+  h.controller.frameAck(STREAM, 'drawn');
   assert.deepEqual(h.frames.map((f) => f.sequence), [1, 6]);
-  h.controller.frameAck();
+  h.controller.frameAck(STREAM, 'drawn');
   assert.equal(h.frames.length, 2, 'nothing was left waiting');
 });
 
-test('two seconds without a frame hides the picture, and the next frame shows it again', async () => {
+/**
+ * Changed 2026-10-03 (defect 172): the picture comes back when the page **draws** a fresh frame, not when
+ * one arrives. The first version of this test asserted the arrival, which is the rule that let a page
+ * that could draw nothing keep a frozen picture labelled live.
+ */
+test('two seconds without a frame drawn hides the picture; a frame arriving is not enough, a fresh one drawn is', async () => {
   const h = harness();
   const socket = await toLive(h);
+  h.controller.frameAck(STREAM, 'drawn');
   h.tick(CAMERA_STALL_MS - 100);
   assert.equal((h.last() as { stalled?: boolean }).stalled, false);
   h.tick(200);
   assert.equal((h.last() as { stalled?: boolean }).stalled, true);
   socket.feed(goldenFrame(2));
+  assert.equal((h.last() as { stalled?: boolean }).stalled, true, 'arriving brought the picture back');
+  h.controller.frameAck(STREAM, 'drawn');
   assert.equal((h.last() as { stalled?: boolean }).stalled, false);
 });
 
@@ -580,7 +588,7 @@ test('one session logs request, approval, first frame, switch asked/accepted/con
     'I camera.switch to front requested for camera stream 01234567…',
     'I camera.switch to front accepted by the phone for camera stream 01234567…; waiting for its frames',
     'I camera stream 01234567… switch confirmed: frames now from the front camera, 1280 × 720',
-    'I camera stream 01234567… ended: stopped-by-mac — 62 received here, 61 not drawn here; no phone counts yet — 1 ended of 1 requested since launch',
+    'I camera stream 01234567… ended: stopped-by-mac — 62 received here, 0 drawn, 62 not drawn here (replaced-here 60, in-flight-at-end 1, waiting-at-end 1); no phone counts yet — 1 ended of 1 requested since launch',
     "I camera stream 01234567… phone's account: stream-closed, 62 sent / 0 dropped there (this Mac's stopped-by-mac stands)",
   ]);
 });
@@ -598,7 +606,7 @@ test('termination is counted and logged once, however many exits fire', async ()
   h.controller.onState({ state: 'stopped', streamId: STREAM, reason: 'declined', framesSent: 0, framesDropped: 0 });
   assert.equal(
     h.logs.at(-1),
-    'I camera stream 01234567… ended: declined — 0 received here, 0 not drawn here; phone: 0 sent / 0 dropped there — 2 ended of 2 requested since launch',
+    'I camera stream 01234567… ended: declined — 0 received here, 0 drawn, 0 not drawn here; phone: 0 sent / 0 dropped there — 2 ended of 2 requested since launch',
   );
 });
 
@@ -627,4 +635,143 @@ test('no log line carries the session token, the claim or frame bytes', async ()
     assert.ok(!/ffd8|\bcamera [0-9a-f]{32}\b/i.test(line), `payload or claim in: ${line}`);
   }
   assert.equal(h.logs.filter((l) => /first frame/.test(l)).length, 1, 'frames were logged one by one');
+});
+
+// ---- what the page could not draw (defect 172), old epochs, and bounded buffering (2026-10-03) ---------
+
+/** The golden frame from the named camera at the named epoch. */
+function frameAt(sequence: number, facing: 'back' | 'front', epoch: number): Buffer {
+  const bytes = frameFrom(sequence, facing);
+  bytes[13 + 5] = epoch;
+  return bytes;
+}
+
+const stalled = (h: Harness) => (h.last() as { stalled?: boolean }).stalled;
+
+test('defect 172: frames that keep arriving but are never drawn hide the picture after two seconds', async () => {
+  const h = harness();
+  const socket = await toLive(h);
+  h.controller.frameAck(STREAM, 'drawn'); // one good picture, then the page can draw nothing
+  for (let s = 2; s <= 40; s++) {
+    h.tick(100);
+    socket.feed(goldenFrame(s));
+    h.controller.frameAck(STREAM, 'undecodable');
+  }
+  assert.equal(stalled(h), true, 'a frozen last picture was left labelled live while frames kept arriving');
+  assert.ok(h.frames.length > 10, 'control: frames did keep reaching the page');
+});
+
+test('defect 172: a picture drawn late from an old frame does not bring a stalled stream back', async () => {
+  const h = harness();
+  const socket = await toLive(h); // frame 1 is with the page
+  h.controller.frameAck(STREAM, 'drawn');
+  socket.feed(goldenFrame(2)); // arrives now, with a page that will take 2.5 s to draw it
+  h.tick(CAMERA_STALL_MS + 500);
+  assert.equal(stalled(h), true);
+  h.controller.frameAck(STREAM, 'drawn');
+  assert.equal(stalled(h), true, 'a 2.5 s-old frame was shown as live');
+  socket.feed(goldenFrame(3));
+  h.controller.frameAck(STREAM, 'drawn');
+  assert.equal(stalled(h), false, 'control: a fresh frame drawn brings it back');
+});
+
+test('defect 172: an outcome the bridge does not know is counted unreported, never as drawn', async () => {
+  const h = harness();
+  const socket = await toLive(h);
+  h.controller.frameAck(STREAM, 'bogus');
+  socket.feed(goldenFrame(2));
+  h.controller.frameAck(STREAM, undefined);
+  await h.controller.stop();
+  const end = h.logs.find((l) => / ended: /.test(l))!;
+  assert.match(end, /2 received here, 0 drawn, 2 not drawn here \(unreported 2\)/);
+});
+
+test('defect 172: the ending carries drawn beside received, and every received frame is accounted for', async () => {
+  const h = harness();
+  const socket = await toLive(h);
+  h.controller.frameAck(STREAM, 'drawn');
+  socket.feed(goldenFrame(2));
+  h.controller.frameAck(STREAM, 'size-mismatch');
+  socket.feed(goldenFrame(3));
+  h.controller.frameAck(STREAM, 'late');
+  socket.feed(goldenFrame(4)); // with the page at the end
+  await h.controller.stop();
+  const end = h.last();
+  assert.equal(end.kind, 'ended');
+  if (end.kind !== 'ended') return;
+  assert.equal(end.framesReceived, 4);
+  assert.equal(end.framesDrawn, 1);
+  const line = h.logs.find((l) => / ended: /.test(l))!;
+  assert.match(line, /4 received here, 1 drawn, 3 not drawn here \(size-mismatch 1, late 1, in-flight-at-end 1\)/);
+});
+
+test('a late ack for an ended stream does not free the next stream’s frame slot', async () => {
+  const h = harness();
+  const socket = await toLive(h); // stream A's frame 1 is with the page
+  await h.controller.stop();
+  h.reply = async (type) =>
+    type === 'camera.request' ? { payload: { state: 'awaiting-approval', streamId: OTHER_STREAM, expiresInMs: 30_000 } } : { payload: {} };
+  await h.controller.request('back');
+  h.controller.onState({ state: 'starting', streamId: OTHER_STREAM, facing: 'back' });
+  const b = h.sockets[1]!.socket;
+  b.feed(goldenFrame(1)); // stream B's frame 1 to the page
+  b.feed(goldenFrame(2)); // waits
+  const before = h.frames.length;
+  h.controller.frameAck(STREAM, 'late'); // A's answer, arriving now
+  assert.equal(h.frames.length, before, 'stream A’s ack released stream B’s waiting frame');
+  h.controller.frameAck(OTHER_STREAM, 'drawn');
+  assert.equal(h.frames.length, before + 1, 'control: B’s own ack does');
+  void socket;
+});
+
+test('a frame from a camera a switch replaced is never drawn and never undoes the switch', async () => {
+  const h = harness();
+  await toStarting(h);
+  const socket = h.sockets[0]!.socket;
+  socket.feed(frameAt(1, 'back', 0));
+  h.controller.frameAck(STREAM, 'drawn');
+  socket.feed(frameAt(2, 'front', 1)); // the switch's first frame
+  h.controller.frameAck(STREAM, 'drawn');
+  socket.feed(frameAt(3, 'back', 0)); // the old camera, late
+  assert.equal((h.last() as { facing?: string }).facing, 'front');
+  assert.deepEqual(h.frames.map((f) => f.sequence), [1, 2]);
+  assert.equal(h.logs.filter((l) => l.includes('switch confirmed')).length, 1);
+  socket.feed(frameAt(4, 'front', 1)); // control: the current camera still draws
+  assert.deepEqual(h.frames.map((f) => f.sequence), [1, 2, 4]);
+  await h.controller.stop();
+  assert.match(h.logs.find((l) => / ended: /.test(l))!, /old-epoch 1/);
+});
+
+test('epochs compare round the u8 ring: 255 is older than 0, and half the ring is the horizon', async () => {
+  const { epochIsOlder } = await import('./camera');
+  assert.equal(epochIsOlder(255, 0), true);
+  assert.equal(epochIsOlder(0, 255), false);
+  assert.equal(epochIsOlder(6, 7), true);
+  assert.equal(epochIsOlder(7, 7), false);
+  assert.equal(epochIsOlder(8, 7), false);
+  assert.equal(epochIsOlder(7 - 127 + 256, 7), true);
+  assert.equal(epochIsOlder(7 - 128 + 256, 7), false);
+});
+
+test('a slow page under 10,000 frames: never more than one frame with it, one waiting, and every frame accounted', async () => {
+  // Bounds set before the run: 10,000 frames, the page acking every 7th, no wall-clock waits.
+  const h = harness();
+  const socket = await toLive(h);
+  const total = 10_000;
+  let acks = 0;
+  for (let s = 2; s <= total; s++) {
+    socket.feed(goldenFrame(s));
+    if (s % 7 === 0) {
+      h.controller.frameAck(STREAM, 'drawn');
+      acks += 1;
+    }
+    assert.ok(h.frames.length <= acks + 1, `frame ${s}: ${h.frames.length} handed to a page that acked ${acks}`);
+  }
+  await h.controller.stop();
+  const end = h.last();
+  if (end.kind !== 'ended') return assert.fail('not ended');
+  const line = h.logs.find((l) => / ended: /.test(l))!;
+  const notDrawn = Number(/(\d+) not drawn here/.exec(line)![1]);
+  assert.equal(end.framesReceived, total);
+  assert.equal(end.framesDrawn + notDrawn, total, line);
 });

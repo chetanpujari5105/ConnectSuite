@@ -15,8 +15,11 @@
  *   from a session that has been replaced, changes nothing.
  * - **Hold more than two frames.** One frame is with the renderer and at most one waits; a newer
  *   frame replaces the waiting one. A slow renderer costs frames, never memory.
- * - **Show an old frame as live.** Two seconds without a frame marks the stream `stalled` and the
- *   pane hides the picture; any end clears it.
+ * - **Show an old frame as live.** Two seconds with no frame **drawn** marks the stream `stalled` and
+ *   the pane hides the picture; any end clears it. *Drawn*, not *arrived* (defect 172): a frame the page
+ *   cannot decode, or whose pixels are not the size its header says, is received and never shown, and
+ *   frames like that arriving forever must not keep a frozen last picture labelled live. Staleness is
+ *   measured from when the drawn frame **arrived**, so a slow page cannot present an old frame as new.
  */
 
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
@@ -27,7 +30,7 @@ import { log } from './logger';
 import { MessageType, PORT_VIDEO, normalizeFingerprint, type PhoneRequestError } from '../shared/protocol';
 import { CameraFrameError, CameraFrameReader, cameraClaim, type CameraFacing, type CameraFrame } from '../shared/cameraFrame';
 
-/** No frame for this long while `live` and the picture is hidden as stalled. */
+/** No frame drawn for this long while `live` and the picture is hidden as stalled. */
 export const CAMERA_STALL_MS = 2_000;
 
 /** A request the phone has not ended by itself this long after its own expiry is ended here. */
@@ -93,9 +96,34 @@ export type CameraPaneState =
       framesSent: number | null;
       framesDropped: number | null;
       framesReceived: number;
+      /** Frames the page said it drew — the denominator for "received". */
+      framesDrawn: number;
     }
   | { kind: 'refused'; code: string; message: string; fixHint: string | null }
   | { kind: 'error'; code: string; message: string };
+
+/**
+ * How the page answered for one frame it was handed — `cameraFrameAck(streamId, outcome)`. Anything else
+ * the bridge carries is counted as `unreported`, never as drawn.
+ */
+export type CameraFrameOutcome = 'drawn' | 'undecodable' | 'size-mismatch' | 'draw-failed' | 'late' | 'replaced' | 'not-live';
+
+const FRAME_OUTCOMES: ReadonlySet<string> = new Set<CameraFrameOutcome>([
+  'drawn', 'undecodable', 'size-mismatch', 'draw-failed', 'late', 'replaced', 'not-live',
+]);
+
+/** Why a received frame was not drawn: the page's answers, plus the ones only this side sees. */
+type NotDrawnCause = Exclude<CameraFrameOutcome, 'drawn'> | 'replaced-here' | 'old-epoch' | 'in-flight-at-end' | 'waiting-at-end' | 'unreported';
+
+/**
+ * Whether [epoch] is older than [newest] in the header's u8, which wraps at 256: within half the ring
+ * behind it. A phone that follows the contract never sends one after a newer one — its analysis thread
+ * is single and its queue is first-in-first-out — so this is a guard, not a measured case.
+ */
+export function epochIsOlder(epoch: number, newest: number): boolean {
+  const behind = (((newest - epoch) % 256) + 256) % 256;
+  return behind >= 1 && behind < 128;
+}
 
 /** One decoded frame's description and bytes, as the renderer receives it. */
 export interface CameraFrameMessage {
@@ -216,16 +244,23 @@ export class CameraController {
   private streamId: string | null = null;
   private sessionToken: string | null = null;
   private socket: CameraSocket | null = null;
-  private lastFrameAt = 0;
+  /** When the newest frame the page has drawn *arrived* — what staleness is measured from. */
+  private lastShownReceivedAt = 0;
+  /** When this attempt became live; the stall clock's start before anything is drawn. */
+  private liveSince = 0;
   private framesReceived = 0;
+  private framesDrawn = 0;
+  /** The newest camera epoch seen in this attempt's frames. */
+  private newestEpoch: number | null = null;
   private stallTimer: unknown = null;
   private expiryTimer: unknown = null;
   /** Bumped by stop and by a session ending, so a request still in flight knows it was overtaken. */
   private requestSeq = 0;
-  private frameWithRenderer = false;
-  private waitingFrame: CameraFrameMessage | null = null;
-  /** Frames that arrived and were never drawn: replaced while waiting, or waiting at the end. */
-  private framesDroppedHere = 0;
+  /** The one frame the page holds: whose it is, and when it arrived. */
+  private withRenderer: { streamId: string; receivedAt: number } | null = null;
+  private waitingFrame: { frame: CameraFrameMessage; receivedAt: number } | null = null;
+  /** Frames that arrived and were never drawn, by cause — on the termination line. */
+  private notDrawn: Partial<Record<NotDrawnCause, number>> = {};
   /** This attempt's lines that are written once: the first frame, the termination, the phone's counts. */
   private liveLogged = false;
   private endLogged = false;
@@ -260,7 +295,11 @@ export class CameraController {
     // replacement session's events and ends do not.
     this.sessionToken = token;
     this.framesReceived = 0;
-    this.framesDroppedHere = 0;
+    this.framesDrawn = 0;
+    this.notDrawn = {};
+    this.lastShownReceivedAt = 0;
+    this.liveSince = 0;
+    this.newestEpoch = null;
     this.liveLogged = false;
     this.endLogged = false;
     this.phoneCountsLogged = false;
@@ -364,12 +403,29 @@ export class CameraController {
     }
   }
 
-  /** The renderer has drawn the frame it was given; hand it the newest one waiting, if any. */
-  frameAck(): void {
-    this.frameWithRenderer = false;
+  /**
+   * The page is done with the frame it was given, and says how ([outcome]); hand it the newest one
+   * waiting, if any. An ack naming another stream — one that ended while the page was decoding it —
+   * frees nothing of this one's, and an ack with no frame held is ignored (defect 172).
+   */
+  frameAck(streamId: unknown, outcome: unknown): void {
+    const held = this.withRenderer;
+    if (!held || typeof streamId !== 'string' || streamId !== held.streamId) return;
+    this.withRenderer = null;
+    const kind = typeof outcome === 'string' && FRAME_OUTCOMES.has(outcome) ? (outcome as CameraFrameOutcome) : 'unreported';
+    if (kind === 'drawn') {
+      this.framesDrawn += 1;
+      this.lastShownReceivedAt = Math.max(this.lastShownReceivedAt, held.receivedAt);
+      // Only a fresh picture takes the stall away — never one that sat in the queue past the bound.
+      if (this.state.kind === 'live' && this.state.stalled && this.timers.now() - held.receivedAt <= CAMERA_STALL_MS) {
+        this.setState({ ...this.state, stalled: false, framesReceived: this.framesReceived });
+      }
+    } else {
+      this.countNotDrawn(kind);
+    }
     const next = this.waitingFrame;
     this.waitingFrame = null;
-    if (next && this.state.kind === 'live' && next.streamId === this.streamId) this.toRenderer(next);
+    if (next && this.state.kind === 'live' && next.frame.streamId === this.streamId) this.toRenderer(next.frame, next.receivedAt);
   }
 
   // ---- the phone and the link -------------------------------------------------------------------
@@ -425,6 +481,7 @@ export class CameraController {
       return;
     }
     if (state === 'running' && (this.state.kind === 'connecting' || this.state.kind === 'live')) {
+      if (this.state.kind === 'connecting') this.liveSince = this.timers.now();
       const facing = p.facing === 'front' ? 'front' : 'back';
       const width = typeof p.width === 'number' ? p.width : this.state.kind === 'live' ? this.state.width : 0;
       const height = typeof p.height === 'number' ? p.height : this.state.kind === 'live' ? this.state.height : 0;
@@ -470,7 +527,6 @@ export class CameraController {
       return;
     }
     this.socket = socket;
-    this.lastFrameAt = 0;
     socket.onData((chunk) => {
       if (this.socket !== socket) return;
       let frames: CameraFrame[];
@@ -503,13 +559,20 @@ export class CameraController {
   private onFrame(streamId: string, frame: CameraFrame): void {
     if (streamId !== this.streamId) return;
     if (this.state.kind !== 'connecting' && this.state.kind !== 'live') return;
-    this.lastFrameAt = this.timers.now();
+    const receivedAt = this.timers.now();
     this.framesReceived += 1;
+    // A camera a switch has already replaced: received, never drawn, and never taken as the facing.
+    if (this.newestEpoch !== null && epochIsOlder(frame.epoch, this.newestEpoch)) {
+      this.countNotDrawn('old-epoch');
+      return;
+    }
+    this.newestEpoch = frame.epoch;
     this.logFrameMilestones(streamId, frame);
     if (this.state.kind === 'connecting') {
       // Frames and `running` travel on two channels; the phone sends a frame only once it is running,
       // so the first frame is as good a signal as the event, and waiting for the event would hold a
       // real picture back for no reason.
+      this.liveSince = receivedAt;
       this.setState({
         kind: 'live',
         streamId,
@@ -523,13 +586,10 @@ export class CameraController {
       });
       this.ensureStallWatch();
     } else if (this.state.kind === 'live') {
-      if (this.state.stalled || this.state.facing !== frame.facing) {
-        this.setState({
-          ...this.state,
-          stalled: false,
-          facing: frame.facing === 'front' ? 'front' : 'back',
-          framesReceived: this.framesReceived,
-        });
+      // Arriving is not being shown: a stalled picture comes back only when the page draws a fresh
+      // frame (frameAck). The facing follows the frames, which carry it in-band.
+      if (this.state.facing !== frame.facing) {
+        this.setState({ ...this.state, facing: frame.facing === 'front' ? 'front' : 'back', framesReceived: this.framesReceived });
       }
     } else {
       return;
@@ -543,7 +603,7 @@ export class CameraController {
       width: frame.width,
       height: frame.height,
       jpeg: new Uint8Array(frame.jpeg),
-    });
+    }, receivedAt);
   }
 
   /**
@@ -565,23 +625,28 @@ export class CameraController {
     this.framesFacing = facing;
   }
 
-  private toRenderer(frame: CameraFrameMessage): void {
-    if (this.frameWithRenderer) {
-      if (this.waitingFrame) this.framesDroppedHere += 1;
-      this.waitingFrame = frame; // the newest replaces whatever was waiting
+  private toRenderer(frame: CameraFrameMessage, receivedAt: number): void {
+    if (this.withRenderer) {
+      if (this.waitingFrame) this.countNotDrawn('replaced-here');
+      this.waitingFrame = { frame, receivedAt }; // the newest replaces whatever was waiting
       return;
     }
-    this.frameWithRenderer = true;
+    this.withRenderer = { streamId: frame.streamId, receivedAt };
     this.deps.emitFrame(frame);
+  }
+
+  private countNotDrawn(cause: NotDrawnCause): void {
+    this.notDrawn[cause] = (this.notDrawn[cause] ?? 0) + 1;
   }
 
   private ensureStallWatch(): void {
     if (this.stallTimer !== null) return;
+    // This only ever hides the picture. Showing it again is the page's drawn ack, for a fresh frame.
     this.stallTimer = this.timers.setInterval(() => {
-      if (this.state.kind !== 'live') return;
-      const stalled = this.lastFrameAt === 0 || this.timers.now() - this.lastFrameAt > CAMERA_STALL_MS;
-      if (stalled !== this.state.stalled) {
-        this.setState({ ...this.state, stalled, framesReceived: this.framesReceived });
+      if (this.state.kind !== 'live' || this.state.stalled) return;
+      const since = Math.max(this.lastShownReceivedAt, this.liveSince);
+      if (this.timers.now() - since > CAMERA_STALL_MS) {
+        this.setState({ ...this.state, stalled: true, framesReceived: this.framesReceived });
       }
     }, 500);
   }
@@ -608,6 +673,7 @@ export class CameraController {
       framesSent: counts.framesSent,
       framesDropped: counts.framesDropped,
       framesReceived: this.framesReceived,
+      framesDrawn: this.framesDrawn,
     });
   }
 
@@ -617,9 +683,12 @@ export class CameraController {
     socket?.destroy();
     if (this.stallTimer !== null) this.timers.clearInterval(this.stallTimer);
     this.stallTimer = null;
-    if (this.waitingFrame) this.framesDroppedHere += 1;
+    // What the page was holding, or what waited for it, at the end is never drawn: the page drops a
+    // frame for a stream that has ended (its ack says `late`, and is ignored as no longer held).
+    if (this.withRenderer) this.countNotDrawn('in-flight-at-end');
+    if (this.waitingFrame) this.countNotDrawn('waiting-at-end');
     this.waitingFrame = null;
-    this.frameWithRenderer = false;
+    this.withRenderer = null;
   }
 
   /**
@@ -637,8 +706,14 @@ export class CameraController {
     const phone =
       counts.framesSent === null ? 'no phone counts yet' : `phone: ${counts.framesSent} sent / ${counts.framesDropped ?? 0} dropped there`;
     if (counts.framesSent !== null) this.phoneCountsLogged = true;
+    const causes = Object.entries(this.notDrawn)
+      .filter(([, n]) => (n ?? 0) > 0)
+      .map(([cause, n]) => `${cause} ${n}`)
+      .join(', ');
+    const notDrawn = Object.values(this.notDrawn).reduce((a, n) => a + (n ?? 0), 0);
     this.log.info(
-      `${streamLabel(streamId)} ended: ${reason} — ${this.framesReceived} received here, ${this.framesDroppedHere} not drawn here; ` +
+      `${streamLabel(streamId)} ended: ${reason} — ${this.framesReceived} received here, ${this.framesDrawn} drawn, ` +
+        `${notDrawn} not drawn here${causes ? ` (${causes})` : ''}; ` +
         `${phone} — ${this.tally.ended} ended of ${this.tally.requested} requested since launch`,
     );
   }
@@ -683,54 +758,89 @@ export class CameraController {
   }
 }
 
+/** What `openCameraSocket` can be told besides the claim — the port and the bounds, for the loopback tests. */
+export interface CameraSocketOptions {
+  /** The phone's video port. Only the tests pass anything else. */
+  port?: number;
+  /** How long the TCP connect and the TLS handshake together may take. */
+  timeoutMs?: number;
+  log?: CameraLog;
+}
+
 /**
  * The real stream socket: TLS 1.3 to the video port, **pinned to the control session's phone**, then
  * the camera claim as the one framed write. The pin is stricter than the mirror's video socket, which
  * relies on the token alone — a camera picture is worth the one extra comparison.
+ *
+ * **With no expected identity there is no connection at all** (defect 173). The first version connected,
+ * completed a TLS handshake presenting this Mac's certificate to whatever answered, and only then
+ * refused. Nothing secret crossed — the claim was never written — but there was nothing to pin against,
+ * so there was nothing to connect for. It now reports the refusal as a close on the next tick, so the
+ * caller's listeners, registered after this returns, still hear it.
+ *
+ * Every close is reported once, with a reason; a local `destroy()` is not reported. Errors stay handled
+ * for the socket's whole life — a second `error` after the first must not reach the process.
  */
-export function openCameraSocket(identity: Identity, host: string, claim: string, expectedFingerprint: string | null): CameraSocket {
+export function openCameraSocket(
+  identity: Identity,
+  host: string,
+  claim: string,
+  expectedFingerprint: string | null,
+  options: CameraSocketOptions = {},
+): CameraSocket {
+  const out = options.log ?? realLog;
+  const timeoutMs = options.timeoutMs ?? 10_000;
   const dataListeners: Array<(chunk: Buffer) => void> = [];
   const closeListeners: Array<(reason: string) => void> = [];
   let closed = false;
+  let socket: TLSSocket | null = null;
   const close = (reason: string) => {
     if (closed) return;
     closed = true;
-    socket.destroy();
+    socket?.destroy();
     for (const listener of closeListeners) listener(reason);
   };
-  const socket: TLSSocket = tlsConnect({
+  const api: CameraSocket = {
+    onData: (listener) => dataListeners.push(listener),
+    onClose: (listener) => closeListeners.push(listener),
+    destroy: () => {
+      closed = true;
+      socket?.destroy();
+    },
+  };
+  if (!expectedFingerprint) {
+    out.warn('camera stream not opened: no phone identity to pin it to');
+    setImmediate(() => close('no phone identity to pin the camera stream to'));
+    return api;
+  }
+  const tls: TLSSocket = tlsConnect({
     host,
-    port: PORT_VIDEO,
+    port: options.port ?? PORT_VIDEO,
     cert: identity.certPem,
     key: identity.keyPem,
     minVersion: 'TLSv1.3',
     // Pinning is ours, as on every socket in this app; the comparison is below.
     rejectUnauthorized: false,
-    timeout: 10_000,
+    timeout: timeoutMs,
   });
-  socket.setTimeout(10_000, () => close('the phone did not answer on the video port'));
-  socket.once('error', (error) => close(error.message));
-  socket.once('secureConnect', () => {
-    socket.setTimeout(0);
-    socket.setNoDelay(true);
-    const der = socket.getPeerX509Certificate?.()?.raw ?? Buffer.alloc(0);
-    if (!expectedFingerprint || der.length === 0 || normalizeFingerprint(fingerprintOfDer(der)) !== normalizeFingerprint(expectedFingerprint)) {
-      log.warn('camera', 'camera stream refused: the video port presented a different certificate from the control session');
+  socket = tls;
+  tls.setTimeout(timeoutMs, () => close('the phone did not answer on the video port'));
+  tls.on('error', (error) => close(error.message));
+  tls.once('secureConnect', () => {
+    if (closed) return;
+    tls.setTimeout(0);
+    tls.setNoDelay(true);
+    const der = tls.getPeerX509Certificate?.()?.raw ?? Buffer.alloc(0);
+    if (der.length === 0 || normalizeFingerprint(fingerprintOfDer(der)) !== normalizeFingerprint(expectedFingerprint)) {
+      out.warn('camera stream refused: the video port presented a different certificate from the control session');
       close('certificate mismatch');
       return;
     }
-    writeFrame(socket, Buffer.from(claim, 'utf8'));
+    writeFrame(tls, Buffer.from(claim, 'utf8'));
   });
-  socket.on('data', (chunk: Buffer) => {
+  tls.on('data', (chunk: Buffer) => {
     if (!closed) for (const listener of dataListeners) listener(chunk);
   });
-  socket.on('close', () => close('the phone closed the camera stream'));
-  return {
-    onData: (listener) => dataListeners.push(listener),
-    onClose: (listener) => closeListeners.push(listener),
-    destroy: () => {
-      closed = true;
-      socket.destroy();
-    },
-  };
+  tls.on('close', () => close('the phone closed the camera stream'));
+  return api;
 }

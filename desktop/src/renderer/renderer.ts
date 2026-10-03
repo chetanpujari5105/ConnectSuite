@@ -1178,7 +1178,7 @@ const camera = new CameraView(
     cameraStop: () => connect.cameraStop(),
     cameraSwitch: (facing) => connect.cameraSwitch(facing),
     cameraCurrent: () => connect.cameraCurrent(),
-    cameraFrameAck: () => connect.cameraFrameAck(),
+    cameraFrameAck: (streamId, outcome) => connect.cameraFrameAck(streamId, outcome),
     onCameraState: (callback) => connect.onCameraState(callback),
     onCameraFrame: (callback) => connect.onCameraFrame(callback),
   },
@@ -1189,7 +1189,7 @@ const camera = new CameraView(
     status: el('camera-status'),
     notice: el('camera-notice'),
   },
-  new CameraCanvasPainter(el<HTMLCanvasElement>('camera-canvas'), () => connect.cameraFrameAck()),
+  new CameraCanvasPainter(el<HTMLCanvasElement>('camera-canvas'), (streamId, outcome) => connect.cameraFrameAck(streamId, outcome)),
 );
 shell.onRoute((id) => camera.routeChanged(id));
 // Files. Fetches on open, like Photos, and for the same reason — the roots are a round trip nobody

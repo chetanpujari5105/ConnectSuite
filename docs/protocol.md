@@ -661,9 +661,13 @@ every camera frame is independent, so the oldest is always the cheapest to lose.
 where the camera offers it, or the closest size it does; `running` reports what was actually chosen.
 The Mac decodes one frame at a time and keeps only the newest waiting.
 
-**An old frame is never shown as live.** When no frame has arrived for 2 seconds of a `running`
+**An old frame is never shown as live.** When no frame has been **drawn** for 2 seconds of a `running`
 stream, the Mac hides the picture and says it is waiting for frames; when the stream stops, or the
-link drops, the picture is cleared at once rather than left standing.
+link drops, the picture is cleared at once rather than left standing. *Drawn*, not *arrived*: a frame
+the Mac cannot decode, or whose pixels are not the header's `width × height`, is received and not drawn,
+and it does not keep a frozen picture labelled live. Staleness is measured from when the drawn frame
+arrived, so a slow decoder cannot present an old frame as new. Such frames are counted, by cause, on the
+Mac's termination line; they do not end the stream (the malformed-frame list above is unchanged).
 
 ### Lifecycle on the phone
 

@@ -2038,7 +2038,8 @@ ipcMain.handle('camera-stop', async () => (camera ? camera.stop() : { ok: true }
 ipcMain.handle('camera-switch', async (_event, facing: unknown) =>
   camera ? camera.switchCamera(facing) : { ok: false, reason: 'No live camera stream' });
 ipcMain.handle('camera-current', () => camera?.current() ?? { kind: 'idle' });
-ipcMain.on('camera-frame-ack', () => camera?.frameAck());
+// The page says which stream the frame was for and whether it was drawn; the controller checks both.
+ipcMain.on('camera-frame-ack', (_event, streamId: unknown, outcome: unknown) => camera?.frameAck(streamId, outcome));
 
 ipcMain.handle('mirror-stats', () => ({
   ...(video?.stats() ?? { frames: 0, bytes: 0, kbps: 0, framesPerSecond: 0 }),

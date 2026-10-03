@@ -59,6 +59,7 @@ type CamPaneState =
       framesSent: number | null;
       framesDropped: number | null;
       framesReceived: number;
+      framesDrawn?: number;
     }
   | { kind: 'refused'; code: string; message: string; fixHint: string | null }
   | { kind: 'error'; code: string; message: string };
@@ -74,12 +75,16 @@ interface CamFrame {
   jpeg: Uint8Array;
 }
 
+/** The main process's `CameraFrameOutcome`: what the page did with one frame it was handed. */
+type CamFrameOutcome = 'drawn' | 'undecodable' | 'size-mismatch' | 'draw-failed' | 'late' | 'replaced' | 'not-live';
+
 interface CameraBridge {
   cameraRequest(facing: 'back' | 'front'): Promise<{ ok: boolean; reason?: string }>;
   cameraStop(): Promise<{ ok: boolean; reason?: string }>;
   cameraSwitch(facing: 'back' | 'front'): Promise<{ ok: boolean; reason?: string }>;
   cameraCurrent(): Promise<CamPaneState>;
-  cameraFrameAck(): void;
+  /** Done with a frame: which stream it was for, and what became of it (the main process counts these). */
+  cameraFrameAck(streamId: string, outcome: CamFrameOutcome): void;
   onCameraState(callback: (state: CamPaneState) => void): void;
   onCameraFrame(callback: (frame: CamFrame) => void): void;
 }
@@ -296,7 +301,8 @@ function cameraCountsLine(state: Extract<CamPaneState, { kind: 'ended' }>): stri
     state.framesSent === null
       ? 'The phone sent no counts'
       : `${state.framesSent} frames sent by the phone, ${state.framesDropped ?? 0} dropped there`;
-  return `${phone}; ${state.framesReceived} received here.`;
+  const drawn = typeof state.framesDrawn === 'number' ? `, ${state.framesDrawn} drawn` : '';
+  return `${phone}; ${state.framesReceived} received here${drawn}.`;
 }
 
 /**
@@ -331,9 +337,14 @@ function cameraDrawMatrix(
 }
 
 /**
- * Decodes and draws one frame at a time, and acks each so the main process sends the next. A frame
- * that arrives while one is decoding replaces any frame already waiting — the newest is the only one
- * worth drawing — and every decoded bitmap is closed the moment it has been drawn.
+ * Decodes and draws one frame at a time, and acks each — with what became of it — so the main process
+ * sends the next and counts what was never shown. A frame that arrives while one is decoding replaces
+ * any frame already waiting (the replaced one is acked `replaced`), and every decoded bitmap is closed
+ * exactly once, drawn or not.
+ *
+ * **A frame is drawn only as what it says it is** (defect 172): a bitmap whose size is not the header's
+ * `width × height` is not drawn — its rotation and mirror were described for other pixels — and a frame
+ * whose stream ended while it decoded is not drawn either. Neither is silent: the ack says which.
  */
 class CameraCanvasPainter {
   private decoding = false;
@@ -342,19 +353,25 @@ class CameraCanvasPainter {
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly ack: () => void,
+    private readonly ack: (streamId: string, outcome: CamFrameOutcome) => void,
+    /** The JPEG decoder — the browser's, or a recorder in the tests. */
+    private readonly decode: (jpeg: Uint8Array) => Promise<ImageBitmap> = (jpeg) =>
+      createImageBitmap(new Blob([new Uint8Array(jpeg)], { type: 'image/jpeg' })),
   ) {}
 
   /** Frames for any other stream are dropped unpainted (and acked, so the next can come). */
   setStream(streamId: string | null): void {
     if (streamId === this.streamId) return;
     this.streamId = streamId;
+    const dropped = this.waiting;
     this.waiting = null;
+    if (dropped) this.ack(dropped.streamId, 'late');
     this.clear();
   }
 
   paint(frame: CamFrame): void {
     if (this.decoding) {
+      if (this.waiting) this.ack(this.waiting.streamId, 'replaced');
       this.waiting = frame;
       return;
     }
@@ -370,19 +387,32 @@ class CameraCanvasPainter {
   private async decodeAndDraw(frame: CamFrame): Promise<void> {
     this.decoding = true;
     let bitmap: ImageBitmap | null = null;
+    let outcome: CamFrameOutcome = 'late';
     try {
       if (frame.streamId === this.streamId) {
-        const bytes = new Uint8Array(frame.jpeg);
-        bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/jpeg' }));
-        // The stream may have ended while the JPEG decoded; an ended stream draws nothing.
-        if (frame.streamId === this.streamId) this.draw(bitmap, frame);
+        try {
+          bitmap = await this.decode(frame.jpeg);
+        } catch {
+          outcome = 'undecodable';
+        }
+        if (bitmap) {
+          // The stream may have ended while the JPEG decoded; an ended stream draws nothing.
+          if (frame.streamId !== this.streamId) outcome = 'late';
+          else if (bitmap.width !== frame.width || bitmap.height !== frame.height) outcome = 'size-mismatch';
+          else {
+            try {
+              this.draw(bitmap, frame);
+              outcome = 'drawn';
+            } catch {
+              outcome = 'draw-failed';
+            }
+          }
+        }
       }
-    } catch {
-      // A JPEG the browser could not decode is one lost frame, not a reason to stop the stream.
     } finally {
       bitmap?.close();
       this.decoding = false;
-      this.ack();
+      this.ack(frame.streamId, outcome);
       const next = this.waiting;
       this.waiting = null;
       if (next) this.paint(next);
@@ -396,7 +426,7 @@ class CameraCanvasPainter {
     if (this.canvas.width !== boxW) this.canvas.width = boxW;
     if (this.canvas.height !== boxH) this.canvas.height = boxH;
     const context = this.canvas.getContext('2d');
-    if (!context) return;
+    if (!context) throw new Error('no 2d context');
     const m = cameraDrawMatrix(bitmap.width, bitmap.height, frame.rotation, frame.mirrored, boxW, boxH);
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.clearRect(0, 0, boxW, boxH);
@@ -439,12 +469,14 @@ class CameraView {
   ) {
     bridge.onCameraState((state) => this.setState(state));
     bridge.onCameraFrame((frame) => {
-      // Drawn only while live and not stalled; anything else is acked unpainted so the main process is
-      // never left holding a frame the page will not draw.
-      if (this.state.kind === 'live' && !this.state.stalled && frame.streamId === this.state.streamId) {
+      // Painted while this stream is live — **stalled or not**: a stalled picture is hidden, and the main
+      // process shows it again only when the page reports a fresh frame drawn (defect 172), so a hidden
+      // stage must still draw. Anything else is acked unpainted so the main process is never left
+      // holding a frame the page will not draw.
+      if (this.state.kind === 'live' && frame.streamId === this.state.streamId) {
         this.painter.paint(frame);
       } else {
-        this.bridge.cameraFrameAck();
+        this.bridge.cameraFrameAck(frame.streamId, 'not-live');
       }
     });
     void bridge.cameraCurrent().then((state) => this.setState(state));
