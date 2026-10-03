@@ -260,7 +260,7 @@ test('defect 167: no ending prints its internal reason as text on the pane', () 
   const spec = (state: State) => rules.cameraPaneSpec(READY, state, 0);
   const reasons = [
     'declined', 'expired', 'permission-denied', 'camera-unavailable', 'camera-in-use', 'stopped-by-mac',
-    'stopped-on-phone', 'left-screen', 'stream-closed', 'capture-failed', 'disconnected', 'stream-lost',
+    'stopped-on-phone', 'left-screen', 'stream-closed', 'capture-failed', 'disconnected', 'disconnected-here', 'stream-lost',
   ] as const;
   for (const reason of reasons) {
     const block = spec({ kind: 'ended', streamId: STREAM, reason, message: 'A sentence.', fixHint: null, framesSent: 3, framesDropped: 0, framesReceived: 3 }).block!;
@@ -420,4 +420,14 @@ test('painter: a frame for another stream is never decoded, and is acked late', 
   await r.settle();
   assert.equal(r.pending.length, 0);
   assert.deepEqual(r.acks, [['e'.repeat(32), 'late']]);
+});
+
+test('defect 174: the pane tells this Mac’s Disconnect from a connection that ended, and blames the phone for neither', () => {
+  const spec = (reason: string) =>
+    rules.cameraPaneSpec(READY, { kind: 'ended', streamId: STREAM, reason, message: 'm', fixHint: null, framesSent: null, framesDropped: null, framesReceived: 0 }, 0).block!;
+  const here = spec('disconnected-here');
+  const lost = spec('disconnected');
+  assert.notEqual(here.headline, lost.headline);
+  assert.match(here.headline, /this Mac/);
+  for (const block of [here, lost]) assert.doesNotMatch(block.headline, /phone disconnected/i);
 });

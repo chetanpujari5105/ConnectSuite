@@ -27876,3 +27876,84 @@ frames or a `CameraFrameError`.
   next test". It was not:** the transport harness still called the old one-argument `frameAck('drawn')`,
   which the new controller correctly ignores, so only one frame passed. The full `npm test` exposed it;
   the harness was fixed and M173-A re-run red on its own test only.
+
+### Defect 174 — a Disconnect pressed on this Mac was worded as the phone disconnecting (2026-10-03, tests only)
+
+**Predicted, not observed.** The 22:38 batch's RESUME entry pre-registered that case D would fail on this
+wording; case D has never run, and this fix does not make it run. It was confirmed by reading the code:
+`CameraController.onSessionEnded(token)` had one ending, `disconnected`, worded *"Your phone disconnected,
+so the camera stopped."* under the headline *Your phone disconnected*, and `SESSION_ENDED_EVENT` carried
+only a token and a free-text reason. The phone's `MAC_DISCONNECTED` sentence, *"The Mac disconnected…"*,
+named a cause the phone cannot know (a dropped network looks the same to it).
+
+**Fix:** `SessionEnded.byThisMac`, true only from `LinkClient.stop()` (Disconnect, Forget, the tray, quit);
+every other teardown, and `files.ts`'s already-ended case, says false. The camera ends as
+`disconnected-here` — *"You disconnected this Mac from your phone, so the camera stopped."*, headline
+*Disconnected from this Mac* — or `disconnected` — *"The connection to your phone ended, so the camera
+stopped."*, headline *The connection to your phone ended*, naming no cause. A Mac Stop already recorded
+stays `stopped-by-mac` whatever ends the session after it. The phone now says *"The connection to the Mac
+ended, so the camera stopped."*
+
+**Tests:** controller — this Mac's Disconnect is said as this Mac's; an unexplained end names no cause;
+a known Stop survives both kinds of session end. Link — only `stop()` reports `byThisMac: true`, a
+phone close and a heartbeat loss report false (the two existing 157 tests gained the field). Pane — the two
+headlines differ and neither blames the phone. Phone — the sentence names no cause. **Red before the fix**
+on the controller and link tests and on the phone sentence.
+
+**Not reached:** whether the tray's Disconnect and the Devices pane's call `stop()` in every build path is
+read from `main.ts` (`link?.stop('tray')`, `link?.stop('user disconnected')`), not run.
+
+### Defect 175 — asking again right after cancelling an in-flight request was refused as busy (2026-10-03, tests only)
+
+**Found** by tracing `request()` → `stop()` → `request()`: `stop()` during an in-flight request ends the
+pane at once and bumps the sequence, and the old request withdraws itself (`camera.stop`) only when its
+ack arrives with a stream id. `isActive()` was already false, so a second request went out immediately and
+reached the phone while the first was still open there; the phone refuses that as `CAMERA_BUSY` (the
+contract's rule), with a sentence about a request this Mac had cancelled.
+
+**Fix:** a request waits for the previous request's settlement — its ack, and its withdrawal if it was
+abandoned — before sending; cancelled while it waits, it sends nothing. The pane shows *Asking your
+phone…* for that wait, and the Mac logs *"camera.request waiting for the previous request to be withdrawn
+on the phone"*.
+
+**Tests:** against a fake phone that keeps only the contract's busy rule and releases acks by hand: Cancel
+then ask again → the order on the wire is request, stop, request, and the second is accepted; a second ask
+cancelled while it waits sends nothing. **Red before the fix** (the second request refused). M175-A (no
+wait) red on both; M175-C (no re-check after the wait) red — its first run hung the runner for 600 s
+(the mutant waits forever) and was re-run with a per-test timeout; the file's restore was verified by
+content before anything else ran. **M175-B (withdrawal not awaited) survives**: `LinkClient.request`
+writes synchronously on one ordered connection, so the stop is on the wire before the next request
+either way. The await is kept for a phone that might handle control messages concurrently; no test here
+can produce one.
+
+### Defect 176 — the phone wrote no line when a stream went live or a switch took effect (2026-10-03, tests only)
+
+**Found** by listing the phone's `[camera]` lines against the brief's list (requested, awaiting consent,
+opening, first frame, switch requested / accepted / confirmed, stopped, final counters): no first-frame
+line, no switch-confirmed line, nothing for Decline, the permission answer or the phone's own Switch, and
+effect lists reading `SendState` without the state. (Defect 171 added the awaiting-consent route lines.)
+
+**Fix:** `CameraLogLines.milestone` builds *"Camera stream 01234567… running: first frame 960 × 720 from
+the back camera"* and *"… switch confirmed: …"*, written once each by `CameraEngine.frameProduced` with the
+epoch appended; `describe` names the state sent, the request's route and the camera and epoch opened;
+Decline, the permission answer and the phone's Switch each get a line. No per-frame line.
+
+**Tests:** exact milestone lines for a stream and a switched camera, none for later frames; exact effect
+descriptions; a source scan that the engine writes them. P176-A and P176-B red.
+
+### The Camera bridge, end to end (2026-10-03; no defect)
+
+`cameraWiring.test.ts` (source scans; Electron IPC cannot run under `node --test`): the pane's
+`CameraBridge` is exactly its seven calls; each is passed by `renderer.ts`, typed on `connect`, and
+exposed by preload; every channel preload invokes, sends or listens on has its other end in `main.ts`; the
+ack carries stream and outcome through all three; who-ended-it reaches the camera. **Nothing was missing**
+before this work, and the check was shown able to fail: MW-A (a handler renamed) and MW-B (a preload
+method renamed) red.
+
+### Unchanged on purpose
+
+- **960 × 720** stays the resolution policy; no virtual webcam; no UI redesign.
+- Home, lock and pane exit were already consistent: Home and lock both reach `CameraActivity.onStop` →
+  `left-screen` (*"…left your phone's display"*, true of both); leaving the Mac pane is a Mac Stop
+  (`stopped-by-mac`); a refused permission is `permission-denied` — or, after the deadline, `expired`
+  (defect 170). No automatic restart exists anywhere, and `CameraHostCoreTest` now scans for one.

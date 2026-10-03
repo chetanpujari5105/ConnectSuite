@@ -159,9 +159,17 @@ object CameraEngine {
         run(effects)
     }
 
-    fun decline(streamId: String) = run(machine.decline(streamId))
+    fun decline(streamId: String) {
+        val effects = machine.decline(streamId)
+        if (effects.isNotEmpty()) LinkLog.i("camera", "Decline tapped for ${streamId.take(8)}…: ${describe(effects)}")
+        run(effects)
+    }
 
-    fun permissionDenied(streamId: String) = run(machine.permissionDenied(streamId, System.currentTimeMillis()))
+    fun permissionDenied(streamId: String) {
+        val effects = machine.permissionDenied(streamId, System.currentTimeMillis())
+        LinkLog.i("camera", "Camera permission answered no for ${streamId.take(8)}…: ${describe(effects)}")
+        run(effects)
+    }
 
     /** Whether a camera opened for [streamId] at [epoch] is still wanted — the machine's answer, under its lock. */
     fun isCurrentCamera(streamId: String, epoch: Int): Boolean = machine.isCurrentCamera(streamId, epoch)
@@ -188,8 +196,13 @@ object CameraEngine {
         val streamId = ui.streamId ?: return
         if (!ui.phase.isLive) return
         val target = ui.facing.other()
-        if (!hasCameraFacing(target)) return
-        run(machine.phoneSwitch(streamId, target))
+        if (!hasCameraFacing(target)) {
+            LinkLog.w("camera", "Phone's Switch for ${streamId.take(8)}… refused: no ${target.wire} camera")
+            return
+        }
+        val effects = machine.phoneSwitch(streamId, target)
+        LinkLog.i("camera", "Phone's Switch for ${streamId.take(8)}… to ${target.wire}: ${describe(effects)}")
+        run(effects)
     }
 
     // ---- the camera ---------------------------------------------------------------------------------
@@ -200,7 +213,11 @@ object CameraEngine {
      */
     fun frameProduced(streamId: String, epoch: Int, width: Int, height: Int): FrameTicket? {
         val (ticket, effects) = machine.frameProduced(streamId, epoch, width, height)
-        if (effects.isNotEmpty()) run(effects)
+        if (effects.isNotEmpty()) {
+            // The first frame of the stream, or of the camera a switch turned to: the one line each gets.
+            effects.mapNotNull { CameraLogLines.milestone(streamId, it) }.forEach { LinkLog.i("camera", "$it, epoch $epoch") }
+            run(effects)
+        }
         return ticket
     }
 
@@ -371,15 +388,7 @@ object CameraEngine {
     private fun stringField(request: Envelope, name: String): String? =
         runCatching { request.payload[name]?.jsonPrimitive?.content }.getOrNull()
 
-    private fun describe(effects: List<CameraEffect<ControlSession>>): String =
-        effects.joinToString(", ") {
-            when (it) {
-                is CameraEffect.Refuse -> "refused ${it.code}"
-                is CameraEffect.Stopped -> "stopped ${it.reason.name}"
-                is CameraEffect.Reattributed -> "re-attributed ${it.from.name} → ${it.to.name}"
-                else -> it.javaClass.simpleName
-            }
-        }.ifEmpty { "no change" }
+    private fun describe(effects: List<CameraEffect<ControlSession>>): String = CameraLogLines.describe(effects)
 
     private fun ControlSession.sendAck(requestId: String, payload: Map<String, Any>) {
         send(Envelope.ack(requestId) { putAll(payload) })

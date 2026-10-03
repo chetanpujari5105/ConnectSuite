@@ -582,3 +582,37 @@ object CameraPayloads {
         }
     }
 }
+
+/**
+ * The phone's `[camera]` lines that are about the machine's effects, built here so a test asserts the
+ * exact text and the hardware driver's parser can be checked against it (defect 176: the
+ * phone wrote no line when a stream went live or a switch took effect).
+ *
+ * Milestones only — the first frame of a stream and the first frame after a switch. Never per frame,
+ * never a token, never more than the stream id's first 8 characters.
+ */
+object CameraLogLines {
+    /** `Camera stream 01234567… running: first frame 960 × 720 from the back camera, epoch 0`, or null. */
+    fun milestone(streamId: String, effect: CameraEffect<*>): String? {
+        if (effect !is CameraEffect.SendState<*>) return null
+        val p = effect.payload
+        if (p["state"] != CameraPhase.RUNNING.wire) return null
+        val what = if (p["switched"] == true) "switch confirmed" else "running"
+        return "Camera stream ${streamId.take(8)}… $what: first frame ${p["width"]} × ${p["height"]} from the ${p["facing"]} camera"
+    }
+
+    /** One effect list as a short phrase: what was refused or stopped and why, and which state was sent. */
+    fun describe(effects: List<CameraEffect<*>>): String =
+        effects.joinToString(", ") {
+            when (it) {
+                is CameraEffect.Refuse<*> -> "refused ${it.code}"
+                is CameraEffect.Stopped<*> -> "stopped ${it.reason.name}"
+                is CameraEffect.Reattributed -> "re-attributed ${it.from.name} → ${it.to.name}"
+                is CameraEffect.SendState<*> -> "state ${it.payload["state"]}"
+                is CameraEffect.ShowRequest -> "ShowRequest(${it.route.name.lowercase()})"
+                is CameraEffect.SwitchCamera -> "SwitchCamera(${it.facing.wire}, epoch ${it.epoch})"
+                is CameraEffect.OpenCamera -> "OpenCamera(${it.facing.wire}, epoch ${it.epoch})"
+                else -> it.javaClass.simpleName
+            }
+        }.ifEmpty { "no change" }
+}

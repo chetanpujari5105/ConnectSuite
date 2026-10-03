@@ -510,7 +510,8 @@ export class FilesClient {
     };
     link.on(SESSION_ENDED_EVENT, onSessionEnded);
     // The session may already have ended while this pull was being agreed, before anything listened.
-    if (link.token() !== token) onSessionEnded({ token, reason: 'it ended while the pull was being agreed' });
+    // Who ended it is not known here, so it is not claimed to be this Mac (`byThisMac` is true only when known).
+    if (link.token() !== token) onSessionEnded({ token, reason: 'it ended while the pull was being agreed', byThisMac: false });
     // The record follows the verified count, so an interruption loses at most a few seconds of blocks.
     // Saves run one at a time and are awaited before a discard, so a save started by the timer cannot
     // land after the record was deleted and bring a rejected record back (defect 158 widened that window).

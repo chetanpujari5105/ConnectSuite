@@ -52,4 +52,10 @@ export interface SessionEnded {
   token: string;
   /** Why it ended, as `teardown` was told. */
   reason: string;
+  /**
+   * True only when this Mac's own `LinkClient.stop()` is known to have ended it — a Disconnect, Forget,
+   * the tray, quit. False for every other ending, and wherever it is not known: the phone closing, a missed heartbeat, a protocol error — causes the
+   * features listening here cannot tell apart, and must not name (defect 174).
+   */
+  byThisMac: boolean;
 }

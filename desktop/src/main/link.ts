@@ -154,7 +154,7 @@ export class LinkClient extends EventEmitter {
   stop(reason = 'stopped by user'): void {
     this.running = false;
     this.clearTimers();
-    this.teardown(reason);
+    this.teardown(reason, true);
     this.setPhase('idle');
   }
 
@@ -687,7 +687,7 @@ export class LinkClient extends EventEmitter {
     this.retryTimer = null;
   }
 
-  private teardown(reason: string): void {
+  private teardown(reason: string, byThisMac = false): void {
     this.clearPing();
     for (const [, pending] of this.pending) {
       clearTimeout(pending.timer);
@@ -708,7 +708,7 @@ export class LinkClient extends EventEmitter {
       socket.removeAllListeners('close');
       socket.destroy();
     }
-    if (endedToken) this.emit(SESSION_ENDED_EVENT, { token: endedToken, reason } satisfies SessionEnded);
+    if (endedToken) this.emit(SESSION_ENDED_EVENT, { token: endedToken, reason, byThisMac } satisfies SessionEnded);
     if (this.phase === 'connected' || this.phase === 'handshaking') {
       log.info('link', `Disconnected: ${reason}`);
       this.failed(reason);

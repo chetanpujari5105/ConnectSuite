@@ -65,7 +65,7 @@ function connected(token: string | null) {
 test('157: a user Disconnect ends the session and names its token, once', () => {
   const { client, ended } = connected('tok-A');
   client.stop('user disconnected');
-  assert.deepEqual(ended, [{ token: 'tok-A', reason: 'user disconnected' }]);
+  assert.deepEqual(ended, [{ token: 'tok-A', reason: 'user disconnected', byThisMac: true }]);
   client.stop('user disconnected');
   assert.equal(ended.length, 1, 'a second stop has no session left to end');
 });
@@ -73,11 +73,25 @@ test('157: a user Disconnect ends the session and names its token, once', () => 
 test('157: the phone closing the connection ends the session the same way', () => {
   const { inner, ended } = connected('tok-B');
   inner.teardown('phone closed the connection');
-  assert.deepEqual(ended, [{ token: 'tok-B', reason: 'phone closed the connection' }]);
+  assert.deepEqual(ended, [{ token: 'tok-B', reason: 'phone closed the connection', byThisMac: false }]);
 });
 
 test('157: with no session up, nothing is said to have ended', () => {
   const { client, ended } = connected(null);
   client.stop('user disconnected');
   assert.deepEqual(ended, []);
+});
+
+// Defect 174: the camera tells a Disconnect on this Mac from a connection that ended by itself, and the
+// only place that knows which is the call that ended it.
+test('174: only this Mac’s own stop says the session was ended here', () => {
+  const mine = connected('tok-C');
+  mine.client.stop('user disconnected');
+  assert.equal(mine.ended[0]?.byThisMac, true);
+  const theirs = connected('tok-D');
+  theirs.inner.teardown('phone closed the connection');
+  assert.equal(theirs.ended[0]?.byThisMac, false);
+  const heartbeat = connected('tok-E');
+  heartbeat.inner.teardown('no pong in 30s');
+  assert.equal(heartbeat.ended[0]?.byThisMac, false);
 });

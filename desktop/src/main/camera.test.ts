@@ -775,3 +775,110 @@ test('a slow page under 10,000 frames: never more than one frame with it, one wa
   assert.equal(end.framesReceived, total);
   assert.equal(end.framesDrawn + notDrawn, total, line);
 });
+
+// ---- who ended the session (defect 174, 2026-10-03) ----------------------------------------------
+
+test('defect 174: a Disconnect on this Mac is said as this Mac’s, never as the phone disconnecting', async () => {
+  const h = harness();
+  await toLive(h);
+  h.controller.onSessionEnded(TOKEN, true);
+  const end = h.last();
+  assert.equal(end.kind, 'ended');
+  if (end.kind !== 'ended') return;
+  assert.equal(end.reason, 'disconnected-here');
+  assert.match(end.message, /You disconnected this Mac/);
+  assert.doesNotMatch(end.message, /phone disconnected/i);
+});
+
+test('defect 174: a session that ended for a reason this Mac does not know names no cause', async () => {
+  const h = harness();
+  await toLive(h);
+  h.controller.onSessionEnded(TOKEN, false);
+  const end = h.last();
+  if (end.kind !== 'ended') return assert.fail('not ended');
+  assert.equal(end.reason, 'disconnected');
+  assert.doesNotMatch(end.message, /phone disconnected|you disconnected|network|turned off/i, end.message);
+  assert.match(end.message, /connection to your phone ended/i);
+});
+
+test('defect 174: a known local Stop stays the Mac’s own reason whatever ends the session after it', async () => {
+  const h = harness();
+  await toLive(h);
+  await h.controller.stop();
+  h.controller.onSessionEnded(TOKEN, true);
+  h.controller.onSessionEnded(TOKEN, false);
+  assert.equal((h.last() as { reason: string }).reason, 'stopped-by-mac');
+});
+
+// ---- asking again right after cancelling an in-flight request (defect 175, 2026-10-03) -------------
+
+/**
+ * A phone that keeps the contract's one rule this needs: while a request is open on it, another is
+ * `CAMERA_BUSY`; a `camera.stop` closes it. Acks are released by hand, as a slow link would.
+ */
+function busyPhone(h: Harness) {
+  const open = new Set<string>();
+  const acks: Array<() => void> = [];
+  let next = 0;
+  const ids = [STREAM, OTHER_STREAM];
+  h.reply = (type, payload) => {
+    if (type === 'camera.stop') {
+      open.delete(String(payload.streamId));
+      return Promise.resolve({ payload: { stopped: true } });
+    }
+    if (open.size > 0) {
+      return Promise.reject(Object.assign(new Error('CAMERA_BUSY'), { code: 'CAMERA_BUSY', phoneMessage: 'This Mac already has a camera request or stream open on the phone.' }));
+    }
+    const id = ids[next++]!;
+    open.add(id);
+    return new Promise((resolve) => acks.push(() => resolve({ payload: { state: 'awaiting-approval', streamId: id, expiresInMs: 30_000 } })));
+  };
+  /** Releases the oldest ack still held; false when none is (the request was refused, or never sent). */
+  const releaseAck = () => {
+    const ack = acks.shift();
+    ack?.();
+    return ack !== undefined;
+  };
+  return { open, releaseAck };
+}
+
+test('defect 175: Cancel while the ack is in flight, then ask again — the second request is not refused as busy', async () => {
+  const h = harness();
+  const phone = busyPhone(h);
+  const first = h.controller.request('back');
+  await settle();
+  await h.controller.stop(); // Cancel request, before the phone's ack has arrived
+  const second = h.controller.request('back');
+  await settle();
+  phone.releaseAck(); // the first request's ack lands; it is withdrawn
+  await first;
+  await settle();
+  await settle();
+  phone.releaseAck(); // the second request's ack, if it was ever sent and accepted
+  const result = await second;
+  assert.equal(result.ok, true, `the second request was refused: ${JSON.stringify(h.last())}`);
+  assert.equal(h.last().kind, 'requesting');
+  assert.deepEqual(
+    h.sent.map((s) => s.type),
+    ['camera.request', 'camera.stop', 'camera.request'],
+    'the withdrawal of the first must reach the phone before the second request',
+  );
+  assert.deepEqual([...phone.open], [OTHER_STREAM]);
+});
+
+test('defect 175: a second ask that is itself cancelled while waiting sends nothing', async () => {
+  const h = harness();
+  const phone = busyPhone(h);
+  const first = h.controller.request('back');
+  await settle();
+  await h.controller.stop();
+  const second = h.controller.request('front');
+  await settle();
+  await h.controller.stop(); // and that one is cancelled too
+  phone.releaseAck();
+  await first;
+  const result = await second;
+  assert.equal(result.ok, false);
+  assert.deepEqual(h.sent.map((s) => s.type), ['camera.request', 'camera.stop']);
+  assert.equal(phone.open.size, 0);
+});

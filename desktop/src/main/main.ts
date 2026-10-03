@@ -1058,7 +1058,7 @@ app.whenReady().then(() => {
     emitState: (state) => send('camera-state', state),
     emitFrame: (frame) => send('camera-frame', frame),
   });
-  link.on(SESSION_ENDED_EVENT, (ended: SessionEnded) => camera?.onSessionEnded(ended.token));
+  link.on(SESSION_ENDED_EVENT, (ended: SessionEnded) => camera?.onSessionEnded(ended.token, ended.byThisMac));
 
   // The private ownership record for share temporary files, in this app's own data folder.
   const shareLedger = new FileShareLedger(ledgerFile(userData));

@@ -273,6 +273,53 @@ class CameraSessionMachineTest {
         assertTrue("the camera-off promise is kept", message.contains("camera stays off"))
     }
 
+    /**
+     * Defect 174, the phone's half: the phone sees its control session end and cannot tell a Mac that
+     * disconnected from a network that dropped, so the sentence on its screen names neither.
+     */
+    @Test
+    fun `the phone's sentence for a lost control session names no cause it cannot know`() {
+        val message = CameraStopReason.MAC_DISCONNECTED.message
+        assertFalse(message, message.contains("The Mac disconnected"))
+        assertTrue(message, message.contains("connection to the Mac ended"))
+    }
+
+    // ---- the phone's lifecycle lines (defect 176) ------------------------------------------------------
+
+    @Test
+    fun `the first frame of a stream and of a switched camera each get one exact line, and later frames none`() {
+        val m = machine()
+        m.requestFrom()
+        m.approve(streamA, CameraFacing.BACK, t0 + 1_000)
+        m.offerChannel(mac, streamA)
+        val first = m.frameProduced(streamA, 0, 960, 720).second
+        assertEquals(
+            listOf("Camera stream 01234567… running: first frame 960 × 720 from the back camera"),
+            first.mapNotNull { CameraLogLines.milestone(streamA, it) },
+        )
+        assertTrue(m.frameProduced(streamA, 0, 960, 720).second.mapNotNull { CameraLogLines.milestone(streamA, it) }.isEmpty())
+        m.switch(mac, "sw", streamA, "front") { true }
+        val switched = m.frameProduced(streamA, 1, 960, 720).second
+        assertEquals(
+            listOf("Camera stream 01234567… switch confirmed: first frame 960 × 720 from the front camera"),
+            switched.mapNotNull { CameraLogLines.milestone(streamA, it) },
+        )
+    }
+
+    @Test
+    fun `an effect list reads as what happened — the state sent, the route, the camera and epoch`() {
+        val m = machine()
+        assertEquals(
+            "Ack, ShowRequest(notification), ArmTimer",
+            CameraLogLines.describe(m.requestFrom(route = CameraRequestRoute.NOTIFICATION)),
+        )
+        assertEquals(
+            "CancelTimers, ClearRequest, state starting, OpenCamera(front, epoch 0), ArmTimer",
+            CameraLogLines.describe(m.approve(streamA, CameraFacing.FRONT, t0 + 1_000)),
+        )
+        assertEquals("no change", CameraLogLines.describe(emptyList<CameraEffect<Owner>>()))
+    }
+
     @Test
     fun `an old request's timer cannot end the next stream`() {
         val m = machine()

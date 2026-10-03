@@ -51,8 +51,13 @@ export type CameraEndReason =
   | 'left-screen'
   | 'stream-closed'
   | 'capture-failed'
-  /** The control session ended — a disconnect, or the phone going away. */
+  /**
+   * The control session ended and this Mac did not end it — the phone closed it, a heartbeat was missed,
+   * the network went. Which one is not known here, and the sentence names none (defect 174).
+   */
   | 'disconnected'
+  /** This Mac's own Disconnect (or Forget, the tray, quit) ended the session. */
+  | 'disconnected-here'
   /** The stream socket closed and the phone has not yet said why. A phone `stopped` replaces it. */
   | 'stream-lost';
 
@@ -232,8 +237,12 @@ export function endedCopy(reason: CameraEndReason): { message: string; fixHint: 
       return { message: 'The camera stream ended.', fixHint: 'Ask again to see the camera.' };
     case 'capture-failed':
       return { message: 'Your phone could not produce camera frames.', fixHint: 'Ask again. If it keeps happening, restart the phone.' };
+    // The first version said "Your phone disconnected" for both — including the Disconnect pressed on
+    // this Mac (defect 174). Only the one this Mac caused is said with a subject.
     case 'disconnected':
-      return { message: 'Your phone disconnected, so the camera stopped.', fixHint: null };
+      return { message: 'The connection to your phone ended, so the camera stopped.', fixHint: 'Ask again once your phone is connected.' };
+    case 'disconnected-here':
+      return { message: 'You disconnected this Mac from your phone, so the camera stopped.', fixHint: null };
     case 'stream-lost':
       return { message: 'The camera stream ended.', fixHint: 'Ask again to see the camera.' };
   }
@@ -256,6 +265,12 @@ export class CameraController {
   private expiryTimer: unknown = null;
   /** Bumped by stop and by a session ending, so a request still in flight knows it was overtaken. */
   private requestSeq = 0;
+  /**
+   * The previous request's ack — and, if it was abandoned, its withdrawal — still in flight. A new
+   * request waits for it (defect 175): a request cancelled before its ack arrives is withdrawn only when
+   * the ack names its stream, and asking again before that finds it still open on the phone.
+   */
+  private settling: Promise<void> | null = null;
   /** The one frame the page holds: whose it is, and when it arrived. */
   private withRenderer: { streamId: string; receivedAt: number } | null = null;
   private waitingFrame: { frame: CameraFrameMessage; receivedAt: number } | null = null;
@@ -291,6 +306,19 @@ export class CameraController {
     if (!this.deps.link.isConnected() || !token) return { ok: false, reason: 'Not connected to the phone' };
 
     const seq = ++this.requestSeq;
+    const prior = this.settling;
+    let settled!: () => void;
+    const mine = new Promise<void>((resolve) => (settled = resolve));
+    this.settling = mine;
+    try {
+      return await this.requestAfter(prior, seq, facing, token);
+    } finally {
+      settled();
+      if (this.settling === mine) this.settling = null;
+    }
+  }
+
+  private async requestAfter(prior: Promise<void> | null, seq: number, facing: CameraFacing, token: string): Promise<CameraResult> {
     // Bound to its session from the moment it is sent: an end of *this* session ends it, a
     // replacement session's events and ends do not.
     this.sessionToken = token;
@@ -307,6 +335,13 @@ export class CameraController {
     this.tally.requested += 1;
     this.log.info(`camera.request sent: ${facing} camera — ${this.tally.requested} requested since launch`);
     this.setState({ kind: 'requesting', facing, streamId: null, expiresAtMs: null, message: null, fixHint: null });
+
+    if (prior) {
+      this.log.info('camera.request waiting for the previous request to be withdrawn on the phone');
+      await prior;
+      // Cancelled, or the session ended, while it waited: nothing was sent, and nothing needs withdrawing.
+      if (seq !== this.requestSeq || this.deps.link.token() !== token) return { ok: false, reason: 'superseded' };
+    }
 
     let ack: { payload?: unknown };
     try {
@@ -328,8 +363,9 @@ export class CameraController {
     const streamId = typeof payload.streamId === 'string' && STREAM_ID.test(payload.streamId) ? payload.streamId : null;
     if (seq !== this.requestSeq || this.deps.link.token() !== token) {
       // Stopped, or the session ended, while the request was in flight. The phone has a request up
-      // that nobody here wants: withdraw it rather than leave it on the owner's screen.
-      if (streamId) void this.sendStop(streamId);
+      // that nobody here wants: withdraw it rather than leave it on the owner's screen — and finish the
+      // withdrawal before this request settles, so the next one is not refused as busy (defect 175).
+      if (streamId) await this.sendStop(streamId);
       return { ok: false, reason: 'superseded' };
     }
     if (!streamId) {
@@ -500,11 +536,14 @@ export class CameraController {
     }
   }
 
-  /** The control session with [token] ended. Its stream ends with it; a replacement's is untouched. */
-  onSessionEnded(token: string | null): void {
+  /**
+   * The control session with [token] ended. Its stream ends with it; a replacement's is untouched.
+   * [byThisMac] is the link's word for whether this Mac ended it — the only thing here that knows.
+   */
+  onSessionEnded(token: string | null, byThisMac = false): void {
     if (!this.isActive() || token !== this.sessionToken) return;
     this.requestSeq += 1;
-    this.end('disconnected', this.streamId);
+    this.end(byThisMac ? 'disconnected-here' : 'disconnected', this.streamId);
   }
 
   // ---- the stream ------------------------------------------------------------------------------

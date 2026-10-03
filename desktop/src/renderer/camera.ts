@@ -279,8 +279,11 @@ function endedBlock(state: Extract<CamPaneState, { kind: 'ended' }>): NonNullabl
     case 'stream-closed':
     case 'stream-lost':
       return { kind: 'error', headline: 'The camera stream ended', body };
+    // Who ended the session decides the headline; an unexplained end names nobody (defect 174).
     case 'disconnected':
-      return { kind: 'blocked', headline: 'Your phone disconnected', body };
+      return { kind: 'blocked', headline: 'The connection to your phone ended', body };
+    case 'disconnected-here':
+      return { kind: 'blocked', headline: 'Disconnected from this Mac', body };
     case 'declined':
       return { kind: 'empty', icon: 'camera', headline: 'Declined on your phone', body };
     case 'expired':

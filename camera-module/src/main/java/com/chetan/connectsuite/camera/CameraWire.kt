@@ -99,9 +99,14 @@ enum class CameraStopReason(val wire: String?, val message: String, val fixHint:
         "The phone could not produce camera frames.",
         "Ask again. If it keeps happening, restart the phone.",
     ),
+    /**
+     * The owning control session ended. The phone cannot tell a Mac that disconnected from a network
+     * that dropped, so the sentence names neither (defect 174); the Mac's own screen says which when it
+     * knows — its Disconnect is its own.
+     */
     MAC_DISCONNECTED(
         null,
-        "The Mac disconnected, so the camera stopped.",
+        "The connection to the Mac ended, so the camera stopped.",
         null,
     ),
 }

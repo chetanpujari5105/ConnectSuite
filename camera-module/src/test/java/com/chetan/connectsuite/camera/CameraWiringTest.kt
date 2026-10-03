@@ -53,7 +53,7 @@ class CameraWiringTest {
 
     @Test
     fun `a permission answer is judged on the clock`() {
-        assertTrue(engine.contains("run(machine.permissionDenied(streamId, System.currentTimeMillis()))"))
+        assertTrue(engine.contains("machine.permissionDenied(streamId, System.currentTimeMillis())"))
         assertTrue(engine.contains("machine.approve(streamId, facing, System.currentTimeMillis())"))
     }
 
@@ -63,6 +63,18 @@ class CameraWiringTest {
         assertTrue(hook.contains("if (!CameraEngine.requestAwaiting()) return"))
         assertFalse("the hook reads the published state again", hook.contains("ui.value"))
         assertTrue(engine.contains("fun requestAwaiting(): Boolean = machine.isAwaiting(System.currentTimeMillis())"))
+    }
+
+    /** Defect 176: the phone said nothing when a stream went live or a switch took effect. */
+    @Test
+    fun `the engine logs the running and switch-confirmed milestones, and every owner action`() {
+        val produced = engine.substringAfter("fun frameProduced(").substringBefore("\n    }\n")
+        assertTrue(produced.contains("CameraLogLines.milestone(streamId, it)"))
+        assertTrue(produced.contains("LinkLog.i(\"camera\""))
+        assertTrue(engine.contains("\"Decline tapped for "))
+        assertTrue(engine.contains("\"Camera permission answered no for "))
+        assertTrue(engine.contains("\"Phone's Switch for "))
+        assertTrue(engine.contains("private fun describe(effects: List<CameraEffect<ControlSession>>): String = CameraLogLines.describe(effects)"))
     }
 
     @Test

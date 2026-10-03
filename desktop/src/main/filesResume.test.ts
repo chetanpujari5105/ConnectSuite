@@ -104,7 +104,7 @@ function harness(scenario: Scenario = {}) {
   const sessionRef = { token: 'tok' };
   const emit = (type: string, payload: Record<string, unknown>) => { if (!control.down) link.emit('message', { type, payload }); };
   /** The session [token] ends, the way `LinkClient.teardown` reports it. The fake phone keeps streaming. */
-  const endSession = (token: string, reason = 'user disconnected') => { control.down = true; link.emit(SESSION_ENDED_EVENT, { token, reason }); };
+  const endSession = (token: string, reason = 'user disconnected') => { control.down = true; link.emit(SESSION_ENDED_EVENT, { token, reason, byThisMac: reason === 'user disconnected' }); };
   /** A new session is up under [token]. */
   const reconnect = (token: string) => { control.down = false; sessionRef.token = token; };
 
@@ -515,7 +515,7 @@ test('157: an old session ending does not stop a replacement session\'s pull', T
     h.reconnect('tok-new');
     const first = h.pull();
     await whenReceiving(h, 10 * MiB);
-    h.link.emit(SESSION_ENDED_EVENT, { token: 'tok-old', reason: 'phone closed the connection' }); // a late teardown of the session it replaced
+    h.link.emit(SESSION_ENDED_EVENT, { token: 'tok-old', reason: 'phone closed the connection', byThisMac: false }); // a late teardown of the session it replaced
     const r = await first;
     assert.equal(r.ok, true, r.reason);
     assert.equal(sha(readFileSync(join(h.folder, 'clip.bin'))), sha(SOURCE));
