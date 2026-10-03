@@ -1092,6 +1092,7 @@ there is nothing for another process to connect to.
 
 | Status `op` (bridge → main) | Meaning |
 |---|---|
+| `ready` | `{device, producerIdentity}`, **once, first, at startup** (added 2026-10-04, W3). `device` is `installed` or `not-installed` — whether CoreMediaIO lists Sidekick Camera. `producerIdentity` is `configured` or `unconfigured` — whether this build carries a Team ID for the producer requirement. `unconfigured` means the extension refuses every producer (fail closed), so **main sends no `webcam.request` while either value is the second one**. It is the bridge's compiled constant, not a reading of the extension's verdict; a refused sink still arrives as `sink` `refused` |
 | `consumers` | `{count}`, on every change of the extension's consumer count |
 | `session-ended` | `{sessionId, reason:"no-consumers"}`: the bridge ended a session locally because the count reached 0. Main still sends `webcam.stop` |
 | `sink` | `{state}`: `device-not-installed`, `refused`, `idle` or `feeding` |

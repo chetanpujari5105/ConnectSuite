@@ -21,9 +21,15 @@ func note(_ s: String) { FileHandle.standardError.write(Data("[camera-bridge] \(
 
 let sink = CMIOSinkPort()
 let core = BridgeCore(sink: sink, emit: send)
+// `ready` is the first record, before the watcher reports a count: main reads the device and the
+// producer identity from it, and sends no request until both are present (docs/protocol.md → The
+// Mac's local contract). The device is looked up here, read-only, and again by the watcher.
+send(.ready(deviceInstalled: CMIOSinkPort.locateSidekickCamera() != nil,
+            producerIdentityConfigured: SidekickCameraIdentity.teamID != nil))
 let watcher = ConsumerWatcher { core.consumersChanged($0) }
 watcher.start()
-note("started; Sidekick Camera device \(watcher.deviceFound ? "found" : "not installed")")
+note("started; Sidekick Camera device \(watcher.deviceFound ? "found" : "not installed"); " +
+     "producer identity \(SidekickCameraIdentity.teamID == nil ? "unconfigured (every producer refused)" : "configured")")
 
 // Counters every 5 s, each beside its denominator (the counts record carries all of them).
 let ticker = DispatchSource.makeTimerSource(queue: .global())

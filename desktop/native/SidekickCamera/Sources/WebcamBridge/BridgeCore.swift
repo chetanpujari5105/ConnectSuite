@@ -13,6 +13,10 @@ extension H264Decoder: FrameDecoding {}
 
 /// What the bridge tells Electron main (record type 0x81).
 public enum BridgeStatus: Equatable {
+    /// Once, first, at startup: whether CoreMediaIO lists Sidekick Camera, and whether this build
+    /// carries a Team ID for the producer requirement. Main sends no `webcam.request` unless both
+    /// are true. The second is the compiled constant, not the extension's verdict.
+    case ready(deviceInstalled: Bool, producerIdentityConfigured: Bool)
     case consumers(Int)
     case sessionEnded(SessionID, reason: String)
     case sink(SinkState)
@@ -22,6 +26,9 @@ public enum BridgeStatus: Equatable {
     public var json: Data {
         let obj: [String: Any]
         switch self {
+        case let .ready(device, producer):
+            obj = ["op": "ready", "device": device ? "installed" : "not-installed",
+                   "producerIdentity": producer ? "configured" : "unconfigured"]
         case let .consumers(n): obj = ["op": "consumers", "count": n]
         case let .sessionEnded(id, r): obj = ["op": "session-ended", "sessionId": id.hex, "reason": r]
         case let .sink(s): obj = ["op": "sink", "state": s.rawValue]

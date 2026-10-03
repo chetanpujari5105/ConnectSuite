@@ -41,7 +41,12 @@ import WebcamCore
         let r = try run(input)
         #expect(r.status == 0)
         let ops = r.records.map { $0["op"] as? String ?? "?" }
-        #expect(ops.first == "consumers" && (r.records.first?["count"] as? Int) == 0)
+        // `ready` first: no device on this Mac (the control is CoreMediaIO listing the Mac's own
+        // camera, in WebcamBridgeTests), and no Team ID in this build, so main may ask for nothing.
+        #expect(ops.first == "ready")
+        #expect(r.records.first?["device"] as? String == "not-installed")
+        #expect(r.records.first?["producerIdentity"] as? String == "unconfigured")
+        #expect(ops.dropFirst().first == "consumers" && (r.records.dropFirst().first?["count"] as? Int) == 0)
         #expect(r.records.contains { $0["op"] as? String == "session-ended" && $0["reason"] as? String == "no-consumers" })
         #expect(!r.records.contains { $0["op"] as? String == "sink" && $0["state"] as? String == "feeding" })
         let counts = r.records.last { $0["op"] as? String == "counts" }?["counts"] as? [String: Int]
