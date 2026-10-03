@@ -1,0 +1,84 @@
+# Camera v2 W1 — red-first mutation runs, 2026-10-03
+#
+# Each mutation reinstates the specific defect a test is named for, runs the FULL suite through
+# run-tests.mjs, prints the age and exit code of the record it read, and restores the source.
+# Script: mutate.py (in this folder). Runs in chronological order.
+#
+# Batch 1. M1 was only partly red: explicitStopClearsOldPixelsAndReleasesEverything stayed green
+# (it pressed Stop before any frame reached the extension). M4's first form crashed the test
+# process (an asked[0] index in the test) and produced no reading.
+M1 a stop leaves the last frame in the slot
+   record 0.0s old, exit 1, tests 78, failing 6: RED, partly
+   failed: ['aConsumerReplacingAnotherGetsTheSamePictureNotAResumedSession', 'aStopClearsTheSlotAndTheNextTickIsThePristineCard', 'aStoppedSessionNeverReappearsFromAnyProducer', 'run with 78 tests in 20 suites failed after 5.007 seconds with 9 issues.', 'theLastConsumerClosingStopsTheSessionWithoutWaitingForMain', 'theProducerDisconnectingClearsThePictureAtOnce']
+   expected red: ['aStopClearsTheSlotAndTheNextTickIsThePristineCard', 'explicitStopClearsOldPixelsAndReleasesEverything']
+M2 an ended session can be announced live again
+   record 0.0s old, exit 1, tests 78, failing 3: RED as named
+   failed: ['aStoppedStreamNeverReappears', 'anEndedSessionNeverComesBack', 'run with 78 tests in 20 suites failed after 5.480 seconds with 4 issues.']
+   expected red: ['anEndedSessionNeverComesBack', 'aStoppedStreamNeverReappears']
+M3 the last consumer leaving does not end the session (a linger)
+   record 0.0s old, exit 1, tests 78, failing 3: RED as named
+   failed: ['run with 78 tests in 20 suites failed after 5.026 seconds with 6 issues.', 'theLastConsumerClosingStopsTheSessionWithoutWaitingForMain', 'theLastConsumerLeavingEndsTheSessionAtOnce']
+   expected red: ['theLastConsumerLeavingEndsTheSessionAtOnce', 'theLastConsumerClosingStopsTheSessionWithoutWaitingForMain']
+M4 a matching signingID is trusted without the signature
+   record 0.0s old, exit 1, tests None, failing 0: NO READING (did not build)
+   failed: []
+   expected red: ['theRightSigningIDIsNotEnoughTheSignatureMustSatisfyTheRequirement']
+M5 no Team ID falls back to trusting the signingID
+   record 0.0s old, exit 1, tests 78, failing 2: RED as named
+   failed: ['run with 78 tests in 20 suites failed after 5.018 seconds with 1 issue.', 'withNoTeamIDEveryProducerIsRefusedEvenAPerfectOne']
+   expected red: ['withNoTeamIDEveryProducerIsRefusedEvenAPerfectOne']
+M6 a stale frame is shown frozen instead of the paused card
+   record 0.0s old, exit 1, tests 78, failing 2: RED as named
+   failed: ['freshThenRepeatThenPausedNeverAFrozenFrameLabelledLive', 'run with 78 tests in 20 suites failed after 5.105 seconds with 2 issues.']
+   expected red: ['freshThenRepeatThenPausedNeverAFrozenFrameLabelledLive']
+M7 the decode stage is unbounded
+   record 0.0s old, exit 1, tests 78, failing 2: RED as named
+   failed: ['aSlowDecoderIsBoundedAndEveryAUIsAccountedFor', 'run with 78 tests in 20 suites failed after 11.480 seconds with 3 issues.']
+   expected red: ['aSlowDecoderIsBoundedAndEveryAUIsAccountedFor']
+
+# Batch 2, after strengthening the stop test. M1 now red as named. (M4 here is still the first
+# form; the script edit replacing it had failed its own assertion.)
+M1 a stop leaves the last frame in the slot
+   record 0.0s old, exit 1, tests 78, failing 7: RED as named
+   failed: ['aConsumerReplacingAnotherGetsTheSamePictureNotAResumedSession', 'aStopClearsTheSlotAndTheNextTickIsThePristineCard', 'aStoppedSessionNeverReappearsFromAnyProducer', 'explicitStopClearsOldPixelsAndReleasesEverything', 'run with 78 tests in 20 suites failed after 5.063 seconds with 13 issues.', 'theLastConsumerClosingStopsTheSessionWithoutWaitingForMain', 'theProducerDisconnectingClearsThePictureAtOnce']
+   expected red: ['aStopClearsTheSlotAndTheNextTickIsThePristineCard', 'explicitStopClearsOldPixelsAndReleasesEverything']
+M4 a matching signingID is trusted without the signature
+   record 0.0s old, exit 1, tests None, failing 1: NO READING (did not build)
+   failed: ['framesFromAnUnstartedOrUnauthorizedSinkAreRefused']
+   expected red: ['theRightSigningIDIsNotEnoughTheSignatureMustSatisfyTheRequirement']
+M8 delivery timestamps follow the clock, not strictly increasing
+   record 0.0s old, exit 1, tests 78, failing 2: RED as named
+   failed: ['run with 78 tests in 20 suites failed after 5.031 seconds with 1 issue.', 'timestampsStrictlyIncreaseAcrossEveryChangeEvenIfTheClockDoesNot']
+   expected red: ['timestampsStrictlyIncreaseAcrossEveryChangeEvenIfTheClockDoesNot']
+M9 rotation applied counter-clockwise
+   record 0.0s old, exit 1, tests 78, failing 3: RED as named
+   failed: ['generatedFramesArriveUprightFittedAndLive', 'rotationIsAppliedClockwiseAndThePictureIsNeverCropped', 'run with 78 tests in 20 suites failed after 5.085 seconds with 3 issues.']
+   expected red: ['rotationIsAppliedClockwiseAndThePictureIsNeverCropped', 'generatedFramesArriveUprightFittedAndLive']
+M10 a new generation may start without a keyframe (gate)
+   record 0.0s old, exit 1, tests 78, failing 6: RED as named
+   failed: ['aDownstreamDropWaitsForTheNextIDR', 'aProducerFailureRecoversOnlyAtTheNextIDR', 'aStaleGenerationIsRefusedAndANewerOneIsAdoptedOnlyFromAKeyframe', 'everyAUIsCountedExactlyOnce', 'run with 78 tests in 20 suites failed after 5.147 seconds with 5 issues.', 'staleSessionsAndGenerationsAreRejected']
+   expected red: ['aStaleGenerationIsRefusedAndANewerOneIsAdoptedOnlyFromAKeyframe', 'aDownstreamDropWaitsForTheNextIDR', 'aProducerFailureRecoversOnlyAtTheNextIDR']
+M11 the relay accepts frames of an ended session
+   record 0.0s old, exit 1, tests 78, failing 5: RED as named
+   failed: ['aConsumerReplacingAnotherGetsTheSamePictureNotAResumedSession', 'aStaleGenerationIsRefusedAndANewSessionClearsTheOldPixelsFirst', 'aStoppedSessionNeverReappearsFromAnyProducer', 'aStoppedStreamNeverReappears', 'run with 78 tests in 20 suites failed after 5.092 seconds with 82 issues.']
+   expected red: ['aStoppedSessionNeverReappearsFromAnyProducer', 'aStoppedStreamNeverReappears']
+M12 the AU cap is checked after the length match
+   record 0.0s old, exit 1, tests 78, failing 2: RED as named
+   failed: ['lengthOverTheCapIsRefusedFromTheDeclaredLengthAlone', 'run with 78 tests in 20 suites failed after 5.135 seconds with 1 issue.']
+   expected red: ['lengthOverTheCapIsRefusedFromTheDeclaredLengthAlone']
+M13 a session announced with no consumers is fed
+   record 0.0s old, exit 1, tests 78, failing 3: RED as named
+   failed: ['aSessionAnnouncedWithNobodyWatchingIsNeverFed', 'aSessionWithNoInstalledDeviceIsEndedAtOnceAndNothingIsFed', 'run with 78 tests in 20 suites failed after 5.162 seconds with 5 issues.']
+   expected red: ['aSessionAnnouncedWithNobodyWatchingIsNeverFed', 'aSessionWithNoInstalledDeviceIsEndedAtOnceAndNothingIsFed']
+
+# Batch 3: M4 rewritten as a compiling mutation (a failed signature check is trusted).
+M4 a matching signingID is trusted when the signature fails
+   record 0.0s old, exit 1, tests 78, failing 4: RED as named
+   failed: ['framesFromAnUnstartedOrUnauthorizedSinkAreRefused', 'refusalsAreRecordedWithTheIdentityRefused', 'run with 78 tests in 20 suites failed after 5.267 seconds with 5 issues.', 'theRightSigningIDIsNotEnoughTheSignatureMustSatisfyTheRequirement']
+   expected red: ['theRightSigningIDIsNotEnoughTheSignatureMustSatisfyTheRequirement']
+
+# Batch 4: M4b, the verifier never asked, after the test was changed to #require.
+M4b the verifier is never asked
+   record 0.0s old, exit 1, tests 78, failing 4: RED as named
+   failed: ['framesFromAnUnstartedOrUnauthorizedSinkAreRefused', 'refusalsAreRecordedWithTheIdentityRefused', 'run with 78 tests in 20 suites failed after 5.096 seconds with 6 issues.', 'theRightSigningIDIsNotEnoughTheSignatureMustSatisfyTheRequirement']
+   expected red: ['theRightSigningIDIsNotEnoughTheSignatureMustSatisfyTheRequirement']

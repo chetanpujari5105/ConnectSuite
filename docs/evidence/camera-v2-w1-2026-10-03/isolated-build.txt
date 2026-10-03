@@ -1,0 +1,128 @@
+== toolchain
+ProductName:		macOS
+ProductVersion:		26.6.1
+BuildVersion:		25G76
+arm64
+/Library/Developer/CommandLineTools
+swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)
+Target: arm64-apple-macosx26.0
+/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+26.5
+== source manifest (sha256)
+00a917caf4f39261849b9ac72018e964c8ba3607476fe3434d4c5534924c1562  Package.swift
+40dd55a22cce776f3616a295f28116c637b08eed657510f8e29be54d75b72c69  Sources/WebcamBridge/BridgeCore.swift
+f35f362de2b808dce4bf9dd00e310ba9ec39269d89419a645bfadedf268deefd  Sources/WebcamBridge/ConsumerWatcher.swift
+6ba843c863d49d63973127306315bf119f049c6f310291af503a1184672278f2  Sources/WebcamBridge/SinkPort.swift
+6b7c5add378c270baf7c856660dac4b296a3da83ef00ff67a84bf6f2baf12c1e  Sources/WebcamCore/BridgeRecord.swift
+290fed9eed1b96840f0b6a17871b393a79977a402d6e56453f3793501607eb0e  Sources/WebcamCore/ConsumerLedger.swift
+4be89a0ccdf8df20592089e3d96ee1b08079535ece4a7d607e5f63e567fb60aa  Sources/WebcamCore/Identity.swift
+d0485cb3e7a0839becb7de5dda285a4654128086757b3cdf9032b1b96f46176c  Sources/WebcamCore/SessionGate.swift
+6280a8be115e2df16b3303c00ec5d4116e529d5d52b918641039184c8ffc8c53  Sources/WebcamCore/Tombstones.swift
+57ccb7f92f64173ead80069c531a8f0083592cc58bb1e10c0e374d40595e6278  Sources/WebcamCore/WebcamAU.swift
+794c13f9d8bbe2f822f68d6c78a3a023501c98a721a4a5f8e62ca9bf5479654d  Sources/WebcamExtension/ExtensionSources.swift
+b4b98da9d1de293cee0a91d3964ceb5825acda2d9de6024b74d06b6759c2e069  Sources/WebcamExtension/FrameRelay.swift
+f516289e0fdf87ac9f0cc2c3c369eaadea502ac4368c9fa5e6d77982c0076e83  Sources/WebcamExtension/ProducerAuthorizer.swift
+710e871f73c1c2f18fa09e6e12509dc7ad9f7edbe99b0fab5a30e45cd176520a  Sources/WebcamMedia/FrameComposer.swift
+e0bef902676a30bc4a0a15083d4942f20e6e643c7307318449d8e8cb089fb56b  Sources/WebcamMedia/H264Decoder.swift
+ac05ea908a97d8fc5877357096096f1fec39269d1a2591b462a7d55d8185a302  Sources/WebcamMedia/PixelBuffers.swift
+c2c5989ee1bbb1a2d9822b4d9827f7b940963e77992eab6fc5a680ba118f24c2  Sources/WebcamMedia/PlaceholderCards.swift
+a2621a6300248ab7f1c161e65abc56d986f5f7aa68b0073d5c69f7f43585b7f7  Sources/WebcamMedia/PublishedFormats.swift
+19ff40634972f56a85356f1d1516f14733a3e23e87437bcdec9677847ca575fd  Sources/WebcamMedia/SampleBuffers.swift
+1ac0ddfa0d1b094d91cb9cf4bb6967ea062380d0873153efbd0e020011c31fea  Sources/WebcamMedia/SinkQueue.swift
+201e498be7fa578c0915389ee1c7dc5381da43d602abe54feea070e341e814c3  Sources/WebcamTestSupport/Injected.swift
+5efce26755ce6dd473e4ca99bb555f2cff1c3e75dc81b29f70fbf68799e8cdb3  Sources/WebcamTestSupport/TestPatterns.swift
+501ea30acee54f17679cd52b0f5ceb314fc9880468371548bc924d150ac81e45  Sources/sidekick-camera-bridge/main.swift
+812e542c08a0da9744014e05567dc8cf53f7ffa3d706e276d16afaff11a650bf  Sources/sidekick-camera-extension/main.swift
+9803b53e724bfaa079ffffa10da6be30be3337326a1ec727507ea511e6b42240  Tests/WebcamBridgeTests/EndToEndTests.swift
+5d5ddecf99b5869e4f3e0ae522cd3790b1edafcb4d4e29e8cf45d5886d37fb33  Tests/WebcamBridgeTests/ProcessTests.swift
+c352842f249c3ef290ca013dff1f5546a3f0de639a5f4d2cf22ae11896cd600a  Tests/WebcamCoreTests/BridgeRecordTests.swift
+5ba6243dadb697465a0a96bf1c7885e4415dc1ac9daeee90afc82cf44bbfc5f0  Tests/WebcamCoreTests/SessionGateTests.swift
+fe0d0523cec39e2c5713d03e0949758cf2623f18ea773bad4d17e28c9af66322  Tests/WebcamCoreTests/WebcamAUTests.swift
+b626967eb9c220c5db188ae8895d96f7f638c8d74fbd591392fb6025077b1594  Tests/WebcamExtensionTests/ExtensionTests.swift
+adccf82b14242710d599be08b073c6d92d4a3f4d7a777aa34d38e24d9f3eeec3  Tests/WebcamExtensionTests/Support.swift
+ac7f5c12de1d99fcce239b0b70a360145dec2fa0ec6f79c9469b11e7ae787d8d  Tests/WebcamMediaTests/MediaTests.swift
+6f0979f8d1cc6c54eca22d857ff56fb21001dbf4b148a13372959083e290f79e  run-tests.mjs
+== clean debug build
+[11/23] Compiling WebcamCore WebcamAU.swift
+[12/23] Compiling WebcamCore ConsumerLedger.swift
+[13/23] Compiling WebcamCore SessionGate.swift
+[14/23] Compiling WebcamCore Tombstones.swift
+[15/23] Compiling WebcamCore Identity.swift
+[16/23] Compiling WebcamCore BridgeRecord.swift
+[18/31] Compiling WebcamMedia PlaceholderCards.swift
+[19/31] Compiling WebcamMedia PublishedFormats.swift
+[20/31] Compiling WebcamMedia SinkQueue.swift
+[21/31] Compiling WebcamMedia SampleBuffers.swift
+[23/31] Compiling WebcamMedia FrameComposer.swift
+[24/31] Compiling WebcamMedia H264Decoder.swift
+[25/31] Compiling WebcamMedia PixelBuffers.swift
+[27/42] Compiling WebcamTestSupport Injected.swift
+[28/42] Compiling WebcamTestSupport TestPatterns.swift
+[29/42] Compiling WebcamBridge BridgeCore.swift
+[31/42] Compiling WebcamBridge SinkPort.swift
+[32/42] Compiling WebcamBridge ConsumerWatcher.swift
+[33/44] Compiling sidekick_camera_bridge main.swift
+[38/44] Compiling WebcamExtension FrameRelay.swift
+[39/44] Compiling WebcamExtension ExtensionSources.swift
+[40/44] Compiling WebcamExtension ProducerAuthorizer.swift
+[43/46] Compiling sidekick_camera_extension main.swift
+Build complete! (34.38s)
+real 36.03
+== clean release build
+Build complete! (37.57s)
+real 37.94
+== release binaries
+75c818ffacef356b3d4f07a1079d0d2bdd572d5553b2f9b9f2c2bc9efe5f5970  .build/release/sidekick-camera-bridge
+arm64
+	/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (compatibility version 64.0.0, current version 1965.5.1)
+	/System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia (compatibility version 1.0.0, current version 3320.8.5)
+	/System/Library/Frameworks/CoreMediaIO.framework/Versions/A/CoreMediaIO (compatibility version 0.0.0, current version 0.0.0)
+	/System/Library/Frameworks/CoreText.framework/Versions/A/CoreText (compatibility version 1.0.0, current version 877.4.0)
+	/System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo (compatibility version 1.2.0, current version 734.4.0)
+	/System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox (compatibility version 1.0.0, current version 3320.8.5)
+	/usr/lib/swift/libswiftCoreMedia.dylib (compatibility version 1.0.0, current version 3320.8.5)
+	/usr/lib/swift/libswiftCoreMediaIO.dylib (compatibility version 1.0.0, current version 5617.100.5, weak)
+	/usr/lib/swift/libswiftVideoToolbox.dylib (compatibility version 1.0.0, current version 3320.8.5, weak)
+	/usr/lib/swift/libswiftCoreGraphics.dylib (compatibility version 1.0.0, current version 1.0.0)
+Identifier=sidekick-camera-bridge
+CodeDirectory v=20400 size=3983 flags=0x20002(adhoc,linker-signed) hashes=121+0 location=embedded
+Signature=adhoc
+TeamIdentifier=not set
+14a144165579f329937142bd2b6c8f61eebe76082385c6a8e44c922c4c3378ec  .build/release/sidekick-camera-extension
+arm64
+	/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (compatibility version 64.0.0, current version 1965.5.1)
+	/System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia (compatibility version 1.0.0, current version 3320.8.5)
+	/System/Library/Frameworks/CoreMediaIO.framework/Versions/A/CoreMediaIO (compatibility version 0.0.0, current version 0.0.0)
+	/System/Library/Frameworks/CoreText.framework/Versions/A/CoreText (compatibility version 1.0.0, current version 877.4.0)
+	/System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo (compatibility version 1.2.0, current version 734.4.0)
+	/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 61901.120.67)
+	/System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox (compatibility version 1.0.0, current version 3320.8.5)
+	/usr/lib/swift/libswiftCoreMedia.dylib (compatibility version 1.0.0, current version 3320.8.5)
+	/usr/lib/swift/libswiftCoreMediaIO.dylib (compatibility version 1.0.0, current version 5617.100.5)
+	/usr/lib/swift/libswiftVideoToolbox.dylib (compatibility version 1.0.0, current version 3320.8.5, weak)
+	/usr/lib/swift/libswiftCoreGraphics.dylib (compatibility version 1.0.0, current version 1.0.0)
+Identifier=sidekick-camera-extension
+CodeDirectory v=20400 size=4594 flags=0x20002(adhoc,linker-signed) hashes=140+0 location=embedded
+Signature=adhoc
+TeamIdentifier=not set
+== tests in the isolated copy
+CoreMediaIO devices on this Mac: ["FaceTime HD Camera [1FD4B3A2-236E-492B-8CE5-255DD288CE50]"]
+slow-decoder flood: ["pending": 0, "maxWaiting": 4, "sinkUnavailable": 0, "received": 240, "accepted": 41, "sinkEnqueued": 5, "discardedEnded": 0, "gate.endedSession": 0, "gate.awaitingKeyframe": 199, "gate.outOfOrder": 0, "gate.otherSession": 0, "composeErrors": 0, "supersededSink": 2, "gate.noLiveSession": 0, "upscaled": 5, "decodeErrors": 0, "gate.staleGeneration": 0, "gate.malformed": 0, "droppedDecodeQueue": 36]
+✔ Test run with 78 tests in 20 suites passed after 5.291 seconds.
+run-tests: GREEN — exit 0, 78 tests, 0 failing
+== test record
+{
+  "note": "Written by desktop/native/SidekickCamera/run-tests.mjs on every run, pass or fail. A record with green: true and an old ranAtMs says the suite was green then, not now.",
+  "ranAtMs": 1791029072769,
+  "startedAtMs": 1791029060420,
+  "exitCode": 0,
+  "filtered": false,
+  "green": true,
+  "counts": {
+    "tests": 78,
+    "suites": 20,
+    "fail": 0,
+    "issues": 0
+  },
+  "reason": null
+}

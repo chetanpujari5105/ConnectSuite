@@ -15,7 +15,9 @@ import {
   verdictFor,
   readPhoneEvidence,
   readMacEvidence,
+  readSwiftEvidence,
   GRADLE_MODULES,
+  SWIFT_PACKAGE,
 } from './check-suites-run.mjs';
 
 // ---- the classification ------------------------------------------------------------------------
@@ -165,4 +167,55 @@ test('the Mac reader believes the exit code, not the counts', () => {
 test('a truncated record is refused rather than parsed into a pass', () => {
   const fs = fakeFs({ '/r/desktop/.test-run.json': { body: '{"ranAtMs": 5,', mtimeMs: 1 } });
   assert.equal(readMacEvidence('/r', fs), null);
+});
+
+// ---- the Swift half (Camera v2's bridge and extension logic, 2026-10-03) ------------------------
+
+test('the Swift package is its own half, and its docs and evidence are not', () => {
+  assert.equal(halfOf(`${SWIFT_PACKAGE}/Sources/WebcamCore/SessionGate.swift`), 'swift');
+  assert.equal(halfOf(`${SWIFT_PACKAGE}/Tests/WebcamBridgeTests/EndToEndTests.swift`), 'swift');
+  assert.equal(halfOf(`${SWIFT_PACKAGE}/Package.swift`), 'swift');
+  assert.equal(halfOf(`${SWIFT_PACKAGE}/run-tests.mjs`), 'swift');
+  // Controls: the package's prose, and Swift outside the package, demand nothing.
+  assert.equal(halfOf(`${SWIFT_PACKAGE}/README.md`), null);
+  assert.equal(halfOf('scripts/support/write-marked-clip.swift'), null);
+  // And the Swift half is not mistaken for the Mac half it sits beside.
+  assert.equal(halfOf('desktop/src/shared/protocol.ts'), 'mac');
+});
+
+test('a Swift change with no Swift run is unrun, even beside a green Mac record', () => {
+  const v = verdictFor({ touched: true, evidence: readSwiftEvidence('/r', fakeFs({})), newestSourceMs: NOW });
+  assert.equal(v.state, 'unrun');
+});
+
+test('the Swift reader: green needs exit 0 and green, and red carries its count', () => {
+  const rec = (o) => fakeFs({ [`/r/${SWIFT_PACKAGE}/.test-run.json`]: { body: JSON.stringify(o), mtimeMs: 1 } });
+  const green = readSwiftEvidence('/r', rec({ ranAtMs: 5, exitCode: 0, green: true, counts: { tests: 78, fail: 0 } }));
+  assert.equal(green.failures, 0);
+  const red = readSwiftEvidence('/r', rec({ ranAtMs: 5, exitCode: 1, green: false, counts: { tests: 78, fail: 3 } }));
+  assert.equal(red.failures, 3);
+  assert.equal(verdictFor({ touched: true, evidence: red, newestSourceMs: 1 }).state, 'red');
+  // A build failure leaves no count and a non-zero exit: never a pass.
+  const broken = readSwiftEvidence('/r', rec({ ranAtMs: 5, exitCode: 1, green: false, counts: null }));
+  assert.equal(verdictFor({ touched: true, evidence: broken, newestSourceMs: 1 }).state, 'unrun');
+  // A green flag with a non-zero exit is not believed.
+  const liar = readSwiftEvidence('/r', rec({ ranAtMs: 5, exitCode: 1, green: true, counts: { tests: 78, fail: 0 } }));
+  assert.notEqual(verdictFor({ touched: true, evidence: liar, newestSourceMs: 1 }).state, 'green');
+});
+
+test('a filtered Swift run is not the suite, however green', () => {
+  const fs = fakeFs({ [`/r/${SWIFT_PACKAGE}/.test-run.json`]: {
+    body: JSON.stringify({ ranAtMs: 9, exitCode: 0, green: true, filtered: true, counts: { tests: 12, fail: 0 } }),
+    mtimeMs: 1,
+  } });
+  const v = verdictFor({ touched: true, evidence: readSwiftEvidence('/r', fs), newestSourceMs: 1 });
+  assert.equal(v.state, 'unrun');
+  assert.match(v.detail, /filtered/);
+});
+
+test('a stale Swift record is stale', () => {
+  const fs = fakeFs({ [`/r/${SWIFT_PACKAGE}/.test-run.json`]: {
+    body: JSON.stringify({ ranAtMs: 100, exitCode: 0, green: true, counts: { tests: 78, fail: 0 } }), mtimeMs: 1,
+  } });
+  assert.equal(verdictFor({ touched: true, evidence: readSwiftEvidence('/r', fs), newestSourceMs: 200 }).state, 'stale');
 });

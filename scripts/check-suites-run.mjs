@@ -55,7 +55,12 @@ export const GRADLE_MODULES = ['app', 'core', 'sync-module', 'mirror-module', 'i
  * Docs, scripts and evidence are deliberately null: a commit that only edits `docs/testing.md` has
  * no suite to run, and demanding one would train people to ignore this.
  */
+export const SWIFT_PACKAGE = 'desktop/native/SidekickCamera';
+
 export function halfOf(path) {
+  if (path.startsWith(`${SWIFT_PACKAGE}/`) && /(\.swift|\/Package\.swift|\/run-tests\.mjs)$/.test(path)) {
+    return 'swift';
+  }
   if (path.startsWith('desktop/src/') && /\.(ts|js|html|css)$/.test(path)) return 'mac';
   const module = path.split('/')[0];
   if (GRADLE_MODULES.includes(module) && path.endsWith('.kt')) return 'phone';
@@ -133,6 +138,36 @@ export function readMacEvidence(root, fsLike = { existsSync, readFileSync }) {
 }
 
 /**
+ * The Swift half's evidence: the record `desktop/native/SidekickCamera/run-tests.mjs` leaves behind
+ * on every run, pass or fail (Camera v2's bridge and extension logic, added 2026-10-03).
+ *
+ * **A filtered run is not the suite.** `--filter` runs a subset and can be green over a red whole,
+ * so a filtered record reads as `unrun` with that reason — the same sentence as a suite that was not
+ * run, because for the tests it skipped that is exactly what happened.
+ */
+export function readSwiftEvidence(root, fsLike = { existsSync, readFileSync }) {
+  const path = join(root, SWIFT_PACKAGE, '.test-run.json');
+  if (!fsLike.existsSync(path)) return null;
+  let record;
+  try {
+    record = JSON.parse(fsLike.readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+  if (typeof record.ranAtMs !== 'number') return null;
+  if (record.filtered === true) {
+    return { newestMs: record.ranAtMs, tests: record.counts?.tests ?? null, failures: null, filtered: true };
+  }
+  return {
+    newestMs: record.ranAtMs,
+    tests: record.counts?.tests ?? null,
+    // The exit code is the authority, as for the Mac half.
+    failures: record.green === true && record.exitCode === 0 ? 0 : (record.counts?.fail || null) ?? null,
+    green: record.green === true,
+  };
+}
+
+/**
  * The verdict per half, and it has **four** values rather than two.
  *
  * `unrun`, `stale` and `red` are different findings needing different sentences, and collapsing
@@ -143,8 +178,11 @@ export function readMacEvidence(root, fsLike = { existsSync, readFileSync }) {
 export function verdictFor({ touched, evidence, newestSourceMs }) {
   if (!touched) return { state: 'untouched' };
   if (!evidence) return { state: 'unrun', detail: 'no results artifact at all' };
+  if (evidence.filtered) {
+    return { state: 'unrun', detail: 'the last run was filtered (--filter/--skip), so part of the suite never ran' };
+  }
   if (evidence.failures === null) {
-    return { state: 'unrun', detail: 'an artifact with no readable count' };
+    return { state: 'unrun', detail: 'an artifact with no readable count, or a red run with none' };
   }
   if (evidence.failures > 0) {
     return { state: 'red', detail: `${evidence.failures} failing`, evidence };
@@ -175,6 +213,7 @@ function changedPaths(mode) {
 const HALF_NAMES = {
   mac: 'Mac   (npm test in desktop/)',
   phone: 'phone (./gradlew testDebugUnitTest)',
+  swift: 'swift (node run-tests.mjs in desktop/native/SidekickCamera/)',
 };
 
 function main() {
@@ -182,7 +221,7 @@ function main() {
   const paths = changedPaths(mode);
   const halves = halvesTouched(paths);
 
-  const newestSource = { mac: 0, phone: 0 };
+  const newestSource = { mac: 0, phone: 0, swift: 0 };
   for (const p of paths) {
     const h = halfOf(p);
     if (!h) continue;
@@ -202,10 +241,15 @@ function main() {
       evidence: readMacEvidence(root),
       newestSourceMs: newestSource.mac,
     }),
+    swift: verdictFor({
+      touched: halves.has('swift'),
+      evidence: readSwiftEvidence(root),
+      newestSourceMs: newestSource.swift,
+    }),
   };
 
   const lines = [];
-  for (const half of ['phone', 'mac']) {
+  for (const half of ['phone', 'mac', 'swift']) {
     const v = results[half];
     const name = HALF_NAMES[half];
     if (v.state === 'untouched') {

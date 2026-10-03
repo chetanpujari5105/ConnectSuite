@@ -1,0 +1,249 @@
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite OnThisMac started.
+◇ Suite GoldenFixture started.
+◇ Suite MalformedList started.
+◇ Suite EndToEnd started.
+◇ Suite TombstoneBound started.
+◇ Suite BridgeProcess started.
+◇ Suite Gate started.
+◇ Suite Consumers started.
+◇ Suite RealCodeSignatures started.
+◇ Suite Publishing started.
+◇ Suite Ledger started.
+◇ Suite RecordFraming started.
+◇ Suite Authorization started.
+◇ Suite StreamRules started.
+◇ Suite Relay started.
+◇ Suite Compose started.
+◇ Suite Decode started.
+◇ Suite Queueing started.
+◇ Test encoderReproducesTheGoldenBytes() started.
+◇ Suite Cards started.
+◇ Test parsesEveryFieldTheContractNames() started.
+◇ Test theConsumerWatcherFindsNoDeviceAndReportsZero() started.
+◇ Test boundedAndTheEvictionIsCounted() started.
+◇ Test rows() started.
+◇ Test truncatedFrames() started.
+◇ Test threeByteStartCodesAreAccepted() started.
+◇ Test exactlyTheCapIsNotOverIt() started.
+◇ Test aDownstreamDropWaitsForTheNextIDR() started.
+◇ Test generatedFramesArriveUprightFittedAndLive() started.
+◇ Test lengthOverTheCapIsRefusedFromTheDeclaredLengthAlone() started.
+◇ Test anotherSessionsFramesAreRefused() started.
+◇ Test everyAUIsCountedExactlyOnce() started.
+◇ Test nothingIsAdmittedWithoutALiveSessionFromMain() started.
+◇ Suite OnlyAPlaceholder started.
+◇ Test aNewSessionSupersedesTheOldOneAndStopsItsSinkFirst() started.
+◇ Test aSessionAnnouncedWithNobodyWatchingIsNeverFed() started.
+◇ Test aStaleGenerationIsRefusedAndANewerOneIsAdoptedOnlyFromAKeyframe() started.
+◇ Test theRealSinkPortReportsTheDeviceNotInstalledFromARealEnumeration() started.
+◇ Test theLastConsumerClosingEndsTheEpisodeAndOnlyThat() started.
+◇ Test aConsumerReplacingAnotherGetsTheSamePictureNotAResumedSession() started.
+◇ Test slowAndFastConsumersShareOneSourceAndNeitherBuffersTheExtension() started.
+◇ Test controlMessagesRoundTripAndRefuseWhatTheyCannotRead() started.
+◇ Test theLastConsumerLeavingEndsTheSessionAtOnce() started.
+◇ Test theConsumerCountIsReadOnlyAndStartsAtZero() started.
+◇ Test theProducerDisconnectingClearsThePictureAtOnce() started.
+◇ Test sessionIdsAre32LowercaseHexOr16RawBytes() started.
+◇ Test theDeviceAndBothStreamsAreRealCMIOObjects() started.
+◇ Test anEndedSessionNeverComesBack() started.
+◇ Test aClientMayChooseFormatAndRateButOnlyWithinWhatIsPublished() started.
+◇ Test aPTSThatDoesNotIncreaseCostsOneFrameNotTheSession() started.
+◇ Test anOversizedLengthIsRefusedBeforeItsBodyIsBuffered() started.
+◇ Test aGenerationMustStartWithAnIDRCarryingSPSAndPPS() started.
+◇ Test anAppleBinarySatisfiesAnchorAppleButNotOurTeamRequirement() started.
+◇ Test theRealTickTimerRunsOnlyWhileConsumed() started.
+◇ Test generationBackwardsAndSequenceNotIncreasingAreMalformed() started.
+◇ Test aStoppedSessionNeverReappearsFromAnyProducer() started.
+◇ Test aSmallerSourceIsFittedAndLabelledUpscaled() started.
+◇ Test timestampsStrictlyIncreaseAcrossEveryChangeEvenIfTheClockDoesNot() started.
+◇ Test refusalsAreRecordedWithTheIdentityRefused() started.
+◇ Test theRightSigningIDIsNotEnoughTheSignatureMustSatisfyTheRequirement() started.
+◇ Test aStopAtZeroIsAnAnomalyAndCannotHideALaterStart() started.
+◇ Test zeroLengthAndUnknownTypesAreMalformed() started.
+◇ Test recordsSplitAcrossAndWithinChunks() started.
+◇ Test wrongOrMissingIdentitiesAreRefusedBeforeTheSignatureIsChecked() started.
+◇ Test withNoTeamIDEveryProducerIsRefusedEvenAPerfectOne() started.
+◇ Test episodesBeginAtOneAndEndAtZero() started.
+◇ Test aSessionWithNoInstalledDeviceIsEndedAtOnceAndNothingIsFed() started.
+◇ Test rotationIsAppliedClockwiseAndThePictureIsNeverCropped(turns:expected:) started.
+◇ Test aStaleGenerationIsRefusedAndANewSessionClearsTheOldPixelsFirst() started.
+◇ Test theScalerFitsBetweenPublishedFormatsAndPassesAMatchThrough() started.
+◇ Test aSmallerPictureIsCountedUpscaledAndAMatchingOneIsNot() started.
+◇ Test freshThenRepeatThenPausedNeverAFrozenFrameLabelledLive() started.
+◇ Test aStopClearsTheSlotAndTheNextTickIsThePristineCard() started.
+◇ Test badPixelFormatsAndSizesAreRefused() started.
+◇ Test aPortraitPictureIsPillarboxedFullHeightWithBlackBars() started.
+◇ Test flushReleasesEverythingQueued() started.
+◇ Test aPFrameWithNoParameterSetsIsRefusedNotGuessed() started.
+◇ Test sessionTagsRideOnTheSampleBuffer() started.
+◇ Test theSinkQueueIsARealBoundedCMSimpleQueueAndTheNewestWins() started.
+◇ Test newParameterSetsReplaceTheSession() started.
+◇ Test realH264DecodesToIOSurfaceNV12AtTheCodedSize() started.
+CoreMediaIO devices on this Mac: ["FaceTime HD Camera [1FD4B3A2-236E-492B-8CE5-255DD288CE50]"]
+◇ Test cardTextNamesNoPhoneNoPersonNoNetwork() started.
+◇ Test eachCardRendersTextAndIsCachedPristine(format:) started.
+◇ Test case passing 2 arguments turns → 0, expected → .topLeft to rotationIsAppliedClockwiseAndThePictureIsNeverCropped(turns:expected:) started.
+◇ Test case passing 2 arguments turns → 1, expected → .topRight to rotationIsAppliedClockwiseAndThePictureIsNeverCropped(turns:expected:) started.
+◇ Test case passing 2 arguments turns → 2, expected → .bottomRight to rotationIsAppliedClockwiseAndThePictureIsNeverCropped(turns:expected:) started.
+◇ Test case passing 2 arguments turns → 3, expected → .bottomLeft to rotationIsAppliedClockwiseAndThePictureIsNeverCropped(turns:expected:) started.
+✔ Test boundedAndTheEvictionIsCounted() passed after 0.416 seconds.
+✔ Test threeByteStartCodesAreAccepted() passed after 0.449 seconds.
+✔ Test aDownstreamDropWaitsForTheNextIDR() passed after 0.449 seconds.
+✔ Test anotherSessionsFramesAreRefused() passed after 0.449 seconds.
+✔ Test aNewSessionSupersedesTheOldOneAndStopsItsSinkFirst() passed after 0.449 seconds.
+◇ Test framesFromAnUnstartedOrUnauthorizedSinkAreRefused() started.
+◇ Test anAuthorizedProducerWithNoFrameYetIsStillCameraOff() started.
+◇ Test consumersWithNoProducerSeeOnlyTheCameraOffCard() started.
+✔ Test aSessionAnnouncedWithNobodyWatchingIsNeverFed() passed after 0.449 seconds.
+✔ Test parsesEveryFieldTheContractNames() passed after 0.450 seconds.
+✔ Test encoderReproducesTheGoldenBytes() passed after 0.450 seconds.
+✔ Test everyAUIsCountedExactlyOnce() passed after 0.450 seconds.
+✔ Test nothingIsAdmittedWithoutALiveSessionFromMain() passed after 0.450 seconds.
+✔ Test aStaleGenerationIsRefusedAndANewerOneIsAdoptedOnlyFromAKeyframe() passed after 0.450 seconds.
+✔ Test lengthOverTheCapIsRefusedFromTheDeclaredLengthAlone() passed after 0.450 seconds.
+✔ Test theLastConsumerLeavingEndsTheSessionAtOnce() passed after 0.450 seconds.
+✔ Test truncatedFrames() passed after 0.450 seconds.
+✔ Test sessionIdsAre32LowercaseHexOr16RawBytes() passed after 0.449 seconds.
+✔ Test rows() passed after 0.450 seconds.
+✔ Test anEndedSessionNeverComesBack() passed after 0.449 seconds.
+✔ Test controlMessagesRoundTripAndRefuseWhatTheyCannotRead() passed after 0.450 seconds.
+✔ Test theConsumerWatcherFindsNoDeviceAndReportsZero() passed after 0.450 seconds.
+✔ Test aPTSThatDoesNotIncreaseCostsOneFrameNotTheSession() passed after 0.450 seconds.
+✔ Test anOversizedLengthIsRefusedBeforeItsBodyIsBuffered() passed after 0.450 seconds.
+✔ Test anAppleBinarySatisfiesAnchorAppleButNotOurTeamRequirement() passed after 0.450 seconds.
+✔ Test theConsumerCountIsReadOnlyAndStartsAtZero() passed after 0.450 seconds.
+✔ Test theLastConsumerClosingEndsTheEpisodeAndOnlyThat() passed after 0.450 seconds.
+✔ Test aGenerationMustStartWithAnIDRCarryingSPSAndPPS() passed after 0.450 seconds.
+✔ Test theDeviceAndBothStreamsAreRealCMIOObjects() passed after 0.450 seconds.
+✔ Test aClientMayChooseFormatAndRateButOnlyWithinWhatIsPublished() passed after 0.450 seconds.
+✔ Test generationBackwardsAndSequenceNotIncreasingAreMalformed() passed after 0.450 seconds.
+✔ Test theRightSigningIDIsNotEnoughTheSignatureMustSatisfyTheRequirement() passed after 0.450 seconds.
+✔ Test zeroLengthAndUnknownTypesAreMalformed() passed after 0.450 seconds.
+✔ Test recordsSplitAcrossAndWithinChunks() passed after 0.450 seconds.
+✔ Test aStopAtZeroIsAnAnomalyAndCannotHideALaterStart() passed after 0.450 seconds.
+✔ Test wrongOrMissingIdentitiesAreRefusedBeforeTheSignatureIsChecked() passed after 0.450 seconds.
+✔ Test withNoTeamIDEveryProducerIsRefusedEvenAPerfectOne() passed after 0.450 seconds.
+✔ Test episodesBeginAtOneAndEndAtZero() passed after 0.450 seconds.
+◇ Test case passing 1 argument format → 1920×1080 420v to eachCardRendersTextAndIsCachedPristine(format:) started.
+◇ Test case passing 1 argument format → 1280×720 420v to eachCardRendersTextAndIsCachedPristine(format:) started.
+✔ Test refusalsAreRecordedWithTheIdentityRefused() passed after 0.465 seconds.
+✔ Test theRealSinkPortReportsTheDeviceNotInstalledFromARealEnumeration() passed after 0.465 seconds.
+✔ Test slowAndFastConsumersShareOneSourceAndNeitherBuffersTheExtension() passed after 0.465 seconds.
+✔ Test theProducerDisconnectingClearsThePictureAtOnce() passed after 0.465 seconds.
+✔ Test aConsumerReplacingAnotherGetsTheSamePictureNotAResumedSession() passed after 0.465 seconds.
+✔ Test theScalerFitsBetweenPublishedFormatsAndPassesAMatchThrough() passed after 0.465 seconds.
+✔ Test exactlyTheCapIsNotOverIt() passed after 0.465 seconds.
+✔ Test aSmallerSourceIsFittedAndLabelledUpscaled() passed after 0.465 seconds.
+✔ Test badPixelFormatsAndSizesAreRefused() passed after 0.465 seconds.
+✔ Test aStoppedSessionNeverReappearsFromAnyProducer() passed after 0.465 seconds.
+✔ Test timestampsStrictlyIncreaseAcrossEveryChangeEvenIfTheClockDoesNot() passed after 0.465 seconds.
+✔ Test freshThenRepeatThenPausedNeverAFrozenFrameLabelledLive() passed after 0.465 seconds.
+✔ Test aStaleGenerationIsRefusedAndANewSessionClearsTheOldPixelsFirst() passed after 0.465 seconds.
+✔ Test sessionTagsRideOnTheSampleBuffer() passed after 0.465 seconds.
+✔ Test aStopClearsTheSlotAndTheNextTickIsThePristineCard() passed after 0.465 seconds.
+✔ Test cardTextNamesNoPhoneNoPersonNoNetwork() passed after 0.440 seconds.
+✔ Test aPFrameWithNoParameterSetsIsRefusedNotGuessed() passed after 0.495 seconds.
+✔ Test eachCardRendersTextAndIsCachedPristine(format:) with 2 test cases passed after 0.440 seconds.
+✔ Suite TombstoneBound passed after 0.496 seconds.
+✔ Suite MalformedList passed after 0.496 seconds.
+✔ Suite Gate passed after 0.496 seconds.
+✔ Test anAuthorizedProducerWithNoFrameYetIsStillCameraOff() passed after 0.046 seconds.
+✔ Test rotationIsAppliedClockwiseAndThePictureIsNeverCropped(turns:expected:) with 4 test cases passed after 0.495 seconds.
+✔ Suite GoldenFixture passed after 0.496 seconds.
+✔ Suite RecordFraming passed after 0.496 seconds.
+✔ Suite OnThisMac passed after 0.496 seconds.
+✔ Suite StreamRules passed after 0.496 seconds.
+✔ Suite Publishing passed after 0.496 seconds.
+✔ Suite Authorization passed after 0.496 seconds.
+✔ Suite Ledger passed after 0.496 seconds.
+✔ Suite Relay passed after 0.496 seconds.
+✔ Suite Cards passed after 0.497 seconds.
+◇ Test thisTestProcessSatisfiesNoTeamRequirement() started.
+✔ Test thisTestProcessSatisfiesNoTeamRequirement() passed after 0.003 seconds.
+◇ Test anExitedProcessIsGoneAndABadRequirementIsReported() started.
+✔ Test anExitedProcessIsGoneAndABadRequirementIsReported() passed after 0.001 seconds.
+✔ Suite RealCodeSignatures passed after 0.501 seconds.
+✔ Test flushReleasesEverythingQueued() passed after 0.504 seconds.
+✔ Test realH264DecodesToIOSurfaceNV12AtTheCodedSize() passed after 0.515 seconds.
+✔ Test newParameterSetsReplaceTheSession() passed after 0.537 seconds.
+✔ Suite Decode passed after 0.538 seconds.
+✔ Test framesFromAnUnstartedOrUnauthorizedSinkAreRefused() passed after 0.107 seconds.
+✔ Test aSmallerPictureIsCountedUpscaledAndAMatchingOneIsNot() passed after 0.589 seconds.
+✔ Test generatedFramesArriveUprightFittedAndLive() passed after 0.623 seconds.
+◇ Test noSessionNoConsentMeansOnlyThePlaceholder() started.
+✔ Test aPortraitPictureIsPillarboxedFullHeightWithBlackBars() passed after 0.642 seconds.
+✔ Suite Compose passed after 0.643 seconds.
+✔ Test consumersWithNoProducerSeeOnlyTheCameraOffCard() passed after 0.218 seconds.
+✔ Suite OnlyAPlaceholder passed after 0.668 seconds.
+✔ Test theSinkQueueIsARealBoundedCMSimpleQueueAndTheNewestWins() passed after 0.701 seconds.
+✔ Suite Queueing passed after 0.702 seconds.
+✔ Test noSessionNoConsentMeansOnlyThePlaceholder() passed after 0.179 seconds.
+◇ Test explicitStopClearsOldPixelsAndReleasesEverything() started.
+✔ Test theRealTickTimerRunsOnlyWhileConsumed() passed after 0.901 seconds.
+✔ Suite Consumers passed after 0.902 seconds.
+✔ Test explicitStopClearsOldPixelsAndReleasesEverything() passed after 0.220 seconds.
+◇ Test aStoppedStreamNeverReappears() started.
+✔ Test aSessionWithNoInstalledDeviceIsEndedAtOnceAndNothingIsFed() passed after 1.023 seconds.
+◇ Test aMalformedRecordIsReportedAndTheBridgeExits() started.
+✔ Test aMalformedRecordIsReportedAndTheBridgeExits() passed after 0.025 seconds.
+✔ Suite BridgeProcess passed after 1.050 seconds.
+✔ Test aStoppedStreamNeverReappears() passed after 0.210 seconds.
+◇ Test theLastConsumerClosingStopsTheSessionWithoutWaitingForMain() started.
+✔ Test theLastConsumerClosingStopsTheSessionWithoutWaitingForMain() passed after 0.151 seconds.
+◇ Test staleSessionsAndGenerationsAreRejected() started.
+✔ Test staleSessionsAndGenerationsAreRejected() passed after 0.184 seconds.
+◇ Test malformedAndOversizedInputIsRefusedBeforeItIsTrusted() started.
+✔ Test malformedAndOversizedInputIsRefusedBeforeItIsTrusted() passed after 0.066 seconds.
+◇ Test aProducerFailureRecoversOnlyAtTheNextIDR() started.
+✔ Test aProducerFailureRecoversOnlyAtTheNextIDR() passed after 0.218 seconds.
+◇ Test aSlowDecoderIsBoundedAndEveryAUIsAccountedFor() started.
+slow-decoder flood: ["sinkEnqueued": 5, "sinkUnavailable": 0, "gate.staleGeneration": 0, "pending": 0, "gate.malformed": 0, "accepted": 41, "composeErrors": 0, "gate.noLiveSession": 0, "supersededSink": 2, "decodeErrors": 0, "maxWaiting": 4, "gate.outOfOrder": 0, "gate.otherSession": 0, "gate.awaitingKeyframe": 199, "droppedDecodeQueue": 36, "received": 240, "gate.endedSession": 0, "upscaled": 5, "discardedEnded": 0]
+✔ Test aSlowDecoderIsBoundedAndEveryAUIsAccountedFor() passed after 2.366 seconds.
+◇ Test aSlowExtensionCostsOldFramesNeverLatencyOrMemory() started.
+✔ Test aSlowExtensionCostsOldFramesNeverLatencyOrMemory() passed after 0.658 seconds.
+✔ Suite EndToEnd passed after 4.879 seconds.
+✔ Test run with 78 tests in 20 suites passed after 4.880 seconds.
+[0/1] Planning build
+Building for debugging...
+[0/8] Write swift-version--1AB21518FC5DEDBE.txt
+[2/15] Compiling WebcamCore BridgeRecord.swift
+[3/15] Emitting module WebcamCore
+[4/15] Compiling WebcamCore WebcamAU.swift
+[5/15] Compiling WebcamCore Tombstones.swift
+[6/15] Compiling WebcamCore Identity.swift
+[7/15] Compiling WebcamCore ConsumerLedger.swift
+[8/15] Compiling WebcamCore SessionGate.swift
+[9/23] Compiling WebcamMedia SinkQueue.swift
+[10/23] Compiling WebcamMedia PlaceholderCards.swift
+[11/23] Compiling WebcamMedia PixelBuffers.swift
+[12/23] Compiling WebcamMedia SampleBuffers.swift
+[13/23] Compiling WebcamMedia FrameComposer.swift
+[14/23] Compiling WebcamMedia PublishedFormats.swift
+[15/23] Emitting module WebcamMedia
+[16/23] Compiling WebcamMedia H264Decoder.swift
+[17/34] Compiling WebcamBridge SinkPort.swift
+[18/34] Compiling WebcamBridge ConsumerWatcher.swift
+[19/34] Emitting module WebcamBridge
+[20/34] Compiling WebcamBridge BridgeCore.swift
+[21/34] Compiling WebcamTestSupport TestPatterns.swift
+[22/34] Compiling WebcamTestSupport Injected.swift
+[23/34] Emitting module WebcamTestSupport
+[24/34] Compiling WebcamExtension FrameRelay.swift
+[25/34] Compiling WebcamExtension ProducerAuthorizer.swift
+[26/34] Emitting module WebcamExtension
+[27/34] Compiling WebcamExtension ExtensionSources.swift
+[27/35] Write Objects.LinkFileList
+[29/39] Compiling sidekick_camera_extension main.swift
+[30/39] Emitting module sidekick_camera_extension
+[31/39] Emitting module sidekick_camera_bridge
+[32/39] Compiling sidekick_camera_bridge main.swift
+[32/37] Linking sidekick-camera-bridge
+[33/37] Linking sidekick-camera-extension
+[34/37] Applying sidekick-camera-bridge
+[35/37] Applying sidekick-camera-extension
+ld: warning: building for macOS-13.0, but linking with dylib '@rpath/Testing.framework/Versions/A/Testing' which was built for newer version 14.0
+[36/37] Linking SidekickCameraPackageTests
+Build complete! (2.38s)

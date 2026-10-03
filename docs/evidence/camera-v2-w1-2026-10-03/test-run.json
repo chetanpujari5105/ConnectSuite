@@ -1,0 +1,15 @@
+{
+  "note": "Written by desktop/native/SidekickCamera/run-tests.mjs on every run, pass or fail. A record with green: true and an old ranAtMs says the suite was green then, not now.",
+  "ranAtMs": 1791029188006,
+  "startedAtMs": 1791029180276,
+  "exitCode": 0,
+  "filtered": false,
+  "green": true,
+  "counts": {
+    "tests": 78,
+    "suites": 20,
+    "fail": 0,
+    "issues": 0
+  },
+  "reason": null
+}
