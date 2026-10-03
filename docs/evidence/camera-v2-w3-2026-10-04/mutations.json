@@ -1,0 +1,294 @@
+{
+ "first-pass": [
+  {
+   "id": "M1",
+   "what": "a spent/asked episode may ask again",
+   "file": "src/main/webcam.ts",
+   "old": "if (!ep || ep.asked || ep.spent) return;",
+   "new": "if (!ep) return;",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "multiple consumers"
+  },
+  {
+   "id": "M2",
+   "what": "the last consumer leaving does not stop the session",
+   "file": "src/main/webcam.ts",
+   "old": "      this.episode = null;\n      if (this.session) this.end('no-consumers', { wireCause: 'no-consumers' });",
+   "new": "      this.episode = null;",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "multiple consumers"
+  },
+  {
+   "id": "M3",
+   "what": "AUs forwarded before running (before the bridge is told the session is live)",
+   "file": "src/main/webcam.ts",
+   "old": "      s.preLive.offer(frame, frame.keyframe);",
+   "new": "      this.forward(s, frame);",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "request \u2192 approval"
+  },
+  {
+   "id": "M4",
+   "what": "socket closed before webcam.stop is written",
+   "file": "src/main/webcam.ts",
+   "old": "    let told: Promise<void> | null = null;\n    if (opts.wireCause) {",
+   "new": "    let told: Promise<void> | null = null;\n    s.socket?.destroy();\n    if (opts.wireCause) {",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "request \u2192 approval"
+  },
+  {
+   "id": "M5",
+   "what": "a closed socket's bytes still reach the bridge",
+   "file": "src/main/webcam.ts",
+   "old": "      if (this.session !== s || s.socket !== socket) return;\n      let frames",
+   "new": "      let frames",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "request \u2192 approval"
+  },
+  {
+   "id": "M6",
+   "what": "re-ask after a reconnect inside a spent episode",
+   "file": "src/main/webcam.ts",
+   "old": "  onCapabilitiesChanged(): void {\n    this.emit();",
+   "new": "  onCapabilitiesChanged(): void {\n    if (this.episode) { this.episode.asked = false; this.episode.spent = false; }\n    this.maybeAskForEpisode();\n    this.emit();",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "disconnect and reconnect"
+  },
+  {
+   "id": "M7",
+   "what": "the main \u2192 bridge bound removed",
+   "file": "src/main/webcamBridge.ts",
+   "old": "new KeyframeQueue<PendingAU>(BRIDGE_AU_BOUND)",
+   "new": "new KeyframeQueue<PendingAU>(1000)",
+   "tests": [
+    "src/main/webcamBridge.test.ts"
+   ],
+   "expect": "hung (SIGSTOP)"
+  },
+  {
+   "id": "M8",
+   "what": "no SIGKILL escalation",
+   "file": "src/main/webcamBridge.ts",
+   "old": "              this.child.kill('SIGKILL');",
+   "new": "",
+   "tests": [
+    "src/main/webcamBridge.test.ts"
+   ],
+   "expect": "ignoring SIGTERM"
+  },
+  {
+   "id": "M9",
+   "what": "an unknown status op accepted",
+   "file": "src/shared/webcamBridgeRecords.ts",
+   "old": "      throw new BridgeOutputError(`unknown status op ${JSON.stringify(obj.op)?.slice(0, 64)}`);",
+   "new": "      return { op: 'error', error: 'unknown' };",
+   "tests": [
+    "src/shared/webcamBridgeRecords.test.ts"
+   ],
+   "expect": "off-contract"
+  },
+  {
+   "id": "M10",
+   "what": "ready's producer identity ignored (fail open)",
+   "file": "src/main/webcam.ts",
+   "old": "if (this.producer !== 'refused') this.producer = status.producerIdentityConfigured ? 'configured' : 'unconfigured';",
+   "new": "if (this.producer !== 'refused') this.producer = 'configured';",
+   "tests": [
+    "src/main/webcam.test.ts",
+    "src/main/webcamBridge.test.ts"
+   ],
+   "expect": "no producer identity"
+  },
+  {
+   "id": "M12",
+   "what": "a stale generation forwarded",
+   "file": "src/main/webcam.ts",
+   "old": "      if (frame.generation < s.generation) {\n        s.droppedStale += 1;\n        return;\n      }",
+   "new": "",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "stale generations"
+  },
+  {
+   "id": "M13",
+   "what": "the whole session id in the log",
+   "file": "src/main/webcam.ts",
+   "old": "`webcam session ${sessionId.slice(0, 8)}\u2026`",
+   "new": "`webcam session ${sessionId}\u2026`",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "the log names sessions"
+  },
+  {
+   "id": "M14",
+   "what": "the last-consumer stop deferred (a linger)",
+   "file": "src/main/webcam.ts",
+   "old": "      if (this.session) this.end('no-consumers', { wireCause: 'no-consumers' });\n    }\n    this.emit();",
+   "new": "      if (this.session) this.timers.setTimeout(() => this.end('no-consumers', { wireCause: 'no-consumers' }), 10_000);\n    }\n    this.emit();",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "multiple consumers"
+  },
+  {
+   "id": "M15",
+   "what": "a late ack after Cancel is not withdrawn",
+   "file": "src/main/webcam.ts",
+   "old": "        await this.sendStop(sessionId, cause);\n      }\n      done();",
+   "new": "      }\n      done();",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "Cancel during the ack"
+  },
+  {
+   "id": "M16",
+   "what": "stdout's record type not checked",
+   "file": "src/shared/webcamBridgeRecords.ts",
+   "old": "        if (this.buffer.length >= 5 && this.buffer.readUInt8(4) !== RECORD_STATUS) {",
+   "new": "        if (false) {",
+   "tests": [
+    "src/shared/webcamBridgeRecords.test.ts"
+   ],
+   "expect": "off-contract"
+  },
+  {
+   "id": "M17",
+   "what": "older peer: negotiated ext ignored",
+   "file": "src/main/webcam.ts",
+   "old": " || (link.negotiated()[WEBCAM] ?? 0) < 1",
+   "new": "",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "older phone"
+  },
+  {
+   "id": "M18",
+   "what": "a session approved with no consumer is fed",
+   "file": "src/main/webcam.ts",
+   "old": "      if (this.consumers === 0) {\n        // Nobody",
+   "new": "      if (false) {\n        // Nobody",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "Ask phone with no consumer"
+  },
+  {
+   "id": "M19",
+   "what": "pre-live holding unbounded",
+   "file": "src/main/webcam.ts",
+   "old": "export const WEBCAM_PRELIVE_BOUND = 4;",
+   "new": "export const WEBCAM_PRELIVE_BOUND = 100;",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "bounded at 4"
+  },
+  {
+   "id": "M20",
+   "what": "stream reader length cap removed",
+   "file": "src/shared/webcamWire.ts",
+   "old": "        if (length > WEBCAM_MAX_AU) throw",
+   "new": "        if (false) throw",
+   "tests": [
+    "src/shared/webcamWire.test.ts"
+   ],
+   "expect": "over 2 MiB"
+  },
+  {
+   "id": "M21",
+   "what": "no-ready timeout removed",
+   "file": "src/main/webcamBridge.ts",
+   "old": "      this.fail('no-ready', 'the camera bridge did not report ready');",
+   "new": "",
+   "tests": [
+    "src/main/webcamBridge.test.ts"
+   ],
+   "expect": "never says ready"
+  }
+ ],
+ "second-pass": [
+  {
+   "id": "M5b",
+   "what": "a closed socket's bytes still reach the bridge (both guards removed)",
+   "file": "src/main/webcam.ts",
+   "old": "      if (this.session !== s || s.socket !== socket) return;\n      let frames: WebcamFrame[];\n      try {\n        frames = reader.push(chunk);\n      } catch (error) {\n        const reason = error instanceof WebcamStreamError ? error.reason : 'unreadable';\n        this.log.warn(`${label(sessionId)} stream closed: ${reason}`);\n        this.end('malformed-stream', { wireCause: 'shutdown' });\n        return;\n      }\n      for (const frame of frames) {\n        if (this.session !== s) return;\n        this.onFrame(s, frame);",
+   "new": "      let frames: WebcamFrame[];\n      try {\n        frames = reader.push(chunk);\n      } catch (error) {\n        const reason = error instanceof WebcamStreamError ? error.reason : 'unreadable';\n        this.log.warn(`${label(sessionId)} stream closed: ${reason}`);\n        this.end('malformed-stream', { wireCause: 'shutdown' });\n        return;\n      }\n      for (const frame of frames) {\n        this.onFrame(s, frame);",
+   "tests": [
+    "src/main/webcam.test.ts"
+   ],
+   "expect": "request \u2192 approval"
+  },
+  {
+   "id": "M16",
+   "what": "stdout's record type not checked",
+   "file": "src/shared/webcamBridgeRecords.ts",
+   "old": "        if (this.buffer.length >= 5 && this.buffer.readUInt8(4) !== RECORD_STATUS) {",
+   "new": "        if (false) {",
+   "tests": [
+    "src/shared/webcamBridgeRecords.test.ts"
+   ],
+   "expect": "off-contract"
+  },
+  {
+   "id": "M7",
+   "what": "the main \u2192 bridge bound removed",
+   "file": "src/main/webcamBridge.ts",
+   "old": "new KeyframeQueue<PendingAU>(BRIDGE_AU_BOUND)",
+   "new": "new KeyframeQueue<PendingAU>(1000)",
+   "tests": [
+    "src/main/webcamBridge.test.ts"
+   ],
+   "expect": "hung (SIGSTOP)"
+  },
+  {
+   "id": "M8",
+   "what": "no SIGKILL escalation",
+   "file": "src/main/webcamBridge.ts",
+   "old": "              this.child.kill('SIGKILL');",
+   "new": "",
+   "tests": [
+    "src/main/webcamBridge.test.ts"
+   ],
+   "expect": "ignoring SIGTERM"
+  },
+  {
+   "id": "M21",
+   "what": "no-ready timeout removed",
+   "file": "src/main/webcamBridge.ts",
+   "old": "      this.fail('no-ready', 'the camera bridge did not report ready');",
+   "new": "",
+   "tests": [
+    "src/main/webcamBridge.test.ts"
+   ],
+   "expect": "never says ready"
+  },
+  {
+   "id": "M10",
+   "what": "ready's producer identity ignored (fail open)",
+   "file": "src/main/webcam.ts",
+   "old": "if (this.producer !== 'refused') this.producer = status.producerIdentityConfigured ? 'configured' : 'unconfigured';",
+   "new": "if (this.producer !== 'refused') this.producer = 'configured';",
+   "tests": [
+    "src/main/webcam.test.ts",
+    "src/main/webcamBridge.test.ts"
+   ],
+   "expect": "no producer identity"
+  }
+ ]
+}

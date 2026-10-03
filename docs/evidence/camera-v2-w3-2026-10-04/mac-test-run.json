@@ -1,0 +1,13 @@
+{
+  "ranAt": "2026-10-03T20:25:54.602Z",
+  "ranAtMs": 1791059154607,
+  "exitCode": 0,
+  "signal": null,
+  "green": true,
+  "counts": {
+    "tests": 1607,
+    "pass": 1607,
+    "fail": 0
+  },
+  "note": "Written by desktop/scripts/run-tests.mjs on every run, pass or fail. A record with green:false is a real reading; an absent record means the suite was not run."
+}

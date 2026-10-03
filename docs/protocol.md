@@ -708,10 +708,12 @@ the Mac as a selectable camera called "Sidekick Camera"** — Camera v2. Specifi
 v1's `camera.*` messages, its claim word, its frame and its behaviour are unchanged by anything here, and
 a peer that knows only v1 behaves exactly as it did.
 
-**Status, stated so nothing below reads as shipped.** No `webcam.*` constant exists on either side, and
-`scripts/check-protocol-spec.mjs` lists all four messages as *specified and not on the wire*. The Mac's
-frame bridge and the Camera Extension's logic are built and tested **in-process only**
-(`desktop/native/SidekickCamera/`, phase W1). Nothing is signed, installed or activated, and no phone
+**Status, stated so nothing below reads as shipped.** No `webcam.*` constant exists in either side's
+`MessageType`, and `scripts/check-protocol-spec.mjs` lists all four messages as *specified and not on the
+wire*. The Mac's frame bridge and the Camera Extension's logic are built and tested **in-process only**
+(`desktop/native/SidekickCamera/`, phase W1). Electron main's controller (`desktop/src/main/webcam.ts`,
+phase W3) is built and tested against stand-ins and the built bridge; **no part of the running app
+constructs it**, and no phone implements this namespace (W2). Nothing is signed, installed or activated, and no phone
 capture has run. Quality and latency figures in this section are **targets**, never measurements.
 
 ### Two different things: the device and the session

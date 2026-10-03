@@ -122,9 +122,11 @@ export const SPECIFIED_NOT_ON_THE_WIRE = {
   'mic.stop': 'See `mic.start` — same feature, same gate.',
   'mic.state': 'See `mic.start` — same feature, same gate.',
   'webcam.request':
-    'Camera v2 (Sidekick Camera), specified 2026-10-03 as phase W0 and approved with W1 only. W1 is the ' +
-    "Mac's Swift bridge and extension logic, which never touch the wire. The phone half is W2 and Electron " +
-    "main's half is W3; each needs its own approval. Do not add the constants to clear this entry.",
+    'Camera v2 (Sidekick Camera), specified 2026-10-03 as phase W0. W1 (the Swift bridge and extension ' +
+    "logic) never touches the wire. W3 (2026-10-04) is Electron main's controller, which names the four " +
+    'messages locally in desktop/src/shared/webcamWire.ts and is constructed by no part of the running app. ' +
+    'The phone half, W2, is not approved and no phone implements them. Do not add the constants to clear ' +
+    'this entry; they move into MessageType with W2 and the wiring, each approved separately.',
   'webcam.state': 'See `webcam.request` — same feature, same gate (W2 phone, W3 Mac).',
   'webcam.stop': 'See `webcam.request` — same feature, same gate (W2 phone, W3 Mac).',
   'webcam.switch': 'See `webcam.request` — same feature, same gate (W2 phone, W3 Mac).',

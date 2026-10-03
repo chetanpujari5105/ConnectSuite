@@ -7,7 +7,12 @@ Extension's logic. The contract is `docs/protocol.md` → *Webcam*, and the plan
 **Status, 2026-10-03.** Built with the Command Line Tools only, and tested **in-process**.
 
 - **Not done:** nothing is signed with a real identity, packaged, installed or activated. No phone
-  capture has run. Nothing is wired into Electron.
+  capture has run. **W3 (2026-10-04):** Electron main's controller and `BridgeProcess`
+  (`desktop/src/main/webcam.ts`, `webcamBridge.ts`) drive this bridge's built executable in
+  `desktop/src/main/webcamBridge.test.ts`; nothing in the running app spawns it.
+- **The bridge's first record is `ready`** `{device, producerIdentity}` (added in W3,
+  docs/protocol.md → The Mac's local contract). On this Mac it reads `not-installed` / `unconfigured`,
+  and main asks the phone for nothing while either holds.
 - **Not on the wire:** `webcam.*` exists in the contract and in no `MessageType`.
 - **Camera v1 is untouched.**
 
