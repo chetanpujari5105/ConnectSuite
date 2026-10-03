@@ -25,13 +25,16 @@ object CameraNotifications {
 
     private const val REQUEST_ID = 3104
 
-    fun askUser(context: Context, peerName: String) {
-        val manager = context.getSystemService<NotificationManager>() ?: return
-        if (!canPost(context)) {
-            // Not silent: the Mac's sentence already says to open the phone. Without notifications
-            // the request screen also opens the next time Sidekick comes to the front within 30 s.
-            LinkLog.w("camera", "Notifications are not permitted, so the phone cannot show the camera request")
-            return
+    /**
+     * Posts the request. True only when Android accepted the post — never a claim that anyone saw it.
+     * The engine checks [deliverable] first and tells the Mac which route it took; this re-checks,
+     * because the setting can change in between.
+     */
+    fun askUser(context: Context, peerName: String): Boolean {
+        val manager = context.getSystemService<NotificationManager>() ?: return false
+        if (!deliverable(context)) {
+            LinkLog.w("camera", "Notifications are not deliverable, so the phone cannot show the camera request")
+            return false
         }
         val open = PendingIntent.getActivity(
             context,
@@ -49,16 +52,31 @@ object CameraNotifications {
             .addAction(Notification.Action.Builder(null, "Review request", open).build())
             .setTimeoutAfter(CameraSessionMachine.REQUEST_TIMEOUT_MS)
             .build()
-        runCatching { manager.notify(REQUEST_ID, notification) }
+        return runCatching { manager.notify(REQUEST_ID, notification) }
             .onFailure { LinkLog.w("camera", "Could not post the camera request", it) }
+            .isSuccess
     }
 
     fun clear(context: Context) {
         context.getSystemService<NotificationManager>()?.cancel(REQUEST_ID)
     }
 
-    private fun canPost(context: Context): Boolean =
-        android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU ||
+    /**
+     * Whether a post to the camera-request channel would be shown at all. The first version checked only
+     * the runtime permission, and a post to an app whose notifications are switched off — or to a
+     * blocked channel — is accepted by `notify` and dropped without a word (defect 171). So: the
+     * permission, the app-wide switch, and the channel's own importance, all three.
+     */
+    fun deliverable(context: Context): Boolean {
+        val manager = context.getSystemService<NotificationManager>() ?: return false
+        val permitted = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
+        val channel = manager.getNotificationChannel(NotificationChannels.CAMERA_REQUEST)
+        return CameraRequestDelivery.deliverable(
+            permitted = permitted,
+            appEnabled = manager.areNotificationsEnabled(),
+            channelImportance = channel?.importance,
+        )
+    }
 }

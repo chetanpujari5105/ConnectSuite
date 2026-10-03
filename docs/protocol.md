@@ -495,8 +495,18 @@ phone. If Sidekick is open on the phone the request screen appears over it; othe
 a notification and the owner's tap opens the screen. Either way the camera stays closed until
 **Start camera** is tapped.
 
+**The ack's `message` names the route the phone actually took, decided before the ack is sent.** When
+Sidekick is not in front and a notification could not be shown — Sidekick's notifications are switched
+off, the camera-request channel is blocked, or the permission is not granted — nothing is posted, and
+the `message` says the phone cannot show the request. The request then waits, unshown, and its screen
+opens only if the owner brings Sidekick to the front before it expires. A route is a statement about
+what the phone could check, never a claim that a person has seen the request.
+
 A request nobody answers expires after **30 seconds** (`expiresInMs`) and ends as `camera.state`
-`stopped` with reason `expired`.
+`stopped` with reason `expired`. **The deadline is the request's own clock, not its timer:** a Start
+camera tap, or Android's permission dialog answering, at or after the deadline ends the request as
+`expired` and opens nothing — even if the phone's expiry timer has not run yet. Bringing Sidekick to the
+front does not put an expired request back on the screen.
 
 Refusals are `error` with `feature: "camera"`:
 

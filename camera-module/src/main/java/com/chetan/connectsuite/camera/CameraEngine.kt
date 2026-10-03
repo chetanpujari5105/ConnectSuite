@@ -85,6 +85,12 @@ object CameraEngine {
     fun onRequest(session: ControlSession, request: Envelope) {
         val context = appContext ?: return
         val visible = AppForeground.visibleActivity()
+        // Decided before the ack, from what can be checked now, and then carried out as decided: the Mac
+        // is never told "a notification is on your phone" when Android would drop it (defect 171).
+        val route = CameraRequestRoute.choose(
+            screenVisible = visible != null,
+            notificationsDeliverable = CameraNotifications.deliverable(context),
+        )
         val effects = machine.request(
             owner = session,
             peerName = session.peerName,
@@ -94,7 +100,7 @@ object CameraEngine {
             nowMillis = System.currentTimeMillis(),
             hasCamera = context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY),
             mirrorBusy = mirrorBusy(),
-            screenShown = visible != null,
+            route = route,
         )
         LinkLog.i("camera", "camera.request from ${session.peerName}: ${describe(effects)}")
         run(effects)
@@ -155,7 +161,13 @@ object CameraEngine {
 
     fun decline(streamId: String) = run(machine.decline(streamId))
 
-    fun permissionDenied(streamId: String) = run(machine.permissionDenied(streamId))
+    fun permissionDenied(streamId: String) = run(machine.permissionDenied(streamId, System.currentTimeMillis()))
+
+    /** Whether a camera opened for [streamId] at [epoch] is still wanted — the machine's answer, under its lock. */
+    fun isCurrentCamera(streamId: String, epoch: Int): Boolean = machine.isCurrentCamera(streamId, epoch)
+
+    /** A request is waiting and has not run out by its own clock — what bringing Sidekick to the front asks. */
+    fun requestAwaiting(): Boolean = machine.isAwaiting(System.currentTimeMillis())
 
     fun stopFromPhone() = run(machine.stopFromPhone())
 
@@ -230,7 +242,7 @@ object CameraEngine {
                 fixHint = effect.fixHint,
             )
             is CameraEffect.SendState -> effect.owner.event(MessageType.CAMERA_STATE) { putAll(effect.payload) }
-            is CameraEffect.ShowRequest -> showRequest(effect.peerName)
+            is CameraEffect.ShowRequest -> showRequest(effect.streamId, effect.peerName, effect.route)
             CameraEffect.ClearRequest -> appContext?.let { CameraNotifications.clear(it) }
             is CameraEffect.ArmTimer -> arm(effect)
             CameraEffect.CancelTimers -> cancelTimers()
@@ -274,15 +286,41 @@ object CameraEngine {
     @Volatile
     private var lastTally: Pair<Long, Long> = 0L to 0L
 
-    private fun showRequest(peerName: String) {
+    /**
+     * Carries out the route the ack named — and logs what actually happened, which is the only place a
+     * difference between the two can show (the screen gone in the moment between the check and here,
+     * or Android refusing the post). Either way it is a screen asking, never the camera.
+     */
+    private fun showRequest(streamId: String, peerName: String, route: CameraRequestRoute) {
         val context = appContext ?: return
-        // The request screen opens over Sidekick when Sidekick is on screen; otherwise the owner's tap
-        // on the notification opens it. Either way it is a screen asking, never the camera.
-        val visible = AppForeground.visibleActivity()
-        if (visible != null) {
-            openRequestScreen(visible)
-        } else {
-            CameraNotifications.askUser(context, peerName)
+        val label = "${streamId.take(8)}…"
+        when (route) {
+            CameraRequestRoute.SCREEN -> {
+                val visible = AppForeground.visibleActivity()
+                if (visible != null) {
+                    openRequestScreen(visible)
+                    LinkLog.i("camera", "Camera request $label awaiting consent: request screen opened over Sidekick")
+                } else {
+                    LinkLog.w(
+                        "camera",
+                        "Camera request $label awaiting consent: the Mac was told the request is on screen, but Sidekick " +
+                            "left the screen first — it reopens when Sidekick next comes to the front",
+                    )
+                }
+            }
+            CameraRequestRoute.NOTIFICATION -> {
+                val posted = CameraNotifications.askUser(context, peerName)
+                if (posted) {
+                    LinkLog.i("camera", "Camera request $label awaiting consent: notification posted")
+                } else {
+                    LinkLog.w("camera", "Camera request $label awaiting consent: the notification could NOT be posted")
+                }
+            }
+            CameraRequestRoute.NONE -> LinkLog.w(
+                "camera",
+                "Camera request $label awaiting consent: NOT delivered — Sidekick's notifications are off; " +
+                    "the request screen opens only if Sidekick comes to the front before it expires",
+            )
         }
     }
 

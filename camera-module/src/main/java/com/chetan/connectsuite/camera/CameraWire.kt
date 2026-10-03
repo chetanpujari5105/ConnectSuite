@@ -106,6 +106,42 @@ enum class CameraStopReason(val wire: String?, val message: String, val fixHint:
     ),
 }
 
+/**
+ * How a camera request reaches the phone's owner — decided **before** the ack, so the sentence the Mac
+ * shows names the route that was actually taken (defect 171).
+ *
+ * The route is a claim about what the phone could check at that moment, and no more: [NOTIFICATION]
+ * means Android says Sidekick may post to the camera-request channel, not that a person has seen it.
+ * [NONE] is the honest third answer the first version did not have — notifications are off for
+ * Sidekick, so nothing is posted, and the request waits for Sidekick to come to the front by some other
+ * route (`CameraFeature`'s resume hook) until it expires.
+ */
+enum class CameraRequestRoute(val message: String, val fixHint: String) {
+    SCREEN(
+        "The camera request is on your phone's screen. The camera stays off until you allow it there.",
+        "Tap Start camera on your phone.",
+    ),
+    NOTIFICATION(
+        "Your phone has a notification asking to allow the camera. The camera stays off until you allow it.",
+        "Open the notification on your phone and tap Start camera.",
+    ),
+    NONE(
+        "Your phone cannot show the camera request: Sidekick's notifications are turned off there. " +
+            "The camera stays off unless you open Sidekick on the phone and allow it within 30 seconds.",
+        "Open Sidekick on your phone, then tap Start camera.",
+    ),
+    ;
+
+    companion object {
+        /** Sidekick on screen wins; otherwise a notification, but only if one can actually be posted. */
+        fun choose(screenVisible: Boolean, notificationsDeliverable: Boolean): CameraRequestRoute = when {
+            screenVisible -> SCREEN
+            notificationsDeliverable -> NOTIFICATION
+            else -> NONE
+        }
+    }
+}
+
 /** The two deadlines a stream can be waiting on. */
 enum class CameraTimer {
     /** `awaiting-approval` → `expired` after [CameraSessionMachine.REQUEST_TIMEOUT_MS]. */
@@ -125,4 +161,16 @@ enum class CameraPhase(val wire: String) {
 
     /** True when the camera may be open: approved, and not yet ended. */
     val isLive: Boolean get() = this == STARTING || this == RUNNING
+}
+
+/**
+ * The decision inside `CameraNotifications.deliverable`, without Android, so a JVM test holds it.
+ * `channelImportance` is `NotificationManager.IMPORTANCE_*`: 0 is `IMPORTANCE_NONE` (blocked), and null
+ * is a channel that was never created — nothing would be shown in either case.
+ */
+object CameraRequestDelivery {
+    private const val IMPORTANCE_NONE = 0
+
+    fun deliverable(permitted: Boolean, appEnabled: Boolean, channelImportance: Int?): Boolean =
+        permitted && appEnabled && channelImportance != null && channelImportance != IMPORTANCE_NONE
 }

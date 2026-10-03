@@ -26,8 +26,11 @@ sealed interface CameraEffect<out S : Any> {
     /** Send a `camera.state` event to [owner]. */
     data class SendState<S : Any>(val owner: S, val payload: Map<String, Any>) : CameraEffect<S>
 
-    /** Put the request screen in front of the owner, or post the notification that opens it. */
-    data class ShowRequest(val streamId: String, val peerName: String) : CameraEffect<Nothing>
+    /**
+     * Put the request in front of the owner by [route] — the route the ack has just told the Mac about,
+     * so the engine carries out exactly that one and never a different one it picks later.
+     */
+    data class ShowRequest(val streamId: String, val peerName: String, val route: CameraRequestRoute) : CameraEffect<Nothing>
 
     /** The request is answered or gone; its notification must not outlive it. */
     data object ClearRequest : CameraEffect<Nothing>
@@ -146,13 +149,35 @@ class CameraSessionMachine<S : Any>(
     @Synchronized
     fun liveStreamId(): String? = live?.takeIf { it.phase.isLive }?.streamId
 
+    /**
+     * Whether a camera opened for [streamId] at [epoch] is still wanted — asked by the camera screen when
+     * CameraX finally comes up, which can be long after it was asked to open. Asked of the machine, under
+     * its lock, rather than of the published screen state, which trails the machine (defect 169).
+     */
+    @Synchronized
+    fun isCurrentCamera(streamId: String, epoch: Int): Boolean {
+        val l = live ?: return false
+        return l.streamId == streamId && l.phase.isLive && l.epoch == epoch
+    }
+
+    /**
+     * A request is waiting **and its own clock has not run out** — the question Sidekick coming to the
+     * front asks before it puts the request screen up. The expiry timer can be late; the deadline is not.
+     */
+    @Synchronized
+    fun isAwaiting(nowMillis: Long): Boolean {
+        val l = live ?: return false
+        return l.phase == CameraPhase.AWAITING && nowMillis < l.deadlineMillis
+    }
+
     // ---- the Mac's requests ---------------------------------------------------------------------
 
     /**
      * `camera.request`. Reaches `awaiting-approval` at most — never opens the camera.
      *
-     * @param screenShown whether the engine can put the request screen up now (Sidekick is on screen)
-     *   or must post a notification; it changes only the sentence the Mac shows.
+     * @param route how the request will reach the owner — decided by the engine before this call, from
+     *   what it could check, and carried by both the ack's sentence and [CameraEffect.ShowRequest] so the
+     *   Mac is never told about a route that is not the one taken (defect 171).
      */
     @Synchronized
     fun request(
@@ -164,7 +189,7 @@ class CameraSessionMachine<S : Any>(
         nowMillis: Long,
         hasCamera: Boolean,
         mirrorBusy: Boolean,
-        screenShown: Boolean,
+        route: CameraRequestRoute,
     ): List<CameraEffect<S>> {
         val facing = if (facingWire == null) CameraFacing.BACK else CameraFacing.fromWire(facingWire)
         if (facing == null) {
@@ -206,8 +231,8 @@ class CameraSessionMachine<S : Any>(
         lastStop = null
         lastEnded = null
         return listOf(
-            CameraEffect.Ack(owner, requestId, CameraPayloads.awaiting(streamId, facing, requestTimeoutMs, screenShown)),
-            CameraEffect.ShowRequest(streamId, peerName),
+            CameraEffect.Ack(owner, requestId, CameraPayloads.awaiting(streamId, facing, requestTimeoutMs, route)),
+            CameraEffect.ShowRequest(streamId, peerName, route),
             CameraEffect.ArmTimer(CameraTimer.REQUEST, streamId, deadline),
         )
     }
@@ -313,11 +338,17 @@ class CameraSessionMachine<S : Any>(
      * The owner tapped **Start camera** for [streamId], and `CAMERA` is granted. The one route to
      * [CameraEffect.OpenCamera]. A tap naming a stream that is not awaiting does nothing: it was
      * answered, expired, or replaced while the screen was up.
+     *
+     * **A tap at or after the request's own deadline ends it as `expired` and opens nothing**, whether or
+     * not the expiry timer has run yet (defect 170). The timer is a thread that can be late; the Mac's
+     * backstop is not waiting for it, and consent given to a request that has run out is not consent to
+     * anything the Mac still holds open. The same holds for Android's permission dialog answering late.
      */
     @Synchronized
     fun approve(streamId: String, facing: CameraFacing, nowMillis: Long): List<CameraEffect<S>> {
         val l = live
         if (l == null || l.streamId != streamId || l.phase != CameraPhase.AWAITING) return emptyList()
+        if (nowMillis >= l.deadlineMillis) return stop(CameraStopReason.EXPIRED)
         val deadline = nowMillis + startTimeoutMs
         live = l.copy(phase = CameraPhase.STARTING, facing = facing, deadlineMillis = deadline)
         return listOf(
@@ -337,12 +368,16 @@ class CameraSessionMachine<S : Any>(
         return stop(CameraStopReason.DECLINED)
     }
 
-    /** The owner tapped Start camera and refused Android's camera permission. */
+    /**
+     * The owner tapped Start camera and refused Android's camera permission. An answer that arrives after
+     * the request's deadline ends it as `expired`: the request ran out first, and the Mac has been told so
+     * or is about to be.
+     */
     @Synchronized
-    fun permissionDenied(streamId: String): List<CameraEffect<S>> {
+    fun permissionDenied(streamId: String, nowMillis: Long): List<CameraEffect<S>> {
         val l = live ?: return emptyList()
         if (l.streamId != streamId || l.phase != CameraPhase.AWAITING) return emptyList()
-        return stop(CameraStopReason.PERMISSION_DENIED)
+        return stop(if (nowMillis >= l.deadlineMillis) CameraStopReason.EXPIRED else CameraStopReason.PERMISSION_DENIED)
     }
 
     /** The phone's Stop. Before approval it is a decline; after it, a stop. */
@@ -489,17 +524,13 @@ class CameraSessionMachine<S : Any>(
  * `message` is a sentence for a person; the Mac switches on `state` and `reason`.
  */
 object CameraPayloads {
-    fun awaiting(streamId: String, facing: CameraFacing, expiresInMs: Long, screenShown: Boolean): Map<String, Any> = mapOf(
+    fun awaiting(streamId: String, facing: CameraFacing, expiresInMs: Long, route: CameraRequestRoute): Map<String, Any> = mapOf(
         "state" to CameraPhase.AWAITING.wire,
         "streamId" to streamId,
         "facing" to facing.wire,
         "expiresInMs" to expiresInMs,
-        "message" to if (screenShown) {
-            "The camera request is on your phone's screen. The camera stays off until you allow it there."
-        } else {
-            "Your phone has a notification asking to allow the camera. The camera stays off until you allow it."
-        },
-        "fixHint" to if (screenShown) "Tap Start camera on your phone." else "Open the notification on your phone and tap Start camera.",
+        "message" to route.message,
+        "fixHint" to route.fixHint,
     )
 
     fun starting(streamId: String, requestId: String, facing: CameraFacing): Map<String, Any> = mapOf(

@@ -101,12 +101,26 @@ class CameraActivity : ComponentActivity(), CameraHost {
     private var camera: Camera? = null
     private var targetRotation = 0
 
+    /**
+     * Open, switch and close, with the stale-callback and release-once rules held in a class a JVM test
+     * can run (defect 169). CameraX is only the [CameraBackend] below.
+     */
+    private val host by lazy {
+        CameraHostCore(
+            backend = CameraXBackend(),
+            isCurrent = CameraEngine::isCurrentCamera,
+            failed = CameraEngine::cameraFailed,
+            log = { LinkLog.i("camera", it) },
+        )
+    }
+
     /** The stream and camera the permission dialog is answering for. */
     private var pendingApproval: Pair<String, CameraFacing>? = null
 
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val (streamId, facing) = pendingApproval ?: return@registerForActivityResult
         pendingApproval = null
+        // Answered for the stream it was asked for, on the clock — the machine refuses a late grant (defect 170).
         if (granted) CameraEngine.approve(streamId, facing) else CameraEngine.permissionDenied(streamId)
     }
 
@@ -176,7 +190,9 @@ class CameraActivity : ComponentActivity(), CameraHost {
     override fun onDestroy() {
         super.onDestroy()
         CameraEngine.detachHost(this)
-        unbind()
+        // Invalidates any open still waiting for CameraX, and releases a bound camera if the stream's own
+        // end has not already — never twice.
+        host.close()
         analysisExecutor.shutdown()
     }
 
@@ -193,70 +209,71 @@ class CameraActivity : ComponentActivity(), CameraHost {
 
     // ---- CameraHost -----------------------------------------------------------------------------
 
-    override fun openCamera(streamId: String, facing: CameraFacing, epoch: Int) = runOnUiThread { bind(streamId, facing, epoch) }
+    override fun openCamera(streamId: String, facing: CameraFacing, epoch: Int) = runOnUiThread { host.open(streamId, facing, epoch) }
 
-    override fun switchCamera(streamId: String, facing: CameraFacing, epoch: Int) = runOnUiThread { bind(streamId, facing, epoch) }
+    override fun switchCamera(streamId: String, facing: CameraFacing, epoch: Int) = runOnUiThread { host.open(streamId, facing, epoch) }
 
-    override fun closeCamera() = runOnUiThread { unbind() }
+    override fun closeCamera() = runOnUiThread { host.close() }
 
-    private fun bind(streamId: String, facing: CameraFacing, epoch: Int) {
-        val future = ProcessCameraProvider.getInstance(this)
-        future.addListener(
-            {
-                // The stream may have ended while the provider was coming up.
-                if (CameraEngine.ui.value.streamId != streamId || !CameraEngine.ui.value.phase.isLive) return@addListener
-                try {
-                    val cameraProvider = future.get()
-                    provider = cameraProvider
-                    val selector = if (facing == CameraFacing.FRONT) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
-                    if (!cameraProvider.hasCamera(selector)) {
-                        CameraEngine.cameraFailed(streamId, CameraStopReason.CAMERA_UNAVAILABLE)
-                        return@addListener
-                    }
-                    val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
-                    val imageAnalysis = ImageAnalysis.Builder()
-                        .setResolutionSelector(
-                            ResolutionSelector.Builder()
-                                .setResolutionStrategy(
-                                    ResolutionStrategy(
-                                        Size(TARGET_WIDTH, TARGET_HEIGHT),
-                                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER,
-                                    ),
-                                )
-                                .build(),
+    /** CameraX, as [CameraHostCore] sees it. Main thread throughout. */
+    private inner class CameraXBackend : CameraBackend {
+        override fun whenReady(then: (ready: Boolean) -> Unit) {
+            val future = ProcessCameraProvider.getInstance(this@CameraActivity)
+            future.addListener(
+                {
+                    val ready = runCatching { future.get() }
+                        .onSuccess { provider = it }
+                        .onFailure { LinkLog.w("camera", "Camera provider did not come up (${it.javaClass.simpleName}: ${it.message})") }
+                        .isSuccess
+                    then(ready)
+                },
+                ContextCompat.getMainExecutor(this@CameraActivity),
+            )
+        }
+
+        override fun hasCamera(facing: CameraFacing): Boolean =
+            provider?.hasCamera(selectorFor(facing)) == true
+
+        override fun bind(streamId: String, facing: CameraFacing, epoch: Int) {
+            val cameraProvider = checkNotNull(provider) { "no camera provider" }
+            val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
+            val imageAnalysis = ImageAnalysis.Builder()
+                .setResolutionSelector(
+                    ResolutionSelector.Builder()
+                        .setResolutionStrategy(
+                            ResolutionStrategy(
+                                Size(TARGET_WIDTH, TARGET_HEIGHT),
+                                ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER,
+                            ),
                         )
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
-                        .build()
-                    imageAnalysis.targetRotation = targetRotation
-                    imageAnalysis.setAnalyzer(analysisExecutor, Analyzer(streamId, epoch))
+                        .build(),
+                )
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+                .build()
+            imageAnalysis.targetRotation = targetRotation
+            imageAnalysis.setAnalyzer(analysisExecutor, Analyzer(streamId, epoch))
 
-                    camera?.cameraInfo?.cameraState?.removeObservers(this)
-                    cameraProvider.unbindAll()
-                    analysis?.clearAnalyzer()
-                    analysis = imageAnalysis
-                    val bound = cameraProvider.bindToLifecycle(this, selector, preview, imageAnalysis)
-                    camera = bound
-                    bound.cameraInfo.cameraState.observe(this) { state ->
-                        val reason = state.error?.code?.let(CameraMappings::stopReasonFor) ?: return@observe
-                        CameraEngine.cameraFailed(streamId, reason)
-                    }
-                    LinkLog.i("camera", "Camera bound: ${facing.wire}, epoch $epoch")
-                } catch (e: Exception) {
-                    LinkLog.w("camera", "Camera bind failed (${e.javaClass.simpleName}: ${e.message})")
-                    CameraEngine.cameraFailed(streamId, CameraStopReason.CAMERA_UNAVAILABLE)
-                }
-            },
-            ContextCompat.getMainExecutor(this),
-        )
-    }
+            unbind()
+            analysis = imageAnalysis
+            val bound = cameraProvider.bindToLifecycle(this@CameraActivity, selectorFor(facing), preview, imageAnalysis)
+            camera = bound
+            bound.cameraInfo.cameraState.observe(this@CameraActivity) { state ->
+                val reason = state.error?.code?.let(CameraMappings::stopReasonFor) ?: return@observe
+                CameraEngine.cameraFailed(streamId, reason)
+            }
+        }
 
-    private fun unbind() {
-        camera?.cameraInfo?.cameraState?.removeObservers(this)
-        camera = null
-        analysis?.clearAnalyzer()
-        analysis = null
-        runCatching { provider?.unbindAll() }
+        override fun unbind() {
+            camera?.cameraInfo?.cameraState?.removeObservers(this@CameraActivity)
+            camera = null
+            analysis?.clearAnalyzer()
+            analysis = null
+            runCatching { provider?.unbindAll() }
+        }
+
+        private fun selectorFor(facing: CameraFacing): CameraSelector =
+            if (facing == CameraFacing.FRONT) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
     }
 
     /**

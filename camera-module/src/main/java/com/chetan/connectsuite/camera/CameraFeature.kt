@@ -85,7 +85,9 @@ object CameraFeature {
         override fun onActivityResumed(activity: Activity) {
             if (activity is CameraActivity) return
             if (activity.javaClass.name in AppForeground.transparentHelpers) return
-            if (CameraEngine.ui.value.phase != CameraPhase.AWAITING) return
+            // The machine's answer on the clock, not the published state: a request whose deadline has
+            // passed is not put back in front of anyone, even if its timer has not run yet (defect 170).
+            if (!CameraEngine.requestAwaiting()) return
             runCatching { CameraEngine.openRequestScreen(activity) }
                 .onFailure { LinkLog.w("camera", "Could not open the camera request screen: ${it.message}") }
         }

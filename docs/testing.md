@@ -27680,3 +27680,92 @@ was never tested.
 - **Phone:** differs from the preflight only by the CAMERA app-op (this session, 18.7 s of use).
 - **Mac:** inventory identical: the paused partial, its record, the `.failed` marker, ledger `[]`.
 - **Link and repo:** link 3/3; the owner's files SHA-identical; status unchanged.
+
+## Camera hardening overnight — 2026-10-03 (tests only; nothing on hardware)
+
+Written unattended under the owner's overnight approval. **No device or app was touched:** no `adb`, no
+install, no camera request, no relaunch. Every result below is a JVM or Node test, a source scan, or a
+mutation, and says which. **None of these fixes is verified on hardware, and Camera is not release-ready.**
+The historical NO READING results above (the 22:38 batch, the 22:53 retry, the 23:14 timed Home) are
+unchanged; nothing here re-grades them.
+
+### Defect 169 — a camera could be bound after its stream had ended (2026-10-03, tests only)
+
+**Found** by reading `CameraActivity.bind` beside the engine. When CameraX's provider came up, the
+listener decided whether the stream was still live from `CameraEngine.ui.value`. That value is published
+at the **end** of `CameraEngine.run(effects)`; the machine is cleared at the **start**. Between them the
+engine posts the camera's unbind to the main thread, closes the stream socket and sends `stopped`. A
+provider callback that runs on the main thread after the posted unbind and before `publish()` reads the
+ended stream as live and binds the camera with nothing left to unbind it until the activity stops. Frames
+stay gated (the machine refuses them), so nothing would reach the Mac; the camera would be open.
+**Not reproduced on hardware**; the window is the length of two socket writes.
+
+**Fix:** `CameraHostCore` (new). Every open takes a generation ticket; any later open or close
+invalidates it; and before binding the machine is asked, under its lock, whether that exact stream **and
+epoch** is current (`CameraSessionMachine.isCurrentCamera`). A bound camera is released once; a switch
+counts as the replaced camera's release; each release line carries `N released of M bound`. The activity
+keeps CameraX only as a `CameraBackend`, and `onDestroy` closes through the core.
+
+**Tests (camera-module):** `CameraHostCoreTest`, 14, with `isCurrent` bound to the **real** machine:
+the race itself (stop in the machine, provider up before the close arrives → nothing bound, nothing to
+release); close before the provider; the start deadline and a session end while coming up; a switch while
+the first open is pending (only the new camera binds); a stream ending while switching (nothing new
+bound, the old camera released once); release-once across the stream's end and the screen's destroy;
+bind failure; no provider / no camera of that facing; nothing reopens after a close. Source scans:
+open / switch / close go only through the core; one `bindToLifecycle`, inside the backend; the backend
+never reads `ui.value`; `onDestroy` closes through the core; `onStart`/`onResume`/`onRestart` open and
+approve nothing; `approve` is reached only from Start camera and its permission answer.
+
+**What it cannot reach:** CameraX, the main thread's `Handler` ordering and `runOnUiThread`. The backend
+is a recorder whose provider callbacks are released by hand in the orders the main thread can produce.
+
+### Defect 170 — a Start tap after the request's deadline could still open the camera (2026-10-03, tests only)
+
+**Found** by reading `approve`: it required `awaiting-approval`, which only the expiry timer clears, and
+the timer is a scheduled-executor thread. **Red before the fix, for the defect itself:**
+`approve(streamA, BACK, t0 + 30_000)` with the timer not yet run returned
+`[CancelTimers, ClearRequest, SendState(starting), OpenCamera, ArmTimer]` (camera-module, 43 tests, 1
+failed, result file fresh).
+
+**Fix:** `approve(…, now)` and `permissionDenied(…, now)` end a request at or past its deadline as
+`expired` and open nothing. `isAwaiting(now)` answers the resume hook in `CameraFeature` on the clock.
+The 30 s expiry is unchanged. `docs/protocol.md` → `camera.request` now says the deadline is the
+request's own clock.
+
+**Tests:** at the deadline → `expired`, full release, no `OpenCamera`; 1 ms before → opens, and the late
+timer then does nothing; a permission refusal late → `expired`, in time → `permission-denied`; a grant or
+refusal naming a replaced request touches nothing; `isAwaiting` false at the deadline and once started.
+
+### Defect 171 — the phone told the Mac a notification was waiting when Android would drop it (2026-10-03, tests only)
+
+**Found** by reading `CameraNotifications.canPost`: the runtime permission only. An app whose
+notifications are switched off, or whose camera-request channel is blocked, has `notify` accepted and
+nothing shown. The ack had already said *"Your phone has a notification asking to allow the camera."*
+
+**Fix:** the route — `SCREEN`, `NOTIFICATION`, or the new `NONE` — is decided **before** the ack from
+`CameraNotifications.deliverable` (permission, `areNotificationsEnabled`, the channel's importance, a
+missing channel counting as blocked). The ack's `message`/`fixHint` and the `ShowRequest` effect carry
+the same route; `NONE` posts nothing and says the request cannot be shown there and that opening Sidekick
+within 30 s is how to answer it (the existing resume hook). `askUser` reports whether Android accepted the
+post. The engine logs which route ran: *request screen opened over Sidekick*, *notification posted*,
+*could NOT be posted*, or *NOT delivered — notifications are off*. A route is what the phone could
+check; nothing claims a person saw it.
+
+**Tests:** the route table; the deliverability table (permission, app switch, blocked channel, missing
+channel); the ack and the show effect name the same route for all three; `NONE`'s sentence claims
+neither a notification nor a screen. Source scans: the route is decided from `deliverable(context)`
+before `machine.request`; `showRequest` has a branch per route and logs each outcome.
+
+**What it cannot reach:** `NotificationManager` itself, and whether a posted heads-up is shown under Do
+Not Disturb. The decision is a pure function; the three Android reads that feed it are a source scan.
+
+### Task 1 evidence (fresh, camera-module)
+
+- `./gradlew :camera-module:testDebugUnitTest` exit 0: **98 tests, 0 failures** (from 67), every result
+  file written by that run (age 0 s): machine 52, host core 14, wiring 6, release gate 8, stream 6, codec
+  5, frame prep 7.
+- Mutations, each restored and SHA-256-verified, each verdict from result files newer than its run:
+  P169-A (no currency check) red on the race test and two others; P169-B (no generation) red on
+  *a close that reaches the main thread before the provider* — the pending-switch test survives it
+  because the machine check also covers that case (two guards, one property); P169-C (release not
+  cleared) red on both release-once tests; P170-A/B/C red; P171-A/B/C/D red.

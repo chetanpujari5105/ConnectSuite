@@ -35,7 +35,8 @@ class CameraSessionMachineTest {
         hasCamera: Boolean = true,
         mirrorBusy: Boolean = false,
         now: Long = t0,
-    ) = request(owner, owner.name, "req-${owner.name}-$streamId", facing, streamId, now, hasCamera, mirrorBusy, screenShown = true)
+        route: CameraRequestRoute = CameraRequestRoute.SCREEN,
+    ) = request(owner, owner.name, "req-${owner.name}-$streamId", facing, streamId, now, hasCamera, mirrorBusy, route)
 
     /** Request, approve, attach and produce one frame: a stream in `running`. */
     private fun CameraSessionMachine<Owner>.running(owner: Owner = mac, streamId: String = streamA): CameraSessionMachine<Owner> {
@@ -124,7 +125,7 @@ class CameraSessionMachineTest {
     fun `a refused permission ends the request as permission-denied`() {
         val m = machine()
         m.requestFrom()
-        assertReleasesEverything(m.permissionDenied(streamA), CameraStopReason.PERMISSION_DENIED)
+        assertReleasesEverything(m.permissionDenied(streamA, t0 + 5_000), CameraStopReason.PERMISSION_DENIED)
         assertNull(m.liveStreamId())
     }
 
@@ -148,6 +149,128 @@ class CameraSessionMachineTest {
         m.timerFired(CameraTimer.REQUEST, streamA, t0 + CameraSessionMachine.REQUEST_TIMEOUT_MS)
         assertTrue(m.approve(streamA, CameraFacing.BACK, t0 + 31_000).isEmpty())
         assertEquals(CameraPhase.IDLE, m.ui().phase)
+    }
+
+    /**
+     * The expiry timer runs on its own thread and can be late. A tap whose clock is already past the
+     * request's deadline must not revive it — the Mac's own backstop has expired it, or is about to.
+     */
+    @Test
+    fun `a tap at or after the deadline, before the expiry timer ran, opens nothing and ends the request as expired`() {
+        val m = machine()
+        m.requestFrom()
+        val effects = m.approve(streamA, CameraFacing.BACK, t0 + CameraSessionMachine.REQUEST_TIMEOUT_MS)
+        assertTrue("the camera opened for an expired request: $effects", effects.only<CameraEffect.OpenCamera>().isEmpty())
+        assertReleasesEverything(effects, CameraStopReason.EXPIRED)
+        assertEquals(CameraPhase.IDLE, m.ui().phase)
+    }
+
+    @Test
+    fun `a tap one millisecond before the deadline still opens the camera`() {
+        val m = machine()
+        m.requestFrom()
+        val effects = m.approve(streamA, CameraFacing.BACK, t0 + CameraSessionMachine.REQUEST_TIMEOUT_MS - 1)
+        assertEquals(1, effects.only<CameraEffect.OpenCamera>().size)
+        // The request's own timer, firing late, then finds a starting stream and does nothing.
+        assertTrue(m.timerFired(CameraTimer.REQUEST, streamA, t0 + CameraSessionMachine.REQUEST_TIMEOUT_MS + 5).isEmpty())
+        assertEquals(CameraPhase.STARTING, m.ui().phase)
+    }
+
+    @Test
+    fun `a permission answer after the deadline ends the request as expired, and one in time as permission-denied`() {
+        val late = machine()
+        late.requestFrom()
+        assertReleasesEverything(
+            late.permissionDenied(streamA, t0 + CameraSessionMachine.REQUEST_TIMEOUT_MS),
+            CameraStopReason.EXPIRED,
+        )
+        val inTime = machine()
+        inTime.requestFrom()
+        assertReleasesEverything(
+            inTime.permissionDenied(streamA, t0 + CameraSessionMachine.REQUEST_TIMEOUT_MS - 1),
+            CameraStopReason.PERMISSION_DENIED,
+        )
+    }
+
+    @Test
+    fun `a grant or refusal for a replaced request does nothing, and never touches the new one`() {
+        val m = machine()
+        m.requestFrom(streamId = streamA)
+        m.decline(streamA)
+        m.requestFrom(streamId = streamB, now = t0 + 1_000)
+        assertTrue(m.approve(streamA, CameraFacing.BACK, t0 + 2_000).isEmpty())
+        assertTrue(m.permissionDenied(streamA, t0 + 2_000).isEmpty())
+        assertEquals(CameraPhase.AWAITING, m.ui().phase)
+        assertEquals(streamB, m.ui().streamId)
+    }
+
+    @Test
+    fun `a request is awaiting only before its own deadline, whatever the timer has done`() {
+        val m = machine()
+        assertFalse(m.isAwaiting(t0))
+        m.requestFrom()
+        assertTrue(m.isAwaiting(t0 + CameraSessionMachine.REQUEST_TIMEOUT_MS - 1))
+        assertFalse("an expired request is put back in front of the owner", m.isAwaiting(t0 + CameraSessionMachine.REQUEST_TIMEOUT_MS))
+        m.approve(streamA, CameraFacing.BACK, t0 + 1_000)
+        assertFalse("a started stream is not a waiting request", m.isAwaiting(t0 + 1_000))
+    }
+
+    @Test
+    fun `the current camera is the exact stream and epoch, and nothing once the stream ends`() {
+        val m = machine().running()
+        assertTrue(m.isCurrentCamera(streamA, 0))
+        assertFalse(m.isCurrentCamera(streamB, 0))
+        m.switch(mac, "sw", streamA, "front") { true }
+        assertFalse("a replaced camera is still current", m.isCurrentCamera(streamA, 0))
+        assertTrue(m.isCurrentCamera(streamA, 1))
+        m.stopFromMac(mac, "stop", streamA)
+        assertFalse("an ended stream's camera is still current", m.isCurrentCamera(streamA, 1))
+    }
+
+    @Test
+    fun `a waiting request is not a camera anyone may open`() {
+        val m = machine()
+        m.requestFrom()
+        assertFalse(m.isCurrentCamera(streamA, 0))
+    }
+
+    // ---- how the request reaches the owner (defect 171) ---------------------------------------------
+
+    @Test
+    fun `the route is the screen when Sidekick is in front, a notification only when one can be shown, else none`() {
+        assertEquals(CameraRequestRoute.SCREEN, CameraRequestRoute.choose(screenVisible = true, notificationsDeliverable = false))
+        assertEquals(CameraRequestRoute.SCREEN, CameraRequestRoute.choose(screenVisible = true, notificationsDeliverable = true))
+        assertEquals(CameraRequestRoute.NOTIFICATION, CameraRequestRoute.choose(screenVisible = false, notificationsDeliverable = true))
+        assertEquals(CameraRequestRoute.NONE, CameraRequestRoute.choose(screenVisible = false, notificationsDeliverable = false))
+    }
+
+    @Test
+    fun `a notification is deliverable only with the permission, the app switch and an unblocked channel`() {
+        assertTrue(CameraRequestDelivery.deliverable(permitted = true, appEnabled = true, channelImportance = 4))
+        assertFalse(CameraRequestDelivery.deliverable(permitted = false, appEnabled = true, channelImportance = 4))
+        assertFalse("app notifications off", CameraRequestDelivery.deliverable(permitted = true, appEnabled = false, channelImportance = 4))
+        assertFalse("channel blocked", CameraRequestDelivery.deliverable(permitted = true, appEnabled = true, channelImportance = 0))
+        assertFalse("channel never created", CameraRequestDelivery.deliverable(permitted = true, appEnabled = true, channelImportance = null))
+    }
+
+    @Test
+    fun `the ack names the route taken, and the show effect carries that same route`() {
+        for (route in CameraRequestRoute.entries) {
+            val effects = machine().requestFrom(route = route)
+            val ack = effects.only<CameraEffect.Ack<Owner>>().single()
+            assertEquals(route.message, ack.payload["message"])
+            assertEquals(route.fixHint, ack.payload["fixHint"])
+            assertEquals(route, effects.only<CameraEffect.ShowRequest>().single().route)
+        }
+    }
+
+    @Test
+    fun `with no route to the owner the Mac is never told a notification or a screen is showing it`() {
+        val message = CameraRequestRoute.NONE.message.lowercase()
+        assertFalse(message.contains("has a notification"))
+        assertFalse(message.contains("on your phone's screen"))
+        assertTrue(message.contains("notifications are turned off"))
+        assertTrue("the camera-off promise is kept", message.contains("camera stays off"))
     }
 
     @Test
