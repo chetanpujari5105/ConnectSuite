@@ -1,0 +1,21 @@
+== MP1 the mirror gate ignores the webcam: gradle exit 1; 24 result files, newest 0.2s old, run took 2s
+   red: MirrorAdmissionTest :: a start is refused while a webcam is open, and nothing is recorded as starting
+== MP2 the mirror gate decides outside the shared lock: gradle exit 1; 46 result files, newest 0.2s old, run took 6s
+   red: CaptureCoexistenceTest :: a webcam request and a mirror start arriving together - exactly one is admitted, every time
+== MP3 the app wiring never tells the mirror about the webcam: gradle exit 1; 46 result files, newest 0.2s old, run took 6s
+   red: CaptureCoexistenceTest :: a webcam request and a mirror start arriving together - exactly one is admitted, every time
+   red: CaptureCoexistenceTest :: a webcam request open - a new mirror start is refused and the webcam is untouched
+== MP4 a mirror being admitted does not count as busy: gradle exit 1; 46 result files, newest 0.2s old, run took 6s
+   red: MirrorAdmissionTest :: busy - running, waiting for consent, coming up, or being admitted - and never when idle or stopped
+   red: CaptureCoexistenceTest :: a webcam request and a mirror start arriving together - exactly one is admitted, every time
+   red: CaptureCoexistenceTest :: a mirror being admitted counts as busy before its first phase is published
+== MP5 handlers registered before the gate: gradle exit 1; 46 result files, newest 0.2s old, run took 6s
+   red: WebcamFeatureWiringTest :: a debuggable build - engine first, then the claim, then exactly the contract's handlers - and both halves advertise
+   red: WebcamFeatureWiringTest :: a release build wires nothing, advertises nothing and starts no engine
+   red: WebcamReleaseGateTest :: install comes through wire, which consults the gate before anything else
+== MP6 the claim is not taken: gradle exit 1; 46 result files, newest 0.2s old, run took 6s
+   red: WebcamFeatureWiringTest :: the release flag is the only way a release build would install, and it is off
+   red: WebcamFeatureWiringTest :: a debuggable build - engine first, then the claim, then exactly the contract's handlers - and both halves advertise
+   red: WebcamReleaseGateTest :: install comes through wire, which consults the gate before anything else
+== MP7 the mirror start is not gated: gradle exit 1; 46 result files, newest 0.2s old, run took 6s
+   red: MirrorAdmissionTest :: both start routes ask the gate before touching any session state, and release it after
