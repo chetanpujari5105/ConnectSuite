@@ -95,5 +95,12 @@ loop: while true {
 lifetime.cancel()
 core.drain()
 send(.counts(counts()))
+// One line, integers only (defect 177): where the stage overflowed and how long the picture was gone.
+let d = core.diagnostics
+let first = d.firstOverflow.map { "first at AU \($0.atReceived), \($0.sinceLiveUs / 1000) ms after live, GOP index \($0.gopIndex), decode in flight \($0.inFlightUs / 1000) ms, \($0.decodesBefore) decodes before" } ?? "none"
+note("pipeline: overflow \(d.overflowEvents) (\(first)); recovery \(d.recoveries) max \(d.recoveryMaxUs / 1000) ms, \(d.recoveryMaxRefused) refused; " +
+     "decode first \(d.decode.firstUs / 1000) ms max \(d.decode.maxUs / 1000) ms over-budget \(d.decode.overBudget)/\(d.decode.count); " +
+     "compose first \(d.compose.firstUs / 1000) ms max \(d.compose.maxUs / 1000) ms over-budget \(d.compose.overBudget)/\(d.compose.count); " +
+     "arrival max gap \(d.maxArrivalGapUs / 1000) ms, max \(d.maxArrivalsPerFrame) per frame; after end \(d.completionsAfterEnd) late by \(d.maxLateUs / 1000) ms")
 note("exiting \(exitCode); invariant \(core.invariantHolds ? "holds" : "BROKEN")")
 exit(exitCode)

@@ -28007,3 +28007,87 @@ unbounded) red on HUNG REPORT; D-F (no rotation check) red; D-G (disposal leaves
 line-contract fixture; D-I (a fresh line for another stream does not shut down) red on WRONG STREAM.
 **Not mutated:** the core's refusal of a second request press is unreachable through `runSession`,
 which presses once by construction; it is a belt to the braces, and every fixture asserts the braces.
+
+## Camera v2 encoder spike — the run, its accounting, its evidence, and defect 177 (2026-10-04)
+
+### The run (19:57 IST, once)
+
+Gates passed (pin `RZCY12330DT`, `link-up.sh` 3 OK, `webcam 1 ADVERTISED` and `encoder spike ARMED`,
+dry run clean). One request, back camera, the owner's tap at +8.1 s, the planned Stop at 15,002 ms.
+**Recorded verdict: FAIL**, on one line — `accounting does not hold (received 421, accepted 367, gate
+drops 54, past the gate 368, pending 0)`. Every other criterion passed: IDR with SPS/PPS first, 8 IDR +
+358 P decoded, 0 errors, 1920 × 1080 everywhere (coded 1088), `c2.qti.avc.encoder` hardware, 29.94 fps,
+IDR every 1,989–2,032 ms, 8.32 Mbit/s, stopped-by-mac in 11 ms, camera released in 1,465 ms, 60 s of
+nothing. Control for the accounting line, outside the report: the decode probe printed `exiting 0;
+invariant holds` (Electron main's log, 19:57:34.195), i.e. BridgeCore's own accounting held.
+
+### Scorer version 2 (`d1cb5e0`)
+
+**The defect was the scorer's.** Version 1 summed `probe.decoded` as an ending; `BridgeCore.decodeAndFeed`
+re-checks the session after a successful decode and counts `discardedEnded` there, so the frame decoding
+when the Stop landed was counted twice (368 against 367). Version 2 sums BridgeCore's terminal
+dispositions (`TERMINAL_DISPOSITIONS`, read against `BridgeCore.invariantHolds` from the Swift by test);
+a missing counter fails rather than reads as zero; nothing else changed.
+
+**Through the production counting path:** six scenarios driven through the real BridgeCore with the
+probe's decoder and sink and real H.264, timing held by a gated decoder — ordinary completion,
+decoded-then-discarded at the final check, Stop while decoding with frames waiting, decode-queue drop,
+decode failure, compose failure. Their counts are `docs/fixtures/webcam-spike-accounting-v1.json` (a
+Swift test fails on drift; three runs identical) and the scorer holds on every one, and fails on one AU
+lost and on one double-counted in each. Version 1 would also have double-counted every compose failure.
+
+**Mutations, red on their named tests:** M1 version-1 terminal set; M2 the `stop` shape removed (the run's
+leak); M3 first separator instead of last; M4 a missing counter read as zero; M5 names matched inside
+other tokens.
+
+### Evidence handling
+
+The run's report kept the Mac's device name on its `webcam.stop` line — the sanitizer covered `request`
+and `attached` only. Now: `PEER_SHAPES` (request, stop, switch, claim-refused, attached; a test enumerates
+every Kotlin literal naming the peer and fails on an unclassified one), then every name the Mac is known
+by as a whole token, then a residual substring check that refuses to write. Tested on synthetic names
+(apostrophes, `: `, regex metacharacters, diacritics) and on unrelated lines that must not change
+(`STOPPED_BY_MAC`, package ids, Camera v1 lines).
+
+- **Original:** moved out of the repository to a private 0700 directory, file 0600, SHA-256
+  `4fb3c5c6b2c9804cca6a360d4647d2abf57ce6920c00e0ba808be4df5c7728e2` (10,075 bytes), verified before the
+  repository copy was removed. Not in version control.
+- **`report.sanitized.json`** (`28c1b38`): derived, says so in its first field, names that hash; one
+  redaction; strings-only difference checked structurally.
+- **`rescore-v2.json`** (`28c1b38`): a re-score of the same saved report, **not a new hardware run**.
+  Version 1 at `e3fea6a` reproduced the recorded FAIL exactly before anything was compared; version 2 at
+  `d1cb5e0` moves one line, accounting, to PASS; bounds identical; the sanitized copy scores identically.
+  Marked **post-hoc** — the rule was written after the reading. **The run's verdict stays FAIL.**
+
+### Defect 177 — one decode-stage overflow cost 1.8 s of picture: 54 P-frames refused until the next IDR (2026-10-04, measured once on hardware; diagnostics and tests built; no fix)
+
+**Found** in the run's counts: `droppedDecodeQueue 1`, `gate.awaitingKeyframe 54`, `maxWaiting 4`.
+54 refused in a 60-frame GOP puts the dropped AU at GOP index 5: the IDR in flight and four waiting.
+
+**Instrument** (`PipelineDiagnostics`, in every `counts` status, 35 fixed integer keys, nothing per frame;
+one summary line at the probe's exit): when and where in its GOP the first overflow happened and how long
+the decode in flight had run; decode, compose and service durations with the first frame separate and an
+over-budget count; queue wait; arrival gap and burst; time from a break to the first frame admitted after
+it reaching the sink, and how many were refused; what completes after a Stop and how late.
+
+**Tests** (`PipelineDiagnosticsTests.swift`, manual clock and gated decoder, exact): an overflow in the
+first GOP and in a later one (the field's shape: index 5, the rest of the GOP refused), recovery timed
+from the frame admitted after the break and not from frames admitted before it, completion after Stop
+50 ms late, charged decode durations, an arrival burst and gap, the key set fixed and inside main's 128
+counters, diagnostics agreeing with the accounting in all six scenarios. Mutations: D1 (recovery counts a
+frame admitted before the break), D3 (session end not recorded), D4 (decode in flight not tracked) red;
+**D2 (GOP index never reset) was green** against the first-GOP test alone — the later-GOP test was added
+and it is red now.
+
+**Readings on this Mac, release build, generated 1080p High rotation 1, paced at 30 fps, 5 runs:** first
+frame decode 60–67 ms and compose 30–42 ms (setup on the critical path), service 92–106 ms; steady state
+decode ~3.1 ms, compose ~6.2 ms. Four runs with smooth arrivals: no overflow. One run with 17 AUs inside
+one frame interval during the first frame: overflow at AU 6, GOP index 5, **54 refused**, recovery 1.65 s —
+the field signature. The **debug** suite's compose (~50 ms, every frame over budget) is an unoptimised
+per-byte chroma loop, not the bridge's speed. **Field cause: unproven.** Options and costs:
+`docs/camera-v2-decode-recovery-proposal.md`.
+
+**Also found, not fixed:** after a decode failure, AUs already waiting are still decoded against a
+picture the decoder never produced; `diag.chain.decodedAfterFailure` counts it (2 of 2 on this Mac).
+
+**Fresh:** Swift 111 / 0 (1 opt-in skipped), Mac 1,660 / 0, scripts 287 / 0, both typechecks clean.

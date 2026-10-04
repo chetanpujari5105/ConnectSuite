@@ -192,6 +192,7 @@ own heading there, and its own row here.
 | **174** | **A Disconnect pressed on this Mac was worded as the phone disconnecting.** The camera's one ending for a lost control session read *"Your phone disconnected, so the camera stopped."* under the headline *Your phone disconnected* — for the tray's or the Devices pane's Disconnect on this Mac as much as for a phone that went away. The link knew which (`LinkClient.stop()` is the only local ending) and did not say. The phone's own sentence, *"The Mac disconnected…"*, named a cause it cannot know either. Predicted before case D was run (RESUME, 22:38 batch); case D has still not run | **fixed 2026-10-03, tests only — not verified on hardware** — `SessionEnded` carries `byThisMac`, true only from `LinkClient.stop()`; the camera ends as `disconnected-here` (*"You disconnected this Mac from your phone…"*, headline *Disconnected from this Mac*) or `disconnected` (*"The connection to your phone ended…"*, which names no cause). A known local Stop stays the Mac's reason. The phone says *"The connection to the Mac ended…"* | desktop controller, link and pane tests (red before the fix); camera-module sentence test; mutations M174-A, B, C and P174-A red | `docs/testing.md` → Defect 174 |
 | **175** | **Asking again right after cancelling an in-flight request was refused as busy.** A request cancelled before its ack arrived is withdrawn only when the ack names its stream; a second request sent in that window reached the phone while the first was still open there, and the phone answered `CAMERA_BUSY` — *"This Mac already has a camera request or stream open on the phone"* — about a request this Mac had already cancelled | **fixed 2026-10-03, tests only — not verified on hardware** — a new request waits for the previous request's ack and withdrawal to settle (the pane shows *Asking your phone…* meanwhile); cancelled while waiting, it sends nothing. The withdrawal is awaited before the earlier request settles | desktop controller tests against a fake phone that keeps the contract's busy rule; mutations M175-A and C red; **M175-B survives**: `link.request` writes synchronously on one ordered connection, so the awaited withdrawal guards only a phone that handles control messages concurrently, which no test here can produce | `docs/testing.md` → Defect 175 |
 | **176** | **The phone wrote no line when a stream went live or a switch took effect.** Its log carried the request, the tap, `Camera bound` and the stop with counts, but nothing for the first frame of a stream or of a switched camera; a phone-side Switch, a Decline and a permission refusal were not logged at all; and effect lists read `SendState` without saying which state | **fixed 2026-10-03, tests only — not verified on hardware** — `CameraLogLines` (pure, tested) builds the milestone lines — *"Camera stream 01234567… running: first frame 960 × 720 from the back camera, epoch 0"* and *"… switch confirmed: …"* — once each, never per frame; effect lists name the state sent, the request's route, and the camera and epoch opened. Decline, the permission answer and the phone's own Switch each get a line | camera-module exact-line tests and a source scan of the engine; mutations P176-A and B red | `docs/testing.md` → Defect 176 |
+| **177** | **One decode-stage overflow cost 1.8 s of picture: 54 P-frames refused until the next IDR.** In the 2026-10-04 encoder spike the bridge's 4-AU decode stage overflowed once (`droppedDecodeQueue 1`) and the gate, as designed, refused every AU until an IDR — 54 of 421 (12.8%), the rest of a 60-frame GOP. The drop was at GOP index 5, so that GOP's IDR was still in decode or compose while five more AUs arrived. The run recorded no timings, so its cause is not established | **open — measured once on hardware; the mechanism reproduced on a generated stream; the field cause unproven** — the bridge now records when and where in its GOP an overflow happens, stage durations, arrival bursts and recovery time (`PipelineDiagnostics`, metadata only); four options compared in `docs/camera-v2-decode-recovery-proposal.md`, none implemented | the run's counts (`docs/evidence/camera-v2-encoder-spike-2026-10-04/`); `PipelineDiagnosticsTests` (manual clock, gated decoder), mutations D1–D4 red; a release-built probe on 1080p rotated, 5 runs | `docs/testing.md` → Defect 177 |
 
 ---
 
@@ -3513,3 +3514,34 @@ after the last. MediaProvider did not update the row after an in-place write thr
   write.** That is the hardware question.
 - After the upgrade, a record from an older build is refused once and restarts from 0. That is the safe
   direction.
+
+### 177 — one decode-stage overflow cost 1.8 s of picture: 54 P-frames refused until the next IDR · **open**
+
+Measured once, on the 2026-10-04 19:57 IST encoder spike: `droppedDecodeQueue 1`, `gate.awaitingKeyframe
+54`, `maxWaiting 4`, of 421 AUs. 54 refused in a 60-frame GOP places the dropped AU at GOP index 5 — the
+GOP's IDR still in flight plus four waiting. The run carried no timings. A release-built probe on a
+generated 1080p rotated stream reproduced the exact signature (AU 6, GOP index 5, 54 refused, 1.65 s)
+when 17 AUs arrived inside one frame interval during the first frame (92–106 ms of decode and compose,
+against ~9 ms in steady state); with smooth arrivals four runs did not overflow. The field cause is
+**unproven**. `docs/camera-v2-decode-recovery-proposal.md` is the full record.
+
+**Fix direction:** first, measure the field cause with the diagnostics now in the bridge
+(`diag.overflow.first.*`: `decodesBefore 0` with a long `inFlightUs` is the startup case). Then, in
+order: (A) create the composer's pool, transfer and rotation sessions at `session-live` rather than on
+the first frame; (B) `webcam.keyframe {sessionId, generation}`, the addition `docs/protocol.md` already
+names, rate-limited to one outstanding per session and generation and one per second, if recovery gaps
+remain. Each needs approval; B changes the contract first.
+
+**The wrong fixes:**
+- Skipping the dropped reference and decoding on as though the chain were intact. The gate's
+  refuse-until-IDR rule is correct and stays.
+- Raising the decode-stage bound, shortening the IDR interval or lowering the 8 Mbit/s target without
+  the trade-off in the proposal's §5 being chosen. Each moves cost onto every user to absorb a burst that
+  has been seen once and whose cause is not known.
+- Attributing it to Wi-Fi. Nothing measured the network; the reproduction used no network at all.
+- Reading the debug suite's compose time (~50 ms, every frame over budget) as the bridge's. That is an
+  unoptimised per-byte chroma loop; release measures ~6 ms.
+
+**Found beside it, not fixed:** after a decode **failure**, P-frames already waiting are still decoded
+against a picture the decoder never produced (`diag.chain.decodedAfterFailure`). Proposal §6.
+

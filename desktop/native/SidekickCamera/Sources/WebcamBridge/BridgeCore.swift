@@ -69,7 +69,8 @@ public final class BridgeCore {
     /// a dispatch queue, because a dispatched item cannot be withdrawn: an earlier version flagged
     /// superseded items stale and let them run out, and the stage grew by one per IDR during a
     /// backlog (11 against a bound of 4, caught by `aSlowDecoderIsBoundedAndEveryAUIsAccountedFor`).
-    private var waiting: [(au: WebcamAU, session: SessionID)] = []
+    private var waiting: [Waiting] = []
+    private struct Waiting { let au: WebcamAU; let session: SessionID; let ordinal: Int; let admittedNs: UInt64 }
     private var decoding = false
     public private(set) var maxWaiting = 0
     private var composers: [PublishedFormat: FrameComposer] = [:]
@@ -82,12 +83,18 @@ public final class BridgeCore {
     private var sinkEnqueued = 0
     private var sinkUnavailable = 0
     private var upscaled = 0
+    /// Timing and recovery readings, metadata only (defect 177). Guarded by `lock`.
+    private var diag = PipelineDiagnostics()
+    /// Monotonic nanoseconds. Injected so tests drive time explicitly instead of sleeping.
+    private let clock: () -> UInt64
 
     public init(sink: SinkPort, decoder: FrameDecoding = H264Decoder(), decodeCapacity: Int = 4,
+                clock: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
                 emit: @escaping (BridgeStatus) -> Void) {
         self.sink = sink
         self.decoder = decoder
         self.decodeCapacity = decodeCapacity
+        self.clock = clock
         self.emit = emit
     }
 
@@ -117,6 +124,8 @@ public final class BridgeCore {
     public func control(_ message: ControlMessage) -> Outcome {
         switch message {
         case let .sessionLive(id, g):
+            let now = clock()
+            withDiag { $0.sessionLive(nowNs: now) }
             apply(withGate { $0.sessionLive(id, generation: g) })
             return .continue
         case let .sessionEnded(id, r):
@@ -136,7 +145,13 @@ public final class BridgeCore {
     }
 
     public func accessUnit(session: SessionID, frame: Data) {
-        let admission = withGate { $0.admit(session: session, frame: frame) }
+        let now = clock()
+        // The gate's running count is this AU's ordinal: every AU admitted later has a larger one.
+        let (admission, ordinal) = withGate { g -> (SessionGate.Admission, Int) in
+            let a = g.admit(session: session, frame: frame)
+            diag.arrived(nowNs: now)
+            return (a, g.received)
+        }
         if case let .reject(_, effects) = admission {
             // The live session's stream broke the contract: its sink is stopped and the picture
             // cleared first, then main is told. No retry — the session is buried.
@@ -146,19 +161,22 @@ public final class BridgeCore {
         guard case let .accept(au) = admission else { return }
 
         lock.lock()
+        let gopIndex = diag.accepted(isKeyframe: au.isKeyframeWithConfig)
         if waiting.count >= decodeCapacity {
             if au.isKeyframeWithConfig {
                 // Everything waiting predates this IDR and is useless now: drop it, keep the IDR.
                 droppedDecodeQueue += waiting.count
+                diag.idrFlushed(waiting.count)
                 waiting.removeAll()
             } else {
                 droppedDecodeQueue += 1
+                diag.overflowed(nowNs: now, atReceived: ordinal, gopIndex: gopIndex)
                 lock.unlock()
-                withGate { $0.noteDownstreamDrop() }
+                breakChain(.queueFull, nowNs: now)
                 return
             }
         }
-        waiting.append((au, session))
+        waiting.append(Waiting(au: au, session: session, ordinal: ordinal, admittedNs: now))
         maxWaiting = max(maxWaiting, waiting.count)
         let start = !decoding
         if start { decoding = true }
@@ -173,42 +191,70 @@ public final class BridgeCore {
         while true {
             lock.lock()
             guard !waiting.isEmpty else { decoding = false; lock.unlock(); return }
-            let (au, session) = waiting.removeFirst()
+            let next = waiting.removeFirst()
             lock.unlock()
-            decodeAndFeed(au, session: session)
+            decodeAndFeed(next)
+            withDiag { $0.frameDone() }
         }
     }
 
-    private func decodeAndFeed(_ au: WebcamAU, session: SessionID) {
-        guard isLive(session) else { count(\.discardedEnded); return }
+    private func decodeAndFeed(_ w: Waiting) {
+        let au = w.au, session = w.session
+        guard isLive(session) else { count(\.discardedEnded); withDiag { $0.discardedBeforeDecoding() }; return }
 
+        let decodeStart = clock()
+        withDiag { $0.decodeStarted(nowNs: decodeStart, admittedNs: w.admittedNs) }
         let decoded: CVPixelBuffer
         do { decoded = try decoder.decode(annexB: au.annexB, ptsMicros: au.frame.pts) } catch {
+            let now = clock()
+            withDiag { $0.decodeFinished(startNs: decodeStart, nowNs: now, ordinal: w.ordinal, isKeyframe: au.isKeyframeWithConfig, ok: false) }
             count(\.decodeErrors)
-            withGate { $0.noteDownstreamDrop() }
+            breakChain(.decodeFailed, nowNs: now)
             return
         }
-        let w = Int(au.header.width), h = Int(au.header.height)
-        let format: PublishedFormat = max(w, h) >= 1920 ? .fullHD : .hd
+        let composeStart = clock()
+        withDiag { $0.decodeFinished(startNs: decodeStart, nowNs: composeStart, ordinal: w.ordinal, isKeyframe: au.isKeyframeWithConfig, ok: true) }
+        let w0 = Int(au.header.width), h0 = Int(au.header.height)
+        let format: PublishedFormat = max(w0, h0) >= 1920 ? .fullHD : .hd
         let composed: CVPixelBuffer
         do {
             let composer = try composer(for: format)
             composed = try composer.compose(decoded, quarterTurns: au.header.rotation)
             if composer.upscaled > 0 { lock.lock(); upscaled = composers.values.map(\.upscaled).reduce(0, +); lock.unlock() }
         } catch {
+            let now = clock()
+            withDiag { $0.composeFinished(decodeStartNs: decodeStart, startNs: composeStart, nowNs: now, ok: false) }
             count(\.composeErrors)
-            withGate { $0.noteDownstreamDrop() }
+            breakChain(.composeFailed, nowNs: now)
             return
         }
         guard let sb = try? SampleBuffers.make(composed, pts: CMTime(value: Int64(DispatchTime.now().uptimeNanoseconds),
                                                                      timescale: 1_000_000_000)) else {
+            let now = clock()
+            withDiag { $0.composeFinished(decodeStartNs: decodeStart, startNs: composeStart, nowNs: now, ok: false) }
             count(\.composeErrors)
             return
         }
+        let composeEnd = clock()
+        withDiag { $0.composeFinished(decodeStartNs: decodeStart, startNs: composeStart, nowNs: composeEnd, ok: true) }
         SampleBuffers.tag(sb, session: session, generation: au.header.generation)
         // The door: a session can end while its frame was decoding. Checked again here, last.
-        guard isLive(session) else { count(\.discardedEnded); return }
-        if sink.enqueue(sb) { count(\.sinkEnqueued) } else { count(\.sinkUnavailable) }
+        guard isLive(session) else { count(\.discardedEnded); withDiag { $0.discardedAfterDecoding(nowNs: composeEnd) }; return }
+        if sink.enqueue(sb) {
+            count(\.sinkEnqueued)
+            withGate { g in diag.enqueued(ordinal: w.ordinal, nowNs: composeEnd, refusedSoFar: g.dropped[.awaitingKeyframe] ?? 0) }
+        } else {
+            count(\.sinkUnavailable)
+        }
+    }
+
+    /// The decode chain broke: the gate refuses everything until an IDR with SPS and PPS, and the gap
+    /// in the picture is timed from here.
+    private func breakChain(_ kind: PipelineDiagnostics.Break, nowNs: UInt64) {
+        withGate { g in
+            g.noteDownstreamDrop()
+            diag.broke(kind, nowNs: nowNs, receivedSoFar: g.received, refusedSoFar: g.dropped[.awaitingKeyframe] ?? 0)
+        }
     }
 
     private func composer(for format: PublishedFormat) throws -> FrameComposer {
@@ -227,6 +273,8 @@ public final class BridgeCore {
             case .startSink:
                 emit(.sink(sink.start()))
             case .stopSink:
+                let now = clock()
+                withDiag { $0.sessionEnded(nowNs: now) }
                 // Never deferred: flush and stop first, then forget the decoder's references.
                 sink.stopAndFlush()
                 decodeQueue.async { [decoder] in decoder.invalidate() }
@@ -251,6 +299,13 @@ public final class BridgeCore {
         return body(&gate)
     }
 
+    private func withDiag(_ body: (inout PipelineDiagnostics) -> Void) {
+        lock.lock(); body(&diag); lock.unlock()
+    }
+
+    /// The pipeline's timing and recovery readings, for tests and the probe's exit line.
+    public var diagnostics: PipelineDiagnostics { lock.lock(); defer { lock.unlock() }; return diag }
+
     private func count(_ key: ReferenceWritableKeyPath<BridgeCore, Int>) {
         lock.lock(); self[keyPath: key] += 1; lock.unlock()
     }
@@ -271,6 +326,7 @@ public final class BridgeCore {
             "pending": waiting.count + (decoding ? 1 : 0), "maxWaiting": maxWaiting,
         ]
         for d in SessionGate.Drop.allCases { c["gate.\(d.rawValue)"] = gate.dropped[d] ?? 0 }
+        c.merge(diag.counts) { a, _ in a }
         return c
     }
 

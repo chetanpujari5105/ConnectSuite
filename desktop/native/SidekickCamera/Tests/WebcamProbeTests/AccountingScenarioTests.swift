@@ -29,12 +29,17 @@ final class GatedDecoder: FrameDecoding {
     let release = DispatchSemaphore(value: 0)
     var failAt: Set<Int> = []
     var unconvertibleAt: Set<Int> = []
+    /// A controlled decode duration: the call advances `clock` by this many microseconds.
+    var costUs: [Int: UInt64] = [:]
+    var defaultCostUs: UInt64 = 0
+    var clock: ManualClock?
 
     func hold(call n: Int) { lock.lock(); holdAt = n; lock.unlock() }
 
     func decode(annexB: Data, ptsMicros: UInt64) throws -> CVPixelBuffer {
         lock.lock(); let n = calls; calls += 1; let held = holdAt == n; lock.unlock()
         if held { entered.signal(); release.wait() }
+        clock?.advance(us: costUs[n] ?? defaultCostUs)
         if failAt.contains(n) { throw DecodeError.decode(-12909) }
         let pb = try real.decode(annexB: annexB, ptsMicros: ptsMicros)
         if unconvertibleAt.contains(n) { return try Self.unconvertible() }
@@ -50,6 +55,17 @@ final class GatedDecoder: FrameDecoding {
         guard st == kCVReturnSuccess, let pb else { throw DecodeError.decode(st) }
         return pb
     }
+}
+
+/// Monotonic time the test sets: nothing in a diagnostics test depends on how fast this Mac is.
+final class ManualClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var ns: UInt64 = 1_000_000_000
+    /// Microseconds since the clock's origin, as the test reasons about them.
+    func set(us: UInt64) { lock.lock(); ns = 1_000_000_000 + us * 1_000; lock.unlock() }
+    func advance(us: UInt64) { lock.lock(); ns += us * 1_000; lock.unlock() }
+    var nowUs: UInt64 { lock.lock(); defer { lock.unlock() }; return (ns - 1_000_000_000) / 1_000 }
+    var read: () -> UInt64 { { [self] in lock.lock(); defer { lock.unlock() }; return ns } }
 }
 
 /// 20 pictures, 640×360, IDR at 0 and 10, P-frames between.

@@ -89,9 +89,10 @@ final class ProbeRig {
     var core: BridgeCore!
     var phone = PhoneStandIn()
 
-    init(inner: FrameDecoding = H264Decoder()) {
+    init(inner: FrameDecoding = H264Decoder(), clock: (() -> UInt64)? = nil) {
         let lock = NSLock()
-        core = BridgeCore(sink: ProbeSink(tally: tally), decoder: ProbeDecoder(tally: tally, inner: inner)) { [unowned self] s in
+        core = BridgeCore(sink: ProbeSink(tally: tally), decoder: ProbeDecoder(tally: tally, inner: inner),
+                          clock: clock ?? { DispatchTime.now().uptimeNanoseconds }) { [unowned self] s in
             lock.lock(); statuses.append(s); lock.unlock()
         }
         core.consumersChanged(1)
