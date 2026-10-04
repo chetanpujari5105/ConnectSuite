@@ -43,8 +43,9 @@ filtered and counts as unrun.**
 
 ## What the suite proves, and what each proof stands on
 
-**87 tests in 22 suites, green** (78 at W1; 9 added by the W3 correction of 2026-10-04). Evidence:
-`docs/evidence/camera-v2-w1-2026-10-03/`, `docs/evidence/camera-v2-w3-corrections-2026-10-04/`.
+**89 tests in 23 suites, green** (78 at W1; 9 added by the W3 correction and 2 by W2, 2026-10-04).
+Evidence: `docs/evidence/camera-v2-w1-2026-10-03/`, `docs/evidence/camera-v2-w3-corrections-2026-10-04/`,
+`docs/evidence/camera-v2-w2-2026-10-04/`.
 
 | The brief's test | Where | Real, or stood in for |
 |---|---|---|
@@ -53,6 +54,7 @@ filtered and counts as unrun.**
 | Stale session or generation rejection | `Gate`, `Relay`, `EndToEnd.staleSessionsAndGenerationsAreRejected` | real |
 | Malformed or oversized frames | `MalformedList` (one mutation per contract row), `RecordFraming`, `EndToEnd.malformed…` | real; the golden fixture is read in place from `docs/fixtures/webcam-au-v1.hex` |
 | A malformed AU **of the live session** ends it, once, bound to its id (`stream-rejected`); bytes tagged with any other session end nothing; the documented drops stay drops | `FatalInput`, `EndToEnd.malformed…`, `Vocabulary` | real gate and pipeline; the violation tokens are held to `docs/fixtures/webcam-vocabulary-v1.json`, which Electron main's parser reads too |
+| The **phone's** writer output decodes here | `PhoneStream` | the bytes are `docs/fixtures/webcam-phone-stream-v1.hex`, which camera-module's production assembler and writer reproduce byte for byte; the gate and VideoToolbox decode are real. **Stood in for:** the phone's encoder — the H.264 is this Mac's VideoToolbox, cut into MediaCodec-shaped buffers by `Tools/make-mediacodec-sample.swift` |
 | Formats, orientation, aspect ratio | `Compose`, `Publishing`, `EndToEnd.generatedFramesArriveUprightFittedAndLive` | real VideoToolbox: generated pictures → `VTCompressionSession` → `VTDecompressionSession` → `VTPixelRotationSession` → `VTPixelTransferSession`. All four rotations, the pillarbox measured in pixels |
 | Monotonic timestamps, bounded buffering | `Relay.timestampsStrictlyIncrease…`, `Queueing`, `EndToEnd.aSlowDecoder…`, `EndToEnd.aSlowExtension…` | real `CMSimpleQueue`; the slow decoder is a real decoder with an injected 4 ms delay |
 | Slow and multiple consumers | `Consumers.slowAndFastConsumers…` | **modelled**: CoreMediaIO's fan-out to clients cannot run in-process. Fake consumers with their own bounded queues show that the extension's tick never waits for them and holds one frame |

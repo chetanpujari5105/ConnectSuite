@@ -56,4 +56,10 @@ dependencies {
 // green in place (the ShareManifestTest lesson in :app).
 tasks.withType<Test>().configureEach {
     inputs.file("../docs/fixtures/camera-frame-v1.hex").withPropertyName("cameraFrameGoldenVector")
+    // Camera v2's fixtures, read in place by the webcam tests — the same lesson: a fixture-only edit
+    // must not leave an old green behind.
+    inputs.file("../docs/fixtures/webcam-au-v1.hex").withPropertyName("webcamAuGoldenVector")
+    inputs.file("../docs/fixtures/webcam-vocabulary-v1.json").withPropertyName("webcamVocabulary")
+    inputs.file("../docs/fixtures/webcam-mediacodec-sample-v1.txt").withPropertyName("webcamMediaCodecSample")
+    inputs.file("../docs/fixtures/webcam-phone-stream-v1.hex").withPropertyName("webcamPhoneStream")
 }

@@ -79,7 +79,10 @@ class CameraWiringTest {
 
     @Test
     fun `nothing in the module starts a foreground service, records sound, or saves a picture`() {
-        val all = File("src/main/java/com/chetan/connectsuite/camera").listFiles()!!.joinToString("\n") { it.readText() }
+        // The whole module, subpackages included: Camera v2's webcam package lives under this one.
+        val files = File("src/main/java/com/chetan/connectsuite/camera").walkTopDown().filter { it.isFile && it.name.endsWith(".kt") }.toList()
+        assertTrue("control: the webcam package is in the scan", files.any { it.path.contains("/webcam/") })
+        val all = files.joinToString("\n") { it.readText() }
         for (forbidden in listOf("startForegroundService", "startForeground(", "MediaRecorder", "AudioRecord", "ImageCapture", "VideoCapture")) {
             assertFalse("the camera module uses $forbidden", all.contains(forbidden))
         }

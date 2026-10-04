@@ -190,6 +190,12 @@ class CameraSessionMachine<S : Any>(
         hasCamera: Boolean,
         mirrorBusy: Boolean,
         route: CameraRequestRoute,
+        /**
+         * A webcam (Camera v2) request or session is open — the phone's one camera is spoken for. Read by
+         * the engine inside `CameraUse`'s lock so it and this call are one decision. Defaults to false:
+         * with the webcam not installed nothing here changes.
+         */
+        webcamBusy: Boolean = false,
     ): List<CameraEffect<S>> {
         val facing = if (facingWire == null) CameraFacing.BACK else CameraFacing.fromWire(facingWire)
         if (facing == null) {
@@ -208,6 +214,19 @@ class CameraSessionMachine<S : Any>(
                     ErrorCode.CAMERA_BUSY,
                     "The phone is mirroring its screen, so the camera is not offered.",
                     "Stop mirroring first, then ask for the camera again.",
+                ),
+            )
+        }
+        if (webcamBusy) {
+            // docs/protocol.md → `webcam.request`: refused by this feature's existing CAMERA_BUSY row, and
+            // the webcam session is never stopped to make room.
+            return listOf(
+                CameraEffect.Refuse(
+                    owner,
+                    requestId,
+                    ErrorCode.CAMERA_BUSY,
+                    "The phone's camera is in use as a Mac's webcam (Sidekick Camera), so it is not offered here.",
+                    "Stop the webcam first, then ask for the camera again.",
                 ),
             )
         }

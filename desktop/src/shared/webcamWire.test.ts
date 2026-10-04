@@ -144,3 +144,24 @@ test("the stop vocabulary is the contract's, and failure is a cause of its own",
   assert.equal(WEBCAM_STOP_REASON_FOR_CAUSE.failure, 'mac-failed');
   assert.notEqual(WEBCAM_STOP_REASON_FOR_CAUSE.failure, WEBCAM_STOP_REASON_FOR_CAUSE.person);
 });
+
+test("the phone's writer output (docs/fixtures/webcam-phone-stream-v1.hex) frames on main's reader, split anywhere", T, () => {
+  // Written by camera-module's production path from real H.264; the Swift bridge decodes the same bytes.
+  const lines = readFileSync(join(__dirname, '../../../docs/fixtures/webcam-phone-stream-v1.hex'), 'utf8')
+    .split('\n')
+    .filter((line) => line.length > 0 && !line.startsWith('#'));
+  const stream = Buffer.from(lines.join(''), 'hex');
+  const whole = new WebcamStreamReader().push(stream);
+  assert.equal(whole.length, 9);
+  assert.deepEqual(whole.map((f) => f.generation), [1, 1, 1, 1, 1, 1, 2, 2, 2]);
+  assert.deepEqual(whole.map((f) => f.keyframe), [true, false, false, false, true, false, true, false, false]);
+  assert.deepEqual(whole.map((f) => f.bytes.toString('hex')), lines, 'each AU forwarded verbatim');
+  // Byte-at-a-time and odd chunkings read the same nine AUs.
+  for (const size of [1, 7, 1000]) {
+    const reader = new WebcamStreamReader();
+    const got = [];
+    for (let i = 0; i < stream.length; i += size) got.push(...reader.push(stream.subarray(i, i + size)));
+    assert.equal(got.length, 9, `chunks of ${size}`);
+    assert.ok(reader.buffered === 0);
+  }
+});

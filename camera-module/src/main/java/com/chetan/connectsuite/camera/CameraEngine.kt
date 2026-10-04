@@ -78,6 +78,8 @@ object CameraEngine {
     fun install(context: Context, mirrorBusy: () -> Boolean) {
         appContext = context.applicationContext
         this.mirrorBusy = mirrorBusy
+        // What the webcam asks before it puts a request up: is a Camera v1 request or stream open?
+        CameraUse.arbiter.cameraV1Open = { machine.ui().phase != CameraPhase.IDLE }
     }
 
     // ---- control-channel requests -----------------------------------------------------------------
@@ -91,17 +93,22 @@ object CameraEngine {
             screenVisible = visible != null,
             notificationsDeliverable = CameraNotifications.deliverable(context),
         )
-        val effects = machine.request(
-            owner = session,
-            peerName = session.peerName,
-            requestId = request.id,
-            facingWire = stringField(request, "facing"),
-            streamId = newStreamId(),
-            nowMillis = System.currentTimeMillis(),
-            hasCamera = context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY),
-            mirrorBusy = mirrorBusy(),
-            route = route,
-        )
+        // The webcam's busy check and this request are one decision (CameraUse): two requests arriving
+        // together on two connections cannot each see the other idle.
+        val effects = CameraUse.arbiter.admitCamera { webcamBusy ->
+            machine.request(
+                owner = session,
+                peerName = session.peerName,
+                requestId = request.id,
+                facingWire = stringField(request, "facing"),
+                streamId = newStreamId(),
+                nowMillis = System.currentTimeMillis(),
+                hasCamera = context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY),
+                mirrorBusy = mirrorBusy(),
+                route = route,
+                webcamBusy = webcamBusy,
+            )
+        }
         LinkLog.i("camera", "camera.request from ${session.peerName}: ${describe(effects)}")
         run(effects)
     }

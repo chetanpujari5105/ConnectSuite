@@ -33,5 +33,21 @@
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
+
+        <!--
+          Camera v2 (docs/protocol.md → Webcam): the webcam request screen and, once approved, the
+          capture. Its own screen, sharing no state with CameraActivity. The capture is bound to THIS
+          activity: when it stops being visible the session ends (left-screen), so the webcam is
+          foreground-only. Not exported, and opened only by this app — the webcam feature's own
+          notification and resume hook — which are themselves reached only once WebcamFeature.install
+          has run, and nothing calls it yet. The same configChanges, for the same reason.
+        -->
+        <activity
+            android:name=".webcam.WebcamActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
     </application>
 </manifest>

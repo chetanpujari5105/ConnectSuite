@@ -1,0 +1,46 @@
+== MB1 a tap after the deadline still opens: gradle exit 1; 15 result files, newest 0.1s old, run took 4s
+   red: WebcamSessionMachineTest :: a permission answer after the deadline is expiry, not a refusal, and a late grant opens nothing
+   red: WebcamSessionMachineTest :: expiry ends the request, and a tap at or after the deadline opens nothing
+== MB2 a P-frame may announce running: gradle exit 1; 15 result files, newest 0.2s old, run took 6s
+   red: WebcamSessionMachineTest :: a ladder reconfiguration is a new generation too, and stale generations cannot reconfigure
+   red: WebcamSessionMachineTest :: nothing is written before the socket, and running is announced by the first IDR on it
+== MB3 failure worded as stopped-by-mac: gradle exit 1; 15 result files, newest 0.2s old, run took 5s
+   red: WebcamSessionMachineTest :: each stop cause produces its reason, and a Mac failure is never worded as a Stop
+   red: WebcamSessionMachineTest :: a failure detail is chosen from the closed set - an unknown or missing one is the generic sentence, never echoed
+   red: WebcamSessionMachineTest :: stop is idempotent, and a stop crossing the socket's close re-attributes stream-closed - once, for that session only
+   red: WebcamReleaseGateTest :: the closed vocabularies are the shared fixture's
+== MB4 the arbiter does not hold its lock: gradle exit 1; 15 result files, newest 0.2s old, run took 4s
+   red: CameraCoexistenceTest :: two requests arriving together on two connections - exactly one is put up, every time
+== MB5 the writer evicts the oldest (Camera v1 rule): gradle exit 1; 15 result files, newest 0.2s old, run took 5s
+   red: WebcamStreamWriterTest :: with one slot being written an IDR itself can be the drop, and the next IDR recovers
+   red: WebcamStreamWriterTest :: a stalled Mac - non-IDRs dropped until the next IDR, one IDR requested, then the IDR goes out marked
+== MB6 a late capture is bound: gradle exit 1; 15 result files, newest 0.2s old, run took 4s
+   red: WebcamCaptureCoreTest :: a capture that comes up after its session ended is released unused - it cannot reopen the session
+   red: WebcamCaptureCoreTest :: a switch replaces the bound capture - the old one released once, a stale generation's late open released unused
+   red: WebcamCaptureCoreTest :: a failure ends a wanted session by its reason, and a failure for an unwanted one ends nothing
+   red: WebcamCaptureCoreTest :: the machine is asked, not the ticket alone - an end whose close was not yet posted still blocks the bind
+   red: WebcamStreamWriterTest :: the Mac hanging up or writing anything ends the stream once, and nothing is taken after
+== MB7 SPS/PPS not prepended to the IDR: gradle exit 1; 15 result files, newest 0.2s old, run took 4s
+   red: WebcamPhoneStreamFixtureTest :: the phone's writer reproduces the golden stream the Mac decodes, byte for byte
+   red: WebcamPhoneStreamFixtureTest :: the stream's structure - IDR with SPS and PPS first in each generation, discontinuity only at the switch
+   red: WebcamAuTest :: MediaCodec's separate configuration is prepended to every IDR, and P-frames pass untouched
+== MB8 thermal stops only above critical: gradle exit 1; 15 result files, newest 0.1s old, run took 5s
+   red: WebcamSessionMachineTest :: thermal - the injected boundary is critical, a live session ends too-hot, and a tap while critical opens nothing
+== MB9 a second claim attaches: gradle exit 1; 15 result files, newest 0.2s old, run took 5s
+   red: WebcamSessionMachineTest :: the claim - every condition, and claimed once
+== MB10 release builds install: gradle exit 1; 15 result files, newest 0.2s old, run took 5s
+   red: WebcamReleaseGateTest :: a release build never installs the webcam, and release activation is off
+== MB11 an unknown detail is trusted: gradle exit 1; 15 result files, newest 0.2s old, run took 5s
+   red: WebcamSessionMachineTest :: a failure detail is chosen from the closed set - an unknown or missing one is the generic sentence, never echoed
+== MB12 a malformed stop leaves the camera running: gradle exit 1; 15 result files, newest 0.2s old, run took 5s
+   red: WebcamSessionMachineTest :: a malformed stop is BAD_REQUEST and still stops the camera
+== MB13 the switch keeps the generation: gradle exit 1; 15 result files, newest 0.1s old, run took 5s
+   red: WebcamSessionMachineTest :: a ladder reconfiguration is a new generation too, and stale generations cannot reconfigure
+   red: WebcamSessionMachineTest :: a switch raises the generation, refuses the old one's AUs, and re-announces running from the new IDR
+   red: WebcamCaptureCoreTest :: a switch replaces the bound capture - the old one released once, a stale generation's late open released unused
+   red: WebcamPhoneStreamFixtureTest :: the phone's writer reproduces the golden stream the Mac decodes, byte for byte
+   red: WebcamPhoneStreamFixtureTest :: the stream's structure - IDR with SPS and PPS first in each generation, discontinuity only at the switch
+== MB14 v1 ignores the webcam: gradle exit 0; 15 result files, newest 0.1s old, run took 5s
+== MB15 the phone stamps no discontinuity at a switch (engine rule, mirrored in the fixture test): gradle exit 1; 15 result files, newest 0.2s old, run took 5s
+   red: WebcamPhoneStreamFixtureTest :: the phone's writer reproduces the golden stream the Mac decodes, byte for byte
+   red: WebcamPhoneStreamFixtureTest :: the stream's structure - IDR with SPS and PPS first in each generation, discontinuity only at the switch
