@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   KeyframeQueue,
+  WEBCAM_FAILURE_DETAILS,
+  WEBCAM_STOPPED_REASONS,
+  WEBCAM_STOP_REASON_FOR_CAUSE,
   WEBCAM_MAX_AU,
   WebcamStreamError,
   WebcamStreamReader,
@@ -125,4 +128,19 @@ test('KeyframeQueue counts a slot held in flight against the bound', T, () => {
   const all = new KeyframeQueue<number>(1);
   assert.equal(all.offer(1, true, 1), false, 'every slot in flight: even a keyframe cannot be held');
   assert.equal(all.waitingForKeyframe, true);
+});
+
+/** docs/fixtures/webcam-vocabulary-v1.json, read in place: the phone and the bridge read the same file. */
+function vocabulary(): { stopCauses: Record<string, string>; failureDetails: string[]; stoppedReasons: string[]; streamFaults: string[] } {
+  return JSON.parse(readFileSync(join(__dirname, '../../../docs/fixtures/webcam-vocabulary-v1.json'), 'utf8'));
+}
+
+test("the stop vocabulary is the contract's, and failure is a cause of its own", T, () => {
+  const v = vocabulary();
+  assert.deepEqual({ ...WEBCAM_STOP_REASON_FOR_CAUSE }, v.stopCauses);
+  assert.deepEqual([...WEBCAM_FAILURE_DETAILS], v.failureDetails);
+  assert.deepEqual([...WEBCAM_STOPPED_REASONS], v.stoppedReasons);
+  // The correction itself: a Mac that could not continue is not worded as somebody pressing Stop.
+  assert.equal(WEBCAM_STOP_REASON_FOR_CAUSE.failure, 'mac-failed');
+  assert.notEqual(WEBCAM_STOP_REASON_FOR_CAUSE.failure, WEBCAM_STOP_REASON_FOR_CAUSE.person);
 });

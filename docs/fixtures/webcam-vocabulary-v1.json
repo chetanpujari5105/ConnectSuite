@@ -1,0 +1,58 @@
+{
+  "_comment": [
+    "Webcam v1's closed vocabularies — docs/protocol.md → Webcam. One copy, read in place by every side",
+    "that names them: the phone (camera-module, WebcamVocabularyTest), Electron main",
+    "(desktop/src/shared/webcamWire.test.ts, webcamBridgeRecords.test.ts) and the Swift bridge",
+    "(WebcamCoreTests, streamFaults only — the bridge never sees the control channel).",
+    "Change the contract first, then this, then each side; every side's test fails until it follows."
+  ],
+  "stopCauses": {
+    "person": "stopped-by-mac",
+    "no-consumers": "no-consumers",
+    "shutdown": "stopped-by-mac",
+    "failure": "mac-failed"
+  },
+  "failureDetails": [
+    "stream-malformed",
+    "stream-unavailable",
+    "bridge-failed",
+    "producer-refused",
+    "device-unavailable",
+    "no-answer"
+  ],
+  "stoppedReasons": [
+    "declined",
+    "expired",
+    "permission-denied",
+    "camera-unavailable",
+    "camera-in-use",
+    "stopped-by-mac",
+    "mac-failed",
+    "no-consumers",
+    "stopped-on-phone",
+    "left-screen",
+    "stream-closed",
+    "capture-failed",
+    "too-hot"
+  ],
+  "streamFaults": [
+    "shorter-than-frame-header",
+    "frame-flags-reserved",
+    "length-over-cap",
+    "length-mismatch",
+    "payload-too-short",
+    "unknown-version",
+    "unknown-codec",
+    "bad-facing",
+    "bad-rotation",
+    "header-reserved-bits",
+    "bad-dimensions",
+    "zero-generation",
+    "no-start-code",
+    "idr-flag-without-idr",
+    "config-flag-without-config",
+    "generation-went-backwards",
+    "sequence-did-not-increase",
+    "generation-without-keyframe"
+  ]
+}

@@ -164,7 +164,7 @@ export interface Rig {
   flush(): Promise<void>;
 }
 
-export function rig(opts: { bridgePresent?: boolean } = {}): Rig {
+export function rig(opts: { bridgePresent?: boolean; openSocketThrows?: boolean } = {}): Rig {
   const events: string[] = [];
   const phone: StandInPhone = {
     connected: true,
@@ -217,6 +217,7 @@ export function rig(opts: { bridgePresent?: boolean } = {}): Rig {
   const controller = new WebcamController({
     link,
     openSocket: (_host, claim) => {
+      if (opts.openSocketThrows) throw new Error('stand-in: connect refused');
       const socket = new StandInSocket(events, claim);
       sockets.push(socket);
       events.push('socket.open');

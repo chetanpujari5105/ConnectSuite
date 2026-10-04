@@ -253,7 +253,8 @@ test("expiry with no word from the phone: ended here after expiry + slack, withd
   r.tick(5_000);
   assert.equal(r.last().session, null);
   assert.equal(r.last().lastEnded?.reason, 'expired');
-  assert.deepEqual(r.requests('webcam.stop').at(-1)?.payload, { sessionId: SESSION, cause: 'shutdown' });
+  // The Mac gave up waiting: a failure on this side, never worded on the phone as a person's Stop.
+  assert.deepEqual(r.requests('webcam.stop').at(-1)?.payload, { sessionId: SESSION, cause: 'failure', detail: 'no-answer' });
   r.consumers(2);
   await r.flush();
   assert.equal(r.requests('webcam.request').length, 1);
@@ -469,7 +470,7 @@ test('a bridge crash mid-session stops the phone, and a restarted bridge cannot 
   r.bridge().crash();
   assert.equal(r.last().bridge, 'failed');
   assert.equal(r.last().lastEnded?.reason, 'bridge-failed');
-  assert.deepEqual(r.requests('webcam.stop').at(-1)?.payload, { sessionId: SESSION, cause: 'shutdown' });
+  assert.deepEqual(r.requests('webcam.stop').at(-1)?.payload, { sessionId: SESSION, cause: 'failure', detail: 'bridge-failed' });
   r.sockets[0]!.feed(makeAU({ sequence: 9 }));
   assert.match(r.last().blocker ?? '', /ended unexpectedly/);
   // Started again; the meeting app never let go, so this is the same episode, already spent.
@@ -486,7 +487,7 @@ test('the extension refusing the producer ends the session and blocks every late
   await toRunning(r);
   r.bridge().report({ op: 'sink', state: 'refused' });
   assert.equal(r.last().lastEnded?.reason, 'producer-refused');
-  assert.equal(r.requests('webcam.stop').at(-1)?.payload.cause, 'shutdown');
+  assert.deepEqual(r.requests('webcam.stop').at(-1)?.payload, { sessionId: SESSION, cause: 'failure', detail: 'producer-refused' });
   assert.equal(r.last().producer, 'refused');
   r.consumers(0);
   r.consumers(1);
@@ -506,6 +507,104 @@ test('a malformed stream closes the session — never resynced, never forwarded'
   assert.equal(r.bridge().aus(), 1);
   assert.equal(r.last().lastEnded?.reason, 'malformed-stream');
   assert.equal(r.sockets[0]!.destroyed, true);
+  assert.deepEqual(r.requests('webcam.stop').at(-1)?.payload, { sessionId: SESSION, cause: 'failure', detail: 'stream-malformed' });
+});
+
+// ---- W3 correction: the bridge's verdict on the live session's stream --------------------------------
+
+test("the bridge rejecting the current session's stream ends it: failure stop first, then socket, then bridge", T, async () => {
+  const r = rig();
+  r.ready();
+  await toRunning(r);
+  r.sockets[0]!.feed(makeAU({ sequence: 1 }));
+  r.bridge().report({ op: 'stream-rejected', sessionId: SESSION, generation: 7, violation: 'generation-without-keyframe' });
+  const tail = r.events.slice(r.events.indexOf('link.webcam.stop failure'));
+  assert.deepEqual(tail.slice(0, 3), ['link.webcam.stop failure', 'socket.destroy', 'bridge.session-ended 0123 malformed-stream']);
+  assert.deepEqual(r.requests('webcam.stop').at(-1)?.payload, { sessionId: SESSION, cause: 'failure', detail: 'stream-malformed' });
+  assert.equal(r.last().session, null);
+  assert.equal(r.last().lastEnded?.reason, 'malformed-stream');
+  // No retry loop: the episode is spent, so nothing is asked again by itself.
+  r.consumers(2);
+  await r.flush();
+  assert.equal(r.requests('webcam.request').length, 1);
+  // And the log names the violation by its token, never a whole id.
+  assert.match(r.logs.join('\n'), /generation-without-keyframe/);
+  assert.equal(r.logs.join('\n').includes(SESSION), false);
+});
+
+test('a stream-rejected naming another or an ended session cannot stop the replacement', T, async () => {
+  const r = rig();
+  r.ready();
+  await toRunning(r);
+  r.consumers(0); // session 1 ends no-consumers; the next episode may ask
+  r.consumers(1);
+  await r.flush();
+  r.controller.onState({ sessionId: SESSION_2, state: 'starting' });
+  r.controller.onState({ sessionId: SESSION_2, state: 'running', generation: 1, facing: 'front' });
+  assert.equal(r.last().session?.sessionId, SESSION_2);
+  const stops = r.requests('webcam.stop').length;
+  // A delayed verdict about session 1, and one about a session nobody here knows.
+  r.bridge().report({ op: 'stream-rejected', sessionId: SESSION, generation: 7, violation: 'unknown-version' });
+  r.bridge().report({ op: 'stream-rejected', sessionId: 'ffffffffffffffffffffffffffffffff', generation: 1, violation: 'unknown-version' });
+  assert.equal(r.last().session?.sessionId, SESSION_2, 'the replacement is untouched');
+  assert.equal(r.last().session?.phase, 'running');
+  assert.equal(r.requests('webcam.stop').length, stops, 'no stop sent for it');
+  assert.equal(r.sockets[1]!.destroyed, false);
+});
+
+test('a stream-rejected before running (the session never went live on the bridge) still ends that exact session', T, async () => {
+  const r = rig();
+  r.ready();
+  r.consumers(1);
+  await r.flush();
+  r.controller.onState({ sessionId: SESSION, state: 'starting' });
+  r.bridge().report({ op: 'stream-rejected', sessionId: SESSION, generation: 0, violation: 'no-start-code' });
+  assert.equal(r.last().session, null);
+  assert.deepEqual(r.requests('webcam.stop').at(-1)?.payload, { sessionId: SESSION, cause: 'failure', detail: 'stream-malformed' });
+});
+
+test('every failure ending names its detail from the closed set; person, no-consumers and shutdown carry none', T, async () => {
+  const seen: Array<Record<string, unknown>> = [];
+  const endings: Array<[string, (r: Rig) => Promise<void> | void]> = [
+    ['person', (r) => r.controller.stop().then(() => undefined)],
+    ['no-consumers', (r) => r.consumers(0)],
+    ['shutdown', (r) => r.controller.lifecycle('lock-screen')],
+    ['bridge-failed', (r) => r.bridge().crash()],
+    ['producer-refused', (r) => r.bridge().report({ op: 'sink', state: 'refused' })],
+    ['device-unavailable', (r) => r.bridge().report({ op: 'sink', state: 'device-not-installed' })],
+    ['stream-malformed', (r) => r.bridge().report({ op: 'stream-rejected', sessionId: SESSION, generation: 7, violation: 'bad-facing' })],
+  ];
+  for (const [name, act] of endings) {
+    const r = rig();
+    r.ready();
+    await toRunning(r);
+    await act(r);
+    const payload = r.requests('webcam.stop').at(-1)?.payload;
+    assert.ok(payload, `${name}: a stop was written`);
+    seen.push(payload);
+    if (payload.cause === 'failure') assert.equal(payload.detail, name, name);
+    else assert.deepEqual(Object.keys(payload).sort(), ['cause', 'sessionId'], `${name}: no detail`);
+  }
+  assert.deepEqual(seen.map((p) => p.cause), ['person', 'no-consumers', 'shutdown', 'failure', 'failure', 'failure', 'failure']);
+});
+
+test('a stream socket that cannot open ends the session as a Mac failure, not a Stop', T, async () => {
+  const r = rig({ openSocketThrows: true });
+  r.ready();
+  r.consumers(1);
+  await r.flush();
+  r.controller.onState({ sessionId: SESSION, state: 'starting' });
+  assert.equal(r.last().session, null);
+  assert.deepEqual(r.requests('webcam.stop').at(-1)?.payload, { sessionId: SESSION, cause: 'failure', detail: 'stream-unavailable' });
+});
+
+test("the phone's own account of a Mac failure is accepted as a wire reason", T, async () => {
+  const r = rig();
+  r.ready();
+  await toRunning(r);
+  r.controller.onState({ sessionId: SESSION, state: 'stopped', reason: 'mac-failed', framesSent: 4, framesDropped: 0 });
+  assert.equal(r.last().lastEnded?.reason, 'mac-failed');
+  assert.equal(r.last().lastEnded?.framesSent, 4);
 });
 
 test('AUs held before running are bounded at 4 with the keyframe rule', T, async () => {

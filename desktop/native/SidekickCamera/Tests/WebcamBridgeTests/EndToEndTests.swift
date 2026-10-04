@@ -205,11 +205,13 @@ final class Rig {
         rig.phone.generation = 1
         try rig.send(keyframe: true)                       // an older generation of this one
         rig.phone.generation = 3
-        try rig.send()                                     // a switch outran its `running`: not a keyframe
-        try rig.send(keyframe: true)                       // its IDR: adopted
+        try rig.send(keyframe: true)                       // a switch outran its `running`: adopted from its IDR
         rig.pump()
         let c = rig.bridge.countsSnapshot()
-        #expect(c["gate.otherSession"] == 1 && c["gate.staleGeneration"] == 1 && c["gate.awaitingKeyframe"] == 1)
+        // Every one a drop, none fatal: the live session survives all of them. (A generation whose
+        // first AU is not an IDR is fatal instead — FatalInput.aGenerationThatDoesNotStartWithAnIDR….)
+        #expect(c["gate.otherSession"] == 1 && c["gate.staleGeneration"] == 1 && c["gate.malformed"] == 0)
+        #expect(rig.bridge.gateSnapshot.live == LIVE)
         #expect(c["accepted"] == 2 && c["sinkEnqueued"] == 2)
         #expect(rig.bridge.gateSnapshot.highestGeneration == 3)
         #expect(rig.bridge.invariantHolds)
@@ -224,11 +226,27 @@ final class Rig {
         guard case .malformed = rig.bridge.handle(BridgeRecord(type: .accessUnit, body: Data(count: 10))) else { Issue.record("short AU record"); return }
         guard case .malformed = rig.bridge.handle(BridgeRecord(type: .status, body: Data("{}".utf8))) else { Issue.record("status in"); return }
         guard case .malformed = rig.bridge.handle(BridgeRecord(type: .control, body: Data("x".utf8))) else { Issue.record("bad json"); return }
-        // A well-formed record carrying a malformed AU is a counted drop, not a crash.
+        // A well-formed record carrying a malformed AU **of the live session** ends that session:
+        // the sink stopped, the picture cleared, and one `stream-rejected` bound to its id. No crash,
+        // no exit, no retry (docs/protocol.md → The Mac's local contract).
         var bad = [UInt8](try rig.send(keyframe: true)); bad[13] = 9
+        rig.pump()
+        #expect(rig.tick().picture == .fresh)
+        _ = rig.bridge.handle(BridgeRecord(type: .accessUnit, body: ControlCodec.accessUnitBody(session: LIVE, frame: Data(bad))))
         _ = rig.bridge.handle(BridgeRecord(type: .accessUnit, body: ControlCodec.accessUnitBody(session: LIVE, frame: Data(bad))))
         rig.pump()
         #expect(rig.bridge.countsSnapshot()["gate.malformed"] == 1)
+        #expect(rig.bridge.countsSnapshot()["gate.endedSession"] == 1)
+        let rejected = rig.statuses.filter { if case .streamRejected = $0 { return true }; return false }
+        #expect(rejected == [.streamRejected(LIVE, generation: 0, fault: .unknownVersion)])
+        #expect(rig.statuses.last == .streamRejected(LIVE, generation: 0, fault: .unknownVersion))
+        #expect(rig.statuses.contains(.sink(.idle)))
+        #expect(rig.bridge.gateSnapshot.live == nil)
+        #expect(rig.tick().picture == .off)
+        // The status as main reads it: fixed tokens, no error text.
+        let json = try JSONSerialization.jsonObject(with: rejected[0].json) as! [String: Any]
+        #expect(json["op"] as? String == "stream-rejected" && json["violation"] as? String == "unknown-version")
+        #expect(json["sessionId"] as? String == LIVE.hex && json["generation"] as? Int == 0)
         // An oversized record is refused from its 4-byte prefix.
         var dec = RecordDecoder()
         #expect(throws: RecordError.lengthOverCap(0x7FFF_FFFF)) { _ = try dec.feed(Data([0x7F, 0xFF, 0xFF, 0xFF])) }

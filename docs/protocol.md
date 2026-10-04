@@ -890,6 +890,7 @@ reconfiguration (a size change on the quality ladder).
 | `camera-unavailable` | no camera of that facing, or it failed to open |
 | `camera-in-use` | another app holds the camera, or a policy disables it |
 | `stopped-by-mac` | `webcam.stop` with cause `person` or `shutdown` |
+| `mac-failed` | `webcam.stop` with cause `failure`: the Mac could not continue the session. **Its `message` says the Mac ended it because something failed there, never that anyone pressed Stop** (added 2026-10-04) |
 | `no-consumers` | `webcam.stop` with cause `no-consumers` |
 | `stopped-on-phone` | the owner tapped Stop |
 | `left-screen` | the phone's webcam screen stopped being visible (Home, another app, lock, screen off) |
@@ -902,13 +903,35 @@ on its own screen and log only), as in Camera v1.
 
 ### `webcam.stop`
 
-**Request, Mac → phone.** `{"sessionId":"…","cause":"person"}`.
+**Request, Mac → phone.** `{"sessionId":"…","cause":"person"}`, or for a failure on the Mac
+`{"sessionId":"…","cause":"failure","detail":"stream-malformed"}`.
 
 | `cause` | The Mac sends it when | The phone's `reason` |
 |---|---|---|
 | `person` | the person stopped it from the Mac: the Camera pane, the tray or the menu-bar item | `stopped-by-mac` |
 | `no-consumers` | the consumer count reached zero (rule 6) | `no-consumers` |
 | `shutdown` | a privacy or lifecycle event on the Mac: sleep, screen lock, a fast user switch, Sidekick quitting, or the webcam development switch turned off | `stopped-by-mac` |
+| `failure` | **the Mac could not continue the session**: something on the Mac failed, listed by `detail` below | `mac-failed` |
+
+`failure` was added on 2026-10-04, as a correction to W3 before any phone implemented this namespace.
+Until then a Mac-side failure was sent as `shutdown`, which the phone words as the Mac stopping it on
+purpose. A failure is not a choice anyone made, and the phone's owner deserves the difference.
+
+`detail` travels with `failure` and only with it. It is a closed set:
+
+| `detail` | What failed on the Mac |
+|---|---|
+| `stream-malformed` | the stream broke the access-unit contract — framed by Electron main, or rejected by the bridge (`stream-rejected`, below) |
+| `stream-unavailable` | the stream socket could not be opened |
+| `bridge-failed` | the camera bridge exited, crashed, or broke its output contract |
+| `producer-refused` | Sidekick Camera refused the bridge as its picture source |
+| `device-unavailable` | Sidekick Camera stopped being available on the Mac |
+| `no-answer` | the request outlived its expiry by 5 seconds with no `stopped` from the phone |
+
+**The phone never displays `detail`, or any other string from a stop.** It chooses its own sentence
+from the closed set. A `detail` it does not know, or none, reads as unspecified and gets the generic
+sentence; that is not a `BAD_REQUEST`, because a stop naming a newer failure must still stop. A
+`detail` beside any other `cause` is ignored.
 
 `cause` is required. An unknown or missing value is `BAD_REQUEST`, and the session is **still stopped**:
 a malformed stop never leaves a camera running.
@@ -918,8 +941,8 @@ The ack, the idempotence and the ordering are Camera v1's:
 - `{"stopped":true}` or `{"stopped":false}`;
 - **the Mac writes `webcam.stop` first, then closes its stream socket in the same moment, and does not
   wait for the ack;**
-- the phone re-attributes a `stream-closed` ending to the stop's reason when that exact session's stop
-  arrives with no newer request begun;
+- the phone re-attributes a `stream-closed` ending to the stop's reason (`stopped-by-mac`,
+  `no-consumers` or `mac-failed`) when that exact session's stop arrives with no newer request begun;
 - another control session's `sessionId` is `UNAUTHORIZED` and changes nothing.
 
 ### `webcam.switch`
@@ -987,7 +1010,10 @@ sides' readers will be.
 mirroring at the source would make text read backwards for everyone else. That is why there is no
 mirror flag. **This differs deliberately from Camera v1's pane**, which mirrors the front camera.
 
-**The Mac closes the stream on a malformed AU**, and shows an error rather than resyncing:
+**The Mac closes the stream on a malformed AU**, shows an error rather than resyncing, and ends the
+session with `webcam.stop` `failure` `stream-malformed`. Electron main closes on what it frames itself
+(the length, the flags, the version, the codec, generation 0). Everything else is checked by the bridge,
+which reports it as `stream-rejected` ([The Mac's local contract](#the-macs-local-contract-electron-main--bridge--extension)):
 
 - a length over 2 MiB;
 - a payload under 21 bytes (the header, a 4-byte start code and one NAL header byte);
@@ -995,7 +1021,7 @@ mirror flag. **This differs deliberately from Camera v1's pane**, which mirrors 
 - facing over 2, or rotation over 3;
 - a reserved bit set, in either header;
 - width or height odd, under 16 or over 3840;
-- generation 0, or lower than one already seen in this session;
+- generation 0;
 - a sequence that does not increase;
 - an AU not starting with a start code;
 - flags claiming an IDR or SPS/PPS that the AU's NAL units do not contain;
@@ -1004,6 +1030,11 @@ mirror flag. **This differs deliberately from Camera v1's pane**, which mirrors 
 **A PTS that does not increase within a generation is not malformed.** That AU is dropped and counted
 `outOfOrder`. The picture's timeline is the Mac's own clock (below), so a capture-clock hiccup costs one
 frame, not the session.
+
+**Nor is a generation below the newest the Mac knows of.** That AU is dropped as stale. `running`
+travels on the control connection and can overtake the last AUs of the generation it replaces, so an
+older generation arriving late is ordinary. (Until 2026-10-04 this list said "lower than one already
+seen" was malformed, while both of the Mac's readers dropped it; the list now says what they do.)
 
 ### What the Mac publishes: formats, orientation, timestamps
 
@@ -1097,12 +1128,26 @@ there is nothing for another process to connect to.
 | `ready` | `{device, producerIdentity}`, **once, first, at startup** (added 2026-10-04, W3). `device` is `installed` or `not-installed` — whether CoreMediaIO lists Sidekick Camera. `producerIdentity` is `configured` or `unconfigured` — whether this build carries a Team ID for the producer requirement. `unconfigured` means the extension refuses every producer (fail closed), so **main sends no `webcam.request` while either value is the second one**. It is the bridge's compiled constant, not a reading of the extension's verdict; a refused sink still arrives as `sink` `refused` |
 | `consumers` | `{count}`, on every change of the extension's consumer count |
 | `session-ended` | `{sessionId, reason:"no-consumers"}`: the bridge ended a session locally because the count reached 0. Main still sends `webcam.stop` |
+| `stream-rejected` | `{sessionId, generation, violation}`: an access unit **of the live session** broke the access-unit contract (added 2026-10-04, W3 correction). The bridge has already ended that session locally — sink stopped, queue flushed, picture back to the camera-off card, id remembered — and sends this **at most once** per session. Main ends it with `webcam.stop` `failure` `stream-malformed` and does not ask again. `violation` is a closed set of fixed tokens (`docs/fixtures/webcam-vocabulary-v1.json`, `streamFaults`), never an error's text. `generation` is 0 when the AU could not be read far enough to say. **Main acts on it only when `sessionId` is its current session's**: a late verdict about an ended session cannot stop its replacement |
 | `sink` | `{state}`: `device-not-installed`, `refused`, `idle` or `feeding` |
 | `counts` | every 5 s: every counter, each beside its denominator |
 
-The bridge accepts an AU only when all of these hold:
+The bridge decides **whose** AU it is before it reads a byte of it. An AU for no live session, an ended
+session or another session is dropped and counted, and is never parsed — so nothing in it can end
+anything. For the live session's AUs:
+
+- **fatal, `stream-rejected`:** anything the access-unit section lists as malformed, including a
+  sequence that does not increase and a generation whose first AU is not an IDR with SPS and PPS.
+  Electron main applies the same keyframe rule at its own bound, so a generation's first AU *reaching
+  the bridge* is always an IDR unless the phone broke the contract;
+- **dropped and counted, the session continues:** a generation below the highest seen (stale), a PTS
+  that does not increase (`outOfOrder`), and every non-IDR while the decoder waits for an IDR after a
+  Mac-side drop (`awaitingKeyframe`).
+
+So the bridge accepts an AU only when all of these hold:
 
 - its `sessionId` is the live one;
+- it is well formed, and keeps the stream rules;
 - its generation is not below the highest seen;
 - its decoder has seen an IDR since the last drop.
 

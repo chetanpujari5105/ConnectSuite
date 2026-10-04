@@ -1,0 +1,634 @@
+TAP version 13
+# Subtest: no bridge helper: nothing is sent and the reason is said
+ok 1 - no bridge helper: nothing is sent and the reason is said
+  ---
+  duration_ms: 0.878083
+  type: 'test'
+  ...
+# Subtest: Sidekick Camera not installed: consumers cannot arrive, Ask phone is refused with a sentence, nothing is sent
+ok 2 - Sidekick Camera not installed: consumers cannot arrive, Ask phone is refused with a sentence, nothing is sent
+  ---
+  duration_ms: 0.220584
+  type: 'test'
+  ...
+# Subtest: no producer identity in this build: fail closed — no request, automatic or asked
+ok 3 - no producer identity in this build: fail closed — no request, automatic or asked
+  ---
+  duration_ms: 3.282
+  type: 'test'
+  ...
+# Subtest: a bridge process that has not said ready is not a reason to ask
+ok 4 - a bridge process that has not said ready is not a reason to ask
+  ---
+  duration_ms: 0.421333
+  type: 'test'
+  ...
+# Subtest: no consumers: a ready bridge and an able phone send nothing by themselves
+ok 5 - no consumers: a ready bridge and an able phone send nothing by themselves
+  ---
+  duration_ms: 0.402959
+  type: 'test'
+  ...
+# Subtest: enumeration alone causes no request and no capture: listing, opening and formats are not consumers
+ok 6 - enumeration alone causes no request and no capture: listing, opening and formats are not consumers
+  ---
+  duration_ms: 0.448917
+  type: 'test'
+  ...
+# Subtest: an older phone (no capability, or no negotiated ext) gets no webcam.* at all, and the pane says update
+ok 7 - an older phone (no capability, or no negotiated ext) gets no webcam.* at all, and the pane says update
+  ---
+  duration_ms: 0.617
+  type: 'test'
+  ...
+# Subtest: the phone listing webcam as unavailable: its reason is shown and nothing is sent
+ok 8 - the phone listing webcam as unavailable: its reason is shown and nothing is sent
+  ---
+  duration_ms: 0.360375
+  type: 'test'
+  ...
+# Subtest: no phone connected: a consumer episode sends nothing, and a later reconnect does not ask for it
+ok 9 - no phone connected: a consumer episode sends nothing, and a later reconnect does not ask for it
+  ---
+  duration_ms: 0.570333
+  type: 'test'
+  ...
+# Subtest: request → approval → frames → Stop: one request, socket only after the tap, AUs only after running, stop first
+ok 10 - request → approval → frames → Stop: one request, socket only after the tap, AUs only after running, stop first
+  ---
+  duration_ms: 12.584
+  type: 'test'
+  ...
+# Subtest: multiple consumers: no second request; only the last one leaving stops — at once, before any ack
+ok 11 - multiple consumers: no second request; only the last one leaving stops — at once, before any ack
+  ---
+  duration_ms: 1.53425
+  type: 'test'
+  ...
+# Subtest: a no-consumers ending does not spend anything: the next episode asks again
+ok 12 - a no-consumers ending does not spend anything: the next episode asks again
+  ---
+  duration_ms: 0.897667
+  type: 'test'
+  ...
+# Subtest: the bridge ending a session for no consumers makes main send webcam.stop no-consumers
+ok 13 - the bridge ending a session for no consumers makes main send webcam.stop no-consumers
+  ---
+  duration_ms: 0.494375
+  type: 'test'
+  ...
+# Subtest: Ask phone with no consumer: allowed, and the session is stopped no-consumers as it goes live
+ok 14 - Ask phone with no consumer: allowed, and the session is stopped no-consumers as it goes live
+  ---
+  duration_ms: 0.364167
+  type: 'test'
+  ...
+# Subtest: declined spends the episode: consumer changes inside it ask nothing more
+ok 15 - declined spends the episode: consumer changes inside it ask nothing more
+  ---
+  duration_ms: 0.798125
+  type: 'test'
+  ...
+# Subtest: expired spends the episode: consumer changes inside it ask nothing more
+ok 16 - expired spends the episode: consumer changes inside it ask nothing more
+  ---
+  duration_ms: 1.04375
+  type: 'test'
+  ...
+# Subtest: stopped-on-phone spends the episode: consumer changes inside it ask nothing more
+ok 17 - stopped-on-phone spends the episode: consumer changes inside it ask nothing more
+  ---
+  duration_ms: 2.68375
+  type: 'test'
+  ...
+# Subtest: left-screen spends the episode: consumer changes inside it ask nothing more
+ok 18 - left-screen spends the episode: consumer changes inside it ask nothing more
+  ---
+  duration_ms: 0.527709
+  type: 'test'
+  ...
+# Subtest: capture-failed spends the episode: consumer changes inside it ask nothing more
+ok 19 - capture-failed spends the episode: consumer changes inside it ask nothing more
+  ---
+  duration_ms: 0.440875
+  type: 'test'
+  ...
+# Subtest: too-hot spends the episode: consumer changes inside it ask nothing more
+ok 20 - too-hot spends the episode: consumer changes inside it ask nothing more
+  ---
+  duration_ms: 0.401042
+  type: 'test'
+  ...
+# Subtest: expiry with no word from the phone: ended here after expiry + slack, withdrawn, and spent
+not ok 21 - expiry with no word from the phone: ended here after expiry + slack, withdrawn, and spent
+  ---
+  duration_ms: 2.519792
+  type: 'test'
+  location: '/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:2:10621'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+    +   cause: 'shutdown',
+    -   cause: 'failure',
+    -   detail: 'no-answer',
+        sessionId: '0123456789abcdef0123456789abcdef'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    sessionId: '0123456789abcdef0123456789abcdef'
+    cause: 'failure'
+    detail: 'no-answer'
+  actual:
+    sessionId: '0123456789abcdef0123456789abcdef'
+    cause: 'shutdown'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:257:10)
+    async Test.run (node:internal/test_runner/test:1125:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+  ...
+# Subtest: a refusal (CAMERA_BUSY) spends the episode — no retry loop
+ok 22 - a refusal (CAMERA_BUSY) spends the episode — no retry loop
+  ---
+  duration_ms: 1.0435
+  type: 'test'
+  ...
+# Subtest: Cancel during the ack: nothing opens, and the late ack is withdrawn with the cancel's cause
+ok 23 - Cancel during the ack: nothing opens, and the late ack is withdrawn with the cancel's cause
+  ---
+  duration_ms: 0.642916
+  type: 'test'
+  ...
+# Subtest: Ask phone during a withdrawal waits for it, then sends exactly one request
+ok 24 - Ask phone during a withdrawal waits for it, then sends exactly one request
+  ---
+  duration_ms: 0.651959
+  type: 'test'
+  ...
+# Subtest: rapid consumer changes during an ack: one request in flight, withdrawn no-consumers, then one for the newest episode
+ok 25 - rapid consumer changes during an ack: one request in flight, withdrawn no-consumers, then one for the newest episode
+  ---
+  duration_ms: 0.893042
+  type: 'test'
+  ...
+# Subtest: replacement sessions and stale generations: only the current session, connection and generation count
+ok 26 - replacement sessions and stale generations: only the current session, connection and generation count
+  ---
+  duration_ms: 1.221708
+  type: 'test'
+  ...
+# Subtest: disconnect and reconnect: ended without a wire stop, consent not reused, no automatic re-request
+ok 27 - disconnect and reconnect: ended without a wire stop, consent not reused, no automatic re-request
+  ---
+  duration_ms: 0.93025
+  type: 'test'
+  ...
+# Subtest: a session ended by this Mac's own Disconnect says so
+ok 28 - a session ended by this Mac's own Disconnect says so
+  ---
+  duration_ms: 0.343792
+  type: 'test'
+  ...
+# Subtest: suspend: webcam.stop shutdown at once, nothing forwarded after, the episode spent
+ok 29 - suspend: webcam.stop shutdown at once, nothing forwarded after, the episode spent
+  ---
+  duration_ms: 0.586625
+  type: 'test'
+  ...
+# Subtest: lock-screen: webcam.stop shutdown at once, nothing forwarded after, the episode spent
+ok 30 - lock-screen: webcam.stop shutdown at once, nothing forwarded after, the episode spent
+  ---
+  duration_ms: 0.535541
+  type: 'test'
+  ...
+# Subtest: user-switch: webcam.stop shutdown at once, nothing forwarded after, the episode spent
+ok 31 - user-switch: webcam.stop shutdown at once, nothing forwarded after, the episode spent
+  ---
+  duration_ms: 0.45925
+  type: 'test'
+  ...
+# Subtest: quit and the development switch off stop the session and the bridge
+ok 32 - quit and the development switch off stop the session and the bridge
+  ---
+  duration_ms: 0.539667
+  type: 'test'
+  ...
+# Subtest: a bridge crash mid-session stops the phone, and a restarted bridge cannot mint an automatic request
+not ok 33 - a bridge crash mid-session stops the phone, and a restarted bridge cannot mint an automatic request
+  ---
+  duration_ms: 0.750583
+  type: 'test'
+  location: '/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:2:19616'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+    +   cause: 'shutdown',
+    -   cause: 'failure',
+    -   detail: 'bridge-failed',
+        sessionId: '0123456789abcdef0123456789abcdef'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    sessionId: '0123456789abcdef0123456789abcdef'
+    cause: 'failure'
+    detail: 'bridge-failed'
+  actual:
+    sessionId: '0123456789abcdef0123456789abcdef'
+    cause: 'shutdown'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:473:10)
+    async Test.run (node:internal/test_runner/test:1125:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+  ...
+# Subtest: the extension refusing the producer ends the session and blocks every later request
+not ok 34 - the extension refusing the producer ends the session and blocks every later request
+  ---
+  duration_ms: 0.56175
+  type: 'test'
+  location: '/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:2:20445'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+    +   cause: 'shutdown',
+    -   cause: 'failure',
+    -   detail: 'producer-refused',
+        sessionId: '0123456789abcdef0123456789abcdef'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    sessionId: '0123456789abcdef0123456789abcdef'
+    cause: 'failure'
+    detail: 'producer-refused'
+  actual:
+    sessionId: '0123456789abcdef0123456789abcdef'
+    cause: 'shutdown'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:490:10)
+    async Test.run (node:internal/test_runner/test:1125:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+  ...
+# Subtest: a malformed stream closes the session — never resynced, never forwarded
+not ok 35 - a malformed stream closes the session — never resynced, never forwarded
+  ---
+  duration_ms: 1.277
+  type: 'test'
+  location: '/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:2:21167'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+    +   cause: 'shutdown',
+    -   cause: 'failure',
+    -   detail: 'stream-malformed',
+        sessionId: '0123456789abcdef0123456789abcdef'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    sessionId: '0123456789abcdef0123456789abcdef'
+    cause: 'failure'
+    detail: 'stream-malformed'
+  actual:
+    sessionId: '0123456789abcdef0123456789abcdef'
+    cause: 'shutdown'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:510:10)
+    async Test.run (node:internal/test_runner/test:1125:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+  ...
+# Subtest: the bridge rejecting the current session's stream ends it: failure stop first, then socket, then bridge
+not ok 36 - the bridge rejecting the current session's stream ends it: failure stop first, then socket, then bridge
+  ---
+  duration_ms: 0.577625
+  type: 'test'
+  location: '/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:2:21885'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      [
+    +   'bridge.au 0123 seq1'
+    -   'link.webcam.stop failure',
+    -   'socket.destroy',
+    -   'bridge.session-ended 0123 malformed-stream'
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'link.webcam.stop failure'
+    1: 'socket.destroy'
+    2: 'bridge.session-ended 0123 malformed-stream'
+  actual:
+    0: 'bridge.au 0123 seq1'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:522:10)
+    async Test.run (node:internal/test_runner/test:1125:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+  ...
+# Subtest: a stream-rejected naming another or an ended session cannot stop the replacement
+ok 37 - a stream-rejected naming another or an ended session cannot stop the replacement
+  ---
+  duration_ms: 0.532167
+  type: 'test'
+  ...
+# Subtest: a stream-rejected before running (the session never went live on the bridge) still ends that exact session
+not ok 38 - a stream-rejected before running (the session never went live on the bridge) still ends that exact session
+  ---
+  duration_ms: 0.383
+  type: 'test'
+  location: '/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:2:24125'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + {
+    +   facing: 'front',
+    +   generation: 0,
+    +   phase: 'starting',
+    +   sessionId: '0123456789abcdef0123456789abcdef',
+    +   trigger: 'consumer'
+    + }
+    - null
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: ~
+  actual:
+    phase: 'starting'
+    sessionId: '0123456789abcdef0123456789abcdef'
+    trigger: 'consumer'
+    facing: 'front'
+    generation: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:562:10)
+    async Test.run (node:internal/test_runner/test:1125:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+  ...
+# Subtest: every failure ending names its detail from the closed set; person, no-consumers and shutdown carry none
+not ok 39 - every failure ending names its detail from the closed set; person, no-consumers and shutdown carry none
+  ---
+  duration_ms: 1.445042
+  type: 'test'
+  location: '/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:2:24735'
+  failureType: 'testCodeFailure'
+  error: 'stream-malformed: a stop was written'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:583:12)
+    async Test.run (node:internal/test_runner/test:1125:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+  ...
+# Subtest: a stream socket that cannot open ends the session as a Mac failure, not a Stop
+not ok 40 - a stream socket that cannot open ends the session as a Mac failure, not a Stop
+  ---
+  duration_ms: 0.426708
+  type: 'test'
+  location: '/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:2:25949'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+    +   cause: 'shutdown',
+    -   cause: 'failure',
+    -   detail: 'stream-unavailable',
+        sessionId: '0123456789abcdef0123456789abcdef'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    sessionId: '0123456789abcdef0123456789abcdef'
+    cause: 'failure'
+    detail: 'stream-unavailable'
+  actual:
+    sessionId: '0123456789abcdef0123456789abcdef'
+    cause: 'shutdown'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:598:10)
+    async Test.run (node:internal/test_runner/test:1125:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+  ...
+# Subtest: the phone's own account of a Mac failure is accepted as a wire reason
+not ok 41 - the phone's own account of a Mac failure is accepted as a wire reason
+  ---
+  duration_ms: 0.41525
+  type: 'test'
+  location: '/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:2:26443'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'stream-closed'
+    - 'mac-failed'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'mac-failed'
+  actual: 'stream-closed'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/main/webcam.test.ts:606:10)
+    async Test.run (node:internal/test_runner/test:1125:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+  ...
+# Subtest: AUs held before running are bounded at 4 with the keyframe rule
+ok 42 - AUs held before running are bounded at 4 with the keyframe rule
+  ---
+  duration_ms: 0.862292
+  type: 'test'
+  ...
+# Subtest: the log names sessions by an 8-character prefix and never carries a token, a whole session id or frame bytes
+ok 43 - the log names sessions by an 8-character prefix and never carries a token, a whole session id or frame bytes
+  ---
+  duration_ms: 0.434167
+  type: 'test'
+  ...
+# Subtest: records are a 4-byte big-endian length, a type byte and the body
+ok 44 - records are a 4-byte big-endian length, a type byte and the body
+  ---
+  duration_ms: 0.954167
+  type: 'test'
+  ...
+# Subtest: status records split byte by byte and coalesced read the same
+ok 45 - status records split byte by byte and coalesced read the same
+  ---
+  duration_ms: 0.520541
+  type: 'test'
+  ...
+# Subtest: every status op parses to exactly its fields
+not ok 46 - every status op parses to exactly its fields
+  ---
+  duration_ms: 0.165458
+  type: 'test'
+  location: '/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/webcamBridgeRecords.test.ts:2:2847'
+  failureType: 'testCodeFailure'
+  error: 'bridge output: unknown status op "stream-rejected"'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    parseStatus (/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/webcamBridgeRecords.ts:146:13)
+    TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/webcamBridgeRecords.test.ts:67:5)
+    Test.runInAsyncScope (node:async_hooks:228:14)
+    Test.run (node:internal/test_runner/test:1118:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+    Test.postRun (node:internal/test_runner/test:1247:19)
+    Test.run (node:internal/test_runner/test:1175:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+  ...
+# Subtest: stream-rejected carries only the bridge's closed set of violations, read from the shared fixture
+not ok 47 - stream-rejected carries only the bridge's closed set of violations, read from the shared fixture
+  ---
+  duration_ms: 0.193666
+  type: 'test'
+  location: '/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/webcamBridgeRecords.test.ts:2:3941'
+  failureType: 'testCodeFailure'
+  error: 'import_webcamBridgeRecords.STREAM_FAULTS is not iterable'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/webcamBridgeRecords.test.ts:76:24)
+    Test.runInAsyncScope (node:async_hooks:228:14)
+    Test.run (node:internal/test_runner/test:1118:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+    Test.postRun (node:internal/test_runner/test:1247:19)
+    Test.run (node:internal/test_runner/test:1175:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+  ...
+# Subtest: anything off-contract is malformed output — and a spent reader stays spent
+ok 48 - anything off-contract is malformed output — and a spent reader stays spent
+  ---
+  duration_ms: 0.519667
+  type: 'test'
+  ...
+# Subtest: the golden AU: one frame, verbatim, an IDR with SPS and PPS, generation 7
+ok 49 - the golden AU: one frame, verbatim, an IDR with SPS and PPS, generation 7
+  ---
+  duration_ms: 0.856583
+  type: 'test'
+  ...
+# Subtest: split into single bytes and coalesced three-in-one read the same
+ok 50 - split into single bytes and coalesced three-in-one read the same
+  ---
+  duration_ms: 0.298375
+  type: 'test'
+  ...
+# Subtest: a forwarded AU is a copy: the reader moving on cannot change it
+ok 51 - a forwarded AU is a copy: the reader moving on cannot change it
+  ---
+  duration_ms: 0.162292
+  type: 'test'
+  ...
+# Subtest: a length over 2 MiB is refused from the header alone, before any body is buffered
+ok 52 - a length over 2 MiB is refused from the header alone, before any body is buffered
+  ---
+  duration_ms: 0.28525
+  type: 'test'
+  ...
+# Subtest: what main cannot frame closes the stream, and a spent reader stays spent
+ok 53 - what main cannot frame closes the stream, and a spent reader stays spent
+  ---
+  duration_ms: 0.428166
+  type: 'test'
+  ...
+# Subtest: the claim is the token, the word webcam and the session id — 104 bytes — and refuses anything malformed
+ok 54 - the claim is the token, the word webcam and the session id — 104 bytes — and refuses anything malformed
+  ---
+  duration_ms: 0.148791
+  type: 'test'
+  ...
+# Subtest: ext.webcam is advertised only with the development gate (or release flag) open AND the bridge present
+ok 55 - ext.webcam is advertised only with the development gate (or release flag) open AND the bridge present
+  ---
+  duration_ms: 0.137042
+  type: 'test'
+  ...
+# Subtest: KeyframeQueue: bounded, a keyframe replaces what waits, and after a drop only a keyframe passes
+ok 56 - KeyframeQueue: bounded, a keyframe replaces what waits, and after a drop only a keyframe passes
+  ---
+  duration_ms: 0.1215
+  type: 'test'
+  ...
+# Subtest: KeyframeQueue counts a slot held in flight against the bound
+ok 57 - KeyframeQueue counts a slot held in flight against the bound
+  ---
+  duration_ms: 0.079125
+  type: 'test'
+  ...
+# Subtest: the stop vocabulary is the contract's, and failure is a cause of its own
+not ok 58 - the stop vocabulary is the contract's, and failure is a cause of its own
+  ---
+  duration_ms: 1.596458
+  type: 'test'
+  location: '/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/webcamWire.test.ts:2:7466'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+    + {}
+    - {
+    -   'no-consumers': 'no-consumers',
+    -   failure: 'mac-failed',
+    -   person: 'stopped-by-mac',
+    -   shutdown: 'stopped-by-mac'
+    - }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    person: 'stopped-by-mac'
+    no-consumers: 'no-consumers'
+    shutdown: 'stopped-by-mac'
+    failure: 'mac-failed'
+  actual:
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (/Users/chetan/Desktop/ConnectSuite/desktop/src/shared/webcamWire.test.ts:140:10)
+    Test.runInAsyncScope (node:async_hooks:228:14)
+    Test.run (node:internal/test_runner/test:1118:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:787:18)
+    Test.postRun (node:internal/test_runner/test:1247:19)
+    Test.run (node:internal/test_runner/test:1175:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:787:7)
+  ...
+1..58
+# tests 58
+# suites 0
+# pass 46
+# fail 12
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 127.827458

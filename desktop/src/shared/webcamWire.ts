@@ -34,6 +34,45 @@ export const WebcamMessage = Object.freeze({
   SWITCH: 'webcam.switch',
 } as const);
 
+/**
+ * `webcam.stop`'s `cause`, and the phone's `stopped` `reason` each one produces — docs/protocol.md →
+ * `webcam.stop`. Held to `docs/fixtures/webcam-vocabulary-v1.json`, which the phone reads too.
+ *
+ * `failure` was added on 2026-10-04 (W3 correction): before it, a Mac that could not continue — its
+ * stream, its bridge or Sidekick Camera failing — said `shutdown`, which the phone words as the Mac
+ * stopping it on purpose.
+ */
+export const WEBCAM_STOP_REASON_FOR_CAUSE = Object.freeze({
+  person: 'stopped-by-mac',
+  'no-consumers': 'no-consumers',
+  shutdown: 'stopped-by-mac',
+  failure: 'mac-failed',
+} as const);
+export type WebcamStopCause = keyof typeof WEBCAM_STOP_REASON_FOR_CAUSE;
+
+/** `detail` with cause `failure`: what failed on the Mac. A closed set; the phone never displays it. */
+export const WEBCAM_FAILURE_DETAILS = Object.freeze([
+  'stream-malformed',
+  'stream-unavailable',
+  'bridge-failed',
+  'producer-refused',
+  'device-unavailable',
+  'no-answer',
+] as const);
+export type WebcamFailureDetail = (typeof WEBCAM_FAILURE_DETAILS)[number];
+
+/** What a `webcam.stop` carries besides the session: a cause, and a detail only with `failure`. */
+export type WebcamWireStop =
+  | { cause: Exclude<WebcamStopCause, 'failure'> }
+  | { cause: 'failure'; detail: WebcamFailureDetail };
+
+/** The phone's closed set of `stopped` reasons — docs/protocol.md → `webcam.state`. */
+export const WEBCAM_STOPPED_REASONS = Object.freeze([
+  'declined', 'expired', 'permission-denied', 'camera-unavailable', 'camera-in-use', 'stopped-by-mac',
+  'mac-failed', 'no-consumers', 'stopped-on-phone', 'left-screen', 'stream-closed', 'capture-failed',
+  'too-hot',
+] as const);
+
 /** The capability and the `ext` key share one name. */
 export const WEBCAM = 'webcam';
 /** The `ext` version this Mac implements. */

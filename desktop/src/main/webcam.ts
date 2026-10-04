@@ -33,12 +33,15 @@ import type { PhoneRequestError } from '../shared/protocol';
 import {
   KeyframeQueue,
   WEBCAM,
+  WEBCAM_STOPPED_REASONS,
   WebcamMessage,
   WebcamStreamError,
   WebcamStreamReader,
   isSessionId,
   webcamClaim,
+  type WebcamFailureDetail,
   type WebcamFrame,
+  type WebcamWireStop,
 } from '../shared/webcamWire';
 import type { BridgeExit, BridgeHooks, BridgePort } from './webcamBridge';
 import type { BridgeStatus } from '../shared/webcamBridgeRecords';
@@ -51,18 +54,14 @@ export const WEBCAM_PRELIVE_BOUND = 4;
 
 export type WebcamFacing = 'front' | 'back';
 export type WebcamTrigger = 'consumer' | 'person';
-export type WebcamStopCause = 'person' | 'no-consumers' | 'shutdown';
+export type { WebcamStopCause } from '../shared/webcamWire';
 
-/** The phone's closed set (docs/protocol.md → `webcam.state`). */
-const WIRE_REASONS = new Set<string>([
-  'declined', 'expired', 'permission-denied', 'camera-unavailable', 'camera-in-use', 'stopped-by-mac',
-  'no-consumers', 'stopped-on-phone', 'left-screen', 'stream-closed', 'capture-failed', 'too-hot',
-]);
+/** The phone's closed set (docs/protocol.md → `webcam.state`), held to the shared vocabulary fixture. */
+const WIRE_REASONS = new Set<string>(WEBCAM_STOPPED_REASONS);
 
 /** Why a session ended: the phone's set, plus the endings only this side sees. */
 export type WebcamEndReason =
-  | 'declined' | 'expired' | 'permission-denied' | 'camera-unavailable' | 'camera-in-use' | 'stopped-by-mac'
-  | 'no-consumers' | 'stopped-on-phone' | 'left-screen' | 'stream-closed' | 'capture-failed' | 'too-hot'
+  | (typeof WEBCAM_STOPPED_REASONS)[number]
   /** The phone refused the request (`error`), so no session existed. */
   | 'refused'
   /** The request could not be sent or was not answered. */
@@ -181,12 +180,21 @@ interface Session {
   droppedStale: number;
   droppedBridge: number;
   /** Set when the session is abandoned before its ack named it: how to withdraw it once it does. */
-  abandonCause: WebcamStopCause | null;
+  abandonCause: WebcamWireStop | null;
 }
 
 /** What the log line calls a session: its id's first 8 characters. Never the whole id, never a token. */
 function label(sessionId: string | null): string {
   return sessionId ? `webcam session ${sessionId.slice(0, 8)}…` : 'webcam request (no session id yet)';
+}
+
+/** A stop the Mac sends because it could not continue — never worded on the phone as a person's Stop. */
+function failure(detail: WebcamFailureDetail): WebcamWireStop {
+  return { cause: 'failure', detail };
+}
+
+function describeStop(stop: WebcamWireStop): string {
+  return stop.cause === 'failure' ? `failure (${stop.detail})` : stop.cause;
 }
 
 export class WebcamController {
@@ -278,7 +286,7 @@ export class WebcamController {
   async stop(): Promise<WebcamResult> {
     const s = this.session;
     if (!s) return { ok: true };
-    const told = this.end('stopped-by-mac', { wireCause: 'person' });
+    const told = this.end('stopped-by-mac', { wire: { cause: 'person' } });
     if (told) await told;
     return { ok: true };
   }
@@ -306,7 +314,7 @@ export class WebcamController {
   async lifecycle(event: 'suspend' | 'lock-screen' | 'user-switch' | 'quit' | 'dev-switch-off'): Promise<void> {
     if (this.session) {
       this.log.info(`webcam stopping for ${event}`);
-      const told = this.end('mac-shutdown', { wireCause: 'shutdown' });
+      const told = this.end('mac-shutdown', { wire: { cause: 'shutdown' } });
       if (told) await told;
     }
     if (event === 'quit' || event === 'dev-switch-off') await this.stopBridge();
@@ -314,7 +322,7 @@ export class WebcamController {
 
   /** Stops and reaps the bridge. Any session ends first. */
   async stopBridge(): Promise<BridgeExit | null> {
-    if (this.session) this.end('mac-shutdown', { wireCause: 'shutdown' });
+    if (this.session) this.end('mac-shutdown', { wire: { cause: 'shutdown' } });
     const bridge = this.bridge;
     if (!bridge) return null;
     const exit = await bridge.stop();
@@ -382,7 +390,7 @@ export class WebcamController {
       if (this.consumers === 0) {
         // Nobody is watching: the session ends as it goes live (rule 6), and nothing is fed.
         this.log.info(`${label(sessionId)} went live with no consumer; stopping it`);
-        this.end('no-consumers', { wireCause: 'no-consumers' });
+        this.end('no-consumers', { wire: { cause: 'no-consumers' } });
         return;
       }
       const first = s.phase === 'starting';
@@ -441,18 +449,30 @@ export class WebcamController {
       case 'session-ended': {
         const s = this.session;
         if (s && s.sessionId === status.sessionId && status.reason === 'no-consumers') {
-          this.end('no-consumers', { wireCause: 'no-consumers' });
+          this.end('no-consumers', { wire: { cause: 'no-consumers' } });
         }
+        return;
+      }
+      case 'stream-rejected': {
+        // Bound to the exact session: a verdict about an ended or unknown session — a late one, or
+        // one about a session this side already replaced — changes nothing.
+        const s = this.session;
+        if (!s || s.sessionId !== status.sessionId) {
+          this.log.info(`camera bridge rejected the stream of ${label(status.sessionId)}, not the current session; ignored`);
+          return;
+        }
+        this.log.warn(`camera bridge rejected the stream of ${label(status.sessionId)}: ${status.violation} (generation ${status.generation})`);
+        this.end('malformed-stream', { wire: failure('stream-malformed') });
         return;
       }
       case 'sink':
         if (status.state === 'refused') {
           this.producer = 'refused';
           this.log.warn('Sidekick Camera refused this bridge as its producer');
-          if (this.session) this.end('producer-refused', { wireCause: 'shutdown' });
+          if (this.session) this.end('producer-refused', { wire: failure('producer-refused') });
         } else if (status.state === 'device-not-installed') {
           this.device = 'not-installed';
-          if (this.session) this.end('device-not-installed', { wireCause: 'shutdown' });
+          if (this.session) this.end('device-not-installed', { wire: failure('device-unavailable') });
         }
         this.emit();
         return;
@@ -472,7 +492,7 @@ export class WebcamController {
     this.bridgeDetail = this.bridgeState === 'failed' ? `The camera bridge ended unexpectedly (${exit.cause}).` : null;
     // The consumer count and the episode are kept: a bridge started again that reads the same consumers
     // continues this episode rather than beginning one, so a crash cannot mint an automatic request.
-    if (this.session) this.end('bridge-failed', { wireCause: 'shutdown' });
+    if (this.session) this.end('bridge-failed', { wire: failure('bridge-failed') });
     this.emit();
   }
 
@@ -488,7 +508,7 @@ export class WebcamController {
     } else if (count === 0 && this.episode !== null) {
       this.log.info(`webcam consumer episode ${this.episode.id} ended`);
       this.episode = null;
-      if (this.session) this.end('no-consumers', { wireCause: 'no-consumers' });
+      if (this.session) this.end('no-consumers', { wire: { cause: 'no-consumers' } });
     }
     this.emit();
   }
@@ -579,7 +599,7 @@ export class WebcamController {
       // before the abandonment settles so the next request is not refused as busy.
       const cause = s.abandonCause;
       if (sessionId && cause && this.deps.link.isConnected() && this.deps.link.token() === s.token) {
-        this.log.info(`${label(sessionId)} acknowledged after it was abandoned; withdrawing (${cause})`);
+        this.log.info(`${label(sessionId)} acknowledged after it was abandoned; withdrawing (${describeStop(cause)})`);
         await this.sendStop(sessionId, cause);
       }
       done();
@@ -598,7 +618,7 @@ export class WebcamController {
       s.expiryTimer = null;
       if (this.session === s && s.phase === 'awaiting-approval') {
         this.log.warn(`${label(sessionId)} outlived its expiry with no word from the phone; ending it here`);
-        this.end('expired', { wireCause: 'shutdown' });
+        this.end('expired', { wire: failure('no-answer') });
       }
     }, expiresInMs + WEBCAM_EXPIRY_SLACK_MS);
     this.log.info(`${label(sessionId)} awaiting approval on the phone`);
@@ -620,7 +640,7 @@ export class WebcamController {
       socket = this.deps.openSocket(host, webcamClaim(s.token, sessionId));
     } catch (error) {
       this.log.warn(`${label(sessionId)} stream socket could not open: ${error instanceof Error ? error.message : 'error'}`);
-      this.end('stream-lost', { wireCause: 'shutdown' });
+      this.end('stream-lost', { wire: failure('stream-unavailable') });
       return;
     }
     s.socket = socket;
@@ -634,7 +654,7 @@ export class WebcamController {
       } catch (error) {
         const reason = error instanceof WebcamStreamError ? error.reason : 'unreadable';
         this.log.warn(`${label(sessionId)} stream closed: ${reason}`);
-        this.end('malformed-stream', { wireCause: 'shutdown' });
+        this.end('malformed-stream', { wire: failure('stream-malformed') });
         return;
       }
       for (const frame of frames) {
@@ -685,7 +705,8 @@ export class WebcamController {
   private end(
     reason: WebcamEndReason,
     opts: {
-      wireCause?: WebcamStopCause;
+      /** The `webcam.stop` to write; absent when there is nobody to tell or the phone ended it. */
+      wire?: WebcamWireStop;
       counts?: { framesSent: number | null; framesDropped: number | null };
       code?: string;
     },
@@ -694,12 +715,12 @@ export class WebcamController {
     if (!s) return null;
     this.session = null;
     let told: Promise<void> | null = null;
-    if (opts.wireCause) {
+    if (opts.wire) {
       if (s.sessionId) {
-        if (this.deps.link.isConnected() && this.deps.link.token() === s.token) told = this.sendStop(s.sessionId, opts.wireCause);
+        if (this.deps.link.isConnected() && this.deps.link.token() === s.token) told = this.sendStop(s.sessionId, opts.wire);
       } else {
         // Still waiting for the ack: the withdrawal happens when it names the session.
-        s.abandonCause = opts.wireCause;
+        s.abandonCause = opts.wire;
       }
     }
     const socket = s.socket;
@@ -724,7 +745,7 @@ export class WebcamController {
     };
     const b = this.bridgeCounts;
     this.log.info(
-      `${label(s.sessionId)} ended: ${reason}${opts.code ? ` (${opts.code})` : ''}${opts.wireCause ? `, webcam.stop ${opts.wireCause}` : ''} — ` +
+      `${label(s.sessionId)} ended: ${reason}${opts.code ? ` (${opts.code})` : ''}${opts.wire ? `, webcam.stop ${describeStop(opts.wire)}` : ''} — ` +
         `${s.received} AUs received here, ${s.forwarded} forwarded to the bridge, ${s.droppedStale} stale, ` +
         `${s.droppedBridge} not forwarded, ${s.preLive.dropped} dropped before running, ${heldAtEnd} held at the end; ` +
         `phone: ${opts.counts?.framesSent ?? '?'} sent / ${opts.counts?.framesDropped ?? '?'} dropped; ` +
@@ -740,9 +761,9 @@ export class WebcamController {
     s.expiryTimer = null;
   }
 
-  private async sendStop(sessionId: string, cause: WebcamStopCause): Promise<void> {
+  private async sendStop(sessionId: string, stop: WebcamWireStop): Promise<void> {
     try {
-      await this.deps.link.request(WebcamMessage.STOP, { sessionId, cause }, REQUEST_TIMEOUT_MS);
+      await this.deps.link.request(WebcamMessage.STOP, { sessionId, ...stop }, REQUEST_TIMEOUT_MS);
     } catch (error) {
       this.log.warn(`webcam.stop for ${label(sessionId)} failed: ${(error as Error).message?.slice(0, 120) ?? 'error'}`);
     }

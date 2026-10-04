@@ -60,10 +60,30 @@ export function accessUnitRecord(sessionId: string, frame: Buffer): Buffer {
 export type SinkState = 'device-not-installed' | 'refused' | 'idle' | 'feeding';
 const SINK_STATES: ReadonlySet<string> = new Set<SinkState>(['device-not-installed', 'refused', 'idle', 'feeding']);
 
+/**
+ * `stream-rejected`'s `violation` — the bridge's `StreamFault`, a closed set of fixed tokens held to
+ * `docs/fixtures/webcam-vocabulary-v1.json`. Anything else is malformed output: an exception's text is
+ * never accepted in its place.
+ */
+export const STREAM_FAULTS = Object.freeze([
+  'shorter-than-frame-header', 'frame-flags-reserved', 'length-over-cap', 'length-mismatch',
+  'payload-too-short', 'unknown-version', 'unknown-codec', 'bad-facing', 'bad-rotation',
+  'header-reserved-bits', 'bad-dimensions', 'zero-generation', 'no-start-code', 'idr-flag-without-idr',
+  'config-flag-without-config', 'generation-went-backwards', 'sequence-did-not-increase',
+  'generation-without-keyframe',
+] as const);
+export type StreamFault = (typeof STREAM_FAULTS)[number];
+const STREAM_FAULT_SET: ReadonlySet<string> = new Set(STREAM_FAULTS);
+
 export type BridgeStatus =
   | { op: 'ready'; deviceInstalled: boolean; producerIdentityConfigured: boolean }
   | { op: 'consumers'; count: number }
   | { op: 'session-ended'; sessionId: string; reason: string }
+  /**
+   * The live session's stream broke the access-unit contract and the bridge has already ended it.
+   * Bound to that session; `generation` is 0 when the AU could not be read far enough to say.
+   */
+  | { op: 'stream-rejected'; sessionId: string; generation: number; violation: StreamFault }
   | { op: 'sink'; state: SinkState }
   | { op: 'counts'; counts: Record<string, number> }
   | { op: 'error'; error: string };
@@ -122,6 +142,18 @@ export function parseStatus(body: Buffer): BridgeStatus {
       exactKeys(obj, ['op', 'sessionId', 'reason']);
       if (!isSessionId(obj.sessionId)) throw new BridgeOutputError('session-ended.sessionId is not 32 lowercase hex');
       return { op: 'session-ended', sessionId: obj.sessionId, reason: text(obj.reason, 'session-ended.reason') };
+    case 'stream-rejected': {
+      exactKeys(obj, ['op', 'sessionId', 'generation', 'violation']);
+      if (!isSessionId(obj.sessionId)) throw new BridgeOutputError('stream-rejected.sessionId is not 32 lowercase hex');
+      const generation = obj.generation;
+      if (typeof generation !== 'number' || !Number.isInteger(generation) || generation < 0 || generation > 0xffff) {
+        throw new BridgeOutputError('stream-rejected.generation is not 0..65535');
+      }
+      if (typeof obj.violation !== 'string' || !STREAM_FAULT_SET.has(obj.violation)) {
+        throw new BridgeOutputError('stream-rejected.violation is not a known fault');
+      }
+      return { op: 'stream-rejected', sessionId: obj.sessionId, generation, violation: obj.violation as StreamFault };
+    }
     case 'sink':
       exactKeys(obj, ['op', 'state']);
       if (typeof obj.state !== 'string' || !SINK_STATES.has(obj.state)) throw new BridgeOutputError('sink.state is not a known state');

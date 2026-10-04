@@ -1,10 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   BridgeOutputError,
   RECORD_MAX_LENGTH,
   STATUS_MAX_LENGTH,
   StatusRecordReader,
+  STREAM_FAULTS,
   accessUnitRecord,
   controlRecord,
   encodeRecord,
@@ -60,6 +63,23 @@ test('every status op parses to exactly its fields', T, () => {
     op: 'counts', counts: { received: 3, 'gate.malformed': 0 },
   });
   assert.deepEqual(parseStatus(Buffer.from('{"op":"error","error":"malformed-record: x"}')), { op: 'error', error: 'malformed-record: x' });
+  assert.deepEqual(
+    parseStatus(Buffer.from(JSON.stringify({ generation: 0, op: 'stream-rejected', sessionId: ID, violation: 'unknown-version' }))),
+    { op: 'stream-rejected', sessionId: ID, generation: 0, violation: 'unknown-version' },
+  );
+});
+
+test("stream-rejected carries only the bridge's closed set of violations, read from the shared fixture", T, () => {
+  const fixture = JSON.parse(
+    readFileSync(join(__dirname, '../../../docs/fixtures/webcam-vocabulary-v1.json'), 'utf8'),
+  ) as { streamFaults: string[] };
+  assert.deepEqual([...STREAM_FAULTS], fixture.streamFaults);
+  for (const violation of fixture.streamFaults) {
+    assert.equal(
+      (parseStatus(Buffer.from(JSON.stringify({ op: 'stream-rejected', sessionId: ID, generation: 3, violation }))) as { violation: string }).violation,
+      violation,
+    );
+  }
 });
 
 test('anything off-contract is malformed output — and a spent reader stays spent', T, () => {
@@ -79,6 +99,10 @@ test('anything off-contract is malformed output — and a spent reader stays spe
     ['an uppercase session id', status({ op: 'session-ended', sessionId: ID.toUpperCase(), reason: 'x' })],
     ['a counter that is not a count', status({ op: 'counts', counts: { received: '3' } })],
     ['ready with a guessed value', status({ op: 'ready', device: 'maybe', producerIdentity: 'configured' })],
+    // An exception's text is never a violation: only the fixed tokens are.
+    ['a violation outside the closed set', status({ op: 'stream-rejected', sessionId: ID, generation: 1, violation: 'Error: boom at 0x10' })],
+    ['a generation over u16', status({ op: 'stream-rejected', sessionId: ID, generation: 65536, violation: 'unknown-version' })],
+    ['stream-rejected without its session', status({ op: 'stream-rejected', generation: 1, violation: 'unknown-version' })],
   ];
   for (const [name, bytes] of bad) {
     const reader = new StatusRecordReader();

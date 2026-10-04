@@ -323,7 +323,7 @@ test('STAND-IN under the controller (INJECTED device and identity): malformed ou
   await waitFor('the session ended', () => controller.current().session === null);
   assert.equal(controller.current().lastEnded?.reason, 'bridge-failed');
   assert.equal(controller.current().bridge, 'failed');
-  assert.deepEqual(sent.at(-1), { type: 'webcam.stop', payload: { sessionId: SESSION, cause: 'shutdown' } });
+  assert.deepEqual(sent.at(-1), { type: 'webcam.stop', payload: { sessionId: SESSION, cause: 'failure', detail: 'bridge-failed' } });
   assert.equal(sockets[0]!.destroyed, true);
 });
 

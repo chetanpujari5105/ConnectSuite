@@ -266,6 +266,61 @@ public struct StreamValidator: Sendable {
     }
 }
 
+// MARK: - What the bridge reports when the live session's stream breaks the contract
+
+/// A structural or codec-contract violation, as the bridge names it in `stream-rejected`
+/// (docs/protocol.md → The Mac's local contract). **A closed set of fixed tokens**: the record carries
+/// one of these and never an error's text, so nothing the phone sent can reach a log line or a pane
+/// as a string.
+public enum StreamFault: String, Sendable, CaseIterable, Equatable {
+    case shorterThanFrameHeader = "shorter-than-frame-header"
+    case frameFlagsReserved = "frame-flags-reserved"
+    case lengthOverCap = "length-over-cap"
+    case lengthMismatch = "length-mismatch"
+    case payloadTooShort = "payload-too-short"
+    case unknownVersion = "unknown-version"
+    case unknownCodec = "unknown-codec"
+    case badFacing = "bad-facing"
+    case badRotation = "bad-rotation"
+    case headerReservedBits = "header-reserved-bits"
+    case badDimensions = "bad-dimensions"
+    case zeroGeneration = "zero-generation"
+    case noStartCode = "no-start-code"
+    case idrFlagWithoutIDR = "idr-flag-without-idr"
+    case configFlagWithoutConfig = "config-flag-without-config"
+    case generationWentBackwards = "generation-went-backwards"
+    case sequenceDidNotIncrease = "sequence-did-not-increase"
+    case generationWithoutKeyframe = "generation-without-keyframe"
+
+    public init(_ m: MalformedAU) {
+        switch m {
+        case .shorterThanFrameHeader: self = .shorterThanFrameHeader
+        case .frameFlagsReserved: self = .frameFlagsReserved
+        case .lengthOverCap: self = .lengthOverCap
+        case .lengthMismatch: self = .lengthMismatch
+        case .payloadTooShort: self = .payloadTooShort
+        case .unknownVersion: self = .unknownVersion
+        case .unknownCodec: self = .unknownCodec
+        case .badFacing: self = .badFacing
+        case .badRotation: self = .badRotation
+        case .headerReservedBits: self = .headerReservedBits
+        case .badDimensions: self = .badDimensions
+        case .zeroGeneration: self = .zeroGeneration
+        case .noStartCode: self = .noStartCode
+        case .idrFlagWithoutIDR: self = .idrFlagWithoutIDR
+        case .configFlagWithoutConfig: self = .configFlagWithoutConfig
+        }
+    }
+
+    public init(_ v: StreamViolation) {
+        switch v {
+        case .generationWentBackwards: self = .generationWentBackwards
+        case .sequenceDidNotIncrease: self = .sequenceDidNotIncrease
+        case .generationDidNotStartWithKeyframe: self = .generationWithoutKeyframe
+        }
+    }
+}
+
 // MARK: - Big-endian helpers
 
 @inline(__always) func readU16(_ b: [UInt8], _ i: Int) -> UInt16 {

@@ -19,6 +19,9 @@ public enum BridgeStatus: Equatable {
     case ready(deviceInstalled: Bool, producerIdentityConfigured: Bool)
     case consumers(Int)
     case sessionEnded(SessionID, reason: String)
+    /// The live session's stream broke the access-unit contract; the bridge has already ended it.
+    /// Bound to that session's id, sent at most once for it. `generation` 0: not readable.
+    case streamRejected(SessionID, generation: UInt16, fault: StreamFault)
     case sink(SinkState)
     case counts([String: Int])
     case error(String)
@@ -31,6 +34,8 @@ public enum BridgeStatus: Equatable {
                    "producerIdentity": producer ? "configured" : "unconfigured"]
         case let .consumers(n): obj = ["op": "consumers", "count": n]
         case let .sessionEnded(id, r): obj = ["op": "session-ended", "sessionId": id.hex, "reason": r]
+        case let .streamRejected(id, g, f):
+            obj = ["op": "stream-rejected", "sessionId": id.hex, "generation": Int(g), "violation": f.rawValue]
         case let .sink(s): obj = ["op": "sink", "state": s.rawValue]
         case let .counts(c): obj = ["op": "counts", "counts": c]
         case let .error(e): obj = ["op": "error", "error": e]
@@ -132,6 +137,12 @@ public final class BridgeCore {
 
     public func accessUnit(session: SessionID, frame: Data) {
         let admission = withGate { $0.admit(session: session, frame: frame) }
+        if case let .reject(_, effects) = admission {
+            // The live session's stream broke the contract: its sink is stopped and the picture
+            // cleared first, then main is told. No retry — the session is buried.
+            apply(effects)
+            return
+        }
         guard case let .accept(au) = admission else { return }
 
         lock.lock()
@@ -224,6 +235,8 @@ public final class BridgeCore {
                 emit(.sessionEnded(id, reason: reason))
             case let .refusedEnded(id):
                 emit(.error("session-live for \(id.hex), a session that already ended: refused, nothing restarted"))
+            case let .reportRejected(id, g, f):
+                emit(.streamRejected(id, generation: g, fault: f))
             }
         }
     }
