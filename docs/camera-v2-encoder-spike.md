@@ -153,7 +153,18 @@ log rotated mid-run; the driver's 150 s overall deadline passed.
    beside it — 1920 × **1088** for 1080p is expected, not a fault.
 9. The phone's capture line selected the same size the stream carried.
 10. Accounting: every AU the probe received is accepted or dropped with a cause, every accepted AU ends
-    decoded / dropped at the decode bound / failed, and nothing is pending.
+    in exactly one of BridgeCore's terminal dispositions — dropped at the decode bound, failed to decode,
+    failed to compose, discarded because its session ended (before **or after** decoding), or handed to
+    the sink — and nothing is pending.
+
+    **Corrected 2026-10-04, scorer version 2.** As pre-registered (version 1, `e3fea6a`) this criterion
+    counted *decoded* as an ending. It is not one: a frame decoding when the Stop lands is decoded and
+    then discarded at the session check, so version 1 counted it twice, and failed the 19:57 IST run on
+    368 against 367. The run's verdict stays **FAIL**; its re-score under version 2 is a separate,
+    post-hoc record (`docs/evidence/camera-v2-encoder-spike-2026-10-04/rescore-v2.json`). No other
+    criterion and no bound changed. The terminal set is `TERMINAL_DISPOSITIONS` in
+    `scripts/webcam-spike-core.mjs`, checked against `BridgeCore.invariantHolds` by test, and scored
+    against counts the real `BridgeCore` produced (`docs/fixtures/webcam-spike-accounting-v1.json`).
 
 **Stop and release**
 11. The **planned** Stop ended it, at **14.5–16.5 s** (so never the 20 s cap).
@@ -189,8 +200,16 @@ failure**: it is the phone's answer, reported as such (contract: never rounded u
 - **Kept** in the report: integers from the probe and from main; timings; the session id's first 8
   characters; the phone's closed-set reasons; the phone's `[webcam]` log lines **for this session**, with
   the Mac's device name replaced by `<peer>`; camera-client samples (package names); the route.
+- **How the name is removed** (corrected 2026-10-04 — the first run kept it on its `webcam.stop` line):
+  every phone line shape that names the peer (`PEER_SHAPES`: request, stop, switch, claim refused,
+  attached — a test fails if the Kotlin gains another), then every name this Mac is known by
+  (hostname, `macName()`'s forms, ComputerName, LocalHostName) as a whole token, then a residual check
+  over the whole report that **refuses to write** if any name survives anywhere.
 - The report goes in `docs/evidence/camera-v2-encoder-spike-<date>/` and is committed only with the
-  owner's approval.
+  owner's approval. A report written before that correction is never committed as written: its original
+  is held privately outside version control with its SHA-256, and a copy made by
+  `scripts/webcam-spike-evidence.mjs sanitize` — marked as derived, naming the original's hash — is what
+  the repository holds.
 
 ## 9. What a PASS does not prove
 

@@ -19,7 +19,8 @@
 //    approval is the owner's tap. This never taps, grants or dismisses anything on the phone.
 //  - It calls the run at most once, and the Mac refuses a second run per launch anyway.
 //  - Nothing of the picture is read, kept or written: the report holds the Mac's integers, the phone's
-//    `[webcam]` lines for this session (peer name removed), and camera-client samples.
+//    `[webcam]` lines for this session (peer name removed by shape AND by every name this Mac is known by,
+//    with a residual check before writing), and camera-client samples.
 //  - The phone log is read from a byte offset and inode taken BEFORE the request, cut at the newline byte
 //    (camera-driver-core's `takeWholeLines`); a rotation or truncation is NO READING, never a fallback.
 //  - It refuses to write over an existing report: a report is evidence.
@@ -28,7 +29,8 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { takeWholeLines } from './camera-driver-core.mjs';
-import { BOUNDS, DRIVER_LIMITS, USAGE, parseArgs, parseWebcamLine, verdict } from './webcam-spike-core.mjs';
+import { hostname, userInfo } from 'node:os';
+import { BOUNDS, DRIVER_LIMITS, SCORER_VERSION, USAGE, knownMacNames, parseArgs, parseWebcamLine, sanitizeReport, verdict } from './webcam-spike-core.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PKG = 'com.chetan.connectsuite.debug';
@@ -77,6 +79,14 @@ function macRoute(address) {
 }
 
 const NAV = `document.querySelectorAll('[data-nav]').length`;
+
+/** Read-only: every name this Mac can be known by on the phone (see knownMacNames). */
+function scutil(key) {
+  return new Promise((ok) => execFile('/usr/sbin/scutil', ['--get', key], { timeout: 3000 }, (_e, out) => ok(String(out ?? '').trim())));
+}
+async function macNames() {
+  return knownMacNames({ hostname: hostname(), username: userInfo().username, computerName: await scutil('ComputerName'), localHostName: await scutil('LocalHostName') });
+}
 
 async function main(argv) {
   const args = parseArgs(argv);
@@ -178,7 +188,10 @@ async function main(argv) {
     const capturesAfterStop = stopAtMs === null ? 0 : mine.filter((l) => l.kind === 'capture' && l.seenAtMs > stopAtMs + 2_000).length;
     const phone = { lines: mine, releasedWithinMs, heldDuringObservation, observationSamples, capturesAfterStop, emergencyHome, rotated, otherSessions: lines.filter((l) => l.prefix && l.prefix !== prefix).length };
     const judged = rotated ? { verdict: 'NO READING', reasons: ['the phone log rotated or shrank during the run'], passed: [], info: {} } : verdict(spike, phone);
-    writeFileSync(args.report, JSON.stringify({ runbook: 'docs/camera-v2-encoder-spike.md', verdict: judged, spike, route, phone, startedAt: new Date(t0).toISOString() }, null, 1), { flag: 'wx' });
+    // Sanitized before it touches disk: the shapes, then every name this Mac is known by, then a residual
+    // check that refuses rather than writes a report still carrying one.
+    const { report: clean } = sanitizeReport({ runbook: 'docs/camera-v2-encoder-spike.md', scorer: { version: SCORER_VERSION }, verdict: judged, spike, route, phone, startedAt: new Date(t0).toISOString() }, await macNames());
+    writeFileSync(args.report, JSON.stringify(clean, null, 1), { flag: 'wx' });
     note('finished', { verdict: judged.verdict, reasons: judged.reasons, report: args.report });
     return 0;
   } finally {

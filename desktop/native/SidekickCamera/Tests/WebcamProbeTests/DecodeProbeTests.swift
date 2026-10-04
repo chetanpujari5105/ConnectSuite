@@ -89,9 +89,9 @@ final class ProbeRig {
     var core: BridgeCore!
     var phone = PhoneStandIn()
 
-    init() {
+    init(inner: FrameDecoding = H264Decoder()) {
         let lock = NSLock()
-        core = BridgeCore(sink: ProbeSink(tally: tally), decoder: ProbeDecoder(tally: tally)) { [unowned self] s in
+        core = BridgeCore(sink: ProbeSink(tally: tally), decoder: ProbeDecoder(tally: tally, inner: inner)) { [unowned self] s in
             lock.lock(); statuses.append(s); lock.unlock()
         }
         core.consumersChanged(1)
@@ -100,11 +100,12 @@ final class ProbeRig {
     func live(_ generation: UInt16 = 1) { _ = core.control(.sessionLive(SESSION, generation: generation)) }
 
     /// As the probe's main loop does it: observed on arrival, then handed to the gate.
-    func feed(_ annexB: Data, width: Int, height: Int, session: SessionID = SESSION) {
+    /// `drain: false` leaves the decode stage running, for tests that hold the decoder mid-frame.
+    func feed(_ annexB: Data, width: Int, height: Int, session: SessionID = SESSION, drain: Bool = true) {
         let frame = phone.frame(annexB: annexB, width: width, height: height)
         tally.observe(frame: frame)
         core.accessUnit(session: session, frame: frame)
-        core.drain()
+        if drain { core.drain() }
     }
 
     var c: [String: Int] { core.countsSnapshot().merging(tally.snapshot()) { a, _ in a } }

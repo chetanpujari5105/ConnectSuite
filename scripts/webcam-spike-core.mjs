@@ -96,12 +96,93 @@ export const PHONE_LINE_CONTRACT = Object.freeze([
 ]);
 
 /**
+ * Every phone `[webcam]` line that carries the peer's name (this Mac's device name), as the Kotlin
+ * writes it. `webcam-spike-core.test.mjs` enumerates every `LinkLog` call under the webcam source that
+ * interpolates `peerName` and fails if one has no shape here — the 2026-10-04 run kept the name because
+ * only `request` and `attached` were covered and `webcam.stop` was not.
+ *
+ * Each pattern's name group runs to the LAST separator on the line, never the first: a name containing
+ * the separator must be over-redacted rather than leak its tail. `describe(effects)` (WebcamLogLines)
+ * never writes ": ", which is what makes the last ": " the boundary.
+ */
+export const PEER_SHAPES = Object.freeze([
+  { kind: 'request', fragment: '"webcam.request from ${session.peerName}: ', re: /(webcam\.request from )(.+)(: )/ },
+  { kind: 'stop', fragment: '"webcam.stop from ${session.peerName}: ', re: /(webcam\.stop from )(.+)(: )/ },
+  { kind: 'switch', fragment: '"webcam.switch from ${session.peerName}: ', re: /(webcam\.switch from )(.+)(: )/ },
+  { kind: 'claim-refused', fragment: '"Webcam claim for ${claim.sessionId.take(8)}… from ${channel.session.peerName} refused — " +', re: /(Webcam claim for [0-9a-f]{8}… from )(.+)( refused — )/ },
+  { kind: 'attached', fragment: '"Webcam stream ${sessionId.take(8)}… attached for ${channel.session.peerName}"', re: /(Webcam stream [0-9a-f]{8}… attached for )(.+)()$/ },
+]);
+
+export const PEER = '<peer>';
+
+/** Pure: the line with the peer's name replaced in every shape the phone writes it. Nothing else changes. */
+export function redactPeerShapes(line) {
+  let out = line;
+  for (const { re } of PEER_SHAPES) out = out.replace(re, `$1${PEER}$3`);
+  return out;
+}
+
+/** Names that are not identifying and would match product words (`STOPPED_BY_MAC`, "the Mac"). */
+const GENERIC_NAMES = new Set(['mac', 'macbook', 'imac', 'phone', 'peer']);
+
+/**
+ * Pure: every name this Mac can be known by on the phone — `identity.ts`'s `macName()` (the hostname
+ * without `.local`, or `<user>'s Mac`), the hostname itself, and macOS's ComputerName and LocalHostName.
+ * The caller reads the values; this decides which are names.
+ */
+export function knownMacNames({ hostname = '', username = '', computerName = '', localHostName = '' } = {}) {
+  const raw = [hostname, hostname.replace(/\.local$/, ''), computerName, localHostName];
+  if (username) raw.push(`${username}'s Mac`, `${username}’s Mac`);
+  const names = raw.map((n) => String(n).trim()).filter((n) => n.length >= 3 && !GENERIC_NAMES.has(n.toLowerCase()));
+  return [...new Set(names)].sort((a, b) => b.length - a.length);
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** A name as a whole token: never inside a longer word, so `Mac` can never eat `STOPPED_BY_MAC`. */
+const nameRe = (name) => new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRe(name)}(?![\\p{L}\\p{N}_])`, 'giu');
+
+/** Pure: the shapes, then every known name as a whole token, case-insensitively. Returns the count replaced. */
+export function redactPeerNames(text, names = []) {
+  let out = redactPeerShapes(text);
+  let replaced = out === text ? 0 : 1;
+  for (const n of names) {
+    const re = nameRe(n);
+    const hits = out.match(re)?.length ?? 0;
+    if (hits) { out = out.replace(re, PEER); replaced += hits; }
+  }
+  return { text: out, replaced };
+}
+
+/**
+ * Pure: a report with every string redacted (shapes and known names), and a residual check over the
+ * whole serialised result. Throws rather than return a report in which any known name survives —
+ * a report is evidence, and evidence carrying the owner's device name is not fit to keep in the repo.
+ */
+export function sanitizeReport(report, names) {
+  let replaced = 0;
+  const walk = (v) => {
+    if (typeof v === 'string') { const r = redactPeerNames(v, names); replaced += r.replaced; return r.text; }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+    return v;
+  };
+  const out = walk(report);
+  // Stricter than the replacement on purpose: any occurrence at all, even glued inside another token
+  // where whole-token replacement will not reach it, refuses the report.
+  const text = JSON.stringify(out).toLowerCase();
+  const residual = names.filter((n) => text.includes(n.toLowerCase()) || text.includes(JSON.stringify(n).slice(1, -1).toLowerCase()));
+  if (residual.length) throw new Error(`sanitize: ${residual.length} known name(s) survived redaction — refusing`);
+  return { report: out, replaced };
+}
+
+/**
  * One phone `[webcam]` line, classified. `prefix` is the 8 hex characters the phone prints. The peer's
- * name (this Mac's device name) is never kept: it is replaced before the line is stored.
+ * name (this Mac's device name) is never kept: every shape in `PEER_SHAPES` is replaced before the line
+ * is stored, and the driver runs `sanitizeReport` with the Mac's known names before writing anything.
  */
 export function parseWebcamLine(line) {
   const at = line.slice(0, 29);
-  const clean = line.replace(/(attached for |webcam\.request from )([^:]+?)(:|$)/, '$1<peer>$3');
+  const clean = redactPeerShapes(line);
   let m;
   if ((m = clean.match(/webcam\.request from <peer>/))) return { kind: 'request', prefix: null, at, line: clean };
   if ((m = clean.match(/Start camera tapped for webcam ([0-9a-f]{8})…/))) return { kind: 'tapped', prefix: m[1], at, line: clean };
@@ -126,6 +207,45 @@ export function parseWebcamLine(line) {
 }
 
 const has = (o, k) => o != null && typeof o[k] === 'number';
+
+/**
+ * The scorer's version, written into every report and re-score.
+ *
+ * 1 — the pre-registered rule the 2026-10-04 19:57 IST run was judged by (commit e3fea6a). Its accounting
+ *     summed `probe.decoded` as if decoding were where an AU ends. It is not: `BridgeCore.decodeAndFeed`
+ *     checks the session again AFTER a successful decode and counts `discardedEnded` there, so a frame
+ *     that was decoding when the Stop landed is in `probe.decoded` AND `discardedEnded` — one AU, twice.
+ * 2 — the accounting sums BridgeCore's own terminal dispositions (`TERMINAL_DISPOSITIONS`), which are
+ *     disjoint. That is the only criterion that changed; every bound is version 1's.
+ */
+export const SCORER_VERSION = 2;
+
+/**
+ * Every place an AU the gate accepted can end, and nowhere else — `BridgeCore.invariantHolds`'s
+ * `pastGate`, checked against the Swift source by the test. Each is incremented exactly once per AU, on
+ * the path that ends it: dropped from a full decode stage, failed to decode, failed to compose, discarded
+ * because its session ended (before OR after decoding), or handed to the sink (taken or refused).
+ */
+export const TERMINAL_DISPOSITIONS = Object.freeze(['droppedDecodeQueue', 'decodeErrors', 'composeErrors', 'discardedEnded', 'sinkEnqueued', 'sinkUnavailable']);
+
+/**
+ * Pure: whether every AU is accounted for exactly once. `received = accepted + gate drops`, and
+ * `accepted = the sum of the terminal dispositions`, with nothing pending. A terminal counter the
+ * instrument did not report is a failure, never a zero: an absent count is not evidence of no AUs.
+ */
+export function accounting(c) {
+  const missing = ['received', 'accepted', 'pending', ...TERMINAL_DISPOSITIONS].filter((k) => !has(c, k));
+  const gateDrops = Object.entries(c ?? {}).filter(([k]) => k.startsWith('gate.')).reduce((s, [, v]) => s + v, 0);
+  const terminal = TERMINAL_DISPOSITIONS.reduce((s, k) => s + (c?.[k] ?? 0), 0);
+  const holds = missing.length === 0 && c.received === c.accepted + gateDrops && c.accepted === terminal && c.pending === 0;
+  const parts = TERMINAL_DISPOSITIONS.filter((k) => (c?.[k] ?? 0) > 0).map((k) => `${k} ${c[k]}`).join(', ');
+  const line = holds
+    ? `accounting holds: ${c.received} received = ${c.accepted} accepted + ${gateDrops} gate drops; ${c.accepted} accepted = ${terminal} ended (${parts})`
+    : missing.length
+      ? `accounting cannot be checked: the instrument did not report ${missing.join(', ')}`
+      : `accounting does not hold (received ${c.received}, accepted ${c.accepted}, gate drops ${gateDrops}, ended ${terminal} [${parts}], pending ${c.pending})`;
+  return { holds, missing, received: c?.received, accepted: c?.accepted, gateDrops, terminal, pending: c?.pending, line };
+}
 
 /**
  * The pre-registered verdict (runbook §7). Three outcomes, never folded:
@@ -205,11 +325,9 @@ export function verdict(spike, phone) {
     if (capture && capture.width === header[0] && capture.height === header[1]) ok(`the phone selected ${capture.width}×${capture.height} and the stream carried it`);
     else fail(`the phone's capture line (${capture ? `${capture.width}×${capture.height}` : 'absent'}) does not match the stream (${header.join('×')})`);
 
-    // Accounting: every AU the probe saw is accounted for once.
-    const gateDrops = Object.entries(c).filter(([k]) => k.startsWith('gate.')).reduce((s, [, v]) => s + v, 0);
-    const past = (c['probe.decoded'] ?? 0) + (c.droppedDecodeQueue ?? 0) + (c.decodeErrors ?? 0) + (c.composeErrors ?? 0) + (c.discardedEnded ?? 0);
-    if (c.received === (c.accepted ?? 0) + gateDrops && c.accepted === past && c.pending === 0) ok(`accounting holds: ${c.received} received`);
-    else fail(`accounting does not hold (received ${c.received}, accepted ${c.accepted}, gate drops ${gateDrops}, past the gate ${past}, pending ${c.pending})`);
+    // Accounting: every AU the probe saw is accounted for once (scorer version 2 — see SCORER_VERSION).
+    const acct = accounting(c);
+    if (acct.holds) ok(acct.line); else fail(acct.line);
   }
 
   // 5. The Stop, the release, and nothing after.
@@ -253,4 +371,16 @@ export function verdict(spike, phone) {
   info.rungsRefused = (phone?.lines ?? []).filter((l) => l.kind === 'rung-refused').map((l) => `${l.width}x${l.height}@${l.fps} (${l.why})`);
 
   return { verdict: reasons.length === 0 ? 'PASS' : 'FAIL', reasons, passed, info };
+}
+
+/**
+ * Pure: which criteria a re-score changed — the lines only in `before`, the lines only in `after`,
+ * across both the failures and the passes. A re-score that changes anything but the criterion it was
+ * written for is refused by the caller.
+ */
+export function criteriaChanges(before, after) {
+  const all = (v) => new Set([...(v?.reasons ?? []).map((r) => `FAIL: ${r}`), ...(v?.passed ?? []).map((p) => `PASS: ${p}`)]);
+  const b = all(before);
+  const a = all(after);
+  return { removed: [...b].filter((x) => !a.has(x)), added: [...a].filter((x) => !b.has(x)) };
 }

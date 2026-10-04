@@ -4,10 +4,13 @@
 // decode probe, so the two cannot drift apart silently).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BOUNDS, DRIVER_LIMITS, PHONE_LINE_CONTRACT, parseArgs, parseWebcamLine, verdict } from './webcam-spike-core.mjs';
+import {
+  BOUNDS, DRIVER_LIMITS, PEER, PEER_SHAPES, PHONE_LINE_CONTRACT, SCORER_VERSION, TERMINAL_DISPOSITIONS,
+  accounting, criteriaChanges, knownMacNames, parseArgs, parseWebcamLine, redactPeerNames, redactPeerShapes, sanitizeReport, verdict,
+} from './webcam-spike-core.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const WEBCAM_SRC = join(REPO, 'camera-module/src/main/java/com/chetan/connectsuite/camera/webcam');
@@ -77,7 +80,7 @@ test('phone lines parse, and the Mac’s device name is never kept', () => {
 /** A generated PASS: 15 s at 30 fps, IDR every 2 s, 1080p, the planned Stop, 60 s of nothing. */
 function passing() {
   const counts = {
-    received: 450, accepted: 450, droppedDecodeQueue: 0, decodeErrors: 0, composeErrors: 0, discardedEnded: 0, pending: 0,
+    received: 450, accepted: 450, droppedDecodeQueue: 0, decodeErrors: 0, composeErrors: 0, discardedEnded: 0, sinkEnqueued: 450, sinkUnavailable: 0, pending: 0,
     'gate.noLiveSession': 0, 'gate.endedSession': 0, 'gate.otherSession': 0, 'gate.staleGeneration': 0, 'gate.awaitingKeyframe': 0, 'gate.outOfOrder': 0, 'gate.malformed': 0,
     'probe.arrived': 450, 'probe.decoded': 450, 'probe.decoded.idr': 8, 'probe.decoded.nonIdr': 442,
     'probe.nal.sps': 8, 'probe.nal.pps': 8, 'probe.firstArrivedIsIdrWithConfig': 1, 'probe.firstAcceptedIsIdr': 1,
@@ -201,4 +204,182 @@ test('NO READING is its own outcome: no report, a no-reading, a lost link, the o
   spike.stop = { trigger: 'phone', wire: null, ackStopped: null };
   spike.phoneStopped.reason = 'capture-failed';
   assert.equal(verdict(spike, phone).verdict, 'FAIL');
+});
+
+// ---- Evidence handling: the peer's name (scorer version 2's sitting) --------------------------------
+
+const PEER_LITERAL = /"[^"\n]*(\$peerName|\$\{[^}]*peerName[^}]*\})[^"\n]*"/g;
+/** On-screen copy, never logged — each named here so a new literal anywhere must be classified. */
+const PEER_UI_COPY = [
+  ['WebcamActivity.kt', '"Webcam for ${ui.peerName'],
+  ['WebcamNotifications.kt', '"An app on $peerName'],
+  ['WebcamNotifications.kt', '"$peerName is asking'],
+];
+
+test('every Kotlin literal naming the peer is a log shape the sanitizer covers, or named on-screen copy', () => {
+  let logs = 0;
+  for (const file of readdirSync(WEBCAM_SRC).filter((f) => f.endsWith('.kt'))) {
+    const src = readFileSync(join(WEBCAM_SRC, file), 'utf8');
+    const lines = src.split('\n');
+    for (const m of src.matchAll(PEER_LITERAL)) {
+      const lineNo = src.slice(0, m.index).split('\n').length - 1;
+      const isLog = lines.slice(Math.max(0, lineNo - 3), lineNo + 1).some((l) => l.includes('LinkLog.'));
+      if (isLog) {
+        logs += 1;
+        assert.ok(PEER_SHAPES.some((s) => m[0].startsWith(s.fragment.split('${')[0])), `${file}:${lineNo + 1} logs the peer's name in a shape the sanitizer does not cover: ${m[0]}`);
+      } else {
+        assert.ok(PEER_UI_COPY.some(([f, p]) => f === file && m[0].startsWith(p)), `${file}:${lineNo + 1} names the peer and is neither a covered log shape nor listed copy: ${m[0]}`);
+      }
+    }
+  }
+  assert.equal(logs, PEER_SHAPES.length, 'control: the scan found exactly the log lines the shapes describe');
+});
+
+test('every peer shape is still written by the Kotlin', () => {
+  const src = readFileSync(join(WEBCAM_SRC, 'WebcamEngine.kt'), 'utf8');
+  for (const { kind, fragment } of PEER_SHAPES) assert.ok(src.includes(fragment), `${kind}: WebcamEngine.kt no longer writes ${fragment}`);
+});
+
+// Synthetic device names only. Each carries a hazard: an apostrophe, a curly apostrophe and a diacritic,
+// the separator ": " itself, regex metacharacters, and a dash-joined hostname.
+const NAMES = ["Ada's MacBook Air", 'Zoë’s iMac', 'lab: build-host', 'Mac (2) [test]+?', 'Grace-MBP-14'];
+const SHAPED = (name) => [
+  L(`webcam.request from ${name}: Ack, ShowRequest(screen, person), ArmTimer`),
+  L(`webcam.stop from ${name}: CancelTimers, CloseCapture, CloseStream, ClearRequest, stopped STOPPED_BY_MAC, Ack`),
+  L(`webcam.switch from ${name}: SwitchCapture(front, generation 2), RequestKeyframe(generation 2)`),
+  `2026-10-05T10:00:00.000+05:30 W [webcam] Webcam claim for ${P}… from ${name} refused — not this connection's session, not live, or already claimed`,
+  L(`Webcam stream ${P}… attached for ${name}`),
+];
+
+test('every shape loses the name and keeps everything else, for names that are hostile to a pattern', () => {
+  for (const name of NAMES) {
+    for (const line of SHAPED(name)) {
+      const out = redactPeerShapes(line);
+      assert.ok(out.includes(PEER), `no <peer> in ${out}`);
+      assert.equal(out.includes(name), false, `the name survived: ${out}`);
+      for (const piece of name.split(/[\s:()[\]+?'’-]+/).filter((p) => p.length >= 3)) assert.equal(out.includes(piece), false, `part of the name survived (${piece}): ${out}`);
+      assert.equal(out.replace(PEER, name), line, 'only the name changed');
+    }
+  }
+  assert.equal(parseWebcamLine(SHAPED('lab: build-host')[1]).line.includes('build'), false, 'the parser stores the redacted line');
+});
+
+test('unrelated lines are untouched by the shapes and by the known names', () => {
+  const names = knownMacNames({ hostname: 'Grace-MBP-14.local', username: 'grace', computerName: 'Grace’s MacBook Pro', localHostName: 'Grace-MBP-14' });
+  const unrelated = [
+    L(`Webcam session ${P}… stopped: STOPPED_BY_MAC — 421 sent / 0 dropped`),
+    L('Webcam stream closed: 421 sent / 0 dropped (0 backpressure, 0 oversize), 0 IDR requested'),
+    L(`Webcam capture ${P}… generation 1: back camera 0, 1920x1080 @30 target, 8.0 Mbit/s`),
+    L('camera.stop from Grace-MBP-14x: a Camera v1 line, a different tag and a different name'),
+    '2026-10-05T10:00:00.000+05:30 I [link] package com.grace.connectsuite.debug from the Mac: nothing to do',
+    L('Stopped from the phone: the owner pressed Stop'),
+  ];
+  for (const line of unrelated) {
+    assert.equal(redactPeerShapes(line), line, `a shape touched ${line}`);
+    assert.equal(redactPeerNames(line, names).text, line, `a known name touched ${line}`);
+  }
+  assert.equal(redactPeerNames(L('Session with grace-mbp-14 ended'), names).text, L(`Session with ${PEER} ended`), 'case-insensitive, whole token');
+});
+
+test('known names: macName()’s two forms and macOS’s two, never a generic word', () => {
+  const names = knownMacNames({ hostname: 'Grace-MBP-14.local', username: 'grace', computerName: 'Grace’s MacBook Pro', localHostName: 'Grace-MBP-14' });
+  for (const n of ['Grace-MBP-14.local', 'Grace-MBP-14', 'Grace’s MacBook Pro', "grace's Mac", 'grace’s Mac']) assert.ok(names.includes(n), n);
+  assert.equal(names.length, 5, 'deduplicated');
+  assert.deepEqual(knownMacNames({ hostname: 'Mac', computerName: 'MacBook' }), [], 'a generic name would eat STOPPED_BY_MAC');
+  assert.equal(redactPeerNames(L('stopped STOPPED_BY_MAC'), ['Mac']).text, L('stopped STOPPED_BY_MAC'), 'whole tokens only');
+});
+
+test('a report is sanitized everywhere, and a name glued into another token refuses rather than ships', () => {
+  const names = knownMacNames({ hostname: 'Grace-MBP-14.local', username: 'grace' });
+  const report = { phone: { lines: [parseWebcamLine(SHAPED('Grace-MBP-14')[1])] }, spike: { detail: 'Grace-MBP-14 went to sleep', n: 3 } };
+  const { report: out, replaced } = sanitizeReport(report, names);
+  assert.equal(JSON.stringify(out).toLowerCase().includes('grace'), false);
+  assert.equal(replaced, 1, 'the stored line was already redacted by the parser; the detail is the one left');
+  assert.equal(out.spike.n, 3);
+  assert.throws(() => sanitizeReport({ x: 'xGrace-MBP-14' }, names), /survived redaction/);
+});
+
+// ---- Accounting: scorer version 2 ---------------------------------------------------------------
+
+test('the terminal dispositions are BridgeCore’s own, read from the Swift', () => {
+  const swift = readFileSync(join(REPO, 'desktop/native/SidekickCamera/Sources/WebcamBridge/BridgeCore.swift'), 'utf8');
+  const block = swift.match(/let pastGate = ([\s\S]*?)\n\s*return gateOK/)[1];
+  const keys = [...block.matchAll(/c\["(\w+)"\]!/g)].map((m) => m[1]);
+  assert.deepEqual([...keys].sort(), [...TERMINAL_DISPOSITIONS].sort());
+  assert.equal(SCORER_VERSION, 2);
+});
+
+/** The 2026-10-04 19:57 IST run's counts, verbatim (integers only — nothing identifying). */
+const RUN_2026_10_04 = Object.freeze({
+  received: 421, accepted: 367, pending: 0, 'gate.awaitingKeyframe': 54, 'gate.endedSession': 0, 'gate.malformed': 0, 'gate.noLiveSession': 0,
+  'gate.otherSession': 0, 'gate.outOfOrder': 0, 'gate.staleGeneration': 0, droppedDecodeQueue: 1, decodeErrors: 0, composeErrors: 0,
+  discardedEnded: 1, sinkEnqueued: 365, sinkUnavailable: 0, 'probe.decoded': 366, 'probe.decodeAttempts': 366, 'probe.composedDiscarded': 365,
+});
+
+test('the run’s counts: one AU decoded, then discarded at the session’s door, is counted once', () => {
+  const a = accounting(RUN_2026_10_04);
+  assert.equal(a.holds, true, a.line);
+  assert.equal(a.terminal, 367);
+  assert.match(a.line, /discardedEnded 1, sinkEnqueued 365/);
+});
+
+const LOSSES = [
+  ['a lost AU: one handed to the sink is missing', { sinkEnqueued: 364 }, /does not hold/],
+  ['a double count: discarded at the door AND enqueued', { discardedEnded: 2 }, /does not hold/],
+  ['a gate drop not counted', { 'gate.awaitingKeyframe': 53 }, /does not hold/],
+  ['an AU still pending', { pending: 1 }, /does not hold/],
+  ['a terminal counter not reported', { sinkEnqueued: undefined }, /cannot be checked: .*sinkEnqueued/],
+];
+for (const [what, patch, reason] of LOSSES) {
+  test(`accounting FAILS on ${what}`, () => {
+    const c = { ...RUN_2026_10_04, ...patch };
+    for (const [k, v] of Object.entries(patch)) if (v === undefined) delete c[k];
+    const a = accounting(c);
+    assert.equal(a.holds, false);
+    assert.match(a.line, reason);
+  });
+}
+
+// ---- Accounting against counts the PRODUCTION path produced ------------------------------------------
+// docs/fixtures/webcam-spike-accounting-v1.json is written by the real BridgeCore with the decode probe's
+// decoder and sink (Tests/WebcamProbeTests/AccountingScenarioTests.swift), and a Swift test fails if it
+// drifts from what BridgeCore produces. Nothing below types a count by hand except the corruptions.
+
+const FIXTURE = JSON.parse(readFileSync(join(REPO, 'docs/fixtures/webcam-spike-accounting-v1.json'), 'utf8')).scenarios;
+const REQUIRED = ['ordinary-completion', 'decoded-then-discarded-at-final-check', 'stop-while-decoding-with-frames-waiting', 'decode-queue-drop', 'decode-failure', 'compose-failure'];
+
+test('control: the fixture holds every required scenario and each reached its condition', () => {
+  assert.deepEqual(Object.keys(FIXTURE).sort(), [...REQUIRED].sort());
+  assert.equal(FIXTURE['decoded-then-discarded-at-final-check'].discardedEnded, 1);
+  assert.equal(FIXTURE['stop-while-decoding-with-frames-waiting'].discardedEnded, 3);
+  assert.equal(FIXTURE['decode-queue-drop'].droppedDecodeQueue, 1);
+  assert.equal(FIXTURE['decode-failure'].decodeErrors, 1);
+  assert.equal(FIXTURE['compose-failure'].composeErrors, 1);
+});
+
+for (const name of REQUIRED) {
+  test(`accounting holds on BridgeCore's own counts: ${name}`, () => {
+    const a = accounting(FIXTURE[name]);
+    assert.equal(a.holds, true, a.line);
+  });
+  test(`accounting FAILS when one AU of ${name} is lost or counted twice`, () => {
+    const c = FIXTURE[name];
+    const nonzero = TERMINAL_DISPOSITIONS.find((k) => c[k] > 0);
+    assert.equal(accounting({ ...c, [nonzero]: c[nonzero] - 1 }).holds, false, `lost from ${nonzero}`);
+    for (const k of TERMINAL_DISPOSITIONS) assert.equal(accounting({ ...c, [k]: c[k] + 1 }).holds, false, `double-counted in ${k}`);
+  });
+}
+
+test('why version 1 was wrong, in BridgeCore’s own numbers: a decoded frame can still end elsewhere', () => {
+  // Not the old rule restated — the fact it missed. In these scenarios frames were decoded AND then
+  // ended by the session check or the composer, so `probe.decoded` overlaps a terminal disposition.
+  const overlapping = REQUIRED.filter((n) => FIXTURE[n]['probe.decoded'] > FIXTURE[n].sinkEnqueued + FIXTURE[n].sinkUnavailable);
+  assert.deepEqual(overlapping.sort(), ['compose-failure', 'decoded-then-discarded-at-final-check', 'stop-while-decoding-with-frames-waiting']);
+});
+
+test('criteriaChanges names exactly the lines a re-score moved', () => {
+  const before = { reasons: ['accounting does not hold (x)'], passed: ['one session id acked'] };
+  const after = { reasons: [], passed: ['one session id acked', 'accounting holds: y'] };
+  assert.deepEqual(criteriaChanges(before, after), { removed: ['FAIL: accounting does not hold (x)'], added: ['PASS: accounting holds: y'] });
+  assert.deepEqual(criteriaChanges(after, after), { removed: [], added: [] });
 });
