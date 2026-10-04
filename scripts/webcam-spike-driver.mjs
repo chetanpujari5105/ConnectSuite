@@ -13,8 +13,8 @@
 // Rules this file keeps:
 //  - Every device command goes through `scripts/adb-pinned.sh samsung …`. Device WRITES: none in the
 //    ordinary run. The one exception is the emergency stop — one KEYCODE_HOME if our package still holds a
-//    camera 25 s after the tap, which the Mac's planned Stop (15 s) and hard cap (20 s) should make
-//    impossible. Pressing it is recorded and fails the run.
+//    camera 25 s after capturing began (as this driver saw it), which the Mac's planned Stop (15 s) and hard cap (20 s) should make
+//    impossible. Its 25 s run from when THIS driver first saw the spike's `capturing` phase, on the Mac. Pressing it is recorded and fails the run.
 //  - The request is the Mac's (`window.connect.webcamSpikeRun()`, back camera, trigger "person"); the
 //    approval is the owner's tap. This never taps, grants or dismisses anything on the phone.
 //  - It calls the run at most once, and the Mac refuses a second run per launch anyway.
@@ -160,7 +160,7 @@ async function main(argv) {
         // The driver's own, independent emergency: never relies on the Mac's timers.
         if (startingAtMs !== null && c.read && c.oursActive && now - startingAtMs >= DRIVER_LIMITS.EMERGENCY_MS && !emergencyHome) {
           emergencyHome = true;
-          note('EMERGENCY: our package still holds a camera 25 s after the tap — one KEYCODE_HOME through the pin');
+          note('EMERGENCY: our package still holds a camera 25 s after the driver saw capturing begin — one KEYCODE_HOME through the pin');
           await adb(['shell', 'input', 'keyevent', 'KEYCODE_HOME']).catch((e) => note('emergency Home failed', { error: e.message }));
         }
       }

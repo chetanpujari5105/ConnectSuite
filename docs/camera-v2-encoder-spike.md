@@ -21,9 +21,10 @@ other than the planned Stop, heat, or duration.
 | Requests | **one** — the Mac's runner refuses a second per launch, the driver calls it at most once |
 | Approval | **the owner's own Start camera tap** on the phone. Nothing taps for them |
 | Camera | **back** (rear), fixed in main — the renderer cannot choose |
-| Planned Stop | **15 s** after `starting` (the tap), Mac → `webcam.stop` `person` |
-| Hard cap | **20 s** after `starting`, on its **own** timer in Electron main |
-| Emergency | the driver's, independent of the Mac: if our package still holds a camera **25 s** after the tap, one `KEYCODE_HOME` through the pin — recorded, and it **fails** the run |
+| Anchor | both Mac timers start when **Electron main receives** the phone's `webcam.state starting` (Mac clock, `Date.now()`). That is *after* the owner's tap by an unmeasured phone + network delay; it is never called the tap time, and no Mac time is compared with a phone time. The phone's PTS is used only against itself (fps, IDR spacing) |
+| Planned Stop | **15 s** after that receipt, Mac → `webcam.stop` `person` |
+| Hard cap | **20 s** after the same receipt, on its **own** `setTimeout` in Electron main, armed in the same handler as the Stop |
+| Emergency | the driver's, independent of the Mac: if our package still holds a camera **25 s** after the driver itself first saw the spike's `capturing` phase (its own Mac-side poll, so later than main's anchor), one `KEYCODE_HOME` through the pin — recorded, and it **fails** the run |
 | Observation | **60 s** after the stop, sending nothing; camera clients sampled every 2 s |
 | Not in it | camera switch, mirror / Camera v1 coexistence, lifecycle endings, heat run, a second attempt |
 

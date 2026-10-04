@@ -13,7 +13,10 @@ export const DRIVER_LIMITS = Object.freeze({
   PLANNED_STOP_MS: 15_000,
   HARD_CAP_MS: 20_000,
   OBSERVE_MS: 60_000,
-  /** The driver's own, independent emergency: our package still holding a camera this long after `starting`. */
+  /**
+   * The driver's own, independent emergency: our package still holding a camera this long after the DRIVER
+   * first saw the Mac's spike phase `capturing` (its own clock, polled ~every 0.5 s — never the phone's tap time).
+   */
   EMERGENCY_MS: 25_000,
   /** The whole run, from the run call, before the driver gives up and reports NO READING. */
   OVERALL_MS: 150_000,
@@ -169,9 +172,9 @@ export function verdict(spike, phone) {
   else fail(`generation not exactly 1 throughout (running ×${spike.running?.length ?? 0}, header ${c?.['probe.header.generationMin']}..${c?.['probe.header.generationMax']})`);
 
   // 2. Timing to first picture.
-  if (has(tl, 'runningFromStartingMs') && tl.runningFromStartingMs <= BOUNDS.RUNNING_WITHIN_MS) ok(`running ${tl.runningFromStartingMs} ms after the tap`);
+  if (has(tl, 'runningFromStartingMs') && tl.runningFromStartingMs <= BOUNDS.RUNNING_WITHIN_MS) ok(`running ${tl.runningFromStartingMs} ms after starting reached the Mac`);
   else fail(`running not within ${BOUNDS.RUNNING_WITHIN_MS} ms of starting (${tl.runningFromStartingMs ?? 'never'})`);
-  if (has(tl, 'firstAuFromStartingMs') && tl.firstAuFromStartingMs <= BOUNDS.FIRST_AU_WITHIN_MS) ok(`first AU ${tl.firstAuFromStartingMs} ms after the tap`);
+  if (has(tl, 'firstAuFromStartingMs') && tl.firstAuFromStartingMs <= BOUNDS.FIRST_AU_WITHIN_MS) ok(`first AU ${tl.firstAuFromStartingMs} ms after starting reached the Mac`);
   else fail(`no AU within ${BOUNDS.FIRST_AU_WITHIN_MS} ms of starting (${tl.firstAuFromStartingMs ?? 'never'})`);
 
   // 3. The bitstream: SPS/PPS/IDR first, then P-frames, all decoded by VideoToolbox.

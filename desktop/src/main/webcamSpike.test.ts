@@ -212,7 +212,7 @@ test('the spike: one request, the exact claim, real H.264 decoded by the built p
     { kind: 'stopped', prefix: report.session, reason: 'STOPPED_BY_MAC' },
   ];
   const v = core.verdict(report, { lines: phoneLines, releasedWithinMs: 100, heldDuringObservation: 0, observationSamples: 30, capturesAfterStop: 0, emergencyHome: false });
-  for (const wanted of [/one session id acked/, /attached the claim/, /one generation/, /running \d+ ms after the tap/, /first AU \d+ ms/, /IDR carrying SPS and PPS/, /SPS ×2, PPS ×2/, /SPS read: profile 66/,
+  for (const wanted of [/one session id acked/, /attached the claim/, /one generation/, /running \d+ ms after starting reached the Mac/, /first AU \d+ ms/, /IDR carrying SPS and PPS/, /SPS ×2, PPS ×2/, /SPS read: profile 66/,
     /2 IDR decoded/, /no decode failure/, /no malformed AU/, /header = running = SPS = decoded = 320×180/, /no per-AU dimension mismatch/, /one size throughout/,
     /selected 320×180 and the stream carried it/, /accounting holds: 6 received/, /the planned Stop ended it/, /stopped-by-mac in \d+ ms/, /probe exited 0/, /no state and no AU after the stop/]) {
     assert.ok(v.passed.some((p: string) => wanted.test(p)), `verdict criterion not met on the real report: ${wanted} — passed: ${v.passed.join(' | ')} — failed: ${v.reasons.join(' | ')}`);
