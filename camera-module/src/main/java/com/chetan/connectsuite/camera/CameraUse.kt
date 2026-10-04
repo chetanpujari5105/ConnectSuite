@@ -1,6 +1,7 @@
 package com.chetan.connectsuite.camera
 
 import com.chetan.connectsuite.camera.webcam.OtherCapture
+import com.chetan.connectsuite.core.app.CaptureAdmission
 
 /**
  * One physical camera, two features that may ask for it — Camera v1 (`camera.*`) and Camera v2
@@ -16,8 +17,10 @@ import com.chetan.connectsuite.camera.webcam.OtherCapture
  * It holds no session state of either feature — only a predicate each feature registers about itself.
  * With the webcam not installed, [webcamOpen] stays `{ false }` and Camera v1 behaves exactly as before.
  */
-class CameraUseArbiter {
-    private val lock = Any()
+class CameraUseArbiter(
+    /** `CaptureAdmission.lock` in the app, shared with the mirror's start gate; a private lock in tests. */
+    val lock: Any = Any(),
+) {
 
     /** A webcam request or session is open. Registered by the webcam engine when it is installed. */
     @Volatile
@@ -54,5 +57,5 @@ class CameraUseArbiter {
 
 /** The app's one arbiter. Tests build their own. */
 object CameraUse {
-    val arbiter = CameraUseArbiter()
+    val arbiter = CameraUseArbiter(CaptureAdmission.lock)
 }

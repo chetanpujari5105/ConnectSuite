@@ -238,6 +238,20 @@ blocks on the ack until a picture appears is the bug that produced a blank canva
 The capture geometry that used to be in this ack is now in the `mirror.state` event for
 `running`, which is the first moment it is actually known.
 
+**A start is refused while a webcam request or session is open** (added 2026-10-04 with the webcam's
+app wiring; [Webcam](#webcam-42501-frames-on-42502-by-claim)). The phone answers with the ordinary ack in
+its terminal state, before any consent is asked and without touching the webcam:
+
+```json
+{"state":"stopped","message":"The phone is being used as a webcam for a Mac (Sidekick Camera), so screen mirroring did not start.","fixHint":"Stop the webcam first, then start mirroring again."}
+```
+
+The same refusal answers a Start tapped in the phone's own Mirror tab. A Mac that knows nothing of webcams
+shows the sentence, because it is the shape every refused start already takes. The check and the start are
+one decision with the webcam's own admission (one lock on the phone), so a `mirror.start` and a
+`webcam.request` arriving together admit exactly one. A Camera v1 stream does **not** refuse the mirror —
+unchanged, see [Camera → Coexistence](#coexistence).
+
 `mirror.config` changes bitrate on the live encoder. A change to `maxResolution` cannot be done
 that way — MediaCodec cannot be resized in place — so the phone builds a **new encoder** and points
 its **existing VirtualDisplay** at it, with `VirtualDisplay.resize` and `VirtualDisplay.setSurface`.
@@ -879,14 +893,20 @@ edited for it.
 request and the webcam's are admitted under one lock on the phone, so two requests arriving together on
 two connections cannot each see the other idle: exactly one is put up.
 
-**The mirror, both ways.** A webcam request while a mirror runs or waits for consent is refused (the row
-above). A mirror that **starts between a webcam request and its tap** is preserved: the tap does not open
-the camera, and the session ends `camera-in-use` ("the phone started mirroring before you allowed the
-webcam"). A `mirror.start` while a webcam session is already **running** is the mirror's contract, which
-this section does not change — exactly as for Camera v1, whose notes record the same: the mirror does not
-refuse for a camera stream, and neither capture is stopped for the other. Making the mirror refuse is a
-mirror-contract change, needing the app's wiring (`ConnectSuiteApp` can see both modules) and its own
-approval.
+**The mirror, both ways** (completed 2026-10-04). Whichever is already open — requested, awaiting
+approval or running — is kept, and the newcomer is refused; nothing is ever stopped to make room:
+
+- a webcam request while a mirror runs, waits for consent, is coming up or is being admitted is refused
+  `CAMERA_BUSY` (the row above);
+- a mirror start — `mirror.start`, or Start in the phone's Mirror tab — while a webcam request or session
+  is open is refused with the mirror's own `stopped` ack ([Starting a session](#starting-a-session));
+- both checks and both admissions run under one lock on the phone, so two requests arriving together on
+  two connections admit exactly one.
+
+A mirror can still be found running at the webcam's tap only if it began before the request — which the
+first rule refuses — so the tap's own check (a session that ends `camera-in-use`, "Sidekick started
+mirroring this phone's screen before you allowed the webcam") is a backstop that keeps the mirror rather
+than the newcomer.
 
 ### `webcam.state`
 

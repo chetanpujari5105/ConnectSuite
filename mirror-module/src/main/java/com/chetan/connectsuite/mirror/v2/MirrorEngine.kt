@@ -278,6 +278,26 @@ object MirrorEngine {
      * open across a human being.
      */
     fun start(context: Context, session: ControlSession, request: Envelope, wanted: MirrorConfig) {
+        // A webcam request or session holds the phone: refused before anything of an existing session
+        // is touched, as the ordinary `stopped` ack (docs/protocol.md → Mirror coexistence).
+        val busy = MirrorAdmission.gate.tryBegin()
+        if (busy != null) {
+            LinkLog.w("mirror", "mirror.start from ${session.peerName} refused: ${busy.label} — the webcam session is left as it is")
+            session.ack(request) {
+                put("state", MirrorPhase.STOPPED.wire)
+                put("message", busy.reason)
+                busy.fixHint?.let { put("fixHint", it) }
+            }
+            return
+        }
+        try {
+            startAdmitted(context, session, request, wanted)
+        } finally {
+            MirrorAdmission.gate.end()
+        }
+    }
+
+    private fun startAdmitted(context: Context, session: ControlSession, request: Envelope, wanted: MirrorConfig) {
         val startedAt = System.currentTimeMillis()
         if (isRunning) {
             LinkLog.i("mirror", "mirror.start while already running; restarting")
@@ -367,6 +387,20 @@ object MirrorEngine {
      * learns about through the same `mirror.state` events.
      */
     fun startFromPhone(context: Context) {
+        val busy = MirrorAdmission.gate.tryBegin()
+        if (busy != null) {
+            LinkLog.w("mirror", "Start tapped on the phone refused: ${busy.label} — the webcam session is left as it is")
+            publish(MirrorStatus(phase = MirrorPhase.STOPPED, message = busy.reason, fixHint = busy.fixHint, lastError = busy.reason), toMac = false)
+            return
+        }
+        try {
+            startFromPhoneAdmitted(context)
+        } finally {
+            MirrorAdmission.gate.end()
+        }
+    }
+
+    private fun startFromPhoneAdmitted(context: Context) {
         appContext = context.applicationContext
         MirrorNotifications.clear(context.applicationContext)
 

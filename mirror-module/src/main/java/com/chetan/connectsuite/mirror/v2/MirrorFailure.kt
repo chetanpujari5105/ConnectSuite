@@ -134,6 +134,17 @@ sealed class MirrorFailure(
         fixHint = "If that was a mistake, start mirroring again from your Mac.",
     )
 
+    /**
+     * A webcam request or session (Camera v2) holds the phone, so the mirror did not start — and the
+     * webcam was not stopped to make room (docs/protocol.md → Mirror coexistence). Refused before any
+     * consent is asked and before any state of an existing session is touched.
+     */
+    data object CaptureBusy : MirrorFailure(
+        code = ErrorCode.CAMERA_BUSY,
+        reason = "The phone is being used as a webcam for a Mac (Sidekick Camera), so screen mirroring did not start.",
+        fixHint = "Stop the webcam first, then start mirroring again.",
+    )
+
     /** For logs: one line naming the case, not the prose. */
     val label: String
         get() = when (this) {
@@ -146,5 +157,6 @@ sealed class MirrorFailure(
             is EncoderInitFailed -> "encoder-init-failed"
             is EncoderDied -> "encoder-died"
             VideoChannelUnauthorised -> "video-unauthorised"
+            CaptureBusy -> "capture-busy"
         }
 }

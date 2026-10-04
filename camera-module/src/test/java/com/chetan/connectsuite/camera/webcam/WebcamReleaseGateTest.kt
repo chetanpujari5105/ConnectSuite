@@ -24,6 +24,9 @@ class WebcamReleaseGateTest {
 
     private fun source(path: String) = File(path).readText()
 
+    /** The code, not the prose: comments name these calls and a text search would find the sentence. */
+    private fun code(text: String) = text.replace(Regex("/\\*[\\s\\S]*?\\*/"), "").replace(Regex("//[^\\n]*"), "")
+
     @Test
     fun `a release build never installs the webcam, and release activation is off`() {
         assertFalse(WebcamReleaseGate.allows(debuggable = false))
@@ -32,29 +35,27 @@ class WebcamReleaseGateTest {
         assertTrue("the flag is the only other way in", WebcamReleaseGate.allows(debuggable = false, release = true))
     }
 
-    /** A source scan, because `install` needs a `LinkServer` and a `Context` a JVM test cannot build. */
+    /** `install` needs a `LinkServer` and a `Context`; it must come through the tested `wire`. */
     @Test
-    fun `install consults the gate before taking the claim or registering a handler`() {
-        val body = source("src/main/java/com/chetan/connectsuite/camera/webcam/WebcamFeature.kt").substringAfter("fun install(")
-        val gate = body.indexOf("WebcamReleaseGate.allows(server.debuggable)")
-        val sink = body.indexOf("server.webcamChannelSink =")
-        val register = body.indexOf("server.register(")
-        assertTrue("the gate is not consulted", gate >= 0)
-        assertTrue("the claim is taken before the gate", sink > gate)
-        assertTrue("a handler is registered before the gate", register > gate)
-        assertTrue(body.substring(gate, sink).contains("return false"))
+    fun `install comes through wire, which consults the gate before anything else`() {
+        val feature = source("src/main/java/com/chetan/connectsuite/camera/webcam/WebcamFeature.kt")
+        assertTrue(feature.substringAfter("fun install(").substringBefore("fun wire(").contains("val done = wire("))
+        val wire = feature.substringAfter("fun wire(")
+        val gate = wire.indexOf("WebcamReleaseGate.allows(target.debuggable, release)")
+        assertTrue(gate >= 0)
+        assertTrue(wire.indexOf("installEngine()") > gate)
+        assertTrue(wire.indexOf("target.setWebcamSink") > gate)
+        assertTrue(wire.indexOf("target.register(") > gate)
     }
 
-    /**
-     * Not wired, on purpose: wiring is a separate approval. This fails the day someone wires it, so the
-     * wiring commit has to update this test and say so.
-     */
+    /** Wired since 2026-10-04 (the approved wiring step), through the gated install only. */
     @Test
-    fun `the running app does not install the webcam yet, nor take its claim`() {
-        val app = source("../app/src/main/java/com/chetan/connectsuite/ConnectSuiteApp.kt")
-        assertFalse("the app installs the webcam — update this test in the approved wiring commit", app.contains("WebcamFeature"))
+    fun `the running app installs the webcam through its gated install, and never takes the claim itself`() {
+        val app = code(source("../app/src/main/java/com/chetan/connectsuite/ConnectSuiteApp.kt"))
+        assertTrue(app.contains("WebcamFeature.install(this, link, mirrorBusy = mirrorBusy)"))
         assertFalse(app.contains("webcamChannelSink"))
-        // Control: the file read is the app's, which does install Camera v1.
+        assertFalse("the release flag is not set from the app", app.contains("WEBCAM_RELEASE"))
+        // Control: the file read is the app's, which installs Camera v1 too.
         assertTrue(app.contains("CameraFeature.install(this, link"))
     }
 

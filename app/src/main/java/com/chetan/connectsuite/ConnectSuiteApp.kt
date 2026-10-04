@@ -7,8 +7,10 @@ import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.core.notification.NotificationChannels
 import com.chetan.connectsuite.input.InputFeature
 import com.chetan.connectsuite.mirror.v2.MirrorEngine
-import com.chetan.connectsuite.mirror.v2.MirrorPhase
+import com.chetan.connectsuite.mirror.v2.MirrorAdmission
 import com.chetan.connectsuite.camera.CameraFeature
+import com.chetan.connectsuite.camera.CameraUse
+import com.chetan.connectsuite.camera.webcam.WebcamFeature
 import com.chetan.connectsuite.mirror.v2.MirrorFeature
 import com.chetan.connectsuite.sync.v2.AppsFeature
 import com.chetan.connectsuite.sync.v2.CallFeature
@@ -66,13 +68,17 @@ class ConnectSuiteApp : Application() {
         // advertises `camera`. The lambda is the second place that needs both feature modules: a
         // camera request while the mirror is running or waiting for consent answers CAMERA_BUSY, and
         // the mirror is never stopped to make room.
-        CameraFeature.install(this, link, mirrorBusy = {
-            MirrorEngine.isRunning || MirrorEngine.status.value.phase in setOf(
-                MirrorPhase.AWAITING_FOREGROUND,
-                MirrorPhase.REQUESTING_CONSENT,
-                MirrorPhase.STARTING,
-            )
-        })
+        //
+        // Camera v2, the webcam (docs/protocol.md → Webcam), installed the same way and gated the same
+        // way: WebcamFeature.install installs nothing unless the build is debuggable (WEBCAM_RELEASE is
+        // false), so a release build never advertises `webcam` or `ext.webcam`. CaptureWiring is the one
+        // place the three capture features' admission meets: a mirror start is refused while a webcam
+        // request or session is open, a webcam or camera request is refused while the mirror holds the
+        // phone, and all three decide under one lock. Nothing is ever stopped to make room.
+        CaptureWiring.connect(CameraUse.arbiter, MirrorAdmission.gate)
+        val mirrorBusy = CaptureWiring.mirrorBusy(MirrorAdmission.gate, { MirrorEngine.isRunning }, { MirrorEngine.status.value.phase })
+        CameraFeature.install(this, link, mirrorBusy = mirrorBusy)
+        WebcamFeature.install(this, link, mirrorBusy = mirrorBusy)
 
         // Phase 4. Installed unconditionally like the two above, and for the same reason: a
         // registered handler can answer "here is how to turn this on", and an unregistered one can

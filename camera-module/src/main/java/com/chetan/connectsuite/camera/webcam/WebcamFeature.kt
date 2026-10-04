@@ -6,10 +6,13 @@ import android.content.Context
 import android.os.Bundle
 import com.chetan.connectsuite.camera.CameraActivity
 import com.chetan.connectsuite.core.app.AppForeground
+import com.chetan.connectsuite.core.link.AuthenticatedChannel
+import com.chetan.connectsuite.core.link.ControlSession
 import com.chetan.connectsuite.core.link.Extensions
 import com.chetan.connectsuite.core.link.LinkLog
 import com.chetan.connectsuite.core.link.LinkServer
 import com.chetan.connectsuite.core.link.MessageHandler
+import com.chetan.connectsuite.core.link.SideChannelClaim
 import com.chetan.connectsuite.core.protocol.MessageType
 
 /**
@@ -30,6 +33,26 @@ object WebcamReleaseGate {
  * nor serves `webcam`. The sink goes first, for `MirrorFeature`'s reason: the last `register` then sees
  * both halves of the contract in place.
  */
+/**
+ * The slice of `LinkServer` the webcam's wiring touches — so a JVM test drives the production [WebcamFeature.wire]
+ * against a recorder and reads back exactly what the link would advertise.
+ */
+interface WebcamLinkTarget {
+    val debuggable: Boolean
+    fun setWebcamSink(sink: (AuthenticatedChannel, SideChannelClaim.Webcam) -> Unit)
+    fun addSessionEndedListener(listener: (ControlSession) -> Unit)
+    fun register(type: String, handler: MessageHandler)
+    fun refreshCapabilities()
+}
+
+/**
+ * Wires Camera v2 into the link, and by doing so turns the `webcam` capability on and makes the
+ * handshake advertise `ext.webcam` 1 (it reads `LinkServer.webcamChannelSink`).
+ *
+ * Called by `ConnectSuiteApp` in every build; it installs only where [WebcamReleaseGate] allows — a
+ * debuggable build, since `WEBCAM_RELEASE` is false. The sink goes first, for `MirrorFeature`'s reason:
+ * the last `register` then sees both halves of the contract in place.
+ */
 object WebcamFeature {
 
     val handledTypes: Set<String> = setOf(
@@ -42,28 +65,46 @@ object WebcamFeature {
     private var installed = false
 
     /**
-     * @param mirrorBusy true while a mirror session is running or waiting for consent; a webcam request
-     *   then answers CAMERA_BUSY and the mirror is never interrupted.
+     * @param mirrorBusy true while a mirror session is running, waiting for consent or being started; a
+     *   webcam request then answers CAMERA_BUSY and the mirror is never interrupted.
      * @return whether the feature was installed — false in a release build.
      */
     fun install(context: Context, server: LinkServer, mirrorBusy: () -> Boolean): Boolean {
-        if (!WebcamReleaseGate.allows(server.debuggable)) {
+        if (installed) return true
+        val appContext = context.applicationContext
+        val done = wire(
+            target = object : WebcamLinkTarget {
+                override val debuggable: Boolean get() = server.debuggable
+                override fun setWebcamSink(sink: (AuthenticatedChannel, SideChannelClaim.Webcam) -> Unit) {
+                    server.webcamChannelSink = sink
+                }
+                override fun addSessionEndedListener(listener: (ControlSession) -> Unit) = server.addSessionEndedListener(listener)
+                override fun register(type: String, handler: MessageHandler) = server.register(type, handler)
+                override fun refreshCapabilities() = server.refreshCapabilities()
+            },
+            installEngine = { WebcamEngine.install(appContext, mirrorBusy) },
+        )
+        if (!done) {
             LinkLog.i("webcam", "Camera v2 (webcam) is development-only and this build is not debuggable — not installed")
             return false
         }
-        if (installed) return true
         installed = true
-        val appContext = context.applicationContext
-        WebcamEngine.install(appContext, mirrorBusy)
-
-        server.webcamChannelSink = { channel, claim -> WebcamEngine.onChannel(channel, claim) }
-        server.addSessionEndedListener { session -> WebcamEngine.onSessionEnded(session) }
-        handledTypes.forEach { type -> server.register(type, handlerFor(type)) }
-        server.refreshCapabilities()
-
         (appContext as? Application)?.registerActivityLifecycleCallbacks(RequestScreenOnResume)
-
         LinkLog.i("webcam", "Webcam feature installed; capabilities now: ${server.capabilities.current().sorted()}")
+        return true
+    }
+
+    /**
+     * The gate, then the engine, then the claim, then the handlers. Nothing is touched when the gate
+     * refuses. The production install and the tests both come through here.
+     */
+    fun wire(target: WebcamLinkTarget, release: Boolean = Extensions.WEBCAM_RELEASE, installEngine: () -> Unit): Boolean {
+        if (!WebcamReleaseGate.allows(target.debuggable, release)) return false
+        installEngine()
+        target.setWebcamSink { channel, claim -> WebcamEngine.onChannel(channel, claim) }
+        target.addSessionEndedListener { session -> WebcamEngine.onSessionEnded(session) }
+        handledTypes.forEach { type -> target.register(type, handlerFor(type)) }
+        target.refreshCapabilities()
         return true
     }
 
