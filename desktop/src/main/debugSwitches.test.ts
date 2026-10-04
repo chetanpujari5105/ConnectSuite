@@ -55,6 +55,10 @@ test('the known switches are exactly these, and every one defaults to off', () =
       // packaged build by main.ts: the webcam's development gate. It weakens no guard — the bridge still
       // refuses every request while Sidekick Camera is not installed or the build has no producer identity.
       'webcamDev',
+      // Added 2026-10-04 for the Camera v2 encoder spike (docs/camera-v2-encoder-spike.md), off by default
+      // (asserted below) and forced off in a packaged build by main.ts. It needs webcamDev too, and
+      // leaves the production controller's gates as they are (webcamSpike.test.ts → wiring).
+      'webcamSpike',
     ],
     'a switch was added or removed — confirm it defaults to off, then list it here',
   );

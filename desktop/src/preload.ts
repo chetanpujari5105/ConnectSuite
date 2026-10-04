@@ -25,6 +25,7 @@ import type { ShareCardSnapshot } from './main/share';
 import type { SharePagePayload } from './main/shareWindow';
 import type { CameraFrameMessage, CameraPaneState, CameraResult } from './main/camera';
 import type { WebcamResult, WebcamStatus } from './main/webcam';
+import type { SpikeStatus } from './main/webcamSpike';
 
 /**
  * The only bridge between the renderer and the sockets. Everything here is an intent — the
@@ -161,6 +162,15 @@ contextBridge.exposeInMainWorld('connect', {
   webcamSwitch: (facing: 'front' | 'back'): Promise<WebcamResult> => ipcRenderer.invoke('webcam-switch', facing),
   onWebcamState: (callback: (status: WebcamStatus) => void) =>
     ipcRenderer.on('webcam-state', (_event, status) => callback(status)),
+  /**
+   * The Camera v2 encoder spike (docs/camera-v2-encoder-spike.md). Development only: main registers these
+   * channels only when the spike is armed, so in every other build `webcamSpikeRun` rejects with "no
+   * handler". There is no button for it; the runbook's driver calls it. Back camera only, once per launch.
+   */
+  webcamSpikeCurrent: (): Promise<SpikeStatus> => ipcRenderer.invoke('webcam-spike-current'),
+  webcamSpikeRun: (): Promise<{ ok: boolean; reason?: string }> => ipcRenderer.invoke('webcam-spike-run'),
+  onWebcamSpike: (callback: (status: SpikeStatus) => void) =>
+    ipcRenderer.on('webcam-spike-state', (_event, status) => callback(status)),
 
   /** Encoded H.264 access units. The renderer decodes; the main process never touches pixels. */
   onVideoFrame: (

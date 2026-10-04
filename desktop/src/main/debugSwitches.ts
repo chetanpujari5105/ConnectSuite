@@ -130,6 +130,15 @@ export interface DebugSwitches {
    * producer identity. Off by default.
    */
   webcamDev: boolean;
+  /**
+   * Arms the Camera v2 **encoder spike** (docs/camera-v2-encoder-spike.md, `webcamSpike.ts`): one
+   * person-triggered `webcam.request` per launch, the phone owner's tap, the frames decoded by
+   * `sidekick-camera-decode-probe` and discarded. **Needs `webcamDev` too**, the bridge and the probe built
+   * at their one paths, and is ignored in a packaged build. It weakens no guard of the production
+   * controller — that still refuses every request while Sidekick Camera is absent — and it publishes
+   * nothing as a camera. Off by default.
+   */
+  webcamSpike: boolean;
 }
 
 const NAMES: readonly (keyof DebugSwitches)[] = [
@@ -146,6 +155,7 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'shareV2',
   'shareV3Off',
   'webcamDev',
+  'webcamSpike',
 ];
 
 function read(): DebugSwitches {
@@ -163,6 +173,7 @@ function read(): DebugSwitches {
     shareV2: false,
     shareV3Off: false,
     webcamDev: false,
+    webcamSpike: false,
   };
   // `app.isPackaged` is not consulted here because this module must stay importable by tests with
   // no Electron present; main.ts guards the startup read instead.

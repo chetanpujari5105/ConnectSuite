@@ -167,11 +167,16 @@ class Camera2WebcamBackend(
             if (handle.answered.compareAndSet(false, true)) main.post { done(outcome) }
         }
         codec.setCallback(encoderCallback(handle), handler)
+        // Which encoder and which AE range this phone actually gave us — the encoder spike's reading of
+        // the selected configuration against the target (docs/camera-v2-encoder-spike.md). Names only.
+        val aeRange = WebcamCaptureMappings.fpsRange(ranges, rung.fps)
         LinkLog.i(
             "webcam",
             "Webcam capture ${sessionId.take(8)}… generation $generation: ${facing.wire} camera $id, $size @${rung.fps} target, " +
                 "${rung.bitrate / 1_000_000.0} Mbit/s — the target ${WebcamQuality.TARGET_WIDTH}x${WebcamQuality.TARGET_HEIGHT}@" +
-                "${WebcamQuality.TARGET_FPS} is a target, not a measurement",
+                "${WebcamQuality.TARGET_FPS} is a target, not a measurement; encoder ${codec.name} " +
+                "(hardware ${codec.codecInfo.isHardwareAccelerated}), AE range ${aeRange?.let { "${it.first}-${it.second}" } ?: "none offered"}, " +
+                "${sizes.size} encoder-capable sizes",
         )
         try {
             cameras.openCamera(id, executor, object : CameraDevice.StateCallback() {

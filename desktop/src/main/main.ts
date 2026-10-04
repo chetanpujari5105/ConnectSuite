@@ -126,6 +126,7 @@ import {
 import { VideoClient, type VideoFrame } from './video';
 import { CameraController, openCameraSocket } from './camera';
 import { planWebcam, wireWebcam, type WebcamWiring } from './webcamWiring';
+import { wireWebcamSpike, type SpikeWiring } from './webcamSpike';
 import { SESSION_ENDED_EVENT, type SessionEnded } from '../shared/session';
 import { FloatMirrorWindow } from './float';
 import { armPairingCode } from './pairingArm';
@@ -165,6 +166,8 @@ let video: VideoClient | null = null;
 let camera: CameraController | null = null;
 /** Camera v2 (docs/protocol.md → Webcam). Built with the link; null until then. */
 let webcam: WebcamWiring | null = null;
+/** The encoder spike (docs/camera-v2-encoder-spike.md): development only, armed by two switches, else inert. */
+let webcamSpike: SpikeWiring | null = null;
 /** Serialises input so two gestures never overlap on the phone. See input.ts. */
 const input = new InputClient(() => link);
 
@@ -1090,6 +1093,40 @@ app.whenReady().then(() => {
     power: powerMonitor,
   });
 
+  // The encoder spike — a separate development runner, not the controller above, whose gates it leaves
+  // alone. Armed only unpackaged with webcamDev AND webcamSpike, ext.webcam advertised, and the decode
+  // probe built at its one path; otherwise no IPC channel exists. One request per launch, the owner's tap,
+  // frames decoded and discarded. Same link, same pinned opener, same exact-session claim.
+  const liveWebcam = webcam;
+  webcamSpike = wireWebcamSpike({
+    packaged: app.isPackaged,
+    devSwitch: !app.isPackaged && debugSwitches().webcamDev,
+    spikeSwitch: !app.isPackaged && debugSwitches().webcamSpike,
+    webcamAdvertised: webcamPlan.ext.webcam === 1,
+    appPath: app.getAppPath(),
+    link: {
+      isConnected: () => cameraLink.isConnected(),
+      token: () => cameraLink.token(),
+      address: () => cameraLink.status().address ?? null,
+      capabilities: () => cameraLink.status().capabilities ?? [],
+      unavailableReason: (name) => cameraLink.status().unavailable?.find((u) => u.name === name)?.reason ?? null,
+      negotiated: () => cameraLink.negotiated(),
+      request: (type, payload, timeoutMs) => cameraLink.request(type, payload, timeoutMs),
+      on: (event, listener) => cameraLink.on(event, listener),
+    },
+    sessionEndedEvent: SESSION_ENDED_EVENT,
+    openSocket: (host, claim) => openCameraSocket(identity, host, claim, cameraLink.peerFingerprint()),
+    webcamBusy: () => liveWebcam.controller.current().session !== null,
+    handle: (channel, listener) => ipcMain.handle(channel, listener),
+    send,
+    power: powerMonitor,
+  });
+  if (debugSwitches().webcamSpike) {
+    log.warn('webcam-spike', webcamSpike.spike
+      ? 'encoder spike ARMED: one person-triggered webcam.request per launch, decoded by the probe and discarded; the production webcam gates are unchanged'
+      : `encoder spike NOT armed: ${webcamSpike.reason}`);
+  }
+
   // The private ownership record for share temporary files, in this app's own data folder.
   const shareLedger = new FileShareLedger(ledgerFile(userData));
   const liveLink = link;
@@ -1859,7 +1896,7 @@ app.prependListener('before-quit', (event) => {
   if (!webcam || webcamQuitDone) return;
   webcamQuitDone = true;
   event.preventDefault();
-  void webcam.dispose().finally(() => app.quit());
+  void Promise.all([webcam.dispose(), webcamSpike?.dispose()]).finally(() => app.quit());
 });
 app.on('before-quit', () => {
   video?.close('app quit');
