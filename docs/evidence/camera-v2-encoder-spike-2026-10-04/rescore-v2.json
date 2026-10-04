@@ -1,0 +1,73 @@
+{
+ "kind": "webcam-spike re-score",
+ "notice": "A RE-SCORE of a saved report. NOT a new hardware run: no phone, camera, Mac pipeline or app was touched to produce it. The run itself happened once, on the date in `run.startedAt`.",
+ "run": {
+  "startedAt": "2026-10-04T14:27:09.411Z",
+  "session": "8ea4b033",
+  "runbook": "docs/camera-v2-encoder-spike.md"
+ },
+ "input": {
+  "original": {
+   "sha256": "4fb3c5c6b2c9804cca6a360d4647d2abf57ce6920c00e0ba808be4df5c7728e2",
+   "bytes": 10075,
+   "held": "privately, outside version control"
+  },
+  "sanitizedCopy": {
+   "path": "docs/evidence/camera-v2-encoder-spike-2026-10-04/report.sanitized.json",
+   "sha256": "f1c9d197fd048d60d5303ae18c0de75dd5274c652732e4a1abbb89b1c359d516"
+  }
+ },
+ "original": {
+  "verdict": "FAIL",
+  "reasons": [
+   "accounting does not hold (received 421, accepted 367, gate drops 54, past the gate 368, pending 0)"
+  ],
+  "scorer": {
+   "version": 1,
+   "commit": "e3fea6a709d0ef6befc8022079f19dee84da224d",
+   "file": "scripts/webcam-spike-core.mjs"
+  },
+  "reproducedByThatScorer": true,
+  "standing": "This is the run’s verdict and it stays FAIL. It is not replaced, amended or superseded by this record."
+ },
+ "corrected": {
+  "verdict": "PASS",
+  "reasons": [],
+  "scorer": {
+   "version": 2,
+   "commit": "d1cb5e014acd79d987f8ab464914583486d6d856",
+   "file": "scripts/webcam-spike-core.mjs",
+   "blob": "6876f2d5c5adb125dd90fecf21c0d930d0ddc99c"
+  },
+  "qualification": "POST-HOC. The version-2 accounting rule was written after this reading existed, to correct a defect in the version-1 rule. It is not pre-registered, so this verdict is the run re-read through a corrected instrument, not a pre-registered PASS of the run."
+ },
+ "changed": {
+  "criteria": {
+   "removed": [
+    "FAIL: accounting does not hold (received 421, accepted 367, gate drops 54, past the gate 368, pending 0)"
+   ],
+   "added": [
+    "PASS: accounting holds: 421 received = 367 accepted + 54 gate drops; 367 accepted = 367 ended (droppedDecodeQueue 1, discardedEnded 1, sinkEnqueued 365)"
+   ]
+  },
+  "onlyTheAccountingCriterion": true,
+  "boundsUnchanged": true,
+  "accounting": {
+   "holds": true,
+   "missing": [],
+   "received": 421,
+   "accepted": 367,
+   "gateDrops": 54,
+   "terminal": 367,
+   "pending": 0,
+   "line": "accounting holds: 421 received = 367 accepted + 54 gate drops; 367 accepted = 367 ended (droppedDecodeQueue 1, discardedEnded 1, sinkEnqueued 365)"
+  }
+ },
+ "explanation": [
+  "Version 1 summed probe.decoded + droppedDecodeQueue + decodeErrors + composeErrors + discardedEnded and compared it with accepted.",
+  "probe.decoded is not where an AU ends. BridgeCore.decodeAndFeed checks the session again after a successful decode and counts discardedEnded there, so a frame that was decoding when the planned Stop landed is in probe.decoded AND discardedEnded.",
+  "This run: probe.decoded 366, sinkEnqueued 365, discardedEnded 1 — one frame decoded and then discarded at the door, counted twice by version 1 (368 against 367 accepted).",
+  "Version 2 sums BridgeCore’s own disjoint terminal dispositions — the set BridgeCore.invariantHolds uses, checked against the Swift by test — and treats a missing counter as a failure, not a zero.",
+  "Corroboration from outside the report: the decode probe printed “exiting 0; invariant holds” at exit (Electron main’s log, 2026-10-04T19:57:34.195+05:30), i.e. BridgeCore’s own invariant held for this run."
+ ]
+}
