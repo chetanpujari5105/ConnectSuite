@@ -304,12 +304,14 @@ class ControlSession(
         val handshake = Extensions.handshake(
             server.debuggable, ShareDevGate.process.consumeForHandshake(), macExt,
             holdV2 = ShareDevGate.holdV2.consumeForHandshake(),
+            webcamInstalled = server.webcamChannelSink != null,
         )
         negotiated = handshake.negotiated
         LinkLog.i("control", handshake.logLine)
         LinkLog.i("control", handshake.askLine)
         LinkLog.i("control", handshake.v3Line)
         LinkLog.i("control", handshake.filesLine)
+        LinkLog.i("control", handshake.webcamLine)
         isHandshakeComplete = true
 
         send(

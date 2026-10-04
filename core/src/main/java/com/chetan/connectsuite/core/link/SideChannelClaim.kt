@@ -11,6 +11,7 @@ package com.chetan.connectsuite.core.link
  * ```
  * <token>                               the mirror's (42502) or a transfer's (42503) — unchanged
  * <token> camera <32 lowercase hex>     a camera stream, 42502 only
+ * <token> webcam <32 lowercase hex>     a webcam session (Camera v2), 42502 only
  * ```
  *
  * Pure and Android-free so the parse is tested on the JVM by calling this, not a copy of it.
@@ -37,9 +38,19 @@ sealed interface SideChannelClaim {
     /** A camera stream, for one `streamId` minted by one `camera.request`. Video port only. */
     data class Camera(override val token: String, val streamId: String) : SideChannelClaim
 
+    /**
+     * A webcam session (docs/protocol.md → The webcam stream claim on 42502), for one `sessionId`
+     * minted by one `webcam.request`. Video port only, and a separate type from [Camera] so a claim
+     * can never be routed to the other feature: the word is the only thing that differs on the wire.
+     */
+    data class Webcam(override val token: String, val sessionId: String) : SideChannelClaim
+
     companion object {
         /** The claim word, as it appears on the wire. */
         const val CAMERA_WORD = "camera"
+
+        /** Camera v2's claim word. */
+        const val WEBCAM_WORD = "webcam"
 
         private val STREAM_ID = Regex("^[0-9a-f]{32}$")
 
@@ -63,14 +74,17 @@ sealed interface SideChannelClaim {
             // than tidied into acceptance.
             val parts = frame.split(' ')
             if (parts.size != 3) return null
-            val (token, word, streamId) = parts
-            if (word != CAMERA_WORD) return null
+            val (token, word, id) = parts
+            if (word != CAMERA_WORD && word != WEBCAM_WORD) return null
             if (!TOKEN.matches(token)) return null
-            if (!STREAM_ID.matches(streamId)) return null
-            return Camera(token = token, streamId = streamId)
+            if (!STREAM_ID.matches(id)) return null
+            return if (word == WEBCAM_WORD) Webcam(token = token, sessionId = id) else Camera(token = token, streamId = id)
         }
 
         /** The frame a Mac sends for [streamId] — the inverse of [parse], for tests and for symmetry. */
         fun cameraFrame(token: String, streamId: String): String = "$token $CAMERA_WORD $streamId"
+
+        /** The frame a Mac sends for webcam [sessionId]: 104 bytes with a 64-hex token, inside the 128-byte cap. */
+        fun webcamFrame(token: String, sessionId: String): String = "$token $WEBCAM_WORD $sessionId"
     }
 }

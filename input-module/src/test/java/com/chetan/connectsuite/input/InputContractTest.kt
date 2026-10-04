@@ -35,6 +35,7 @@ class InputContractTest {
             registeredTypes = registered,
             videoServed = false,
             cameraServed = false,
+            webcamServed = false,
             bulkServed = false,
             backgroundRestricted = false,
         ).contains(capability)

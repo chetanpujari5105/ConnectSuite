@@ -32,6 +32,7 @@ class MirrorContractTest {
             registeredTypes = registered,
             videoServed = videoServed,
             cameraServed = videoServed,
+            webcamServed = videoServed,
             bulkServed = false,
             backgroundRestricted = false,
         ).contains(Capability.MIRROR)

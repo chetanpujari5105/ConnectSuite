@@ -181,6 +181,21 @@ object MessageType {
     /** Event, phone → Mac, on every phase change of a camera stream. */
     const val CAMERA_STATE = "camera.state"
 
+    /**
+     * Camera v2, Sidekick Camera (docs/protocol.md → Webcam). A separate namespace from `camera.*`,
+     * which it leaves byte-for-byte unchanged. `webcam.request` **asks**, exactly as `camera.request`
+     * does: its ack means a request is on the phone's screen, and capture starts only on its owner's
+     * tap for that session. Installed only in a debuggable build until `Extensions.WEBCAM_RELEASE`.
+     */
+    const val WEBCAM_REQUEST = "webcam.request"
+    const val WEBCAM_STOP = "webcam.stop"
+
+    /** Changes the camera inside an approved webcam session; no new session, no new approval. */
+    const val WEBCAM_SWITCH = "webcam.switch"
+
+    /** Event, phone → Mac, on every phase change of a webcam session. */
+    const val WEBCAM_STATE = "webcam.state"
+
     const val INPUT_TAP = "input.tap"
     const val INPUT_SWIPE = "input.swipe"
     const val INPUT_SCROLL = "input.scroll"
@@ -462,6 +477,9 @@ object Capability {
     /** Camera v1: a live preview of the phone's camera in the Mac's Camera pane (docs/protocol.md → Camera). */
     const val CAMERA = "camera"
 
+    /** Camera v2: the phone's camera as the Mac's "Sidekick Camera" (docs/protocol.md → Webcam). */
+    const val WEBCAM = "webcam"
+
     /**
      * Every capability name, in one place, so nothing has to hand-maintain a second list.
      *
@@ -470,7 +488,7 @@ object Capability {
      */
     val all: Set<String> = setOf(
         MIRROR, INPUT, NOTIFICATIONS, SMS, CALLS, CONTACTS,
-        FILES, PHOTOS, CLIPBOARD, REMOTE, APPS, MIC, SHARE, CAMERA,
+        FILES, PHOTOS, CLIPBOARD, REMOTE, APPS, MIC, SHARE, CAMERA, WEBCAM,
     )
 }
 

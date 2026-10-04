@@ -78,6 +78,33 @@ object Extensions {
     const val FS_BLOCKS = "fs.blocks"
     const val FS_BLOCKS_RELEASE: Boolean = false
 
+    /**
+     * `webcam` — Camera v2, Sidekick Camera (docs/protocol.md → Webcam → Capability, version and older
+     * peers). The capability and the `ext` key share the name; version 1 is the whole section.
+     */
+    const val WEBCAM = "webcam"
+    const val WEBCAM_VERSION = 1
+
+    /**
+     * **Release policy for the webcam.** `false`: the feature is development-only, exactly as Camera v1
+     * is. It is flipped only deliberately, in a commit that records its evidence — and flipping it alone
+     * still advertises nothing unless the feature was installed ([webcamAdvertised]).
+     */
+    const val WEBCAM_RELEASE: Boolean = false
+
+    /**
+     * What this phone advertises for the webcam: `webcam` 1 only when **both** hold —
+     *
+     * - the feature is installed on this link: its handlers registered and its claim served, so the
+     *   capability is real (`LinkServer.webcamChannelSink`), and
+     * - the build is debuggable, or [WEBCAM_RELEASE] has been flipped.
+     *
+     * Two fences rather than one: the install is gated on the same rule, and this does not trust it. A
+     * version advertised for a feature nothing serves is a promise the phone cannot keep.
+     */
+    fun webcamAdvertised(installed: Boolean, debuggable: Boolean, release: Boolean = WEBCAM_RELEASE): Map<String, Int> =
+        if (installed && (debuggable || release)) mapOf(WEBCAM to WEBCAM_VERSION) else emptyMap()
+
     /** What this phone advertises for Files: `fs.blocks` 1 in a debuggable build or once released, else nothing. */
     fun filesAdvertised(debuggable: Boolean, release: Boolean = FS_BLOCKS_RELEASE): Map<String, Int> =
         if (debuggable || release) mapOf(FS_BLOCKS to 1) else emptyMap()
@@ -136,6 +163,8 @@ object Extensions {
         val v3Line: String = "",
         /** The `fs.blocks` line: advertised on each side, negotiated, and the release policy. */
         val filesLine: String = "",
+        /** The `webcam` line: installed, advertised on each side, negotiated, and the release policy. */
+        val webcamLine: String = "",
     )
 
     /**
@@ -149,9 +178,12 @@ object Extensions {
         holdV2: Boolean = false,
         multiFileRelease: Boolean = MULTI_FILE_RELEASE,
         fsBlocksRelease: Boolean = FS_BLOCKS_RELEASE,
+        /** Whether the webcam feature is installed on this link — `LinkServer.webcamChannelSink != null`. */
+        webcamInstalled: Boolean = false,
+        webcamRelease: Boolean = WEBCAM_RELEASE,
     ): Handshake {
         val mine = advertised(debuggable, devV2Armed, productionTransfer, holdV2, multiFileRelease) +
-            filesAdvertised(debuggable, fsBlocksRelease)
+            filesAdvertised(debuggable, fsBlocksRelease) + webcamAdvertised(webcamInstalled, debuggable, webcamRelease)
         val negotiated = mine.keys.mapNotNull { name -> negotiate(mine, macExt, name)?.let { name to it } }.toMap()
         val line = "ext: phone advertises ${mine[SHARE_FILE]?.let { "share.file $it" } ?: "nothing"} " +
             "(debug share.file 2 armed for this handshake: $devV2Armed; debuggable build: $debuggable); " +
@@ -167,7 +199,10 @@ object Extensions {
             "release policy: $fsBlocksRelease), Mac advertises ${macExt[FS_BLOCKS] ?: "none"}, negotiated " +
             "${negotiated[FS_BLOCKS] ?: "none"} — pulls above 64 MiB are " +
             if ((negotiated[FS_BLOCKS] ?: 0) >= 1) "block-verified and resumable" else "unverified and not resumable, as before"
-        return Handshake(mine, negotiated, line, ask, v3, files)
+        val webcam = "ext: webcam — installed on this link: $webcamInstalled (debuggable build: $debuggable; release policy: " +
+            "$webcamRelease); phone advertises ${mine[WEBCAM] ?: "none"}, Mac advertises ${macExt[WEBCAM] ?: "none"}, negotiated " +
+            "${negotiated[WEBCAM] ?: "none"} — the Mac " + if ((negotiated[WEBCAM] ?: 0) >= 1) "may send webcam.*" else "sends no webcam.*"
+        return Handshake(mine, negotiated, line, ask, v3, files, webcam)
     }
 
     /**

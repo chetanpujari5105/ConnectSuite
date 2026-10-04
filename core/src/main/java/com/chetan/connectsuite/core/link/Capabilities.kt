@@ -248,6 +248,7 @@ class CapabilityDetector(
     private val registeredTypes: () -> Set<String> = { emptySet() },
     private val videoChannelServed: () -> Boolean = { false },
     private val cameraChannelServed: () -> Boolean = { false },
+    private val webcamChannelServed: () -> Boolean = { false },
     private val bulkChannelServed: () -> Boolean = { false },
 ) {
 
@@ -423,6 +424,7 @@ class CapabilityDetector(
         val registered = registeredTypes()
         val video = videoChannelServed()
         val camera = cameraChannelServed()
+        val webcam = webcamChannelServed()
         val bulk = bulkChannelServed()
         val granted = grantedPermissions()
         val grantedSpecial = specialAccessGranted()
@@ -437,8 +439,8 @@ class CapabilityDetector(
                 // "not permitted" and sending the user back to a switch they already turned on.
                 permitted = CapabilityContract.isPermitted(name, granted, grantedSpecial),
                 running = needs == null || needs in liveSpecial,
-                implemented = CapabilityContract.isImplemented(name, registered, video, camera, bulk),
-                missing = CapabilityContract.missingFor(name, registered, video, camera, bulk),
+                implemented = CapabilityContract.isImplemented(name, registered, video, camera, bulk, webcam),
+                missing = CapabilityContract.missingFor(name, registered, video, camera, bulk, webcam),
                 missingPermissions =
                     CapabilityContract.missingPermissionsFor(name, granted, grantedSpecial),
                 backgroundRestricted =
@@ -455,6 +457,7 @@ class CapabilityDetector(
         registeredTypes = registeredTypes(),
         videoServed = videoChannelServed(),
         cameraServed = cameraChannelServed(),
+        webcamServed = webcamChannelServed(),
         bulkServed = bulkChannelServed(),
         backgroundRestricted = isBackgroundRestricted(),
     )

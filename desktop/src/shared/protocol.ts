@@ -220,6 +220,19 @@ export const MessageType = {
   /** Phone -> Mac, on every phase change of a camera stream. */
   CAMERA_STATE: 'camera.state',
 
+  /**
+   * Camera v2, Sidekick Camera (docs/protocol.md → Webcam). **Names only**: the twin of the phone's
+   * constants, so the two sides stay defined once each. The controller that sends them
+   * (`src/main/webcam.ts`) is constructed by no part of the running app, `MAC_EXT` does not advertise
+   * `webcam`, and no handler for `webcam.state` is registered — so a Mac running this build never
+   * sends or acts on any of them.
+   */
+  WEBCAM_REQUEST: 'webcam.request',
+  WEBCAM_STOP: 'webcam.stop',
+  WEBCAM_SWITCH: 'webcam.switch',
+  /** Phone -> Mac, on every phase change of a webcam session. */
+  WEBCAM_STATE: 'webcam.state',
+
   INPUT_TAP: 'input.tap',
   INPUT_SWIPE: 'input.swipe',
   INPUT_SCROLL: 'input.scroll',
@@ -468,6 +481,8 @@ export const Capability = {
   MIC: 'mic',
   /** Camera v1: a live preview of the phone's camera in the Camera pane (docs/protocol.md → Camera). */
   CAMERA: 'camera',
+  /** Camera v2: the phone's camera as the Mac's "Sidekick Camera" (docs/protocol.md → Webcam). */
+  WEBCAM: 'webcam',
 } as const;
 
 export interface Envelope<T = Record<string, unknown>> {

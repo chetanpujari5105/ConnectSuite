@@ -181,6 +181,7 @@ class LinkServer(
         registeredTypes = { handlers.keys.toSet() },
         videoChannelServed = { videoChannelSink != null },
         cameraChannelServed = { cameraChannelSink != null },
+        webcamChannelServed = { webcamChannelSink != null },
         bulkChannelServed = { bulkChannelSink != null },
     )
     private val liveSessions = ConcurrentHashMap<ControlSession, Unit>()
@@ -224,6 +225,15 @@ class LinkServer(
      */
     @Volatile
     var cameraChannelSink: ((AuthenticatedChannel, SideChannelClaim.Camera) -> Unit)? = null
+
+    /**
+     * Set by camera-module's webcam feature: the consumer of a **webcam claim** on the video port
+     * (docs/protocol.md → The webcam stream claim on 42502). Its own slot, for [cameraChannelSink]'s
+     * reason: a webcam claim must never reach Camera v1, nor a camera claim the webcam. Null unless the
+     * gated install ran — so `webcam` is not advertised and a webcam claim is refused here.
+     */
+    @Volatile
+    var webcamChannelSink: ((AuthenticatedChannel, SideChannelClaim.Webcam) -> Unit)? = null
 
     /** Set by the transfer code in phase 5. */
     @Volatile
@@ -575,6 +585,22 @@ class LinkServer(
                     val session = sessions.resolve(claim.token)
                         ?: throw IOException("unknown session token")
                     socket.soTimeout = 0
+
+                    if (claim is SideChannelClaim.Webcam) {
+                        // docs/protocol.md → The webcam stream claim on 42502: the video port only.
+                        if (label != "video") throw IOException("a webcam claim on the $label port")
+                        val webcam = webcamChannelSink
+                        if (webcam == null) {
+                            LinkLog.w("server", "webcam claim refused: nothing is serving it in this build")
+                            runCatching { socket.close() }
+                            return@launch
+                        }
+                        // As for the camera: ownership, the session id and its phase are the webcam's
+                        // to judge; this layer has proved only that the token is a live session's.
+                        LinkLog.i("server", "webcam claim for session ${claim.sessionId.take(8)}… from ${session.peerName}")
+                        webcam(AuthenticatedChannel(socket, session, input), claim)
+                        return@launch
+                    }
 
                     if (claim is SideChannelClaim.Camera) {
                         // docs/protocol.md → The stream claim on 42502: the video port only. A camera

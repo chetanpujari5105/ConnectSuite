@@ -44,6 +44,7 @@ class EmptyCapabilitiesTest {
             registeredTypes = emptySet(),
             videoServed = false,
             cameraServed = false,
+            webcamServed = false,
             bulkServed = false,
             backgroundRestricted = false,
         )
@@ -64,6 +65,7 @@ class EmptyCapabilitiesTest {
             registeredTypes = emptySet(),
             videoServed = false,
             cameraServed = false,
+            webcamServed = false,
             bulkServed = false,
             backgroundRestricted = false,
         )

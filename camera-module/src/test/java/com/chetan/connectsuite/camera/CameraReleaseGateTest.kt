@@ -63,6 +63,7 @@ class CameraReleaseGateTest {
             registeredTypes = registered,
             videoServed = true,
             cameraServed = cameraServed,
+            webcamServed = false,
             bulkServed = true,
             backgroundRestricted = false,
         )

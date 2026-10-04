@@ -20,18 +20,19 @@
  * A stream main cannot frame is closed, never resynced — a resync heuristic is how a garbled AU ends up
  * fed to a decoder as though it were the phone's camera.
  *
- * **Not on the wire.** The four message names below are deliberately **not** in `MessageType`:
- * `scripts/check-protocol-spec.mjs` lists them as specified-not-on-the-wire, and no phone implements
- * them yet (W2). They are named here only for the W3 controller, which no part of the running app
- * constructs.
+ * **Named, not wired.** The four message names are in `MessageType` since W2 (2026-10-04), as the twin
+ * of the phone's constants. Nothing in the running app sends or handles them: the controller is
+ * constructed by no part of it, and `MAC_EXT` does not advertise `webcam`.
  */
 
-/** The four `webcam.*` messages. Local to Camera v2's controller until W2 exists and wiring is approved. */
+import { MessageType } from './protocol';
+
+/** The four `webcam.*` messages, as the controller names them — the same strings as `MessageType`. */
 export const WebcamMessage = Object.freeze({
-  REQUEST: 'webcam.request',
-  STATE: 'webcam.state',
-  STOP: 'webcam.stop',
-  SWITCH: 'webcam.switch',
+  REQUEST: MessageType.WEBCAM_REQUEST,
+  STATE: MessageType.WEBCAM_STATE,
+  STOP: MessageType.WEBCAM_STOP,
+  SWITCH: MessageType.WEBCAM_SWITCH,
 } as const);
 
 /**

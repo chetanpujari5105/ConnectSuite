@@ -68,6 +68,7 @@ class SpecialAccessReadingTest {
         registeredTypes = registered,
         videoServed = false,
         cameraServed = false,
+        webcamServed = false,
         bulkServed = false,
         backgroundRestricted = false,
     )

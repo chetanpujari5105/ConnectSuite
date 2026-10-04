@@ -93,6 +93,7 @@ class BackgroundRestrictionTest {
             registeredTypes = handlers,
             videoServed = true,
             cameraServed = true,
+            webcamServed = true,
             bulkServed = false,
             backgroundRestricted = restricted,
         )

@@ -39,6 +39,7 @@ class CapabilityContractTest {
             registeredTypes = emptySet(),
             videoServed = false,
             cameraServed = false,
+            webcamServed = false,
             bulkServed = false,
             backgroundRestricted = false,
         )
@@ -66,6 +67,7 @@ class CapabilityContractTest {
                         registeredTypes = partial,
                         videoServed = true,
                         cameraServed = true,
+                        webcamServed = true,
                         bulkServed = true,
                     ),
                 )
@@ -79,6 +81,7 @@ class CapabilityContractTest {
                     registeredTypes = contract.requests,
                     videoServed = true,
                     cameraServed = true,
+                    webcamServed = true,
                     bulkServed = true,
                 ),
             )
@@ -96,6 +99,7 @@ class CapabilityContractTest {
                 registeredTypes = mirror.requests,
                 videoServed = false,
                 cameraServed = false,
+                webcamServed = false,
                 bulkServed = true,
             ),
         )
@@ -108,6 +112,7 @@ class CapabilityContractTest {
                 registeredTypes = files.requests,
                 videoServed = true,
                 cameraServed = true,
+                webcamServed = true,
                 bulkServed = false,
             ),
         )
@@ -124,12 +129,13 @@ class CapabilityContractTest {
                 registeredTypes = camera.requests,
                 videoServed = true,
                 cameraServed = false,
+                webcamServed = false,
                 bulkServed = true,
             ),
         )
         assertEquals(
             listOf("camera channel unserved"),
-            CapabilityContract.missingFor(Capability.CAMERA, camera.requests, true, false, true),
+            CapabilityContract.missingFor(Capability.CAMERA, camera.requests, true, false, true, false),
         )
         assertTrue(
             CapabilityContract.isImplemented(
@@ -137,6 +143,7 @@ class CapabilityContractTest {
                 registeredTypes = camera.requests,
                 videoServed = false,
                 cameraServed = true,
+                webcamServed = true,
                 bulkServed = false,
             ),
         )
@@ -156,19 +163,20 @@ class CapabilityContractTest {
                 registeredTypes = emptySet(),
                 videoServed = true,
                 cameraServed = true,
+                webcamServed = true,
                 bulkServed = true,
             ),
         )
         assertEquals(
             listOf("no wire protocol defined yet"),
-            CapabilityContract.missingFor(Capability.MIC, emptySet(), true, true, true),
+            CapabilityContract.missingFor(Capability.MIC, emptySet(), true, true, true, true),
         )
     }
 
     @Test
     fun `an unknown capability is never advertised`() {
         assertFalse(
-            CapabilityContract.isImplemented("teleport", setOf("teleport.now"), true, true, true),
+            CapabilityContract.isImplemented("teleport", setOf("teleport.now"), true, true, true, true),
         )
     }
 
@@ -185,6 +193,7 @@ class CapabilityContractTest {
                 registeredTypes = contacts,
                 videoServed = true,
                 cameraServed = true,
+                webcamServed = true,
                 bulkServed = true,
                 backgroundRestricted = false,
             ),
@@ -198,6 +207,7 @@ class CapabilityContractTest {
                 registeredTypes = emptySet(),
                 videoServed = true,
                 cameraServed = true,
+                webcamServed = true,
                 bulkServed = true,
                 backgroundRestricted = false,
             ),
@@ -211,6 +221,7 @@ class CapabilityContractTest {
                 registeredTypes = contacts,
                 videoServed = true,
                 cameraServed = true,
+                webcamServed = true,
                 bulkServed = true,
                 backgroundRestricted = false,
             ),
@@ -225,7 +236,7 @@ class CapabilityContractTest {
             Capability.MIRROR, Capability.INPUT, Capability.NOTIFICATIONS, Capability.SMS,
             Capability.CALLS, Capability.CONTACTS, Capability.FILES, Capability.PHOTOS,
             Capability.CLIPBOARD, Capability.REMOTE, Capability.APPS, Capability.MIC,
-            Capability.SHARE, Capability.CAMERA,
+            Capability.SHARE, Capability.CAMERA, Capability.WEBCAM,
         )
         assertEquals(
             "every Capability constant needs an entry in CapabilityContract.contracts",

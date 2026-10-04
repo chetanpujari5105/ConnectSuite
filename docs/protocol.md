@@ -708,13 +708,23 @@ the Mac as a selectable camera called "Sidekick Camera"** — Camera v2. Specifi
 v1's `camera.*` messages, its claim word, its frame and its behaviour are unchanged by anything here, and
 a peer that knows only v1 behaves exactly as it did.
 
-**Status, stated so nothing below reads as shipped.** No `webcam.*` constant exists in either side's
-`MessageType`, and `scripts/check-protocol-spec.mjs` lists all four messages as *specified and not on the
-wire*. The Mac's frame bridge and the Camera Extension's logic are built and tested **in-process only**
-(`desktop/native/SidekickCamera/`, phase W1). Electron main's controller (`desktop/src/main/webcam.ts`,
-phase W3) is built and tested against stand-ins and the built bridge; **no part of the running app
-constructs it**, and no phone implements this namespace (W2). Nothing is signed, installed or activated, and no phone
-capture has run. Quality and latency figures in this section are **targets**, never measurements.
+**Status, stated so nothing below reads as shipped.** The four `webcam.*` names are in both sides'
+`MessageType` since W2 (2026-10-04), and **neither running app sends or serves them**:
+
+- **The phone** implements this namespace in `camera-module` (`camera/webcam/`, phase W2): the session
+  machine, the claim, the access-unit writer, the Camera2 → MediaCodec capture and the request screen.
+  `WebcamFeature.install` is gated to debuggable builds, and **nothing calls it** — `ConnectSuiteApp`
+  does not, so the running phone neither advertises `webcam` nor serves its claim.
+- **The Mac's** frame bridge and the Camera Extension's logic are built and tested in-process only
+  (`desktop/native/SidekickCamera/`, W1). Electron main's controller (`desktop/src/main/webcam.ts`, W3) is
+  built and tested against stand-ins and the built bridge; **no part of the running app constructs it**,
+  and `MAC_EXT` does not advertise `webcam`.
+
+Nothing is signed, installed or activated, and no phone capture has run: the phone's capture path has
+never executed on a device. The bytes are proven across the three readers by
+`docs/fixtures/webcam-phone-stream-v1.hex` — real H.264 from a Mac encoder standing in for the phone's,
+wrapped by the phone's writer and decoded by the bridge. Quality and latency figures in this section are
+**targets**, never measurements.
 
 ### Two different things: the device and the session
 
@@ -865,6 +875,19 @@ direction, a `camera.request` while a webcam session is open is refused by Camer
 `CAMERA_BUSY` row ("a camera request or stream is already open"), and the `camera.*` section is not
 edited for it.
 
+**Each side's busy check and its own request are one decision** (added 2026-10-04, W2). Camera v1's
+request and the webcam's are admitted under one lock on the phone, so two requests arriving together on
+two connections cannot each see the other idle: exactly one is put up.
+
+**The mirror, both ways.** A webcam request while a mirror runs or waits for consent is refused (the row
+above). A mirror that **starts between a webcam request and its tap** is preserved: the tap does not open
+the camera, and the session ends `camera-in-use` ("the phone started mirroring before you allowed the
+webcam"). A `mirror.start` while a webcam session is already **running** is the mirror's contract, which
+this section does not change — exactly as for Camera v1, whose notes record the same: the mirror does not
+refuse for a camera stream, and neither capture is stopped for the other. Making the mirror refuse is a
+mirror-contract change, needing the app's wiring (`ConnectSuiteApp` can see both modules) and its own
+approval.
+
 ### `webcam.state`
 
 **Event, phone → Mac**, on every phase change, carrying `sessionId` and the `webcam.request`'s
@@ -874,7 +897,7 @@ edited for it.
 |---|---|---|
 | `awaiting-approval` | on the phone, unanswered. **Carried by the ack only** | no |
 | `starting` | the owner tapped Start camera and `CAMERA` is granted. **The Mac opens the stream socket now** | no |
-| `running` | the encoder has produced its first IDR and the socket is attached. Carries `facing`, `width`, `height` (the coded size, before rotation), `frameRate` (**the target, not a measurement**), `codec: "h264"` and `generation` | no |
+| `running` | the encoder has produced its first IDR and the socket is attached. Carries `facing`, `width`, `height` (the coded size, before rotation — **the size the phone actually selected**, read from the AU that announced it), `targetWidth`, `targetHeight` and `frameRate` (**targets, not measurements**; 1920, 1080 and 30), `codec: "h264"` and `generation`. A selected size below the target is the camera's or the encoder's answer, reported as such, never rounded up to the target | no |
 | `stopped` | ended. Carries `reason`, `message`, `fixHint`, `framesSent` and `framesDropped` | yes |
 
 `running` is sent again, with a higher `generation`, after every `webcam.switch` and every encoder

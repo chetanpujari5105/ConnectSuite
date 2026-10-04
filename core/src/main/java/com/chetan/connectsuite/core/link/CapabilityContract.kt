@@ -149,6 +149,12 @@ object CapabilityContract {
          */
         val needsCameraChannel: Boolean = false,
         /**
+         * The **webcam** stream claim on 42502 has a consumer (docs/protocol.md → The webcam stream
+         * claim on 42502). Its own flag for the reason [needsCameraChannel] is not [needsVideoChannel]:
+         * Camera v1's claim consumer says nothing about whether anything takes a webcam socket.
+         */
+        val needsWebcamChannel: Boolean = false,
+        /**
          * This capability cannot run without a foreground service, so a phone that has been
          * **background-restricted** cannot honour it. See [blockedByBackgroundRestriction].
          */
@@ -353,6 +359,14 @@ object CapabilityContract {
             requests = setOf(MessageType.CAMERA_REQUEST, MessageType.CAMERA_STOP, MessageType.CAMERA_SWITCH),
             needsCameraChannel = true,
         ),
+        // Camera v2, Sidekick Camera (docs/protocol.md → Webcam). No permission, for Camera v1's reason:
+        // CAMERA is asked in the flow, after the owner's tap for one session. Without the webcam claim
+        // served, a session could be approved into a stream nothing would carry. Development builds
+        // only — WebcamFeature.install is gated, so a release build never registers these.
+        Capability.WEBCAM to Contract(
+            requests = setOf(MessageType.WEBCAM_REQUEST, MessageType.WEBCAM_STOP, MessageType.WEBCAM_SWITCH),
+            needsWebcamChannel = true,
+        ),
         Capability.SHARE to Contract(
             // Version 2 (slice 3c): `share.saved`, and the bulk channel the one pull streams over.
             // "On" still promises only that these answer; whether a transfer can happen at all is the
@@ -377,12 +391,15 @@ object CapabilityContract {
         videoServed: Boolean,
         cameraServed: Boolean,
         bulkServed: Boolean,
+        /** The webcam claim has a consumer. Last, and not defaulted: every caller says it. */
+        webcamServed: Boolean,
     ): Boolean {
         val contract = contracts[capability] ?: return false
         // No protocol designed yet — vacuous truth would otherwise advertise it.
         if (contract.requests.isEmpty()) return false
         if (contract.needsVideoChannel && !videoServed) return false
         if (contract.needsCameraChannel && !cameraServed) return false
+        if (contract.needsWebcamChannel && !webcamServed) return false
         if (contract.needsBulkChannel && !bulkServed) return false
         return registeredTypes.containsAll(contract.requests)
     }
@@ -486,6 +503,7 @@ object CapabilityContract {
         videoServed: Boolean,
         cameraServed: Boolean,
         bulkServed: Boolean,
+        webcamServed: Boolean,
     ): List<String> {
         val contract = contracts[capability] ?: return listOf("no contract defined")
         if (contract.requests.isEmpty()) return listOf("no wire protocol defined yet")
@@ -493,6 +511,7 @@ object CapabilityContract {
             addAll((contract.requests - registeredTypes).sorted())
             if (contract.needsVideoChannel && !videoServed) add("video channel unserved")
             if (contract.needsCameraChannel && !cameraServed) add("camera channel unserved")
+            if (contract.needsWebcamChannel && !webcamServed) add("webcam channel unserved")
             if (contract.needsBulkChannel && !bulkServed) add("bulk channel unserved")
         }
     }
@@ -511,6 +530,8 @@ object CapabilityContract {
         videoServed: Boolean,
         /** The camera claim has a consumer. **Not defaulted**, for the reason [backgroundRestricted] is not. */
         cameraServed: Boolean,
+        /** The webcam claim has a consumer. **Not defaulted**, for the same reason. */
+        webcamServed: Boolean,
         bulkServed: Boolean,
         /**
          * `ActivityManager.isBackgroundRestricted()`. **Deliberately not defaulted** — the
@@ -520,7 +541,7 @@ object CapabilityContract {
         backgroundRestricted: Boolean,
     ): Set<String> = contracts.keys
         .filter { isPermitted(it, grantedPermissions, specialAccessHeld) }
-        .filter { isImplemented(it, registeredTypes, videoServed, cameraServed, bulkServed) }
+        .filter { isImplemented(it, registeredTypes, videoServed, cameraServed, bulkServed, webcamServed) }
         .filterNot { blockedByBackgroundRestriction(it, backgroundRestricted) }
         .toSet()
 
