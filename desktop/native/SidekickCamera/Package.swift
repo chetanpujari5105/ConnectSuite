@@ -17,6 +17,9 @@ let package = Package(
     products: [
         .executable(name: "sidekick-camera-bridge", targets: ["sidekick-camera-bridge"]),
         .executable(name: "sidekick-camera-extension", targets: ["sidekick-camera-extension"]),
+        // The encoder spike's decode probe (docs/camera-v2-encoder-spike.md). Development only: never
+        // packaged, never resolved by the production controller.
+        .executable(name: "sidekick-camera-decode-probe", targets: ["sidekick-camera-decode-probe"]),
     ],
     targets: [
         // Foundation only: the wire codec, the bridge's record framing, the session gate.
@@ -29,6 +32,9 @@ let package = Package(
         .target(name: "WebcamBridge", dependencies: ["WebcamCore", "WebcamMedia"]),
         .executableTarget(name: "sidekick-camera-bridge", dependencies: ["WebcamBridge"]),
         .executableTarget(name: "sidekick-camera-extension", dependencies: ["WebcamExtension"]),
+        // The bridge's pipeline into a counting sink, and an independent SPS reader.
+        .target(name: "WebcamProbe", dependencies: ["WebcamCore", "WebcamMedia", "WebcamBridge"]),
+        .executableTarget(name: "sidekick-camera-decode-probe", dependencies: ["WebcamProbe", "WebcamBridge"]),
         // Generated frames and real H.264 for the tests. Not linked into either executable.
         .target(name: "WebcamTestSupport", dependencies: ["WebcamCore", "WebcamMedia"]),
         // Reads docs/fixtures/webcam-au-v1.hex in place: one copy of the golden bytes, not two.
@@ -38,6 +44,8 @@ let package = Package(
                     dependencies: ["WebcamExtension", "WebcamMedia", "WebcamTestSupport"]),
         .testTarget(name: "WebcamBridgeTests",
                     dependencies: ["WebcamBridge", "WebcamExtension", "WebcamTestSupport"]),
+        .testTarget(name: "WebcamProbeTests",
+                    dependencies: ["WebcamProbe", "WebcamBridge", "WebcamTestSupport"]),
     ],
     swiftLanguageModes: [.v5]
 )

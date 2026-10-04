@@ -33,7 +33,9 @@ public final class TestH264Encoder {
     private var outputs: [(Data, Bool)] = []
     public let width: Int, height: Int
 
-    public init(width: Int, height: Int) throws {
+    /// Baseline by default; the decode probe's tests also ask for High, whose SPS carries the chroma
+    /// format and scaling-matrix fields a Baseline SPS omits.
+    public init(width: Int, height: Int, profile: CFString = kVTProfileLevel_H264_Baseline_AutoLevel) throws {
         self.width = width
         self.height = height
         var s: VTCompressionSession?
@@ -45,7 +47,7 @@ public final class TestH264Encoder {
         session = s
         VTSessionSetProperty(s, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
         VTSessionSetProperty(s, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
-        VTSessionSetProperty(s, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_H264_Baseline_AutoLevel)
+        VTSessionSetProperty(s, key: kVTCompressionPropertyKey_ProfileLevel, value: profile)
         VTSessionSetProperty(s, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: NSNumber(value: 1000))
         VTCompressionSessionPrepareToEncodeFrames(s)
     }

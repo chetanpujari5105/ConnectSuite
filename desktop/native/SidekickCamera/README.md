@@ -15,6 +15,14 @@ Extension's logic. The contract is `docs/protocol.md` → *Webcam*, and the plan
   and main asks the phone for nothing while either holds.
 - **Not on the wire:** `webcam.*` exists in the contract and in no `MessageType`.
 - **Camera v1 is untouched.**
+- **The encoder spike's decode probe (2026-10-04):** `sidekick-camera-decode-probe` (`Sources/WebcamProbe/`)
+  is the bridge's own `BridgeCore` ending in a sink that counts and discards, plus an SPS reader checked
+  against VideoToolbox's. Development only: never packaged, never resolved by the production controller,
+  writes nothing. Runbook: `docs/camera-v2-encoder-spike.md`. Not run against a phone.
+- **Signing correction (2026-10-04):** *Blocked* below assumes Developer ID throughout. Per Apple DTS, a
+  Developer ID–signed system extension will not load until it is **notarized**, so the **local**
+  activation test should use **Apple Development** signing and development profiles, and Developer ID
+  plus notarization is the separate distribution step. `docs/camera-v2-signing-readiness.md`.
 
 ## Layout
 
