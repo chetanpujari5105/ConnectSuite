@@ -221,11 +221,9 @@ export const MessageType = {
   CAMERA_STATE: 'camera.state',
 
   /**
-   * Camera v2, Sidekick Camera (docs/protocol.md → Webcam). **Names only**: the twin of the phone's
-   * constants, so the two sides stay defined once each. The controller that sends them
-   * (`src/main/webcam.ts`) is constructed by no part of the running app, `MAC_EXT` does not advertise
-   * `webcam`, and no handler for `webcam.state` is registered — so a Mac running this build never
-   * sends or acts on any of them.
+   * Camera v2, Sidekick Camera (docs/protocol.md → Webcam). The twin of the phone's constants. Sent by
+   * `src/main/webcam.ts`, wired in `src/main/webcamWiring.ts` — and only where `ext.webcam` is
+   * negotiated, which this Mac advertises in an unpackaged build with the `webcamDev` switch alone.
    */
   WEBCAM_REQUEST: 'webcam.request',
   WEBCAM_STOP: 'webcam.stop',

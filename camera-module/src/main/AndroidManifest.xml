@@ -39,8 +39,8 @@
           capture. Its own screen, sharing no state with CameraActivity. The capture is bound to THIS
           activity: when it stops being visible the session ends (left-screen), so the webcam is
           foreground-only. Not exported, and opened only by this app — the webcam feature's own
-          notification and resume hook — which are themselves reached only once WebcamFeature.install
-          has run, and nothing calls it yet. The same configChanges, for the same reason.
+          notification and resume hook — which exist only once WebcamFeature.install has run, which
+          ConnectSuiteApp does in a debuggable build only. The same configChanges, for the same reason.
         -->
         <activity
             android:name=".webcam.WebcamActivity"

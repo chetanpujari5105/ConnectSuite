@@ -3,9 +3,8 @@
  *
  * Electron-free: the link, the stream socket, the bridge and the clock are injected, so
  * `webcam.test.ts` drives this production controller against labelled stand-ins and
- * `webcamBridge.test.ts` drives it against the built Swift bridge. **No part of the running app
- * constructs it**: `main.ts`, `MAC_EXT`, `MessageType` and the Camera pane are unchanged, and no phone
- * implements `webcam.*` yet (W2).
+ * `webcamBridge.test.ts` drives it against the built Swift bridge. The running app builds it through
+ * `webcamWiring.ts` (`main.ts`), which `webcamWiring.test.ts` drives end to end.
  *
  * ### The rules it exists to keep
  *
@@ -103,7 +102,15 @@ export interface WebcamStatus {
     | { kind: 'ready' };
   /** The first reason nothing may be asked for, or null when Ask phone would be sent. */
   blocker: string | null;
-  session: null | { phase: Phase; sessionId: string | null; trigger: WebcamTrigger; facing: WebcamFacing; generation: number };
+  session: null | {
+    phase: Phase;
+    sessionId: string | null;
+    trigger: WebcamTrigger;
+    facing: WebcamFacing;
+    generation: number;
+    /** What the phone's `running` said it actually selected, beside its target — null until `running`. */
+    size: null | { width: number; height: number; targetWidth: number | null; targetHeight: number | null };
+  };
   lastEnded: null | {
     sessionId: string | null;
     reason: WebcamEndReason;
@@ -171,6 +178,7 @@ interface Session {
   socket: CameraSocket | null;
   /** Highest generation from `running` or an AU; anything below it is stale. */
   generation: number;
+  size: NonNullable<WebcamStatus['session']>['size'];
   /** The bridge has been told `session-live` for this session. AUs flow only after it. */
   liveAnnounced: boolean;
   preLive: KeyframeQueue<WebcamFrame>;
@@ -387,6 +395,10 @@ export class WebcamController {
       }
       if (typeof p.facing === 'string' && (p.facing === 'front' || p.facing === 'back')) s.facing = p.facing;
       s.generation = generation;
+      const dim = (v: unknown): number | null => (typeof v === 'number' && Number.isInteger(v) && v >= 16 && v <= 3840 ? v : null);
+      const width = dim(p.width);
+      const height = dim(p.height);
+      s.size = width !== null && height !== null ? { width, height, targetWidth: dim(p.targetWidth), targetHeight: dim(p.targetHeight) } : null;
       if (this.consumers === 0) {
         // Nobody is watching: the session ends as it goes live (rule 6), and nothing is fed.
         this.log.info(`${label(sessionId)} went live with no consumer; stopping it`);
@@ -553,6 +565,7 @@ export class WebcamController {
       phase: 'requesting',
       socket: null,
       generation: 0,
+      size: null,
       liveAnnounced: false,
       preLive: new KeyframeQueue<WebcamFrame>(WEBCAM_PRELIVE_BOUND),
       expiryTimer: null,
@@ -808,7 +821,7 @@ export class WebcamController {
       consumers: this.consumers,
       phone: this.phoneSupport(),
       blocker: this.blocker(),
-      session: s ? { phase: s.phase, sessionId: s.sessionId, trigger: s.trigger, facing: s.facing, generation: s.generation } : null,
+      session: s ? { phase: s.phase, sessionId: s.sessionId, trigger: s.trigger, facing: s.facing, generation: s.generation, size: s.size } : null,
       lastEnded: this.lastEnded,
       bridgeCounts: this.bridgeCounts,
     };

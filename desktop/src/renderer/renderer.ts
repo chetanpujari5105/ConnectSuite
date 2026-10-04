@@ -373,6 +373,12 @@ interface ConnectBridge {
   cameraFrameAck: CameraBridge['cameraFrameAck'];
   onCameraState: CameraBridge['onCameraState'];
   onCameraFrame: CameraBridge['onCameraFrame'];
+  // Camera v2, "Use as webcam" — see webcam.ts.
+  webcamCurrent: WebcamBridgeApi['webcamCurrent'];
+  webcamAsk: WebcamBridgeApi['webcamAsk'];
+  webcamStop: WebcamBridgeApi['webcamStop'];
+  webcamSwitch: WebcamBridgeApi['webcamSwitch'];
+  onWebcamState: WebcamBridgeApi['onWebcamState'];
 
   // Phase 4: the media remote. `RemoteStateView` comes from remote.ts, a plain script in the same
   // global scope rather than a module.
@@ -1192,6 +1198,19 @@ const camera = new CameraView(
   new CameraCanvasPainter(el<HTMLCanvasElement>('camera-canvas'), (streamId, outcome) => connect.cameraFrameAck(streamId, outcome)),
 );
 shell.onRoute((id) => camera.routeChanged(id));
+// Camera v2, "Use as webcam". Deliberately NOT tied to the route: a webcam session serves an app on this
+// Mac, not this pane, so leaving the pane neither stops it nor — coming back — asks the phone. The section
+// asks only on its own button; the main process asks once per consumer episode, and never resumes.
+new WebcamView(
+  {
+    webcamCurrent: () => connect.webcamCurrent(),
+    webcamAsk: (facing) => connect.webcamAsk(facing),
+    webcamStop: () => connect.webcamStop(),
+    webcamSwitch: (facing) => connect.webcamSwitch(facing),
+    onWebcamState: (callback) => connect.onWebcamState(callback),
+  },
+  { block: el('webcam-block'), status: el('webcam-status'), note: el('webcam-note'), controls: el('webcam-controls') },
+);
 // Files. Fetches on open, like Photos, and for the same reason — the roots are a round trip nobody
 // has asked for until the screen is looked at.
 //

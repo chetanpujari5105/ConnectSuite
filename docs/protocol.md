@@ -722,23 +722,23 @@ the Mac as a selectable camera called "Sidekick Camera"** — Camera v2. Specifi
 v1's `camera.*` messages, its claim word, its frame and its behaviour are unchanged by anything here, and
 a peer that knows only v1 behaves exactly as it did.
 
-**Status, stated so nothing below reads as shipped.** The four `webcam.*` names are in both sides'
-`MessageType` since W2 (2026-10-04), and **neither running app sends or serves them**:
+**Status, stated so nothing below reads as shipped.** Both apps are **wired** (2026-10-04) and **no
+picture can be produced yet**:
 
-- **The phone** implements this namespace in `camera-module` (`camera/webcam/`, phase W2): the session
-  machine, the claim, the access-unit writer, the Camera2 → MediaCodec capture and the request screen.
-  `WebcamFeature.install` is gated to debuggable builds, and **nothing calls it** — `ConnectSuiteApp`
-  does not, so the running phone neither advertises `webcam` nor serves its claim.
-- **The Mac's** frame bridge and the Camera Extension's logic are built and tested in-process only
-  (`desktop/native/SidekickCamera/`, W1). Electron main's controller (`desktop/src/main/webcam.ts`, W3) is
-  built and tested against stand-ins and the built bridge; **no part of the running app constructs it**,
-  and `MAC_EXT` does not advertise `webcam`.
+- **The phone** installs the feature from `ConnectSuiteApp` in a **debuggable build only**
+  (`WEBCAM_RELEASE` false): it then advertises `webcam` and `ext.webcam` 1 and serves the claim. Its capture
+  path (Camera2 → MediaCodec) has never executed on a device.
+- **The Mac** builds the controller in `main.ts` (`webcamWiring.ts`) and advertises `ext.webcam` 1 only
+  in an unpackaged build with the `webcamDev` debug switch **and** the bridge built at its one path. Its
+  Camera pane has a separate *Use as webcam* section.
+- **Nothing is asked of a phone today**, by design: the bridge reports Sidekick Camera *not installed* and
+  the build's producer identity *unconfigured* (no Team ID), and the controller refuses every request
+  while either holds. Both lift only with signing and activation (blocked on the Apple Developer Program).
 
-Nothing is signed, installed or activated, and no phone capture has run: the phone's capture path has
-never executed on a device. The bytes are proven across the three readers by
-`docs/fixtures/webcam-phone-stream-v1.hex` — real H.264 from a Mac encoder standing in for the phone's,
-wrapped by the phone's writer and decoded by the bridge. Quality and latency figures in this section are
-**targets**, never measurements.
+The bytes are proven across the three readers by `docs/fixtures/webcam-phone-stream-v1.hex` — real H.264
+from a Mac encoder standing in for the phone's, wrapped by the phone's writer and decoded by the bridge.
+Nothing is signed, installed or activated, and no phone capture has run. Quality and latency figures in
+this section are **targets**, never measurements.
 
 ### Two different things: the device and the session
 
@@ -812,8 +812,9 @@ both hold**: `webcam` is in `capabilities` and `webcam` is negotiated at ≥ 1.
   advertises no `ext.webcam`, until a release flag (`Extensions.WEBCAM_RELEASE`, `false`) is flipped
   deliberately in a commit that records its evidence.
 - **Mac.** The Mac advertises `ext.webcam: 1` only when **both** hold:
-  - its development gate is open (an unpackaged or development build, with the webcam development
-    switch on). The release twin, `WEBCAM_RELEASE`, is `false`;
+  - its development gate is open: an unpackaged build started with the `webcamDev` debug switch
+    (`CONNECTSUITE_DEBUG_SWITCHES=webcamDev`), which a packaged build ignores. The release twin,
+    `WEBCAM_RELEASE`, is `false`;
   - the bridge helper is present beside the app.
 - **Publishing the device is a third, separate gate.** Sidekick Camera exists only after the Camera
   Extension is activated, and that needs a Developer ID–signed Sidekick in `/Applications` and the

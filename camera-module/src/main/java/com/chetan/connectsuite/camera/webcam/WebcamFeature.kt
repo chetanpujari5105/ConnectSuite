@@ -25,15 +25,6 @@ object WebcamReleaseGate {
 }
 
 /**
- * Wires Camera v2 into the link, and by doing so turns the `webcam` capability on and makes the
- * handshake advertise `ext.webcam` 1 (it reads `LinkServer.webcamChannelSink`).
- *
- * **Nothing calls this yet.** The app's wiring — `ConnectSuiteApp` calling it with a `mirrorBusy` lambda,
- * as it does for Camera v1 — is a separate, approved step; until then the running app neither advertises
- * nor serves `webcam`. The sink goes first, for `MirrorFeature`'s reason: the last `register` then sees
- * both halves of the contract in place.
- */
-/**
  * The slice of `LinkServer` the webcam's wiring touches — so a JVM test drives the production [WebcamFeature.wire]
  * against a recorder and reads back exactly what the link would advertise.
  */

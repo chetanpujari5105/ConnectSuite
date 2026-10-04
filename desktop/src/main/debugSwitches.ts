@@ -122,6 +122,14 @@ export interface DebugSwitches {
    * Off by default.
    */
   shareV3Off: boolean;
+  /**
+   * The webcam's development gate (docs/protocol.md → Webcam → Development and release gates): this Mac
+   * advertises `ext.webcam` 1 and runs the camera bridge, **if** the bridge is built beside the app.
+   * Forced off in a packaged build, which waits for `WEBCAM_RELEASE`. It weakens no guard: the bridge
+   * still refuses to ask the phone anything while Sidekick Camera is not installed or the build has no
+   * producer identity. Off by default.
+   */
+  webcamDev: boolean;
 }
 
 const NAMES: readonly (keyof DebugSwitches)[] = [
@@ -137,6 +145,7 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'shareDevReceive',
   'shareV2',
   'shareV3Off',
+  'webcamDev',
 ];
 
 function read(): DebugSwitches {
@@ -153,6 +162,7 @@ function read(): DebugSwitches {
     shareDevReceive: false,
     shareV2: false,
     shareV3Off: false,
+    webcamDev: false,
   };
   // `app.isPackaged` is not consulted here because this module must stay importable by tests with
   // no Electron present; main.ts guards the startup read instead.

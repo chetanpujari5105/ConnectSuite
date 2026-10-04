@@ -20,9 +20,8 @@
  * A stream main cannot frame is closed, never resynced — a resync heuristic is how a garbled AU ends up
  * fed to a decoder as though it were the phone's camera.
  *
- * **Named, not wired.** The four message names are in `MessageType` since W2 (2026-10-04), as the twin
- * of the phone's constants. Nothing in the running app sends or handles them: the controller is
- * constructed by no part of it, and `MAC_EXT` does not advertise `webcam`.
+ * The four message names are `MessageType`'s since W2 (2026-10-04). `webcamWiring.ts` builds the
+ * controller in the running app; `ext.webcam` is advertised only where {@link webcamExt} says.
  */
 
 import { MessageType } from './protocol';
@@ -112,7 +111,7 @@ export function webcamClaim(token: string, sessionId: string): string {
  * must hold: the development gate (unpackaged, with the development switch on) or the release flag,
  * **and** the bridge helper present beside the app.
  *
- * Not called by the running app. `MAC_EXT` is unchanged; wiring this into `hello` is a separate step.
+ * Called once at startup by `planWebcam` (`src/main/webcamWiring.ts`); its result is merged into `hello.ext`.
  */
 export function webcamExt(opts: {
   packaged: boolean;

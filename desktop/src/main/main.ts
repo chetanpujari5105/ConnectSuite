@@ -125,6 +125,7 @@ import {
 } from './legacyData';
 import { VideoClient, type VideoFrame } from './video';
 import { CameraController, openCameraSocket } from './camera';
+import { planWebcam, wireWebcam, type WebcamWiring } from './webcamWiring';
 import { SESSION_ENDED_EVENT, type SessionEnded } from '../shared/session';
 import { FloatMirrorWindow } from './float';
 import { armPairingCode } from './pairingArm';
@@ -162,6 +163,8 @@ let rePairPending = false;
 let video: VideoClient | null = null;
 /** Camera v1 (docs/protocol.md → Camera). Built with the link; null until then. */
 let camera: CameraController | null = null;
+/** Camera v2 (docs/protocol.md → Webcam). Built with the link; null until then. */
+let webcam: WebcamWiring | null = null;
 /** Serialises input so two gestures never overlap on the phone. See input.ts. */
 const input = new InputClient(() => link);
 
@@ -1037,7 +1040,19 @@ app.whenReady().then(() => {
   log.info('files', filesAdvert[FS_BLOCKS]
     ? `fs.blocks 1 ADVERTISED (pulls above 64 MiB are block-verified when the phone agrees; packaged: ${app.isPackaged}; release policy FS_BLOCKS_RELEASE: ${FS_BLOCKS_RELEASE})`
     : 'fs.blocks not advertised: a packaged build waits for FS_BLOCKS_RELEASE — pulls above 64 MiB stay unverified');
-  link = new LinkClient(identity, () => rePairPending, () => ({ ...advertisedExt(shareV2, shareAsk, shareV3, shareWait), ...filesAdvert }));
+  // Camera v2 (Sidekick Camera): `ext.webcam` only in an unpackaged build with the webcamDev switch AND
+  // the bridge built at its one path (no override, no debug-build fallback). Decided once, here, so the
+  // advertisement and what is spawned cannot disagree.
+  const webcamPlan = planWebcam({
+    packaged: app.isPackaged,
+    devSwitch: !app.isPackaged && debugSwitches().webcamDev,
+    appPath: app.getAppPath(),
+    execPath: process.execPath,
+  });
+  log.info('webcam', webcamPlan.ext.webcam
+    ? `webcam 1 ADVERTISED (development gate open, bridge at its resolved path; release policy WEBCAM_RELEASE false)`
+    : `webcam not advertised: ${webcamPlan.absentReason ?? 'the development gate is closed'}`);
+  link = new LinkClient(identity, () => rePairPending, () => ({ ...advertisedExt(shareV2, shareAsk, shareV3, shareWait), ...filesAdvert, ...webcamPlan.ext }));
   // Records older than 7 days go at start, each partial only if it is provably ours (D3, D5).
   void files.sweepResumeRecords().then((n) => log.info('files', `resume records: ${n} expired at start (limit 7 days, 16 records)`));
   video = new VideoClient(identity);
@@ -1059,6 +1074,21 @@ app.whenReady().then(() => {
     emitFrame: (frame) => send('camera-frame', frame),
   });
   link.on(SESSION_ENDED_EVENT, (ended: SessionEnded) => camera?.onSessionEnded(ended.token, ended.byThisMac));
+
+  // Camera v2. One factory, the one the integration tests drive: `webcam.state`, the session ending,
+  // sleep / lock / user switch, the pane's intents, and the bridge's life. Its socket is v1's pinned
+  // opener — pinned to the phone holding the control session. Nothing here asks the phone by itself:
+  // the controller asks once per consumer episode, and only when Sidekick Camera is installed and this
+  // build carries a producer identity — it carries none, so today it asks nothing.
+  webcam = wireWebcam({
+    plan: webcamPlan,
+    link: cameraLink,
+    sessionEndedEvent: SESSION_ENDED_EVENT,
+    openSocket: (host, claim) => openCameraSocket(identity, host, claim, cameraLink.peerFingerprint()),
+    handle: (channel, listener) => ipcMain.handle(channel, listener),
+    send,
+    power: powerMonitor,
+  });
 
   // The private ownership record for share temporary files, in this app's own data folder.
   const shareLedger = new FileShareLedger(ledgerFile(userData));
@@ -1821,6 +1851,16 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => clearPreviews('app quit'));
+// Quit waits for the webcam: its stop is written while the link is still up, and the bridge is reaped
+// (shutdown, then SIGTERM, then SIGKILL — bounded) before the app exits, so no child outlives it.
+// Prepended so it runs before the handler below closes the link.
+let webcamQuitDone = false;
+app.prependListener('before-quit', (event) => {
+  if (!webcam || webcamQuitDone) return;
+  webcamQuitDone = true;
+  event.preventDefault();
+  void webcam.dispose().finally(() => app.quit());
+});
 app.on('before-quit', () => {
   video?.close('app quit');
   link?.stop('app quit');

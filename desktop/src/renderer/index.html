@@ -812,6 +812,19 @@
                 <div id="camera-controls" class="camera-controls"></div>
                 <p class="pane-foot">The picture shows only here, only after you allow it on the phone, and only while the phone's camera screen stays open. It is not a webcam other apps can use, nothing is recorded or saved, and there is no sound.</p>
               </div>
+              <div class="pane pane-webcam" id="webcam-card">
+                <!--
+                  Camera v2, "Use as webcam" (docs/protocol.md → Webcam): a separate namespace, a separate
+                  card, its own controls. It asks the phone only on Ask phone or once when an app here
+                  starts Sidekick Camera; it never resumes by itself and shows no picture.
+                -->
+                <h2 class="card-title" id="webcam-title">Use as webcam</h2>
+                <div id="webcam-block" class="camera-block"></div>
+                <p id="webcam-status" class="camera-status mono" role="status" aria-live="polite" hidden></p>
+                <p id="webcam-note" class="camera-notice" role="status" hidden></p>
+                <div id="webcam-controls" class="camera-controls"></div>
+                <p class="pane-foot">Your phone's camera appears to apps on this Mac as “Sidekick Camera”, only after you allow it on the phone, for one session, and only while the phone's webcam screen stays open. An app opening Sidekick Camera is not that permission. Nothing is recorded or saved, and there is no sound.</p>
+              </div>
             </section>
             <section class="screen" data-screen="activity" hidden>
               <div id="activity-host"></div>
@@ -943,6 +956,7 @@
     <script src="photos.js"></script>
     <script src="apps.js"></script>
     <script src="camera.js"></script>
+    <script src="webcam.js"></script>
     <script src="../shared/clipLink.js"></script>
     <script src="../shared/clipPhoneState.js"></script>
     <script src="../shared/deviceVitals.js"></script>

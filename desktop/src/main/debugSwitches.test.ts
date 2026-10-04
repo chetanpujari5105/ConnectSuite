@@ -51,6 +51,10 @@ test('the known switches are exactly these, and every one defaults to off', () =
       'shareV3Off',
       'stallCallEnded',
       'stallRemoved',
+      // Added 2026-10-04 for Camera v2's wiring, off by default (asserted below) and forced off in a
+      // packaged build by main.ts: the webcam's development gate. It weakens no guard — the bridge still
+      // refuses every request while Sidekick Camera is not installed or the build has no producer identity.
+      'webcamDev',
     ],
     'a switch was added or removed — confirm it defaults to off, then list it here',
   );

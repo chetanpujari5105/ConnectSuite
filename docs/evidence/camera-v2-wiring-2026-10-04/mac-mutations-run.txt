@@ -1,0 +1,36 @@
+== MW1 webcam.state not bound: exit 1
+   red: 5 - consumer episode → one request → the tap → the claimed socket → running → AUs reach the bridge; the last consumer stops at once
+   red: 6 - explicit Stop from the pane: stop first, then the socket, then the bridge
+   red: 7 - disconnect ends the session without a wire stop; reconnecting asks nothing (consent not reused)
+   red: 8 - suspend (suspend) stops the session at once with cause shutdown; the bridge keeps running
+   red: 9 - lock-screen (lock-screen) stops the session at once with cause shutdown; the bridge keeps running
+   red: 10 - user-did-resign-active (user-switch) stops the session at once with cause shutdown; the bridge keeps running
+   red: 12 - a malformed AU on the current stream ends it as a Mac failure
+   red: 13 - the bridge rejecting the current session's stream ends exactly that session as a Mac failure
+   red: 14 - the bridge dying mid-session stops the phone as a Mac failure and is reported, not restarted
+   red: 17 - a replaced session and a stale generation: only the current session and generation count
+   red: 19 - Switch from the pane reaches webcam.switch for the exact session
+   red: 20 - quit: the stop is written first, then the bridge is shut down and reaped
+== MW2 resume bound as well (would resume nothing, but binds a coming-back event): exit 0
+== MW3 lock-screen not bound: exit 0
+== MW4 quit does not reap the bridge: exit 1
+   red: 3 - REAL bridge through the planned path: Sidekick Camera not installed and no identity — nothing asked; quit reaps it
+   red: 20 - quit: the stop is written first, then the bridge is shut down and reaped
+   red: 22 - no orphan: every bridge child these tests spawned is gone
+== MW5 session-ended not bound: exit 1
+   red: 7 - disconnect ends the session without a wire stop; reconnecting asks nothing (consent not reused)
+== MW6 a packaged build honours the dev switch: exit 1
+   red: 1 - the plan: packaged, the switch off, the bridge missing — no ext and nothing to spawn; the release flag is off
+== MW7 Ask ignores the chosen camera: exit 1
+   red: 18 - the phone refusing (Camera v1 or the mirror holds it: CAMERA_BUSY) spends the episode — no retry
+== MW8 the panel asks on mount (auto-ask): exit 1
+   red: 1 - mounting reads the state and asks the phone nothing; only Ask phone does, with the chosen camera
+   red: 3 - requesting, awaiting approval, starting and running each say what is true and offer the right control
+   red: 4 - ended: how it ended, said once, and Ask is offered again — never re-asked by itself
+== MW9 Stop while running sends nothing: exit 1
+   red: 3 - requesting, awaiting approval, starting and running each say what is true and offer the right control
+== MW2 resume bound as well (would resume nothing, but binds a coming-back event): exit 1
+   red: 11 - resume and unlock are not bound: coming back never resumes a camera
+== MW3 lock-screen not bound: exit 1
+   red: 9 - lock-screen (lock-screen) stops the session at once with cause shutdown; the bridge keeps running
+   red: 11 - resume and unlock are not bound: coming back never resumes a camera

@@ -24,6 +24,7 @@ import type { FloatState } from './main/float';
 import type { ShareCardSnapshot } from './main/share';
 import type { SharePagePayload } from './main/shareWindow';
 import type { CameraFrameMessage, CameraPaneState, CameraResult } from './main/camera';
+import type { WebcamResult, WebcamStatus } from './main/webcam';
 
 /**
  * The only bridge between the renderer and the sockets. Everything here is an intent — the
@@ -148,6 +149,18 @@ contextBridge.exposeInMainWorld('connect', {
     ipcRenderer.on('camera-state', (_event, state) => callback(state)),
   onCameraFrame: (callback: (frame: CameraFrameMessage) => void) =>
     ipcRenderer.on('camera-frame', (_event, frame) => callback(frame)),
+
+  /**
+   * Camera v2, "Use as webcam" (docs/protocol.md → Webcam). A separate namespace from Camera v1 above:
+   * `webcamAsk` **asks** the phone (its owner taps there), `webcamStop` ends the one session, and
+   * `webcamSwitch` changes the camera inside it. Nothing here enumerates or opens a device.
+   */
+  webcamCurrent: (): Promise<WebcamStatus> => ipcRenderer.invoke('webcam-current'),
+  webcamAsk: (facing: 'front' | 'back'): Promise<WebcamResult> => ipcRenderer.invoke('webcam-ask', facing),
+  webcamStop: (): Promise<WebcamResult> => ipcRenderer.invoke('webcam-stop'),
+  webcamSwitch: (facing: 'front' | 'back'): Promise<WebcamResult> => ipcRenderer.invoke('webcam-switch', facing),
+  onWebcamState: (callback: (status: WebcamStatus) => void) =>
+    ipcRenderer.on('webcam-state', (_event, status) => callback(status)),
 
   /** Encoded H.264 access units. The renderer decodes; the main process never touches pixels. */
   onVideoFrame: (
