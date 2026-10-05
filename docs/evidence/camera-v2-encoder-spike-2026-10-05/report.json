@@ -1,0 +1,379 @@
+{
+ "runbook": "docs/camera-v2-encoder-spike.md",
+ "scorer": {
+  "version": 2
+ },
+ "verdict": {
+  "verdict": "PASS",
+  "reasons": [],
+  "passed": [
+   "one session id acked",
+   "the phone attached the claim for this session",
+   "one generation (1) throughout",
+   "running 803 ms after starting reached the Mac",
+   "first AU 820 ms after starting reached the Mac",
+   "the first AU was an IDR carrying SPS and PPS",
+   "SPS ×8, PPS ×8",
+   "SPS read: profile 100, level 40",
+   "8 IDR decoded",
+   "417 P-frames decoded",
+   "425 frames decoded",
+   "no decode failure",
+   "no malformed AU",
+   "header = running = SPS = decoded = 1920×1080",
+   "no per-AU dimension mismatch",
+   "one size throughout",
+   "the phone selected 1920×1080 and the stream carried it",
+   "accounting holds: 425 received = 425 accepted + 0 gate drops; 425 accepted = 425 ended (sinkEnqueued 425)",
+   "the planned Stop ended it",
+   "Stop at 15002 ms",
+   "phone stopped-by-mac in 14 ms",
+   "the phone logged STOPPED_BY_MAC",
+   "camera released 1364 ms after the stop",
+   "the decode probe exited 0 and was reaped",
+   "observed 60002 ms",
+   "no state and no AU after the stop",
+   "no camera held in 23 samples over the observation",
+   "no capture line after the stop"
+  ],
+  "info": {
+   "measuredFps": 29.94,
+   "targetFps": 30,
+   "idrIntervalMaxMs": 2032,
+   "idrIntervalMinMs": 1999,
+   "idrTargetMs": 2000,
+   "selected": "1920×1080",
+   "target": "1920×1080@30",
+   "coded": "1920×1088",
+   "profileLevel": "100/40",
+   "rotation": 0,
+   "sequenceGaps": 0,
+   "discontinuities": 0,
+   "macBitrateMbps": 10.05,
+   "dropped": {
+    "beforeRunning": 0,
+    "bridgeBound": 0,
+    "decodeQueue": 0,
+    "phone": 0
+   },
+   "encoder": {
+    "name": "c2.qti.avc.encoder",
+    "hardware": true,
+    "aeRange": "30-30",
+    "cameraId": "0",
+    "rungFps": 30,
+    "mbps": 8,
+    "encoderSizes": 29
+   },
+   "rungsRefused": []
+  }
+ },
+ "spike": {
+  "outcome": "completed",
+  "noReading": null,
+  "detail": null,
+  "facing": "back",
+  "bounds": {
+   "plannedStopMs": 15000,
+   "hardCapMs": 20000,
+   "observeMs": 60000,
+   "stoppedWithinMs": 5000,
+   "expirySlackMs": 5000,
+   "probeLifetimeS": 150
+  },
+  "session": "071b0a9b",
+  "route": {
+   "address": "10.180.2.216"
+  },
+  "timeline": {
+   "ackFromRequestMs": 12,
+   "startingFromRequestMs": 9632,
+   "runningFromStartingMs": 803,
+   "firstAuFromStartingMs": 820,
+   "stopFromStartingMs": 15002,
+   "stoppedFromStopMs": 14
+  },
+  "stop": {
+   "trigger": "planned",
+   "wire": {
+    "cause": "person"
+   },
+   "ackStopped": true
+  },
+  "running": [
+   {
+    "generation": 1,
+    "facing": "back",
+    "width": 1920,
+    "height": 1080,
+    "targetWidth": 1920,
+    "targetHeight": 1080,
+    "frameRate": 30,
+    "codec": "h264"
+   }
+  ],
+  "phoneStopped": {
+   "reason": "stopped-by-mac",
+   "framesSent": 425,
+   "framesDropped": 0
+  },
+  "mac": {
+   "framed": 425,
+   "keyframes": 8,
+   "bytes": 17789648,
+   "maxAuBytes": 215335,
+   "arrivalSpanMs": 14159,
+   "forwarded": 425,
+   "heldBeforeRunning": 0,
+   "droppedBeforeRunning": 0,
+   "droppedAtBridgeBound": 0,
+   "socketClose": null,
+   "malformed": null
+  },
+  "probe": {
+   "ready": {
+    "deviceInstalled": false,
+    "producerIdentityConfigured": false
+   },
+   "counts": {
+    "accepted": 425,
+    "composeErrors": 0,
+    "decodeErrors": 0,
+    "diag.afterEnd.completions": 0,
+    "diag.afterEnd.maxLateUs": 0,
+    "diag.arrival.maxGapUs": 122083,
+    "diag.arrival.maxPerFrame": 5,
+    "diag.chain.decodedAfterFailure": 0,
+    "diag.chain.decoderResets": 0,
+    "diag.chain.flushedAfterFailure": 0,
+    "diag.chain.recoveryKept": 0,
+    "diag.chain.staleFailures": 0,
+    "diag.compose.count": 425,
+    "diag.compose.firstUs": 2816,
+    "diag.compose.maxUs": 12643,
+    "diag.compose.overBudget": 0,
+    "diag.compose.totalUs": 927791,
+    "diag.decode.count": 425,
+    "diag.decode.firstUs": 97120,
+    "diag.decode.maxUs": 97120,
+    "diag.decode.overBudget": 1,
+    "diag.decode.totalUs": 1887227,
+    "diag.discardedEnded.afterDecode": 0,
+    "diag.discardedEnded.beforeDecode": 0,
+    "diag.firstFrame.sinceLiveUs": 117985,
+    "diag.overflow.events": 0,
+    "diag.overflow.first.atReceived": 0,
+    "diag.overflow.first.decodesBefore": 0,
+    "diag.overflow.first.gopIndex": 0,
+    "diag.overflow.first.inFlightUs": 0,
+    "diag.overflow.first.sinceLiveUs": 0,
+    "diag.overflow.idrFlushedAUs": 0,
+    "diag.overflow.idrFlushes": 0,
+    "diag.prepare.count": 1,
+    "diag.prepare.discarded": 0,
+    "diag.prepare.failed": 0,
+    "diag.prepare.maxUs": 43942,
+    "diag.prepare.waitMaxUs": 0,
+    "diag.queueWait.maxUs": 70311,
+    "diag.queueWait.totalUs": 389913,
+    "diag.recovery.count": 0,
+    "diag.recovery.lastUs": 0,
+    "diag.recovery.maxRefused": 0,
+    "diag.recovery.maxUs": 0,
+    "diag.recovery.open": 0,
+    "diag.recovery.unrecovered": 0,
+    "diag.service.maxUs": 99936,
+    "diag.service.overBudget": 1,
+    "discardedEnded": 0,
+    "droppedDecodeQueue": 0,
+    "gate.awaitingKeyframe": 0,
+    "gate.endedSession": 0,
+    "gate.malformed": 0,
+    "gate.noLiveSession": 0,
+    "gate.otherSession": 0,
+    "gate.outOfOrder": 0,
+    "gate.staleGeneration": 0,
+    "maxWaiting": 3,
+    "pending": 0,
+    "probe.arrived": 425,
+    "probe.composedDiscarded": 425,
+    "probe.decodeAttempts": 425,
+    "probe.decoded": 425,
+    "probe.decoded.height": 1080,
+    "probe.decoded.idr": 8,
+    "probe.decoded.nonIdr": 417,
+    "probe.decoded.width": 1920,
+    "probe.firstAcceptedIsIdr": 1,
+    "probe.firstArrivedIsIdrWithConfig": 1,
+    "probe.header.facing": 0,
+    "probe.header.firstSequence": 1,
+    "probe.header.flaggedIdr": 8,
+    "probe.header.generationMax": 1,
+    "probe.header.generationMin": 1,
+    "probe.header.height": 1080,
+    "probe.header.rotation": 0,
+    "probe.header.width": 1920,
+    "probe.idr.gaps": 7,
+    "probe.idr.maxGapUs": 2032467,
+    "probe.idr.minGapUs": 1999147,
+    "probe.nal.idrAUs": 8,
+    "probe.nal.nonIdrAUs": 417,
+    "probe.nal.pps": 8,
+    "probe.nal.sps": 8,
+    "probe.pts.spanUs": 14160629,
+    "probe.sinkStarts": 1,
+    "probe.sinkStops": 1,
+    "probe.sps.chromaFormat": 1,
+    "probe.sps.codedHeight": 1088,
+    "probe.sps.codedWidth": 1920,
+    "probe.sps.constraints": 0,
+    "probe.sps.height": 1080,
+    "probe.sps.level": 40,
+    "probe.sps.profile": 100,
+    "probe.sps.width": 1920,
+    "received": 425,
+    "sinkEnqueued": 425,
+    "sinkUnavailable": 0,
+    "supersededSink": 0,
+    "upscaled": 0
+   },
+   "streamRejected": null,
+   "errors": [],
+   "exit": {
+    "code": 0,
+    "signal": null,
+    "requested": true,
+    "cause": "stopped"
+   }
+  },
+  "observation": {
+   "ms": 60002,
+   "statesAfterStopped": 0,
+   "foreignStates": 0,
+   "ausAfterStop": 0,
+   "linkEnded": false
+  }
+ },
+ "route": {
+  "address": "10.180.2.216",
+  "interface": "en0",
+  "hardwarePort": "Wi-Fi"
+ },
+ "phone": {
+  "lines": [
+   {
+    "kind": "request",
+    "prefix": null,
+    "at": "2026-10-05T12:48:10.576+05:30",
+    "line": "2026-10-05T12:48:10.576+05:30 I [webcam] webcam.request from <peer>: Ack, ShowRequest(screen, person), ArmTimer",
+    "seenAtMs": 1433
+   },
+   {
+    "kind": "other",
+    "prefix": null,
+    "at": "2026-10-05T12:48:10.589+05:30",
+    "line": "2026-10-05T12:48:10.589+05:30 I [webcam] Webcam request 071b0a9b… awaiting consent: request screen opened over Sidekick",
+    "seenAtMs": 1433
+   },
+   {
+    "kind": "tapped",
+    "prefix": "071b0a9b",
+    "at": "2026-10-05T12:48:20.195+05:30",
+    "line": "2026-10-05T12:48:20.195+05:30 I [webcam] Start camera tapped for webcam 071b0a9b…: CancelTimers, ClearRequest, state starting, OpenCapture(back, generation 1), ArmTimer",
+    "seenAtMs": 10865
+   },
+   {
+    "kind": "attached",
+    "prefix": "071b0a9b",
+    "at": "2026-10-05T12:48:20.238+05:30",
+    "line": "2026-10-05T12:48:20.238+05:30 I [webcam] Webcam stream 071b0a9b… attached for <peer>",
+    "seenAtMs": 10866
+   },
+   {
+    "kind": "capture",
+    "prefix": "071b0a9b",
+    "generation": 1,
+    "facing": "back",
+    "cameraId": "0",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "mbps": 8,
+    "encoder": "c2.qti.avc.encoder",
+    "hardware": true,
+    "aeRange": "30-30",
+    "encoderSizes": 29,
+    "at": "2026-10-05T12:48:20.263+05:30",
+    "line": "2026-10-05T12:48:20.263+05:30 I [webcam] Webcam capture 071b0a9b… generation 1: back camera 0, 1920x1080 @30 target, 8.0 Mbit/s — the target 1920x1080@30 is a target, not a measurement; encoder c2.qti.avc.encoder (hardware true), AE range 30-30, 29 encoder-capable sizes",
+    "seenAtMs": 10866
+   },
+   {
+    "kind": "other",
+    "prefix": null,
+    "at": "2026-10-05T12:48:20.709+05:30",
+    "line": "2026-10-05T12:48:20.709+05:30 I [webcam] Webcam capture opened: back, 1920x1080, generation 1",
+    "seenAtMs": 11664
+   },
+   {
+    "kind": "other",
+    "prefix": null,
+    "at": "2026-10-05T12:48:20.995+05:30",
+    "line": "2026-10-05T12:48:20.995+05:30 I [webcam] Webcam encoder output format for 071b0a9b…: {max-bitrate=8000000, crop-right=1919, level=2048, latency=1, mime=video/avc, profile=8, bitrate=8000000, priority=0, intra-refresh-period=0, color-standard=1, feature-secure-playback=0, csd-1=java.nio.HeapByteBuffer[pos=0 lim=9 cap=9], color-transfer=3, crop-bottom=1079, vendor.qti-ext-enc-content-adaptive-mode.value=0, prepend-sps-pps-to-idr-frames=0, crop-left=0, width=1920, bitrate-mode=1, color-range=2, crop-top=0, frame-rate=30, height=1080, csd-0=java.nio.HeapByteBuffer[pos=0 lim=23 cap=23]}",
+    "seenAtMs": 11664
+   },
+   {
+    "kind": "running",
+    "prefix": "071b0a9b",
+    "generation": 1,
+    "width": 1920,
+    "height": 1080,
+    "targetWidth": 1920,
+    "targetHeight": 1080,
+    "facing": "back",
+    "at": "2026-10-05T12:48:20.997+05:30",
+    "line": "2026-10-05T12:48:20.997+05:30 I [webcam] Webcam session 071b0a9b… running: generation 1, 1920 × 1080 selected against a 1920 × 1080 target, back camera",
+    "seenAtMs": 11664
+   },
+   {
+    "kind": "other",
+    "prefix": null,
+    "at": "2026-10-05T12:48:35.208+05:30",
+    "line": "2026-10-05T12:48:35.208+05:30 I [webcam] webcam.stop from <peer>: CancelTimers, CloseCapture, CloseStream, ClearRequest, stopped STOPPED_BY_MAC, Ack",
+    "seenAtMs": 25945
+   },
+   {
+    "kind": "closed",
+    "prefix": null,
+    "at": "2026-10-05T12:48:35.208+05:30",
+    "line": "2026-10-05T12:48:35.208+05:30 I [webcam] Webcam stream closed: 425 sent / 0 dropped (0 backpressure, 0 oversize), 0 IDR requested, 0 discontinuity marked, 17789648 bytes, at most 1 of 2 in flight; 0 held back before running or stale, 0 unusable buffers",
+    "seenAtMs": 25945
+   },
+   {
+    "kind": "other",
+    "prefix": null,
+    "at": "2026-10-05T12:48:35.208+05:30",
+    "line": "2026-10-05T12:48:35.208+05:30 I [webcam] Webcam capture released (closed): 071b0a9b… back generation 1 — 1 released of 1 opened",
+    "seenAtMs": 25945
+   },
+   {
+    "kind": "stopped",
+    "prefix": "071b0a9b",
+    "reason": "STOPPED_BY_MAC",
+    "detail": null,
+    "sent": 425,
+    "dropped": 0,
+    "at": "2026-10-05T12:48:35.210+05:30",
+    "line": "2026-10-05T12:48:35.210+05:30 I [webcam] Webcam session 071b0a9b… stopped: STOPPED_BY_MAC — 425 sent / 0 dropped",
+    "seenAtMs": 25945
+   }
+  ],
+  "releasedWithinMs": 1364,
+  "heldDuringObservation": 0,
+  "observationSamples": 23,
+  "capturesAfterStop": 0,
+  "emergencyHome": false,
+  "rotated": false,
+  "otherSessions": 0
+ },
+ "startedAt": "2026-10-05T07:18:09.551Z"
+}

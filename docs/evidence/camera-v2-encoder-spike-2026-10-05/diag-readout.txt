@@ -1,0 +1,12 @@
+instrument: 100 counters
+accounting: received 425 = accepted 425 + gate drops 0; terminal droppedDecodeQueue 0, decodeErrors 0, composeErrors 0, discardedEnded 0, sinkEnqueued 425, sinkUnavailable 0; pending 0
+overflow: NONE in this run — a useful reading, NOT proof that burst recovery is solved
+recovery: 0 recovered, max 0.0 ms, max refused 0, unrecovered 0, open 0; gate.awaitingKeyframe 0
+preparation: count 1, max 43.9 ms, frame waited 0.0 ms, discarded 0, failed 0
+first frame since session-live: 118.0 ms
+decode: n 425, first 97.1 ms, mean 4.44 ms, max 97.1 ms, over 33.3 ms 1
+compose: n 425, first 2.8 ms, mean 2.18 ms, max 12.6 ms, over 33.3 ms 0
+service (decode+compose): max 99.9 ms, over budget 1; queue wait max 70.3 ms; decode stage high-water 3 of 4
+arrival: max gap 122.1 ms, most AUs in one frame interval 5
+decode-failure chain: decodedAfterFailure 0 (pre-registered: must be 0; anything else is a defect finding, reported, not a verdict change), flushed 0, stale 0, resets 0
+after the Stop: completions 0, latest 0.0 ms; discarded before decode 0, after 0

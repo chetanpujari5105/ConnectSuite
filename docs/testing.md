@@ -28149,3 +28149,36 @@ fail to decode). None of this is camera content, the field, or hardware.
 
 **Fresh:** Swift **132 / 0** (2 opt-in skipped), Mac **1,660 / 0**, scripts **287 / 0**, hook fixtures
 pass, both typechecks clean.
+
+### Camera v2 encoder spike, second run — 2026-10-05 12:48 IST (owner-supervised, once): PASS 28/28; defect 177 still open
+
+One approved diagnostic run, the existing runbook, scorer v2 unchanged; pre-registration
+(`preregistration.md`, `diag-readout.mjs`) written and hashed before the run and re-verified after.
+Binaries: `.build/release` rebuilt from `a16cee8` (probe `331cc7bb…`, bridge `39011e97…`); phone APK
+`b0ad2a47…`, byte-identical to the local build made after the last phone-side commit — not reinstalled;
+`desktop/dist` byte-identical to `HEAD`'s compiled source, 130/130 files. Main's parser took 60/60 real
+expanded counts records (≤ 104 keys) and a 115-key worst case, and refused 129 (control).
+
+- **Gates:** pin RZCY12330DT; link 3/3; Sidekick resumed, unlocked, awake, no call; thermal 1 (light),
+  below the runbook's *moderate*; no camera client; spike launch `DEBUG SWITCHES ON: webcamDev, webcamSpike`
+  only, `webcam 1 ADVERTISED`, `encoder spike ARMED`, production gates unchanged; nothing started by itself.
+- **Verdict PASS, 28/28.** `running` 803 ms and the first AU 820 ms after `starting` reached the Mac; IDR +
+  SPS/PPS first; 8 IDR + 417 P = **425 received, accepted and decoded, 0 drops at every stage**; 0 decode
+  failures, 0 malformed; header = running = SPS = decoded = **1920×1080** (coded 1088); **29.94 fps**; IDR
+  1,999–2,032 ms; `c2.qti.avc.encoder` hardware, High 4.0. Planned Stop 15,002 ms; `stopped-by-mac` 14 ms;
+  camera released 1,364 ms; probe exit 0; **60,002 ms observed, 23 samples, no state, AU, capture or
+  camera hold after the Stop**; no emergency Home. Route `10.180.2.216` via `en0` **Wi-Fi**.
+- **Defect 177 readings (reported, never judged):** **no overflow**; decode-stage high-water **3 of 4**; at
+  most 5 AUs in one 33.3 ms interval, largest gap 122 ms; preparation 1 × 43.9 ms, waited 0, discarded 0,
+  failed 0; first frame **118 ms** after `session-live`; decode first 97.1 ms, mean 4.44 ms, the only frame
+  over budget; compose first 2.8 ms, mean 2.18 ms, max 12.6 ms; queue wait max 70.3 ms; `decodedAfterFailure`
+  0. Aggregates only — nothing is recorded per frame.
+- **Restored:** the spike launch quit through its named *Quit Sidekick* menu item (SIGTERM had not quit the
+  earlier app in 35 s); normal launch 12:51:08 with no switches — `webcam not advertised`, no bridge or
+  probe. Before/after snapshots identical except `sidekick.json`'s mtime and inode; the snapshots are held
+  privately (`snapshots.pointer.md`).
+- **Defect 177 stays open:** the overflow was not reproduced; burst recovery is unresolved; the
+  decode-failure branch was not exercised; rotation 0; 15 s only. The 2026-10-04 FAIL and its post-hoc
+  re-score are unchanged.
+
+Evidence: `docs/evidence/camera-v2-encoder-spike-2026-10-05/`.
