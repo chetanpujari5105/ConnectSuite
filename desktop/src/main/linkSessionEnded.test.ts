@@ -95,3 +95,24 @@ test('174: only this Mac’s own stop says the session was ended here', () => {
   heartbeat.inner.teardown('no pong in 30s');
   assert.equal(heartbeat.ended[0]?.byThisMac, false);
 });
+
+// Calls P2: a frame from a connection that has ended cannot reach the feature clients, because the
+// teardown destroys the socket it ended and stops listening to it. Node delivers no `data` from a
+// destroyed socket — that half is the platform's guarantee, and this asserts the half that is ours.
+test('a teardown destroys the socket it ended and leaves none bound', () => {
+  const { inner } = connected('tok-F');
+  let destroyed = false;
+  const removed: string[] = [];
+  inner.socket = {
+    destroy: () => { destroyed = true; },
+    end: () => undefined,
+    write: () => true,
+    removeAllListeners: (event: string) => { removed.push(event); },
+    on: () => undefined,
+    once: () => undefined,
+  };
+  inner.teardown('phone closed the connection');
+  assert.equal(destroyed, true, 'the ended socket was left open');
+  assert.ok(removed.includes('close'), 'the ended socket can still end the next session');
+  assert.equal(inner.socket, null, 'a socket is still bound after teardown');
+});

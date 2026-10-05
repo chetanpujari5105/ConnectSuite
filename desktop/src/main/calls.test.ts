@@ -450,3 +450,63 @@ test('no line this client logs carries a full number or a contact name', async (
     log.warn = keep.warn;
   }
 });
+
+// ---- P2: reconnects, in main.ts's order ---------------------------------------------------------
+//
+// On a drop main.ts calls `calls.clear()`; on the next session the phone replays the call in progress
+// with its original `callId` and `startedAtMs` (`CallFeature.replayTo`). A call that ends while the
+// link is down sends no `call.ended`. Late frames from the old connection cannot reach this client at
+// all: `link.ts` destroys the old socket at teardown (`linkSessionEnded.test.ts`).
+
+test('a call replayed after a reconnect is shown again, and actions aim at it', async () => {
+  const { link, sent } = fakePhone();
+  const calls = new CallClient(() => link);
+  calls.onIncoming(RINGING as never);
+  calls.clear();
+  assert.equal(calls.currentCall(), null, 'control: the drop cleared the card');
+  calls.onIncoming({ ...RINGING } as never);
+  assert.equal(calls.currentCall()?.callId, 'c17');
+  await calls.reject();
+  assert.deepEqual(sent.at(-1), { type: 'call.reject', payload: { callId: 'c17' } });
+});
+
+test('a different call reusing an id after a phone restart replaces the card entirely', async () => {
+  const { link, sent } = fakePhone();
+  const calls = new CallClient(() => link);
+  calls.onIncoming({ ...RINGING, callId: 'c1' } as never);
+  calls.clear(); // the call ends while the link is down: no call.ended ever arrives
+  const reused = { ...NEXT_CALL, callId: 'c1', startedAtMs: RINGING.startedAtMs + 3_600_000 };
+  calls.onIncoming(reused as never);
+  assert.equal(calls.currentCall()?.number, NEXT_CALL.number, 'the old call’s number survived');
+  assert.equal(calls.currentCall()?.startedAtMs, reused.startedAtMs);
+  assert.equal(calls.currentCall()?.contactName, undefined, 'the old call’s name survived');
+  await calls.answer();
+  assert.deepEqual(sent.at(-1), { type: 'call.answer', payload: { callId: 'c1' } });
+});
+
+test('a replayed call that then ends clears the card and hands the ended event its card', () => {
+  const { link } = fakePhone();
+  const calls = new CallClient(() => link);
+  calls.onIncoming(RINGING as never);
+  calls.clear();
+  calls.onIncoming({ ...RINGING, state: 'active' } as never);
+  const seen: Array<{ id: string; card: string | null }> = [];
+  calls.on('ended', (ended: { callId: string }, card: { callId: string } | null) =>
+    seen.push({ id: ended.callId, card: card?.callId ?? null }));
+  calls.onEnded({ callId: 'c17', number: '', durationMs: 60_000, disposition: 'answered' });
+  assert.equal(calls.currentCall(), null);
+  assert.deepEqual(seen, [{ id: 'c17', card: 'c17' }]);
+});
+
+test('an ended event for a call the Mac never showed in this session leaves the card alone', () => {
+  const { link } = fakePhone();
+  const calls = new CallClient(() => link);
+  calls.onIncoming(RINGING as never);
+  calls.clear();
+  calls.onIncoming(NEXT_CALL as never); // the new session's call
+  let card: unknown = 'unset';
+  calls.on('ended', (_e: unknown, c: unknown) => { card = c; });
+  calls.onEnded({ callId: 'c17', number: '', durationMs: 0, disposition: 'missed' });
+  assert.equal(calls.currentCall()?.callId, 'c18', 'the current call was cleared by another call’s end');
+  assert.equal(card, null, 'the ended event was handed a card it does not describe');
+});
