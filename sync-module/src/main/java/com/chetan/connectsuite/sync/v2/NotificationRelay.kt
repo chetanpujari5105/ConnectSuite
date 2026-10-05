@@ -78,7 +78,7 @@ object NotificationRelay {
     fun dismiss(key: String): Boolean {
         val live = service ?: return false
         return runCatching { live.cancelNotification(key) }
-            .onFailure { LinkLog.w("notif", "Dismiss of $key failed: ${it.message}") }
+            .onFailure { LinkLog.w("notif", "Dismiss of ${NotificationKeyLog.of(key)} failed: ${it.message}") }
             .isSuccess
     }
 

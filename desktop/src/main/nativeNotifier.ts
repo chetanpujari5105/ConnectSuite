@@ -7,6 +7,7 @@ import {
   refusalCopy,
 } from '../shared/nativeNotify';
 import { NotifyCooldown } from '../shared/notifyCooldown';
+import { cooldownLogLine } from '../shared/notifKeyLog';
 import { LiveNotifications } from '../shared/liveNotifications';
 import type { PhoneNotification } from '../shared/protocol';
 import { log } from './logger';
@@ -228,9 +229,14 @@ export class NativeNotifier {
         const window = held.seenOngoing ? 'status' : 'event';
         log.info(
           'native-notif',
-          `cooldown ${notification.package} (${window} key, ${notification.key}) — ` +
-            `${this.tally[NotifyDecision.COOLDOWN] ?? 0} held / ${this.tally[NotifyDecision.NOTIFY] ?? 0} posted ` +
-            `since launch, ${this.cooldown.size} keys tracked`,
+          cooldownLogLine(
+            notification.package,
+            window,
+            notification.key,
+            this.tally[NotifyDecision.COOLDOWN] ?? 0,
+            this.tally[NotifyDecision.NOTIFY] ?? 0,
+            this.cooldown.size,
+          ),
         );
       }
       return decision;

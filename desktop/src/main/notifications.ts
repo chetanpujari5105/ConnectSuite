@@ -3,6 +3,7 @@ import { MessageType, type PhoneAck, type PhoneNotification } from '../shared/pr
 import { tell } from './feature';
 import type { LinkClient } from './link';
 import { log } from './logger';
+import { notifKeyForLog } from '../shared/notifKeyLog';
 import { debugSwitches } from './debugSwitches';
 
 /**
@@ -123,7 +124,7 @@ export class NotificationClient extends EventEmitter {
     // the notification, so a Dismiss click reaches a key the phone no longer has and the
     // `NOT_FOUND` path runs. Off unless asked for on the command line.
     if (debugSwitches().stallRemoved) {
-      log.warn('notif', `stallRemoved: swallowing notif.removed for ${key} — the row is now stale on purpose`);
+      log.warn('notif', `stallRemoved: swallowing notif.removed for ${notifKeyForLog(key)} — the row is now stale on purpose`);
       return;
     }
     if (!this.live.delete(key)) return;
