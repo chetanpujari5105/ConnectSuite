@@ -661,7 +661,7 @@ class ShellView {
    * An unwired id says so rather than doing nothing, on the same rule `runSelected` follows: a
    * keystroke that is swallowed is indistinguishable from a keystroke that was not received.
    */
-  private runCommand(id: string): void {
+  runCommand(id: string): void {
     const run = this.commands.get(id);
     if (!run) {
       this.toast(`That shortcut is not wired up on this build (${id}).`);
@@ -686,29 +686,13 @@ class ShellView {
         return;
       }
       /*
-       * **⌘⇧M — defect 123, bound 2026-09-16.**
-       *
-       * It was drawn in two places (the Overview hero's primary action and the ⌘K palette's first
-       * command) and bound to **the mark diagnostic**, a `globalShortcut` in `main.ts` that writes
-       * a log line. So the app's most prominent accelerator did something else entirely, silently,
-       * and had since the mark landed. The mark moved to an unadvertised combination; this is the
-       * key the handoff names for *"Mirror phone"*.
-       *
-       * **It runs the palette's own command rather than calling `mirror.start`**, which is what
-       * keeps this from becoming defect 122's second accelerator table: `renderer.ts` wires
-       * `mirror.start` once, and the hero button, the palette row and this key are three triggers
-       * for one registration. A command with nothing behind it reports itself here exactly as it
-       * does in the palette instead of swallowing the keystroke.
-       *
-       * It is **not** a `globalShortcut`. The mark is one deliberately — it must be takeable while
-       * the phone has focus — and this must not be: taking ⌘⇧M from every other application on the
-       * machine to start a mirror is a cost this app has no right to impose.
+       * ⌘⇧M, ⌘⇧. and ⌘⇧T are **not** handled here (defects 123 and 122). They are the application
+       * menu's accelerators, built from the palette's own `COMMANDS` and run through `runCommand`
+       * (`appMenu.ts`, `renderer.ts`), so the key is consumed before the page — the mirror canvas,
+       * which forwards keystrokes to the phone, included — and there is one owner per printed key.
+       * None is a `globalShortcut`: taking a key from every other application is not this app's to do.
        */
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'm') {
-        event.preventDefault();
-        this.runCommand('mirror.start');
-        return;
-      }
+
       if ($('palette').hidden) return;
       // aria-modal promises the rest of the window is inert. The palette's one focusable control is
       // its input — rows are options reached by the arrow keys — so Tab has nowhere to go.

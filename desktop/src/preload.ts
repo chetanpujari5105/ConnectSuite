@@ -41,9 +41,14 @@ contextBridge.exposeInMainWorld('connect', {
    * The nav list, handed to the main process so the macOS menu bar is a **view** of
    * `navModel.SCREENS` rather than a second copy of it. See `main/appMenu.ts`.
    */
-  menuSetRoutes: (routes: { id: string; label: string; shortcut: string }[]): Promise<void> =>
-    ipcRenderer.invoke('menu-routes', routes),
-  /** A menu item was chosen. `__palette__` is the ⌘K item; everything else is a screen id. */
+  menuSetRoutes: (
+    routes: { id: string; label: string; shortcut: string }[],
+    commands: { id: string; label: string; shortcut: string }[] = [],
+  ): Promise<void> => ipcRenderer.invoke('menu-routes', routes, commands),
+  /**
+   * A menu item was chosen. `__palette__` is the ⌘K item, `command:<id>` one of the palette's
+   * commands (defect 122), and everything else is a screen id.
+   */
   onMenuRoute: (callback: (id: string) => void) =>
     ipcRenderer.on('menu-route', (_event, payload: { id: string }) => callback(payload.id)),
   /**

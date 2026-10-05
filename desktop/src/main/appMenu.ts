@@ -68,6 +68,11 @@ export interface AppMenuHandlers {
   route: (id: string) => void;
   /** Open the ⌘K palette. */
   palette: () => void;
+  /**
+   * Run one of the palette's commands by id — the same `runCommand` the palette row calls. Optional
+   * so a caller with no commands to offer (the minimal launch menu) need not pass one.
+   */
+  command?: (id: string) => void;
   /** Whether developer items may be shown. `app.isPackaged === false` in development. */
   showDeveloperItems: boolean;
   appName: string;
@@ -75,13 +80,24 @@ export interface AppMenuHandlers {
 
 export function buildAppMenu(
   routes: MenuRoute[],
-  { route, palette, showDeveloperItems, appName }: AppMenuHandlers,
+  { route, palette, command, showDeveloperItems, appName }: AppMenuHandlers,
+  /**
+   * The palette's commands (`navModel.COMMANDS`), handed over the same way as the routes — defect
+   * 122. Their printed `⌘⇧` keys become this menu's accelerators, so the palette and the menu bar
+   * cannot disagree about what ⌘⇧T does, and a key is consumed here before the page — including
+   * while the mirror canvas has focus and forwards keystrokes to the phone, which is exactly when
+   * *Stop mirroring* is wanted.
+   */
+  commands: MenuRoute[] = [],
 ): MenuItemConstructorOptions[] {
   const go: MenuItemConstructorOptions[] = routes.map((screen) => ({
     label: screen.label,
     accelerator: acceleratorFor(screen.shortcut),
     click: () => route(screen.id),
   }));
+  const mirror: MenuItemConstructorOptions[] = command
+    ? commands.map((c) => ({ label: c.label, accelerator: acceleratorFor(c.shortcut), click: () => command(c.id) }))
+    : [];
 
   return [
     {
@@ -118,6 +134,7 @@ export function buildAppMenu(
         ...go,
       ],
     },
+    ...(mirror.length > 0 ? [{ label: 'Mirror', submenu: mirror }] : []),
     {
       label: 'View',
       submenu: [

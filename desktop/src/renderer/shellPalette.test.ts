@@ -145,3 +145,23 @@ test('the arrow keys move the active option the screen reader is told about', ()
   assert.equal(m.byId('palette-input').getAttribute('aria-activedescendant'), 'palette-option-1');
   m.restore();
 });
+
+// ---- Defect 122: no printed key that macOS takes first --------------------------------------------
+//
+// ⌘⇧M, ⌘⇧. and ⌘⇧T are menu accelerators now (`appMenu.test.ts`). What is left for this file is the
+// one key that cannot be bound by any app: macOS takes ⌘⇧4 for its own screenshot, so printing it
+// promised a phone capture and delivered a Mac one.
+
+const navModel = require_('./navModel.ts') as {
+  COMMANDS: Array<{ id: string; shortcut: string }>;
+  OS_RESERVED_SHORTCUTS: string[];
+  SCREENS: Array<{ shortcut: string }>;
+};
+
+test('no command or screen prints a key macOS keeps for itself', () => {
+  const printed = [...navModel.COMMANDS, ...navModel.SCREENS].map((r) => r.shortcut).filter(Boolean);
+  assert.ok(printed.length >= 12, `control: shortcuts were read (${printed.length})`);
+  for (const reserved of navModel.OS_RESERVED_SHORTCUTS) {
+    assert.ok(!printed.includes(reserved), `${reserved} is printed, and macOS takes it before the app`);
+  }
+});

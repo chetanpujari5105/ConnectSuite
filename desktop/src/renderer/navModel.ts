@@ -317,8 +317,17 @@ const COMMANDS: Command[] = [
   { id: 'mirror.start', label: 'Mirror phone', group: 'Mirror', shortcut: '⌘⇧M' },
   { id: 'mirror.stop', label: 'Stop mirroring', group: 'Mirror', shortcut: '⌘⇧.' },
   { id: 'float.toggle', label: 'Toggle floating window', group: 'Mirror', shortcut: '⌘⇧T' },
-  { id: 'mirror.capture', label: 'Take screenshot', group: 'Mirror', shortcut: '⌘⇧4' },
+  // No shortcut printed, and that is a decision (defect 122): the handoff draws ⌘⇧4, and macOS takes
+  // ⌘⇧4 for its own screenshot before any app sees the key. A printed key that captures the Mac
+  // instead of the phone is a promise this app cannot keep. The command stays in the palette.
+  { id: 'mirror.capture', label: 'Take screenshot', group: 'Mirror', shortcut: '' },
 ];
+
+/**
+ * Keys macOS keeps for itself by default — the screenshot family. No command may print one: the
+ * key never reaches the window, so the hint would be decoration (`navModel.test.ts` holds this).
+ */
+const OS_RESERVED_SHORTCUTS = ['⌘⇧3', '⌘⇧4', '⌘⇧5'];
 
 /**
  * A feature that lives **inside** another screen, and the palette entry that reaches it.
@@ -750,6 +759,7 @@ if (typeof module !== 'undefined') {
     SCREENS,
     PAIRING_SCREEN,
     COMMANDS,
+    OS_RESERVED_SHORTCUTS,
     DEEP_LINKS,
     TOOL_RAIL,
     GLOBAL_ACTIONS,

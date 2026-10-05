@@ -66,7 +66,10 @@ interface ConnectBridge {
   ): void;
   /** Renders an already-armed QR payload. Does not arm a new one — that would rotate the token. */
   pairingQrRender(payload: string): Promise<string | null>;
-  menuSetRoutes(routes: { id: string; label: string; shortcut: string }[]): Promise<void>;
+  menuSetRoutes(
+    routes: { id: string; label: string; shortcut: string }[],
+    commands?: { id: string; label: string; shortcut: string }[],
+  ): Promise<void>;
   onMenuRoute(callback: (id: string) => void): void;
   onRevealNotification(callback: (key: string) => void): void;
   notifPermission(): Promise<{
@@ -939,9 +942,15 @@ el('new-qr').addEventListener('click', () => {
  * handler. They arrive here instead, and call the same `shell.route` the sidebar calls: one
  * navigation path, not two.
  */
-void connect.menuSetRoutes(SCREENS.map((s) => ({ id: s.id, label: s.label, shortcut: s.shortcut })));
+void connect.menuSetRoutes(
+  SCREENS.map((s) => ({ id: s.id, label: s.label, shortcut: s.shortcut })),
+  // Defect 122: the palette's commands, so ⌘⇧M, ⌘⇧. and ⌘⇧T are the menu's accelerators and run the
+  // palette's own registrations — one owner for every printed key.
+  COMMANDS.map((c) => ({ id: c.id, label: c.label, shortcut: c.shortcut })),
+);
 connect.onMenuRoute((id) => {
   if (id === '__palette__') shell.openPalette();
+  else if (id.startsWith('command:')) shell.runCommand(id.slice('command:'.length));
   else shell.route(id);
 });
 

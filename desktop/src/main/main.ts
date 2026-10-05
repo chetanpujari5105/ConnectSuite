@@ -944,7 +944,7 @@ app.setName('Sidekick');
  * in the app. A window that is up for 200 ms before its routes arrive is 200 ms in which somebody
  * can press ⌘V in the manual-address field.
  */
-function installAppMenu(routes: MenuRoute[]): void {
+function installAppMenu(routes: MenuRoute[], commands: MenuRoute[] = []): void {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate(
       buildAppMenu(routes, {
@@ -958,14 +958,20 @@ function installAppMenu(routes: MenuRoute[]): void {
           revealMainWindow('menu');
           sendAll('menu-route', { id: '__palette__' });
         },
-      }),
+        // Defect 122: a palette command chosen from the menu bar or by its accelerator. Prefixed on
+        // the existing channel, so the renderer runs it through the palette's own `runCommand`.
+        command: (id) => {
+          revealMainWindow('menu');
+          sendAll('menu-route', { id: `command:${id}` });
+        },
+      }, commands),
     ),
   );
 }
 
-ipcMain.handle('menu-routes', (_event, routes: unknown) => {
+ipcMain.handle('menu-routes', (_event, routes: unknown, commands: unknown) => {
   if (!Array.isArray(routes)) return;
-  installAppMenu(routes as MenuRoute[]);
+  installAppMenu(routes as MenuRoute[], Array.isArray(commands) ? (commands as MenuRoute[]) : []);
 });
 
 // Chromium fixes its scheme table at startup, so this runs at module load, before ready.

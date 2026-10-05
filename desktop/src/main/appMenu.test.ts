@@ -113,3 +113,32 @@ test('before the renderer reports its routes, Edit still exists', () => {
   assert.ok(menu(template, 'Edit').some((i: any) => i.role === 'paste'));
   assert.equal(menu(template, 'Go').filter((i: any) => i.label && i.label !== 'Search…').length, 0);
 });
+
+// ---- Defect 122: the palette's commands are menu items with the keys the palette prints ----------
+
+const COMMANDS: MenuRoute[] = [
+  { id: 'mirror.start', label: 'Mirror phone', shortcut: '⌘⇧M' },
+  { id: 'mirror.stop', label: 'Stop mirroring', shortcut: '⌘⇧.' },
+  { id: 'float.toggle', label: 'Toggle floating window', shortcut: '⌘⇧T' },
+  { id: 'mirror.capture', label: 'Take screenshot', shortcut: '' },
+];
+
+test('each palette command is a Mirror menu item with the key the palette prints, and runs that command', () => {
+  const ran: string[] = [];
+  const template = buildAppMenu(ROUTES, {
+    appName: 'Sidekick', showDeveloperItems: false, route: () => {}, palette: () => {}, command: (id) => ran.push(id),
+  }, COMMANDS);
+  const items = menu(template, 'Mirror');
+  assert.deepEqual(items.map((i: any) => [i.label, i.accelerator]), [
+    ['Mirror phone', 'Cmd+Shift+M'],
+    ['Stop mirroring', 'Cmd+Shift+.'],
+    ['Toggle floating window', 'Cmd+Shift+T'],
+    ['Take screenshot', undefined],
+  ]);
+  for (const item of items) item.click();
+  assert.deepEqual(ran, COMMANDS.map((c) => c.id));
+});
+
+test('with no commands handed over, there is no empty Mirror menu', () => {
+  assert.equal(build().some((m: any) => m.label === 'Mirror'), false);
+});
