@@ -86,7 +86,26 @@ export type BridgeStatus =
   | { op: 'stream-rejected'; sessionId: string; generation: number; violation: StreamFault }
   | { op: 'sink'; state: SinkState }
   | { op: 'counts'; counts: Record<string, number> }
-  | { op: 'error'; error: string };
+  | { op: 'error'; error: string }
+  /**
+   * Version 2 (docs/protocol.md → the local contract): the live session's decode chain broke and the
+   * bridge now refuses every non-IDR until an IDR. Once per break. Main may answer with `webcam.keyframe`.
+   */
+  | { op: 'chain-broken'; sessionId: string; generation: number; cause: ChainBreakCause }
+  /** The first frame admitted after that break reached the sink. Once per `chain-broken`. */
+  | { op: 'chain-recovered'; sessionId: string; generation: number };
+
+/** `chain-broken`'s `cause`, held to `docs/fixtures/webcam-vocabulary-v1.json` (`chainBreakCauses`). */
+export const CHAIN_BREAK_CAUSES = Object.freeze(['queue-full', 'decode-failed', 'compose-failed'] as const);
+export type ChainBreakCause = (typeof CHAIN_BREAK_CAUSES)[number];
+const CHAIN_BREAK_CAUSE_SET: ReadonlySet<string> = new Set(CHAIN_BREAK_CAUSES);
+
+function liveGeneration(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 0xffff) {
+    throw new BridgeOutputError(`${field} is not 1..65535`);
+  }
+  return value;
+}
 
 /** The bridge's output broke the contract. The bridge is no longer trusted. */
 export class BridgeOutputError extends Error {
@@ -153,6 +172,20 @@ export function parseStatus(body: Buffer): BridgeStatus {
         throw new BridgeOutputError('stream-rejected.violation is not a known fault');
       }
       return { op: 'stream-rejected', sessionId: obj.sessionId, generation, violation: obj.violation as StreamFault };
+    }
+    case 'chain-broken': {
+      exactKeys(obj, ['op', 'sessionId', 'generation', 'cause']);
+      if (!isSessionId(obj.sessionId)) throw new BridgeOutputError('chain-broken.sessionId is not 32 lowercase hex');
+      const generation = liveGeneration(obj.generation, 'chain-broken.generation');
+      if (typeof obj.cause !== 'string' || !CHAIN_BREAK_CAUSE_SET.has(obj.cause)) {
+        throw new BridgeOutputError('chain-broken.cause is not a known cause');
+      }
+      return { op: 'chain-broken', sessionId: obj.sessionId, generation, cause: obj.cause as ChainBreakCause };
+    }
+    case 'chain-recovered': {
+      exactKeys(obj, ['op', 'sessionId', 'generation']);
+      if (!isSessionId(obj.sessionId)) throw new BridgeOutputError('chain-recovered.sessionId is not 32 lowercase hex');
+      return { op: 'chain-recovered', sessionId: obj.sessionId, generation: liveGeneration(obj.generation, 'chain-recovered.generation') };
     }
     case 'sink':
       exactKeys(obj, ['op', 'state']);

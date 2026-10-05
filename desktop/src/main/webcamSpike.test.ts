@@ -81,6 +81,7 @@ class StandInPhone extends EventEmitter {
       if (this.ackRequest instanceof Error) throw this.ackRequest;
       return { payload: this.ackRequest };
     }
+    if (type === 'webcam.keyframe') return { payload: { result: 'accepted', generation: payload.generation } };
     return { payload: { stopped: true } };
   }
   state(payload: Record<string, unknown>): void {
@@ -96,6 +97,8 @@ interface Rig {
   statuses: SpikeStatus[];
   logs: string[];
   probePids: number[];
+  /** The real probe's hooks, so a test can add a labelled INJECTED status beside what the probe reports. */
+  probeHooks: BridgeHooks[];
 }
 
 function rig(opts: { bounds?: Partial<SpikeBounds>; busy?: boolean; probe?: 'real' | 'none' } = {}): Rig {
@@ -105,6 +108,7 @@ function rig(opts: { bounds?: Partial<SpikeBounds>; busy?: boolean; probe?: 'rea
   const statuses: SpikeStatus[] = [];
   const logs: string[] = [];
   const probePids: number[] = [];
+  const probeHooks: BridgeHooks[] = [];
   const spike = new EncoderSpike({
     link: phone,
     openSocket: (host, claim) => {
@@ -115,6 +119,7 @@ function rig(opts: { bounds?: Partial<SpikeBounds>; busy?: boolean; probe?: 'rea
     },
     startProbe: (hooks: BridgeHooks) => {
       if (opts.probe === 'none') throw new Error('no probe here');
+      probeHooks.push(hooks);
       const p = new BridgeProcess({ executable: PROBE, args: ['--max-seconds', '20'], ...hooks, readyTimeoutMs: 5_000, gracefulMs: 1_000, termMs: 500, log: { info: () => undefined, warn: () => undefined } });
       if (p.pid) {
         pids.add(p.pid);
@@ -128,7 +133,7 @@ function rig(opts: { bounds?: Partial<SpikeBounds>; busy?: boolean; probe?: 'rea
     log: { info: (m) => logs.push(m), warn: (m) => logs.push(m) },
   });
   phone.on('message', (e: { type: string; payload: unknown }) => spike.onState(e.payload));
-  return { spike, phone, events, sockets, statuses, logs, probePids };
+  return { spike, phone, events, sockets, statuses, logs, probePids, probeHooks };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -429,3 +434,27 @@ test('wiring: no IPC channel exists unless every gate is open, and the run is ba
   assert.deepEqual(link.calls[0], { type: 'webcam.request', payload: { facing: 'back', trigger: 'person' } });
   await w.dispose();
 });
+
+for (const version of [2, 1]) {
+  test(`version ${version}: a broken chain during the spike ${version === 2 ? 'asks once, and the report carries the counts' : 'asks nothing'}`, T, async () => {
+    const r = rig();
+    r.phone.ext = { webcam: version };
+    await r.spike.run('back');
+    await approveAndStream(r);
+    // INJECTED: a chain-broken beside the real probe's own records — the probe's real one needs a real
+    // decoder fault, which the Swift ChainSignalTests hold. This holds the runner's wiring.
+    r.probeHooks[0]!.onStatus({ op: 'chain-broken', sessionId: SESSION, generation: 1, cause: 'queue-full' });
+    r.probeHooks[0]!.onStatus({ op: 'chain-broken', sessionId: '0'.repeat(32), generation: 1, cause: 'queue-full' });
+    await waitFor('the planned stop', () => r.events.includes('link.webcam.stop:person'));
+    r.phone.state({ state: 'stopped', reason: 'stopped-by-mac', framesSent: 6, framesDropped: 0 });
+    const report = (await r.spike.done()) as SpikeReport;
+    const asked = r.phone.calls.filter((c) => c.type === 'webcam.keyframe');
+    assert.equal(asked.length, version === 2 ? 1 : 0);
+    if (version === 2) assert.deepEqual(asked[0]!.payload, { sessionId: SESSION, generation: 1 });
+    const c = report.recovery!;
+    assert.ok(c, 'the report carries the recovery counters');
+    // The other session's report never reaches the policy: the runner drops it at its own gate (stale 0).
+    assert.deepEqual([c.breaks, c.requested, c.unsupported, c.stale], version === 2 ? [1, 1, 0, 0] : [1, 0, 1, 0]);
+    assert.equal(r.phone.calls.filter((x) => x.type === 'webcam.request').length, 1, 'one request per launch, as before');
+  });
+}

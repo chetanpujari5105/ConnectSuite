@@ -1053,7 +1053,7 @@ app.whenReady().then(() => {
     execPath: process.execPath,
   });
   log.info('webcam', webcamPlan.ext.webcam
-    ? `webcam 1 ADVERTISED (development gate open, bridge at its resolved path; release policy WEBCAM_RELEASE false)`
+    ? `webcam ${webcamPlan.ext.webcam} ADVERTISED (development gate open, bridge at its resolved path; release policy WEBCAM_RELEASE false)`
     : `webcam not advertised: ${webcamPlan.absentReason ?? 'the development gate is closed'}`);
   link = new LinkClient(identity, () => rePairPending, () => ({ ...advertisedExt(shareV2, shareAsk, shareV3, shareWait), ...filesAdvert, ...webcamPlan.ext }));
   // Records older than 7 days go at start, each partial only if it is provably ours (D3, D5).

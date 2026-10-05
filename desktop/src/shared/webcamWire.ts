@@ -32,6 +32,8 @@ export const WebcamMessage = Object.freeze({
   STATE: MessageType.WEBCAM_STATE,
   STOP: MessageType.WEBCAM_STOP,
   SWITCH: MessageType.WEBCAM_SWITCH,
+  /** Version 2 only: sent only where `ext.webcam` is negotiated at ≥ 2. */
+  KEYFRAME: MessageType.WEBCAM_KEYFRAME,
 } as const);
 
 /**
@@ -75,8 +77,12 @@ export const WEBCAM_STOPPED_REASONS = Object.freeze([
 
 /** The capability and the `ext` key share one name. */
 export const WEBCAM = 'webcam';
-/** The `ext` version this Mac implements. */
-export const WEBCAM_EXT_VERSION = 1;
+/**
+ * The `ext` version this Mac implements: **2** since 2026-10-05 — version 1 plus `webcam.keyframe`
+ * (docs/protocol.md → Capability, version and older peers). Not the access unit's header version,
+ * which is {@link WEBCAM_VERSION} and stays 1 because the frame's format did not change.
+ */
+export const WEBCAM_EXT_VERSION = 2;
 /** The release twin of the phone's `Extensions.WEBCAM_RELEASE`. Flipped only in a commit with its evidence. */
 export const WEBCAM_RELEASE = false;
 
@@ -86,6 +92,7 @@ export const WEBCAM_HEADER_BYTES = 16;
 export const WEBCAM_MAX_AU = 2 * 1024 * 1024;
 /** The header, a 4-byte start code and one NAL header byte. */
 export const WEBCAM_MIN_PAYLOAD = 21;
+/** The access unit's header `version` byte — not the `ext` version. Unchanged by `ext.webcam` 2. */
 export const WEBCAM_VERSION = 1;
 export const WEBCAM_CODEC_H264 = 1;
 

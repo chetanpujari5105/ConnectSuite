@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   BridgeOutputError,
+  CHAIN_BREAK_CAUSES,
   RECORD_MAX_LENGTH,
   STATUS_MAX_LENGTH,
   StatusRecordReader,
@@ -111,4 +112,29 @@ test('anything off-contract is malformed output — and a spent reader stays spe
   }
   // Control: the reader is not simply refusing everything.
   assert.equal(new StatusRecordReader().push(status({ op: 'consumers', count: 2 })).length, 1);
+});
+
+test('version 2: chain-broken and chain-recovered parse to exactly their fields, causes from the shared fixture', T, () => {
+  const fixture = JSON.parse(readFileSync(join(__dirname, '../../../docs/fixtures/webcam-vocabulary-v1.json'), 'utf8')) as {
+    chainBreakCauses: string[];
+  };
+  assert.deepEqual([...CHAIN_BREAK_CAUSES], fixture.chainBreakCauses);
+  for (const cause of fixture.chainBreakCauses) {
+    assert.deepEqual(parseStatus(Buffer.from(JSON.stringify({ op: 'chain-broken', sessionId: ID, generation: 2, cause }))), {
+      op: 'chain-broken', sessionId: ID, generation: 2, cause,
+    });
+  }
+  assert.deepEqual(parseStatus(Buffer.from(JSON.stringify({ op: 'chain-recovered', sessionId: ID, generation: 9 }))), {
+    op: 'chain-recovered', sessionId: ID, generation: 9,
+  });
+  const bad: unknown[] = [
+    { op: 'chain-broken', sessionId: ID, generation: 2, cause: 'sunspots' },
+    { op: 'chain-broken', sessionId: ID, generation: 0, cause: 'queue-full' },
+    { op: 'chain-broken', sessionId: ID, generation: 2 },
+    { op: 'chain-broken', sessionId: ID, generation: 2, cause: 'queue-full', extra: 1 },
+    { op: 'chain-broken', sessionId: 'ABC', generation: 2, cause: 'queue-full' },
+    { op: 'chain-recovered', sessionId: ID, generation: 70_000 },
+    { op: 'chain-recovered', sessionId: ID },
+  ];
+  for (const obj of bad) assert.throws(() => parseStatus(Buffer.from(JSON.stringify(obj))), BridgeOutputError, JSON.stringify(obj));
 });

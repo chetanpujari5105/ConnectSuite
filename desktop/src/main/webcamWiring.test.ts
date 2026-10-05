@@ -240,7 +240,7 @@ test('the plan: packaged, the switch off, the bridge missing — no ext and noth
   assert.match(missing.absentReason ?? '', /not built/);
   // Control: the switch on and the bridge at its one path.
   const on = planWebcam({ packaged: false, devSwitch: true, appPath: realApp, execPath: exec });
-  assert.deepEqual(on.ext, { webcam: 1 });
+  assert.deepEqual(on.ext, { webcam: 2 });
   assert.equal(on.executable, join(realApp, 'native/SidekickCamera/.build/release/sidekick-camera-bridge'));
 });
 

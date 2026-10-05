@@ -44,6 +44,7 @@ import {
 } from '../shared/webcamWire';
 import type { BridgeExit, BridgeHooks, BridgePort } from './webcamBridge';
 import type { BridgeStatus } from '../shared/webcamBridgeRecords';
+import { KEYFRAME_MIN_VERSION, KeyframeRecovery, keyframeSender, type KeyframeRecoveryCounts } from '../shared/webcamRecovery';
 
 const REQUEST_TIMEOUT_MS = 5_000;
 /** A request the phone has not ended by itself this long after its own expiry is ended here. */
@@ -201,6 +202,15 @@ function failure(detail: WebcamFailureDetail): WebcamWireStop {
   return { cause: 'failure', detail };
 }
 
+/** The recovery counters for the end-of-session line: each beside its denominator. */
+export function describeRecovery(c: KeyframeRecoveryCounts): string {
+  return (
+    `${c.breaks} breaks, ${c.requested} requested (${c.accepted} accepted, ${c.ignored} ignored, ${c.refused} refused, ${c.timedOut} lost), ` +
+    `${c.idrReceived} IDR in time, ${c.idrTimeouts} IDR waits expired, ${c.recoveries} recovered (${c.recoveredAfterRequest} after a request), ` +
+    `${c.unsupported} unasked (not negotiated), ${c.coalesced} coalesced, ${c.deferred} deferred`
+  );
+}
+
 function describeStop(stop: WebcamWireStop): string {
   return stop.cause === 'failure' ? `failure (${stop.detail})` : stop.cause;
 }
@@ -228,10 +238,18 @@ export class WebcamController {
   private readonly tally = { requested: 0, automatic: 0, live: 0, ended: 0 };
   private readonly timers: CameraTimers;
   private readonly log: CameraLog;
+  /** `webcam.keyframe` (version 2): asks for an IDR when the bridge reports a broken chain. */
+  private readonly recovery: KeyframeRecovery;
 
   constructor(private readonly deps: WebcamControllerDeps) {
     this.timers = deps.timers ?? realTimers;
     this.log = deps.log ?? realLog;
+    this.recovery = new KeyframeRecovery({
+      timers: this.timers,
+      supported: () => (deps.link.negotiated()[WEBCAM] ?? 0) >= KEYFRAME_MIN_VERSION,
+      send: keyframeSender((type, payload, ms) => deps.link.request(type, payload, ms), WebcamMessage.KEYFRAME),
+      log: this.log,
+    });
     this.bridgeState = deps.startBridge ? 'stopped' : 'absent';
     this.bridgeDetail = deps.startBridge ? null : (deps.bridgeAbsentReason ?? 'The camera bridge is not present beside the app.');
   }
@@ -409,6 +427,7 @@ export class WebcamController {
       s.phase = 'running';
       s.liveAnnounced = true;
       this.bridge?.sessionLive(sessionId, generation);
+      this.recovery.setLive(sessionId, generation);
       if (first) {
         this.tally.live += 1;
         this.log.info(`${label(sessionId)} running, generation ${generation} — ${this.tally.live} live of ${this.tally.requested} requested since launch`);
@@ -439,6 +458,11 @@ export class WebcamController {
 
   current(): WebcamStatus {
     return this.status();
+  }
+
+  /** The keyframe-recovery counters, each beside its denominator. */
+  recoveryCounts(): KeyframeRecoveryCounts {
+    return this.recovery.counts();
   }
 
   // ---- the bridge's news -------------------------------------------------------------------------
@@ -494,6 +518,18 @@ export class WebcamController {
       case 'error':
         this.log.warn(`camera bridge reported: ${status.error.slice(0, 200)}`);
         return;
+      case 'chain-broken':
+      case 'chain-recovered': {
+        // From the current bridge (the handle check above); bound here to the current, running session.
+        const s = this.session;
+        if (!s || s.sessionId !== status.sessionId || s.phase !== 'running') {
+          this.log.info(`camera bridge ${status.op} for ${label(status.sessionId)}, not the running session; ignored`);
+          return;
+        }
+        if (status.op === 'chain-broken') this.recovery.chainBroken(status.sessionId, status.generation, status.cause);
+        else this.recovery.chainRecovered(status.sessionId, status.generation);
+        return;
+      }
     }
   }
 
@@ -690,7 +726,9 @@ export class WebcamController {
         return;
       }
       // A higher generation can outrun the `running` that announces it (two connections); adopt it.
+      if (frame.generation > s.generation) this.recovery.setLive(s.sessionId!, frame.generation);
       s.generation = frame.generation;
+      if (frame.keyframe) this.recovery.idrReceived(s.sessionId!, frame.generation);
       this.forward(s, frame);
     } else if (s.phase === 'starting') {
       // Consent is given (the tap), but the bridge has not been told the session is live. Held, bounded,
@@ -727,6 +765,7 @@ export class WebcamController {
     const s = this.session;
     if (!s) return null;
     this.session = null;
+    this.recovery.setLive(null);
     let told: Promise<void> | null = null;
     if (opts.wire) {
       if (s.sessionId) {
@@ -762,7 +801,8 @@ export class WebcamController {
         `${s.received} AUs received here, ${s.forwarded} forwarded to the bridge, ${s.droppedStale} stale, ` +
         `${s.droppedBridge} not forwarded, ${s.preLive.dropped} dropped before running, ${heldAtEnd} held at the end; ` +
         `phone: ${opts.counts?.framesSent ?? '?'} sent / ${opts.counts?.framesDropped ?? '?'} dropped; ` +
-        `bridge last reported ${b ? `${b.received ?? 0} received / ${b.sinkEnqueued ?? 0} to the sink` : 'nothing'} — ` +
+        `bridge last reported ${b ? `${b.received ?? 0} received / ${b.sinkEnqueued ?? 0} to the sink` : 'nothing'}; ` +
+        `keyframe recovery since launch: ${describeRecovery(this.recovery.counts())} — ` +
         `${this.tally.ended} ended of ${this.tally.requested} requested since launch`,
     );
     this.emit();

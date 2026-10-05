@@ -38,6 +38,7 @@ import { accessSync, constants as fsConstants, lstatSync, realpathSync } from 'n
 import { basename, isAbsolute, join, sep } from 'node:path';
 import type { CameraLog, CameraSocket, CameraSocketFactory, CameraTimers } from './camera';
 import { log } from './logger';
+import { KEYFRAME_MIN_VERSION, KeyframeRecovery, keyframeSender, type KeyframeRecoveryCounts } from '../shared/webcamRecovery';
 import type { PhoneRequestError } from '../shared/protocol';
 import type { WebcamLinkPort } from './webcam';
 import { BridgeProcess, type BridgeExit, type BridgeHooks, type BridgePort, type BridgeProcessOptions } from './webcamBridge';
@@ -158,6 +159,11 @@ export interface SpikeReport {
     errors: string[];
     exit: BridgeExit | null;
   };
+  /**
+   * `webcam.keyframe` recovery (version 2), as main ran it for this session: counters, each beside its
+   * denominator. Reported, never judged by the pre-registered criteria. Null if the run ended first.
+   */
+  recovery: KeyframeRecoveryCounts | null;
   observation: {
     ms: number;
     /** `webcam.state` for this session after its `stopped`. Must be 0. */
@@ -219,6 +225,7 @@ function emptyReport(facing: 'front' | 'back', bounds: SpikeBounds): SpikeReport
     phoneStopped: null,
     mac: { framed: 0, keyframes: 0, bytes: 0, maxAuBytes: 0, arrivalSpanMs: null, forwarded: 0, heldBeforeRunning: 0, droppedBeforeRunning: 0, droppedAtBridgeBound: 0, socketClose: null, malformed: null },
     probe: { ready: null, counts: null, streamRejected: null, errors: [], exit: null },
+    recovery: null,
     observation: { ms: 0, statesAfterStopped: 0, foreignStates: 0, ausAfterStop: 0, linkEnded: false },
   };
 }
@@ -243,6 +250,9 @@ export class EncoderSpike {
   private reader: WebcamStreamReader | null = null;
   private preLive = new KeyframeQueue<WebcamFrame>(PRELIVE_BOUND);
   private live = false;
+  /** The highest generation seen live for this run's session. */
+  private generation = 0;
+  private readonly recovery: KeyframeRecovery;
   private stopWritten = false;
   private phoneStoppedSeen = false;
   private t = { request: 0, starting: 0, stop: 0, observe: 0, firstAu: 0, lastAu: 0 };
@@ -257,6 +267,12 @@ export class EncoderSpike {
     this.bounds = { ...SPIKE_BOUNDS, ...(deps.bounds ?? {}) };
     this.timers = deps.timers ?? realTimers;
     this.log = deps.log ?? realLog;
+    this.recovery = new KeyframeRecovery({
+      timers: this.timers,
+      supported: () => (deps.link.negotiated()[WEBCAM] ?? 0) >= KEYFRAME_MIN_VERSION,
+      send: keyframeSender((type, payload, ms) => deps.link.request(type, payload, ms), WebcamMessage.KEYFRAME),
+      log: this.log,
+    });
   }
 
   current(): SpikeStatus {
@@ -405,6 +421,10 @@ export class EncoderSpike {
       if (generation === null || !Number.isInteger(generation) || generation < 1) return;
       this.live = true;
       this.probe?.sessionLive(this.sessionId!, generation);
+      if (generation > this.generation) {
+        this.generation = generation;
+        this.recovery.setLive(this.sessionId!, generation);
+      }
       for (let f = this.preLive.shift(); f; f = this.preLive.shift()) this.forward(f);
       return;
     }
@@ -512,6 +532,11 @@ export class EncoderSpike {
       r.mac.maxAuBytes = Math.max(r.mac.maxAuBytes, f.bytes.length);
       if (f.keyframe) r.mac.keyframes += 1;
       if (this.live) {
+        if (f.generation > this.generation) {
+          this.generation = f.generation;
+          this.recovery.setLive(this.sessionId!, f.generation);
+        }
+        if (f.keyframe) this.recovery.idrReceived(this.sessionId!, f.generation);
         this.forward(f);
       } else {
         const before = this.preLive.dropped;
@@ -548,6 +573,7 @@ export class EncoderSpike {
     r.timeline.stopFromStartingMs = this.t.stop - this.t.starting;
     if (wire && !this.phoneStoppedSeen) this.writeStop(wire, trigger);
     this.stopWritten = true;
+    this.recovery.setLive(null);
     const socket = this.socket;
     this.socket = null;
     socket?.destroy();
@@ -606,6 +632,13 @@ export class EncoderSpike {
       case 'error':
         if (r.probe.errors.length < 8) r.probe.errors.push(status.error);
         return;
+      case 'chain-broken':
+      case 'chain-recovered':
+        // This run's one probe; bound here to this run's session while it is live and capturing.
+        if (status.sessionId !== this.sessionId || !this.live || this.phase !== 'capturing') return;
+        if (status.op === 'chain-broken') this.recovery.chainBroken(status.sessionId, status.generation, status.cause);
+        else this.recovery.chainRecovered(status.sessionId, status.generation);
+        return;
       default:
         return;
     }
@@ -631,6 +664,7 @@ export class EncoderSpike {
     if (!r || this.phase === 'done') return;
     this.clearTimers();
     r.outcome = noReading ? 'no-reading' : 'completed';
+    r.recovery = this.recovery.counts();
     r.noReading = noReading;
     r.detail = detail;
     this.setPhase('done');

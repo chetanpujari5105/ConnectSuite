@@ -8,6 +8,8 @@ import {
   WEBCAM_STOPPED_REASONS,
   WEBCAM_STOP_REASON_FOR_CAUSE,
   WEBCAM_MAX_AU,
+  WEBCAM_RELEASE,
+  WEBCAM_VERSION,
   WebcamStreamError,
   WebcamStreamReader,
   webcamClaim,
@@ -96,11 +98,14 @@ test('the claim is the token, the word webcam and the session id â€” 104 bytes â
 });
 
 test('ext.webcam is advertised only with the development gate (or release flag) open AND the bridge present', T, () => {
-  assert.deepEqual(webcamExt({ packaged: false, devSwitch: true, bridgePresent: true }), { webcam: 1 });
+  // Version 2 since 2026-10-05: version 1 plus webcam.keyframe. The gates are unchanged.
+  assert.deepEqual(webcamExt({ packaged: false, devSwitch: true, bridgePresent: true }), { webcam: 2 });
   assert.deepEqual(webcamExt({ packaged: false, devSwitch: true, bridgePresent: false }), {});
   assert.deepEqual(webcamExt({ packaged: false, devSwitch: false, bridgePresent: true }), {});
   assert.deepEqual(webcamExt({ packaged: true, devSwitch: true, bridgePresent: true }), {}, 'a packaged build ignores the dev switch');
-  assert.deepEqual(webcamExt({ packaged: true, devSwitch: false, bridgePresent: true, release: true }), { webcam: 1 });
+  assert.deepEqual(webcamExt({ packaged: true, devSwitch: false, bridgePresent: true, release: true }), { webcam: 2 });
+  assert.equal(WEBCAM_RELEASE, false, 'the release gate stays off');
+  assert.equal(WEBCAM_VERSION, 1, "the access unit's header version did not change with ext.webcam 2");
   assert.deepEqual(webcamExt({ packaged: true, devSwitch: false, bridgePresent: false, release: true }), {});
 });
 
