@@ -100,20 +100,32 @@ const DISPOSITION_KIND: Record<string, string> = {
 /**
  * The Activity rows for calls: one per state a call actually enters, and one when it ends.
  *
- * Held state is the last `(callId, state)` recorded, so a re-sent `call.incoming` — the phone
- * re-sends one when the inbound number arrives late (defect 45) — is not a second row. It is
- * cleared when a call **ends**, not when the card is cleared by a disconnect: a call replayed after
- * a reconnect is the same call, but ids restart at `c1` when the phone process restarts, so an id
- * that rings again after ending is a new episode.
+ * Held state is the last `(callId, startedAtMs, state)` recorded, so a re-sent `call.incoming` —
+ * the phone re-sends one when the inbound number arrives late (defect 45), and replays the call in
+ * progress after a reconnect — is not a second row. Both re-sends come from the same episode and
+ * carry its `startedAtMs`, which the phone stamps once when the episode begins.
+ *
+ * `callId` alone is not an episode: ids restart at `c1` when the phone process restarts. A call
+ * that ended while the link was down sends no `call.ended`, so the held key is never cleared, and
+ * the next call to be given that id is told apart by `startedAtMs` alone. The key is also cleared
+ * when a call **ends** — not when the card is cleared by a disconnect, which a replay follows.
  */
 export class CallActivityRows {
-  private last: { callId: string; state: string } | null = null;
+  private last: { callId: string; startedAtMs: number; state: string } | null = null;
 
   /** A row for a card change, or `null` when there is nothing new to record. */
   changed(call: IncomingCall | null): CallActivityRow | null {
     if (!call || !call.state) return null;
-    if (this.last && this.last.callId === call.callId && this.last.state === call.state) return null;
-    this.last = { callId: call.callId, state: call.state };
+    const last = this.last;
+    if (
+      last &&
+      last.callId === call.callId &&
+      last.startedAtMs === call.startedAtMs &&
+      last.state === call.state
+    ) {
+      return null;
+    }
+    this.last = { callId: call.callId, startedAtMs: call.startedAtMs, state: call.state };
     return {
       kind: STATE_KIND[call.state] ?? 'Call',
       detail: callHistoryName(call.contactName, call.number),

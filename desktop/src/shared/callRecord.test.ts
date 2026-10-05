@@ -191,18 +191,45 @@ test('a call replayed after a reconnect is not a second row', () => {
 });
 
 /**
- * **Finding, not fixed in this batch** (P0 behaviour, outside P1 — held for approval).
- *
  * c1 rings; the link drops; c1 ends while it is down, so no `call.ended` arrives; the phone process
  * restarts, so ids restart; a *different* call rings as c1. It carries a different `startedAtMs`,
- * which is the only field that tells the two apart — and `CallActivityRows` keys on `(callId,
- * state)`, so the second call is swallowed as a replay of the first. The smallest fix keys on
- * `(callId, startedAtMs, state)`, using a field the production event already carries.
+ * which is the only field that tells the two apart, so rows key on `(callId, startedAtMs, state)`.
+ * Keyed on `(callId, state)` this call was swallowed as a replay of the first.
  */
-test('a different call that reuses an id after a phone restart is a new row', { todo: 'held for approval: key rows on startedAtMs too' }, () => {
+test('a different call that reuses an id after a phone restart is a new row', () => {
   const rows = new CallActivityRows();
   assert.ok(rows.changed(RINGING), 'control: the first call is a row');
   rows.changed(null); // the link drops; RINGING ends unseen
   const reused = { ...RINGING, contactName: 'R. Sharma', number: '+919800000002', startedAtMs: RINGING.startedAtMs + 3_600_000 };
-  assert.ok(rows.changed(reused), 'a different call with a reused id was swallowed');
+  assert.deepEqual(rows.changed(reused), { kind: 'Call ringing', detail: 'R. Sharma' }, 'a different call with a reused id was swallowed');
+  // The new call is now the held episode: its own replay is not a row, and its answer is.
+  rows.changed(null);
+  assert.equal(rows.changed({ ...reused }), null, 'the replay of the second call was recorded again');
+  assert.deepEqual(rows.changed({ ...reused, state: 'active' }), { kind: 'Call in progress', detail: 'R. Sharma' });
+  // And its end is still recorded against the card that was showing.
+  assert.deepEqual(
+    rows.ended({ callId: 'c17', number: '+919800000002', durationMs: 5_000, disposition: 'answered' }, { ...reused, state: 'active' }),
+    { kind: 'Call ended', detail: 'R. Sharma' },
+  );
+});
+
+test('a late number re-send of the same ringing call is not a second row', () => {
+  // Defect 45: the phone re-sends `call.incoming` when the inbound number arrives after the ring.
+  // Same episode, same `startedAtMs`; only the number and name are new.
+  const rows = new CallActivityRows();
+  const early = { ...RINGING, number: '', contactName: undefined };
+  assert.deepEqual(rows.changed(early), { kind: 'Call ringing', detail: UNKNOWN_NUMBER }, 'control: the first sighting is a row');
+  assert.equal(rows.changed({ ...RINGING }), null, 'the late-number re-send was recorded as a second ring');
+});
+
+test('a missed call whose id is reused is recorded once, and the next call is recorded too', () => {
+  const rows = new CallActivityRows();
+  assert.ok(rows.changed(RINGING));
+  assert.deepEqual(
+    rows.ended({ callId: 'c17', number: '+15551234567', durationMs: 0, disposition: 'missed' }, RINGING),
+    { kind: 'Missed call', detail: 'Ada Lovelace' },
+  );
+  const next = { ...RINGING, startedAtMs: RINGING.startedAtMs + 60_000 };
+  assert.ok(rows.changed(next), 'the call after a missed one was swallowed');
+  assert.equal(rows.changed({ ...next }), null, 'control: its own replay is still not a row');
 });
