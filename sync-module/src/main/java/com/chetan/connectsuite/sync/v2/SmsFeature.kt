@@ -295,7 +295,7 @@ object SmsFeature {
             // "one unlucky race" from "the provider lookup is broken".
             LinkLog.e(
                 "sms",
-                "sms.received NOT pushed: no provider row for $address after $looks lookups — " +
+                "sms.received NOT pushed: no provider row for the sender after $looks lookups — " +
                     "${received.get()} pushed / ${dropped.get()} dropped since start",
             )
             return
@@ -414,9 +414,11 @@ object SmsFeature {
                     // reach the wrong person, and it should be loud enough to investigate.
                     LinkLog.e(
                         "sms",
+                        // Counts, not numbers: the log is a file on disk. The person reads the
+                        // numbers in the refusal sentence, which is where they are needed.
                         "REFUSED a send that would have gone to the wrong recipient: " +
-                            "thread $threadId holds ${actual.joinToString(",")} but the request " +
-                            "named ${recipients.joinToString(",")}",
+                            "thread $threadId holds ${actual.size} address(es) and the request " +
+                            "named ${recipients.size}, not the same set",
                         null,
                     )
                     return refuse(session, request, SmsFailure.RecipientMismatch(verdict))

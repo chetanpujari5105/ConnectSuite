@@ -235,7 +235,7 @@ export class SmsClient extends EventEmitter {
       log.warn(
         'sms',
         `forceRecipientMismatch: sending thread ${threadId} with ${MISMATCH_PROBE_NUMBER} instead ` +
-          `of ${addresses.join(', ')} — expecting RECIPIENT_MISMATCH, and nothing delivered`,
+          `of the thread's ${addresses.length} recipient(s) — expecting RECIPIENT_MISMATCH, and nothing delivered`,
       );
     }
 
@@ -248,6 +248,10 @@ export class SmsClient extends EventEmitter {
         threadId: typeof ack.threadId === 'string' ? ack.threadId : threadId,
         recipients: typeof ack.recipients === 'number' ? ack.recipients : outgoing.length,
       }),
+      undefined,
+      // The phone's send refusals name the numbers for the person (RECIPIENT_MISMATCH, SEND_FAILED);
+      // the log gets the code. The sentence still comes back in `reason`.
+      'code-only',
     );
 
     if (result.ok) {
@@ -268,7 +272,7 @@ export class SmsClient extends EventEmitter {
       log.error(
         'sms',
         `sms.send REFUSED as a recipient mismatch in thread ${threadId} — nothing was sent to ` +
-          `anyone. ${result.reason} — ${this.tally()}`,
+          `anyone (the phone's sentence names the numbers and is shown, not logged) — ${this.tally()}`,
       );
     }
     return result;
@@ -335,6 +339,8 @@ export class SmsClient extends EventEmitter {
         threadId: typeof ack.threadId === 'string' ? ack.threadId : null,
         recipients: typeof ack.recipients === 'number' ? ack.recipients : wanted.length,
       }),
+      undefined,
+      'code-only', // as in send(): the refusal can name the address
     );
 
     if (result.ok) {
@@ -348,7 +354,7 @@ export class SmsClient extends EventEmitter {
       return result.data.threadId ? { ok: true, threadId: result.data.threadId } : { ok: true };
     }
     this.refused += 1;
-    log.warn('sms', `sms.send refused by the phone: ${result.reason} — ${this.tally()}`);
+    log.warn('sms', `sms.send refused by the phone: ${result.code ?? 'no code'} — ${this.tally()}`);
     return { ok: false, reason: result.reason, fixHint: result.fixHint };
   }
 

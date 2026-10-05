@@ -352,3 +352,67 @@ test('the phone\'s threadId comes back from a new conversation', async () => {
   assert.equal(pending.ok, true);
   assert.equal(pending.threadId, undefined);
 });
+
+// ---------------------------------------------------------------------------------------------
+// The phone's refusal sentences for a send name the numbers on purpose — the person is the only one
+// who can tell which recipient is the stranger (`RecipientMismatch`) or which address the network
+// refused (`SendRefused`). That is for the screen. The rotating log must never hold a number.
+
+import { log } from './logger';
+
+function captureAllLogs(): { lines: string[]; restore: () => void } {
+  const lines: string[] = [];
+  const saved = { info: log.info, warn: log.warn, error: log.error };
+  log.info = (where: string, message: string) => { lines.push(`I ${where}|${message}`); };
+  log.warn = (where: string, message: string) => { lines.push(`W ${where}|${message}`); };
+  log.error = (where: string, message: string) => { lines.push(`E ${where}|${message}`); };
+  return { lines, restore: () => Object.assign(log, saved) };
+}
+
+function refusingPhone(code: string, message: string, threads: object[] = []) {
+  const link = {
+    isConnected: () => true,
+    request: (type: string) => {
+      if (type === 'sms.threads') {
+        return Promise.resolve({ v: 1, id: 'x', type: 'ack', ts: 0, payload: { threads, hasMore: false } });
+      }
+      const failure = Object.assign(new Error(`${code}: ${message}`), { code, phoneMessage: message });
+      return Promise.reject(failure);
+    },
+  } as unknown as LinkClient;
+  return link;
+}
+
+const MISMATCH_SENTENCE = 'That message was not sent: this thread is +15551234567, and the Mac named +15550000000.';
+const NETWORK_SENTENCE = "The phone's mobile network refused that message: +15551234567 (generic failure).";
+
+test('a recipient mismatch reaches the person whole and the log without a number', async () => {
+  const link = refusingPhone('RECIPIENT_MISMATCH', MISMATCH_SENTENCE, [ADA_THREAD]);
+  const sms = new SmsClient(() => link);
+  await sms.listThreads({});
+  const cap = captureAllLogs();
+  try {
+    const result = await sms.send('42', 'hello');
+    assert.equal(result.ok, false);
+    assert.equal(result.ok ? '' : result.reason, MISMATCH_SENTENCE, 'control: the person still reads the numbers');
+    assert.ok(cap.lines.some((l) => l.includes('RECIPIENT_MISMATCH')), `control: the refusal is logged by code — ${cap.lines.join(' / ')}`);
+    const leaking = cap.lines.filter((l) => /\d{6,}/.test(l.replace(/\d{4}-\d\d-\d\dT[\d:.+]+/g, '')));
+    assert.deepEqual(leaking, [], 'a number reached the log');
+  } finally {
+    cap.restore();
+  }
+});
+
+test('a network refusal of a new conversation reaches the log without the address', async () => {
+  const link = refusingPhone('SEND_FAILED', NETWORK_SENTENCE);
+  const sms = new SmsClient(() => link);
+  const cap = captureAllLogs();
+  try {
+    const result = await sms.sendNew(['+15551234567'], 'hello');
+    assert.equal(result.ok ? '' : result.reason, NETWORK_SENTENCE, 'control: the person still reads the address');
+    assert.ok(cap.lines.some((l) => l.includes('SEND_FAILED')), `control: the refusal is logged by code — ${cap.lines.join(' / ')}`);
+    assert.deepEqual(cap.lines.filter((l) => l.includes('5551234567')), [], 'the address reached the log');
+  } finally {
+    cap.restore();
+  }
+});
