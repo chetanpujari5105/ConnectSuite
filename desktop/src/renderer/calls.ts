@@ -392,6 +392,12 @@ class CallsView {
   private log: CallLogRow[] = [];
   private logHasMore = false;
   private loaded = false;
+  /**
+   * The phone's refusal of the last `call.log`, held until a read succeeds. The notice says it for
+   * six seconds; this is what the history column says after that, so a refused log is never a
+   * blank column (found by the overnight UI harness, 2026-10-06).
+   */
+  private logFailure: { reason: string; fixHint?: string } | null = null;
   private tab: CallsTab = 'all';
 
   private contacts: CallContactRow[] = [];
@@ -551,6 +557,7 @@ class CallsView {
       this.call = null;
       this.log = [];
       this.loaded = false;
+      this.logFailure = null;
       this.pendingDial = null;
       // A face outliving its link is the same stale claim as a name outliving it, and the main
       // process drops its name cache here for exactly this reason.
@@ -592,15 +599,39 @@ class CallsView {
       }),
     );
     if (!result.ok) {
-      this.showNotice(result.reason ?? 'The call log could not be read.', result.fixHint);
+      this.logFailure = {
+        reason: result.reason ?? 'The call log could not be read.',
+        ...(result.fixHint ? { fixHint: result.fixHint } : {}),
+      };
+      this.showNotice(this.logFailure.reason, result.fixHint);
+      this.renderLog();
+      this.renderFrequent();
       return;
     }
+    this.logFailure = null;
     this.loaded = true;
     this.log = result.data.calls;
     this.logHasMore = result.data.hasMore;
     this.renderLog();
     this.renderTabs();
     this.renderFrequent();
+  }
+
+  /** The phone's refusal and its hint, as one sentence for the history column. */
+  private failureSentence(): string {
+    const failure = this.logFailure;
+    if (!failure) return '';
+    return failure.fixHint ? `${failure.reason} ${failure.fixHint}` : failure.reason;
+  }
+
+  /** Asks the phone again. The only way back from a refusal that is not a reconnect. */
+  private logRetry(): HTMLElement {
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'button calls-log-retry';
+    retry.textContent = 'Try again';
+    retry.addEventListener('click', () => void this.loadLog());
+    return retry;
   }
 
   // ---- The tab strip -----------------------------------------------------------------------
@@ -785,6 +816,11 @@ class CallsView {
       return;
     }
     if (!this.loaded) {
+      if (this.logFailure) {
+        this.note.textContent = this.failureSentence();
+        this.body.appendChild(this.logRetry());
+        return;
+      }
       this.note.textContent = 'Reading the phone’s call log…';
       return;
     }
@@ -808,6 +844,12 @@ class CallsView {
         : `${rows.length} recent call${rows.length === 1 ? '' : 's'}, ` +
           `${named} showing a contact name, ${missed} missed.` +
           (this.logHasMore ? ' Older calls are not shown.' : '');
+    // A re-read was refused: the rows below were true when they were read, so they stay, and the
+    // note says they are the last read rather than letting them pass for current.
+    if (this.logFailure) {
+      this.note.textContent = `${this.failureSentence()} Showing the log as last read.`;
+      this.body.appendChild(this.logRetry());
+    }
 
     const list = document.createElement('div');
     list.className = 'call-log';
@@ -1064,7 +1106,9 @@ class CallsView {
     if (!this.loaded) {
       const waiting = document.createElement('div');
       waiting.className = 'calls-frequent-note';
-      waiting.textContent = 'Read from the phone’s call log once it arrives.';
+      waiting.textContent = this.logFailure
+        ? 'Counted from the phone’s call log, which could not be read.'
+        : 'Read from the phone’s call log once it arrives.';
       this.frequent.appendChild(waiting);
       return;
     }

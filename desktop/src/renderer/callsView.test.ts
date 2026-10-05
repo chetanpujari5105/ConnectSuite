@@ -57,8 +57,11 @@ class FakeBridge {
   async callCurrent() {
     return this.current;
   }
+  /** When set, `call.log` is refused with this sentence — a revoked call-log grant, a busy phone. */
+  logRefusal: string | null = null;
   async callLog() {
     this.calls.push('callLog');
+    if (this.logRefusal) return { ok: false as const, reason: this.logRefusal, fixHint: 'Synthetic hint.' };
     return { ok: true as const, data: { calls: this.log, hasMore: this.hasMore } };
   }
   async callAnswer() {
@@ -147,9 +150,10 @@ interface Pane {
   frequent: FakeElement;
 }
 
-function mount(log: LogRow[] = [], current: Call | null = null): Pane {
+function mount(log: LogRow[] = [], current: Call | null = null, logRefusal: string | null = null): Pane {
   const bridge = new FakeBridge();
   bridge.log = log;
+  bridge.logRefusal = logRefusal;
   bridge.current = current;
   const parts = {
     card: el('div'),
@@ -797,4 +801,48 @@ test('a live call draws the same sentence, beside the controls it has a verb for
     .filter((n) => !n.classList.contains('call-controlled-note'));
   assert.equal(audio.length, 1, 'exactly one audio strip on a live card');
   assert.equal(audio[0].textContent.trim(), PANE_AUDIO);
+});
+
+// ---- A refused call log ------------------------------------------------------------------------
+//
+// Found by the overnight UI harness (2026-10-06): the refusal was shown in the pane's notice, which
+// hides itself after six seconds, and nothing else changed — the history column stayed empty and
+// Frequently called kept saying it would read the log "once it arrives". Six seconds later the
+// pane said nothing at all about why it was blank: Product Principle 1's blank pane.
+
+test('a refused call log stays said in the history column, with a way to ask again', async () => {
+  const refused = mount([], null, 'This phone is not sharing its call log.');
+  await settle();
+  assert.ok(
+    refused.note.textContent.includes('This phone is not sharing its call log.'),
+    `the history column does not say why it is empty: "${refused.note.textContent}"`,
+  );
+  const retry = refused.body.children.find((c) => c.tagName.toUpperCase() === 'BUTTON' && c.textContent === 'Try again');
+  assert.ok(retry, 'no way to ask again from the column');
+  assert.ok(
+    !refused.frequent.textContent.includes('once it arrives'),
+    `Frequently called still promises a log that was refused: "${refused.frequent.textContent}"`,
+  );
+  // Control: asking again with a phone that now answers draws the log and drops the refusal.
+  refused.bridge.logRefusal = null;
+  refused.bridge.log = [row('a')];
+  const before = refused.bridge.calls.filter((c) => c === 'callLog').length;
+  retry.click();
+  await settle();
+  assert.equal(refused.bridge.calls.filter((c) => c === 'callLog').length, before + 1, 'Try again did not ask the phone');
+  assert.ok(!refused.note.textContent.includes('not sharing'), `the refusal outlived a log that arrived: "${refused.note.textContent}"`);
+  assert.match(refused.note.textContent, /1 recent call/);
+});
+
+test('a refusal after a log was read says so, and keeps the rows it read', async () => {
+  const pane = mount([row('a'), row('b')]);
+  await settle();
+  assert.match(pane.note.textContent, /2 recent calls/, 'control: the first read drew the log');
+  pane.bridge.logRefusal = 'The phone did not answer.';
+  // A re-read while the log is on screen: `refresh()`, and the same path a call ending takes.
+  await (pane.view as unknown as { refresh(): Promise<void> }).refresh();
+  await settle();
+  assert.ok(pane.note.textContent.includes('The phone did not answer.'), `a refused re-read was silent: "${pane.note.textContent}"`);
+  assert.ok(pane.note.textContent.includes('last read'), `the rows on screen are not said to be the last read: "${pane.note.textContent}"`);
+  assert.ok(pane.body.children.some((c) => c.className === 'call-log'), 'the rows that were read were thrown away');
 });
