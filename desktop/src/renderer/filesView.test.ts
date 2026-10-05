@@ -1080,3 +1080,41 @@ test('158: a reason with no full stop does not run into the next sentence', () =
   assert.doesNotMatch(rejected, /^\S+ paused|Resume continues/, 'a source rejection is not worded as a pause');
   assert.match(rejected, /Nothing was saved\.$/);
 });
+
+// ---- A progress tick redraws the send card, not the listing --------------------------------------
+//
+// Measured by the overnight UI harness (2026-10-06): one full Files render is ~9 ms at 200 rows and
+// ~42 ms at 1,000, and every `fs.transfer.progress` — up to four a second per file, several files at
+// once — ran one, rebuilding a listing that a byte count cannot change. Only the send card reads
+// `delivered`.
+
+test('a progress tick updates the send card and leaves the listing’s rows as they were', async () => {
+  const pane = mount();
+  try {
+    pane.bridge.entries = [
+      { id: 'f1', name: 'one.jpg', dir: false, size: 10, mtimeMs: 1, mime: 'image/jpeg' },
+      { id: 'f2', name: 'two.jpg', dir: false, size: 20, mtimeMs: 2, mime: 'image/jpeg' },
+    ];
+    await readyToSend(pane);
+    pane.bridge.picked = [{ source: '/m/big.bin', name: 'big.bin', size: 1000 }];
+    pane.bridge.onAgreed = (source) => pane.view.onPushAgreed({ source, transferId: 't-big', name: 'big.bin' });
+    await pane.view.pickAndOffer();
+    cardButton(pane, 'Send').click();
+    await new Promise((r) => setImmediate(r));
+    const rows = pane.table.queryAll('.files-row');
+    assert.ok(rows.length >= 2, `control: the listing is drawn (${rows.length} rows)`);
+
+    pane.view.onTransferEvent({ type: 'fs.transfer.progress', payload: { transferId: 't-big', bytes: 300 } });
+    const item = pane.detail.queryAll('.files-send-item')[0]!;
+    assert.ok(item.textContent.includes('on the phone'), 'control: the card took the byte count: ' + item.textContent);
+    const after = pane.table.queryAll('.files-row');
+    assert.equal(after.length, rows.length);
+    after.forEach((row, i) => assert.equal(row, rows[i], `row ${i} was rebuilt by a progress tick`));
+
+    // Control: a verdict is a state change, and it does redraw what depends on it.
+    pane.view.onTransferEvent({ type: 'fs.transfer.done', payload: { transferId: 't-big', ok: true, bytes: 1000, verified: true } });
+    assert.equal(pane.detail.queryAll('.files-send-item')[0]!.dataset.phase, 'arrived');
+  } finally {
+    pane.restore();
+  }
+});

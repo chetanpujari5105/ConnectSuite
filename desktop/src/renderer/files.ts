@@ -670,6 +670,14 @@ class FilesView {
     }
     if (next === this.batch) return;
     this.batch = next;
+    // A progress tick moves one item's `delivered`, which only the send card reads, and it cannot
+    // settle the batch — so it redraws the card and not the listing. Measured by the overnight UI
+    // harness: a full render is ~9 ms at 200 rows and ~42 ms at 1,000, and ticks arrive up to four
+    // a second per file in flight.
+    if (message.type === 'fs.transfer.progress') {
+      this.renderDetail();
+      return;
+    }
     this.render();
     // A verdict frees a window slot, and releases any file waiting on this one's name.
     if (message.type === 'fs.transfer.done') this.pumpSend();
