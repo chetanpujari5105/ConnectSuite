@@ -28182,3 +28182,26 @@ expanded counts records (≤ 104 keys) and a 115-key worst case, and refused 129
   re-score are unchanged.
 
 Evidence: `docs/evidence/camera-v2-encoder-spike-2026-10-05/`.
+
+### Defect 177 — Option B, `webcam.keyframe`, built code-only (2026-10-05; no hardware reading; defect stays open)
+
+Contract first (`71865a2`): `ext.webcam` 2 = version 1 + `webcam.keyframe`; the access unit's header
+version stays 1; a pair negotiating 1 never sends it. Then the bridge (`139dd4e`), Electron main
+(`636bd7d`) and the phone (`a96a474`). No capture, install, relaunch, quality, IDR-interval or queue-bound
+change; release gates unchanged (`WEBCAM_RELEASE` false on both sides).
+
+| Side | Tests (new) | Through | Mutations red |
+|---|---|---|---|
+| Swift bridge | `ChainSignalTests` 8 | real BridgeCore, real H.264, GatedDecoder | MK-S1 every break signalled · S2 an earlier frame counted as recovery · S3 decode failure unsignalled |
+| Electron main | `webcamRecovery` 15, `webcamKeyframe` 8, spike 2, parser 1 | the policy on a manual clock; the production controller with stand-in link/socket/bridge; the runner beside the **real** probe with one INJECTED status | MK-M1 version ignored · M2 no coalescing · M3 no rate limit · M4 any session/phase · M5 unbounded IDR wait · M6 Stop does not end it · M7 ack taken as IDR · M8 runner's session filter · M9 unknown cause parsed |
+| Phone | `WebcamKeyframeTest` 7, vocabulary, `WebcamLinkTest` | the production machine; the real capture core over a recording stand-in for MediaCodec | MK-P1 owner · P2 rate limit · P3 stale generation · P4 not-running · P5 encoder not re-checked · P6 awaiting treated as live |
+
+All 18 red on their named tests, each file restored and SHA-256-verified. Found along the way: the
+`ignored` precedence the contract left open (a stale generation during a switch answered `not-running`)
+— fixed in the contract, then the code; and `protocol-spec-in-sync.sh` denies **every** Bash command,
+not only commits, while the spec check is red (not changed; reported). A Swift line clearing the
+signalled break at Stop was removed as unobservable. **Not reached by a JVM test:** `WebcamEngine`'s
+dispatch to the activity and `WebcamActivity`'s forwarding, as for every other effect.
+
+**Fresh on the final tree:** Swift **140 / 0**, Mac **1,686 / 0**, phone **1,349 / 0** (clean
+`--rerun-tasks`), scripts **287 / 0**, hook fixtures pass, both typechecks clean, spec guard green.
