@@ -1,0 +1,1682 @@
+{
+ "later-gop-burst-17-in-one-write": {
+  "A": {
+   "accepted": {
+    "all": 96
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": "absent",
+   "diag.chain.staleFailures": "absent",
+   "diag.compose.firstUs": {
+    "max": 10733,
+    "median": 7551,
+    "min": 6223,
+    "p90": 8975
+   },
+   "diag.decode.firstUs": {
+    "max": 83117,
+    "median": 77763,
+    "min": 64180,
+    "p90": 80290
+   },
+   "diag.firstFrame.sinceLiveUs": {
+    "max": 89430,
+    "median": 85474,
+    "min": 71967,
+    "p90": 89059
+   },
+   "diag.overflow.events": {
+    "all": 1
+   },
+   "diag.prepare.discarded": {
+    "all": 0
+   },
+   "diag.prepare.maxUs": {
+    "max": 47386,
+    "median": 45171,
+    "min": 40311,
+    "p90": 47219
+   },
+   "diag.prepare.waitMaxUs": {
+    "all": 0
+   },
+   "diag.queueWait.maxUs": {
+    "max": 89520,
+    "median": 85526,
+    "min": 71970,
+    "p90": 89041
+   },
+   "diag.recovery.maxUs": {
+    "max": 2015370,
+    "median": 2010778,
+    "min": 2002766,
+    "p90": 2015286
+   },
+   "diag.service.maxUs": {
+    "max": 89341,
+    "median": 85392,
+    "min": 71891,
+    "p90": 88928
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "all": 1
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 89340,
+    "median": 85391,
+    "min": 71890,
+    "p90": 88928
+   },
+   "gate.awaitingKeyframe": {
+    "all": 54
+   },
+   "harnessLateMaxUs": 13,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 150
+   },
+   "runs": 10,
+   "runsWithOverflow": 10,
+   "sinkEnqueued": {
+    "all": 95
+   }
+  },
+  "AB": {
+   "accepted": {
+    "max": 96,
+    "median": 96,
+    "min": 42,
+    "p90": 96
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": {
+    "all": 0
+   },
+   "diag.chain.staleFailures": {
+    "all": 0
+   },
+   "diag.compose.firstUs": {
+    "max": 7233,
+    "median": 6528,
+    "min": 5735,
+    "p90": 7083
+   },
+   "diag.decode.firstUs": {
+    "max": 97958,
+    "median": 77384,
+    "min": 64649,
+    "p90": 85083
+   },
+   "diag.firstFrame.sinceLiveUs": {
+    "max": 105365,
+    "median": 83795,
+    "min": 70468,
+    "p90": 92032
+   },
+   "diag.overflow.events": {
+    "max": 2,
+    "median": 1,
+    "min": 1,
+    "p90": 1
+   },
+   "diag.prepare.discarded": {
+    "all": 0
+   },
+   "diag.prepare.maxUs": {
+    "max": 62485,
+    "median": 42674,
+    "min": 36939,
+    "p90": 50109
+   },
+   "diag.prepare.waitMaxUs": {
+    "all": 0
+   },
+   "diag.queueWait.maxUs": {
+    "max": 112243,
+    "median": 83024,
+    "min": 63144,
+    "p90": 92798
+   },
+   "diag.recovery.maxUs": {
+    "max": 2015742,
+    "median": 2006499,
+    "min": 1846700,
+    "p90": 2014919
+   },
+   "diag.service.maxUs": {
+    "max": 105191,
+    "median": 83693,
+    "min": 70384,
+    "p90": 91920
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "max": 2,
+    "median": 1,
+    "min": 1,
+    "p90": 1
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 105191,
+    "median": 83692,
+    "min": 70384,
+    "p90": 91919
+   },
+   "gate.awaitingKeyframe": {
+    "max": 108,
+    "median": 54,
+    "min": 54,
+    "p90": 60
+   },
+   "harnessLateMaxUs": 5,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 150
+   },
+   "runs": 10,
+   "runsWithOverflow": 10,
+   "sinkEnqueued": {
+    "max": 95,
+    "median": 95,
+    "min": 40,
+    "p90": 95
+   }
+  },
+  "old": {
+   "accepted": {
+    "max": 96,
+    "median": 96,
+    "min": 42,
+    "p90": 96
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": "absent",
+   "diag.chain.staleFailures": "absent",
+   "diag.compose.firstUs": {
+    "max": 45993,
+    "median": 41044,
+    "min": 32691,
+    "p90": 44741
+   },
+   "diag.decode.firstUs": {
+    "max": 98287,
+    "median": 83483,
+    "min": 65538,
+    "p90": 87309
+   },
+   "diag.firstFrame.sinceLiveUs": "absent",
+   "diag.overflow.events": {
+    "max": 2,
+    "median": 1,
+    "min": 1,
+    "p90": 2
+   },
+   "diag.prepare.discarded": "absent",
+   "diag.prepare.maxUs": "absent",
+   "diag.prepare.waitMaxUs": "absent",
+   "diag.queueWait.maxUs": {
+    "max": 144439,
+    "median": 125713,
+    "min": 98304,
+    "p90": 129739
+   },
+   "diag.recovery.maxUs": {
+    "max": 2016012,
+    "median": 2007427,
+    "min": 1840391,
+    "p90": 2014448
+   },
+   "diag.service.maxUs": {
+    "max": 144281,
+    "median": 125582,
+    "min": 98230,
+    "p90": 129591
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "max": 2,
+    "median": 1,
+    "min": 1,
+    "p90": 2
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 144280,
+    "median": 125581,
+    "min": 98229,
+    "p90": 129590
+   },
+   "gate.awaitingKeyframe": {
+    "max": 108,
+    "median": 54,
+    "min": 54,
+    "p90": 108
+   },
+   "harnessLateMaxUs": 10,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 150
+   },
+   "runs": 10,
+   "runsWithOverflow": 10,
+   "sinkEnqueued": {
+    "max": 95,
+    "median": 95,
+    "min": 40,
+    "p90": 95
+   }
+  }
+ },
+ "replacement-changing-size-and-rotation": {
+  "A": {
+   "accepted": {
+    "all": 65
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": "absent",
+   "diag.chain.staleFailures": "absent",
+   "diag.compose.firstUs": {
+    "max": 9665,
+    "median": 6744,
+    "min": 5992,
+    "p90": 7972
+   },
+   "diag.decode.firstUs": {
+    "max": 89423,
+    "median": 79891,
+    "min": 67809,
+    "p90": 84385
+   },
+   "diag.firstFrame.sinceLiveUs": {
+    "max": 20571,
+    "median": 16166,
+    "min": 6813,
+    "p90": 18261
+   },
+   "diag.overflow.events": {
+    "all": 1
+   },
+   "diag.prepare.discarded": {
+    "all": 0
+   },
+   "diag.prepare.maxUs": {
+    "max": 53509,
+    "median": 44812,
+    "min": 41729,
+    "p90": 46721
+   },
+   "diag.prepare.waitMaxUs": {
+    "all": 0
+   },
+   "diag.queueWait.maxUs": {
+    "max": 97333,
+    "median": 87415,
+    "min": 73911,
+    "p90": 91338
+   },
+   "diag.recovery.maxUs": {
+    "all": 0
+   },
+   "diag.service.maxUs": {
+    "max": 97207,
+    "median": 87290,
+    "min": 74564,
+    "p90": 91222
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "all": 1
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 97207,
+    "median": 87290,
+    "min": 74564,
+    "p90": 91222
+   },
+   "gate.awaitingKeyframe": {
+    "all": 55
+   },
+   "harnessLateMaxUs": 8,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 120
+   },
+   "runs": 10,
+   "runsWithOverflow": 10,
+   "sinkEnqueued": {
+    "all": 64
+   }
+  },
+  "AB": {
+   "accepted": {
+    "all": 65
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": {
+    "all": 0
+   },
+   "diag.chain.staleFailures": {
+    "all": 0
+   },
+   "diag.compose.firstUs": {
+    "max": 14656,
+    "median": 6796,
+    "min": 5443,
+    "p90": 11657
+   },
+   "diag.decode.firstUs": {
+    "max": 90242,
+    "median": 77662,
+    "min": 63747,
+    "p90": 86546
+   },
+   "diag.firstFrame.sinceLiveUs": {
+    "max": 20218,
+    "median": 15898,
+    "min": 11133,
+    "p90": 17955
+   },
+   "diag.overflow.events": {
+    "all": 1
+   },
+   "diag.prepare.discarded": {
+    "all": 0
+   },
+   "diag.prepare.maxUs": {
+    "max": 46841,
+    "median": 43045,
+    "min": 39304,
+    "p90": 45610
+   },
+   "diag.prepare.waitMaxUs": {
+    "all": 0
+   },
+   "diag.queueWait.maxUs": {
+    "max": 105038,
+    "median": 85534,
+    "min": 69280,
+    "p90": 95839
+   },
+   "diag.recovery.maxUs": {
+    "all": 0
+   },
+   "diag.service.maxUs": {
+    "max": 104899,
+    "median": 85383,
+    "min": 69190,
+    "p90": 95670
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "all": 1
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 104898,
+    "median": 85382,
+    "min": 69190,
+    "p90": 95669
+   },
+   "gate.awaitingKeyframe": {
+    "all": 55
+   },
+   "harnessLateMaxUs": 15,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 120
+   },
+   "runs": 10,
+   "runsWithOverflow": 10,
+   "sinkEnqueued": {
+    "all": 64
+   }
+  },
+  "old": {
+   "accepted": {
+    "max": 65,
+    "median": 38,
+    "min": 11,
+    "p90": 65
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": "absent",
+   "diag.chain.staleFailures": "absent",
+   "diag.compose.firstUs": {
+    "max": 45121,
+    "median": 36631,
+    "min": 29105,
+    "p90": 43514
+   },
+   "diag.decode.firstUs": {
+    "max": 99482,
+    "median": 83506,
+    "min": 64096,
+    "p90": 98694
+   },
+   "diag.firstFrame.sinceLiveUs": "absent",
+   "diag.overflow.events": {
+    "max": 2,
+    "median": 2,
+    "min": 1,
+    "p90": 2
+   },
+   "diag.prepare.discarded": "absent",
+   "diag.prepare.maxUs": "absent",
+   "diag.prepare.waitMaxUs": "absent",
+   "diag.queueWait.maxUs": {
+    "max": 141569,
+    "median": 124093,
+    "min": 93269,
+    "p90": 137597
+   },
+   "diag.recovery.maxUs": {
+    "all": 0
+   },
+   "diag.service.maxUs": {
+    "max": 137023,
+    "median": 123964,
+    "min": 93201,
+    "p90": 135574
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "max": 2,
+    "median": 2,
+    "min": 1,
+    "p90": 2
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 137023,
+    "median": 123964,
+    "min": 93201,
+    "p90": 135573
+   },
+   "gate.awaitingKeyframe": {
+    "max": 109,
+    "median": 82,
+    "min": 55,
+    "p90": 109
+   },
+   "harnessLateMaxUs": 45,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 120
+   },
+   "runs": 10,
+   "runsWithOverflow": 10,
+   "sinkEnqueued": {
+    "max": 64,
+    "median": 36,
+    "min": 9,
+    "p90": 64
+   }
+  }
+ },
+ "smooth-1080p": {
+  "A": {
+   "accepted": {
+    "max": 150,
+    "median": 150,
+    "min": 96,
+    "p90": 150
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": "absent",
+   "diag.chain.staleFailures": "absent",
+   "diag.compose.firstUs": {
+    "max": 11515,
+    "median": 6566,
+    "min": 5648,
+    "p90": 9395
+   },
+   "diag.decode.firstUs": {
+    "max": 81456,
+    "median": 78718,
+    "min": 61778,
+    "p90": 80332
+   },
+   "diag.firstFrame.sinceLiveUs": {
+    "max": 90940,
+    "median": 85276,
+    "min": 67779,
+    "p90": 90729
+   },
+   "diag.overflow.events": {
+    "max": 1,
+    "median": 0,
+    "min": 0,
+    "p90": 0
+   },
+   "diag.prepare.discarded": {
+    "all": 0
+   },
+   "diag.prepare.maxUs": {
+    "max": 49030,
+    "median": 45470,
+    "min": 36879,
+    "p90": 47929
+   },
+   "diag.prepare.waitMaxUs": {
+    "all": 0
+   },
+   "diag.queueWait.maxUs": {
+    "max": 91054,
+    "median": 85436,
+    "min": 67038,
+    "p90": 90789
+   },
+   "diag.recovery.maxUs": {
+    "max": 1311492,
+    "median": 0,
+    "min": 0,
+    "p90": 131149
+   },
+   "diag.service.maxUs": {
+    "max": 90859,
+    "median": 85194,
+    "min": 67705,
+    "p90": 90639
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "max": 1,
+    "median": 0,
+    "min": 0,
+    "p90": 0
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 90858,
+    "median": 85193,
+    "min": 67705,
+    "p90": 90639
+   },
+   "gate.awaitingKeyframe": {
+    "max": 54,
+    "median": 0,
+    "min": 0,
+    "p90": 5
+   },
+   "harnessLateMaxUs": 6,
+   "invariant": 10,
+   "maxWaiting": {
+    "max": 4,
+    "median": 3,
+    "min": 3,
+    "p90": 4
+   },
+   "received": {
+    "all": 150
+   },
+   "runs": 10,
+   "runsWithOverflow": 1,
+   "sinkEnqueued": {
+    "max": 150,
+    "median": 150,
+    "min": 95,
+    "p90": 150
+   }
+  },
+  "AB": {
+   "accepted": {
+    "max": 150,
+    "median": 150,
+    "min": 96,
+    "p90": 150
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": {
+    "all": 0
+   },
+   "diag.chain.staleFailures": {
+    "all": 0
+   },
+   "diag.compose.firstUs": {
+    "max": 10258,
+    "median": 6598,
+    "min": 5537,
+    "p90": 9467
+   },
+   "diag.decode.firstUs": {
+    "max": 90020,
+    "median": 78748,
+    "min": 62097,
+    "p90": 85057
+   },
+   "diag.firstFrame.sinceLiveUs": {
+    "max": 99503,
+    "median": 85434,
+    "min": 68137,
+    "p90": 95320
+   },
+   "diag.overflow.events": {
+    "max": 1,
+    "median": 0,
+    "min": 0,
+    "p90": 0
+   },
+   "diag.prepare.discarded": {
+    "all": 0
+   },
+   "diag.prepare.maxUs": {
+    "max": 48865,
+    "median": 41707,
+    "min": 38785,
+    "p90": 47860
+   },
+   "diag.prepare.waitMaxUs": {
+    "all": 0
+   },
+   "diag.queueWait.maxUs": {
+    "max": 99583,
+    "median": 86133,
+    "min": 62408,
+    "p90": 98061
+   },
+   "diag.recovery.maxUs": {
+    "max": 1421990,
+    "median": 0,
+    "min": 0,
+    "p90": 142199
+   },
+   "diag.service.maxUs": {
+    "max": 99399,
+    "median": 85346,
+    "min": 68049,
+    "p90": 95228
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "max": 1,
+    "median": 0,
+    "min": 0,
+    "p90": 0
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 99399,
+    "median": 85346,
+    "min": 68049,
+    "p90": 95228
+   },
+   "gate.awaitingKeyframe": {
+    "max": 54,
+    "median": 0,
+    "min": 0,
+    "p90": 5
+   },
+   "harnessLateMaxUs": 6,
+   "invariant": 10,
+   "maxWaiting": {
+    "max": 4,
+    "median": 3,
+    "min": 3,
+    "p90": 4
+   },
+   "received": {
+    "all": 150
+   },
+   "runs": 10,
+   "runsWithOverflow": 1,
+   "sinkEnqueued": {
+    "max": 150,
+    "median": 150,
+    "min": 95,
+    "p90": 150
+   }
+  },
+  "old": {
+   "accepted": {
+    "max": 150,
+    "median": 96,
+    "min": 96,
+    "p90": 150
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": "absent",
+   "diag.chain.staleFailures": "absent",
+   "diag.compose.firstUs": {
+    "max": 48614,
+    "median": 42532,
+    "min": 35950,
+    "p90": 45420
+   },
+   "diag.decode.firstUs": {
+    "max": 144423,
+    "median": 83839,
+    "min": 75265,
+    "p90": 104365
+   },
+   "diag.firstFrame.sinceLiveUs": "absent",
+   "diag.overflow.events": {
+    "max": 1,
+    "median": 1,
+    "min": 0,
+    "p90": 1
+   },
+   "diag.prepare.discarded": "absent",
+   "diag.prepare.maxUs": "absent",
+   "diag.prepare.waitMaxUs": "absent",
+   "diag.queueWait.maxUs": {
+    "max": 189226,
+    "median": 129368,
+    "min": 111330,
+    "p90": 161485
+   },
+   "diag.recovery.maxUs": {
+    "max": 1846304,
+    "median": 1637185,
+    "min": 0,
+    "p90": 1845945
+   },
+   "diag.service.maxUs": {
+    "max": 189053,
+    "median": 129252,
+    "min": 111216,
+    "p90": 145486
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "max": 1,
+    "median": 1,
+    "min": 0,
+    "p90": 1
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 189052,
+    "median": 129252,
+    "min": 111215,
+    "p90": 145486
+   },
+   "gate.awaitingKeyframe": {
+    "max": 54,
+    "median": 54,
+    "min": 0,
+    "p90": 54
+   },
+   "harnessLateMaxUs": 11,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 150
+   },
+   "runs": 10,
+   "runsWithOverflow": 6,
+   "sinkEnqueued": {
+    "max": 150,
+    "median": 95,
+    "min": 95,
+    "p90": 150
+   }
+  }
+ },
+ "startup-burst-17-at-2x": {
+  "A": {
+   "accepted": {
+    "all": 96
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": "absent",
+   "diag.chain.staleFailures": "absent",
+   "diag.compose.firstUs": {
+    "max": 8887,
+    "median": 6692,
+    "min": 5521,
+    "p90": 8749
+   },
+   "diag.decode.firstUs": {
+    "max": 89313,
+    "median": 79168,
+    "min": 63103,
+    "p90": 85072
+   },
+   "diag.firstFrame.sinceLiveUs": {
+    "max": 98283,
+    "median": 86054,
+    "min": 68706,
+    "p90": 93904
+   },
+   "diag.overflow.events": {
+    "all": 1
+   },
+   "diag.prepare.discarded": {
+    "all": 0
+   },
+   "diag.prepare.maxUs": {
+    "max": 50763,
+    "median": 46333,
+    "min": 37426,
+    "p90": 49592
+   },
+   "diag.prepare.waitMaxUs": {
+    "all": 0
+   },
+   "diag.queueWait.maxUs": {
+    "max": 105734,
+    "median": 93116,
+    "min": 73589,
+    "p90": 103092
+   },
+   "diag.recovery.maxUs": {
+    "max": 1938221,
+    "median": 1928646,
+    "min": 1924767,
+    "p90": 1935683
+   },
+   "diag.service.maxUs": {
+    "max": 98200,
+    "median": 85972,
+    "min": 68625,
+    "p90": 93822
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "all": 1
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 98200,
+    "median": 85970,
+    "min": 68624,
+    "p90": 93822
+   },
+   "gate.awaitingKeyframe": {
+    "all": 54
+   },
+   "harnessLateMaxUs": 7,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 150
+   },
+   "runs": 10,
+   "runsWithOverflow": 10,
+   "sinkEnqueued": {
+    "all": 95
+   }
+  },
+  "AB": {
+   "accepted": {
+    "all": 96
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": {
+    "all": 0
+   },
+   "diag.chain.staleFailures": {
+    "all": 0
+   },
+   "diag.compose.firstUs": {
+    "max": 10806,
+    "median": 6500,
+    "min": 5009,
+    "p90": 9567
+   },
+   "diag.decode.firstUs": {
+    "max": 80364,
+    "median": 78487,
+    "min": 69403,
+    "p90": 79885
+   },
+   "diag.firstFrame.sinceLiveUs": {
+    "max": 88988,
+    "median": 85072,
+    "min": 74493,
+    "p90": 87384
+   },
+   "diag.overflow.events": {
+    "all": 1
+   },
+   "diag.prepare.discarded": {
+    "all": 0
+   },
+   "diag.prepare.maxUs": {
+    "max": 48497,
+    "median": 44779,
+    "min": 40941,
+    "p90": 47026
+   },
+   "diag.prepare.waitMaxUs": {
+    "all": 0
+   },
+   "diag.queueWait.maxUs": {
+    "max": 95956,
+    "median": 91719,
+    "min": 80180,
+    "p90": 94952
+   },
+   "diag.recovery.maxUs": {
+    "max": 1931885,
+    "median": 1928491,
+    "min": 1922796,
+    "p90": 1931373
+   },
+   "diag.service.maxUs": {
+    "max": 88907,
+    "median": 84969,
+    "min": 74412,
+    "p90": 87291
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "all": 1
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 88907,
+    "median": 84968,
+    "min": 74412,
+    "p90": 87291
+   },
+   "gate.awaitingKeyframe": {
+    "all": 54
+   },
+   "harnessLateMaxUs": 5,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 150
+   },
+   "runs": 10,
+   "runsWithOverflow": 10,
+   "sinkEnqueued": {
+    "all": 95
+   }
+  },
+  "old": {
+   "accepted": {
+    "all": 96
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": "absent",
+   "diag.chain.staleFailures": "absent",
+   "diag.compose.firstUs": {
+    "max": 47225,
+    "median": 37316,
+    "min": 30536,
+    "p90": 43406
+   },
+   "diag.decode.firstUs": {
+    "max": 124711,
+    "median": 83584,
+    "min": 63901,
+    "p90": 90820
+   },
+   "diag.firstFrame.sinceLiveUs": "absent",
+   "diag.overflow.events": {
+    "all": 1
+   },
+   "diag.prepare.discarded": "absent",
+   "diag.prepare.maxUs": "absent",
+   "diag.prepare.waitMaxUs": "absent",
+   "diag.queueWait.maxUs": {
+    "max": 173956,
+    "median": 126648,
+    "min": 98232,
+    "p90": 143205
+   },
+   "diag.recovery.maxUs": {
+    "max": 1932570,
+    "median": 1927621,
+    "min": 1923227,
+    "p90": 1930578
+   },
+   "diag.service.maxUs": {
+    "max": 166808,
+    "median": 119664,
+    "min": 94437,
+    "p90": 135671
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "all": 1
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 166808,
+    "median": 119664,
+    "min": 94437,
+    "p90": 135671
+   },
+   "gate.awaitingKeyframe": {
+    "all": 54
+   },
+   "harnessLateMaxUs": 8,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 150
+   },
+   "runs": 10,
+   "runsWithOverflow": 10,
+   "sinkEnqueued": {
+    "all": 95
+   }
+  }
+ },
+ "startup-burst-17-in-one-write": {
+  "A": {
+   "accepted": {
+    "all": 96
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": "absent",
+   "diag.chain.staleFailures": "absent",
+   "diag.compose.firstUs": {
+    "max": 8458,
+    "median": 6502,
+    "min": 5573,
+    "p90": 7555
+   },
+   "diag.decode.firstUs": {
+    "max": 85694,
+    "median": 78552,
+    "min": 62088,
+    "p90": 84276
+   },
+   "diag.firstFrame.sinceLiveUs": {
+    "max": 94243,
+    "median": 85138,
+    "min": 67953,
+    "p90": 91931
+   },
+   "diag.overflow.events": {
+    "all": 1
+   },
+   "diag.prepare.discarded": {
+    "all": 0
+   },
+   "diag.prepare.maxUs": {
+    "max": 47578,
+    "median": 43708,
+    "min": 36604,
+    "p90": 45836
+   },
+   "diag.prepare.waitMaxUs": {
+    "all": 0
+   },
+   "diag.queueWait.maxUs": {
+    "max": 118176,
+    "median": 103990,
+    "min": 83920,
+    "p90": 111204
+   },
+   "diag.recovery.maxUs": {
+    "max": 1987140,
+    "median": 1972870,
+    "min": 1965003,
+    "p90": 1983448
+   },
+   "diag.service.maxUs": {
+    "max": 94152,
+    "median": 85041,
+    "min": 67865,
+    "p90": 91832
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "all": 1
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 94152,
+    "median": 85041,
+    "min": 67864,
+    "p90": 91831
+   },
+   "gate.awaitingKeyframe": {
+    "all": 54
+   },
+   "harnessLateMaxUs": 5,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 150
+   },
+   "runs": 10,
+   "runsWithOverflow": 10,
+   "sinkEnqueued": {
+    "all": 95
+   }
+  },
+  "AB": {
+   "accepted": {
+    "all": 96
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": {
+    "all": 0
+   },
+   "diag.chain.staleFailures": {
+    "all": 0
+   },
+   "diag.compose.firstUs": {
+    "max": 8655,
+    "median": 6560,
+    "min": 5877,
+    "p90": 8126
+   },
+   "diag.decode.firstUs": {
+    "max": 80582,
+    "median": 78140,
+    "min": 65831,
+    "p90": 79939
+   },
+   "diag.firstFrame.sinceLiveUs": {
+    "max": 87501,
+    "median": 84542,
+    "min": 73213,
+    "p90": 87262
+   },
+   "diag.overflow.events": {
+    "all": 1
+   },
+   "diag.prepare.discarded": {
+    "all": 0
+   },
+   "diag.prepare.maxUs": {
+    "max": 49782,
+    "median": 42799,
+    "min": 40316,
+    "p90": 47090
+   },
+   "diag.prepare.waitMaxUs": {
+    "all": 0
+   },
+   "diag.queueWait.maxUs": {
+    "max": 107039,
+    "median": 102967,
+    "min": 89850,
+    "p90": 106966
+   },
+   "diag.recovery.maxUs": {
+    "max": 1978134,
+    "median": 1970942,
+    "min": 1962660,
+    "p90": 1974071
+   },
+   "diag.service.maxUs": {
+    "max": 87415,
+    "median": 84458,
+    "min": 73130,
+    "p90": 87175
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "all": 1
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 87414,
+    "median": 84457,
+    "min": 73130,
+    "p90": 87175
+   },
+   "gate.awaitingKeyframe": {
+    "all": 54
+   },
+   "harnessLateMaxUs": 19,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 150
+   },
+   "runs": 10,
+   "runsWithOverflow": 10,
+   "sinkEnqueued": {
+    "all": 95
+   }
+  },
+  "old": {
+   "accepted": {
+    "all": 96
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 0
+   },
+   "diag.chain.flushedAfterFailure": "absent",
+   "diag.chain.staleFailures": "absent",
+   "diag.compose.firstUs": {
+    "max": 40642,
+    "median": 39380,
+    "min": 33276,
+    "p90": 40488
+   },
+   "diag.decode.firstUs": {
+    "max": 84391,
+    "median": 82059,
+    "min": 67822,
+    "p90": 83786
+   },
+   "diag.firstFrame.sinceLiveUs": "absent",
+   "diag.overflow.events": {
+    "all": 1
+   },
+   "diag.prepare.discarded": "absent",
+   "diag.prepare.maxUs": "absent",
+   "diag.prepare.waitMaxUs": "absent",
+   "diag.queueWait.maxUs": {
+    "max": 142736,
+    "median": 139944,
+    "min": 118758,
+    "p90": 142473
+   },
+   "diag.recovery.maxUs": {
+    "max": 1980014,
+    "median": 1973852,
+    "min": 1967333,
+    "p90": 1977913
+   },
+   "diag.service.maxUs": {
+    "max": 124190,
+    "median": 121962,
+    "min": 101810,
+    "p90": 122863
+   },
+   "discardedEnded": {
+    "all": 0
+   },
+   "droppedDecodeQueue": {
+    "all": 1
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 124190,
+    "median": 121962,
+    "min": 101810,
+    "p90": 122863
+   },
+   "gate.awaitingKeyframe": {
+    "all": 54
+   },
+   "harnessLateMaxUs": 6,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 4
+   },
+   "received": {
+    "all": 150
+   },
+   "runs": 10,
+   "runsWithOverflow": 10,
+   "sinkEnqueued": {
+    "all": 95
+   }
+  }
+ },
+ "stop-while-preparing-and-decoding": {
+  "A": {
+   "accepted": {
+    "all": 4
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 1
+   },
+   "diag.chain.flushedAfterFailure": "absent",
+   "diag.chain.staleFailures": "absent",
+   "diag.compose.firstUs": {
+    "all": 0
+   },
+   "diag.decode.firstUs": {
+    "max": 91119,
+    "median": 78184,
+    "min": 60627,
+    "p90": 88857
+   },
+   "diag.firstFrame.sinceLiveUs": {
+    "all": 0
+   },
+   "diag.overflow.events": {
+    "all": 0
+   },
+   "diag.prepare.discarded": {
+    "all": 2
+   },
+   "diag.prepare.maxUs": {
+    "all": 0
+   },
+   "diag.prepare.waitMaxUs": {
+    "all": 0
+   },
+   "diag.queueWait.maxUs": {
+    "max": 29,
+    "median": 24,
+    "min": 21,
+    "p90": 29
+   },
+   "diag.recovery.maxUs": {
+    "all": 0
+   },
+   "diag.service.maxUs": {
+    "all": 0
+   },
+   "discardedEnded": {
+    "all": 4
+   },
+   "droppedDecodeQueue": {
+    "all": 0
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 91119,
+    "median": 78184,
+    "min": 60627,
+    "p90": 88857
+   },
+   "gate.awaitingKeyframe": {
+    "all": 0
+   },
+   "harnessLateMaxUs": 5,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 3
+   },
+   "received": {
+    "all": 4
+   },
+   "runs": 10,
+   "runsWithOverflow": 0,
+   "sinkEnqueued": {
+    "all": 0
+   }
+  },
+  "AB": {
+   "accepted": {
+    "all": 4
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 1
+   },
+   "diag.chain.flushedAfterFailure": {
+    "all": 0
+   },
+   "diag.chain.staleFailures": {
+    "all": 0
+   },
+   "diag.compose.firstUs": {
+    "all": 0
+   },
+   "diag.decode.firstUs": {
+    "max": 89558,
+    "median": 77740,
+    "min": 61234,
+    "p90": 85724
+   },
+   "diag.firstFrame.sinceLiveUs": {
+    "all": 0
+   },
+   "diag.overflow.events": {
+    "all": 0
+   },
+   "diag.prepare.discarded": {
+    "all": 2
+   },
+   "diag.prepare.maxUs": {
+    "all": 0
+   },
+   "diag.prepare.waitMaxUs": {
+    "all": 0
+   },
+   "diag.queueWait.maxUs": {
+    "max": 42,
+    "median": 25,
+    "min": 16,
+    "p90": 30
+   },
+   "diag.recovery.maxUs": {
+    "all": 0
+   },
+   "diag.service.maxUs": {
+    "all": 0
+   },
+   "discardedEnded": {
+    "all": 4
+   },
+   "droppedDecodeQueue": {
+    "all": 0
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 89558,
+    "median": 77740,
+    "min": 61234,
+    "p90": 85724
+   },
+   "gate.awaitingKeyframe": {
+    "all": 0
+   },
+   "harnessLateMaxUs": 9,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 3
+   },
+   "received": {
+    "all": 4
+   },
+   "runs": 10,
+   "runsWithOverflow": 0,
+   "sinkEnqueued": {
+    "all": 0
+   }
+  },
+  "old": {
+   "accepted": {
+    "all": 4
+   },
+   "decodeErrors": {
+    "all": 0
+   },
+   "diag.afterEnd.completions": {
+    "all": 1
+   },
+   "diag.chain.flushedAfterFailure": "absent",
+   "diag.chain.staleFailures": "absent",
+   "diag.compose.firstUs": {
+    "max": 48776,
+    "median": 37966,
+    "min": 35060,
+    "p90": 42274
+   },
+   "diag.decode.firstUs": {
+    "max": 86199,
+    "median": 81676,
+    "min": 71942,
+    "p90": 83596
+   },
+   "diag.firstFrame.sinceLiveUs": "absent",
+   "diag.overflow.events": {
+    "all": 0
+   },
+   "diag.prepare.discarded": "absent",
+   "diag.prepare.maxUs": "absent",
+   "diag.prepare.waitMaxUs": "absent",
+   "diag.queueWait.maxUs": {
+    "max": 37,
+    "median": 30,
+    "min": 21,
+    "p90": 37
+   },
+   "diag.recovery.maxUs": {
+    "all": 0
+   },
+   "diag.service.maxUs": {
+    "max": 124524,
+    "median": 121222,
+    "min": 108799,
+    "p90": 123436
+   },
+   "discardedEnded": {
+    "all": 4
+   },
+   "droppedDecodeQueue": {
+    "all": 0
+   },
+   "exit0": 10,
+   "firstFrameWorkUs": {
+    "max": 124523,
+    "median": 121221,
+    "min": 108798,
+    "p90": 123435
+   },
+   "gate.awaitingKeyframe": {
+    "all": 0
+   },
+   "harnessLateMaxUs": 8,
+   "invariant": 10,
+   "maxWaiting": {
+    "all": 3
+   },
+   "received": {
+    "all": 4
+   },
+   "runs": 10,
+   "runsWithOverflow": 0,
+   "sinkEnqueued": {
+    "all": 0
+   }
+  }
+ }
+}
