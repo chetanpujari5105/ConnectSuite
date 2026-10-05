@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseActivityLine } from './activityLine';
 import { callHistoryName } from '../shared/callRecord';
@@ -74,8 +74,13 @@ class ActivityStore {
     try {
       mkdirSync(dir, { recursive: true });
       this.path = join(dir, 'activity.jsonl');
-      // The rotated half is never read, but it is on disk, so the call-data rule reaches it too.
-      readStored(`${this.path}.old`);
+      // The rotated half is never read, but it is on disk, so the call-data rule reaches it too. On
+      // its own guard: a half nobody reads must not cost the screen the half everybody does.
+      try {
+        readStored(`${this.path}.old`);
+      } catch (error) {
+        log.warn('activity', `Could not read activity.jsonl.old :: ${String(error)}`);
+      }
       this.load();
     } catch (error) {
       this.loadError = String(error);
@@ -93,6 +98,7 @@ class ActivityStore {
       log.warn('activity', `Could not read the activity log: ${this.loadError}`);
       return;
     }
+    endWithNewline(this.path);
     this.events = stored.events.slice(-MAX_EVENTS);
     this.skipped = stored.skipped;
     this.seq = this.events.reduce((max, event) => Math.max(max, event.seq), 0);
@@ -201,40 +207,92 @@ interface StoredHistory {
  *
  * History written before the rule holds raw numbers in its call rows, and "never retain" is a
  * statement about the file, not the screen — so the file is rewritten, once, from the rows as they
- * now read. A rewrite also drops the unreadable lines, which the reader already skips: a half-written
- * call row is the one line nobody could check, and it is not worth keeping a number to keep it.
+ * now read. **The rewrite is irreversible and keeps no backup**, because a backup would retain the
+ * numbers it exists to remove; so it touches only what the rule is about:
  *
- * A file whose every line already reads back unchanged is left exactly as it is.
+ * - a **call** row is written back from its parsed fields, under the rule;
+ * - **every other readable row is written back byte for byte**, fields this build does not know
+ *   included — the rule is about calls, and a re-serialisation would drop another writer's data;
+ * - an **unreadable** line is kept as it is, unless it [mayHoldCallData] — a half-written call row
+ *   is the one line nobody could check, and it is not worth keeping a number to keep it.
+ *
+ * Only a changed call row or a dropped line causes a rewrite; an unreadable line alone does not. A
+ * rewrite that cannot be written is logged and the history is still returned, read under the rule —
+ * the screen is never blanked because the disk refused a write.
  */
 function readStored(path: string): StoredHistory {
   if (!existsSync(path)) return { events: [], skipped: 0 };
   const lines = readFileSync(path, 'utf8').split('\n').filter((line) => line.trim().length > 0);
   const events: ActivityEvent[] = [];
+  const keep: string[] = [];
   let skipped = 0;
   let changed = 0;
+  let dropped = 0;
   for (const line of lines) {
     const parsed = parseActivityLine(line);
     if (!parsed) {
       skipped += 1;
+      if (mayHoldCallData(line)) dropped += 1;
+      else keep.push(line);
       continue;
     }
     const event = { ...parsed, detail: clip(storedDetail(parsed.category, parsed.detail)) };
-    if (JSON.stringify(event) !== line.trim()) changed += 1;
     events.push(event);
+    if (parsed.category === 'calls') {
+      const rewritten = JSON.stringify(event);
+      if (rewritten !== line.trim()) changed += 1;
+      keep.push(rewritten);
+    } else {
+      keep.push(line);
+    }
   }
-  if (changed > 0 || skipped > 0) {
+  if (changed > 0 || dropped > 0) {
+    const name = path.endsWith('.old') ? 'activity.jsonl.old' : 'activity.jsonl';
     const temp = `${path}.rewrite`;
-    writeFileSync(temp, events.map((e) => JSON.stringify(e)).join('\n') + (events.length ? '\n' : ''));
-    renameSync(temp, path);
     // Counts only. The rows themselves are what this exists to stop writing anywhere.
-    log.info(
-      'activity',
-      `Rewrote ${path.endsWith('.old') ? 'activity.jsonl.old' : 'activity.jsonl'}: ` +
-        `${changed} row(s) brought under the call-data rule / ${skipped} unreadable line(s) dropped / ` +
-        `${events.length} kept`,
-    );
+    const counts =
+      `${changed} call row(s) brought under the call-data rule / ${dropped} unreadable line(s) that ` +
+      `may hold call data dropped / ${keep.length} line(s) kept`;
+    try {
+      writeFileSync(temp, keep.join('\n') + (keep.length ? '\n' : ''));
+      renameSync(temp, path);
+      log.info('activity', `Rewrote ${name}: ${counts}`);
+    } catch (error) {
+      try {
+        rmSync(temp, { force: true });
+      } catch {
+        // A temporary path that cannot be removed is reported by the line below; nothing else to do.
+      }
+      log.warn('activity', `Could not rewrite ${name}; it is unchanged on disk and will be tried again ` +
+        `next launch. Would have been: ${counts} :: ${String(error)}`);
+    }
   }
   return { events, skipped };
+}
+
+/**
+ * Whether an unreadable line could carry a phone number. Conservative on purpose: such a line is
+ * already invisible to the screen, so dropping one that only *looks* risky loses nothing a person
+ * could see. Call rows are the only rows that ever held numbers, and a number-length digit run
+ * outside the `seq` and `at` fields is treated as one whatever its category.
+ */
+function mayHoldCallData(line: string): boolean {
+  if (/calls/i.test(line)) return true;
+  const withoutCounters = line.replace(/"(seq|at)"\s*:\s*\d+/g, '');
+  return /\d{5,}/.test(withoutCounters);
+}
+
+/**
+ * Appends a newline to a file whose last line was cut off by a hard quit, so the next event starts a
+ * line of its own instead of being glued onto the broken one and lost with it. Never removes bytes.
+ */
+function endWithNewline(path: string): void {
+  try {
+    const text = readFileSync(path, 'utf8');
+    if (text.length > 0 && !text.endsWith('\n')) appendFileSync(path, '\n');
+  } catch (error) {
+    log.warn('activity', `Could not end activity.jsonl with a newline :: ${String(error)}`);
+  }
 }
 
 const activity = new ActivityStore();
