@@ -1,3 +1,44 @@
+# OVERNIGHT 2026-10-05 → 06 (unsupervised): 14 commits, tests and a synthetic harness only — NOT release-ready, nothing installed or relaunched
+
+**Read this first.** Full report: `docs/overnight-2026-10-06.md`. Feature matrix and release blockers:
+`docs/release-readiness-2026-10-06.md`. **Sidekick is not ready to ship** — no signed build of either
+app, defect 137 open, and nothing below is on the phone or in the running Mac app.
+
+1. **Built and proven (tests, mutations, a synthetic renderer harness — no hardware):**
+   - **Flaky `CameraStreamTest`** — the race was in the test (`isOpen` flips before `onClosed` runs);
+     proven by widening, fixed with a thread join, 20/20 under load.
+   - **The pending Activity call-data rewrite** (runs at the Mac's next launch, irreversible) could
+     delete unrelated rows; now touches call rows only, keeps what it cannot read, never blanks the
+     pane on a write failure. Synthetic 455-row dry run: 379/379 non-call lines kept verbatim.
+   - **Privacy:** logs no longer carry a WhatsApp contact's number (notification tag), a looked-up
+     number (contacts failure path), SMS numbers (refusals, drops, mismatch) or a contact's name
+     (notification reply refusals). Mac and phone.
+   - **step70 `--require-correction`** could never pass after `559f1da`; now ties the correction to
+     the call by id.
+   - **Defect 122:** `⌘⇧.`/`⌘⇧T` were printed and unbound; now a Mirror menu built from the palette.
+     `⌘⇧4` no longer printed (macOS takes it).
+   - **UI** (13 panes × 1100/1280/1440/1728 + 1.2× zoom, dark/light, four data states — 234 renders):
+     Files breadcrumb overlap, five unnamed fields/canvas, 12 px sort targets; Calls and Messages
+     were blank/"Reading…" after a refusal — now say why with **Try again**.
+   - **Performance:** Photos page append flat at ~25 ms (was 417 ms with a 336 ms block at 3,720 tiles);
+     Files progress ticks no longer rebuild the listing.
+   - **Fresh:** Mac **1,779/0**, phone **1,367/0** (`--rerun-tasks`), both typechecks, every guard and
+     fixture suite green. Swift not run.
+2. **Committed** (local, not pushed): `148b93a` `87a8b29` `98f8e3d` `4b3159f` `0c8a9fe` `840adc9`
+   `2d23951` `ff5245a` `af8df44` `213ae57` `05faea7` `ae2be75` `654d400` `f6a2fa1`, plus the commit
+   carrying this entry and the two documents.
+3. **Readable, not built:** the harness lives in the session scratchpad only; recorded-not-fixed items
+   (sidebar density at 700 px, file names in phone logs, whole-list rebuilds on notification/SMS events)
+   are in the report.
+4. **Needs your decision or hands:** installing the phone build (privacy fixes); rebuilding and
+   relaunching the Mac app — **which runs the irreversible Activity rewrite**; a look at the UI
+   changes in the real window; defect 30's one send; defect 137's provider read; the release flags,
+   the icon (D4) and signing. The supervised plan is the report's last section.
+5. **Would do next:** the supervised plan's steps 1–7, in order.
+6. **Left changed on your devices:** nothing. Phone untouched (no ADB). Sidekick still pid 91450 from
+   12:51, not relaunched or attached; `desktop/dist/` not rebuilt. Your uncommitted edits and untracked
+   files untouched; this entry is the only addition to this file, staged without them.
+
 # CAMERA CASE A RETRY — 2026-10-02 (22:53–23:04 IST): NO READING (Home after the 20 s cap); repaired driver held; close-first re-attribution seen; evidence uncommitted
 
 **Read this first.**
