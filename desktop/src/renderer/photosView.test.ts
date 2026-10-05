@@ -336,3 +336,99 @@ test('an album with nothing in it draws no groups and no grids at all', async ()
   assert.equal(pane.tiles.queryAll('.photos-grid').length, 0);
   assert.equal(pane.tiles.queryAll('.photos-empty').length, 1, 'and the empty sentence is drawn');
 });
+
+// ---- A page is appended, not the whole grid rebuilt ----------------------------------------------
+//
+// Measured by the overnight UI harness (2026-10-06, synthetic 6,000-photo roll, this Mac): every page
+// rebuilt every tile already drawn — twice, once for the page and once when its thumbnails arrived —
+// so the 31st page cost 417 ms with a 336 ms main-thread block, growing linearly with the scroll.
+// Selecting a tile rebuilt the grid too. These pin the incremental path and, as the control that it
+// draws the same thing, compare it with a full draw of the same items in one page.
+
+function walk(node: FakeElement, out: FakeElement[] = []): FakeElement[] {
+  for (const child of node.children) {
+    out.push(child);
+    walk(child, out);
+  }
+  return out;
+}
+const tilesOf = (pane: Pane) =>
+  walk(pane.tiles).filter((e) => (e.className ?? '').split(' ').includes('photos-tile'));
+const headingsOf = (pane: Pane) =>
+  walk(pane.tiles).filter((e) => e.className === 'photos-group-title').map((e) => e.textContent);
+const scrollToBottom = async (pane: Pane) => {
+  pane.tiles.scrollHeight = 2000;
+  pane.tiles.clientHeight = 500;
+  pane.tiles.scrollTop = 1600;
+  pane.tiles.dispatch('scroll');
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+};
+
+const DAY = 86_400_000;
+const noon = (daysAgo: number, minute = 0) => {
+  const d = new Date();
+  d.setHours(12, minute, 0, 0);
+  return d.getTime() - daysAgo * DAY;
+};
+
+test('a second page is appended: the first page’s tiles stay, and the grid matches a full draw', async () => {
+  const pane = mount();
+  pane.bridge.buckets = [bucket('camera', 5)];
+  // The page boundary falls inside one day, so the append has to join that day's grid.
+  pane.bridge.pages = [
+    { items: [item('a', noon(3, 30)), item('b', noon(3, 20))], hasMore: true },
+    { items: [item('c', noon(3, 10)), item('d', noon(5)), item('e', noon(6))], hasMore: false },
+  ];
+  await pane.view.refresh();
+  const first = new Map(tilesOf(pane).map((t) => [t.dataset.id, t]));
+  assert.deepEqual([...first.keys()], ['a', 'b'], 'control: the first page is drawn');
+
+  await scrollToBottom(pane);
+  const after = tilesOf(pane);
+  assert.deepEqual(after.map((t) => t.dataset.id), ['a', 'b', 'c', 'd', 'e']);
+  assert.equal(after[0], first.get('a'), 'tile a was rebuilt by the second page');
+  assert.equal(after[1], first.get('b'), 'tile b was rebuilt by the second page');
+
+  // The control: one page holding all five draws the same headings in the same order.
+  const whole = mount();
+  whole.bridge.buckets = [bucket('camera', 5)];
+  whole.bridge.pages = [{ items: ['a', 'b', 'c', 'd', 'e'].map((id, i) => item(id, [noon(3, 30), noon(3, 20), noon(3, 10), noon(5), noon(6)][i]!)), hasMore: false }];
+  await whole.view.refresh();
+  assert.deepEqual(headingsOf(pane), headingsOf(whole), 'the appended grid is grouped differently from a full draw');
+  assert.equal(headingsOf(pane).length, 3, 'control: three days, three headings');
+});
+
+test('thumbnails arriving fill the tiles already drawn, in place', async () => {
+  const pane = mount();
+  pane.bridge.buckets = [bucket('camera', 2)];
+  pane.bridge.pages = [
+    { items: [item('a', noon(1))], hasMore: true },
+    { items: [item('b', noon(2))], hasMore: false },
+  ];
+  await pane.view.refresh();
+  const a = tilesOf(pane)[0]!;
+  assert.ok(walk(a).some((e) => e.className === 'photos-thumb-pending'), 'control: no thumbnail yet');
+  pane.bridge.thumbs = [['a', 'QUFBQQ=='], ['b', 'QkJCQg==']];
+  await scrollToBottom(pane);
+  const [a2, b2] = tilesOf(pane);
+  assert.equal(a2, a, 'tile a was rebuilt when thumbnails arrived');
+  assert.ok(walk(a2!).some((e) => e.tagName.toUpperCase() === 'IMG'), 'tile a never got its thumbnail');
+  assert.ok(walk(b2!).some((e) => e.tagName.toUpperCase() === 'IMG'), 'tile b never got its thumbnail');
+  assert.ok(!walk(a2!).some((e) => e.className === 'photos-thumb-pending'), 'the placeholder stayed beside the image');
+});
+
+test('selecting a tile moves the highlight without rebuilding the grid', async () => {
+  const pane = mount();
+  pane.bridge.buckets = [bucket('camera', 2)];
+  pane.bridge.pages = [{ items: [item('a', noon(1)), item('b', noon(1, 5))], hasMore: false }];
+  await pane.view.refresh();
+  const [a, b] = tilesOf(pane);
+  a!.click();
+  b!.click();
+  const [a2, b2] = tilesOf(pane);
+  assert.equal(a2, a, 'selection rebuilt tile a');
+  assert.equal(b2, b, 'selection rebuilt tile b');
+  assert.ok(b2!.className.split(' ').includes('on'), 'the selected tile is not marked');
+  assert.ok(!a2!.className.split(' ').includes('on'), 'the previous selection is still marked');
+});

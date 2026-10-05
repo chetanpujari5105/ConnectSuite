@@ -444,6 +444,15 @@ function groupByDay(
   return groups;
 }
 
+/** One tile's thumbnail. A function of its own so a full draw and an in-place fill make the same image. */
+function thumbImage(data: string): HTMLElement {
+  const img = document.createElement('img');
+  img.className = 'photos-thumb';
+  img.src = `data:image/jpeg;base64,${data}`;
+  img.alt = '';
+  return img;
+}
+
 /**
  * ### Defect 89 — the duplicate album names, measured and then *not* worked around
  *
@@ -556,6 +565,25 @@ class PhotosView {
   private thumbs = new Map<string, string>();
   private selectedAlbum: string | null = null;
   private selectedItem: string | null = null;
+  /**
+   * What the tile region draws right now, when it draws the plain grid — so a page can be appended,
+   * a thumbnail dropped into its tile and a selection moved, without rebuilding every tile.
+   *
+   * Measured before it existed (overnight UI harness, 2026-10-06, synthetic 6,000-photo roll on this
+   * Mac): each page rebuilt every tile already drawn, twice — once for the page and once when its
+   * thumbnails arrived — and the 31st page cost 417 ms with a 336 ms main-thread block, growing
+   * linearly with the scroll. `null` whenever the region holds anything else (a failure, the empty
+   * state), which sends every caller back to the full draw.
+   */
+  private drawn: {
+    album: string | null;
+    count: number;
+    /** The `nowMs` the headings were computed against, reused so an append cannot straddle midnight. */
+    nowMs: number;
+    lastHeading: string | null;
+    lastGrid: HTMLElement | null;
+    tiles: Map<string, HTMLElement>;
+  } | null = null;
   private hasMore = false;
   private loading = false;
 
@@ -685,6 +713,7 @@ class PhotosView {
     // unlucky.
     const last = this.items[this.items.length - 1];
     let page = { items: [] as MediaItemRow[], hasMore: false };
+    let fresh: MediaItemRow[] = [];
     try {
       const result = await this.bridge.mediaList({
         ...(this.selectedAlbum === ALL_PHOTOS ? {} : { bucketId: this.selectedAlbum }),
@@ -708,7 +737,7 @@ class PhotosView {
       // exactly what a broken cursor looks like, and a pane that de-duplicated in silence would
       // hide it. A count that never moves is the evidence; a count that moves is a defect report.
       const known = new Set(this.items.map((one) => one.id));
-      const fresh = page.items.filter((one) => !known.has(one.id));
+      fresh = page.items.filter((one) => !known.has(one.id));
       this.repeats += page.items.length - fresh.length;
       if (this.repeats > 0) {
         console.warn(
@@ -723,7 +752,13 @@ class PhotosView {
       // "the page is in `items`" is where the duplicate fetch above came from.
       this.loading = false;
     }
-    this.render();
+    if (this.appendPage(fresh)) {
+      this.renderBanner();
+      this.renderRail();
+      this.renderDetail();
+    } else {
+      this.render();
+    }
     await this.fillThumbs(page.items.map((one) => one.id));
   }
 
@@ -731,8 +766,15 @@ class PhotosView {
     if (ids.length === 0) return;
     const result = await this.bridge.mediaThumbs({ ids, maxEdge: 256 });
     if (!result.ok) return;
-    for (const [id, data] of result.data ?? []) this.thumbs.set(id, data);
-    this.render();
+    let selectedArrived = false;
+    for (const [id, data] of result.data ?? []) {
+      this.thumbs.set(id, data);
+      if (this.drawn) this.applyThumb(id, data);
+      if (id === this.selectedItem) selectedArrived = true;
+    }
+    // In place when the grid is drawn; a full draw only when it is not (a failure, the empty state).
+    if (!this.drawn) this.render();
+    else if (selectedArrived) this.renderDetail();
   }
 
   private render(): void {
@@ -824,6 +866,7 @@ class PhotosView {
 
   private renderTiles(): void {
     this.tiles.textContent = '';
+    this.drawn = null;
     if (this.failure) return;
 
     if (this.items.length === 0) {
@@ -847,20 +890,64 @@ class PhotosView {
     // One `Date.now()` for the whole render, so a grid that happens to be drawn across midnight
     // cannot put its first rows under `Today` and its last under `Yesterday`.
     const nowMs = Date.now();
-    for (const group of groupByDay(this.items, nowMs)) {
-      const section = document.createElement('div');
-      section.className = 'photos-group';
-      section.appendChild(photoLine('photos-group-title', group.heading));
+    this.drawn = { album: this.selectedAlbum, count: 0, nowMs, lastHeading: null, lastGrid: null, tiles: new Map() };
+    this.drawGroups(this.items);
+  }
 
-      const grid = document.createElement('div');
-      grid.className = 'photos-grid';
-      grid.setAttribute('role', 'grid');
-      grid.setAttribute('aria-label', group.heading);
-      section.appendChild(grid);
-      this.tiles.appendChild(section);
+  /**
+   * Draws `items` after whatever the grid already holds. The first run joins the last drawn day when
+   * its heading matches — `groupByDay` groups consecutive runs, so this is exactly the grouping a
+   * full draw of all the items would make (`photosView.test.ts` compares the two).
+   */
+  private drawGroups(items: MediaItemRow[]): void {
+    const drawn = this.drawn;
+    if (!drawn) return;
+    for (const group of groupByDay(items, drawn.nowMs)) {
+      let grid = group.heading === drawn.lastHeading ? drawn.lastGrid : null;
+      if (!grid) {
+        const section = document.createElement('div');
+        section.className = 'photos-group';
+        section.appendChild(photoLine('photos-group-title', group.heading));
 
-      for (const item of group.items) grid.appendChild(this.tileFor(item));
+        grid = document.createElement('div');
+        grid.className = 'photos-grid';
+        grid.setAttribute('role', 'grid');
+        grid.setAttribute('aria-label', group.heading);
+        section.appendChild(grid);
+        this.tiles.appendChild(section);
+        drawn.lastHeading = group.heading;
+        drawn.lastGrid = grid;
+      }
+      for (const item of group.items) {
+        const tile = this.tileFor(item);
+        drawn.tiles.set(item.id, tile);
+        grid.appendChild(tile);
+      }
+      drawn.count += group.items.length;
     }
+  }
+
+  /**
+   * A fresh page, appended to the grid in place. False — and nothing drawn — unless the grid on
+   * screen is exactly the items before this page, for this album; the caller then draws in full.
+   */
+  private appendPage(fresh: MediaItemRow[]): boolean {
+    const drawn = this.drawn;
+    if (!drawn || this.failure || drawn.album !== this.selectedAlbum) return false;
+    if (drawn.count !== this.items.length - fresh.length || drawn.count === 0) return false;
+    this.drawGroups(fresh);
+    return true;
+  }
+
+  /** A thumbnail into the tile already drawn for it, replacing its placeholder or older image. */
+  private applyThumb(id: string, data: string): void {
+    const tile = this.drawn?.tiles.get(id);
+    if (!tile) return;
+    for (const old of Array.from(tile.children)) {
+      const cls = (old as HTMLElement).className;
+      if (cls === 'photos-thumb' || cls === 'photos-thumb-pending') old.remove();
+    }
+    tile.prepend(thumbImage(data));
   }
 
   /** One tile. Extracted so the grouping loop above reads as grouping and nothing else. */
@@ -881,11 +968,7 @@ class PhotosView {
 
       const data = this.thumbs.get(item.id);
       if (data) {
-        const img = document.createElement('img');
-        img.className = 'photos-thumb';
-        img.src = `data:image/jpeg;base64,${data}`;
-        img.alt = '';
-        tile.appendChild(img);
+        tile.appendChild(thumbImage(data));
       } else {
         tile.appendChild(photoLine('photos-thumb-pending', ''));
       }
@@ -896,8 +979,16 @@ class PhotosView {
       }
 
       tile.addEventListener('click', () => {
+        const previous = this.selectedItem;
         this.selectedItem = item.id;
-        this.render();
+        // The highlight moves between two tiles; the grid is not rebuilt for a click.
+        if (this.drawn && this.drawn.tiles.get(item.id) === tile) {
+          if (previous) this.drawn.tiles.get(previous)?.classList.remove('on');
+          tile.classList.add('on');
+          this.renderDetail();
+        } else {
+          this.render();
+        }
         this.onSelected(item);
       });
       return tile;
