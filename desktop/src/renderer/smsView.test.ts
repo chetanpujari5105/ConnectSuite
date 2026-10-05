@@ -47,9 +47,12 @@ class FakeBridge {
   /** Set to hold every `smsThreads` until it resolves, so an event can land mid-load. */
   threadsGate: Promise<void> | null = null;
 
+  /** When set, `sms.threads` is refused with this sentence. */
+  threadsRefusal: string | null = null;
   async smsThreads(options: { before?: number }) {
     this.calls.push(`smsThreads:${options.before ?? 'first'}`);
     if (this.threadsGate) await this.threadsGate;
+    if (this.threadsRefusal) return { ok: false as const, reason: this.threadsRefusal, fixHint: 'Synthetic hint.' };
     return { ok: true as const, data: { threads: this.threads, hasMore: this.threadsHasMore } };
   }
   async smsMessages(threadId: string, options: { before?: number }) {
@@ -661,4 +664,29 @@ test('a key that is not Escape leaves the panel open', async () => {
   pane.newButton.click();
   pane.newPanel.dispatch('keydown', { key: 'a' });
   assert.equal(pane.newPanel.hidden, false);
+});
+
+// ---- A refused conversation list ---------------------------------------------------------------
+//
+// Found by the overnight UI harness (2026-10-06), the same defect as the Calls pane's: the refusal
+// went to the notice, which hides itself after six seconds, and the list kept saying "Reading the
+// phone's conversations…" — a claim about a read that had already been refused, with no way back
+// short of a reconnect.
+
+test('a refused conversation list says so in the list, and Try again asks again', async () => {
+  const pane = mount([]);
+  pane.bridge.threadsRefusal = 'This phone is not sharing its messages.';
+  pane.view.setAdvertised(true);
+  await settle();
+  assert.ok(pane.note.textContent.includes('This phone is not sharing its messages.'), `the list does not say why: "${pane.note.textContent}"`);
+  assert.ok(!pane.note.textContent.includes('Reading'), 'the list still claims to be reading');
+  const retry = pane.list.children.find((c) => c.tagName.toUpperCase() === 'BUTTON' && c.textContent === 'Try again');
+  assert.ok(retry, 'no way to ask again from the list');
+  // Control: a phone that answers on the retry draws its list and drops the refusal.
+  pane.bridge.threadsRefusal = null;
+  pane.bridge.threads = [thread('1')];
+  retry.click();
+  await settle();
+  assert.ok(!pane.note.textContent.includes('not sharing'), `the refusal outlived the list: "${pane.note.textContent}"`);
+  assert.ok(pane.list.children.length > 0, 'control: the list was drawn');
 });

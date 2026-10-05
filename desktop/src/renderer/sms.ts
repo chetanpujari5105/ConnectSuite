@@ -309,6 +309,12 @@ class SmsView {
    */
   private pendingNew: SmsPendingNew | null = null;
   private loaded = false;
+  /**
+   * The phone's refusal of the last fresh `sms.threads`, held until a read succeeds. The notice says
+   * it for six seconds; the list says it after that — never "Reading…" over a refused read
+   * (overnight UI harness, 2026-10-06; the Calls pane had the same gap).
+   */
+  private threadsFailure: { reason: string; fixHint?: string } | null = null;
 
   private openThreadId: string | null = null;
   private messages: SmsMessageRow[] = [];
@@ -395,6 +401,7 @@ class SmsView {
       this.messages = [];
       this.openThreadId = null;
       this.loaded = false;
+      this.threadsFailure = null;
       this.render();
       return;
     }
@@ -434,8 +441,18 @@ class SmsView {
     );
     if (!result.ok) {
       this.showNotice(result.reason ?? 'The conversations could not be read.', result.fixHint);
+      // A refused *older* page leaves every row on screen true; the notice is enough there. A
+      // refused fresh read is a state of the list, and the list has to say it.
+      if (before === undefined) {
+        this.threadsFailure = {
+          reason: result.reason ?? 'The conversations could not be read.',
+          ...(result.fixHint ? { fixHint: result.fixHint } : {}),
+        };
+        this.render();
+      }
       return;
     }
+    if (before === undefined) this.threadsFailure = null;
     this.loaded = true;
     // A cursor page is appended; a fresh load replaces. Appending on a refresh would double every
     // thread already held the first time anyone pressed refresh after paging.
@@ -596,6 +613,12 @@ class SmsView {
 
     if (this.regions.threadsFoot) this.regions.threadsFoot.textContent = '';
     if (!this.loaded) {
+      if (this.threadsFailure && this.link !== 'disconnected') {
+        const f = this.threadsFailure;
+        this.note.textContent = f.fixHint ? `${f.reason} ${f.fixHint}` : f.reason;
+        list.appendChild(this.threadsRetry());
+        return;
+      }
       this.note.textContent =
         this.link === 'disconnected'
           ? 'Connect your phone to read its conversations.'
@@ -1106,6 +1129,16 @@ class SmsView {
     body.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') void submit();
     });
+  }
+
+  /** Asks the phone for the list again — the way back from a refusal that is not a reconnect. */
+  private threadsRetry(): HTMLElement {
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'button sms-threads-retry';
+    retry.textContent = 'Try again';
+    retry.addEventListener('click', () => void this.loadThreads());
+    return retry;
   }
 
   private showNotice(text: string, hint?: string): void {
