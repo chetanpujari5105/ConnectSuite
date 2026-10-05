@@ -55,6 +55,13 @@ sealed interface WebcamEffect<out S : Any> {
     /** Ask the encoder for an IDR: a generation's first AU on the wire must be one. */
     data class RequestKeyframe(val sessionId: String, val generation: Int) : WebcamEffect<Nothing>
 
+    /**
+     * The Mac's `webcam.keyframe`, accepted: ask the encoder bound to **exactly** [sessionId] at
+     * [generation] for a sync frame — and nothing if a Stop, a switch or a reconfiguration has replaced
+     * it since. Emitted by [WebcamSessionMachine.keyframeFromMac] and nothing else.
+     */
+    data class MacKeyframe(val sessionId: String, val generation: Int) : WebcamEffect<Nothing>
+
     /** An ending already recorded as [from] is now known to be [to] (the Mac's stop crossed the socket's close). */
     data class Reattributed(val sessionId: String, val from: WebcamStopReason, val to: WebcamStopReason) : WebcamEffect<Nothing>
 
@@ -141,6 +148,8 @@ class WebcamSessionMachine<S : Any>(
         val announced: Boolean = false,
         /** An IDR has been asked for the current generation and not yet seen. */
         val keyframeRequested: Boolean = false,
+        /** When the Mac's last `webcam.keyframe` was accepted for this session — its one-per-second limit. */
+        val lastMacKeyframeAtMillis: Long? = null,
         val width: Int? = null,
         val height: Int? = null,
     )
@@ -359,6 +368,48 @@ class WebcamSessionMachine<S : Any>(
         return listOf(WebcamEffect.SwitchCapture(sessionId, facing, next.generation))
     }
 
+    /**
+     * `webcam.keyframe` (version 2): the Mac's decode chain broke and it asks for an IDR. Inside the
+     * approved session only — never a camera, a consent, a session, or a generation change.
+     *
+     * Accepted only for the owning connection, for the current session while `running`, at the current
+     * generation once its `running` was sent, and at most once a second per session. Otherwise an
+     * `ignored` ack that says which of those did not hold, or an error when the request is wrong.
+     * **Accepted is not produced**: the effect asks the encoder, and the ack says so and nothing more.
+     */
+    @Synchronized
+    fun keyframeFromMac(owner: S, requestId: String, sessionId: String?, generation: Int?, nowMillis: Long): List<WebcamEffect<S>> {
+        if (sessionId == null || !SESSION_ID.matches(sessionId) || generation == null || generation !in 1..MAX_GENERATION) {
+            return listOf(
+                WebcamEffect.Refuse(owner, requestId, ErrorCode.BAD_REQUEST, "webcam.keyframe needs the 32-hex sessionId and a generation from 1 to 65535."),
+            )
+        }
+        val l = live
+        if (l == null || l.sessionId != sessionId || !l.phase.isLive) {
+            return listOf(WebcamEffect.Refuse(owner, requestId, ErrorCode.NOT_FOUND, "No live webcam session has that id."))
+        }
+        if (l.owner !== owner) {
+            return listOf(WebcamEffect.Refuse(owner, requestId, ErrorCode.UNAUTHORIZED, "That webcam session belongs to a different connection."))
+        }
+        fun ignored(why: WebcamKeyframeIgnored): List<WebcamEffect<S>> =
+            listOf(WebcamEffect.Ack(owner, requestId, WebcamPayloads.keyframeIgnored(why, l.generation)))
+        // The contract's order: the generation first, so a Mac naming an old one is told so.
+        return when {
+            generation < l.generation -> ignored(WebcamKeyframeIgnored.STALE_GENERATION)
+            generation > l.generation -> ignored(WebcamKeyframeIgnored.UNKNOWN_GENERATION)
+            l.phase != WebcamPhase.RUNNING || !l.announced -> ignored(WebcamKeyframeIgnored.NOT_RUNNING)
+            l.lastMacKeyframeAtMillis != null && nowMillis - l.lastMacKeyframeAtMillis < MAC_KEYFRAME_MIN_INTERVAL_MS ->
+                ignored(WebcamKeyframeIgnored.RATE_LIMITED)
+            else -> {
+                live = l.copy(lastMacKeyframeAtMillis = nowMillis)
+                listOf(
+                    WebcamEffect.MacKeyframe(sessionId, generation),
+                    WebcamEffect.Ack(owner, requestId, WebcamPayloads.keyframeAccepted(generation)),
+                )
+            }
+        }
+    }
+
     // ---- the phone's owner ----------------------------------------------------------------------
 
     /**
@@ -559,6 +610,11 @@ class WebcamSessionMachine<S : Any>(
 
         /** The header's generation is a u16, ≥ 1. */
         const val MAX_GENERATION = 0xFFFF
+
+        /** docs/protocol.md → `webcam.keyframe`: at most one accepted per session per second. */
+        const val MAC_KEYFRAME_MIN_INTERVAL_MS = 1_000L
+
+        private val SESSION_ID = Regex("^[0-9a-f]{32}$")
     }
 }
 
@@ -621,6 +677,13 @@ object WebcamPayloads {
         if (switched) put("switched", true)
     }
 
+    /** `webcam.keyframe`'s ack when the encoder was asked. Not proof an IDR was produced. */
+    fun keyframeAccepted(generation: Int): Map<String, Any> = mapOf("result" to "accepted", "generation" to generation)
+
+    /** `webcam.keyframe`'s ack when nothing was done; [current] is the phone's current generation. */
+    fun keyframeIgnored(why: WebcamKeyframeIgnored, current: Int): Map<String, Any> =
+        mapOf("result" to "ignored", "reason" to why.wire, "generation" to current)
+
     /** Null for a reason with no wire value: the engine sends nothing for those. */
     fun stopped(
         sessionId: String,
@@ -657,6 +720,7 @@ object WebcamLogLines {
                 is WebcamEffect.OpenCapture -> "OpenCapture(${it.facing.wire}, generation ${it.generation})"
                 is WebcamEffect.SwitchCapture -> "SwitchCapture(${it.facing.wire}, generation ${it.generation})"
                 is WebcamEffect.RequestKeyframe -> "RequestKeyframe(generation ${it.generation})"
+                is WebcamEffect.MacKeyframe -> "MacKeyframe(generation ${it.generation})"
                 else -> it.javaClass.simpleName
             }
         }.ifEmpty { "no change" }

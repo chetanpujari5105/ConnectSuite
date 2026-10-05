@@ -205,6 +205,8 @@ class WebcamActivity : ComponentActivity(), WebcamCaptureHost {
     override fun closeCapture() = runOnUiThread { capture.close() }
 
     override fun requestKeyframe() = runOnUiThread { capture.requestKeyframe() }
+
+    override fun requestKeyframeFor(sessionId: String, generation: Int) = runOnUiThread { capture.requestKeyframe(sessionId, generation) }
 }
 
 @Composable

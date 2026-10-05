@@ -38,6 +38,12 @@ interface WebcamCaptureHost {
     fun switchCapture(sessionId: String, facing: CameraFacing, generation: Int)
     fun closeCapture()
     fun requestKeyframe()
+
+    /**
+     * The Mac's accepted `webcam.keyframe`: ask the encoder bound to exactly [sessionId] at [generation],
+     * and nothing if it has been replaced. Serialised with open, switch and close on the screen's thread.
+     */
+    fun requestKeyframeFor(sessionId: String, generation: Int)
 }
 
 /**
@@ -78,6 +84,9 @@ object WebcamEngine {
     @Volatile private var unassembled = 0L
 
     @Volatile private var lastTally: Triple<Long, Long, String> = Triple(0L, 0L, "no stream")
+
+    /** `webcam.keyframe` answers since start, logged on every answer: accepted / ignored / refused. */
+    private val keyframeTally = LongArray(3)
 
     private val _ui = MutableStateFlow(WebcamUi())
 
@@ -131,6 +140,27 @@ object WebcamEngine {
     fun onSwitch(session: ControlSession, request: Envelope) {
         val effects = machine.switch(session, request.id, stringField(request, "sessionId"), stringField(request, "facing"), ::hasCameraFacing)
         LinkLog.i("webcam", "webcam.switch from ${session.peerName}: ${describe(effects)}")
+        run(effects)
+    }
+
+    /**
+     * `webcam.keyframe` (version 2). The machine decides; the line names the outcome with its running
+     * tally, the session's first 8 characters, and never the Mac's name.
+     */
+    fun onKeyframe(session: ControlSession, request: Envelope) {
+        val sessionId = stringField(request, "sessionId")
+        val effects = machine.keyframeFromMac(session, request.id, sessionId, generationField(request), System.currentTimeMillis())
+        val outcome = when {
+            effects.any { it is WebcamEffect.MacKeyframe } -> "accepted".also { synchronized(keyframeTally) { keyframeTally[0]++ } }
+            effects.any { it is WebcamEffect.Refuse<*> } ->
+                "refused ${(effects.first { it is WebcamEffect.Refuse<*> } as WebcamEffect.Refuse<*>).code}".also { synchronized(keyframeTally) { keyframeTally[2]++ } }
+            else -> "ignored ${(effects.firstOrNull() as? WebcamEffect.Ack<*>)?.payload?.get("reason")}".also { synchronized(keyframeTally) { keyframeTally[1]++ } }
+        }
+        val (a, i, r) = synchronized(keyframeTally) { Triple(keyframeTally[0], keyframeTally[1], keyframeTally[2]) }
+        LinkLog.i(
+            "webcam",
+            "webcam.keyframe for ${sessionId?.take(8) ?: "?"}…: $outcome — $a accepted / $i ignored / $r refused since start",
+        )
         run(effects)
     }
 
@@ -334,6 +364,14 @@ object WebcamEngine {
                 unassembled = 0
             }
             is WebcamEffect.RequestKeyframe -> host?.requestKeyframe()
+            is WebcamEffect.MacKeyframe -> {
+                val h = host
+                if (h == null) {
+                    LinkLog.w("webcam", "webcam.keyframe for ${effect.sessionId.take(8)}…: no capture screen; nothing asked")
+                } else {
+                    h.requestKeyframeFor(effect.sessionId, effect.generation)
+                }
+            }
             is WebcamEffect.Reattributed -> LinkLog.i(
                 "webcam",
                 "Webcam session ${effect.sessionId.take(8)}… had already ended as ${effect.from.name} when the Mac's stop arrived; " +
@@ -423,6 +461,12 @@ object WebcamEngine {
 
     private fun stringField(request: Envelope, name: String): String? =
         runCatching { request.payload[name]?.jsonPrimitive?.content }.getOrNull()
+
+    /** `generation` as the contract types it: a JSON number, an integer. A string or a fraction is null. */
+    private fun generationField(request: Envelope): Int? = runCatching {
+        val p = request.payload["generation"]?.jsonPrimitive ?: return@runCatching null
+        if (p.isString) null else p.content.toLongOrNull()?.takeIf { it in 1..WebcamSessionMachine.MAX_GENERATION }?.toInt()
+    }.getOrNull()
 
     private fun describe(effects: List<WebcamEffect<ControlSession>>): String = WebcamLogLines.describe(effects)
 

@@ -364,7 +364,7 @@ object CapabilityContract {
         // served, a session could be approved into a stream nothing would carry. Development builds
         // only — WebcamFeature.install is gated, so a release build never registers these.
         Capability.WEBCAM to Contract(
-            requests = setOf(MessageType.WEBCAM_REQUEST, MessageType.WEBCAM_STOP, MessageType.WEBCAM_SWITCH),
+            requests = setOf(MessageType.WEBCAM_REQUEST, MessageType.WEBCAM_STOP, MessageType.WEBCAM_SWITCH, MessageType.WEBCAM_KEYFRAME),
             needsWebcamChannel = true,
         ),
         Capability.SHARE to Contract(

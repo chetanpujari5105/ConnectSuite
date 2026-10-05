@@ -80,10 +80,12 @@ object Extensions {
 
     /**
      * `webcam` — Camera v2, Sidekick Camera (docs/protocol.md → Webcam → Capability, version and older
-     * peers). The capability and the `ext` key share the name; version 1 is the whole section.
+     * peers). The capability and the `ext` key share the name. **Version 2** since 2026-10-05: version 1
+     * plus `webcam.keyframe`. Not the access unit's header version (`WebcamAuCodec.VERSION`), which stays
+     * 1 because the frame's format did not change.
      */
     const val WEBCAM = "webcam"
-    const val WEBCAM_VERSION = 1
+    const val WEBCAM_VERSION = 2
 
     /**
      * **Release policy for the webcam.** `false`: the feature is development-only, exactly as Camera v1

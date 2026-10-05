@@ -91,6 +91,31 @@ class WebcamCaptureCore(
         bound?.let { runCatching { backend.requestKeyframe(it.handle) } }
     }
 
+    /** The Mac's accepted `webcam.keyframe`s that reached an encoder, and those that found it replaced. */
+    var macKeyframesAsked = 0
+        private set
+    var macKeyframesNotAsked = 0
+        private set
+
+    /**
+     * The Mac's `webcam.keyframe`, already accepted by the machine: asks the bound encoder **only** if it
+     * is still exactly [sessionId] at [generation] and still wanted. A Stop, a switch or a reconfiguration
+     * between the machine's decision and this call leaves nothing asked — never the replacement encoder.
+     */
+    fun requestKeyframe(sessionId: String, generation: Int): Boolean {
+        val b = bound
+        val label = "${sessionId.take(8)}… generation $generation"
+        if (b == null || b.sessionId != sessionId || b.generation != generation || !isCurrent(sessionId, generation)) {
+            macKeyframesNotAsked++
+            log("webcam.keyframe for $label: that encoder is no longer the bound one; nothing asked — $macKeyframesNotAsked not asked / $macKeyframesAsked asked")
+            return false
+        }
+        runCatching { backend.requestKeyframe(b.handle) }
+        macKeyframesAsked++
+        log("webcam.keyframe for $label asked the encoder for a sync frame — $macKeyframesAsked asked / $macKeyframesNotAsked not asked")
+        return true
+    }
+
     /** Invalidates every pending open and releases the bound capture, once. True if this call released one. */
     fun close(): Boolean {
         ticket++

@@ -50,6 +50,8 @@ object WebcamFeature {
         MessageType.WEBCAM_REQUEST,
         MessageType.WEBCAM_STOP,
         MessageType.WEBCAM_SWITCH,
+        // Version 2: registered with the rest, so a phone advertising ext.webcam 2 always answers it.
+        MessageType.WEBCAM_KEYFRAME,
     )
 
     @Volatile
@@ -103,6 +105,7 @@ object WebcamFeature {
         MessageType.WEBCAM_REQUEST -> MessageHandler { session, request -> WebcamEngine.onRequest(session, request) }
         MessageType.WEBCAM_STOP -> MessageHandler { session, request -> WebcamEngine.onStop(session, request) }
         MessageType.WEBCAM_SWITCH -> MessageHandler { session, request -> WebcamEngine.onSwitch(session, request) }
+        MessageType.WEBCAM_KEYFRAME -> MessageHandler { session, request -> WebcamEngine.onKeyframe(session, request) }
         else -> error("WebcamFeature.handledTypes lists $type with no handler")
     }
 

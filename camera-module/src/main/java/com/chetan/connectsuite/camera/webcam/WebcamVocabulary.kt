@@ -35,6 +35,24 @@ enum class WebcamPhase(val wire: String) {
     val isLive: Boolean get() = this == STARTING || this == RUNNING
 }
 
+/**
+ * Why a `webcam.keyframe` was **ignored** (version 2, docs/protocol.md → `webcam.keyframe`): the session is
+ * the caller's, and there was nothing useful to do. Held to the fixture's `keyframeIgnoredReasons`.
+ */
+enum class WebcamKeyframeIgnored(val wire: String) {
+    /** The session is `starting`, or its current generation has not sent its first IDR yet. */
+    NOT_RUNNING("not-running"),
+
+    /** A switch or reconfiguration moved on; its first AU is an IDR anyway. */
+    STALE_GENERATION("stale-generation"),
+
+    /** The Mac named a generation the phone has not reached. */
+    UNKNOWN_GENERATION("unknown-generation"),
+
+    /** One was accepted for this session less than a second ago. */
+    RATE_LIMITED("rate-limited"),
+}
+
 /** The two deadlines a session can be waiting on. */
 enum class WebcamTimer { REQUEST, START }
 

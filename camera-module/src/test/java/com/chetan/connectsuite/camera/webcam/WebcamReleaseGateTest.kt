@@ -102,6 +102,9 @@ class WebcamReleaseGateTest {
         assertEquals(details, WebcamFailureDetail.entries.mapNotNull { it.wire })
         val reasons = fixture["stoppedReasons"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet()
         assertEquals(reasons, WebcamStopReason.entries.mapNotNull { it.wire }.toSet())
+        // Version 2: webcam.keyframe's ignored reasons.
+        val ignored = fixture["keyframeIgnoredReasons"]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertEquals(ignored, WebcamKeyframeIgnored.entries.map { it.wire })
     }
 
     @Test

@@ -56,10 +56,11 @@ class WebcamLinkTest {
 
     @Test
     fun `ext webcam is advertised only when installed and the build is debuggable or released`() {
-        assertEquals(mapOf("webcam" to 1), Extensions.webcamAdvertised(installed = true, debuggable = true))
+        // Version 2 since 2026-10-05 (webcam.keyframe); the gates are unchanged.
+        assertEquals(mapOf("webcam" to 2), Extensions.webcamAdvertised(installed = true, debuggable = true))
         assertEquals(emptyMap<String, Int>(), Extensions.webcamAdvertised(installed = false, debuggable = true))
         assertEquals(emptyMap<String, Int>(), Extensions.webcamAdvertised(installed = true, debuggable = false))
-        assertEquals(mapOf("webcam" to 1), Extensions.webcamAdvertised(installed = true, debuggable = false, release = true))
+        assertEquals(mapOf("webcam" to 2), Extensions.webcamAdvertised(installed = true, debuggable = false, release = true))
         // A release flag alone, with nothing installed, still promises nothing.
         assertEquals(emptyMap<String, Int>(), Extensions.webcamAdvertised(installed = false, debuggable = false, release = true))
     }
@@ -72,12 +73,13 @@ class WebcamLinkTest {
 
     @Test
     fun `an older Mac negotiates no webcam, and nor does a phone without the feature`() {
+        // A version-1 Mac with this version-2 phone: negotiated 1 — the whole of version 1, and no keyframe.
         val installed = Extensions.handshake(debuggable = true, devV2Armed = false, macExt = mapOf("webcam" to 1), webcamInstalled = true)
         assertEquals(1, installed.negotiated["webcam"])
         assertTrue(installed.webcamLine, installed.webcamLine.contains("may send webcam.*"))
 
         val olderMac = Extensions.handshake(debuggable = true, devV2Armed = false, macExt = emptyMap(), webcamInstalled = true)
-        assertEquals(1, olderMac.advertised["webcam"])
+        assertEquals(2, olderMac.advertised["webcam"])
         assertNull(olderMac.negotiated["webcam"])
         assertTrue(olderMac.webcamLine.contains("sends no webcam.*"))
 
@@ -92,14 +94,16 @@ class WebcamLinkTest {
     }
 
     @Test
-    fun `a future Mac version negotiates down to 1`() {
+    fun `a version-2 Mac negotiates 2, and a future Mac negotiates down to the phone's 2`() {
+        val v2 = Extensions.handshake(debuggable = true, devV2Armed = false, macExt = mapOf("webcam" to 2), webcamInstalled = true)
+        assertEquals(2, v2.negotiated["webcam"])
         val h = Extensions.handshake(debuggable = true, devV2Armed = false, macExt = mapOf("webcam" to 4), webcamInstalled = true)
-        assertEquals(1, h.negotiated["webcam"])
+        assertEquals(2, h.negotiated["webcam"])
     }
 
     // ---- the capability contract ----------------------------------------------------------------
 
-    private val requests = setOf(MessageType.WEBCAM_REQUEST, MessageType.WEBCAM_STOP, MessageType.WEBCAM_SWITCH)
+    private val requests = setOf(MessageType.WEBCAM_REQUEST, MessageType.WEBCAM_STOP, MessageType.WEBCAM_SWITCH, MessageType.WEBCAM_KEYFRAME)
 
     private fun advertised(registered: Set<String>, webcamServed: Boolean, cameraServed: Boolean = true) =
         Capability.WEBCAM in CapabilityContract.advertisable(
