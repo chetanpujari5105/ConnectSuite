@@ -24,12 +24,20 @@ import type { CallEnded, IncomingCall } from './protocol';
 export const UNKNOWN_NUMBER = 'Unknown number';
 
 /**
- * Three or more digits anywhere make a stored name "possibly a number". This is deliberately
- * conservative: a contact saved under a phone number, or a name like `Room 101`, is stored as
- * {@link UNKNOWN_NUMBER} rather than risk keeping a number. Losing a label costs less than keeping
- * a number on disk, and the live card still draws the real name while the call is showing.
+ * A string that is a phone number by shape: nothing but digits and the characters numbers are
+ * written with, and at least three digits (`121` is a carrier short code, and a number).
  */
-const NUMBER_LIKE = /\d[^\d]*\d[^\d]*\d/;
+const NUMBER_SHAPED = /^[\d\s+().\-/#*]*$/;
+
+/** Seven or more digits in a row, allowing the separators numbers are written with. */
+const NUMBER_RUN = /\d(?:[\s().\-/]?\d){6,}/;
+
+/** How many trailing digits of the call's own number count as that number appearing in a name. */
+const LEAK_DIGITS = 7;
+
+function digitsOf(text: string): string {
+  return text.replace(/\D/g, '');
+}
 
 /** The last two digits of a number as `…67`, or `null` when there are fewer than two. */
 export function numberTail(number: string | null | undefined): string | null {
@@ -47,12 +55,25 @@ export function callLogWho(call: { number?: string | null }): string {
  * How a call is named in the persisted Activity history: the contact name, or
  * {@link UNKNOWN_NUMBER}. Never a number and never a blank.
  *
+ * **Digits in a name are not a number.** `Room 101` and `Plumber 24/7` are kept. What is refused is a
+ * number, tested three ways, each a fact about the string rather than a guess about its author:
+ *
+ *  - it **is** a number by shape — only digits and separators, at least three digits;
+ *  - it **contains** one — a run of seven or more digits, however it is punctuated;
+ *  - it contains **this call's own number** — compared directly, when the caller has it. A contact
+ *    the phone has no name for is displayed by its number, and that is the leak this exists for.
+ *
  * Also the scrub applied to history written before the rule existed, whose details were raw
- * numbers, `""` or `"unknown"` — so the writer and the reader share one rule rather than two.
+ * numbers, `""` or `"unknown"` — so the writer and the reader share one rule rather than two. The
+ * reader has no number to compare against, and needs none: every such detail is a number by shape.
  */
-export function callHistoryName(raw: string | null | undefined): string {
+export function callHistoryName(raw: string | null | undefined, number?: string | null): string {
   const name = (raw ?? '').trim();
-  if (!name || name.toLowerCase() === 'unknown' || NUMBER_LIKE.test(name)) return UNKNOWN_NUMBER;
+  if (!name || name.toLowerCase() === 'unknown') return UNKNOWN_NUMBER;
+  if (NUMBER_SHAPED.test(name) && digitsOf(name).length >= 3) return UNKNOWN_NUMBER;
+  if (NUMBER_RUN.test(name)) return UNKNOWN_NUMBER;
+  const own = digitsOf(number ?? '');
+  if (own.length >= LEAK_DIGITS && digitsOf(name).includes(own.slice(-LEAK_DIGITS))) return UNKNOWN_NUMBER;
   return name;
 }
 
@@ -95,7 +116,7 @@ export class CallActivityRows {
     this.last = { callId: call.callId, state: call.state };
     return {
       kind: STATE_KIND[call.state] ?? 'Call',
-      detail: callHistoryName(call.contactName),
+      detail: callHistoryName(call.contactName, call.number),
     };
   }
 
@@ -108,7 +129,7 @@ export class CallActivityRows {
     const named = card && card.callId === ended.callId ? card.contactName : undefined;
     return {
       kind: DISPOSITION_KIND[ended.disposition] ?? 'Call ended',
-      detail: callHistoryName(named),
+      detail: callHistoryName(named, ended.number),
     };
   }
 }
