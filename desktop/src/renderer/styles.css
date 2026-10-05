@@ -3572,6 +3572,14 @@ input.files-search {
   font: var(--text-control);
   color: var(--text-body);
   cursor: pointer;
+  /* A segment with no space in it (`Download/ConnectSuite`) cannot wrap, and at the 1100px minimum
+     it ran under Send to phone… — measured by the overnight UI harness, 56px of overlap. It shrinks
+     to its column with an ellipsis instead; `renderCrumbs` gives a clipped one its full name. */
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .files-crumb:hover { color: var(--text-primary); }
@@ -3611,6 +3619,7 @@ input.files-search {
 /* The header's columns are sort buttons — press to sort, press again to reverse. They keep the
    header's type; only the active column is lifted to body colour. */
 .files-head-sort {
+  position: relative;
   min-height: 0;
   padding: 0;
   border: 0;
@@ -3624,6 +3633,9 @@ input.files-search {
 .files-head-sort[aria-sort='ascending'],
 .files-head-sort[aria-sort='descending'] { color: var(--text-body); }
 .files-head-sort.files-cell-size { text-align: right; }
+/* The header row is 12px of type, and so was the button: a sort control 12px tall. The hit area grows
+   to 24px without moving the row — measured by the overnight UI harness at every window size. */
+.files-head-sort::after { content: ''; position: absolute; inset: -6px 0; }
 
 .files-cell-name {
   display: flex;

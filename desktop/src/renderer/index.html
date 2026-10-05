@@ -364,7 +364,7 @@
                       </div>
 
                       <div class="mirror-stage" id="mirror-stage">
-                        <canvas id="mirror-canvas"></canvas>
+                        <canvas id="mirror-canvas" aria-label="Phone screen. Clicks, scrolls and typing here go to the phone."></canvas>
                         <!-- Never left blank and silent: every failure path writes its reason here. -->
                         <div id="mirror-overlay" class="mirror-overlay">Not mirroring.</div>
                         <div id="mirror-notice" class="mirror-notice" hidden></div>
@@ -501,8 +501,8 @@
                 </div>
                 <div class="sms-newpanel-body">
                   <div class="sms-newpanel-form">
-                    <input id="sms-new-to" type="text" placeholder="Phone number" />
-                    <input id="sms-new-body" type="text" placeholder="Message" />
+                    <input id="sms-new-to" type="text" placeholder="Phone number" aria-label="Recipient's phone number" />
+                    <input id="sms-new-body" type="text" placeholder="Message" aria-label="Message" />
                     <button type="button" id="sms-new-send" class="button primary-action">Send</button>
                   </div>
                   <!--
@@ -512,7 +512,7 @@
                     Two owners of one element's visibility is how one of them silently wins.
                   -->
                   <div class="sms-newpanel-people" id="contacts-people">
-                    <input id="contacts-search" type="search" placeholder="Search name or number" />
+                    <input id="contacts-search" type="search" placeholder="Search name or number" aria-label="Search contacts" />
                     <p class="sms-list-note" id="contacts-note"></p>
                     <div id="contacts-list" class="contact-list"></div>
                     <div id="contacts-notice" class="mirror-notice" hidden></div>

@@ -1236,6 +1236,8 @@ class FilesView {
       const target = segments.slice(1, index + 1).join('/');
       crumb.addEventListener('click', () => void this.openPath(target));
       this.crumbs.append(crumb);
+      // After it is in the document, so the browser can say whether the ellipsis cut it.
+      titleWhenClipped(crumb, segment);
     });
   }
 

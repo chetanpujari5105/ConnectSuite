@@ -1622,6 +1622,8 @@ let savedTailscale = '';
 function addressControl(
   value: string,
   placeholder: string,
+  /** The field's name. The setting row's title is beside it, not tied to it, and a placeholder is not a name. */
+  label: string,
   save: (next: string) => Promise<void>,
   onSaved: (next: string) => void,
 ): HTMLElement {
@@ -1631,6 +1633,7 @@ function addressControl(
   input.type = 'text';
   input.value = value;
   input.placeholder = placeholder;
+  input.setAttribute('aria-label', label);
   const button = document.createElement('button');
   button.type = 'button';
   button.textContent = 'Save';
@@ -1988,7 +1991,7 @@ shell.addSettingsPane(
       settingRow(
         'Manual address',
         'Used only when the last known address, the default gateway and mDNS all fail.',
-        addressControl('', '192.168.1.42', (next) => connect.setManualAddress(next), (next) => {
+        addressControl('', '192.168.1.42', 'Manual address', (next) => connect.setManualAddress(next), (next) => {
           savedManual = next;
         }),
       ),
@@ -1997,7 +2000,7 @@ shell.addSettingsPane(
       settingRow(
         'Tailscale address',
         'Optional. Nothing works outside the local network without one; this is the documented path.',
-        addressControl('', '100.x.y.z', (next) => connect.setTailscaleAddress(next), (next) => {
+        addressControl('', '100.x.y.z', 'Tailscale address', (next) => connect.setTailscaleAddress(next), (next) => {
           savedTailscale = next;
         }),
       ),

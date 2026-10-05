@@ -8,6 +8,7 @@ import '../shared/sendBatch';
 import '../shared/filesListing';
 import './icons';
 import './stateBlock';
+import './overflowTitle';
 import './files';
 
 /**
