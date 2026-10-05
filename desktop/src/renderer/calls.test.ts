@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import '../shared/callAudio';
 import '../renderer/calls';
 
 /**
@@ -69,21 +70,26 @@ test('firstNonEmpty is the rule the rest of the pane can reuse', () => {
 
 
 /**
- * Defect 124. Both audio sentences offered *pair the Mac over Bluetooth to listen* — the remedy
- * `CLAUDE.md` retracted after measuring it on 2026-09-14. Asserted on each sentence by itself
- * (never as a likeness between the two, which either could satisfy by moving), and on the whole
- * source file, because a third sentence is the likeliest way it comes back.
+ * Defect 124, narrowed by decision 1(c) (2026-10-05).
+ *
+ * Both audio sentences once offered *pair the Mac over Bluetooth to listen* — the remedy
+ * `CLAUDE.md` retracted after measuring it on 2026-09-14. The pane now draws one sentence from
+ * `src/shared/callAudio.ts`, and this file still may not name Bluetooth anywhere: the one sentence
+ * that does is the capability row's, and the pane must not be able to reach it.
  */
-test('no call copy offers Bluetooth as a remedy for the audio wall', () => {
-  const labels = (globalThis as Record<string, unknown>).__callLabels as Record<string, string>;
-  for (const name of ['CALL_AUDIO_WALL', 'CALL_AUDIO_LIVE']) {
-    const line = labels[name];
-    assert.ok(line && line.length > 20, `control: ${name} is a real sentence`);
-    assert.doesNotMatch(line, /bluetooth|pair the mac/i, `${name} offers the retracted remedy`);
-    assert.match(line, /phone/i, `${name} does not say where the audio is`);
-  }
+test('the Calls pane draws the approved sentence, which offers no remedy', () => {
+  const labels = (globalThis as Record<string, unknown>).__callLabels as { paneAudioSentence(): string };
+  const line = labels.paneAudioSentence();
+  assert.equal(line, 'Phone call audio on Mac is not available. No Mac and phone have been verified for it.');
+  assert.doesNotMatch(line, /bluetooth|pair the mac/i, 'the pane sentence offers the retracted remedy');
+});
+
+test('nothing in calls.ts names Bluetooth or reaches the capability sentence', () => {
   const source = readFileSync(join(__dirname, 'calls.ts'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/.*$/gm, '');
+  assert.ok(source.includes('paneAudioSentence'), 'control: the stripped source still holds the code');
   assert.doesNotMatch(source, /bluetooth/i, 'a string in calls.ts mentions Bluetooth');
+  assert.doesNotMatch(source, /capability-row|CALL_AUDIO_CAPABILITY_SENTENCE/, 'the pane can reach the capability sentence');
+  assert.doesNotMatch(source, /CALL_AUDIO_WALL|CALL_AUDIO_LIVE/, 'a second, local audio sentence came back');
 });

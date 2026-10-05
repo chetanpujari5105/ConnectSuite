@@ -210,16 +210,17 @@ function callInitials(entry: { contactName?: string; number?: string }): string 
  * in three places reads as three unrelated problems.
  */
 /**
- * The call-audio wall, in the two places it is said. **Neither offers Bluetooth**, and that is the
- * point of naming them: both sentences told people to *"pair the Mac to the phone over Bluetooth to
- * listen"* — a remedy measured on 2026-09-14 and retracted in `CLAUDE.md` (both ends are the HFP
- * audio gateway; SCO never comes up from either side). The copy outlived the retraction by five
- * days because nothing checked a sentence against a finding. `calls.test.ts` checks it now.
+ * The call-audio sentence, in both places the pane says it — the idle card and the live one.
+ *
+ * It comes from `src/shared/callAudio.ts`, which holds the only answer this build can give
+ * (`unavailable`, `unverified`) and the one sentence for each surface. The pane asks for its own
+ * surface and nothing else: the other surface's sentence names the condition precisely, and the
+ * pane's earlier copy is exactly where a named remedy did harm (defect 124 — it told people to pair
+ * the Mac, a route measured and retracted). `calls.test.ts` keeps this file from reaching it.
  */
-const CALL_AUDIO_WALL =
-  'There is no audio between the phone and this Mac in either direction — Android does not let ' +
-  'any app capture call audio. Talk and listen on the phone.';
-const CALL_AUDIO_LIVE = 'Audio stays on the phone. Talk and listen there — nothing carries it to this Mac.';
+function paneAudioSentence(): string {
+  return callAudioSentence(callAudioSupport(), 'calls-pane');
+}
 
 function audioStrip(text: string): HTMLElement {
   const strip = document.createElement('div');
@@ -717,7 +718,7 @@ class CallsView {
     reject.addEventListener('click', () => void this.run(this.bridge.callReject()));
     bar.appendChild(reject);
 
-    const audio = audioStrip(CALL_AUDIO_LIVE);
+    const audio = audioStrip(paneAudioSentence());
 
     // Where the design's Mute / Keypad / Speaker row sits. Saying the three controls are on the
     // phone is a smaller lie than drawing three buttons that do nothing, and a much smaller one
@@ -770,7 +771,7 @@ class CallsView {
     // all and never will be. This is that shape carrying the true sentence, in every state rather
     // than only during a call, because someone who has not yet made a call is exactly the person
     // who needs to know before they try.
-    const audio = audioStrip(CALL_AUDIO_WALL);
+    const audio = audioStrip(paneAudioSentence());
 
     this.live.append(empty, audio);
   }
@@ -1194,8 +1195,7 @@ function duration(ms: number): string {
   frequentlyCalled,
   callClock,
   DIAL_KEYS,
-  CALL_AUDIO_WALL,
-  CALL_AUDIO_LIVE,
+  paneAudioSentence,
 };
 // The view class itself, for `callsView.test.ts` — the debt-list entry this removes was
 // "the drawing half is not [tested]", and three renderer-only breaks have shipped green.

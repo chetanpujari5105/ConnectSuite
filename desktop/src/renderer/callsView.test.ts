@@ -9,6 +9,7 @@ import './icons';
 import './stateBlock';
 import '../shared/contactPhotos';
 import '../shared/appCall';
+import '../shared/callAudio';
 // Side-effecting import, safe because `calls.ts` touches no DOM at module scope — it only hangs
 // the view class and the pure label rules on `globalThis`.
 import './calls';
@@ -762,4 +763,38 @@ test('an app call replaces the mute strip rather than adding a third one', async
   assert.match(hosted.textContent, /Mute, speaker and keypad tones are on the phone/,
     'the replaced sentence must not lose what it said');
   assert.match(hosted.textContent, /WhatsApp is hosting this call/);
+});
+
+// ---- The call-audio sentence --------------------------------------------------------------------
+
+const PANE_AUDIO = 'Phone call audio on Mac is not available. No Mac and phone have been verified for it.';
+
+test('with no call the pane says call audio is not available, in the approved words', async () => {
+  const pane = mount([]);
+  await settle();
+  const notes = pane.live.queryAll('.call-audio-note');
+  assert.equal(notes.length, 1, 'control: the idle card draws one audio strip');
+  assert.equal(notes[0].textContent.trim(), PANE_AUDIO);
+});
+
+test('a live call draws the same sentence, beside the controls it has a verb for', async () => {
+  const pane = mount([], {
+    callId: 'c1',
+    number: '+911234500000',
+    contactName: 'R. Sharma',
+    startedAtMs: Date.now(),
+    state: 'ringing',
+  });
+  pane.bridge.fireCall(pane.bridge.current);
+  await settle();
+  assert.deepEqual(
+    pane.live.queryAll('button').map((b) => b.textContent),
+    ['Answer on phone', 'Reject'],
+    'control: the live card is drawn',
+  );
+  const audio = pane.live
+    .queryAll('.call-audio-note')
+    .filter((n) => !n.classList.contains('call-controlled-note'));
+  assert.equal(audio.length, 1, 'exactly one audio strip on a live card');
+  assert.equal(audio[0].textContent.trim(), PANE_AUDIO);
 });
