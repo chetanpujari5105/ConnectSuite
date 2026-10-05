@@ -54,7 +54,7 @@ class CallAckWordingTest {
     fun `the other two acks report facts and are left alone`() {
         // A guard, not evidence: these were already correct and this test exists so that a later
         // tidy-up of the reject wording does not sweep a forecast into one of them instead.
-        for (line in listOf(CallAckWording.ANSWER_DELIVERED, CallAckWording.DIAL_DELIVERED_PREFIX)) {
+        for (line in listOf(CallAckWording.ANSWER_DELIVERED, CallAckWording.DIAL_DELIVERED)) {
             for (forbidden in CallAckWording.FORBIDDEN_IN_ACKS) {
                 assertFalse("\"$line\" must not forecast: $forbidden", line.contains(forbidden))
             }

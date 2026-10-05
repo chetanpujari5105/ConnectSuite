@@ -187,7 +187,7 @@ object CallFeature {
                 CallFailure.TelecomRefused("dial", placed.exceptionOrNull()?.message ?: "no reason given"),
             )
         }
-        deliver(session, request, CallAckWording.DIAL_DELIVERED_PREFIX + number)
+        deliver(session, request, CallAckWording.DIAL_DELIVERED)
     }
 
     private fun onAnswer(session: ControlSession, request: Envelope, context: Context) {

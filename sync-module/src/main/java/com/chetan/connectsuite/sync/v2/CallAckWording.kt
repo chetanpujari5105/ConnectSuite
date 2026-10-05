@@ -29,7 +29,12 @@ package com.chetan.connectsuite.sync.v2
  */
 internal object CallAckWording {
 
-    const val DIAL_DELIVERED_PREFIX = "dialled "
+    /**
+     * Not followed by the number. It used to be — `dialled +15551234567` — and this line is written
+     * to `LinkLog`'s file; the phone's own logs carry no numbers (`docs/protocol.md` → Calls). The
+     * number is in the request, which is where the Mac that asked for it already has it.
+     */
+    const val DIAL_DELIVERED = "dialled — the number is not logged"
 
     const val ANSWER_DELIVERED = "answered — audio stays on the phone"
 

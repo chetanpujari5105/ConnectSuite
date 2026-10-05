@@ -150,8 +150,7 @@ object ContactsFeature {
         }
         LinkLog.i(
             "contacts",
-            "contacts.get → ${id ?: number} found" +
-                (if (withPhoto) ", photo=$sentPhoto" else ", photo not asked for") +
+            contactsGetFoundLine(byId = id != null, withPhoto = withPhoto, sentPhoto = sentPhoto) +
                 " — ${tally()}, ${photoTally()}",
         )
         session.ack(request) { contact.forEach { (key, value) -> put(key, value) } }
@@ -206,3 +205,18 @@ sealed class ContactsFailure(
         reason = "That request was not understood by the phone ($detail), so nothing was sent.",
     )
 }
+
+/**
+ * The `contacts.get` success line, without what was looked up.
+ *
+ * It used to be `contacts.get → +15551234567 found`: the Mac's Calls pane asks once per distinct
+ * number in the call history, so every caller in the history reached `LinkLog`'s file. The phone's
+ * own logs carry no numbers (`docs/protocol.md` → Calls). Which key was used is kept — a lookup by
+ * number and one by id fail differently — and takes a Boolean, so the key itself cannot be passed.
+ *
+ * Top-level rather than on [ContactsFeature] so a JVM test can call it without initialising that
+ * object.
+ */
+internal fun contactsGetFoundLine(byId: Boolean, withPhoto: Boolean, sentPhoto: Boolean): String =
+    "contacts.get by ${if (byId) "id" else "number"} → found" +
+        (if (withPhoto) ", photo=$sentPhoto" else ", photo not asked for")

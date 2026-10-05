@@ -320,15 +320,18 @@ object CallWatcher {
                         push(server, MessageType.CALL_INCOMING, incoming(id, phase))
                         // Beside the denominator, per CLAUDE.md: "3 corrected" says nothing without
                         // how many episodes went without one. `episodes` is the denominator that
-                        // gives it scale, and the name is on the line so a wrong lookup is visible
-                        // rather than merely counted.
+                        // gives it scale. Whether a name was found is on the line; the name and the
+                        // number are not — this log is a file (CallLogLines).
                         LinkLog.i(
                             "calls",
-                            "Call $id card corrected in place: number $number" +
-                                (contactName?.let { " ($it)" } ?: ", no contact name") +
-                                " arrived ${System.currentTimeMillis() - startedAt}ms into the " +
-                                "$phase — ${episodesCorrected.get()} of ${episodes.get()} episodes " +
-                                "corrected since start",
+                            CallLogLines.cardCorrected(
+                                callId = id,
+                                phase = phase,
+                                hasContactName = contactName != null,
+                                arrivedAfterMs = System.currentTimeMillis() - startedAt,
+                                episodesCorrected = episodesCorrected.get(),
+                                episodes = episodes.get(),
+                            ),
                         )
                     }
                 }
@@ -417,16 +420,18 @@ object CallWatcher {
         // The success case and the failure case at the same volume, with the denominator on both.
         // Defect 35 was found in this line reading "from ," — a blank where a number belongs — and
         // a bare episode count could not have said whether that was one private caller or every
-        // call on the device.
-        val who = when {
-            contactName != null -> "from $number ($contactName)"
-            number.isNotBlank() -> "from $number, no contact name"
-            else -> "number withheld by the platform"
-        }
+        // call on the device. Which of the three it was is on the line; who it was is not
+        // (CallLogLines — the phone's own logs carry no numbers).
         LinkLog.i(
             "calls",
-            "Call $id $phase $who — ${episodesWithNumber.get()} of ${episodes.get()} episodes " +
-                "with a number since start",
+            CallLogLines.began(
+                callId = id,
+                phase = phase,
+                hasNumber = number.isNotBlank(),
+                hasContactName = contactName != null,
+                episodesWithNumber = episodesWithNumber.get(),
+                episodes = episodes.get(),
+            ),
         )
     }
 
@@ -460,7 +465,7 @@ object CallWatcher {
         number = ""
         numberFromDial = false
         contactName = null
-        LinkLog.i("calls", "Call $id ended $disposition after ${duration}ms")
+        LinkLog.i("calls", CallLogLines.ended(id, disposition, duration))
     }
 
     /**
