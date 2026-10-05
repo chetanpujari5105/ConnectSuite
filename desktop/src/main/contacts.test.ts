@@ -179,3 +179,121 @@ test('with no link there is no request and still a sentence', async () => {
   assert.equal(result.ok, false);
   assert.match(result.ok === false ? result.reason : '', /not connected/i);
 });
+
+// ---- What `contacts.get` writes to the rotating log ----------------------------------------------
+//
+// `contacts.get {number}` runs for every call and thread the Calls pane draws, so its log lines are
+// written once per caller. Neither a contact's name nor a number may be in them (`docs/protocol.md`
+// → Calls → *What a Mac may keep about a call*). Each line is checked on its own; the positive
+// control is that the operation **is** still logged, so an assertion that nothing leaks cannot pass
+// by logging nothing.
+//
+// What it does not reach: the file. `log` is spied at the module object, so this proves what the
+// call was made with, not that anything was written to disk.
+
+import { log } from './logger';
+
+function captureLog(): { lines: string[]; restore: () => void } {
+  const lines: string[] = [];
+  const keep = { info: log.info, warn: log.warn };
+  log.info = (where: string, message: string) => void lines.push(`${where}|${message}`);
+  log.warn = (where: string, message: string) => void lines.push(`${where}|${message}`);
+  return { lines, restore: () => { log.info = keep.info; log.warn = keep.warn; } };
+}
+
+/** The contact's content, as it could appear in a line: its name, and its number's digits. */
+function assertCarriesNoContact(line: string): void {
+  assert.doesNotMatch(line, /Ada|Lovelace/, `a contact name reached the log: ${line}`);
+  assert.doesNotMatch(line, /\d{7,}/, `a number reached the log: ${line}`);
+  assert.doesNotMatch(line, /555[\s-]?123[\s-]?4567/, `a formatted number reached the log: ${line}`);
+}
+
+test('a found contact is logged as an outcome, without its name or numbers', async () => {
+  const { link } = fakePhone({ ...ADA, photo: 'iVBORw0KGgo=' });
+  const contacts = new ContactsClient(() => link);
+  const capture = captureLog();
+  try {
+    const result = await contacts.get({ number: '+15551234567', withPhoto: true });
+    // Display is unchanged: the person still gets the contact.
+    assert.equal(result.ok && result.data.displayName, 'Ada Lovelace');
+  } finally {
+    capture.restore();
+  }
+
+  const outcome = capture.lines.filter((line) => line.startsWith('contacts|contacts.get by number → found'));
+  assert.equal(outcome.length, 1, `control: the lookup is still logged — got ${JSON.stringify(capture.lines)}`);
+  assert.match(outcome[0]!, /1 number\(s\), photo attached — 0 lists \/ 1 gets \/ 0 gets refused/);
+  for (const line of capture.lines) assertCarriesNoContact(line);
+});
+
+test('a refused lookup by number is logged by its code, not by the phone\'s sentence quoting the number', async () => {
+  // The phone's real NOT_FOUND sentence (`ContactsFailure.NoSuchContact`) quotes what it was asked.
+  const sentence = 'The phone has no contact matching +15551234567.';
+  const refusing = {
+    isConnected: () => true,
+    request: () =>
+      Promise.reject(
+        Object.assign(new Error(`NOT_FOUND: ${sentence}`), { code: 'NOT_FOUND', phoneMessage: sentence }),
+      ),
+  } as unknown as LinkClient;
+  const { link: answering } = fakePhone(ADA);
+  let phone = refusing;
+  const contacts = new ContactsClient(() => phone);
+  const capture = captureLog();
+  let reason = '';
+  try {
+    const result = await contacts.get({ number: '+15551234567' });
+    reason = result.ok ? '' : result.reason;
+    phone = answering;
+    await contacts.get({ id: 'c-88' });
+  } finally {
+    capture.restore();
+  }
+
+  // Display is unchanged: the person is still told what the phone said.
+  assert.equal(reason, sentence);
+  const refused = capture.lines.filter((line) => line.startsWith('contacts|contacts.get refused: NOT_FOUND'));
+  assert.equal(refused.length, 1, `control: the refusal is still logged — got ${JSON.stringify(capture.lines)}`);
+  const found = capture.lines.filter((line) => line.startsWith('contacts|contacts.get by id → found'));
+  assert.equal(found.length, 1, 'control: the next lookup is logged');
+  assert.match(found[0]!, /1 gets \/ 1 gets refused/, 'the refusal is counted beside the successes');
+  for (const line of capture.lines) assertCarriesNoContact(line);
+});
+
+test('a Mac-side failure of contacts.get is still logged whole', async () => {
+  // A timeout is this Mac's own sentence and quotes nothing; withholding it would lose the reason.
+  const slow = {
+    isConnected: () => true,
+    request: () => Promise.reject(new Error('contacts.get timed out after 10000ms')),
+  } as unknown as LinkClient;
+  const contacts = new ContactsClient(() => slow);
+  const capture = captureLog();
+  try {
+    await contacts.get({ number: '+15551234567' });
+  } finally {
+    capture.restore();
+  }
+  assert.deepEqual(capture.lines, ['contacts|contacts.get refused: contacts.get timed out after 10000ms']);
+});
+
+test('other requests still log the phone\'s whole sentence', async () => {
+  // Control on the scope of the redaction: `code-only` is contacts.get's, not every request's.
+  const refusing = {
+    isConnected: () => true,
+    request: () =>
+      Promise.reject(
+        Object.assign(new Error('PERMISSION_DENIED: This phone is not sharing its contacts.'), {
+          code: 'PERMISSION_DENIED',
+          phoneMessage: 'This phone is not sharing its contacts.',
+        }),
+      ),
+  } as unknown as LinkClient;
+  const contacts = new ContactsClient(() => refusing);
+  const capture = captureLog();
+  try {
+    await contacts.list({});
+  } finally {
+    capture.restore();
+  }
+  assert.deepEqual(capture.lines, ['contacts|contacts.list refused: PERMISSION_DENIED: This phone is not sharing its contacts.']);
+});

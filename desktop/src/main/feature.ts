@@ -40,6 +40,18 @@ const FS_LIST_TIMEOUT_MS = 45_000;
 export { FS_LIST_TIMEOUT_MS };
 
 /**
+ * What of a refusal may reach the rotating log.
+ *
+ * `sentence` — the default — logs the phone's own `CODE: sentence`. `code-only` logs the phone's
+ * code and withholds its sentence, for a request whose refusal can quote what was asked for:
+ * `contacts.get {number}` is refused with *"The phone has no contact matching +15551234567."*, and
+ * that sentence is a full number on disk for every caller not in the book. The sentence still
+ * reaches the person, in the returned `reason`; only the log loses it. A failure this Mac composed
+ * itself (a timeout, a dropped link) carries no `phoneMessage` and is logged whole either way.
+ */
+export type RefusalLog = 'sentence' | 'code-only';
+
+/**
  * One request, with the phone's own sentence on failure.
  *
  * `extract` turns the ack payload into whatever the caller wants. It runs inside the try, so a
@@ -55,6 +67,7 @@ export async function ask<T>(
   payload: Record<string, unknown>,
   extract: (payload: Record<string, unknown>) => T,
   timeoutMs: number = TIMEOUT_MS,
+  refusalLog: RefusalLog = 'sentence',
 ): Promise<PhoneResult<T>> {
   if (!link?.isConnected()) {
     return notConnected(feature, type);
@@ -65,7 +78,7 @@ export async function ask<T>(
     log.info(feature, `${type} ok`);
     return { ok: true, data };
   } catch (error) {
-    return failureOf(feature, type, error);
+    return failureOf(feature, type, error, refusalLog);
   }
 }
 
@@ -104,10 +117,18 @@ function notConnected(feature: string, type: string): PhoneFailure {
  * than joining it onto the sentence is what stops `…typing yet.On the phone: Settings > …` from
  * happening again — the renderer draws it as a second line.
  */
-function failureOf(feature: string, type: string, error: unknown): PhoneFailure {
+function failureOf(
+  feature: string,
+  type: string,
+  error: unknown,
+  refusalLog: RefusalLog = 'sentence',
+): PhoneFailure {
   const failure = error as PhoneRequestError;
   const reason = failure?.phoneMessage ?? failure?.message ?? String(error);
-  log.warn(feature, `${type} refused: ${failure?.message ?? reason}`);
+  const logged = refusalLog === 'code-only' && failure?.phoneMessage !== undefined
+    ? `${failure.code ?? 'no code'} (the phone's sentence is not logged: it can quote a contact or a number)`
+    : failure?.message ?? reason;
+  log.warn(feature, `${type} refused: ${logged}`);
   return {
     ok: false,
     reason,

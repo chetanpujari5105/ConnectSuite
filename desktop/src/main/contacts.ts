@@ -49,11 +49,13 @@ export class ContactsClient {
 
   private listCount = 0;
   private getCount = 0;
+  private getRefused = 0;
 
   constructor(private readonly link: () => LinkClient | null) {}
 
   private tally(): string {
-    return `${this.listCount} lists / ${this.getCount} gets, cache ${this.cacheHits} hit / ` +
+    return `${this.listCount} lists / ${this.getCount} gets / ${this.getRefused} gets refused, ` +
+      `cache ${this.cacheHits} hit / ` +
       `${this.cacheMisses} missed since launch`;
   }
 
@@ -118,12 +120,24 @@ export class ContactsClient {
       MessageType.CONTACTS_GET,
       payload,
       (ack) => ack as unknown as PhoneContact,
+      undefined,
+      // A refusal quotes what was asked for — "no contact matching +15551234567" — so only its code
+      // is logged. See RefusalLog.
+      'code-only',
     );
 
+    // The outcome, never the contact: this line is on disk, and a name or a number here is the
+    // same leak `callRecord.ts` exists to keep out of the call lines. How it was asked and what
+    // shape came back is enough to tell a working lookup from a broken one.
+    const by = options.id ? 'by id' : options.number ? 'by number' : 'with no key';
     if (result.ok) {
       this.getCount += 1;
       this.remember(result.data);
-      log.info('contacts', `contacts.get → ${result.data.displayName} — ${this.tally()}`);
+      const numbers = result.data.numbers?.length ?? 0;
+      const photo = result.data.photo ? 'photo attached' : options.withPhoto ? 'no photo' : 'photo not asked for';
+      log.info('contacts', `contacts.get ${by} → found, ${numbers} number(s), ${photo} — ${this.tally()}`);
+    } else {
+      this.getRefused += 1;
     }
     return result;
   }
