@@ -4,7 +4,8 @@
     "that names them: the phone (camera-module, WebcamVocabularyTest), Electron main",
     "(desktop/src/shared/webcamWire.test.ts, webcamBridgeRecords.test.ts) and the Swift bridge",
     "(WebcamCoreTests, streamFaults only — the bridge never sees the control channel).",
-    "Change the contract first, then this, then each side; every side's test fails until it follows."
+    "Change the contract first, then this, then each side; every side's test fails until it follows.",
+    "Version 2 (2026-10-05) adds keyframeIgnoredReasons (webcam.keyframe's ignored ack, phone and Mac) and chainBreakCauses (the bridge's chain-broken status, Swift and Electron main); every version-1 set is unchanged."
   ],
   "stopCauses": {
     "person": "stopped-by-mac",
@@ -54,5 +55,16 @@
     "generation-went-backwards",
     "sequence-did-not-increase",
     "generation-without-keyframe"
+  ],
+  "keyframeIgnoredReasons": [
+    "not-running",
+    "stale-generation",
+    "unknown-generation",
+    "rate-limited"
+  ],
+  "chainBreakCauses": [
+    "queue-full",
+    "decode-failed",
+    "compose-failed"
   ]
 }

@@ -111,8 +111,8 @@ Files: `fs.list`, `fs.stat`, `fs.thumb`, `fs.mkdir`, `fs.delete`, `fs.transfer.b
 Photos: `media.buckets`, `media.list`, `media.thumb`, `media.original`
 Mirror: `mirror.start`, `mirror.stop`, `mirror.config`, `mirror.keyframe`, `mirror.stats`, `mirror.state`, `mirror.rotate`
 Camera: `camera.request`, `camera.stop`, `camera.switch`, `camera.state` — see [Camera](#camera-42501-frames-on-42502-by-claim)
-Webcam: `webcam.request`, `webcam.state`, `webcam.stop`, `webcam.switch` — see [Webcam](#webcam-42501-frames-on-42502-by-claim).
-Specified 2026-10-03 and **on neither side's wire yet**
+Webcam: `webcam.request`, `webcam.state`, `webcam.stop`, `webcam.switch`, `webcam.keyframe` (version 2 only) — see [Webcam](#webcam-42501-frames-on-42502-by-claim).
+Development builds only on both sides
 Input: `input.tap`, `input.swipe`, `input.scroll`, `input.key`, `input.text`, `input.global`
 (back/home/recents/notifications/quick-settings/lock-screen — **not** power; see [Input](#input-42501))
 Apps: `apps.list`, `apps.icon`, `apps.open.ask` — see [Apps](#apps-42501). There is deliberately **no**
@@ -726,9 +726,9 @@ a peer that knows only v1 behaves exactly as it did.
 picture can be produced yet**:
 
 - **The phone** installs the feature from `ConnectSuiteApp` in a **debuggable build only**
-  (`WEBCAM_RELEASE` false): it then advertises `webcam` and `ext.webcam` 1 and serves the claim. Its capture
-  path (Camera2 → MediaCodec) has never executed on a device.
-- **The Mac** builds the controller in `main.ts` (`webcamWiring.ts`) and advertises `ext.webcam` 1 only
+  (`WEBCAM_RELEASE` false): it then advertises `webcam` and `ext.webcam` 2 (1 until 2026-10-05) and serves the claim. Its capture
+  path (Camera2 → MediaCodec) has run on hardware only in the two supervised encoder spikes (2026-10-04, 2026-10-05).
+- **The Mac** builds the controller in `main.ts` (`webcamWiring.ts`) and advertises `ext.webcam` 2 (1 until 2026-10-05) only
   in an unpackaged build with the `webcamDev` debug switch **and** the bridge built at its one path. Its
   Camera pane has a separate *Use as webcam* section.
 - **Nothing is asked of a phone today**, by design: the bridge reports Sidekick Camera *not installed* and
@@ -791,13 +791,20 @@ and the webcam stream claim has a consumer. Like `camera` and `mirror`, **it is 
 `CAMERA` permission**, which is asked in the flow after the tap.
 
 The version is the `ext` key `webcam`, negotiated by the ordinary `ext` rules at `min(mine, theirs)`.
-Version **1** is everything in this section. The capability says the feature is built and allowed on
-the phone. The version says which messages both ends understand. **The Mac sends `webcam.*` only when
-both hold**: `webcam` is in `capabilities` and `webcam` is negotiated at ≥ 1.
+The capability says the feature is built and allowed on the phone. The version says which messages
+both ends understand. **The Mac sends `webcam.*` only when both hold**: `webcam` is in `capabilities`
+and `webcam` is negotiated at ≥ 1.
+
+| Version | What it is |
+|---|---|
+| **1** | everything in this section **except** [`webcam.keyframe`](#webcamkeyframe). Unchanged by version 2 |
+| **2** (2026-10-05, development builds only) | version 1, plus `webcam.keyframe`: the Mac may ask the live encoder for an IDR after a Mac-side drop. Nothing else changes — not the request, consent, claim, states, stops or the access unit, whose header `version` byte stays **1** because its format did not change |
 
 | Peers | What happens |
 |---|---|
-| Both know `webcam` version 1 | the flow below |
+| Both know `webcam` version 2 | the flow below, and the Mac may send `webcam.keyframe` |
+| One side knows version 2, the other 1 | negotiated **1**: the flow below, **no `webcam.keyframe` is ever sent**, and a Mac-side drop recovers at the phone's next periodic IDR, exactly as in version 1 |
+| Both know `webcam` version 1 | the flow below, without `webcam.keyframe` |
 | The Mac knows it, the phone is older (no `webcam` capability, no `ext` key) | the Mac sends no `webcam.*`. Sidekick Camera shows the camera-off card. The Mac's Camera pane says the phone's Sidekick needs an update to be used as a webcam |
 | The phone lists `webcam` in `unavailable` | the Mac shows the phone's reason in its pane and sends no request. The device shows the camera-off card |
 | The phone knows it, the Mac is older | the Mac never sends `webcam.request`, so the camera never opens for it |
@@ -811,7 +818,7 @@ both hold**: `webcam` is in `capabilities` and `webcam` is negotiated at ≥ 1.
   release build lists `webcam` in `unavailable` with the phone's ordinary "not built" reason and
   advertises no `ext.webcam`, until a release flag (`Extensions.WEBCAM_RELEASE`, `false`) is flipped
   deliberately in a commit that records its evidence.
-- **Mac.** The Mac advertises `ext.webcam: 1` only when **both** hold:
+- **Mac.** The Mac advertises `ext.webcam: 2` (1 until 2026-10-05) only when **both** hold:
   - its development gate is open: an unpackaged build started with the `webcamDev` debug switch
     (`CONNECTSUITE_DEBUG_SWITCHES=webcamDev`), which a packaged build ignores. The release twin,
     `WEBCAM_RELEASE`, is `false`;
@@ -999,6 +1006,82 @@ carrying SPS and PPS. `webcam.state` `running` follows with the new `facing` and
 errors are `camera.switch`'s (`NOT_FOUND`, `UNAUTHORIZED`, `BAD_REQUEST`, `CAMERA_UNAVAILABLE`), with
 `feature: "webcam"`.
 
+### `webcam.keyframe`
+
+**Request, Mac → phone. Version 2 only** — sent only on a session where `ext.webcam` is negotiated at
+≥ 2. `{"sessionId":"…(32 hex)","generation":3}`.
+
+Asks the phone to have **the live encoder of that session and generation** produce an IDR (with SPS and
+PPS) as soon as it can, because the Mac's decode chain is broken: its bridge dropped an AU at the decode
+bound or failed to decode one, and is refusing every non-IDR until an IDR arrives
+([Bounded buffering](#bounded-buffering-end-to-end)). Without it, recovery waits for the next periodic
+IDR — up to 2 s.
+
+**What it may never do.** It is valid only inside a capture the phone's owner already approved and that
+is `running`. It never opens a camera, asks for consent, starts a session, changes the generation, the
+size, the bitrate, the frame rate or the periodic IDR interval, and nothing about it restarts anything.
+A session that has ended stays ended.
+
+**Who may send it, for what.** The phone accepts it only when **all** hold:
+
+- it comes from the control session that sent this session's `webcam.request` (identity, as for
+  `webcam.stop`);
+- `sessionId` is the phone's current session and that session is `running`;
+- `generation` is the current generation, and `running` has been sent for it;
+- no `webcam.keyframe` for this session was accepted in the last **1,000 ms**.
+
+The ack is truthful about which of these held:
+
+```json
+ack {"result":"accepted","generation":3}
+ack {"result":"ignored","reason":"stale-generation","generation":4}
+```
+
+| Answer | When | What the phone did |
+|---|---|---|
+| `result: "accepted"` | every condition held | asked that encoder for a sync frame — the existing `PARAMETER_KEY_REQUEST_SYNC_FRAME` request — and nothing else. **An `accepted` ack is not proof that an IDR was produced, sent, received or decoded.** If a Stop, a switch or a reconfiguration replaced the encoder between the decision and the call, nothing is asked of the new one |
+| `result: "ignored"`, `reason` from the closed set below | the session is the caller's, but there is nothing useful to do | nothing |
+| `error`, `feature: "webcam"` | the request is wrong | nothing |
+
+| `ignored` `reason` | Meaning |
+|---|---|
+| `not-running` | the session is `starting`, or the current generation has not sent its first IDR yet — one is coming anyway |
+| `stale-generation` | `generation` is below the current one: a switch or reconfiguration happened, and its first AU is an IDR anyway |
+| `unknown-generation` | `generation` is above the current one |
+| `rate-limited` | one was accepted for this session less than 1,000 ms ago |
+
+When more than one holds, the phone answers the first of `stale-generation`, `unknown-generation`,
+`not-running`, `rate-limited`, in that order: a Mac naming an old generation is told so even while the
+new generation's first IDR is still on its way.
+
+`generation` in an `ignored` ack is the phone's current one. Errors: `BAD_REQUEST` (`sessionId` not 32
+hex, or `generation` not an integer 1..65535), `NOT_FOUND` (no live session has that id — never existed,
+or ended), `UNAUTHORIZED` (another control session's session; changes nothing). A peer without version 2
+never receives one.
+
+**The Mac's side — bounded, coalesced, and never taken as proof.**
+
+- **Triggered only by the bridge's `chain-broken`** for the current session at the current generation
+  ([the local contract](#the-macs-local-contract-electron-main--bridge--extension)), from the bridge
+  process currently running. A report from a replaced bridge, an ended session or an older generation
+  changes nothing.
+- **At most one outstanding request per session and generation.** Another `chain-broken` while one is
+  outstanding is coalesced into it. **At most one request per second per session**: a break within a
+  second of the last request waits for that second to pass, as one deferred request, and is dropped if
+  the chain recovers, the session ends or the generation changes first.
+- **Bounded waits, no retry.** The ack has **2,000 ms**; after `accepted`, an IDR of that generation has
+  **3,000 ms** to reach the Mac. A refusal, an `ignored`, a lost or late ack, or an IDR that never comes
+  ends that request; the Mac does not ask again for that break, and recovery falls back to the periodic
+  IDR.
+- **Three readings, kept apart:** the request sent, an IDR of that session and generation **received**
+  by Electron main, and the bridge's `chain-recovered` — the first frame admitted after the break that
+  reached the sink. The time from the request to each is measured separately. The ack is none of them.
+- **Counted, beside its denominator:** requests sent, accepted, ignored, refused, timed out, coalesced,
+  deferred, not sent because version 2 is not negotiated, IDRs received in time, IDR waits expired, and
+  recoveries with and without a request.
+
+The phone logs every answer with its running tally, and never the Mac's name.
+
 ### The webcam stream claim on 42502
 
 The same port, TLS and session-token authorisation as the mirror and Camera v1. The token frame is the
@@ -1136,11 +1219,12 @@ at the stage that made it, beside the count of what passed.
 A slow consumer never slows the source: delivery to clients is CoreMediaIO's, and the extension's tick
 neither waits for it nor holds more than its one slot.
 
-**Recovery from a drop waits for the next IDR.** Version 1 has deliberately **no** keyframe-request
-message, because nothing has measured the need for one yet. The phone emits an IDR periodically, with a
-target interval of **2 s**, and a Mac-side drop shows the **video paused** card until the next one
-decodes. If W5 measures recoveries the 2 s interval makes visible, a `webcam.keyframe` is the addition,
-with a version bump.
+**Recovery from a drop waits for the next IDR.** The phone emits an IDR periodically, with a target
+interval of **2 s**, and a Mac-side drop shows the **video paused** card until an IDR decodes. In
+version 1 that is the only recovery. **Version 2** (2026-10-05, after defect 177 measured one drop costing
+1.8 s of picture) adds [`webcam.keyframe`](#webcamkeyframe): the Mac asks for an IDR at once. The
+periodic IDR is unchanged in both versions and remains the fallback whenever a request is refused, lost
+or unanswered. No bound in the table above changes.
 
 ### The Mac's local contract: Electron main ↔ bridge ↔ extension
 
@@ -1175,6 +1259,8 @@ there is nothing for another process to connect to.
 | `stream-rejected` | `{sessionId, generation, violation}`: an access unit **of the live session** broke the access-unit contract (added 2026-10-04, W3 correction). The bridge has already ended that session locally — sink stopped, queue flushed, picture back to the camera-off card, id remembered — and sends this **at most once** per session. Main ends it with `webcam.stop` `failure` `stream-malformed` and does not ask again. `violation` is a closed set of fixed tokens (`docs/fixtures/webcam-vocabulary-v1.json`, `streamFaults`), never an error's text. `generation` is 0 when the AU could not be read far enough to say. **Main acts on it only when `sessionId` is its current session's**: a late verdict about an ended session cannot stop its replacement |
 | `sink` | `{state}`: `device-not-installed`, `refused`, `idle` or `feeding` |
 | `counts` | every 5 s: every counter, each beside its denominator |
+| `chain-broken` | `{sessionId, generation, cause}` (added 2026-10-05, version 2): **the live session's** decode chain just broke and the bridge now refuses every non-IDR until an IDR with SPS and PPS. `cause` is `queue-full` (an AU dropped at the decode bound), `decode-failed` (a decode failure with no valid IDR already waiting) or `compose-failed`. Sent **once per break** — on the change from decoding to waiting, never again while still waiting, never for a session's first IDR, and never for an ended session. `generation` is the bridge's current one. Main may answer it with `webcam.keyframe` |
+| `chain-recovered` | `{sessionId, generation}` (added 2026-10-05): the first frame admitted after that break reached the sink. Sent once per `chain-broken`, only for a session still live |
 
 The bridge decides **whose** AU it is before it reads a byte of it. An AU for no live session, an ended
 session or another session is dropped and counted, and is never parsed — so nothing in it can end

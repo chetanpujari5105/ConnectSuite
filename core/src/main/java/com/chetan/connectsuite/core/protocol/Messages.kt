@@ -193,6 +193,13 @@ object MessageType {
     /** Changes the camera inside an approved webcam session; no new session, no new approval. */
     const val WEBCAM_SWITCH = "webcam.switch"
 
+    /**
+     * Version 2 only (`ext.webcam` ≥ 2): the Mac asks the live encoder of an approved, running session
+     * for an IDR after a Mac-side drop. Never opens a camera, asks for consent or changes the generation;
+     * its `accepted` ack is not proof an IDR was produced.
+     */
+    const val WEBCAM_KEYFRAME = "webcam.keyframe"
+
     /** Event, phone → Mac, on every phase change of a webcam session. */
     const val WEBCAM_STATE = "webcam.state"
 

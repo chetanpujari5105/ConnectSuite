@@ -228,6 +228,11 @@ export const MessageType = {
   WEBCAM_REQUEST: 'webcam.request',
   WEBCAM_STOP: 'webcam.stop',
   WEBCAM_SWITCH: 'webcam.switch',
+  /**
+   * Version 2 only (`ext.webcam` ≥ 2): ask the live encoder of the approved, running session for an
+   * IDR after the bridge reports a broken chain. Its `accepted` ack is not proof an IDR was produced.
+   */
+  WEBCAM_KEYFRAME: 'webcam.keyframe',
   /** Phone -> Mac, on every phase change of a webcam session. */
   WEBCAM_STATE: 'webcam.state',
 
