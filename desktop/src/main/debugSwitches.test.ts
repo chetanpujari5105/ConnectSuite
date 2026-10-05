@@ -146,3 +146,18 @@ test('a truthy value that is not a switch name turns nothing on', () => {
     assert.deepEqual(switchesFor(value), allOff(), `"${value}" must not enable anything`);
   }
 });
+
+/**
+ * The incoming-call banner is development-only until it is verified on hardware: off by default
+ * (the defaults test above) **and** forced off in a packaged build whatever the environment says.
+ * The second half lives in `main.ts`, which needs Electron, so — as `webcamWiring.test.ts` does for
+ * its gate — this reads the one line that decides it. Shown red by dropping `!app.isPackaged &&`.
+ */
+test('the call banner gate is forced off in a packaged build', () => {
+  const { readFileSync } = require('node:fs') as typeof import('node:fs');
+  const { join } = require('node:path') as typeof import('node:path');
+  const main = readFileSync(join(__dirname, 'main.ts'), 'utf8');
+  const gate = /function callBannerEnabled\(\): boolean \{\s*return ([^;]+);/.exec(main)?.[1];
+  assert.ok(gate, 'control: the gate function is where this test looks for it');
+  assert.equal(gate.replace(/\s+/g, ' '), '!app.isPackaged && debugSwitches().callBanner');
+});
