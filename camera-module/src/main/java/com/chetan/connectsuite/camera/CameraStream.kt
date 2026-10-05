@@ -101,6 +101,26 @@ class CameraStream(
         shutdown()
     }
 
+    /**
+     * Waits for the writer and the watcher to finish. Once this returns true, no route that could
+     * call [onClosed] is still running, so a count of its calls is final.
+     *
+     * The test seam for the race [isOpen] cannot close: `open` flips at the start of [shutdown],
+     * before [closeSocket] and [onClosed] run, so polling [isOpen] and then counting calls reads a
+     * stream that is closing, not one that has closed. A 150 ms delay inside [shutdown] turned two of
+     * the six JVM tests red while the stream itself stayed correct.
+     */
+    internal fun awaitThreadsEnded(timeoutMs: Long): Boolean {
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000
+        for (thread in listOfNotNull(writer, watcher)) {
+            val leftMs = (deadline - System.nanoTime()) / 1_000_000
+            if (leftMs <= 0) return false
+            thread.join(leftMs)
+            if (thread.isAlive) return false
+        }
+        return true
+    }
+
     private fun pump() {
         try {
             while (open.get()) {

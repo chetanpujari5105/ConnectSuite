@@ -17,6 +17,13 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * The camera socket writer against a Mac that stops reading, hangs up, or writes where it must not.
  * Isolated fake streams only — no socket, no network.
+ *
+ * **No fixed sleeps and no wall-clock bounds** (the one poll waits on a condition, with a
+ * deadline). Every "exactly once" is counted after [CameraStream.awaitThreadsEnded] — both threads
+ * finished, so nothing can still call `onClosed` — and "never blocks the producer" is shown by the
+ * writer still being stuck when the offers return.
+ * The earlier version polled `isOpen` and then counted, and `isOpen` flips before `onClosed` runs:
+ * a 150 ms delay inside `shutdown()` turned two of these tests red over a correct stream.
  */
 class CameraStreamTest {
 
@@ -24,6 +31,7 @@ class CameraStreamTest {
     private class GatedOutput : OutputStream() {
         val release = CountDownLatch(1)
         val firstWriteStarted = CountDownLatch(1)
+        val firstWriteReturned = CountDownLatch(1)
         val written = mutableListOf<ByteArray>()
         private val pending = ByteArrayOutputStream()
 
@@ -32,6 +40,7 @@ class CameraStreamTest {
             firstWriteStarted.countDown()
             release.await(5, TimeUnit.SECONDS)
             pending.write(b, off, len)
+            firstWriteReturned.countDown()
         }
         override fun flush() {
             synchronized(written) { written += pending.toByteArray() }
@@ -67,20 +76,22 @@ class CameraStreamTest {
 
         stream.offer(frame(0))
         assertTrue(out.firstWriteStarted.await(2, TimeUnit.SECONDS)) // frame 0 is in flight, stuck
-        val started = System.nanoTime()
         for (n in 1..10) assertTrue(stream.offer(frame(n)))
-        val elapsedMs = (System.nanoTime() - started) / 1_000_000
-        assertTrue("offer blocked for ${elapsedMs}ms", elapsedMs < 500)
+        // All ten offers returned while the writer is still inside its first write. An offer that
+        // waited on the writer could only have returned after the gate's 5 s timeout let it go.
+        assertEquals("the writer was still stuck when the offers returned", 1L, out.firstWriteReturned.count)
 
         out.release.countDown()
         waitFor { stream.framesSent() == 3L }
-        Thread.sleep(50)
-        // Frame 0 was already in flight; of 1..10 only the two newest survive the two-deep queue.
+        // Frame 0 was already in flight; of 1..10 only the two newest survive the two-deep queue,
+        // and nothing else was ever queued, so a third write cannot follow.
         assertEquals(listOf(0, 9, 10), synchronized(out.written) { out.written.map { it.single().toInt() } })
         assertEquals(3L, stream.framesSent())
         assertEquals(8L, stream.framesDropped())
         assertTrue(stream.summary().startsWith("3 sent / 8 dropped (8 evicted"))
         stream.close()
+        assertTrue(stream.awaitThreadsEnded(3_000))
+        assertEquals(3L, stream.framesSent())
     }
 
     @Test
@@ -91,8 +102,8 @@ class CameraStreamTest {
         val stream = CameraStream(ByteArrayOutputStream(), fromMac, closeSocket = { fromMac.close() }, onClosed = { closedCalls.incrementAndGet() })
 
         toPhone.close() // end of stream from the Mac
-        waitFor { !stream.isOpen }
-        Thread.sleep(50)
+        assertTrue(stream.awaitThreadsEnded(3_000))
+        assertFalse(stream.isOpen)
         assertEquals(1, closedCalls.get())
         assertFalse(stream.offer(frame(1)))
     }
@@ -106,7 +117,8 @@ class CameraStreamTest {
 
         toPhone.write(0x42)
         toPhone.flush()
-        waitFor { !stream.isOpen }
+        assertTrue(stream.awaitThreadsEnded(3_000))
+        assertFalse(stream.isOpen)
         assertEquals(1, closedCalls.get())
     }
 
@@ -123,7 +135,7 @@ class CameraStreamTest {
         )
         stream.close()
         stream.close()
-        Thread.sleep(100)
+        assertTrue(stream.awaitThreadsEnded(3_000))
         assertEquals(0, closedCalls.get())
         assertEquals("the socket is closed exactly once", 1, socketClosed.get())
     }
@@ -140,6 +152,7 @@ class CameraStreamTest {
         assertArrayEquals(byteArrayOf(1, 1, 2, 2, 3, 3), out.toByteArray())
         assertEquals(0L, stream.framesDropped())
         stream.close()
+        assertTrue(stream.awaitThreadsEnded(3_000))
     }
 
     @Test
