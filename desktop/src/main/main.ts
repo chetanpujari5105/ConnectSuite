@@ -5,7 +5,16 @@ import { homedir, networkInterfaces, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import QRCode from 'qrcode';
-import { ErrorCode, MessageType, type ConnectionStatus, type PhoneNotification, type PairRejected } from '../shared/protocol';
+import {
+  ErrorCode,
+  MessageType,
+  type CallEnded,
+  type ConnectionStatus,
+  type IncomingCall,
+  type PhoneNotification,
+  type PairRejected,
+} from '../shared/protocol';
+import { CallActivityRows } from '../shared/callRecord';
 import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
@@ -1834,11 +1843,19 @@ app.whenReady().then(() => {
     );
     send('sms-received', event);
   });
-  calls.on('changed', (call) => {
-    // R11 (calls). One row per state change of the live card, with the number as a handle.
-    const c = call as { state?: string; number?: string; name?: string } | null;
-    if (c?.state) activity.record('calls', `Call ${c.state}`, c.name ?? c.number ?? 'unknown');
+  // R11 (calls). One row per state a call enters and one when it ends, named by the contact or
+  // "Unknown number" — never by its number (`docs/protocol.md` → Calls → *What a Mac may keep about
+  // a call*). The rule is `src/shared/callRecord.ts`, where a test reaches it; this file is reached
+  // by none, which is how the old line read a `name` field the payload never had.
+  const callRows = new CallActivityRows();
+  calls.on('changed', (call: IncomingCall | null) => {
+    const row = callRows.changed(call);
+    if (row) activity.record('calls', row.kind, row.detail);
     send('call-changed', call);
+  });
+  calls.on('ended', (ended: CallEnded, card: IncomingCall | null) => {
+    const row = callRows.ended(ended, card);
+    activity.record('calls', row.kind, row.detail);
   });
 
   tray = new Tray(nativeImage.createEmpty());

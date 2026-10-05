@@ -11,6 +11,7 @@ import { ask, rows } from './feature';
 import { debugSwitches } from './debugSwitches';
 import type { LinkClient } from './link';
 import { log } from './logger';
+import { callLogWho } from '../shared/callRecord';
 
 /**
  * The Mac's half of calls: the call happening now, the log of the ones that are not, and dialling.
@@ -33,30 +34,20 @@ import { log } from './logger';
  * and it is why the convenience shape is left unused rather than merely discouraged.
  */
 /**
- * How a call is named in this Mac's log. Three cases, and the fourth one is the point.
+ * How a call is named in this Mac's log: by the last two digits of its number, or `no number`.
  *
- * Defect 43. This was a ternary with two branches, so a call carrying no number at all rendered as
- * `from , no contact name` — a comma with nothing before it, which is *the exact string defect 35
- * is named for*: "Defect 35 was found in this line reading `from ,`".
+ * `docs/protocol.md` → Calls → *What a Mac may keep about a call*. The rotating log is a file on
+ * disk, so it carries the call id, the state and at most `…67` — never a full number, incoming or
+ * dialled, and never a contact name. The rule lives in `src/shared/callRecord.ts`; this is its name
+ * at the call sites below.
  *
- * It had never been reached, because until defect 42 was fixed a phone-placed outgoing call always
- * arrived carrying the previous call's number. Fixing 42 made the honest blank reachable for the
- * first time, and this line was waiting for it. The renderer already handled the case correctly —
- * `callWho` falls back to "Unknown number" and `callStatus` drops the bullet — so the card was
- * right and only the log was wrong, which is why nothing caught it sooner.
+ * Defect 43's case — a call with no number at all — still gets a sentence rather than `from ,`:
+ * a withheld caller ID, or an outgoing call the platform gives us no number for, is a real state.
  *
  * Exported for its test.
  */
 export function whoLine(call: { contactName?: string; number?: string }): string {
-  const number = (call.number ?? '').trim();
-  const name = (call.contactName ?? '').trim();
-  if (name && number) return `from ${name} (${number})`;
-  if (name) return `from ${name}, no number`;
-  if (number) return `from ${number}, no contact name`;
-  // The phone says the same thing in its own log, and for the same reason: this is a real state —
-  // a withheld caller ID, or an outgoing call the platform gives us no number for — and naming it
-  // is what stops a reader hunting for a bug in the formatter.
-  return 'with no number from the platform';
+  return callLogWho(call);
 }
 
 export class CallClient extends EventEmitter {
@@ -117,11 +108,14 @@ export class CallClient extends EventEmitter {
     // pointed the other way.
     if (this.current && this.current.callId !== ended.callId) {
       log.info('calls', `Kept the card: ${ended.callId} ended, but ${this.current.callId} is current`);
-      this.emit('ended', ended);
+      this.emit('ended', ended, null);
       return;
     }
+    // The card it ended travels with the event: `call.ended` carries no contact name, and the
+    // Activity row for it names the call by the card or not at all.
+    const card = this.current;
     this.current = null;
-    this.emit('ended', ended);
+    this.emit('ended', ended, card);
     this.emit('changed', this.current);
   }
 
@@ -230,14 +224,17 @@ export class CallClient extends EventEmitter {
     );
     if (result.ok) {
       this.acted += 1;
-      log.info('calls', `call.dial placed to ${trimmed} (${result.data.callId}) — ${this.tally()}`);
+      log.info('calls', `call.dial placed to ${callLogWho({ number: trimmed })} (${result.data.callId}) — ${this.tally()}`);
       return { ok: true };
     }
     this.refused += 1;
     // Defect 53. The reason reaches the caller and is rendered; it did not reach the log, so the
-    // tally could not be decomposed by anyone reading the file afterwards. The number dialled is
-    // named because a refusal is about a specific attempt.
-    log.warn('calls', `call.dial refused by the phone for ${trimmed}: ${result.reason} — ${this.tally()}`);
+    // tally could not be decomposed by anyone reading the file afterwards. A refusal is about a
+    // specific attempt, so it names one — by the two digits the log is allowed to keep.
+    log.warn(
+      'calls',
+      `call.dial refused by the phone for ${callLogWho({ number: trimmed })}: ${result.reason} — ${this.tally()}`,
+    );
     return result;
   }
 

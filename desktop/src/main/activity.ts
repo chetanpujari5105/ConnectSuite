@@ -2,6 +2,7 @@ import { app } from 'electron';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseActivityLine } from './activityLine';
+import { callHistoryName } from '../shared/callRecord';
 import { log } from './logger';
 
 /**
@@ -61,9 +62,20 @@ class ActivityStore {
 
   init(): void {
     try {
-      const dir = join(app.getPath('userData'), 'logs');
+      this.initAt(join(app.getPath('userData'), 'logs'));
+    } catch (error) {
+      this.loadError = String(error);
+      log.warn('activity', `Could not open the activity log: ${this.loadError}`);
+    }
+  }
+
+  /** `init()` with the directory named — the profile's in the app, a temporary one in a test. */
+  initAt(dir: string): void {
+    try {
       mkdirSync(dir, { recursive: true });
       this.path = join(dir, 'activity.jsonl');
+      // The rotated half is never read, but it is on disk, so the call-data rule reaches it too.
+      readStored(`${this.path}.old`);
       this.load();
     } catch (error) {
       this.loadError = String(error);
@@ -73,21 +85,16 @@ class ActivityStore {
 
   private load(): void {
     if (!this.path || !existsSync(this.path)) return;
-    let text: string;
+    let stored: StoredHistory;
     try {
-      text = readFileSync(this.path, 'utf8');
+      stored = readStored(this.path);
     } catch (error) {
       this.loadError = String(error);
       log.warn('activity', `Could not read the activity log: ${this.loadError}`);
       return;
     }
-    const lines = text.split('\n').filter((line) => line.trim().length > 0);
-    for (const line of lines) {
-      const event = parseActivityLine(line);
-      if (event) this.events.push(event);
-      else this.skipped += 1;
-    }
-    this.events = this.events.slice(-MAX_EVENTS);
+    this.events = stored.events.slice(-MAX_EVENTS);
+    this.skipped = stored.skipped;
     this.seq = this.events.reduce((max, event) => Math.max(max, event.seq), 0);
     // Both halves on one line. "3 lines skipped" alone reads as a broken file; beside the number
     // that were read it reads as what it usually is, a half-written last line after a hard quit.
@@ -113,7 +120,7 @@ class ActivityStore {
         at: Date.now(),
         category,
         kind,
-        detail: detail.length > MAX_DETAIL ? `${detail.slice(0, MAX_DETAIL - 1)}…` : detail,
+        detail: clip(storedDetail(category, detail)),
       };
       this.events.push(event);
       if (this.events.length > MAX_EVENTS) this.events = this.events.slice(-MAX_EVENTS);
@@ -167,6 +174,67 @@ class ActivityStore {
       dropped: this.dropped,
     };
   }
+}
+
+/**
+ * The detail as it may be stored. For calls that is the rule in `docs/protocol.md` → Calls → *What
+ * a Mac may keep about a call* — a contact name or "Unknown number", never a number — applied here
+ * as well as where the row is made, because this is the one place every row passes through on its
+ * way to disk. Every other category is stored exactly as given.
+ */
+function storedDetail(category: string, detail: string): string {
+  return category === 'calls' ? callHistoryName(detail) : detail;
+}
+
+function clip(detail: string): string {
+  return detail.length > MAX_DETAIL ? `${detail.slice(0, MAX_DETAIL - 1)}…` : detail;
+}
+
+interface StoredHistory {
+  events: ActivityEvent[];
+  skipped: number;
+}
+
+/**
+ * Read one stored history file, applying the call-data rule, and rewrite the file when what is on
+ * disk is not what the rule allows.
+ *
+ * History written before the rule holds raw numbers in its call rows, and "never retain" is a
+ * statement about the file, not the screen — so the file is rewritten, once, from the rows as they
+ * now read. A rewrite also drops the unreadable lines, which the reader already skips: a half-written
+ * call row is the one line nobody could check, and it is not worth keeping a number to keep it.
+ *
+ * A file whose every line already reads back unchanged is left exactly as it is.
+ */
+function readStored(path: string): StoredHistory {
+  if (!existsSync(path)) return { events: [], skipped: 0 };
+  const lines = readFileSync(path, 'utf8').split('\n').filter((line) => line.trim().length > 0);
+  const events: ActivityEvent[] = [];
+  let skipped = 0;
+  let changed = 0;
+  for (const line of lines) {
+    const parsed = parseActivityLine(line);
+    if (!parsed) {
+      skipped += 1;
+      continue;
+    }
+    const event = { ...parsed, detail: clip(storedDetail(parsed.category, parsed.detail)) };
+    if (JSON.stringify(event) !== line.trim()) changed += 1;
+    events.push(event);
+  }
+  if (changed > 0 || skipped > 0) {
+    const temp = `${path}.rewrite`;
+    writeFileSync(temp, events.map((e) => JSON.stringify(e)).join('\n') + (events.length ? '\n' : ''));
+    renameSync(temp, path);
+    // Counts only. The rows themselves are what this exists to stop writing anywhere.
+    log.info(
+      'activity',
+      `Rewrote ${path.endsWith('.old') ? 'activity.jsonl.old' : 'activity.jsonl'}: ` +
+        `${changed} row(s) brought under the call-data rule / ${skipped} unreadable line(s) dropped / ` +
+        `${events.length} kept`,
+    );
+  }
+  return { events, skipped };
 }
 
 const activity = new ActivityStore();

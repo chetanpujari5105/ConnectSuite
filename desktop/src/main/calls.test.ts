@@ -273,17 +273,21 @@ test('hasMore comes from the phone even when the page is empty', async () => {
  *
  * `from ,` is the string defect 35 is named for, in a different file, eleven defects later.
  */
-test('a call with no number is named, not left as "from ,"', () => {
-  assert.equal(whoLine({ contactName: 'Contact D', number: '8800000004' }), 'from Contact D (8800000004)');
-  assert.equal(whoLine({ number: '8800000004' }), 'from 8800000004, no contact name');
-  assert.equal(whoLine({ contactName: 'Contact D' }), 'from Contact D, no number');
+test('a call is named in the log by its last two digits, never by its number or contact', () => {
+  // `docs/protocol.md` → Calls → *What a Mac may keep about a call*: the rotating log carries the
+  // call id, the state, and at most the last two digits. The contact name is not on that list.
+  assert.equal(whoLine({ contactName: 'Contact D', number: '8800000004' }), 'number …04');
+  assert.equal(whoLine({ number: '8800000004' }), 'number …04');
+  assert.equal(whoLine({ contactName: 'Contact D' }), 'no number');
 
-  // The one that was broken. Both the empty-string and the absent-field shapes, because the phone
-  // sends `put("number", "")` and an older build could omit the key entirely.
-  assert.equal(whoLine({ number: '', contactName: '' }), 'with no number from the platform');
-  assert.equal(whoLine({}), 'with no number from the platform');
+  // Defect 43's case still has a sentence rather than an empty slot.
+  assert.equal(whoLine({ number: '', contactName: '' }), 'no number');
+  assert.equal(whoLine({}), 'no number');
   for (const shape of [{ number: '', contactName: '' }, {}, { number: '   ' }]) {
     assert.ok(!whoLine(shape).includes('from ,'), `must never render "from ,": ${whoLine(shape)}`);
+  }
+  for (const shape of [{ contactName: 'Contact D', number: '8800000004' }, { number: '8800000004' }]) {
+    assert.doesNotMatch(whoLine(shape), /8800000004|Contact D/, `leaked: ${whoLine(shape)}`);
   }
 });
 
@@ -355,7 +359,9 @@ test('defect 53: a dial the phone refuses logs the phone reason', async () => {
     const own = refusalLines(cap.lines);
     assert.equal(own.length, 1, `expected one line of its own, got: ${cap.lines.join(' // ')}`);
     assert.match(own[0], /call\.dial refused by the phone/);
-    assert.match(own[0], /\+15551234567/, 'a refusal is about a specific attempt');
+    // A refusal is about a specific attempt, so it names one — by the tail the rule allows.
+    assert.match(own[0], /…67/, 'a refusal is about a specific attempt');
+    assert.doesNotMatch(own[0], /5551234567/, 'the full number reached the log');
   } finally {
     cap.restore();
   }
@@ -401,5 +407,46 @@ test('defect 53: the counter and the lines cannot diverge across every refusal p
     );
   } finally {
     cap.restore();
+  }
+});
+
+/**
+ * The privacy rule across every line this client writes, on every path that names a call.
+ *
+ * Asserted per line, never as a likeness between lines (the fourth test variety): each line is
+ * checked for the full number and the contact name on its own. The control is that the tail the rule
+ * allows does appear, so a client that logged nothing at all could not pass.
+ */
+test('no line this client logs carries a full number or a contact name', async () => {
+  const lines: string[] = [];
+  const keep = { info: log.info, warn: log.warn };
+  log.info = (where: string, message: string) => void lines.push(`${where}|${message}`);
+  log.warn = (where: string, message: string) => void lines.push(`${where}|${message}`);
+  try {
+    const { link } = fakePhone({ callId: 'c19' });
+    const calls = new CallClient(() => link);
+    calls.onIncoming(RINGING as never);
+    await calls.answer();
+    await calls.reject();
+    calls.onIncoming(RINGING as never);
+    calls.onEnded({ callId: 'c17', number: '+15551234567', durationMs: 4000, disposition: 'answered' });
+    await calls.dial('+15551234567');
+
+    const refusing = new CallClient(() => ({
+      isConnected: () => true,
+      request: () => Promise.reject(new Error('nope')),
+    }) as unknown as LinkClient);
+    await refusing.dial('+15551234567');
+
+    const own = lines.filter((l) => l.startsWith('calls|'));
+    assert.ok(own.length >= 6, `control: the client logged its paths (${own.length} lines)`);
+    assert.ok(own.some((l) => l.includes('…67')), 'control: the permitted tail is present');
+    for (const l of own) {
+      assert.doesNotMatch(l, /5551234567/, `full number in: ${l}`);
+      assert.doesNotMatch(l, /Ada|Lovelace/, `contact name in: ${l}`);
+    }
+  } finally {
+    log.info = keep.info;
+    log.warn = keep.warn;
   }
 });
