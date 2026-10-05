@@ -25,6 +25,12 @@ public enum BridgeStatus: Equatable {
     case sink(SinkState)
     case counts([String: Int])
     case error(String)
+    /// The live session's decode chain just broke: the gate refuses every non-IDR until an IDR with SPS
+    /// and PPS. Once per break, on the change from decoding to waiting (docs/protocol.md → the local
+    /// contract, version 2). Main may answer it with `webcam.keyframe`.
+    case chainBroken(SessionID, generation: UInt16, cause: ChainBreakCause)
+    /// The first frame admitted after that break reached the sink. Once per `chainBroken`.
+    case chainRecovered(SessionID, generation: UInt16)
 
     public var json: Data {
         let obj: [String: Any]
@@ -39,11 +45,20 @@ public enum BridgeStatus: Equatable {
         case let .sink(s): obj = ["op": "sink", "state": s.rawValue]
         case let .counts(c): obj = ["op": "counts", "counts": c]
         case let .error(e): obj = ["op": "error", "error": e]
+        case let .chainBroken(id, g, c):
+            obj = ["op": "chain-broken", "sessionId": id.hex, "generation": Int(g), "cause": c.rawValue]
+        case let .chainRecovered(id, g):
+            obj = ["op": "chain-recovered", "sessionId": id.hex, "generation": Int(g)]
         }
         return try! JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])
     }
 
     public var record: BridgeRecord { BridgeRecord(type: .status, body: json) }
+}
+
+/// Why the chain broke, as `chain-broken` carries it. A closed set, held to the shared vocabulary fixture.
+public enum ChainBreakCause: String, CaseIterable, Sendable {
+    case queueFull = "queue-full", decodeFailed = "decode-failed", composeFailed = "compose-failed"
 }
 
 /// The bridge's pipeline (docs/protocol.md → Electron main ↔ the bridge, and Bounded buffering):
@@ -97,6 +112,11 @@ public final class BridgeCore {
     private let prepareQueue = DispatchQueue(label: "sidekick.camera.bridge.prepare")
     /// The session whose stream the decoder's reference state belongs to. Decode queue only.
     private var decoderOwner: SessionID?
+    /// The break `chain-broken` was sent for and not yet recovered: its session, generation, and the gate's
+    /// running count when it broke — a frame admitted after it reaching the sink is the recovery. Guarded
+    /// by `lock`. An ended session's entry needs no clearing: recovery also requires the session to be the
+    /// live one, and an ended session is tombstoned and never live again.
+    private var signalledBreak: (session: SessionID, generation: UInt16, afterOrdinal: Int)?
     private let makeComposer: (PublishedFormat) throws -> FrameComposer
 
     // Counters past the gate. The gate keeps its own (received, accepted, dropped by cause).
@@ -288,7 +308,15 @@ public final class BridgeCore {
         guard isLive(session) else { count(\.discardedEnded); withDiag { $0.discardedAfterDecoding(nowNs: composeEnd) }; return }
         if sink.enqueue(sb) {
             count(\.sinkEnqueued)
-            withGate { g in diag.enqueued(ordinal: w.ordinal, nowNs: composeEnd, refusedSoFar: g.dropped[.awaitingKeyframe] ?? 0) }
+            let recovered: BridgeStatus? = withGate { g in
+                diag.enqueued(ordinal: w.ordinal, nowNs: composeEnd, refusedSoFar: g.dropped[.awaitingKeyframe] ?? 0)
+                // The signalled break is over once a frame admitted after it reaches the sink — the gate
+                // admits nothing after a break but an IDR with SPS and PPS, so that frame is the IDR's chain.
+                guard let b = signalledBreak, b.session == session, g.live == session, w.ordinal > b.afterOrdinal else { return nil }
+                signalledBreak = nil
+                return .chainRecovered(session, generation: au.header.generation)
+            }
+            if let recovered { emit(recovered) }
         } else {
             count(\.sinkUnavailable)
         }
@@ -298,11 +326,27 @@ public final class BridgeCore {
     /// in the picture is timed from here. Only the live session's chain: a break in an ended session's
     /// frame is no fact about its replacement.
     private func breakChain(_ kind: PipelineDiagnostics.Break, session: SessionID, nowNs: UInt64) {
-        withGate { g in
-            guard g.live == session else { diag.staleFailure(); return }
+        let signal: BridgeStatus? = withGate { g in
+            guard g.live == session else { diag.staleFailure(); return nil }
+            let wasWaiting = g.needsKeyframe
             g.noteDownstreamDrop()
             diag.broke(kind, nowNs: nowNs, receivedSoFar: g.received, refusedSoFar: g.dropped[.awaitingKeyframe] ?? 0)
+            return wasWaiting ? nil : signalBreak(session, kind, generation: g.highestGeneration, received: g.received)
         }
+        if let signal { emit(signal) }
+    }
+
+    /// Records the break `chain-broken` is about to report. Called under `lock`, on the change from
+    /// decoding to waiting only — so a second break while still waiting reports nothing.
+    private func signalBreak(_ session: SessionID, _ kind: PipelineDiagnostics.Break, generation: UInt16, received: Int) -> BridgeStatus {
+        let cause: ChainBreakCause
+        switch kind {
+        case .queueFull: cause = .queueFull
+        case .decodeFailed: cause = .decodeFailed
+        case .composeFailed: cause = .composeFailed
+        }
+        signalledBreak = (session, generation, received)
+        return .chainBroken(session, generation: generation, cause: cause)
     }
 
     /// A decode failed (docs/protocol.md → a decode failure is a Mac-side drop). Recoverable, never the
@@ -319,6 +363,8 @@ public final class BridgeCore {
     private func decodeFailed(_ w: Waiting, nowNs: UInt64) {
         decoder.invalidate()
         decoderOwner = nil
+        var signal: BridgeStatus?
+        defer { if let signal { emit(signal) } }
         lock.lock(); defer { lock.unlock() }
         diag.decoderReset()
         guard gate.live == w.session else { diag.staleFailure(); return }
@@ -335,7 +381,11 @@ public final class BridgeCore {
         }
         waiting = kept
         droppedDecodeQueue += flushed
-        if recovery == nil { gate.noteDownstreamDrop() }
+        if recovery == nil {
+            let wasWaiting = gate.needsKeyframe
+            gate.noteDownstreamDrop()
+            if !wasWaiting { signal = signalBreak(w.session, .decodeFailed, generation: gate.highestGeneration, received: gate.received) }
+        }
         diag.flushedAfterDecodeFailure(flushed, keptRecovery: recovery != nil)
         diag.broke(.decodeFailed, nowNs: nowNs, receivedSoFar: gate.received,
                    refusedSoFar: gate.dropped[.awaitingKeyframe] ?? 0, recoveryFromOrdinal: recoveryOrdinal)
