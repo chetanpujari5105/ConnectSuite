@@ -1801,13 +1801,27 @@ Capability `calls`, gated on `READ_CALL_LOG`, `READ_PHONE_STATE`, `CALL_PHONE` *
 `ANSWER_PHONE_CALLS` — all four, because the capability promises all four verbs. Errors report
 `feature: "calls"`, not `"call"`.
 
-**Call audio never leaves the phone.** `CAPTURE_AUDIO_OUTPUT` is system-only, and recording a call
-through an AccessibilityService violates Play policy. Answering from the Mac answers the call *on
-the phone*; the user talks through the phone, or through a headset paired to the phone. **Pairing
-the Mac itself as that headset does not work, and this document used to say it did** — both ends
-advertise the HFP *audio gateway* role, so they bond and share no audio profile at all (measured
-both ends 2026-09-14; the mechanism and the one unproven route are in `CLAUDE.md`). This is a
-platform wall and no message here will ever carry audio.
+**Call audio never leaves the phone.** The permission that reads a live call's uplink and downlink
+(`CALL_AUDIO_INTERCEPTION`) belongs to a system-only role, `CAPTURE_AUDIO_OUTPUT` is system-only,
+and recording a call through an AccessibilityService violates Play policy. Answering from the Mac
+answers the call *on the phone*; the user talks through the phone, or through a headset paired to
+the phone. **Using the Mac itself as that headset is not a working route, and this document used to
+say it was** — on 2026-09-14 the Mac held a hands-free *control* connection through a public API,
+but the voice link (SCO) never opened from either end, and a 2026-10-05 re-check stopped before a
+call (`docs/mac-audio-routes.md` §6–9). No Mac and phone have been verified for call audio. No
+message here carries audio, and none is planned.
+
+**What a Mac may keep about a call.** The wire carries numbers and names; the Mac's disk does not.
+
+- **The rotating log** names a call by its `callId`, its `state`, and at most the **last two
+  digits** of its number (`…67`). Never a full number, incoming or dialled, and never a contact
+  name.
+- **The persisted Activity history** names a call by the contact name the phone supplied, and
+  otherwise as **"Unknown number"** — never by its number. History written before this rule is
+  rewritten to it when it is read.
+- **The live call card** may draw the full number and name while the call is showing. That is
+  display, not storage.
+- **The phone's own logs** carry no numbers.
 
 `call.incoming` — **event**. `{"callId":"c17","number":"+15551234567","contactName":"Ada Lovelace",
 "startedAtMs":1756300000000,"state":"ringing"}`. `state` is `ringing`, `active` or `dialing`.

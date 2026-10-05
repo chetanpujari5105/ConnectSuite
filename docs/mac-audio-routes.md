@@ -212,7 +212,7 @@ one is a complete service-level connection, not a stub:
 | record | what crossed |
 |---|---|
 | `Connecting → Connected` @ `17:07:38.521` | SLC established |
-| `EVENT_TYPE_BRSF valInt=4079` | the Mac presented HF feature bits |
+| `EVENT_TYPE_BRSF valInt=4079` | ~~the Mac presented HF feature bits~~ **misread — see §9.** `4079` is the *phone's own* AG feature set; the Mac's HF features are the record's second value, `116`, with no codec-negotiation bit |
 | `AT+CIND`, `AT+CLCC` | indicator and call-list negotiation |
 | `+CSMS`, `+CMGF`, `+CNMI=3,1,0,0,0`, `+CSCS="UTF-8"` | the framework's SMS-over-HFP setup |
 | `DEVICE_STATE_CHANGED: hasCellularService=1, signalStrength=3, batteryCharge=3` | **the phone pushed its cellular state to the Mac** |
@@ -392,3 +392,74 @@ That is a One UI / Telecom bug rather than ours, and it is the practical cost of
 **selecting a Bluetooth route that cannot establish leaves the phone's call-audio controls stuck
 for the rest of the call.** Anyone repeating this should expect it and should not repeat it on a
 call that matters.
+
+---
+
+## 9. A re-check — 2026-10-05. **Stopped before the call; the narrowband question is answered anyway.**
+
+Purpose, fixed in advance: decide whether §7's SCO failure was caused by (a) a missing macOS
+Microphone permission or (b) wideband-codec negotiation. Not to bypass any Android restriction.
+Supervised, one bounded test, approved step by step. **No call was placed, no SCO connection was
+requested, no tone was played, and no audio device was ever opened.**
+
+### What ran
+
+| Step | Reading |
+|---|---|
+| Baseline, before anything | Mac's `HEADSET` policy **`-1`** — not §6's `100`: the bond had been re-created on **2026-09-21**, which reset it. Telecom idle on `EARPIECE`. **A `PendingAudioRoute` object exists even at idle** (`mActive=false`), so "a pending route is present" is not a stop signal by itself — `mActive=true` toward `TYPE_BLUETOOTH_SCO` is |
+| Probe | §6's probe, recreated from its source with the two private accessors and every call-content log line removed, wrapped as its own app bundle so that macOS permissions attached to it rather than to the editor that launched it. Two prompts, Bluetooth and Microphone, both granted to that bundle only |
+| Control connection | `handsFree:connected: status=0` in 1.5 s. Phone: `HFP Connected: 1`, one state machine, `mAudioState: 10` |
+
+### (b) is refuted — and by a reading that was already in §6
+
+The phone's state machine for this connection recorded:
+
+```
+EVENT_TYPE_BRSF  valInt=4079  valInt2=116
+mHeadsetBrsf: 116
+```
+
+**`4079` is the phone's own audio-gateway feature set and `116` is the Mac's.** `116` is
+`0b0111_0100` — CLI presentation, remote volume, enhanced call status, enhanced call control — and
+**bit 7, codec negotiation, is clear**. The probe's untouched default `supportedFeatures` is the same
+`116`, and §6–7 never set it, so **every SCO attempt in §7 was already narrowband (CVSD)**. §6's
+table read `4079` as the Mac's, which is corrected there. Clearing bit 7 would have changed nothing.
+
+### (a) is weakened and untested
+
+The editor that ran §6–7 is **not listed** under macOS Privacy & Security → Microphone, so nothing in
+that run ever *requested* the microphone: macOS records a row the first time an app asks. That
+makes "SCO failed because a microphone request was silently refused" unlikely. It was not tested on
+a call, so it is not excluded.
+
+### Why it stopped: the phone points its next call at the Mac on its own
+
+With the control connection up **and no call**, Telecom moved its current route:
+
+```
+current=TYPE_BLUETOOTH_SCO   pending=[dest=TYPE_BLUETOOTH_SCO mActive=false]   btRoutes=1
+```
+
+So a call placed next would have made the **phone** initiate SCO to the Mac automatically — the same
+mechanism that hung and jammed the call-audio controls in §8, reached without touching the in-call
+picker. That was outside the approved plan, so the connection was dropped before any call. Telecom
+returned to `EARPIECE`, `mActive=false`, `btRoutes=0`, `HFP Connected: 0`.
+
+**Anyone repeating §7 must expect this:** a live hands-free connection makes the Mac the default
+route for the next call. "Do not tap the picker" does not avoid §8's mechanism.
+
+### State the run left behind
+
+- The phone logged one policy change: `HEADSET connection policy changed: -1 -> 100`. The owner then
+  turned **Calls** off for the Mac in the phone's Bluetooth settings; the policy still read `100`
+  afterwards, with no further change logged. **Two readings of one fact disagree** and this was not
+  resolved — no further change was made.
+- The phone's records for the Mac keep `isActiveHfpDevice (true)`, and its cached services for the
+  Mac now include `Handsfree`. Neither has any effect while nothing opens a hands-free connection.
+- `tccutil reset` could not resolve the probe's bundle id (`OSStatus -10814`) from a temporary
+  directory; the owner removed both rows by hand in System Settings. All probe files were deleted.
+
+### Status
+
+**Carrier-call audio through the Mac remains unproven and deferred.** No Mac and phone have been
+verified for it, and it is not a Sidekick feature.

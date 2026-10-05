@@ -66,9 +66,15 @@ the user is far larger than the feature.
 These sit in `CLAUDE.md` under "Platform walls" and are repeated here because they are the ones
 users ask about in the same breath as the permissions above:
 
-- **Call audio cannot be streamed.** `CAPTURE_AUDIO_OUTPUT` is system-only and AccessibilityService
-  call recording violates Play policy. The documented answer is to pair the Mac to the phone over
-  Bluetooth as an audio device. Answering a call from the Mac therefore answers it *on the phone*.
+- **Call audio cannot be streamed.** `CAPTURE_AUDIO_OUTPUT` and `CALL_AUDIO_INTERCEPTION` are
+  system-only, and AccessibilityService call recording violates Play policy. Answering a call from
+  the Mac therefore answers it *on the phone*.
+
+  ~~The documented answer is to pair the Mac to the phone over Bluetooth as an audio device.~~
+  **Retracted.** That remedy was measured on 2026-09-14 and does not work: the Mac can hold a
+  hands-free control connection, but the voice link (SCO) never opened from either end, and a
+  2026-10-05 re-check stopped before a call. No Mac and phone have been verified for call audio.
+  `docs/mac-audio-routes.md` §6–9 has the readings.
 - **MMS is not SMS.** Reading MMS parts needs `READ_SMS` plus content-resolver access to
   `content://mms`, and sending MMS is a different API path again. See `docs/protocol.md` for what
   `sms.*` does and does not promise.

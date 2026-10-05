@@ -317,7 +317,7 @@ Study KDE Connect for the pairing and trust model, and scrcpy for the capture an
   picker — **was then tried and also fails**: the phone lists the Mac by name, accepts the request,
   and hangs in `PendingAudioRoute` forever (control: Speaker toggled by the same tap, so the stimulus
   landed). **Two initiators, two failure modes, no SCO. This is a wall**: the link that carries voice
-  does not come up from either end. `docs/mac-audio-routes.md` §7-8. **The role tables, the public API surface, the staged proof and the
+  does not come up from either end. `docs/mac-audio-routes.md` §7-8. **A 2026-10-05 re-check stopped before a call (§9):** the Mac's hands-free features are `116` with no codec negotiation, so §7 was already narrowband — and an idle hands-free connection makes the phone point its next call at the Mac, the §8 mechanism, without the picker. **The role tables, the public API surface, the staged proof and the
   three-route entitlement comparison are `docs/mac-audio-routes.md`; do not re-derive them.** Nothing else qualifies: there is no supported user-facing path, and an
   A2DP sink would be half a route even if macOS offered one, which it does not. Anyone returning to
   this question should start by instantiating that class against this bond, not by re-reading the
