@@ -166,7 +166,7 @@ private func rig(_ clock: ManualClock, _ dec: GatedDecoder) -> ProbeRig {
         for a in try aus(60, idrAt: [0, 30]) { r.feed(a, width: W, height: H) }
         let after = r.core.countsSnapshot()
         #expect(Set(empty.keys) == Set(after.keys), "the counters grew with the stream")
-        #expect(after.keys.filter { $0.hasPrefix("diag.") }.count == 35)
+        #expect(after.keys.filter { $0.hasPrefix("diag.") }.count == 41)
         #expect(after.count <= 64, "BridgeCore's share of the 128 counters Electron main accepts")
         #expect(r.c.count <= 128, "with the probe's tally: \(r.c.count)")
         #expect(after.values.allSatisfy { $0 >= 0 } && after.keys.allSatisfy { $0.count <= 64 })
@@ -177,7 +177,11 @@ private func rig(_ clock: ManualClock, _ dec: GatedDecoder) -> ProbeRig {
         let r = try s.run()
         let c = r.c, d = r.core.diagnostics
         #expect(d.decode.count == c["probe.decodeAttempts"] ?? 0)
-        #expect(d.compose.count == c["probe.decoded"] ?? 0)
+        // A frame whose session ended while it decoded is discarded before compose: no composer exists
+        // for an ended session (option A). In these scenarios the Stop always lands before compose, so
+        // every such frame is one of `discardedAfterDecode`; a Stop landing DURING a compose would be
+        // counted in both, and no scenario here produces one.
+        #expect(d.compose.count + d.discardedAfterDecode == c["probe.decoded"] ?? 0)
         #expect(d.overflowEvents + d.idrFlushedAUs == c["droppedDecodeQueue"]!)
         #expect(d.discardedBeforeDecode + d.discardedAfterDecode == c["discardedEnded"]!)
         let breaks = c["droppedDecodeQueue"]! + c["decodeErrors"]! + c["composeErrors"]!

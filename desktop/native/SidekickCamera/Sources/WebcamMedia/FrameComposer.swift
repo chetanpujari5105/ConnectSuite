@@ -64,13 +64,18 @@ public final class FrameComposer {
         return out
     }
 
+    /// Creates the rotation session now rather than on the first rotated frame. It needs nothing from
+    /// the stream, so the bridge does it before a session's first frame (defect 177).
+    public func prepareRotation() throws {
+        guard rotation == nil else { return }
+        var r: VTPixelRotationSession?
+        let st = VTPixelRotationSessionCreate(kCFAllocatorDefault, &r)
+        guard st == noErr, let r else { throw ComposeError.session(st) }
+        rotation = r
+    }
+
     private func rotate(_ source: CVPixelBuffer, quarterTurns: UInt8) throws -> CVPixelBuffer {
-        if rotation == nil {
-            var r: VTPixelRotationSession?
-            let st = VTPixelRotationSessionCreate(kCFAllocatorDefault, &r)
-            guard st == noErr, let r else { throw ComposeError.session(st) }
-            rotation = r
-        }
+        try prepareRotation()
         let angle: CFString
         switch quarterTurns {
         case 1: angle = kVTRotation_CW90

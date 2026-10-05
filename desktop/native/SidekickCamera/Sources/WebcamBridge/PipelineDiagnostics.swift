@@ -6,7 +6,7 @@ import Foundation
 /// the stream's length, so the counters cannot grow and nothing is logged per frame.
 ///
 /// Electron main's parser accepts at most 128 counters per status (`webcamBridgeRecords.ts`); this
-/// set is 35, the rest of `BridgeCore` 19, and the probe's tally at most ~51.
+/// set is 41, the rest of `BridgeCore` 19, and the probe's tally at most ~51.
 ///
 /// Pure: every reading takes its `nowNs` from the caller's clock, so tests drive time explicitly
 /// rather than sleeping. Not thread-safe; `BridgeCore` holds its lock around every call.
@@ -74,6 +74,18 @@ public struct PipelineDiagnostics: Equatable, Sendable {
     public private(set) var completionsAfterEnd = 0, maxLateUs = 0
     public private(set) var discardedBeforeDecode = 0, discardedAfterDecode = 0
 
+    // Preparation at `session-live` (option A): the composers made before the first frame, timed apart
+    // from the first frame's own decode and compose, which no longer include them.
+    public private(set) var preparations = 0, preparationMaxUs = 0, preparationsFailed = 0
+    /// Preparations whose session ended, or was replaced, before they completed: what they made was
+    /// released, never installed.
+    public private(set) var preparationsDiscarded = 0
+    /// The longest a decoded frame waited for its session's preparation to finish.
+    public private(set) var preparationWaitMaxUs = 0
+    /// From the last `session-live` to the first frame after it reaching the sink.
+    public private(set) var firstFrameSinceLiveUs = 0
+    private var awaitingFirstFrame = false
+
     public init() {}
 
     private static func us(_ from: UInt64, _ to: UInt64) -> Int { to > from ? Int((to - from) / 1_000) : 0 }
@@ -84,7 +96,19 @@ public struct PipelineDiagnostics: Equatable, Sendable {
         liveAtNs = nowNs
         endedAtNs = nil
         gopIndex = -1
+        awaitingFirstFrame = true
     }
+
+    /// A preparation finished while its session was still the live one, and was installed.
+    public mutating func prepared(us: Int, failed: Bool) {
+        preparations += 1
+        preparationMaxUs = max(preparationMaxUs, us)
+        if failed { preparationsFailed += 1 }
+    }
+
+    public mutating func preparationDiscarded() { preparationsDiscarded += 1 }
+
+    public mutating func waitedForPreparation(us: Int) { preparationWaitMaxUs = max(preparationWaitMaxUs, us) }
 
     public mutating func sessionEnded(nowNs: UInt64) {
         endedAtNs = nowNs
@@ -159,6 +183,10 @@ public struct PipelineDiagnostics: Equatable, Sendable {
 
     /// A frame handed to the sink. If it was admitted after an open break, the picture is back.
     public mutating func enqueued(ordinal: Int, nowNs: UInt64, refusedSoFar: Int) {
+        if awaitingFirstFrame {
+            awaitingFirstFrame = false
+            firstFrameSinceLiveUs = liveAtNs.map { Self.us($0, nowNs) } ?? 0
+        }
         guard let b = openBreak, ordinal > b.receivedMark else { return }
         let gap = Self.us(b.atNs, nowNs)
         recoveries += 1
@@ -191,6 +219,9 @@ public struct PipelineDiagnostics: Equatable, Sendable {
             "diag.chain.decodedAfterFailure": decodedAfterFailure,
             "diag.afterEnd.completions": completionsAfterEnd, "diag.afterEnd.maxLateUs": maxLateUs,
             "diag.discardedEnded.beforeDecode": discardedBeforeDecode, "diag.discardedEnded.afterDecode": discardedAfterDecode,
+            "diag.prepare.count": preparations, "diag.prepare.maxUs": preparationMaxUs, "diag.prepare.failed": preparationsFailed,
+            "diag.prepare.discarded": preparationsDiscarded, "diag.prepare.waitMaxUs": preparationWaitMaxUs,
+            "diag.firstFrame.sinceLiveUs": firstFrameSinceLiveUs,
         ]
     }
 }

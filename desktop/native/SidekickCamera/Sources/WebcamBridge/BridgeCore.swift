@@ -73,7 +73,29 @@ public final class BridgeCore {
     private struct Waiting { let au: WebcamAU; let session: SessionID; let ordinal: Int; let admittedNs: UInt64 }
     private var decoding = false
     public private(set) var maxWaiting = 0
-    private var composers: [PublishedFormat: FrameComposer] = [:]
+
+    /// What one session needs before its first frame — both published formats' composers, each with its
+    /// rotation session — made when main says the session is live, on its own queue, so it overlaps the
+    /// first IDR's decode instead of following it (defect 177, option A). The decoder is not here: it
+    /// cannot exist before the stream's SPS and PPS, and nothing stands in for them.
+    ///
+    /// Owned by its session. A Stop or a replacement detaches it; a preparation that completes after
+    /// that is released where it finished, never installed, so nothing it made outlives its session or
+    /// can be used by another. Identity is the ownership token: only the object `preparation` still
+    /// points at may install anything.
+    private final class Preparation {
+        let session: SessionID
+        let done = DispatchGroup()
+        /// Written by the prepare queue before `done` is left; after that, only by the decode queue.
+        var composers: [PublishedFormat: FrameComposer] = [:]
+        init(session: SessionID) { self.session = session; done.enter() }
+    }
+    /// The live session's preparation, or nil. Guarded by `lock`.
+    private var preparation: Preparation?
+    /// True while the decode stage is blocked on its session's preparation. Guarded by `lock`.
+    private var waitingOnPreparation = false
+    private let prepareQueue = DispatchQueue(label: "sidekick.camera.bridge.prepare")
+    private let makeComposer: (PublishedFormat) throws -> FrameComposer
 
     // Counters past the gate. The gate keeps its own (received, accepted, dropped by cause).
     private var droppedDecodeQueue = 0
@@ -90,12 +112,22 @@ public final class BridgeCore {
 
     public init(sink: SinkPort, decoder: FrameDecoding = H264Decoder(), decodeCapacity: Int = 4,
                 clock: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
+                makeComposer: @escaping (PublishedFormat) throws -> FrameComposer = BridgeCore.preparedComposer,
                 emit: @escaping (BridgeStatus) -> Void) {
         self.sink = sink
         self.decoder = decoder
         self.decodeCapacity = decodeCapacity
         self.clock = clock
+        self.makeComposer = makeComposer
         self.emit = emit
+    }
+
+    /// A composer with everything it can make before a frame exists: its pixel-buffer pool, its
+    /// transfer session and its rotation session.
+    public static func preparedComposer(_ format: PublishedFormat) throws -> FrameComposer {
+        let c = try FrameComposer(output: format)
+        try c.prepareRotation()
+        return c
     }
 
     public enum Outcome: Equatable { case `continue`, shutdown, malformed(String) }
@@ -218,9 +250,16 @@ public final class BridgeCore {
         let format: PublishedFormat = max(w0, h0) >= 1920 ? .fullHD : .hd
         let composed: CVPixelBuffer
         do {
-            let composer = try composer(for: format)
+            guard let composer = try composer(for: format, session: session) else {
+                // The session ended while this frame decoded: discarded, and nothing is made for it.
+                let now = clock()
+                count(\.discardedEnded)
+                withDiag { $0.discardedAfterDecoding(nowNs: now) }
+                return
+            }
+            let before = composer.upscaled
             composed = try composer.compose(decoded, quarterTurns: au.header.rotation)
-            if composer.upscaled > 0 { lock.lock(); upscaled = composers.values.map(\.upscaled).reduce(0, +); lock.unlock() }
+            if composer.upscaled > before { count(\.upscaled) }
         } catch {
             let now = clock()
             withDiag { $0.composeFinished(decodeStartNs: decodeStart, startNs: composeStart, nowNs: now, ok: false) }
@@ -257,24 +296,80 @@ public final class BridgeCore {
         }
     }
 
-    private func composer(for format: PublishedFormat) throws -> FrameComposer {
-        lock.lock(); defer { lock.unlock() }
-        if let c = composers[format] { return c }
-        let c = try FrameComposer(output: format)
-        composers[format] = c
+    // MARK: Preparation
+
+    /// Starts preparing `session`'s composers on the prepare queue and returns at once.
+    private func prepare(for session: SessionID) {
+        let p = Preparation(session: session)
+        lock.lock(); preparation = p; lock.unlock()
+        prepareQueue.async { [self] in
+            let start = clock()
+            var made: [PublishedFormat: FrameComposer] = [:]
+            var failed = false
+            // A Stop or a replacement before this began: nothing is made at all.
+            if isCurrent(p) {
+                for format in PublishedFormat.all {
+                    do { made[format] = try makeComposer(format) } catch { failed = true }
+                }
+            }
+            let us = Int((clock() &- start) / 1_000)
+            lock.lock()
+            if preparation === p {
+                p.composers = made
+                diag.prepared(us: us, failed: failed)
+            } else {
+                diag.preparationDiscarded()
+            }
+            lock.unlock()
+            // When discarded, `made` holds the only references, and they end with this block.
+            p.done.leave()
+        }
+    }
+
+    private func isCurrent(_ p: Preparation) -> Bool { lock.lock(); defer { lock.unlock() }; return preparation === p }
+
+    /// The composer for a frame of `session`, from that session's preparation — waited for if it is
+    /// still running, made here only if preparing it failed. Nil when the session is no longer the live
+    /// one: nothing is made for a session that ended.
+    private func composer(for format: PublishedFormat, session: SessionID) throws -> FrameComposer? {
+        lock.lock()
+        let p = preparation
+        lock.unlock()
+        guard let p, p.session == session else { return nil }
+        if p.done.wait(timeout: .now()) == .timedOut {
+            lock.lock(); waitingOnPreparation = true; lock.unlock()
+            let t0 = clock()
+            p.done.wait()
+            let t1 = clock()
+            lock.lock(); waitingOnPreparation = false; diag.waitedForPreparation(us: Int((t1 &- t0) / 1_000)); lock.unlock()
+        }
+        guard isCurrent(p) else { return nil }
+        if let c = p.composers[format] { return c }
+        let c = try makeComposer(format)
+        p.composers[format] = c
         return c
     }
+
+    /// Whether the decode stage is blocked on its session's preparation right now.
+    public var isWaitingOnPreparation: Bool { lock.lock(); defer { lock.unlock() }; return waitingOnPreparation }
 
     // MARK: Effects
 
     private func apply(_ effects: [SessionGate.Effect]) {
         for e in effects {
             switch e {
-            case .startSink:
+            case let .startSink(id):
+                // First, so the composers are being made while the sink starts and the first AUs arrive.
+                prepare(for: id)
                 emit(.sink(sink.start()))
-            case .stopSink:
+            case let .stopSink(id, _):
                 let now = clock()
                 withDiag { $0.sessionEnded(nowNs: now) }
+                // Detached now: a preparation still running for it will be released, not installed, and
+                // a frame still decoding for it finds no composer.
+                lock.lock()
+                if preparation?.session == id { preparation = nil }
+                lock.unlock()
                 // Never deferred: flush and stop first, then forget the decoder's references.
                 sink.stopAndFlush()
                 decodeQueue.async { [decoder] in decoder.invalidate() }
@@ -310,8 +405,8 @@ public final class BridgeCore {
         lock.lock(); self[keyPath: key] += 1; lock.unlock()
     }
 
-    /// Waits until the decode stage is empty.
-    public func drain() { decodeQueue.sync {} }
+    /// Waits until any preparation has finished and the decode stage is empty.
+    public func drain() { prepareQueue.sync {}; decodeQueue.sync {} }
 
     public var gateSnapshot: SessionGate { withGate { $0 } }
 

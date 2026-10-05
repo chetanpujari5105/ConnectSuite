@@ -101,6 +101,8 @@ let first = d.firstOverflow.map { "first at AU \($0.atReceived), \($0.sinceLiveU
 note("pipeline: overflow \(d.overflowEvents) (\(first)); recovery \(d.recoveries) max \(d.recoveryMaxUs / 1000) ms, \(d.recoveryMaxRefused) refused; " +
      "decode first \(d.decode.firstUs / 1000) ms max \(d.decode.maxUs / 1000) ms over-budget \(d.decode.overBudget)/\(d.decode.count); " +
      "compose first \(d.compose.firstUs / 1000) ms max \(d.compose.maxUs / 1000) ms over-budget \(d.compose.overBudget)/\(d.compose.count); " +
-     "arrival max gap \(d.maxArrivalGapUs / 1000) ms, max \(d.maxArrivalsPerFrame) per frame; after end \(d.completionsAfterEnd) late by \(d.maxLateUs / 1000) ms")
+     "arrival max gap \(d.maxArrivalGapUs / 1000) ms, max \(d.maxArrivalsPerFrame) per frame; after end \(d.completionsAfterEnd) late by \(d.maxLateUs / 1000) ms; " +
+     "prepare \(d.preparations) max \(d.preparationMaxUs / 1000) ms, frame waited \(d.preparationWaitMaxUs / 1000) ms, discarded \(d.preparationsDiscarded), failed \(d.preparationsFailed); " +
+     "first frame \(d.firstFrameSinceLiveUs / 1000) ms after live")
 note("exiting \(exitCode); invariant \(core.invariantHolds ? "holds" : "BROKEN")")
 exit(exitCode)

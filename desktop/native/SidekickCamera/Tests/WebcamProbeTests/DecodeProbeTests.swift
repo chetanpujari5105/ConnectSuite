@@ -89,10 +89,12 @@ final class ProbeRig {
     var core: BridgeCore!
     var phone = PhoneStandIn()
 
-    init(inner: FrameDecoding = H264Decoder(), clock: (() -> UInt64)? = nil) {
+    init(inner: FrameDecoding = H264Decoder(), clock: (() -> UInt64)? = nil,
+         makeComposer: @escaping (PublishedFormat) throws -> FrameComposer = BridgeCore.preparedComposer) {
         let lock = NSLock()
         core = BridgeCore(sink: ProbeSink(tally: tally), decoder: ProbeDecoder(tally: tally, inner: inner),
-                          clock: clock ?? { DispatchTime.now().uptimeNanoseconds }) { [unowned self] s in
+                          clock: clock ?? { DispatchTime.now().uptimeNanoseconds },
+                          makeComposer: makeComposer) { [unowned self] s in
             lock.lock(); statuses.append(s); lock.unlock()
         }
         core.consumersChanged(1)
@@ -263,8 +265,14 @@ final class ProbeRig {
         let decoded = c["probe.decoded"] ?? 0
         let gateDrops = c.filter { $0.key.hasPrefix("gate.") }.values.reduce(0, +)
         #expect(c["accepted"]! + gateDrops == 20)
-        #expect(decoded + c["droppedDecodeQueue"]! + c["decodeErrors"]! + c["composeErrors"]! + c["discardedEnded"]! == c["accepted"]!)
-        #expect(decoded >= 1 && (c["probe.decoded.idr"] ?? 0) >= 1 && c["probe.composedDiscarded"] == decoded)
+        // Each AU ends in exactly one of BridgeCore's terminal dispositions. NOT `probe.decoded` plus the
+        // drops: a frame decoding when the Stop lands is decoded AND `discardedEnded` — the scorer-v1
+        // double count, which this test carried too and which surfaced here under load.
+        let ended = ["droppedDecodeQueue", "decodeErrors", "composeErrors", "discardedEnded", "sinkEnqueued", "sinkUnavailable"]
+            .reduce(0) { $0 + c[$1]! }
+        #expect(ended == c["accepted"]!, "\(c)")
+        #expect(decoded >= 1 && (c["probe.decoded.idr"] ?? 0) >= 1 && c["probe.composedDiscarded"] == c["sinkEnqueued"])
+        #expect(decoded == c["sinkEnqueued"]! + c["sinkUnavailable"]! + c["composeErrors"]! + c["diag.discardedEnded.afterDecode"]!, "\(c)")
         #expect(c["probe.decoded.width"] == 1280 && c["probe.decoded.height"] == 720)
         #expect(r.stderr.contains("invariant holds"))
         #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).isEmpty, "the probe wrote something")
