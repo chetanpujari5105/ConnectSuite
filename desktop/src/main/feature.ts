@@ -88,6 +88,7 @@ export async function tell(
   feature: string,
   type: string,
   payload: Record<string, unknown>,
+  refusalLog: RefusalLog = 'sentence',
 ): Promise<PhoneAck> {
   if (!link?.isConnected()) {
     return notConnected(feature, type);
@@ -97,7 +98,7 @@ export async function tell(
     log.info(feature, `${type} ok`);
     return { ok: true };
   } catch (error) {
-    return failureOf(feature, type, error);
+    return failureOf(feature, type, error, refusalLog);
   }
 }
 

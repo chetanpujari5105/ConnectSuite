@@ -199,7 +199,7 @@ export class NotificationClient extends EventEmitter {
       key,
       text,
       ...seenTitleOf(notification),
-    });
+    }, 'code-only'); // the refusal can quote the conversation title, usually a person's name
   }
 
   async action(key: string, index: number): Promise<PhoneAck> {
@@ -215,7 +215,7 @@ export class NotificationClient extends EventEmitter {
       key,
       index,
       ...seenTitleOf(notification),
-    });
+    }, 'code-only'); // the refusal can quote the conversation title, usually a person's name
   }
 
   /**
