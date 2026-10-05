@@ -6,7 +6,7 @@ import Foundation
 /// the stream's length, so the counters cannot grow and nothing is logged per frame.
 ///
 /// Electron main's parser accepts at most 128 counters per status (`webcamBridgeRecords.ts`); this
-/// set is 41, the rest of `BridgeCore` 19, and the probe's tally at most ~51.
+/// set is 45, the rest of `BridgeCore` 19, and the probe's tally at most ~51.
 ///
 /// Pure: every reading takes its `nowNs` from the caller's clock, so tests drive time explicitly
 /// rather than sleeping. Not thread-safe; `BridgeCore` holds its lock around every call.
@@ -68,7 +68,12 @@ public struct PipelineDiagnostics: Equatable, Sendable {
     public private(set) var unrecovered = 0
     /// AUs decoded after a decode FAILURE that were admitted before it and are not IDRs: they reference
     /// a picture the decoder never produced, so the chain they were decoded against is not intact.
+    /// Zero by construction since part B; kept as the reading that would show it coming back.
     public private(set) var decodedAfterFailure = 0
+    /// After a decode failure: AUs dropped from the stage undecoded (also in `droppedDecodeQueue`), a
+    /// valid IDR already waiting kept as the recovery point, failures of an ended session's frame that
+    /// touched nothing of its replacement, and resets of the decoder's references.
+    public private(set) var flushedAfterFailure = 0, recoveryKept = 0, staleFailures = 0, decoderResets = 0
 
     // What completes after the session ended.
     public private(set) var completionsAfterEnd = 0, maxLateUs = 0
@@ -147,9 +152,23 @@ public struct PipelineDiagnostics: Equatable, Sendable {
 
     /// The chain broke. Only the first break of an unrecovered run is timed: a second break before
     /// recovery extends the same gap rather than starting a new one.
-    public mutating func broke(_ kind: Break, nowNs: UInt64, receivedSoFar: Int, refusedSoFar: Int) {
-        if openBreak == nil { openBreak = OpenBreak(kind: kind, atNs: nowNs, receivedMark: receivedSoFar, refusedMark: refusedSoFar) }
+    /// `recoveryFromOrdinal`: a recovery IDR already admitted and kept — its frame reaching the sink is
+    /// the picture coming back, though it was admitted before the break.
+    public mutating func broke(_ kind: Break, nowNs: UInt64, receivedSoFar: Int, refusedSoFar: Int, recoveryFromOrdinal: Int? = nil) {
+        if openBreak == nil {
+            openBreak = OpenBreak(kind: kind, atNs: nowNs, receivedMark: recoveryFromOrdinal.map { $0 - 1 } ?? receivedSoFar,
+                                  refusedMark: refusedSoFar)
+        }
     }
+
+    public mutating func flushedAfterDecodeFailure(_ n: Int, keptRecovery: Bool) {
+        flushedAfterFailure += n
+        if keptRecovery { recoveryKept += 1 }
+    }
+
+    public mutating func staleFailure() { staleFailures += 1 }
+
+    public mutating func decoderReset() { decoderResets += 1 }
 
     // MARK: The decode stage
 
@@ -216,7 +235,8 @@ public struct PipelineDiagnostics: Equatable, Sendable {
             "diag.recovery.count": recoveries, "diag.recovery.maxUs": recoveryMaxUs, "diag.recovery.lastUs": recoveryLastUs,
             "diag.recovery.maxRefused": recoveryMaxRefused, "diag.recovery.open": openBreak == nil ? 0 : 1,
             "diag.recovery.unrecovered": unrecovered,
-            "diag.chain.decodedAfterFailure": decodedAfterFailure,
+            "diag.chain.decodedAfterFailure": decodedAfterFailure, "diag.chain.flushedAfterFailure": flushedAfterFailure,
+            "diag.chain.recoveryKept": recoveryKept, "diag.chain.staleFailures": staleFailures, "diag.chain.decoderResets": decoderResets,
             "diag.afterEnd.completions": completionsAfterEnd, "diag.afterEnd.maxLateUs": maxLateUs,
             "diag.discardedEnded.beforeDecode": discardedBeforeDecode, "diag.discardedEnded.afterDecode": discardedAfterDecode,
             "diag.prepare.count": preparations, "diag.prepare.maxUs": preparationMaxUs, "diag.prepare.failed": preparationsFailed,

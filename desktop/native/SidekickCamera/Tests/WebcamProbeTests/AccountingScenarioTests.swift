@@ -33,6 +33,8 @@ final class GatedDecoder: FrameDecoding {
     var costUs: [Int: UInt64] = [:]
     var defaultCostUs: UInt64 = 0
     var clock: ManualClock?
+    /// Runs on the decode thread as call `n` returns — a test's handle on what happens next.
+    var afterDecode: [Int: () -> Void] = [:]
 
     func hold(call n: Int) { lock.lock(); holdAt = n; lock.unlock() }
 
@@ -42,11 +44,16 @@ final class GatedDecoder: FrameDecoding {
         clock?.advance(us: costUs[n] ?? defaultCostUs)
         if failAt.contains(n) { throw DecodeError.decode(-12909) }
         let pb = try real.decode(annexB: annexB, ptsMicros: ptsMicros)
+        afterDecode[n]?()
         if unconvertibleAt.contains(n) { return try Self.unconvertible() }
         return pb
     }
 
-    func invalidate() { real.invalidate() }
+    /// How many times the bridge reset the decoder's reference state.
+    var invalidations: Int { lock.lock(); defer { lock.unlock() }; return resets }
+    private var resets = 0
+
+    func invalidate() { lock.lock(); resets += 1; lock.unlock(); real.invalidate() }
 
     /// A buffer VideoToolbox's pixel transfer will not convert to the published format.
     static func unconvertible() throws -> CVPixelBuffer {

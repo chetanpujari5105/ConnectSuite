@@ -95,6 +95,8 @@ public final class BridgeCore {
     /// True while the decode stage is blocked on its session's preparation. Guarded by `lock`.
     private var waitingOnPreparation = false
     private let prepareQueue = DispatchQueue(label: "sidekick.camera.bridge.prepare")
+    /// The session whose stream the decoder's reference state belongs to. Decode queue only.
+    private var decoderOwner: SessionID?
     private let makeComposer: (PublishedFormat) throws -> FrameComposer
 
     // Counters past the gate. The gate keeps its own (received, accepted, dropped by cause).
@@ -204,7 +206,7 @@ public final class BridgeCore {
                 droppedDecodeQueue += 1
                 diag.overflowed(nowNs: now, atReceived: ordinal, gopIndex: gopIndex)
                 lock.unlock()
-                breakChain(.queueFull, nowNs: now)
+                breakChain(.queueFull, session: session, nowNs: now)
                 return
             }
         }
@@ -234,6 +236,11 @@ public final class BridgeCore {
         let au = w.au, session = w.session
         guard isLive(session) else { count(\.discardedEnded); withDiag { $0.discardedBeforeDecoding() }; return }
 
+        // One session's references at a time: a different session's first AU starts from nothing.
+        if decoderOwner != session {
+            if decoderOwner != nil { decoder.invalidate() }
+            decoderOwner = session
+        }
         let decodeStart = clock()
         withDiag { $0.decodeStarted(nowNs: decodeStart, admittedNs: w.admittedNs) }
         let decoded: CVPixelBuffer
@@ -241,7 +248,7 @@ public final class BridgeCore {
             let now = clock()
             withDiag { $0.decodeFinished(startNs: decodeStart, nowNs: now, ordinal: w.ordinal, isKeyframe: au.isKeyframeWithConfig, ok: false) }
             count(\.decodeErrors)
-            breakChain(.decodeFailed, nowNs: now)
+            decodeFailed(w, nowNs: now)
             return
         }
         let composeStart = clock()
@@ -264,7 +271,7 @@ public final class BridgeCore {
             let now = clock()
             withDiag { $0.composeFinished(decodeStartNs: decodeStart, startNs: composeStart, nowNs: now, ok: false) }
             count(\.composeErrors)
-            breakChain(.composeFailed, nowNs: now)
+            breakChain(.composeFailed, session: session, nowNs: now)
             return
         }
         guard let sb = try? SampleBuffers.make(composed, pts: CMTime(value: Int64(DispatchTime.now().uptimeNanoseconds),
@@ -288,12 +295,50 @@ public final class BridgeCore {
     }
 
     /// The decode chain broke: the gate refuses everything until an IDR with SPS and PPS, and the gap
-    /// in the picture is timed from here.
-    private func breakChain(_ kind: PipelineDiagnostics.Break, nowNs: UInt64) {
+    /// in the picture is timed from here. Only the live session's chain: a break in an ended session's
+    /// frame is no fact about its replacement.
+    private func breakChain(_ kind: PipelineDiagnostics.Break, session: SessionID, nowNs: UInt64) {
         withGate { g in
+            guard g.live == session else { diag.staleFailure(); return }
             g.noteDownstreamDrop()
             diag.broke(kind, nowNs: nowNs, receivedSoFar: g.received, refusedSoFar: g.dropped[.awaitingKeyframe] ?? 0)
         }
+    }
+
+    /// A decode failed (docs/protocol.md → a decode failure is a Mac-side drop). Recoverable, never the
+    /// contract's fatal path. On the decode queue, before anything else is decoded:
+    ///
+    /// - the decoder forgets its references, so nothing can be produced from the broken chain;
+    /// - every AU of the session waiting before the first IDR with SPS and PPS of the CURRENT generation
+    ///   depends on the failed picture (or on a superseded generation) and is dropped undecoded;
+    /// - such an IDR, and everything behind it, is a valid chain and is kept; with none, the gate
+    ///   refuses every non-IDR until one arrives.
+    ///
+    /// All under one lock, so an IDR arriving concurrently is either already waiting (and kept) or
+    /// admitted afterwards by the gate (and accepted): there is no moment between the two.
+    private func decodeFailed(_ w: Waiting, nowNs: UInt64) {
+        decoder.invalidate()
+        decoderOwner = nil
+        lock.lock(); defer { lock.unlock() }
+        diag.decoderReset()
+        guard gate.live == w.session else { diag.staleFailure(); return }
+        let current = gate.highestGeneration
+        let recovery = waiting.firstIndex {
+            $0.session == w.session && $0.au.isKeyframeWithConfig && $0.au.header.generation == current
+        }
+        let recoveryOrdinal = recovery.map { waiting[$0].ordinal }
+        let cut = recovery ?? waiting.count
+        var kept: [Waiting] = []
+        var flushed = 0
+        for (i, x) in waiting.enumerated() {
+            if i < cut && x.session == w.session { flushed += 1 } else { kept.append(x) }
+        }
+        waiting = kept
+        droppedDecodeQueue += flushed
+        if recovery == nil { gate.noteDownstreamDrop() }
+        diag.flushedAfterDecodeFailure(flushed, keptRecovery: recovery != nil)
+        diag.broke(.decodeFailed, nowNs: nowNs, receivedSoFar: gate.received,
+                   refusedSoFar: gate.dropped[.awaitingKeyframe] ?? 0, recoveryFromOrdinal: recoveryOrdinal)
     }
 
     // MARK: Preparation
@@ -372,7 +417,11 @@ public final class BridgeCore {
                 lock.unlock()
                 // Never deferred: flush and stop first, then forget the decoder's references.
                 sink.stopAndFlush()
-                decodeQueue.async { [decoder] in decoder.invalidate() }
+                // Queued behind the decode loop, which may already be decoding a replacement: the reset
+                // applies only while the stopped session still owns the decoder.
+                decodeQueue.async { [self] in
+                    if decoderOwner == id { decoder.invalidate(); decoderOwner = nil }
+                }
                 emit(.sink(.idle))
             case let .reportEnded(id, reason):
                 emit(.sessionEnded(id, reason: reason))

@@ -280,6 +280,46 @@ final class Rig {
         #expect(rig.bridge.invariantHolds)
     }
 
+    @Test func aFailedDecodeShowsNoFrameFromTheBrokenChainThenVideoPausedThenTheRecovery() throws {
+        // Part B through the real extension: AUs waiting behind a failed decode never reach it, so the
+        // relay repeats the last good frame, then draws the video-paused card once the stall threshold
+        // passes — the same placeholder rule as any other Mac-side drop — and is fresh again at the IDR.
+        final class HeldFailingDecoder: FrameDecoding {
+            let real = H264Decoder(); var calls = 0; var failAt = -1
+            let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+            func decode(annexB: Data, ptsMicros: UInt64) throws -> CVPixelBuffer {
+                let n = calls; calls += 1
+                if n == failAt { entered.signal(); release.wait(); throw DecodeError.decode(-12909) }
+                return try real.decode(annexB: annexB, ptsMicros: ptsMicros)
+            }
+            func invalidate() { real.invalidate() }
+        }
+        let dec = HeldFailingDecoder()
+        dec.failAt = 2
+        let rig = try Rig(width: 640, height: 360, decoder: dec)
+        try rig.consumerArrives()
+        rig.control(.sessionLive(LIVE, generation: 1))
+        try rig.send(keyframe: true); try rig.send()
+        rig.pump()
+        #expect(rig.tick().picture == .fresh)
+        let accepted = rig.device.relay.accepted
+        try rig.send()                                       // fails, held inside the decoder
+        #expect(dec.entered.wait(timeout: .now() + 10) == .success)
+        try rig.send(); try rig.send()                       // its dependents, waiting
+        dec.release.signal()
+        rig.pump()
+        #expect(rig.device.relay.accepted == accepted, "a frame from the broken chain reached the extension")
+        #expect(rig.tick().picture == .repeat)
+        #expect(rig.tick(advanceMs: 1_100).picture == .paused)
+        try rig.send()                                       // refused: no IDR yet
+        try rig.send(keyframe: true); try rig.send()         // recovers
+        rig.pump()
+        #expect(rig.tick().picture == .fresh)
+        let c = rig.bridge.countsSnapshot()
+        #expect(c["decodeErrors"] == 1 && c["droppedDecodeQueue"] == 2 && c["gate.awaitingKeyframe"] == 1 && c["sinkEnqueued"] == 4, "\(c)")
+        #expect(rig.bridge.invariantHolds)
+    }
+
     @Test func aSlowDecoderIsBoundedAndEveryAUIsAccountedFor() throws {
         final class SlowDecoder: FrameDecoding {
             let real = H264Decoder()

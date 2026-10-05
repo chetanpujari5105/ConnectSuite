@@ -1188,6 +1188,25 @@ anything. For the live session's AUs:
   that does not increase (`outOfOrder`), and every non-IDR while the decoder waits for an IDR after a
   Mac-side drop (`awaitingKeyframe`).
 
+**A decode failure is a Mac-side drop, never a contract violation** (local semantics, 2026-10-05,
+defect 177). The AU passed every check above and VideoToolbox could not decode it, so the session
+continues; nothing is reported as `stream-rejected`, nothing is sent to the phone, and no capture is
+started. What the bridge does, in this order, before it decodes anything else:
+
+- the decoder forgets its reference state at once, so no picture can be produced from the broken chain;
+- every AU **of that session** already waiting in the decode stage **before the first IDR with SPS and
+  PPS of the current generation** depends on the failed picture, or belongs to a superseded generation,
+  and is dropped without being decoded — counted in `droppedDecodeQueue`, its cause in
+  `diag.chain.flushedAfterFailure`;
+- such an IDR already waiting, and everything behind it, is a valid chain and is kept
+  (`diag.chain.recoveryKept`); with none waiting, the gate refuses every non-IDR until one arrives
+  (`awaitingKeyframe`), exactly as after any other Mac-side drop.
+
+A failure of a frame whose session has **already ended** changes nothing for the session that replaced
+it — not its gate and not its waiting AUs (`diag.chain.staleFailures`). The decoder belongs to one
+session at a time: it is reset when the first AU of a different session reaches it, and a Stop's reset
+applies only while the stopped session still owns it.
+
 So the bridge accepts an AU only when all of these hold:
 
 - its `sessionId` is the live one;

@@ -135,9 +135,10 @@ private func rig(_ clock: ManualClock, _ dec: GatedDecoder) -> ProbeRig {
         #expect(d.maxArrivalsPerFrame == 6 && d.maxArrivalGapUs == 500_000)
     }
 
-    @Test func framesWaitingBehindAFailedDecodeAreStillDecodedAndThatIsCounted() throws {
-        // A FINDING, not a fix: after a decode failure, P-frames already in the stage reference a picture
-        // the decoder never produced, and the bridge decodes them anyway. The counter makes it visible.
+    @Test func framesWaitingBehindAFailedDecodeAreNoLongerDecodedAndTheCounterStaysZero() throws {
+        // Was the finding (§6 of the proposal): the bridge decoded P-frames that referenced a picture the
+        // decoder never produced. Part B drops them; `decodedAfterFailure` is the reading that would show
+        // it coming back. DecodeRecoveryTests holds the cases.
         let f = try aus()
         let clock = ManualClock(), dec = GatedDecoder()
         dec.failAt = [3]
@@ -151,9 +152,8 @@ private func rig(_ clock: ManualClock, _ dec: GatedDecoder) -> ProbeRig {
         dec.release.signal()
         r.core.drain()
         let c = r.c, d = r.core.diagnostics
-        #expect(c["probe.decodeAttempts"] == 6, "frames 4 and 5 were attempted after frame 3 failed: \(c)")
-        #expect(d.decodedAfterFailure + (c["decodeErrors"]! - 1) == 2, "\(c)")
-        print("defect 177 — after a failed decode, waiting dependants: \(d.decodedAfterFailure) decoded, \(c["decodeErrors"]! - 1) failed")
+        #expect(c["probe.decodeAttempts"] == 4, "frames 4 and 5 must not be attempted after frame 3 failed: \(c)")
+        #expect(d.decodedAfterFailure == 0 && d.flushedAfterFailure == 2 && c["decodeErrors"] == 1, "\(c)")
         #expect(r.core.invariantHolds)
     }
 }
@@ -166,7 +166,7 @@ private func rig(_ clock: ManualClock, _ dec: GatedDecoder) -> ProbeRig {
         for a in try aus(60, idrAt: [0, 30]) { r.feed(a, width: W, height: H) }
         let after = r.core.countsSnapshot()
         #expect(Set(empty.keys) == Set(after.keys), "the counters grew with the stream")
-        #expect(after.keys.filter { $0.hasPrefix("diag.") }.count == 41)
+        #expect(after.keys.filter { $0.hasPrefix("diag.") }.count == 45)
         #expect(after.count <= 64, "BridgeCore's share of the 128 counters Electron main accepts")
         #expect(r.c.count <= 128, "with the probe's tally: \(r.c.count)")
         #expect(after.values.allSatisfy { $0 >= 0 } && after.keys.allSatisfy { $0.count <= 64 })
@@ -182,7 +182,7 @@ private func rig(_ clock: ManualClock, _ dec: GatedDecoder) -> ProbeRig {
         // every such frame is one of `discardedAfterDecode`; a Stop landing DURING a compose would be
         // counted in both, and no scenario here produces one.
         #expect(d.compose.count + d.discardedAfterDecode == c["probe.decoded"] ?? 0)
-        #expect(d.overflowEvents + d.idrFlushedAUs == c["droppedDecodeQueue"]!)
+        #expect(d.overflowEvents + d.idrFlushedAUs + d.flushedAfterFailure == c["droppedDecodeQueue"]!)
         #expect(d.discardedBeforeDecode + d.discardedAfterDecode == c["discardedEnded"]!)
         let breaks = c["droppedDecodeQueue"]! + c["decodeErrors"]! + c["composeErrors"]!
         #expect(d.recoveries + d.unrecovered + (c["diag.recovery.open"] ?? 0) <= breaks)
