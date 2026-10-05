@@ -79,10 +79,27 @@ export class NativeNotifier {
   /** Clicks delivered to this process. The denominator for it is `notify` in {@link tally}. */
   private clicks = 0;
 
+  /**
+   * The incoming-call banner on screen, held for the same reason {@link live} holds its handles:
+   * Electron delivers `click` through the instance and nothing else keeps it alive. One at a time —
+   * a phone rings for one call.
+   */
+  private callBanner: { key: string; native: Notification } | null = null;
+
+  /** Posted, closed and clicked, published together on every line (the denominator rule). */
+  private callBanners = { posted: 0, closed: 0, clicked: 0 };
+
   constructor(
     private readonly reveal: (key: string) => void,
     private readonly soundEnabled: () => boolean,
+    /** Opens the Calls pane. The only thing a call banner's click may do. */
+    private readonly openCalls: () => void,
   ) {}
+
+  /** What `CallBannerState` needs to know about the window. */
+  view(): { windowFocused: boolean; currentScreen: string } {
+    return { windowFocused: this.windowFocused, currentScreen: this.currentScreen };
+  }
 
   /**
    * A session became ready. Everything the phone replays now is older than this instant.
@@ -262,19 +279,7 @@ export class NativeNotifier {
     // The only permission signal that exists. The exception's own text is kept intact rather than
     // paraphrased: defect 57's whole lesson is that a platform's failure name is about the
     // platform's model, and discarding it discards the diagnosis.
-    native.on('failed', (_event, error) => {
-      const message = String(error ?? 'unknown');
-      if (!this.refusal) {
-        this.refusal = { message, atMs: Date.now() };
-        const copy = refusalCopy({ packaged: app.isPackaged });
-        log.warn(
-          'native-notif',
-          `macOS refused a notification — ${message}. ` +
-            `Everything since launch: ${this.tallyLine()}. ` +
-            `${copy.headline}: ${copy.body}`,
-        );
-      }
-    });
+    native.on('failed', (_event, error) => this.onFailed(error));
 
     native.show();
     /*
@@ -287,6 +292,60 @@ export class NativeNotifier {
      */
     this.live.retain(n.key, native)?.close();
     this.refreshBadge();
+  }
+
+  /** The first refusal, recorded once, from either kind of banner. */
+  private onFailed(error: unknown): void {
+    const message = String(error ?? 'unknown');
+    if (!this.refusal) {
+      this.refusal = { message, atMs: Date.now() };
+      const copy = refusalCopy({ packaged: app.isPackaged });
+      log.warn(
+        'native-notif',
+        `macOS refused a notification — ${message}. ` +
+          `Everything since launch: ${this.tallyLine()}. ` +
+          `${copy.headline}: ${copy.body}`,
+      );
+    }
+  }
+
+  /**
+   * Post the incoming-call banner `CallBannerState` decided on.
+   *
+   * Title and body only: no action of any kind, so nothing on the banner can answer, reject or hang
+   * up a call. A click opens the Calls pane and does nothing else. Sound follows the same setting as
+   * every other banner, and a refusal is recorded by the same handler.
+   *
+   * Logged by key — `session:callId:startedAtMs` — never by the name or number in the body.
+   */
+  postCallBanner(post: { key: string; title: string; body: string }): void {
+    if (this.callBanner) this.closeCallBanner(this.callBanner.key, 'replaced');
+    const native = new Notification({ title: post.title, body: post.body, silent: !this.soundEnabled() });
+    native.on('click', () => {
+      this.callBanners.clicked += 1;
+      log.info('native-notif', `call banner clicked ${post.key} — opening Calls — ${this.callBannerTally()}`);
+      if (this.callBanner?.native === native) this.callBanner = null;
+      this.openCalls();
+    });
+    native.on('failed', (_event, error) => this.onFailed(error));
+    native.show();
+    this.callBanner = { key: post.key, native };
+    this.callBanners.posted += 1;
+    log.info('native-notif', `call banner posted ${post.key} — ${this.callBannerTally()}`);
+  }
+
+  /** Close the call banner posted under `key`, if it is still the one on screen. */
+  closeCallBanner(key: string, why: string): void {
+    if (!this.callBanner || this.callBanner.key !== key) return;
+    this.callBanner.native.close();
+    this.callBanner = null;
+    this.callBanners.closed += 1;
+    log.info('native-notif', `call banner closed ${key} (${why}) — ${this.callBannerTally()}`);
+  }
+
+  private callBannerTally(): string {
+    const { posted, closed, clicked } = this.callBanners;
+    return `${posted} posted / ${closed} closed / ${clicked} clicked since launch`;
   }
 
   private refreshBadge(): void {

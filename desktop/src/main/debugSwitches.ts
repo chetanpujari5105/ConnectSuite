@@ -139,6 +139,13 @@ export interface DebugSwitches {
    * nothing as a camera. Off by default.
    */
   webcamSpike: boolean;
+  /**
+   * The incoming-call banner's development gate (`src/shared/callBanner.ts`): a ringing call posts a
+   * native banner — *"Incoming call"* — when Sidekick is not in front on Calls. **Not yet verified on
+   * hardware**, so it is off by default and forced off in a packaged build by main.ts. It weakens no
+   * guard: the banner carries no action and its click only opens the Calls pane.
+   */
+  callBanner: boolean;
 }
 
 const NAMES: readonly (keyof DebugSwitches)[] = [
@@ -156,6 +163,7 @@ const NAMES: readonly (keyof DebugSwitches)[] = [
   'shareV3Off',
   'webcamDev',
   'webcamSpike',
+  'callBanner',
 ];
 
 function read(): DebugSwitches {
@@ -174,6 +182,7 @@ function read(): DebugSwitches {
     shareV3Off: false,
     webcamDev: false,
     webcamSpike: false,
+    callBanner: false,
   };
   // `app.isPackaged` is not consulted here because this module must stay importable by tests with
   // no Electron present; main.ts guards the startup read instead.

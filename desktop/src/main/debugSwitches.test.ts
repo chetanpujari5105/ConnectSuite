@@ -29,6 +29,10 @@ test('the known switches are exactly these, and every one defaults to off', () =
     [
       'bypassRemoteGuard',
       'bypassReplyGuard',
+      // Added 2026-10-05 for the incoming-call banner's development gate, off by default (asserted
+      // below) and forced off in a packaged build by main.ts. It weakens no guard: it only allows a
+      // banner that has not yet been verified on hardware.
+      'callBanner',
       // Added 2026-09-13 for defect 105. Confirmed off by default by the assertion below, and it is
       // the only switch here that exists to prove a fix rather than to reach an unreachable error
       // path — it forces the float's start race to lose, which no machine tried here would do.

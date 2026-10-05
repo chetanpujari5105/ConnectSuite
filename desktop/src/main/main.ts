@@ -15,6 +15,12 @@ import {
   type PairRejected,
 } from '../shared/protocol';
 import { CallActivityRows } from '../shared/callRecord';
+import {
+  CallBannerDecision,
+  CallBannerState,
+  type CallBannerAction,
+  type CallBannerView,
+} from '../shared/callBanner';
 import { loadIdentity } from './identity';
 import { InputClient } from './input';
 import { ClipboardClient } from './clipboard';
@@ -194,7 +200,54 @@ const nativeNotifier = new NativeNotifier(
     send('reveal-notification', { key });
   },
   () => store.get('notificationSound'),
+  // A call banner's click opens Calls through the same route the menu bar uses, and does nothing
+  // else — it never answers, rejects or hangs up.
+  () => {
+    if (!window) createWindow();
+    window?.show();
+    window?.focus();
+    sendAll('menu-route', { id: 'calls' });
+  },
 );
+
+/**
+ * The incoming-call banner (`src/shared/callBanner.ts` decides; the notifier posts).
+ *
+ * Behind a development gate until it has been verified on hardware: off unless
+ * `CONNECTSUITE_DEBUG_SWITCHES` names `callBanner`, and forced off in a packaged build.
+ */
+const callBanners = new CallBannerState();
+let callBannerTimer: NodeJS.Timeout | null = null;
+
+function callBannerEnabled(): boolean {
+  return !app.isPackaged && debugSwitches().callBanner;
+}
+
+function callBannerView(): CallBannerView {
+  return { enabled: callBannerEnabled(), ...nativeNotifier.view() };
+}
+
+function applyCallBanner(action: CallBannerAction): void {
+  if (action.cancelHold && callBannerTimer) {
+    clearTimeout(callBannerTimer);
+    callBannerTimer = null;
+  }
+  if (action.close) nativeNotifier.closeCallBanner(action.close, action.decision);
+  if (action.hold) {
+    const { key, ms } = action.hold;
+    if (callBannerTimer) clearTimeout(callBannerTimer);
+    callBannerTimer = setTimeout(() => {
+      callBannerTimer = null;
+      applyCallBanner(callBanners.holdExpired(key, callBannerView()));
+    }, ms);
+  }
+  if (action.post) nativeNotifier.postCallBanner(action.post);
+  // Decisions by key only, and only when the feature is on: a gated-off feature logging every call
+  // would be noise, and no line here may carry the name or number in the banner.
+  if (callBannerEnabled() && action.decision !== CallBannerDecision.NONE) {
+    log.info('call-banner', `${action.decision}${action.post ? ` ${action.post.key}` : ''}`);
+  }
+}
 
 /**
  * Contacts: the phone's search, and a number→name cache for the panes that draw numbers.
@@ -1614,8 +1667,10 @@ app.whenReady().then(() => {
     // re-arming it mid-session would make the rest of the session's notifications look replayed.
     if (status.phase === 'connected' && !notifierWasConnected) {
       nativeNotifier.onSessionReady();
+      applyCallBanner(callBanners.sessionReady());
     } else if (status.phase !== 'connected' && notifierWasConnected) {
       nativeNotifier.onSessionEnded();
+      applyCallBanner(callBanners.sessionEnded());
       // O4. These are facts about the phone that WAS connected; keeping them would draw the last
       // phone's battery over the next one's card.
       lastBatteryState = null;
@@ -1851,6 +1906,7 @@ app.whenReady().then(() => {
   calls.on('changed', (call: IncomingCall | null) => {
     const row = callRows.changed(call);
     if (row) activity.record('calls', row.kind, row.detail);
+    applyCallBanner(callBanners.onCall(call, callBannerView()));
     send('call-changed', call);
   });
   calls.on('ended', (ended: CallEnded, card: IncomingCall | null) => {
